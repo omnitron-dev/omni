@@ -16,10 +16,11 @@
 
 import { defineComponent } from '../core/component/define.js';
 import { signal, type WritableSignal } from '../core/reactivity/signal.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
+import { createRef } from '../core/component/refs.js';
+import { effect } from '../core/reactivity/effect.js';
 import { onMount } from '../core/component/lifecycle.js';
-import { jsx } from '../jsx-runtime.js';
-import { Portal } from '../control-flow/Portal.js';
+import { jsx, Fragment } from '../jsx-runtime.js';
 import { generateId } from './utils/id.js';
 import { calculatePosition, applyPosition, type Side, type Align } from './utils/position.js';
 
@@ -130,6 +131,8 @@ export interface SelectContextValue {
   registerItem: (el: HTMLElement) => void;
   unregisterItem: (el: HTMLElement) => void;
   itemTexts: Map<string, string>;
+  itemTextsVersion: () => number;
+  incrementItemTextsVersion: () => void; // Increment version
 }
 
 export const SelectContext = createContext<SelectContextValue>({
@@ -153,6 +156,8 @@ export const SelectContext = createContext<SelectContextValue>({
   registerItem: () => {},
   unregisterItem: () => {},
   itemTexts: new Map(),
+  itemTextsVersion: () => 0,
+  incrementItemTextsVersion: () => {},
 });
 
 // ============================================================================
@@ -166,6 +171,7 @@ export const Select = defineComponent<SelectProps>((props) => {
   const highlightedIndex = signal(-1);
   const itemsSignal = signal<HTMLElement[]>([]);
   const itemTexts = new Map<string, string>();
+  const itemTextsVersion = signal(0); // Track changes to itemTexts
 
   const contextValue: SelectContextValue = {
     value: () => value(),
@@ -215,13 +221,21 @@ export const Select = defineComponent<SelectProps>((props) => {
       itemsSignal.set(items.filter((item) => item !== el));
     },
     itemTexts,
+    itemTextsVersion: () => itemTextsVersion(),
+    incrementItemTextsVersion: () => itemTextsVersion.set(itemTextsVersion() + 1),
   };
 
-  return () =>
-    jsx(SelectContext.Provider, {
-      value: contextValue,
-      children: props.children,
-    });
+  // Provide context during setup phase (Pattern 17)
+  provideContext(SelectContext, contextValue);
+
+  return () => {
+    // Evaluate function children for correct context timing (Pattern 17)
+    const evaluatedChildren = typeof props.children === 'function' ? props.children() : props.children;
+
+    // Return children in a Fragment (no wrapper element)
+    // Context is provided via provideContext, not Context.Provider
+    return jsx(Fragment, { children: evaluatedChildren });
+  };
 });
 
 // ============================================================================
@@ -230,13 +244,7 @@ export const Select = defineComponent<SelectProps>((props) => {
 
 export const SelectTrigger = defineComponent<SelectTriggerProps>((props) => {
   const ctx = useContext(SelectContext);
-
-  onMount(() => {
-    const el = document.getElementById(ctx.triggerId);
-    if (el instanceof HTMLElement) {
-      ctx.setAnchorElement(el);
-    }
-  });
+  const buttonRef = createRef<HTMLButtonElement>();
 
   const handleClick = (e: MouseEvent) => {
     if (ctx.disabled()) return;
@@ -263,11 +271,39 @@ export const SelectTrigger = defineComponent<SelectTriggerProps>((props) => {
     props.onKeyDown?.(e);
   };
 
+  // Ref callback with reactive effects
+  const refCallback = (element: HTMLButtonElement | null) => {
+    buttonRef.current = element || undefined;
+    if (!element) return;
+
+    // Set anchor element for positioning
+    ctx.setAnchorElement(element);
+
+    // Reactive effect to update attributes when state changes
+    effect(() => {
+      const isOpen = ctx.isOpen();
+      const value = ctx.value();
+
+      element.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      element.setAttribute('data-state', isOpen ? 'open' : 'closed');
+
+      if (value) {
+        element.removeAttribute('data-placeholder');
+      } else {
+        element.setAttribute('data-placeholder', 'true');
+      }
+    });
+  };
+
   const { onClick, onKeyDown, children, ...restProps } = props;
 
-  return () =>
-    jsx('button', {
+  return () => {
+    // Evaluate function children (Pattern 17)
+    const evaluatedChildren = typeof children === 'function' ? children() : children;
+
+    return jsx('button', {
       ...restProps,
+      ref: refCallback,
       id: ctx.triggerId,
       type: 'button',
       role: 'combobox',
@@ -282,8 +318,9 @@ export const SelectTrigger = defineComponent<SelectTriggerProps>((props) => {
       disabled: ctx.disabled(),
       onClick: handleClick,
       onKeyDown: handleKeyDown,
-      children,
+      children: evaluatedChildren,
     });
+  };
 });
 
 // ============================================================================
@@ -292,6 +329,24 @@ export const SelectTrigger = defineComponent<SelectTriggerProps>((props) => {
 
 export const SelectValue = defineComponent<SelectValueProps>((props) => {
   const ctx = useContext(SelectContext);
+  const spanRef = createRef<HTMLSpanElement>();
+
+  // Ref callback with reactive effect for text updates
+  const refCallback = (element: HTMLSpanElement | null) => {
+    spanRef.current = element || undefined;
+    if (!element || props.children) return; // Skip if custom children
+
+    // Reactive effect to update text when value or itemTexts change
+    effect(() => {
+      const currentValue = ctx.value();
+      const hasValue = currentValue !== '';
+      // Track itemTextsVersion to trigger update when items register
+      ctx.itemTextsVersion();
+
+      const displayText = hasValue ? ctx.itemTexts.get(currentValue) || currentValue : props.placeholder;
+      element.textContent = displayText || '';
+    });
+  };
 
   return () => {
     const currentValue = ctx.value();
@@ -311,6 +366,7 @@ export const SelectValue = defineComponent<SelectValueProps>((props) => {
 
     return jsx('span', {
       ...props,
+      ref: refCallback,
       id: ctx.valueId,
       children: displayText,
     });
@@ -505,35 +561,81 @@ export const SelectContent = defineComponent<SelectContentProps>((props) => {
     ...restProps
   } = props;
 
-  return () => {
-    if (!ctx.isOpen()) return null;
+  // Use onMount to create and manage content reactively
+  onMount(() => {
+    // Evaluate function children (Pattern 17)
+    const evaluatedChildren = typeof children === 'function' ? children() : children;
 
-    return jsx(Portal, {
-      children: jsx('div', {
-        ...restProps,
-        id: ctx.contentId,
-        role: 'listbox',
-        'aria-labelledby': ctx.triggerId,
-        tabIndex: -1,
-        onKeyDown: handleKeyDown,
-        children,
-      }),
+    // Create content div
+    const contentDiv = jsx('div', {
+      ...restProps,
+      id: ctx.contentId,
+      role: 'listbox',
+      'aria-labelledby': ctx.triggerId,
+      tabIndex: -1,
+      onKeyDown: handleKeyDown,
+      children: evaluatedChildren,
+    }) as HTMLDivElement;
+
+    // Find or create portal container
+    let portalContainer = document.body.querySelector('.aether-portal') as HTMLElement;
+    if (!portalContainer) {
+      portalContainer = document.createElement('div');
+      portalContainer.className = 'aether-portal';
+      document.body.appendChild(portalContainer);
+    }
+
+    let isAttached = false;
+
+    // Reactive effect to control visibility
+    effect(() => {
+      const shouldShow = ctx.isOpen();
+
+      if (shouldShow && !isAttached) {
+        // Add to portal
+        portalContainer.appendChild(contentDiv);
+        isAttached = true;
+        updatePosition();
+      } else if (!shouldShow && isAttached) {
+        // Remove from portal
+        if (contentDiv.parentNode) {
+          contentDiv.parentNode.removeChild(contentDiv);
+        }
+        isAttached = false;
+      } else if (shouldShow && isAttached) {
+        // Already shown, just update position
+        updatePosition();
+      }
     });
-  };
+
+    return () => {
+      // Cleanup on unmount
+      if (contentDiv.parentNode) {
+        contentDiv.parentNode.removeChild(contentDiv);
+      }
+    };
+  });
+
+  // Return a placeholder
+  return () => null;
 });
 
 // ============================================================================
 // Viewport
 // ============================================================================
 
-export const SelectViewport = defineComponent<SelectViewportProps>((props) => () =>
-    jsx('div', {
+export const SelectViewport = defineComponent<SelectViewportProps>((props) => () => {
+    // Evaluate function children (Pattern 17)
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+
+    return jsx('div', {
       ...props,
       style: {
         ...(typeof props.style === 'object' ? props.style : {}),
       },
-      children: props.children,
-    }));
+      children,
+    });
+  });
 
 // ============================================================================
 // Item
@@ -542,23 +644,7 @@ export const SelectViewport = defineComponent<SelectViewportProps>((props) => ()
 export const SelectItem = defineComponent<SelectItemProps>((props) => {
   const ctx = useContext(SelectContext);
   const itemId = generateId('select-item');
-
-  onMount(() => {
-    const el = document.getElementById(itemId);
-    if (el instanceof HTMLElement) {
-      ctx.registerItem(el);
-
-      // Store item text for display in SelectValue
-      const text = props.textValue || el.textContent || props.value;
-      ctx.itemTexts.set(props.value, text);
-
-      return () => {
-        ctx.unregisterItem(el);
-        ctx.itemTexts.delete(props.value);
-      };
-    }
-    return undefined;
-  });
+  const itemRef = createRef<HTMLDivElement>();
 
   const handleClick = (e: MouseEvent) => {
     if (props.disabled) return;
@@ -575,7 +661,7 @@ export const SelectItem = defineComponent<SelectItemProps>((props) => {
   const handlePointerMove = () => {
     if (props.disabled) return;
 
-    const el = document.getElementById(itemId);
+    const el = itemRef.current;
     if (el) {
       const items = ctx.items();
       const index = items.indexOf(el);
@@ -585,11 +671,49 @@ export const SelectItem = defineComponent<SelectItemProps>((props) => {
     }
   };
 
+  // Ref callback with reactive effects
+  const refCallback = (element: HTMLDivElement | null) => {
+    itemRef.current = element || undefined;
+    if (!element) return;
+
+    // Register item and store text
+    ctx.registerItem(element);
+    const text = props.textValue || element.textContent || props.value;
+    ctx.itemTexts.set(props.value, text);
+
+    // Increment version to trigger SelectValue update
+    ctx.incrementItemTextsVersion();
+
+    // Reactive effect to update attributes when selection changes
+    effect(() => {
+      const currentValue = ctx.value();
+      const items = ctx.items();
+      const index = items.indexOf(element);
+      const highlighted = index === ctx.highlightedIndex();
+      const selected = currentValue === props.value;
+
+      element.setAttribute('aria-selected', selected ? 'true' : 'false');
+      element.setAttribute('data-state', selected ? 'checked' : 'unchecked');
+
+      if (highlighted) {
+        element.setAttribute('data-highlighted', 'true');
+      } else {
+        element.removeAttribute('data-highlighted');
+      }
+    });
+
+    // Cleanup on unmount
+    return () => {
+      ctx.unregisterItem(element);
+      ctx.itemTexts.delete(props.value);
+    };
+  };
+
   const { value, disabled, textValue, onClick, children, ...restProps } = props;
   const isSelected = ctx.value() === value;
   const isHighlighted = () => {
     const items = ctx.items();
-    const el = document.getElementById(itemId);
+    const el = itemRef.current;
     if (!el) return false;
     const index = items.indexOf(el);
     return index === ctx.highlightedIndex();
@@ -598,6 +722,7 @@ export const SelectItem = defineComponent<SelectItemProps>((props) => {
   return () =>
     jsx('div', {
       ...restProps,
+      ref: refCallback,
       id: itemId,
       role: 'option',
       'aria-selected': isSelected ? 'true' : 'false',
@@ -641,13 +766,17 @@ export const SelectItemIndicator = defineComponent<SelectItemIndicatorProps>((pr
 export const SelectGroup = defineComponent<SelectGroupProps>((props) => {
   const groupId = generateId('select-group');
 
-  return () =>
-    jsx('div', {
+  return () => {
+    // Evaluate function children (Pattern 17)
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+
+    return jsx('div', {
       ...props,
       id: groupId,
       role: 'group',
-      children: props.children,
+      children,
     });
+  };
 });
 
 // ============================================================================
@@ -657,13 +786,17 @@ export const SelectGroup = defineComponent<SelectGroupProps>((props) => {
 export const SelectLabel = defineComponent<SelectLabelProps>((props) => {
   const labelId = generateId('select-label');
 
-  return () =>
-    jsx('div', {
+  return () => {
+    // Evaluate function children (Pattern 17)
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+
+    return jsx('div', {
       ...props,
       id: labelId,
       role: 'presentation',
-      children: props.children,
+      children,
     });
+  };
 });
 
 // ============================================================================

@@ -8,7 +8,7 @@
  */
 
 import { defineComponent } from '../core/component/define.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { signal, type WritableSignal } from '../core/reactivity/signal.js';
 import { createRef } from '../core/component/refs.js';
 import { effect } from '../core/reactivity/effect.js';
@@ -144,6 +144,9 @@ export const Checkbox = defineComponent<CheckboxProps>((props) => {
     checkboxId,
   };
 
+  // Provide context during setup phase so child components can access it
+  provideContext(CheckboxContext, contextValue);
+
   const handleClick = (e: MouseEvent) => {
     if (disabled()) {
       e.preventDefault();
@@ -213,51 +216,52 @@ export const Checkbox = defineComponent<CheckboxProps>((props) => {
     });
   };
 
-  return () =>
-    jsx(CheckboxContext.Provider, {
-      value: contextValue,
-      children: jsx('button', {
-        ...props,
-        ref: buttonRefCallback,
-        id: checkboxId,
-        type: 'button',
-        role: 'checkbox',
-        'aria-checked': checkedSignal() === 'indeterminate' ? 'mixed' : checkedSignal() ? 'true' : 'false',
-        'aria-required': required() ? 'true' : undefined,
-        'data-state': checkedSignal() === 'indeterminate' ? 'indeterminate' : checkedSignal() ? 'checked' : 'unchecked',
-        'data-disabled': disabled() ? '' : undefined,
-        disabled: disabled(),
-        onClick: handleClick,
-        onKeyDown: handleKeyDown,
-        children: [
-          // Hidden input for form integration
-          props.name
-            ? jsx('input', {
-                ref: hiddenInputRefCallback,
-                type: 'checkbox',
-                name: props.name,
-                value: props.value || 'on',
-                checked: checkedSignal() === true,
-                required: required(),
-                disabled: disabled(),
-                'aria-hidden': 'true',
-                tabIndex: -1,
-                style: {
-                  position: 'absolute',
-                  opacity: 0,
-                  pointerEvents: 'none',
-                  margin: 0,
-                  width: '1px',
-                  height: '1px',
-                },
-                // Prevent default checkbox behavior
-                onClick: (e: Event) => e.preventDefault(),
-              })
-            : null,
-          props.children,
-        ],
-      }),
+  return () => {
+    // Support function children (lazy evaluation for correct context)
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+
+    return jsx('button', {
+      ...props,
+      ref: buttonRefCallback,
+      id: checkboxId,
+      type: 'button',
+      role: 'checkbox',
+      'aria-checked': checkedSignal() === 'indeterminate' ? 'mixed' : checkedSignal() ? 'true' : 'false',
+      'aria-required': required() ? 'true' : undefined,
+      'data-state': checkedSignal() === 'indeterminate' ? 'indeterminate' : checkedSignal() ? 'checked' : 'unchecked',
+      'data-disabled': disabled() ? '' : undefined,
+      disabled: disabled(),
+      onClick: handleClick,
+      onKeyDown: handleKeyDown,
+      children: [
+        // Hidden input for form integration
+        props.name
+          ? jsx('input', {
+              ref: hiddenInputRefCallback,
+              type: 'checkbox',
+              name: props.name,
+              value: props.value || 'on',
+              checked: checkedSignal() === true,
+              required: required(),
+              disabled: disabled(),
+              'aria-hidden': 'true',
+              tabIndex: -1,
+              style: {
+                position: 'absolute',
+                opacity: 0,
+                pointerEvents: 'none',
+                margin: 0,
+                width: '1px',
+                height: '1px',
+              },
+              // Prevent default checkbox behavior
+              onClick: (e: Event) => e.preventDefault(),
+            })
+          : null,
+        children,
+      ],
     });
+  };
 });
 
 /**
@@ -278,32 +282,18 @@ export const CheckboxIndicator = defineComponent<CheckboxIndicatorProps>((props)
   // Create ref for the indicator span
   const indicatorRef = createRef<HTMLSpanElement>();
 
-  // Set up ref callback
+  // Set up ref callback with reactive effect
   const refCallback = (element: HTMLSpanElement | null) => {
     indicatorRef.current = element || undefined;
     if (!element) return;
 
-    // Find the parent checkbox button
-    let checkboxElement: HTMLElement | null = element.parentElement;
-    while (checkboxElement && checkboxElement.getAttribute('role') !== 'checkbox') {
-      checkboxElement = checkboxElement.parentElement;
-    }
-
-    if (!checkboxElement) {
-      // Parent not found yet, try again after microtask
-      queueMicrotask(() => refCallback(element));
-      return;
-    }
-
-    // Set up function to update indicator based on checkbox state
-    const updateFromCheckbox = () => {
-      if (!checkboxElement) return;
-
-      const ariaChecked = checkboxElement.getAttribute('aria-checked');
-      const checked = ariaChecked === 'true' ? true : ariaChecked === 'mixed' ? 'indeterminate' : false;
+    // Set up effect to update indicator when checkbox state changes
+    // This effect runs immediately when the element is attached and whenever dependencies change
+    effect(() => {
+      const checked = checkbox.checked();
       const shouldShow = checked === true || checked === 'indeterminate';
 
-      // Update data-state
+      // Update data-state synchronously via reactive effect
       const dataState = checked === 'indeterminate' ? 'indeterminate' : checked ? 'checked' : 'unchecked';
       element.setAttribute('data-state', dataState);
 
@@ -311,16 +301,6 @@ export const CheckboxIndicator = defineComponent<CheckboxIndicatorProps>((props)
       if (!props.forceMount) {
         element.style.display = shouldShow ? '' : 'none';
       }
-    };
-
-    // Set initial state
-    updateFromCheckbox();
-
-    // Watch for checkbox state changes
-    const observer = new MutationObserver(updateFromCheckbox);
-    observer.observe(checkboxElement, {
-      attributes: true,
-      attributeFilter: ['aria-checked'],
     });
   };
 

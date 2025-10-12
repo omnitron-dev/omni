@@ -858,7 +858,7 @@ describe('Checkbox', () => {
       const component = () =>
         Checkbox({
           defaultChecked: true,
-          children: CheckboxIndicator({ class: 'indicator' }),
+          children: () => CheckboxIndicator({ class: 'indicator' }),
         });
 
       const { container } = renderComponent(component);
@@ -874,7 +874,7 @@ describe('Checkbox', () => {
       const component = () =>
         Checkbox({
           defaultChecked: 'indeterminate',
-          children: CheckboxIndicator({ class: 'indicator' }),
+          children: () => CheckboxIndicator({ class: 'indicator' }),
         });
 
       const { container } = renderComponent(component);
@@ -909,7 +909,7 @@ describe('Checkbox', () => {
       const component = () =>
         Checkbox({
           defaultChecked: false,
-          children: CheckboxIndicator({ class: 'indicator' }),
+          children: () => CheckboxIndicator({ class: 'indicator' }),
         });
 
       const { container } = renderComponent(component);

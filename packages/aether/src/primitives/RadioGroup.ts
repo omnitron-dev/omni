@@ -8,9 +8,11 @@
  */
 
 import { defineComponent } from '../core/component/define.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { signal, type WritableSignal } from '../core/reactivity/signal.js';
 import { computed } from '../core/reactivity/computed.js';
+import { createRef } from '../core/component/refs.js';
+import { effect } from '../core/reactivity/effect.js';
 import { jsx } from '../jsx-runtime.js';
 import { generateId } from './utils/index.js';
 
@@ -174,7 +176,11 @@ export const RadioGroup = defineComponent<RadioGroupProps>((props) => {
   const valueSignal = props.value || internalValue;
 
   const setValue = (value: string) => {
-    valueSignal.set(value);
+    // Only update internal signal if uncontrolled (following Checkbox pattern)
+    if (!props.value) {
+      valueSignal.set(value);
+    }
+    // Always call callback (for both controlled and uncontrolled)
     props.onValueChange?.(value);
   };
 
@@ -193,6 +199,9 @@ export const RadioGroup = defineComponent<RadioGroupProps>((props) => {
     loop: loop(),
     groupId,
   };
+
+  // Provide context during setup phase (Pattern 17)
+  provideContext(RadioGroupContext, contextValue);
 
   const handleKeyDown = (e: KeyboardEvent) => {
     if (disabled()) return;
@@ -214,7 +223,9 @@ export const RadioGroup = defineComponent<RadioGroupProps>((props) => {
 
     if (items.length === 0) return;
 
-    const currentIndex = items.findIndex((item) => item === e.target);
+    // Find currently focused radio button using document.activeElement
+    // (e.target may be the group container when event is dispatched on it)
+    const currentIndex = items.findIndex((item) => item === document.activeElement);
     let nextIndex = currentIndex;
 
     if (e.key === 'Home') {
@@ -242,39 +253,55 @@ export const RadioGroup = defineComponent<RadioGroupProps>((props) => {
     }
   };
 
-  return () =>
-    jsx(RadioGroupContext.Provider, {
-      value: contextValue,
-      children: jsx('div', {
-        id: groupId,
-        role: 'radiogroup',
-        'aria-required': required() ? 'true' : undefined,
-        'aria-orientation': orientation(),
-        'data-orientation': orientation(),
-        'data-disabled': disabled() ? '' : undefined,
-        onKeyDown: handleKeyDown,
-        children: [
-          // Hidden input for form integration
-          props.name
-            ? jsx('input', {
-                type: 'hidden',
-                name: props.name,
-                value: valueSignal() || '',
-                'aria-hidden': 'true',
-                style: {
-                  position: 'absolute',
-                  opacity: 0,
-                  pointerEvents: 'none',
-                  margin: 0,
-                  width: '1px',
-                  height: '1px',
-                },
-              })
-            : null,
-          props.children,
-        ],
-      }),
+  // Set up ref callback for hidden input
+  const hiddenInputRef = createRef<HTMLInputElement>();
+  const hiddenInputRefCallback = (element: HTMLInputElement | null) => {
+    hiddenInputRef.current = element || undefined;
+    if (!element) return;
+
+    // Set up effect to update hidden input value when signal changes
+    effect(() => {
+      const value = valueSignal();
+      element.value = value || '';
     });
+  };
+
+  return () => {
+    // Evaluate function children (Pattern 17)
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+
+    // Context provided via provideContext, no Provider needed
+    return jsx('div', {
+      id: groupId,
+      role: 'radiogroup',
+      'aria-required': required() ? 'true' : undefined,
+      'aria-orientation': orientation(),
+      'data-orientation': orientation(),
+      'data-disabled': disabled() ? '' : undefined,
+      onKeyDown: handleKeyDown,
+      children: [
+        // Hidden input for form integration
+        props.name
+          ? jsx('input', {
+              ref: hiddenInputRefCallback,
+              type: 'hidden',
+              name: props.name,
+              value: valueSignal() || '',
+              'aria-hidden': 'true',
+              style: {
+                position: 'absolute',
+                opacity: 0,
+                pointerEvents: 'none',
+                margin: 0,
+                width: '1px',
+                height: '1px',
+              },
+            })
+          : null,
+        children,
+      ],
+    });
+  };
 });
 
 /**
@@ -294,12 +321,17 @@ export const RadioGroupItem = defineComponent<RadioGroupItemProps>((props) => {
   const checked = computed(() => group.value() === props.value);
   const disabled = () => props.disabled || group.disabled;
 
+  const buttonRef = createRef<HTMLButtonElement>();
+
   const contextValue: RadioGroupItemContextValue = {
     value: props.value,
     checked: () => checked(),
     disabled: disabled(),
     itemId,
   };
+
+  // Provide context during setup phase (Pattern 17)
+  provideContext(RadioGroupItemContext, contextValue);
 
   const handleClick = () => {
     if (disabled()) return;
@@ -314,24 +346,53 @@ export const RadioGroupItem = defineComponent<RadioGroupItemProps>((props) => {
     }
   };
 
-  return () =>
-    jsx(RadioGroupItemContext.Provider, {
-      value: contextValue,
-      children: jsx('button', {
-        ...props,
-        id: itemId,
-        type: 'button',
-        role: 'radio',
-        'aria-checked': checked() ? 'true' : 'false',
-        'data-state': checked() ? 'checked' : 'unchecked',
-        'data-value': props.value,
-        'data-disabled': disabled() ? '' : undefined,
-        disabled: disabled(),
-        tabIndex: checked() ? 0 : -1,
-        onClick: handleClick,
-        onKeyDown: handleKeyDown,
-      }),
+  // Set up ref callback for button
+  const buttonRefCallback = (element: HTMLButtonElement | null) => {
+    buttonRef.current = element || undefined;
+    if (!element) return;
+
+    // Set up effect to update DOM attributes when signals change
+    effect(() => {
+      const isChecked = checked();
+      const isDisabled = disabled();
+
+      element.setAttribute('aria-checked', isChecked ? 'true' : 'false');
+      element.setAttribute('data-state', isChecked ? 'checked' : 'unchecked');
+      element.setAttribute('tabindex', isChecked ? '0' : '-1');
+
+      if (isDisabled) {
+        element.setAttribute('data-disabled', '');
+        element.setAttribute('disabled', '');
+      } else {
+        element.removeAttribute('data-disabled');
+        element.removeAttribute('disabled');
+      }
     });
+  };
+
+  return () => {
+    // Evaluate function children (Pattern 17)
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+    const { value: _, disabled: __, id: ___, children: ____, ...restProps } = props;
+
+    // Context provided via provideContext, no Provider needed
+    return jsx('button', {
+      ...restProps,
+      ref: buttonRefCallback,
+      id: itemId,
+      type: 'button',
+      role: 'radio',
+      'aria-checked': checked() ? 'true' : 'false',
+      'data-state': checked() ? 'checked' : 'unchecked',
+      'data-value': props.value,
+      'data-disabled': disabled() ? '' : undefined,
+      disabled: disabled(),
+      tabIndex: checked() ? 0 : -1,
+      onClick: handleClick,
+      onKeyDown: handleKeyDown,
+      children,
+    });
+  };
 });
 
 /**
@@ -349,16 +410,66 @@ export const RadioGroupItem = defineComponent<RadioGroupItemProps>((props) => {
 export const RadioGroupIndicator = defineComponent<RadioGroupIndicatorProps>((props) => {
   const item = useContext(RadioGroupItemContext);
 
-  return () => {
-    if (!item.checked()) {
-      return null;
-    }
+  // Variables to manage DOM manipulation
+  let indicatorElement: HTMLSpanElement | null = null;
+  let placeholder: Comment | null = null;
+  let parentContainer: HTMLElement | null = null;
 
-    return jsx('span', {
+  // Set up ref callback with reactive effect to manage DOM presence
+  const refCallback = (container: HTMLSpanElement | null) => {
+    if (!container) return;
+
+    parentContainer = container;
+    placeholder = document.createComment('RadioGroupIndicator');
+
+    // Evaluate function children once
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+
+    // Create the actual indicator element
+    indicatorElement = jsx('span', {
       ...props,
       'data-state': 'checked',
+      children,
+    }) as HTMLSpanElement;
+
+    // Set up effect to add/remove element from DOM when checked state changes
+    effect(() => {
+      const checked = item.checked();
+
+      if (checked) {
+        // Add element to DOM if checked
+        if (indicatorElement && parentContainer && !indicatorElement.parentNode) {
+          // Remove placeholder if present
+          if (placeholder?.parentNode) {
+            placeholder.parentNode.removeChild(placeholder);
+          }
+          // Add indicator
+          parentContainer.appendChild(indicatorElement);
+        }
+        // Update data-state
+        indicatorElement?.setAttribute('data-state', 'checked');
+      } else {
+        // Remove element from DOM and add placeholder
+        if (indicatorElement && parentContainer) {
+          if (indicatorElement.parentNode) {
+            indicatorElement.parentNode.removeChild(indicatorElement);
+          }
+          // Add placeholder to keep position
+          if (!placeholder?.parentNode && parentContainer) {
+            parentContainer.appendChild(placeholder!);
+          }
+        }
+      }
     });
   };
+
+  return () => 
+    // Return a container span that will hold the indicator or placeholder
+     jsx('span', {
+      ref: refCallback,
+      style: { display: 'contents' }, // Don't affect layout
+    })
+  ;
 });
 
 // ============================================================================

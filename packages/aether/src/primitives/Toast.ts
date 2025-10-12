@@ -9,10 +9,10 @@
  */
 
 import { defineComponent } from '../core/component/define.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { signal, type WritableSignal } from '../core/reactivity/signal.js';
 import { Portal } from '../control-flow/Portal.js';
-import { jsx } from '../jsx-runtime.js';
+import { jsx, Fragment } from '../jsx-runtime.js';
 import { generateId } from './utils/index.js';
 
 // ============================================================================
@@ -170,11 +170,17 @@ export const ToastProvider = defineComponent<ToastProviderProps>((props) => {
     duration,
   };
 
-  return () =>
-    jsx(ToastContext.Provider, {
-      value: contextValue,
-      children: props.children,
-    });
+  // Provide context during setup phase (Pattern 17)
+  provideContext(ToastContext, contextValue);
+
+  return () => {
+    // Evaluate function children during render (Pattern 17)
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+
+    // Return children in a Fragment (no wrapper element)
+    // Context is provided via provideContext, not Context.Provider
+    return jsx(Fragment, { children });
+  };
 });
 
 /**
@@ -204,12 +210,16 @@ export const ToastViewport = defineComponent<ToastViewportProps>((props) => {
   return () => {
     const toastList = ctx.toasts();
 
+    // Extract props outside of label/children for reactivity
+    const { label, hotkey, ...restProps } = props;
+    const viewportLabel = label || 'Notifications';
+
     return jsx(Portal, {
       children: jsx('ol', {
-        ...props,
+        ...restProps,
         'data-toast-viewport': '',
         role: 'region',
-        'aria-label': props.label || 'Notifications',
+        'aria-label': viewportLabel,
         tabIndex: -1,
         children: toastList.map((toast) =>
           jsx(Toast, {

@@ -516,3 +516,197 @@ Apply visibility toggle to primitives with conditional rendering:
 - **Pattern 17:** Applied to all 15 context primitives ✅
 - **Pattern 18:** Discovered, proven, limitations documented ✅
 - **Next Steps:** Framework enhancements (Show, For components) 🗺️
+
+---
+
+## 🎯 SESSION 25 ACHIEVEMENTS (In Progress)
+
+**Last Updated:** October 12, 2025 ✨
+
+### Critical Foundation Fixed: Dialog Primitive
+
+**Why This Matters:**
+- Dialog is a foundational primitive used by CommandPalette and potentially others
+- It was using old Context.Provider pattern (not Pattern 17)
+- It had conditional rendering without Pattern 18
+- Fixing Dialog unlocks multiple dependent primitives
+
+### What Was Accomplished
+
+1. ✅ **Dialog Pattern 17 Applied** - Migrated from Context.Provider to provideContext
+2. ✅ **Dialog Controlled Mode Added** - Now supports both `open` (controlled) and `defaultOpen` (uncontrolled)
+3. ✅ **Dialog Pattern 18 Applied** - DialogContent and DialogOverlay use visibility toggle
+4. ✅ **CommandPalette Started** - 9/29 tests fixed (29 → 20 failures, 6.5% → 35.5% passing)
+
+### Specific Implementations
+
+**Dialog Transformations:**
+
+```typescript
+// BEFORE (Session 24 and earlier):
+export const Dialog = defineComponent<DialogProps>((props) => {
+  // ...
+  return () => jsx(DialogContext.Provider, {
+    value: contextValue,
+    children: props.children,
+  });
+});
+
+// AFTER (Session 25 - Pattern 17):
+export const Dialog = defineComponent<DialogProps>((props) => {
+  // Controlled mode support
+  const isControlled = () => props.open !== undefined;
+  const currentOpen = () => (isControlled() ? props.open ?? false : internalOpen());
+
+  // Provide context during setup phase (Pattern 17)
+  provideContext(DialogContext, contextValue);
+
+  return () => {
+    // Evaluate function children during render (Pattern 17)
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+    return jsx('div', { 'data-dialog-root': '', children });
+  };
+});
+```
+
+```typescript
+// DialogContent - BEFORE:
+return () => {
+  if (!ctx.isOpen()) return null;  // ❌ Conditional rendering
+  return jsx('div', { ...props, children });
+};
+
+// DialogContent - AFTER (Pattern 18):
+return () => {
+  const content = jsx('div', {
+    ...restProps,
+    'data-dialog-content': '',
+    style: {
+      display: ctx.isOpen() ? 'block' : 'none',  // Initial state
+      ...restProps.style,
+    },
+    children,
+  }) as HTMLElement;
+
+  // Reactively toggle visibility (Pattern 18)
+  effect(() => {
+    const open = ctx.isOpen();
+    content.style.display = open ? 'block' : 'none';
+    content.setAttribute('data-state', open ? 'open' : 'closed');
+    content.setAttribute('aria-hidden', open ? 'false' : 'true');
+  });
+
+  return content;
+};
+```
+
+**CommandPalette Updates:**
+
+```typescript
+// CommandPaletteDialog - Added function children evaluation:
+export const CommandPaletteDialog = defineComponent<CommandPaletteDialogProps>((props) => () => {
+  const { children } = props;
+
+  // Evaluate function children (Pattern 17)
+  const evaluatedChildren = typeof children === 'function' ? children() : children;
+
+  return jsx((Dialog as any).Content, {
+    'data-command-palette-dialog': '',
+    children: evaluatedChildren,
+  });
+});
+
+// CommandPaletteItem - Reactive highlights and disabled states:
+return () => {
+  const item = jsx('div', { /* ... */ }) as HTMLElement;
+
+  // Reactively update highlighted state (Pattern 18)
+  effect(() => {
+    const items = context.itemElements();
+    const index = element ? items.indexOf(element) : -1;
+    const isHighlighted = context.highlightedIndex() === index;
+
+    item.setAttribute('aria-selected', String(isHighlighted));
+    if (isHighlighted) {
+      item.setAttribute('data-highlighted', '');
+    } else {
+      item.removeAttribute('data-highlighted');
+    }
+  });
+
+  // Reactively update disabled state
+  effect(() => {
+    if (disabled) {
+      item.setAttribute('aria-disabled', 'true');
+      item.setAttribute('data-disabled', '');
+    } else {
+      item.removeAttribute('aria-disabled');
+      item.removeAttribute('data-disabled');
+    }
+  });
+
+  return item;
+};
+```
+
+### Test Improvements
+
+**Dialog:**
+- Not directly tested, but validated through CommandPalette tests
+- Controlled mode working (CommandPalette uses `open={true}`)
+- Visibility toggle working (elements exist with display: none)
+
+**CommandPalette:**
+- Before: 2/31 passing (6.5%)
+- After: 11/31 passing (35.5%)
+- **+9 tests fixed** ✅
+- Remaining 20 failures: Group/Item/Navigation tests (likely need similar fixes)
+
+### Architecture Impact
+
+**Dialog as Foundation Primitive:**
+- Many primitives likely depend on Dialog pattern
+- Fixing Dialog enables cascading fixes
+- Controlled mode critical for composability
+- Visibility toggle pattern must be consistent across all Dialog users
+
+**Pattern Application Cascade:**
+1. Dialog fixed → CommandPalette partially working
+2. Similar patterns likely needed for: Popover, DropdownMenu, ContextMenu, etc.
+3. Visibility toggle is the key pattern for modal/overlay components
+
+### Remaining Work for CommandPalette
+
+**20 Tests Still Failing (64.5%):**
+- Group component (3-4 tests) - Likely heading/children rendering issues
+- Item component (4-5 tests) - Selection, disabled states, mouse interactions
+- Keyboard navigation (6-8 tests) - ArrowUp/Down, Enter, Escape
+- Other interactions (4-6 tests) - Search, shortcuts, empty states
+
+**Likely Required:**
+- More Pattern 18 applications to Group/List components
+- Ensure all event handlers work with effects
+- Test updates for visibility toggle pattern
+
+### Key Lessons Learned
+
+1. **Foundation primitives first** - Dialog, Popover, etc. must be fixed before dependent primitives
+2. **Controlled mode is critical** - Many composable primitives need controlled state
+3. **Initial display state matters** - Setting `display` in JSX prevents flash of hidden content
+4. **Data attributes matter** - Tests rely on data-* attributes, not just IDs
+5. **Function children everywhere** - Pattern 17 must be applied consistently
+
+### Next Steps
+
+1. Complete CommandPalette (20 tests remaining)
+2. Apply similar fixes to Menubar, NavigationMenu (likely use Dialog pattern)
+3. Fix Tree, DatePicker, Calendar (different conditional rendering patterns)
+4. Address edge cases in Combobox, Mentions, TagsInput
+5. Final pass on MultiSelect/Carousel edge cases
+
+---
+
+**Session 25 Status: In Progress** 🔨
+- Dialog: ✅ Complete (Pattern 17+18 applied)
+- CommandPalette: 🔄 35.5% complete (11/31 tests passing)
+- Overall test pass rate: ~89.6% → ~90.5% (estimated after Dialog fixes propagate)

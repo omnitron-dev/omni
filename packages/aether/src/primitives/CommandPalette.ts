@@ -32,6 +32,7 @@
 import { defineComponent } from '../core/component/index.js';
 import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { signal, computed, type WritableSignal, type Signal } from '../core/reactivity/index.js';
+import { effect } from '../core/reactivity/effect.js';
 import { jsx } from '../jsx-runtime.js';
 import { Dialog } from './Dialog.js';
 
@@ -221,9 +222,12 @@ export const CommandPalette = defineComponent<CommandPaletteProps>((props) => {
 export const CommandPaletteDialog = defineComponent<CommandPaletteDialogProps>((props) => () => {
   const { children } = props;
 
+  // Evaluate function children (Pattern 17)
+  const evaluatedChildren = typeof children === 'function' ? children() : children;
+
   return jsx((Dialog as any).Content, {
     'data-command-palette-dialog': '',
-    children,
+    children: evaluatedChildren,
   });
 });
 
@@ -363,23 +367,43 @@ export const CommandPaletteItem = defineComponent<CommandPaletteItemProps>((prop
 
   return () => {
     const { children, value, onSelect, disabled, keywords, ...restProps } = props;
-    const items = context.itemElements();
-    const index = element ? items.indexOf(element) : -1;
-    const isHighlighted = context.highlightedIndex() === index;
 
-    return jsx('div', {
+    const item = jsx('div', {
       ...restProps,
       ref: handleRef as any,
       role: 'option',
-      'aria-selected': isHighlighted,
-      'aria-disabled': disabled ? 'true' : undefined,
       'data-command-palette-item': '',
-      'data-highlighted': isHighlighted ? '' : undefined,
-      'data-disabled': disabled ? '' : undefined,
       onClick: handleClick,
       onMouseEnter: handleMouseEnter,
       children,
+    }) as HTMLElement;
+
+    // Reactively update highlighted state (Pattern 18)
+    effect(() => {
+      const items = context.itemElements();
+      const index = element ? items.indexOf(element) : -1;
+      const isHighlighted = context.highlightedIndex() === index;
+
+      item.setAttribute('aria-selected', String(isHighlighted));
+      if (isHighlighted) {
+        item.setAttribute('data-highlighted', '');
+      } else {
+        item.removeAttribute('data-highlighted');
+      }
     });
+
+    // Reactively update disabled state (Pattern 18)
+    effect(() => {
+      if (disabled) {
+        item.setAttribute('aria-disabled', 'true');
+        item.setAttribute('data-disabled', '');
+      } else {
+        item.removeAttribute('aria-disabled');
+        item.removeAttribute('data-disabled');
+      }
+    });
+
+    return item;
   };
 });
 
@@ -399,20 +423,27 @@ export const CommandPaletteSeparator = defineComponent<CommandPaletteSeparatorPr
  * Command Palette Shortcut
  * Displays keyboard shortcut hint
  */
-export const CommandPaletteShortcut = defineComponent<CommandPaletteShortcutProps>((props) => () => {
+export const CommandPaletteShortcut = defineComponent<CommandPaletteShortcutProps>((props) => {
   const context = useCommandPaletteContext();
-  const { children, ...restProps } = props;
 
-  if (!context.showShortcuts) {
-    return null;
-  }
+  return () => {
+    const { children, ...restProps } = props;
 
-  return jsx('span', {
-    ...restProps,
-    'data-command-palette-shortcut': '',
-    'aria-hidden': 'true',
-    children,
-  });
+    const shortcut = jsx('span', {
+      ...restProps,
+      'data-command-palette-shortcut': '',
+      'aria-hidden': 'true',
+      children,
+    }) as HTMLElement;
+
+    // Reactively toggle visibility (Pattern 18)
+    effect(() => {
+      const show = context.showShortcuts;
+      shortcut.style.display = show ? 'inline' : 'none';
+    });
+
+    return shortcut;
+  };
 });
 
 /**

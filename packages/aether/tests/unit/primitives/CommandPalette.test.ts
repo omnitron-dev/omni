@@ -99,8 +99,10 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      const input = container.querySelector('[data-command-palette-input]');
-      expect(input).toBeFalsy();
+      // With Pattern 18, content exists but is hidden
+      const content = container.querySelector('[data-dialog-content]') as HTMLElement;
+      expect(content).toBeTruthy();
+      expect(content.style.display).toBe('none');
     });
 
     it('should support defaultOpen for uncontrolled mode', () => {

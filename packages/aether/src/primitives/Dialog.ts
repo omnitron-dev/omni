@@ -9,8 +9,9 @@
 
 import { defineComponent } from '../core/component/define.js';
 import { signal } from '../core/reactivity/signal.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { onMount } from '../core/component/lifecycle.js';
+import { effect } from '../core/reactivity/effect.js';
 import { Portal } from '../control-flow/Portal.js';
 import { jsx } from '../jsx-runtime.js';
 import { generateId, trapFocus, saveFocus, restoreFocus, disableBodyScroll, enableBodyScroll } from './utils/index.js';
@@ -49,7 +50,12 @@ export const DialogContext = createContext<DialogContextValue>({
  */
 export interface DialogProps {
   /**
-   * Initial open state
+   * Controlled open state
+   */
+  open?: boolean;
+
+  /**
+   * Initial open state (uncontrolled)
    */
   defaultOpen?: boolean;
 
@@ -86,7 +92,11 @@ export interface DialogProps {
  * ```
  */
 export const Dialog = defineComponent<DialogProps>((props) => {
-  const isOpen = signal(props.defaultOpen || false);
+  const internalOpen = signal(props.defaultOpen || false);
+
+  // Check if controlled
+  const isControlled = () => props.open !== undefined;
+  const currentOpen = () => (isControlled() ? props.open ?? false : internalOpen());
 
   // Generate stable IDs for accessibility
   const baseId = generateId('dialog');
@@ -97,18 +107,24 @@ export const Dialog = defineComponent<DialogProps>((props) => {
 
   // Context value
   const contextValue: DialogContextValue = {
-    isOpen: () => isOpen(),
+    isOpen: () => currentOpen(),
     open: () => {
-      isOpen.set(true);
+      if (!isControlled()) {
+        internalOpen.set(true);
+      }
       props.onOpenChange?.(true);
     },
     close: () => {
-      isOpen.set(false);
+      if (!isControlled()) {
+        internalOpen.set(false);
+      }
       props.onOpenChange?.(false);
     },
     toggle: () => {
-      const newState = !isOpen();
-      isOpen.set(newState);
+      const newState = !currentOpen();
+      if (!isControlled()) {
+        internalOpen.set(newState);
+      }
       props.onOpenChange?.(newState);
     },
     triggerId,
@@ -117,11 +133,17 @@ export const Dialog = defineComponent<DialogProps>((props) => {
     descriptionId,
   };
 
-  // Provide context to children using Provider
-  return () => jsx(DialogContext.Provider, {
-    value: contextValue,
-    children: props.children,
-  });
+  // Provide context during setup phase (Pattern 17)
+  provideContext(DialogContext, contextValue);
+
+  return () => {
+    // Evaluate function children during render (Pattern 17)
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+    return jsx('div', {
+      'data-dialog-root': '',
+      children,
+    });
+  };
 });
 
 /**
@@ -148,16 +170,22 @@ export const DialogTrigger = defineComponent<DialogTriggerProps>((props) => {
   return () => {
     const { children, ...restProps } = props;
 
-    return jsx('button', {
+    const trigger = jsx('button', {
       ...restProps,
       id: ctx.triggerId,
       type: 'button',
       'aria-haspopup': 'dialog',
-      'aria-expanded': ctx.isOpen(),
       'aria-controls': ctx.contentId,
       onClick: ctx.toggle,
       children,
+    }) as HTMLButtonElement;
+
+    // Reactively update aria-expanded (Pattern 18)
+    effect(() => {
+      trigger.setAttribute('aria-expanded', String(ctx.isOpen()));
     });
+
+    return trigger;
   };
 });
 
@@ -217,25 +245,31 @@ export const DialogOverlay = defineComponent<DialogOverlayProps>((props) => {
   };
 
   return () => {
-    if (!ctx.isOpen()) {
-      return null;
-    }
-
     const { children, ...restProps } = props;
 
-    return jsx('div', {
+    const overlay = jsx('div', {
       ...restProps,
       'data-dialog-overlay': '',
-      'data-state': ctx.isOpen() ? 'open' : 'closed',
       onClick: handleClick,
       style: {
         position: 'fixed',
         inset: '0',
         zIndex: 50,
+        display: ctx.isOpen() ? 'block' : 'none',
         ...restProps.style,
       },
       children,
+    }) as HTMLElement;
+
+    // Reactively toggle visibility and state (Pattern 18)
+    effect(() => {
+      const open = ctx.isOpen();
+      overlay.style.display = open ? 'block' : 'none';
+      overlay.setAttribute('data-state', open ? 'open' : 'closed');
+      overlay.setAttribute('aria-hidden', open ? 'false' : 'true');
     });
+
+    return overlay;
   };
 });
 
@@ -296,24 +330,34 @@ export const DialogContent = defineComponent<DialogContentProps>((props) => {
   };
 
   return () => {
-    if (!ctx.isOpen()) {
-      return null;
-    }
-
     const { children, ...restProps } = props;
 
-    return jsx('div', {
+    const content = jsx('div', {
       ...restProps,
       id: ctx.contentId,
+      'data-dialog-content': '',
       role: 'dialog',
       'aria-modal': 'true',
       'aria-labelledby': ctx.titleId,
       'aria-describedby': ctx.descriptionId,
-      'data-state': ctx.isOpen() ? 'open' : 'closed',
       tabIndex: -1,
       onKeyDown: handleKeyDown,
+      style: {
+        display: ctx.isOpen() ? 'block' : 'none',
+        ...restProps.style,
+      },
       children,
+    }) as HTMLElement;
+
+    // Reactively toggle visibility and state (Pattern 18)
+    effect(() => {
+      const open = ctx.isOpen();
+      content.style.display = open ? 'block' : 'none';
+      content.setAttribute('data-state', open ? 'open' : 'closed');
+      content.setAttribute('aria-hidden', open ? 'false' : 'true');
     });
+
+    return content;
   };
 });
 

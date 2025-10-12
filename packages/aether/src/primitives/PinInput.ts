@@ -314,13 +314,29 @@ export const PinInput = defineComponent<PinInputProps>((props) => {
 // ============================================================================
 
 export const PinInputInput = defineComponent<PinInputInputProps>((props) => {
-  const inputRef: { current: HTMLInputElement | null } = { current: null };
   const { index, ...rest } = props;
   let hasRegistered = false;
+  let inputElement: HTMLInputElement | null = null;
 
   return () => {
     // Access context in render phase
     const context = usePinInputContext();
+
+    // Ref callback to register input when element is created
+    const refCallback = (element: HTMLInputElement | null) => {
+      inputElement = element;
+
+      // Register on mount, unregister on unmount
+      if (element && !hasRegistered) {
+        hasRegistered = true;
+        context.registerInput(index, element);
+
+        // Schedule cleanup via onMount
+        onMount(() => () => {
+          context.unregisterInput(index);
+        });
+      }
+    };
 
     const handleInput = (e: Event) => {
       const target = e.target as HTMLInputElement;
@@ -371,7 +387,7 @@ export const PinInputInput = defineComponent<PinInputInputProps>((props) => {
 
     // Create input with initial values
     const input = jsx('input', {
-      ref: inputRef,
+      ref: refCallback,
       type: context.mask ? 'password' : 'text',
       inputMode: context.type === 'numeric' ? 'numeric' : 'text',
       pattern: context.type === 'numeric' ? '[0-9]*' : undefined,
@@ -390,17 +406,6 @@ export const PinInputInput = defineComponent<PinInputInputProps>((props) => {
       onFocus: handleFocus,
       ...rest,
     }) as HTMLInputElement;
-
-    // Register input on first render, unregister on cleanup
-    if (inputRef.current && !hasRegistered) {
-      hasRegistered = true;
-      context.registerInput(index, inputRef.current);
-
-      // Schedule cleanup
-      onMount(() => () => {
-          context.unregisterInput(index);
-        });
-    }
 
     // Set up reactive effect to update context-dependent attributes
     // CRITICAL: This ensures attributes update when parent context changes

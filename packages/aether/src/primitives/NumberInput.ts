@@ -195,27 +195,39 @@ export const NumberInput = defineComponent<NumberInputProps>((props) => {
 
   // Calculate initial value with proper clamping and precision
   const calculateInitialValue = (): number => {
-    let value = props.defaultValue ?? 0;
-    value = roundToPrecision(value, precision);
+    const rawValue =
+      props.value !== undefined
+        ? (typeof props.value === 'function' ? (props.value as any)() : props.value)
+        : (props.defaultValue ?? 0);
+
+    let value = roundToPrecision(rawValue, precision);
     if (keepWithinRange) {
       value = clamp(value, min, max);
     }
     return value;
   };
 
-  // State
+  // State - always use internal signal for reactivity
   const internalValue: WritableSignal<number> = signal<number>(
     calculateInitialValue(),
   );
 
+  // Sync external controlled signal to internal state (Pattern 8)
+  if (props.value !== undefined && typeof props.value === 'function') {
+    effect(() => {
+      let newValue = (props.value as any)();
+      newValue = roundToPrecision(newValue, precision);
+      if (keepWithinRange) {
+        newValue = clamp(newValue, min, max);
+      }
+      internalValue.set(newValue);
+    });
+  }
+
   const inputRef: { current: HTMLInputElement | null } = { current: null };
 
-  const currentValue = (): number => {
-    if (props.value !== undefined) {
-      return props.value;
-    }
-    return internalValue();
-  };
+  // Always use internal signal for consistency
+  const currentValue = (): number => internalValue();
 
   const setValue = (newValue: number) => {
     let finalValue = roundToPrecision(newValue, precision);

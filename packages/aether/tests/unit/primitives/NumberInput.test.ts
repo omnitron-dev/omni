@@ -237,7 +237,7 @@ describe('NumberInput', () => {
 
       const component = () =>
         NumberInput({
-          value: value(),
+          value: value as any, // Pass signal directly, not value()
           children: NumberInputField({}),
         });
 
@@ -278,7 +278,7 @@ describe('NumberInput', () => {
 
       const component = () =>
         NumberInput({
-          value: value(),
+          value: value as any, // Pass signal directly, not value()
           onValueChange,
           children: [
             NumberInputField({}),
@@ -1344,7 +1344,7 @@ describe('NumberInput', () => {
 
       const component = () =>
         NumberInput({
-          value: value(),
+          value: value as any, // Pass signal directly, not value()
           children: NumberInputField({}),
         });
 

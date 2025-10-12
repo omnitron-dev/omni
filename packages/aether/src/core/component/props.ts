@@ -4,7 +4,7 @@
  * Helper functions for component props manipulation
  */
 
-import { signal, type WritableSignal } from '../reactivity/signal.js';
+import { signal, type WritableSignal, isSignal } from '../reactivity/signal.js';
 import { context } from '../reactivity/context.js';
 
 /**
@@ -140,7 +140,8 @@ export function reactiveProps<T extends Record<string, any>>(props: T): T & { [P
       const value = Reflect.get(currentProps, property);
 
       // If value is a function, bind it to preserve 'this' context
-      if (typeof value === 'function') {
+      // CRITICAL: Don't bind signals! They have their own properties that must be preserved
+      if (typeof value === 'function' && !isSignal(value)) {
         return (value as any).bind(currentProps);
       }
 

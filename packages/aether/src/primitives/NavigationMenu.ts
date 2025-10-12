@@ -34,8 +34,8 @@ export interface NavigationMenuProps {
   children?: any;
   /** Default value for uncontrolled */
   defaultValue?: string;
-  /** Current active value (controlled) */
-  value?: string;
+  /** Current active value (controlled with WritableSignal for reactive updates, or string for simple control) */
+  value?: WritableSignal<string> | string;
   /** Callback when value changes */
   onValueChange?: (value: string) => void;
   /** Orientation */
@@ -139,16 +139,23 @@ function generateNavMenuId(prefix: string): string {
  * Navigation Menu Root
  */
 export const NavigationMenu = defineComponent<NavigationMenuProps>((props) => {
-  const internalValue: WritableSignal<string> = signal<string>(props.defaultValue ?? '');
+  // Pattern 19: Support both signal and value-based control
+  const isSignal = (val: any): val is WritableSignal<string> => typeof val === 'function' && 'set' in val;
+  const valueSignal = isSignal(props.value) ? props.value : signal<string>(props.defaultValue ?? '');
 
-  const isControlled = () => props.value !== undefined;
-  const currentValue = () => (isControlled() ? (props.value ?? '') : internalValue());
-
-  const setValue = (value: string) => {
-    if (!isControlled()) {
-      internalValue.set(value);
+  const currentValue = () => {
+    if (typeof props.value === 'string') {
+      return props.value;
     }
-    props.onValueChange?.(value);
+    return valueSignal();
+  };
+
+  const setValue = (newValue: string) => {
+    // Pattern 19: Update signal directly if using signal-based control
+    if (!isSignal(props.value)) {
+      valueSignal.set(newValue);
+    }
+    props.onValueChange?.(newValue);
   };
 
   const isActive = (value: string) => currentValue() === value;

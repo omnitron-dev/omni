@@ -625,7 +625,7 @@ describe('CommandPalette', () => {
       const open = signal(true);
       const component = () =>
         CommandPalette({
-          open: open(),
+          open: open,
           onOpenChange: (value) => open.set(value),
           children: () => [
             CommandPaletteDialog({
@@ -821,7 +821,7 @@ describe('CommandPalette', () => {
       const open = signal(true);
       const component = () =>
         CommandPalette({
-          open: open(),
+          open: open,
           onOpenChange: (value) => open.set(value),
           children: () => [
             CommandPaletteDialog({

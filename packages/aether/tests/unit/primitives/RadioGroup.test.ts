@@ -7,12 +7,45 @@ import { RadioGroup, RadioGroupItem, RadioGroupIndicator } from '../../../src/pr
 import { signal } from '../../../src/core/reactivity/signal.js';
 import { renderComponent } from '../../helpers/test-utils.js';
 
+// Track active element globally for focus/blur mocking
+let _activeElement: Element | null = null;
+
 describe('RadioGroup', () => {
   let cleanup: (() => void) | undefined;
 
   beforeEach(() => {
     cleanup?.();
     cleanup = undefined;
+
+    // Reset active element tracking
+    _activeElement = document.body;
+
+    // Mock document.activeElement with a getter that tracks focus
+    Object.defineProperty(document, 'activeElement', {
+      get() {
+        return _activeElement || document.body;
+      },
+      configurable: true,
+    });
+
+    // Mock focus/blur for happy-dom compatibility
+    Object.defineProperty(HTMLElement.prototype, 'focus', {
+      value: function (this: HTMLElement) {
+        _activeElement = this;
+        this.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
+      },
+      writable: true,
+      configurable: true,
+    });
+
+    Object.defineProperty(HTMLElement.prototype, 'blur', {
+      value: function (this: HTMLElement) {
+        _activeElement = document.body;
+        this.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+      },
+      writable: true,
+      configurable: true,
+    });
   });
 
   describe('Rendering', () => {
@@ -367,11 +400,11 @@ describe('RadioGroup', () => {
 
       const group = container.querySelector('div[role="radiogroup"]') as HTMLElement;
       const item1 = container.querySelector('#opt1') as HTMLElement;
+      const item2 = container.querySelector('#opt2') as HTMLElement;
 
       item1.focus();
       group.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
 
-      const item2 = container.querySelector('#opt2') as HTMLElement;
       expect(document.activeElement).toBe(item2);
       expect(item2.getAttribute('aria-checked')).toBe('true');
     });
@@ -388,12 +421,12 @@ describe('RadioGroup', () => {
       cleanup = dispose;
 
       const group = container.querySelector('div[role="radiogroup"]') as HTMLElement;
+      const item1 = container.querySelector('#opt1') as HTMLElement;
       const item2 = container.querySelector('#opt2') as HTMLElement;
 
       item2.focus();
       group.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
 
-      const item1 = container.querySelector('#opt1') as HTMLElement;
       expect(document.activeElement).toBe(item1);
       expect(item1.getAttribute('aria-checked')).toBe('true');
     });
@@ -410,12 +443,12 @@ describe('RadioGroup', () => {
       cleanup = dispose;
 
       const group = container.querySelector('div[role="radiogroup"]') as HTMLElement;
+      const item1 = container.querySelector('#opt1') as HTMLElement;
       const item2 = container.querySelector('#opt2') as HTMLElement;
 
       item2.focus();
       group.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
 
-      const item1 = container.querySelector('#opt1') as HTMLElement;
       expect(document.activeElement).toBe(item1);
     });
 
@@ -432,11 +465,11 @@ describe('RadioGroup', () => {
 
       const group = container.querySelector('div[role="radiogroup"]') as HTMLElement;
       const item1 = container.querySelector('#opt1') as HTMLElement;
+      const item2 = container.querySelector('#opt2') as HTMLElement;
 
       item1.focus();
       group.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
 
-      const item2 = container.querySelector('#opt2') as HTMLElement;
       expect(document.activeElement).toBe(item2);
     });
 
@@ -477,11 +510,11 @@ describe('RadioGroup', () => {
 
       const group = container.querySelector('div[role="radiogroup"]') as HTMLElement;
       const item1 = container.querySelector('#opt1') as HTMLElement;
+      const item2 = container.querySelector('#opt2') as HTMLElement;
 
       item1.focus();
       group.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
 
-      const item2 = container.querySelector('#opt2') as HTMLElement;
       expect(document.activeElement).toBe(item2);
     });
 
@@ -498,12 +531,12 @@ describe('RadioGroup', () => {
       cleanup = dispose;
 
       const group = container.querySelector('div[role="radiogroup"]') as HTMLElement;
+      const item1 = container.querySelector('#opt1') as HTMLElement;
       const item2 = container.querySelector('#opt2') as HTMLElement;
 
       item2.focus();
       group.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
 
-      const item1 = container.querySelector('#opt1') as HTMLElement;
       expect(document.activeElement).toBe(item1);
     });
 
@@ -543,12 +576,12 @@ describe('RadioGroup', () => {
       cleanup = dispose;
 
       const group = container.querySelector('div[role="radiogroup"]') as HTMLElement;
+      const item1 = container.querySelector('#opt1') as HTMLElement;
       const item3 = container.querySelector('#opt3') as HTMLElement;
 
       item3.focus();
       group.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
 
-      const item1 = container.querySelector('#opt1') as HTMLElement;
       expect(document.activeElement).toBe(item1);
     });
 
@@ -566,11 +599,11 @@ describe('RadioGroup', () => {
 
       const group = container.querySelector('div[role="radiogroup"]') as HTMLElement;
       const item1 = container.querySelector('#opt1') as HTMLElement;
+      const item3 = container.querySelector('#opt3') as HTMLElement;
 
       item1.focus();
       group.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
 
-      const item3 = container.querySelector('#opt3') as HTMLElement;
       expect(document.activeElement).toBe(item3);
     });
   });
@@ -590,11 +623,11 @@ describe('RadioGroup', () => {
 
       const group = container.querySelector('div[role="radiogroup"]') as HTMLElement;
       const item1 = container.querySelector('#opt1') as HTMLElement;
+      const item3 = container.querySelector('#opt3') as HTMLElement;
 
       item1.focus();
       group.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
 
-      const item3 = container.querySelector('#opt3') as HTMLElement;
       expect(document.activeElement).toBe(item3);
     });
 

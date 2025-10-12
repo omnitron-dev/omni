@@ -42,8 +42,8 @@ import { Dialog } from './Dialog.js';
 
 export interface CommandPaletteProps {
   children?: any;
-  /** Whether the command palette is open */
-  open?: boolean;
+  /** Whether the command palette is open (controlled with WritableSignal for reactive updates, or boolean for simple control) */
+  open?: WritableSignal<boolean> | boolean;
   /** Callback when open state changes */
   onOpenChange?: (open: boolean) => void;
   /** Default open state (uncontrolled) */
@@ -136,26 +136,45 @@ function useCommandPaletteContext(): CommandPaletteContextValue {
  * Container with state management
  */
 export const CommandPalette = defineComponent<CommandPaletteProps>((props) => {
-  const internalOpen: WritableSignal<boolean> = signal<boolean>(props.defaultOpen ?? false);
+  // Pattern 19: Support both signal and value-based control
+  const isSignal = (val: any): val is WritableSignal<boolean> => typeof val === 'function' && 'set' in val;
+  const openSignal = isSignal(props.open) ? props.open : signal<boolean>(props.defaultOpen ?? false);
+
   const inputValue: WritableSignal<string> = signal<string>('');
   const highlightedIndex: WritableSignal<number> = signal<number>(0);
   const itemElements: WritableSignal<HTMLElement[]> = signal<HTMLElement[]>([]);
 
-  const isControlled = () => props.open !== undefined;
-  const currentOpen = () => (isControlled() ? (props.open ?? false) : internalOpen());
-
-  const setOpen = (open: boolean) => {
-    if (!isControlled()) {
-      internalOpen.set(open);
+  // Support both value and signal-based open prop
+  const currentOpen = () => {
+    if (typeof props.open === 'boolean') {
+      return props.open;
     }
-    props.onOpenChange?.(open);
+    return openSignal();
+  };
+
+  const setOpen = (value: boolean) => {
+    // Pattern 19: Update signal directly if using signal-based control
+    if (!isSignal(props.open)) {
+      openSignal.set(value);
+    }
+    props.onOpenChange?.(value);
 
     // Reset state when closing
-    if (!open) {
+    if (!value) {
       inputValue.set('');
       highlightedIndex.set(0);
     }
   };
+
+  // Pattern 19: Watch for open state changes to reset state
+  effect(() => {
+    const isOpen = currentOpen();
+    if (isOpen) {
+      // Reset state when opening
+      inputValue.set('');
+      highlightedIndex.set(0);
+    }
+  });
 
   const selectItem = (index: number) => {
     const items = itemElements();

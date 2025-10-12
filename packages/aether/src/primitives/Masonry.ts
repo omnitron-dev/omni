@@ -26,7 +26,8 @@ export const Masonry = defineComponent<MasonryProps>((props) => {
   const gap = props.gap ?? 16;
 
   let containerElement: HTMLDivElement | null = null;
-  const columnHeights: WritableSignal<number[]> = signal(Array(columns).fill(0));
+  let resizeListener: (() => void) | null = null;
+  let layoutTimeout: number | null = null;
 
   const layout = () => {
     if (!containerElement) return;
@@ -47,24 +48,49 @@ export const Masonry = defineComponent<MasonryProps>((props) => {
       heights[col] += child.offsetHeight + gap;
     });
 
-    columnHeights.set(heights);
     const maxHeight = Math.max(...heights);
     if (containerElement) containerElement.style.height = maxHeight + 'px';
   };
 
   // Ref callback - layout after element is mounted
   const refCallback = (element: HTMLDivElement | null) => {
+    // Cleanup previous resources
+    if (layoutTimeout !== null) {
+      clearTimeout(layoutTimeout);
+      layoutTimeout = null;
+    }
+
+    if (resizeListener && typeof window !== 'undefined') {
+      window.removeEventListener('resize', resizeListener);
+      resizeListener = null;
+    }
+
     containerElement = element;
+
     if (element) {
       // Layout after children are inserted
-      setTimeout(layout, 0);
+      layoutTimeout = setTimeout(layout, 0) as any;
+
+      // Add resize listener for this instance
+      if (typeof window !== 'undefined') {
+        resizeListener = layout;
+        window.addEventListener('resize', resizeListener);
+      }
     }
   };
 
-  if (typeof window !== 'undefined') {
-    window.addEventListener('resize', layout);
-    onCleanup(() => window.removeEventListener('resize', layout));
-  }
+  // Register cleanup when component is destroyed
+  onCleanup(() => {
+    if (layoutTimeout !== null) {
+      clearTimeout(layoutTimeout);
+      layoutTimeout = null;
+    }
+
+    if (resizeListener && typeof window !== 'undefined') {
+      window.removeEventListener('resize', resizeListener);
+      resizeListener = null;
+    }
+  });
 
   return () => {
     const { columns, gap, children, style, ...restProps } = props;

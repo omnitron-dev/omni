@@ -453,7 +453,7 @@ describe('Menubar', () => {
       const trigger = container.querySelector('[data-menubar-trigger]') as HTMLElement;
       trigger.click();
 
-      const shortcut = document.querySelector('[data-menubar-shortcut]);
+      const shortcut = document.querySelector('[data-menubar-shortcut]');
       expect(shortcut).toBeTruthy();
       expect(shortcut?.textContent).toBe('⌘N');
       expect(shortcut?.getAttribute('aria-hidden')).toBe('true');

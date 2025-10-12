@@ -33,12 +33,12 @@ import { jsx } from '../jsx-runtime.js';
 
 export interface TreeProps {
   children?: any;
-  /** Expanded item values */
-  expanded?: string[];
+  /** Expanded item values (controlled with WritableSignal for reactive updates, or array for simple control) */
+  expanded?: WritableSignal<string[]> | string[];
   /** Callback when expanded items change */
   onExpandedChange?: (expanded: string[]) => void;
-  /** Selected item value */
-  selected?: string;
+  /** Selected item value (controlled with WritableSignal for reactive updates, or string for simple control) */
+  selected?: WritableSignal<string> | string;
   /** Callback when selected item changes */
   onSelectedChange?: (selected: string) => void;
   /** Default expanded items (uncontrolled) */
@@ -121,32 +121,46 @@ function useTreeItemContext(): TreeItemContextValue {
  * Tree Root
  */
 export const Tree = defineComponent<TreeProps>((props) => {
-  const internalExpanded: WritableSignal<string[]> = signal<string[]>(props.defaultExpanded ?? []);
-  const internalSelected: WritableSignal<string> = signal<string>(props.defaultSelected ?? '');
+  // Pattern 19: Support both signal and value-based control
+  const isSignalArray = (val: any): val is WritableSignal<string[]> => typeof val === 'function' && 'set' in val;
+  const isSignalString = (val: any): val is WritableSignal<string> => typeof val === 'function' && 'set' in val;
 
-  const isExpandedControlled = () => props.expanded !== undefined;
-  const currentExpanded = () => (isExpandedControlled() ? (props.expanded ?? []) : internalExpanded());
+  const expandedSignal = isSignalArray(props.expanded) ? props.expanded : signal<string[]>(props.defaultExpanded ?? []);
+  const selectedSignal = isSignalString(props.selected) ? props.selected : signal<string>(props.defaultSelected ?? '');
 
-  const isSelectedControlled = () => props.selected !== undefined;
-  const currentSelected = () => (isSelectedControlled() ? (props.selected ?? '') : internalSelected());
+  const currentExpanded = () => {
+    if (Array.isArray(props.expanded)) {
+      return props.expanded;
+    }
+    return expandedSignal();
+  };
+
+  const currentSelected = () => {
+    if (typeof props.selected === 'string') {
+      return props.selected;
+    }
+    return selectedSignal();
+  };
 
   const isExpanded = (value: string) => currentExpanded().includes(value);
 
   const isSelected = (value: string) => currentSelected() === value;
 
   const toggleExpanded = (value: string) => {
-    const expanded = currentExpanded();
-    const newExpanded = expanded.includes(value) ? expanded.filter((v) => v !== value) : [...expanded, value];
+    const current = currentExpanded();
+    const newExpanded = current.includes(value) ? current.filter((v) => v !== value) : [...current, value];
 
-    if (!isExpandedControlled()) {
-      internalExpanded.set(newExpanded);
+    // Pattern 19: Update signal directly if using signal-based control
+    if (!Array.isArray(props.expanded)) {
+      expandedSignal.set(newExpanded);
     }
     props.onExpandedChange?.(newExpanded);
   };
 
   const setSelected = (value: string) => {
-    if (!isSelectedControlled()) {
-      internalSelected.set(value);
+    // Pattern 19: Update signal directly if using signal-based control
+    if (typeof props.selected !== 'string') {
+      selectedSignal.set(value);
     }
     props.onSelectedChange?.(value);
   };

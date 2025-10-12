@@ -39,12 +39,20 @@ export function renderComponent(component: () => any): RenderResult {
   createRoot((d) => {
     dispose = d;
 
-    // Set up reactive rendering with effect
+    // Call component ONCE outside effect to run setup phase
+    // This creates signals, context, etc. without re-creating on every render
+    const renderFn = component();
+
+    // Set up reactive rendering with effect for the render function
     effect(() => {
       // Clear container before re-rendering
       container.innerHTML = '';
 
-      const result = component();
+      // Get the actual DOM result
+      // If component returned a render function, call it
+      // Otherwise use the result directly
+      const result = typeof renderFn === 'function' ? renderFn() : renderFn;
+
       if (result instanceof Node) {
         container.appendChild(result);
       } else if (typeof result === 'string' || typeof result === 'number') {
@@ -64,10 +72,10 @@ export function renderComponent(component: () => any): RenderResult {
 
 /**
  * Wait for next tick
- * Uses setTimeout(0) to ensure DOM updates have completed
+ * Uses Promise.resolve() + setTimeout to ensure both microtasks and macrotasks are flushed
  */
 export function nextTick(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 0));
+  return Promise.resolve().then(() => new Promise((resolve) => setTimeout(resolve, 0)));
 }
 
 /**

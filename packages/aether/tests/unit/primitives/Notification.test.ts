@@ -103,14 +103,18 @@ describe('Notification', () => {
       expect(notificationContainer.style.zIndex).toBe('9999');
     });
 
-    it('8. Renders notification with role="alert"', async () => {
+    it('8. Renders notification with role="alert"', () => {
       const { container, cleanup: dispose } = renderComponent(() => Notification({}));
       cleanup = dispose;
 
+      console.log('Before notify - innerHTML:', container.innerHTML.substring(0, 200));
+
       notify({ title: 'Test Notification' });
-      await nextTick();
+
+      console.log('After notify - innerHTML:', container.innerHTML.substring(0, 300));
 
       const notification = container.querySelector('[data-notification]');
+      console.log('Found notification:', notification !== null);
       expect(notification?.getAttribute('role')).toBe('alert');
     });
 
@@ -119,7 +123,7 @@ describe('Notification', () => {
       cleanup = dispose;
 
       notify({ title: 'Test Title', description: 'Test Description' });
-      await nextTick();
+      await Promise.resolve();
 
       const title = container.querySelector('[data-notification-title]');
       const description = container.querySelector('[data-notification-description]');
@@ -133,7 +137,7 @@ describe('Notification', () => {
       cleanup = dispose;
 
       notify({ title: 'Test' });
-      await nextTick();
+      await Promise.resolve();
 
       const closeButton = container.querySelector('[data-notification-close]');
       expect(closeButton).toBeTruthy();
@@ -147,7 +151,7 @@ describe('Notification', () => {
       cleanup = dispose;
 
       notify({ title: 'Test Notification' });
-      await nextTick();
+      await Promise.resolve();
 
       const notification = container.querySelector('[data-notification]');
       expect(notification).toBeTruthy();
@@ -171,7 +175,7 @@ describe('Notification', () => {
       notify({ title: 'Notification 1' });
       notify({ title: 'Notification 2' });
       notify({ title: 'Notification 3' });
-      await nextTick();
+      await Promise.resolve();
 
       const notifications = container.querySelectorAll('[data-notification]');
       expect(notifications.length).toBe(3);
@@ -182,7 +186,7 @@ describe('Notification', () => {
       cleanup = dispose;
 
       notify({ title: 'Success', type: 'success' });
-      await nextTick();
+      await Promise.resolve();
 
       const notification = container.querySelector('[data-notification]');
       expect(notification?.getAttribute('data-type')).toBe('success');
@@ -193,7 +197,7 @@ describe('Notification', () => {
       cleanup = dispose;
 
       notify({ title: 'Test' });
-      await nextTick();
+      await Promise.resolve();
 
       const notification = container.querySelector('[data-notification]');
       expect(notification?.getAttribute('data-type')).toBe('info');
@@ -206,7 +210,7 @@ describe('Notification', () => {
       notify({ title: 'Success', type: 'success' });
       notify({ title: 'Warning', type: 'warning' });
       notify({ title: 'Error', type: 'error' });
-      await nextTick();
+      await Promise.resolve();
 
       const notifications = container.querySelectorAll('[data-notification]');
       expect(notifications[0]?.getAttribute('data-type')).toBe('success');
@@ -219,7 +223,7 @@ describe('Notification', () => {
       cleanup = dispose;
 
       notify({ title: 'Important Message' });
-      await nextTick();
+      await Promise.resolve();
 
       const title = container.querySelector('[data-notification-title]');
       expect(title?.textContent).toBe('Important Message');
@@ -230,7 +234,7 @@ describe('Notification', () => {
       cleanup = dispose;
 
       notify({ title: 'Title', description: 'Description text' });
-      await nextTick();
+      await Promise.resolve();
 
       const description = container.querySelector('[data-notification-description]');
       expect(description?.textContent).toBe('Description text');
@@ -241,7 +245,7 @@ describe('Notification', () => {
       cleanup = dispose;
 
       notify({ title: 'Title only' });
-      await nextTick();
+      await Promise.resolve();
 
       const description = container.querySelector('[data-notification-description]');
       expect(description).toBeNull();
@@ -252,7 +256,7 @@ describe('Notification', () => {
       cleanup = dispose;
 
       notify({ title: 'Test' });
-      await nextTick();
+      await Promise.resolve();
 
       const closeButton = container.querySelector('[data-notification-close]');
       expect(closeButton).toBeTruthy();
@@ -263,7 +267,7 @@ describe('Notification', () => {
       cleanup = dispose;
 
       notify({ title: 'Test', closable: false });
-      await nextTick();
+      await Promise.resolve();
 
       const closeButton = container.querySelector('[data-notification-close]');
       expect(closeButton).toBeNull();
@@ -276,13 +280,13 @@ describe('Notification', () => {
       cleanup = dispose;
 
       const id = notify({ title: 'Test' });
-      await nextTick();
+      await Promise.resolve();
 
       let notification = container.querySelector('[data-notification]');
       expect(notification).toBeTruthy();
 
       closeNotification(id);
-      await nextTick();
+      await Promise.resolve();
 
       notification = container.querySelector('[data-notification]');
       expect(notification).toBeNull();
@@ -293,13 +297,13 @@ describe('Notification', () => {
       cleanup = dispose;
 
       notify({ title: 'Test' });
-      await nextTick();
+      await Promise.resolve();
 
       const closeButton = container.querySelector('[data-notification-close]') as HTMLButtonElement;
       expect(closeButton).toBeTruthy();
 
       closeButton.click();
-      await nextTick();
+      await Promise.resolve();
 
       const notification = container.querySelector('[data-notification]');
       expect(notification).toBeNull();
@@ -311,13 +315,13 @@ describe('Notification', () => {
 
       const id1 = notify({ title: 'Test 1' });
       notify({ title: 'Test 2' });
-      await nextTick();
+      await Promise.resolve();
 
       let notifications = container.querySelectorAll('[data-notification]');
       expect(notifications.length).toBe(2);
 
       closeNotification(id1);
-      await nextTick();
+      await Promise.resolve();
 
       notifications = container.querySelectorAll('[data-notification]');
       expect(notifications.length).toBe(1);
@@ -335,7 +339,7 @@ describe('Notification', () => {
       cleanup = dispose;
 
       const id = notify({ title: 'Test' });
-      await nextTick();
+      await Promise.resolve();
 
       closeNotification(id);
       closeNotification(id);
@@ -359,13 +363,14 @@ describe('Notification', () => {
       cleanup = dispose;
 
       notify({ title: 'Test' });
-      await nextTick();
+      vi.advanceTimersByTime(0); // Flush nextTick
+      await Promise.resolve();
 
       let notification = container.querySelector('[data-notification]');
       expect(notification).toBeTruthy();
 
       vi.advanceTimersByTime(4500);
-      await nextTick();
+      await Promise.resolve();
 
       notification = container.querySelector('[data-notification]');
       expect(notification).toBeNull();
@@ -376,13 +381,14 @@ describe('Notification', () => {
       cleanup = dispose;
 
       notify({ title: 'Test', duration: 2000 });
-      await nextTick();
+      vi.advanceTimersByTime(0); // Flush nextTick
+      await Promise.resolve();
 
       let notification = container.querySelector('[data-notification]');
       expect(notification).toBeTruthy();
 
       vi.advanceTimersByTime(2000);
-      await nextTick();
+      await Promise.resolve();
 
       notification = container.querySelector('[data-notification]');
       expect(notification).toBeNull();
@@ -393,13 +399,14 @@ describe('Notification', () => {
       cleanup = dispose;
 
       notify({ title: 'Test', duration: 0 });
-      await nextTick();
+      vi.advanceTimersByTime(0); // Flush nextTick
+      await Promise.resolve();
 
       let notification = container.querySelector('[data-notification]');
       expect(notification).toBeTruthy();
 
       vi.advanceTimersByTime(10000);
-      await nextTick();
+      await Promise.resolve();
 
       notification = container.querySelector('[data-notification]');
       expect(notification).toBeTruthy();
@@ -411,19 +418,20 @@ describe('Notification', () => {
 
       notify({ title: 'Test 1', duration: 1000 });
       notify({ title: 'Test 2', duration: 2000 });
-      await nextTick();
+      vi.advanceTimersByTime(0); // Flush nextTick
+      await Promise.resolve();
 
       let notifications = container.querySelectorAll('[data-notification]');
       expect(notifications.length).toBe(2);
 
       vi.advanceTimersByTime(1000);
-      await nextTick();
+      await Promise.resolve();
 
       notifications = container.querySelectorAll('[data-notification]');
       expect(notifications.length).toBe(1);
 
       vi.advanceTimersByTime(1000);
-      await nextTick();
+      await Promise.resolve();
 
       notifications = container.querySelectorAll('[data-notification]');
       expect(notifications.length).toBe(0);
@@ -434,13 +442,14 @@ describe('Notification', () => {
       cleanup = dispose;
 
       notify({ title: 'Test', duration: 1000 });
-      await nextTick();
+      vi.advanceTimersByTime(0); // Flush nextTick
+      await Promise.resolve();
 
       let notification = container.querySelector('[data-notification]');
       expect(notification).toBeTruthy();
 
       vi.advanceTimersByTime(1000);
-      await nextTick();
+      await Promise.resolve();
 
       notification = container.querySelector('[data-notification]');
       expect(notification).toBeNull();
@@ -451,17 +460,18 @@ describe('Notification', () => {
       cleanup = dispose;
 
       const id = notify({ title: 'Test', duration: 5000 });
-      await nextTick();
+      vi.advanceTimersByTime(0); // Flush nextTick
+      await Promise.resolve();
 
       closeNotification(id);
-      await nextTick();
+      await Promise.resolve();
 
       let notification = container.querySelector('[data-notification]');
       expect(notification).toBeNull();
 
       // Advance past the original duration
       vi.advanceTimersByTime(5000);
-      await nextTick();
+      await Promise.resolve();
 
       // Should still be null (no duplicate removal)
       notification = container.querySelector('[data-notification]');
@@ -475,10 +485,11 @@ describe('Notification', () => {
       for (let i = 0; i < 10; i++) {
         notify({ title: `Test ${i}`, duration: 1000 });
       }
-      await nextTick();
+      vi.advanceTimersByTime(0); // Flush nextTick
+      await Promise.resolve();
 
       vi.advanceTimersByTime(1000);
-      await nextTick();
+      await Promise.resolve();
 
       const notifications = container.querySelectorAll('[data-notification]');
       expect(notifications.length).toBe(0);
@@ -491,13 +502,14 @@ describe('Notification', () => {
       notify({ title: 'Test 1', duration: 1000 });
       notify({ title: 'Test 2', duration: 1000 });
       notify({ title: 'Test 3', duration: 1000 });
-      await nextTick();
+      vi.advanceTimersByTime(0); // Flush nextTick
+      await Promise.resolve();
 
       let notifications = container.querySelectorAll('[data-notification]');
       expect(notifications.length).toBe(3);
 
       vi.advanceTimersByTime(1000);
-      await nextTick();
+      await Promise.resolve();
 
       notifications = container.querySelectorAll('[data-notification]');
       expect(notifications.length).toBe(0);
@@ -512,7 +524,7 @@ describe('Notification', () => {
       for (let i = 0; i < 10; i++) {
         notify({ title: `Test ${i}` });
       }
-      await nextTick();
+      await Promise.resolve();
 
       const notifications = container.querySelectorAll('[data-notification]');
       expect(notifications.length).toBe(5);
@@ -525,7 +537,7 @@ describe('Notification', () => {
       for (let i = 0; i < 10; i++) {
         notify({ title: `Test ${i}` });
       }
-      await nextTick();
+      await Promise.resolve();
 
       const notifications = container.querySelectorAll('[data-notification]');
       expect(notifications.length).toBe(3);
@@ -538,7 +550,7 @@ describe('Notification', () => {
       notify({ title: 'Test 1' });
       notify({ title: 'Test 2' });
       notify({ title: 'Test 3' });
-      await nextTick();
+      await Promise.resolve();
 
       const notifications = container.querySelectorAll('[data-notification]');
       expect(notifications.length).toBe(1);
@@ -551,7 +563,7 @@ describe('Notification', () => {
       notify({ title: 'Test 1' });
       notify({ title: 'Test 2' });
       notify({ title: 'Test 3' });
-      await nextTick();
+      await Promise.resolve();
 
       const notifications = container.querySelectorAll('[data-notification]');
       expect(notifications.length).toBe(2);
@@ -567,13 +579,13 @@ describe('Notification', () => {
       const id1 = notify({ title: 'Test 1' });
       notify({ title: 'Test 2' });
       notify({ title: 'Test 3' });
-      await nextTick();
+      await Promise.resolve();
 
       let notifications = container.querySelectorAll('[data-notification]');
       expect(notifications.length).toBe(3);
 
       closeNotification(id1);
-      await nextTick();
+      await Promise.resolve();
 
       notifications = container.querySelectorAll('[data-notification]');
       expect(notifications.length).toBe(2);
@@ -586,13 +598,13 @@ describe('Notification', () => {
       cleanup = dispose;
 
       notify({ title: 'Test 1' });
-      await nextTick();
+      await Promise.resolve();
 
       let notifications = container.querySelectorAll('[data-notification]');
       expect(notifications.length).toBe(1);
 
       notify({ title: 'Test 2' });
-      await nextTick();
+      await Promise.resolve();
 
       notifications = container.querySelectorAll('[data-notification]');
       expect(notifications.length).toBe(2);
@@ -603,13 +615,13 @@ describe('Notification', () => {
       cleanup = dispose;
 
       const id = notify({ title: 'Test' });
-      await nextTick();
+      await Promise.resolve();
 
       let notifications = container.querySelectorAll('[data-notification]');
       expect(notifications.length).toBe(1);
 
       closeNotification(id);
-      await nextTick();
+      await Promise.resolve();
 
       notifications = container.querySelectorAll('[data-notification]');
       expect(notifications.length).toBe(0);
@@ -622,7 +634,7 @@ describe('Notification', () => {
       const initialHTML = container.innerHTML;
 
       notify({ title: 'New Notification' });
-      await nextTick();
+      await Promise.resolve();
 
       const updatedHTML = container.innerHTML;
       expect(updatedHTML).not.toBe(initialHTML);
@@ -633,12 +645,12 @@ describe('Notification', () => {
       cleanup = dispose;
 
       const id = notify({ title: 'Test' });
-      await nextTick();
+      await Promise.resolve();
 
       const beforeHTML = container.innerHTML;
 
       closeNotification(id);
-      await nextTick();
+      await Promise.resolve();
 
       const afterHTML = container.innerHTML;
       expect(afterHTML).not.toBe(beforeHTML);
@@ -648,7 +660,7 @@ describe('Notification', () => {
       const { container, cleanup: dispose } = renderComponent(() => Notification({}));
       cleanup = dispose;
 
-      await nextTick();
+      await Promise.resolve();
 
       const notificationContainer = container.querySelector('[data-notification-container]');
       const notifications = container.querySelectorAll('[data-notification]');
@@ -664,7 +676,7 @@ describe('Notification', () => {
 
       notify({ title: 'Test 1' });
       notify({ title: 'Test 2' });
-      await nextTick();
+      await Promise.resolve();
 
       let notifications = container1.querySelectorAll('[data-notification]');
       expect(notifications.length).toBe(2);
@@ -673,7 +685,7 @@ describe('Notification', () => {
 
       const { container: container2, cleanup: dispose2 } = renderComponent(() => Notification({}));
       cleanup = dispose2;
-      await nextTick();
+      await Promise.resolve();
 
       notifications = container2.querySelectorAll('[data-notification]');
       expect(notifications.length).toBe(2);
@@ -689,7 +701,7 @@ describe('Notification', () => {
       };
 
       notify({ title: 'Shared Notification' });
-      await nextTick();
+      await Promise.resolve();
 
       const notifications1 = container1.querySelectorAll('[data-notification]');
       const notifications2 = container2.querySelectorAll('[data-notification]');
@@ -705,7 +717,7 @@ describe('Notification', () => {
       const id1 = notify({ title: 'Test 1' });
       const id2 = notify({ title: 'Test 2' });
       const id3 = notify({ title: 'Test 3' });
-      await nextTick();
+      await Promise.resolve();
 
       let notifications = container.querySelectorAll('[data-notification]');
       expect(notifications.length).toBe(3);
@@ -713,7 +725,7 @@ describe('Notification', () => {
       closeNotification(id1);
       closeNotification(id2);
       closeNotification(id3);
-      await nextTick();
+      await Promise.resolve();
 
       notifications = container.querySelectorAll('[data-notification]');
       expect(notifications.length).toBe(0);
@@ -727,7 +739,7 @@ describe('Notification', () => {
 
       notify({ title: 'Test 1' });
       notify({ title: 'Test 2' });
-      await nextTick();
+      await Promise.resolve();
 
       const notifications = container.querySelectorAll('[data-notification]');
       notifications.forEach((notification) => {
@@ -740,7 +752,7 @@ describe('Notification', () => {
       cleanup = dispose;
 
       notify({ title: 'Test' });
-      await nextTick();
+      await Promise.resolve();
 
       const closeButton = container.querySelector('[data-notification-close]') as HTMLButtonElement;
       expect(closeButton).toBeTruthy();
@@ -752,7 +764,7 @@ describe('Notification', () => {
       cleanup = dispose;
 
       notify({ title: 'Test' });
-      await nextTick();
+      await Promise.resolve();
 
       const closeButton = container.querySelector('[data-notification-close]');
       expect(closeButton?.textContent).toBe('×');
@@ -763,7 +775,7 @@ describe('Notification', () => {
       cleanup = dispose;
 
       notify({ title: 'Important Alert', type: 'error' });
-      await nextTick();
+      await Promise.resolve();
 
       const notification = container.querySelector('[data-notification]');
       expect(notification?.getAttribute('role')).toBe('alert');
@@ -776,7 +788,7 @@ describe('Notification', () => {
       cleanup = dispose;
 
       notify({ title: '' });
-      await nextTick();
+      await Promise.resolve();
 
       const notification = container.querySelector('[data-notification]');
       expect(notification).toBeTruthy();
@@ -791,7 +803,7 @@ describe('Notification', () => {
 
       const longTitle = 'A'.repeat(500);
       notify({ title: longTitle });
-      await nextTick();
+      await Promise.resolve();
 
       const title = container.querySelector('[data-notification-title]');
       expect(title?.textContent).toBe(longTitle);
@@ -803,7 +815,7 @@ describe('Notification', () => {
 
       const longDescription = 'B'.repeat(1000);
       notify({ title: 'Test', description: longDescription });
-      await nextTick();
+      await Promise.resolve();
 
       const description = container.querySelector('[data-notification-description]');
       expect(description?.textContent).toBe(longDescription);
@@ -816,7 +828,7 @@ describe('Notification', () => {
       for (let i = 0; i < 20; i++) {
         notify({ title: `Test ${i}` });
       }
-      await nextTick();
+      await Promise.resolve();
 
       const notifications = container.querySelectorAll('[data-notification]');
       expect(notifications.length).toBe(5); // Limited by default maxCount
@@ -828,19 +840,21 @@ describe('Notification', () => {
       cleanup = dispose;
 
       notify({ title: 'Test 1', duration: 1000 });
-      await nextTick();
+      vi.advanceTimersByTime(0); // Flush nextTick
+      await Promise.resolve();
 
       vi.advanceTimersByTime(500);
-      await nextTick();
+      await Promise.resolve();
 
       notify({ title: 'Test 2' });
-      await nextTick();
+      vi.advanceTimersByTime(0); // Flush nextTick
+      await Promise.resolve();
 
       let notifications = container.querySelectorAll('[data-notification]');
       expect(notifications.length).toBe(2);
 
       vi.advanceTimersByTime(500);
-      await nextTick();
+      await Promise.resolve();
 
       notifications = container.querySelectorAll('[data-notification]');
       expect(notifications.length).toBe(1);
@@ -854,13 +868,14 @@ describe('Notification', () => {
       cleanup = dispose;
 
       const id = notify({ title: 'Test', duration: 5000 });
-      await nextTick();
+      vi.advanceTimersByTime(0); // Flush nextTick
+      await Promise.resolve();
 
       vi.advanceTimersByTime(2000);
-      await nextTick();
+      await Promise.resolve();
 
       closeNotification(id);
-      await nextTick();
+      await Promise.resolve();
 
       const notification = container.querySelector('[data-notification]');
       expect(notification).toBeNull();
@@ -886,20 +901,21 @@ describe('Notification', () => {
       cleanup = dispose;
 
       notify({ title: 'Test', duration: 0, closable: true });
-      await nextTick();
+      vi.advanceTimersByTime(0); // Flush nextTick
+      await Promise.resolve();
 
       let notification = container.querySelector('[data-notification]');
       expect(notification).toBeTruthy();
 
       vi.advanceTimersByTime(10000);
-      await nextTick();
+      await Promise.resolve();
 
       notification = container.querySelector('[data-notification]');
       expect(notification).toBeTruthy();
 
       const closeButton = container.querySelector('[data-notification-close]') as HTMLButtonElement;
       closeButton.click();
-      await nextTick();
+      await Promise.resolve();
 
       notification = container.querySelector('[data-notification]');
       expect(notification).toBeNull();

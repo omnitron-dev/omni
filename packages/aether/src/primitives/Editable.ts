@@ -113,24 +113,15 @@ interface EditableContextValue {
 // Context
 // ============================================================================
 
-// Global reactive context signal that will be updated during Editable setup
-// This allows children to access the context even if they're evaluated before the parent
-// Using a SIGNAL makes the context reactive, so effects will rerun when it updates
-const globalEditableContextSignal = signal<EditableContextValue | null>(null);
-
-// Create context with default implementation that delegates to global signal
+// Create context
 const EditableContext = createContext<EditableContextValue | null>(null, 'Editable');
 
 const useEditableContext = (): EditableContextValue => {
   const context = useContext(EditableContext);
-  if (context) return context;
-
-  // Fallback to global signal
-  const globalContext = globalEditableContextSignal();
-  if (!globalContext) {
+  if (!context) {
     throw new Error('Editable components must be used within an Editable');
   }
-  return globalContext;
+  return context;
 };
 
 // ============================================================================
@@ -146,7 +137,6 @@ export const Editable = defineComponent<EditableProps>((props) => {
   // State
   const internalValue: WritableSignal<string> = signal<string>(props.defaultValue ?? '');
   const isEditing: WritableSignal<boolean> = signal<boolean>(props.startWithEditView ?? false);
-  const inputValue: WritableSignal<string> = signal<string>('');
 
   const inputRef: { current: HTMLInputElement | HTMLTextAreaElement | null } = {
     current: null,
@@ -160,6 +150,11 @@ export const Editable = defineComponent<EditableProps>((props) => {
     return internalValue();
   };
 
+  // Initialize inputValue with current value if starting in edit mode
+  const inputValue: WritableSignal<string> = signal<string>(
+    props.startWithEditView ? currentValue() : '',
+  );
+
   const setValue = (newValue: string) => {
     if (props.value === undefined) {
       internalValue.set(newValue);
@@ -170,8 +165,10 @@ export const Editable = defineComponent<EditableProps>((props) => {
   const startEdit = () => {
     if (disabled) return;
 
-    isEditing.set(true);
+    // Set input value BEFORE changing edit state
+    // This ensures the value is ready when the input becomes visible
     inputValue.set(currentValue());
+    isEditing.set(true);
     props.onEdit?.();
 
     // Focus input after state update
@@ -223,34 +220,33 @@ export const Editable = defineComponent<EditableProps>((props) => {
     inputRef,
   };
 
-  // CRITICAL FIX: Set global context signal so children can access it
-  // Using a signal makes this reactive - effects will rerun when it updates!
-  globalEditableContextSignal.set(contextValue);
-
-  // Also provide context via the standard API
+  // Provide context for children
   provideContext(EditableContext, contextValue);
+
+  // Create ref callback to set up reactive updates
+  const rootRefCallback = (element: HTMLElement | null) => {
+    if (!element) return;
+
+    // Set up effect to reactively update data-editing attribute
+    effect(() => {
+      if (isEditing()) {
+        element.setAttribute('data-editing', '');
+      } else {
+        element.removeAttribute('data-editing');
+      }
+    });
+  };
 
   return () => {
     // Support function children
     const children = typeof props.children === 'function' ? props.children() : props.children;
 
-    const root = jsx('div', {
+    return jsx('div', {
+      ref: rootRefCallback,
       'data-editable': '',
       'data-disabled': disabled ? '' : undefined,
-      'data-editing': isEditing() ? '' : undefined,
       children,
     }) as HTMLElement;
-
-    // Set up effect to reactively update data-editing attribute
-    effect(() => {
-      if (isEditing()) {
-        root.setAttribute('data-editing', '');
-      } else {
-        root.removeAttribute('data-editing');
-      }
-    });
-
-    return root;
   };
 });
 
@@ -292,8 +288,6 @@ export const EditablePreview = defineComponent<EditablePreviewProps>((props) => 
 
   return () => {
     const { children, ...rest } = props;
-    const value = context.value();
-    const isEditing = context.isEditing();
 
     return jsx('div', {
       ref: refCallback,
@@ -302,9 +296,8 @@ export const EditablePreview = defineComponent<EditablePreviewProps>((props) => 
       tabIndex: context.disabled ? -1 : 0,
       role: 'button',
       'aria-label': 'Click to edit',
-      style: isEditing ? 'display: none;' : undefined,
       ...rest,
-      children: children ?? (value || context.placeholder),
+      children: children,  // Let the effect handle content updates
     });
   };
 });
@@ -349,32 +342,27 @@ export const EditableInput = defineComponent<EditableInputProps>((props) => {
       const isEditing = context.isEditing();
       const inputValue = context.inputValue();
 
+      // Always update value to keep it in sync
+      element.value = inputValue;
+
       // Update visibility
       if (!isEditing) {
         element.style.display = 'none';
       } else {
         element.style.display = '';
       }
-
-      // Update value property reactively
-      if (element.value !== inputValue) {
-        element.value = inputValue;
-      }
     });
   };
 
   return () => {
     const { ...rest } = props;
-    const isEditing = context.isEditing();
 
     return jsx('input', {
       ref: refCallback,
       type: 'text',
       'data-editable-input': '',
-      value: context.inputValue(),
       placeholder: context.placeholder,
       disabled: context.disabled,
-      style: !isEditing ? 'display: none;' : undefined,
       onInput: handleInput,
       onKeyDown: handleKeyDown,
       onBlur: handleBlur,
@@ -408,12 +396,10 @@ export const EditableControls = defineComponent<EditableControlsProps>((props) =
 
   return () => {
     const { children } = props;
-    const isEditing = context.isEditing();
 
     return jsx('div', {
       ref: refCallback,
       'data-editable-controls': '',
-      style: !isEditing ? 'display: none;' : undefined,
       children,
     });
   };

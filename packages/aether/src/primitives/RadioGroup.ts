@@ -190,6 +190,7 @@ export const RadioGroup = defineComponent<RadioGroupProps>((props) => {
     props.onValueChange?.(value);
   };
 
+  // Create reactive getter functions for context
   const orientation = () => props.orientation || 'vertical';
   const loop = () => props.loop !== false;
   const disabled = () => !!props.disabled;
@@ -198,64 +199,24 @@ export const RadioGroup = defineComponent<RadioGroupProps>((props) => {
   const contextValue: RadioGroupContextValue = {
     value: () => valueSignal(),
     setValue,
-    disabled: disabled(),
-    required: required(),
+    get disabled() {
+      return !!props.disabled;
+    },
+    get required() {
+      return !!props.required;
+    },
     name: props.name,
-    orientation: orientation(),
-    loop: loop(),
+    get orientation() {
+      return props.orientation || 'vertical';
+    },
+    get loop() {
+      return props.loop !== false;
+    },
     groupId,
   };
 
   // Provide context during setup phase (Pattern 17)
   provideContext(RadioGroupContext, contextValue);
-
-  const handleKeyDown = (e: KeyboardEvent) => {
-    if (disabled()) return;
-
-    const isHorizontal = orientation() === 'horizontal';
-    const nextKey = isHorizontal ? 'ArrowRight' : 'ArrowDown';
-    const prevKey = isHorizontal ? 'ArrowLeft' : 'ArrowUp';
-
-    if (e.key !== nextKey && e.key !== prevKey && e.key !== 'Home' && e.key !== 'End') {
-      return;
-    }
-
-    e.preventDefault();
-
-    const target = e.currentTarget as HTMLElement;
-    const items = Array.from(target.querySelectorAll<HTMLElement>('[role="radio"]:not([disabled])'));
-
-    if (items.length === 0) return;
-
-    // Find currently focused radio button using document.activeElement
-    // (e.target may be the group container when event is dispatched on it)
-    const currentIndex = items.findIndex((item) => item === document.activeElement);
-    let nextIndex = currentIndex;
-
-    if (e.key === 'Home') {
-      nextIndex = 0;
-    } else if (e.key === 'End') {
-      nextIndex = items.length - 1;
-    } else if (e.key === nextKey) {
-      nextIndex = currentIndex + 1;
-      if (nextIndex >= items.length) {
-        nextIndex = loop() ? 0 : currentIndex;
-      }
-    } else if (e.key === prevKey) {
-      nextIndex = currentIndex - 1;
-      if (nextIndex < 0) {
-        nextIndex = loop() ? items.length - 1 : currentIndex;
-      }
-    }
-
-    if (nextIndex !== currentIndex) {
-      items[nextIndex]?.focus();
-      const value = items[nextIndex]?.getAttribute('data-value');
-      if (value) {
-        setValue(value);
-      }
-    }
-  };
 
   // Set up ref callback for hidden input
   const hiddenInputRef = createRef<HTMLInputElement>();
@@ -273,6 +234,55 @@ export const RadioGroup = defineComponent<RadioGroupProps>((props) => {
   return () => {
     // Evaluate function children (Pattern 17)
     const children = typeof props.children === 'function' ? props.children() : props.children;
+
+    // Keyboard navigation handler - moved inside render to access reactive props
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (disabled()) return;
+
+      const isHorizontal = orientation() === 'horizontal';
+      const nextKey = isHorizontal ? 'ArrowRight' : 'ArrowDown';
+      const prevKey = isHorizontal ? 'ArrowLeft' : 'ArrowUp';
+
+      if (e.key !== nextKey && e.key !== prevKey && e.key !== 'Home' && e.key !== 'End') {
+        return;
+      }
+
+      e.preventDefault();
+
+      const target = e.currentTarget as HTMLElement;
+      const items = Array.from(target.querySelectorAll<HTMLElement>('[role="radio"]:not([disabled])'));
+
+      if (items.length === 0) return;
+
+      // Find currently focused radio button using document.activeElement
+      // (e.target may be the group container when event is dispatched on it)
+      const currentIndex = items.findIndex((item) => item === document.activeElement);
+      let nextIndex = currentIndex;
+
+      if (e.key === 'Home') {
+        nextIndex = 0;
+      } else if (e.key === 'End') {
+        nextIndex = items.length - 1;
+      } else if (e.key === nextKey) {
+        nextIndex = currentIndex + 1;
+        if (nextIndex >= items.length) {
+          nextIndex = loop() ? 0 : currentIndex;
+        }
+      } else if (e.key === prevKey) {
+        nextIndex = currentIndex - 1;
+        if (nextIndex < 0) {
+          nextIndex = loop() ? items.length - 1 : currentIndex;
+        }
+      }
+
+      if (nextIndex !== currentIndex && nextIndex >= 0 && nextIndex < items.length) {
+        items[nextIndex]?.focus();
+        const value = items[nextIndex]?.getAttribute('data-value');
+        if (value) {
+          setValue(value);
+        }
+      }
+    };
 
     // Context provided via provideContext, no Provider needed
     return jsx('div', {

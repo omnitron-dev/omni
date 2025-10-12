@@ -198,8 +198,7 @@ describe('Tooltip', () => {
       expect(content.style.display).toBe('none');
 
       // After delay
-      vi.advanceTimersByTime(700);
-      await nextTick();
+      await vi.advanceTimersByTimeAsync(700);
 
       expect(content.style.display).toBe('');
     });
@@ -215,8 +214,7 @@ describe('Tooltip', () => {
 
       // Show tooltip
       trigger.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true }));
-      vi.advanceTimersByTime(700);
-      await nextTick();
+      await vi.advanceTimersByTimeAsync(700);
 
       const portal = document.querySelector('.aether-portal');
       const content = portal?.querySelector('[role="tooltip"]') as HTMLElement;
@@ -225,8 +223,7 @@ describe('Tooltip', () => {
 
       // Hide tooltip
       trigger.dispatchEvent(new PointerEvent('pointerleave', { bubbles: true }));
-      vi.advanceTimersByTime(0); // closeDelay = 0, but still uses setTimeout
-      await nextTick();
+      await vi.advanceTimersByTimeAsync(0); // closeDelay = 0, but still uses setTimeout
       expect(content.style.display).toBe('none');
     });
 
@@ -240,7 +237,7 @@ describe('Tooltip', () => {
       const trigger = container.querySelector('button') as HTMLButtonElement;
 
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       const portal = document.querySelector('.aether-portal');
       expect(portal?.querySelector('[role="tooltip"]')).toBeTruthy();
@@ -257,7 +254,7 @@ describe('Tooltip', () => {
 
       // Show tooltip
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       const portal = document.querySelector('.aether-portal');
       const content = portal?.querySelector('[role="tooltip"]') as HTMLElement;
@@ -266,7 +263,7 @@ describe('Tooltip', () => {
 
       // Hide tooltip
       trigger.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
       expect(content.style.display).toBe('none');
     });
 
@@ -283,8 +280,7 @@ describe('Tooltip', () => {
       vi.advanceTimersByTime(300); // Before 700ms delay
 
       trigger.dispatchEvent(new PointerEvent('pointerleave', { bubbles: true }));
-      vi.advanceTimersByTime(700);
-      await nextTick();
+      await vi.advanceTimersByTimeAsync(700);
 
       const portal = document.querySelector('.aether-portal');
       const content = portal?.querySelector('[role="tooltip"]') as HTMLElement;
@@ -303,8 +299,7 @@ describe('Tooltip', () => {
       const trigger = container.querySelector('button') as HTMLButtonElement;
 
       trigger.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true }));
-      vi.advanceTimersByTime(700);
-      await nextTick();
+      await vi.advanceTimersByTimeAsync(700);
 
       const portal = document.querySelector('.aether-portal');
       const content = portal?.querySelector('[role="tooltip"]') as HTMLElement;
@@ -323,7 +318,7 @@ describe('Tooltip', () => {
       const trigger = container.querySelector('button') as HTMLButtonElement;
 
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       const portal = document.querySelector('.aether-portal');
       const content = portal?.querySelector('[role="tooltip"]') as HTMLElement;
@@ -354,7 +349,7 @@ describe('Tooltip', () => {
       const trigger = container.querySelector('button') as HTMLButtonElement;
 
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       expect(trigger.getAttribute('aria-describedby')).toContain('tooltip');
       expect(trigger.getAttribute('aria-describedby')).toContain('-content');
@@ -372,7 +367,7 @@ describe('Tooltip', () => {
       expect(trigger.getAttribute('data-state')).toBe('closed');
 
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       expect(trigger.getAttribute('data-state')).toBe('open');
     });
@@ -402,7 +397,7 @@ describe('Tooltip', () => {
       const trigger = container.querySelector('button') as HTMLButtonElement;
 
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       const portal = document.querySelector('.aether-portal');
       const content = portal?.querySelector('[role="tooltip"]');
@@ -434,7 +429,7 @@ describe('Tooltip', () => {
       const trigger = container.querySelector('button') as HTMLButtonElement;
 
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       const portal = document.querySelector('.aether-portal');
       const content = portal?.querySelector('[role="tooltip"]');
@@ -451,7 +446,7 @@ describe('Tooltip', () => {
       const trigger = container.querySelector('button') as HTMLButtonElement;
 
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       const portal = document.querySelector('.aether-portal');
       const content = portal?.querySelector('[role="tooltip"]') as HTMLElement;
@@ -469,7 +464,7 @@ describe('Tooltip', () => {
       const trigger = container.querySelector('button') as HTMLButtonElement;
 
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       const portal = document.querySelector('.aether-portal');
       const content = portal?.querySelector('[role="tooltip"]') as HTMLElement;
@@ -506,7 +501,7 @@ describe('Tooltip', () => {
       const trigger = container.querySelector('button') as HTMLButtonElement;
 
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       const portal = document.querySelector('.aether-portal');
       expect(portal?.querySelector('[role="tooltip"]')).toBeTruthy();
@@ -525,7 +520,7 @@ describe('Tooltip', () => {
       const trigger = container.querySelector('button') as HTMLButtonElement;
 
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       const portal = document.querySelector('.aether-portal');
       expect(portal?.querySelector('[role="tooltip"]')).toBeTruthy();
@@ -544,7 +539,7 @@ describe('Tooltip', () => {
       const trigger = container.querySelector('button') as HTMLButtonElement;
 
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       const portal = document.querySelector('.aether-portal');
       expect(portal?.querySelector('[role="tooltip"]')).toBeTruthy();
@@ -563,7 +558,7 @@ describe('Tooltip', () => {
       const trigger = container.querySelector('button') as HTMLButtonElement;
 
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       const portal = document.querySelector('.aether-portal');
       expect(portal?.querySelector('[role="tooltip"]')).toBeTruthy();
@@ -582,7 +577,7 @@ describe('Tooltip', () => {
       const trigger = container.querySelector('button') as HTMLButtonElement;
 
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       const portal = document.querySelector('.aether-portal');
       expect(portal?.querySelector('[role="tooltip"]')).toBeTruthy();
@@ -601,7 +596,7 @@ describe('Tooltip', () => {
       const trigger = container.querySelector('button') as HTMLButtonElement;
 
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       const portal = document.querySelector('.aether-portal');
       expect(portal?.querySelector('[role="tooltip"]')).toBeTruthy();
@@ -619,14 +614,14 @@ describe('Tooltip', () => {
       const trigger = container.querySelector('button') as HTMLButtonElement;
 
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       const portal = document.querySelector('.aether-portal');
       const content = portal?.querySelector('[role="tooltip"]') as HTMLElement;
       expect(content).toBeTruthy();
 
       content.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       expect(portal?.querySelector('[role="tooltip"]')).toBeTruthy();
     });
@@ -641,12 +636,12 @@ describe('Tooltip', () => {
       const trigger = container.querySelector('button') as HTMLButtonElement;
 
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       const portal = document.querySelector('.aether-portal');
       const content = portal?.querySelector('[role="tooltip"]') as HTMLElement;
       content.dispatchEvent(new PointerEvent('pointerleave', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       expect(content.style.display).toBe('none');
     });
@@ -669,7 +664,7 @@ describe('Tooltip', () => {
       const trigger = container.querySelector('button') as HTMLButtonElement;
 
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       const portal = document.querySelector('.aether-portal');
       expect(portal?.querySelector('.custom-tooltip')).toBeTruthy();
@@ -691,7 +686,7 @@ describe('Tooltip', () => {
       const trigger = container.querySelector('button') as HTMLButtonElement;
 
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       const portal = document.querySelector('.aether-portal');
       expect(portal?.querySelector('[data-testid="custom-content"]')).toBeTruthy();
@@ -713,7 +708,7 @@ describe('Tooltip', () => {
       const trigger = container.querySelector('button') as HTMLButtonElement;
 
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       const portal = document.querySelector('.aether-portal');
       const content = portal?.querySelector('[role="tooltip"]') as HTMLElement;
@@ -738,7 +733,7 @@ describe('Tooltip', () => {
       const trigger = container.querySelector('button') as HTMLButtonElement;
 
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       const portal = document.querySelector('.aether-portal');
       expect(portal?.querySelector('[data-tooltip-arrow]')).toBeTruthy();
@@ -759,7 +754,7 @@ describe('Tooltip', () => {
       const trigger = container.querySelector('button') as HTMLButtonElement;
 
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       const portal = document.querySelector('.aether-portal');
       expect(portal?.querySelector('[data-tooltip-arrow]')).toBeTruthy();
@@ -780,7 +775,7 @@ describe('Tooltip', () => {
       const trigger = container.querySelector('button') as HTMLButtonElement;
 
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       const portal = document.querySelector('.aether-portal');
       expect(portal?.querySelector('[data-tooltip-arrow]')).toBeTruthy();
@@ -801,7 +796,7 @@ describe('Tooltip', () => {
       const trigger = container.querySelector('button') as HTMLButtonElement;
 
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       const portal = document.querySelector('.aether-portal');
       expect(portal?.querySelector('.custom-arrow')).toBeTruthy();
@@ -830,7 +825,7 @@ describe('Tooltip', () => {
       expect(triggers.length).toBe(2);
 
       triggers[0].dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       const portal = document.querySelector('.aether-portal');
       expect(portal?.querySelectorAll('[role="tooltip"]').length).toBe(1);
@@ -846,7 +841,7 @@ describe('Tooltip', () => {
       const trigger = container.querySelector('button') as HTMLButtonElement;
 
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       const portal = document.querySelector('.aether-portal');
       const content = portal?.querySelector('[role="tooltip"]');
@@ -865,7 +860,7 @@ describe('Tooltip', () => {
       const trigger = container.querySelector('button') as HTMLButtonElement;
 
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       const portal = document.querySelector('.aether-portal');
       const content = portal?.querySelector('[role="tooltip"]');
@@ -885,7 +880,7 @@ describe('Tooltip', () => {
       const trigger = container.querySelector('button') as HTMLButtonElement;
 
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       const portal = document.querySelector('.aether-portal');
       const content = portal?.querySelector('[role="tooltip"]');
@@ -907,8 +902,7 @@ describe('Tooltip', () => {
       trigger.dispatchEvent(new PointerEvent('pointerleave', { bubbles: true }));
       trigger.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true }));
 
-      vi.advanceTimersByTime(700);
-      await nextTick();
+      await vi.advanceTimersByTimeAsync(700);
 
       const portal = document.querySelector('.aether-portal');
       expect(portal?.querySelector('[role="tooltip"]')).toBeTruthy();
@@ -952,7 +946,7 @@ describe('Tooltip', () => {
         const trigger = container.querySelector('button') as HTMLButtonElement;
 
         trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-        await nextTick();
+        await vi.runOnlyPendingTimersAsync();
 
         const portal = document.querySelector('.aether-portal');
         expect(portal?.querySelector('[role="tooltip"]')).toBeTruthy();
@@ -977,7 +971,7 @@ describe('Tooltip', () => {
         const trigger = container.querySelector('button') as HTMLButtonElement;
 
         trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-        await nextTick();
+        await vi.runOnlyPendingTimersAsync();
 
         const portal = document.querySelector('.aether-portal');
         expect(portal?.querySelector('[role="tooltip"]')).toBeTruthy();
@@ -1003,7 +997,7 @@ describe('Tooltip', () => {
       expect(trigger.getAttribute('aria-label')).toBe('Help');
 
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       const portal = document.querySelector('.aether-portal');
       expect(portal?.querySelector('[role="tooltip"]')).toBeTruthy();
@@ -1026,7 +1020,7 @@ describe('Tooltip', () => {
 
       const trigger = form?.querySelector('button') as HTMLButtonElement;
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       const portal = document.querySelector('.aether-portal');
       expect(portal?.querySelector('[role="tooltip"]')).toBeTruthy();
@@ -1048,7 +1042,7 @@ describe('Tooltip', () => {
       const trigger = container.querySelector('button') as HTMLButtonElement;
 
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-      await nextTick();
+      await vi.runOnlyPendingTimersAsync();
 
       const portal = document.querySelector('.aether-portal');
       const content = portal?.querySelector('[role="tooltip"]');

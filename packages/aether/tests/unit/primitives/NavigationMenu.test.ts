@@ -458,7 +458,7 @@ describe('NavigationMenu', () => {
 
       const component = () =>
         NavigationMenu({
-          value: value(),
+          value: value,
           onValueChange: (v) => value.set(v),
           children: () =>
             NavigationMenuList({

@@ -14,8 +14,18 @@ describe('Masonry', () => {
     (element as any).__mockedOffsetHeight = height;
   };
 
+  let cleanupFns: Array<() => void> = [];
+
+  // Helper to auto-register cleanup
+  const render = (component: () => any) => {
+    const result = renderComponent(component);
+    cleanupFns.push(result.cleanup);
+    return result;
+  };
+
   beforeEach(() => {
     document.body.innerHTML = '';
+    cleanupFns = [];
     vi.useFakeTimers();
 
     // Mock offsetHeight to return stored value or default
@@ -34,7 +44,23 @@ describe('Masonry', () => {
   });
 
   afterEach(() => {
+    // Clean up all render results
+    cleanupFns.forEach((cleanup) => {
+      try {
+        cleanup();
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+    });
+    cleanupFns = [];
+
+    // Clear all timers
+    vi.clearAllTimers();
     vi.useRealTimers();
+
+    // Clear document body
+    document.body.innerHTML = '';
+
     // Restore original offsetHeight
     if (originalOffsetHeight) {
       Object.defineProperty(HTMLElement.prototype, 'offsetHeight', originalOffsetHeight);
@@ -44,7 +70,7 @@ describe('Masonry', () => {
   describe('Rendering', () => {
     it('should render with data-masonry attribute', () => {
       const component = () => Masonry({ children: null });
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const masonry = container.querySelector('[data-masonry]');
       expect(masonry).toBeTruthy();
@@ -52,7 +78,7 @@ describe('Masonry', () => {
 
     it('should render as a div element', () => {
       const component = () => Masonry({ children: null });
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const masonry = container.querySelector('div[data-masonry]');
       expect(masonry).toBeTruthy();
@@ -60,7 +86,7 @@ describe('Masonry', () => {
 
     it('should have relative positioning', () => {
       const component = () => Masonry({ children: null });
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const masonry = container.querySelector('[data-masonry]') as HTMLElement;
       expect(masonry.style.position).toBe('relative');
@@ -68,33 +94,29 @@ describe('Masonry', () => {
 
     it('should render without children', () => {
       const component = () => Masonry({});
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const masonry = container.querySelector('[data-masonry]');
       expect(masonry).toBeTruthy();
       expect(masonry?.children.length).toBe(0);
     });
 
-    it('should render with single child', async () => {
+    it('should render with single child', () => {
       const child = document.createElement('div');
       child.textContent = 'Item 1';
 
       const component = () => Masonry({ children: child });
-      const { container } = renderComponent(component);
-
-      await nextTick();
+      const { container } = render(component);
 
       const masonry = container.querySelector('[data-masonry]');
       expect(masonry?.children.length).toBe(1);
     });
 
-    it('should render with multiple children', async () => {
+    it('should render with multiple children', () => {
       const children = [document.createElement('div'), document.createElement('div'), document.createElement('div')];
 
       const component = () => Masonry({ children });
-      const { container } = renderComponent(component);
-
-      await nextTick();
+      const { container } = render(component);
 
       const masonry = container.querySelector('[data-masonry]');
       expect(masonry?.children.length).toBe(3);
@@ -102,7 +124,7 @@ describe('Masonry', () => {
   });
 
   describe('Props - columns', () => {
-    it('should default to 3 columns', async () => {
+    it('should default to 3 columns', () => {
       const children = [document.createElement('div'), document.createElement('div'), document.createElement('div')];
       children.forEach((child, i) => {
         child.textContent = `Item ${i + 1}`;
@@ -110,9 +132,7 @@ describe('Masonry', () => {
       });
 
       const component = () => Masonry({ children });
-      const { container } = renderComponent(component);
-
-      await nextTick();
+      const { container } = render(component);
       vi.runAllTimers(); // Execute setTimeout(layout, 0)
 
       const masonry = container.querySelector('[data-masonry]');
@@ -121,7 +141,7 @@ describe('Masonry', () => {
       expect(firstChild?.style.left).toBe('0%');
     });
 
-    it('should support columns=2', async () => {
+    it('should support columns=2', () => {
       const children = [document.createElement('div'), document.createElement('div')];
       children.forEach((child, i) => {
         child.textContent = `Item ${i + 1}`;
@@ -129,9 +149,7 @@ describe('Masonry', () => {
       });
 
       const component = () => Masonry({ columns: 2, children });
-      const { container } = renderComponent(component);
-
-      await nextTick();
+      const { container } = render(component);
       vi.runAllTimers(); // Execute setTimeout(layout, 0)
 
       const masonry = container.querySelector('[data-masonry]');
@@ -142,7 +160,7 @@ describe('Masonry', () => {
       expect(items[1]?.style.left).toBe('50%');
     });
 
-    it('should support columns=4', async () => {
+    it('should support columns=4', () => {
       const children = Array.from({ length: 4 }, () => document.createElement('div'));
       children.forEach((child, i) => {
         child.textContent = `Item ${i + 1}`;
@@ -150,9 +168,7 @@ describe('Masonry', () => {
       });
 
       const component = () => Masonry({ columns: 4, children });
-      const { container } = renderComponent(component);
-
-      await nextTick();
+      const { container } = render(component);
       vi.runAllTimers(); // Execute setTimeout(layout, 0)
 
       const masonry = container.querySelector('[data-masonry]');
@@ -165,7 +181,7 @@ describe('Masonry', () => {
       expect(items[3]?.style.left).toBe('75%');
     });
 
-    it('should support columns=1', async () => {
+    it('should support columns=1', () => {
       const children = [document.createElement('div'), document.createElement('div')];
       children.forEach((child, i) => {
         child.textContent = `Item ${i + 1}`;
@@ -173,9 +189,7 @@ describe('Masonry', () => {
       });
 
       const component = () => Masonry({ columns: 1, children });
-      const { container } = renderComponent(component);
-
-      await nextTick();
+      const { container } = render(component);
       vi.runAllTimers(); // Execute setTimeout(layout, 0)
 
       const masonry = container.querySelector('[data-masonry]');
@@ -186,7 +200,7 @@ describe('Masonry', () => {
       expect(items[1]?.style.left).toBe('0%');
     });
 
-    it('should support large column count', async () => {
+    it('should support large column count', () => {
       const children = Array.from({ length: 10 }, () => document.createElement('div'));
       children.forEach((child, i) => {
         child.textContent = `Item ${i + 1}`;
@@ -194,26 +208,21 @@ describe('Masonry', () => {
       });
 
       const component = () => Masonry({ columns: 10, children });
-      const { container } = renderComponent(component);
-
-      await nextTick();
-
+      const { container } = render(component);
       const masonry = container.querySelector('[data-masonry]');
       expect(masonry?.children.length).toBe(10);
     });
   });
 
   describe('Props - gap', () => {
-    it('should default to 16px gap', async () => {
+    it('should default to 16px gap', () => {
       const children = [document.createElement('div'), document.createElement('div')];
       children.forEach((child) => {
         setMockedHeight(child, 100);
       });
 
       const component = () => Masonry({ children });
-      const { container } = renderComponent(component);
-
-      await nextTick();
+      const { container } = render(component);
       vi.runAllTimers(); // Execute setTimeout(layout, 0)
 
       const masonry = container.querySelector('[data-masonry]');
@@ -222,16 +231,14 @@ describe('Masonry', () => {
       expect(firstChild?.style.width).toContain('16px');
     });
 
-    it('should support custom gap value', async () => {
+    it('should support custom gap value', () => {
       const children = [document.createElement('div'), document.createElement('div')];
       children.forEach((child) => {
         setMockedHeight(child, 100);
       });
 
       const component = () => Masonry({ gap: 20, children });
-      const { container } = renderComponent(component);
-
-      await nextTick();
+      const { container } = render(component);
       vi.runAllTimers(); // Execute setTimeout(layout, 0)
 
       const masonry = container.querySelector('[data-masonry]');
@@ -239,16 +246,14 @@ describe('Masonry', () => {
       expect(firstChild?.style.width).toContain('20px');
     });
 
-    it('should support gap=0', async () => {
+    it('should support gap=0', () => {
       const children = [document.createElement('div'), document.createElement('div')];
       children.forEach((child) => {
         setMockedHeight(child, 100);
       });
 
       const component = () => Masonry({ gap: 0, children });
-      const { container } = renderComponent(component);
-
-      await nextTick();
+      const { container } = render(component);
       vi.runAllTimers(); // Execute setTimeout(layout, 0)
 
       const masonry = container.querySelector('[data-masonry]');
@@ -256,16 +261,14 @@ describe('Masonry', () => {
       expect(firstChild?.style.width).not.toContain('16px');
     });
 
-    it('should support large gap values', async () => {
+    it('should support large gap values', () => {
       const children = [document.createElement('div'), document.createElement('div')];
       children.forEach((child) => {
         setMockedHeight(child, 100);
       });
 
       const component = () => Masonry({ gap: 50, children });
-      const { container } = renderComponent(component);
-
-      await nextTick();
+      const { container } = render(component);
       vi.runAllTimers(); // Execute setTimeout(layout, 0)
 
       const masonry = container.querySelector('[data-masonry]');
@@ -275,14 +278,12 @@ describe('Masonry', () => {
   });
 
   describe('Layout behavior', () => {
-    it('should position items absolutely', async () => {
+    it('should position items absolutely', () => {
       const children = [document.createElement('div')];
       setMockedHeight(children[0], 100);
 
       const component = () => Masonry({ children });
-      const { container } = renderComponent(component);
-
-      await nextTick();
+      const { container } = render(component);
       vi.runAllTimers(); // Execute setTimeout(layout, 0)
 
       const masonry = container.querySelector('[data-masonry]');
@@ -290,7 +291,7 @@ describe('Masonry', () => {
       expect(child?.style.position).toBe('absolute');
     });
 
-    it('should distribute items across columns', async () => {
+    it('should distribute items across columns', () => {
       const children = Array.from({ length: 6 }, () => document.createElement('div'));
       children.forEach((child, i) => {
         child.textContent = `Item ${i + 1}`;
@@ -298,9 +299,7 @@ describe('Masonry', () => {
       });
 
       const component = () => Masonry({ columns: 3, children });
-      const { container } = renderComponent(component);
-
-      await nextTick();
+      const { container } = render(component);
       vi.runAllTimers(); // Execute setTimeout(layout, 0)
 
       const masonry = container.querySelector('[data-masonry]');
@@ -311,14 +310,12 @@ describe('Masonry', () => {
       expect(parseFloat(items[3]?.style.left)).toBeCloseTo(0, 1);
     });
 
-    it('should set container height based on tallest column', async () => {
+    it('should set container height based on tallest column', () => {
       const children = [document.createElement('div')];
       setMockedHeight(children[0], 200);
 
       const component = () => Masonry({ children });
-      const { container } = renderComponent(component);
-
-      await nextTick();
+      const { container } = render(component);
       vi.runAllTimers(); // Execute setTimeout(layout, 0)
 
       const masonry = container.querySelector('[data-masonry]') as HTMLElement;
@@ -326,14 +323,12 @@ describe('Masonry', () => {
       expect(masonry?.style.height).toBeTruthy();
     });
 
-    it('should calculate width percentage correctly', async () => {
+    it('should calculate width percentage correctly', () => {
       const children = [document.createElement('div')];
       setMockedHeight(children[0], 100);
 
       const component = () => Masonry({ columns: 3, gap: 0, children });
-      const { container } = renderComponent(component);
-
-      await nextTick();
+      const { container } = render(component);
       vi.runAllTimers(); // Execute setTimeout(layout, 0)
 
       const masonry = container.querySelector('[data-masonry]');
@@ -342,29 +337,23 @@ describe('Masonry', () => {
       expect(child?.style.width).toContain('33.33');
     });
 
-    it('should handle variable item heights', async () => {
+    it('should handle variable item heights', () => {
       const children = [document.createElement('div'), document.createElement('div'), document.createElement('div')];
       setMockedHeight(children[0], 100);
       setMockedHeight(children[1], 200);
       setMockedHeight(children[2], 150);
 
       const component = () => Masonry({ columns: 2, children });
-      const { container } = renderComponent(component);
-
-      await nextTick();
-
+      const { container } = render(component);
       const masonry = container.querySelector('[data-masonry]');
       expect(masonry?.children.length).toBe(3);
     });
   });
 
   describe('Responsive behavior', () => {
-    it('should listen for window resize events', async () => {
+    it('should listen for window resize events', () => {
       const component = () => Masonry({ children: document.createElement('div') });
-      const { container } = renderComponent(component);
-
-      await nextTick();
-
+      const { container } = render(component);
       const masonry = container.querySelector('[data-masonry]');
       expect(masonry).toBeTruthy();
 
@@ -372,20 +361,14 @@ describe('Masonry', () => {
       // We can't directly test this without accessing internals
     });
 
-    it('should handle resize events', async () => {
+    it('should handle resize events', () => {
       const children = [document.createElement('div')];
       setMockedHeight(children[0], 100);
 
       const component = () => Masonry({ children });
-      const { container } = renderComponent(component);
-
-      await nextTick();
-
+      const { container } = render(component);
       // Trigger resize
       window.dispatchEvent(new Event('resize'));
-
-      await nextTick();
-
       const masonry = container.querySelector('[data-masonry]');
       expect(masonry).toBeTruthy();
     });
@@ -394,7 +377,7 @@ describe('Masonry', () => {
   describe('Props forwarding', () => {
     it('should forward custom class', () => {
       const component = () => Masonry({ class: 'custom-masonry', children: null });
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const masonry = container.querySelector('.custom-masonry');
       expect(masonry).toBeTruthy();
@@ -402,7 +385,7 @@ describe('Masonry', () => {
 
     it('should forward id prop', () => {
       const component = () => Masonry({ id: 'masonry-grid', children: null });
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const masonry = container.querySelector('#masonry-grid');
       expect(masonry).toBeTruthy();
@@ -410,7 +393,7 @@ describe('Masonry', () => {
 
     it('should forward data attributes', () => {
       const component = () => Masonry({ 'data-testid': 'masonry-test', children: null });
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const masonry = container.querySelector('[data-testid="masonry-test"]');
       expect(masonry).toBeTruthy();
@@ -418,7 +401,7 @@ describe('Masonry', () => {
 
     it('should forward aria attributes', () => {
       const component = () => Masonry({ 'aria-label': 'Image gallery', children: null });
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const masonry = container.querySelector('[aria-label="Image gallery"]');
       expect(masonry).toBeTruthy();
@@ -426,7 +409,7 @@ describe('Masonry', () => {
 
     it('should forward style prop', () => {
       const component = () => Masonry({ style: { backgroundColor: 'red' }, children: null });
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const masonry = container.querySelector('[data-masonry]') as HTMLElement;
       expect(masonry?.style.backgroundColor).toBe('red');
@@ -434,7 +417,7 @@ describe('Masonry', () => {
 
     it('should merge styles with position relative', () => {
       const component = () => Masonry({ style: { padding: '10px' }, children: null });
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const masonry = container.querySelector('[data-masonry]') as HTMLElement;
       expect(masonry?.style.position).toBe('relative');
@@ -443,103 +426,79 @@ describe('Masonry', () => {
   });
 
   describe('Edge cases', () => {
-    it('should handle empty children array', async () => {
+    it('should handle empty children array', () => {
       const component = () => Masonry({ children: [] });
-      const { container } = renderComponent(component);
-
-      await nextTick();
-
+      const { container } = render(component);
       const masonry = container.querySelector('[data-masonry]');
       expect(masonry?.children.length).toBe(0);
     });
 
-    it('should handle null children', async () => {
+    it('should handle null children', () => {
       const component = () => Masonry({ children: null });
-      const { container } = renderComponent(component);
-
-      await nextTick();
-
+      const { container } = render(component);
       const masonry = container.querySelector('[data-masonry]');
       expect(masonry).toBeTruthy();
     });
 
-    it('should handle undefined children', async () => {
+    it('should handle undefined children', () => {
       const component = () => Masonry({ children: undefined });
-      const { container } = renderComponent(component);
-
-      await nextTick();
-
+      const { container } = render(component);
       const masonry = container.querySelector('[data-masonry]');
       expect(masonry).toBeTruthy();
     });
 
-    it('should handle columns=0 gracefully', async () => {
+    it('should handle columns=0 gracefully', () => {
       const children = [document.createElement('div')];
       const component = () => Masonry({ columns: 0, children });
-      const { container } = renderComponent(component);
-
-      await nextTick();
-
+      const { container } = render(component);
       const masonry = container.querySelector('[data-masonry]');
       expect(masonry).toBeTruthy();
     });
 
-    it('should handle negative gap gracefully', async () => {
+    it('should handle negative gap gracefully', () => {
       const children = [document.createElement('div')];
       setMockedHeight(children[0], 100);
 
       const component = () => Masonry({ gap: -10, children });
-      const { container } = renderComponent(component);
-
-      await nextTick();
-
+      const { container } = render(component);
       const masonry = container.querySelector('[data-masonry]');
       expect(masonry).toBeTruthy();
     });
 
-    it('should handle very large number of items', async () => {
+    it('should handle very large number of items', () => {
       const children = Array.from({ length: 100 }, () => document.createElement('div'));
       children.forEach((child) => {
         setMockedHeight(child, 50);
       });
 
       const component = () => Masonry({ columns: 5, children });
-      const { container } = renderComponent(component);
-
-      await nextTick();
-
+      const { container } = render(component);
       const masonry = container.querySelector('[data-masonry]');
       expect(masonry?.children.length).toBe(100);
     });
 
-    it('should handle items with zero height', async () => {
+    it('should handle items with zero height', () => {
       const children = [document.createElement('div')];
       setMockedHeight(children[0], 0);
 
       const component = () => Masonry({ children });
-      const { container } = renderComponent(component);
-
-      await nextTick();
-
+      const { container } = render(component);
       const masonry = container.querySelector('[data-masonry]');
       expect(masonry?.children.length).toBe(1);
     });
 
-    it('should handle missing offsetHeight', async () => {
+    it('should handle missing offsetHeight', () => {
       const children = [document.createElement('div')];
 
       const component = () => Masonry({ children });
-      const { container } = renderComponent(component);
-
-      await nextTick();
-
+      const { container } = render(component);
       const masonry = container.querySelector('[data-masonry]');
       expect(masonry).toBeTruthy();
     });
   });
 
   describe('Real-world use cases', () => {
-    it('should work for image gallery', async () => {
+    it('should work for image gallery', () => {
       const children = Array.from({ length: 12 }, (_, i) => {
         const div = document.createElement('div');
         const img = document.createElement('img');
@@ -558,15 +517,12 @@ describe('Masonry', () => {
           children,
         });
 
-      const { container } = renderComponent(component);
-
-      await nextTick();
-
+      const { container } = render(component);
       const masonry = container.querySelector('.gallery');
       expect(masonry?.children.length).toBe(12);
     });
 
-    it('should work for Pinterest-style layout', async () => {
+    it('should work for Pinterest-style layout', () => {
       const children = Array.from({ length: 20 }, (_, i) => {
         const card = document.createElement('div');
         card.className = 'pin-card';
@@ -583,15 +539,12 @@ describe('Masonry', () => {
           children,
         });
 
-      const { container } = renderComponent(component);
-
-      await nextTick();
-
+      const { container } = render(component);
       const masonry = container.querySelector('[aria-label="Pin board"]');
       expect(masonry?.children.length).toBe(20);
     });
 
-    it('should work for blog post grid', async () => {
+    it('should work for blog post grid', () => {
       const children = Array.from({ length: 6 }, (_, i) => {
         const article = document.createElement('article');
         const title = document.createElement('h3');
@@ -612,16 +565,13 @@ describe('Masonry', () => {
           children,
         });
 
-      const { container } = renderComponent(component);
-
-      await nextTick();
-
+      const { container } = render(component);
       const masonry = container.querySelector('.blog-grid');
       const articles = masonry?.querySelectorAll('article');
       expect(articles?.length).toBe(6);
     });
 
-    it('should work for product showcase', async () => {
+    it('should work for product showcase', () => {
       const children = Array.from({ length: 8 }, (_, i) => {
         const product = document.createElement('div');
         product.className = 'product-card';
@@ -638,10 +588,7 @@ describe('Masonry', () => {
           children,
         });
 
-      const { container } = renderComponent(component);
-
-      await nextTick();
-
+      const { container } = render(component);
       const products = container.querySelectorAll('.product-card');
       expect(products.length).toBe(8);
     });
@@ -655,7 +602,7 @@ describe('Masonry', () => {
           children: null,
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const masonry = container.querySelector('[data-masonry]') as HTMLElement;
       expect(masonry?.getAttribute('aria-label')).toBe('Photo gallery');
@@ -668,7 +615,7 @@ describe('Masonry', () => {
           children: null,
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const masonry = container.querySelector('[data-masonry]') as HTMLElement;
       expect(masonry?.getAttribute('aria-labelledby')).toBe('gallery-title');
@@ -681,13 +628,13 @@ describe('Masonry', () => {
           children: null,
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const masonry = container.querySelector('[data-masonry]') as HTMLElement;
       expect(masonry?.getAttribute('role')).toBe('list');
     });
 
-    it('should maintain semantic HTML structure', async () => {
+    it('should maintain semantic HTML structure', () => {
       const children = Array.from({ length: 3 }, () => {
         const article = document.createElement('article');
         article.textContent = 'Content';
@@ -696,51 +643,41 @@ describe('Masonry', () => {
       });
 
       const component = () => Masonry({ children });
-      const { container } = renderComponent(component);
-
-      await nextTick();
-
+      const { container } = render(component);
       const articles = container.querySelectorAll('article');
       expect(articles.length).toBe(3);
     });
   });
 
   describe('Performance', () => {
-    it('should handle rapid resize events efficiently', async () => {
+    it('should handle rapid resize events efficiently', () => {
       const children = Array.from({ length: 10 }, () => document.createElement('div'));
       children.forEach((child) => {
         setMockedHeight(child, 100);
       });
 
       const component = () => Masonry({ children });
-      const { container } = renderComponent(component);
-
-      await nextTick();
-
+      const { container } = render(component);
       // Trigger multiple resize events
       for (let i = 0; i < 10; i++) {
         window.dispatchEvent(new Event('resize'));
       }
-
-      await nextTick();
-
       const masonry = container.querySelector('[data-masonry]');
       expect(masonry).toBeTruthy();
     });
 
-    it('should use setTimeout for initial layout', async () => {
+    it('should use setTimeout for initial layout', () => {
       const children = [document.createElement('div')];
       setMockedHeight(children[0], 100);
 
       const component = () => Masonry({ children });
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       // Should not be laid out immediately
       const masonry = container.querySelector('[data-masonry]');
       expect(masonry).toBeTruthy();
 
       // After tick, layout should be applied
-      await nextTick();
       vi.runAllTimers(); // Execute setTimeout(layout, 0)
       const child = masonry?.children[0] as HTMLElement;
       expect(child?.style.position).toBe('absolute');
@@ -748,7 +685,7 @@ describe('Masonry', () => {
   });
 
   describe('Integration with other components', () => {
-    it('should work with custom styled children', async () => {
+    it('should work with custom styled children', () => {
       const children = Array.from({ length: 4 }, (_, i) => {
         const div = document.createElement('div');
         div.className = 'custom-card';
@@ -760,10 +697,7 @@ describe('Masonry', () => {
       });
 
       const component = () => Masonry({ columns: 2, gap: 16, children });
-      const { container } = renderComponent(component);
-
-      await nextTick();
-
+      const { container } = render(component);
       const cards = container.querySelectorAll('.custom-card');
       expect(cards.length).toBe(4);
       cards.forEach((card) => {
@@ -772,7 +706,7 @@ describe('Masonry', () => {
       });
     });
 
-    it('should maintain child event handlers', async () => {
+    it('should maintain child event handlers', () => {
       const clickHandler = vi.fn();
       const children = [document.createElement('button')];
       children[0].textContent = 'Click me';
@@ -780,10 +714,7 @@ describe('Masonry', () => {
       setMockedHeight(children[0], 40);
 
       const component = () => Masonry({ children });
-      const { container } = renderComponent(component);
-
-      await nextTick();
-
+      const { container } = render(component);
       const button = container.querySelector('button') as HTMLButtonElement;
       button.click();
 
@@ -792,7 +723,7 @@ describe('Masonry', () => {
   });
 
   describe('Column distribution', () => {
-    it('should distribute 7 items across 3 columns correctly', async () => {
+    it('should distribute 7 items across 3 columns correctly', () => {
       const children = Array.from({ length: 7 }, () => document.createElement('div'));
       children.forEach((child, i) => {
         child.textContent = `Item ${i + 1}`;
@@ -800,15 +731,12 @@ describe('Masonry', () => {
       });
 
       const component = () => Masonry({ columns: 3, children });
-      const { container } = renderComponent(component);
-
-      await nextTick();
-
+      const { container } = render(component);
       const masonry = container.querySelector('[data-masonry]');
       expect(masonry?.children.length).toBe(7);
     });
 
-    it('should fill columns in round-robin order', async () => {
+    it('should fill columns in round-robin order', () => {
       const children = Array.from({ length: 6 }, () => document.createElement('div'));
       children.forEach((child, i) => {
         child.textContent = `Item ${i}`;
@@ -816,9 +744,7 @@ describe('Masonry', () => {
       });
 
       const component = () => Masonry({ columns: 3, children });
-      const { container } = renderComponent(component);
-
-      await nextTick();
+      const { container } = render(component);
       vi.runAllTimers(); // Execute setTimeout(layout, 0)
 
       const items = Array.from(container.querySelector('[data-masonry]')?.children || []) as HTMLElement[];

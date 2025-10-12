@@ -16,7 +16,7 @@
 import { defineComponent } from '../core/component/index.js';
 import { createContext, useContext } from '../core/component/context.js';
 import type { Signal, WritableSignal } from '../core/reactivity/types.js';
-import { signal, computed } from '../core/reactivity/index.js';
+import { signal, computed, isSignal } from '../core/reactivity/index.js';
 import { effect } from '../core/reactivity/effect.js';
 import { jsx } from '../jsx-runtime.js';
 
@@ -25,8 +25,8 @@ import { jsx } from '../jsx-runtime.js';
 // ============================================================================
 
 export interface NumberInputProps {
-  /** Controlled value */
-  value?: number;
+  /** Controlled value (can be plain number or WritableSignal) */
+  value?: number | WritableSignal<number>;
   /** Value change callback */
   onValueChange?: (value: number) => void;
   /** Default value (uncontrolled) */
@@ -132,12 +132,25 @@ export function __resetNumberInputContext() {
 const NumberInputContext = createContext<NumberInputContextValue>(
   {
     // Use computed() for reactive value that delegates to global signal
-    // Using same syntax as RangeSlider: ?.value() not ?.value?.()
-    value: computed(() => globalNumberInputContextSignal()?.value() ?? 0),
+    // CRITICAL: Must call value() to track the inner signal dependency!
+    value: computed(() => {
+      const ctx = globalNumberInputContextSignal();
+      return ctx ? ctx.value() : 0;
+    }),
     // Use arrow functions that delegate to global signal methods
-    increment: () => globalNumberInputContextSignal()?.increment(),
-    decrement: () => globalNumberInputContextSignal()?.decrement(),
-    setValue: (value) => globalNumberInputContextSignal()?.setValue(value),
+    // CRITICAL FIX: These must actually CALL the methods, not just return them
+    increment: () => {
+      const ctx = globalNumberInputContextSignal();
+      if (ctx) ctx.increment();
+    },
+    decrement: () => {
+      const ctx = globalNumberInputContextSignal();
+      if (ctx) ctx.decrement();
+    },
+    setValue: (value) => {
+      const ctx = globalNumberInputContextSignal();
+      if (ctx) ctx.setValue(value);
+    },
     // Use getters for all properties to delegate to global signal
     get min() {
       return globalNumberInputContextSignal()?.min ?? -Infinity;
@@ -154,10 +167,22 @@ const NumberInputContext = createContext<NumberInputContextValue>(
     get readonly() {
       return globalNumberInputContextSignal()?.readonly ?? false;
     },
-    canIncrement: () => globalNumberInputContextSignal()?.canIncrement() ?? false,
-    canDecrement: () => globalNumberInputContextSignal()?.canDecrement() ?? false,
-    formatValue: (value) => globalNumberInputContextSignal()?.formatValue(value) ?? String(value),
-    parseValue: (str) => globalNumberInputContextSignal()?.parseValue(str) ?? 0,
+    canIncrement: () => {
+      const ctx = globalNumberInputContextSignal();
+      return ctx ? ctx.canIncrement() : false;
+    },
+    canDecrement: () => {
+      const ctx = globalNumberInputContextSignal();
+      return ctx ? ctx.canDecrement() : false;
+    },
+    formatValue: (value) => {
+      const ctx = globalNumberInputContextSignal();
+      return ctx ? ctx.formatValue(value) : String(value);
+    },
+    parseValue: (str) => {
+      const ctx = globalNumberInputContextSignal();
+      return ctx ? ctx.parseValue(str) : 0;
+    },
     get inputRef() {
       return globalNumberInputContextSignal()?.inputRef ?? { current: null };
     },
@@ -195,12 +220,13 @@ export const NumberInput = defineComponent<NumberInputProps>((props) => {
 
   // Calculate initial value with proper clamping and precision
   const calculateInitialValue = (): number => {
-    const rawValue =
-      props.value !== undefined
-        ? typeof props.value === 'function'
-          ? (props.value as any)()
-          : props.value
-        : (props.defaultValue ?? 0);
+    let rawValue: number;
+    if (props.value !== undefined) {
+      const isValueSignal = isSignal(props.value);
+      rawValue = isValueSignal ? props.value() : props.value;
+    } else {
+      rawValue = props.defaultValue ?? 0;
+    }
 
     let value = roundToPrecision(rawValue, precision);
     if (keepWithinRange) {
@@ -209,20 +235,11 @@ export const NumberInput = defineComponent<NumberInputProps>((props) => {
     return value;
   };
 
-  // State - always use internal signal for reactivity
-  const internalValue: WritableSignal<number> = signal<number>(calculateInitialValue());
-
-  // Sync external controlled signal to internal state (Pattern 8)
-  if (props.value !== undefined && typeof props.value === 'function') {
-    effect(() => {
-      let newValue = (props.value as any)();
-      newValue = roundToPrecision(newValue, precision);
-      if (keepWithinRange) {
-        newValue = clamp(newValue, min, max);
-      }
-      internalValue.set(newValue);
-    });
-  }
+  // State - use controlled signal if provided, otherwise create internal one
+  const isValueSignal = isSignal(props.value);
+  const internalValue: WritableSignal<number> = isValueSignal
+    ? (props.value as WritableSignal<number>)
+    : signal<number>(calculateInitialValue());
 
   const inputRef: { current: HTMLInputElement | null } = { current: null };
 
@@ -236,9 +253,11 @@ export const NumberInput = defineComponent<NumberInputProps>((props) => {
       finalValue = clamp(finalValue, min, max);
     }
 
-    if (props.value === undefined) {
-      internalValue.set(finalValue);
-    }
+    // CRITICAL FIX: Always update internal signal regardless of controlled mode
+    // The internal signal is the source of truth for display and reactivity
+    internalValue.set(finalValue);
+
+    // Notify parent of value change
     props.onValueChange?.(finalValue);
   };
 

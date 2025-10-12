@@ -18,6 +18,9 @@ describe('Tooltip', () => {
   });
 
   afterEach(() => {
+    document.querySelectorAll('.aether-portal').forEach(el => el.remove());
+    vi.clearAllTimers();
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -197,14 +200,17 @@ describe('Tooltip', () => {
 
       trigger.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true }));
 
-      // Before delay
-      expect(container.querySelector('[role="tooltip"]')).toBeNull();
+      // Before delay - content exists in portal but is hidden
+      const portal = document.querySelector('.aether-portal');
+      const content = portal?.querySelector('[role="tooltip"]') as HTMLElement;
+      expect(content).toBeTruthy();
+      expect(content.style.display).toBe('none');
 
       // After delay
       vi.advanceTimersByTime(700);
       await nextTick();
 
-      expect(container.querySelector('[role="tooltip"]')).toBeTruthy();
+      expect(content.style.display).toBe('');
     });
 
     it('should hide tooltip on pointer leave', async () => {
@@ -223,12 +229,16 @@ describe('Tooltip', () => {
       trigger.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true }));
       vi.advanceTimersByTime(700);
       await nextTick();
-      expect(container.querySelector('[role="tooltip"]')).toBeTruthy();
+
+      const portal = document.querySelector('.aether-portal');
+      const content = portal?.querySelector('[role="tooltip"]') as HTMLElement;
+      expect(content).toBeTruthy();
+      expect(content.style.display).toBe('');
 
       // Hide tooltip
       trigger.dispatchEvent(new PointerEvent('pointerleave', { bubbles: true }));
       await nextTick();
-      expect(container.querySelector('[role="tooltip"]')).toBeNull();
+      expect(content.style.display).toBe('none');
     });
 
     it('should show tooltip immediately on focus', async () => {
@@ -246,7 +256,8 @@ describe('Tooltip', () => {
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       await nextTick();
 
-      expect(container.querySelector('[role="tooltip"]')).toBeTruthy();
+      const portal = document.querySelector('.aether-portal');
+      expect(portal?.querySelector('[role="tooltip"]')).toBeTruthy();
     });
 
     it('should hide tooltip on blur', async () => {
@@ -264,12 +275,16 @@ describe('Tooltip', () => {
       // Show tooltip
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       await nextTick();
-      expect(container.querySelector('[role="tooltip"]')).toBeTruthy();
+
+      const portal = document.querySelector('.aether-portal');
+      const content = portal?.querySelector('[role="tooltip"]') as HTMLElement;
+      expect(content).toBeTruthy();
+      expect(content.style.display).toBe('');
 
       // Hide tooltip
       trigger.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
       await nextTick();
-      expect(container.querySelector('[role="tooltip"]')).toBeNull();
+      expect(content.style.display).toBe('none');
     });
 
     it('should cancel open timeout on pointer leave before delay', async () => {
@@ -291,7 +306,10 @@ describe('Tooltip', () => {
       vi.advanceTimersByTime(700);
       await nextTick();
 
-      expect(container.querySelector('[role="tooltip"]')).toBeNull();
+      const portal = document.querySelector('.aether-portal');
+      const content = portal?.querySelector('[role="tooltip"]') as HTMLElement;
+      expect(content).toBeTruthy();
+      expect(content.style.display).toBe('none');
     });
 
     it('should not show tooltip when disabled', async () => {
@@ -311,7 +329,10 @@ describe('Tooltip', () => {
       vi.advanceTimersByTime(700);
       await nextTick();
 
-      expect(container.querySelector('[role="tooltip"]')).toBeNull();
+      const portal = document.querySelector('.aether-portal');
+      const content = portal?.querySelector('[role="tooltip"]') as HTMLElement;
+      expect(content).toBeTruthy();
+      expect(content.style.display).toBe('none');
     });
 
     it('should not show tooltip on focus when disabled', async () => {
@@ -330,7 +351,10 @@ describe('Tooltip', () => {
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       await nextTick();
 
-      expect(container.querySelector('[role="tooltip"]')).toBeNull();
+      const portal = document.querySelector('.aether-portal');
+      const content = portal?.querySelector('[role="tooltip"]') as HTMLElement;
+      expect(content).toBeTruthy();
+      expect(content.style.display).toBe('none');
     });
   });
 
@@ -387,7 +411,7 @@ describe('Tooltip', () => {
   });
 
   describe('TooltipContent - Rendering', () => {
-    it('should not render when tooltip is closed', () => {
+    it('should render but be hidden when tooltip is closed', () => {
       const component = () =>
         Tooltip({
           children: () => [
@@ -397,7 +421,10 @@ describe('Tooltip', () => {
         });
 
       const { container } = renderComponent(component);
-      expect(container.querySelector('[role="tooltip"]')).toBeNull();
+      const portal = document.querySelector('.aether-portal');
+      const content = portal?.querySelector('[role="tooltip"]') as HTMLElement;
+      expect(content).toBeTruthy();
+      expect(content.style.display).toBe('none');
     });
 
     it('should render when tooltip is open', async () => {
@@ -415,7 +442,8 @@ describe('Tooltip', () => {
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       await nextTick();
 
-      const content = container.querySelector('[role="tooltip"]');
+      const portal = document.querySelector('.aether-portal');
+      const content = portal?.querySelector('[role="tooltip"]');
       expect(content).toBeTruthy();
       expect(content?.textContent).toBe('Tooltip text');
     });
@@ -430,7 +458,8 @@ describe('Tooltip', () => {
         });
 
       const { container } = renderComponent(component);
-      expect(container.querySelector('[role="tooltip"]')).toBeTruthy();
+      const portal = document.querySelector('.aether-portal');
+      expect(portal?.querySelector('[role="tooltip"]')).toBeTruthy();
     });
 
     it('should have role="tooltip"', async () => {
@@ -448,7 +477,8 @@ describe('Tooltip', () => {
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       await nextTick();
 
-      const content = container.querySelector('[role="tooltip"]');
+      const portal = document.querySelector('.aether-portal');
+      const content = portal?.querySelector('[role="tooltip"]');
       expect(content?.getAttribute('role')).toBe('tooltip');
     });
 
@@ -467,7 +497,8 @@ describe('Tooltip', () => {
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       await nextTick();
 
-      const content = container.querySelector('[role="tooltip"]') as HTMLElement;
+      const portal = document.querySelector('.aether-portal');
+      const content = portal?.querySelector('[role="tooltip"]') as HTMLElement;
       expect(content.id).toContain('tooltip');
       expect(content.id).toContain('-content');
     });
@@ -487,7 +518,8 @@ describe('Tooltip', () => {
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       await nextTick();
 
-      const content = container.querySelector('[role="tooltip"]') as HTMLElement;
+      const portal = document.querySelector('.aether-portal');
+      const content = portal?.querySelector('[role="tooltip"]') as HTMLElement;
       expect(content.getAttribute('data-state')).toBe('open');
     });
 
@@ -501,7 +533,8 @@ describe('Tooltip', () => {
         });
 
       const { container } = renderComponent(component);
-      const content = container.querySelector('[role="tooltip"]') as HTMLElement;
+      const portal = document.querySelector('.aether-portal');
+      const content = portal?.querySelector('[role="tooltip"]') as HTMLElement;
       expect(content.getAttribute('data-state')).toBe('closed');
     });
   });
@@ -522,7 +555,8 @@ describe('Tooltip', () => {
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       await nextTick();
 
-      expect(container.querySelector('[role="tooltip"]')).toBeTruthy();
+      const portal = document.querySelector('.aether-portal');
+      expect(portal?.querySelector('[role="tooltip"]')).toBeTruthy();
     });
 
     it('should accept align prop', async () => {
@@ -540,7 +574,8 @@ describe('Tooltip', () => {
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       await nextTick();
 
-      expect(container.querySelector('[role="tooltip"]')).toBeTruthy();
+      const portal = document.querySelector('.aether-portal');
+      expect(portal?.querySelector('[role="tooltip"]')).toBeTruthy();
     });
 
     it('should accept sideOffset prop', async () => {
@@ -558,7 +593,8 @@ describe('Tooltip', () => {
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       await nextTick();
 
-      expect(container.querySelector('[role="tooltip"]')).toBeTruthy();
+      const portal = document.querySelector('.aether-portal');
+      expect(portal?.querySelector('[role="tooltip"]')).toBeTruthy();
     });
 
     it('should accept alignOffset prop', async () => {
@@ -576,7 +612,8 @@ describe('Tooltip', () => {
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       await nextTick();
 
-      expect(container.querySelector('[role="tooltip"]')).toBeTruthy();
+      const portal = document.querySelector('.aether-portal');
+      expect(portal?.querySelector('[role="tooltip"]')).toBeTruthy();
     });
 
     it('should accept avoidCollisions prop', async () => {
@@ -594,7 +631,8 @@ describe('Tooltip', () => {
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       await nextTick();
 
-      expect(container.querySelector('[role="tooltip"]')).toBeTruthy();
+      const portal = document.querySelector('.aether-portal');
+      expect(portal?.querySelector('[role="tooltip"]')).toBeTruthy();
     });
 
     it('should accept collisionPadding prop', async () => {
@@ -612,7 +650,8 @@ describe('Tooltip', () => {
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       await nextTick();
 
-      expect(container.querySelector('[role="tooltip"]')).toBeTruthy();
+      const portal = document.querySelector('.aether-portal');
+      expect(portal?.querySelector('[role="tooltip"]')).toBeTruthy();
     });
   });
 
@@ -632,13 +671,14 @@ describe('Tooltip', () => {
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       await nextTick();
 
-      const content = container.querySelector('[role="tooltip"]') as HTMLElement;
+      const portal = document.querySelector('.aether-portal');
+      const content = portal?.querySelector('[role="tooltip"]') as HTMLElement;
       expect(content).toBeTruthy();
 
       content.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true }));
       await nextTick();
 
-      expect(container.querySelector('[role="tooltip"]')).toBeTruthy();
+      expect(portal?.querySelector('[role="tooltip"]')).toBeTruthy();
     });
 
     it('should close when pointer leaves content', async () => {
@@ -656,11 +696,12 @@ describe('Tooltip', () => {
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       await nextTick();
 
-      const content = container.querySelector('[role="tooltip"]') as HTMLElement;
+      const portal = document.querySelector('.aether-portal');
+      const content = portal?.querySelector('[role="tooltip"]') as HTMLElement;
       content.dispatchEvent(new PointerEvent('pointerleave', { bubbles: true }));
       await nextTick();
 
-      expect(container.querySelector('[role="tooltip"]')).toBeNull();
+      expect(content.style.display).toBe('none');
     });
   });
 
@@ -683,7 +724,8 @@ describe('Tooltip', () => {
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       await nextTick();
 
-      expect(container.querySelector('.custom-tooltip')).toBeTruthy();
+      const portal = document.querySelector('.aether-portal');
+      expect(portal?.querySelector('.custom-tooltip')).toBeTruthy();
     });
 
     it('should forward custom data attributes', async () => {
@@ -704,7 +746,8 @@ describe('Tooltip', () => {
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       await nextTick();
 
-      expect(container.querySelector('[data-testid="custom-content"]')).toBeTruthy();
+      const portal = document.querySelector('.aether-portal');
+      expect(portal?.querySelector('[data-testid="custom-content"]')).toBeTruthy();
     });
 
     it('should forward style prop', async () => {
@@ -725,7 +768,8 @@ describe('Tooltip', () => {
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       await nextTick();
 
-      const content = container.querySelector('[role="tooltip"]') as HTMLElement;
+      const portal = document.querySelector('.aether-portal');
+      const content = portal?.querySelector('[role="tooltip"]') as HTMLElement;
       expect(content.style.background).toBe('black');
       expect(content.style.color).toBe('white');
     });
@@ -752,7 +796,8 @@ describe('Tooltip', () => {
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       await nextTick();
 
-      expect(container.querySelector('[data-tooltip-arrow]')).toBeTruthy();
+      const portal = document.querySelector('.aether-portal');
+      expect(portal?.querySelector('[data-tooltip-arrow]')).toBeTruthy();
     });
 
     it('should accept width prop', async () => {
@@ -775,7 +820,8 @@ describe('Tooltip', () => {
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       await nextTick();
 
-      expect(container.querySelector('[data-tooltip-arrow]')).toBeTruthy();
+      const portal = document.querySelector('.aether-portal');
+      expect(portal?.querySelector('[data-tooltip-arrow]')).toBeTruthy();
     });
 
     it('should accept height prop', async () => {
@@ -798,7 +844,8 @@ describe('Tooltip', () => {
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       await nextTick();
 
-      expect(container.querySelector('[data-tooltip-arrow]')).toBeTruthy();
+      const portal = document.querySelector('.aether-portal');
+      expect(portal?.querySelector('[data-tooltip-arrow]')).toBeTruthy();
     });
 
     it('should forward custom class names', async () => {
@@ -821,7 +868,8 @@ describe('Tooltip', () => {
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       await nextTick();
 
-      expect(container.querySelector('.custom-arrow')).toBeTruthy();
+      const portal = document.querySelector('.aether-portal');
+      expect(portal?.querySelector('.custom-arrow')).toBeTruthy();
     });
   });
 
@@ -855,7 +903,8 @@ describe('Tooltip', () => {
       triggers[0].dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       await nextTick();
 
-      expect(container.querySelectorAll('[role="tooltip"]').length).toBe(1);
+      const portal = document.querySelector('.aether-portal');
+      expect(portal?.querySelectorAll('[role="tooltip"]').length).toBe(1);
     });
 
     it('should handle empty tooltip content', async () => {
@@ -873,7 +922,8 @@ describe('Tooltip', () => {
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       await nextTick();
 
-      const content = container.querySelector('[role="tooltip"]');
+      const portal = document.querySelector('.aether-portal');
+      const content = portal?.querySelector('[role="tooltip"]');
       expect(content).toBeTruthy();
       expect(content?.textContent).toBe('');
     });
@@ -894,7 +944,8 @@ describe('Tooltip', () => {
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       await nextTick();
 
-      const content = container.querySelector('[role="tooltip"]');
+      const portal = document.querySelector('.aether-portal');
+      const content = portal?.querySelector('[role="tooltip"]');
       expect(content?.textContent).toBe(longContent);
     });
 
@@ -913,7 +964,8 @@ describe('Tooltip', () => {
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       await nextTick();
 
-      const content = container.querySelector('[role="tooltip"]');
+      const portal = document.querySelector('.aether-portal');
+      const content = portal?.querySelector('[role="tooltip"]');
       expect(content?.textContent).toBe('<script>alert("xss")</script>');
       expect(container.querySelector('script')).toBeNull();
     });
@@ -938,7 +990,8 @@ describe('Tooltip', () => {
       vi.advanceTimersByTime(700);
       await nextTick();
 
-      expect(container.querySelector('[role="tooltip"]')).toBeTruthy();
+      const portal = document.querySelector('.aether-portal');
+      expect(portal?.querySelector('[role="tooltip"]')).toBeTruthy();
     });
 
     it('should handle tooltip with null children', () => {
@@ -987,7 +1040,8 @@ describe('Tooltip', () => {
         trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
         await nextTick();
 
-        expect(container.querySelector('[role="tooltip"]')).toBeTruthy();
+        const portal = document.querySelector('.aether-portal');
+        expect(portal?.querySelector('[role="tooltip"]')).toBeTruthy();
       }
     });
 
@@ -1011,7 +1065,8 @@ describe('Tooltip', () => {
         trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
         await nextTick();
 
-        expect(container.querySelector('[role="tooltip"]')).toBeTruthy();
+        const portal = document.querySelector('.aether-portal');
+        expect(portal?.querySelector('[role="tooltip"]')).toBeTruthy();
       }
     });
   });
@@ -1036,7 +1091,8 @@ describe('Tooltip', () => {
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       await nextTick();
 
-      expect(container.querySelector('[role="tooltip"]')).toBeTruthy();
+      const portal = document.querySelector('.aether-portal');
+      expect(portal?.querySelector('[role="tooltip"]')).toBeTruthy();
     });
 
     it('should work in forms', async () => {
@@ -1061,7 +1117,8 @@ describe('Tooltip', () => {
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       await nextTick();
 
-      expect(container.querySelector('[role="tooltip"]')).toBeTruthy();
+      const portal = document.querySelector('.aether-portal');
+      expect(portal?.querySelector('[role="tooltip"]')).toBeTruthy();
     });
 
     it('should maintain accessibility when nested in complex layouts', async () => {
@@ -1085,7 +1142,8 @@ describe('Tooltip', () => {
       trigger.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       await nextTick();
 
-      const content = container.querySelector('[role="tooltip"]');
+      const portal = document.querySelector('.aether-portal');
+      const content = portal?.querySelector('[role="tooltip"]');
       expect(content).toBeTruthy();
       expect(trigger.getAttribute('aria-describedby')).toBe(content?.id);
     });

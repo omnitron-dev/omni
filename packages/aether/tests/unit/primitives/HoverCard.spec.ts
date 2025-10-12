@@ -911,8 +911,12 @@ describe('HoverCard Primitive', () => {
         });
       renderComponent(component);
 
+      // Portal always renders, but content is hidden via display:none
       const portal = document.querySelector('.aether-portal');
-      expect(portal).toBeFalsy();
+      expect(portal).toBeTruthy();
+
+      const content = portal?.querySelector('[role="dialog"]') as HTMLElement;
+      expect(content?.style.display).toBe('none');
     });
 
     it('should render content when open', () => {

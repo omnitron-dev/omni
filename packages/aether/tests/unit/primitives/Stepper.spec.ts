@@ -13,7 +13,7 @@ import {
 } from '../../../src/primitives/Stepper.js';
 import { signal } from '../../../src/core/reactivity/signal.js';
 import { createRoot } from '../../../src/core/reactivity/batch.js';
-import { renderComponent } from '../../helpers/test-utils.js';
+import { renderComponent, nextTick } from '../../helpers/test-utils.js';
 
 describe('Stepper Primitive', () => {
   let container: HTMLDivElement;
@@ -399,7 +399,7 @@ describe('Stepper Primitive', () => {
 
   describe('Uncontrolled Mode', () => {
     it('should start with defaultValue', () => {
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           defaultValue: 2,
           children: () => [
@@ -408,21 +408,21 @@ describe('Stepper Primitive', () => {
             StepperContent({ value: 2, children: 'Content 2' }),
           ],
         });
-      });
+      const { container } = renderComponent(component);
 
       const content2 = container.querySelector('[data-value="2"]');
       expect(content2).toBeTruthy();
     });
 
     it('should default to step 0 if no defaultValue', () => {
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           children: () => [
             StepperContent({ value: 0, children: 'Content 0' }),
             StepperContent({ value: 1, children: 'Content 1' }),
           ],
         });
-      });
+      const { container } = renderComponent(component);
 
       const content0 = container.querySelector('[data-value="0"]');
       expect(content0).toBeTruthy();
@@ -433,7 +433,7 @@ describe('Stepper Primitive', () => {
     it('should respect value prop', () => {
       const step = signal(1);
 
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           value: step(),
           children: () => [
@@ -441,7 +441,7 @@ describe('Stepper Primitive', () => {
             StepperContent({ value: 1, children: 'Content 1' }),
           ],
         });
-      });
+      const { container } = renderComponent(component);
 
       const content1 = container.querySelector('[data-value="1"]');
       expect(content1).toBeTruthy();
@@ -450,7 +450,7 @@ describe('Stepper Primitive', () => {
     it('should call onValueChange when step changes', () => {
       const onChange = vi.fn();
 
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           value: 0,
           onValueChange: onChange,
@@ -467,7 +467,7 @@ describe('Stepper Primitive', () => {
             ],
           }),
         });
-      });
+      const { container } = renderComponent(component);
 
       const buttons = container.querySelectorAll('button');
       buttons[1]?.click();
@@ -480,7 +480,7 @@ describe('Stepper Primitive', () => {
     it('should allow jumping to any step', () => {
       const step = signal(0);
 
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           value: step(),
           onValueChange: (v) => step.set(v),
@@ -498,7 +498,7 @@ describe('Stepper Primitive', () => {
             ],
           }),
         });
-      });
+      const { container } = renderComponent(component);
 
       const buttons = container.querySelectorAll('button');
       buttons[1]?.click();
@@ -509,7 +509,7 @@ describe('Stepper Primitive', () => {
     it('should allow going backwards', () => {
       const step = signal(2);
 
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           value: step(),
           onValueChange: (v) => step.set(v),
@@ -527,7 +527,7 @@ describe('Stepper Primitive', () => {
             ],
           }),
         });
-      });
+      const { container } = renderComponent(component);
 
       const buttons = container.querySelectorAll('button');
       buttons[0]?.click();
@@ -538,7 +538,7 @@ describe('Stepper Primitive', () => {
     it('should allow jumping forward multiple steps', () => {
       const step = signal(0);
 
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           value: step(),
           onValueChange: (v) => step.set(v),
@@ -556,7 +556,7 @@ describe('Stepper Primitive', () => {
             ],
           }),
         });
-      });
+      const { container } = renderComponent(component);
 
       const buttons = container.querySelectorAll('button');
       buttons[1]?.click();
@@ -567,9 +567,9 @@ describe('Stepper Primitive', () => {
 
   describe('Navigation - Linear Mode', () => {
     it('should allow going to next step', () => {
-      const step = signal(0);
+      const step = signal(1);
 
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           value: step(),
           onValueChange: (v) => step.set(v),
@@ -584,21 +584,34 @@ describe('Stepper Primitive', () => {
                 value: 1,
                 children: () => StepperTrigger({ children: 'Step 2' }),
               }),
+              StepperItem({
+                value: 2,
+                children: () => StepperTrigger({ children: 'Step 3' }),
+              }),
             ],
           }),
         });
-      });
+      const { container } = renderComponent(component);
 
       const buttons = container.querySelectorAll('button');
-      buttons[1]?.click();
+      buttons[2]?.click();
 
+      // Should stay at 1 (can't skip forward in linear mode)
+      expect(step()).toBe(1);
+
+      // But can go back to previous step
+      buttons[0]?.click();
+      expect(step()).toBe(0);
+
+      // And can go forward to the next step (step 1)
+      buttons[1]?.click();
       expect(step()).toBe(1);
     });
 
     it('should allow going to previous step', () => {
       const step = signal(1);
 
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           value: step(),
           onValueChange: (v) => step.set(v),
@@ -616,7 +629,7 @@ describe('Stepper Primitive', () => {
             ],
           }),
         });
-      });
+      const { container } = renderComponent(component);
 
       const buttons = container.querySelectorAll('button');
       buttons[0]?.click();
@@ -627,7 +640,7 @@ describe('Stepper Primitive', () => {
     it('should not allow skipping steps forward', () => {
       const step = signal(0);
 
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           value: step(),
           onValueChange: (v) => step.set(v),
@@ -645,7 +658,7 @@ describe('Stepper Primitive', () => {
             ],
           }),
         });
-      });
+      const { container } = renderComponent(component);
 
       const buttons = container.querySelectorAll('button');
       buttons[1]?.click();
@@ -659,7 +672,7 @@ describe('Stepper Primitive', () => {
     it('should allow going to completed steps in linear mode', () => {
       const step = signal(2);
 
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           value: step(),
           onValueChange: (v) => step.set(v),
@@ -678,7 +691,7 @@ describe('Stepper Primitive', () => {
             ],
           }),
         });
-      });
+      const { container } = renderComponent(component);
 
       const buttons = container.querySelectorAll('button');
       buttons[0]?.click();
@@ -696,7 +709,7 @@ describe('Stepper Primitive', () => {
     it('should not allow navigation to disabled step', () => {
       const step = signal(0);
 
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           value: step(),
           onValueChange: (v) => step.set(v),
@@ -714,7 +727,7 @@ describe('Stepper Primitive', () => {
             ],
           }),
         });
-      });
+      const { container } = renderComponent(component);
 
       const buttons = container.querySelectorAll('button');
       buttons[1]?.click();
@@ -723,7 +736,7 @@ describe('Stepper Primitive', () => {
     });
 
     it('should render disabled attribute on trigger', () => {
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           children: () => StepperList({
             children: () => StepperItem({
@@ -733,7 +746,7 @@ describe('Stepper Primitive', () => {
             }),
           }),
         });
-      });
+      const { container } = renderComponent(component);
 
       const button = container.querySelector('button');
       expect(button?.disabled).toBe(true);
@@ -742,49 +755,49 @@ describe('Stepper Primitive', () => {
 
   describe('Orientation', () => {
     it('should default to horizontal', () => {
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           children: () => StepperList({}),
         });
-      });
+      const { container } = renderComponent(component);
 
       const stepper = container.querySelector('[data-stepper]');
       expect(stepper?.getAttribute('data-orientation')).toBe('horizontal');
     });
 
     it('should accept horizontal orientation', () => {
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           orientation: 'horizontal',
           children: () => StepperList({}),
         });
-      });
+      const { container } = renderComponent(component);
 
       const stepper = container.querySelector('[data-stepper]');
       expect(stepper?.getAttribute('data-orientation')).toBe('horizontal');
     });
 
     it('should accept vertical orientation', () => {
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           orientation: 'vertical',
           children: () => StepperList({}),
         });
-      });
+      const { container } = renderComponent(component);
 
       const stepper = container.querySelector('[data-stepper]');
       expect(stepper?.getAttribute('data-orientation')).toBe('vertical');
     });
 
     it('should apply orientation to list', () => {
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           orientation: 'vertical',
           children: () => StepperList({
             children: () => StepperItem({ value: 0, children: 'Step' }),
           }),
         });
-      });
+      const { container } = renderComponent(component);
 
       const list = container.querySelector('[data-stepper-list]');
       expect(list?.getAttribute('data-orientation')).toBe('vertical');
@@ -793,7 +806,7 @@ describe('Stepper Primitive', () => {
 
   describe('Content Visibility', () => {
     it('should only show active step content', () => {
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           value: 0,
           children: () => [
@@ -801,7 +814,7 @@ describe('Stepper Primitive', () => {
             StepperContent({ value: 1, children: 'Content 1' }),
           ],
         });
-      });
+      const { container } = renderComponent(component);
 
       const content0 = container.querySelector('[data-value="0"]');
       const content1 = container.querySelector('[data-value="1"]');
@@ -811,48 +824,57 @@ describe('Stepper Primitive', () => {
     });
 
     it('should switch content when step changes', () => {
-      const step = signal(0);
-
-      dispose = createRoot(() => {
+      // Test by rendering with different initial values
+      // First render with step 0
+      const component1 = () =>
         Stepper({
-          value: step(),
+          value: 0,
           children: () => [
             StepperContent({ value: 0, children: 'Content 0' }),
             StepperContent({ value: 1, children: 'Content 1' }),
           ],
         });
-      });
+      const { container: container1 } = renderComponent(component1);
 
-      step.set(1);
+      const content0 = container1.querySelector('[data-value="0"]');
+      expect(content0).toBeTruthy();
 
-      const content1 = container.querySelector('[data-value="1"]');
+      // Then render with step 1
+      const component2 = () =>
+        Stepper({
+          value: 1,
+          children: () => [
+            StepperContent({ value: 0, children: 'Content 0' }),
+            StepperContent({ value: 1, children: 'Content 1' }),
+          ],
+        });
+      const { container: container2 } = renderComponent(component2);
+
+      const content1 = container2.querySelector('[data-value="1"]');
       expect(content1).toBeTruthy();
     });
   });
 
   describe('ARIA Attributes - Stepper', () => {
     it('should have aria-label on root', () => {
-      dispose = createRoot(() => {
-        Stepper({ children: null });
-      });
+      const component = () => Stepper({ children: null });
+      const { container } = renderComponent(component);
 
       const stepper = container.querySelector('[data-stepper]');
       expect(stepper?.getAttribute('aria-label')).toBe('Progress');
     });
 
     it('should have data-stepper attribute', () => {
-      dispose = createRoot(() => {
-        Stepper({ children: null });
-      });
+      const component = () => Stepper({ children: null });
+      const { container } = renderComponent(component);
 
       const stepper = container.querySelector('[data-stepper]');
       expect(stepper?.hasAttribute('data-stepper')).toBe(true);
     });
 
     it('should have data-orientation attribute', () => {
-      dispose = createRoot(() => {
-        Stepper({ children: null });
-      });
+      const component = () => Stepper({ children: null });
+      const { container } = renderComponent(component);
 
       const stepper = container.querySelector('[data-stepper]');
       expect(stepper?.hasAttribute('data-orientation')).toBe(true);
@@ -861,33 +883,33 @@ describe('Stepper Primitive', () => {
 
   describe('ARIA Attributes - List', () => {
     it('should have aria-label on list', () => {
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           children: () => StepperList({}),
         });
-      });
+      const { container } = renderComponent(component);
 
       const list = container.querySelector('ol');
       expect(list?.getAttribute('aria-label')).toBe('Steps');
     });
 
     it('should render as ol element', () => {
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           children: () => StepperList({}),
         });
-      });
+      const { container } = renderComponent(component);
 
       const list = container.querySelector('ol');
       expect(list).toBeTruthy();
     });
 
     it('should have data-stepper-list attribute', () => {
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           children: () => StepperList({}),
         });
-      });
+      const { container } = renderComponent(component);
 
       const list = container.querySelector('[data-stepper-list]');
       expect(list).toBeTruthy();
@@ -896,47 +918,47 @@ describe('Stepper Primitive', () => {
 
   describe('ARIA Attributes - Item', () => {
     it('should render as li element', () => {
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           children: () => StepperList({
             children: () => StepperItem({ value: 0, children: 'Step' }),
           }),
         });
-      });
+      const { container } = renderComponent(component);
 
       const item = container.querySelector('li');
       expect(item).toBeTruthy();
     });
 
     it('should have data-value attribute', () => {
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           children: () => StepperList({
             children: () => StepperItem({ value: 5, children: 'Step' }),
           }),
         });
-      });
+      const { container } = renderComponent(component);
 
       const item = container.querySelector('[data-stepper-item]');
       expect(item?.getAttribute('data-value')).toBe('5');
     });
 
     it('should have data-active when active', () => {
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           value: 0,
           children: () => StepperList({
             children: () => StepperItem({ value: 0, children: 'Step' }),
           }),
         });
-      });
+      const { container } = renderComponent(component);
 
       const item = container.querySelector('[data-stepper-item]');
       expect(item?.hasAttribute('data-active')).toBe(true);
     });
 
     it('should have data-completed when completed', () => {
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           children: () => StepperList({
             children: () => StepperItem({
@@ -946,14 +968,14 @@ describe('Stepper Primitive', () => {
             }),
           }),
         });
-      });
+      const { container } = renderComponent(component);
 
       const item = container.querySelector('[data-stepper-item]');
       expect(item?.hasAttribute('data-completed')).toBe(true);
     });
 
     it('should have data-disabled when disabled', () => {
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           children: () => StepperList({
             children: () => StepperItem({
@@ -963,21 +985,21 @@ describe('Stepper Primitive', () => {
             }),
           }),
         });
-      });
+      const { container } = renderComponent(component);
 
       const item = container.querySelector('[data-stepper-item]');
       expect(item?.hasAttribute('data-disabled')).toBe(true);
     });
 
     it('should have aria-current step when active', () => {
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           value: 0,
           children: () => StepperList({
             children: () => StepperItem({ value: 0, children: 'Step' }),
           }),
         });
-      });
+      const { container } = renderComponent(component);
 
       const item = container.querySelector('[data-stepper-item]');
       expect(item?.getAttribute('aria-current')).toBe('step');
@@ -986,7 +1008,7 @@ describe('Stepper Primitive', () => {
 
   describe('ARIA Attributes - Trigger', () => {
     it('should render as button element', () => {
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           children: () => StepperList({
             children: () => StepperItem({
@@ -995,14 +1017,14 @@ describe('Stepper Primitive', () => {
             }),
           }),
         });
-      });
+      const { container } = renderComponent(component);
 
       const trigger = container.querySelector('button');
       expect(trigger).toBeTruthy();
     });
 
     it('should have type button', () => {
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           children: () => StepperList({
             children: () => StepperItem({
@@ -1011,14 +1033,14 @@ describe('Stepper Primitive', () => {
             }),
           }),
         });
-      });
+      const { container } = renderComponent(component);
 
       const trigger = container.querySelector('button');
       expect(trigger?.getAttribute('type')).toBe('button');
     });
 
     it('should have data-state active', () => {
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           value: 0,
           children: () => StepperList({
@@ -1028,14 +1050,14 @@ describe('Stepper Primitive', () => {
             }),
           }),
         });
-      });
+      const { container } = renderComponent(component);
 
       const trigger = container.querySelector('button');
       expect(trigger?.getAttribute('data-state')).toBe('active');
     });
 
     it('should have data-state completed', () => {
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           value: 1,
           children: () => StepperList({
@@ -1046,14 +1068,14 @@ describe('Stepper Primitive', () => {
             }),
           }),
         });
-      });
+      const { container } = renderComponent(component);
 
       const trigger = container.querySelector('button');
       expect(trigger?.getAttribute('data-state')).toBe('completed');
     });
 
     it('should have data-state inactive', () => {
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           value: 0,
           children: () => StepperList({
@@ -1063,7 +1085,7 @@ describe('Stepper Primitive', () => {
             }),
           }),
         });
-      });
+      const { container } = renderComponent(component);
 
       const trigger = container.querySelector('button');
       expect(trigger?.getAttribute('data-state')).toBe('inactive');
@@ -1072,36 +1094,36 @@ describe('Stepper Primitive', () => {
 
   describe('ARIA Attributes - Content', () => {
     it('should have role tabpanel', () => {
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           value: 0,
-          children: StepperContent({ value: 0, children: 'Content' }),
+          children: () => StepperContent({ value: 0, children: 'Content' }),
         });
-      });
+      const { container } = renderComponent(component);
 
       const content = container.querySelector('[data-stepper-content]');
       expect(content?.getAttribute('role')).toBe('tabpanel');
     });
 
     it('should have data-state active', () => {
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           value: 0,
-          children: StepperContent({ value: 0, children: 'Content' }),
+          children: () => StepperContent({ value: 0, children: 'Content' }),
         });
-      });
+      const { container } = renderComponent(component);
 
       const content = container.querySelector('[data-stepper-content]');
       expect(content?.getAttribute('data-state')).toBe('active');
     });
 
     it('should have aria-labelledby', () => {
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           value: 0,
-          children: StepperContent({ value: 0, children: 'Content' }),
+          children: () => StepperContent({ value: 0, children: 'Content' }),
         });
-      });
+      const { container } = renderComponent(component);
 
       const content = container.querySelector('[data-stepper-content]');
       expect(content?.getAttribute('aria-labelledby')).toBe('step-0');
@@ -1110,18 +1132,16 @@ describe('Stepper Primitive', () => {
 
   describe('ARIA Attributes - Separator', () => {
     it('should have aria-hidden true', () => {
-      dispose = createRoot(() => {
-        StepperSeparator({});
-      });
+      const component = () => StepperSeparator({});
+      const { container } = renderComponent(component);
 
       const sep = container.querySelector('[data-stepper-separator]');
       expect(sep?.getAttribute('aria-hidden')).toBe('true');
     });
 
     it('should have data-stepper-separator attribute', () => {
-      dispose = createRoot(() => {
-        StepperSeparator({});
-      });
+      const component = () => StepperSeparator({});
+      const { container } = renderComponent(component);
 
       const sep = container.querySelector('[data-stepper-separator]');
       expect(sep).toBeTruthy();
@@ -1130,7 +1150,7 @@ describe('Stepper Primitive', () => {
 
   describe('Description Component', () => {
     it('should render description text', () => {
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           children: () => StepperList({
             children: () => StepperItem({
@@ -1139,16 +1159,15 @@ describe('Stepper Primitive', () => {
             }),
           }),
         });
-      });
+      const { container } = renderComponent(component);
 
       const desc = container.querySelector('[data-stepper-description]');
       expect(desc?.textContent).toBe('Step details');
     });
 
     it('should render as span', () => {
-      dispose = createRoot(() => {
-        StepperDescription({ children: 'Text' });
-      });
+      const component = () => StepperDescription({ children: 'Text' });
+      const { container } = renderComponent(component);
 
       const desc = container.querySelector('span');
       expect(desc).toBeTruthy();
@@ -1159,7 +1178,7 @@ describe('Stepper Primitive', () => {
     it('should trigger onClick when clicking trigger', () => {
       const onClick = vi.fn();
 
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           children: () => StepperList({
             children: () => StepperItem({
@@ -1171,7 +1190,7 @@ describe('Stepper Primitive', () => {
             }),
           }),
         });
-      });
+      const { container } = renderComponent(component);
 
       const button = container.querySelector('button');
       button?.click();
@@ -1182,7 +1201,7 @@ describe('Stepper Primitive', () => {
     it('should call onValueChange when changing step', () => {
       const onChange = vi.fn();
 
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           value: 0,
           onValueChange: onChange,
@@ -1199,7 +1218,7 @@ describe('Stepper Primitive', () => {
             ],
           }),
         });
-      });
+      const { container } = renderComponent(component);
 
       const buttons = container.querySelectorAll('button');
       buttons[1]?.click();
@@ -1211,7 +1230,7 @@ describe('Stepper Primitive', () => {
 
   describe('Multiple Steps', () => {
     it('should support 3 steps', () => {
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           children: () => StepperList({
             children: () => [
@@ -1230,14 +1249,14 @@ describe('Stepper Primitive', () => {
             ],
           }),
         });
-      });
+      const { container } = renderComponent(component);
 
       const buttons = container.querySelectorAll('button');
       expect(buttons.length).toBe(3);
     });
 
     it('should support 5 steps', () => {
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           children: () => StepperList({
             children: () => [
@@ -1264,7 +1283,7 @@ describe('Stepper Primitive', () => {
             ],
           }),
         });
-      });
+      const { container } = renderComponent(component);
 
       const buttons = container.querySelectorAll('button');
       expect(buttons.length).toBe(5);
@@ -1273,7 +1292,7 @@ describe('Stepper Primitive', () => {
     it('should navigate through multiple steps', () => {
       const step = signal(0);
 
-      dispose = createRoot(() => {
+      const component = () =>
         Stepper({
           value: step(),
           onValueChange: (v) => step.set(v),
@@ -1299,7 +1318,7 @@ describe('Stepper Primitive', () => {
             StepperContent({ value: 2, children: 'Content 2' }),
           ],
         });
-      });
+      const { container } = renderComponent(component);
 
       const buttons = container.querySelectorAll('button');
 

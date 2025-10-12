@@ -336,6 +336,8 @@ export const HoverCardContent = defineComponent<HoverCardContentProps>((props) =
       effect(() => {
         const isOpen = ctx.isOpen();
         el.setAttribute('data-state', isOpen ? 'open' : 'closed');
+        // Control visibility via display style instead of conditional rendering
+        el.style.display = isOpen ? '' : 'none';
       });
     };
 
@@ -347,15 +349,12 @@ export const HoverCardContent = defineComponent<HoverCardContentProps>((props) =
       role: 'dialog',
       'aria-labelledby': ctx.triggerId,
       'data-state': ctx.isOpen() ? 'open' : 'closed',
+      style: { display: ctx.isOpen() ? '' : 'none', ...((props.style as any) || {}) },
       onPointerEnter: handlePointerEnter,
       onPointerLeave: handlePointerLeave,
     });
 
-    // Only render portal when open
-    if (!ctx.isOpen()) {
-      return null;
-    }
-
+    // Always render portal, control visibility via display:none
     return jsx(Portal, {
       children: contentDiv,
     });

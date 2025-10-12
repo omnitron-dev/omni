@@ -13,6 +13,7 @@ import { signal } from '../core/reactivity/signal.js';
 import { onMount } from '../core/component/lifecycle.js';
 import { Portal } from '../control-flow/Portal.js';
 import { jsx } from '../jsx-runtime.js';
+import { effect } from '../core/reactivity/effect.js';
 import {
   generateId,
   calculatePosition,
@@ -272,73 +273,81 @@ export const TooltipTrigger = defineComponent<{ children: any;[key: string]: any
  * Tooltip Content component
  */
 export const TooltipContent = defineComponent<TooltipContentProps>((props) => {
-  const ctx = useContext(TooltipContext);
+  // Defer context access to render time
+  let ctx: TooltipContextValue;
   let contentRef: HTMLElement | null = null;
   let triggerElement: HTMLElement | null = null;
 
-  const updatePosition = () => {
-    if (!contentRef || !triggerElement) return;
-
-    const side = props.side || 'top';
-    const align = props.align || 'center';
-    const sideOffset = props.sideOffset ?? 4;
-    const alignOffset = props.alignOffset ?? 0;
-
-    const position = calculatePosition(triggerElement, contentRef, {
-      side,
-      align,
-      sideOffset,
-      alignOffset,
-      avoidCollisions: props.avoidCollisions !== false,
-      collisionPadding: props.collisionPadding ?? 8,
-    });
-
-    applyPosition(contentRef, position);
-  };
-
   onMount(() => {
+    if (!ctx) return; // Context not available yet
+
     triggerElement = document.getElementById(ctx.triggerId);
-    // updatePosition will be called by refCallback when content is rendered
+
+    if (contentRef && triggerElement && ctx.isOpen()) {
+      const side = props.side || 'top';
+      const align = props.align || 'center';
+      const sideOffset = props.sideOffset ?? 4;
+      const alignOffset = props.alignOffset ?? 0;
+
+      const position = calculatePosition(triggerElement, contentRef, {
+        side,
+        align,
+        sideOffset,
+        alignOffset,
+        avoidCollisions: props.avoidCollisions !== false,
+        collisionPadding: props.collisionPadding ?? 8,
+      });
+
+      applyPosition(contentRef, position);
+    }
   });
 
-  const handlePointerEnter = () => {
-    // Keep tooltip open when hovering over it
-  };
-
-  const handlePointerLeave = () => {
-    ctx.close();
-  };
-
-  const refCallback = (el: HTMLElement | null) => {
-    contentRef = el;
-    if (el) {
-      updatePosition();
-    }
-  };
-
   return () => {
-    const { children, side, align, sideOffset, alignOffset, avoidCollisions, collisionPadding, forceMount, ...restProps } = props;
+    // Get context at render time
+    ctx = useContext(TooltipContext);
 
-    // Conditional rendering
-    if (!ctx.isOpen() && !forceMount) {
-      return null;
-    }
+    const handlePointerEnter = () => {
+      // Keep tooltip open when hovering over it
+    };
 
-    // Render without Portal to avoid timing issues
-    return jsx('div', {
-      ...restProps,
-      ref: refCallback as any,
+    const handlePointerLeave = () => {
+      ctx.close();
+    };
+
+    // Create refCallback to set up effect ONCE on mount
+    const refCallback = (el: HTMLElement | null) => {
+      contentRef = el;
+      if (!el) return;
+
+      // Set up effect to update visibility when isOpen changes
+      effect(() => {
+        const isOpen = ctx.isOpen();
+        el.setAttribute('data-state', isOpen ? 'open' : 'closed');
+        // Control visibility via display style instead of conditional rendering
+        el.style.display = (isOpen || props.forceMount) ? '' : 'none';
+      });
+    };
+
+    // Create the content div
+    const contentDiv = jsx('div', {
+      ...props,
+      ref: refCallback,
       id: ctx.contentId,
       role: 'tooltip',
       'data-state': ctx.isOpen() ? 'open' : 'closed',
       style: {
         position: 'absolute',
         zIndex: 9999,
-        ...restProps.style,
+        display: (ctx.isOpen() || props.forceMount) ? '' : 'none',
+        ...((props.style as any) || {}),
       },
       onPointerEnter: handlePointerEnter,
       onPointerLeave: handlePointerLeave,
-      children,
+    });
+
+    // Always render portal, control visibility via display:none
+    return jsx(Portal, {
+      children: contentDiv,
     });
   };
 });

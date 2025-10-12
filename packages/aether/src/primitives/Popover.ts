@@ -59,7 +59,12 @@ export const PopoverContext = createContext<PopoverContextValue>(
  */
 export interface PopoverProps {
   /**
-   * Initial open state
+   * Controlled open state
+   */
+  open?: boolean;
+
+  /**
+   * Initial open state (uncontrolled)
    */
   defaultOpen?: boolean;
 
@@ -83,26 +88,36 @@ export interface PopoverProps {
  * Popover root component
  */
 export const Popover = defineComponent<PopoverProps>((props) => {
-  const isOpen = signal(props.defaultOpen || false);
+  const internalOpen = signal(props.defaultOpen || false);
   const anchorElement = signal<HTMLElement | null>(null);
 
   const baseId = generateId('popover');
   const triggerId = `${baseId}-trigger`;
   const contentId = `${baseId}-content`;
 
+  // Controlled/Uncontrolled pattern
+  const isControlled = () => props.open !== undefined;
+  const currentOpen = () => (isControlled() ? props.open ?? false : internalOpen());
+
   const contextValue: PopoverContextValue = {
-    isOpen: () => isOpen(),
+    isOpen: currentOpen,
     open: () => {
-      isOpen.set(true);
+      if (!isControlled()) {
+        internalOpen.set(true);
+      }
       props.onOpenChange?.(true);
     },
     close: () => {
-      isOpen.set(false);
+      if (!isControlled()) {
+        internalOpen.set(false);
+      }
       props.onOpenChange?.(false);
     },
     toggle: () => {
-      const newState = !isOpen();
-      isOpen.set(newState);
+      const newState = !currentOpen();
+      if (!isControlled()) {
+        internalOpen.set(newState);
+      }
       props.onOpenChange?.(newState);
     },
     triggerId,

@@ -101,8 +101,8 @@ describe('Menubar', () => {
 
       const { container } = renderComponent(component);
 
-      // With Pattern 18, content exists but is hidden
-      const content = container.querySelector('[data-menubar-content]') as HTMLElement;
+      // Content is portaled to document.body, not in container
+      const content = document.querySelector('[data-menubar-content]') as HTMLElement;
       expect(content).toBeTruthy();
       expect(content.style.display).toBe('none');
     });
@@ -126,7 +126,7 @@ describe('Menubar', () => {
       const trigger = container.querySelector('[data-menubar-trigger]') as HTMLElement;
       trigger.click();
 
-      const content = container.querySelector('[data-menubar-content]');
+      const content = document.querySelector('[data-menubar-content]');
       expect(content).toBeTruthy();
       expect(content?.getAttribute('role')).toBe('menu');
     });
@@ -177,12 +177,12 @@ describe('Menubar', () => {
 
       // Click to open
       trigger.click();
-      let content = container.querySelector('[data-menubar-content]');
+      let content = document.querySelector('[data-menubar-content]');
       expect(content).toBeTruthy();
 
       // Click to close
       trigger.click();
-      content = container.querySelector('[data-menubar-content]');
+      content = document.querySelector('[data-menubar-content]');
       expect(content).toBeFalsy();
     });
   });
@@ -211,7 +211,7 @@ describe('Menubar', () => {
       const trigger = container.querySelector('[data-menubar-trigger]') as HTMLElement;
       trigger.click();
 
-      const items = container.querySelectorAll('[data-menubar-item]');
+      const items = document.querySelectorAll('[data-menubar-item]');
       expect(items.length).toBe(3);
       expect(items[0]?.textContent).toBe('New');
       expect(items[1]?.textContent).toBe('Open');
@@ -235,7 +235,7 @@ describe('Menubar', () => {
       const trigger = container.querySelector('[data-menubar-trigger]') as HTMLElement;
       trigger.click();
 
-      const content = container.querySelector('[data-menubar-content]');
+      const content = document.querySelector('[data-menubar-content]');
       expect(content?.getAttribute('role')).toBe('menu');
       expect(content?.hasAttribute('aria-labelledby')).toBe(true);
       expect(content?.getAttribute('data-state')).toBe('open');
@@ -260,7 +260,7 @@ describe('Menubar', () => {
       const trigger = container.querySelector('[data-menubar-trigger]') as HTMLElement;
       trigger.click();
 
-      const item = container.querySelector('[data-menubar-item]');
+      const item = document.querySelector('[data-menubar-item]');
       expect(item?.getAttribute('role')).toBe('menuitem');
       expect(item?.getAttribute('tabIndex')).toBe('0');
     });
@@ -291,7 +291,7 @@ describe('Menubar', () => {
       const trigger = container.querySelector('[data-menubar-trigger]') as HTMLElement;
       trigger.click();
 
-      const item = container.querySelector('[data-menubar-item]') as HTMLElement;
+      const item = document.querySelector('[data-menubar-item]') as HTMLElement;
       item.click();
 
       expect(clicked).toBe(true);
@@ -320,13 +320,13 @@ describe('Menubar', () => {
       const trigger = container.querySelector('[data-menubar-trigger]') as HTMLElement;
       trigger.click();
 
-      let content = container.querySelector('[data-menubar-content]');
+      let content = document.querySelector('[data-menubar-content]');
       expect(content).toBeTruthy();
 
-      const item = container.querySelector('[data-menubar-item]') as HTMLElement;
+      const item = document.querySelector('[data-menubar-item]') as HTMLElement;
       item.click();
 
-      content = container.querySelector('[data-menubar-content]');
+      content = document.querySelector('[data-menubar-content]');
       expect(content).toBeFalsy();
     });
 
@@ -357,7 +357,7 @@ describe('Menubar', () => {
       const trigger = container.querySelector('[data-menubar-trigger]') as HTMLElement;
       trigger.click();
 
-      const item = container.querySelector('[data-menubar-item]') as HTMLElement;
+      const item = document.querySelector('[data-menubar-item]') as HTMLElement;
       expect(item.hasAttribute('data-disabled')).toBe(true);
       expect(item.getAttribute('aria-disabled')).toBe('true');
       expect(item.getAttribute('tabIndex')).toBe('-1');
@@ -391,7 +391,7 @@ describe('Menubar', () => {
       const trigger = container.querySelector('[data-menubar-trigger]') as HTMLElement;
       trigger.click();
 
-      const separator = container.querySelector('[data-menubar-separator]');
+      const separator = document.querySelector('[data-menubar-separator]);
       expect(separator).toBeTruthy();
       expect(separator?.getAttribute('role')).toBe('separator');
       expect(separator?.getAttribute('aria-orientation')).toBe('horizontal');
@@ -421,7 +421,7 @@ describe('Menubar', () => {
       const trigger = container.querySelector('[data-menubar-trigger]') as HTMLElement;
       trigger.click();
 
-      const label = container.querySelector('[data-menubar-label]');
+      const label = document.querySelector('[data-menubar-label]);
       expect(label).toBeTruthy();
       expect(label?.textContent).toBe('Actions');
     });
@@ -453,7 +453,7 @@ describe('Menubar', () => {
       const trigger = container.querySelector('[data-menubar-trigger]') as HTMLElement;
       trigger.click();
 
-      const shortcut = container.querySelector('[data-menubar-shortcut]');
+      const shortcut = document.querySelector('[data-menubar-shortcut]);
       expect(shortcut).toBeTruthy();
       expect(shortcut?.textContent).toBe('⌘N');
       expect(shortcut?.getAttribute('aria-hidden')).toBe('true');
@@ -531,7 +531,7 @@ describe('Menubar', () => {
       expect(contents.length).toBe(1);
 
       // Verify it's the second menu's content
-      const items = container.querySelectorAll('[data-menubar-item]');
+      const items = document.querySelectorAll('[data-menubar-item]');
       expect(items[0]?.textContent).toBe('Copy');
     });
   });
@@ -554,7 +554,7 @@ describe('Menubar', () => {
       const trigger = container.querySelector('[data-menubar-trigger]') as HTMLElement;
       trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 
-      const content = container.querySelector('[data-menubar-content]');
+      const content = document.querySelector('[data-menubar-content]');
       expect(content).toBeTruthy();
     });
 
@@ -575,7 +575,7 @@ describe('Menubar', () => {
       const trigger = container.querySelector('[data-menubar-trigger]') as HTMLElement;
       trigger.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
 
-      const content = container.querySelector('[data-menubar-content]');
+      const content = document.querySelector('[data-menubar-content]');
       expect(content).toBeTruthy();
     });
 
@@ -596,7 +596,7 @@ describe('Menubar', () => {
       const trigger = container.querySelector('[data-menubar-trigger]') as HTMLElement;
       trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
 
-      const content = container.querySelector('[data-menubar-content]');
+      const content = document.querySelector('[data-menubar-content]');
       expect(content).toBeTruthy();
     });
 
@@ -626,7 +626,7 @@ describe('Menubar', () => {
       const trigger = container.querySelector('[data-menubar-trigger]') as HTMLElement;
       trigger.click();
 
-      const item = container.querySelector('[data-menubar-item]') as HTMLElement;
+      const item = document.querySelector('[data-menubar-item]') as HTMLElement;
       item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 
       expect(selected).toBe(true);
@@ -658,7 +658,7 @@ describe('Menubar', () => {
       const trigger = container.querySelector('[data-menubar-trigger]') as HTMLElement;
       trigger.click();
 
-      const item = container.querySelector('[data-menubar-item]') as HTMLElement;
+      const item = document.querySelector('[data-menubar-item]') as HTMLElement;
       item.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
 
       expect(selected).toBe(true);
@@ -683,13 +683,13 @@ describe('Menubar', () => {
       const trigger = container.querySelector('[data-menubar-trigger]') as HTMLElement;
       trigger.click();
 
-      let content = container.querySelector('[data-menubar-content]');
+      let content = document.querySelector('[data-menubar-content]');
       expect(content).toBeTruthy();
 
       // Simulate Escape key
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 
-      content = container.querySelector('[data-menubar-content]');
+      content = document.querySelector('[data-menubar-content]');
       expect(content).toBeFalsy();
     });
 
@@ -710,13 +710,13 @@ describe('Menubar', () => {
       const trigger = container.querySelector('[data-menubar-trigger]') as HTMLElement;
       trigger.click();
 
-      let content = container.querySelector('[data-menubar-content]');
+      let content = document.querySelector('[data-menubar-content]');
       expect(content).toBeTruthy();
 
       // Click outside
       document.body.click();
 
-      content = container.querySelector('[data-menubar-content]');
+      content = document.querySelector('[data-menubar-content]');
       expect(content).toBeFalsy();
     });
 
@@ -737,14 +737,14 @@ describe('Menubar', () => {
       const trigger = container.querySelector('[data-menubar-trigger]') as HTMLElement;
       trigger.click();
 
-      let content = container.querySelector('[data-menubar-content]');
+      let content = document.querySelector('[data-menubar-content]');
       expect(content).toBeTruthy();
 
       // Click on document (simulating click outside handler)
       document.dispatchEvent(new Event('click', { bubbles: true }));
 
       // Menu should still be open after clicking trigger area
-      content = container.querySelector('[data-menubar-content]');
+      content = document.querySelector('[data-menubar-content]');
       // Note: This test verifies the click-outside handler checks for trigger
     });
   });
@@ -792,7 +792,7 @@ describe('Menubar', () => {
       const trigger = container.querySelector('[data-menubar-trigger]') as HTMLElement;
       trigger.click();
 
-      const content = container.querySelector('[data-menubar-content]');
+      const content = document.querySelector('[data-menubar-content]');
       expect(content?.getAttribute('role')).toBe('menu');
       expect(content?.hasAttribute('aria-labelledby')).toBe(true);
       expect(content?.getAttribute('tabIndex')).toBe('-1');
@@ -846,7 +846,7 @@ describe('Menubar', () => {
       const trigger = container.querySelector('[data-menubar-trigger]') as HTMLElement;
       trigger.click();
 
-      const content = container.querySelector('[data-menubar-content]');
+      const content = document.querySelector('[data-menubar-content]');
       expect(content).toBeTruthy();
     });
 
@@ -870,7 +870,7 @@ describe('Menubar', () => {
       const trigger = container.querySelector('[data-menubar-trigger]') as HTMLElement;
       trigger.click();
 
-      const content = container.querySelector('[data-menubar-content]');
+      const content = document.querySelector('[data-menubar-content]');
       expect(content).toBeTruthy();
     });
   });
@@ -905,13 +905,13 @@ describe('Menubar', () => {
       const trigger = container.querySelector('[data-menubar-trigger]') as HTMLElement;
       trigger.click();
 
-      const labels = container.querySelectorAll('[data-menubar-label]');
+      const labels = document.querySelectorAll('[data-menubar-label]);
       expect(labels.length).toBe(2);
 
-      const separators = container.querySelectorAll('[data-menubar-separator]');
+      const separators = document.querySelectorAll('[data-menubar-separator]);
       expect(separators.length).toBe(2);
 
-      const items = container.querySelectorAll('[data-menubar-item]');
+      const items = document.querySelectorAll('[data-menubar-item]');
       expect(items.length).toBe(5);
     });
   });

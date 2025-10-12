@@ -39,7 +39,7 @@ import { defineComponent } from '../core/component/index.js';
 import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { signal, computed, type WritableSignal, type Signal } from '../core/reactivity/index.js';
 import { jsx } from '../jsx-runtime.js';
-import { Popover } from './Popover.js';
+import { Popover, PopoverContext } from './Popover.js';
 import { Calendar } from './Calendar.js';
 
 // ============================================================================
@@ -139,7 +139,6 @@ export const DatePicker = defineComponent<DatePickerProps>((props) => {
   const internalValue: WritableSignal<Date | null> = signal(
     props.value ?? props.defaultValue ?? null,
   );
-  const internalOpen: WritableSignal<boolean> = signal(props.defaultOpen ?? false);
 
   const isControlled = () => props.value !== undefined;
   const currentValue = () => (isControlled() ? props.value ?? null : internalValue());
@@ -149,19 +148,12 @@ export const DatePicker = defineComponent<DatePickerProps>((props) => {
       internalValue.set(date);
     }
     props.onValueChange?.(date);
-    // Close popover after selection
-    setOpen(false);
-  };
-
-  const setOpen = (open: boolean) => {
-    if (!props.disabled) {
-      internalOpen.set(open);
-    }
+    // Note: popover closing is handled in DatePickerCalendar
   };
 
   const contextValue: DatePickerContextValue = {
     value: computed(() => currentValue()),
-    open: internalOpen,
+    open: signal(false), // Not used, Popover manages its own state
     disabled: props.disabled ?? false,
     minDate: props.minDate,
     maxDate: props.maxDate,
@@ -169,7 +161,7 @@ export const DatePicker = defineComponent<DatePickerProps>((props) => {
     weekStartsOn: props.weekStartsOn ?? 0,
     defaultMonth: props.defaultMonth ?? props.value ?? props.defaultValue ?? new Date(),
     setValue,
-    setOpen,
+    setOpen: () => {}, // Not used, Popover manages its own state
   };
 
   // Provide context during setup phase (Pattern 17)
@@ -180,8 +172,7 @@ export const DatePicker = defineComponent<DatePickerProps>((props) => {
     const children = typeof props.children === 'function' ? props.children() : props.children;
 
     return jsx(Popover, {
-      open: internalOpen(),
-      onOpenChange: setOpen,
+      defaultOpen: props.defaultOpen,
       children,
     });
   };
@@ -268,13 +259,21 @@ export const DatePickerContent = defineComponent<DatePickerContentProps>((props)
  */
 export const DatePickerCalendar = defineComponent<DatePickerCalendarProps>((props) => {
   const context = useDatePickerContext();
+  const popoverContext = useContext(PopoverContext);
+
+  // Wrap setValue to also close the popover
+  const handleValueChange = (date: Date | null) => {
+    context.setValue(date);
+    // Close popover after date selection
+    popoverContext.close();
+  };
 
   return () => {
     const { children } = props;
 
     return jsx(Calendar, {
       value: context.value(),
-      onValueChange: context.setValue,
+      onValueChange: handleValueChange,
       defaultMonth: context.defaultMonth,
       minDate: context.minDate,
       maxDate: context.maxDate,

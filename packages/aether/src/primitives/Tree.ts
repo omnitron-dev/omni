@@ -24,7 +24,7 @@
 
 import { defineComponent } from '../core/component/index.js';
 import { createContext, useContext, provideContext } from '../core/component/context.js';
-import { signal, computed, type WritableSignal, type Signal } from '../core/reactivity/index.js';
+import { signal, computed, effect, type WritableSignal, type Signal } from '../core/reactivity/index.js';
 import { jsx } from '../jsx-runtime.js';
 
 // ============================================================================
@@ -83,8 +83,8 @@ interface TreeContextValue {
 
 interface TreeItemContextValue {
   value: string;
-  isExpanded: boolean;
-  isSelected: boolean;
+  isExpanded: Signal<boolean>;
+  isSelected: Signal<boolean>;
   disabled: boolean;
   toggle: () => void;
   select: () => void;
@@ -200,10 +200,15 @@ export const TreeItem = defineComponent<TreeItemProps>((props) => {
     }
   };
 
+  // Create reactive signals for expanded and selected states
+  // Read from signal directly for proper reactivity
+  const isExpanded = computed(() => context.expanded().includes(props.value));
+  const isSelected = computed(() => context.selected() === props.value);
+
   const itemContextValue: TreeItemContextValue = {
     value: props.value,
-    isExpanded: context.isExpanded(props.value),
-    isSelected: context.isSelected(props.value),
+    isExpanded,
+    isSelected,
     disabled: props.disabled ?? false,
     toggle,
     select,
@@ -217,18 +222,39 @@ export const TreeItem = defineComponent<TreeItemProps>((props) => {
     const children = typeof props.children === 'function' ? props.children() : props.children;
     const { value, disabled } = props;
 
-    return jsx('div', {
+    const element = jsx('div', {
       'data-tree-item': '',
       'data-value': value,
-      'data-expanded': itemContextValue.isExpanded ? '' : undefined,
-      'data-selected': itemContextValue.isSelected ? '' : undefined,
       'data-disabled': disabled ? '' : undefined,
       role: 'treeitem',
-      'aria-expanded': itemContextValue.isExpanded ? 'true' : 'false',
-      'aria-selected': itemContextValue.isSelected ? 'true' : 'false',
       'aria-disabled': disabled ? 'true' : undefined,
       children,
+    }) as HTMLElement;
+
+    // Pattern 18: Apply reactive attributes with effects
+    effect(() => {
+      const expanded = isExpanded();
+      if (expanded) {
+        element.setAttribute('data-expanded', '');
+        element.setAttribute('aria-expanded', 'true');
+      } else {
+        element.removeAttribute('data-expanded');
+        element.setAttribute('aria-expanded', 'false');
+      }
     });
+
+    effect(() => {
+      const selected = isSelected();
+      if (selected) {
+        element.setAttribute('data-selected', '');
+        element.setAttribute('aria-selected', 'true');
+      } else {
+        element.removeAttribute('data-selected');
+        element.setAttribute('aria-selected', 'false');
+      }
+    });
+
+    return element;
   };
 });
 
@@ -249,16 +275,23 @@ export const TreeTrigger = defineComponent<TreeTriggerProps>((props) => {
   return () => {
     const { children, ...restProps } = props;
 
-    return jsx('button', {
+    const element = jsx('button', {
       ...restProps,
       type: 'button',
       'data-tree-trigger': '',
-      'data-state': itemContext.isExpanded ? 'open' : 'closed',
-      'aria-expanded': itemContext.isExpanded,
       disabled: itemContext.disabled,
       onClick: handleClick,
       children,
+    }) as HTMLButtonElement;
+
+    // Pattern 18: Apply reactive attributes with effects
+    effect(() => {
+      const expanded = itemContext.isExpanded();
+      element.setAttribute('data-state', expanded ? 'open' : 'closed');
+      element.setAttribute('aria-expanded', expanded ? 'true' : 'false');
     });
+
+    return element;
   };
 });
 
@@ -266,21 +299,30 @@ export const TreeTrigger = defineComponent<TreeTriggerProps>((props) => {
  * Tree Content
  * Collapsible content for tree item children
  */
-export const TreeContent = defineComponent<TreeContentProps>((props) => () => {
+export const TreeContent = defineComponent<TreeContentProps>((props) => {
   const itemContext = useTreeItemContext();
-  const { children, ...restProps } = props;
 
-  if (!itemContext.isExpanded) {
-    return null;
-  }
+  return () => {
+    const { children, ...restProps} = props;
 
-  return jsx('div', {
-    ...restProps,
-    'data-tree-content': '',
-    'data-state': 'open',
-    role: 'group',
-    children,
-  });
+    // For Tree, we use conditional rendering (return null) instead of visibility toggle
+    // This ensures nested items aren't in DOM when parent is collapsed
+    if (!itemContext.isExpanded()) {
+      return null;
+    }
+
+    // Evaluate function children during render
+    const evaluatedChildren =
+      typeof children === 'function' ? children() : children;
+
+    return jsx('div', {
+      ...restProps,
+      'data-tree-content': '',
+      'data-state': 'open',
+      role: 'group',
+      children: evaluatedChildren,
+    });
+  };
 });
 
 /**
@@ -300,14 +342,25 @@ export const TreeLabel = defineComponent<TreeLabelProps>((props) => {
   return () => {
     const { children, ...restProps } = props;
 
-    return jsx('div', {
+    const element = jsx('div', {
       ...restProps,
       'data-tree-label': '',
-      'data-selected': itemContext.isSelected ? '' : undefined,
       tabIndex: itemContext.disabled ? undefined : 0,
       onClick: handleClick,
       children,
+    }) as HTMLElement;
+
+    // Pattern 18: Apply reactive attributes with effects
+    effect(() => {
+      const selected = itemContext.isSelected();
+      if (selected) {
+        element.setAttribute('data-selected', '');
+      } else {
+        element.removeAttribute('data-selected');
+      }
     });
+
+    return element;
   };
 });
 

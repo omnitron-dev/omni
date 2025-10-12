@@ -28,7 +28,8 @@
 
 import { defineComponent } from '../core/component/index.js';
 import { createContext, useContext, provideContext } from '../core/component/context.js';
-import { signal, computed, type WritableSignal, type Signal } from '../core/reactivity/index.js';
+import { signal, computed, effect, type WritableSignal, type Signal } from '../core/reactivity/index.js';
+import { createRef } from '../core/component/refs.js';
 import { jsx } from '../jsx-runtime.js';
 
 // ============================================================================
@@ -437,17 +438,33 @@ export const CalendarNextButton = defineComponent<CalendarNextButtonProps>((prop
  * Calendar Heading
  * Displays current month and year
  */
-export const CalendarHeading = defineComponent<CalendarHeadingProps>((props) => () => {
+export const CalendarHeading = defineComponent<CalendarHeadingProps>((props) => {
   const context = useCalendarContext();
-  const { children, ...restProps } = props;
 
-  return jsx('div', {
-    ...restProps,
-    'data-calendar-heading': '',
-    'aria-live': 'polite',
-    'aria-atomic': 'true',
-    children: children ?? `${context.monthName()} ${context.year()}`,
-  });
+  // Set up reactive text updates (Pattern 18)
+  const refCallback = (element: HTMLDivElement | null) => {
+    if (!element) return;
+
+    // Only set up effect if using default children (month/year display)
+    if (!props.children) {
+      effect(() => {
+        element.textContent = `${context.monthName()} ${context.year()}`;
+      });
+    }
+  };
+
+  return () => {
+    const { children, ...restProps } = props;
+
+    return jsx('div', {
+      ...restProps,
+      ref: refCallback,
+      'data-calendar-heading': '',
+      'aria-live': 'polite',
+      'aria-atomic': 'true',
+      children: children,
+    });
+  };
 });
 
 /**
@@ -551,16 +568,26 @@ export const CalendarCell = defineComponent<CalendarCellProps>((props) => {
     props.onClick?.(e);
   };
 
+  // Set up reactive updates (Pattern 18)
+  const refCallback = (element: HTMLButtonElement | null) => {
+    if (!element) return;
+
+    // Set up effect to update aria-selected when selection changes
+    effect(() => {
+      const isSelected = context.isDateSelected(props.date);
+      element.setAttribute('aria-selected', String(isSelected));
+    });
+  };
+
   return () => {
     const { children, date, ...restProps } = props;
-    const isSelected = context.isDateSelected(date);
 
     return jsx('button', {
       ...restProps,
+      ref: refCallback,
       type: 'button',
       role: 'gridcell',
       'data-calendar-cell': '',
-      'aria-selected': isSelected,
       'aria-label': date.toLocaleDateString(),
       onClick: handleClick,
       children,

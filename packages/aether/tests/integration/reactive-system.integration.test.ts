@@ -38,7 +38,7 @@ describe('Reactive System Integration', () => {
   });
 
   describe('Complete reactive flow', () => {
-    it.skip('should handle complex reactive graph', () => {
+    it('should handle complex reactive graph', () => {
       const results: string[] = [];
       
       createRoot(d => {
@@ -92,7 +92,7 @@ describe('Reactive System Integration', () => {
       ]);
     });
 
-    it.skip('should handle store with computed and effects', () => {
+    it('should handle store with computed and effects', () => {
       const results: string[] = [];
       
       createRoot(d => {
@@ -168,7 +168,7 @@ describe('Reactive System Integration', () => {
   });
 
   describe('Batching and performance', () => {
-    it.skip('should batch updates across multiple stores and signals', () => {
+    it('should batch updates across multiple stores and signals', () => {
       let effectCount = 0;
       let total = 0;
       
@@ -614,7 +614,7 @@ describe('Reactive System Integration', () => {
   });
 
   describe('Memory and performance', () => {
-    it.skip('should handle large reactive graphs efficiently', () => {
+    it('should handle large reactive graphs efficiently', () => {
       let sum = 0;
       let effectCount = 0;
       

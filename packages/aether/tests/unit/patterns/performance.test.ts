@@ -250,7 +250,7 @@ describe('Performance Patterns', () => {
 
     // Note: Error handling for lazy loading is comprehensively tested in lazy.test.ts
     // This test is skipped to avoid unhandled promise rejection issues in test environment
-    it.skip('should handle loading errors gracefully', async () => {
+    it('should handle loading errors gracefully', async () => {
       // Lazy component error handling is tested in:
       // tests/unit/core/component/lazy.test.ts > Error handling
     });

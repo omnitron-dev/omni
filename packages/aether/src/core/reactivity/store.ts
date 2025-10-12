@@ -281,12 +281,8 @@ export class Store<T extends object> {
               sig = signal(target.size, { equals: this.options.equals });
               this.signals.set(pathKey, sig);
               this.signalCache.set(pathKey, sig);
-            } else {
-              // Update signal if size has changed
-              if (sig.peek() !== target.size) {
-                sig.set(target.size);
-              }
             }
+            // DO NOT update signal during reads - only during mutations
             return sig();
           }
 
@@ -306,19 +302,11 @@ export class Store<T extends object> {
           } else {
             sig = this.signals.get(pathKey)!;
             this.signalCache.set(pathKey, sig);
-            // Ensure signal has current value
-            if (sig.peek() !== currentValue) {
-              sig.set(currentValue);
-            }
-          }
-        } else {
-          // Ensure cached signal has current value
-          if (sig.peek() !== currentValue) {
-            sig.set(currentValue);
           }
         }
 
-        // Track dependency
+        // Track dependency - DO NOT call sig.set() during reads to avoid circular dependencies
+        // Signals are updated only through the proxy setter, not during getter access
         const value = sig();
 
         // Recursively proxy objects
@@ -358,10 +346,12 @@ export class Store<T extends object> {
             return;
           }
 
-          // If replacing an object, clear old proxy cache
+          // If replacing an object, clear old proxy cache and nested signals
           if (typeof oldValue === 'object' && oldValue !== null) {
             this.proxies.delete(oldValue);
             this.proxyRegistry.delete(pathKey);
+            // Clean up nested signals from the old object to prevent stale reads
+            this.cleanupNestedSignals(pathKey);
           }
 
           // Update the actual value

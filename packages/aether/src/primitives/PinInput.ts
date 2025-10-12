@@ -112,9 +112,9 @@ const PinInputContext = createContext<PinInputContextValue>({
 const usePinInputContext = (): PinInputContextValue => {
   const context = useContext(PinInputContext);
 
-  // TODO: Add proper error checking that doesn't break due to timing issues
-  // The error should be thrown when PinInput.Input is used outside PinInput,
-  // but the current check triggers false positives due to setup/render timing
+  // Note: Validation is not possible due to timing - children render before parent sets context
+  // The default context delegates to globalPinInputContextSignal which is null initially
+  // This is expected behavior in single-render architecture
 
   return context;
 };

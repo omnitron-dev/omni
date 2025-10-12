@@ -101,6 +101,14 @@ export const Dialog = defineComponent<DialogProps>((props) => {
   // Check if controlled
   const isControlled = () => props.open !== undefined;
 
+  const setOpen = (value: boolean) => {
+    if (!isControlled()) {
+      internalOpen.set(value);
+      effectiveOpen.set(value);
+    }
+    props.onOpenChange?.(value);
+  };
+
   // Generate stable IDs for accessibility
   const baseId = generateId('dialog');
   const triggerId = `${baseId}-trigger`;
@@ -111,28 +119,9 @@ export const Dialog = defineComponent<DialogProps>((props) => {
   // Context value
   const contextValue: DialogContextValue = {
     isOpen: () => effectiveOpen(),
-    open: () => {
-      if (!isControlled()) {
-        internalOpen.set(true);
-        effectiveOpen.set(true);
-      }
-      props.onOpenChange?.(true);
-    },
-    close: () => {
-      if (!isControlled()) {
-        internalOpen.set(false);
-        effectiveOpen.set(false);
-      }
-      props.onOpenChange?.(false);
-    },
-    toggle: () => {
-      const newState = !effectiveOpen();
-      if (!isControlled()) {
-        internalOpen.set(newState);
-        effectiveOpen.set(newState);
-      }
-      props.onOpenChange?.(newState);
-    },
+    open: () => setOpen(true),
+    close: () => setOpen(false),
+    toggle: () => setOpen(!effectiveOpen()),
     triggerId,
     contentId,
     titleId,
@@ -146,10 +135,7 @@ export const Dialog = defineComponent<DialogProps>((props) => {
     // Sync controlled prop to internal signal BEFORE rendering children
     // This ensures child effects see the correct value
     if (isControlled()) {
-      const newOpen = props.open ?? false;
-      if (effectiveOpen() !== newOpen) {
-        effectiveOpen.set(newOpen);
-      }
+      effectiveOpen.set(props.open ?? false);
     }
 
     // Evaluate function children during render (Pattern 17)

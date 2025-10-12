@@ -182,8 +182,9 @@ describe('Menubar', () => {
 
       // Click to close
       trigger.click();
-      content = document.querySelector('[data-menubar-content]');
-      expect(content).toBeFalsy();
+      content = document.querySelector('[data-menubar-content]') as HTMLElement;
+      expect(content).toBeTruthy();
+      expect(content.style.display).toBe('none');
     });
   });
 
@@ -326,8 +327,9 @@ describe('Menubar', () => {
       const item = document.querySelector('[data-menubar-item]') as HTMLElement;
       item.click();
 
-      content = document.querySelector('[data-menubar-content]');
-      expect(content).toBeFalsy();
+      content = document.querySelector('[data-menubar-content]') as HTMLElement;
+      expect(content).toBeTruthy();
+      expect(content.style.display).toBe('none');
     });
 
     it('should support disabled items', () => {
@@ -522,17 +524,24 @@ describe('Menubar', () => {
 
       // Open first menu
       triggers[0]?.click();
-      let contents = container.querySelectorAll('[data-menubar-content]');
-      expect(contents.length).toBe(1);
+      let contents = document.querySelectorAll('[data-menubar-content]') as NodeListOf<HTMLElement>;
+      expect(contents.length).toBe(2); // Both exist with Pattern 18
+      // Only first should be visible
+      let visibleCount = Array.from(contents).filter((c) => c.style.display !== 'none').length;
+      expect(visibleCount).toBe(1);
 
       // Open second menu
       triggers[1]?.click();
-      contents = container.querySelectorAll('[data-menubar-content]');
-      expect(contents.length).toBe(1);
+      contents = document.querySelectorAll('[data-menubar-content]') as NodeListOf<HTMLElement>;
+      expect(contents.length).toBe(2); // Both exist with Pattern 18
+      // Only one should be visible
+      visibleCount = Array.from(contents).filter((c) => c.style.display !== 'none').length;
+      expect(visibleCount).toBe(1);
 
-      // Verify it's the second menu's content
-      const items = document.querySelectorAll('[data-menubar-item]');
-      expect(items[0]?.textContent).toBe('Copy');
+      // Verify it's the second menu's content by checking visible content
+      const visibleContent = Array.from(contents).find((c) => c.style.display !== 'none');
+      const items = visibleContent?.querySelectorAll('[data-menubar-item]');
+      expect(items?.[0]?.textContent).toBe('Copy');
     });
   });
 
@@ -689,8 +698,9 @@ describe('Menubar', () => {
       // Simulate Escape key
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 
-      content = document.querySelector('[data-menubar-content]');
-      expect(content).toBeFalsy();
+      content = document.querySelector('[data-menubar-content]') as HTMLElement;
+      expect(content).toBeTruthy();
+      expect(content.style.display).toBe('none');
     });
 
     it('should close menu when clicking outside', () => {
@@ -716,8 +726,9 @@ describe('Menubar', () => {
       // Click outside
       document.body.click();
 
-      content = document.querySelector('[data-menubar-content]');
-      expect(content).toBeFalsy();
+      content = document.querySelector('[data-menubar-content]') as HTMLElement;
+      expect(content).toBeTruthy();
+      expect(content.style.display).toBe('none');
     });
 
     it('should not close when clicking on trigger', () => {

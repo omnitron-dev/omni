@@ -215,8 +215,10 @@ export const CommandPalette = defineComponent<CommandPaletteProps>((props) => {
     // Evaluate function children during render (Pattern 17)
     const children = typeof props.children === 'function' ? props.children() : props.children;
 
+    // Pattern 19: Track signal in render to trigger re-renders
+    // Call currentOpen() inside the jsx to ensure reactivity tracking
     return jsx(Dialog, {
-      open: currentOpen(),
+      open: currentOpen(), // Pass boolean value, tracking happens here
       onOpenChange: setOpen,
       children,
     });

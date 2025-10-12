@@ -29,7 +29,6 @@
 import { defineComponent } from '../core/component/index.js';
 import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { signal, computed, effect, type WritableSignal, type Signal } from '../core/reactivity/index.js';
-import { createRef } from '../core/component/refs.js';
 import { jsx } from '../jsx-runtime.js';
 
 // ============================================================================

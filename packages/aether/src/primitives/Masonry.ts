@@ -10,8 +10,6 @@
  */
 
 import { defineComponent, onCleanup } from '../core/component/index.js';
-import type { WritableSignal } from '../core/reactivity/types.js';
-import { signal } from '../core/reactivity/index.js';
 import { jsx } from '../jsx-runtime.js';
 
 export interface MasonryProps {

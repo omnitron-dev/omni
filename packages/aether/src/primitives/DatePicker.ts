@@ -41,7 +41,6 @@ import { signal, computed, type WritableSignal, type Signal } from '../core/reac
 import { jsx } from '../jsx-runtime.js';
 import { Popover, PopoverContext } from './Popover.js';
 import { Calendar } from './Calendar.js';
-import { Portal } from '../control-flow/Portal.js';
 
 // ============================================================================
 // Types

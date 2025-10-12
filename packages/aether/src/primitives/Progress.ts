@@ -18,7 +18,7 @@ import { generateId } from './utils/index.js';
 // Types
 // ============================================================================
 
-import type { Signal } from '../core/reactivity/signal.js';
+import type { Signal } from '../core/reactivity/index.js';
 
 export interface ProgressProps {
   /**

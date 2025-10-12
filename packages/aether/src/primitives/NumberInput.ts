@@ -222,8 +222,12 @@ export const NumberInput = defineComponent<NumberInputProps>((props) => {
   const calculateInitialValue = (): number => {
     let rawValue: number;
     if (props.value !== undefined) {
-      const isValueSignal = isSignal(props.value);
-      rawValue = isValueSignal ? props.value() : props.value;
+      // Use type narrowing for proper type safety
+      if (isSignal(props.value)) {
+        rawValue = props.value();  // TypeScript knows it's WritableSignal<number> here
+      } else {
+        rawValue = props.value;    // TypeScript knows it's number here
+      }
     } else {
       rawValue = props.defaultValue ?? 0;
     }

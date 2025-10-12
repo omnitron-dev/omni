@@ -336,7 +336,7 @@ export const PinInput = defineComponent<PinInputProps>((props) => {
 
 export const PinInputInput = defineComponent<PinInputInputProps>((props) => {
   const { index, ...rest } = props;
-  const inputElement: WritableSignal<HTMLInputElement | null> = signal(null);
+  const inputElement: WritableSignal<HTMLInputElement | null> = signal<HTMLInputElement | null>(null);
 
   // Access context in setup phase - will get default context that delegates to global signal
   const context = usePinInputContext();
@@ -347,12 +347,12 @@ export const PinInputInput = defineComponent<PinInputInputProps>((props) => {
     if (element) {
       // By the time effect runs, parent has set the global signal
       context.registerInput(index, element);
-
-      // Return cleanup function
-      return () => {
-        context.unregisterInput(index);
-      };
     }
+
+    // Return cleanup function (always, not just when element exists)
+    return () => {
+      context.unregisterInput(index);
+    };
   });
 
   return () => {

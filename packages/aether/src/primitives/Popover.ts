@@ -9,7 +9,7 @@
 
 import { defineComponent } from '../core/component/define.js';
 import { signal } from '../core/reactivity/signal.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { onMount } from '../core/component/lifecycle.js';
 import { Portal } from '../control-flow/Portal.js';
 import { jsx } from '../jsx-runtime.js';
@@ -120,11 +120,18 @@ export const Popover = defineComponent<PopoverProps>((props) => {
     setAnchorElement: (el) => anchorElement.set(el),
   };
 
-  return () =>
-    jsx(PopoverContext.Provider, {
-      value: contextValue,
-      children: props.children,
+  // Provide context during setup phase (Pattern 17)
+  provideContext(PopoverContext, contextValue);
+
+  return () => {
+    // Evaluate function children during render (Pattern 17)
+    const children = typeof props.children === 'function' ? props.children() : props.children;
+
+    return jsx('div', {
+      'data-popover-root': '',
+      children,
     });
+  };
 });
 
 /**
@@ -336,6 +343,9 @@ export const PopoverContent = defineComponent<PopoverContentProps>((props) => {
       ...cleanProps
     } = restProps;
 
+    // Evaluate function children during render (Pattern 17)
+    const evaluatedChildren = typeof children === 'function' ? children() : children;
+
     return jsx(Portal, {
       children: jsx('div', {
         ...cleanProps,
@@ -344,7 +354,7 @@ export const PopoverContent = defineComponent<PopoverContentProps>((props) => {
         'aria-modal': 'false',
         tabIndex: -1,
         onKeyDown: handleKeyDown,
-        children,
+        children: evaluatedChildren,
       }),
     });
   };

@@ -41,6 +41,7 @@ import { signal, computed, type WritableSignal, type Signal } from '../core/reac
 import { jsx } from '../jsx-runtime.js';
 import { Popover, PopoverContext } from './Popover.js';
 import { Calendar } from './Calendar.js';
+import { Portal } from '../control-flow/Portal.js';
 
 // ============================================================================
 // Types
@@ -164,12 +165,11 @@ export const DatePicker = defineComponent<DatePickerProps>((props) => {
   provideContext(DatePickerContext, contextValue);
 
   return () => {
-    // Evaluate function children during render (Pattern 17)
-    const children = typeof props.children === 'function' ? props.children() : props.children;
-
+    // Don't evaluate children here - pass directly to Popover
+    // so Popover can evaluate them AFTER providing PopoverContext (Pattern 17)
     return jsx(Popover, {
       defaultOpen: props.defaultOpen,
-      children,
+      children: props.children,  // Pass function through, don't evaluate!
     });
   };
 });
@@ -239,14 +239,32 @@ export const DatePickerIcon = defineComponent<DatePickerIconProps>((props) => ()
  * DatePicker Content
  * Popover content containing the calendar
  */
-export const DatePickerContent = defineComponent<DatePickerContentProps>((props) => () => {
+export const DatePickerContent = defineComponent<DatePickerContentProps>((props) => {
+  const popoverContext = useContext(PopoverContext);
+
+  // Capture props in setup phase
   const { children, ...restProps } = props;
 
-  return jsx((Popover as any).Content, {
-    ...restProps,
-    'data-datepicker-content': '',
-    children,
-  });
+  return () => {
+    // Only render when popover is open
+    if (!popoverContext.isOpen()) {
+      return null;
+    }
+
+    // Evaluate function children in render phase (Pattern 17)
+    const evaluatedChildren = typeof children === 'function' ? children() : children;
+
+    // DEBUG: Render without Portal to test if Portal is the issue
+    return jsx('div', {
+      ...restProps,
+      id: popoverContext.contentId,
+      role: 'dialog',
+      'aria-modal': 'false',
+      'data-datepicker-content': '',
+      tabIndex: -1,
+      children: evaluatedChildren,
+    });
+  };
 });
 
 /**

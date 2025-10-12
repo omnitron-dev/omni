@@ -185,13 +185,11 @@ export const TransferList = defineComponent<{ type: 'source' | 'target'; childre
     });
   };
 
-  return () => {
-    return jsx('div', {
+  return () => jsx('div', {
       ref: refCallback,
       'data-transfer-list': '',
       'data-type': props.type,
     });
-  };
 });
 
 // Helper component for individual transfer items

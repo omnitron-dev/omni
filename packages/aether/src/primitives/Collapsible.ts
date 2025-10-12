@@ -124,11 +124,23 @@ export const CollapsibleContext = createContext<CollapsibleContextValue>(
  * ```
  */
 export const Collapsible = defineComponent<CollapsibleProps>((props) => {
-  const internalOpen = signal(props.defaultOpen || false);
-  const isOpen =
+  // Initialize internal state with controlled value if provided, otherwise use defaultOpen
+  const initialValue =
     props.open !== undefined
-      ? () => props.open!
-      : internalOpen;
+      ? (typeof props.open === 'function' ? (props.open as any)() : props.open)
+      : (props.defaultOpen || false);
+
+  const internalOpen = signal(initialValue);
+
+  // Sync external controlled signal to internal state
+  if (props.open !== undefined && typeof props.open === 'function') {
+    effect(() => {
+      internalOpen.set((props.open as any)());
+    });
+  }
+
+  // Always use internal signal for reactivity
+  const isOpen = internalOpen;
 
   const baseId = generateId('collapsible');
   const triggerId = `${baseId}-trigger`;
@@ -136,6 +148,7 @@ export const Collapsible = defineComponent<CollapsibleProps>((props) => {
 
   const toggle = () => {
     const newValue = !isOpen();
+    // Only update internal state if not controlled
     if (props.open === undefined) {
       internalOpen.set(newValue);
     }

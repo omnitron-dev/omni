@@ -30,8 +30,8 @@ import { jsx } from '../jsx-runtime.js';
 
 export interface RatingProps {
   children?: any;
-  /** Current rating value */
-  value?: number;
+  /** Current rating value - can be static number or signal for reactive updates */
+  value?: number | Signal<number>;
   /** Callback when rating changes */
   onValueChange?: (value: number) => void;
   /** Default value (uncontrolled) */
@@ -93,7 +93,12 @@ export const Rating = defineComponent<RatingProps>((props) => {
   const hoverValue: WritableSignal<number> = signal<number>(0);
 
   const isControlled = () => props.value !== undefined;
-  const currentValue = () => (isControlled() ? props.value ?? 0 : internalValue());
+  const currentValue = () => {
+    if (!isControlled()) return internalValue();
+    const valueProp = props.value!;
+    // Support both static values and signals
+    return typeof valueProp === 'function' ? valueProp() : valueProp;
+  };
 
   const setValue = (value: number) => {
     if (props.readOnly || props.disabled) return;

@@ -23,8 +23,8 @@ import { jsx } from '../jsx-runtime.js';
 // ============================================================================
 
 export interface EditableProps {
-  /** Controlled value */
-  value?: string;
+  /** Controlled value - can be static string or signal for reactive updates */
+  value?: string | Signal<string>;
   /** Value change callback */
   onValueChange?: (value: string) => void;
   /** Default value (uncontrolled) */
@@ -158,7 +158,8 @@ export const Editable = defineComponent<EditableProps>((props) => {
 
   const currentValue = (): string => {
     if (props.value !== undefined) {
-      return props.value;
+      // Support both static values and signals
+      return typeof props.value === 'function' ? props.value() : props.value;
     }
     return internalValue();
   };
@@ -237,12 +238,23 @@ export const Editable = defineComponent<EditableProps>((props) => {
     // Support function children
     const children = typeof props.children === 'function' ? props.children() : props.children;
 
-    return jsx('div', {
+    const root = jsx('div', {
       'data-editable': '',
       'data-disabled': disabled ? '' : undefined,
       'data-editing': isEditing() ? '' : undefined,
       children,
+    }) as HTMLElement;
+
+    // Set up effect to reactively update data-editing attribute
+    effect(() => {
+      if (isEditing()) {
+        root.setAttribute('data-editing', '');
+      } else {
+        root.removeAttribute('data-editing');
+      }
     });
+
+    return root;
   };
 });
 

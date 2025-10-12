@@ -668,16 +668,13 @@ describe('Progress', () => {
     });
   });
 
-  // Note: Reactive tests are omitted due to implementation issues in Progress primitive
-  // The component doesn't properly track signals in props.value
-  // This should be fixed in the Progress implementation before adding reactive tests
-  describe.skip('Reactive updates (SKIPPED - needs Progress implementation fix)', () => {
+  describe('Reactive updates', () => {
     it('should update progress value reactively', async () => {
       const value = signal(25);
 
       const component = () =>
         Progress({
-          value: value(),
+          value: value, // Pass signal directly, not value()
           children: ProgressIndicator({}),
         });
 

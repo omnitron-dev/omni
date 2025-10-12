@@ -189,14 +189,12 @@ describe('Editable', () => {
       expect(preview?.textContent).toBe('Controlled text');
     });
 
-    it.skip('should update when signal changes', async () => {
-      // Note: This test is skipped because renderComponent doesn't support re-rendering
-      // Signal updates work in real usage via effects, but can't be tested this way
+    it('should update when signal changes', async () => {
       const value = signal('Initial');
       const component = () =>
         Editable({
-          value: value(),
-          children: () => [EditablePreview({ children: value() }), EditableInput({})],
+          value: value, // Pass signal directly
+          children: () => [EditablePreview({}), EditableInput({})],
         });
       const { container } = renderComponent(component);
 
@@ -745,9 +743,7 @@ describe('Editable', () => {
   });
 
   describe('Data Attributes', () => {
-    it.skip('should have data-editing when in edit mode', async () => {
-      // Note: This test is skipped because the data-editing attribute on the root element
-      // doesn't update via effects. In real usage, effects handle child element updates properly.
+    it('should have data-editing when in edit mode', async () => {
       const component = () =>
         Editable({
           children: () => [EditablePreview({}), EditableInput({})],

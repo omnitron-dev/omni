@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { disableBodyScroll, enableBodyScroll } from '../../../../src/primitives/utils/scroll-lock.js';
+import { disableBodyScroll, enableBodyScroll, forceUnlockBodyScroll } from '../../../../src/primitives/utils/scroll-lock.js';
 
 describe('Scroll Lock Utilities', () => {
   let originalOverflow: string;
@@ -14,11 +14,8 @@ describe('Scroll Lock Utilities', () => {
     originalOverflow = document.body.style.overflow;
     originalPaddingRight = document.body.style.paddingRight;
 
-    // Reset lock count (internal state)
-    // Enable scroll to reset state
-    while (document.body.style.overflow === 'hidden') {
-      enableBodyScroll();
-    }
+    // Reset lock count using force unlock
+    forceUnlockBodyScroll();
   });
 
   afterEach(() => {
@@ -34,8 +31,7 @@ describe('Scroll Lock Utilities', () => {
       expect(document.body.style.overflow).toBe('hidden');
     });
 
-    // Skipped due to test environment limitations (no scrollbars in headless browser)
-    it.skip('should add padding to compensate for scrollbar', () => {
+    it('should add padding to compensate for scrollbar', () => {
       // Mock scrollbar width by simulating window vs document width difference
       const originalInnerWidth = window.innerWidth;
       const originalClientWidth = document.documentElement.clientWidth;
@@ -48,8 +44,7 @@ describe('Scroll Lock Utilities', () => {
       }
     });
 
-    // Skipped due to module state isolation issues between tests
-    it.skip('should support nested calls with reference counting', () => {
+    it('should support nested calls with reference counting', () => {
       disableBodyScroll();
       expect(document.body.style.overflow).toBe('hidden');
 
@@ -72,8 +67,7 @@ describe('Scroll Lock Utilities', () => {
       expect(document.body.style.overflow).not.toBe('hidden');
     });
 
-    // Skipped due to module state isolation issues between tests
-    it.skip('should only set styles on first call', () => {
+    it('should only set styles on first call', () => {
       const initialOverflow = document.body.style.overflow;
 
       disableBodyScroll();

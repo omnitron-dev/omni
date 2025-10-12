@@ -136,14 +136,11 @@ describe('Rating', () => {
       expect(ratingEl?.getAttribute('aria-valuenow')).toBe('3');
     });
 
-    it.skip('should update when signal changes', () => {
-      // Note: This test is skipped because Aether components don't re-render when external
-      // props change. Controlled mode works for initial values and callbacks, but external
-      // signal updates don't trigger component updates without re-rendering.
+    it('should update when signal changes', async () => {
       const value = signal(2);
       const component = () =>
         Rating({
-          value: value(),
+          value: value, // Pass signal directly
           max: 5,
           children: (index: number) => RatingItem({ index, children: '★' }),
         });
@@ -153,6 +150,7 @@ describe('Rating', () => {
       expect(ratingEl?.getAttribute('aria-valuenow')).toBe('2');
 
       value.set(4);
+      await nextTick();
 
       expect(ratingEl?.getAttribute('aria-valuenow')).toBe('4');
     });

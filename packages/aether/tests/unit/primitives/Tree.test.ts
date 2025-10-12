@@ -10,7 +10,7 @@ import {
   TreeContent,
   TreeLabel,
 } from '../../../src/primitives/Tree.js';
-import { renderComponent } from '../../helpers/test-utils.js';
+import { renderComponent, nextTick } from '../../helpers/test-utils.js';
 
 describe('Tree', () => {
   beforeEach(() => {
@@ -174,7 +174,7 @@ describe('Tree', () => {
       expect(trigger?.getAttribute('aria-expanded')).toBe('false');
     });
 
-    it('should expand on click', () => {
+    it('should expand on click', async () => {
       const component = () =>
         Tree({
           children: () =>
@@ -191,6 +191,7 @@ describe('Tree', () => {
 
       const trigger = container.querySelector('[data-tree-trigger]') as HTMLButtonElement;
       trigger.click();
+      await nextTick();
 
       expect(trigger.getAttribute('data-state')).toBe('open');
       expect(trigger.getAttribute('aria-expanded')).toBe('true');
@@ -199,7 +200,7 @@ describe('Tree', () => {
       expect(item?.hasAttribute('data-expanded')).toBe(true);
     });
 
-    it('should toggle expansion state', () => {
+    it('should toggle expansion state', async () => {
       const component = () =>
         Tree({
           children: () =>
@@ -218,10 +219,12 @@ describe('Tree', () => {
 
       // Expand
       trigger.click();
+      await nextTick();
       expect(trigger.getAttribute('data-state')).toBe('open');
 
       // Collapse
       trigger.click();
+      await nextTick();
       expect(trigger.getAttribute('data-state')).toBe('closed');
     });
 
@@ -269,7 +272,7 @@ describe('Tree', () => {
       expect(content).toBeFalsy();
     });
 
-    it('should render when expanded', () => {
+    it('should render when expanded', async () => {
       const component = () =>
         Tree({
           children: () =>
@@ -286,6 +289,7 @@ describe('Tree', () => {
 
       const trigger = container.querySelector('[data-tree-trigger]') as HTMLButtonElement;
       trigger.click();
+      await nextTick();
 
       const content = container.querySelector('[data-tree-content]');
       expect(content).toBeTruthy();
@@ -329,7 +333,7 @@ describe('Tree', () => {
       expect(label.getAttribute('tabIndex')).toBe('0');
     });
 
-    it('should select item on click', () => {
+    it('should select item on click', async () => {
       const component = () =>
         Tree({
           children: () => [
@@ -348,6 +352,7 @@ describe('Tree', () => {
 
       const labels = container.querySelectorAll('[data-tree-label]') as NodeListOf<HTMLElement>;
       labels[1]?.click();
+      await nextTick();
 
       const items = container.querySelectorAll('[data-tree-item]');
       expect(items[0]?.hasAttribute('data-selected')).toBe(false);
@@ -543,7 +548,7 @@ describe('Tree', () => {
       expect(selectedValue).toBe('item1');
     });
 
-    it('should only allow single selection', () => {
+    it('should only allow single selection', async () => {
       const component = () =>
         Tree({
           children: () => [
@@ -568,12 +573,14 @@ describe('Tree', () => {
 
       // Select first
       labels[0]?.click();
+      await nextTick();
       let items = container.querySelectorAll('[data-tree-item]');
       expect(items[0]?.hasAttribute('data-selected')).toBe(true);
       expect(items[1]?.hasAttribute('data-selected')).toBe(false);
 
       // Select second (should deselect first)
       labels[1]?.click();
+      await nextTick();
       items = container.querySelectorAll('[data-tree-item]');
       expect(items[0]?.hasAttribute('data-selected')).toBe(false);
       expect(items[1]?.hasAttribute('data-selected')).toBe(true);
@@ -581,7 +588,7 @@ describe('Tree', () => {
   });
 
   describe('Nested tree structure', () => {
-    it('should render nested tree items', () => {
+    it('should render nested tree items', async () => {
       const component = () =>
         Tree({
           children: () =>
@@ -614,6 +621,7 @@ describe('Tree', () => {
       // Expand parent
       const trigger = container.querySelector('[data-tree-trigger]') as HTMLButtonElement;
       trigger.click();
+      await nextTick();
 
       // Now nested items are visible
       items = container.querySelectorAll('[data-tree-item]');
@@ -695,7 +703,7 @@ describe('Tree', () => {
       expect(item?.getAttribute('aria-selected')).toBe('false');
     });
 
-    it('should update ARIA when expanded', () => {
+    it('should update ARIA when expanded', async () => {
       const component = () =>
         Tree({
           children: () =>
@@ -717,12 +725,13 @@ describe('Tree', () => {
       expect(trigger.getAttribute('aria-expanded')).toBe('false');
 
       trigger.click();
+      await nextTick();
 
       expect(item?.getAttribute('aria-expanded')).toBe('true');
       expect(trigger.getAttribute('aria-expanded')).toBe('true');
     });
 
-    it('should update ARIA when selected', () => {
+    it('should update ARIA when selected', async () => {
       const component = () =>
         Tree({
           children: () =>
@@ -740,6 +749,7 @@ describe('Tree', () => {
       expect(item?.getAttribute('aria-selected')).toBe('false');
 
       label.click();
+      await nextTick();
 
       expect(item?.getAttribute('aria-selected')).toBe('true');
     });

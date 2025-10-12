@@ -11,7 +11,7 @@ import {
   FileUploadItemRemove,
   type FileWithPreview,
 } from '../../../src/primitives/FileUpload.js';
-import { renderComponent } from '../../helpers/test-utils.js';
+import { renderComponent, nextTick } from '../../helpers/test-utils.js';
 
 describe('FileUpload', () => {
   let cleanup: (() => void) | undefined;
@@ -533,8 +533,8 @@ describe('FileUpload', () => {
   // ==========================================================================
 
   describe('Drag and Drop Tests', () => {
-    it('should handle drag enter event', () => {
-      const { container, cleanup: dispose } = renderComponent(() =>
+    it('should handle drag enter event', async () => {
+      const { container, cleanup: dispose} = renderComponent(() =>
         FileUpload({
           children: () => FileUploadDropzone({}),
         })
@@ -549,8 +549,11 @@ describe('FileUpload', () => {
       });
 
       dropzone.dispatchEvent(dragEnterEvent);
+      await nextTick();
 
-      expect(dropzone.hasAttribute('data-dragging')).toBe(true);
+      // Re-query the DOM after reactive update (component re-renders)
+      const updatedDropzone = container.querySelector('[data-file-upload-dropzone]') as HTMLElement;
+      expect(updatedDropzone.hasAttribute('data-dragging')).toBe(true);
     });
 
     it('should handle drag leave event', () => {

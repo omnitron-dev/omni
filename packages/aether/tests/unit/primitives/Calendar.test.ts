@@ -15,7 +15,7 @@ import {
   CalendarGridBody,
   CalendarCell,
 } from '../../../src/primitives/Calendar.js';
-import { renderComponent } from '../../helpers/test-utils.js';
+import { renderComponent, nextTick } from '../../helpers/test-utils.js';
 
 describe('Calendar', () => {
   let cleanup: (() => void) | undefined;
@@ -1127,7 +1127,7 @@ describe('Calendar', () => {
       expect(cell?.getAttribute('aria-label')).toBeTruthy();
     });
 
-    it('should have aria-selected when selected', () => {
+    it('should have aria-selected when selected', async () => {
       const testDate = new Date(2024, 0, 15);
       const { container, cleanup: dispose } = renderComponent(() =>
         Calendar({
@@ -1141,7 +1141,7 @@ describe('Calendar', () => {
       expect(cell?.getAttribute('aria-selected')).toBe('true');
     });
 
-    it('should not have aria-selected="true" when not selected', () => {
+    it('should not have aria-selected="true" when not selected', async () => {
       const testDate = new Date(2024, 0, 15);
       const { container, cleanup: dispose } = renderComponent(() =>
         Calendar({
@@ -1250,7 +1250,7 @@ describe('Calendar', () => {
       expect(gridBody).toBeTruthy();
     });
 
-    it('should handle year transitions', () => {
+    it('should handle year transitions', async () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         Calendar({
           defaultMonth: new Date(2023, 11, 1),
@@ -1266,6 +1266,7 @@ describe('Calendar', () => {
       expect(heading?.textContent).toContain('2023');
 
       button.click();
+      await nextTick();
 
       expect(heading?.textContent).toContain('January');
       expect(heading?.textContent).toContain('2024');
@@ -1522,7 +1523,7 @@ describe('Calendar', () => {
       expect(container.querySelectorAll('[data-calendar-cell]').length).toBe(42);
     });
 
-    it('should navigate months and update cells', () => {
+    it('should navigate months and update cells', async () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         Calendar({
           defaultMonth: new Date(2024, 0, 1),
@@ -1541,11 +1542,12 @@ describe('Calendar', () => {
       expect(heading?.textContent).toContain('January');
 
       button.click();
+      await nextTick();
 
       expect(heading?.textContent).toContain('February');
     });
 
-    it('should select date and mark as selected', () => {
+    it('should select date and mark as selected', async () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         Calendar({
           defaultMonth: new Date(2024, 0, 1),
@@ -1559,6 +1561,7 @@ describe('Calendar', () => {
       expect(cell.getAttribute('aria-selected')).toBe('false');
 
       cell.click();
+      await nextTick();
 
       expect(cell.getAttribute('aria-selected')).toBe('true');
     });
@@ -1597,7 +1600,7 @@ describe('Calendar', () => {
       expect(nextButton.disabled).toBe(true);
     });
 
-    it('should work with date constraints and navigation', () => {
+    it('should work with date constraints and navigation', async () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         Calendar({
           defaultMonth: new Date(2024, 0, 1),
@@ -1616,6 +1619,7 @@ describe('Calendar', () => {
       const heading = container.querySelector('[data-calendar-heading]');
 
       button.click();
+      await nextTick();
 
       // Should navigate even with constraints
       expect(heading?.textContent).toContain('February');

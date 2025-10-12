@@ -64,10 +64,10 @@ export function renderComponent(component: () => any): RenderResult {
 
 /**
  * Wait for next tick
- * Uses queueMicrotask instead of setTimeout to work with fake timers
+ * Uses setTimeout(0) to ensure DOM updates have completed
  */
 export function nextTick(): Promise<void> {
-  return new Promise((resolve) => queueMicrotask(resolve));
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 /**

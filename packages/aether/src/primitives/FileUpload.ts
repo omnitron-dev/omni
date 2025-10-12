@@ -18,6 +18,7 @@ import { defineComponent, onCleanup } from '../core/component/index.js';
 import { createContext, useContext, provideContext } from '../core/component/context.js';
 import type { Signal, WritableSignal } from '../core/reactivity/types.js';
 import { signal, computed } from '../core/reactivity/index.js';
+import { effect } from '../core/reactivity/effect.js';
 import { jsx } from '../jsx-runtime.js';
 
 // ============================================================================
@@ -332,7 +333,12 @@ export const FileUpload = defineComponent<FileUploadProps>((props) => {
 
   return () => {
     // Evaluate function children during render (Pattern 17)
-    const children = typeof props.children === 'function' ? props.children() : props.children;
+    let children = typeof props.children === 'function' ? props.children() : props.children;
+
+    // If children is still a function (render function), call it to get the result
+    if (typeof children === 'function') {
+      children = children();
+    }
 
     return jsx('div', {
       'data-file-upload': '',
@@ -429,9 +435,9 @@ export const FileUploadDropzone = defineComponent<FileUploadDropzoneProps>((prop
   return () => {
     const { children, ...rest } = props;
 
-    return jsx('div', {
+    const dropzone = jsx('div', {
       'data-file-upload-dropzone': '',
-      'data-dragging': context.isDragging() ? '' : undefined,
+      // Don't set data-dragging here - managed reactively by effect below
       onDragEnter: handleDragEnter,
       onDragLeave: handleDragLeave,
       onDragOver: handleDragOver,
@@ -455,7 +461,19 @@ export const FileUploadDropzone = defineComponent<FileUploadDropzoneProps>((prop
         }),
         children,
       ],
+    }) as HTMLElement;
+
+    // Reactively update data-dragging attribute (Pattern 18)
+    effect(() => {
+      const dragging = context.isDragging();
+      if (dragging) {
+        dropzone.setAttribute('data-dragging', '');
+      } else {
+        dropzone.removeAttribute('data-dragging');
+      }
     });
+
+    return dropzone;
   };
 });
 

@@ -17,6 +17,7 @@ import { defineComponent } from '../core/component/index.js';
 import { createContext, useContext, provideContext } from '../core/component/context.js';
 import type { Signal, WritableSignal } from '../core/reactivity/types.js';
 import { signal, computed } from '../core/reactivity/index.js';
+import { effect } from '../core/reactivity/effect.js';
 import { jsx } from '../jsx-runtime.js';
 
 // ============================================================================
@@ -317,19 +318,31 @@ export const TagsInputField = defineComponent<TagsInputFieldProps>((props) => {
   return () => {
     const { placeholder = 'Add tag...', ...rest } = props;
 
-    return jsx('input', {
+    const input = jsx('input', {
       ref: context.inputRef,
       type: 'text',
       'data-tags-input-field': '',
-      placeholder: context.canAddMore() ? placeholder : '',
-      value: context.inputValue(),
-      disabled: context.disabled || !context.canAddMore(),
+      // Don't set these here - managed reactively by effects below
       onInput: handleInput,
       onKeyDown: handleKeyDown,
       onPaste: handlePaste,
       'aria-label': 'Tag input field',
       ...rest,
+    }) as HTMLInputElement;
+
+    // Reactively update input value (Pattern 18)
+    effect(() => {
+      input.value = context.inputValue();
     });
+
+    // Reactively update placeholder and disabled state (Pattern 18)
+    effect(() => {
+      const canAdd = context.canAddMore();
+      input.placeholder = canAdd ? placeholder : '';
+      input.disabled = context.disabled || !canAdd;
+    });
+
+    return input;
   };
 });
 

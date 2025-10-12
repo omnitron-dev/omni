@@ -9,7 +9,7 @@ import {
   TagsInputTag,
   TagsInputTagRemove,
 } from '../../../src/primitives/TagsInput.js';
-import { renderComponent } from '../../helpers/test-utils.js';
+import { renderComponent, nextTick } from '../../helpers/test-utils.js';
 
 describe('TagsInput', () => {
   let cleanup: (() => void) | undefined;
@@ -574,7 +574,7 @@ describe('TagsInput', () => {
       expect(onValidationError).toHaveBeenCalledWith('tag3', 'Maximum 2 tags allowed');
     });
 
-    it('should clear input value after adding tag', () => {
+    it('should clear input value after adding tag', async () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         TagsInput({
           children: () => TagsInputField({}),
@@ -593,6 +593,7 @@ describe('TagsInput', () => {
         cancelable: true,
       });
       field.dispatchEvent(enterEvent);
+      await nextTick();
 
       expect(field.value).toBe('');
     });
@@ -649,7 +650,7 @@ describe('TagsInput', () => {
       expect(onValidationError).toHaveBeenCalledWith('badtag', 'Invalid tag');
     });
 
-    it('should handle custom delimiter array', () => {
+    it('should handle custom delimiter array', async () => {
       const onValueChange = vi.fn();
       const { container, cleanup: dispose } = renderComponent(() =>
         TagsInput({
@@ -664,6 +665,7 @@ describe('TagsInput', () => {
 
       field.value = 'tag1;';
       field.dispatchEvent(new Event('input', { bubbles: true }));
+      await nextTick();
 
       expect(onValueChange).toHaveBeenCalledWith(['tag1']);
     });
@@ -1429,7 +1431,7 @@ describe('TagsInput', () => {
       expect(onValidationError).toHaveBeenCalledWith('ab', 'Tag must be at least 3 characters');
     });
 
-    it('should coordinate field state with tag count', () => {
+    it('should coordinate field state with tag count', async () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         TagsInput({
           maxTags: 2,
@@ -1453,6 +1455,7 @@ describe('TagsInput', () => {
         cancelable: true,
       });
       field.dispatchEvent(enterEvent);
+      await nextTick();
 
       // Field should now be disabled and have no placeholder
       field = container.querySelector('input[data-tags-input-field]') as HTMLInputElement;

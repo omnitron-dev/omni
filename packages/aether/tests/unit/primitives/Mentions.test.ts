@@ -10,7 +10,7 @@ import {
   MentionsSuggestion,
   type Mention,
 } from '../../../src/primitives/Mentions.js';
-import { renderComponent } from '../../helpers/test-utils.js';
+import { renderComponent, nextTick } from '../../helpers/test-utils.js';
 
 describe('Mentions', () => {
   const mockMentions: Mention[] = [
@@ -227,7 +227,7 @@ describe('Mentions', () => {
   });
 
   describe('Controlled mode', () => {
-    it('should support controlled value', () => {
+    it('should support controlled value', async () => {
       const value = signal('');
 
       const component = () =>
@@ -247,6 +247,7 @@ describe('Mentions', () => {
 
       // Set value externally
       value.set('Hello @alice');
+      await nextTick();
       expect(input.value).toBe('Hello @alice');
     });
 

@@ -11,6 +11,7 @@
 import { defineComponent } from '../core/component/define.js';
 import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { signal, type WritableSignal } from '../core/reactivity/signal.js';
+import { effect } from '../core/reactivity/effect.js';
 import { Portal } from '../control-flow/Portal.js';
 import { jsx, Fragment } from '../jsx-runtime.js';
 import { generateId } from './utils/index.js';
@@ -188,6 +189,8 @@ export const ToastProvider = defineComponent<ToastProviderProps>((props) => {
  *
  * Container for rendering toasts.
  * Usually placed at the end of your app.
+ *
+ * Uses Pattern 18 - Reactive List Rendering for dynamic toast updates.
  */
 export const ToastViewport = defineComponent<ToastViewportProps>((props) => {
   const ctx = useContext(ToastContext);
@@ -208,28 +211,42 @@ export const ToastViewport = defineComponent<ToastViewportProps>((props) => {
   }
 
   return () => {
-    const toastList = ctx.toasts();
-
-    // Extract props outside of label/children for reactivity
+    // Extract props for reactivity
     const { label, hotkey, ...restProps } = props;
     const viewportLabel = label || 'Notifications';
 
-    return jsx(Portal, {
-      children: jsx('ol', {
-        ...restProps,
-        'data-toast-viewport': '',
-        role: 'region',
-        'aria-label': viewportLabel,
-        tabIndex: -1,
-        children: toastList.map((toast) =>
-          jsx(Toast, {
-            key: toast.id,
-            toast,
-            onDismiss: ctx.removeToast,
-          })
-        ),
-      }),
+    // Create container element
+    const container = jsx('ol', {
+      ...restProps,
+      'data-toast-viewport': '',
+      role: 'region',
+      'aria-label': viewportLabel,
+      tabIndex: -1,
+    }) as HTMLOListElement;
+
+    // Pattern 18: Reactive List Rendering
+    // Effect reactively updates DOM when toast list changes
+    effect(() => {
+      const currentToasts = ctx.toasts(); // Track signal dependency
+
+      // Clear container
+      container.innerHTML = '';
+
+      // Render each toast and append to container
+      currentToasts.forEach((toast) => {
+        // Use jsx to properly render toast component
+        const toastElement = jsx(Toast, {
+          toast,
+          onDismiss: ctx.removeToast,
+        });
+
+        // Append to container
+        container.appendChild(toastElement as Node);
+      });
     });
+
+    // Return container wrapped in Portal
+    return jsx(Portal, { children: container });
   };
 });
 

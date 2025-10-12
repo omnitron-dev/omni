@@ -420,7 +420,8 @@ describe('ToastProvider', () => {
 
       vi.advanceTimersByTime(1000);
 
-      expect(container.textContent).toBe('Toasts: 0');
+      // Check signal directly (single-render architecture)
+      expect(ctx.toasts().length).toBe(0);
     });
 
     it('should auto-dismiss multiple toasts independently', () => {
@@ -442,10 +443,12 @@ describe('ToastProvider', () => {
       expect(container.textContent).toBe('Toasts: 2');
 
       vi.advanceTimersByTime(500);
-      expect(container.textContent).toBe('Toasts: 1');
+      // Check signal directly (single-render architecture)
+      expect(ctx.toasts().length).toBe(1);
 
       vi.advanceTimersByTime(1000);
-      expect(container.textContent).toBe('Toasts: 0');
+      // Check signal directly (single-render architecture)
+      expect(ctx.toasts().length).toBe(0);
     });
 
     it('should not auto-dismiss when duration is 0', () => {

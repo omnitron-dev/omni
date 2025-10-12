@@ -588,9 +588,7 @@ describe('PinInput', () => {
   });
 
   describe('Auto-advance', () => {
-    // SKIP: Requires real browser focus support - happy-dom cannot properly simulate programmatic focus()
-    // The component code is correct and works in real browsers, but test environment limitation prevents verification
-    it.skip('should auto-advance to next input after typing', async () => {
+    it('should auto-advance to next input after typing', async () => {
       const component = () =>
         PinInput({
           length: 4,
@@ -685,11 +683,10 @@ describe('PinInput', () => {
       expect(inputs[1].value).toBe('');
     });
 
-    // SKIP: Requires real browser focus support - happy-dom limitation
-    it.skip('should move to previous input on backspace if current is empty', async () => {
+    it('should move to previous input on backspace if current is empty', async () => {
       const component = () =>
         PinInput({
-          value: '1_34',
+          value: '1',
           length: 4,
           children: Array(4)
             .fill(0)
@@ -699,7 +696,7 @@ describe('PinInput', () => {
 
       const inputs = container.querySelectorAll('input') as NodeListOf<HTMLInputElement>;
 
-      // Focus second input (which is empty)
+      // Focus second input (which is empty because value='1' only fills first input)
       inputs[1].focus();
 
       // Press backspace
@@ -791,8 +788,7 @@ describe('PinInput', () => {
   });
 
   describe('Arrow Key Navigation', () => {
-    // SKIP: Requires real browser focus support - happy-dom limitation
-    it.skip('should move to next input on ArrowRight', async () => {
+    it('should move to next input on ArrowRight', async () => {
       const component = () =>
         PinInput({
           length: 4,
@@ -842,8 +838,7 @@ describe('PinInput', () => {
       expect(document.activeElement).toBe(inputs[3]);
     });
 
-    // SKIP: Requires real browser focus support - happy-dom limitation
-    it.skip('should move to previous input on ArrowLeft', async () => {
+    it('should move to previous input on ArrowLeft', async () => {
       const component = () =>
         PinInput({
           length: 4,
@@ -1037,8 +1032,7 @@ describe('PinInput', () => {
       expect(inputs[3].value).toBe('4');
     });
 
-    // SKIP: Requires real browser focus support - happy-dom limitation
-    it.skip('should focus last filled input after paste', async () => {
+    it('should focus last filled input after paste', async () => {
       const component = () =>
         PinInput({
           length: 6,
@@ -1113,8 +1107,7 @@ describe('PinInput', () => {
       expect(activeElement).toBe(document.body);
     });
 
-    // SKIP: Requires real browser focus support - happy-dom limitation
-    it.skip('should auto-focus first input when autoFocus=true', async () => {
+    it('should auto-focus first input when autoFocus=true', async () => {
       const component = () =>
         PinInput({
           autoFocus: true,

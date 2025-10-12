@@ -25,14 +25,13 @@ export const Masonry = defineComponent<MasonryProps>((props) => {
   const columns = props.columns ?? 3;
   const gap = props.gap ?? 16;
 
-  const containerRef: { current: HTMLDivElement | null } = { current: null };
+  let containerElement: HTMLDivElement | null = null;
   const columnHeights: WritableSignal<number[]> = signal(Array(columns).fill(0));
 
   const layout = () => {
-    const container = containerRef.current;
-    if (!container) return;
+    if (!containerElement) return;
 
-    const children = Array.from(container.children) as HTMLElement[];
+    const children = Array.from(containerElement.children) as HTMLElement[];
     const heights = Array(columns).fill(0);
 
     children.forEach((child, index) => {
@@ -50,10 +49,17 @@ export const Masonry = defineComponent<MasonryProps>((props) => {
 
     columnHeights.set(heights);
     const maxHeight = Math.max(...heights);
-    if (container) container.style.height = maxHeight + 'px';
+    if (containerElement) containerElement.style.height = maxHeight + 'px';
   };
 
-  setTimeout(layout, 0);
+  // Ref callback - layout after element is mounted
+  const refCallback = (element: HTMLDivElement | null) => {
+    containerElement = element;
+    if (element) {
+      // Layout after children are inserted
+      setTimeout(layout, 0);
+    }
+  };
 
   if (typeof window !== 'undefined') {
     window.addEventListener('resize', layout);
@@ -65,7 +71,7 @@ export const Masonry = defineComponent<MasonryProps>((props) => {
 
     return jsx('div', {
       ...restProps,
-      ref: containerRef,
+      ref: refCallback,
       'data-masonry': '',
       style: { position: 'relative', ...style },
       children,

@@ -153,7 +153,9 @@ export const PinInput = defineComponent<PinInputProps>((props) => {
     }
 
     if (autoFocus) {
-      setTimeout(() => focusInput(0), 0);
+      // Use queueMicrotask instead of setTimeout for better test compatibility
+      // Microtasks run before next tick, so await nextTick() in tests will catch this
+      queueMicrotask(() => focusInput(0));
     }
   });
 
@@ -315,27 +317,29 @@ export const PinInput = defineComponent<PinInputProps>((props) => {
 
 export const PinInputInput = defineComponent<PinInputInputProps>((props) => {
   const { index, ...rest } = props;
-  let hasRegistered = false;
-  let inputElement: HTMLInputElement | null = null;
+  const inputElement: WritableSignal<HTMLInputElement | null> = signal(null);
+
+  // Access context in setup phase - will get default context that delegates to global signal
+  const context = usePinInputContext();
+
+  // Use effect to register after parent setup completes
+  effect(() => {
+    const element = inputElement();
+    if (element) {
+      // By the time effect runs, parent has set the global signal
+      context.registerInput(index, element);
+
+      // Return cleanup function
+      return () => {
+        context.unregisterInput(index);
+      };
+    }
+  });
 
   return () => {
-    // Access context in render phase
-    const context = usePinInputContext();
-
-    // Ref callback to register input when element is created
+    // Simple ref callback - just store the element in signal
     const refCallback = (element: HTMLInputElement | null) => {
-      inputElement = element;
-
-      // Register on mount, unregister on unmount
-      if (element && !hasRegistered) {
-        hasRegistered = true;
-        context.registerInput(index, element);
-
-        // Schedule cleanup via onMount
-        onMount(() => () => {
-          context.unregisterInput(index);
-        });
-      }
+      inputElement.set(element);
     };
 
     const handleInput = (e: Event) => {

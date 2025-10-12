@@ -207,7 +207,9 @@ export const TabsList = defineComponent<TabsListProps>((props) => () => {
       if (!triggers || triggers.length === 0) return;
 
       const triggerArray = Array.from(triggers) as HTMLElement[];
-      const currentIndex = triggerArray.findIndex(el => el === event.target);
+      // Use document.activeElement instead of event.target for keyboard navigation
+      // event.target is the element that dispatched the event (tablist), but we want the focused element
+      const currentIndex = triggerArray.findIndex(el => el === document.activeElement);
       if (currentIndex === -1) return;
 
       let nextIndex = currentIndex;
@@ -286,10 +288,8 @@ export const TabsTrigger = defineComponent<TabsTriggerProps>((props) => () => {
     const isSelected = ctx.value() === value;
 
     const handleClick = () => {
-      console.log('TabsTrigger clicked:', { value, disabled, currentValue: ctx.value() });
       if (!disabled) {
         ctx.setValue(value);
-        console.log('TabsTrigger setValue called, new value:', ctx.value());
       }
     };
 

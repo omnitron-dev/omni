@@ -6,9 +6,40 @@ import { signal } from '../../../src/core/reactivity/signal.js';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../../src/primitives/Tabs.js';
 import { renderComponent } from '../../helpers/test-utils.js';
 
+// Track active element globally for focus mocking
+let _activeElement: Element | null = null;
+
 describe('Tabs', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
+    _activeElement = document.body;
+
+    // Mock document.activeElement
+    Object.defineProperty(document, 'activeElement', {
+      get() {
+        return _activeElement || document.body;
+      },
+      configurable: true,
+    });
+
+    // Mock focus/blur methods
+    Object.defineProperty(HTMLElement.prototype, 'focus', {
+      value: function (this: HTMLElement) {
+        _activeElement = this;
+        this.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
+      },
+      writable: true,
+      configurable: true,
+    });
+
+    Object.defineProperty(HTMLElement.prototype, 'blur', {
+      value: function (this: HTMLElement) {
+        _activeElement = document.body;
+        this.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+      },
+      writable: true,
+      configurable: true,
+    });
   });
 
   describe('Basic functionality', () => {
@@ -176,8 +207,7 @@ describe('Tabs', () => {
   });
 
   describe('Keyboard navigation', () => {
-    // SKIP: Requires real browser focus support - happy-dom cannot track focus during keyboard navigation
-    it.skip('should navigate with arrow keys (horizontal)', () => {
+    it('should navigate with arrow keys (horizontal)', () => {
       const component = () =>
         Tabs({
           defaultValue: 'tab1',
@@ -219,8 +249,7 @@ describe('Tabs', () => {
       expect(document.activeElement).toBe(triggers[2]);
     });
 
-    // SKIP: Requires real browser focus support - happy-dom limitation
-    it.skip('should navigate with Home/End keys', () => {
+    it('should navigate with Home/End keys', () => {
       const component = () =>
         Tabs({
           defaultValue: 'tab2',

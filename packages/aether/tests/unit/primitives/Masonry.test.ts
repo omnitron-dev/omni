@@ -6,8 +6,39 @@ import { Masonry } from '../../../src/primitives/Masonry.js';
 import { renderComponent, nextTick, waitFor } from '../../helpers/test-utils.js';
 
 describe('Masonry', () => {
+  // Store original offsetHeight getter
+  const originalOffsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
+
+  // Helper to set mocked height
+  const setMockedHeight = (element: HTMLElement, height: number) => {
+    (element as any).__mockedOffsetHeight = height;
+  };
+
   beforeEach(() => {
     document.body.innerHTML = '';
+    vi.useFakeTimers();
+
+    // Mock offsetHeight to return stored value or default
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+      get(this: HTMLElement) {
+        // Check if element has a mocked height
+        const mockedHeight = (this as any).__mockedOffsetHeight;
+        if (mockedHeight !== undefined) {
+          return mockedHeight;
+        }
+        // Default fallback for unmocked elements
+        return 0;
+      },
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    // Restore original offsetHeight
+    if (originalOffsetHeight) {
+      Object.defineProperty(HTMLElement.prototype, 'offsetHeight', originalOffsetHeight);
+    }
   });
 
   describe('Rendering', () => {
@@ -74,8 +105,7 @@ describe('Masonry', () => {
     });
   });
 
-  // SKIP: Requires real browser element dimensions - happy-dom returns 0x0 for getBoundingClientRect/offsetHeight
-  describe.skip('Props - columns', () => {
+  describe('Props - columns', () => {
     it('should default to 3 columns', async () => {
       const children = [
         document.createElement('div'),
@@ -84,13 +114,14 @@ describe('Masonry', () => {
       ];
       children.forEach((child, i) => {
         child.textContent = `Item ${i + 1}`;
-        Object.defineProperty(child, 'offsetHeight', { value: 100, configurable: true });
+        setMockedHeight(child, 100);
       });
 
       const component = () => Masonry({ children });
       const { container } = renderComponent(component);
 
       await nextTick();
+      vi.runAllTimers(); // Execute setTimeout(layout, 0)
 
       const masonry = container.querySelector('[data-masonry]');
       const firstChild = masonry?.children[0] as HTMLElement;
@@ -105,13 +136,14 @@ describe('Masonry', () => {
       ];
       children.forEach((child, i) => {
         child.textContent = `Item ${i + 1}`;
-        Object.defineProperty(child, 'offsetHeight', { value: 100, configurable: true });
+        setMockedHeight(child, 100);
       });
 
       const component = () => Masonry({ columns: 2, children });
       const { container } = renderComponent(component);
 
       await nextTick();
+      vi.runAllTimers(); // Execute setTimeout(layout, 0)
 
       const masonry = container.querySelector('[data-masonry]');
       const items = Array.from(masonry?.children || []) as HTMLElement[];
@@ -125,13 +157,14 @@ describe('Masonry', () => {
       const children = Array.from({ length: 4 }, () => document.createElement('div'));
       children.forEach((child, i) => {
         child.textContent = `Item ${i + 1}`;
-        Object.defineProperty(child, 'offsetHeight', { value: 100, configurable: true });
+        setMockedHeight(child, 100);
       });
 
       const component = () => Masonry({ columns: 4, children });
       const { container } = renderComponent(component);
 
       await nextTick();
+      vi.runAllTimers(); // Execute setTimeout(layout, 0)
 
       const masonry = container.querySelector('[data-masonry]');
       const items = Array.from(masonry?.children || []) as HTMLElement[];
@@ -150,13 +183,14 @@ describe('Masonry', () => {
       ];
       children.forEach((child, i) => {
         child.textContent = `Item ${i + 1}`;
-        Object.defineProperty(child, 'offsetHeight', { value: 100, configurable: true });
+        setMockedHeight(child, 100);
       });
 
       const component = () => Masonry({ columns: 1, children });
       const { container } = renderComponent(component);
 
       await nextTick();
+      vi.runAllTimers(); // Execute setTimeout(layout, 0)
 
       const masonry = container.querySelector('[data-masonry]');
       const items = Array.from(masonry?.children || []) as HTMLElement[];
@@ -170,7 +204,7 @@ describe('Masonry', () => {
       const children = Array.from({ length: 10 }, () => document.createElement('div'));
       children.forEach((child, i) => {
         child.textContent = `Item ${i + 1}`;
-        Object.defineProperty(child, 'offsetHeight', { value: 50, configurable: true });
+        setMockedHeight(child, 50);
       });
 
       const component = () => Masonry({ columns: 10, children });
@@ -183,21 +217,21 @@ describe('Masonry', () => {
     });
   });
 
-  // SKIP: Requires real browser element dimensions - happy-dom limitation
-  describe.skip('Props - gap', () => {
+  describe('Props - gap', () => {
     it('should default to 16px gap', async () => {
       const children = [
         document.createElement('div'),
         document.createElement('div'),
       ];
       children.forEach((child) => {
-        Object.defineProperty(child, 'offsetHeight', { value: 100, configurable: true });
+        setMockedHeight(child, 100);
       });
 
       const component = () => Masonry({ children });
       const { container } = renderComponent(component);
 
       await nextTick();
+      vi.runAllTimers(); // Execute setTimeout(layout, 0)
 
       const masonry = container.querySelector('[data-masonry]');
       const firstChild = masonry?.children[0] as HTMLElement;
@@ -211,13 +245,14 @@ describe('Masonry', () => {
         document.createElement('div'),
       ];
       children.forEach((child) => {
-        Object.defineProperty(child, 'offsetHeight', { value: 100, configurable: true });
+        setMockedHeight(child, 100);
       });
 
       const component = () => Masonry({ gap: 20, children });
       const { container } = renderComponent(component);
 
       await nextTick();
+      vi.runAllTimers(); // Execute setTimeout(layout, 0)
 
       const masonry = container.querySelector('[data-masonry]');
       const firstChild = masonry?.children[0] as HTMLElement;
@@ -230,13 +265,14 @@ describe('Masonry', () => {
         document.createElement('div'),
       ];
       children.forEach((child) => {
-        Object.defineProperty(child, 'offsetHeight', { value: 100, configurable: true });
+        setMockedHeight(child, 100);
       });
 
       const component = () => Masonry({ gap: 0, children });
       const { container } = renderComponent(component);
 
       await nextTick();
+      vi.runAllTimers(); // Execute setTimeout(layout, 0)
 
       const masonry = container.querySelector('[data-masonry]');
       const firstChild = masonry?.children[0] as HTMLElement;
@@ -249,13 +285,14 @@ describe('Masonry', () => {
         document.createElement('div'),
       ];
       children.forEach((child) => {
-        Object.defineProperty(child, 'offsetHeight', { value: 100, configurable: true });
+        setMockedHeight(child, 100);
       });
 
       const component = () => Masonry({ gap: 50, children });
       const { container } = renderComponent(component);
 
       await nextTick();
+      vi.runAllTimers(); // Execute setTimeout(layout, 0)
 
       const masonry = container.querySelector('[data-masonry]');
       const firstChild = masonry?.children[0] as HTMLElement;
@@ -263,16 +300,16 @@ describe('Masonry', () => {
     });
   });
 
-  // SKIP: Requires real browser element dimensions - happy-dom limitation
-  describe.skip('Layout behavior', () => {
+  describe('Layout behavior', () => {
     it('should position items absolutely', async () => {
       const children = [document.createElement('div')];
-      Object.defineProperty(children[0], 'offsetHeight', { value: 100, configurable: true });
+      setMockedHeight(children[0], 100);
 
       const component = () => Masonry({ children });
       const { container } = renderComponent(component);
 
       await nextTick();
+      vi.runAllTimers(); // Execute setTimeout(layout, 0)
 
       const masonry = container.querySelector('[data-masonry]');
       const child = masonry?.children[0] as HTMLElement;
@@ -283,13 +320,14 @@ describe('Masonry', () => {
       const children = Array.from({ length: 6 }, () => document.createElement('div'));
       children.forEach((child, i) => {
         child.textContent = `Item ${i + 1}`;
-        Object.defineProperty(child, 'offsetHeight', { value: 100, configurable: true });
+        setMockedHeight(child, 100);
       });
 
       const component = () => Masonry({ columns: 3, children });
       const { container } = renderComponent(component);
 
       await nextTick();
+      vi.runAllTimers(); // Execute setTimeout(layout, 0)
 
       const masonry = container.querySelector('[data-masonry]');
       const items = Array.from(masonry?.children || []) as HTMLElement[];
@@ -301,12 +339,13 @@ describe('Masonry', () => {
 
     it('should set container height based on tallest column', async () => {
       const children = [document.createElement('div')];
-      Object.defineProperty(children[0], 'offsetHeight', { value: 200, configurable: true });
+      setMockedHeight(children[0], 200);
 
       const component = () => Masonry({ children });
       const { container } = renderComponent(component);
 
       await nextTick();
+      vi.runAllTimers(); // Execute setTimeout(layout, 0)
 
       const masonry = container.querySelector('[data-masonry]') as HTMLElement;
       // Height should be item height + gap
@@ -315,12 +354,13 @@ describe('Masonry', () => {
 
     it('should calculate width percentage correctly', async () => {
       const children = [document.createElement('div')];
-      Object.defineProperty(children[0], 'offsetHeight', { value: 100, configurable: true });
+      setMockedHeight(children[0], 100);
 
       const component = () => Masonry({ columns: 3, gap: 0, children });
       const { container } = renderComponent(component);
 
       await nextTick();
+      vi.runAllTimers(); // Execute setTimeout(layout, 0)
 
       const masonry = container.querySelector('[data-masonry]');
       const child = masonry?.children[0] as HTMLElement;
@@ -334,9 +374,9 @@ describe('Masonry', () => {
         document.createElement('div'),
         document.createElement('div'),
       ];
-      Object.defineProperty(children[0], 'offsetHeight', { value: 100, configurable: true });
-      Object.defineProperty(children[1], 'offsetHeight', { value: 200, configurable: true });
-      Object.defineProperty(children[2], 'offsetHeight', { value: 150, configurable: true });
+      setMockedHeight(children[0], 100);
+      setMockedHeight(children[1], 200);
+      setMockedHeight(children[2], 150);
 
       const component = () => Masonry({ columns: 2, children });
       const { container } = renderComponent(component);
@@ -364,7 +404,7 @@ describe('Masonry', () => {
 
     it('should handle resize events', async () => {
       const children = [document.createElement('div')];
-      Object.defineProperty(children[0], 'offsetHeight', { value: 100, configurable: true });
+      setMockedHeight(children[0], 100);
 
       const component = () => Masonry({ children });
       const { container } = renderComponent(component);
@@ -476,7 +516,7 @@ describe('Masonry', () => {
 
     it('should handle negative gap gracefully', async () => {
       const children = [document.createElement('div')];
-      Object.defineProperty(children[0], 'offsetHeight', { value: 100, configurable: true });
+      setMockedHeight(children[0], 100);
 
       const component = () => Masonry({ gap: -10, children });
       const { container } = renderComponent(component);
@@ -490,7 +530,7 @@ describe('Masonry', () => {
     it('should handle very large number of items', async () => {
       const children = Array.from({ length: 100 }, () => document.createElement('div'));
       children.forEach((child) => {
-        Object.defineProperty(child, 'offsetHeight', { value: 50, configurable: true });
+        setMockedHeight(child, 50);
       });
 
       const component = () => Masonry({ columns: 5, children });
@@ -504,7 +544,7 @@ describe('Masonry', () => {
 
     it('should handle items with zero height', async () => {
       const children = [document.createElement('div')];
-      Object.defineProperty(children[0], 'offsetHeight', { value: 0, configurable: true });
+      setMockedHeight(children[0], 0);
 
       const component = () => Masonry({ children });
       const { container } = renderComponent(component);
@@ -536,10 +576,7 @@ describe('Masonry', () => {
         img.src = `/image${i + 1}.jpg`;
         img.alt = `Image ${i + 1}`;
         div.appendChild(img);
-        Object.defineProperty(div, 'offsetHeight', {
-          value: 150 + Math.random() * 100,
-          configurable: true,
-        });
+        setMockedHeight(div, 150 + Math.random() * 100);
         return div;
       });
 
@@ -564,10 +601,7 @@ describe('Masonry', () => {
         const card = document.createElement('div');
         card.className = 'pin-card';
         card.textContent = `Pin ${i + 1}`;
-        Object.defineProperty(card, 'offsetHeight', {
-          value: 200 + Math.random() * 300,
-          configurable: true,
-        });
+        setMockedHeight(card, 200 + Math.random() * 300);
         return card;
       });
 
@@ -596,10 +630,7 @@ describe('Masonry', () => {
         content.textContent = 'Lorem ipsum dolor sit amet...';
         article.appendChild(title);
         article.appendChild(content);
-        Object.defineProperty(article, 'offsetHeight', {
-          value: 250 + i * 50,
-          configurable: true,
-        });
+        setMockedHeight(article, 250 + i * 50);
         return article;
       });
 
@@ -625,10 +656,7 @@ describe('Masonry', () => {
         const product = document.createElement('div');
         product.className = 'product-card';
         product.setAttribute('data-product-id', String(i + 1));
-        Object.defineProperty(product, 'offsetHeight', {
-          value: 300,
-          configurable: true,
-        });
+        setMockedHeight(product, 300);
         return product;
       });
 
@@ -693,7 +721,7 @@ describe('Masonry', () => {
       const children = Array.from({ length: 3 }, () => {
         const article = document.createElement('article');
         article.textContent = 'Content';
-        Object.defineProperty(article, 'offsetHeight', { value: 100, configurable: true });
+        setMockedHeight(article, 100);
         return article;
       });
 
@@ -711,7 +739,7 @@ describe('Masonry', () => {
     it('should handle rapid resize events efficiently', async () => {
       const children = Array.from({ length: 10 }, () => document.createElement('div'));
       children.forEach((child) => {
-        Object.defineProperty(child, 'offsetHeight', { value: 100, configurable: true });
+        setMockedHeight(child, 100);
       });
 
       const component = () => Masonry({ children });
@@ -730,10 +758,9 @@ describe('Masonry', () => {
       expect(masonry).toBeTruthy();
     });
 
-    // SKIP: Requires real browser element dimensions - happy-dom limitation
-    it.skip('should use setTimeout for initial layout', async () => {
+    it('should use setTimeout for initial layout', async () => {
       const children = [document.createElement('div')];
-      Object.defineProperty(children[0], 'offsetHeight', { value: 100, configurable: true });
+      setMockedHeight(children[0], 100);
 
       const component = () => Masonry({ children });
       const { container } = renderComponent(component);
@@ -744,6 +771,7 @@ describe('Masonry', () => {
 
       // After tick, layout should be applied
       await nextTick();
+      vi.runAllTimers(); // Execute setTimeout(layout, 0)
       const child = masonry?.children[0] as HTMLElement;
       expect(child?.style.position).toBe('absolute');
     });
@@ -757,7 +785,7 @@ describe('Masonry', () => {
         div.style.padding = '16px';
         div.style.backgroundColor = '#f0f0f0';
         div.textContent = `Card ${i + 1}`;
-        Object.defineProperty(div, 'offsetHeight', { value: 150, configurable: true });
+        setMockedHeight(div, 150);
         return div;
       });
 
@@ -779,7 +807,7 @@ describe('Masonry', () => {
       const children = [document.createElement('button')];
       children[0].textContent = 'Click me';
       children[0].addEventListener('click', clickHandler);
-      Object.defineProperty(children[0], 'offsetHeight', { value: 40, configurable: true });
+      setMockedHeight(children[0], 40);
 
       const component = () => Masonry({ children });
       const { container } = renderComponent(component);
@@ -793,13 +821,12 @@ describe('Masonry', () => {
     });
   });
 
-  // SKIP: Requires real browser element dimensions - happy-dom limitation
-  describe.skip('Column distribution', () => {
+  describe('Column distribution', () => {
     it('should distribute 7 items across 3 columns correctly', async () => {
       const children = Array.from({ length: 7 }, () => document.createElement('div'));
       children.forEach((child, i) => {
         child.textContent = `Item ${i + 1}`;
-        Object.defineProperty(child, 'offsetHeight', { value: 100, configurable: true });
+        setMockedHeight(child, 100);
       });
 
       const component = () => Masonry({ columns: 3, children });
@@ -815,13 +842,14 @@ describe('Masonry', () => {
       const children = Array.from({ length: 6 }, () => document.createElement('div'));
       children.forEach((child, i) => {
         child.textContent = `Item ${i}`;
-        Object.defineProperty(child, 'offsetHeight', { value: 100, configurable: true });
+        setMockedHeight(child, 100);
       });
 
       const component = () => Masonry({ columns: 3, children });
       const { container } = renderComponent(component);
 
       await nextTick();
+      vi.runAllTimers(); // Execute setTimeout(layout, 0)
 
       const items = Array.from(
         container.querySelector('[data-masonry]')?.children || [],

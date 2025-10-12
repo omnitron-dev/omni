@@ -38,12 +38,19 @@ export function renderComponent(component: () => any): RenderResult {
 
   createRoot((d) => {
     dispose = d;
-    const result = component();
-    if (result instanceof Node) {
-      container.appendChild(result);
-    } else if (typeof result === 'string' || typeof result === 'number') {
-      container.textContent = String(result);
-    }
+
+    // Set up reactive rendering with effect
+    effect(() => {
+      // Clear container before re-rendering
+      container.innerHTML = '';
+
+      const result = component();
+      if (result instanceof Node) {
+        container.appendChild(result);
+      } else if (typeof result === 'string' || typeof result === 'number') {
+        container.textContent = String(result);
+      }
+    });
   });
 
   return {

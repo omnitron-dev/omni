@@ -9,7 +9,7 @@ import type { Signal } from '../core/reactivity/types.js';
 import { effect } from '../core/reactivity/effect.js';
 import { onCleanup } from '../core/reactivity/context.js';
 import { useRouter } from './hooks.js';
-import type { LoaderContext, ActionContext, RouteLoader, RouteAction } from './types.js';
+import type { LoaderContext, ActionContext, RouteLoader, RouteAction, DeferredData } from './types.js';
 
 /**
  * Global loader data storage
@@ -67,6 +67,55 @@ export async function executeLoader(loader: RouteLoader, context: LoaderContext)
 }
 
 /**
+ * Execute multiple loaders in parallel
+ *
+ * Useful for nested routes where parent and child routes both have loaders.
+ * All loaders execute concurrently and results are merged.
+ *
+ * @param loaders - Array of loader functions with keys
+ * @param context - Shared loader context
+ * @returns Object with all loader results
+ *
+ * @example
+ * ```typescript
+ * const results = await executeLoadersParallel([
+ *   { key: 'user', loader: userLoader },
+ *   { key: 'posts', loader: postsLoader }
+ * ], context);
+ * // results = { user: {...}, posts: [...] }
+ * ```
+ */
+export async function executeLoadersParallel(
+  loaders: Array<{ key: string; loader: RouteLoader }>,
+  context: LoaderContext
+): Promise<Record<string, any>> {
+  const promises = loaders.map(async ({ key, loader }) => {
+    try {
+      const result = await loader(context);
+      return { key, result, error: null };
+    } catch (error) {
+      console.error(`Loader error for ${key}:`, error);
+      return { key, result: null, error };
+    }
+  });
+
+  const results = await Promise.all(promises);
+
+  // Merge results into object
+  const merged: Record<string, any> = {};
+  for (const { key, result, error } of results) {
+    if (error) {
+      // Store error so component can handle it
+      merged[key] = { __error: error };
+    } else {
+      merged[key] = result;
+    }
+  }
+
+  return merged;
+}
+
+/**
  * Execute action for a route
  *
  * @param action - Action function
@@ -80,6 +129,101 @@ export async function executeAction(action: RouteAction, context: ActionContext)
     console.error('Action error:', error);
     throw error;
   }
+}
+
+/**
+ * Create deferred data for streaming
+ *
+ * Allows loaders to return partially loaded data while continuing to load
+ * additional data in the background.
+ *
+ * @param promise - Promise to defer
+ * @returns Deferred data wrapper
+ *
+ * @example
+ * ```typescript
+ * export const loader = async ({ params, netron }: LoaderContext) => {
+ *   // Critical data - load immediately
+ *   const user = await netron.query('users', 'getUser', [params.id]);
+ *
+ *   // Non-critical data - defer loading
+ *   const postsPromise = netron.query('posts', 'getUserPosts', [params.id]);
+ *
+ *   return {
+ *     user,
+ *     posts: defer(postsPromise)
+ *   };
+ * };
+ * ```
+ */
+export function defer<T>(promise: Promise<T>): DeferredData<T> {
+  const deferred: DeferredData<T> = {
+    promise,
+    resolved: false,
+  };
+
+  // Track resolution
+  promise
+    .then((data) => {
+      deferred.resolved = true;
+      deferred.data = data;
+    })
+    .catch((error) => {
+      deferred.resolved = true;
+      deferred.error = error instanceof Error ? error : new Error(String(error));
+    });
+
+  return deferred;
+}
+
+/**
+ * Check if value is deferred data
+ *
+ * @param value - Value to check
+ * @returns True if value is deferred data
+ */
+export function isDeferred(value: any): value is DeferredData {
+  return (
+    value &&
+    typeof value === 'object' &&
+    'promise' in value &&
+    'resolved' in value &&
+    value.promise instanceof Promise
+  );
+}
+
+/**
+ * Await deferred data
+ *
+ * Resolves the deferred promise and returns the data.
+ * Throws if the promise rejected.
+ *
+ * @param deferred - Deferred data
+ * @returns Resolved data
+ *
+ * @example
+ * ```typescript
+ * const Component = defineComponent(() => {
+ *   const data = useLoaderData<{ posts: DeferredData<Post[]> }>();
+ *
+ *   const posts = useAsync(async () => {
+ *     if (!data()?.posts) return [];
+ *     return await awaitDeferred(data()!.posts);
+ *   });
+ *
+ *   return () => <div>{posts().length} posts</div>;
+ * });
+ * ```
+ */
+export async function awaitDeferred<T>(deferred: DeferredData<T>): Promise<T> {
+  if (deferred.resolved) {
+    if (deferred.error) {
+      throw deferred.error;
+    }
+    return deferred.data!;
+  }
+
+  return await deferred.promise;
 }
 
 /**

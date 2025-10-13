@@ -47,7 +47,6 @@ export type {
   BackendOptions,
   CacheConfig,
   RetryConfig,
-  CircuitBreakerConfig,
 
   // Query types
   QueryOptions,
@@ -67,8 +66,6 @@ export type {
 
   // Utility types
   Type,
-  Signal,
-  WritableSignal,
   MethodParameters,
   MethodReturnType,
 } from './types.js';

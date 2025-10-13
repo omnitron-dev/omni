@@ -27,6 +27,10 @@ export type {
   Router,
   RouteContext,
   RouteError,
+  DeferredData,
+  PrefetchStrategy,
+  FileRouteConventions,
+  FileRouteModule,
 } from './types.js';
 
 // Router
@@ -69,8 +73,25 @@ export {
   setNavigationState,
   executeLoader,
   executeAction,
+  executeLoadersParallel,
+  defer,
+  isDeferred,
+  awaitDeferred,
 } from './data.js';
 export type { Fetcher } from './data.js';
 
 // Prefetching
 export { prefetchRoute, clearPrefetchCache, isPrefetched } from './prefetch.js';
+
+// File-Based Routing
+export {
+  filePathToRoutePath,
+  extractParams,
+  groupRouteFiles,
+  buildRouteFromModules,
+  createRouteTree,
+  generateRoutesFromFiles,
+  validateRoute,
+  validateRoutes,
+  defaultConventions,
+} from './file-based.js';

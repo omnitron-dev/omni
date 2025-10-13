@@ -196,7 +196,7 @@ export function useOptimisticMutation<
       snapshot = getCurrentData();
 
       // Apply optimistic update
-      return applyOptimisticUpdate(snapshot, variables);
+      return applyOptimisticUpdate(snapshot, variables) as any as TData;
     },
     onError: async (error: Error) => {
       // Rollback on error

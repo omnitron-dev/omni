@@ -6,8 +6,6 @@
  * references to actual DOM nodes and reactive effects.
  */
 
-import type { EffectImpl } from '../core/reactivity/effect.js';
-
 /**
  * VNode type enumeration
  */
@@ -53,7 +51,7 @@ export interface VNode {
   dom?: Node | null;
 
   /** Reactive effects attached to this node */
-  effects?: EffectImpl[];
+  effects?: any[];
 
   /** Parent VNode reference (for traversal) */
   parent?: VNode | null;

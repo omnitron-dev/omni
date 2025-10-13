@@ -58,6 +58,10 @@
       "types": "./dist/netron/index.d.ts",
       "import": "./dist/netron/index.js"
     },
+    "./store": {
+      "types": "./dist/store/index.d.ts",
+      "import": "./dist/store/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

@@ -3,7 +3,7 @@
  * @module @omnitron-dev/aether/netron
  */
 
-import { IModule } from '../di/types.js';
+import type { Provider } from '../di/types.js';
 import { NetronClient } from './client.js';
 import { HttpCacheManager, HttpRemotePeer, RetryManager } from '@omnitron-dev/netron-browser';
 import {
@@ -14,6 +14,14 @@ import {
   DEFAULT_BACKEND,
 } from './tokens.js';
 import type { BackendConfig, CacheConfig, RetryConfig } from './types.js';
+
+/**
+ * Module with providers (simplified interface for forRoot/forFeature pattern)
+ */
+export interface ModuleConfig {
+  providers?: Provider[];
+  exports?: any[];
+}
 
 /**
  * NetronModule configuration options
@@ -69,7 +77,7 @@ export class NetronModule {
    * @param config - Module configuration
    * @returns Module definition
    */
-  static forRoot(config?: NetronModuleConfig): IModule {
+  static forRoot(config?: NetronModuleConfig): ModuleConfig {
     // Create cache manager
     const cacheManager = new HttpCacheManager({
       maxEntries: config?.cache?.maxEntries || 1000,
@@ -80,12 +88,15 @@ export class NetronModule {
 
     // Create retry manager
     const retryManager = new RetryManager({
-      attempts: config?.retry?.attempts || 3,
-      backoff: config?.retry?.backoff || 'exponential',
-      initialDelay: config?.retry?.initialDelay || 1000,
-      maxDelay: config?.retry?.maxDelay || 30000,
-      jitter: config?.retry?.jitter || 0.1,
+      defaultOptions: {
+        attempts: config?.retry?.attempts || 3,
+        backoff: config?.retry?.backoff || 'exponential',
+        initialDelay: config?.retry?.initialDelay || 1000,
+        maxDelay: config?.retry?.maxDelay || 30000,
+        jitter: config?.retry?.jitter || 0.1,
+      },
       circuitBreaker: config?.retry?.circuitBreaker,
+      debug: false,
     });
 
     // Create backend registry
@@ -168,7 +179,7 @@ export class NetronModule {
    *
    * @returns Module definition
    */
-  static forFeature(): IModule {
+  static forFeature(): ModuleConfig {
     return {
       // Feature modules don't provide anything
       // They just import NetronClient from root
@@ -183,7 +194,7 @@ export class NetronModule {
    * @param mockBackends - Mock backend implementations
    * @returns Module definition
    */
-  static forTesting(mockBackends?: Record<string, HttpRemotePeer>): IModule {
+  static forTesting(mockBackends?: Record<string, HttpRemotePeer>): ModuleConfig {
     const cacheManager = new HttpCacheManager({
       maxEntries: 100,
       defaultMaxAge: 1000,
@@ -191,9 +202,12 @@ export class NetronModule {
     });
 
     const retryManager = new RetryManager({
-      attempts: 1, // Don't retry in tests
-      backoff: 'fixed',
-      initialDelay: 0,
+      defaultOptions: {
+        attempts: 1, // Don't retry in tests
+        backoff: 'constant',
+        initialDelay: 0,
+      },
+      debug: true,
     });
 
     const backendRegistry = new Map<string, HttpRemotePeer>();

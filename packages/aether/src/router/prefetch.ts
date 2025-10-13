@@ -58,6 +58,7 @@ export async function prefetchRoute(router: Router, path: string, options: { for
       params: match.params,
       url,
       request: typeof window !== 'undefined' ? new Request(url.href) : undefined,
+      netron: router.config.netron,
     });
 
     // Store prefetched data

@@ -71,7 +71,7 @@ export function getServiceName(target: any): string {
   // Remove both suffixes in one pass to handle cases like "UserServiceStore"
   return className
     .replace(/(Service)?(Store)?$/, '')
-    .replace(/([A-Z])/g, (match: string, p1: string, offset: number) =>
+    .replace(/([A-Z])/g, (_match: string, p1: string, offset: number) =>
       offset > 0 ? '-' + p1.toLowerCase() : p1.toLowerCase()
     );
 }

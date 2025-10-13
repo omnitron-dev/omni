@@ -3,19 +3,12 @@
  * @module @omnitron-dev/aether/netron
  */
 
-import { Injectable, Inject, Optional } from '../di/index.js';
+import { Injectable } from '../di/index.js';
 import {
   HttpRemotePeer,
   HttpCacheManager,
   RetryManager,
 } from '@omnitron-dev/netron-browser';
-import {
-  BACKEND_CONFIG,
-  CACHE_MANAGER,
-  RETRY_MANAGER,
-  BACKEND_REGISTRY,
-  DEFAULT_BACKEND,
-} from './tokens.js';
 import type {
   BackendConfig,
   BackendOptions,
@@ -33,14 +26,17 @@ export class NetronClient {
   private cacheManager: HttpCacheManager;
   private retryManager: RetryManager;
   private defaultBackend: string;
+  private config?: BackendConfig;
 
   constructor(
-    @Optional() @Inject(BACKEND_CONFIG) private config?: BackendConfig,
-    @Optional() @Inject(CACHE_MANAGER) cacheManager?: HttpCacheManager,
-    @Optional() @Inject(RETRY_MANAGER) retryManager?: RetryManager,
-    @Optional() @Inject(BACKEND_REGISTRY) registry?: Map<string, HttpRemotePeer>,
-    @Optional() @Inject(DEFAULT_BACKEND) defaultBackend?: string
+    config?: BackendConfig,
+    cacheManager?: HttpCacheManager,
+    retryManager?: RetryManager,
+    registry?: Map<string, HttpRemotePeer>,
+    defaultBackend?: string
   ) {
+    this.config = config;
+
     // Use provided registry or create new
     this.backends = registry || new Map();
 
@@ -54,12 +50,15 @@ export class NetronClient {
 
     // Use provided or create default retry manager
     this.retryManager = retryManager || new RetryManager({
-      attempts: config?.retry?.attempts || 3,
-      backoff: config?.retry?.backoff || 'exponential',
-      initialDelay: config?.retry?.initialDelay || 1000,
-      maxDelay: config?.retry?.maxDelay || 30000,
-      jitter: config?.retry?.jitter || 0.1,
+      defaultOptions: {
+        attempts: config?.retry?.attempts || 3,
+        backoff: config?.retry?.backoff || 'exponential',
+        initialDelay: config?.retry?.initialDelay || 1000,
+        maxDelay: config?.retry?.maxDelay || 30000,
+        jitter: config?.retry?.jitter || 0.1,
+      },
       circuitBreaker: config?.retry?.circuitBreaker,
+      debug: false,
     });
 
     // Set default backend
@@ -141,7 +140,7 @@ export class NetronClient {
         const config = this.config.backends[backendName];
         if (typeof config === 'string') {
           this.createBackend(backendName, { url: config });
-        } else {
+        } else if (config) {
           this.createBackend(backendName, config);
         }
         peer = this.backends.get(backendName)!;

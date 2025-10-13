@@ -83,6 +83,25 @@ export {
   SerializationError,
 } from './errors/index.js';
 
+// HTTP Transport exports (for advanced usage)
+export {
+  HttpRemotePeer,
+  HttpCacheManager,
+  RetryManager,
+  FluentInterface,
+  QueryBuilder,
+  ConfigurableProxy,
+} from './transport/http/index.js';
+
+export type {
+  CacheOptions,
+  CacheStats,
+  RetryOptions,
+  RetryStats,
+  CircuitBreakerOptions,
+  QueryOptions,
+} from './transport/http/index.js';
+
 // Utility exports
 export {
   generateRequestId,

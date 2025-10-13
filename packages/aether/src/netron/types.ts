@@ -3,8 +3,11 @@
  * @module @omnitron-dev/aether/netron
  */
 
-import type { Signal } from '../core/reactivity/signal.js';
-import type { Resource } from '../core/reactivity/resource.js';
+import type { Signal } from '../core/reactivity/types.js';
+import type {
+  CacheOptions,
+  RetryOptions,
+} from '@omnitron-dev/netron-browser';
 
 // Re-export types from netron-browser for convenience
 export type {

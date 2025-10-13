@@ -8,12 +8,11 @@ import { signal, computed, effect, onCleanup } from '../../core/index.js';
 import { resource } from '../../core/reactivity/resource.js';
 import { NetronClient } from '../client.js';
 import { getBackendName, getServiceName } from '../decorators/index.js';
+import type { WritableSignal } from '../../core/reactivity/types.js';
 import type {
   Type,
   QueryOptions,
   QueryResult,
-  MethodParameters,
-  MethodReturnType,
 } from '../types.js';
 
 /**
@@ -62,7 +61,7 @@ export function useQuery<TService, TMethod extends keyof TService>(
     async () => {
       // Check if query is enabled
       if (!enabled()) {
-        return undefined;
+        return options?.fallback;
       }
 
       isFetching.set(true);
@@ -79,10 +78,6 @@ export function useQuery<TService, TMethod extends keyof TService>(
       } finally {
         isFetching.set(false);
       }
-    },
-    {
-      // Resource options
-      initialValue: options?.fallback,
     }
   );
 
@@ -189,7 +184,7 @@ export function useQueries<T extends ReadonlyArray<{
 export function usePaginatedQuery<TService, TMethod extends keyof TService>(
   serviceClass: Type<TService> | string,
   method: TMethod,
-  page: Signal<number>,
+  page: WritableSignal<number>,
   pageSize: number,
   options?: QueryOptions
 ) {
@@ -269,7 +264,11 @@ export function usePaginatedQuery<TService, TMethod extends keyof TService>(
  * );
  * ```
  */
-export function useInfiniteQuery<TService, TMethod extends keyof TService, TData = any>(
+export function useInfiniteQuery<
+  TService,
+  TMethod extends keyof TService,
+  TData = TService[TMethod] extends (...args: any[]) => Promise<infer R> ? R : any
+>(
   serviceClass: Type<TService> | string,
   method: TMethod,
   getNextPageParam: (lastPage: TData, allPages: TData[]) => any,
@@ -300,10 +299,10 @@ export function useInfiniteQuery<TService, TMethod extends keyof TService, TData
       );
 
       // Add to pages
-      pages.set([...pages(), result]);
+      pages.set([...pages(), result as TData]);
 
       // Calculate next page param
-      const next = getNextPageParam(result, pages());
+      const next = getNextPageParam(result as TData, pages());
       nextPageParam.set(next);
 
       return result;
@@ -324,8 +323,8 @@ export function useInfiniteQuery<TService, TMethod extends keyof TService, TData
   effect(() => {
     const initialData = data();
     if (initialData && pages().length === 0) {
-      pages.set([initialData]);
-      const next = getNextPageParam(initialData, [initialData]);
+      pages.set([initialData as TData]);
+      const next = getNextPageParam(initialData as TData, [initialData as TData]);
       nextPageParam.set(next);
     }
   });

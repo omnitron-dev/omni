@@ -7,7 +7,6 @@ import { inject } from '../../di/index.js';
 import { NetronClient } from '../client.js';
 import { getBackendName, getServiceName } from '../decorators/index.js';
 import type {
-  FluentInterface,
   QueryOptions,
   MutationOptions,
   INetronService,

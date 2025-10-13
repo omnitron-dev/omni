@@ -44,6 +44,7 @@ export interface LoaderContext {
   params: RouteParams;
   url: URL;
   request?: Request;
+  netron?: any; // NetronClient instance - typed as any to avoid circular dependency
 }
 
 /**
@@ -53,6 +54,7 @@ export interface ActionContext {
   params: RouteParams;
   request: Request;
   formData: FormData;
+  netron?: any; // NetronClient instance - typed as any to avoid circular dependency
 }
 
 /**
@@ -78,6 +80,7 @@ export interface RouteDefinition {
   guards?: RouteGuard[];
   children?: RouteDefinition[];
   meta?: RouteMeta;
+  lazy?: () => Promise<any>;
 }
 
 /**
@@ -97,6 +100,8 @@ export interface RouteMatch {
   params: RouteParams;
   path: string;
   score: number;
+  query?: Record<string, string>;
+  data?: any;
 }
 
 /**
@@ -134,6 +139,7 @@ export interface RouterConfig {
   base?: string;
   routes?: RouteDefinition[];
   scrollBehavior?: ScrollBehavior;
+  netron?: any; // NetronClient instance - typed as any to avoid circular dependency
 }
 
 /**
@@ -180,7 +186,7 @@ export interface Router {
  */
 export interface RouteContext {
   route: RouteMatch;
-  layouts: RouteComponent[];
+  layouts?: RouteComponent[];
   errorBoundary?: RouteComponent;
   loading?: RouteComponent;
 }
@@ -193,4 +199,61 @@ export interface RouteError {
   stack?: string;
   statusCode?: number;
   error?: Error;
+}
+
+/**
+ * Deferred data for streaming
+ */
+export interface DeferredData<T = any> {
+  /** Deferred promise */
+  promise: Promise<T>;
+  /** Resolved state */
+  resolved: boolean;
+  /** Resolved data */
+  data?: T;
+  /** Error if rejected */
+  error?: Error;
+}
+
+/**
+ * Prefetch strategy for Link component
+ */
+export type PrefetchStrategy = boolean | 'hover' | 'visible' | 'viewport' | 'render' | 'none';
+
+/**
+ * File-based route conventions
+ */
+export interface FileRouteConventions {
+  /** Page component file pattern */
+  pagePattern?: string | RegExp;
+  /** Layout component file pattern */
+  layoutPattern?: string | RegExp;
+  /** Loader file pattern */
+  loaderPattern?: string | RegExp;
+  /** Action file pattern */
+  actionPattern?: string | RegExp;
+  /** Error boundary file pattern */
+  errorPattern?: string | RegExp;
+  /** Loading component file pattern */
+  loadingPattern?: string | RegExp;
+}
+
+/**
+ * File-based route module
+ */
+export interface FileRouteModule {
+  /** Default export - component */
+  default?: RouteComponent;
+  /** Loader function */
+  loader?: RouteLoader;
+  /** Action function */
+  action?: RouteAction;
+  /** Layout component */
+  layout?: RouteComponent;
+  /** Error boundary component */
+  errorBoundary?: RouteComponent;
+  /** Loading component */
+  loading?: RouteComponent;
+  /** Route metadata */
+  meta?: RouteMeta;
 }

@@ -7,6 +7,7 @@ import { inject } from '../../di/index.js';
 import { signal, effect, onCleanup } from '../../core/index.js';
 import { NetronClient } from '../client.js';
 import { getBackendName, getServiceName } from '../decorators/index.js';
+import type { Signal } from '../../core/reactivity/types.js';
 import type {
   Type,
   StreamOptions,
@@ -40,7 +41,7 @@ export function useStream<TService, TMethod extends keyof TService, TData = any>
   serviceClass: Type<TService> | string,
   method: TMethod,
   args: TService[TMethod] extends (...args: infer P) => any ? P : never,
-  options?: StreamOptions<TData>
+  options?: StreamOptions
 ): StreamResult<TData> {
   // Get NetronClient from DI
   const netron = inject(NetronClient);
@@ -50,10 +51,9 @@ export function useStream<TService, TMethod extends keyof TService, TData = any>
   const serviceName = typeof serviceClass === 'string' ? serviceClass : getServiceName(serviceClass);
 
   // Create state signals
-  const data = signal<TData[]>([]);
+  const data = signal<TData | undefined>(options?.initialValue);
   const error = signal<Error | undefined>(undefined);
-  const status = signal<'connecting' | 'connected' | 'disconnected' | 'error'>('connecting');
-  const isReconnecting = signal(false);
+  const connected = signal(false);
 
   // Track subscription
   let subscription: any = null;
@@ -65,99 +65,66 @@ export function useStream<TService, TMethod extends keyof TService, TData = any>
    */
   const connect = async () => {
     try {
-      status.set('connecting');
+      connected.set(false);
       error.set(undefined);
 
       // Get peer and service
       const peer = netron.backend(backendName);
       const serviceInterface = await peer.queryFluentInterface<any>(serviceName);
 
-      // Build stream options
-      let stream = serviceInterface;
-
-      if (options?.bufferSize) {
-        stream = stream.buffer(options.bufferSize);
+      // Subscribe to stream by calling the method
+      const methodCall = (serviceInterface as any)[method as string];
+      if (typeof methodCall !== 'function') {
+        throw new Error(`Method ${String(method)} not found on service ${serviceName}`);
       }
 
-      if (options?.throttle) {
-        stream = stream.throttle(options.throttle);
-      }
+      // Call the method with args to get the stream
+      const stream = await methodCall(...(args as any[]));
 
-      if (options?.filter) {
-        stream = stream.filter(options.filter);
-      }
+      // Subscribe to the stream
+      if (stream && typeof stream.subscribe === 'function') {
+        subscription = stream.subscribe({
+          next: (value: TData) => {
+            data.set(value);
 
-      // Subscribe to stream
-      subscription = await stream[method](...args).subscribe({
-        next: (value: TData) => {
-          // Add to data buffer
-          if (options?.bufferSize) {
-            const buffer = [...data()];
-            buffer.push(value);
-            if (buffer.length > options.bufferSize) {
-              buffer.shift();
+            // Update connection status
+            if (!connected()) {
+              connected.set(true);
+              reconnectAttempts = 0;
             }
-            data.set(buffer);
-          } else {
-            data.set([...data(), value]);
-          }
+          },
+          error: (err: Error) => {
+            error.set(err);
+            connected.set(false);
 
-          // Call onData callback
-          if (options?.onData) {
-            options.onData(value);
-          }
+            // Attempt reconnection
+            if (options?.autoReconnect && reconnectAttempts < (options?.maxReconnectAttempts || Infinity)) {
+              scheduleReconnect();
+            }
+          },
+          complete: () => {
+            connected.set(false);
 
-          // Update status
-          if (status() !== 'connected') {
-            status.set('connected');
-            reconnectAttempts = 0;
-          }
-        },
-        error: (err: Error) => {
-          error.set(err);
-          status.set('error');
+            // Attempt reconnection if enabled
+            if (options?.autoReconnect && reconnectAttempts < (options?.maxReconnectAttempts || Infinity)) {
+              scheduleReconnect();
+            }
+          },
+        });
 
-          // Call onError callback
-          if (options?.onError) {
-            options.onError(err);
-          }
-
-          // Attempt reconnection
-          if (options?.reconnect) {
-            scheduleReconnect();
-          }
-        },
-        complete: () => {
-          status.set('disconnected');
-
-          // Call onComplete callback
-          if (options?.onComplete) {
-            options.onComplete();
-          }
-
-          // Attempt reconnection if not intentional
-          if (options?.reconnect && status() !== 'disconnected') {
-            scheduleReconnect();
-          }
-        },
-      });
-
-      // Connected successfully
-      status.set('connected');
-      isReconnecting.set(false);
-      reconnectAttempts = 0;
-
-      // Call onConnect callback
-      if (options?.onConnect) {
-        options.onConnect();
+        // Connected successfully
+        connected.set(true);
+        reconnectAttempts = 0;
+      } else {
+        throw new Error(`Method ${String(method)} did not return a subscribable stream`);
       }
     } catch (err) {
       const e = err as Error;
       error.set(e);
-      status.set('error');
+      connected.set(false);
 
       // Attempt reconnection
-      if (options?.reconnect) {
+      if (options?.autoReconnect && reconnectAttempts < (options?.maxReconnectAttempts || Infinity)) {
         scheduleReconnect();
       }
     }
@@ -171,25 +138,23 @@ export function useStream<TService, TMethod extends keyof TService, TData = any>
       clearTimeout(reconnectTimeout);
     }
 
-    isReconnecting.set(true);
     reconnectAttempts++;
 
     // Calculate delay with exponential backoff
     const baseDelay = options?.reconnectDelay || 1000;
-    const maxDelay = options?.reconnectMaxDelay || 30000;
-    const delay = Math.min(baseDelay * Math.pow(2, reconnectAttempts - 1), maxDelay);
+    const delay = baseDelay * Math.pow(2, reconnectAttempts - 1);
 
     reconnectTimeout = setTimeout(() => {
-      if (status() !== 'connected') {
+      if (!connected()) {
         connect();
       }
     }, delay);
   };
 
   /**
-   * Disconnect from stream
+   * Close the stream
    */
-  const disconnect = () => {
+  const close = () => {
     // Clear reconnect timeout
     if (reconnectTimeout) {
       clearTimeout(reconnectTimeout);
@@ -206,43 +171,35 @@ export function useStream<TService, TMethod extends keyof TService, TData = any>
       subscription = null;
     }
 
-    status.set('disconnected');
-    isReconnecting.set(false);
+    connected.set(false);
     reconnectAttempts = 0;
-
-    // Call onDisconnect callback
-    if (options?.onDisconnect) {
-      options.onDisconnect();
-    }
   };
 
   /**
-   * Clear buffered data
+   * Reconnect to the stream
    */
-  const clear = () => {
-    data.set([]);
+  const reconnect = async () => {
+    close();
+    reconnectAttempts = 0;
+    await connect();
   };
 
-  // Auto-connect if enabled (default)
-  if (options?.autoConnect !== false) {
-    effect(() => {
-      connect();
-    });
-  }
+  // Auto-connect by default
+  effect(() => {
+    connect();
+  });
 
   // Cleanup on unmount
   onCleanup(() => {
-    disconnect();
+    close();
   });
 
   return {
     data,
     error,
-    status,
-    isReconnecting,
-    connect,
-    disconnect,
-    clear,
+    connected,
+    close,
+    reconnect,
   };
 }
 
@@ -338,7 +295,12 @@ export function useBroadcast<TService, TMethod extends keyof TService, TData = a
       const serviceInterface = await peer.queryFluentInterface<any>(serviceName);
 
       // Call broadcast method
-      await serviceInterface[method](data);
+      const methodCall = (serviceInterface as any)[method as string];
+      if (typeof methodCall !== 'function') {
+        throw new Error(`Method ${String(method)} not found on service ${serviceName}`);
+      }
+
+      await methodCall(data);
     } catch (err) {
       const e = err as Error;
       error.set(e);

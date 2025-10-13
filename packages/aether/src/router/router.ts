@@ -13,7 +13,7 @@ import type { Router, RouterConfig, RouteMatch, Location, NavigationOptions, Rou
  * Create a new Router instance
  */
 export function createRouter(config: RouterConfig = {}): Router {
-  const { mode = 'history', base = '/', routes = [], scrollBehavior } = config;
+  const { mode = 'history', base = '/', routes = [], scrollBehavior, netron } = config;
 
   // Current location (reactive)
   const currentLocation = signal<Location>(getCurrentLocation());
@@ -113,6 +113,7 @@ export function createRouter(config: RouterConfig = {}): Router {
           params: match.params,
           url,
           request: typeof window !== 'undefined' ? new Request(url.href) : undefined,
+          netron,
         });
 
         setLoaderData(pathname, loaderData);
@@ -253,6 +254,7 @@ export function createRouter(config: RouterConfig = {}): Router {
           params: match.params,
           url,
           request: typeof window !== 'undefined' ? new Request(url.href) : undefined,
+          netron,
         });
 
         setLoaderData(location.pathname, loaderData);
@@ -295,6 +297,7 @@ export function createRouter(config: RouterConfig = {}): Router {
             params: initialMatch.params,
             url,
             request: new Request(url.href),
+            netron,
           });
 
           setLoaderData(location.pathname, loaderData);
@@ -339,6 +342,7 @@ export function createRouter(config: RouterConfig = {}): Router {
       base,
       routes,
       scrollBehavior,
+      netron,
     },
     get current() {
       return currentLocation();

@@ -147,10 +147,12 @@ export function renderWithLayouts(context: RouteContext): any {
   let rendered = Component({ params: route.params });
 
   // Wrap with layouts in reverse order (leaf → root)
-  for (let i = layouts.length - 1; i >= 0; i--) {
-    const Layout = layouts[i];
-    if (Layout) {
-      rendered = Layout({ children: rendered });
+  if (layouts && layouts.length > 0) {
+    for (let i = layouts.length - 1; i >= 0; i--) {
+      const Layout = layouts[i];
+      if (Layout) {
+        rendered = Layout({ children: rendered });
+      }
     }
   }
 

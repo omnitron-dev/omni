@@ -637,12 +637,16 @@ export const swipe = createDirective<{
   // Touch events
   const handleTouchStart = (e: TouchEvent) => {
     const touch = e.touches[0];
-    handleStart(touch.clientX, touch.clientY);
+    if (touch) {
+      handleStart(touch.clientX, touch.clientY);
+    }
   };
 
   const handleTouchEnd = (e: TouchEvent) => {
     const touch = e.changedTouches[0];
-    handleEnd(touch.clientX, touch.clientY);
+    if (touch) {
+      handleEnd(touch.clientX, touch.clientY);
+    }
   };
 
   const handleTouchCancel = () => {

@@ -12,7 +12,7 @@ import { jsx } from '../jsxruntime/runtime.js';
 import { useRouter } from './hooks.js';
 import { normalizePath } from './route-matcher.js';
 import { prefetchRoute } from './prefetch.js';
-import type { NavigationOptions } from './types.js';
+import type { NavigationOptions, PrefetchStrategy } from './types.js';
 
 /**
  * Link props
@@ -24,8 +24,8 @@ export interface LinkProps {
   activeClass?: string;
   /** Class to apply when route is exactly active */
   exactActiveClass?: string;
-  /** Prefetch strategy: boolean, 'hover', 'viewport', or 'render' */
-  prefetch?: boolean | 'hover' | 'viewport' | 'render';
+  /** Prefetch strategy: boolean, 'hover', 'visible', 'viewport', or 'render' */
+  prefetch?: PrefetchStrategy;
   /** Use history.replace instead of push */
   replace?: boolean;
   /** Scroll to top on navigation */
@@ -62,6 +62,8 @@ export interface LinkProps {
 export const Link = defineComponent<LinkProps>((props) => {
   const router = useRouter();
   const isHovering = signal(false);
+  const elementRef = signal<HTMLAnchorElement | null>(null);
+  let intersectionObserver: IntersectionObserver | null = null;
 
   // Check if link is active (prefix matching with boundary check)
   const isActive = computed(() => {
@@ -144,15 +146,54 @@ export const Link = defineComponent<LinkProps>((props) => {
     isHovering.set(false);
   };
 
-  // Prefetch on render if requested
-  if (props.prefetch === 'render' && props.href && !props.external) {
-    onMount(() => {
-      // Prefetch immediately on component mount
+  // Setup prefetch based on strategy
+  onMount(() => {
+    // Prefetch on render if requested
+    if (props.prefetch === 'render' && props.href && !props.external) {
       prefetchRoute(router, props.href).catch((err) => {
         console.warn('Render prefetch failed:', err);
       });
-    });
-  }
+    }
+
+    // Setup Intersection Observer for visible/viewport strategy
+    if ((props.prefetch === 'visible' || props.prefetch === 'viewport') && props.href && !props.external) {
+      const element = elementRef();
+      if (element && typeof IntersectionObserver !== 'undefined') {
+        intersectionObserver = new IntersectionObserver(
+          (entries) => {
+            for (const entry of entries) {
+              if (entry.isIntersecting) {
+                // Element is visible, prefetch
+                prefetchRoute(router, props.href).catch((err) => {
+                  console.warn('Visible prefetch failed:', err);
+                });
+
+                // Disconnect after first prefetch
+                if (intersectionObserver) {
+                  intersectionObserver.disconnect();
+                  intersectionObserver = null;
+                }
+              }
+            }
+          },
+          {
+            // Use larger rootMargin for 'visible' to prefetch slightly before viewport
+            rootMargin: props.prefetch === 'visible' ? '50px' : '0px',
+          }
+        );
+
+        intersectionObserver.observe(element);
+      }
+    }
+
+    // Cleanup function returned from onMount
+    return () => {
+      if (intersectionObserver) {
+        intersectionObserver.disconnect();
+        intersectionObserver = null;
+      }
+    };
+  });
 
   // Render function
   return () => {
@@ -177,6 +218,7 @@ export const Link = defineComponent<LinkProps>((props) => {
       onClick: handleClick,
       onMouseEnter: handleMouseEnter,
       onMouseLeave: handleMouseLeave,
+      ref: (el: HTMLAnchorElement) => elementRef.set(el),
     };
 
     // For external links, add target and rel

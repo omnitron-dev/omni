@@ -18,10 +18,9 @@ import { VirtualList as VirtualListPrimitive, type VirtualListProps as VirtualLi
  * VirtualList - Styled virtualized list
  */
 export const VirtualList = styled<
-  {
+  VirtualListPrimitiveProps & {
     variant?: 'default' | 'bordered' | 'elevated';
-  },
-  VirtualListPrimitiveProps
+  }
 >(VirtualListPrimitive, {
   base: {
     width: '100%',

@@ -213,15 +213,15 @@ export function createReactiveStyle(element: HTMLElement, getValue: () => StyleV
 
     // Clear previous styles that are not in the new style object
     for (const key of previousKeys) {
-      if (!styleObj || !(key in styleObj)) {
+      if (!styleObj || typeof styleObj === 'string' || !(key in styleObj)) {
         element.style.removeProperty(camelToKebab(key));
       }
     }
 
     // Apply new styles
-    if (styleObj && typeof styleObj === 'object') {
+    if (styleObj && typeof styleObj === 'object' && !Array.isArray(styleObj)) {
       const newKeys: string[] = [];
-      for (const [key, value] of Object.entries(styleObj)) {
+      for (const [key, value] of Object.entries(styleObj as Record<string, any>)) {
         newKeys.push(key);
         if (value == null) {
           element.style.removeProperty(camelToKebab(key));
@@ -378,9 +378,11 @@ export function attachReactivity(vnode: VNode, dom: Node): void {
   if (vnode.children && Array.isArray(vnode.children)) {
     for (let i = 0; i < vnode.children.length; i++) {
       const childVNode = vnode.children[i];
-      const childDom = childVNode.dom;
-      if (childDom) {
-        attachReactivity(childVNode, childDom);
+      if (childVNode) {
+        const childDom = childVNode.dom;
+        if (childDom) {
+          attachReactivity(childVNode, childDom);
+        }
       }
     }
   }

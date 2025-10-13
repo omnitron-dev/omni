@@ -228,15 +228,15 @@ export const VirtualList = defineComponent<VirtualListProps>((props) => {
 
     const {
       children,
-      count,
+      count: _count,
       height,
       width,
-      onScroll,
-      itemSize,
+      onScroll: _onScroll,
+      itemSize: _itemSize,
       direction: _,
       overscan: __,
-      scrollToIndex,
-      scrollBehavior,
+      scrollToIndex: _scrollToIndex,
+      scrollBehavior: _scrollBehavior,
       ...rest
     } = props;
 

@@ -494,6 +494,9 @@ export class TimeTravelDebugger {
             shouldBreak = breakpoint.hitCount >= breakpoint.condition.value;
           }
           break;
+          default:
+          // Unknown breakpoint type
+          break;
       }
 
       if (shouldBreak) {

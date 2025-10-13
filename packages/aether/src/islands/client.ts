@@ -152,7 +152,7 @@ function createIslandInstance(
         const result = component(props);
 
         // If result is a function (render function), execute it
-        const rendered = typeof result === 'function' ? result() : result;
+        const _rendered = typeof result === 'function' ? result() : result;
 
         // Replace element content with hydrated component
         // In a real implementation, this would use the proper reconciliation

@@ -208,6 +208,9 @@ export class I18n {
         case 'navigator':
           detectedLocale = this.detectFromBrowser();
           break;
+          default:
+          // Unknown detection strategy
+          break;
       }
 
       if (detectedLocale && this.config.locales.includes(detectedLocale)) {

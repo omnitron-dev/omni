@@ -168,9 +168,9 @@ export const Input = defineComponent<InputProps>((props) => {
   return () => {
     const {
       type = 'text',
-      value,
-      defaultValue,
-      onValueChange,
+      value: _value,
+      defaultValue: _defaultValue,
+      onValueChange: _onValueChange,
       placeholder,
       disabled,
       readOnly,
@@ -179,10 +179,10 @@ export const Input = defineComponent<InputProps>((props) => {
       name,
       id,
       autoComplete,
-      onChange,
-      onInput,
-      onBlur,
-      onFocus,
+      onChange: _onChange,
+      onInput: _onInput,
+      onBlur: _onBlur,
+      onFocus: _onFocus,
       ...restProps
     } = props;
 

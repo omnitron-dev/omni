@@ -164,7 +164,12 @@ export async function createFileBasedRouter(
     includeApi?: boolean;
   }
 ) {
-  const { createRouter } = await import('../router.js');
+  // Dynamic import of router - must be provided by consuming application
+  const routerModule = await import('../../router/router.js');
+  if (!routerModule.createRouter) {
+    throw new Error('Router module does not export createRouter function');
+  }
+  const { createRouter } = routerModule;
 
   // Generate routes
   const { routes } = await scanAndGenerateRoutes(globResults, {

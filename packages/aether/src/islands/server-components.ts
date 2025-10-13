@@ -117,7 +117,7 @@ export function clientOnly<P = any>(
  * Check if running in SSR environment
  */
 export function isSSR(): boolean {
-  return typeof window === 'undefined' || import.meta.env?.SSR === true;
+  return typeof window === 'undefined' || (import.meta.env && (import.meta.env as any).SSR === true);
 }
 
 /**

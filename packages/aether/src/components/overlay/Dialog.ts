@@ -107,7 +107,7 @@ export const DialogContent = styled<{
 /**
  * DialogTitle - Dialog title
  */
-export const DialogTitle = styled(DialogTitlePrimitive, {
+export const DialogTitle = styled(DialogTitlePrimitive!, {
   base: {
     fontSize: '1.25rem',
     fontWeight: '600',
@@ -136,7 +136,7 @@ export const DialogTitle = styled(DialogTitlePrimitive, {
 /**
  * DialogDescription - Dialog description
  */
-export const DialogDescription = styled(DialogDescriptionPrimitive, {
+export const DialogDescription = styled(DialogDescriptionPrimitive!, {
   base: {
     fontSize: '0.875rem',
     lineHeight: '1.5',

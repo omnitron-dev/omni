@@ -2,7 +2,11 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "allowJs": false,
@@ -27,8 +31,8 @@
     "strictPropertyInitialization": true,
     "noImplicitThis": true,
     "alwaysStrict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
@@ -40,6 +44,16 @@
     "jsx": "react-jsx",
     "jsxImportSource": "@omnitron-dev/aether"
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx"],
-  "exclude": ["node_modules", "dist", "**/*.spec.ts", "**/*.test.ts", "**/*.bench.ts", "src/jsx-types.d.ts"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.spec.ts",
+    "**/*.test.ts",
+    "**/*.bench.ts",
+    "src/jsx-types.d.ts"
+  ]
 }

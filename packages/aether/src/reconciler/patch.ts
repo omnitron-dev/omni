@@ -499,12 +499,14 @@ function transferDOMReferences(oldVNode: VNode | null, newVNode: VNode | null): 
 
     for (let i = 0; i < oldVNode.children.length; i++) {
       const child = oldVNode.children[i];
+      if (!child) continue;
       const key = child.key !== undefined ? String(child.key) : `__index_${i}`;
       oldKeyMap.set(key, child);
     }
 
     for (let i = 0; i < newVNode.children.length; i++) {
       const child = newVNode.children[i];
+      if (!child) continue;
       const key = child.key !== undefined ? String(child.key) : `__index_${i}`;
 
       // Transfer dom from matching old child

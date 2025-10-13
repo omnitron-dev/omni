@@ -212,7 +212,7 @@ export const ToastViewport = defineComponent<ToastViewportProps>((props) => {
 
   return () => {
     // Extract props for reactivity
-    const { label, hotkey, ...restProps } = props;
+    const { label, _hotkey, ...restProps } = props;
     const viewportLabel = label || 'Notifications';
 
     // Create container element

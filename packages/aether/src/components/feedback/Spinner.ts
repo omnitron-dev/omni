@@ -18,12 +18,29 @@ import { Spinner as SpinnerPrimitive, type SpinnerProps as SpinnerPrimitiveProps
  * ```
  */
 export const Spinner = styled<
+  SpinnerPrimitiveProps,
   {
-    size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
-    variant?: 'border' | 'dots' | 'grow';
-    colorScheme?: 'primary' | 'secondary' | 'success' | 'warning' | 'danger' | 'gray';
-  },
-  SpinnerPrimitiveProps
+    size: {
+      xs: {};
+      sm: {};
+      md: {};
+      lg: {};
+      xl: {};
+    };
+    variant: {
+      border: {};
+      dots: {};
+      grow: {};
+    };
+    colorScheme: {
+      primary: {};
+      secondary: {};
+      success: {};
+      warning: {};
+      danger: {};
+      gray: {};
+    };
+  }
 >(SpinnerPrimitive, {
   base: {
     display: 'inline-block',
@@ -107,9 +124,9 @@ export const Spinner = styled<
     },
   },
   defaultVariants: {
-    size: 'md',
-    variant: 'border',
-    colorScheme: 'primary',
+    size: 'md' as const,
+    variant: 'border' as const,
+    colorScheme: 'primary' as const,
   },
 });
 

@@ -222,7 +222,7 @@ export const Pagination = defineComponent<PaginationProps>((props) => {
   };
 
   return () => {
-    const { children, onPageChange, ...restProps } = props;
+    const { children, _onPageChange, ...restProps } = props;
     const resolvedChildren = typeof children === 'function' ? children() : children;
 
     return jsx('nav', {

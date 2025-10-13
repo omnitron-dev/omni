@@ -181,7 +181,7 @@ export const Toolbar = defineComponent<ToolbarProps>((props) => {
   };
 
   return () => {
-    const { orientation = 'horizontal', loop = true, children, ...restProps } = props;
+    const { orientation = 'horizontal', _loop = true, children, ...restProps } = props;
 
     return jsx('div', {
       ...restProps,
@@ -223,7 +223,7 @@ export const ToolbarButton = defineComponent<ToolbarButtonProps>((props) => {
   };
 
   return () => {
-    const { type = 'button', disabled, onClick, children, ...restProps } = props;
+    const { type = 'button', disabled, _onClick, children, ...restProps } = props;
 
     return jsx('button', {
       ...restProps,
@@ -277,7 +277,7 @@ export const ToolbarSeparator = defineComponent<ToolbarSeparatorProps>(
  * Group of toggle buttons (like radio or checkbox group).
  */
 export const ToolbarToggleGroup = defineComponent<ToolbarToggleGroupProps>((props) => () => {
-  const { type = 'single', value, defaultValue, onValueChange, children, ...restProps } = props;
+  const { type = 'single', _value, _defaultValue, _onValueChange, children, ...restProps } = props;
 
   // This is a simplified version - in a real implementation,
   // this would manage the toggle state

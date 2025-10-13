@@ -284,7 +284,7 @@ export const CarouselPrevious = defineComponent<CarouselPreviousProps>((props) =
   };
 
   return () => {
-    const { children, onClick, ...restProps } = props;
+    const { children, _onClick, ...restProps } = props;
 
     const button = jsx('button', {
       ...restProps,
@@ -316,7 +316,7 @@ export const CarouselNext = defineComponent<CarouselNextProps>((props) => {
   };
 
   return () => {
-    const { children, onClick, ...restProps } = props;
+    const { children, _onClick, ...restProps } = props;
 
     const button = jsx('button', {
       ...restProps,
@@ -344,7 +344,7 @@ export const CarouselIndicators = defineComponent<CarouselIndicatorsProps>((prop
   const context = useCarouselContext();
 
   return () => {
-    const { children, ...restProps } = props;
+    const { _children, ...restProps } = props;
     const total = context.totalSlides();
 
     const indicators = Array.from({ length: total }, (_, i) => {

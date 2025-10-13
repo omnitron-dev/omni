@@ -181,30 +181,40 @@ export class TreeShaker {
           namedImports.split(',').forEach((name) => {
             const trimmed = name.trim();
             const identifier = trimmed.includes(' as ')
-              ? trimmed.split(' as ')[1].trim()
+              ? trimmed.split(' as ')[1]?.trim()
               : trimmed;
-            this.importedIdentifiers.set(identifier, source);
+            if (identifier && source) {
+              this.importedIdentifiers.set(identifier, source);
+            }
           });
         }
 
-        if (defaultImport) {
+        if (defaultImport && source) {
           this.importedIdentifiers.set(defaultImport, source);
         }
       }
 
       // Parse exports
       while ((match = exportRegex.exec(line)) !== null) {
-        this.exportedIdentifiers.add(match[1]);
+        const identifier = match[1];
+        if (identifier) {
+          this.exportedIdentifiers.add(identifier);
+        }
       }
 
       while ((match = namedExportRegex.exec(line)) !== null) {
-        match[1].split(',').forEach((name) => {
-          const trimmed = name.trim();
-          const identifier = trimmed.includes(' as ')
-            ? trimmed.split(' as ')[0].trim()
-            : trimmed;
-          this.exportedIdentifiers.add(identifier);
-        });
+        const namedExports = match[1];
+        if (namedExports) {
+          namedExports.split(',').forEach((name) => {
+            const trimmed = name.trim();
+            const identifier = trimmed.includes(' as ')
+              ? trimmed.split(' as ')[0]?.trim()
+              : trimmed;
+            if (identifier) {
+              this.exportedIdentifiers.add(identifier);
+            }
+          });
+        }
       }
     }
   }
@@ -224,6 +234,7 @@ export class TreeShaker {
       let match: RegExpExecArray | null;
       while ((match = identifierRegex.exec(line)) !== null) {
         const identifier = match[1];
+        if (!identifier) continue;
 
         // Skip keywords
         if (this.isKeyword(identifier)) continue;
@@ -278,11 +289,17 @@ export class TreeShaker {
       let match: RegExpExecArray | null;
 
       while ((match = pureAnnotationRegex.exec(line)) !== null) {
-        this.pureFunctionNames.add(match[1]);
+        const identifier = match[1];
+        if (identifier) {
+          this.pureFunctionNames.add(identifier);
+        }
       }
 
       while ((match = arrowPureRegex.exec(line)) !== null) {
-        this.pureFunctionNames.add(match[1]);
+        const identifier = match[1];
+        if (identifier) {
+          this.pureFunctionNames.add(identifier);
+        }
       }
     }
 
@@ -300,7 +317,7 @@ export class TreeShaker {
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      const trimmed = line.trim();
+      if (!line) continue;
 
       // Handle unused imports
       if (this.options.removeUnusedImports && this.isUnusedImport(line)) {
@@ -348,7 +365,7 @@ export class TreeShaker {
       const imports = namedImports.split(',').map((s) => {
         const trimmed = s.trim();
         return trimmed.includes(' as ')
-          ? trimmed.split(' as ')[1].trim()
+          ? trimmed.split(' as ')[1]?.trim() || trimmed
           : trimmed;
       });
 
@@ -372,6 +389,8 @@ export class TreeShaker {
     if (!exportMatch) return false;
 
     const identifier = exportMatch[1];
+    if (!identifier) return false;
+
     return !this.usedIdentifiers.has(identifier);
   }
 
@@ -385,7 +404,7 @@ export class TreeShaker {
     if (!functionMatch) return false;
 
     const identifier = functionMatch[1] || functionMatch[2];
-    return identifier && !this.usedIdentifiers.has(identifier);
+    return Boolean(identifier && !this.usedIdentifiers.has(identifier));
   }
 
   /**
@@ -429,7 +448,7 @@ export class TreeShaker {
       let match: RegExpExecArray | null;
       while ((match = functionRegex.exec(line)) !== null) {
         const identifier = match[1];
-        if (!this.usedIdentifiers.has(identifier)) {
+        if (identifier && !this.usedIdentifiers.has(identifier)) {
           removed.push(identifier);
         }
       }
@@ -450,6 +469,7 @@ export class TreeShaker {
       while ((match = variableRegex.exec(line)) !== null) {
         const identifier = match[1];
         if (
+          identifier &&
           !this.usedIdentifiers.has(identifier) &&
           !this.exportedIdentifiers.has(identifier)
         ) {
@@ -574,7 +594,7 @@ export class ComponentTreeShaker {
   /**
    * Analyze component dependencies
    */
-  analyzeDependencies(code: string): Map<string, Set<string>> {
+  analyzeDependencies(_code: string): Map<string, Set<string>> {
     const dependencies = new Map<string, Set<string>>();
 
     for (const [name, componentCode] of this.componentDefinitions) {
@@ -622,12 +642,18 @@ export class RouteTreeShaker {
 
     if (routes.length === 0) return new Set();
 
-    const common = new Set(routes[0]);
+    const firstRoute = routes[0];
+    if (!firstRoute) return new Set();
+
+    const common = new Set(firstRoute);
 
     for (let i = 1; i < routes.length; i++) {
-      for (const component of common) {
-        if (!routes[i].has(component)) {
-          common.delete(component);
+      const route = routes[i];
+      if (route) {
+        for (const component of common) {
+          if (!route.has(component)) {
+            common.delete(component);
+          }
         }
       }
     }

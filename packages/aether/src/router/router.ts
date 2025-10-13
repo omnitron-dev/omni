@@ -64,8 +64,8 @@ export function createRouter(config: RouterConfig = {}): Router {
         )
       : null;
 
-  // Code splitting manager (currently not used in router, but available for external use)
-  // @ts-expect-error - codeSplittingManager is declared for future use but not yet integrated
+  // Code splitting manager (currently not used in router, but available for future use)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const codeSplittingManager =
     codeSplitting !== false
       ? new CodeSplittingManager(typeof codeSplitting === 'object' ? codeSplitting : { enabled: true })

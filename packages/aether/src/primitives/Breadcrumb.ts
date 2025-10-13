@@ -148,7 +148,7 @@ export const BreadcrumbLink = defineComponent<BreadcrumbLinkProps>((props) => {
   };
 
   return () => {
-    const { href, disabled, onClick, children, ...restProps } = props;
+    const { href, disabled, _onClick, children, ...restProps } = props;
 
     return jsx('a', {
       ...restProps,

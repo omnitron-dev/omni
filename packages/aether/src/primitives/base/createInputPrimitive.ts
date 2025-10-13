@@ -511,8 +511,4 @@ export function createInputPrimitive<TValue = string>(config: InputConfig<TValue
   return Component;
 }
 
-// ============================================================================
-// Export Types
-// ============================================================================
-
-export type { BaseInputProps, FocusManager, ValidationResult };
+// Types are exported via the interface declarations above

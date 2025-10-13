@@ -243,7 +243,7 @@ export const DropdownMenuTrigger = defineComponent<DropdownMenuTriggerProps>((pr
     props.onKeyDown?.(e);
   };
 
-  const { disabled, onKeyDown, children, ...restProps } = props;
+  const { disabled, _onKeyDown, children, ...restProps } = props;
 
   return () =>
     jsx(DropdownMenuBase.Trigger, {
@@ -364,7 +364,7 @@ export const DropdownMenuContent = defineComponent<DropdownMenuContentProps>((pr
     };
   });
 
-  const { loop, children, ...restProps } = props;
+  const { _loop, children, ...restProps } = props;
 
   return () =>
     jsx(DropdownMenuBase.Content, {
@@ -420,7 +420,7 @@ export const DropdownMenuItem = defineComponent<DropdownMenuItemProps>((props) =
     props.onKeyDown?.(e);
   };
 
-  const { disabled, textValue, onSelect, onClick, onKeyDown, children, ...restProps } = props;
+  const { disabled, textValue, _onSelect, _onClick, _onKeyDown, children, ...restProps } = props;
 
   return () =>
     jsx('div', {
@@ -475,7 +475,7 @@ export const DropdownMenuCheckboxItem = defineComponent<DropdownMenuCheckboxItem
     props.onKeyDown?.(e);
   };
 
-  const { disabled, textValue, onCheckedChange, onClick, onKeyDown, children, ...restProps } = props;
+  const { disabled, textValue, _onCheckedChange, _onClick, _onKeyDown, children, ...restProps } = props;
 
   return () =>
     jsx('div', {
@@ -552,7 +552,7 @@ export const DropdownMenuRadioItem = defineComponent<DropdownMenuRadioItemProps>
     props.onKeyDown?.(e);
   };
 
-  const { disabled, value, onClick, onKeyDown, children, ...restProps } = props;
+  const { disabled, value, _onClick, _onKeyDown, children, ...restProps } = props;
   const isChecked = radioCtx.value() === value;
 
   return () =>

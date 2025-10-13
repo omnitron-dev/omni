@@ -53,6 +53,7 @@ export function diffChildrenWithKeys(oldChildren: VNode[], newChildren: VNode[])
   // Populate old key map
   for (let i = 0; i < oldChildren.length; i++) {
     const child = oldChildren[i];
+    if (!child) continue;
     const key = getVNodeKey(child, i);
     oldKeyMap.set(key, { vnode: child, index: i });
   }
@@ -60,6 +61,7 @@ export function diffChildrenWithKeys(oldChildren: VNode[], newChildren: VNode[])
   // Populate new key map
   for (let i = 0; i < newChildren.length; i++) {
     const child = newChildren[i];
+    if (!child) continue;
     const key = getVNodeKey(child, i);
     newKeyMap.set(key, { vnode: child, index: i });
   }
@@ -70,6 +72,8 @@ export function diffChildrenWithKeys(oldChildren: VNode[], newChildren: VNode[])
   // Process new children
   for (let newIndex = 0; newIndex < newChildren.length; newIndex++) {
     const newChild = newChildren[newIndex];
+    if (!newChild) continue;
+
     const key = getVNodeKey(newChild, newIndex);
     const oldEntry = oldKeyMap.get(key);
 
@@ -105,11 +109,13 @@ export function diffChildrenWithKeys(oldChildren: VNode[], newChildren: VNode[])
   for (let oldIndex = 0; oldIndex < oldChildren.length; oldIndex++) {
     if (!usedOldIndices.has(oldIndex)) {
       const oldChild = oldChildren[oldIndex];
-      patches.push({
-        type: PatchType.REMOVE,
-        vnode: oldChild,
-        index: oldIndex,
-      });
+      if (oldChild) {
+        patches.push({
+          type: PatchType.REMOVE,
+          vnode: oldChild,
+          index: oldIndex,
+        });
+      }
     }
   }
 
@@ -147,6 +153,9 @@ export function diffChildrenByIndex(oldChildren: VNode[], newChildren: VNode[]):
     const oldChild = oldChildren[i];
     const newChild = newChildren[i];
 
+    // Skip if either child is undefined
+    if (!oldChild || !newChild) continue;
+
     // Recursively diff each child
     const childPatches = diff(oldChild, newChild);
     patches.push(...childPatches);
@@ -156,20 +165,26 @@ export function diffChildrenByIndex(oldChildren: VNode[], newChildren: VNode[]):
   if (newChildren.length > oldChildren.length) {
     // New children added at end - CREATE
     for (let i = oldChildren.length; i < newChildren.length; i++) {
-      patches.push({
-        type: PatchType.CREATE,
-        newVNode: newChildren[i],
-        index: i,
-      });
+      const newChild = newChildren[i];
+      if (newChild) {
+        patches.push({
+          type: PatchType.CREATE,
+          newVNode: newChild,
+          index: i,
+        });
+      }
     }
   } else if (oldChildren.length > newChildren.length) {
     // Old children removed from end - REMOVE
     for (let i = newChildren.length; i < oldChildren.length; i++) {
-      patches.push({
-        type: PatchType.REMOVE,
-        vnode: oldChildren[i],
-        index: i,
-      });
+      const oldChild = oldChildren[i];
+      if (oldChild) {
+        patches.push({
+          type: PatchType.REMOVE,
+          vnode: oldChild,
+          index: i,
+        });
+      }
     }
   }
 
@@ -202,8 +217,12 @@ export function longestIncreasingSubsequence(arr: number[]): number[] {
   // Build LIS
   for (let i = 1; i < n; i++) {
     for (let j = 0; j < i; j++) {
-      if (arr[j] < arr[i] && lengths[j] + 1 > lengths[i]) {
-        lengths[i] = lengths[j] + 1;
+      const arrJ = arr[j];
+      const arrI = arr[i];
+      const lengthsJ = lengths[j];
+      const lengthsI = lengths[i];
+      if (arrJ !== undefined && arrI !== undefined && lengthsJ !== undefined && lengthsI !== undefined && arrJ < arrI && lengthsJ + 1 > lengthsI) {
+        lengths[i] = lengthsJ + 1;
         predecessors[i] = j;
       }
     }

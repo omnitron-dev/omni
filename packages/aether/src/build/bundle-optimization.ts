@@ -394,7 +394,7 @@ export class BundleOptimizer {
     const vendorModules = new Set<string>();
 
     // Find vendor modules (node_modules)
-    for (const [id, module] of this.modules) {
+    for (const [id, _module] of this.modules) {
       if (this.isVendorModule(id)) {
         vendorModules.add(id);
       }

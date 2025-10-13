@@ -298,7 +298,7 @@ export const SelectTrigger = defineComponent<SelectTriggerProps>((props) => {
     });
   };
 
-  const { onClick, onKeyDown, children, ...restProps } = props;
+  const { _onClick, _onKeyDown, children, ...restProps } = props;
 
   return () => {
     // Evaluate function children (Pattern 17)
@@ -551,7 +551,7 @@ export const SelectContent = defineComponent<SelectContentProps>((props) => {
     };
   });
 
-  const { side, align, sideOffset, alignOffset, avoidCollisions, collisionPadding, position, children, ...restProps } =
+  const { _side, _align, _sideOffset, _alignOffset, _avoidCollisions, _collisionPadding, _position, children, ...restProps } =
     props;
 
   // Use onMount to create and manage content reactively
@@ -702,7 +702,7 @@ export const SelectItem = defineComponent<SelectItemProps>((props) => {
     };
   };
 
-  const { value, disabled, textValue, onClick, children, ...restProps } = props;
+  const { value, disabled, textValue, _onClick, children, ...restProps } = props;
   const isSelected = ctx.value() === value;
   const isHighlighted = () => {
     const items = ctx.items();

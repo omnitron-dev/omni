@@ -227,7 +227,7 @@ export class Monitoring implements MonitoringInstance {
 
     // Webhook
     if (this.config.webhook?.enabled && this.config.webhook.url) {
-      this.webhookIntegration = new WebhookIntegration(this.config.webhook);
+      this.webhookIntegration = new WebhookIntegration(this.config.webhook as any);
     }
   }
 

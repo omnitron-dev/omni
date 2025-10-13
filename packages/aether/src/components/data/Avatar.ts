@@ -25,14 +25,7 @@ import {
 /**
  * Avatar Root - Styled avatar container
  */
-export const Avatar = styled<
-  {
-    size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '2xl';
-    shape?: 'circle' | 'square' | 'rounded';
-    ring?: boolean;
-  },
-  AvatarPrimitiveProps
->(AvatarPrimitive, {
+export const Avatar = styled<AvatarPrimitiveProps>(AvatarPrimitive, {
   base: {
     display: 'inline-flex',
     alignItems: 'center',
@@ -97,7 +90,7 @@ export const Avatar = styled<
   defaultVariants: {
     size: 'md',
     shape: 'circle',
-    ring: false,
+    ring: 'false',
   },
 });
 

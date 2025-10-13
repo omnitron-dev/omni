@@ -8,8 +8,8 @@
 import { styled } from '../../styling/styled.js';
 import {
   Carousel as CarouselPrimitive,
-  CarouselContent as CarouselContentPrimitive,
-  CarouselItem as CarouselItemPrimitive,
+  CarouselViewport as CarouselContentPrimitive,
+  CarouselSlide as CarouselItemPrimitive,
   CarouselPrevious as CarouselPreviousPrimitive,
   CarouselNext as CarouselNextPrimitive,
   type CarouselProps as CarouselPrimitiveProps,

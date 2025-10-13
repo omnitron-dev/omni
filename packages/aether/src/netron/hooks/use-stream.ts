@@ -316,7 +316,7 @@ export function useStream<TService, TMethod extends keyof TService, TData = any>
     onCleanup(() => {
       disconnect();
     });
-  } catch (err) {
+  } catch (_err) {
     // onCleanup might not be available in test environment
     // Fail silently in that case
   }

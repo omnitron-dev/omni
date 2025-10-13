@@ -83,7 +83,7 @@ export function generateManifest(): IslandManifest {
   }
 
   // Mark islands as used based on route mapping
-  for (const [routePath, islandIds] of routeIslands.entries()) {
+  for (const [_routePath, islandIds] of routeIslands.entries()) {
     for (const islandId of islandIds) {
       if (islands[islandId]) {
         islands[islandId].used = true;

@@ -15,14 +15,21 @@ import { injectStyles } from './runtime.js';
 import { cx } from './css.js';
 
 /**
- * CSS property value
+ * CSS property value (primitive types)
  */
-export type CSSValue = string | number;
+export type CSSPrimitiveValue = string | number | boolean | undefined;
 
 /**
- * CSS properties object
+ * CSS properties object (supports nested properties for pseudo-selectors and media queries)
  */
-export type CSSProperties = Record<string, CSSValue>;
+export type CSSProperties = {
+  [K: string]: CSSPrimitiveValue | CSSProperties;
+};
+
+/**
+ * CSS property value
+ */
+export type CSSValue = string | number | boolean | CSSProperties;
 
 /**
  * Variant configuration
@@ -45,7 +52,7 @@ export interface CompoundVariant {
  * Default variants
  */
 export type DefaultVariants<V extends VariantConfig> = {
-  [K in keyof V]?: keyof V[K];
+  [K in keyof V]?: keyof V[K] | boolean;
 };
 
 /**
@@ -114,14 +121,17 @@ function mergeCSS(...cssObjects: (CSSProperties | undefined)[]): CSSProperties {
 
 /**
  * Create a styled component from a base component
+ *
+ * @template P - Component props type
+ * @template V - Variant configuration type (inferred from styleConfig)
  */
-export function styled<
-  V extends VariantConfig = VariantConfig,
-  P extends Record<string, any> = Record<string, any>,
->(component: Component<P> | string, styleConfig: StyleConfig<V>): Component<P & StyledProps<V>> {
+export function styled<P = any, V extends VariantConfig = VariantConfig>(
+  component: Component<any> | string,
+  styleConfig: StyleConfig<V>
+): Component<any> {
   const { base = {}, variants = {} as V, compoundVariants = [], defaultVariants = {} } = styleConfig;
 
-  return defineComponent<P & StyledProps<V>>((props) => {
+  return defineComponent<P & StyledProps<V>>((props: any) => {
     // Compute final styles based on props
     const finalStyles = computed(() => {
       const currentProps = props as StyledProps<V>;
@@ -158,7 +168,18 @@ export function styled<
       const styles = finalStyles();
       if (Object.keys(styles).length === 0) return '';
 
-      return injectStyles(styles);
+      // Convert CSSProperties to plain style object
+      const flatStyles: Record<string, string | number> = {};
+      for (const [key, value] of Object.entries(styles)) {
+        if (typeof value === 'string' || typeof value === 'number') {
+          flatStyles[key] = value;
+        } else if (typeof value === 'boolean') {
+          // Skip boolean values
+          continue;
+        }
+      }
+
+      return injectStyles(flatStyles);
     });
 
     // Merge class names
@@ -203,7 +224,7 @@ export function styled<
         };
       } else {
         // Component
-        return component(cleanProps() as P);
+        return (component as any)(cleanProps());
       }
     };
   });
@@ -270,7 +291,7 @@ type StyledHTML = {
  */
 function createStyledElement(element: string) {
   return <V extends VariantConfig = VariantConfig>(styleConfig: StyleConfig<V>) =>
-    styled<V>(element, styleConfig);
+    styled<any, V>(element, styleConfig);
 }
 
 /**

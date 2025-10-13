@@ -11,9 +11,13 @@ import {
   TooltipTrigger as TooltipTriggerPrimitive,
   TooltipContent as TooltipContentPrimitive,
   TooltipArrow as TooltipArrowPrimitive,
-  TooltipProvider as TooltipProviderPrimitive,
+  // TooltipProvider as TooltipProviderPrimitive, // TODO: Not exported from primitive
   type TooltipProps as TooltipPrimitiveProps,
 } from '../../primitives/Tooltip.js';
+import { defineComponent } from '../../core/component/index.js';
+
+// Temporary placeholder until primitive component is implemented
+const TooltipProviderPrimitive = defineComponent<{children?: any}>((props) => () => props.children);
 
 /**
  * TooltipProvider - Context provider

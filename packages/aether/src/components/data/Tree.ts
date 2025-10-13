@@ -30,10 +30,9 @@ import {
  * Tree Root - Styled tree container
  */
 export const Tree = styled<
-  {
+  TreePrimitiveProps & {
     size?: 'sm' | 'md' | 'lg';
-  },
-  TreePrimitiveProps
+  }
 >(TreePrimitive, {
   base: {
     width: '100%',
@@ -60,10 +59,9 @@ export const Tree = styled<
  * Tree Item - Styled tree item
  */
 export const TreeItem = styled<
-  {
+  TreeItemProps & {
     indent?: boolean;
-  },
-  TreeItemProps
+  }
 >(TreeItemPrimitive, {
   base: {
     display: 'block',
@@ -85,10 +83,9 @@ export const TreeItem = styled<
  * Tree Trigger - Styled tree expand/collapse trigger
  */
 export const TreeTrigger = styled<
-  {
+  TreeTriggerProps & {
     size?: 'sm' | 'md' | 'lg';
-  },
-  TreeTriggerProps
+  }
 >(TreeTriggerPrimitive, {
   base: {
     display: 'flex',
@@ -140,10 +137,9 @@ export const TreeContent = styled(TreeContentPrimitive, {
  * Tree Label - Styled tree label (leaf node)
  */
 export const TreeLabel = styled<
-  {
+  TreeLabelProps & {
     size?: 'sm' | 'md' | 'lg';
-  },
-  TreeLabelProps
+  }
 >(TreeLabelPrimitive, {
   base: {
     display: 'flex',

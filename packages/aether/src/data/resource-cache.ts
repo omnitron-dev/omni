@@ -63,7 +63,8 @@ export function createCachedResource<T>(
   let cacheKey = keyFn ? keyFn() : generateCacheKey(name, [refetchCounter]);
 
   // Store reference to base resource for background revalidation
-  let baseResourceRef: any;
+  // Note: initialized as null, then assigned later (line 131)
+  let baseResourceRef: any = null;
 
   /**
    * Wrapped fetcher with caching logic

@@ -334,7 +334,7 @@ export const MenubarContent = defineComponent<MenubarContentProps>((props) => {
   };
 
   return () => {
-    const { side, align, sideOffset, alignOffset, children, ...restProps } = props;
+    const { _side, _align, _sideOffset, _alignOffset, children, ...restProps } = props;
     // Evaluate function children during render (Pattern 17)
     const evaluatedChildren = typeof children === 'function' ? children() : children;
 

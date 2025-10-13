@@ -350,8 +350,8 @@ export class PrefetchManager {
   private async executePrefetch(item: PrefetchQueueItem): Promise<void> {
     const startTime = Date.now();
 
-    try {
-      // Find matching route
+    // Find matching route
+      
       const match = this.router.match(item.path);
       if (!match || !match.route.loader) {
         return; // No loader to prefetch
@@ -389,9 +389,6 @@ export class PrefetchManager {
 
       // Evict old entries if cache is too large
       this.evictCache();
-    } catch (error) {
-      throw error;
-    }
   }
 
   /**

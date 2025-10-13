@@ -140,7 +140,7 @@ export class ErrorTracker {
         ...Object.fromEntries(this.context),
         ...info?.context,
       },
-      user: this.userInfo !== null ? this.userInfo : (info?.user ?? null),
+      user: this.userInfo !== null ? this.userInfo : (info?.user ?? undefined),
       breadcrumbs: [...this.breadcrumbs],
       tags: info?.tags,
       timestamp: Date.now(),
@@ -197,7 +197,7 @@ export class ErrorTracker {
       const stackLines = error.stack.split('\n').slice(1);
       for (const line of stackLines) {
         const match = line.match(/at\s+([^\s]+)\s+\(([^)]+)\)/);
-        if (match) {
+        if (match && match[1] && match[2]) {
           fingerprint.push(match[1]); // Function name
           const location = match[2].split(':').slice(0, -1).join(':'); // File:line
           fingerprint.push(location);

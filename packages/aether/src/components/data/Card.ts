@@ -31,14 +31,7 @@ import {
 /**
  * Card Root - Styled card container
  */
-export const Card = styled<
-  {
-    padding?: 'none' | 'sm' | 'md' | 'lg';
-    variant?: 'elevated' | 'outline' | 'filled' | 'unstyled';
-    hoverable?: boolean;
-  },
-  CardPrimitiveProps
->(CardPrimitive, {
+export const Card = styled<CardPrimitiveProps>(CardPrimitive, {
   base: {
     backgroundColor: '#ffffff',
     borderRadius: '0.5rem',
@@ -103,19 +96,14 @@ export const Card = styled<
   defaultVariants: {
     padding: 'md',
     variant: 'elevated',
-    hoverable: false,
+    hoverable: 'false',
   },
 });
 
 /**
  * Card Header - Styled card header section
  */
-export const CardHeader = styled<
-  {
-    padding?: 'none' | 'sm' | 'md' | 'lg';
-  },
-  CardHeaderProps
->(CardHeaderPrimitive, {
+export const CardHeader = styled<CardHeaderProps>(CardHeaderPrimitive, {
   base: {
     display: 'flex',
     flexDirection: 'column',
@@ -145,12 +133,7 @@ export const CardHeader = styled<
 /**
  * Card Title - Styled card title
  */
-export const CardTitle = styled<
-  {
-    size?: 'sm' | 'md' | 'lg' | 'xl';
-  },
-  CardTitleProps
->(CardTitlePrimitive, {
+export const CardTitle = styled<CardTitleProps>(CardTitlePrimitive, {
   base: {
     fontWeight: '600',
     color: '#111827',
@@ -180,12 +163,7 @@ export const CardTitle = styled<
 /**
  * Card Description - Styled card description
  */
-export const CardDescription = styled<
-  {
-    size?: 'sm' | 'md' | 'lg';
-  },
-  CardDescriptionProps
->(CardDescriptionPrimitive, {
+export const CardDescription = styled<CardDescriptionProps>(CardDescriptionPrimitive, {
   base: {
     color: '#6b7280',
     lineHeight: '1.5',
@@ -212,12 +190,7 @@ export const CardDescription = styled<
 /**
  * Card Content - Styled card content section
  */
-export const CardContent = styled<
-  {
-    padding?: 'none' | 'sm' | 'md' | 'lg';
-  },
-  CardContentProps
->(CardContentPrimitive, {
+export const CardContent = styled<CardContentProps>(CardContentPrimitive, {
   base: {},
   variants: {
     padding: {
@@ -243,13 +216,7 @@ export const CardContent = styled<
 /**
  * Card Footer - Styled card footer section
  */
-export const CardFooter = styled<
-  {
-    padding?: 'none' | 'sm' | 'md' | 'lg';
-    align?: 'left' | 'center' | 'right' | 'between';
-  },
-  CardFooterProps
->(CardFooterPrimitive, {
+export const CardFooter = styled<CardFooterProps>(CardFooterPrimitive, {
   base: {
     display: 'flex',
     alignItems: 'center',

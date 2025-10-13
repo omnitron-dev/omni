@@ -116,7 +116,7 @@ export const SheetContent = styled<{
 /**
  * SheetTitle - Sheet title
  */
-export const SheetTitle = styled(SheetTitlePrimitive, {
+export const SheetTitle = styled(SheetTitlePrimitive!, {
   base: {
     fontSize: '1.125rem',
     fontWeight: '600',
@@ -130,7 +130,7 @@ export const SheetTitle = styled(SheetTitlePrimitive, {
 /**
  * SheetDescription - Sheet description
  */
-export const SheetDescription = styled(SheetDescriptionPrimitive, {
+export const SheetDescription = styled(SheetDescriptionPrimitive!, {
   base: {
     fontSize: '0.875rem',
     lineHeight: '1.5',

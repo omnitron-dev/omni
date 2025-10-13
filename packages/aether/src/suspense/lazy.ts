@@ -100,12 +100,13 @@ export function lazy<T = any>(
   };
 
   // Preload function
-  const preloadFn = async (): Promise<Component<T> | void> => {
+  const preloadFn = async (): Promise<void> => {
     const state = getState();
 
     // Already loaded or loading
     if (state.status === 'resolved' || state.promise) {
-      return state.promise || undefined;
+      await (state.promise ?? Promise.resolve(state.component!));
+      return;
     }
 
     // Start loading

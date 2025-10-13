@@ -747,7 +747,7 @@ export function createOverlayPrimitive(config: OverlayConfig) {
     }
 
     return () => {
-      const { children, side, align, sideOffset, alignOffset, avoidCollisions, collisionPadding, ...restProps } =
+      const { children, _side, _align, _sideOffset, _alignOffset, _avoidCollisions, _collisionPadding, ...restProps } =
         props;
 
       // Evaluate function children during render

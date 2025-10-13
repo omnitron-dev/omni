@@ -250,6 +250,7 @@ export class BundleAnalyzer {
 
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i];
+        if (!part) continue; // Skip empty parts
         currentPath = currentPath ? `${currentPath}/${part}` : part;
 
         let node = tree.get(currentPath);
@@ -307,13 +308,15 @@ export class BundleAnalyzer {
     // Group by package name and version
     for (const module of this.modules.values()) {
       const match = module.path.match(/node_modules\/(@?[^/]+(?:\/[^/]+)?)\/(.*)/);
-      if (match) {
+      if (match && match[1]) {
         const packageName = match[1];
         const rest = match[2];
 
+        if (!rest) continue;
+
         // Try to extract version
         const versionMatch = rest.match(/^(\d+\.\d+\.\d+)/);
-        const version = versionMatch ? versionMatch[1] : 'unknown';
+        const version = versionMatch?.[1] || 'unknown';
 
         if (!packageVersions.has(packageName)) {
           packageVersions.set(packageName, new Map());
@@ -395,6 +398,7 @@ export class BundleAnalyzer {
     };
 
     const packageName = module.name.split('/')[0];
+    if (!packageName) return undefined;
     return alternatives[packageName];
   }
 

@@ -113,7 +113,8 @@ function setupReactiveProps(element: HTMLElement, props: Record<string, any>, vn
         const binding = bindSignalToStyle(element, () => {
           const styleObj: Record<string, any> = {};
           for (const [styleProp, styleValue] of Object.entries(value)) {
-            styleObj[styleProp] = isSignal(styleValue) ? styleValue() : styleValue;
+            const resolvedValue = isSignal(styleValue) ? (styleValue as any)() : styleValue;
+            styleObj[styleProp] = resolvedValue;
           }
           return styleObj;
         });

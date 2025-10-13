@@ -118,8 +118,8 @@ export function renderToStringWithIslands(
    */
   function renderIsland(island: IslandComponent, islandProps: any): string {
     const islandId = generateIslandId();
-    const options = island.__islandOptions;
-    const strategy = options.hydrate || 'immediate';
+    const islandOpts = island.__islandOptions;
+    const strategy = islandOpts.hydrate || 'immediate';
 
     // Render island content
     const result = island(islandProps);
@@ -131,7 +131,7 @@ export function renderToStringWithIslands(
     // Create island boundary
     const boundary: IslandBoundary = {
       id: islandId,
-      name: options.name || island.displayName || island.name,
+      name: islandOpts.name || island.displayName || island.name,
       strategy,
       props: serializedProps,
       startMarker: `<!--island-start:${islandId}-->`,
@@ -374,11 +374,13 @@ export function extractIslandsFromHTML(html: string): IslandBoundary[] {
 
       let attrMatch;
       while ((attrMatch = dataAttrPattern.exec(content)) !== null) {
-        attrs[attrMatch[1]] = attrMatch[2];
+        if (attrMatch[1] && attrMatch[2]) {
+          attrs[attrMatch[1]] = attrMatch[2];
+        }
       }
 
       islands.push({
-        id: islandId,
+        id: islandId ?? '',
         name: attrs.name || '',
         strategy: (attrs.strategy as any) || 'immediate',
         props: attrs.props || '{}',

@@ -263,7 +263,8 @@ export class AssetPipeline {
   async processAssets(
     assets: Map<string, Buffer>,
   ): Promise<AssetPipelineResult> {
-    const results = await Promise.all(
+    // Process all assets in parallel
+    await Promise.all(
       Array.from(assets.entries()).map(([path, content]) =>
         this.processAsset(path, content),
       ),
@@ -347,7 +348,7 @@ export class AssetPipeline {
    * Process SVG asset
    */
   private async processSVG(
-    filePath: string,
+    _filePath: string,
     content: Buffer,
     asset: ProcessedAsset,
   ): Promise<ProcessedAsset> {
@@ -366,8 +367,8 @@ export class AssetPipeline {
    * Process generic asset
    */
   private async processGeneric(
-    filePath: string,
-    content: Buffer,
+    _filePath: string,
+    _content: Buffer,
     asset: ProcessedAsset,
   ): Promise<ProcessedAsset> {
     // No special processing for generic assets
@@ -388,7 +389,7 @@ export class AssetPipeline {
    */
   private async convertImageFormat(
     content: Buffer,
-    format: string,
+    _format: string,
   ): Promise<Buffer> {
     // In real implementation, use sharp or similar
     // For now, simulate format conversion
@@ -409,7 +410,7 @@ export class AssetPipeline {
    */
   private async convertFontFormat(
     content: Buffer,
-    format: string,
+    _format: string,
   ): Promise<Buffer> {
     // In real implementation, use font conversion library
     return Buffer.from(content);
@@ -597,15 +598,16 @@ export class AssetPipeline {
  * Image optimizer
  */
 export class ImageOptimizer {
-  private quality: number;
-  private formats: Array<'webp' | 'avif' | 'jpeg' | 'png'>;
+  // Reserved for future image optimization implementation
+  private _quality: number;
+  private _formats: Array<'webp' | 'avif' | 'jpeg' | 'png'>;
 
   constructor(
     quality: number = 80,
     formats: Array<'webp' | 'avif' | 'jpeg' | 'png'> = ['webp', 'avif'],
   ) {
-    this.quality = quality;
-    this.formats = formats;
+    this._quality = quality;
+    this._formats = formats;
   }
 
   /**
@@ -621,7 +623,7 @@ export class ImageOptimizer {
     results.set(originalFormat, await this.optimizeFormat(content, originalFormat));
 
     // Generate additional formats
-    for (const format of this.formats) {
+    for (const format of this._formats) {
       if (format !== originalFormat) {
         results.set(format, await this.convertAndOptimize(content, format));
       }
@@ -633,7 +635,7 @@ export class ImageOptimizer {
   /**
    * Optimize in specific format
    */
-  private async optimizeFormat(content: Buffer, format: string): Promise<Buffer> {
+  private async optimizeFormat(content: Buffer, _format: string): Promise<Buffer> {
     // Placeholder implementation
     return Buffer.from(content);
   }
@@ -643,7 +645,7 @@ export class ImageOptimizer {
    */
   private async convertAndOptimize(
     content: Buffer,
-    format: string,
+    _format: string,
   ): Promise<Buffer> {
     // Placeholder implementation
     return Buffer.from(content);
@@ -654,10 +656,11 @@ export class ImageOptimizer {
  * Font subsetter
  */
 export class FontSubsetter {
-  private unicodeRanges: string[];
+  // Reserved for future font subsetting implementation
+  private _unicodeRanges: string[];
 
   constructor(unicodeRanges: string[] = []) {
-    this.unicodeRanges = unicodeRanges;
+    this._unicodeRanges = unicodeRanges;
   }
 
   /**
@@ -665,7 +668,7 @@ export class FontSubsetter {
    */
   async subset(
     content: Buffer,
-    glyphs: Set<string>,
+    _glyphs: Set<string>,
   ): Promise<Buffer> {
     // Placeholder implementation
     // In real implementation, use fontmin or harfbuzz
@@ -682,7 +685,7 @@ export class FontSubsetter {
   /**
    * Generate unicode ranges for subset
    */
-  generateUnicodeRanges(glyphs: Set<string>): string[] {
+  generateUnicodeRanges(_glyphs: Set<string>): string[] {
     // Placeholder implementation
     return ['U+0020-007F']; // Basic Latin
   }

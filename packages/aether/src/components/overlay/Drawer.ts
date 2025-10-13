@@ -147,7 +147,7 @@ export const DrawerContent = styled<{
 /**
  * DrawerTitle - Drawer title
  */
-export const DrawerTitle = styled(DrawerTitlePrimitive, {
+export const DrawerTitle = styled(DrawerTitlePrimitive!, {
   base: {
     fontSize: '1.25rem',
     fontWeight: '600',
@@ -160,7 +160,7 @@ export const DrawerTitle = styled(DrawerTitlePrimitive, {
 /**
  * DrawerDescription - Drawer description
  */
-export const DrawerDescription = styled(DrawerDescriptionPrimitive, {
+export const DrawerDescription = styled(DrawerDescriptionPrimitive!, {
   base: {
     fontSize: '0.875rem',
     lineHeight: '1.5',

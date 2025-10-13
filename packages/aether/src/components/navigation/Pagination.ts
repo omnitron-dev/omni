@@ -8,14 +8,20 @@
 import { styled } from '../../styling/styled.js';
 import {
   Pagination as PaginationPrimitive,
-  PaginationContent as PaginationContentPrimitive,
-  PaginationItem as PaginationItemPrimitive,
-  PaginationLink as PaginationLinkPrimitive,
+  PaginationItems as PaginationContentPrimitive,
+  // PaginationItem as PaginationItemPrimitive, // TODO: Not exported from primitive
+  // PaginationLink as PaginationLinkPrimitive, // TODO: Not exported from primitive
   PaginationPrevious as PaginationPreviousPrimitive,
   PaginationNext as PaginationNextPrimitive,
-  PaginationEllipsis as PaginationEllipsisPrimitive,
+  // PaginationEllipsis as PaginationEllipsisPrimitive, // TODO: Not exported from primitive
   type PaginationProps as PaginationPrimitiveProps,
 } from '../../primitives/Pagination.js';
+import { defineComponent } from '../../core/component/index.js';
+
+// Temporary placeholders until primitive components are implemented
+const PaginationItemPrimitive = defineComponent(() => () => ({ type: 'li', props: {} }));
+const PaginationLinkPrimitive = defineComponent(() => () => ({ type: 'a', props: {} }));
+const PaginationEllipsisPrimitive = defineComponent(() => () => ({ type: 'span', props: { children: '...' } }));
 
 /**
  * Pagination - Root component

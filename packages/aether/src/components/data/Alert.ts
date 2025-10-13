@@ -27,14 +27,7 @@ import {
 /**
  * Alert Root - Styled alert container
  */
-export const Alert = styled<
-  {
-    variant?: 'solid' | 'outline' | 'subtle' | 'left-accent';
-    status?: 'default' | 'info' | 'success' | 'warning' | 'error';
-    size?: 'sm' | 'md' | 'lg';
-  },
-  AlertPrimitiveProps
->(AlertPrimitive, {
+export const Alert = styled<AlertPrimitiveProps>(AlertPrimitive, {
   base: {
     display: 'flex',
     gap: '0.75rem',

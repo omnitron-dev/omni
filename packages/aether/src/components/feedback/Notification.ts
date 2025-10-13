@@ -22,11 +22,10 @@ import { Notification as NotificationPrimitive, type NotificationProps as Notifi
  * ```
  */
 export const Notification = styled<
-  {
+  NotificationPrimitiveProps & {
     variant?: 'default' | 'info' | 'success' | 'warning' | 'error';
     size?: 'sm' | 'md' | 'lg';
-  },
-  NotificationPrimitiveProps
+  }
 >(NotificationPrimitive, {
   base: {
     display: 'flex',

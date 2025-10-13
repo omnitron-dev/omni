@@ -153,6 +153,18 @@ export class NetronClient {
   }
 
   /**
+   * Get a typed service interface
+   *
+   * @param serviceName - Service name
+   * @param backendName - Backend name (optional)
+   * @returns Typed service interface
+   */
+  async service<T = any>(serviceName: string, backendName?: string): Promise<T> {
+    const peer = this.backend(backendName);
+    return (await peer.queryFluentInterface<T>(serviceName)) as T;
+  }
+
+  /**
    * Query a service method (returns Promise)
    *
    * @param service - Service name

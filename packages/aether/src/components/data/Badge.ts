@@ -18,15 +18,7 @@ import { Badge as BadgePrimitive, type BadgeProps as BadgePrimitiveProps } from 
 /**
  * Badge - Styled badge component
  */
-export const Badge = styled<
-  {
-    size?: 'sm' | 'md' | 'lg';
-    variant?: 'solid' | 'outline' | 'subtle';
-    colorScheme?: 'gray' | 'primary' | 'success' | 'warning' | 'danger' | 'info';
-    shape?: 'rounded' | 'pill' | 'square';
-  },
-  BadgePrimitiveProps
->(BadgePrimitive, {
+export const Badge = styled<BadgePrimitiveProps>(BadgePrimitive, {
   base: {
     display: 'inline-flex',
     alignItems: 'center',

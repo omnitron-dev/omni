@@ -6,7 +6,7 @@
 
 import type {
   RouteDefinition,
-} from '../types.js';
+} from '../../router/types.js';
 
 /**
  * File naming conventions

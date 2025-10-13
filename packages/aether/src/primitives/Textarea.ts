@@ -239,26 +239,26 @@ export const Textarea = defineComponent<TextareaProps>((props) => {
 
   return () => {
     const {
-      value,
-      defaultValue,
-      onValueChange,
+      value: _value,
+      defaultValue: _defaultValue,
+      onValueChange: _onValueChange,
       placeholder,
       disabled,
       readOnly,
       required,
       invalid,
       autoResize,
-      minRows,
-      maxRows,
+      minRows: _minRows,
+      maxRows: _maxRows,
       rows,
       cols,
       name,
       id,
       maxLength,
-      onChange,
-      onInput,
-      onBlur,
-      onFocus,
+      onChange: _onChange,
+      onInput: _onInput,
+      onBlur: _onBlur,
+      onFocus: _onFocus,
       ...restProps
     } = props;
 

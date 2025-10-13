@@ -10,12 +10,19 @@ import {
   Popconfirm as PopconfirmPrimitive,
   PopconfirmTrigger as PopconfirmTriggerPrimitive,
   PopconfirmContent as PopconfirmContentPrimitive,
-  PopconfirmTitle as PopconfirmTitlePrimitive,
-  PopconfirmDescription as PopconfirmDescriptionPrimitive,
-  PopconfirmAction as PopconfirmActionPrimitive,
-  PopconfirmCancel as PopconfirmCancelPrimitive,
+  // PopconfirmTitle as PopconfirmTitlePrimitive, // TODO: Not exported from primitive
+  // PopconfirmDescription as PopconfirmDescriptionPrimitive, // TODO: Not exported from primitive
+  // PopconfirmAction as PopconfirmActionPrimitive, // TODO: Not exported from primitive
+  // PopconfirmCancel as PopconfirmCancelPrimitive, // TODO: Not exported from primitive
   type PopconfirmProps as PopconfirmPrimitiveProps,
 } from '../../primitives/Popconfirm.js';
+import { defineComponent } from '../../core/component/index.js';
+
+// Temporary placeholders until primitive components are implemented
+const PopconfirmTitlePrimitive = defineComponent<{children?: any}>((props) => () => ({ type: 'div', props }));
+const PopconfirmDescriptionPrimitive = defineComponent<{children?: any}>((props) => () => ({ type: 'div', props }));
+const PopconfirmActionPrimitive = defineComponent<{children?: any}>((props) => () => ({ type: 'button', props }));
+const PopconfirmCancelPrimitive = defineComponent<{children?: any}>((props) => () => ({ type: 'button', props }));
 
 /**
  * Popconfirm - Root component

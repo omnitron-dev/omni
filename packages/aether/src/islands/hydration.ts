@@ -170,7 +170,8 @@ export class IdleHydration implements HydrationStrategyImpl {
       );
     } else {
       // Fallback to setTimeout
-      this.timeout = window.setTimeout(() => {
+      const globalThis = window as any;
+      this.timeout = globalThis.setTimeout(() => {
         island.hydrate().catch((err) => {
           console.error('[Aether Islands] Idle hydration failed:', err);
           island.state = 'error';

@@ -122,7 +122,7 @@ export interface GridProps {
 export const Grid = defineComponent<GridProps>((props) => () => {
   const element = props.as ?? 'div';
   const {
-    as,
+    as: _as,
     templateColumns,
     templateRows,
     templateAreas,
@@ -215,7 +215,7 @@ export interface GridItemProps {
 export const GridItem = defineComponent<GridItemProps>((props) => () => {
   const element = props.as ?? 'div';
   const {
-    as,
+    as: _as,
     column,
     columnStart,
     columnEnd,

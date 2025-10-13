@@ -324,7 +324,7 @@ export class InspectorUI {
    * Render component boundaries
    */
   private renderComponentBoundaries(): void {
-    const state = this.inspector.getState();
+    const _state = this.inspector.getState();
 
     for (const [componentId, elementRef] of this.elementComponents.entries()) {
       const element = elementRef.deref();

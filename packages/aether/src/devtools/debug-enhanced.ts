@@ -380,7 +380,7 @@ export class DebugEnhanced {
       return {
         id: signal.id,
         name: signal.name,
-        type: signal.type,
+        type: signal.type === 'writable' ? 'signal' : signal.type,
         value: '[Circular]',
         subscribers: [],
         dependencies: [],
@@ -414,7 +414,7 @@ export class DebugEnhanced {
     return {
       id: signal.id,
       name: signal.name,
-      type: signal.type,
+      type: signal.type === 'writable' ? 'signal' : signal.type,
       value: signal.value,
       subscribers,
       dependencies,

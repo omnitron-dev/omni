@@ -24,10 +24,9 @@ import {
  * Transfer Root - Styled transfer container
  */
 export const Transfer = styled<
-  {
+  TransferPrimitiveProps & {
     size?: 'sm' | 'md' | 'lg';
-  },
-  TransferPrimitiveProps
+  }
 >(TransferPrimitive, {
   base: {
     display: 'flex',

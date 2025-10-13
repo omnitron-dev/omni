@@ -26,7 +26,13 @@ const commonRules = () => ({
   '@typescript-eslint/no-explicit-any': 0,
   '@typescript-eslint/no-empty-object-type': 0,
   '@typescript-eslint/consistent-type-imports': 0,
-  '@typescript-eslint/no-unused-vars': [1, { args: 'none' }],
+  '@typescript-eslint/no-unused-vars': [1, {
+    args: 'none',
+    varsIgnorePattern: '^_',
+    argsIgnorePattern: '^_',
+    caughtErrors: 'all',
+    caughtErrorsIgnorePattern: '^_'
+  }],
 });
 
 /**

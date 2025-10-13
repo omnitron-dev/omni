@@ -9,7 +9,7 @@
  */
 
 import { defineComponent, type Component } from '../core/component/index.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { signal, computed, effect, onCleanup, type Signal } from '../core/reactivity/index.js';
 import type { Theme } from './defineTheme.js';
 import { applyTheme, removeTheme, createThemeVars } from './variables.js';
@@ -107,11 +107,11 @@ export const ThemeProvider: Component<ThemeProviderProps> = defineComponent<Them
     }
   });
 
-  // Provide context and render children
-  return () => {
-    ThemeContextSymbol.provide(contextValue);
-    return props.children;
-  };
+  // Provide context
+  provideContext(ThemeContextSymbol, contextValue);
+
+  // Render children
+  return () => props.children;
 });
 
 /**
@@ -305,7 +305,10 @@ export function useThemeToggle<K extends string>(
   defaultKey?: K
 ): [Signal<K>, () => void, (key: K) => void] {
   const keys = Object.keys(themes) as K[];
-  const initialKey = defaultKey || keys[0];
+  const initialKey = defaultKey ?? keys[0];
+  if (!initialKey) {
+    throw new Error('useThemeToggle requires at least one theme');
+  }
   const currentKey = signal<K>(initialKey);
 
   const { setTheme } = useTheme();
@@ -314,14 +317,20 @@ export function useThemeToggle<K extends string>(
     const currentIndex = keys.indexOf(currentKey());
     const nextIndex = (currentIndex + 1) % keys.length;
     const nextKey = keys[nextIndex];
-    currentKey.set(nextKey);
-    setTheme(themes[nextKey]);
+    if (nextKey) {
+      currentKey.set(nextKey);
+      const theme = themes[nextKey];
+      if (theme) {
+        setTheme(theme);
+      }
+    }
   };
 
   const setKey = (key: K) => {
-    if (key in themes) {
+    const theme = themes[key];
+    if (theme) {
       currentKey.set(key);
-      setTheme(themes[key]);
+      setTheme(theme);
     }
   };
 

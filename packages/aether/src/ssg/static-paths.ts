@@ -190,19 +190,22 @@ export function extractParamNames(pattern: string): string[] {
   // Catch-all routes [...slug]
   const catchAllMatches = pattern.matchAll(/\[\.\.\.(\w+)\]/g);
   for (const match of catchAllMatches) {
-    params.push(match[1]);
+    const paramName = match[1];
+    if (paramName) params.push(paramName);
   }
 
   // Optional catch-all routes [[...slug]]
   const optionalCatchAllMatches = pattern.matchAll(/\[\[\.\.\.(\w+)\]\]/g);
   for (const match of optionalCatchAllMatches) {
-    params.push(match[1]);
+    const paramName = match[1];
+    if (paramName) params.push(paramName);
   }
 
   // Dynamic segments [slug]
   const dynamicMatches = pattern.matchAll(/\[(\w+)\]/g);
   for (const match of dynamicMatches) {
-    params.push(match[1]);
+    const paramName = match[1];
+    if (paramName) params.push(paramName);
   }
 
   return params;
@@ -234,11 +237,19 @@ export function generateParamCombinations(
     return [{}];
   }
 
-  const [firstKey, ...restKeys] = keys;
+  const firstKey = keys[0];
+  if (!firstKey) return [{}];
+
+  const restKeys = keys.slice(1);
   const firstValues = paramSets[firstKey];
+  if (!firstValues) return [{}];
+
   const restSets: Record<string, Array<string | string[]>> = {};
   for (const key of restKeys) {
-    restSets[key] = paramSets[key];
+    const value = paramSets[key];
+    if (value) {
+      restSets[key] = value;
+    }
   }
 
   const restCombinations = generateParamCombinations(restSets);

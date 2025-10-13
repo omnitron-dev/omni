@@ -394,7 +394,7 @@ export const CommandPaletteItem = defineComponent<CommandPaletteItemProps>((prop
   };
 
   return () => {
-    const { children, value, onSelect, disabled, keywords, ...restProps } = props;
+    const { children, _value, _onSelect, disabled, _keywords, ...restProps } = props;
 
     // Evaluate function children (Pattern 17)
     const evaluatedChildren = typeof children === 'function' ? children() : children;

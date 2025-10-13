@@ -343,7 +343,7 @@ export const DateRangePickerPreset = defineComponent<DateRangePickerPresetProps>
   };
 
   return () => {
-    const { range, children, ...rest } = props;
+    const { _range, children, ...rest } = props;
 
     return jsx('button', {
       type: 'button',

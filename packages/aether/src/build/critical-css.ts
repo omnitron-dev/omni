@@ -149,11 +149,11 @@ export class CriticalCSSExtractor {
     let match: RegExpExecArray | null;
 
     while ((match = ruleRegex.exec(css)) !== null) {
-      const selector = match[1].trim();
-      const content = match[2].trim();
+      const selector = match[1]?.trim();
+      const content = match[2]?.trim();
 
-      // Skip comments
-      if (selector.startsWith('/*')) continue;
+      // Skip comments or undefined matches
+      if (!selector || !content || selector.startsWith('/*')) continue;
 
       rules.push({
         selector,
@@ -436,11 +436,17 @@ export class RouteBasedCriticalCSS {
     if (allCriticalCSS.length === 0) return '';
 
     // Find CSS rules that appear in all routes
-    const firstRouteRules = new Set(allCriticalCSS[0].split('\n'));
+    const firstRoute = allCriticalCSS[0];
+    if (!firstRoute) return '';
+
+    const firstRouteRules = new Set(firstRoute.split('\n'));
     const commonRules = new Set(firstRouteRules);
 
     for (let i = 1; i < allCriticalCSS.length; i++) {
-      const routeRules = new Set(allCriticalCSS[i].split('\n'));
+      const currentRoute = allCriticalCSS[i];
+      if (!currentRoute) continue;
+
+      const routeRules = new Set(currentRoute.split('\n'));
       for (const rule of commonRules) {
         if (!routeRules.has(rule)) {
           commonRules.delete(rule);

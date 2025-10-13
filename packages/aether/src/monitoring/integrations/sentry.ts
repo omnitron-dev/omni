@@ -81,7 +81,7 @@ export class SentryIntegration {
       // In a real implementation, this would use dynamic import
       // or load the SDK from CDN
       return (window as any).Sentry;
-    } catch (error) {
+    } catch (_error) {
       return null;
     }
   }

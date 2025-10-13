@@ -5,7 +5,7 @@
  */
 
 import { defineComponent } from '../core/component/define.js';
-import type { Component, ComponentSetup } from '../core/component/types.js';
+import type { Component } from '../core/component/types.js';
 import type { IslandComponent, IslandOptions, HydrateOnOptions } from './types.js';
 import { detectInteractivity } from './detector.js';
 
@@ -41,7 +41,7 @@ export function island<P = any>(component: Component<P>, options: IslandOptions 
 
   // Auto-detect strategy if not provided
   if (!options.hydrate) {
-    const detection = detectInteractivity(component);
+    const detection = detectInteractivity(component as Component<any>);
     options.hydrate = detection.recommendedStrategy || 'immediate';
   }
 
@@ -70,7 +70,7 @@ export function island<P = any>(component: Component<P>, options: IslandOptions 
  * ```
  */
 export function hydrateOn(trigger: HydrateOnOptions['trigger'], component: () => any): any {
-  return defineComponent(() => {
+  const comp = defineComponent(() => {
     let hydrated = false;
     let content: any = null;
 
@@ -97,9 +97,12 @@ export function hydrateOn(trigger: HydrateOnOptions['trigger'], component: () =>
         handlers.onMouseEnter = hydrate;
       }
 
-      return (<div {...handlers}>{content as any}</div>);
+      // Create div element without JSX to avoid TypeScript errors in .ts files
+       
+      return { type: 'div', props: { ...handlers, children: content as any } };
     };
-  })();
+  });
+  return comp({} as any);
 }
 
 /**
@@ -252,13 +255,11 @@ export function islandBoundary<P = any>(
 export const PreloadHint = defineComponent<{
   island: string;
   trigger: 'intent' | 'viewport' | 'immediate';
-}>((props) => {
-  return () => {
+}>((props) => () => 
     // This is a hint component that doesn't render anything
     // Build tools can use this to generate preload hints
-    return null;
-  };
-});
+     null
+  );
 
 /**
  * Static hint directive
@@ -302,7 +303,7 @@ export function isStaticComponent(component: any): boolean {
  * ```
  */
 export function priorityHint(priority: 'high' | 'low' | 'auto') {
-  return function <T extends Component>(component: T): T {
+  return function priorityHintDecorator<T extends Component>(component: T): T {
     (component as any).__priority = priority;
     return component;
   };

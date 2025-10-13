@@ -4,7 +4,7 @@
  * Handles API route requests with HTTP method routing
  */
 
-import type { RouteDefinition } from '../types.js';
+import type { RouteDefinition } from '../../router/types.js';
 
 /**
  * HTTP methods supported
@@ -91,13 +91,13 @@ export function createApiHandler(handlers: ApiHandlers): ApiHandler {
 
     try {
       return await handler(context);
-    } catch (error) {
-      console.error('API route error:', error);
+    } catch (err) {
+      console.error('API route error:', err);
 
       return new Response(
         JSON.stringify({
-          error: 'Internal Server Error',
-          message: error instanceof Error ? error.message : 'Unknown error',
+          err: 'Internal Server Error',
+          message: err instanceof Error ? err.message : 'Unknown err',
         }),
         {
           status: 500,
@@ -152,13 +152,13 @@ export async function executeApiRoute(
     // Create and execute handler
     const handler = createApiHandler(handlers);
     return await handler(context);
-  } catch (error) {
+  } catch (err) {
     console.error('Failed to execute API route:', error);
 
     return new Response(
       JSON.stringify({
-        error: 'Internal Server Error',
-        message: error instanceof Error ? error.message : 'Failed to load API route',
+        err: 'Internal Server Error',
+        message: err instanceof Error ? err.message : 'Failed to load API route',
       }),
       {
         status: 500,
@@ -286,7 +286,7 @@ export function cors(
 
   // Set origin
   if (Array.isArray(origin)) {
-    newHeaders.set('Access-Control-Allow-Origin', origin[0]);
+    newHeaders.set('Access-Control-Allow-Origin', origin[0] ?? '*');
     newHeaders.set('Vary', 'Origin');
   } else {
     newHeaders.set('Access-Control-Allow-Origin', origin);
@@ -335,10 +335,13 @@ export function composeMiddleware(...middlewares: ApiMiddleware[]): ApiMiddlewar
 
       index = i;
 
-      const middleware = middlewares[i];
-
       if (i === middlewares.length) {
         return handler();
+      }
+
+      const middleware = middlewares[i];
+      if (!middleware) {
+        throw new Error('Middleware not found');
       }
 
       return middleware(context, () => dispatch(i + 1));

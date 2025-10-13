@@ -11,7 +11,6 @@ import {
   WorkerPool,
   IncrementalCompiler,
   HMROptimizer,
-  ModuleFederationManager,
   BuildPerformanceMonitor,
 } from './build-performance.js';
 import { AssetPipeline } from './asset-pipeline.js';
@@ -164,14 +163,14 @@ export function aetherBuildPlugin(
 
   let config: ResolvedConfig;
   let buildCache: BuildCache;
-  let workerPool: WorkerPool | null = null;
+  let workerPool: WorkerPool | undefined;
   let incrementalCompiler: IncrementalCompiler;
   let hmrOptimizer: HMROptimizer;
   let assetPipeline: AssetPipeline;
-  let bundleOptimizer: BundleOptimizer;
+  let _bundleOptimizer: BundleOptimizer;
   let criticalCSSManager: RouteBasedCriticalCSS;
   let componentTreeShaker: ComponentTreeShaker;
-  let routeTreeShaker: RouteTreeShaker;
+  let _routeTreeShaker: RouteTreeShaker;
   let performanceMonitor: BuildPerformanceMonitor;
   let buildReport: BuildReport = {
     timestamp: new Date().toISOString(),
@@ -208,7 +207,7 @@ export function aetherBuildPlugin(
       }
 
       if (opts.bundleOptimization) {
-        bundleOptimizer = new BundleOptimizer({
+        _bundleOptimizer = new BundleOptimizer({
           minifier: config.build.minify === false ? 'none' : 'terser',
           ...opts.bundleOptions,
         });
@@ -220,7 +219,7 @@ export function aetherBuildPlugin(
 
       if (opts.treeShaking) {
         componentTreeShaker = new ComponentTreeShaker();
-        routeTreeShaker = new RouteTreeShaker();
+        _routeTreeShaker = new RouteTreeShaker();
       }
     },
 
@@ -273,7 +272,7 @@ export function aetherBuildPlugin(
         }
 
         // Update dependencies
-        const imports = this.extractImports(transformedCode);
+        const imports = extractImports(transformedCode);
         incrementalCompiler.updateDependencies(id, imports);
         incrementalCompiler.updateTimestamp(id);
       }
@@ -281,7 +280,7 @@ export function aetherBuildPlugin(
       return { code: transformedCode };
     },
 
-    async generateBundle(outputOptions, bundle) {
+    async generateBundle(_outputOptions, bundle) {
       if (opts.performance && performanceMonitor) {
         performanceMonitor.mark('bundle-generated');
       }
@@ -376,18 +375,21 @@ export function aetherBuildPlugin(
 
     async buildEnd() {
       // Cleanup
-      if (workerPool) {
-        await workerPool.terminate();
+      const poolToCleanup = workerPool;
+      if (poolToCleanup) {
+        await poolToCleanup.terminate();
       }
 
       if (opts.performance && performanceMonitor) {
         buildReport.duration = performanceMonitor.getDuration();
 
         if (buildCache) {
-          const cacheStats = buildCache.getStats();
+          // Cache stats would be used for calculating hit rate
+          buildCache.getStats();
+          const stats = poolToCleanup?.getStats();
           buildReport.performance = {
             cacheHitRate: 0, // Would be calculated based on actual hits/misses
-            workersUsed: workerPool?.getStats().total || 0,
+            workersUsed: stats?.total || 0,
           };
         }
       }
@@ -411,7 +413,7 @@ export function aetherBuildPlugin(
       }
 
       // Print summary
-      this.printSummary(buildReport);
+      printSummary(buildReport);
     },
 
     // HMR optimization
@@ -441,20 +443,24 @@ export function aetherBuildPlugin(
       return modules;
     },
 
-    // Helper methods
-    extractImports(code: string): string[] {
-      const imports: string[] = [];
-      const importRegex = /import\s+.*?\s+from\s+['"]([^'"]+)['"]/g;
-      let match: RegExpExecArray | null;
+  };
 
-      while ((match = importRegex.exec(code)) !== null) {
+  // Helper methods
+  function extractImports(code: string): string[] {
+    const imports: string[] = [];
+    const importRegex = /import\s+.*?\s+from\s+['"]([^'"]+)['"]/g;
+    let match: RegExpExecArray | null;
+
+    while ((match = importRegex.exec(code)) !== null) {
+      if (match[1]) {
         imports.push(match[1]);
       }
+    }
 
-      return imports;
-    },
+    return imports;
+  }
 
-    printSummary(report: BuildReport): void {
+  function printSummary(report: BuildReport): void {
       console.log('\n🎨 Aether Build Optimization Summary\n');
       console.log(`⏱️  Duration: ${(report.duration / 1000).toFixed(2)}s`);
 
@@ -505,8 +511,7 @@ export function aetherBuildPlugin(
       }
 
       console.log('');
-    },
-  };
+  }
 }
 
 /**

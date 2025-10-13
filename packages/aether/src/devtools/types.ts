@@ -532,6 +532,18 @@ export interface Profiler {
   startProfiling(): void;
   /** Stop profiling */
   stopProfiling(): PerformanceProfile;
+  /** Start measuring component */
+  startMeasuringComponent(componentId: string, name: string): void;
+  /** End measuring component */
+  endMeasuringComponent(componentId: string): void;
+  /** Start measuring effect */
+  startMeasuringEffect(effectId: string, name: string): void;
+  /** End measuring effect */
+  endMeasuringEffect(effectId: string): void;
+  /** Start measuring computed */
+  startMeasuringComputed(computedId: string, name: string): void;
+  /** End measuring computed */
+  endMeasuringComputed(computedId: string): void;
   /** Measure component */
   measureComponent(component: any, fn: () => void): void;
   /** Measure effect */

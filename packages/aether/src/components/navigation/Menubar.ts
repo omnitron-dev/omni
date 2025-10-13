@@ -13,11 +13,16 @@ import {
   MenubarContent as MenubarContentPrimitive,
   MenubarItem as MenubarItemPrimitive,
   MenubarSeparator as MenubarSeparatorPrimitive,
-  MenubarCheckboxItem as MenubarCheckboxItemPrimitive,
-  MenubarRadioGroup as MenubarRadioGroupPrimitive,
-  MenubarRadioItem as MenubarRadioItemPrimitive,
+  // MenubarCheckboxItem as MenubarCheckboxItemPrimitive, // TODO: Not exported from primitive
+  // MenubarRadioGroup as MenubarRadioGroupPrimitive, // TODO: Not exported from primitive
+  // MenubarRadioItem as MenubarRadioItemPrimitive, // TODO: Not exported from primitive
   type MenubarProps as MenubarPrimitiveProps,
 } from '../../primitives/Menubar.js';
+
+// Temporary placeholders until primitive components are implemented
+const MenubarCheckboxItemPrimitive = MenubarItemPrimitive;
+const MenubarRadioGroupPrimitive = MenubarMenuPrimitive;
+const MenubarRadioItemPrimitive = MenubarItemPrimitive;
 
 /**
  * Menubar - Root component

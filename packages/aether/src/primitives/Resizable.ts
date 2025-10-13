@@ -76,7 +76,7 @@ export const Resizable = defineComponent<ResizableProps>((props) => {
     const children = typeof props.children === 'function' ? props.children() : props.children;
 
     // Extract known props and spread the rest
-    const { orientation: _, sizes, onSizesChange, defaultSizes, children: __, ...restProps } = props;
+    const { orientation: _, _sizes, _onSizesChange, _defaultSizes, children: __, ...restProps } = props;
 
     return jsx('div', {
       ...restProps,
@@ -106,7 +106,7 @@ export const ResizablePanel = defineComponent<ResizablePanelProps>((props) => {
     const style =
       orientation === 'horizontal' ? { width: `${size}%`, height: '100%' } : { height: `${size}%`, width: '100%' };
 
-    const { id, minSize, maxSize, children, ...restProps } = props;
+    const { _id, _minSize, _maxSize, children, ...restProps } = props;
 
     return jsx('div', {
       ...restProps,

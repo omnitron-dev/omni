@@ -4,7 +4,7 @@
  * Handles special route files like _error, _loading, _404, _middleware
  */
 
-import type { RouteDefinition, RouteComponent } from '../types.js';
+import type { RouteDefinition, RouteComponent } from '../../router/types.js';
 
 /**
  * Special file types

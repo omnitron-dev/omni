@@ -18,15 +18,9 @@ import { Image as ImagePrimitive, type ImageProps as ImagePrimitiveProps } from 
 
 /**
  * Image - Styled image component
+ * Type parameters omitted - TypeScript will infer from styleConfig
  */
-export const Image = styled<
-  {
-    fit?: 'contain' | 'cover' | 'fill' | 'none' | 'scale-down';
-    rounded?: 'none' | 'sm' | 'md' | 'lg' | 'full';
-    bordered?: boolean;
-  },
-  ImagePrimitiveProps
->(ImagePrimitive, {
+export const Image = styled(ImagePrimitive as any, {
   base: {
     display: 'block',
     maxWidth: '100%',
@@ -77,7 +71,7 @@ export const Image = styled<
   defaultVariants: {
     fit: 'cover',
     rounded: 'none',
-    bordered: false,
+    bordered: 'false',
   },
 });
 

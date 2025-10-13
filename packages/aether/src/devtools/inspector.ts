@@ -101,7 +101,7 @@ function serializeValue(value: any): any {
     };
 
     return serialize(value);
-  } catch (error) {
+  } catch (_error) {
     return '[Unserializable]';
   }
 }
@@ -280,8 +280,8 @@ export class InspectorImpl implements Inspector {
       const now = Date.now();
       // Get name from metadata, component.name (but only if not empty or 'mockComponent'),
       // constructor name (but not 'Function'), or default to 'Anonymous'
-      let name = metadata?.name;
-      if (!name) {
+      let name: string = metadata?.name || 'Anonymous';
+      if (!metadata?.name) {
         const componentName = component.name;
         if (componentName && componentName !== '' && !componentName.startsWith('mock')) {
           name = componentName;
@@ -289,8 +289,6 @@ export class InspectorImpl implements Inspector {
           const constructorName = component.constructor?.name;
           if (constructorName && constructorName !== 'Function') {
             name = constructorName;
-          } else {
-            name = 'Anonymous';
           }
         }
       }

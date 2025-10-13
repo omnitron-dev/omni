@@ -137,8 +137,8 @@ export const TableBody = styled<
     },
   },
   defaultVariants: {
-    striped: false,
-    hoverable: false,
+    striped: 'false',
+    hoverable: 'false',
   },
 });
 
@@ -174,7 +174,7 @@ export const TableRow = styled<
     },
   },
   defaultVariants: {
-    hoverable: false,
+    hoverable: 'false',
   },
 });
 

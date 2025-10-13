@@ -65,7 +65,7 @@ export async function generateStaticSite(
     base = '/',
     parallel = 10,
     isr = false,
-    revalidate,
+    revalidate: revalidateTime,
     fallback = false,
   } = options;
 
@@ -88,7 +88,7 @@ export async function generateStaticSite(
         try {
           await generateRoute(routeComponent, route, outDir, base, {
             isr,
-            revalidate,
+            revalidate: revalidateTime,
           });
 
           console.log(`  ✓ ${route}`);
@@ -130,7 +130,7 @@ async function generateRoute(
   _base: string,
   options: { isr?: boolean; revalidate?: number }
 ): Promise<void> {
-  const { isr, revalidate: revalidateTime } = options;
+  const { isr, revalidate: revalidateInterval } = options;
 
   // Render route
   const result = await renderToString(component, {
@@ -154,7 +154,7 @@ async function generateRoute(
       html,
       data: result.data,
       timestamp: Date.now(),
-      revalidate: revalidateTime,
+      revalidate: revalidateInterval,
     });
   }
 }

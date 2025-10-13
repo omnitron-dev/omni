@@ -201,7 +201,7 @@ export function isStale(entry: RevalidationCacheEntry): boolean {
  * @returns True if page is expired
  */
 export function isExpired(entry: RevalidationCacheEntry): boolean {
-  if (!entry.revalidate || entry.revalidate === false) {
+  if (typeof entry.revalidate !== 'number') {
     return false;
   }
 

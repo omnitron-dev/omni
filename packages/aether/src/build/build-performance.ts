@@ -525,7 +525,10 @@ export class HMROptimizer {
       const parents = this.findParentModules(current);
       if (parents.size === 0) break;
 
-      current = Array.from(parents)[0];
+      const nextCurrent = Array.from(parents)[0];
+      if (!nextCurrent) break;
+
+      current = nextCurrent;
       scope.add(current);
     }
 

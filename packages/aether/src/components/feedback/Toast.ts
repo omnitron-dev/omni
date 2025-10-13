@@ -29,10 +29,9 @@ import {
  * ```
  */
 export const Toast = styled<
-  {
+  ToastPrimitiveProps & {
     size?: 'sm' | 'md' | 'lg';
-  },
-  ToastPrimitiveProps
+  }
 >(ToastPrimitive, {
   base: {
     display: 'flex',

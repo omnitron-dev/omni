@@ -228,13 +228,13 @@ export function globalStyles(styles: Record<string, CSSProperties>): void {
       .filter(Boolean)
       .join('\n');
 
-    const css = `${selector} {\n${props}\n}`;
+    const cssRule = `${selector} {\n${props}\n}`;
 
     if (sheet.element?.sheet) {
       try {
-        sheet.element.sheet.insertRule(css, sheet.element.sheet.cssRules.length);
+        sheet.element.sheet.insertRule(cssRule, sheet.element.sheet.cssRules.length);
       } catch (e) {
-        console.warn('Failed to insert global style:', css, e);
+        console.warn('Failed to insert global style:', cssRule, e);
       }
     }
   }
@@ -379,9 +379,9 @@ export function darkMode(lightStyles: CSSProperties, darkStyles: CSSProperties):
 export function mergeCSS(...cssObjects: (CSSProperties | undefined | null)[]): CSSProperties {
   const result: CSSProperties = {};
 
-  for (const css of cssObjects) {
-    if (!css) continue;
-    Object.assign(result, css);
+  for (const cssObj of cssObjects) {
+    if (!cssObj) continue;
+    Object.assign(result, cssObj);
   }
 
   return result;

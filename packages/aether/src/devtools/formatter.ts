@@ -321,7 +321,7 @@ export function formatSignal(signal: Signal<any> | WritableSignal<any>): string 
   let valueStr: string;
   try {
     valueStr = JSON.stringify(value);
-  } catch (e) {
+  } catch (_e) {
     valueStr = '[Circular]';
   }
 

@@ -339,10 +339,13 @@ export class ABTest {
       const random = Math.random();
       let sum = 0;
       for (let i = 0; i < weights.length; i++) {
-        sum += weights[i];
-        if (random <= sum) {
-          variant = variants[i];
-          break;
+        const weight = weights[i];
+        if (weight !== undefined) {
+          sum += weight;
+          if (random <= sum) {
+            variant = variants[i];
+            break;
+          }
         }
       }
     } else {
@@ -355,19 +358,22 @@ export class ABTest {
       variant = variants[0];
     }
 
+    // Ensure variant is defined (fallback to first variant)
+    const finalVariant = variant || variants[0] || 'default';
+
     // Store variant
-    this.experiments.set(experimentId, variant);
+    this.experiments.set(experimentId, finalVariant);
 
     // Track experiment exposure
     this.analytics.trackEvent('experiment_view', {
       experiment_id: experimentId,
-      variant,
+      variant: finalVariant,
     });
 
     // Store in session
-    sessionStorage.setItem(`ab_test_${experimentId}`, variant);
+    sessionStorage.setItem(`ab_test_${experimentId}`, finalVariant);
 
-    return variant;
+    return finalVariant;
   }
 
   /**

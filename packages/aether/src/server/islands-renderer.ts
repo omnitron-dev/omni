@@ -7,7 +7,7 @@
 import { renderToStringWithIslands } from '../islands/renderer.js';
 import { generatePreloadHints, generateIslandLoader } from '../islands/manifest.js';
 import { setServerContext, clearServerContext, createServerContextFromRequest } from '../islands/server-components.js';
-import type { IslandManifest } from '../islands/types.js';
+import type { IslandManifest, IslandBoundary } from '../islands/types.js';
 import type { RenderContext, RenderResult, ServerConfig } from './types.js';
 import { findBestMatch } from '../router/route-matcher.js';
 import { executeLoader, setLoaderData } from '../router/data.js';
@@ -24,7 +24,7 @@ export async function renderToStringWithIslandsSSR(
   config: ServerConfig,
   context: RenderContext,
   manifest?: IslandManifest,
-): Promise<RenderResult & { islands: any[] }> {
+): Promise<Omit<RenderResult, 'islands'> & { islands: IslandBoundary[] }> {
   const { routes, base = '/' } = config;
   const { url, method, headers = {} } = context;
 
@@ -93,7 +93,7 @@ export async function renderToStringWithIslandsSSR(
       }
 
       // Build result
-      const renderResult: RenderResult & { islands: any[] } = {
+      const renderResult: Omit<RenderResult, 'islands'> & { islands: IslandBoundary[] } = {
         html: result.html,
         data: hydrationData,
         status: 200,
@@ -137,7 +137,7 @@ export async function renderToStringWithIslandsSSR(
  */
 export function generateDocumentForSSR(
   html: string,
-  result: RenderResult & { islands: any[] },
+  result: Omit<RenderResult, 'islands'> & { islands: IslandBoundary[] },
   options: {
     title?: string;
     description?: string;

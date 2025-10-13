@@ -25,12 +25,23 @@ import { Stepper as StepperPrimitive, type StepperProps as StepperPrimitiveProps
  * ```
  */
 export const Stepper = styled<
+  StepperPrimitiveProps,
   {
-    orientation?: 'horizontal' | 'vertical';
-    size?: 'sm' | 'md' | 'lg';
-    variant?: 'default' | 'simple' | 'circles';
-  },
-  StepperPrimitiveProps
+    orientation: {
+      horizontal: {};
+      vertical: {};
+    };
+    size: {
+      sm: {};
+      md: {};
+      lg: {};
+    };
+    variant: {
+      default: {};
+      simple: {};
+      circles: {};
+    };
+  }
 >(StepperPrimitive, {
   base: {
     display: 'flex',
@@ -208,9 +219,9 @@ export const Stepper = styled<
     },
   },
   defaultVariants: {
-    orientation: 'horizontal',
-    size: 'md',
-    variant: 'default',
+    orientation: 'horizontal' as const,
+    size: 'md' as const,
+    variant: 'default' as const,
   },
 });
 

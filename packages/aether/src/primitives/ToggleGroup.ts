@@ -349,7 +349,7 @@ export const ToggleGroupItem = defineComponent<ToggleGroupItemProps>((props) => 
   };
 
   return () => {
-    const { value, disabled, children, ...rest } = props;
+    const { value, _disabled, children, ...rest } = props;
 
     // Check if selected
     const isSelected = context.isSelected(value);

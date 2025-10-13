@@ -43,7 +43,7 @@ export async function executeStaticProps<T = any>(
     // Ensure props are serializable
     try {
       JSON.stringify(result.props);
-    } catch (error) {
+    } catch (_error) {
       throw new Error('Props returned from getStaticProps must be JSON serializable');
     }
 
@@ -230,7 +230,7 @@ export function validateStaticPropsResult(result: any): string[] {
     errors.push('tags must be an array');
   }
 
-  if (Array.isArray(result.tags) && !result.tags.every((tag) => typeof tag === 'string')) {
+  if (Array.isArray(result.tags) && !result.tags.every((tag: any) => typeof tag === 'string')) {
     errors.push('tags must be an array of strings');
   }
 

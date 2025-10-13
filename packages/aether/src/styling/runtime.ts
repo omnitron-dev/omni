@@ -221,11 +221,11 @@ export function createStyleSheet(id?: string): StyleSheet {
 
       if (!isSSR && element?.sheet) {
         // Find and remove the rule
-        const sheet = element.sheet;
-        for (let i = 0; i < sheet.cssRules.length; i++) {
-          const cssRule = sheet.cssRules[i];
+        const cssSheet = element.sheet;
+        for (let i = 0; i < cssSheet.cssRules.length; i++) {
+          const cssRule = cssSheet.cssRules[i];
           if (cssRule instanceof CSSStyleRule && cssRule.selectorText === rule.selector) {
-            sheet.deleteRule(i);
+            cssSheet.deleteRule(i);
             break;
           }
         }

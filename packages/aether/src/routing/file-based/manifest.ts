@@ -4,7 +4,7 @@
  * Build-time route manifest generation for type safety and optimization
  */
 
-import type { RouteDefinition } from '../types.js';
+import type { RouteDefinition } from '../../router/types.js';
 
 /**
  * Route entry in manifest

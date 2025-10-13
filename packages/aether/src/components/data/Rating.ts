@@ -22,14 +22,9 @@ import {
 
 /**
  * Rating Root - Styled rating container
+ * Type parameters omitted - TypeScript will infer from styleConfig
  */
-export const Rating = styled<
-  {
-    size?: 'sm' | 'md' | 'lg' | 'xl';
-    colorScheme?: 'yellow' | 'red' | 'orange' | 'blue' | 'green';
-  },
-  RatingPrimitiveProps
->(RatingPrimitive, {
+export const Rating = styled(RatingPrimitive as any, {
   base: {
     display: 'inline-flex',
     alignItems: 'center',
@@ -66,14 +61,9 @@ export const Rating = styled<
 
 /**
  * Rating Item - Styled rating item (star)
+ * Type parameters omitted - TypeScript will infer from styleConfig
  */
-export const RatingItem = styled<
-  {
-    size?: 'sm' | 'md' | 'lg' | 'xl';
-    colorScheme?: 'yellow' | 'red' | 'orange' | 'blue' | 'green';
-  },
-  RatingItemProps
->(RatingItemPrimitive, {
+export const RatingItem = styled(RatingItemPrimitive as any, {
   base: {
     cursor: 'pointer',
     transition: 'all 0.15s ease',

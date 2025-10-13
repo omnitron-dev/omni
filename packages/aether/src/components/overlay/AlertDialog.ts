@@ -9,8 +9,8 @@ import { styled } from '../../styling/styled.js';
 import {
   AlertDialog as AlertDialogPrimitive,
   AlertDialogTrigger as AlertDialogTriggerPrimitive,
-  AlertDialogPortal as AlertDialogPortalPrimitive,
-  AlertDialogOverlay as AlertDialogOverlayPrimitive,
+  // AlertDialogPortal as AlertDialogPortalPrimitive, // TODO: Not exported from primitive
+  // AlertDialogOverlay as AlertDialogOverlayPrimitive, // TODO: Not exported from primitive
   AlertDialogContent as AlertDialogContentPrimitive,
   AlertDialogTitle as AlertDialogTitlePrimitive,
   AlertDialogDescription as AlertDialogDescriptionPrimitive,
@@ -18,6 +18,11 @@ import {
   AlertDialogCancel as AlertDialogCancelPrimitive,
   type AlertDialogProps as AlertDialogPrimitiveProps,
 } from '../../primitives/AlertDialog.js';
+import { defineComponent } from '../../core/component/index.js';
+
+// Temporary placeholders until primitive components are implemented
+const AlertDialogPortalPrimitive = defineComponent<{children?: any}>((props) => () => props.children);
+const AlertDialogOverlayPrimitive = defineComponent(() => () => ({ type: 'div', props: {} }));
 
 /**
  * AlertDialog - Root component
@@ -93,7 +98,7 @@ export const AlertDialogContent = styled<{
 /**
  * AlertDialogTitle - Dialog title
  */
-export const AlertDialogTitle = styled(AlertDialogTitlePrimitive, {
+export const AlertDialogTitle = styled(AlertDialogTitlePrimitive!, {
   base: {
     fontSize: '1.125rem',
     fontWeight: '600',
@@ -106,7 +111,7 @@ export const AlertDialogTitle = styled(AlertDialogTitlePrimitive, {
 /**
  * AlertDialogDescription - Dialog description
  */
-export const AlertDialogDescription = styled(AlertDialogDescriptionPrimitive, {
+export const AlertDialogDescription = styled(AlertDialogDescriptionPrimitive!, {
   base: {
     fontSize: '0.875rem',
     lineHeight: '1.5',

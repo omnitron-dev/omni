@@ -76,7 +76,7 @@ export const PopoverContent = styled<{
 /**
  * PopoverArrow - Arrow indicator
  */
-export const PopoverArrow = styled(PopoverArrowPrimitive, {
+export const PopoverArrow = styled(PopoverArrowPrimitive!, {
   base: {
     fill: '#ffffff',
     stroke: '#e5e7eb',
@@ -126,7 +126,7 @@ export const PopoverClose = styled(PopoverClosePrimitive, {
 // Display names
 Popover.displayName = 'Popover';
 PopoverTrigger.displayName = 'PopoverTrigger';
-PopoverAnchor.displayName = 'PopoverAnchor';
+if (PopoverAnchor) PopoverAnchor.displayName = 'PopoverAnchor';
 PopoverContent.displayName = 'PopoverContent';
 PopoverArrow.displayName = 'PopoverArrow';
 PopoverClose.displayName = 'PopoverClose';

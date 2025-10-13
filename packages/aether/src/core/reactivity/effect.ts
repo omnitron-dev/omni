@@ -53,7 +53,7 @@ export interface EffectOptionsExtended extends EffectOptions {
  * Effect implementation using reactive context
  * With circular dependency detection and recovery
  */
-class EffectImpl implements Disposable, ResolvableComputation {
+export class EffectImpl implements Disposable, ResolvableComputation {
   private computation: ComputationImpl;
   private effectOwner: Owner | null = null;
   private cleanupFn?: () => void;

@@ -129,7 +129,7 @@ export class PerformanceMonitor {
       });
       observer.observe({ type: 'paint', buffered: true });
       this.observers.push(observer);
-    } catch (error) {
+    } catch (_error) {
       // PerformanceObserver not supported
     }
   }
@@ -158,7 +158,7 @@ export class PerformanceMonitor {
 
       document.addEventListener('visibilitychange', reportFinalLCP, { once: true });
       window.addEventListener('pagehide', reportFinalLCP, { once: true });
-    } catch (error) {
+    } catch (_error) {
       // LCP not supported
     }
   }
@@ -177,7 +177,7 @@ export class PerformanceMonitor {
       });
       observer.observe({ type: 'first-input', buffered: true });
       this.observers.push(observer);
-    } catch (error) {
+    } catch (_error) {
       // FID not supported
     }
   }
@@ -192,7 +192,7 @@ export class PerformanceMonitor {
       let sessionEntries: any[] = [];
       const maxSessionGap = 1000;
       const maxSessionDuration = 5000;
-      let prevTime = 0;
+      let _prevTime = 0;
 
       const observer = new PerformanceObserver((list) => {
         for (const entry of list.getEntries() as any[]) {
@@ -222,13 +222,13 @@ export class PerformanceMonitor {
             }
           }
 
-          prevTime = entry.startTime;
+          _prevTime = entry.startTime;
         }
       });
 
       observer.observe({ type: 'layout-shift', buffered: true });
       this.observers.push(observer);
-    } catch (error) {
+    } catch (_error) {
       // CLS not supported
     }
   }
@@ -247,9 +247,9 @@ export class PerformanceMonitor {
           }
         }
       });
-      observer.observe({ type: 'event', buffered: true, durationThreshold: 16 });
+      observer.observe({ type: 'event', buffered: true } as PerformanceObserverInit);
       this.observers.push(observer);
-    } catch (error) {
+    } catch (_error) {
       // INP not supported
     }
   }
@@ -264,7 +264,7 @@ export class PerformanceMonitor {
         this.webVitals.TTFB = navTiming.responseStart - navTiming.requestStart;
         this.reportMetric('TTFB', this.webVitals.TTFB);
       }
-    } catch (error) {
+    } catch (_error) {
       // Navigation timing not available
     }
   }
@@ -276,12 +276,12 @@ export class PerformanceMonitor {
     try {
       const observer = new PerformanceObserver((list) => {
         const entries = list.getEntries() as PerformanceResourceTiming[];
-        const resources = entries.map((entry) => this.parseResourceTiming(entry));
+        const _resources = entries.map((entry) => this.parseResourceTiming(entry));
         this.notifyCallbacks(entries);
       });
       observer.observe({ type: 'resource', buffered: true });
       this.observers.push(observer);
-    } catch (error) {
+    } catch (_error) {
       // Resource timing not supported
     }
   }
@@ -335,7 +335,7 @@ export class PerformanceMonitor {
       };
 
       return timing;
-    } catch (error) {
+    } catch (_error) {
       return null;
     }
   }
@@ -355,7 +355,7 @@ export class PerformanceMonitor {
           jsHeapSizeLimit: memory.jsHeapSizeLimit,
         };
       }
-    } catch (error) {
+    } catch (_error) {
       // Memory API not available
     }
     return null;
@@ -366,7 +366,7 @@ export class PerformanceMonitor {
    */
   private captureMetrics(): void {
     const navTiming = this.captureNavigationTiming();
-    const memory = this.getMemoryUsage();
+    const _memory = this.getMemoryUsage();
 
     // Report metrics that exceed threshold
     if (navTiming && this.config.reportThreshold) {
@@ -416,7 +416,7 @@ export class PerformanceMonitor {
         this.reportMetric(name, measure.duration);
         return measure.duration;
       }
-    } catch (error) {
+    } catch (_error) {
       // Measure failed
     }
     return 0;

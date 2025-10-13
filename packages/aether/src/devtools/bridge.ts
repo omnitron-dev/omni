@@ -199,7 +199,7 @@ export class BridgeImpl implements Bridge {
       // Clone to avoid modifying original
       const cloned = JSON.parse(JSON.stringify(message));
       return cloned;
-    } catch (error) {
+    } catch (_error) {
       // If serialization fails, send minimal message
       return {
         type: message.type,

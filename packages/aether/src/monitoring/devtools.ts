@@ -66,7 +66,7 @@ export class DevTools {
   private profiles: Map<string, ProfileEntry[]> = new Map();
   private memorySnapshots: MemorySnapshot[] = [];
   private networkRequests: Map<string, NetworkRequest> = new Map();
-  private componentRenders: ComponentRender[] = new Map();
+  private componentRenders: ComponentRender[] = [];
   private activeProfile: string | null = null;
 
   constructor(config: DevToolsConfig = {}) {
@@ -168,11 +168,17 @@ export class DevTools {
    */
   private initNetworkViewer(): void {
     // Intercept fetch
-    const originalFetch = window.fetch;
-    window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const originalFetch = window.fetch.bind(window);
+    const { generateIdFn, networkRequests, logNetworkRequest } = {
+      generateIdFn: this.generateId.bind(this),
+      networkRequests: this.networkRequests,
+      logNetworkRequest: this.logNetworkRequest.bind(this),
+    };
+
+    (window.fetch as any) = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       const method = init?.method || 'GET';
-      const requestId = this.generateId();
+      const requestId = generateIdFn();
 
       const request: NetworkRequest = {
         id: requestId,
@@ -183,7 +189,7 @@ export class DevTools {
         requestBody: init?.body,
       };
 
-      this.networkRequests.set(requestId, request);
+      networkRequests.set(requestId, request);
 
       try {
         const response = await originalFetch(input, init);
@@ -194,7 +200,7 @@ export class DevTools {
         request.statusText = response.statusText;
         request.responseHeaders = Object.fromEntries(response.headers.entries());
 
-        this.logNetworkRequest(request);
+        logNetworkRequest(request);
 
         return response;
       } catch (error) {
@@ -202,7 +208,7 @@ export class DevTools {
         request.duration = request.endTime - request.startTime;
         request.error = (error as Error).message;
 
-        this.logNetworkRequest(request);
+        logNetworkRequest(request);
 
         throw error;
       }
@@ -212,25 +218,27 @@ export class DevTools {
     const originalOpen = XMLHttpRequest.prototype.open;
     const originalSend = XMLHttpRequest.prototype.send;
 
-    XMLHttpRequest.prototype.open = function (
+    XMLHttpRequest.prototype.open = function xhrOpenInterceptor(
       method: string,
       url: string | URL,
       ...args: any[]
     ) {
-      (this as any)._aether_url = url;
+      (this as any)._aether_url = typeof url === 'string' ? url : url.href;
       (this as any)._aether_method = method;
-      (this as any)._aether_id = generateId();
-      return originalOpen.call(this, method, url, ...args);
+      (this as any)._aether_id = generateIdFn();
+      return (originalOpen as any).call(this, method, url, ...args);
     };
 
-    XMLHttpRequest.prototype.send = function (...args: any[]) {
+    XMLHttpRequest.prototype.send = function xhrSendInterceptor(...args: any[]) {
       const xhr = this as any;
       const requestId = xhr._aether_id;
+      const requestUrl = xhr._aether_url;
+      const requestMethod = xhr._aether_method;
 
       const request: NetworkRequest = {
         id: requestId,
-        url: xhr._aether_url,
-        method: xhr._aether_method,
+        url: requestUrl,
+        method: requestMethod,
         startTime: Date.now(),
       };
 
@@ -240,7 +248,7 @@ export class DevTools {
         request.status = xhr.status;
         request.statusText = xhr.statusText;
 
-        this.logNetworkRequest(request);
+        logNetworkRequest(request);
       });
 
       return originalSend.call(this, ...args);
@@ -343,10 +351,11 @@ export class DevTools {
   private calculateMemoryTrend(snapshots: MemorySnapshot[]): number {
     if (snapshots.length < 2) return 0;
 
-    const first = snapshots[0].usedJSHeapSize;
-    const last = snapshots[snapshots.length - 1].usedJSHeapSize;
+    const first = snapshots[0];
+    const last = snapshots[snapshots.length - 1];
+    if (!first || !last) return 0;
 
-    return (last - first) / snapshots.length;
+    return (last.usedJSHeapSize - first.usedJSHeapSize) / snapshots.length;
   }
 
   /**
@@ -435,24 +444,17 @@ export class DevTools {
 }
 
 /**
- * Generate unique ID (standalone)
- */
-function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-}
-
-/**
  * Performance profiler decorator
  */
 export function Profile(name?: string) {
-  return function (
+  return function profileDecorator(
     target: any,
     propertyKey: string,
     descriptor: PropertyDescriptor
   ): PropertyDescriptor {
     const originalMethod = descriptor.value;
 
-    descriptor.value = function (...args: any[]) {
+    descriptor.value = function profiledMethod(...args: any[]) {
       const profileName = name || `${target.constructor.name}.${propertyKey}`;
       const startTime = performance.now();
 
@@ -461,9 +463,9 @@ export function Profile(name?: string) {
       const endTime = performance.now();
       const duration = endTime - startTime;
 
-      const devtools = (window as any).__AETHER_DEVTOOLS__ as DevTools | undefined;
-      if (devtools) {
-        devtools.recordProfileEntry({
+      const self = (window as any).__AETHER_DEVTOOLS__ as DevTools | undefined;
+      if (self) {
+        self.recordProfileEntry({
           name: profileName,
           duration,
           startTime,

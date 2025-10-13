@@ -280,7 +280,7 @@ export function optional(
  * Helper decorator for providing default values
  */
 export function withDefault<T>(defaultValue: T) {
-  return function (_target: any, _propertyKey: string, descriptor: PropertyDescriptor): PropertyDescriptor {
+  return function withDefaultDecorator(_target: any, _propertyKey: string, descriptor: PropertyDescriptor): PropertyDescriptor {
     const original = descriptor.value;
     descriptor.value = function withDefaultWrapper(...args: any[]) {
       (this as any).defaultValue = defaultValue;

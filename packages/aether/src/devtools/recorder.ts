@@ -179,7 +179,10 @@ export class RecorderImpl implements Recorder {
     } else {
       // Moving forwards - replay mutations
       for (let i = currentIndex + 1; i <= targetIndex; i++) {
-        this.applyMutation(this.history[i], 'forward');
+        const entry = this.history[i];
+        if (entry) {
+          this.applyMutation(entry, 'forward');
+        }
       }
     }
 
@@ -193,7 +196,9 @@ export class RecorderImpl implements Recorder {
     if (this.currentIndex < 0) return;
 
     const entry = this.history[this.currentIndex];
-    this.applyMutation(entry, 'backward');
+    if (entry) {
+      this.applyMutation(entry, 'backward');
+    }
     this.currentIndex--;
   }
 
@@ -205,7 +210,9 @@ export class RecorderImpl implements Recorder {
 
     this.currentIndex++;
     const entry = this.history[this.currentIndex];
-    this.applyMutation(entry, 'forward');
+    if (entry) {
+      this.applyMutation(entry, 'forward');
+    }
   }
 
   /**
@@ -246,7 +253,10 @@ export class RecorderImpl implements Recorder {
     // Reset to initial state
     // Then replay mutations up to target index
     for (let i = 0; i <= targetIndex; i++) {
-      this.applyMutation(this.history[i], 'forward');
+      const entry = this.history[i];
+      if (entry) {
+        this.applyMutation(entry, 'forward');
+      }
     }
   }
 
@@ -263,6 +273,10 @@ export class RecorderImpl implements Recorder {
 
     const entryA = this.history[indexA];
     const entryB = this.history[indexB];
+
+    if (!entryA || !entryB) {
+      throw new Error('History entries not found');
+    }
 
     const changes: StateDiff['changes'] = [];
 

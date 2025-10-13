@@ -170,7 +170,7 @@ export class PrivacyManager {
       if (stored) {
         return JSON.parse(stored);
       }
-    } catch (error) {
+    } catch (_error) {
       // Ignore
     }
     return null;
@@ -320,7 +320,7 @@ export class PrivacyManager {
       const keysToRemove: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && key.startsWith('aether_')) {
+        if (key !== null && key.startsWith('aether_')) {
           keysToRemove.push(key);
         }
       }
@@ -329,7 +329,9 @@ export class PrivacyManager {
       // Clear cookies
       const cookies = document.cookie.split(';');
       for (const cookie of cookies) {
-        const name = cookie.split('=')[0].trim();
+        const namePart = cookie.split('=')[0];
+        if (!namePart) continue;
+        const name = namePart.trim();
         if (name.startsWith('aether_')) {
           document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/`;
         }

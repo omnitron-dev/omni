@@ -517,7 +517,7 @@ export const CalendarGridBody = defineComponent<CalendarGridBodyProps>((props) =
   const context = useCalendarContext();
 
   return () => {
-    const { children, ...restProps } = props;
+    const { _children, ...restProps } = props;
     const days = context.days();
 
     // Split days into weeks (7 days per row)

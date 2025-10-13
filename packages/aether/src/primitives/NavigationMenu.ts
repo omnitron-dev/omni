@@ -303,7 +303,7 @@ export const NavigationMenuContent = defineComponent<NavigationMenuContentProps>
   return () => {
     // Evaluate function children during render (Pattern 17)
     const children = typeof props.children === 'function' ? props.children() : props.children;
-    const { children: _children, portal = false, ...restProps } = props;
+    const { children: _children, _portal = false, ...restProps } = props;
 
     const content = jsx('div', {
       ...restProps,

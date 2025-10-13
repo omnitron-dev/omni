@@ -4,7 +4,7 @@
  * Generates route configurations from scanned files
  */
 
-import type { RouteDefinition } from '../types.js';
+import type { RouteDefinition } from '../../router/types.js';
 import {
   scanRouteFiles,
   groupFilesByDirectory,
@@ -148,7 +148,7 @@ function buildApiRoutes(apiFiles: RouteFile[], _groups: Map<string, RouteFile[]>
     };
 
     // API routes are handled differently - they export HTTP method handlers
-    const apiHandlers: Record<string, any> = {};
+    const _apiHandlers: Record<string, any> = {};
 
     for (const file of files) {
       // API route will be loaded dynamically and methods extracted

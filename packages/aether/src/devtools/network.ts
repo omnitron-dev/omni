@@ -111,7 +111,9 @@ export class NetworkInspectorImpl implements NetworkInspector {
       };
       event.duration = duration;
 
-      this.pendingRequests.delete(requestId);
+      if (requestId) {
+        this.pendingRequests.delete(requestId);
+      }
     } else {
       // Standalone error
       const event: NetworkEvent = {

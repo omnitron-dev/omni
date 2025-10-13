@@ -208,6 +208,8 @@ export class ProfilerUI {
       // Find parent (last node that contains this one)
       while (stack.length > 1) {
         const parent = stack[stack.length - 1];
+        if (!parent) break;
+
         const parentEnd = parent.startTime + parent.duration;
 
         if (measurement.startTime >= parent.startTime && measurement.startTime < parentEnd) {
@@ -349,6 +351,9 @@ export class ProfilerUI {
           break;
         case 'computed':
           computedTime += measurement.duration;
+          break;
+        default:
+          // Unknown measurement type, skip
           break;
       }
     }
@@ -541,6 +546,8 @@ export class ProfilerUI {
     if (!this.memoryGraph || this.memoryData.length === 0) return;
 
     const latest = this.memoryData[this.memoryData.length - 1];
+    if (!latest) return;
+
     const usedMB = (latest.usedJSHeapSize / 1024 / 1024).toFixed(1);
     const totalMB = (latest.totalJSHeapSize / 1024 / 1024).toFixed(1);
     const percentage = ((latest.usedJSHeapSize / latest.totalJSHeapSize) * 100).toFixed(1);
@@ -582,7 +589,8 @@ export class ProfilerUI {
    */
   getCurrentFPS(): number {
     if (this.fpsData.length === 0) return 0;
-    return this.fpsData[this.fpsData.length - 1].fps;
+    const latest = this.fpsData[this.fpsData.length - 1];
+    return latest ? latest.fps : 0;
   }
 
   /**

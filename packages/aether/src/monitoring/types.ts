@@ -123,7 +123,7 @@ export interface ErrorInfo {
   /** Additional context */
   context?: Record<string, any>;
   /** User info */
-  user?: UserInfo;
+  user?: UserInfo | null;
   /** Breadcrumbs leading to error */
   breadcrumbs?: Breadcrumb[];
   /** Tags for categorization */

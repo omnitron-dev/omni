@@ -224,7 +224,24 @@ export function invalidateLoaderCache(path: string | RegExp): number {
   const cacheManager = getCacheManager();
 
   if (typeof path === 'string') {
-    const cacheKey = generateCacheKey('loader', [path]);
+    // Normalize path to full URL to match cache key generation
+    // If path is already a full URL, use it; otherwise construct one
+    let fullUrl: string;
+    try {
+      // Try parsing as URL - if it works, it's already a full URL
+      new URL(path);
+      fullUrl = path;
+    } catch {
+      // Not a full URL, construct one with current location as base (browser)
+      // or a default base (server/tests)
+      const base =
+        typeof window !== 'undefined' && window.location
+          ? window.location.origin
+          : 'http://localhost';
+      fullUrl = new URL(path, base).toString();
+    }
+
+    const cacheKey = generateCacheKey('loader', [fullUrl]);
     return cacheManager.delete(cacheKey) ? 1 : 0;
   }
 

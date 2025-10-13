@@ -96,8 +96,8 @@ export function createApiHandler(handlers: ApiHandlers): ApiHandler {
 
       return new Response(
         JSON.stringify({
-          err: 'Internal Server Error',
-          message: err instanceof Error ? err.message : 'Unknown err',
+          error: 'Internal Server Error',
+          message: err instanceof Error ? err.message : 'Unknown error',
         }),
         {
           status: 500,
@@ -153,11 +153,11 @@ export async function executeApiRoute(
     const handler = createApiHandler(handlers);
     return await handler(context);
   } catch (err) {
-    console.error('Failed to execute API route:', error);
+    console.error('Failed to execute API route:', err);
 
     return new Response(
       JSON.stringify({
-        err: 'Internal Server Error',
+        error: 'Internal Server Error',
         message: err instanceof Error ? err.message : 'Failed to load API route',
       }),
       {

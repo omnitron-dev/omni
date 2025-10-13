@@ -140,7 +140,7 @@ export class ErrorTracker {
         ...Object.fromEntries(this.context),
         ...info?.context,
       },
-      user: this.userInfo !== null ? this.userInfo : (info?.user ?? undefined),
+      user: info?.user !== undefined ? info.user : this.userInfo,
       breadcrumbs: [...this.breadcrumbs],
       tags: info?.tags,
       timestamp: Date.now(),

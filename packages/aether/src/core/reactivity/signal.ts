@@ -1,7 +1,22 @@
 /**
  * Signal - Basic reactive primitive
  *
- * Implements fine-grained reactivity for optimal terminal rendering
+ * Implements fine-grained reactivity for optimal rendering performance.
+ * Signals use automatic dependency tracking to minimize unnecessary updates.
+ *
+ * @module reactivity/signal
+ *
+ * Performance Characteristics:
+ * - Creation: O(1) time and space
+ * - Read: O(1) time, O(1) space per dependent
+ * - Write: O(1) equality check + O(n) notification where n = dependents
+ * - Memory: O(d + s) where d = dependents (computed/effects), s = subscribers
+ *
+ * Best Practices:
+ * - Use batch() when updating multiple signals to avoid redundant recomputations
+ * - Use peek() when reading without creating dependencies
+ * - Provide custom equals function for complex objects to optimize updates
+ * - Keep signal values immutable for predictable behavior
  */
 
 import type { Signal, WritableSignal } from './types.js';
@@ -120,6 +135,39 @@ class SignalImpl<T> {
 
 /**
  * Create a writable signal
+ *
+ * Signals are the foundation of the reactivity system. They store values and
+ * automatically track dependencies when accessed within reactive contexts.
+ *
+ * @template T - The type of value stored in the signal
+ * @param initial - Initial value for the signal
+ * @param options - Configuration options
+ * @param options.equals - Custom equality function (default: Object.is)
+ * @returns A writable signal with get/set/update/mutate capabilities
+ *
+ * @example
+ * ```typescript
+ * // Basic usage
+ * const count = signal(0);
+ * console.log(count()); // 0
+ * count.set(1);
+ * count.update(n => n + 1); // 2
+ *
+ * // With custom equality
+ * const user = signal({ name: 'John' }, {
+ *   equals: (a, b) => a.name === b.name
+ * });
+ *
+ * // In-place mutation for arrays
+ * const items = signal([1, 2, 3]);
+ * items.mutate(arr => arr.push(4)); // Efficient
+ * ```
+ *
+ * Performance:
+ * - Time Complexity: O(1) creation
+ * - Space Complexity: O(1) + O(d) where d = number of dependents
+ * - Read: O(1) with dependency tracking
+ * - Write: O(1) + O(n) where n = number of dependents to notify
  */
 export function signal<T>(initial: T, options?: { equals?: (a: T, b: T) => boolean }): WritableSignal<T> {
   const s = new SignalImpl(initial, options);

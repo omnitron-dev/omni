@@ -1,5 +1,31 @@
 /**
  * Computed - Derived reactive values with automatic memoization
+ *
+ * Computed values automatically track their dependencies and recompute
+ * only when those dependencies change. They are lazy (only compute when accessed)
+ * and cached (return cached value if dependencies haven't changed).
+ *
+ * @module reactivity/computed
+ *
+ * Performance Characteristics:
+ * - Creation: O(1) time and space (lazy - doesn't compute initially)
+ * - First read: O(f) where f = time to run computation function
+ * - Subsequent reads: O(1) when not stale (returns cached value)
+ * - Recomputation: O(f) + O(n) where n = dependents to notify
+ * - Memory: O(1) for cached value + O(d) for dependencies
+ *
+ * Optimization Features:
+ * - Lazy evaluation: Only computes when accessed
+ * - Memoization: Caches result until dependencies change
+ * - Diamond dependency resolution: Prevents redundant recomputations
+ * - Topological sorting: Ensures correct update order in batches
+ * - Equality checking: Custom equality to prevent unnecessary updates
+ *
+ * Best Practices:
+ * - Keep computation functions pure (no side effects)
+ * - Avoid circular dependencies (use optional/defaultValue if needed)
+ * - Use computed() for expensive derived values
+ * - Batch multiple signal updates to trigger computed once
  */
 
 import { context, onCleanup, UpdatePriority, ComputationImpl, ComputationType } from './context.js';
@@ -324,6 +350,47 @@ export interface ComputedOptionsExtended extends ComputedOptions {
 
 /**
  * Create a computed value
+ *
+ * Computed values derive their value from other reactive primitives (signals/computed).
+ * They automatically track dependencies and only recompute when dependencies change.
+ * Computations are lazy (run on first access) and memoized (cached until stale).
+ *
+ * @template T - The type of the computed value
+ * @param fn - Pure function that computes the value from reactive dependencies
+ * @param options - Configuration options
+ * @param options.equals - Custom equality function to detect changes (default: Object.is)
+ * @param options.name - Debug name for DevTools
+ * @param options.isOptional - Whether computation is optional in circular dependency scenarios
+ * @param options.defaultValue - Default value to use if computation fails or is skipped
+ * @returns A read-only signal that automatically updates when dependencies change
+ *
+ * @example
+ * ```typescript
+ * // Basic computed
+ * const count = signal(0);
+ * const doubled = computed(() => count() * 2);
+ * console.log(doubled()); // 0
+ * count.set(5);
+ * console.log(doubled()); // 10
+ *
+ * // With custom equality
+ * const user = signal({ name: 'John', age: 30 });
+ * const userName = computed(
+ *   () => user().name,
+ *   { equals: (a, b) => a === b }
+ * );
+ *
+ * // Chained computed
+ * const doubled = computed(() => count() * 2);
+ * const quadrupled = computed(() => doubled() * 2);
+ * ```
+ *
+ * Performance:
+ * - Time Complexity: O(1) creation, O(f) first access, O(1) cached reads
+ * - Space Complexity: O(1) for cache + O(d) for d dependencies
+ * - Lazy evaluation: Doesn't compute until accessed
+ * - Memoization: Returns cached value if dependencies unchanged
+ * - Diamond resolution: Prevents redundant updates in complex dependency graphs
  */
 export function computed<T>(fn: () => T, options?: ComputedOptionsExtended): Signal<T> {
   const c = new ComputedImpl(fn, options);

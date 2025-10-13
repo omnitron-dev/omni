@@ -345,15 +345,17 @@ import { intersectionObserver } from '@omnitron-dev/aether/utils';
 const isVisible = signal(false);
 
 <div ref={intersectionObserver({
-  onIntersect: (entry) => {
+  handler: (entry) => {
     isVisible.set(entry.isIntersecting);
 
     if (entry.isIntersecting) {
       console.log('Element is visible!');
     }
   },
-  threshold: 0.5,  // Trigger when 50% visible
-  rootMargin: '0px'
+  options: {
+    threshold: 0.5,  // Trigger when 50% visible
+    rootMargin: '0px'
+  }
 })}>
   Lazy-loaded content
 </div>
@@ -368,11 +370,9 @@ const isVisible = signal(false);
 
 **Parameters**:
 ```typescript
-interface IntersectionObserverOptions {
-  onIntersect: (entry: IntersectionObserverEntry) => void;
-  threshold?: number | number[];
-  rootMargin?: string;
-  root?: Element | null;
+interface IntersectionObserverParams {
+  handler: (entry: IntersectionObserverEntry) => void;
+  options?: IntersectionObserverInit;
 }
 ```
 
@@ -387,13 +387,13 @@ const LazyImage = defineComponent<{ src: string; alt: string }>((props) => {
       ref={combineDirectives([
         (el) => imgRef.set(el as HTMLImageElement),
         intersectionObserver({
-          onIntersect: (entry) => {
+          handler: (entry) => {
             if (entry.isIntersecting && imgRef()) {
               imgRef()!.src = props.src;
               isVisible.set(true);
             }
           },
-          threshold: 0.1
+          options: { threshold: 0.1 }
         })
       ])}
       alt={props.alt}
@@ -439,10 +439,13 @@ Detects long press gesture.
 ```typescript
 import { longPress } from '@omnitron-dev/aether/utils';
 
-<button ref={longPress(() => {
-  console.log('Long pressed!');
-  showContextMenu();
-}, 1000)}>  // 1000ms threshold
+<button ref={longPress({
+  handler: () => {
+    console.log('Long pressed!');
+    showContextMenu();
+  },
+  duration: 1000  // 1000ms threshold
+})}>
   Long press me
 </button>
 ```
@@ -454,8 +457,12 @@ import { longPress } from '@omnitron-dev/aether/utils';
 - Touch interfaces
 
 **Parameters**:
-- `callback: () => void` - Function to call on long press
-- `duration?: number` - Press duration in ms (default: 500)
+```typescript
+interface LongPressParams {
+  handler: () => void;
+  duration?: number;  // Press duration in ms (default: 500)
+}
+```
 
 ### swipe
 
@@ -719,32 +726,161 @@ const accessibleButton = (label: string, onActivate: () => void) =>
 
 ## Advanced Patterns
 
-### Directive Factory
+### Using composeDirectives
 
-Create directives with shared configuration:
+The `composeDirectives` function allows you to create reusable directive combinations:
 
 ```typescript
-import { createDirective } from '@omnitron-dev/aether/utils';
+import { composeDirectives, autoFocus, clickOutside } from '@omnitron-dev/aether/utils';
 
-function createTooltipFactory(defaultTheme: 'dark' | 'light') {
-  return (text: string, theme = defaultTheme) =>
-    createDirective<void>((element) => {
-      // Tooltip implementation with theme
+// Create a reusable modal directive
+const handleClose = () => setIsOpen(false);
+
+const modalBehavior = composeDirectives(
+  autoFocus(),
+  clickOutside(handleClose),
+  (el) => {
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-modal', 'true');
+  }
+);
+
+// Use it anywhere
+<div ref={modalBehavior} className="modal">
+  Modal content
+</div>
+```
+
+**Difference from `combineDirectives`**:
+- `combineDirectives`: Combines an array of directives
+- `composeDirectives`: Takes rest parameters for more ergonomic API
+
+### Directive Factory with createDirectiveFactory
+
+Create directive factories with shared configuration using `createDirectiveFactory`:
+
+```typescript
+import { createDirectiveFactory } from '@omnitron-dev/aether/utils';
+
+// Create a tooltip factory with theme configuration
+const createThemedTooltip = createDirectiveFactory<string, { theme: 'dark' | 'light' }>(
+  (config) => {
+    return (element, text) => {
       const tooltipEl = document.createElement('div');
-      tooltipEl.className = `tooltip tooltip-${theme}`;
+      tooltipEl.className = `tooltip tooltip-${config.theme}`;
       tooltipEl.textContent = text;
 
-      // ... rest of implementation
-    })();
-}
+      const show = () => {
+        document.body.appendChild(tooltipEl);
+        positionTooltip(tooltipEl, element);
+      };
+
+      const hide = () => {
+        tooltipEl.remove();
+      };
+
+      element.addEventListener('mouseenter', show);
+      element.addEventListener('mouseleave', hide);
+
+      return () => {
+        hide();
+        element.removeEventListener('mouseenter', show);
+        element.removeEventListener('mouseleave', hide);
+      };
+    };
+  }
+);
 
 // Create themed tooltip directives
-const darkTooltip = createTooltipFactory('dark');
-const lightTooltip = createTooltipFactory('light');
+const darkTooltip = createThemedTooltip({ theme: 'dark' });
+const lightTooltip = createThemedTooltip({ theme: 'light' });
 
-<button ref={darkTooltip('Dark theme tooltip')}>Hover</button>
-<button ref={lightTooltip('Light theme tooltip')}>Hover</button>
+// Use them
+<button ref={darkTooltip('Dark theme tooltip')}>Dark</button>
+<button ref={lightTooltip('Light theme tooltip')}>Light</button>
 ```
+
+**Benefits**:
+- Share configuration across multiple directive instances
+- Type-safe factory creation
+- Cleaner API for creating themed or configured directives
+
+### Shared Context with createDirectiveWithContext
+
+Create directives that share state using `createDirectiveWithContext`:
+
+```typescript
+import { createDirectiveWithContext, createDirective } from '@omnitron-dev/aether/utils';
+
+// Create a drag-drop system with shared context
+const { draggable, droppable } = createDirectiveWithContext(() => {
+  let currentData: any = null;
+
+  return {
+    draggable: createDirective<{ data: any }>((element, { data }) => {
+      element.draggable = true;
+
+      const handleDragStart = () => {
+        currentData = data;
+        element.style.opacity = '0.5';
+      };
+
+      const handleDragEnd = () => {
+        element.style.opacity = '1';
+      };
+
+      element.addEventListener('dragstart', handleDragStart);
+      element.addEventListener('dragend', handleDragEnd);
+
+      return () => {
+        element.removeEventListener('dragstart', handleDragStart);
+        element.removeEventListener('dragend', handleDragEnd);
+      };
+    }),
+
+    droppable: createDirective<{ onDrop: (data: any) => void }>((element, { onDrop }) => {
+      const handleDragOver = (e: DragEvent) => {
+        e.preventDefault();
+        element.style.backgroundColor = 'lightblue';
+      };
+
+      const handleDragLeave = () => {
+        element.style.backgroundColor = '';
+      };
+
+      const handleDrop = (e: DragEvent) => {
+        e.preventDefault();
+        element.style.backgroundColor = '';
+        onDrop(currentData);
+      };
+
+      element.addEventListener('dragover', handleDragOver);
+      element.addEventListener('dragleave', handleDragLeave);
+      element.addEventListener('drop', handleDrop);
+
+      return () => {
+        element.removeEventListener('dragover', handleDragOver);
+        element.removeEventListener('dragleave', handleDragLeave);
+        element.removeEventListener('drop', handleDrop);
+      };
+    })
+  };
+});
+
+// Usage
+<div ref={draggable({ data: { id: 1, name: 'Item 1' } })}>
+  Drag me
+</div>
+
+<div ref={droppable({ onDrop: (data) => console.log('Dropped:', data) })}>
+  Drop here
+</div>
+```
+
+**Benefits**:
+- Share state between multiple directives
+- Coordinate behavior across elements
+- Build complex interactive systems (drag-drop, selection, etc.)
 
 ### Directive with Ref Access
 
@@ -1249,7 +1385,8 @@ Aether's **utility-based directive pattern** provides:
 ✅ **Fully Testable** - Test as regular functions
 ✅ **Built-in Directives** - autoFocus, clickOutside, intersectionObserver, resizeObserver, longPress, swipe
 ✅ **Custom Directives** - Easy to create with `createDirective()`
-✅ **Production Ready** - 16/16 directive tests passing
+✅ **Composition Helpers** - composeDirectives, createDirectiveFactory, createDirectiveWithContext
+✅ **Production Ready** - 41/41 directive tests passing (15 swipe tests + 11 composition tests)
 
 This approach delivers the **power of directives** without the complexity of a custom compiler, while maintaining all benefits of standard TypeScript tooling.
 

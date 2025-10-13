@@ -1,6 +1,33 @@
 /**
  * Effect - Side effects that run when dependencies change
- * With integrated circular dependency protection
+ *
+ * Effects are the bridge between the reactive system and the outside world.
+ * They run side effects (DOM updates, network requests, logging, etc.) in response
+ * to reactive dependency changes. Effects run immediately on creation (unless deferred)
+ * and automatically re-run when any tracked dependency changes.
+ *
+ * @module reactivity/effect
+ *
+ * Performance Characteristics:
+ * - Creation: O(1) + O(f) where f = time to run effect function (unless deferred)
+ * - Re-execution: O(f) where f = time to run effect function
+ * - Cleanup: O(c) where c = time to run cleanup function
+ * - Memory: O(1) + O(d) where d = number of dependencies tracked
+ *
+ * Features:
+ * - Automatic dependency tracking: Tracks all signals/computed accessed during execution
+ * - Cleanup support: Return a function to run cleanup before next execution
+ * - Deferred execution: Can defer initial run with defer: true option
+ * - Custom scheduler: Support custom scheduling (e.g., requestAnimationFrame)
+ * - Circular dependency protection: Detects and handles circular dependencies
+ * - Error handling: Errors in effects are caught and logged
+ *
+ * Best Practices:
+ * - Use effects for side effects only (DOM updates, network, storage, etc.)
+ * - Keep effect functions focused and minimal
+ * - Return cleanup functions to prevent memory leaks
+ * - Use untrack() for reads that shouldn't trigger re-runs
+ * - Batch multiple signal updates to avoid redundant effect runs
  */
 
 import { context, getOwner, OwnerImpl, UpdatePriority, ComputationImpl, ComputationType } from './context.js';
@@ -194,7 +221,58 @@ class EffectImpl implements Disposable, ResolvableComputation {
 
 /**
  * Create an effect that runs when dependencies change
- * With circular dependency protection
+ *
+ * Effects are used to perform side effects in response to reactive state changes.
+ * They automatically track all signals/computed accessed during execution and
+ * re-run when any of those dependencies change.
+ *
+ * @param fn - Effect function that may return a cleanup function
+ * @param options - Configuration options
+ * @param options.defer - If true, defer initial execution (default: false)
+ * @param options.scheduler - Custom scheduler function for batching/timing control
+ * @param options.name - Debug name for DevTools
+ * @param options.isOptional - Whether effect is optional in circular dependency scenarios
+ * @param options.onCircularDependency - How to handle circular dependencies: 'skip' | 'warn' | 'error'
+ * @returns Disposable object with dispose() method to stop the effect
+ *
+ * @example
+ * ```typescript
+ * // Basic effect
+ * const count = signal(0);
+ * effect(() => {
+ *   console.log('Count:', count());
+ * }); // Logs immediately and on every count change
+ *
+ * // Effect with cleanup
+ * const url = signal('/api/data');
+ * effect(() => {
+ *   const controller = new AbortController();
+ *   fetch(url(), { signal: controller.signal })
+ *     .then(res => res.json())
+ *     .then(data => console.log(data));
+ *
+ *   // Cleanup function runs before next effect or on dispose
+ *   return () => controller.abort();
+ * });
+ *
+ * // Deferred effect (doesn't run immediately)
+ * effect(() => {
+ *   console.log('Deferred:', count());
+ * }, { defer: true });
+ *
+ * // Effect with custom scheduler
+ * effect(() => {
+ *   updateDOM(count());
+ * }, {
+ *   scheduler: (run) => requestAnimationFrame(run)
+ * });
+ * ```
+ *
+ * Performance:
+ * - Time Complexity: O(f) where f = effect function execution time
+ * - Space Complexity: O(d) where d = number of dependencies
+ * - Runs immediately on creation (unless deferred)
+ * - Re-runs only when dependencies change (fine-grained reactivity)
  */
 export function effect(fn: () => void | (() => void), options?: EffectOptionsExtended): Disposable {
   const effectImpl = new EffectImpl(fn, options);

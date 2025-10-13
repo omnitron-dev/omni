@@ -150,6 +150,113 @@ export function combineDirectives(directives: Array<(element: HTMLElement) => vo
   };
 }
 
+/**
+ * Compose multiple directives into a single directive
+ *
+ * Similar to combineDirectives but creates a new directive that can be reused
+ *
+ * @param directives - Array of directive setup functions
+ * @returns New composed directive function
+ *
+ * @example
+ * ```typescript
+ * // Create a reusable modal directive
+ * const modalDirective = composeDirectives(
+ *   autoFocus(),
+ *   clickOutside(handleClose),
+ *   (el) => {
+ *     el.setAttribute('role', 'dialog');
+ *     el.setAttribute('aria-modal', 'true');
+ *   }
+ * );
+ *
+ * <div ref={modalDirective}>Modal content</div>
+ * ```
+ */
+export function composeDirectives(
+  ...directives: Array<(element: HTMLElement) => void>
+): (element: HTMLElement) => void {
+  return (element: HTMLElement) => {
+    for (const directive of directives) {
+      directive(element);
+    }
+  };
+}
+
+/**
+ * Create a directive factory with shared configuration
+ *
+ * Useful for creating multiple directives with common settings
+ *
+ * @param config - Configuration object or factory function
+ * @returns Directive factory function
+ *
+ * @example
+ * ```typescript
+ * // Create a tooltip factory with theme
+ * const createThemedTooltip = createDirectiveFactory<string>((theme: 'dark' | 'light') => {
+ *   return (element, text) => {
+ *     const tooltip = document.createElement('div');
+ *     tooltip.className = `tooltip tooltip-${theme}`;
+ *     tooltip.textContent = text;
+ *     // ... rest of implementation
+ *   };
+ * });
+ *
+ * const darkTooltip = createThemedTooltip('dark');
+ * const lightTooltip = createThemedTooltip('light');
+ *
+ * <button ref={darkTooltip('Dark theme')}>Dark</button>
+ * <button ref={lightTooltip('Light theme')}>Light</button>
+ * ```
+ */
+export function createDirectiveFactory<TParams, TConfig = unknown>(
+  factory: (config: TConfig) => DirectiveFunction<TParams>
+): (config: TConfig) => ReturnType<typeof createDirective<TParams>> {
+  return (config: TConfig) => {
+    return createDirective<TParams>(factory(config));
+  };
+}
+
+/**
+ * Create a directive with shared context
+ *
+ * Allows multiple directive instances to share state
+ *
+ * @param createContext - Function that creates shared context
+ * @returns Directive factory with shared context
+ *
+ * @example
+ * ```typescript
+ * // Create drag-drop system with shared context
+ * const { draggable, droppable } = createDirectiveWithContext(() => {
+ *   const dragData = { current: null as any };
+ *
+ *   return {
+ *     draggable: createDirective<{ data: any }>((element, { data }) => {
+ *       const handleDragStart = () => {
+ *         dragData.current = data;
+ *       };
+ *       element.addEventListener('dragstart', handleDragStart);
+ *       return () => element.removeEventListener('dragstart', handleDragStart);
+ *     }),
+ *     droppable: createDirective<{ onDrop: (data: any) => void }>((element, { onDrop }) => {
+ *       const handleDrop = () => {
+ *         onDrop(dragData.current);
+ *       };
+ *       element.addEventListener('drop', handleDrop);
+ *       return () => element.removeEventListener('drop', handleDrop);
+ *     })
+ *   };
+ * });
+ * ```
+ */
+export function createDirectiveWithContext<TContext extends Record<string, unknown>>(
+  createContext: () => TContext
+): TContext {
+  return createContext();
+}
+
 // ============================================================================
 // Built-in Directives
 // ============================================================================
@@ -439,5 +546,136 @@ export const draggable = createDirective<{
     element.removeEventListener('mousedown', handleMouseDown);
     document.removeEventListener('mousemove', handleMouseMove);
     document.removeEventListener('mouseup', handleMouseUp);
+  };
+});
+
+/**
+ * Swipe gesture directive
+ *
+ * Detects swipe gestures on touch and mouse events
+ *
+ * @param options - Swipe options
+ *
+ * @example
+ * ```typescript
+ * <div ref={swipe({
+ *   onSwipeLeft: () => console.log('Swiped left'),
+ *   onSwipeRight: () => console.log('Swiped right'),
+ *   onSwipeUp: () => console.log('Swiped up'),
+ *   onSwipeDown: () => console.log('Swiped down'),
+ *   threshold: 50,  // Minimum distance in pixels
+ *   timeout: 500    // Maximum duration in ms
+ * })}>
+ *   Swipeable content
+ * </div>
+ * ```
+ */
+export const swipe = createDirective<{
+  onSwipeLeft?: () => void;
+  onSwipeRight?: () => void;
+  onSwipeUp?: () => void;
+  onSwipeDown?: () => void;
+  threshold?: number;
+  timeout?: number;
+}>((element, options) => {
+  const threshold = options.threshold ?? 50;
+  const timeoutDuration = options.timeout ?? 300;
+
+  let startX = 0;
+  let startY = 0;
+  let startTime = 0;
+  let isSwiping = false;
+
+  const handleStart = (clientX: number, clientY: number) => {
+    startX = clientX;
+    startY = clientY;
+    startTime = Date.now();
+    isSwiping = true;
+  };
+
+  const handleEnd = (clientX: number, clientY: number) => {
+    if (!isSwiping) return;
+
+    const deltaX = clientX - startX;
+    const deltaY = clientY - startY;
+    const deltaTime = Date.now() - startTime;
+
+    isSwiping = false;
+
+    // Check if swipe was within timeout
+    if (deltaTime > timeoutDuration) {
+      return;
+    }
+
+    // Determine swipe direction based on larger delta
+    const absX = Math.abs(deltaX);
+    const absY = Math.abs(deltaY);
+
+    // Check if movement exceeds threshold
+    if (absX < threshold && absY < threshold) {
+      return;
+    }
+
+    // Horizontal swipe
+    if (absX > absY) {
+      if (deltaX > 0 && options.onSwipeRight) {
+        options.onSwipeRight();
+      } else if (deltaX < 0 && options.onSwipeLeft) {
+        options.onSwipeLeft();
+      }
+    }
+    // Vertical swipe
+    else {
+      if (deltaY > 0 && options.onSwipeDown) {
+        options.onSwipeDown();
+      } else if (deltaY < 0 && options.onSwipeUp) {
+        options.onSwipeUp();
+      }
+    }
+  };
+
+  // Touch events
+  const handleTouchStart = (e: TouchEvent) => {
+    const touch = e.touches[0];
+    handleStart(touch.clientX, touch.clientY);
+  };
+
+  const handleTouchEnd = (e: TouchEvent) => {
+    const touch = e.changedTouches[0];
+    handleEnd(touch.clientX, touch.clientY);
+  };
+
+  const handleTouchCancel = () => {
+    isSwiping = false;
+  };
+
+  // Mouse events
+  const handleMouseDown = (e: MouseEvent) => {
+    handleStart(e.clientX, e.clientY);
+  };
+
+  const handleMouseUp = (e: MouseEvent) => {
+    handleEnd(e.clientX, e.clientY);
+  };
+
+  const handleMouseLeave = () => {
+    isSwiping = false;
+  };
+
+  // Register all event listeners
+  element.addEventListener('touchstart', handleTouchStart);
+  element.addEventListener('touchend', handleTouchEnd);
+  element.addEventListener('touchcancel', handleTouchCancel);
+  element.addEventListener('mousedown', handleMouseDown);
+  element.addEventListener('mouseup', handleMouseUp);
+  element.addEventListener('mouseleave', handleMouseLeave);
+
+  return () => {
+    element.removeEventListener('touchstart', handleTouchStart);
+    element.removeEventListener('touchend', handleTouchEnd);
+    element.removeEventListener('touchcancel', handleTouchCancel);
+    element.removeEventListener('mousedown', handleMouseDown);
+    element.removeEventListener('mouseup', handleMouseUp);
+    element.removeEventListener('mouseleave', handleMouseLeave);
   };
 });

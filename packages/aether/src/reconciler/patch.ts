@@ -472,6 +472,56 @@ export class Patcher {
 }
 
 /**
+ * Transfer DOM references from old VNode tree to new VNode tree
+ *
+ * After patching, ensures all matching VNodes in the new tree have
+ * their dom properties set by copying from the old tree. This is critical
+ * for maintaining DOM references across patch cycles, especially for
+ * key-based list reconciliation where children may not be explicitly patched.
+ *
+ * @param oldVNode - Old VNode tree (with dom references)
+ * @param newVNode - New VNode tree (needs dom references)
+ */
+function transferDOMReferences(oldVNode: VNode | null, newVNode: VNode | null): void {
+  if (!oldVNode || !newVNode) {
+    return;
+  }
+
+  // Transfer dom reference if not already set
+  if (!newVNode.dom && oldVNode.dom) {
+    newVNode.dom = oldVNode.dom;
+  }
+
+  // Transfer children dom references
+  if (oldVNode.children && newVNode.children) {
+    // Build key maps for matching
+    const oldKeyMap = new Map<string, VNode>();
+
+    for (let i = 0; i < oldVNode.children.length; i++) {
+      const child = oldVNode.children[i];
+      const key = child.key !== undefined ? String(child.key) : `__index_${i}`;
+      oldKeyMap.set(key, child);
+    }
+
+    for (let i = 0; i < newVNode.children.length; i++) {
+      const child = newVNode.children[i];
+      const key = child.key !== undefined ? String(child.key) : `__index_${i}`;
+
+      // Transfer dom from matching old child
+      const oldChild = oldKeyMap.get(key);
+      if (oldChild && oldChild.dom && !child.dom) {
+        child.dom = oldChild.dom;
+      }
+
+      // Recursively transfer for nested children
+      if (oldChild) {
+        transferDOMReferences(oldChild, child);
+      }
+    }
+  }
+}
+
+/**
  * Main patch function - Apply patches to VNode tree
  *
  * Applies an array of patches to transform oldVNode tree to match
@@ -502,9 +552,19 @@ export function patch(oldVNode: VNode | null, patches: Patch[]): VNode | null {
     patcher.applyPatch(p);
   }
 
-  // Return the new VNode (from first patch with newVNode)
+  // Get the new VNode (from first patch with newVNode)
   const firstPatch = patches.find((p) => p.newVNode);
-  return firstPatch?.newVNode ?? oldVNode;
+  const newVNode = firstPatch?.newVNode ?? oldVNode;
+
+  // Ensure all DOM references are transferred to new tree
+  // This is critical for maintaining DOM references across patch cycles,
+  // especially for key-based list reconciliation where some children
+  // may not have been explicitly patched but still need their dom refs.
+  if (oldVNode && newVNode && newVNode !== oldVNode) {
+    transferDOMReferences(oldVNode, newVNode);
+  }
+
+  return newVNode;
 }
 
 /**

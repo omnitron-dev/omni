@@ -99,9 +99,11 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      // Content returns null when closed (line 766-768 of factory)
+      // ✅ With display toggle pattern: Content exists but is hidden
       const content = document.querySelector('[data-dialog-content]') as HTMLElement;
-      expect(content).toBeFalsy();
+      expect(content).toBeTruthy();
+      expect(content.style.display).toBe('none');
+      expect(content.getAttribute('data-state')).toBe('closed');
     });
 
     it('should support defaultOpen for uncontrolled mode', () => {

@@ -747,10 +747,6 @@ export function createOverlayPrimitive(config: OverlayConfig) {
     }
 
     return () => {
-      if (!ctx.isOpen()) {
-        return null;
-      }
-
       const { children, side, align, sideOffset, alignOffset, avoidCollisions, collisionPadding, ...restProps } =
         props;
 
@@ -764,6 +760,7 @@ export function createOverlayPrimitive(config: OverlayConfig) {
         ...(hasDescription && ctx.descriptionId && { 'aria-describedby': ctx.descriptionId }),
       };
 
+      // ✅ CORRECT: Always create the element, use display toggle pattern
       const content = jsx('div', {
         ...restProps,
         ...ariaProps,
@@ -771,12 +768,17 @@ export function createOverlayPrimitive(config: OverlayConfig) {
         [`data-${name}-content`]: '',
         tabIndex: -1,
         onKeyDown: handleKeyDown,
+        // Set initial display state
+        style: ctx.isOpen() ? restProps.style : { ...restProps.style, display: 'none' },
         children: evaluatedChildren,
       }) as HTMLElement;
 
+      // ✅ CORRECT: Use effect() to reactively toggle visibility
       effect(() => {
         const open = ctx.isOpen();
         content.setAttribute('data-state', open ? 'open' : 'closed');
+        // Toggle display property
+        content.style.display = open ? '' : 'none';
       });
 
       return jsx(Portal, {
@@ -948,11 +950,8 @@ export function createOverlayPrimitive(config: OverlayConfig) {
         });
 
         return () => {
-          if (!ctx.isOpen()) {
-            return null;
-          }
-
-          return jsx('span', {
+          // ✅ CORRECT: Always create the arrow element, use display toggle pattern
+          const arrow = jsx('span', {
             ...restProps,
             id: arrowId,
             [`data-${name}-arrow`]: '',
@@ -962,8 +961,21 @@ export function createOverlayPrimitive(config: OverlayConfig) {
               width: `${width}px`,
               height: `${height}px`,
               pointerEvents: 'none',
+              display: ctx.isOpen() ? '' : 'none',
             },
+          }) as HTMLElement;
+
+          // ✅ CORRECT: Use effect() to reactively toggle visibility
+          effect(() => {
+            const open = ctx.isOpen();
+            arrow.style.display = open ? '' : 'none';
+            // Update position when opened
+            if (open) {
+              setTimeout(updateArrowPosition, 0);
+            }
           });
+
+          return arrow;
         };
       })
     : undefined;

@@ -158,12 +158,12 @@ export const Link = defineComponent<LinkProps>((props) => {
   return () => {
     const {
       href,
-      activeClass,
-      exactActiveClass,
-      prefetch,
-      replace,
-      scroll,
-      state,
+      activeClass: _activeClass,
+      exactActiveClass: _exactActiveClass,
+      prefetch: _prefetch,
+      replace: _replace,
+      scroll: _scroll,
+      state: _state,
       external,
       class: _class,
       children,

@@ -266,6 +266,9 @@ export const SelectTrigger = defineComponent<SelectTriggerProps>((props) => {
         e.preventDefault();
         ctx.open();
         break;
+      default:
+        // No action for other keys
+        break;
     }
 
     props.onKeyDown?.(e);
@@ -421,42 +424,46 @@ export const SelectContent = defineComponent<SelectContentProps>((props) => {
     const currentIndex = ctx.highlightedIndex();
 
     switch (e.key) {
-      case 'Escape':
+      case 'Escape': {
         e.preventDefault();
         ctx.close();
-        const trigger = document.getElementById(ctx.triggerId);
-        trigger?.focus();
+        const triggerEscape = document.getElementById(ctx.triggerId);
+        triggerEscape?.focus();
         break;
+      }
 
       case 'Enter':
-      case ' ':
+      case ' ': {
         e.preventDefault();
         if (currentIndex >= 0 && items[currentIndex]) {
           const itemValue = items[currentIndex].getAttribute('data-value');
           if (itemValue) {
             ctx.setValue(itemValue);
             ctx.close();
-            const trigger = document.getElementById(ctx.triggerId);
-            trigger?.focus();
+            const triggerEnter = document.getElementById(ctx.triggerId);
+            triggerEnter?.focus();
           }
         }
         break;
+      }
 
-      case 'ArrowDown':
+      case 'ArrowDown': {
         e.preventDefault();
         if (items.length === 0) break;
         const nextIndex = currentIndex < items.length - 1 ? currentIndex + 1 : currentIndex;
         ctx.setHighlightedIndex(nextIndex);
         items[nextIndex]?.scrollIntoView({ block: 'nearest' });
         break;
+      }
 
-      case 'ArrowUp':
+      case 'ArrowUp': {
         e.preventDefault();
         if (items.length === 0) break;
         const prevIndex = currentIndex > 0 ? currentIndex - 1 : 0;
         ctx.setHighlightedIndex(prevIndex);
         items[prevIndex]?.scrollIntoView({ block: 'nearest' });
         break;
+      }
 
       case 'Home':
         e.preventDefault();
@@ -513,7 +520,7 @@ export const SelectContent = defineComponent<SelectContentProps>((props) => {
   };
 
   onMount(() => {
-    if (!ctx.isOpen()) return;
+    if (!ctx.isOpen()) return undefined;
 
     updatePosition();
 
@@ -660,7 +667,7 @@ export const SelectItem = defineComponent<SelectItemProps>((props) => {
   // Ref callback with reactive effects
   const refCallback = (element: HTMLDivElement | null) => {
     itemRef.current = element || undefined;
-    if (!element) return;
+    if (!element) return undefined;
 
     // Register item and store text
     ctx.registerItem(element);

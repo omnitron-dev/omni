@@ -144,19 +144,19 @@ export function asyncComputed<T>(fn: () => Promise<T>, options: AsyncComputedOpt
         retryCount = 0; // Reset retry count on success
       }
     } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err));
+      const fetchError = err instanceof Error ? err : new Error(String(err));
 
       // Only update if this is still the current version
       if (version === currentVersion) {
         state.mutate((s) => {
           s.loading = false;
-          s.error = error;
+          s.error = fetchError;
           s.version = version;
         });
 
         // Handle error
         if (options.onError) {
-          options.onError(error);
+          options.onError(fetchError);
         }
 
         // Auto-retry if configured
@@ -174,13 +174,13 @@ export function asyncComputed<T>(fn: () => Promise<T>, options: AsyncComputedOpt
   }
 
   // Create reactive effect to track dependencies
-  disposeEffect = createRoot((dispose) => {
+  disposeEffect = createRoot((disposeFn) => {
     effect(() => {
       // This effect will re-run when any reactive dependencies in fn change
       fetch(); // Call without await - effect should be synchronous
     });
 
-    return dispose;
+    return disposeFn;
   });
 
   // Manual refresh function

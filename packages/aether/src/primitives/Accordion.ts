@@ -249,13 +249,13 @@ export const Accordion = defineComponent<AccordionProps>((props) => {
   return () => {
     const {
       children: childrenProp,
-      type: _,
-      value: __,
-      defaultValue: ___,
-      onValueChange: ____,
-      collapsible: _____,
-      disabled: ______,
-      orientation: _______,
+      type: _type,
+      value: _value,
+      defaultValue: _defaultValue,
+      onValueChange: _onValueChange,
+      collapsible: _collapsible,
+      disabled: _disabled,
+      orientation: _orientation,
       ...restProps
     } = props;
 
@@ -378,7 +378,7 @@ export const AccordionItem = defineComponent<AccordionItemProps>((props) => {
   };
 
   return () => {
-    const { value, disabled, children: childrenProp, ...restProps } = props;
+    const { value: _value, disabled: _disabled, children: childrenProp, ...restProps } = props;
 
     // Support function children
     const children = typeof childrenProp === 'function' ? childrenProp() : childrenProp;
@@ -598,7 +598,7 @@ export const AccordionContent = defineComponent<AccordionContentProps>((props) =
   };
 
   return () => {
-    const { forceMount, children: childrenProp, ...restProps } = props;
+    const { forceMount: _forceMount, children: childrenProp, ...restProps } = props;
 
     // Support function children
     const children = typeof childrenProp === 'function' ? childrenProp() : childrenProp;

@@ -394,6 +394,9 @@ export const NumberInputField = defineComponent<NumberInputFieldProps>((props) =
         e.preventDefault();
         context.setValue(context.max);
         break;
+      default:
+        // No action for other keys
+        break;
     }
   };
 

@@ -189,7 +189,7 @@ export const VirtualList = defineComponent<VirtualListProps>((props) => {
     props.onScroll?.(newOffset);
   };
 
-  const scrollToIndex = (index: number, behavior?: ScrollBehavior) => {
+  const scrollToIndexFn = (index: number, behavior?: ScrollBehavior) => {
     const container = scrollContainerRef.current;
     if (!container) return;
 
@@ -210,7 +210,7 @@ export const VirtualList = defineComponent<VirtualListProps>((props) => {
 
   // Handle scrollToIndex prop
   if (props.scrollToIndex !== undefined) {
-    scrollToIndex(props.scrollToIndex);
+    scrollToIndexFn(props.scrollToIndex);
   }
 
   const contextValue: VirtualListContextValue = {

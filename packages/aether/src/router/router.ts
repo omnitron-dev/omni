@@ -94,7 +94,7 @@ export function createRouter(config: RouterConfig = {}): Router {
         });
 
         if (result === false) {
-          return; // Navigation cancelled
+          return undefined; // Navigation cancelled
         }
 
         if (typeof result === 'object' && 'redirect' in result) {
@@ -176,6 +176,8 @@ export function createRouter(config: RouterConfig = {}): Router {
         hook(match, previousMatch);
       }
     }
+
+    return undefined;
   }
 
   /**

@@ -91,7 +91,7 @@ export const Masonry = defineComponent<MasonryProps>((props) => {
   });
 
   return () => {
-    const { columns, gap, children, style, ...restProps } = props;
+    const { columns: _cols, gap: _gap, children, style, ...restProps } = props;
 
     return jsx('div', {
       ...restProps,

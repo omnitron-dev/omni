@@ -24,26 +24,26 @@ export type ClassValue = string | string[] | undefined | null | false | Record<s
  * ```
  */
 export function classNames(...values: ClassValue[]): string {
-  const classes: string[] = [];
+  const classList: string[] = [];
 
   for (const value of values) {
     if (!value) continue;
 
     if (typeof value === 'string') {
-      classes.push(value);
+      classList.push(value);
     } else if (Array.isArray(value)) {
-      classes.push(...value);
+      classList.push(...value);
     } else if (typeof value === 'object') {
       for (const [className, condition] of Object.entries(value)) {
         const isActive = typeof condition === 'function' ? condition() : condition;
         if (isActive) {
-          classes.push(className);
+          classList.push(className);
         }
       }
     }
   }
 
-  return classes.join(' ');
+  return classList.join(' ');
 }
 
 /**
@@ -73,16 +73,16 @@ export const cx = classNames;
  */
 export function classes(base: string | string[], conditional: Record<string, boolean | (() => boolean)>): string {
   const baseClasses = Array.isArray(base) ? base.join(' ') : base;
-  const conditionalClasses: string[] = [];
+  const condClasses: string[] = [];
 
   for (const [className, condition] of Object.entries(conditional)) {
     const isActive = typeof condition === 'function' ? condition() : condition;
     if (isActive) {
-      conditionalClasses.push(className);
+      condClasses.push(className);
     }
   }
 
-  const allClasses = [baseClasses, ...conditionalClasses].filter(Boolean).join(' ');
+  const allClasses = [baseClasses, ...condClasses].filter(Boolean).join(' ');
 
   return allClasses;
 }
@@ -157,16 +157,16 @@ export function toggleClass(className: string, condition: boolean | (() => boole
  * ```
  */
 export function conditionalClasses(conditions: Record<string, boolean | (() => boolean)>): string {
-  const classes: string[] = [];
+  const classList: string[] = [];
 
   for (const [className, condition] of Object.entries(conditions)) {
     const isActive = typeof condition === 'function' ? condition() : condition;
     if (isActive) {
-      classes.push(className);
+      classList.push(className);
     }
   }
 
-  return classes.join(' ');
+  return classList.join(' ');
 }
 
 /**
@@ -209,9 +209,9 @@ export function variantClasses(
   const active = typeof activeVariant === 'function' ? activeVariant() : activeVariant;
   const activeVariants = Array.isArray(active) ? active : [active];
 
-  const variantClasses = activeVariants.map((v) => variants[v]).filter(Boolean);
+  const variantClassList = activeVariants.map((v) => variants[v]).filter(Boolean);
 
-  return [baseClasses, ...variantClasses].join(' ');
+  return [baseClasses, ...variantClassList].join(' ');
 }
 
 /**
@@ -226,10 +226,10 @@ export function variantClasses(
  * // Returns: 'base active hover'
  * ```
  */
-export function mergeClasses(...classes: (string | undefined | null)[]): string {
+export function mergeClasses(...classList: (string | undefined | null)[]): string {
   const classSet = new Set<string>();
 
-  for (const cls of classes) {
+  for (const cls of classList) {
     if (!cls) continue;
 
     const parts = cls.split(' ').filter(Boolean);

@@ -28,8 +28,6 @@
 
 import { defineComponent } from '../../core/component/define.js';
 import { signal, type WritableSignal } from '../../core/reactivity/index.js';
-import { onMount } from '../../core/component/lifecycle.js';
-import { effect } from '../../core/reactivity/effect.js';
 import { jsx } from '../../jsx-runtime.js';
 import { useControlledState } from '../../utils/controlled-state.js';
 

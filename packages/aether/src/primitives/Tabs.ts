@@ -139,8 +139,8 @@ export const Tabs = defineComponent<TabsProps>((props) => {
   const tabsId = baseId;
   const listId = `${baseId}-list`;
 
-  const getTriggerId = (value: string) => `${baseId}-trigger-${value}`;
-  const getContentId = (value: string) => `${baseId}-content-${value}`;
+  const getTriggerIdFn = (value: string) => `${baseId}-trigger-${value}`;
+  const getContentIdFn = (value: string) => `${baseId}-content-${value}`;
 
   // Context value
   const contextValue: TabsContextValue = {
@@ -153,8 +153,8 @@ export const Tabs = defineComponent<TabsProps>((props) => {
     activationMode: () => activationMode(),
     tabsId,
     listId,
-    getTriggerId,
-    getContentId,
+    getTriggerId: getTriggerIdFn,
+    getContentId: getContentIdFn,
   };
 
   // CRITICAL FIX: Set global context signal so children can access it even if evaluated before parent

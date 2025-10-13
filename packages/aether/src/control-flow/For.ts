@@ -63,7 +63,7 @@ function getItems<T>(each: T[] | (() => T[] | undefined | null) | undefined | nu
  * </For>
  * ```
  */
-export const For = defineComponent(<T extends any>(props: ForProps<T>) => () => {
+export const For = defineComponent(<T>(props: ForProps<T>) => () => {
   // Create container for list items
   const listContainer = jsx('div', {
     'data-for-list': '',

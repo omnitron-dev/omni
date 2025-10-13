@@ -135,10 +135,10 @@ export const AlertDialogContent = defineComponent<AlertDialogContentProps>((prop
 
   // Setup event handlers for AlertDialog-specific behavior
   onMount(() => {
-    if (!ctx.isOpen()) return;
+    if (!ctx.isOpen()) return undefined;
 
     const contentElement = document.getElementById(ctx.contentId);
-    if (!contentElement) return;
+    if (!contentElement) return undefined;
 
     // Handle Escape key - only close if explicitly enabled
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -177,11 +177,16 @@ export const AlertDialogContent = defineComponent<AlertDialogContentProps>((prop
   return () => {
     // Handle forceMount - render even when closed for animations
     if (!ctx.isOpen() && !props.forceMount) {
-      return null;
+      return jsx('div', { style: 'display: none;' });
     }
 
     // Remove AlertDialog-specific props before passing to factory
-    const { closeOnOutsideClick, forceMount, closeOnEscape, ...restProps } = props;
+    const {
+      closeOnOutsideClick: _closeOnOutsideClick,
+      forceMount: _forceMount,
+      closeOnEscape: _closeOnEscape,
+      ...restProps
+    } = props;
 
     return AlertDialogBase.Content(restProps);
   };

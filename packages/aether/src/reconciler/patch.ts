@@ -28,30 +28,30 @@ export class Patcher {
    *
    * Dispatches to specialized methods based on patch type.
    *
-   * @param patch - Patch to apply
+   * @param patchItem - Patch to apply
    */
-  applyPatch(patch: Patch): void {
-    switch (patch.type) {
+  applyPatch(patchItem: Patch): void {
+    switch (patchItem.type) {
       case PatchType.CREATE:
-        this.patchCreate(patch);
+        this.patchCreate(patchItem);
         break;
       case PatchType.REMOVE:
-        this.patchRemove(patch);
+        this.patchRemove(patchItem);
         break;
       case PatchType.REPLACE:
-        this.patchReplace(patch);
+        this.patchReplace(patchItem);
         break;
       case PatchType.UPDATE:
-        this.patchUpdate(patch);
+        this.patchUpdate(patchItem);
         break;
       case PatchType.TEXT:
-        this.patchText(patch);
+        this.patchText(patchItem);
         break;
       case PatchType.REORDER:
-        this.patchReorder(patch);
+        this.patchReorder(patchItem);
         break;
       default:
-        console.warn('Unknown patch type:', (patch as any).type);
+        console.warn('Unknown patch type:', (patchItem as any).type);
     }
   }
 
@@ -61,19 +61,19 @@ export class Patcher {
    * Creates DOM node and inserts it at the specified index
    * in the parent element.
    *
-   * @param patch - CREATE patch
+   * @param patchItem - CREATE patch
    */
-  patchCreate(patch: Patch): void {
-    if (!patch.newVNode) {
+  patchCreate(patchItem: Patch): void {
+    if (!patchItem.newVNode) {
       console.warn('CREATE patch missing newVNode');
       return;
     }
 
     // Create DOM from VNode
-    const dom = createDOMFromVNode(patch.newVNode);
+    const dom = createDOMFromVNode(patchItem.newVNode);
 
     // Store DOM reference in VNode
-    patch.newVNode.dom = dom;
+    patchItem.newVNode.dom = dom;
 
     // Insert into parent if index specified
     // (Parent insertion is handled by parent's UPDATE patch)
@@ -84,15 +84,15 @@ export class Patcher {
    *
    * Removes node from its parent and cleans up references.
    *
-   * @param patch - REMOVE patch
+   * @param patchItem - REMOVE patch
    */
-  patchRemove(patch: Patch): void {
-    if (!patch.vnode || !patch.vnode.dom) {
+  patchRemove(patchItem: Patch): void {
+    if (!patchItem.vnode || !patchItem.vnode.dom) {
       console.warn('REMOVE patch missing vnode or dom');
       return;
     }
 
-    const dom = patch.vnode.dom;
+    const dom = patchItem.vnode.dom;
     const parent = dom.parentNode;
 
     if (parent) {
@@ -100,16 +100,16 @@ export class Patcher {
     }
 
     // Clean up VNode reference
-    patch.vnode.dom = null;
+    patchItem.vnode.dom = null;
 
     // Clean up effects
-    if (patch.vnode.effects) {
-      for (const effect of patch.vnode.effects) {
+    if (patchItem.vnode.effects) {
+      for (const effect of patchItem.vnode.effects) {
         if (effect.cleanup) {
           effect.cleanup();
         }
       }
-      patch.vnode.effects = [];
+      patchItem.vnode.effects = [];
     }
   }
 
@@ -118,15 +118,15 @@ export class Patcher {
    *
    * Creates new DOM node and replaces old one in parent.
    *
-   * @param patch - REPLACE patch
+   * @param patchItem - REPLACE patch
    */
-  patchReplace(patch: Patch): void {
-    if (!patch.vnode || !patch.newVNode || !patch.vnode.dom) {
+  patchReplace(patchItem: Patch): void {
+    if (!patchItem.vnode || !patchItem.newVNode || !patchItem.vnode.dom) {
       console.warn('REPLACE patch missing vnode, newVNode, or dom');
       return;
     }
 
-    const oldDom = patch.vnode.dom;
+    const oldDom = patchItem.vnode.dom;
     const parent = oldDom.parentNode;
 
     if (!parent) {
@@ -135,21 +135,21 @@ export class Patcher {
     }
 
     // Create new DOM
-    const newDom = createDOMFromVNode(patch.newVNode);
-    patch.newVNode.dom = newDom;
+    const newDom = createDOMFromVNode(patchItem.newVNode);
+    patchItem.newVNode.dom = newDom;
 
     // Replace in parent
     parent.replaceChild(newDom, oldDom);
 
     // Clean up old VNode
-    patch.vnode.dom = null;
-    if (patch.vnode.effects) {
-      for (const effect of patch.vnode.effects) {
+    patchItem.vnode.dom = null;
+    if (patchItem.vnode.effects) {
+      for (const effect of patchItem.vnode.effects) {
         if (effect.cleanup) {
           effect.cleanup();
         }
       }
-      patch.vnode.effects = [];
+      patchItem.vnode.effects = [];
     }
   }
 
@@ -158,31 +158,31 @@ export class Patcher {
    *
    * Applies prop changes and recursively applies child patches.
    *
-   * @param patch - UPDATE patch
+   * @param patchItem - UPDATE patch
    */
-  patchUpdate(patch: Patch): void {
-    if (!patch.vnode || !patch.newVNode) {
+  patchUpdate(patchItem: Patch): void {
+    if (!patchItem.vnode || !patchItem.newVNode) {
       console.warn('UPDATE patch missing vnode or newVNode');
       return;
     }
 
-    const dom = patch.vnode.dom;
+    const dom = patchItem.vnode.dom;
     if (!dom) {
       console.warn('UPDATE patch: vnode has no dom');
       return;
     }
 
     // Update props
-    if (patch.props) {
-      this.applyPropPatch(dom as HTMLElement | SVGElement, patch.props);
+    if (patchItem.props) {
+      this.applyPropPatch(dom as HTMLElement | SVGElement, patchItem.props);
     }
 
     // Update VNode reference
-    patch.newVNode.dom = dom;
+    patchItem.newVNode.dom = dom;
 
     // Apply child patches
-    if (patch.children && patch.children.length > 0) {
-      this.applyChildPatches(dom as HTMLElement | SVGElement | DocumentFragment, patch.children);
+    if (patchItem.children && patchItem.children.length > 0) {
+      this.applyChildPatches(dom as HTMLElement | SVGElement | DocumentFragment, patchItem.children);
     }
   }
 
@@ -191,22 +191,22 @@ export class Patcher {
    *
    * Updates text node's content.
    *
-   * @param patch - TEXT patch
+   * @param patchItem - TEXT patch
    */
-  patchText(patch: Patch): void {
-    if (!patch.vnode || !patch.vnode.dom) {
+  patchText(patchItem: Patch): void {
+    if (!patchItem.vnode || !patchItem.vnode.dom) {
       console.warn('TEXT patch missing vnode or dom');
       return;
     }
 
-    const textNode = patch.vnode.dom as Text;
-    if (patch.text !== undefined) {
-      textNode.textContent = patch.text;
+    const textNode = patchItem.vnode.dom as Text;
+    if (patchItem.text !== undefined) {
+      textNode.textContent = patchItem.text;
     }
 
     // Update VNode reference
-    if (patch.newVNode) {
-      patch.newVNode.dom = textNode;
+    if (patchItem.newVNode) {
+      patchItem.newVNode.dom = textNode;
     }
   }
 
@@ -215,15 +215,15 @@ export class Patcher {
    *
    * Moves child nodes to new positions without recreating them.
    *
-   * @param patch - REORDER patch
+   * @param patchItem - REORDER patch
    */
-  patchReorder(patch: Patch): void {
-    if (!patch.vnode || !patch.vnode.dom) {
+  patchReorder(patchItem: Patch): void {
+    if (!patchItem.vnode || !patchItem.vnode.dom) {
       console.warn('REORDER patch missing vnode or dom');
       return;
     }
 
-    const node = patch.vnode.dom;
+    const node = patchItem.vnode.dom;
     const parent = node.parentNode;
 
     if (!parent) {
@@ -232,7 +232,7 @@ export class Patcher {
     }
 
     // Get target position
-    const targetIndex = patch.newIndex ?? 0;
+    const targetIndex = patchItem.newIndex ?? 0;
 
     // Get the node currently at target position
     const currentNodes = Array.from(parent.childNodes);
@@ -256,8 +256,8 @@ export class Patcher {
     }
 
     // Update VNode reference
-    if (patch.newVNode) {
-      patch.newVNode.dom = node;
+    if (patchItem.newVNode) {
+      patchItem.newVNode.dom = node;
     }
   }
 
@@ -425,48 +425,48 @@ export class Patcher {
     const reorders: Patch[] = [];
     const updates: Patch[] = [];
 
-    for (const patch of patches) {
-      if (patch.type === PatchType.CREATE) {
-        creates.push(patch);
-      } else if (patch.type === PatchType.REMOVE) {
-        removes.push(patch);
-      } else if (patch.type === PatchType.REORDER) {
-        reorders.push(patch);
+    for (const patchItem of patches) {
+      if (patchItem.type === PatchType.CREATE) {
+        creates.push(patchItem);
+      } else if (patchItem.type === PatchType.REMOVE) {
+        removes.push(patchItem);
+      } else if (patchItem.type === PatchType.REORDER) {
+        reorders.push(patchItem);
       } else {
-        updates.push(patch);
+        updates.push(patchItem);
       }
     }
 
     // Apply removals first (so indices are correct for creates)
-    for (const patch of removes) {
-      this.applyPatch(patch);
+    for (const patchItem of removes) {
+      this.applyPatch(patchItem);
     }
 
     // Apply updates (before reordering)
-    for (const patch of updates) {
-      this.applyPatch(patch);
+    for (const patchItem of updates) {
+      this.applyPatch(patchItem);
     }
 
     // Apply creates (before reordering)
-    for (const patch of creates) {
-      this.applyPatch(patch);
+    for (const patchItem of creates) {
+      this.applyPatch(patchItem);
 
       // Insert into parent at specified index
-      if (patch.newVNode && patch.newVNode.dom) {
-        const index = patch.index ?? parent.childNodes.length;
+      if (patchItem.newVNode && patchItem.newVNode.dom) {
+        const index = patchItem.index ?? parent.childNodes.length;
         const referenceNode = parent.childNodes[index];
 
         if (referenceNode) {
-          parent.insertBefore(patch.newVNode.dom, referenceNode);
+          parent.insertBefore(patchItem.newVNode.dom, referenceNode);
         } else {
-          parent.appendChild(patch.newVNode.dom);
+          parent.appendChild(patchItem.newVNode.dom);
         }
       }
     }
 
     // Apply reorders last (after all nodes exist)
-    for (const patch of reorders) {
-      this.patchReorder(patch);
+    for (const patchItem of reorders) {
+      this.patchReorder(patchItem);
     }
   }
 }

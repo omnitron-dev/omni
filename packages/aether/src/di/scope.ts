@@ -35,6 +35,7 @@ export class ScopeManager {
         return undefined; // Always create new instance
 
       default:
+        // Exhaustive check - should never reach here with valid ProviderScope
         return undefined;
     }
   }
@@ -66,6 +67,10 @@ export class ScopeManager {
 
       case 'transient':
         // Don't cache transient instances
+        break;
+
+      default:
+        // Exhaustive check - should never reach here with valid ProviderScope
         break;
     }
   }

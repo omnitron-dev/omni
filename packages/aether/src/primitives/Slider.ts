@@ -499,6 +499,9 @@ export const SliderThumb = defineComponent<SliderThumbProps>((props) => {
           newValue = slider.max;
           shouldCommit = true; // Keyboard nav commits immediately
           break;
+        default:
+          // No action for other keys
+          break;
       }
 
       if (newValue !== currentValue) {

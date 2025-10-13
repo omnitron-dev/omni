@@ -204,6 +204,10 @@ const rgbToHsl = (r: number, g: number, b: number): [number, number, number] => 
       case b:
         h = ((r - g) / d + 4) / 6;
         break;
+      default:
+        // Should never reach here given max is one of r, g, or b
+        h = 0;
+        break;
     }
   }
 

@@ -233,7 +233,7 @@ export class TemplateCache {
  * // key1 === key2 (props order doesn't matter)
  * ```
  */
-export function generateCacheKey(component: Function, props: any): string {
+export function generateCacheKey(component: (...args: any[]) => any, props: any): string {
   // Get component identifier
   const componentId = component.name || component.toString().slice(0, 50);
 

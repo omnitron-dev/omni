@@ -599,7 +599,7 @@ export function createOverlayPrimitive(config: OverlayConfig) {
 
     // Setup focus management and scroll lock
     onMount(() => {
-      if (!ctx.isOpen()) return;
+      if (!ctx.isOpen()) return undefined;
 
       // Save focus and setup focus trap
       if (focusTrap) {
@@ -660,7 +660,7 @@ export function createOverlayPrimitive(config: OverlayConfig) {
       };
 
       onMount(() => {
-        if (!ctx.isOpen()) return;
+        if (!ctx.isOpen()) return undefined;
 
         contentRef = document.getElementById(ctx.contentId) as HTMLElement;
         updatePosition();

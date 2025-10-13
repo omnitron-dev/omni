@@ -59,6 +59,10 @@ export function calculatePosition(anchor: HTMLElement, floating: HTMLElement, co
     case 'right':
       left = anchorRect.right + sideOffset;
       break;
+    default:
+      // Default to bottom if invalid side
+      top = anchorRect.bottom + sideOffset;
+      break;
   }
 
   // Calculate alignment
@@ -73,6 +77,10 @@ export function calculatePosition(anchor: HTMLElement, floating: HTMLElement, co
       case 'end':
         left = anchorRect.right - floatingRect.width - alignOffset;
         break;
+      default:
+        // Default to center if invalid align
+        left = anchorRect.left + anchorRect.width / 2 - floatingRect.width / 2 + alignOffset;
+        break;
     }
   } else {
     switch (align) {
@@ -84,6 +92,10 @@ export function calculatePosition(anchor: HTMLElement, floating: HTMLElement, co
         break;
       case 'end':
         top = anchorRect.bottom - floatingRect.height - alignOffset;
+        break;
+      default:
+        // Default to center if invalid align
+        top = anchorRect.top + anchorRect.height / 2 - floatingRect.height / 2 + alignOffset;
         break;
     }
   }

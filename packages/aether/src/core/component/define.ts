@@ -48,111 +48,106 @@ function isVNode(value: any): value is VNode {
  */
 export function defineComponent<P = {}>(setup: ComponentSetup<P>, name?: string): Component<P> {
   // Create component function - each call creates a new instance
-  const component: Component<P> = (props: P): any => {
+  const comp: Component<P> = (props: P): any => {
     let render: RenderFunction | undefined;
-    let owner: any;
 
+    // Wrap props in reactive proxy
+    const reactivePropsInstance = reactiveProps(props as Record<string, any>);
+
+    // Create owner with parent link (important for error boundaries)
+    const parentOwner = getOwner();
+    const owner = new OwnerImpl(parentOwner);
+
+    // Set component name for debugging
+    if (name && owner) {
+      (owner as any).name = name;
+    }
+
+    // Run setup in component's owner context
+    // Outer try-catch needed because handleComponentError may re-throw
     try {
-      // Wrap props in reactive proxy
-      const reactivePropsInstance = reactiveProps(props as Record<string, any>);
+      context.runWithOwner(owner, () => {
+        try {
+          // Run setup function with reactive props
+          // Cast to P since reactiveProps adds internal methods
+          render = setup(reactivePropsInstance as P);
+        } catch (err) {
+          // Handle setup errors
+          handleComponentError(owner, err as Error);
+          // Don't throw - error was handled
+        }
 
-      // Create owner with parent link (important for error boundaries)
-      const parentOwner = getOwner();
-      owner = new OwnerImpl(parentOwner);
+        // Register cleanup
+        onCleanup(() => {
+          cleanupComponentContext(owner);
+          owner.dispose();
+        });
+      });
+    } catch (_setupError) {
+      // If handleComponentError re-threw (no error boundary found),
+      // catch it here and return null to prevent component from rendering
+      return null;
+    }
 
-      // Set component name for debugging
-      if (name && owner) {
-        (owner as any).name = name;
-      }
+    // Trigger mount lifecycle
+    triggerMount(owner);
 
-      // Run setup in component's owner context
-      try {
-        context.runWithOwner(owner, () => {
-          try {
-            // Run setup function with reactive props
-            // Cast to P since reactiveProps adds internal methods
-            render = setup(reactivePropsInstance as P);
-          } catch (error) {
-            // Handle setup errors
-            handleComponentError(owner, error as Error);
-            // Don't throw - error was handled
+    // Return render result with error handling
+    // Run render in owner context so children have correct parent
+
+    // If render is undefined (setup failed), return null
+    if (!render) {
+      return null;
+    }
+
+    // Outer try-catch for render phase errors
+    try {
+      return context.runWithOwner(owner, () => {
+        try {
+          // Execute render function
+          const result = render!();
+
+          // Template caching for VNode results (when enabled)
+          if (ENABLE_TEMPLATE_CACHE && isVNode(result)) {
+            // Generate cache key from component and props
+            const cacheKey = generateCacheKey(comp, props);
+
+            // Check if we have a cached template
+            const cachedVNode = templateCache.get(cacheKey);
+
+            if (cachedVNode) {
+              // Cache hit: reuse cached VNode structure
+              // The reactive bindings will be updated automatically by effects
+              return cachedVNode;
+            } else {
+              // Cache miss: cache the new VNode
+              templateCache.set(cacheKey, result);
+              return result;
+            }
           }
 
-          // Register cleanup
-          onCleanup(() => {
-            cleanupComponentContext(owner);
-            owner.dispose();
-          });
-        });
-      } catch (error) {
-        // If error wasn't handled, re-throw
-        if (render === undefined) {
+          // Return result as-is (DOM node or other value)
+          return result;
+        } catch (err) {
+          // Handle render errors
+          handleComponentError(owner, err as Error);
+          // Return fallback or null on render error
           return null;
         }
-      }
-
-      // Trigger mount lifecycle
-      triggerMount(owner);
-
-      // Return render result with error handling
-      // Run render in owner context so children have correct parent
-
-      // If render is undefined (setup failed), return null
-      if (!render) {
-        return null;
-      }
-
-      try {
-        return context.runWithOwner(owner, () => {
-          try {
-            // Execute render function
-            const result = render!();
-
-            // Template caching for VNode results (when enabled)
-            if (ENABLE_TEMPLATE_CACHE && isVNode(result)) {
-              // Generate cache key from component and props
-              const cacheKey = generateCacheKey(component, props);
-
-              // Check if we have a cached template
-              const cachedVNode = templateCache.get(cacheKey);
-
-              if (cachedVNode) {
-                // Cache hit: reuse cached VNode structure
-                // The reactive bindings will be updated automatically by effects
-                return cachedVNode;
-              } else {
-                // Cache miss: cache the new VNode
-                templateCache.set(cacheKey, result);
-                return result;
-              }
-            }
-
-            // Return result as-is (DOM node or other value)
-            return result;
-          } catch (error) {
-            // Handle render errors
-            handleComponentError(owner, error as Error);
-            // Return fallback or null on render error
-            return null;
-          }
-        });
-      } catch (error) {
-        // If error wasn't handled, return null
-        return null;
-      }
-    } catch (error) {
-      // Catch any errors that weren't handled by error boundaries
-      // This is the last resort
-      throw error;
+      });
+    } catch (_renderError) {
+      // If handleComponentError re-threw during render (no error boundary found),
+      // catch it here and return null
+      return null;
     }
   };
 
   // Set display name
   if (name) {
-    component.displayName = name;
+    comp.displayName = name;
   }
 
-  return component;
+  return comp;
 }
 
 /**

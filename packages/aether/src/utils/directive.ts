@@ -213,9 +213,7 @@ export function composeDirectives(
 export function createDirectiveFactory<TParams, TConfig = unknown>(
   factory: (config: TConfig) => DirectiveFunction<TParams>
 ): (config: TConfig) => ReturnType<typeof createDirective<TParams>> {
-  return (config: TConfig) => {
-    return createDirective<TParams>(factory(config));
-  };
+  return (config: TConfig) => createDirective<TParams>(factory(config));
 }
 
 /**
@@ -460,7 +458,9 @@ export const portal = createDirective<{
 
   if (!targetElement) {
     console.warn(`Portal target not found: ${target}`);
-    return;
+    return () => {
+      // No cleanup needed if target not found
+    };
   }
 
   const parent = element.parentElement;

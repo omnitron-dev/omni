@@ -148,12 +148,12 @@ export class CircularDependencyResolver {
 
     // Try to skip optional computation
     if (this.options.breakAtOptional) {
-      const optional = cycle.find((c) => c.isOptional);
-      if (optional && optional.skip) {
+      const optionalComp = cycle.find((c) => c.isOptional);
+      if (optionalComp && optionalComp.skip) {
         if (this.options.logWarnings) {
-          console.warn(`Skipping optional computation ${optional.name || 'anonymous'} to break cycle`);
+          console.warn(`Skipping optional computation ${optionalComp.name || 'anonymous'} to break cycle`);
         }
-        optional.skip();
+        optionalComp.skip();
         return false;
       }
     }
@@ -263,13 +263,13 @@ export const globalCircularResolver = new CircularDependencyResolver({
 /**
  * Helper decorator for marking computations as optional
  */
-export function optional<_T extends Function>(
+export function optional(
   _target: any,
   _propertyKey: string,
   descriptor: PropertyDescriptor
 ): PropertyDescriptor {
   const original = descriptor.value;
-  descriptor.value = function (...args: any[]) {
+  descriptor.value = function optionalWrapper(...args: any[]) {
     (this as any).isOptional = true;
     return original.apply(this, args);
   };
@@ -282,7 +282,7 @@ export function optional<_T extends Function>(
 export function withDefault<T>(defaultValue: T) {
   return function (_target: any, _propertyKey: string, descriptor: PropertyDescriptor): PropertyDescriptor {
     const original = descriptor.value;
-    descriptor.value = function (...args: any[]) {
+    descriptor.value = function withDefaultWrapper(...args: any[]) {
       (this as any).defaultValue = defaultValue;
       return original.apply(this, args);
     };

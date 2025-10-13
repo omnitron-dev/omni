@@ -213,15 +213,15 @@ export function For<T>(props: ForProps<T>): JSXElement {
     });
 
     // Remove items no longer in array
-    for (const [key, { node, cleanup }] of itemNodes.entries()) {
-      if (!newKeys.has(key)) {
-        if (cleanup) {
-          cleanup.dispose?.();
+    for (const [itemKey, { node: itemNode, cleanup: itemCleanup }] of itemNodes.entries()) {
+      if (!newKeys.has(itemKey)) {
+        if (itemCleanup) {
+          itemCleanup.dispose?.();
         }
-        if (node.parentNode) {
-          node.parentNode.removeChild(node);
+        if (itemNode.parentNode) {
+          itemNode.parentNode.removeChild(itemNode);
         }
-        itemNodes.delete(key);
+        itemNodes.delete(itemKey);
       }
     }
 
@@ -239,9 +239,9 @@ export function For<T>(props: ForProps<T>): JSXElement {
 
   // Helper to clear all items
   function clearItems() {
-    for (const [key, { node, cleanup }] of itemNodes.entries()) {
-      if (cleanup) {
-        cleanup.dispose?.();
+    for (const [_key, { node: _node, cleanup: itemCleanup }] of itemNodes.entries()) {
+      if (itemCleanup) {
+        itemCleanup.dispose?.();
       }
     }
     itemNodes.clear();

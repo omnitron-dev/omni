@@ -287,21 +287,23 @@ export const DropdownMenuContent = defineComponent<DropdownMenuContentProps>((pr
         }
         break;
 
-      case 'ArrowDown':
+      case 'ArrowDown': {
         e.preventDefault();
         if (items.length === 0) break;
         const nextIndex = currentIndex < items.length - 1 ? currentIndex + 1 : props.loop ? 0 : currentIndex;
         menuCtx.setFocusedIndex(nextIndex);
         items[nextIndex]?.focus();
         break;
+      }
 
-      case 'ArrowUp':
+      case 'ArrowUp': {
         e.preventDefault();
         if (items.length === 0) break;
         const prevIndex = currentIndex > 0 ? currentIndex - 1 : props.loop ? items.length - 1 : currentIndex;
         menuCtx.setFocusedIndex(prevIndex);
         items[prevIndex]?.focus();
         break;
+      }
 
       case 'Home':
         e.preventDefault();
@@ -349,7 +351,7 @@ export const DropdownMenuContent = defineComponent<DropdownMenuContentProps>((pr
 
   // Focus first item when menu opens
   onMount(() => {
-    if (!baseCtx.isOpen()) return;
+    if (!baseCtx.isOpen()) return undefined;
 
     const items = menuCtx.items().filter((item: HTMLElement) => !item.hasAttribute('data-disabled'));
     if (items.length > 0) {

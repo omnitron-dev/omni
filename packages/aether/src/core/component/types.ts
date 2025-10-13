@@ -54,6 +54,7 @@ export interface ComponentContext {
 /**
  * JSX Element types
  */
+// eslint-disable-next-line @typescript-eslint/no-namespace -- Required for JSX type definitions
 export namespace JSX {
   export type Element = any;
   export interface IntrinsicElements {

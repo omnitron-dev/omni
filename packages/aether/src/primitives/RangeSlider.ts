@@ -335,6 +335,9 @@ export const RangeSliderThumb = defineComponent<RangeSliderThumbProps>((props) =
           e.preventDefault();
           newValue = position === 'max' ? context.max : current.max - context.minDistance;
           break;
+        default:
+          // No action for other keys
+          break;
       }
 
       if (newValue !== currentValue) {
@@ -413,14 +416,14 @@ export const RangeSliderThumb = defineComponent<RangeSliderThumbProps>((props) =
 
     // Set up reactive effect to update ALL context-dependent attributes and style
     effect(() => {
-      const value = context.value();
-      const currentValue = position === 'min' ? value.min : value.max;
+      const rangeValue = context.value();
+      const thumbValue = position === 'min' ? rangeValue.min : rangeValue.max;
       const newStyle = calculateStyle();
 
       // Update reactive attributes
       div.setAttribute('aria-valuemin', String(context.min));
       div.setAttribute('aria-valuemax', String(context.max));
-      div.setAttribute('aria-valuenow', String(currentValue));
+      div.setAttribute('aria-valuenow', String(thumbValue));
       div.setAttribute('aria-orientation', context.orientation);
       div.setAttribute('data-orientation', context.orientation);
 

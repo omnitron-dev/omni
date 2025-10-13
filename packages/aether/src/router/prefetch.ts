@@ -64,6 +64,8 @@ interface PrefetchQueueItem {
   priority: PrefetchPriority;
   options: PrefetchOptions;
   addedAt: number;
+  resolve: () => void;
+  reject: (error: any) => void;
 }
 
 /**
@@ -87,6 +89,7 @@ export class PrefetchManager {
   private prefetchQueue: PrefetchQueueItem[] = [];
   private processing = false;
   private observers = new Map<string, IntersectionObserver>();
+  private pendingPrefetches = new Map<string, Promise<void>>();
   private stats: PrefetchStats = {
     totalPrefetched: 0,
     cacheHits: 0,
@@ -109,9 +112,6 @@ export class PrefetchManager {
     this.maxCacheAge = config.maxCacheAge ?? this.maxCacheAge;
     this.maxConcurrent = config.maxConcurrent ?? this.maxConcurrent;
     this.adaptToNetwork = config.adaptToNetwork ?? this.adaptToNetwork;
-
-    // Start processing queue
-    this.processQueue();
   }
 
   /**
@@ -122,7 +122,12 @@ export class PrefetchManager {
 
     // Check if prefetching is allowed based on network
     if (!this.shouldPrefetch()) {
-      return;
+      return Promise.resolve();
+    }
+
+    // Check if already pending
+    if (!force && this.pendingPrefetches.has(path)) {
+      return this.pendingPrefetches.get(path);
     }
 
     // Check cache
@@ -132,20 +137,34 @@ export class PrefetchManager {
 
       if (age < this.maxCacheAge) {
         this.stats.cacheHits++;
-        return; // Use cached data
+        return Promise.resolve(); // Use cached data
       }
     }
 
     this.stats.cacheMisses++;
 
+    // Create a promise that resolves when the prefetch completes
+    let resolvePromise: () => void;
+    let rejectPromise: (error: any) => void;
+
+    const promise = new Promise<void>((resolve, reject) => {
+      resolvePromise = resolve;
+      rejectPromise = reject;
+    });
+
+    // Store the promise
+    this.pendingPrefetches.set(path, promise);
+
     // Add to queue with optional delay
     if (delay > 0) {
       setTimeout(() => {
-        this.addToQueue(path, priority, options);
+        this.addToQueue(path, priority, options, resolvePromise!, rejectPromise!);
       }, delay);
     } else {
-      this.addToQueue(path, priority, options);
+      this.addToQueue(path, priority, options, resolvePromise!, rejectPromise!);
     }
+
+    return promise;
   }
 
   /**
@@ -153,7 +172,7 @@ export class PrefetchManager {
    */
   prefetchOnViewport(element: Element, path: string, options: PrefetchOptions = {}): () => void {
     if (typeof IntersectionObserver === 'undefined') {
-      return () => {}; // Not supported
+      return () => { }; // Not supported
     }
 
     const observer = new IntersectionObserver(
@@ -272,6 +291,13 @@ export class PrefetchManager {
   }
 
   /**
+   * Check if a path has been prefetched
+   */
+  isPrefetched(path: string): boolean {
+    return this.cache.has(path);
+  }
+
+  /**
    * Dispose and cleanup
    */
   dispose(): void {
@@ -279,15 +305,22 @@ export class PrefetchManager {
     this.cache.clear();
     this.observers.forEach((observer) => observer.disconnect());
     this.observers.clear();
+    this.pendingPrefetches.clear();
   }
 
   /**
    * Add item to prefetch queue
    */
-  private addToQueue(path: string, priority: PrefetchPriority, options: PrefetchOptions): void {
+  private addToQueue(
+    path: string,
+    priority: PrefetchPriority,
+    options: PrefetchOptions,
+    resolve: () => void,
+    reject: (error: any) => void
+  ): boolean {
     // Check if already in queue
     if (this.prefetchQueue.some((item) => item.path === path)) {
-      return;
+      return false;
     }
 
     // Add to queue
@@ -296,10 +329,19 @@ export class PrefetchManager {
       priority,
       options,
       addedAt: Date.now(),
+      resolve,
+      reject,
     });
 
     // Sort by priority (higher priority first)
     this.prefetchQueue.sort((a, b) => b.priority - a.priority);
+
+    // Trigger processing if not already processing
+    if (!this.processing) {
+      this.processQueue();
+    }
+
+    return true;
   }
 
   /**
@@ -324,12 +366,21 @@ export class PrefetchManager {
         break;
       }
 
-      // Execute prefetch
+      // Execute prefetch - don't await so we can process concurrent requests
       this.activeRequests++;
       this.executePrefetch(item)
+        .then(() => {
+          // Clean up before resolving to avoid race conditions
+          this.pendingPrefetches.delete(item.path);
+          item.resolve();
+        })
         .catch((error) => {
           console.warn(`Prefetch failed for ${item.path}:`, error);
           this.stats.failedPrefetches++;
+          // Clean up before resolving
+          this.pendingPrefetches.delete(item.path);
+          // Resolve anyway - prefetch errors should not propagate
+          item.resolve();
         })
         .finally(() => {
           this.activeRequests--;
@@ -338,9 +389,9 @@ export class PrefetchManager {
 
     this.processing = false;
 
-    // Schedule next processing cycle if queue is not empty
-    if (this.prefetchQueue.length > 0) {
-      setTimeout(() => this.processQueue(), 100);
+    // Wait for all active requests to complete
+    while (this.activeRequests > 0) {
+      await this.delay(50);
     }
   }
 
@@ -351,44 +402,44 @@ export class PrefetchManager {
     const startTime = Date.now();
 
     // Find matching route
-      
-      const match = this.router.match(item.path);
-      if (!match || !match.route.loader) {
-        return; // No loader to prefetch
-      }
 
-      // Add resource hints if provided
-      if (item.options.hints) {
-        this.addResourceHints(item.options.hints);
-      }
+    const match = this.router.match(item.path);
+    if (!match || !match.route.loader) {
+      return; // No loader to prefetch
+    }
 
-      // Execute loader
-      const url = new URL(item.path, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
-      const loaderData = await executeLoader(match.route.loader, {
-        params: match.params,
-        url,
-        request: typeof window !== 'undefined' ? new Request(url.href) : undefined,
-        netron: this.router.config.netron,
-      });
+    // Add resource hints if provided
+    if (item.options.hints) {
+      this.addResourceHints(item.options.hints);
+    }
 
-      // Store in cache
-      this.cache.set(item.path, {
-        data: loaderData,
-        timestamp: Date.now(),
-      });
+    // Execute loader
+    const url = new URL(item.path, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
+    const loaderData = await executeLoader(match.route.loader, {
+      params: match.params,
+      url,
+      request: typeof window !== 'undefined' ? new Request(url.href) : undefined,
+      netron: this.router.config.netron,
+    });
 
-      // Store in loader data
-      setLoaderData(item.path, loaderData);
+    // Store in cache
+    this.cache.set(item.path, {
+      data: loaderData,
+      timestamp: Date.now(),
+    });
 
-      // Update statistics
-      this.stats.totalPrefetched++;
-      const prefetchTime = Date.now() - startTime;
-      this.stats.averagePrefetchTime =
-        (this.stats.averagePrefetchTime * (this.stats.totalPrefetched - 1) + prefetchTime) /
-        this.stats.totalPrefetched;
+    // Store in loader data
+    setLoaderData(item.path, loaderData);
 
-      // Evict old entries if cache is too large
-      this.evictCache();
+    // Update statistics
+    this.stats.totalPrefetched++;
+    const prefetchTime = Date.now() - startTime;
+    this.stats.averagePrefetchTime =
+      (this.stats.averagePrefetchTime * (this.stats.totalPrefetched - 1) + prefetchTime) /
+      this.stats.totalPrefetched;
+
+    // Evict old entries if cache is too large
+    this.evictCache();
   }
 
   /**
@@ -534,17 +585,22 @@ export async function prefetchRoute(router: Router, path: string, options: { for
  */
 export function clearPrefetchCache(path?: string): void {
   if (defaultManager) {
-    defaultManager.clearCache(path);
+    if (path) {
+      defaultManager.clearCache(path);
+    } else {
+      // Clear all cache and reset the manager
+      defaultManager.dispose();
+      defaultManager = null;
+    }
   }
 }
 
 /**
  * Check if path has been prefetched (for backward compatibility)
  */
-export function isPrefetched(_path: string): boolean {
+export function isPrefetched(path: string): boolean {
   if (!defaultManager) {
     return false;
   }
-  const stats = defaultManager.getStats();
-  return stats.totalPrefetched > 0;
+  return defaultManager.isPrefetched(path);
 }

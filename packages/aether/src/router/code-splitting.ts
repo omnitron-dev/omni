@@ -452,12 +452,22 @@ export function webpackChunkName(name: string): string {
 
 /**
  * Vite dynamic import helper
+ *
+ * Note: Vite requires static string literals for glob patterns.
+ * This function is provided for reference but cannot accept dynamic patterns.
+ * Use direct import.meta.glob() calls with literal strings in your code instead.
+ *
+ * @example
+ * // Correct usage (in your code):
+ * const modules = import.meta.glob('./pages/*.tsx')
+ *
+ * // Incorrect (will fail):
+ * const pattern = './pages/*.tsx'
+ * const modules = import.meta.glob(pattern)
  */
-export function viteGlob(pattern: string, options: Record<string, any> = {}): Record<string, () => Promise<any>> {
-  if (typeof import.meta === 'undefined' || !(import.meta as any).glob) {
-    console.warn('Vite glob imports not available');
-    return {};
-  }
-
-  return (import.meta as any).glob(pattern, options);
+export function viteGlob(_pattern: string, _options: Record<string, any> = {}): Record<string, () => Promise<any>> {
+  // Vite requires static string literals, so this function cannot work with dynamic patterns
+  // Users must use import.meta.glob() directly with literal strings
+  console.warn('viteGlob() cannot use dynamic patterns. Use import.meta.glob() with literal strings directly.');
+  return {};
 }

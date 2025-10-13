@@ -1,7 +1,20 @@
 /**
  * Stack - Vertical/Horizontal stack with consistent spacing
  *
- * Features:
+ * @deprecated Stack has been merged into Flex component. Please use Flex instead.
+ *
+ * Migration guide:
+ * ```tsx
+ * // OLD:
+ * <Stack direction="vertical" spacing={16}>...</Stack>
+ *
+ * // NEW:
+ * <Flex direction="vertical" spacing={16}>...</Flex>
+ * // OR
+ * <Flex direction="column" gap={16}>...</Flex>
+ * ```
+ *
+ * Features (now available in Flex):
  * - Vertical (VStack) and horizontal (HStack) layouts
  * - Consistent spacing between items
  * - Alignment control
@@ -50,6 +63,8 @@ export interface StackProps {
 /**
  * Stack is a layout component for stacking elements vertically or horizontally
  * with consistent spacing.
+ *
+ * @deprecated Use Flex component instead. Stack functionality has been fully merged into Flex.
  *
  * @example
  * ```tsx
@@ -141,6 +156,8 @@ export interface VStackProps extends Omit<StackProps, 'direction'> {}
 /**
  * VStack is a convenience wrapper for vertical Stack.
  *
+ * @deprecated Use Flex with direction="vertical" or direction="column" instead.
+ *
  * @example
  * ```tsx
  * <VStack spacing={16}>
@@ -159,6 +176,8 @@ export interface HStackProps extends Omit<StackProps, 'direction'> {}
 
 /**
  * HStack is a convenience wrapper for horizontal Stack.
+ *
+ * @deprecated Use Flex with direction="horizontal" or direction="row" instead.
  *
  * @example
  * ```tsx

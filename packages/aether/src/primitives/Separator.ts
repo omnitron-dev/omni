@@ -1,6 +1,17 @@
 /**
  * Separator Primitive
  *
+ * @deprecated Separator has been merged into Divider component. Please use Divider instead.
+ *
+ * Migration guide:
+ * ```tsx
+ * // OLD:
+ * <Separator orientation="horizontal" />
+ *
+ * // NEW:
+ * <Divider orientation="horizontal" />
+ * ```
+ *
  * Visually or semantically separates content.
  *
  * Based on WAI-ARIA Separator pattern:
@@ -39,6 +50,8 @@ export interface SeparatorProps {
 
 /**
  * Separator component
+ *
+ * @deprecated Use Divider component instead. Divider provides all Separator functionality plus additional features.
  *
  * A simple separator for visually dividing content.
  *

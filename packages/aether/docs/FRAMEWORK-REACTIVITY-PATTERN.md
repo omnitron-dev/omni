@@ -10,7 +10,7 @@
 
 ### The Core Limitation
 
-In Aether, **components do NOT re-render** when signals change. The render function runs **exactly once** when the component is created.
+In Aether, **components do NOT re-render** when signals change. The template function runs **exactly once** when the component is created.
 
 ```typescript
 // Component lifecycle:
@@ -19,7 +19,7 @@ const MyComponent = defineComponent((props) => {
   const count = signal(0);
 
   return () => {
-    // 2. Render function runs ONCE
+    // 2. Template function runs ONCE
     // 3. NEVER runs again, even if count() changes!
     return <div>{count()}</div>;
   };
@@ -33,14 +33,14 @@ const MyComponent = defineComponent((props) => {
 export const ConditionalComponent = defineComponent<{ show: () => boolean }>((props) => {
   return () => {
     if (!props.show()) {
-      return null;  // Render returns null once
+      return null;  // Template returns null once
     }
     return <div>Content</div>;  // Never reached if initially false!
   };
 });
 
 // When props.show() changes from false to true:
-// - The render function does NOT run again
+// - The template function does NOT run again
 // - The component stays as null forever
 // - The content never appears
 ```
@@ -68,7 +68,7 @@ export const ConditionalComponent = defineComponent<{ show: () => boolean }>((pr
 
 ### 1. Always Create DOM Elements
 
-Never use conditional returns in the render function:
+Never use conditional returns in the template function:
 
 ```typescript
 // ❌ WRONG
@@ -363,7 +363,7 @@ expect(element.style.display).not.toBe('none');
 This reactivity model is **intentional** and provides:
 
 1. **Performance**: No virtual DOM diffing or reconciliation
-2. **Simplicity**: Clear mental model - one render, effects for updates
+2. **Simplicity**: Clear mental model - one template execution, effects for updates
 3. **Predictability**: DOM structure is stable, only attributes/styles change
 4. **Fine-grained reactivity**: Effects track exactly what signals they use
 
@@ -371,7 +371,7 @@ It's similar to SolidJS's approach but even more explicit.
 
 ## Summary
 
-**Golden Rule**: In Aether, render functions run once. All dynamic behavior must use `effect()` blocks.
+**Golden Rule**: In Aether, template functions run once. All dynamic behavior must use `effect()` blocks.
 
 - ❌ Don't use conditional returns
 - ✅ Always create elements

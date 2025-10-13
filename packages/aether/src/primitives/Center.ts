@@ -1,7 +1,18 @@
 /**
  * Center - Centers child elements
  *
- * Features:
+ * @deprecated Center has been merged into Flex component. Please use Flex instead.
+ *
+ * Migration guide:
+ * ```tsx
+ * // OLD:
+ * <Center height="100vh">...</Center>
+ *
+ * // NEW:
+ * <Flex justify="center" align="center" height="100vh">...</Flex>
+ * ```
+ *
+ * Features (now available in Flex):
  * - Centers content horizontally and vertically
  * - Configurable as inline or block
  * - Optional height constraint
@@ -38,6 +49,8 @@ export interface CenterProps {
 
 /**
  * Center centers its children both horizontally and vertically.
+ *
+ * @deprecated Use Flex with justify="center" and align="center" instead.
  *
  * @example
  * ```tsx

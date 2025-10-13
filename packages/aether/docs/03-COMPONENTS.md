@@ -46,14 +46,14 @@
 
 ## Overview
 
-Components are the fundamental building blocks of Aether applications. Unlike frameworks that use classes or special syntax, Aether components are **just functions** that return a render function.
+Components are the fundamental building blocks of Aether applications. Unlike frameworks that use classes or special syntax, Aether components are **just functions** that return a template function.
 
 ### What is a Component?
 
 A component in Aether is a **function** that:
 1. Sets up reactive state (signals, computed values)
 2. Defines lifecycle hooks (onMount, onCleanup)
-3. Returns a **render function** that produces DOM
+3. Returns a **template function** that produces DOM
 
 ```typescript
 import { defineComponent, signal } from 'aether';
@@ -65,7 +65,7 @@ const Counter = defineComponent(() => {
 
   console.log('Setup runs once');
 
-  // 2. Return render function (runs on every dependency change)
+  // 2. Return template function (runs on every dependency change)
   return () => (
     <div>
       <p>Count: {count()}</p>
@@ -77,7 +77,7 @@ const Counter = defineComponent(() => {
 });
 ```
 
-**Key Insight**: The setup function runs **once** when the component is created. The render function re-runs **only for specific DOM nodes** that depend on changed signals (fine-grained reactivity).
+**Key Insight**: The setup function runs **once** when the component is created. The template function re-runs **only for specific DOM nodes** that depend on changed signals (fine-grained reactivity).
 
 ### Component vs Function Component
 
@@ -195,7 +195,7 @@ const MyComponent = defineComponent(() => {
 
 **Mental Model**:
 - **Setup** = Constructor (but runs once per component instance)
-- **Render** = What the DOM looks like for current state
+- **Template** = What the DOM looks like for current state
 
 ---
 
@@ -477,7 +477,7 @@ const MyComponent = defineComponent(() => {
   console.log('2. Setup complete');
 
   return () => {
-    console.log('4. Render (runs on updates)');
+    console.log('4. Template (runs on updates)');
     return <div>Hello</div>;
   };
 });
@@ -485,10 +485,10 @@ const MyComponent = defineComponent(() => {
 
 **Order**:
 1. Setup phase runs
-2. Render function called
+2. Template function called
 3. DOM inserted
 4. `onMount` runs
-5. On updates: Only affected render parts re-run
+5. On updates: Only affected template parts re-run
 6. On unmount: `onMount` cleanup, then `onCleanup`
 
 ### Advanced: Custom Lifecycle Hooks
@@ -599,7 +599,7 @@ const Button = defineComponent<ButtonProps>((props) => {
 
 ### Reactive Props
 
-Props are **reactive** - reading them in the render function creates a dependency:
+Props are **reactive** - reading them in the template function creates a dependency:
 
 ```typescript
 const Display = defineComponent<{ value: number }>((props) => {
@@ -1947,7 +1947,7 @@ const Button = defineComponent<ButtonProps>((props) => {
 
 ```typescript
 function defineComponent<P = {}>(
-  setup: (props: P) => () => JSX.Element
+  setup: (props: P) => () => JSX.Element  // Returns template function
 ): Component<P>
 ```
 

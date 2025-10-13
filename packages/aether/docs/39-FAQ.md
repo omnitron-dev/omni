@@ -226,14 +226,14 @@ function Counter() {
 
 **Fine-grained ((Aether))**:
 ```typescript
-// Setup runs once, render function runs once, only text node updates
+// Setup runs once, template function runs once, only text node updates
 export const Counter = defineComponent(() => {
   const count = signal(0);
 
   console.log('Setup runs once'); // Logs only once
 
   return () => {
-    console.log('Render runs once'); // Logs only once
+    console.log('Template runs once'); // Logs only once
     return <div>Count: {count()}</div>; // Only text node updates
   };
 });
@@ -367,7 +367,7 @@ In Aether, **re-renders are already minimal** due to fine-grained reactivity. Bu
 // Good - computed value, only recalculates when dependencies change
 const fullName = computed(() => `${firstName()} ${lastName()}`);
 
-// Less ideal - recreates function on every render
+// Less ideal - recreates function on every template execution
 return () => {
   const fullName = `${firstName()} ${lastName()}`;
   return <div>{fullName}</div>;
@@ -380,7 +380,7 @@ return () => {
 const style = { color: 'red', fontSize: '16px' };
 return () => <div style={style}>Text</div>;
 
-// Less ideal - new object on every render
+// Less ideal - new object on every template execution
 return () => <div style={{ color: 'red', fontSize: '16px' }}>Text</div>;
 ```
 
@@ -603,7 +603,7 @@ export const MyComponent = defineComponent(() => {
   });
 
   return () => {
-    console.log('Render - runs once initially, then updates are fine-grained');
+    console.log('Template - runs once initially, then updates are fine-grained');
     return <div>Count: {count()}</div>;
   };
 });
@@ -1944,7 +1944,7 @@ onMount(() => {
 const handleClick = () => count.set(c => c + 1);
 return () => <button onClick={handleClick}>Click</button>;
 
-// Less ideal (creates new function each render)
+// Less ideal (creates new function each template execution)
 return () => <button onClick={() => count.set(c => c + 1)}>Click</button>;
 ```
 
@@ -1964,7 +1964,7 @@ return () => <button onClick={() => count.set(c => c + 1)}>Click</button>;
 // Good
 const filtered = computed(() => items().filter(i => i.active));
 
-// Less ideal - filters on every render
+// Less ideal - filters on every template execution
 return () => <div>{items().filter(i => i.active).length}</div>;
 ```
 
@@ -2682,11 +2682,11 @@ return () => <div>{count}</div>;
 return () => <div>{count()}</div>;
 ```
 
-**2. Creating signals in render**:
+**2. Creating signals in template function**:
 ```typescript
 // ❌ Anti-pattern
 return () => {
-  const count = signal(0); // Created on every render
+  const count = signal(0); // Created on every template execution
   return <div>{count()}</div>;
 };
 

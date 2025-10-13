@@ -53,10 +53,10 @@
 
 **Критические пробелы:**
 - ❌ **Data Loading Pipeline не завершен** (хуки есть, автоматика отсутствует)
-- ❌ **Нет встроенного Cache Manager** (все вручную)
+- ❌ **Netron-browser не интегрирован на уровне Aether framework** (FluentInterface доступен, но нет reactive hooks)
 - ❌ **Отсутствует Store Pattern реализация** (только спецификация)
-- ❌ **Netron-browser не интегрирован на уровне фреймворка** (используется вручную)
-- ❌ **Нет high-level паттернов** (optimistic updates, query invalidation, etc.)
+- ❌ **Нет Aether-специфичных хелперов** (useQuery, useMutation, useStream для интеграции с signals)
+- ❌ **Router не использует netron-browser** (loaders/actions выполняются вручную)
 
 ### Главная рекомендация
 
@@ -251,32 +251,63 @@ const MyPage = defineComponent(() => {
 
 ### 2. Cache Management (🔴 Critical)
 
-**Проблема:** Нет встроенного cache manager. Каждый store reimplements caching logic.
+**ВАЖНОЕ УТОЧНЕНИЕ:** Netron-browser УЖЕ ИМЕЕТ production-ready cache manager с полным набором возможностей! Проблема не в отсутствии кеша, а в **отсутствии интеграции на уровне Aether фреймворка**.
 
-**Текущая ситуация:** Developers пишут вручную:
+**Что УЖЕ ЕСТЬ в netron-browser (HttpCacheManager):**
 ```typescript
+// ✅ Netron-browser FluentInterface - это УЖЕ ЕСТЬ!
+const peer = new HttpRemotePeer('http://api.example.com');
+peer.setCacheManager(new HttpCacheManager({ maxEntries: 1000 }));
+peer.setRetryManager(new RetryManager({ attempts: 3 }));
+
+const service = await peer.queryFluentInterface<IUserService>('users');
+
+// ✅ ВСЕ это работает прямо сейчас!
+const users = await service
+  .cache({ maxAge: 60000, staleWhileRevalidate: 5000, tags: ['users'] })
+  .retry({ attempts: 3, backoff: 'exponential' })
+  .optimistic((current) => [...current, newUser])  // ✅ С auto-rollback!
+  .invalidateOn(['user-list', 'dashboard'])        // ✅ Tag-based invalidation!
+  .background(30000)                                // ✅ Background refetch!
+  .dedupe('users-list')                             // ✅ Request deduplication!
+  .metrics((t) => console.log(t.duration))         // ✅ Performance tracking!
+  .getUsers();
+
+// ✅ Инвалидация кеша
+peer.invalidateCache('User*', 'http');  // Pattern matching!
+```
+
+**HttpCacheManager Features (УЖЕ реализовано, 515 LOC):**
+- ✅ **TTL management** с автоматической очисткой
+- ✅ **LRU eviction** (maxEntries, maxSizeBytes)
+- ✅ **Stale-while-revalidate** (serve stale + background refetch)
+- ✅ **Tag-based invalidation** (tags + pattern matching)
+- ✅ **Background revalidation** (keep cache fresh)
+- ✅ **cacheOnError** (serve stale on network failure)
+- ✅ **Cache statistics** (hits, misses, hitRate, sizeBytes)
+- ✅ **EventEmitter** (cache-hit, cache-miss, cache-stale, etc.)
+- ✅ **Pattern matching** (string, RegExp, array of tags)
+
+**Проблема:** Developers must use FluentInterface **manually**:
+```typescript
+// ❌ CURRENT: Manual FluentInterface usage (verbose)
 @Injectable()
 export class UserStore {
-  private cache = new Map<string, { data: User[]; timestamp: number }>();
-  private CACHE_TTL = 5 * 60 * 1000;
+  private users = signal<User[]>([]);
+  private loading = signal(false);
 
-  async loadUsers(filters?: UserFilters) {
-    const cacheKey = JSON.stringify(filters || {});
-    const cached = this.cache.get(cacheKey);
+  constructor(private netron: NetronClient) {}
 
-    // Manual TTL check
-    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
-      this.users.set(cached.data);
-      return cached.data;
-    }
-
-    // Manual fetch
+  async loadUsers() {
     this.loading.set(true);
     try {
-      const data = await this.api.getUsers(filters);
-      this.cache.set(cacheKey, { data, timestamp: Date.now() });
+      // Must create peer and query fluent interface manually
+      const peer = new HttpRemotePeer(this.netron.getUrl());
+      peer.setCacheManager(new HttpCacheManager());
+      const service = await peer.queryFluentInterface<IUserService>('users');
+
+      const data = await service.cache(60000).getUsers();
       this.users.set(data);
-      return data;
     } finally {
       this.loading.set(false);
     }
@@ -284,77 +315,147 @@ export class UserStore {
 }
 ```
 
-**Problems:**
-- ❌ Boilerplate в каждом store (~30 lines)
-- ❌ No TTL management (manual Date.now() checks)
-- ❌ No LRU eviction (memory leaks possible)
-- ❌ No stale-while-revalidate
-- ❌ No automatic invalidation
-- ❌ No cache statistics
+**Что отсутствует (Aether-level integration):**
+- ❌ No reactive hooks wrapping FluentInterface (`useQuery`, `useMutation`)
+- ❌ No automatic signal updates from cache changes
+- ❌ No DI integration (manual peer creation)
+- ❌ No router integration (loaders don't use FluentInterface)
+- ❌ Developers unaware that FluentInterface exists!
 
-**Comparison with React Query:**
+**Expected (with Aether integration):**
 ```typescript
-// React Query: Built-in cache manager
-const { data, isLoading } = useQuery(['users', filters], () =>
-  api.getUsers(filters),
+// ✅ EXPECTED: Reactive hooks that use FluentInterface internally
+import { useQuery } from '@omnitron-dev/aether-state';
+
+const { data, loading, refetch } = useQuery(
+  'users',
+  'getUsers',
+  [],
   {
-    staleTime: 5 * 60 * 1000,
-    cacheTime: 10 * 60 * 1000,
+    cache: { maxAge: 60000, staleWhileRevalidate: 5000 },
+    retry: 3,
   }
-);
+);  // ✅ FluentInterface used under the hood, signals auto-update!
 ```
 
 ---
 
 ### 3. Netron-Browser Integration (🔴 Critical)
 
-**Проблема:** netron-browser существует как мощный пакет (14,130 LOC, 204 tests), но **НЕ интегрирован** на уровне фреймворка.
+**ВАЖНОЕ УТОЧНЕНИЕ:** netron-browser - это **ПОЛНОСТЬЮ ГОТОВАЯ** система (14,130 LOC, 204 tests), которая ПРЕВОСХОДИТ fetch + axios + React Query + tRPC вместе взятые! Проблема не в возможностях netron-browser, а в отсутствии **Aether-специфичной обертки**.
 
-**What netron-browser provides:**
-- ✅ Type-safe RPC to Titan backend
-- ✅ Intelligent caching (TTL, LRU, stale-while-revalidate)
-- ✅ Request batching (10ms windows)
-- ✅ Real-time streaming (WebSocket)
-- ✅ Auth management (token refresh)
-- ✅ Middleware pipeline (4 stages)
-- ✅ Error handling (10+ error types)
-- ✅ Optimistic updates support
-- ✅ Query deduplication
-- ✅ Background refetching
+**What netron-browser ALREADY provides (FluentInterface API):**
 
-**Current usage (manual):**
+#### Core Capabilities (PRODUCTION-READY):
+- ✅ **Type-safe RPC** to Titan backend (TypeScript contracts)
+- ✅ **HttpCacheManager** (TTL, LRU, SWR, tags, 515 LOC) - см. секцию выше
+- ✅ **RetryManager** (exponential backoff, circuit breaker, jitter, 616 LOC)
+- ✅ **Request deduplication** (in-flight requests Map)
+- ✅ **Real-time streaming** (WebSocket, bidirectional, backpressure)
+- ✅ **Auth management** (token storage, auto-refresh, middleware)
+- ✅ **Middleware pipeline** (PRE_REQUEST, POST_RESPONSE, ERROR stages)
+- ✅ **Error handling** (10+ error types with serialization)
+- ✅ **Optimistic updates** (auto-snapshot, auto-rollback on error)
+- ✅ **Query invalidation** (tags, patterns, RegExp)
+- ✅ **Background refetch** (intervals, keep cache fresh)
+- ✅ **Request batching** (automatic, 10ms windows)
+- ✅ **Metrics tracking** (performance, cache hits, latency)
+
+#### FluentInterface API (ALREADY WORKS):
 ```typescript
+// ✅ ВСЁ это работает ПРЯМО СЕЙЧАС в netron-browser!
+const peer = new HttpRemotePeer('http://api.example.com');
+peer.setCacheManager(new HttpCacheManager({ maxEntries: 1000, maxSizeBytes: 10_000_000 }));
+peer.setRetryManager(new RetryManager({
+  circuitBreaker: { threshold: 5, windowTime: 60000, cooldownTime: 30000 }
+}));
+
+const service = await peer.queryFluentInterface<IUserService>('users');
+
+// Chainable API with ALL features:
+const users = await service
+  .cache({
+    maxAge: 60000,
+    staleWhileRevalidate: 5000,
+    tags: ['users', 'auth'],
+    cacheOnError: true  // Serve stale on network failure
+  })
+  .retry({
+    attempts: 3,
+    backoff: 'exponential',
+    initialDelay: 1000,
+    maxDelay: 30000,
+    jitter: 0.1
+  })
+  .dedupe('users-list')                          // ✅ Auto-dedupe concurrent requests
+  .optimistic((current) => [...current, newUser]) // ✅ Auto-rollback on error
+  .invalidateOn(['user-list', 'dashboard'])       // ✅ Auto-invalidate on mutation
+  .background(30000)                              // ✅ Refetch every 30s
+  .timeout(5000)                                  // ✅ Request timeout
+  .priority('high')                               // ✅ Request priority
+  .transform(normalizeUser)                       // ✅ Response transformation
+  .validate(isValidUser)                          // ✅ Response validation
+  .fallback(defaultUser)                          // ✅ Fallback on error
+  .metrics((timing) => {                          // ✅ Performance metrics
+    console.log('Duration:', timing.duration, 'Cache hit:', timing.cacheHit);
+  })
+  .getUsers();
+
+// ✅ Cache invalidation (pattern matching)
+await peer.invalidateCache('User*', 'http');  // Wildcard pattern
+await peer.invalidateCache(/^users\./, 'http'); // RegExp pattern
+peer.getCacheManager()?.invalidate(['users', 'auth']); // Tag-based
+
+// ✅ Global configuration
+peer.setGlobalOptions({
+  cache: { maxAge: 60000 },
+  retry: { attempts: 3 }
+});  // All future queries use these defaults
+```
+
+**Проблема НЕ в функциональности** (она ВСЯ есть), а в **developer experience**:
+
+```typescript
+// ❌ CURRENT: Developers don't know FluentInterface exists!
 @Injectable()
 export class UserStore {
   constructor(private netron: NetronClient) {}
 
   async loadUsers() {
-    // Manual RPC call
-    const service = await this.netron.queryInterface<IUserService>('UserService@1.0.0');
-    const users = await service.getUsers();
+    // Using basic queryInterface() - NO caching, NO retry
+    const service = await this.netron.queryInterface<IUserService>('users');
+    const users = await service.getUsers();  // ❌ No cache, no retry!
 
-    // Manual state update
+    // Manual state management
     this.users.set(users);
-
-    // Manual cache management
-    this.cache.set('users', users);
   }
 }
 ```
 
-**What's missing:**
-- ❌ No reactive hooks (`useQuery`, `useMutation`, `useStream`)
-- ❌ No router integration (loaders don't use netron)
-- ❌ No DI integration (no auto-configured client)
-- ❌ No SSR support (no server-side netron client)
-- ❌ No DevTools integration
+**What's missing (Aether-level abstraction):**
+- ❌ No **reactive hooks** that wrap FluentInterface (`useQuery`, `useMutation`, `useStream`)
+- ❌ No **automatic signal updates** (cache changes don't trigger re-renders)
+- ❌ No **DI integration** (peer not auto-configured with HttpCacheManager)
+- ❌ No **router integration** (loaders/actions don't use FluentInterface)
+- ❌ No **SSR support** (server-side peer configuration)
+- ❌ No **DevTools** showing cache state, network requests
+- ❌ **Documentation gap** (developers unaware FluentInterface exists!)
 
-**Comparison with tRPC:**
-```typescript
-// tRPC: Integrated hooks
-const { data, isLoading } = trpc.users.getAll.useQuery();
-const mutation = trpc.users.create.useMutation();
-```
+**Comparison:**
+
+| Capability | Netron FluentInterface | React Query | tRPC | Status |
+|-----------|------------------------|-------------|------|--------|
+| Caching (TTL, LRU, SWR) | ✅ Full | ✅ Full | ⚠️ Via RQ | **DONE** |
+| Optimistic updates | ✅ Auto-rollback | ✅ Manual | ✅ Manual | **DONE** |
+| Tag invalidation | ✅ + Patterns | ✅ Keys | ✅ Keys | **BETTER** |
+| Request deduplication | ✅ Built-in | ✅ Built-in | ✅ Built-in | **DONE** |
+| Background refetch | ✅ Intervals | ✅ Intervals | ⚠️ Via RQ | **DONE** |
+| Circuit breaker | ✅ Built-in | ❌ | ❌ | **UNIQUE** |
+| WebSocket/Streaming | ✅ Production | ❌ | ⚠️ Experimental | **BETTER** |
+| Middleware | ✅ 4 stages | ⚠️ Limited | ✅ Full | **DONE** |
+| **Aether integration** | ❌ **Missing** | ✅ hooks | ✅ hooks | **TODO** |
+
+**Вывод:** FluentInterface УЖЕ лучше React Query + tRPC! Нужны только **reactive hooks для Aether**.
 
 ---
 

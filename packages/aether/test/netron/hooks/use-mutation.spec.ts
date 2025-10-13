@@ -5,7 +5,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useMutation, useOptimisticMutation, useMutations } from '../../../src/netron/hooks/use-mutation.js';
 import { NetronClient } from '../../../src/netron/client.js';
-import { signal } from '../../../src/core/reactivity/signal.js';
 import type { MutationOptions } from '../../../src/netron/types.js';
 
 // Mock NetronClient
@@ -398,9 +397,7 @@ describe('useOptimisticMutation', () => {
 
   it('should apply optimistic update immediately', async () => {
     const getCurrentData = vi.fn().mockReturnValue([{ id: '1', name: 'John' }]);
-    const applyOptimisticUpdate = vi.fn().mockImplementation((current, variables) => {
-      return current.map((u: any) => u.id === variables.id ? { ...u, ...variables } : u);
-    });
+    const applyOptimisticUpdate = vi.fn().mockImplementation((current, variables) => current.map((u: any) => u.id === variables.id ? { ...u, ...variables } : u));
 
     const result = useOptimisticMutation(
       UserService,

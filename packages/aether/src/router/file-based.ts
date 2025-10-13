@@ -31,8 +31,8 @@ export const defaultConventions: Required<FileRouteConventions> = {
  * @returns Route path
  */
 export function filePathToRoutePath(filePath: string, _conventions = defaultConventions): string {
-  // Remove routes prefix and file extension
-  let path = filePath.replace(/^routes\//, '').replace(/\/?\+[a-z]+\.[^/]+$/, '');
+  // Remove routes prefix and file extension (case-insensitive)
+  let path = filePath.replace(/^routes\//, '').replace(/\/?\+[a-zA-Z]+\.[^/]+$/i, '');
 
   // Handle index routes
   if (path === 'index' || path.endsWith('/index')) {
@@ -299,19 +299,21 @@ export async function generateRoutesFromFiles(
   for (const [_dirPath, fileGroup] of groups) {
     const modules: Partial<Record<string, FileRouteModule>> = {};
     let routePath: string | undefined;
+    let hasValidModule = false;
 
     // Load all modules for this route
     for (const { path, type, filePath } of fileGroup) {
       routePath = path || routePath;
       try {
         modules[type] = await importModules(filePath);
+        hasValidModule = true;
       } catch (error) {
         console.error(`Failed to load route module ${filePath}:`, error);
       }
     }
 
-    // Build route definition
-    if (routePath) {
+    // Build route definition only if at least one module loaded successfully
+    if (routePath && hasValidModule) {
       const route = buildRouteFromModules(modules as any, routePath);
       flatRoutes.push(route);
     }

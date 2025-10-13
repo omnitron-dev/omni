@@ -162,15 +162,22 @@ export function defer<T>(promise: Promise<T>): DeferredData<T> {
     resolved: false,
   };
 
-  // Track resolution
+  // Track resolution asynchronously (not in the same microtask)
+  // Use setTimeout to ensure resolved flag doesn't flip until next event loop tick
   promise
     .then((data) => {
-      deferred.resolved = true;
-      deferred.data = data;
+      // Defer marking as resolved to next tick
+      setTimeout(() => {
+        deferred.resolved = true;
+        deferred.data = data;
+      }, 0);
     })
     .catch((error) => {
-      deferred.resolved = true;
-      deferred.error = error instanceof Error ? error : new Error(String(error));
+      // Defer marking as resolved to next tick
+      setTimeout(() => {
+        deferred.resolved = true;
+        deferred.error = error instanceof Error ? error : new Error(String(error));
+      }, 0);
     });
 
   return deferred;
@@ -183,7 +190,7 @@ export function defer<T>(promise: Promise<T>): DeferredData<T> {
  * @returns True if value is deferred data
  */
 export function isDeferred(value: any): value is DeferredData {
-  return (
+  return Boolean(
     value &&
     typeof value === 'object' &&
     'promise' in value &&
@@ -408,8 +415,16 @@ export function useFetcher(): Fetcher {
       try {
         // Determine target URL
         // If action path is provided, use it; otherwise use current route
-        const router = useRouter();
-        const targetPath = actionPath || router.current.pathname;
+        let targetPath = actionPath;
+        if (!targetPath) {
+          try {
+            const router = useRouter();
+            targetPath = router.current.pathname;
+          } catch {
+            // If router not available, fall back to window.location
+            targetPath = typeof window !== 'undefined' ? window.location.pathname : '/';
+          }
+        }
 
         // Create fetch request to action endpoint
         // Actions are handled at /_aether/action?path={route}

@@ -136,6 +136,7 @@ export function readonly<T>(writable: WritableSignal<T>): Signal<T> {
  * Dependent computations and effects only run once after all updates complete.
  *
  * @param fn - Function containing signal updates
+ * @returns The return value of the function
  *
  * @example
  * ```typescript
@@ -148,14 +149,15 @@ export function readonly<T>(writable: WritableSignal<T>): Signal<T> {
  * y.set(2);
  *
  * // With batch: sum computed once
- * batch(() => {
+ * const result = batch(() => {
  *   x.set(1);
  *   y.set(2);
+ *   return 42;
  * });
  * ```
  */
-export function batch(fn: () => void): void {
-  reactivityBatch(fn);
+export function batch<T>(fn: () => T): T {
+  return reactivityBatch(fn);
 }
 
 /**
@@ -282,6 +284,28 @@ export function getStoreMetadata(id: string): { id: string; name?: string } | un
 }
 
 /**
+ * Store initialization tracking
+ * This avoids circular dependency with defineStore
+ */
+const initializedStores = new Set<string>();
+
+/**
+ * Mark a store as initialized
+ * @internal
+ */
+export function markStoreInitialized(id: string): void {
+  initializedStores.add(id);
+}
+
+/**
+ * Mark a store as uninitialized
+ * @internal
+ */
+export function markStoreUninitialized(id: string): void {
+  initializedStores.delete(id);
+}
+
+/**
  * Check if a store is initialized
  *
  * @param id - Store ID
@@ -293,13 +317,7 @@ export function isStoreInitialized(id: string): boolean {
     return false;
   }
 
-  // Try to get the store instance without creating it
-  try {
-    factory();
-    return true;
-  } catch {
-    return false;
-  }
+  return initializedStores.has(id);
 }
 
 /**

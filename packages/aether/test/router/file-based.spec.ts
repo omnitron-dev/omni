@@ -12,7 +12,6 @@ import {
   generateRoutesFromFiles,
   validateRoute,
   validateRoutes,
-  defaultConventions,
 } from '../../src/router/file-based.js';
 import type { RouteDefinition } from '../../src/router/types.js';
 

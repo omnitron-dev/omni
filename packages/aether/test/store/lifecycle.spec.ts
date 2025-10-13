@@ -273,9 +273,7 @@ describe('lifecycle context', () => {
   it('should return function result', () => {
     const lifecycle = new LifecycleManager();
 
-    const result = runWithLifecycle(lifecycle, () => {
-      return 42;
-    });
+    const result = runWithLifecycle(lifecycle, () => 42);
 
     expect(result).toBe(42);
   });

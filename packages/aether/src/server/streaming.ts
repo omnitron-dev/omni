@@ -144,7 +144,13 @@ export function renderToPipeableStream(
         stream.destroy(error as Error);
       }
     }
-  })();
+  })().catch((error) => {
+    // Handle any unhandled promise rejections from the async IIFE
+    console.error('Unhandled streaming error:', error);
+    if (onError) {
+      onError(error as Error);
+    }
+  });
 
   return {
     pipe: (destination) => {
@@ -298,12 +304,10 @@ export async function renderToReadableStream(
 export function createStreamingRenderer(
   defaultOptions: Partial<StreamingOptions> = {}
 ): (component: any, options?: Partial<RenderToStreamOptions>) => Promise<StreamingResult> {
-  return async (comp: any, options: Partial<RenderToStreamOptions> = {}) => {
-    return renderToReadableStream(comp, {
+  return async (comp: any, options: Partial<RenderToStreamOptions> = {}) => renderToReadableStream(comp, {
       ...defaultOptions,
       ...options,
     });
-  };
 }
 
 /**

@@ -250,14 +250,26 @@ async function renderComponentToHTML(
   }
 
   // Handle primitives
-  if (typeof component === 'string' || typeof component === 'number' || typeof component === 'boolean') {
+  if (typeof component === 'string') {
+    // Check if it looks like safe HTML from component concatenation
+    // Only trust strings that look like complete HTML elements
+    const trimmed = component.trim();
+    if (trimmed.startsWith('<') && trimmed.endsWith('>') && !trimmed.includes('<script')) {
+      // This looks like component-generated HTML, return as-is
+      return component;
+    }
+    // Otherwise escape it as user content
+    return escapeHTML(component);
+  }
+
+  if (typeof component === 'number' || typeof component === 'boolean') {
     return escapeHTML(String(component));
   }
 
   // Handle component functions
   if (typeof component === 'function') {
-    // Check if component should be an island
-    if (enableIslands && isInteractiveComponent(component, props)) {
+    // Check if component should be an island BEFORE executing
+    if (enableIslands && (component as any).__island === true) {
       return renderIsland(component, props, context);
     }
 
@@ -494,17 +506,23 @@ function renderIsland(component: any, props: any, context: SSRContext): string {
 
 /**
  * Check if component needs interactivity (island)
+ * This function can be used for automatic island detection based on props
+ * @internal
  */
-function isInteractiveComponent(component: any, props: any): boolean {
+export function isInteractiveComponent(component: any, props: any): boolean {
+  // Check if component has __island marker
+  if ((component as any).__island === true) {
+    return true;
+  }
+
   // Check if props contain event handlers
-  for (const key of Object.keys(props)) {
+  for (const key of Object.keys(props || {})) {
     if (key.startsWith('on') && typeof props[key] === 'function') {
       return true;
     }
   }
 
-  // Check if component has __island marker
-  return (component as any).__island === true;
+  return false;
 }
 
 /**

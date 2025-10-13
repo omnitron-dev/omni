@@ -2,7 +2,7 @@
  * @fileoverview Comprehensive tests for NetronClient
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { NetronClient } from '../../src/netron/client.js';
 import { HttpRemotePeer, HttpCacheManager, RetryManager } from '@omnitron-dev/netron-browser';
 import type { BackendConfig, QueryOptions, MutationOptions } from '../../src/netron/types.js';
@@ -82,9 +82,7 @@ vi.mock('@omnitron-dev/netron-browser', () => {
           }
 
           // Return mock method for actual service methods
-          return (...args: any[]) => {
-            return Promise.resolve({ service: serviceName, method: prop, args });
-          };
+          return (...args: any[]) => Promise.resolve({ service: serviceName, method: prop, args });
         },
       });
       return proxy;

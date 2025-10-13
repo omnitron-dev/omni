@@ -85,9 +85,7 @@ describe('NetronStore', () => {
       const store = new UserStore();
 
       const wrappedFn = store['withLoading'](
-        async () => {
-          return [{ id: '1', name: 'John', active: true }];
-        },
+        async () => [{ id: '1', name: 'John', active: true }],
         store.loading
       );
 
@@ -160,12 +158,8 @@ describe('NetronStore', () => {
 
       const wrappedFn = store['withOptimistic'](
         store.users,
-        (current, userId: string, update: Partial<User>) => {
-          return current.map(u => u.id === userId ? { ...u, ...update } : u);
-        },
-        async (userId: string, update: Partial<User>) => {
-          return { id: userId, name: update.name!, active: true };
-        }
+        (current, userId: string, update: Partial<User>) => current.map(u => u.id === userId ? { ...u, ...update } : u),
+        async (userId: string, update: Partial<User>) => ({ id: userId, name: update.name!, active: true })
       );
 
       const promise = wrappedFn('1', { name: 'Updated' });
@@ -183,9 +177,7 @@ describe('NetronStore', () => {
 
       const wrappedFn = store['withOptimistic'](
         store.users,
-        (current, userId: string) => {
-          return current.filter(u => u.id !== userId);
-        },
+        (current, userId: string) => current.filter(u => u.id !== userId),
         async () => {
           throw new Error('Mutation failed');
         }

@@ -2,7 +2,7 @@
  * @fileoverview Comprehensive tests for Service decorator
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { Service, getServiceName } from '../../../src/netron/decorators/service.js';
 import { NETRON_METADATA } from '../../../src/netron/tokens.js';
 

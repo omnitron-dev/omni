@@ -11,15 +11,13 @@ import {
   clearHydrationState,
   registerComponent,
 } from '../../src/server/hydration.js';
-import type { HydrationOptions } from '../../src/server/types.js';
 
 // Mock DOM environment
 const createMockElement = (
   tagName: string,
   attributes: Record<string, string> = {},
   children: any[] = []
-): any => {
-  return {
+): any => ({
     tagName: tagName.toUpperCase(),
     nodeName: tagName.toUpperCase(),
     textContent: '',
@@ -35,8 +33,7 @@ const createMockElement = (
     replaceWith: vi.fn(),
     appendChild: vi.fn(),
     parentElement: null,
-  };
-};
+  });
 
 describe('Hydration System', () => {
   let mockContainer: any;
@@ -581,11 +578,9 @@ describe('Hydration System', () => {
     });
 
     it('should handle deeply nested components', () => {
-      const DeepComponent = () => {
-        return {
+      const DeepComponent = () => ({
           children: [{ children: [{ children: ['Deep'] }] }],
-        };
-      };
+        });
 
       expect(() => {
         hydrate(DeepComponent, mockContainer);

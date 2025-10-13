@@ -7,7 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createProfiler } from '../../src/devtools/profiler.js';
-import type { Profiler, PerformanceProfile, PerformanceMeasurement } from '../../src/devtools/types.js';
+import type { Profiler } from '../../src/devtools/types.js';
 
 describe('DevTools Profiler', () => {
   let profiler: Profiler;

@@ -10,13 +10,21 @@ import type { StoreSetup, StoreFactory, StoreInstance, StoreOptions } from './ty
 import { NetronClient } from '../netron/client.js';
 import { inject } from '../di/inject.js';
 import { LifecycleManager, runWithLifecycle, createLifecycleHandlers } from './lifecycle.js';
-import { registerStore } from './composition.js';
+import { registerStore, useStore, markStoreInitialized, markStoreUninitialized } from './composition.js';
 import { createRoot } from '../core/reactivity/batch.js';
 
 /**
  * Store instances cache
  */
-const storeInstances = new Map<string, { instance: any; root: () => void }>();
+const storeInstances = new Map<
+  string,
+  {
+    instance: any;
+    root: () => void;
+    lifecycle: LifecycleManager;
+    dispose: () => void;
+  }
+>();
 
 /**
  * Get or create NetronClient
@@ -111,7 +119,7 @@ export function defineStore<T>(id: string, setup: StoreSetup<T>, options?: Parti
 
   // Store metadata
   const storeName = options?.name ?? id;
-  let initialSetup: StoreSetup<T> | null = setup;
+  const initialSetup: StoreSetup<T> | null = setup;
 
   /**
    * Get or create store instance
@@ -126,11 +134,10 @@ export function defineStore<T>(id: string, setup: StoreSetup<T>, options?: Parti
 
     // Create new store instance
     let storeState: T;
-    let disposeRoot: () => void;
     const lifecycle = new LifecycleManager();
 
     // Create in reactive root for proper cleanup
-    disposeRoot = createRoot((dispose) => {
+    const disposeRoot = createRoot((dispose) => {
       // Get NetronClient
       const netron = getNetronClient();
 
@@ -181,9 +188,17 @@ export function defineStore<T>(id: string, setup: StoreSetup<T>, options?: Parti
       },
     };
 
-    // Cache instance
-    cached = { instance: storeState!, root: disposeRoot };
+    // Cache instance with lifecycle and dispose method
+    cached = {
+      instance: storeState!,
+      root: disposeRoot,
+      lifecycle,
+      dispose: instance.dispose,
+    };
     storeInstances.set(id, cached);
+
+    // Mark store as initialized
+    markStoreInitialized(id);
 
     // Trigger init lifecycle
     lifecycle.trigger('onStoreInit').catch((error) => {
@@ -196,9 +211,7 @@ export function defineStore<T>(id: string, setup: StoreSetup<T>, options?: Parti
   /**
    * Store factory function
    */
-  const factory = (() => {
-    return getStoreInstance();
-  }) as StoreFactory<T>;
+  const factory = (() => getStoreInstance()) as StoreFactory<T>;
 
   // Add factory metadata
   Object.defineProperty(factory, 'id', {
@@ -219,9 +232,15 @@ export function defineStore<T>(id: string, setup: StoreSetup<T>, options?: Parti
   factory.reset = () => {
     const cached = storeInstances.get(id);
     if (cached) {
+      // Trigger lifecycle destroy hooks
+      cached.lifecycle.trigger('onStoreDestroy').catch((error) => {
+        console.error(`Error in onStoreDestroy for store '${id}':`, error);
+      });
       // Dispose current instance
       cached.root();
       storeInstances.delete(id);
+      // Mark as uninitialized
+      markStoreUninitialized(id);
     }
     // Next access will create new instance
   };
@@ -231,10 +250,13 @@ export function defineStore<T>(id: string, setup: StoreSetup<T>, options?: Parti
    */
   factory.dispose = () => {
     const cached = storeInstances.get(id);
-    if (cached) {
-      cached.root();
-      storeInstances.delete(id);
-    }
+    if (!cached) return;
+
+    // Call the dispose method which triggers lifecycle hooks
+    cached.dispose();
+    storeInstances.delete(id);
+    // Mark as uninitialized
+    markStoreUninitialized(id);
   };
 
   // Register store in global registry
@@ -313,8 +335,6 @@ export function defineComputedStore<T>(
   return defineStore(
     id,
     (netron) => {
-      // Import here to avoid circular dependency
-      const { useStore } = require('./composition.js');
 
       // Get dependent stores
       const stores = dependencies.map((depId) => useStore(depId));
@@ -335,7 +355,8 @@ export function defineComputedStore<T>(
 export function clearAllStoreInstances(): void {
   for (const [id, cached] of storeInstances.entries()) {
     try {
-      cached.root();
+      cached.dispose();
+      markStoreUninitialized(id);
     } catch (error) {
       console.error(`Error disposing store '${id}':`, error);
     }

@@ -4,7 +4,7 @@
  */
 
 import { inject } from '../../di/index.js';
-import { signal, effect, onCleanup } from '../../core/index.js';
+import { signal, onCleanup } from '../../core/index.js';
 import { NetronClient } from '../client.js';
 import { getBackendName, getServiceName } from '../decorators/index.js';
 import type { Signal } from '../../core/reactivity/types.js';
@@ -295,16 +295,12 @@ export function useStream<TService, TMethod extends keyof TService, TData = any>
   /**
    * Get connection status
    */
-  const status = (): StreamStatus => {
-    return statusSignal();
-  };
+  const status = (): StreamStatus => statusSignal();
 
   /**
    * Check if reconnecting
    */
-  const isReconnecting = (): boolean => {
-    return isReconnectingSignal();
-  };
+  const isReconnecting = (): boolean => isReconnectingSignal();
 
   // Auto-connect by default (unless disabled)
   const shouldAutoConnect = options?.autoConnect !== false;

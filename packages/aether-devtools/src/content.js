@@ -120,7 +120,7 @@ function handleBackgroundMessage(message) {
     // Forward to page
     sendToPage({
       source: '__AETHER_DEVTOOLS__',
-      message: message
+      message
     });
   }
 }

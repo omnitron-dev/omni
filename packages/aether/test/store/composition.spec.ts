@@ -4,7 +4,6 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
-  registerStore,
   unregisterStore,
   getStoreFactory,
   hasStore,
@@ -22,7 +21,8 @@ import {
   composeStores,
 } from '../../src/store/composition.js';
 import { defineStore, clearAllStoreInstances } from '../../src/store/defineStore.js';
-import { signal, computed } from '../../src/core/reactivity/signal.js';
+import { signal } from '../../src/core/reactivity/signal.js';
+import { computed } from '../../src/core/reactivity/computed.js';
 import { NetronClient } from '../../src/netron/client.js';
 
 // Mock dependencies
@@ -178,34 +178,23 @@ describe('store composition', () => {
         return sum();
       });
 
-      // Access to track
+      // Access to establish tracking
       tracked();
+      expect(computeCount).toBe(1);
       computeCount = 0;
 
-      // Without batch: computed runs twice
-      x.set(1);
-      y.set(2);
-
-      const unbatchedCount = computeCount;
-
-      // Reset
-      x.set(0);
-      y.set(0);
-      computeCount = 0;
-
-      // With batch: computed runs once
+      // With batch: should trigger recomputation only once
       batch(() => {
         x.set(1);
         y.set(2);
       });
 
-      expect(computeCount).toBeLessThanOrEqual(unbatchedCount);
+      // After batch, tracked should have recomputed at most once
+      expect(computeCount).toBeLessThanOrEqual(1);
     });
 
     it('should return function result', () => {
-      const result = batch(() => {
-        return 42;
-      });
+      const result = batch(() => 42);
 
       expect(result).toBe(42);
     });
@@ -228,9 +217,7 @@ describe('store composition', () => {
       const derived = deriveStore(
         { user: 'user', settings: 'settings' },
         ({ user, settings }) => {
-          const display = computed(() => {
-            return `${user.name()} - ${settings.theme()}`;
-          });
+          const display = computed(() => `${user.name()} - ${settings.theme()}`);
           return { display };
         }
       );

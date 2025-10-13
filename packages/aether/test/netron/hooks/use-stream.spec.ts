@@ -5,8 +5,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useStream, useMultiStream, useBroadcast } from '../../../src/netron/hooks/use-stream.js';
 import { NetronClient } from '../../../src/netron/client.js';
-import { signal } from '../../../src/core/reactivity/signal.js';
-import type { StreamOptions } from '../../../src/netron/types.js';
 
 // Mock subscription
 class MockSubscription {
@@ -44,9 +42,9 @@ class MockSubscription {
 let currentMockSubscription: MockSubscription;
 
 const createMockBackend = () => ({
-  queryFluentInterface: vi.fn().mockImplementation(async () => {
+  queryFluentInterface: vi.fn().mockImplementation(async () => 
     // Return a proxy that handles any method call
-    return new Proxy({}, {
+     new Proxy({}, {
       get: (target, prop) => {
         // Don't intercept 'then' - this prevents the Proxy from being treated as a Promise
         if (prop === 'then') {
@@ -54,17 +52,15 @@ const createMockBackend = () => ({
         }
 
         // Return a function that returns a Promise resolving to a subscribable stream
-        return async (...args: any[]) => {
-          return {
+        return async (...args: any[]) => ({
             subscribe: (handlers: any) => {
               currentMockSubscription = new MockSubscription(handlers);
               return currentMockSubscription;
             },
-          };
-        };
+          });
       },
-    });
-  }),
+    })
+  ),
 });
 
 const mockNetronClient = {

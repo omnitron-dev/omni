@@ -2,8 +2,18 @@
  * @fileoverview Comprehensive tests for Outlet component
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { Outlet, createNamedOutlets, useOutlet, RouteContextSymbol } from '../../src/router/Outlet.js';
+import { describe, it, expect, vi } from 'vitest';
+import {
+  Outlet,
+  createNamedOutlets,
+  useOutlet,
+  RouteContextSymbol,
+  LayoutRoot,
+  LayoutHeader,
+  LayoutMain,
+  LayoutSidebar,
+  LayoutFooter
+} from '../../src/router/Outlet.js';
 import { signal } from '../../src/core/reactivity/signal.js';
 import type { RouteDefinition } from '../../src/router/types.js';
 
@@ -17,8 +27,8 @@ describe('Outlet component', () => {
     it('should render without route context', () => {
       const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-      const render = Outlet({});
-      const result = render();
+      // Outlet is a component, calling it runs setup and render immediately
+      const result = Outlet({});
 
       expect(result).toBeNull();
       expect(consoleSpy).toHaveBeenCalledWith(
@@ -261,8 +271,6 @@ describe('Outlet component', () => {
 
   describe('layout helpers', () => {
     it('should provide layout helper components', () => {
-      const { LayoutRoot, LayoutHeader, LayoutMain, LayoutSidebar, LayoutFooter } = require('../../src/router/Outlet.js');
-
       expect(LayoutRoot).toBeDefined();
       expect(LayoutHeader).toBeDefined();
       expect(LayoutMain).toBeDefined();

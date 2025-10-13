@@ -7,7 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createRecorder } from '../../src/devtools/recorder.js';
-import type { Recorder, HistoryEntry } from '../../src/devtools/types.js';
+import type { Recorder } from '../../src/devtools/types.js';
 
 describe('DevTools Recorder', () => {
   let recorder: Recorder;

@@ -2,7 +2,7 @@
  * @fileoverview Comprehensive tests for router data loading
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   defer,
   isDeferred,
@@ -13,9 +13,6 @@ import {
   setLoaderData,
   setActionData,
   setNavigationState,
-  useLoaderData,
-  useActionData,
-  useNavigation,
   useFetcher,
 } from '../../src/router/data.js';
 

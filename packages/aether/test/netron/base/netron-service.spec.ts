@@ -2,17 +2,15 @@
  * @fileoverview Comprehensive tests for NetronService base class
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { NetronService } from '../../../src/netron/base/netron-service.js';
-import { NetronClient } from '../../../src/netron/client.js';
-import { Backend, getBackendName } from '../../../src/netron/decorators/backend.js';
-import { Service, getServiceName } from '../../../src/netron/decorators/service.js';
+import { Backend } from '../../../src/netron/decorators/backend.js';
+import { Service } from '../../../src/netron/decorators/service.js';
 import { Injectable } from '../../../src/di/index.js';
 import type { QueryOptions, MutationOptions } from '../../../src/netron/types.js';
 
 // Mock NetronClient
-vi.mock('../../../src/netron/client.js', () => {
-  return {
+vi.mock('../../../src/netron/client.js', () => ({
     NetronClient: vi.fn().mockImplementation(() => ({
       backend: vi.fn().mockReturnValue({
         queryFluentInterface: vi.fn().mockResolvedValue({
@@ -26,8 +24,7 @@ vi.mock('../../../src/netron/client.js', () => {
       invalidate: vi.fn(),
       getCacheStats: vi.fn().mockReturnValue({ entries: 0, size: 0, hits: 0, misses: 0, hitRate: 0 }),
     })),
-  };
-});
+  }));
 
 // Mock DI inject
 vi.mock('../../../src/di/index.js', () => ({

@@ -40,7 +40,9 @@ import { context } from './context.js';
  * made within the batch function are applied atomically, and dependent computations
  * and effects only run once after all updates complete.
  *
+ * @template T - Return type of the function
  * @param fn - Function containing signal updates to batch
+ * @returns The return value of the function
  *
  * @example
  * ```typescript
@@ -59,10 +61,11 @@ import { context } from './context.js';
  * y.set(1);  // computeCount = 3
  *
  * // With batch: effect runs once
- * batch(() => {
+ * const result = batch(() => {
  *   x.set(2);
  *   y.set(2);
- * }); // computeCount = 4 (only +1)
+ *   return 42;
+ * }); // computeCount = 4 (only +1), result = 42
  * ```
  *
  * Performance:
@@ -71,8 +74,12 @@ import { context } from './context.js';
  * - Optimization: Reduces redundant recomputations by factor of N (number of updates)
  * - Use case: Essential for performance when updating multiple related signals
  */
-export function batch(fn: () => void): void {
-  context.batch(fn);
+export function batch<T>(fn: () => T): T {
+  let result: T;
+  context.batch(() => {
+    result = fn();
+  });
+  return result!;
 }
 
 /**

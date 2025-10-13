@@ -95,6 +95,7 @@ export async function generateStaticSite(
 
           return { route, success: true };
         } catch (error) {
+          // Log the error explicitly
           console.error(`  ✗ ${route}:`, error);
           return { route, success: false, error: error as Error };
         }
@@ -270,11 +271,11 @@ export async function revalidate(
   }
 
   // Check if revalidation is needed
-  if (cached.revalidate) {
+  if (cached.revalidate !== undefined) {
     const age = Date.now() - cached.timestamp;
     const maxAge = cached.revalidate * 1000;
 
-    if (age > maxAge) {
+    if (age >= maxAge) {
       // Regenerate in background
       generateRoute(component, route, outDir, '/', {
         isr: true,
@@ -295,7 +296,7 @@ export async function revalidate(
  */
 function routeToFilePath(route: string, outDir: string): string {
   // Normalize route
-  let normalized = route.replace(/^\/+/, '').replace(/\/+$/, '');
+  const normalized = route.replace(/^\/+/, '').replace(/\/+$/, '');
 
   // Index routes
   if (!normalized || normalized === 'index') {

@@ -26,9 +26,7 @@ describe('auto-loader execution', () => {
 
   describe('loader execution', () => {
     it('should execute loader with context', async () => {
-      const loader = vi.fn(async (ctx: LoaderContext) => {
-        return { data: 'loaded', params: ctx.params };
-      });
+      const loader = vi.fn(async (ctx: LoaderContext) => ({ data: 'loaded', params: ctx.params }));
 
       const context: LoaderContext = {
         ...baseContext,
@@ -79,12 +77,10 @@ describe('auto-loader execution', () => {
         params: { userId: '123', postId: '456' },
       };
 
-      const loader = async (ctx: LoaderContext) => {
-        return {
+      const loader = async (ctx: LoaderContext) => ({
           user: await ctx.netron.query('users', 'get', [ctx.params.userId]),
           post: await ctx.netron.query('posts', 'get', [ctx.params.postId]),
-        };
-      };
+        });
 
       const result = await executeLoader(loader, context);
 
@@ -196,14 +192,12 @@ describe('auto-loader execution', () => {
     });
 
     it('should allow mixing sync and deferred data', async () => {
-      const loader = async () => {
-        return {
+      const loader = async () => ({
           syncData: { value: 'immediate' },
           deferredData: defer(
             new Promise(resolve => setTimeout(() => resolve({ value: 'deferred' }), 10))
           ),
-        };
-      };
+        });
 
       const result = await executeLoader(loader, baseContext);
 
@@ -266,10 +260,10 @@ describe('auto-loader execution', () => {
         return parentData;
       };
 
-      const childLoader = async () => {
+      const childLoader = async () => 
         // In a real implementation, parent data would be available
-        return { userId: parentData?.userId };
-      };
+         ({ userId: parentData?.userId })
+      ;
 
       const loaders = [
         { key: 'parent', loader: parentLoader },
@@ -294,9 +288,7 @@ describe('auto-loader execution', () => {
     it('should handle netron query failure', async () => {
       mockNetron.query.mockRejectedValue(new Error('Network error'));
 
-      const loader = async (ctx: LoaderContext) => {
-        return await ctx.netron.query('users', 'getAll', []);
-      };
+      const loader = async (ctx: LoaderContext) => await ctx.netron.query('users', 'getAll', []);
 
       await expect(executeLoader(loader, baseContext)).rejects.toThrow('Network error');
     });
@@ -336,10 +328,10 @@ describe('auto-loader execution', () => {
         { key: 'user', loader: async () => ({ id: '123', name: 'John' }) },
         {
           key: 'posts',
-          loader: async () => {
+          loader: async () => 
             // In real implementation, would access user from previous loader
-            return [{ userId: '123', title: 'Post' }];
-          },
+             [{ userId: '123', title: 'Post' }]
+          ,
         },
       ];
 

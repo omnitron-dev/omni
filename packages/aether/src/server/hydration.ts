@@ -76,7 +76,7 @@ export function hydrate(
 
   // Load islands if enabled
   if (islands) {
-    const islandMarkers = loadIslandMarkers();
+    const islandMarkers = loadIslandMarkers(container);
     for (const marker of islandMarkers) {
       hydrationState.islands.set(marker.id, marker);
     }
@@ -244,6 +244,28 @@ function hydrateNode(
     return;
   }
 
+  // If islands are enabled, check children for islands and hydrate them
+  if (hydrationState.islands.size > 0) {
+    const children = Array.from((element as any).children || []);
+    let hasIslands = false;
+
+    for (const child of children) {
+      const childIslandId = (child as HTMLElement).getAttribute?.('data-island');
+      if (childIslandId && hydrationState.islands.has(childIslandId)) {
+        hydrateIsland(childIslandId, child as HTMLElement, onMismatch);
+        hasIslands = true;
+      }
+    }
+
+    // If we found islands, we're in island architecture mode
+    // Don't reconcile the parent component, just mark as hydrated
+    if (hasIslands) {
+      const path = getElementPath(element);
+      hydrationState.hydrated.add(path);
+      return;
+    }
+  }
+
   // Execute component to get VNode/DOM
   const result = typeof component === 'function' ? component({}) : component;
 
@@ -391,14 +413,14 @@ function loadServerState(serverState: Record<string, any>): void {
 /**
  * Load island markers from DOM
  */
-function loadIslandMarkers(): IslandMarker[] {
+function loadIslandMarkers(container: HTMLElement): IslandMarker[] {
   const markers: IslandMarker[] = [];
-  const islands = document.querySelectorAll('[data-island]');
 
-  islands.forEach((island) => {
-    const id = island.getAttribute('data-island');
-    const component = island.getAttribute('data-component');
-    const propsAttr = island.getAttribute('data-props');
+  // Helper to extract marker from element
+  const extractMarker = (island: HTMLElement | Element) => {
+    const id = island.getAttribute?.('data-island');
+    const component = island.getAttribute?.('data-component');
+    const propsAttr = island.getAttribute?.('data-props');
 
     if (id && component) {
       markers.push({
@@ -408,7 +430,26 @@ function loadIslandMarkers(): IslandMarker[] {
         strategy: 'idle',
       });
     }
-  });
+  };
+
+  // Try querySelectorAll first (real DOM)
+  if (typeof (container as any).querySelectorAll === 'function') {
+    const islands = container.querySelectorAll('[data-island]');
+    islands.forEach(extractMarker);
+  } else {
+    // Fallback for mock/test environments - scan children
+    const scanChildren = (el: any) => {
+      if (el.getAttribute?.('data-island')) {
+        extractMarker(el);
+      }
+      if (el.children) {
+        for (const child of el.children) {
+          scanChildren(child);
+        }
+      }
+    };
+    scanChildren(container);
+  }
 
   return markers;
 }
@@ -500,11 +541,17 @@ function getRegisteredComponent(name: string): any {
  * Render component (fallback for hydration failure)
  */
 function renderComponent(component: any, container: HTMLElement): void {
-  const result = typeof component === 'function' ? component({}) : component;
+  try {
+    const result = typeof component === 'function' ? component({}) : component;
 
-  if (typeof result === 'object' && 'nodeType' in result) {
-    container.appendChild(result);
-  } else if (typeof result === 'string') {
-    container.textContent = result;
+    if (typeof result === 'object' && 'nodeType' in result) {
+      container.appendChild(result);
+    } else if (typeof result === 'string') {
+      container.textContent = result;
+    }
+  } catch (error) {
+    // If even the fallback fails, just clear the container
+    console.error('Client render fallback failed:', error);
+    container.textContent = '';
   }
 }

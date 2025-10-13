@@ -12,7 +12,6 @@ import {
   useProfiler,
   useTimeTravel,
   withDevTools,
-  debugSignal,
   logDevToolsState,
   exportDevToolsState,
   setGlobalDevTools,
@@ -340,9 +339,7 @@ describe('DevTools Hooks', () => {
 
       setGlobalDevTools(inspector, profiler, recorder);
 
-      const TestComponent = (props: { count: number }) => {
-        return `Count: ${props.count}`;
-      };
+      const TestComponent = (props: { count: number }) => `Count: ${props.count}`;
 
       const WrappedComponent = withDevTools(TestComponent, {
         name: 'TestComponent',

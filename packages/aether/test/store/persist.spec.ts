@@ -413,9 +413,7 @@ describe('persist', () => {
     });
 
     it('should use custom deserialize function', async () => {
-      const deserialize = vi.fn((value) => {
-        return parseInt(value.replace('custom:', ''), 10);
-      });
+      const deserialize = vi.fn((value) => parseInt(value.replace('custom:', ''), 10));
 
       storage.set('count', 'custom:42');
 

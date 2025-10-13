@@ -2,7 +2,7 @@
  * @fileoverview Comprehensive tests for Backend decorator
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { Backend, getBackendName } from '../../../src/netron/decorators/backend.js';
 import { NETRON_METADATA } from '../../../src/netron/tokens.js';
 

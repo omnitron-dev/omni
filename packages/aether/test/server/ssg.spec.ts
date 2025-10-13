@@ -13,7 +13,6 @@ import {
   getISRCacheStats,
 } from '../../src/server/ssg.js';
 import * as fs from 'node:fs';
-import * as path from 'node:path';
 
 // Mock filesystem
 vi.mock('node:fs', async () => {
@@ -113,6 +112,11 @@ describe('Static Site Generation', () => {
       const Component = () => {
         throw new Error('Render error');
       };
+
+      // Get the mocked renderToString and make it reject for this test
+      const ssrModule = await import('../../src/server/ssr.js');
+      const mockRenderToString = ssrModule.renderToString as any;
+      mockRenderToString.mockRejectedValueOnce(new Error('Render error'));
 
       const consoleError = vi.spyOn(console, 'error').mockImplementation();
       const consoleLog = vi.spyOn(console, 'log').mockImplementation();
@@ -529,6 +533,12 @@ describe('Static Site Generation', () => {
 
     it('should create nested directories for paths', async () => {
       const Component = () => 'Page';
+
+      // Mock access to reject for the nested directory (not the outDir itself)
+      // This will cause ensureDir to be called for the nested path
+      const accessMock = fs.promises.access as any;
+      accessMock.mockResolvedValueOnce(undefined); // outDir exists
+      accessMock.mockRejectedValueOnce(new Error('Directory does not exist')); // nested dir doesn't exist
 
       await generateStaticSite(Component, {
         routes: ['/blog/post-1'],

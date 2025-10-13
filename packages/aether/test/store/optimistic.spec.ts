@@ -149,9 +149,7 @@ describe('optimistic', () => {
       const state = signal({ version: 1 });
 
       const mutation = optimistic(
-        async () => {
-          return { version: 2, data: 'server' };
-        },
+        async () => ({ version: 2, data: 'server' }),
         {
           update: () => state.set({ version: 2 }),
           rollback: (snapshot) => state.set(snapshot),
@@ -210,8 +208,8 @@ describe('optimistic', () => {
 
       const promise = mutation();
 
-      // Advance timers for retries
-      vi.advanceTimersByTime(1000);
+      // Advance timers for retries with promise flushing
+      await vi.advanceTimersByTimeAsync(1000);
 
       await promise;
 
@@ -243,11 +241,9 @@ describe('optimistic', () => {
 
       const promise = mutation();
 
-      // Advance timers progressively
-      vi.advanceTimersByTime(100); // First retry
-      await Promise.resolve();
-      vi.advanceTimersByTime(200); // Second retry
-      await Promise.resolve();
+      // Advance timers progressively with async to flush promises
+      await vi.advanceTimersByTimeAsync(100); // First retry
+      await vi.advanceTimersByTimeAsync(200); // Second retry
 
       await promise;
 
@@ -279,7 +275,7 @@ describe('optimistic', () => {
 
       const promise = mutation();
 
-      vi.advanceTimersByTime(1500);
+      await vi.advanceTimersByTimeAsync(1500);
       await promise;
 
       expect(delayFn).toHaveBeenCalled();
@@ -306,10 +302,16 @@ describe('optimistic', () => {
       );
 
       const promise = mutation();
+      // Add a rejection handler immediately to prevent unhandled rejection warning
+      promise.catch(() => {});
+
       expect(state()).toBe(42);
 
-      vi.advanceTimersByTime(5000);
-      await expect(promise).rejects.toThrow();
+      // Advance timers and handle the rejection properly
+      await vi.advanceTimersByTimeAsync(5000);
+
+      // Expect the promise to reject
+      await expect(promise).rejects.toThrow('Always fails');
 
       expect(attempts).toBe(3);
       expect(state()).toBe(0);

@@ -113,9 +113,7 @@ export function useMutation<
   /**
    * Mutate function that returns promise
    */
-  const mutate = async (variables: TVariables): Promise<TData> => {
-    return executeMutation(variables);
-  };
+  const mutate = async (variables: TVariables): Promise<TData> => executeMutation(variables);
 
   /**
    * Async mutate function that doesn't return promise

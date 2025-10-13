@@ -97,13 +97,20 @@ export interface OutletProps {
  * ```
  */
 export const Outlet = defineComponent<OutletProps>((props = {}) => {
-  const routeContext = useRouteContext();
   const outletName = () => props.name || 'default';
 
   // Track component loading state
   const loading = signal(false);
   const error = signal<Error | null>(null);
   const childComponent = signal<any>(null);
+
+  // Get route context (may be null)
+  let routeContext: RouteContext | null = null;
+  try {
+    routeContext = useRouteContext();
+  } catch {
+    // No context available - will be handled in render
+  }
 
   // Compute the child route to render
   const childRoute = computed(() => {
@@ -276,7 +283,12 @@ export function useOutlet(): {
   query: Record<string, string>;
   data: any;
 } {
-  const context = useRouteContext();
+  let context: RouteContext | null = null;
+  try {
+    context = useRouteContext();
+  } catch {
+    // No context available
+  }
 
   if (!context) {
     return {
@@ -300,49 +312,39 @@ export function useOutlet(): {
 /**
  * Root layout wrapper
  */
-export const LayoutRoot = defineComponent<{ class?: string; children?: any }>((props) => {
-  return () => jsx('div', {
+export const LayoutRoot = defineComponent<{ class?: string; children?: any }>((props) => () => jsx('div', {
     class: ['layout-root', props.class].filter(Boolean).join(' '),
     children: props.children
-  });
-});
+  }));
 
 /**
  * Layout header
  */
-export const LayoutHeader = defineComponent<{ class?: string; children?: any }>((props) => {
-  return () => jsx('header', {
+export const LayoutHeader = defineComponent<{ class?: string; children?: any }>((props) => () => jsx('header', {
     class: ['layout-header', props.class].filter(Boolean).join(' '),
     children: props.children
-  });
-});
+  }));
 
 /**
  * Layout main content area
  */
-export const LayoutMain = defineComponent<{ class?: string; children?: any }>((props) => {
-  return () => jsx('main', {
+export const LayoutMain = defineComponent<{ class?: string; children?: any }>((props) => () => jsx('main', {
     class: ['layout-main', props.class].filter(Boolean).join(' '),
     children: props.children
-  });
-});
+  }));
 
 /**
  * Layout sidebar
  */
-export const LayoutSidebar = defineComponent<{ class?: string; children?: any }>((props) => {
-  return () => jsx('aside', {
+export const LayoutSidebar = defineComponent<{ class?: string; children?: any }>((props) => () => jsx('aside', {
     class: ['layout-sidebar', props.class].filter(Boolean).join(' '),
     children: props.children
-  });
-});
+  }));
 
 /**
  * Layout footer
  */
-export const LayoutFooter = defineComponent<{ class?: string; children?: any }>((props) => {
-  return () => jsx('footer', {
+export const LayoutFooter = defineComponent<{ class?: string; children?: any }>((props) => () => jsx('footer', {
     class: ['layout-footer', props.class].filter(Boolean).join(' '),
     children: props.children
-  });
-});
+  }));

@@ -15,7 +15,7 @@ import {
   createTwitterCardTags,
   createJSONLD,
 } from '../../src/server/meta.js';
-import type { HeadContext, MetaTags } from '../../src/server/types.js';
+import type { HeadContext } from '../../src/server/types.js';
 
 // Mock DOM environment for client-side tests
 const createMockDocument = () => {
@@ -27,8 +27,7 @@ const createMockDocument = () => {
   return {
     head,
     title: '',
-    querySelector: vi.fn((selector: string) => {
-      return elements.find((el) => {
+    querySelector: vi.fn((selector: string) => elements.find((el) => {
         if (selector.includes('name=')) {
           const match = selector.match(/name="([^"]+)"/);
           return match && el.getAttribute('name') === match[1];
@@ -42,8 +41,7 @@ const createMockDocument = () => {
           return match && el.rel === match[1];
         }
         return false;
-      });
-    }),
+      })),
     createElement: vi.fn((tagName: string) => {
       const element = {
         tagName: tagName.toUpperCase(),

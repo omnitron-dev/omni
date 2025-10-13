@@ -224,8 +224,8 @@ export function optimisticSignal<T, TArgs extends any[], TResult>(
   return optimistic(mutationFn, {
     update: (...args: TArgs) => {
       const current = targetSignal.peek();
-      const optimistic = optimisticUpdate(current, ...args);
-      targetSignal.set(optimistic);
+      const optimisticValue = optimisticUpdate(current, ...args);
+      targetSignal.set(optimisticValue);
     },
     rollback: (snapshot: T) => {
       targetSignal.set(snapshot);
@@ -318,6 +318,9 @@ export function optimisticArray<T, TArgs extends any[], TResult>(
           arraySignal.set(current.filter((item) => item[idField] !== id));
           break;
         }
+
+        default:
+          throw new Error(`Unknown operation: ${operation}`);
       }
     },
     rollback: (snapshot: T[]) => {

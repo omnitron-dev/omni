@@ -7,7 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createInspector } from '../../src/devtools/inspector.js';
-import type { Inspector, SignalMetadata, ComputedMetadata, EffectMetadata } from '../../src/devtools/types.js';
+import type { Inspector, ComputedMetadata, EffectMetadata } from '../../src/devtools/types.js';
 
 // Helper to create mock signals
 function createMockSignal(value: any): any {

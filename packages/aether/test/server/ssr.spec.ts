@@ -46,9 +46,7 @@ describe('SSR Engine', () => {
 
     it('should handle complex nested components', async () => {
       const Child = (props: { text: string }) => `<span>${props.text}</span>`;
-      const Parent = () => {
-        return `<div>${Child({ text: 'Child 1' })}${Child({ text: 'Child 2' })}</div>`;
-      };
+      const Parent = () => `<div>${Child({ text: 'Child 1' })}${Child({ text: 'Child 2' })}</div>`;
 
       const result = await renderToString(Parent);
 
@@ -289,14 +287,12 @@ describe('SSR Engine', () => {
 
   describe('Island Architecture', () => {
     it('should detect interactive components', async () => {
-      const InteractiveComponent = (props: { onClick: () => void }) => {
-        return '<button>Click Me</button>';
-      };
+      const InteractiveComponent = (props: { onClick: () => void }) => '<button>Click Me</button>';
       InteractiveComponent.__island = true;
 
       const result = await renderToString(
-        () => InteractiveComponent({ onClick: () => {} }),
-        { islands: true }
+        InteractiveComponent,
+        { islands: true, props: { onClick: () => {} } }
       );
 
       expect(result.islands).toBeDefined();

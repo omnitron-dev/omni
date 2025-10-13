@@ -175,8 +175,11 @@ export function createCachedResource<T>(
 
   /**
    * Mutate local data (optimistic update)
+   *
+   * CRITICAL: This updates the resource synchronously for immediate UI updates.
+   * We update both the cache and the resource signal synchronously.
    */
-  async function mutate(updater: T | ((prev: T | undefined) => T)): Promise<void> {
+  function mutate(updater: T | ((prev: T | undefined) => T)): Promise<void> {
     const current = baseResource();
 
     const newData = typeof updater === 'function'
@@ -189,9 +192,12 @@ export function createCachedResource<T>(
     cache.set(currentKey, newData, ttl);
     cacheKey = currentKey;
 
-    // Trigger refetch to update resource signal with the cached data
-    // This will read from cache immediately since we just set it
-    await baseResource.refetch();
+    // Update the resource signal directly (synchronous!)
+    // This makes the new data available immediately to the UI
+    baseResource.mutate(newData);
+
+    // Return a resolved promise for API compatibility
+    return Promise.resolve();
   }
 
   /**

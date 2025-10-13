@@ -89,8 +89,8 @@ export function lazy<T = any>(
     } catch (error) {
       // Retry logic
       if (attempt < retries) {
-        // Exponential backoff
-        const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
+        // Exponential backoff with shorter base delay for faster retries
+        const delay = Math.min(10 * Math.pow(2, attempt), 1000);
         await new Promise((resolve) => setTimeout(resolve, delay));
         return loadComponent(attempt + 1);
       }

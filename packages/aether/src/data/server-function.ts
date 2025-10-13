@@ -71,24 +71,41 @@ export function serverFunction<TArgs extends any[], TReturn>(
     attempt = 0
   ): Promise<TReturn> {
     try {
-      // Create timeout promise
+      // Create timeout promise with cleanup
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(
+        timeoutId = setTimeout(
           () => reject(new Error(`Server function timeout after ${opts.timeout}ms`)),
           opts.timeout
         );
       });
 
-      // Race between function execution and timeout
-      const result = await Promise.race([
-        fn(...args),
-        timeoutPromise,
-      ]);
+      try {
+        // Race between function execution and timeout
+        const result = await Promise.race([
+          fn(...args),
+          timeoutPromise,
+        ]);
 
-      return result;
+        // Clear timeout if function completed first
+        if (timeoutId !== undefined) {
+          clearTimeout(timeoutId);
+        }
+
+        return result;
+      } catch (error) {
+        // Clear timeout on error
+        if (timeoutId !== undefined) {
+          clearTimeout(timeoutId);
+        }
+        throw error;
+      }
     } catch (error) {
       // Check if we should retry
       const { maxRetries = 0, delay = 1000, backoff = 2 } = opts.retry;
+
+      // Retry if attempt count is less than maxRetries
+      // attempt 0 = initial try, attempt 1 = first retry, etc.
       if (attempt < maxRetries) {
         // Calculate delay with exponential backoff
         const retryDelay = delay * Math.pow(backoff, attempt);

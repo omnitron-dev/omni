@@ -237,25 +237,35 @@ export function Boundary(props: {
     suspenseTimeout,
   } = props;
 
-  // Compose ErrorBoundary and Suspense
+  // Create components outside to avoid re-instantiation
+  const suspense = Suspense({
+    fallback,
+    onSuspend,
+    onResolve,
+    timeout: suspenseTimeout,
+    children,
+  });
+
   const errorBoundary = ErrorBoundary({
     fallback: errorFallback,
     onError,
     children: () => {
-      const suspense = Suspense({
-        fallback,
-        onSuspend,
-        onResolve,
-        timeout: suspenseTimeout,
-        children,
-      });
       // Suspense returns setup function, call it to get render function
-      return suspense();
+      const suspenseRenderFn = suspense();
+      // Call the suspense render function to execute and catch any errors
+      return suspenseRenderFn();
     },
   });
 
-  // ErrorBoundary returns setup function, so return it directly
-  return errorBoundary;
+  // Return setup function that returns wrapper that returns render function
+  return () => {
+    // ErrorBoundary returns setup function, call it to get render function
+    const errorBoundaryRenderFn = errorBoundary();
+
+    // Return wrapper function that returns the error boundary render function
+    // This adds the extra layer needed for Boundary
+    return () => errorBoundaryRenderFn;
+  };
 }
 
 /**

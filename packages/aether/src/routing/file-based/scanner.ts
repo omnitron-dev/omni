@@ -226,14 +226,18 @@ export function scanRouteFiles(files: string[], conventions = DEFAULT_CONVENTION
 
     let fileType = getFileType(fileName, conventions);
 
-    // Skip files that don't match any known pattern and aren't API routes
-    if (!fileType && !isApi) {
-      continue;
-    }
-
-    // If it's an API route without a specific type, mark it as 'api'
-    if (!fileType && isApi) {
-      fileType = 'api';
+    // If no specific file type found, treat as page component
+    // This handles files like about.tsx, login.tsx, etc.
+    if (!fileType) {
+      if (isApi) {
+        fileType = 'api';
+      } else if (fileName.match(/\.(tsx|jsx)$/)) {
+        // .tsx or .jsx files without specific patterns are page components
+        fileType = 'page';
+      } else {
+        // .ts or .js files without specific patterns might be loaders/actions
+        continue;
+      }
     }
 
     // Extract route group information

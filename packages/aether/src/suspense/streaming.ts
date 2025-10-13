@@ -18,12 +18,14 @@ import type {
 export function createSSRSuspenseContext(): SSRSuspenseContext {
   const boundaries = new Map<string, SuspenseBoundaryMarker>();
   const completed = new Set<string>();
-  let pending = 0;
+  let pendingCount = 0;
 
-  return {
+  const context: SSRSuspenseContext = {
     boundaries,
     completed,
-    pending,
+    get pending() {
+      return pendingCount;
+    },
 
     registerBoundary(id: string, promise: Promise<string>) {
       const marker: SuspenseBoundaryMarker = {
@@ -33,20 +35,20 @@ export function createSSRSuspenseContext(): SSRSuspenseContext {
       };
 
       boundaries.set(id, marker);
-      pending++;
+      pendingCount++;
 
       promise
         .then((html) => {
           marker.resolved = true;
           marker.html = html;
           completed.add(id);
-          pending--;
+          pendingCount--;
         })
         .catch((error) => {
           marker.resolved = true;
           marker.error = error;
           completed.add(id);
-          pending--;
+          pendingCount--;
         });
     },
 
@@ -56,7 +58,7 @@ export function createSSRSuspenseContext(): SSRSuspenseContext {
         marker.resolved = true;
         marker.html = html;
         completed.add(id);
-        pending--;
+        pendingCount--;
       }
     },
 
@@ -66,10 +68,12 @@ export function createSSRSuspenseContext(): SSRSuspenseContext {
         marker.resolved = true;
         marker.error = error;
         completed.add(id);
-        pending--;
+        pendingCount--;
       }
     },
   };
+
+  return context;
 }
 
 /**

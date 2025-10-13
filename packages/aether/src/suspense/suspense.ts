@@ -182,22 +182,24 @@ export function Suspense(props: SuspenseProps): any {
       // Get current state
       const state = context.state;
 
-      // If already in pending or error state, handle immediately
+      // If already in pending state, return fallback immediately
       if (state === 'pending') {
         suspenseContextStack.pop();
         return typeof fallback === 'function' ? fallback() : fallback || null;
-      } else if (state === 'error') {
-        suspenseContextStack.pop();
-        const error = errorSignal();
-        if (error) {
-          throw error;
-        }
-        return null;
       }
+      // Note: We don't check for error state here because we want to let children
+      // throw their own errors which can be caught by error boundaries
 
       // State is resolved, try to render children
       try {
-        const result = typeof children === 'function' ? children() : children;
+        let result = typeof children === 'function' ? children() : children;
+
+        // If result is a function (like another component's setup function), call it
+        // This handles nested components like nested Suspense
+        if (typeof result === 'function') {
+          result = result();
+        }
+
         childrenCache.set(result);
         suspenseContextStack.pop();
         return result;
@@ -333,15 +335,20 @@ export function useSuspense<T>(fetcher: () => Promise<T>): () => T {
  * ```
  */
 export function createSuspenseResource<T>(fetcher: () => Promise<T>): () => T {
-  const cache = signal<{ status: 'pending' | 'resolved' | 'error'; value?: T; error?: Error }>({
+  const cache = signal<{
+    status: 'pending' | 'resolved' | 'error';
+    value?: T;
+    error?: Error;
+    promise?: Promise<T>;
+  }>({
     status: 'pending',
   });
 
   // Create effect to track dependencies and refetch
   effect(() => {
-    cache.set({ status: 'pending' });
-
     const promise = fetcher();
+
+    cache.set({ status: 'pending', promise });
 
     promise
       .then((value) => {
@@ -356,9 +363,12 @@ export function createSuspenseResource<T>(fetcher: () => Promise<T>): () => T {
     const entry = cache();
 
     if (entry.status === 'pending') {
-      // Need to get the promise - recreate or cache it
-      const promise = fetcher();
-      suspend(promise);
+      // Use the cached promise from the effect
+      if (entry.promise) {
+        suspend(entry.promise);
+      }
+      // This shouldn't happen, but return undefined as fallback
+      return undefined as T;
     } else if (entry.status === 'error') {
       throw entry.error;
     }

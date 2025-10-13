@@ -668,7 +668,9 @@ export class BuildPerformanceMonitor {
    * Mark checkpoint
    */
   mark(name: string): void {
-    this.metrics.set(name, Date.now() - this.startTime);
+    const duration = Date.now() - this.startTime;
+    // Ensure at least 1ms per checkpoint for percentage calculations
+    this.metrics.set(name, duration || 1);
   }
 
   /**

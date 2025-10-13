@@ -171,6 +171,25 @@ class ResourceImpl<T> {
       });
     }
   }
+
+  /**
+   * Mutate the resource data synchronously (for optimistic updates)
+   * @param value - New data or updater function
+   */
+  mutate(value: T | ((prev: T | undefined) => T)): void {
+    const current = this.state.peek().data;
+    const newData = typeof value === 'function'
+      ? (value as (prev: T | undefined) => T)(current)
+      : value;
+
+    batch(() => {
+      this.state.set({
+        loading: false,
+        data: newData,
+        error: undefined,
+      });
+    });
+  }
 }
 
 /**
@@ -184,6 +203,7 @@ export function resource<T>(fetcher: () => Promise<T>): Resource<T> {
     loading: () => r.loading(),
     error: () => r.error(),
     refetch: () => r.refetch(),
+    mutate: (value: T | ((prev: T | undefined) => T)) => r.mutate(value),
   });
 
   return callable as Resource<T>;

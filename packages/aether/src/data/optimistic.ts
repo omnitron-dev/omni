@@ -57,7 +57,7 @@ export async function optimisticUpdate<T, TResult = void>(
 ): Promise<TResult> {
   const {
     optimisticData,
-    revalidate = true,
+    revalidate = false,  // Don't revalidate by default - let caller control when to refetch
     rollbackOnError = true,
     onError,
   } = options;
@@ -71,6 +71,8 @@ export async function optimisticUpdate<T, TResult = void>(
       ? (optimisticData as (prev: T | undefined) => T)(previousData)
       : optimisticData;
 
+  // Apply the optimistic update
+  // We await this to ensure the resource signal is updated before the mutation runs
   await resource.mutate(newData);
 
   try {
@@ -195,7 +197,8 @@ export function applyOptimisticUpdate<T>(
       ? (optimisticData as (prev: T | undefined) => T)(previousData)
       : optimisticData;
 
-  // Apply mutation (fire and forget for immediate UI update)
+  // Apply mutation in background (don't await - return control methods immediately)
+  // The mutate() call will update the cache synchronously, then trigger async refetch
   resource.mutate(newData);
 
   // Return control methods

@@ -16,19 +16,25 @@
 
 import { jsx } from '../jsx-runtime.js';
 import { defineComponent } from '../core/component/index.js';
-import { signal } from '../core/reactivity/index.js';
+import { signal, type WritableSignal } from '../core/reactivity/index.js';
 import { onMount } from '../core/component/lifecycle.js';
+import { useControlledState } from '../utils/controlled-state.js';
 
 export interface TextareaProps {
   /**
-   * Textarea value
+   * Controlled value (supports WritableSignal for reactive updates - Pattern 19)
    */
-  value?: string;
+  value?: WritableSignal<string> | string;
 
   /**
    * Default value (uncontrolled)
    */
   defaultValue?: string;
+
+  /**
+   * Value change handler
+   */
+  onValueChange?: (value: string) => void;
 
   /**
    * Placeholder text
@@ -150,6 +156,12 @@ export interface TextareaProps {
  * - Controlled and uncontrolled modes
  */
 export const Textarea = defineComponent<TextareaProps>((props) => {
+  const [getValue, setValue] = useControlledState(
+    props.value,
+    props.defaultValue ?? '',
+    props.onValueChange
+  );
+
   const textareaRef = signal<HTMLTextAreaElement | null>(null);
 
   const adjustHeight = (element: HTMLTextAreaElement) => {
@@ -188,12 +200,15 @@ export const Textarea = defineComponent<TextareaProps>((props) => {
     const target = e.target as HTMLTextAreaElement;
     const value = target.value;
 
+    // Update controlled state
+    setValue(value);
+
     // Auto-resize if enabled
     if (props.autoResize) {
       adjustHeight(target);
     }
 
-    // Call both onInput and onChange for compatibility
+    // Call legacy handlers for compatibility
     props.onInput?.(value);
     props.onChange?.(value);
   };
@@ -226,6 +241,7 @@ export const Textarea = defineComponent<TextareaProps>((props) => {
     const {
       value,
       defaultValue,
+      onValueChange,
       placeholder,
       disabled,
       readOnly,
@@ -249,8 +265,7 @@ export const Textarea = defineComponent<TextareaProps>((props) => {
     return jsx('textarea', {
       ...restProps,
       ref: handleRef as any,
-      value,
-      defaultValue,
+      value: getValue(),
       placeholder,
       disabled,
       readOnly,

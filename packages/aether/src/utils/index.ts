@@ -78,3 +78,6 @@ export {
   draggable,
 } from './directive.js';
 export type { DirectiveFunction, DirectiveWithUpdate, DirectiveResult } from './directive.js';
+
+// Controlled state utilities (Pattern 19 support)
+export { useControlledState, useControlledBooleanState, isSignal } from './controlled-state.js';

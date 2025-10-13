@@ -13,6 +13,7 @@ import { createContext, useContext, provideContext } from '../core/component/con
 import { effect } from '../core/reactivity/effect.js';
 import { jsx } from '../jsx-runtime.js';
 import { generateId } from './utils/index.js';
+import { useControlledState } from '../utils/controlled-state.js';
 
 /**
  * Accordion context
@@ -90,8 +91,9 @@ export interface AccordionSingleProps {
 
   /**
    * Controlled active item value
+   * Pattern 19: Accepts WritableSignal<string | undefined> | string | undefined
    */
-  value?: WritableSignal<string | undefined>;
+  value?: WritableSignal<string | undefined> | string;
 
   /**
    * Initial active item value
@@ -142,8 +144,9 @@ export interface AccordionMultipleProps {
 
   /**
    * Controlled active items value
+   * Pattern 19: Accepts WritableSignal<string[]> | string[]
    */
-  value?: WritableSignal<string[]>;
+  value?: WritableSignal<string[]> | string[];
 
   /**
    * Initial active items value
@@ -197,13 +200,23 @@ export type AccordionProps = AccordionSingleProps | AccordionMultipleProps;
  * ```
  */
 export const Accordion = defineComponent<AccordionProps>((props) => {
-  // CRITICAL: Create valueSignal FIRST, before accessing children
-  const defaultValForSignal =
-    props.type === 'single'
-      ? (props as AccordionSingleProps).defaultValue
-      : ((props as AccordionMultipleProps).defaultValue ?? []);
+  // Pattern 19: Use useControlledState for flexible value handling
+  // Handle both single and multiple modes
+  const isSingleMode = props.type === 'single';
 
-  const valueSignal = props.value || signal<string | string[] | undefined>(defaultValForSignal);
+  const defaultValue = isSingleMode
+    ? ((props as AccordionSingleProps).defaultValue ?? undefined)
+    : ((props as AccordionMultipleProps).defaultValue ?? []);
+
+  const onValueChange = isSingleMode
+    ? (props as AccordionSingleProps).onValueChange
+    : (props as AccordionMultipleProps).onValueChange;
+
+  const [getValue, setValue] = useControlledState(
+    props.value as any,
+    defaultValue as any,
+    onValueChange as any
+  );
 
   const type = signal(props.type);
   const collapsible = signal((props as AccordionSingleProps).collapsible ?? false);
@@ -216,14 +229,9 @@ export const Accordion = defineComponent<AccordionProps>((props) => {
   // Context value
   const contextValue: AccordionContextValue = {
     type: () => type(),
-    value: () => valueSignal(),
+    value: getValue,
     setValue: (value: string | string[]) => {
-      valueSignal.set(value as any);
-      if (props.type === 'single') {
-        (props as AccordionSingleProps).onValueChange?.(value as string | undefined);
-      } else {
-        (props as AccordionMultipleProps).onValueChange?.(value as string[]);
-      }
+      setValue(value as any);
     },
     collapsible: () => collapsible(),
     disabled: () => disabled(),

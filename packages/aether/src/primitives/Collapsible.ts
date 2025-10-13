@@ -7,13 +7,14 @@
 
 import { defineComponent } from '../core/component/define.js';
 import { createContext, useContext, provideContext } from '../core/component/context.js';
-import type { Signal } from '../core/reactivity/types.js';
+import type { Signal, WritableSignal } from '../core/reactivity/types.js';
 import { signal } from '../core/reactivity/signal.js';
 import { computed } from '../core/reactivity/computed.js';
 import { effect } from '../core/reactivity/effect.js';
 import { createRef } from '../core/component/refs.js';
 import { jsx } from '../jsx-runtime.js';
 import { generateId } from './utils/index.js';
+import { useControlledBooleanState } from '../utils/controlled-state.js';
 
 // ============================================================================
 // Types
@@ -21,9 +22,9 @@ import { generateId } from './utils/index.js';
 
 export interface CollapsibleProps {
   /**
-   * Controlled open state
+   * Controlled open state (supports WritableSignal for reactive updates - Pattern 19)
    */
-  open?: boolean;
+  open?: WritableSignal<boolean> | boolean;
 
   /**
    * Default open state (uncontrolled)
@@ -124,37 +125,19 @@ export const CollapsibleContext = createContext<CollapsibleContextValue>(
  * ```
  */
 export const Collapsible = defineComponent<CollapsibleProps>((props) => {
-  // Initialize internal state with controlled value if provided, otherwise use defaultOpen
-  const initialValue =
-    props.open !== undefined
-      ? typeof props.open === 'function'
-        ? (props.open as any)()
-        : props.open
-      : props.defaultOpen || false;
-
-  const internalOpen = signal(initialValue);
-
-  // Sync external controlled signal to internal state
-  if (props.open !== undefined && typeof props.open === 'function') {
-    effect(() => {
-      internalOpen.set((props.open as any)());
-    });
-  }
-
-  // Always use internal signal for reactivity
-  const isOpen = internalOpen;
+  // Pattern 19: Use unified controlled state helper
+  const [isOpen, setIsOpen] = useControlledBooleanState(
+    props.open,
+    props.defaultOpen ?? false,
+    props.onOpenChange
+  );
 
   const baseId = generateId('collapsible');
   const triggerId = `${baseId}-trigger`;
   const contentId = `${baseId}-content`;
 
   const toggle = () => {
-    const newValue = !isOpen();
-    // Only update internal state if not controlled
-    if (props.open === undefined) {
-      internalOpen.set(newValue);
-    }
-    props.onOpenChange?.(newValue);
+    setIsOpen(!isOpen());
   };
 
   const contextValue: CollapsibleContextValue = {

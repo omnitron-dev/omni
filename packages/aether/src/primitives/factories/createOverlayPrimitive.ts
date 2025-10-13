@@ -42,6 +42,7 @@ import {
   type Side,
   type Align,
 } from '../utils/index.js';
+import { useControlledBooleanState } from '../../utils/controlled-state.js';
 
 // ============================================================================
 // Configuration Types
@@ -182,7 +183,7 @@ export interface ContextMenuContextValue extends BaseOverlayContextValue {
 
 export interface BaseRootProps {
   /**
-   * Controlled open state (supports WritableSignal for reactive updates)
+   * Controlled open state (supports WritableSignal for reactive updates - Pattern 19)
    */
   open?: WritableSignal<boolean> | boolean;
 
@@ -417,34 +418,17 @@ export function createOverlayPrimitive(config: OverlayConfig) {
   // ============================================================================
 
   const Root = defineComponent<BaseRootProps | HoverCardRootProps>((props: any) => {
-    // Pattern 19: Support both signal and value-based control
-    const isSignal = (val: any): val is WritableSignal<boolean> =>
-      supportsSignalControl && typeof val === 'function' && 'set' in val;
-    const openSignal = isSignal(props.open) ? props.open : signal<boolean>(props.defaultOpen ?? false);
+    // Pattern 19: Use unified controlled state helper
+    const [isOpen, setIsOpen] = useControlledBooleanState(
+      props.open,
+      props.defaultOpen ?? false,
+      props.onOpenChange
+    );
 
     // Additional signals for specific behaviors
     const anchorElement = positioning ? signal<HTMLElement | null>(null) : null;
     const contextMenuPosition =
       triggerBehavior === 'contextmenu' ? signal<{ x: number; y: number } | null>(null) : null;
-
-    // Current open state - supports both static boolean and signal
-    const currentOpen = () => {
-      if (typeof props.open === 'boolean') {
-        return props.open;
-      }
-      return openSignal();
-    };
-
-    // Computed that tracks the signal reactively
-    const effectiveOpen = computed(() => currentOpen());
-
-    const setOpen = (value: boolean) => {
-      // Update internal signal if not using plain boolean control
-      if (typeof props.open !== 'boolean') {
-        openSignal.set(value);
-      }
-      props.onOpenChange?.(value);
-    };
 
     // Generate stable IDs for accessibility
     const baseId = generateId(name);
@@ -455,10 +439,10 @@ export function createOverlayPrimitive(config: OverlayConfig) {
 
     // Context value
     const contextValue: any = {
-      isOpen: () => effectiveOpen(),
-      open: () => setOpen(true),
-      close: () => setOpen(false),
-      toggle: () => setOpen(!effectiveOpen()),
+      isOpen,
+      open: () => setIsOpen(true),
+      close: () => setIsOpen(false),
+      toggle: () => setIsOpen(!isOpen()),
       triggerId,
       contentId,
       ...(hasTitle && { titleId }),
@@ -472,7 +456,7 @@ export function createOverlayPrimitive(config: OverlayConfig) {
         contextMenuPosition && {
           open: (x: number, y: number) => {
             contextMenuPosition.set({ x, y });
-            setOpen(true);
+            setIsOpen(true);
           },
           position: () => contextMenuPosition(),
         }),

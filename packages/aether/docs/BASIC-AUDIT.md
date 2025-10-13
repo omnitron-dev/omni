@@ -66,21 +66,6 @@
 
 ## 🔍 DETAILED AUDIT RESULTS
 
-### ~~1. PHILOSOPHY AUDIT (01-PHILOSOPHY.md)~~ - ✅ **COMPLETED**
-
-**Previous Score: 45/100** → **Current Score: 75/100** 🟢
-
-**Completed Actions:**
-- ✅ Updated bundle size claims to real measurements (~14KB tree-shaken, +70KB with DI)
-- ✅ Repositioned framework as "comprehensive TypeScript framework" not "minimalist"
-- ✅ Added honest trade-offs section
-- ✅ Removed misleading comparisons
-- ✅ DI and Module systems kept as optional features per design decision
-- ✅ All functionality preserved (no features removed)
-
-**Status:** Philosophy documentation now accurately reflects reality. See `/packages/aether/docs/IMPLEMENTATION-PROGRESS.md` for details.
-
----
 
 ### 2. REACTIVITY AUDIT (02-REACTIVITY.md)
 
@@ -507,61 +492,6 @@ defineComponent((props) => {
 
 #### Major Issues Identified
 
-##### 1. **Dialog-Pattern Duplication** (P1) - **✅ FULLY COMPLETED**
-
-**Status:** Factory created, ALL 9/9 components refactored
-
-**✅ Completed:**
-- Created `createOverlayPrimitive()` factory (1,037 lines)
-  - Location: `src/primitives/factories/createOverlayPrimitive.ts`
-  - Supports 13 configuration options
-  - Returns complete component set: Root, Trigger, Content, Portal, Overlay, Close, Title, Description, Arrow, Anchor
-- Refactored ALL 9 overlay components using factory:
-  - **AlertDialog**: 316 → 241 lines (75 lines saved, 23.7% reduction)
-  - **Dialog**: 431 → 195 lines (236 lines saved, 54.8% reduction)
-  - **Popover**: 524 → 232 lines (292 lines saved, 55.7% reduction)
-  - **HoverCard**: 376 → 344 lines (32 lines saved, 8.5% reduction)
-  - **Sheet**: 302 → 289 lines (13 lines saved, 4.3% reduction)
-  - **Drawer**: 332 → 310 lines (22 lines saved, 6.6% reduction)
-  - **DropdownMenu**: 704 → 654 lines (50 lines saved, 7.1% reduction)
-  - **ContextMenu**: 274 → 165 lines (109 lines saved, 39.8% reduction)
-  - **Tooltip**: 407 → 378 lines (29 lines saved, 7.1% reduction)
-- **Total Savings:** 858 lines saved (3.25% of primitives codebase)
-- **Net Savings:** -179 lines (factory investment fully paid off)
-- All tests passing (6,146/6,146) ✅
-
-**Final Impact:**
-- Maintenance: Bug fixes in ONE place instead of 9
-- Consistency: All overlay components behave identically
-- DRY principle: Fully restored
-- Test coverage: 100% maintained throughout refactoring
-
-**Factory Configuration Options:**
-```typescript
-interface OverlayConfig {
-  name: string;                    // Component identifier
-  modal?: boolean;                 // Blocks page interaction
-  role: string;                    // ARIA role
-  positioning?: boolean;           // Use floating UI
-  focusTrap?: boolean;            // Trap focus inside
-  scrollLock?: boolean;           // Lock body scroll
-  closeOnEscape?: boolean;        // ESC key closes
-  closeOnClickOutside?: boolean;  // Click outside closes
-  hasTitle?: boolean;             // Generate title ID
-  hasDescription?: boolean;       // Generate description ID
-  hasArrow?: boolean;             // Support arrow component
-  supportsSignalControl?: boolean; // Pattern 19 support
-  triggerBehavior?: 'click' | 'hover' | 'contextmenu';
-  hoverDelays?: { openDelay, closeDelay };
-}
-```
-
-**Factory Documentation:**
-- `src/primitives/factories/README.md` - Architecture overview
-- `src/primitives/factories/USAGE.md` - 8 real-world examples
-- `src/primitives/factories/COMPARISON.md` - Before/after code comparison
-
-**See:** `/packages/aether/docs/IMPLEMENTATION-PROGRESS.md` for complete details
 
 ##### 2. **Layout Primitives Redundancy** (P2)
 
@@ -618,23 +548,48 @@ const Center = () => jsx('div', {
 
 **Recommendation:** Merge into single component with optional features.
 
-##### 4. **Inconsistent Controlled Component APIs** (P2)
+##### 4. **Inconsistent Controlled Component APIs** (P2) - **PARTIALLY COMPLETED** ✅
 
-**Pattern 19 Adoption:**
+**Pattern 19 Adoption Progress:**
 
-| Component | Pattern 19 | Notes |
-|-----------|-----------|-------|
-| `Dialog` | ✅ Yes | Accepts `WritableSignal<boolean> \| boolean` |
-| `AlertDialog` | ❌ No | Only boolean |
-| `Popover` | ❌ No | Only boolean |
-| `Select` | ✅ Yes | Signals supported |
-| `Checkbox` | ✅ Yes | Signals supported |
-| `Tree` | ✅ Yes | Signals supported |
-| Most others | ❌ No | Inconsistent |
+✅ **Completed Components (16/22):**
+| Component | Controlled Props | Status |
+|-----------|-----------------|--------|
+| Checkbox | `checked` | ✅ Pattern 19 |
+| Switch | `checked` | ✅ Pattern 19 |
+| Toggle | `pressed` | ✅ Pattern 19 |
+| Select | `value`, `open` | ✅ Pattern 19 |
+| RadioGroup | `value` | ✅ Pattern 19 |
+| Slider | `value` | ✅ Pattern 19 |
+| RangeSlider | `value` | ✅ Pattern 19 |
+| Tabs | `value` | ✅ Pattern 19 |
+| NumberInput | `value` | ✅ Pattern 19 |
+| Dialog | `open` | ✅ Pattern 19 |
+| Drawer | `open` | ✅ Pattern 19 |
+| **Input** | **`value`** | ✅ **Pattern 19 (NEW)** |
+| **Textarea** | **`value`** | ✅ **Pattern 19 (NEW)** |
+| **Popover** | **`open`** | ✅ **Pattern 19 (NEW)** |
+| **Collapsible** | **`open`** | ✅ **Pattern 19 (NEW)** |
+| **Accordion** | **`value`** | ✅ **Pattern 19 (NEW)** |
 
-**Issue:** No unified approach to controlled/uncontrolled state.
+⬜ **Remaining Components (6/22):**
+| Component | Controlled Props | Status |
+|-----------|-----------------|--------|
+| ToggleGroup | `value` | ⬜ Needs Pattern 19 |
+| Combobox | `value`, `open` | ⬜ Needs Pattern 19 |
+| MultiSelect | `value` | ⬜ Needs Pattern 19 |
+| Calendar | `value` | ⬜ Needs Pattern 19 |
+| DatePicker | `value` | ⬜ Needs Pattern 19 |
+| PinInput | `value` | ⬜ Needs Pattern 19 |
 
-**Recommendation:** Apply Pattern 19 consistently across ALL primitives.
+**Recent Improvements:**
+- ✅ Created `useControlledState()` helper in `src/utils/controlled-state.ts`
+- ✅ Created `useControlledBooleanState()` helper for boolean states
+- ✅ Applied Pattern 19 to 5 additional primitives (Input, Textarea, Popover, Collapsible, Accordion)
+- ✅ Updated `createOverlayPrimitive()` factory to use `useControlledBooleanState()`
+- ✅ All 6,146 tests passing (100%)
+
+**Recommendation:** Apply Pattern 19 to remaining 6 components for full consistency.
 
 ##### 5. **Utils Usage Shows Composition Need** (P2)
 
@@ -651,16 +606,7 @@ const Center = () => jsx('div', {
 
 **HIGH PRIORITY (P1):**
 
-1. ~~**Create `createOverlayPrimitive()` Factory**~~ - **✅ FULLY COMPLETED**
-   - ✅ Factory created (1,037 lines) with 13 config options
-   - ✅ ALL 9/9 components refactored (AlertDialog, Dialog, Popover, HoverCard, Sheet, Drawer, DropdownMenu, ContextMenu, Tooltip)
-   - ✅ 858 lines saved total
-   - ✅ Net -179 lines after factory investment
-
-   **Final Impact:** 858 lines saved (3.25% of primitives codebase)
-   **Maintenance:** Bug fixes in ONE place instead of 9
-
-2. **Consolidate Layout Primitives**
+1. **Consolidate Layout Primitives**
    - Remove `Stack`, `VStack`, `HStack` → merge into `Flex`
    - Remove `Center` → use Flex props
    - Keep `Box`, `Flex`, `Grid` as core layout primitives
@@ -735,46 +681,6 @@ const Center = () => jsx('div', {
 - Fragment support
 - Performance benchmarks vs SolidJS
 
-#### ~~1.2. Fix Bundle Size / Philosophy Alignment (P0)~~ - **COMPLETED** ✅
-~~**Blocker:** False claims damage credibility.~~
-
-**✅ Completed Actions:**
-1. ✅ DI system kept as optional feature (per design decision)
-   - Trade-offs documented in philosophy
-   - ~70KB overhead acknowledged
-
-2. ✅ Unused code audited
-   - All features intentionally kept
-
-3. ✅ All documentation updated with REAL measurements
-   - Core: 14KB gzipped tree-shaken (not 6KB)
-   - With DI: +70KB overhead
-   - All misleading comparisons removed
-
-4. ✅ PHILOSOPHY.md rewritten to match reality
-   - Framework repositioned as "comprehensive" not "minimalist"
-   - Honest trade-offs documented
-
-**✅ Deliverables:**
-- ✅ DI system kept and justified (optional feature)
-- ✅ Accurate bundle size documentation
-- ✅ Updated philosophy document
-- ✅ Honest comparisons and trade-offs
-
-#### ~~1.3. Remove or Justify Module System (P0)~~ - **DECISION MADE** ✅
-~~**Blocker:** Contradicts "minimalist" philosophy.~~
-
-**✅ Decision Made:**
-- **Option B Selected:** Module system kept as optional feature
-  - Part of comprehensive feature set
-  - Useful for larger applications
-  - Trade-offs documented in philosophy
-  - Framework repositioned as "comprehensive" not "minimalist"
-
-**✅ Deliverables:**
-- ✅ Module system kept and justified (optional feature)
-- ✅ Documentation updated to reflect design decision
-- ✅ Philosophy reconciled with reality
 
 ---
 
@@ -782,34 +688,6 @@ const Center = () => jsx('div', {
 
 **Timeline: 6-8 weeks** (4 weeks completed, 2-4 weeks remaining)
 
-#### ~~2.1. Eliminate Dialog-Pattern Duplication (P1)~~ - **✅ FULLY COMPLETED**
-~~**Issue:** ~2,000 lines of duplicated code across 8+ components.~~
-
-**✅ Completed Actions:**
-1. ✅ Created `createOverlayPrimitive()` factory (1,037 lines)
-   - 13 configuration options
-   - Returns: Root, Trigger, Content, Close, Portal, Overlay, Title, Description, Arrow, Anchor
-   - Comprehensive documentation (README.md, USAGE.md, COMPARISON.md)
-
-2. ✅ Refactored ALL 9/9 overlay components to use factory:
-   - ✅ AlertDialog (316 → 241 lines, 75 saved)
-   - ✅ Dialog (431 → 195 lines, 236 saved)
-   - ✅ Popover (524 → 232 lines, 292 saved)
-   - ✅ HoverCard (376 → 344 lines, 32 saved)
-   - ✅ Sheet (302 → 289 lines, 13 saved)
-   - ✅ Drawer (332 → 310 lines, 22 saved)
-   - ✅ DropdownMenu (704 → 654 lines, 50 saved)
-   - ✅ ContextMenu (274 → 165 lines, 109 saved)
-   - ✅ Tooltip (407 → 378 lines, 29 saved)
-
-**✅ Final Deliverables:**
-- ✅ `createOverlayPrimitive()` implementation complete
-- ✅ ALL 9/9 components refactored
-- ✅ All tests passing (6,146/6,146 - 100% maintained)
-- ✅ **Final Reduction:** 858 lines saved (3.25%)
-- ✅ **Net Savings:** -179 lines (factory investment paid off)
-- ✅ **Maintenance:** Bug fixes now in ONE place instead of 9
-- ✅ **Consistency:** All overlay components behave identically
 
 #### 2.2. Consolidate Layout Primitives (P1)
 **Issue:** Stack duplicates Flex, Center is unnecessary.
@@ -829,30 +707,31 @@ const Center = () => jsx('div', {
 - Tests updated
 - **Reduction:** ~380 lines (1.4%)
 
-#### 2.3. Apply Pattern 19 Consistently (P1)
+#### 2.3. Apply Pattern 19 Consistently (P1) - **PARTIALLY COMPLETED** ✅
 **Issue:** Inconsistent controlled component APIs.
 
-**Actions:**
-1. Audit all primitives for controlled state
-2. Apply Pattern 19 to all:
-   - All form controls (Input, Textarea, etc.)
-   - All overlay controls (Popover, HoverCard, etc.)
-   - All toggles (Switch, Checkbox, etc.)
+**✅ Completed Actions:**
+1. ✅ Created `useControlledState()` helper in `src/utils/controlled-state.ts`
+   - Generic helper: `useControlledState<T>()`
+   - Boolean helper: `useControlledBooleanState()`
+   - Type guard: `isSignal<T>()`
+2. ✅ Exported helpers from `src/utils/index.ts`
+3. ✅ Applied Pattern 19 to 5 additional primitives:
+   - ✅ Input (`value`: `WritableSignal<string> | string`)
+   - ✅ Textarea (`value`: `WritableSignal<string> | string`)
+   - ✅ Popover (`open`: `WritableSignal<boolean> | boolean`)
+   - ✅ Collapsible (`open`: `WritableSignal<boolean> | boolean`)
+   - ✅ Accordion (`value`: `WritableSignal<string | string[]> | string | string[]`)
+4. ✅ Updated `createOverlayPrimitive()` factory to use helpers
+5. ✅ All tests passing (6,146/6,146 - 100%)
 
-3. Create shared helper:
-   ```typescript
-   function useControlledState<T>(
-     controlledValue: T | WritableSignal<T> | undefined,
-     defaultValue: T,
-     onChange?: (value: T) => void
-   ): [() => T, (value: T) => void]
-   ```
+**⬜ Remaining Actions:**
+- ⬜ Apply Pattern 19 to remaining 6 components:
+  - ToggleGroup, Combobox, MultiSelect, Calendar, DatePicker, PinInput
+- ⬜ Update documentation with Pattern 19 usage examples
+- ⬜ Create migration guide (if needed)
 
-**Deliverables:**
-- `useControlledState()` helper
-- All primitives using consistent API
-- Updated documentation
-- Migration guide for breaking changes
+**Progress:** 16/22 components (73%) now support Pattern 19
 
 #### 2.4. Fix Component Model Documentation (P1)
 **Issue:** Misleading terminology causes confusion.
@@ -1042,26 +921,20 @@ const Center = () => jsx('div', {
 
 ## 📋 IMMEDIATE NEXT STEPS
 
-### ~~Week 1-2: Critical Assessment~~ - **COMPLETED** ✅
-1. ✅ Reviewed audit with team
-2. ✅ Chose strategic direction: **Hybrid Approach** (keep all features, fix documentation)
-3. ✅ Prioritized Phase 1 critical fixes
-4. ⬜ Assign resources to reconciliation engine (STILL PENDING)
+### Current Progress: Phase 2 Implementation (Week 7-14)
 
-### ~~Week 3-6: Phase 1 Implementation~~ - **COMPLETED** ✅
-1. ⬜ Implement reconciliation engine (DEFERRED - P0 blocker remains)
-2. ✅ Kept DI system (justified as optional feature)
-3. ✅ Updated all documentation with real measurements
-4. ✅ Rewrote philosophy to match reality
+**✅ Completed:**
+1. ✅ Philosophy audit and documentation fixes
+2. ✅ Overlay primitive factory (ALL 9/9 components refactored, 858 lines saved)
+3. ✅ 100% test pass rate maintained (6,146/6,146 tests)
 
-### Week 7-14: Phase 2 Implementation - **PARTIALLY COMPLETED** ✅
-1. ✅ Created overlay primitive factory (ALL 9/9 components refactored) - **COMPLETED**
-2. ⬜ Consolidate layout primitives
-3. ⬜ Apply Pattern 19 consistently
-4. ⬜ Fix component model docs
-
-**Next Phase 2 Tasks:**
-- ⬜ Proceed with other P1 tasks (layout primitives, Pattern 19, component model docs)
+**⬜ Remaining Phase 2 Tasks (P1):**
+1. ⬜ Consolidate layout primitives (Stack/Flex, Center) - ~380 lines reduction
+2. 🟡 Apply Pattern 19 consistently (16/22 complete - 73%)
+   - ✅ Created helpers: `useControlledState()`, `useControlledBooleanState()`
+   - ✅ Applied to 5 new components: Input, Textarea, Popover, Collapsible, Accordion
+   - ⬜ Remaining: 6 components (ToggleGroup, Combobox, MultiSelect, Calendar, DatePicker, PinInput)
+3. ⬜ Fix component model documentation (rename "render function" to "template function")
 
 ### Week 15+: Phase 3 Polish
 1. ⬜ Simplify reactivity if chosen

@@ -16,6 +16,8 @@
 
 import { jsx } from '../jsx-runtime.js';
 import { defineComponent } from '../core/component/index.js';
+import { useControlledState } from '../utils/controlled-state.js';
+import { type WritableSignal } from '../core/reactivity/index.js';
 
 export interface InputProps {
   /**
@@ -24,14 +26,19 @@ export interface InputProps {
   type?: 'text' | 'email' | 'password' | 'number' | 'tel' | 'url' | 'search' | 'date' | 'time' | 'datetime-local';
 
   /**
-   * Input value
+   * Controlled value (supports WritableSignal for reactive updates - Pattern 19)
    */
-  value?: string | number;
+  value?: WritableSignal<string> | string;
 
   /**
    * Default value (uncontrolled)
    */
-  defaultValue?: string | number;
+  defaultValue?: string;
+
+  /**
+   * Value change handler
+   */
+  onValueChange?: (value: string) => void;
 
   /**
    * Placeholder text
@@ -132,11 +139,20 @@ export interface InputProps {
  * - Controlled and uncontrolled modes
  */
 export const Input = defineComponent<InputProps>((props) => {
+  const [getValue, setValue] = useControlledState(
+    props.value,
+    props.defaultValue ?? '',
+    props.onValueChange
+  );
+
   const handleInput = (e: Event) => {
     const target = e.target as HTMLInputElement;
     const value = target.value;
 
-    // Call both onInput and onChange for compatibility
+    // Update controlled state
+    setValue(value);
+
+    // Call legacy handlers for compatibility
     props.onInput?.(value);
     props.onChange?.(value);
   };
@@ -154,6 +170,7 @@ export const Input = defineComponent<InputProps>((props) => {
       type = 'text',
       value,
       defaultValue,
+      onValueChange,
       placeholder,
       disabled,
       readOnly,
@@ -172,8 +189,7 @@ export const Input = defineComponent<InputProps>((props) => {
     return jsx('input', {
       ...restProps,
       type,
-      value,
-      defaultValue,
+      value: getValue(),
       placeholder,
       disabled,
       readOnly,

@@ -8,6 +8,7 @@
  */
 
 import { createOverlayPrimitive } from './factories/createOverlayPrimitive.js';
+import { type WritableSignal } from '../core/reactivity/index.js';
 
 // ============================================================================
 // Create Base Popover using Factory
@@ -50,9 +51,9 @@ export interface PopoverContextValue {
  */
 export interface PopoverProps {
   /**
-   * Controlled open state
+   * Controlled open state (supports WritableSignal for reactive updates - Pattern 19)
    */
-  open?: boolean;
+  open?: WritableSignal<boolean> | boolean;
 
   /**
    * Initial open state (uncontrolled)

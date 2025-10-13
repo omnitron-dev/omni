@@ -105,7 +105,7 @@ export function lazy<T = any>(
 
     // Already loaded or loading
     if (state.status === 'resolved' || state.promise) {
-      return state.promise;
+      return state.promise || undefined;
     }
 
     // Start loading

@@ -486,6 +486,9 @@ export function findNearestSpecialFile(
           // Check meta for middleware
           if (route.meta?.middleware) return route.meta.middleware as RouteComponent;
           break;
+        default:
+          // Handle unknown special file types
+          break;
       }
     }
   }

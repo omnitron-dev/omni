@@ -16,9 +16,7 @@ import { island } from '../../src/islands/directives.js';
 describe('Island Detector', () => {
   describe('detectInteractivity', () => {
     it('should detect event handlers', () => {
-      const component = defineComponent(() => {
-        return () => <button onClick={() => {}}>Click</button>;
-      });
+      const component = defineComponent(() => () => <button onClick={() => {}}>Click</button>);
 
       const detection = detectInteractivity(component);
 
@@ -89,9 +87,7 @@ describe('Island Detector', () => {
     });
 
     it('should identify static components', () => {
-      const component = defineComponent(() => {
-        return () => <div>Static content</div>;
-      });
+      const component = defineComponent(() => () => <div>Static content</div>);
 
       const detection = detectInteractivity(component);
 
@@ -110,9 +106,7 @@ describe('Island Detector', () => {
     });
 
     it('should respect custom rules', () => {
-      const component = defineComponent(() => {
-        return () => <div>Test</div>;
-      });
+      const component = defineComponent(() => () => <div>Test</div>);
 
       const detection = detectInteractivity(component, {
         customRules: [(comp) => comp.name === component.name],
@@ -123,9 +117,7 @@ describe('Island Detector', () => {
     });
 
     it('should respect exclusion patterns', () => {
-      const component = defineComponent(() => {
-        return () => <button onClick={() => {}}>Click</button>;
-      });
+      const component = defineComponent(() => () => <button onClick={() => {}}>Click</button>);
       component.displayName = 'ExcludedComponent';
 
       const detection = detectInteractivity(component, {
@@ -138,13 +130,9 @@ describe('Island Detector', () => {
 
   describe('getIslandComponents', () => {
     it('should filter interactive components', () => {
-      const interactive = defineComponent(() => {
-        return () => <button onClick={() => {}}>Click</button>;
-      });
+      const interactive = defineComponent(() => () => <button onClick={() => {}}>Click</button>);
 
-      const static1 = defineComponent(() => {
-        return () => <div>Static</div>;
-      });
+      const static1 = defineComponent(() => () => <div>Static</div>);
 
       const components = [interactive, static1];
       const islands = getIslandComponents(components);
@@ -168,10 +156,10 @@ describe('Island Detector', () => {
     });
 
     it('should account for imports', () => {
-      const componentWithImports = defineComponent(() => {
+      const componentWithImports = defineComponent(() => 
         // Simulated imports in source
-        return () => <div>Test</div>;
-      });
+         () => <div>Test</div>
+      );
 
       const size = estimateComponentSize(componentWithImports);
 
@@ -182,18 +170,14 @@ describe('Island Detector', () => {
   describe('isIslandComponent', () => {
     it('should identify island components', () => {
       const component = island(
-        defineComponent(() => {
-          return () => <div>Island</div>;
-        }),
+        defineComponent(() => () => <div>Island</div>),
       );
 
       expect(isIslandComponent(component)).toBe(true);
     });
 
     it('should return false for non-island components', () => {
-      const component = defineComponent(() => {
-        return () => <div>Not island</div>;
-      });
+      const component = defineComponent(() => () => <div>Not island</div>);
 
       expect(isIslandComponent(component)).toBe(false);
     });
@@ -201,9 +185,7 @@ describe('Island Detector', () => {
 
   describe('getComponentMetadata', () => {
     it('should extract component metadata', () => {
-      const component = defineComponent(() => {
-        return () => <button onClick={() => {}}>Click</button>;
-      });
+      const component = defineComponent(() => () => <button onClick={() => {}}>Click</button>);
       component.displayName = 'TestComponent';
 
       const metadata = getComponentMetadata(component);

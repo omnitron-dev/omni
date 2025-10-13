@@ -193,9 +193,10 @@ describe('Optimistic Updates', () => {
 
       const update = applyOptimisticUpdate(resource, { count: 10 });
 
+      await vi.runAllTimersAsync();
       expect(resource()?.count).toBe(10);
 
-      update.commit({ count: 20 });
+      await update.commit({ count: 20 });
 
       await vi.runAllTimersAsync();
 
@@ -209,9 +210,10 @@ describe('Optimistic Updates', () => {
 
       const update = applyOptimisticUpdate(resource, { count: 10 });
 
+      await vi.runAllTimersAsync();
       expect(resource()?.count).toBe(10);
 
-      update.rollback();
+      await update.rollback();
 
       await vi.runAllTimersAsync();
 

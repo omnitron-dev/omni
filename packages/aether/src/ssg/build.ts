@@ -454,6 +454,9 @@ export async function exportBuild(
     case 'static':
       // Already exported
       break;
+    default:
+      console.warn(`Unknown platform: ${platform}, defaulting to static export`);
+      break;
   }
 
   console.log('✓ Export complete');

@@ -2,7 +2,7 @@
  * Streaming SSR Tests
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   createSSRSuspenseContext,
   streamSuspenseBoundaries,
@@ -206,9 +206,7 @@ describe('Streaming SSR', () => {
       const onShellReady = vi.fn();
       const onAllReady = vi.fn();
 
-      const renderFn = async () => {
-        return '<html><body>Content</body></html>';
-      };
+      const renderFn = async () => '<html><body>Content</body></html>';
 
       const { stream } = await renderWithSuspenseStreaming(renderFn, {
         onShellReady,

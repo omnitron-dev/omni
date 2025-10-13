@@ -2,7 +2,7 @@
  * Island Manifest Tests
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   generateManifest,
   loadManifest,
@@ -13,9 +13,6 @@ import {
   optimizeManifest,
   validateManifest,
   IslandDependencyGraph,
-  buildDependencyGraph,
-  registerIsland,
-  registerRouteIsland,
 } from '../../src/islands/manifest.js';
 import type { IslandManifest } from '../../src/islands/types.js';
 

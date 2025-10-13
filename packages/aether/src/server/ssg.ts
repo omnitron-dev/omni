@@ -130,7 +130,7 @@ async function generateRoute(
   _base: string,
   options: { isr?: boolean; revalidate?: number }
 ): Promise<void> {
-  const { isr, revalidate } = options;
+  const { isr, revalidate: revalidateTime } = options;
 
   // Render route
   const result = await renderToString(component, {
@@ -154,7 +154,7 @@ async function generateRoute(
       html,
       data: result.data,
       timestamp: Date.now(),
-      revalidate,
+      revalidate: revalidateTime,
     });
   }
 }
@@ -279,7 +279,7 @@ export async function revalidate(
       // Regenerate in background
       generateRoute(component, route, outDir, '/', {
         isr: true,
-        revalidate: cached.revalidate,
+        revalidate: cached.revalidate as number,
       }).catch((error) => {
         console.error(`ISR revalidation failed for ${route}:`, error);
       });

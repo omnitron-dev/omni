@@ -12,7 +12,6 @@ import {
   resetSuspenseIdCounter,
 } from '../../src/suspense/suspense.js';
 import { signal } from '../../src/core/reactivity/signal.js';
-import { effect } from '../../src/core/reactivity/effect.js';
 
 describe('Suspense', () => {
   beforeEach(() => {

@@ -81,8 +81,8 @@ export function useDevTools() {
     /**
      * Stop profiling
      */
-    stopProfiling() {
-      if (!globalProfiler) return;
+    stopProfiling(): any {
+      if (!globalProfiler) return undefined;
       return globalProfiler.stopProfiling();
     },
 
@@ -254,6 +254,7 @@ export function debugSignal<T>(
   options?: { equals?: (a: T, b: T) => boolean },
 ): WritableSignal<T> {
   // Import signal dynamically to avoid circular deps
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { signal } = require('../core/reactivity/signal.js');
   const sig = signal(initialValue, options);
 

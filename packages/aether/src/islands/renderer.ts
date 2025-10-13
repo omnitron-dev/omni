@@ -354,7 +354,6 @@ export function extractIslandsFromHTML(html: string): IslandBoundary[] {
 
   // Find all island start markers
   const startPattern = /<!--island-start:([^>]+)-->/g;
-  const endPattern = /<!--island-end:([^>]+)-->/g;
 
   let startMatch;
   while ((startMatch = startPattern.exec(html)) !== null) {

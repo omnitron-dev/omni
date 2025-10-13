@@ -11,7 +11,6 @@ import {
   isDynamicRoute,
   generateParamCombinations,
   deduplicatePaths,
-  createStaticPathsResult,
 } from '../../src/ssg/static-paths.js';
 import type { GetStaticPaths } from '../../src/ssg/types.js';
 

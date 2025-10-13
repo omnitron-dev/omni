@@ -71,7 +71,7 @@ export async function optimisticUpdate<T, TResult = void>(
       ? (optimisticData as (prev: T | undefined) => T)(previousData)
       : optimisticData;
 
-  resource.mutate(newData);
+  await resource.mutate(newData);
 
   try {
     // Execute mutation
@@ -86,14 +86,14 @@ export async function optimisticUpdate<T, TResult = void>(
   } catch (error) {
     // Rollback on error if requested
     if (rollbackOnError && previousData !== undefined) {
-      resource.mutate(previousData);
+      await resource.mutate(previousData);
     }
 
     // Call error handler
     if (onError) {
-      const rollback = () => {
+      const rollback = async () => {
         if (previousData !== undefined) {
-          resource.mutate(previousData);
+          await resource.mutate(previousData);
         }
       };
       onError(error as Error, rollback);
@@ -195,20 +195,22 @@ export function applyOptimisticUpdate<T>(
       ? (optimisticData as (prev: T | undefined) => T)(previousData)
       : optimisticData;
 
+  // Apply mutation (fire and forget for immediate UI update)
   resource.mutate(newData);
 
   // Return control methods
   return {
-    commit: (data?: T) => {
+    commit: async (data?: T) => {
       if (data !== undefined) {
-        resource.mutate(data);
+        await resource.mutate(data);
+      } else {
+        // Optionally refetch to ensure sync with server
+        await resource.refetch();
       }
-      // Optionally refetch to ensure sync with server
-      resource.refetch();
     },
-    rollback: () => {
+    rollback: async () => {
       if (previousData !== undefined) {
-        resource.mutate(previousData);
+        await resource.mutate(previousData);
       }
     },
   };
@@ -253,13 +255,15 @@ export async function atomicOptimisticUpdate<T extends any[]>(
   const previousData = updates.map(({ resource }) => resource());
 
   // Apply all optimistic updates
-  updates.forEach(({ resource, optimisticData }) => {
-    const newData =
-      typeof optimisticData === 'function'
-        ? optimisticData(resource())
-        : optimisticData;
-    resource.mutate(newData);
-  });
+  await Promise.all(
+    updates.map(async ({ resource, optimisticData }) => {
+      const newData =
+        typeof optimisticData === 'function'
+          ? optimisticData(resource())
+          : optimisticData;
+      await resource.mutate(newData);
+    })
+  );
 
   try {
     // Execute all mutations in parallel
@@ -273,12 +277,14 @@ export async function atomicOptimisticUpdate<T extends any[]>(
     return results as T;
   } catch (error) {
     // Rollback all updates
-    updates.forEach(({ resource }, index) => {
-      const prev = previousData[index];
-      if (prev !== undefined) {
-        resource.mutate(prev);
-      }
-    });
+    await Promise.all(
+      updates.map(async ({ resource }, index) => {
+        const prev = previousData[index];
+        if (prev !== undefined) {
+          await resource.mutate(prev);
+        }
+      })
+    );
 
     throw error;
   }
@@ -335,7 +341,7 @@ export function createDebouncedOptimisticMutation<T, TArgs extends any[]>(
       typeof optimisticData === 'function'
         ? (optimisticData as (prev: T | undefined) => T)(resource())
         : optimisticData;
-    resource.mutate(newData);
+    await resource.mutate(newData);
 
     // Store pending args
     pendingArgs = args;

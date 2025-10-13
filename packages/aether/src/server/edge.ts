@@ -295,7 +295,7 @@ async function cacheResponse(
       const cache = (globalThis as any).caches?.default;
       if (cache) {
         // Clone response with cache headers
-        const cacheResponse = new Response(response.body, {
+        const cachedResponse = new Response(response.body, {
           status: response.status,
           statusText: response.statusText,
           headers: new Headers({
@@ -304,7 +304,7 @@ async function cacheResponse(
           }),
         });
 
-        await cache.put(request, cacheResponse);
+        await cache.put(request, cachedResponse);
       }
     }
 

@@ -56,6 +56,20 @@ export { createProfiler } from './profiler.js';
 export { createNetworkInspector } from './network.js';
 export { createBridge, isDevToolsAvailable } from './bridge.js';
 
+// Re-export enhanced devtools modules
+export { createInspectorUI } from './inspector-ui.js';
+export { createProfilerUI } from './profiler-ui.js';
+export { createTimeTravelDebugger } from './time-travel.js';
+export { createDebugEnhanced } from './debug-enhanced.js';
+export { createBundleAnalyzer } from './bundle-analyzer.js';
+
+// Re-export enhanced types
+export type * from './inspector-ui.js';
+export type * from './profiler-ui.js';
+export type * from './time-travel.js';
+export type * from './debug-enhanced.js';
+export type * from './bundle-analyzer.js';
+
 /**
  * Global DevTools instance
  */

@@ -223,10 +223,13 @@ export function generateIslandLoader(manifest: IslandManifest, routePath: string
   const islandIds = getRouteIslands(manifest, routePath);
   const islands = islandIds.map((id) => getIslandEntry(manifest, id)).filter(Boolean);
 
+  const manifestJson = JSON.stringify(manifest);
+  const islandsJson = JSON.stringify(islands);
+
   return `
 (function() {
-  const manifest = ${JSON.stringify(manifest)};
-  const islands = ${JSON.stringify(islands)};
+  const manifest = ${manifestJson};
+  const islands = ${islandsJson};
 
   // Import hydration runtime
   import('/islands/runtime.js').then(({ hydrateIslands }) => {

@@ -97,7 +97,7 @@ export function hydrateOn(trigger: HydrateOnOptions['trigger'], component: () =>
         handlers.onMouseEnter = hydrate;
       }
 
-      return <div {...handlers}>{content}</div>;
+      return (<div {...handlers}>{content as any}</div>);
     };
   })();
 }

@@ -70,6 +70,42 @@
       "types": "./dist/suspense/index.d.ts",
       "import": "./dist/suspense/index.js"
     },
+    "./i18n": {
+      "types": "./dist/i18n/index.d.ts",
+      "import": "./dist/i18n/index.js"
+    },
+    "./monitoring": {
+      "types": "./dist/monitoring/index.d.ts",
+      "import": "./dist/monitoring/index.js"
+    },
+    "./build": {
+      "types": "./dist/build/index.d.ts",
+      "import": "./dist/build/index.js"
+    },
+    "./build/critical-css": {
+      "types": "./dist/build/critical-css.d.ts",
+      "import": "./dist/build/critical-css.js"
+    },
+    "./build/tree-shaking": {
+      "types": "./dist/build/tree-shaking.d.ts",
+      "import": "./dist/build/tree-shaking.js"
+    },
+    "./build/build-performance": {
+      "types": "./dist/build/build-performance.d.ts",
+      "import": "./dist/build/build-performance.js"
+    },
+    "./build/asset-pipeline": {
+      "types": "./dist/build/asset-pipeline.d.ts",
+      "import": "./dist/build/asset-pipeline.js"
+    },
+    "./build/bundle-optimization": {
+      "types": "./dist/build/bundle-optimization.d.ts",
+      "import": "./dist/build/bundle-optimization.js"
+    },
+    "./build/vite-plugin": {
+      "types": "./dist/build/vite-plugin.d.ts",
+      "import": "./dist/build/vite-plugin.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

@@ -343,7 +343,7 @@ export function createHydrationStrategy(
 export async function preloadIsland(islandId: string, manifest?: any): Promise<void> {
   if (!manifest || !manifest.islands[islandId]) {
     console.warn(`[Aether Islands] Cannot preload island ${islandId}: not found in manifest`);
-    return;
+    return Promise.resolve();
   }
 
   const entry = manifest.islands[islandId];

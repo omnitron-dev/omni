@@ -30,11 +30,9 @@ describe('Server Function', () => {
     });
 
     it('should handle async operations', async () => {
-      const fn = serverFunction(async (delay: number) => {
-        return new Promise((resolve) => {
+      const fn = serverFunction(async (delay: number) => new Promise((resolve) => {
           setTimeout(() => resolve('done'), delay);
-        });
-      });
+        }));
 
       const promise = fn(100);
       vi.advanceTimersByTime(100);
@@ -44,9 +42,7 @@ describe('Server Function', () => {
     });
 
     it('should pass multiple arguments', async () => {
-      const fn = serverFunction(async (a: number, b: number, c: number) => {
-        return a + b + c;
-      });
+      const fn = serverFunction(async (a: number, b: number, c: number) => a + b + c);
 
       const result = await fn(1, 2, 3);
 
@@ -232,11 +228,9 @@ describe('Server Function', () => {
     it('should timeout after specified duration', async () => {
       vi.useRealTimers();
       const fn = serverFunction(
-        async () => {
-          return new Promise((resolve) => {
+        async () => new Promise((resolve) => {
             setTimeout(() => resolve('success'), 100);
-          });
-        },
+          }),
         {
           timeout: 10,
         }
@@ -249,11 +243,9 @@ describe('Server Function', () => {
     it('should succeed if completed before timeout', async () => {
       vi.useRealTimers();
       const fn = serverFunction(
-        async () => {
-          return new Promise((resolve) => {
+        async () => new Promise((resolve) => {
             setTimeout(() => resolve('success'), 10);
-          });
-        },
+          }),
         {
           timeout: 100,
         }
@@ -408,9 +400,7 @@ describe('Server Function', () => {
 
   describe('Type Safety', () => {
     it('should maintain type safety for arguments', async () => {
-      const fn = serverFunction(async (x: number, y: string) => {
-        return `${x}-${y}`;
-      });
+      const fn = serverFunction(async (x: number, y: string) => `${x}-${y}`);
 
       const result = await fn(42, 'test');
       expect(result).toBe('42-test');
@@ -426,9 +416,7 @@ describe('Server Function', () => {
         name: string;
       }
 
-      const fn = serverFunction<[number], User>(async (id) => {
-        return { id, name: 'Test' };
-      });
+      const fn = serverFunction<[number], User>(async (id) => ({ id, name: 'Test' }));
 
       const result = await fn(1);
 

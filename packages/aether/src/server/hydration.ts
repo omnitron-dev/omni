@@ -186,10 +186,10 @@ function hydrateOnInteraction(
   onMismatch?: (error: HydrationError) => void
 ): void {
   const events = ['mousedown', 'touchstart', 'keydown', 'scroll'];
-  const hydrate = () => {
+  const hydrateHandler = () => {
     // Remove event listeners
     events.forEach((event) => {
-      container.removeEventListener(event, hydrate);
+      container.removeEventListener(event, hydrateHandler);
     });
 
     hydrateEager(component, container, onMismatch);
@@ -197,7 +197,7 @@ function hydrateOnInteraction(
 
   // Add event listeners
   events.forEach((event) => {
-    container.addEventListener(event, hydrate, { once: true, passive: true });
+    container.addEventListener(event, hydrateHandler, { once: true, passive: true });
   });
 }
 

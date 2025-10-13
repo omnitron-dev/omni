@@ -182,7 +182,7 @@ export interface CachedResource<T> extends Resource<T> {
   /**
    * Mutate local data (optimistic update)
    */
-  mutate: (updater: T | ((prev: T | undefined) => T)) => void;
+  mutate: (updater: T | ((prev: T | undefined) => T)) => Promise<void>;
 
   /**
    * Get cache key
@@ -224,12 +224,12 @@ export interface OptimisticUpdateResult<T> {
   /**
    * Commit the optimistic update (after successful mutation)
    */
-  commit: (data?: T) => void;
+  commit: (data?: T) => Promise<void>;
 
   /**
    * Rollback the optimistic update (on error)
    */
-  rollback: () => void;
+  rollback: () => Promise<void>;
 }
 
 /**

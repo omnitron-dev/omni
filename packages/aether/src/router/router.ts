@@ -7,13 +7,34 @@
 import { signal } from '../core/reactivity/signal.js';
 import { findBestMatch, normalizePath } from './route-matcher.js';
 import { executeLoader, setLoaderData, setNavigationState } from './data.js';
-import type { Router, RouterConfig, RouteMatch, Location, NavigationOptions, RouteGuard } from './types.js';
+import { ViewTransitionsManager } from './view-transitions.js';
+import { PrefetchManager } from './prefetch.js';
+import { CodeSplittingManager } from './code-splitting.js';
+import { ScrollRestorationManager } from './scroll.js';
+import type {
+  Router,
+  RouterConfig,
+  RouteMatch,
+  Location,
+  NavigationOptions,
+  RouteGuard,
+} from './types.js';
 
 /**
  * Create a new Router instance
  */
 export function createRouter(config: RouterConfig = {}): Router {
-  const { mode = 'history', base = '/', routes = [], scrollBehavior, netron } = config;
+  const {
+    mode = 'history',
+    base = '/',
+    routes = [],
+    scrollBehavior,
+    netron,
+    viewTransitions,
+    prefetch,
+    codeSplitting,
+    scrollRestoration,
+  } = config;
 
   // Current location (reactive)
   const currentLocation = signal<Location>(getCurrentLocation());
@@ -26,6 +47,36 @@ export function createRouter(config: RouterConfig = {}): Router {
 
   // After navigation hooks
   const afterHooks: Array<(to: RouteMatch, from: RouteMatch | null) => void> = [];
+
+  // Initialize advanced features
+  const viewTransitionsManager =
+    viewTransitions !== false
+      ? new ViewTransitionsManager(
+          typeof viewTransitions === 'object' ? viewTransitions : { enabled: true }
+        )
+      : null;
+
+  const prefetchManager =
+    prefetch !== false
+      ? new PrefetchManager(
+          { config: { mode, base, routes, scrollBehavior, netron } } as Router,
+          typeof prefetch === 'object' ? prefetch : { enabled: true }
+        )
+      : null;
+
+  // Code splitting manager (currently not used in router, but available for external use)
+  // @ts-expect-error - codeSplittingManager is declared for future use but not yet integrated
+  const codeSplittingManager =
+    codeSplitting !== false
+      ? new CodeSplittingManager(typeof codeSplitting === 'object' ? codeSplitting : { enabled: true })
+      : null;
+
+  const scrollManager =
+    scrollRestoration !== false
+      ? new ScrollRestorationManager(
+          typeof scrollRestoration === 'object' ? scrollRestoration : { enabled: true }
+        )
+      : null;
 
   /**
    * Get current location from browser
@@ -79,6 +130,9 @@ export function createRouter(config: RouterConfig = {}): Router {
     // Parse the target URL
     const url = new URL(to, window.location.origin);
     const pathname = normalizePath(url.pathname);
+
+    // Get current path for transition
+    const fromPath = currentLocation().pathname;
 
     // Find matching route
     const match = findBestMatch(pathname, routes);
@@ -149,42 +203,61 @@ export function createRouter(config: RouterConfig = {}): Router {
       setNavigationState('idle');
     }
 
-    // Update browser history
-    if (typeof window !== 'undefined') {
-      const newUrl = url.pathname + url.search + url.hash;
+    // Execute navigation with view transition if enabled
+    const executeNavigation = async () => {
+      // Update browser history
+      if (typeof window !== 'undefined') {
+        const newUrl = url.pathname + url.search + url.hash;
 
-      if (mode === 'hash') {
-        const hashUrl = `#${newUrl}`;
-        if (replace) {
-          window.history.replaceState(state, '', hashUrl);
-        } else {
-          window.history.pushState(state, '', hashUrl);
-        }
-      } else if (mode === 'history') {
-        if (replace) {
-          window.history.replaceState(state, '', newUrl);
-        } else {
-          window.history.pushState(state, '', newUrl);
+        if (mode === 'hash') {
+          const hashUrl = `#${newUrl}`;
+          if (replace) {
+            window.history.replaceState(state, '', hashUrl);
+          } else {
+            window.history.pushState(state, '', hashUrl);
+          }
+        } else if (mode === 'history') {
+          if (replace) {
+            window.history.replaceState(state, '', newUrl);
+          } else {
+            window.history.pushState(state, '', newUrl);
+          }
         }
       }
+
+      // Update current location
+      currentLocation.set({
+        pathname,
+        search: url.search,
+        hash: url.hash,
+        state,
+      });
+
+      // Update current match
+      currentMatch.set(match);
+    };
+
+    // Use view transitions if enabled
+    if (viewTransitionsManager) {
+      await viewTransitionsManager.executeTransition(fromPath, pathname, executeNavigation);
+    } else {
+      await executeNavigation();
     }
 
-    // Update current location
-    currentLocation.set({
-      pathname,
-      search: url.search,
-      hash: url.hash,
-      state,
-    });
-
-    // Update current match
-    currentMatch.set(match);
-
-    // Handle scroll behavior
-    if (scroll && typeof window !== 'undefined') {
+    // Handle scroll behavior with scroll manager
+    if (scroll && scrollManager) {
+      await scrollManager.handleNavigation(fromPath, pathname, {
+        position:
+          typeof scroll === 'object'
+            ? { left: scroll.left ?? 0, top: scroll.top ?? 0 }
+            : undefined,
+        skip: !scroll,
+      });
+    } else if (scroll && typeof window !== 'undefined') {
+      // Fallback to basic scroll behavior
       if (typeof scroll === 'object') {
         window.scrollTo(scroll.left ?? 0, scroll.top ?? 0);
-      } else if (scrollBehavior && match) {
+      } else if (typeof scrollBehavior === 'function' && match) {
         const position = scrollBehavior(match, previousMatch, null);
         if (position) {
           window.scrollTo(position.left ?? 0, position.top ?? 0);
@@ -341,6 +414,14 @@ export function createRouter(config: RouterConfig = {}): Router {
   function dispose(): void {
     if (typeof window !== 'undefined') {
       window.removeEventListener('popstate', handlePopState);
+    }
+
+    // Cleanup managers
+    if (prefetchManager) {
+      prefetchManager.dispose();
+    }
+    if (scrollManager) {
+      scrollManager.dispose();
     }
   }
 

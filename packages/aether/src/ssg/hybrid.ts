@@ -333,6 +333,11 @@ export function optimizeRouteForStrategy(route: SSGRoute, strategy: RenderStrate
       delete optimized.getStaticPaths;
       delete optimized.loader;
       break;
+
+    default:
+      // Unknown strategy, keep route as-is
+      console.warn(`Unknown render strategy: ${strategy}, route not optimized`);
+      break;
   }
 
   return optimized;

@@ -112,6 +112,9 @@ export function filePathToRoutePath(filePath: string): string {
     return `:${param}`;
   });
 
+  // Remove any remaining file extensions (.tsx, .ts, .jsx, .js)
+  path = path.replace(/\.(tsx?|jsx?)$/, '');
+
   // Normalize slashes
   path = path.replace(/\/+/g, '/');
 
@@ -346,6 +349,9 @@ export function buildRouteTree(files: RouteFile[], routeGroups: Map<string, Rout
             const action = mod.default || mod.action;
             return action ? action(ctx) : null;
           };
+          break;
+        default:
+          // Handle unknown file types (api, notFound)
           break;
       }
 

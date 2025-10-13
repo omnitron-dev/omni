@@ -18,6 +18,7 @@ export default defineConfig({
     'store/index': 'src/store/index.ts',
     'data/index': 'src/data/index.ts',
     'suspense/index': 'src/suspense/index.ts',
+    'i18n/index': 'src/i18n/index.ts',
   },
   format: ['esm'],
   dts: true,

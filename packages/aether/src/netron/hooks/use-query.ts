@@ -285,8 +285,8 @@ export function useInfiniteQuery<
   const serviceName = typeof serviceClass === 'string' ? serviceClass : getServiceName(serviceClass);
 
   // Fetch next page
-  const fetchNextPage = async () => {
-    if (isFetchingNextPage() || !nextPageParam()) return;
+  const fetchNextPage = async (): Promise<any> => {
+    if (isFetchingNextPage() || !nextPageParam()) return undefined;
 
     isFetchingNextPage.set(true);
     try {

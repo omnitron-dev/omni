@@ -158,23 +158,40 @@ export function createCachedResource<T>(
   }
 
   /**
+   * Refetch data (bypasses cache)
+   */
+  async function refetch(): Promise<void> {
+    // Clear cache to force fresh fetch
+    if (cacheKey) {
+      cache.delete(cacheKey);
+    }
+    // Increment counter to get new cache key
+    refetchCounter++;
+    // Trigger refetch
+    await baseResource.refetch();
+  }
+
+  /**
    * Mutate local data (optimistic update)
    */
-  function mutate(updater: T | ((prev: T | undefined) => T)): void {
+  async function mutate(updater: T | ((prev: T | undefined) => T)): Promise<void> {
     const current = baseResource();
 
     const newData = typeof updater === 'function'
       ? (updater as (prev: T | undefined) => T)(current)
       : updater;
 
-    // Update cache
-    if (cacheKey) {
-      cache.set(cacheKey, newData, ttl);
-    }
-
-    // Force refetch to update resource
+    // Generate new cache key for the mutation
     refetchCounter++;
-    baseResource.refetch();
+    const key = keyFn ? keyFn() : generateCacheKey(name, [refetchCounter]);
+
+    // Update cache FIRST with the new data
+    cache.set(key, newData, ttl);
+    cacheKey = key;
+
+    // Trigger refetch to update resource signal with the cached data
+    // This will read from cache immediately since we just set it
+    await baseResource.refetch();
   }
 
   /**
@@ -190,7 +207,7 @@ export function createCachedResource<T>(
     {
       loading: () => baseResource.loading(),
       error: () => baseResource.error(),
-      refetch: () => baseResource.refetch(),
+      refetch,
       invalidate,
       mutate,
       getCacheKey: getCacheKeyValue,

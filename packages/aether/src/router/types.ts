@@ -140,8 +140,68 @@ export interface RouterConfig {
   mode?: 'history' | 'hash' | 'memory';
   base?: string;
   routes?: RouteDefinition[];
-  scrollBehavior?: ScrollBehavior;
+  scrollBehavior?: ScrollBehavior | 'auto' | 'smooth' | 'instant';
   netron?: any; // NetronClient instance - typed as any to avoid circular dependency
+
+  /** View Transitions API configuration */
+  viewTransitions?: boolean | ViewTransitionsConfig;
+
+  /** Prefetch configuration */
+  prefetch?: boolean | PrefetchStrategy | PrefetchConfig;
+
+  /** Code splitting configuration */
+  codeSplitting?: boolean | CodeSplittingConfig;
+
+  /** Scroll restoration configuration */
+  scrollRestoration?: boolean | ScrollRestorationConfig;
+}
+
+/**
+ * View transitions configuration
+ */
+export interface ViewTransitionsConfig {
+  enabled?: boolean;
+  fallbackDuration?: number;
+  defaultType?: 'fade' | 'slide' | 'scale' | 'none';
+  customNames?: Record<string, string>;
+  skipTransition?: (from: string, to: string) => boolean;
+}
+
+/**
+ * Prefetch configuration
+ */
+export interface PrefetchConfig {
+  enabled?: boolean;
+  strategy?: PrefetchStrategy;
+  maxCacheSize?: number;
+  maxCacheAge?: number;
+  maxConcurrent?: number;
+  adaptToNetwork?: boolean;
+}
+
+/**
+ * Code splitting configuration
+ */
+export interface CodeSplittingConfig {
+  enabled?: boolean;
+  preloadStrategy?: 'none' | 'hover' | 'visible' | 'all';
+  chunkName?: (path: string) => string;
+  extractCriticalCSS?: boolean;
+  defaultLoading?: RouteComponent;
+}
+
+/**
+ * Scroll restoration configuration
+ */
+export interface ScrollRestorationConfig {
+  enabled?: boolean;
+  behavior?: 'auto' | 'smooth' | 'instant';
+  scrollToTop?: boolean;
+  savePosition?: boolean;
+  maxSavedPositions?: number;
+  restoreDelay?: number;
+  hashScrolling?: boolean;
+  hashScrollOffset?: number;
 }
 
 /**

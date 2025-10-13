@@ -31,6 +31,10 @@ export type {
   PrefetchStrategy,
   FileRouteConventions,
   FileRouteModule,
+  ViewTransitionsConfig,
+  PrefetchConfig,
+  CodeSplittingConfig,
+  ScrollRestorationConfig,
 } from './types.js';
 
 // Router
@@ -80,8 +84,72 @@ export {
 } from './data.js';
 export type { Fetcher } from './data.js';
 
-// Prefetching
+// Prefetching (Basic)
 export { prefetchRoute, clearPrefetchCache, isPrefetched } from './prefetch.js';
+
+// Advanced Prefetching
+export {
+  PrefetchManager,
+  PrefetchPriority,
+  getPrefetchManager,
+  setPrefetchManager,
+} from './prefetch.js';
+export type {
+  PrefetchOptions,
+  ResourceHints,
+  PrefetchStats,
+  PrefetchManagerConfig,
+  NetworkInfo,
+} from './prefetch.js';
+
+// View Transitions
+export {
+  ViewTransitionsManager,
+  supportsViewTransitions,
+  getViewTransitionsManager,
+  setViewTransitionsManager,
+  injectFallbackStyles,
+  setupMorphTransition,
+  cleanupMorphTransition,
+} from './view-transitions.js';
+export type {
+  ViewTransitionConfig,
+  ViewTransitionOptions,
+  ViewTransitionHooks,
+} from './view-transitions.js';
+
+// Code Splitting
+export {
+  CodeSplittingManager,
+  getCodeSplittingManager,
+  setCodeSplittingManager,
+  lazyRoute,
+  preloadRoute,
+  webpackChunkName,
+  viteGlob,
+} from './code-splitting.js';
+export type {
+  LazyRouteConfig,
+  ChunkMetadata,
+  BundleStats,
+} from './code-splitting.js';
+
+// Scroll Restoration
+export {
+  ScrollRestorationManager,
+  getScrollRestorationManager,
+  setScrollRestorationManager,
+  saveScrollPosition,
+  restoreScrollPosition,
+  scrollToTop,
+  scrollToElement,
+  scrollToHash,
+} from './scroll.js';
+export type {
+  ScrollPosition,
+  ScrollBehaviorType,
+  ScrollOptions,
+} from './scroll.js';
 
 // File-Based Routing
 export {

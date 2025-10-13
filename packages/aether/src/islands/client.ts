@@ -298,7 +298,7 @@ export async function waitForIslandHydration(islandId: string, timeout?: number)
   }
 
   if (island.state === 'hydrated') {
-    return;
+    return Promise.resolve();
   }
 
   return new Promise((resolve, reject) => {

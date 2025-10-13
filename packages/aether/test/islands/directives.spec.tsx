@@ -2,12 +2,10 @@
  * Island Directives Tests
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { defineComponent } from '../../src/core/component/define.js';
 import {
   island,
-  ClientOnly,
-  ServerOnly,
   islandBoundary,
   staticHint,
   isStaticComponent,
@@ -23,9 +21,7 @@ describe('Island Directives', () => {
   describe('island', () => {
     it('should mark component as island', () => {
       const component = island(
-        defineComponent(() => {
-          return () => <div>Test</div>;
-        }),
+        defineComponent(() => () => <div>Test</div>),
       );
 
       expect(component.__island).toBe(true);
@@ -34,9 +30,7 @@ describe('Island Directives', () => {
 
     it('should use provided hydration strategy', () => {
       const component = island(
-        defineComponent(() => {
-          return () => <div>Test</div>;
-        }),
+        defineComponent(() => () => <div>Test</div>),
         {
           hydrate: 'visible',
         },
@@ -47,9 +41,7 @@ describe('Island Directives', () => {
 
     it('should auto-detect strategy if not provided', () => {
       const component = island(
-        defineComponent(() => {
-          return () => <button onClick={() => {}}>Click</button>;
-        }),
+        defineComponent(() => () => <button onClick={() => {}}>Click</button>),
       );
 
       expect(component.__islandOptions.hydrate).toBeDefined();
@@ -57,9 +49,7 @@ describe('Island Directives', () => {
 
     it('should generate island ID', () => {
       const component = island(
-        defineComponent(() => {
-          return () => <div>Test</div>;
-        }),
+        defineComponent(() => () => <div>Test</div>),
       );
 
       expect(component.__islandId).toBeDefined();
@@ -68,9 +58,7 @@ describe('Island Directives', () => {
 
     it('should use provided name', () => {
       const component = island(
-        defineComponent(() => {
-          return () => <div>Test</div>;
-        }),
+        defineComponent(() => () => <div>Test</div>),
         {
           name: 'MyIsland',
         },
@@ -84,9 +72,7 @@ describe('Island Directives', () => {
     it('should create named island', () => {
       const component = islandBoundary(
         'test-island',
-        defineComponent(() => {
-          return () => <div>Test</div>;
-        }),
+        defineComponent(() => () => <div>Test</div>),
         {
           hydrate: 'idle',
         },
@@ -101,9 +87,7 @@ describe('Island Directives', () => {
   describe('staticHint', () => {
     it('should mark component as static', () => {
       const component = staticHint(
-        defineComponent(() => {
-          return () => <div>Static</div>;
-        }),
+        defineComponent(() => () => <div>Static</div>),
       );
 
       expect(isStaticComponent(component)).toBe(true);
@@ -113,9 +97,7 @@ describe('Island Directives', () => {
   describe('defer', () => {
     it('should create deferred island with idle strategy', () => {
       const component = defer(
-        defineComponent(() => {
-          return () => <div>Test</div>;
-        }),
+        defineComponent(() => () => <div>Test</div>),
       );
 
       expect(component.__island).toBe(true);
@@ -124,9 +106,7 @@ describe('Island Directives', () => {
 
     it('should allow custom defer strategy', () => {
       const component = defer(
-        defineComponent(() => {
-          return () => <div>Test</div>;
-        }),
+        defineComponent(() => () => <div>Test</div>),
         'visible',
       );
 
@@ -138,9 +118,7 @@ describe('Island Directives', () => {
     it('should create island with custom condition', () => {
       const condition = () => true;
       const component = conditionalIsland(
-        defineComponent(() => {
-          return () => <div>Test</div>;
-        }),
+        defineComponent(() => () => <div>Test</div>),
         condition,
       );
 
@@ -154,9 +132,7 @@ describe('Island Directives', () => {
     it('should create media query island', () => {
       const query = '(max-width: 768px)';
       const component = mediaIsland(
-        defineComponent(() => {
-          return () => <div>Test</div>;
-        }),
+        defineComponent(() => () => <div>Test</div>),
         query,
       );
 
@@ -169,9 +145,7 @@ describe('Island Directives', () => {
   describe('viewportIsland', () => {
     it('should create viewport island', () => {
       const component = viewportIsland(
-        defineComponent(() => {
-          return () => <div>Test</div>;
-        }),
+        defineComponent(() => () => <div>Test</div>),
         '100px',
       );
 
@@ -182,9 +156,7 @@ describe('Island Directives', () => {
 
     it('should use default root margin', () => {
       const component = viewportIsland(
-        defineComponent(() => {
-          return () => <div>Test</div>;
-        }),
+        defineComponent(() => () => <div>Test</div>),
       );
 
       expect(component.__islandOptions.rootMargin).toBe('0px');
@@ -195,9 +167,7 @@ describe('Island Directives', () => {
     it('should create interaction island', () => {
       const events = ['click', 'focus'];
       const component = interactionIsland(
-        defineComponent(() => {
-          return () => <div>Test</div>;
-        }),
+        defineComponent(() => () => <div>Test</div>),
         events,
       );
 
@@ -208,9 +178,7 @@ describe('Island Directives', () => {
 
     it('should use default events', () => {
       const component = interactionIsland(
-        defineComponent(() => {
-          return () => <div>Test</div>;
-        }),
+        defineComponent(() => () => <div>Test</div>),
       );
 
       expect(component.__islandOptions.events).toEqual(['click', 'focus', 'touchstart']);
@@ -220,9 +188,7 @@ describe('Island Directives', () => {
   describe('idleIsland', () => {
     it('should create idle island', () => {
       const component = idleIsland(
-        defineComponent(() => {
-          return () => <div>Test</div>;
-        }),
+        defineComponent(() => () => <div>Test</div>),
         3000,
       );
 
@@ -233,9 +199,7 @@ describe('Island Directives', () => {
 
     it('should use default timeout', () => {
       const component = idleIsland(
-        defineComponent(() => {
-          return () => <div>Test</div>;
-        }),
+        defineComponent(() => () => <div>Test</div>),
       );
 
       expect(component.__islandOptions.timeout).toBe(2000);

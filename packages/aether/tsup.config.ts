@@ -16,6 +16,8 @@ export default defineConfig({
     'server/index': 'src/server/index.ts',
     'netron/index': 'src/netron/index.ts',
     'store/index': 'src/store/index.ts',
+    'data/index': 'src/data/index.ts',
+    'suspense/index': 'src/suspense/index.ts',
   },
   format: ['esm'],
   dts: true,

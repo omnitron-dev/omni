@@ -62,6 +62,14 @@
       "types": "./dist/store/index.d.ts",
       "import": "./dist/store/index.js"
     },
+    "./data": {
+      "types": "./dist/data/index.d.ts",
+      "import": "./dist/data/index.js"
+    },
+    "./suspense": {
+      "types": "./dist/suspense/index.d.ts",
+      "import": "./dist/suspense/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

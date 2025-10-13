@@ -76,6 +76,40 @@ export {
   type Ref,
 } from './core/index.js';
 
+// Suspense and async loading (commonly used)
+export {
+  // Suspense
+  Suspense,
+  SuspenseList,
+  suspend,
+  useSuspense,
+  createSuspenseResource,
+  // Error boundaries
+  ErrorBoundary,
+  Boundary,
+  useErrorBoundary,
+  withErrorBoundary,
+  withRetry,
+  // Async components
+  useAsync,
+  prefetch,
+  asyncComponent,
+  createAsyncComponent,
+  // Lazy loading
+  lazy as lazyComponent,
+  preload as preloadLazy,
+  isLoaded,
+  lazyNamed,
+  lazyRoute,
+  splitCode,
+  // Types
+  type SuspenseProps,
+  type ErrorBoundaryProps,
+  type LazyComponent,
+  type LazyOptions,
+  type AsyncComponentLoader,
+} from './suspense/index.js';
+
 // Utility exports (template syntax enhancements)
 export {
   // Event handlers

@@ -8,6 +8,23 @@ import { getOwner, onCleanup, context, OwnerImpl } from '../reactivity/context.j
 import { triggerMount, cleanupComponentContext, handleComponentError } from './lifecycle.js';
 import { reactiveProps } from './props.js';
 import type { ComponentSetup, Component, RenderFunction } from './types.js';
+import { templateCache, generateCacheKey } from '../../reconciler/template-cache.js';
+import type { VNode } from '../../reconciler/vnode.js';
+
+/**
+ * Feature flag to enable template caching
+ * When enabled, components that return VNodes will have their templates cached
+ * @default false (will be enabled when reconciliation engine is complete)
+ */
+export const ENABLE_TEMPLATE_CACHE = false;
+
+/**
+ * Check if a value is a VNode
+ * @internal
+ */
+function isVNode(value: any): value is VNode {
+  return value != null && typeof value === 'object' && 'type' in value && 'dom' in value;
+}
 
 /**
  * Define a component from a setup function
@@ -88,7 +105,30 @@ export function defineComponent<P = {}>(setup: ComponentSetup<P>, name?: string)
       try {
         return context.runWithOwner(owner, () => {
           try {
-            return render!();
+            // Execute render function
+            const result = render!();
+
+            // Template caching for VNode results (when enabled)
+            if (ENABLE_TEMPLATE_CACHE && isVNode(result)) {
+              // Generate cache key from component and props
+              const cacheKey = generateCacheKey(component, props);
+
+              // Check if we have a cached template
+              const cachedVNode = templateCache.get(cacheKey);
+
+              if (cachedVNode) {
+                // Cache hit: reuse cached VNode structure
+                // The reactive bindings will be updated automatically by effects
+                return cachedVNode;
+              } else {
+                // Cache miss: cache the new VNode
+                templateCache.set(cacheKey, result);
+                return result;
+              }
+            }
+
+            // Return result as-is (DOM node or other value)
+            return result;
           } catch (error) {
             // Handle render errors
             handleComponentError(owner, error as Error);

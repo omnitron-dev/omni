@@ -6,6 +6,23 @@
 
 import type { JSXElement, JSXElementType, JSXProps } from './types.js';
 import { FragmentType, isComponent, normalizeChildren } from './types.js';
+import { createElementVNode, normalizeChildren as normalizeVNodeChildren } from '../reconciler/vnode.js';
+import type { VNode } from '../reconciler/vnode.js';
+
+/**
+ * Feature flag to enable reactive VNode creation when signals are detected
+ *
+ * @default false - Disabled until JSX-VNode type integration is complete
+ *
+ * **Note:** When enabled, JSX with reactive props will create VNodes instead of DOM nodes.
+ * This requires proper type integration between VNode and JSXElement types.
+ *
+ * **Production Readiness:** Keep disabled until:
+ * - VNode type is compatible with JSXElement union
+ * - Integration tests pass with reactivity enabled
+ * - Backward compatibility is verified
+ */
+export const ENABLE_REACTIVITY = false;
 
 /**
  * Fragment symbol for grouping elements without wrapper
@@ -52,6 +69,13 @@ function createJSXElement(type: JSXElementType, props: JSXProps | null, key?: st
 
   // Handle DOM element
   if (typeof type === 'string') {
+    // Check if reactivity is enabled and props contain signals
+    if (ENABLE_REACTIVITY && detectReactiveProps(props)) {
+      // Return VNode for reactive rendering
+      // Type assertion needed until VNode-JSXElement integration is complete
+      return createReactiveVNode(type, props, key) as any as JSXElement;
+    }
+    // Use existing DOM creation (backward compatible)
     return createDOMElement(type, props, key);
   }
 
@@ -288,4 +312,95 @@ function renderChild(child: any): Node | null {
   // Unknown type
   console.warn('Unknown child type:', child);
   return null;
+}
+
+/**
+ * Detect if props contain reactive signals
+ *
+ * Checks if any prop values are signals (have a .peek() method).
+ * This allows us to create VNodes for reactive rendering when needed.
+ *
+ * @param props - Props to check for reactivity
+ * @returns True if any prop is a signal
+ *
+ * @example
+ * ```typescript
+ * const [count] = createSignal(0);
+ * detectReactiveProps({ count }); // true
+ * detectReactiveProps({ count: 5 }); // false
+ * ```
+ */
+function detectReactiveProps(props: JSXProps | null): boolean {
+  if (!props) {
+    return false;
+  }
+
+  // Check each prop value
+  for (const value of Object.values(props)) {
+    // Check if value is a signal (has peek method)
+    if (isSignal(value)) {
+      return true;
+    }
+
+    // Check nested values in style object
+    if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Node)) {
+      for (const nestedValue of Object.values(value)) {
+        if (isSignal(nestedValue)) {
+          return true;
+        }
+      }
+    }
+
+    // Check array values (className, etc.)
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (isSignal(item)) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Check if a value is a signal
+ *
+ * Signals have a .peek() method that allows reading without tracking.
+ *
+ * @param value - Value to check
+ * @returns True if value is a signal
+ */
+function isSignal(value: any): boolean {
+  return value != null && typeof value === 'function' && typeof value.peek === 'function';
+}
+
+/**
+ * Create reactive VNode from JSX props
+ *
+ * Creates a VNode instead of direct DOM when reactive props are detected.
+ * The VNode will be rendered with reactive bindings by jsx-integration.
+ *
+ * @param type - Element tag name
+ * @param props - Element props (may contain signals)
+ * @param key - Optional key for list reconciliation
+ * @returns VNode that will be rendered reactively
+ *
+ * @example
+ * ```typescript
+ * const [count] = createSignal(0);
+ * const vnode = createReactiveVNode('div', { textContent: count }, undefined);
+ * // VNode will be rendered with reactive binding for textContent
+ * ```
+ */
+function createReactiveVNode(type: string, props: JSXProps | null, key?: string | number): VNode {
+  // Separate children from other props
+  const { children, ...restProps } = props || {};
+
+  // Normalize children to VNodes
+  const childVNodes = children !== undefined ? normalizeVNodeChildren(children) : undefined;
+
+  // Create element VNode with props and children
+  return createElementVNode(type, restProps, childVNodes, key);
 }

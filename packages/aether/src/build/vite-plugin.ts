@@ -1,6 +1,6 @@
 /**
  * Vite Plugin for Aether Build Optimizations
- * Integrates all build optimization features
+ * Integrates all build optimization features including Aether compiler
  */
 
 import type { Plugin, ResolvedConfig } from 'vite';
@@ -15,8 +15,11 @@ import {
 } from './build-performance.js';
 import { AssetPipeline } from './asset-pipeline.js';
 import { BundleOptimizer } from './bundle-optimization.js';
+import { AetherCompiler, type CompileResult } from '../compiler/compiler.js';
+import type { OptimizationLevel } from '../compiler/types.js';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import * as crypto from 'crypto';
 
 export interface AetherBuildPluginOptions {
   /**
@@ -109,6 +112,47 @@ export interface AetherBuildPluginOptions {
    * @default 'dist/aether-build-report.json'
    */
   reportPath?: string;
+
+  /**
+   * Enable Aether compiler
+   * @default true
+   */
+  compiler?: boolean;
+
+  /**
+   * Compiler options
+   */
+  compilerOptions?: {
+    /**
+     * Optimization level
+     * @default 'basic'
+     */
+    optimize?: OptimizationLevel;
+
+    /**
+     * Enable source maps
+     * @default true
+     */
+    sourcemap?: boolean;
+
+    /**
+     * Enable islands optimization
+     * @default false
+     */
+    islands?: boolean;
+
+    /**
+     * Enable server components
+     * @default false
+     */
+    serverComponents?: boolean;
+
+    /**
+     * Enable CSS optimization
+     * @default true
+     */
+    cssOptimization?: boolean;
+  };
 }
 
 export interface BuildReport {
@@ -137,14 +181,19 @@ export interface BuildReport {
     cacheHitRate: number;
     workersUsed: number;
   };
+  compiler?: {
+    filesCompiled: number;
+    totalCompilationTime: number;
+    averageCompilationTime: number;
+    totalSizeReduction: number;
+    averageSizeReduction: number;
+  };
 }
 
 /**
  * Aether build optimization plugin
  */
-export function aetherBuildPlugin(
-  options: AetherBuildPluginOptions = {},
-): Plugin {
+export function aetherBuildPlugin(options: AetherBuildPluginOptions = {}): Plugin {
   const opts: Required<AetherBuildPluginOptions> = {
     criticalCSS: true,
     criticalCSSOptions: {},
@@ -158,6 +207,8 @@ export function aetherBuildPlugin(
     bundleOptions: {},
     generateReport: false,
     reportPath: 'dist/aether-build-report.json',
+    compiler: true,
+    compilerOptions: {},
     ...options,
   };
 
@@ -172,9 +223,18 @@ export function aetherBuildPlugin(
   let componentTreeShaker: ComponentTreeShaker;
   let _routeTreeShaker: RouteTreeShaker;
   let performanceMonitor: BuildPerformanceMonitor;
+  let aetherCompiler: AetherCompiler | undefined;
   let buildReport: BuildReport = {
     timestamp: new Date().toISOString(),
     duration: 0,
+  };
+
+  // Compiler metrics tracking
+  const compilationMetrics = {
+    filesCompiled: 0,
+    totalCompilationTime: 0,
+    totalOriginalSize: 0,
+    totalCompiledSize: 0,
   };
 
   return {
@@ -187,10 +247,7 @@ export function aetherBuildPlugin(
       // Initialize components
       if (opts.performance) {
         const cacheDir = path.join(config.root, '.aether', 'cache');
-        buildCache = new BuildCache(
-          cacheDir,
-          opts.performanceOptions.cacheStrategy || 'memory',
-        );
+        buildCache = new BuildCache(cacheDir, opts.performanceOptions.cacheStrategy || 'memory');
         await buildCache.init();
 
         incrementalCompiler = new IncrementalCompiler(buildCache);
@@ -221,6 +278,23 @@ export function aetherBuildPlugin(
         componentTreeShaker = new ComponentTreeShaker();
         _routeTreeShaker = new RouteTreeShaker();
       }
+
+      // Initialize Aether compiler
+      if (opts.compiler) {
+        const isDevelopment = config.mode === 'development';
+        aetherCompiler = new AetherCompiler({
+          mode: isDevelopment ? 'development' : 'production',
+          optimize: opts.compilerOptions.optimize || (isDevelopment ? 'none' : 'basic'),
+          sourcemap: opts.compilerOptions.sourcemap ?? true,
+          islands: opts.compilerOptions.islands ?? false,
+          serverComponents: opts.compilerOptions.serverComponents ?? false,
+          cssOptimization: opts.compilerOptions.cssOptimization ?? true,
+          jsx: {
+            runtime: 'automatic',
+            importSource: '@omnitron-dev/aether',
+          },
+        });
+      }
     },
 
     async buildStart() {
@@ -234,6 +308,108 @@ export function aetherBuildPlugin(
       if (id.includes('node_modules')) return null;
 
       let transformedCode = code;
+      let sourceMap: any = undefined;
+
+      // Check if this is a file that should be compiled
+      const shouldCompile = opts.compiler && aetherCompiler && id.match(/\.(tsx|ts|jsx|js)$/);
+
+      // Generate cache key for this file
+      const cacheKey = shouldCompile ? generateCacheKey(id, code) : null;
+
+      // Check cache first
+      if (opts.performance && incrementalCompiler && cacheKey) {
+        const needsRecompilation = await incrementalCompiler.needsRecompilation(id, code);
+
+        if (!needsRecompilation) {
+          const cached = await buildCache.get(cacheKey);
+          if (cached) {
+            return {
+              code: cached.content,
+              map: cached.dependencies.length > 0 ? JSON.parse(cached.dependencies[0]) : null,
+            };
+          }
+        }
+      }
+
+      // Aether Compiler transformation
+      if (shouldCompile && aetherCompiler) {
+        try {
+          const compileStart = Date.now();
+          const result: CompileResult = await aetherCompiler.compile(code, id);
+          const compileTime = Date.now() - compileStart;
+
+          // Handle compilation errors/warnings
+          if (result.warnings && result.warnings.length > 0) {
+            const errors = result.warnings.filter((w) => w.level === 'error');
+            const warnings = result.warnings.filter((w) => w.level !== 'error');
+
+            // Log warnings
+            if (warnings.length > 0) {
+              console.warn(`Aether compiler warnings for ${id}:`);
+              warnings.forEach((w) => console.warn(`  - ${w.message}`));
+            }
+
+            // If there are errors in dev mode, log but continue with original code
+            if (errors.length > 0) {
+              if (config.mode === 'development') {
+                console.error(`Aether compiler errors for ${id}:`);
+                errors.forEach((e) => console.error(`  - ${e.message}`));
+                console.warn(`  Falling back to original code for ${id}`);
+                // Continue with original code
+              } else {
+                // In production, fail on errors
+                throw new Error(`Compilation failed for ${id}: ${errors.map((e) => e.message).join(', ')}`);
+              }
+            } else {
+              // No errors, use compiled code
+              transformedCode = result.code;
+              sourceMap = result.map;
+
+              // Track metrics
+              compilationMetrics.filesCompiled++;
+              compilationMetrics.totalCompilationTime += compileTime;
+              if (result.metrics) {
+                compilationMetrics.totalOriginalSize += result.metrics.originalSize;
+                compilationMetrics.totalCompiledSize += result.metrics.compiledSize;
+              }
+            }
+          } else {
+            // No warnings, use compiled code
+            transformedCode = result.code;
+            sourceMap = result.map;
+
+            // Track metrics
+            compilationMetrics.filesCompiled++;
+            compilationMetrics.totalCompilationTime += compileTime;
+            if (result.metrics) {
+              compilationMetrics.totalOriginalSize += result.metrics.originalSize;
+              compilationMetrics.totalCompiledSize += result.metrics.compiledSize;
+            }
+          }
+
+          // Cache the compiled result
+          if (opts.performance && buildCache && cacheKey) {
+            await buildCache.set(cacheKey, {
+              hash: crypto.createHash('sha256').update(code).digest('hex'),
+              content: transformedCode,
+              dependencies: sourceMap ? [JSON.stringify(sourceMap)] : [],
+              timestamp: Date.now(),
+              ttl: 24 * 60 * 60 * 1000, // 24 hours
+            });
+          }
+        } catch (error) {
+          // Compilation failed
+          if (config.mode === 'development') {
+            console.error(`Aether compiler failed for ${id}:`, error);
+            console.warn(`  Falling back to original code for ${id}`);
+            // Fall back to original code
+            transformedCode = code;
+          } else {
+            // In production, throw the error
+            throw error;
+          }
+        }
+      }
 
       // Tree-shaking
       if (opts.treeShaking) {
@@ -257,27 +433,17 @@ export function aetherBuildPlugin(
         }
       }
 
-      // Incremental compilation check
+      // Update dependencies for incremental compilation
       if (opts.performance && incrementalCompiler) {
-        const needsRecompilation = await incrementalCompiler.needsRecompilation(
-          id,
-          transformedCode,
-        );
-
-        if (!needsRecompilation) {
-          const cached = await buildCache.get(id);
-          if (cached) {
-            return { code: cached.content };
-          }
-        }
-
-        // Update dependencies
         const imports = extractImports(transformedCode);
         incrementalCompiler.updateDependencies(id, imports);
         incrementalCompiler.updateTimestamp(id);
       }
 
-      return { code: transformedCode };
+      return {
+        code: transformedCode,
+        map: sourceMap,
+      };
     },
 
     async generateBundle(_outputOptions, bundle) {
@@ -305,10 +471,7 @@ export function aetherBuildPlugin(
             // Update references in bundle
             for (const output of Object.values(bundle)) {
               if (output.type === 'chunk' && output.code) {
-                output.code = output.code.replace(
-                  new RegExp(originalPath, 'g'),
-                  outputPath,
-                );
+                output.code = output.code.replace(new RegExp(originalPath, 'g'), outputPath);
               }
             }
           }
@@ -325,17 +488,17 @@ export function aetherBuildPlugin(
       if (opts.criticalCSS) {
         for (const [fileName, output] of Object.entries(bundle)) {
           if (output.type === 'asset' && fileName.endsWith('.html')) {
-            const html = typeof output.source === 'string'
-              ? output.source
-              : Buffer.from(output.source).toString('utf-8');
+            const html =
+              typeof output.source === 'string' ? output.source : Buffer.from(output.source).toString('utf-8');
 
             // Find associated CSS
             let css = '';
             for (const [cssFile, cssOutput] of Object.entries(bundle)) {
               if (cssOutput.type === 'asset' && cssFile.endsWith('.css')) {
-                css += typeof cssOutput.source === 'string'
-                  ? cssOutput.source
-                  : Buffer.from(cssOutput.source).toString('utf-8');
+                css +=
+                  typeof cssOutput.source === 'string'
+                    ? cssOutput.source
+                    : Buffer.from(cssOutput.source).toString('utf-8');
               }
             }
 
@@ -393,6 +556,27 @@ export function aetherBuildPlugin(
           };
         }
       }
+
+      // Add compiler metrics to report
+      if (opts.compiler && compilationMetrics.filesCompiled > 0) {
+        buildReport.compiler = {
+          filesCompiled: compilationMetrics.filesCompiled,
+          totalCompilationTime: compilationMetrics.totalCompilationTime,
+          averageCompilationTime: compilationMetrics.totalCompilationTime / compilationMetrics.filesCompiled,
+          totalSizeReduction:
+            compilationMetrics.totalOriginalSize > 0
+              ? ((compilationMetrics.totalOriginalSize - compilationMetrics.totalCompiledSize) /
+                  compilationMetrics.totalOriginalSize) *
+                100
+              : 0,
+          averageSizeReduction:
+            compilationMetrics.totalOriginalSize > 0
+              ? ((compilationMetrics.totalOriginalSize - compilationMetrics.totalCompiledSize) /
+                  compilationMetrics.totalOriginalSize) *
+                100
+              : 0,
+        };
+      }
     },
 
     async closeBundle() {
@@ -401,11 +585,7 @@ export function aetherBuildPlugin(
         try {
           const reportDir = path.dirname(opts.reportPath);
           await fs.mkdir(reportDir, { recursive: true });
-          await fs.writeFile(
-            opts.reportPath,
-            JSON.stringify(buildReport, null, 2),
-            'utf-8',
-          );
+          await fs.writeFile(opts.reportPath, JSON.stringify(buildReport, null, 2), 'utf-8');
           console.log(`\n✓ Aether build report generated: ${opts.reportPath}`);
         } catch (error) {
           console.warn('Failed to generate build report:', error);
@@ -442,10 +622,15 @@ export function aetherBuildPlugin(
 
       return modules;
     },
-
   };
 
   // Helper methods
+  function generateCacheKey(id: string, code: string): string {
+    const hash = crypto.createHash('sha256').update(code).digest('hex').slice(0, 16);
+    const fileName = path.basename(id);
+    return `${fileName}-${hash}`;
+  }
+
   function extractImports(code: string): string[] {
     const imports: string[] = [];
     const importRegex = /import\s+.*?\s+from\s+['"]([^'"]+)['"]/g;
@@ -461,56 +646,50 @@ export function aetherBuildPlugin(
   }
 
   function printSummary(report: BuildReport): void {
-      console.log('\n🎨 Aether Build Optimization Summary\n');
-      console.log(`⏱️  Duration: ${(report.duration / 1000).toFixed(2)}s`);
+    console.log('\n🎨 Aether Build Optimization Summary\n');
+    console.log(`⏱️  Duration: ${(report.duration / 1000).toFixed(2)}s`);
 
-      if (report.criticalCSS) {
-        console.log(`\n📋 Critical CSS:`);
-        console.log(`   Routes: ${report.criticalCSS.routes}`);
-        console.log(
-          `   Avg Coverage: ${report.criticalCSS.averageCoverage.toFixed(1)}%`,
-        );
-      }
+    if (report.compiler) {
+      console.log(`\n⚙️  Compiler:`);
+      console.log(`   Files Compiled: ${report.compiler.filesCompiled}`);
+      console.log(`   Total Time: ${(report.compiler.totalCompilationTime / 1000).toFixed(2)}s`);
+      console.log(`   Avg Time: ${report.compiler.averageCompilationTime.toFixed(2)}ms`);
+      console.log(`   Size Reduction: ${report.compiler.totalSizeReduction.toFixed(1)}%`);
+    }
 
-      if (report.treeShaking) {
-        console.log(`\n🌳 Tree-Shaking:`);
-        console.log(
-          `   Original: ${(report.treeShaking.originalSize / 1024).toFixed(1)}KB`,
-        );
-        console.log(
-          `   Optimized: ${(report.treeShaking.optimizedSize / 1024).toFixed(1)}KB`,
-        );
-        console.log(
-          `   Savings: ${(report.treeShaking.savings / 1024).toFixed(1)}KB`,
-        );
-      }
+    if (report.criticalCSS) {
+      console.log(`\n📋 Critical CSS:`);
+      console.log(`   Routes: ${report.criticalCSS.routes}`);
+      console.log(`   Avg Coverage: ${report.criticalCSS.averageCoverage.toFixed(1)}%`);
+    }
 
-      if (report.assets) {
-        console.log(`\n🖼️  Assets:`);
-        console.log(`   Total: ${report.assets.totalAssets}`);
-        console.log(`   Savings: ${report.assets.savingsPercent.toFixed(1)}%`);
-      }
+    if (report.treeShaking) {
+      console.log(`\n🌳 Tree-Shaking:`);
+      console.log(`   Original: ${(report.treeShaking.originalSize / 1024).toFixed(1)}KB`);
+      console.log(`   Optimized: ${(report.treeShaking.optimizedSize / 1024).toFixed(1)}KB`);
+      console.log(`   Savings: ${(report.treeShaking.savings / 1024).toFixed(1)}KB`);
+    }
 
-      if (report.bundles) {
-        console.log(`\n📦 Bundles:`);
-        console.log(`   Chunks: ${report.bundles.totalChunks}`);
-        console.log(
-          `   Total: ${(report.bundles.totalSize / 1024).toFixed(1)}KB`,
-        );
-        console.log(
-          `   Gzipped: ${(report.bundles.gzippedSize / 1024).toFixed(1)}KB`,
-        );
-      }
+    if (report.assets) {
+      console.log(`\n🖼️  Assets:`);
+      console.log(`   Total: ${report.assets.totalAssets}`);
+      console.log(`   Savings: ${report.assets.savingsPercent.toFixed(1)}%`);
+    }
 
-      if (report.performance) {
-        console.log(`\n⚡ Performance:`);
-        console.log(
-          `   Cache Hit Rate: ${report.performance.cacheHitRate.toFixed(1)}%`,
-        );
-        console.log(`   Workers: ${report.performance.workersUsed}`);
-      }
+    if (report.bundles) {
+      console.log(`\n📦 Bundles:`);
+      console.log(`   Chunks: ${report.bundles.totalChunks}`);
+      console.log(`   Total: ${(report.bundles.totalSize / 1024).toFixed(1)}KB`);
+      console.log(`   Gzipped: ${(report.bundles.gzippedSize / 1024).toFixed(1)}KB`);
+    }
 
-      console.log('');
+    if (report.performance) {
+      console.log(`\n⚡ Performance:`);
+      console.log(`   Cache Hit Rate: ${report.performance.cacheHitRate.toFixed(1)}%`);
+      console.log(`   Workers: ${report.performance.workersUsed}`);
+    }
+
+    console.log('');
   }
 }
 

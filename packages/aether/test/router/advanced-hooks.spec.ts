@@ -16,7 +16,6 @@ import {
   useBlocker,
   usePrompt,
 } from '../../src/router/hooks.js';
-import { setLoaderData } from '../../src/router/data.js';
 import type { RouteDefinition } from '../../src/router/types.js';
 
 describe('Advanced Router Hooks', () => {
@@ -167,9 +166,7 @@ describe('Advanced Router Hooks', () => {
 
     it('should update loader data after revalidation', async () => {
       let value = 'initial';
-      const loader = vi.fn(async () => {
-        return { value };
-      });
+      const loader = vi.fn(async () => ({ value }));
 
       const routes: RouteDefinition[] = [
         {
@@ -196,9 +193,7 @@ describe('Advanced Router Hooks', () => {
 
   describe('useSubmit', () => {
     it('should submit data to route action', async () => {
-      const action = vi.fn(async ({ formData }) => {
-        return { success: true, data: formData.get('name') };
-      });
+      const action = vi.fn(async ({ formData }) => ({ success: true, data: formData.get('name') }));
 
       const routes: RouteDefinition[] = [
         {
@@ -224,9 +219,7 @@ describe('Advanced Router Hooks', () => {
     });
 
     it('should handle FormData input', async () => {
-      const action = vi.fn(async ({ formData }) => {
-        return { name: formData.get('name') };
-      });
+      const action = vi.fn(async ({ formData }) => ({ name: formData.get('name') }));
 
       const routes: RouteDefinition[] = [
         {
@@ -437,9 +430,7 @@ describe('Advanced Router Hooks', () => {
       await router.ready();
 
       let shouldBlock = false;
-      const blocker = useBlocker(({ currentLocation, nextLocation }) => {
-        return shouldBlock && currentLocation.pathname !== nextLocation.pathname;
-      });
+      const blocker = useBlocker(({ currentLocation, nextLocation }) => shouldBlock && currentLocation.pathname !== nextLocation.pathname);
 
       // First navigation to /about - not blocked
       shouldBlock = false;

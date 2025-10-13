@@ -114,6 +114,10 @@
       "types": "./dist/theming/index.d.ts",
       "import": "./dist/theming/index.js"
     },
+    "./compiler": {
+      "types": "./dist/compiler/index.d.ts",
+      "import": "./dist/compiler/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

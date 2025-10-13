@@ -13,9 +13,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Window } from 'happy-dom';
 import { createRouter, setRouter } from '../../src/router/router.js';
-import { Link } from '../../src/router/Link.js';
-import { Form } from '../../src/router/Form.js';
-import { setLoaderData, setActionData, useLoaderData } from '../../src/router/data.js';
+import { setLoaderData, setActionData } from '../../src/router/data.js';
 import { useBlocker, usePrompt } from '../../src/router/hooks.js';
 import { defineComponent } from '../../src/core/component/define.js';
 import { clearPrefetchCache } from '../../src/router/prefetch.js';
@@ -123,9 +121,7 @@ describe('Router Integration Tests', () => {
     it('should block navigation with route guards', async () => {
       let isAuthenticated = false;
 
-      const authGuard = vi.fn(async () => {
-        return isAuthenticated;
-      });
+      const authGuard = vi.fn(async () => isAuthenticated);
 
       const routes: RouteDefinition[] = [
         { path: '/', component: () => 'Public Page' },
@@ -188,13 +184,11 @@ describe('Router Integration Tests', () => {
     });
 
     it('should handle route params and query strings', async () => {
-      const loader = vi.fn(async (ctx: LoaderContext) => {
-        return {
+      const loader = vi.fn(async (ctx: LoaderContext) => ({
           userId: ctx.params.userId,
           page: ctx.url.searchParams.get('page'),
           sort: ctx.url.searchParams.get('sort'),
-        };
-      });
+        }));
 
       const routes: RouteDefinition[] = [
         {
@@ -582,9 +576,7 @@ describe('Router Integration Tests', () => {
       await router.navigate('/edit');
 
       // Register blocker
-      const blocker = router.beforeEach(async () => {
-        return !hasUnsavedChanges;
-      });
+      const blocker = router.beforeEach(async () => !hasUnsavedChanges);
 
       // Try to navigate with unsaved changes
       await router.navigate('/list');
@@ -905,21 +897,17 @@ describe('Router Integration Tests', () => {
   describe('6. File-Based Routing Integration', () => {
     it('should handle nested layouts with Outlet', async () => {
       // Simulate file-based routing structure
-      const RootLayout = defineComponent(() => {
-        return () => ({
+      const RootLayout = defineComponent(() => () => ({
           type: 'div',
           props: { class: 'root-layout' },
           children: ['Root Layout'],
-        });
-      });
+        }));
 
-      const DashboardLayout = defineComponent(() => {
-        return () => ({
+      const DashboardLayout = defineComponent(() => () => ({
           type: 'div',
           props: { class: 'dashboard-layout' },
           children: ['Dashboard Layout'],
-        });
-      });
+        }));
 
       const routes: RouteDefinition[] = [
         {
@@ -950,13 +938,11 @@ describe('Router Integration Tests', () => {
     });
 
     it('should handle route-level error boundaries', async () => {
-      const ErrorBoundary = defineComponent(() => {
-        return () => ({
+      const ErrorBoundary = defineComponent(() => () => ({
           type: 'div',
           props: { class: 'error' },
           children: ['Error occurred'],
-        });
-      });
+        }));
 
       const failingLoader = vi.fn(async () => {
         throw new Error('Component failed');
@@ -989,13 +975,11 @@ describe('Router Integration Tests', () => {
     });
 
     it('should show loading states during navigation', async () => {
-      const LoadingComponent = defineComponent(() => {
-        return () => ({
+      const LoadingComponent = defineComponent(() => () => ({
           type: 'div',
           props: { class: 'loading' },
           children: ['Loading...'],
-        });
-      });
+        }));
 
       const slowLoader = vi.fn(async () => {
         await new Promise((resolve) => setTimeout(resolve, 50));

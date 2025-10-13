@@ -21,6 +21,7 @@ export default defineConfig({
     'i18n/index': 'src/i18n/index.ts',
     'styling/index': 'src/styling/index.ts',
     'theming/index': 'src/theming/index.ts',
+    'compiler/index': 'src/compiler/index.ts',
   },
   format: ['esm'],
   dts: true,

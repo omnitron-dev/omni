@@ -4,7 +4,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'happy-dom',
-    include: ['tests/**/*.{test,spec}.ts'],
+    include: ['tests/**/*.{test,spec}.ts', 'test/**/*.{test,spec}.ts'],
     exclude: ['benchmarks/**/*.bench.ts'],
     coverage: {
       provider: 'v8',

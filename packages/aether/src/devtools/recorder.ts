@@ -64,10 +64,14 @@ export class RecorderImpl implements Recorder {
    * Start recording state changes
    */
   startRecording(): void {
-    if (this.isRecording) return;
+    const wasRecording = this.isRecording;
 
     this.isRecording = true;
-    this.sessionStartTime = Date.now();
+    // Only update session start time if not already recording
+    if (!wasRecording) {
+      this.sessionStartTime = Date.now();
+    }
+    // Always clear history on start (for clean restart)
     this.history = [];
     this.currentIndex = -1;
     this.snapshots.clear();
@@ -186,7 +190,7 @@ export class RecorderImpl implements Recorder {
    * Undo last mutation
    */
   undo(): void {
-    if (this.currentIndex <= 0) return;
+    if (this.currentIndex < 0) return;
 
     const entry = this.history[this.currentIndex];
     this.applyMutation(entry, 'backward');

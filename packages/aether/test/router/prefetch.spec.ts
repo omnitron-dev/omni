@@ -140,15 +140,11 @@ describe('route prefetching', () => {
     });
 
     it('should store prefetched data', async () => {
-      const setLoaderData = vi.fn();
-      vi.mock('../../src/router/data.js', () => ({
-        setLoaderData,
-        executeLoader: async (loader: any, context: any) => loader(context),
-      }));
-
+      // Test that prefetch marks the route as prefetched
       await prefetchRoute(mockRouter, '/users');
 
-      // Data should be cached (implementation detail)
+      // Data should be cached
+      expect(isPrefetched('/users')).toBe(true);
     });
   });
 

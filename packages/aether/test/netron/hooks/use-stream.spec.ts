@@ -41,13 +41,34 @@ class MockSubscription {
 }
 
 // Mock NetronClient
-const mockSubscription = new MockSubscription({});
-const mockNetronClient = {
-  backend: vi.fn().mockReturnValue({
-    queryFluentInterface: vi.fn().mockResolvedValue({
-      subscribe: vi.fn().mockReturnValue(mockSubscription),
-    }),
+let currentMockSubscription: MockSubscription;
+
+const createMockBackend = () => ({
+  queryFluentInterface: vi.fn().mockImplementation(async () => {
+    // Return a proxy that handles any method call
+    return new Proxy({}, {
+      get: (target, prop) => {
+        // Don't intercept 'then' - this prevents the Proxy from being treated as a Promise
+        if (prop === 'then') {
+          return undefined;
+        }
+
+        // Return a function that returns a Promise resolving to a subscribable stream
+        return async (...args: any[]) => {
+          return {
+            subscribe: (handlers: any) => {
+              currentMockSubscription = new MockSubscription(handlers);
+              return currentMockSubscription;
+            },
+          };
+        };
+      },
+    });
   }),
+});
+
+const mockNetronClient = {
+  backend: vi.fn(),
 };
 
 // Mock DI inject
@@ -77,6 +98,8 @@ class PricingService {
 describe('useStream', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Reset mock backend for each test
+    mockNetronClient.backend.mockReturnValue(createMockBackend());
   });
 
   describe('basic functionality', () => {
@@ -160,19 +183,19 @@ describe('useStream', () => {
 
       await result.connect();
 
-      // Simulate data emissions
-      const subscription = await mockNetronClient.backend().queryFluentInterface();
-      const sub = await subscription.subscribe({});
+      // Simulate data emissions using the currentMockSubscription
+      await new Promise(resolve => setTimeout(resolve, 10)); // Let connection settle
 
-      if (sub instanceof MockSubscription) {
-        sub.emitData({ symbol: 'BTC/USD', price: 50000 });
-        sub.emitData({ symbol: 'BTC/USD', price: 51000 });
+      if (currentMockSubscription) {
+        currentMockSubscription.emitData({ symbol: 'BTC/USD', price: 50000 });
+        currentMockSubscription.emitData({ symbol: 'BTC/USD', price: 51000 });
       }
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 10));
 
       // Should have accumulated data
       expect(Array.isArray(result.data())).toBe(true);
+      expect(result.data().length).toBe(2);
     });
 
     it('should respect bufferSize option', async () => {
@@ -181,18 +204,16 @@ describe('useStream', () => {
       });
 
       await result.connect();
+      await new Promise(resolve => setTimeout(resolve, 10));
 
       // Simulate multiple data emissions
-      const subscription = await mockNetronClient.backend().queryFluentInterface();
-      const sub = await subscription.subscribe({});
-
-      if (sub instanceof MockSubscription) {
-        sub.emitData({ price: 1 });
-        sub.emitData({ price: 2 });
-        sub.emitData({ price: 3 }); // Should evict first
+      if (currentMockSubscription) {
+        currentMockSubscription.emitData({ price: 1 });
+        currentMockSubscription.emitData({ price: 2 });
+        currentMockSubscription.emitData({ price: 3 }); // Should evict first
       }
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 10));
 
       // Buffer should not exceed size
       const data = result.data();
@@ -206,83 +227,80 @@ describe('useStream', () => {
       });
 
       await result.connect();
-
-      const subscription = await mockNetronClient.backend().queryFluentInterface();
-      const sub = await subscription.subscribe({});
+      await new Promise(resolve => setTimeout(resolve, 10));
 
       const testData = { symbol: 'BTC/USD', price: 50000 };
 
-      if (sub instanceof MockSubscription) {
-        sub.emitData(testData);
+      if (currentMockSubscription) {
+        currentMockSubscription.emitData(testData);
       }
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 10));
 
       // Callback should be called
-      // Note: depends on subscription implementation
+      expect(onData).toHaveBeenCalledWith(testData);
     });
   });
 
   describe('error handling', () => {
     it('should set error on stream error', async () => {
-      const result = useStream(PricingService, 'subscribePrices', ['BTC/USD']);
+      const result = useStream(PricingService, 'subscribePrices', ['BTC/USD'], {
+        reconnect: false, // Disable reconnect for cleaner testing
+      });
 
       await result.connect();
-
-      const subscription = await mockNetronClient.backend().queryFluentInterface();
-      const sub = await subscription.subscribe({});
+      await new Promise(resolve => setTimeout(resolve, 10));
 
       const testError = new Error('Stream error');
 
-      if (sub instanceof MockSubscription) {
-        sub.emitError(testError);
+      if (currentMockSubscription) {
+        currentMockSubscription.emitError(testError);
       }
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 10));
 
       // Error should be set
-      expect(result).toBeDefined();
+      expect(result.error()).toEqual(testError);
     });
 
     it('should call onError callback', async () => {
       const onError = vi.fn();
       const result = useStream(PricingService, 'subscribePrices', ['BTC/USD'], {
         onError,
+        reconnect: false,
       });
 
       await result.connect();
-
-      const subscription = await mockNetronClient.backend().queryFluentInterface();
-      const sub = await subscription.subscribe({});
+      await new Promise(resolve => setTimeout(resolve, 10));
 
       const testError = new Error('Stream error');
 
-      if (sub instanceof MockSubscription) {
-        sub.emitError(testError);
+      if (currentMockSubscription) {
+        currentMockSubscription.emitError(testError);
       }
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 10));
 
       // Callback should be called
-      // Note: depends on subscription implementation
+      expect(onError).toHaveBeenCalledWith(testError);
     });
 
     it('should set status to error on error', async () => {
-      const result = useStream(PricingService, 'subscribePrices', ['BTC/USD']);
+      const result = useStream(PricingService, 'subscribePrices', ['BTC/USD'], {
+        reconnect: false,
+      });
 
       await result.connect();
+      await new Promise(resolve => setTimeout(resolve, 10));
 
-      const subscription = await mockNetronClient.backend().queryFluentInterface();
-      const sub = await subscription.subscribe({});
-
-      if (sub instanceof MockSubscription) {
-        sub.emitError(new Error('Test'));
+      if (currentMockSubscription) {
+        currentMockSubscription.emitError(new Error('Test'));
       }
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 10));
 
       // Status should reflect error
-      expect(result.status).toBeDefined();
+      expect(result.status()).toBe('error');
     });
   });
 
@@ -299,22 +317,20 @@ describe('useStream', () => {
       const result = useStream(PricingService, 'subscribePrices', ['BTC/USD'], {
         reconnect: true,
         reconnectDelay: 1000,
+        maxReconnectAttempts: 1, // Limit attempts to prevent infinite loop
       });
 
       await result.connect();
+      await vi.advanceTimersByTimeAsync(10);
 
-      const subscription = await mockNetronClient.backend().queryFluentInterface();
-      const sub = await subscription.subscribe({});
-
-      if (sub instanceof MockSubscription) {
-        sub.emitError(new Error('Connection lost'));
+      if (currentMockSubscription) {
+        currentMockSubscription.emitError(new Error('Connection lost'));
       }
 
-      vi.advanceTimersByTime(1000);
-      await vi.runAllTimersAsync();
+      await vi.advanceTimersByTimeAsync(10);
 
-      // Should have attempted reconnection
-      expect(result.isReconnecting).toBeDefined();
+      // Should be reconnecting
+      expect(result.isReconnecting()).toBe(true);
     });
 
     it('should use exponential backoff for reconnection', async () => {
@@ -334,15 +350,13 @@ describe('useStream', () => {
       });
 
       await result.connect();
+      await vi.advanceTimersByTimeAsync(10);
 
-      const subscription = await mockNetronClient.backend().queryFluentInterface();
-      const sub = await subscription.subscribe({});
-
-      if (sub instanceof MockSubscription) {
-        sub.emitError(new Error('Connection lost'));
+      if (currentMockSubscription) {
+        currentMockSubscription.emitError(new Error('Connection lost'));
       }
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await vi.advanceTimersByTimeAsync(100);
 
       expect(result.isReconnecting()).toBe(false);
     });
@@ -350,23 +364,22 @@ describe('useStream', () => {
     it('should track isReconnecting state', async () => {
       const result = useStream(PricingService, 'subscribePrices', ['BTC/USD'], {
         reconnect: true,
+        maxReconnectAttempts: 1,
       });
 
       expect(result.isReconnecting()).toBe(false);
 
       await result.connect();
+      await vi.advanceTimersByTimeAsync(10);
 
-      const subscription = await mockNetronClient.backend().queryFluentInterface();
-      const sub = await subscription.subscribe({});
-
-      if (sub instanceof MockSubscription) {
-        sub.emitError(new Error('Connection lost'));
+      if (currentMockSubscription) {
+        currentMockSubscription.emitError(new Error('Connection lost'));
       }
 
       // Should be reconnecting after error
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await vi.advanceTimersByTimeAsync(10);
 
-      expect(result).toBeDefined();
+      expect(result.isReconnecting()).toBe(true);
     });
   });
 
@@ -378,9 +391,10 @@ describe('useStream', () => {
       });
 
       await result.connect();
+      await new Promise(resolve => setTimeout(resolve, 10));
 
-      // Note: depends on connection success
-      expect(result).toBeDefined();
+      // onConnect should be called when first data arrives or subscription succeeds
+      expect(onConnect).toHaveBeenCalled();
     });
 
     it('should call onDisconnect callback', async () => {
@@ -399,21 +413,20 @@ describe('useStream', () => {
       const onComplete = vi.fn();
       const result = useStream(PricingService, 'subscribePrices', ['BTC/USD'], {
         onComplete,
+        reconnect: false,
       });
 
       await result.connect();
+      await new Promise(resolve => setTimeout(resolve, 10));
 
-      const subscription = await mockNetronClient.backend().queryFluentInterface();
-      const sub = await subscription.subscribe({});
-
-      if (sub instanceof MockSubscription) {
-        sub.complete();
+      if (currentMockSubscription) {
+        currentMockSubscription.complete();
       }
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 10));
 
       // Callback should be called
-      // Note: depends on subscription implementation
+      expect(onComplete).toHaveBeenCalled();
     });
   });
 
@@ -422,15 +435,13 @@ describe('useStream', () => {
       const result = useStream(PricingService, 'subscribePrices', ['BTC/USD']);
 
       await result.connect();
+      await new Promise(resolve => setTimeout(resolve, 10));
 
-      const subscription = await mockNetronClient.backend().queryFluentInterface();
-      const sub = await subscription.subscribe({});
-
-      if (sub instanceof MockSubscription) {
-        sub.emitData({ price: 50000 });
+      if (currentMockSubscription) {
+        currentMockSubscription.emitData({ price: 50000 });
       }
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 10));
 
       result.clear();
 
@@ -440,7 +451,9 @@ describe('useStream', () => {
 
   describe('disconnect()', () => {
     it('should stop stream and cleanup', async () => {
-      const result = useStream(PricingService, 'subscribePrices', ['BTC/USD']);
+      const result = useStream(PricingService, 'subscribePrices', ['BTC/USD'], {
+        autoConnect: false,
+      });
 
       await result.connect();
       result.disconnect();
@@ -495,6 +508,8 @@ describe('useStream', () => {
 describe('useMultiStream', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Reset mock backend for each test
+    mockNetronClient.backend.mockReturnValue(createMockBackend());
   });
 
   it('should create multiple streams', () => {

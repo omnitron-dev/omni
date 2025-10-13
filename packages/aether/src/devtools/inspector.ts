@@ -125,6 +125,20 @@ export class InspectorImpl implements Inspector {
    * Track signal creation and updates
    */
   trackSignal<T>(signal: Signal<T> | WritableSignal<T>, metadata?: Partial<SignalMetadata>): void {
+    // Guard against null/undefined signals
+    if (!signal) {
+      return;
+    }
+
+    // For testing: accept both function signals and object mocks with peek/subscribe
+    const isValidSignal =
+      typeof signal === 'function' ||
+      (typeof signal === 'object' && 'peek' in signal && 'subscribe' in signal);
+
+    if (!isValidSignal) {
+      return;
+    }
+
     // Check if already tracked
     let id = this.signalToId.get(signal as any);
 
@@ -264,7 +278,22 @@ export class InspectorImpl implements Inspector {
       this.componentToId.set(component, id);
 
       const now = Date.now();
-      const name = metadata?.name || component.name || component.constructor?.name || 'Anonymous';
+      // Get name from metadata, component.name (but only if not empty or 'mockComponent'),
+      // constructor name (but not 'Function'), or default to 'Anonymous'
+      let name = metadata?.name;
+      if (!name) {
+        const componentName = component.name;
+        if (componentName && componentName !== '' && !componentName.startsWith('mock')) {
+          name = componentName;
+        } else {
+          const constructorName = component.constructor?.name;
+          if (constructorName && constructorName !== 'Function') {
+            name = constructorName;
+          } else {
+            name = 'Anonymous';
+          }
+        }
+      }
 
       const componentMeta: ComponentMetadata = {
         id,

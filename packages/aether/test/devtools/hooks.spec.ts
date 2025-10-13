@@ -23,6 +23,14 @@ import { createInspector } from '../../src/devtools/inspector.js';
 import { createProfiler } from '../../src/devtools/profiler.js';
 import { createRecorder } from '../../src/devtools/recorder.js';
 
+// Helper to create mock signals
+function createMockSignal(value: any): any {
+  const mockFn: any = vi.fn(() => value);
+  mockFn.peek = vi.fn(() => value);
+  mockFn.subscribe = vi.fn();
+  return mockFn;
+}
+
 describe('DevTools Hooks', () => {
   beforeEach(() => {
     clearGlobalDevTools();
@@ -91,10 +99,7 @@ describe('DevTools Hooks', () => {
       setGlobalDevTools(inspector, profiler, recorder);
 
       const devtools = useDevTools();
-      const mockSignal = {
-        peek: vi.fn(() => 42),
-        subscribe: vi.fn(),
-      };
+      const mockSignal = createMockSignal(42);
 
       devtools.inspect(mockSignal, 'TestSignal');
 
@@ -104,10 +109,7 @@ describe('DevTools Hooks', () => {
 
     it('should do nothing when DevTools is disabled', () => {
       const devtools = useDevTools();
-      const mockSignal = {
-        peek: vi.fn(() => 42),
-        subscribe: vi.fn(),
-      };
+      const mockSignal = createMockSignal(42);
 
       // Should not throw
       expect(() => {
@@ -255,10 +257,7 @@ describe('DevTools Hooks', () => {
       setGlobalDevTools(inspectorInstance, profiler, recorder);
 
       const inspector = useInspector();
-      const mockSignal = {
-        peek: vi.fn(() => 42),
-        subscribe: vi.fn(),
-      };
+      const mockSignal = createMockSignal(42);
 
       inspector?.trackSignal(mockSignal, { name: 'TestSignal' });
 
@@ -450,11 +449,8 @@ describe('DevTools Hooks', () => {
         }),
       }));
 
-      const mockSignal = {
-        peek: vi.fn(() => 42),
-        subscribe: vi.fn(),
-        set: vi.fn(),
-      };
+      const mockSignal = createMockSignal(42);
+      mockSignal.set = vi.fn();
 
       // Manually track since require is mocked
       inspector.trackSignal(mockSignal, { name: 'Counter' });
@@ -488,10 +484,7 @@ describe('DevTools Hooks', () => {
       setGlobalDevTools(inspector, profiler, recorder);
 
       // Add some data
-      const mockSignal = {
-        peek: vi.fn(() => 42),
-        subscribe: vi.fn(),
-      };
+      const mockSignal = createMockSignal(42);
       inspector.trackSignal(mockSignal, { name: 'Test' });
 
       const consoleGroupSpy = vi.spyOn(console, 'group').mockImplementation(() => {});
@@ -519,10 +512,7 @@ describe('DevTools Hooks', () => {
       setGlobalDevTools(inspector, profiler, recorder);
 
       // Add some data
-      const mockSignal = {
-        peek: vi.fn(() => 42),
-        subscribe: vi.fn(),
-      };
+      const mockSignal = createMockSignal(42);
       inspector.trackSignal(mockSignal, { name: 'Test' });
 
       const exported = exportDevToolsState();
@@ -552,10 +542,7 @@ describe('DevTools Hooks', () => {
       setGlobalDevTools(inspector, profiler, recorder);
 
       // Add various data
-      const mockSignal = {
-        peek: vi.fn(() => 42),
-        subscribe: vi.fn(),
-      };
+      const mockSignal = createMockSignal(42);
       inspector.trackSignal(mockSignal, { name: 'Signal1' });
 
       const mockEffect = vi.fn();
@@ -609,10 +596,7 @@ describe('DevTools Hooks', () => {
       const devtools = useDevTools();
 
       // Track signal
-      const mockSignal = {
-        peek: vi.fn(() => 42),
-        subscribe: vi.fn(),
-      };
+      const mockSignal = createMockSignal(42);
       devtools.inspect(mockSignal, 'Counter');
 
       // Start profiling

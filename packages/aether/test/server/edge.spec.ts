@@ -88,6 +88,11 @@ describe('Edge Runtime Support', () => {
         throw new Error('Edge error');
       };
 
+      // Mock renderToString to reject for this test
+      const ssrModule = await import('../../src/server/ssr.js');
+      const mockRenderToString = ssrModule.renderToString as any;
+      mockRenderToString.mockRejectedValueOnce(new Error('Edge error'));
+
       const consoleError = vi.spyOn(console, 'error').mockImplementation();
 
       const response = await renderToEdge(ErrorComponent);
@@ -96,6 +101,12 @@ describe('Edge Runtime Support', () => {
       expect(await response.text()).toBe('Internal Server Error');
 
       consoleError.mockRestore();
+      // Restore mock
+      mockRenderToString.mockResolvedValue({
+        html: '<div>Edge Content</div>',
+        data: { test: 'data' },
+        meta: { title: 'Edge Page' },
+      });
     });
 
     it('should add cache headers when caching enabled', async () => {
@@ -488,6 +499,11 @@ describe('Edge Runtime Support', () => {
         throw new Error('Render failed');
       };
 
+      // Mock renderToString to reject for this test
+      const ssrModule = await import('../../src/server/ssr.js');
+      const mockRenderToString = ssrModule.renderToString as any;
+      mockRenderToString.mockRejectedValueOnce(new Error('Render failed'));
+
       const consoleError = vi.spyOn(console, 'error').mockImplementation();
 
       const response = await renderToEdge(ErrorComponent);
@@ -496,12 +512,23 @@ describe('Edge Runtime Support', () => {
       expect(response.headers.get('Content-Type')).toBe('text/plain');
 
       consoleError.mockRestore();
+      // Restore mock
+      mockRenderToString.mockResolvedValue({
+        html: '<div>Edge Content</div>',
+        data: { test: 'data' },
+        meta: { title: 'Edge Page' },
+      });
     });
 
     it('should handle streaming errors', async () => {
       const ErrorComponent = () => {
         throw new Error('Stream failed');
       };
+
+      // Mock renderToReadableStream to reject
+      const streamingModule = await import('../../src/server/streaming.js');
+      const mockRenderToReadableStream = streamingModule.renderToReadableStream as any;
+      mockRenderToReadableStream.mockRejectedValueOnce(new Error('Stream failed'));
 
       const consoleError = vi.spyOn(console, 'error').mockImplementation();
 
@@ -512,12 +539,27 @@ describe('Edge Runtime Support', () => {
       expect(response.status).toBe(500);
 
       consoleError.mockRestore();
+      // Restore mock
+      mockRenderToReadableStream.mockResolvedValue({
+        stream: new ReadableStream(),
+        metadata: {
+          status: 200,
+          headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+          },
+        },
+      });
     });
 
     it('should handle handler errors', async () => {
       const ErrorComponent = () => {
         throw new Error('Handler failed');
       };
+
+      // Mock renderToString to reject
+      const ssrModule = await import('../../src/server/ssr.js');
+      const mockRenderToString = ssrModule.renderToString as any;
+      mockRenderToString.mockRejectedValueOnce(new Error('Handler failed'));
 
       const consoleError = vi.spyOn(console, 'error').mockImplementation();
 
@@ -529,6 +571,12 @@ describe('Edge Runtime Support', () => {
       expect(response.status).toBe(500);
 
       consoleError.mockRestore();
+      // Restore mock
+      mockRenderToString.mockResolvedValue({
+        html: '<div>Edge Content</div>',
+        data: { test: 'data' },
+        meta: { title: 'Edge Page' },
+      });
     });
   });
 

@@ -3,11 +3,14 @@
  * @module @omnitron-dev/aether/netron
  */
 
-import type { Signal } from '../core/reactivity/types.js';
+import type { Signal, WritableSignal } from '../core/reactivity/types.js';
 import type {
   CacheOptions,
   RetryOptions,
 } from '@omnitron-dev/netron-browser';
+
+// Re-export for convenience
+export type { Signal, WritableSignal };
 
 // Re-export types from netron-browser for convenience
 export type {
@@ -171,11 +174,44 @@ export interface StreamOptions {
   /** Initial value */
   initialValue?: any;
 
-  /** Auto-reconnect on disconnect */
-  autoReconnect?: boolean;
+  /** Auto-connect on mount */
+  autoConnect?: boolean;
+
+  /** Buffer size for accumulated data */
+  bufferSize?: number;
+
+  /** Enable reconnection on disconnect */
+  reconnect?: boolean;
 
   /** Reconnect delay (ms) */
   reconnectDelay?: number;
+
+  /** Maximum reconnect delay (ms) */
+  reconnectMaxDelay?: number;
+
+  /** Throttle data emissions (ms) */
+  throttle?: number;
+
+  /** Filter data before accumulating */
+  filter?: (value: any) => boolean;
+
+  /** Callback when data is received */
+  onData?: (data: any) => void;
+
+  /** Callback when error occurs */
+  onError?: (error: Error) => void;
+
+  /** Callback when connected */
+  onConnect?: () => void;
+
+  /** Callback when disconnected */
+  onDisconnect?: () => void;
+
+  /** Callback when stream completes */
+  onComplete?: () => void;
+
+  /** Auto-reconnect on disconnect (deprecated, use 'reconnect') */
+  autoReconnect?: boolean;
 
   /** Maximum reconnect attempts */
   maxReconnectAttempts?: number;
@@ -228,23 +264,34 @@ export interface MutationResult<TData = any, TVariables = any> {
 }
 
 /**
+ * Stream connection status
+ */
+export type StreamStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
+
+/**
  * Stream result
  */
 export interface StreamResult<TData = any> {
-  /** Data signal (latest value) */
-  data: Signal<TData | undefined>;
-
-  /** Connection state */
-  connected: Signal<boolean>;
+  /** Data signal (accumulated array of values) */
+  data: Signal<TData[]>;
 
   /** Error signal */
   error: Signal<Error | undefined>;
 
-  /** Close stream */
-  close: () => void;
+  /** Get connection status */
+  status: () => StreamStatus;
 
-  /** Reconnect stream */
-  reconnect: () => Promise<void>;
+  /** Check if reconnecting */
+  isReconnecting: () => boolean;
+
+  /** Manually connect to stream */
+  connect: () => Promise<void>;
+
+  /** Disconnect from stream */
+  disconnect: () => void;
+
+  /** Clear buffered data */
+  clear: () => void;
 }
 
 /**

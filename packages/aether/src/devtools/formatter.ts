@@ -317,7 +317,15 @@ export function formatSignal(signal: Signal<any> | WritableSignal<any>): string 
   const internal = (signal as any).__internal;
   const dependents = internal?.getComputations?.()?.size || 0;
 
-  return `Signal { value: ${JSON.stringify(value)}, writable: ${isWritable}, dependents: ${dependents} }`;
+  // Safely stringify value with circular reference handling
+  let valueStr: string;
+  try {
+    valueStr = JSON.stringify(value);
+  } catch (e) {
+    valueStr = '[Circular]';
+  }
+
+  return `Signal { value: ${valueStr}, writable: ${isWritable}, dependents: ${dependents} }`;
 }
 
 /**

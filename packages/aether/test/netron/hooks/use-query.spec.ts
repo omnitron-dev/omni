@@ -350,9 +350,12 @@ describe('usePaginatedQuery', () => {
     expect(mockNetronClient.query).toHaveBeenCalled();
   });
 
-  it('should navigate to next page', () => {
+  it('should navigate to next page', async () => {
     const page = signal(1);
     const result = usePaginatedQuery(UserService, 'getUsers', page, 10);
+
+    // Wait for data to load so totalPages is set
+    await new Promise(resolve => setTimeout(resolve, 100));
 
     result.nextPage();
 

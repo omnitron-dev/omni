@@ -130,8 +130,8 @@ export function renderHead(context: HeadContext = currentHeadContext || createHe
  * ```
  */
 export function collectMeta(context: HeadContext, meta: MetaTags): void {
-  // Set title
-  if (meta.title) {
+  // Set title (allow empty strings)
+  if (meta.title !== undefined) {
     context.title = meta.title;
   }
 
@@ -177,7 +177,8 @@ export function collectMeta(context: HeadContext, meta: MetaTags): void {
   for (const [key, value] of Object.entries(meta)) {
     if (!['title', 'description', 'ogTitle', 'ogDescription', 'ogImage', 'canonical'].includes(key)) {
       if (value) {
-        if (key.startsWith('og:')) {
+        // Twitter and OG tags use property attribute
+        if (key.startsWith('og:') || key.startsWith('twitter:')) {
           context.meta.push({
             property: key,
             content: value,

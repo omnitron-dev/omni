@@ -12,6 +12,7 @@ import type {
   Type,
   StreamOptions,
   StreamResult,
+  StreamStatus,
 } from '../types.js';
 
 /**
@@ -50,23 +51,80 @@ export function useStream<TService, TMethod extends keyof TService, TData = any>
   const backendName = typeof serviceClass === 'string' ? 'main' : getBackendName(serviceClass);
   const serviceName = typeof serviceClass === 'string' ? serviceClass : getServiceName(serviceClass);
 
-  // Create state signals
-  const data = signal<TData | undefined>(options?.initialValue);
+  // Create state signals - data is an array of accumulated values
+  const data = signal<TData[]>([]);
   const error = signal<Error | undefined>(undefined);
-  const connected = signal(false);
+  const statusSignal = signal<StreamStatus>('connecting');
+  const isReconnectingSignal = signal(false);
 
   // Track subscription
   let subscription: any = null;
   let reconnectTimeout: NodeJS.Timeout | null = null;
   let reconnectAttempts = 0;
+  let lastDataTime = 0;
+  let isManualDisconnect = false;
+  let isConnecting = false;
+
+  // Buffer size configuration
+  const bufferSize = options?.bufferSize ?? Infinity;
+
+  /**
+   * Add data to buffer with size limit
+   */
+  const addData = (value: TData) => {
+    // Apply filter if provided
+    if (options?.filter && !options.filter(value)) {
+      return;
+    }
+
+    // Apply throttle if provided
+    const now = Date.now();
+    if (options?.throttle && now - lastDataTime < options.throttle) {
+      return;
+    }
+    lastDataTime = now;
+
+    // Add to buffer
+    const currentData = data();
+    const newData = [...currentData, value];
+
+    // Enforce buffer size limit
+    if (newData.length > bufferSize) {
+      newData.splice(0, newData.length - bufferSize);
+    }
+
+    data.set(newData);
+
+    // Call onData callback
+    if (options?.onData) {
+      options.onData(value);
+    }
+  };
 
   /**
    * Connect to stream
    */
   const connect = async () => {
+    // Prevent concurrent connection attempts
+    if (isConnecting) {
+      return;
+    }
+
+    // If already connected, disconnect first
+    if (subscription) {
+      disconnect();
+    }
+
     try {
-      connected.set(false);
+      isConnecting = true;
+      statusSignal.set('connecting');
       error.set(undefined);
+      isManualDisconnect = false;
+
+      // Check if netron client is available
+      if (!netron || typeof netron.backend !== 'function') {
+        throw new Error('NetronClient not available');
+      }
 
       // Get peer and service
       const peer = netron.backend(backendName);
@@ -85,48 +143,90 @@ export function useStream<TService, TMethod extends keyof TService, TData = any>
       if (stream && typeof stream.subscribe === 'function') {
         subscription = stream.subscribe({
           next: (value: TData) => {
-            data.set(value);
-
             // Update connection status
-            if (!connected()) {
-              connected.set(true);
+            if (statusSignal() !== 'connected') {
+              statusSignal.set('connected');
               reconnectAttempts = 0;
+              isReconnectingSignal.set(false);
+
+              // Call onConnect callback
+              if (options?.onConnect) {
+                options.onConnect();
+              }
             }
+
+            // Add data to buffer
+            addData(value);
           },
           error: (err: Error) => {
             error.set(err);
-            connected.set(false);
+            statusSignal.set('error');
 
-            // Attempt reconnection
-            if (options?.autoReconnect && reconnectAttempts < (options?.maxReconnectAttempts || Infinity)) {
+            // Call onError callback
+            if (options?.onError) {
+              options.onError(err);
+            }
+
+            // Attempt reconnection if enabled and not manually disconnected
+            const shouldReconnect = (options?.reconnect || options?.autoReconnect) && !isManualDisconnect;
+            const withinAttempts = reconnectAttempts < (options?.maxReconnectAttempts ?? Infinity);
+
+            if (shouldReconnect && withinAttempts) {
               scheduleReconnect();
             }
           },
           complete: () => {
-            connected.set(false);
+            // Call onComplete callback
+            if (options?.onComplete) {
+              options.onComplete();
+            }
 
-            // Attempt reconnection if enabled
-            if (options?.autoReconnect && reconnectAttempts < (options?.maxReconnectAttempts || Infinity)) {
+            // Only set disconnected if not already in error state
+            if (statusSignal() !== 'error') {
+              statusSignal.set('disconnected');
+            }
+
+            // Attempt reconnection if enabled and not manually disconnected
+            const shouldReconnect = (options?.reconnect || options?.autoReconnect) && !isManualDisconnect;
+            const withinAttempts = reconnectAttempts < (options?.maxReconnectAttempts ?? Infinity);
+
+            if (shouldReconnect && withinAttempts) {
               scheduleReconnect();
             }
           },
         });
 
-        // Connected successfully
-        connected.set(true);
+        // Mark as connected
+        statusSignal.set('connected');
         reconnectAttempts = 0;
+        isReconnectingSignal.set(false);
+
+        // Call onConnect callback
+        if (options?.onConnect) {
+          options.onConnect();
+        }
       } else {
         throw new Error(`Method ${String(method)} did not return a subscribable stream`);
       }
     } catch (err) {
       const e = err as Error;
       error.set(e);
-      connected.set(false);
+      statusSignal.set('error');
 
-      // Attempt reconnection
-      if (options?.autoReconnect && reconnectAttempts < (options?.maxReconnectAttempts || Infinity)) {
+      // Call onError callback
+      if (options?.onError) {
+        options.onError(e);
+      }
+
+      // Attempt reconnection if enabled and not manually disconnected
+      const shouldReconnect = (options?.reconnect || options?.autoReconnect) && !isManualDisconnect;
+      const withinAttempts = reconnectAttempts < (options?.maxReconnectAttempts ?? Infinity);
+
+      if (shouldReconnect && withinAttempts) {
         scheduleReconnect();
       }
+    } finally {
+      isConnecting = false;
     }
   };
 
@@ -139,22 +239,26 @@ export function useStream<TService, TMethod extends keyof TService, TData = any>
     }
 
     reconnectAttempts++;
+    isReconnectingSignal.set(true);
 
     // Calculate delay with exponential backoff
     const baseDelay = options?.reconnectDelay || 1000;
-    const delay = baseDelay * Math.pow(2, reconnectAttempts - 1);
+    const maxDelay = options?.reconnectMaxDelay || 30000;
+    const delay = Math.min(baseDelay * Math.pow(2, reconnectAttempts - 1), maxDelay);
 
     reconnectTimeout = setTimeout(() => {
-      if (!connected()) {
+      if (!isManualDisconnect) {
         connect();
       }
     }, delay);
   };
 
   /**
-   * Close the stream
+   * Disconnect from the stream
    */
-  const close = () => {
+  const disconnect = () => {
+    isManualDisconnect = true;
+
     // Clear reconnect timeout
     if (reconnectTimeout) {
       clearTimeout(reconnectTimeout);
@@ -171,35 +275,64 @@ export function useStream<TService, TMethod extends keyof TService, TData = any>
       subscription = null;
     }
 
-    connected.set(false);
+    statusSignal.set('disconnected');
+    isReconnectingSignal.set(false);
     reconnectAttempts = 0;
+
+    // Call onDisconnect callback
+    if (options?.onDisconnect) {
+      options.onDisconnect();
+    }
   };
 
   /**
-   * Reconnect to the stream
+   * Clear buffered data
    */
-  const reconnect = async () => {
-    close();
-    reconnectAttempts = 0;
-    await connect();
+  const clear = () => {
+    data.set([]);
   };
 
-  // Auto-connect by default
-  effect(() => {
-    connect();
-  });
+  /**
+   * Get connection status
+   */
+  const status = (): StreamStatus => {
+    return statusSignal();
+  };
+
+  /**
+   * Check if reconnecting
+   */
+  const isReconnecting = (): boolean => {
+    return isReconnectingSignal();
+  };
+
+  // Auto-connect by default (unless disabled)
+  const shouldAutoConnect = options?.autoConnect !== false;
+  if (shouldAutoConnect) {
+    // Use setTimeout to defer connection to avoid blocking
+    setTimeout(() => {
+      connect();
+    }, 0);
+  }
 
   // Cleanup on unmount
-  onCleanup(() => {
-    close();
-  });
+  try {
+    onCleanup(() => {
+      disconnect();
+    });
+  } catch (err) {
+    // onCleanup might not be available in test environment
+    // Fail silently in that case
+  }
 
   return {
     data,
     error,
-    connected,
-    close,
-    reconnect,
+    status,
+    isReconnecting,
+    connect,
+    disconnect,
+    clear,
   };
 }
 

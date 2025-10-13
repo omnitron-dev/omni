@@ -78,11 +78,14 @@ describe('DevTools Profiler', () => {
     it('should measure component render time', () => {
       profiler.startProfiling();
 
+      // Mock performance.now to return consistent values
+      let callCount = 0;
+      vi.mocked(performance.now).mockImplementation(() => {
+        callCount++;
+        return 100 + callCount * 10; // Returns 110, 120, 130, etc.
+      });
+
       (profiler as any).startMeasuringComponent('comp-1', 'TestComponent');
-
-      // Simulate some time passing
-      vi.mocked(performance.now).mockReturnValueOnce(100).mockReturnValueOnce(110);
-
       (profiler as any).endMeasuringComponent('comp-1');
 
       const state = profiler.getState();
@@ -304,12 +307,16 @@ describe('DevTools Profiler', () => {
       profiler.startProfiling();
 
       // Fast component
-      vi.mocked(performance.now).mockReturnValueOnce(0).mockReturnValueOnce(5);
+      let callCount = 0;
+      vi.mocked(performance.now).mockImplementation(() => {
+        const times = [0, 5, 0, 50];
+        return times[callCount++] || 0;
+      });
+
       (profiler as any).startMeasuringComponent('comp-1', 'FastComponent');
       (profiler as any).endMeasuringComponent('comp-1');
 
       // Slow component
-      vi.mocked(performance.now).mockReturnValueOnce(0).mockReturnValueOnce(50);
       (profiler as any).startMeasuringComponent('comp-2', 'SlowComponent');
       (profiler as any).endMeasuringComponent('comp-2');
 
@@ -322,11 +329,15 @@ describe('DevTools Profiler', () => {
     it('should identify slowest effect', () => {
       profiler.startProfiling();
 
-      vi.mocked(performance.now).mockReturnValueOnce(0).mockReturnValueOnce(5);
+      let callCount = 0;
+      vi.mocked(performance.now).mockImplementation(() => {
+        const times = [0, 5, 0, 30];
+        return times[callCount++] || 0;
+      });
+
       (profiler as any).startMeasuringEffect('effect-1', 'FastEffect');
       (profiler as any).endMeasuringEffect('effect-1');
 
-      vi.mocked(performance.now).mockReturnValueOnce(0).mockReturnValueOnce(30);
       (profiler as any).startMeasuringEffect('effect-2', 'SlowEffect');
       (profiler as any).endMeasuringEffect('effect-2');
 
@@ -354,12 +365,16 @@ describe('DevTools Profiler', () => {
       profiler.startProfiling();
 
       // Fast operation (below threshold)
-      vi.mocked(performance.now).mockReturnValueOnce(0).mockReturnValueOnce(5);
+      let callCount = 0;
+      vi.mocked(performance.now).mockImplementation(() => {
+        const times = [0, 5, 0, 50];
+        return times[callCount++] || 0;
+      });
+
       (profiler as any).startMeasuringComponent('comp-1', 'Fast');
       (profiler as any).endMeasuringComponent('comp-1');
 
       // Slow operation (above threshold)
-      vi.mocked(performance.now).mockReturnValueOnce(0).mockReturnValueOnce(50);
       (profiler as any).startMeasuringComponent('comp-2', 'Slow');
       (profiler as any).endMeasuringComponent('comp-2');
 
@@ -372,7 +387,12 @@ describe('DevTools Profiler', () => {
     it('should use default threshold', () => {
       profiler.startProfiling();
 
-      vi.mocked(performance.now).mockReturnValueOnce(0).mockReturnValueOnce(20);
+      let callCount = 0;
+      vi.mocked(performance.now).mockImplementation(() => {
+        const times = [0, 20];
+        return times[callCount++] || 0;
+      });
+
       (profiler as any).startMeasuringComponent('comp-1', 'SlowComponent');
       (profiler as any).endMeasuringComponent('comp-1');
 
@@ -384,15 +404,18 @@ describe('DevTools Profiler', () => {
     it('should sort bottlenecks by duration', () => {
       profiler.startProfiling();
 
-      vi.mocked(performance.now).mockReturnValueOnce(0).mockReturnValueOnce(20);
+      let callCount = 0;
+      vi.mocked(performance.now).mockImplementation(() => {
+        const times = [0, 20, 0, 50, 0, 30];
+        return times[callCount++] || 0;
+      });
+
       (profiler as any).startMeasuringComponent('comp-1', 'Medium');
       (profiler as any).endMeasuringComponent('comp-1');
 
-      vi.mocked(performance.now).mockReturnValueOnce(0).mockReturnValueOnce(50);
       (profiler as any).startMeasuringComponent('comp-2', 'Slowest');
       (profiler as any).endMeasuringComponent('comp-2');
 
-      vi.mocked(performance.now).mockReturnValueOnce(0).mockReturnValueOnce(30);
       (profiler as any).startMeasuringComponent('comp-3', 'Slow');
       (profiler as any).endMeasuringComponent('comp-3');
 
@@ -406,7 +429,12 @@ describe('DevTools Profiler', () => {
     it('should return empty array when no bottlenecks', () => {
       profiler.startProfiling();
 
-      vi.mocked(performance.now).mockReturnValueOnce(0).mockReturnValueOnce(5);
+      let callCount = 0;
+      vi.mocked(performance.now).mockImplementation(() => {
+        const times = [0, 5];
+        return times[callCount++] || 0;
+      });
+
       (profiler as any).startMeasuringComponent('comp-1', 'Fast');
       (profiler as any).endMeasuringComponent('comp-1');
 
@@ -421,15 +449,18 @@ describe('DevTools Profiler', () => {
       profiler.startProfiling();
 
       // Measure same component 3 times
-      vi.mocked(performance.now).mockReturnValueOnce(0).mockReturnValueOnce(10);
+      let callCount = 0;
+      vi.mocked(performance.now).mockImplementation(() => {
+        const times = [0, 10, 0, 20, 0, 30];
+        return times[callCount++] || 0;
+      });
+
       (profiler as any).startMeasuringComponent('comp-1', 'Test');
       (profiler as any).endMeasuringComponent('comp-1');
 
-      vi.mocked(performance.now).mockReturnValueOnce(0).mockReturnValueOnce(20);
       (profiler as any).startMeasuringComponent('comp-1', 'Test');
       (profiler as any).endMeasuringComponent('comp-1');
 
-      vi.mocked(performance.now).mockReturnValueOnce(0).mockReturnValueOnce(30);
       (profiler as any).startMeasuringComponent('comp-1', 'Test');
       (profiler as any).endMeasuringComponent('comp-1');
 

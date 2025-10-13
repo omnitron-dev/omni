@@ -9,6 +9,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createInspector } from '../../src/devtools/inspector.js';
 import type { Inspector, SignalMetadata, ComputedMetadata, EffectMetadata } from '../../src/devtools/types.js';
 
+// Helper to create mock signals
+function createMockSignal(value: any): any {
+  const mockFn: any = vi.fn(() => value);
+  mockFn.peek = vi.fn(() => value);
+  mockFn.subscribe = vi.fn();
+  return mockFn;
+}
+
 describe('DevTools Inspector', () => {
   let inspector: Inspector;
 

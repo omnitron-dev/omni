@@ -3,16 +3,10 @@
  * @module @omnitron-dev/aether/netron
  */
 
-import { signal, computed } from '../../core/index.js';
 import { NetronService } from './netron-service.js';
 import type {
-  Signal,
   WritableSignal,
   INetronStore,
-  QueryOptions,
-  MutationOptions,
-  MethodParameters,
-  MethodReturnType,
 } from '../types.js';
 
 /**
@@ -119,6 +113,38 @@ import type {
  * ```
  */
 export abstract class NetronStore<T> extends NetronService<T> implements INetronStore<T> {
+  /**
+   * Execute a query with default options (public version for INetronStore)
+   *
+   * @param method - Method name
+   * @param args - Method arguments
+   * @param options - Query options
+   * @returns Promise with result
+   */
+  public override async query<K extends keyof T>(
+    method: K,
+    args: Parameters<T[K] extends (...args: any[]) => any ? T[K] : never>,
+    options?: import('../types.js').QueryOptions
+  ): Promise<T[K] extends (...args: any[]) => infer R ? (R extends Promise<infer U> ? U : R) : never> {
+    return await super['query'](method, args as any, options);
+  }
+
+  /**
+   * Execute a mutation with default options (public version for INetronStore)
+   *
+   * @param method - Method name
+   * @param args - Method arguments
+   * @param options - Mutation options
+   * @returns Promise with result
+   */
+  public override async mutate<K extends keyof T>(
+    method: K,
+    args: Parameters<T[K] extends (...args: any[]) => any ? T[K] : never>,
+    options?: import('../types.js').MutationOptions
+  ): Promise<T[K] extends (...args: any[]) => infer R ? (R extends Promise<infer U> ? U : R) : never> {
+    return await super['mutate'](method, args as any, options);
+  }
+
   /**
    * Helper to create a loading state wrapper
    *

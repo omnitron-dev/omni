@@ -10,7 +10,13 @@ import type { MutationOptions } from '../../../src/netron/types.js';
 
 // Mock NetronClient
 const mockNetronClient = {
-  mutate: vi.fn().mockResolvedValue({ id: '1', name: 'Updated' }),
+  mutate: vi.fn().mockImplementation(async (serviceName, method, args, options) => {
+    // Call optimistic function if provided
+    if (options?.optimistic) {
+      options.optimistic();
+    }
+    return { id: '1', name: 'Updated' };
+  }),
   backend: vi.fn().mockReturnValue({
     queryFluentInterface: vi.fn().mockResolvedValue({}),
   }),
@@ -44,7 +50,13 @@ class UserService {
 describe('useMutation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockNetronClient.mutate.mockResolvedValue({ id: '1', name: 'Updated' });
+    mockNetronClient.mutate.mockImplementation(async (serviceName, method, args, options) => {
+      // Call optimistic function if provided
+      if (options?.optimistic) {
+        options.optimistic();
+      }
+      return { id: '1', name: 'Updated' };
+    });
   });
 
   describe('basic functionality', () => {
@@ -374,6 +386,14 @@ describe('useMutation', () => {
 describe('useOptimisticMutation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Reset to default implementation
+    mockNetronClient.mutate.mockImplementation(async (serviceName, method, args, options) => {
+      // Call optimistic function if provided
+      if (options?.optimistic) {
+        options.optimistic();
+      }
+      return { id: '1', name: 'Updated' };
+    });
   });
 
   it('should apply optimistic update immediately', async () => {
@@ -410,7 +430,15 @@ describe('useOptimisticMutation', () => {
   });
 
   it('should rollback on error', async () => {
-    mockNetronClient.mutate.mockRejectedValueOnce(new Error('Failed'));
+    // Setup mock to reject after optimistic function is called
+    mockNetronClient.mutate.mockImplementationOnce(async (serviceName, method, args, options) => {
+      // Call optimistic function first
+      if (options?.optimistic) {
+        options.optimistic();
+      }
+      // Then throw error
+      throw new Error('Failed');
+    });
 
     const originalData = [{ id: '1', name: 'John' }];
     const getCurrentData = vi.fn().mockReturnValue(originalData);
@@ -432,6 +460,7 @@ describe('useOptimisticMutation', () => {
     }
 
     // Should have attempted rollback via onSuccess callback
+    // onSuccess gets called twice: once for rollback with original data
     expect(onSuccess).toHaveBeenCalledWith(originalData);
   });
 
@@ -457,18 +486,27 @@ describe('useOptimisticMutation', () => {
     expect(onError).toHaveBeenCalledWith(testError);
   });
 
-  it('should support manual rollback', () => {
+  it('should support manual rollback', async () => {
     const snapshotData = [{ id: '1', name: 'John' }];
     const onSuccess = vi.fn();
+    const getCurrentData = vi.fn().mockReturnValue(snapshotData);
+    const applyOptimisticUpdate = vi.fn().mockReturnValue([{ id: '1', name: 'Updated' }]);
 
     const result = useOptimisticMutation(
       UserService,
       'updateUser',
-      () => snapshotData,
-      () => [],
+      getCurrentData,
+      applyOptimisticUpdate,
       { onSuccess }
     );
 
+    // First execute a mutation to capture snapshot
+    await result.mutate({ id: '1', name: 'Updated' });
+
+    // Clear the mock to verify rollback call
+    onSuccess.mockClear();
+
+    // Now test manual rollback
     result.rollback();
 
     expect(onSuccess).toHaveBeenCalledWith(snapshotData);

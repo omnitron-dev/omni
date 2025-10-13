@@ -37,7 +37,10 @@ function getStackTrace(): string {
  */
 function getMemoryUsage(): number | undefined {
   if (typeof performance !== 'undefined' && 'memory' in performance) {
-    return (performance as any).memory.usedJSHeapSize;
+    const memory = (performance as any).memory;
+    if (memory && typeof memory.usedJSHeapSize === 'number') {
+      return memory.usedJSHeapSize;
+    }
   }
   return undefined;
 }

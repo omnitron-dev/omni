@@ -193,7 +193,7 @@ describe('DevTools Recorder', () => {
       recorder.undo();
 
       expect(restoreCallback).toHaveBeenCalledWith(0);
-      expect(recorder.getState().currentIndex).toBe(0);
+      expect(recorder.getState().currentIndex).toBe(-1);
     });
 
     it('should redo after undo', () => {
@@ -210,7 +210,7 @@ describe('DevTools Recorder', () => {
       recorder.redo();
 
       expect(restoreCallback).toHaveBeenCalledWith(1);
-      expect(recorder.getState().currentIndex).toBe(1);
+      expect(recorder.getState().currentIndex).toBe(0);
     });
 
     it('should not undo past beginning', () => {

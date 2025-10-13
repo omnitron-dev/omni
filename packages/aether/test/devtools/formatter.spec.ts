@@ -63,13 +63,26 @@ describe('DevTools Custom Formatters', () => {
     });
 
     it('should create formatters array if not exists', () => {
-      delete (global.window as any).devtoolsFormatters;
+      // Set window but without devtoolsFormatters defined (but still check for it being possible)
+      global.window = {
+        get devtoolsFormatters() {
+          return this._formatters;
+        },
+        set devtoolsFormatters(value) {
+          this._formatters = value;
+        },
+        _formatters: undefined as any,
+      } as any;
+
+      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
       installFormatters();
 
       const formatters = (global.window as any).devtoolsFormatters;
       expect(Array.isArray(formatters)).toBe(true);
       expect(formatters.length).toBe(3);
+
+      consoleSpy.mockRestore();
     });
 
     it('should warn when formatters not supported', () => {
@@ -122,10 +135,9 @@ describe('DevTools Custom Formatters', () => {
     it('should format signal header', () => {
       installFormatters();
 
-      const mockSignal = {
-        peek: vi.fn(() => 42),
-        subscribe: vi.fn(),
-      };
+      const mockSignal: any = vi.fn(() => 42);
+      mockSignal.peek = vi.fn(() => 42);
+      mockSignal.subscribe = vi.fn();
 
       const formatters = (global.window as any).devtoolsFormatters;
       const signalFormatter = formatters.find((f: any) =>
@@ -142,11 +154,10 @@ describe('DevTools Custom Formatters', () => {
     it('should format writable signal', () => {
       installFormatters();
 
-      const mockWritableSignal = {
-        peek: vi.fn(() => 'test'),
-        subscribe: vi.fn(),
-        set: vi.fn(),
-      };
+      const mockWritableSignal: any = vi.fn(() => 'test');
+      mockWritableSignal.peek = vi.fn(() => 'test');
+      mockWritableSignal.subscribe = vi.fn();
+      mockWritableSignal.set = vi.fn();
 
       const formatters = (global.window as any).devtoolsFormatters;
       const signalFormatter = formatters.find((f: any) =>
@@ -172,10 +183,9 @@ describe('DevTools Custom Formatters', () => {
     it('should format signal body', () => {
       installFormatters();
 
-      const mockSignal = {
-        peek: vi.fn(() => 42),
-        subscribe: vi.fn(),
-      };
+      const mockSignal: any = vi.fn(() => 42);
+      mockSignal.peek = vi.fn(() => 42);
+      mockSignal.subscribe = vi.fn();
 
       const formatters = (global.window as any).devtoolsFormatters;
       const signalFormatter = formatters.find((f: any) =>
@@ -192,12 +202,11 @@ describe('DevTools Custom Formatters', () => {
     it('should show signal metadata in body', () => {
       installFormatters();
 
-      const mockSignal = {
-        peek: vi.fn(() => 42),
-        subscribe: vi.fn(),
-        __internal: {
-          getComputations: () => new Set([1, 2, 3]),
-        },
+      const mockSignal: any = vi.fn(() => 42);
+      mockSignal.peek = vi.fn(() => 42);
+      mockSignal.subscribe = vi.fn();
+      mockSignal.__internal = {
+        getComputations: () => new Set([1, 2, 3]),
       };
 
       const formatters = (global.window as any).devtoolsFormatters;
@@ -398,73 +407,81 @@ describe('DevTools Custom Formatters', () => {
 
   describe('Value Formatting', () => {
     it('should format string values', () => {
-      const result = formatSignal({
-        peek: () => 'test string',
-        subscribe: vi.fn(),
-      } as any);
+      const mockSignal: any = vi.fn(() => 'test string');
+      mockSignal.peek = () => 'test string';
+      mockSignal.subscribe = vi.fn();
+
+      const result = formatSignal(mockSignal);
 
       expect(result).toContain('test string');
     });
 
     it('should format number values', () => {
-      const result = formatSignal({
-        peek: () => 42,
-        subscribe: vi.fn(),
-      } as any);
+      const mockSignal: any = vi.fn(() => 42);
+      mockSignal.peek = () => 42;
+      mockSignal.subscribe = vi.fn();
+
+      const result = formatSignal(mockSignal);
 
       expect(result).toContain('42');
     });
 
     it('should format boolean values', () => {
-      const result = formatSignal({
-        peek: () => true,
-        subscribe: vi.fn(),
-      } as any);
+      const mockSignal: any = vi.fn(() => true);
+      mockSignal.peek = () => true;
+      mockSignal.subscribe = vi.fn();
+
+      const result = formatSignal(mockSignal);
 
       expect(result).toContain('true');
     });
 
     it('should format null values', () => {
-      const result = formatSignal({
-        peek: () => null,
-        subscribe: vi.fn(),
-      } as any);
+      const mockSignal: any = vi.fn(() => null);
+      mockSignal.peek = () => null;
+      mockSignal.subscribe = vi.fn();
+
+      const result = formatSignal(mockSignal);
 
       expect(result).toContain('null');
     });
 
     it('should format undefined values', () => {
-      const result = formatSignal({
-        peek: () => undefined,
-        subscribe: vi.fn(),
-      } as any);
+      const mockSignal: any = vi.fn(() => undefined);
+      mockSignal.peek = () => undefined;
+      mockSignal.subscribe = vi.fn();
+
+      const result = formatSignal(mockSignal);
 
       expect(result).toContain('undefined');
     });
 
     it('should format array values', () => {
-      const result = formatSignal({
-        peek: () => [1, 2, 3],
-        subscribe: vi.fn(),
-      } as any);
+      const mockSignal: any = vi.fn(() => [1, 2, 3]);
+      mockSignal.peek = () => [1, 2, 3];
+      mockSignal.subscribe = vi.fn();
+
+      const result = formatSignal(mockSignal);
 
       expect(result).toBeDefined();
     });
 
     it('should format object values', () => {
-      const result = formatSignal({
-        peek: () => ({ key: 'value' }),
-        subscribe: vi.fn(),
-      } as any);
+      const mockSignal: any = vi.fn(() => ({ key: 'value' }));
+      mockSignal.peek = () => ({ key: 'value' });
+      mockSignal.subscribe = vi.fn();
+
+      const result = formatSignal(mockSignal);
 
       expect(result).toBeDefined();
     });
 
     it('should format function values', () => {
-      const result = formatSignal({
-        peek: () => () => {},
-        subscribe: vi.fn(),
-      } as any);
+      const mockSignal: any = vi.fn(() => () => {});
+      mockSignal.peek = () => () => {};
+      mockSignal.subscribe = vi.fn();
+
+      const result = formatSignal(mockSignal);
 
       expect(result).toBeDefined();
     });
@@ -472,11 +489,10 @@ describe('DevTools Custom Formatters', () => {
 
   describe('Console Formatting Helpers', () => {
     it('should format signal for console', () => {
-      const mockSignal = {
-        peek: vi.fn(() => 42),
-        subscribe: vi.fn(),
-        set: vi.fn(),
-      };
+      const mockSignal: any = vi.fn(() => 42);
+      mockSignal.peek = vi.fn(() => 42);
+      mockSignal.subscribe = vi.fn();
+      mockSignal.set = vi.fn();
 
       const result = formatSignal(mockSignal);
 
@@ -557,10 +573,9 @@ describe('DevTools Custom Formatters', () => {
         current = current.next;
       }
 
-      const mockSignal = {
-        peek: vi.fn(() => deep),
-        subscribe: vi.fn(),
-      };
+      const mockSignal: any = vi.fn(() => deep);
+      mockSignal.peek = vi.fn(() => deep);
+      mockSignal.subscribe = vi.fn();
 
       const result = formatSignal(mockSignal);
 
@@ -571,10 +586,9 @@ describe('DevTools Custom Formatters', () => {
       const circular: any = { a: 1 };
       circular.self = circular;
 
-      const mockSignal = {
-        peek: vi.fn(() => circular),
-        subscribe: vi.fn(),
-      };
+      const mockSignal: any = vi.fn(() => circular);
+      mockSignal.peek = vi.fn(() => circular);
+      mockSignal.subscribe = vi.fn();
 
       const result = formatSignal(mockSignal);
 
@@ -582,10 +596,9 @@ describe('DevTools Custom Formatters', () => {
     });
 
     it('should handle arrays in values', () => {
-      const mockSignal = {
-        peek: vi.fn(() => [1, 2, 3, 4, 5]),
-        subscribe: vi.fn(),
-      };
+      const mockSignal: any = vi.fn(() => [1, 2, 3, 4, 5]);
+      mockSignal.peek = vi.fn(() => [1, 2, 3, 4, 5]);
+      mockSignal.subscribe = vi.fn();
 
       const result = formatSignal(mockSignal);
 
@@ -604,10 +617,9 @@ describe('DevTools Custom Formatters', () => {
         },
       };
 
-      const mockSignal = {
-        peek: vi.fn(() => complex),
-        subscribe: vi.fn(),
-      };
+      const mockSignal: any = vi.fn(() => complex);
+      mockSignal.peek = vi.fn(() => complex);
+      mockSignal.subscribe = vi.fn();
 
       const result = formatSignal(mockSignal);
 
@@ -617,12 +629,11 @@ describe('DevTools Custom Formatters', () => {
 
   describe('Edge Cases', () => {
     it('should handle signal with __internal metadata', () => {
-      const mockSignal = {
-        peek: vi.fn(() => 42),
-        subscribe: vi.fn(),
-        __internal: {
-          getComputations: () => new Set([1, 2, 3]),
-        },
+      const mockSignal: any = vi.fn(() => 42);
+      mockSignal.peek = vi.fn(() => 42);
+      mockSignal.subscribe = vi.fn();
+      mockSignal.__internal = {
+        getComputations: () => new Set([1, 2, 3]),
       };
 
       const result = formatSignal(mockSignal);
@@ -631,10 +642,9 @@ describe('DevTools Custom Formatters', () => {
     });
 
     it('should handle signal without __internal', () => {
-      const mockSignal = {
-        peek: vi.fn(() => 42),
-        subscribe: vi.fn(),
-      };
+      const mockSignal: any = vi.fn(() => 42);
+      mockSignal.peek = vi.fn(() => 42);
+      mockSignal.subscribe = vi.fn();
 
       const result = formatSignal(mockSignal);
 
@@ -690,10 +700,9 @@ describe('DevTools Custom Formatters', () => {
         };
       }
 
-      const mockSignal = {
-        peek: vi.fn(() => largeObject),
-        subscribe: vi.fn(),
-      };
+      const mockSignal: any = vi.fn(() => largeObject);
+      mockSignal.peek = vi.fn(() => largeObject);
+      mockSignal.subscribe = vi.fn();
 
       const start = performance.now();
       formatSignal(mockSignal);
@@ -704,10 +713,12 @@ describe('DevTools Custom Formatters', () => {
     });
 
     it('should format many signals efficiently', () => {
-      const signals = Array.from({ length: 100 }, (_, i) => ({
-        peek: vi.fn(() => i),
-        subscribe: vi.fn(),
-      }));
+      const signals = Array.from({ length: 100 }, (_, i) => {
+        const sig: any = vi.fn(() => i);
+        sig.peek = vi.fn(() => i);
+        sig.subscribe = vi.fn();
+        return sig;
+      });
 
       const start = performance.now();
 

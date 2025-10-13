@@ -297,7 +297,7 @@ export const EditablePreview = defineComponent<EditablePreviewProps>((props) => 
       role: 'button',
       'aria-label': 'Click to edit',
       ...rest,
-      children: children,  // Let the effect handle content updates
+      children,  // Let the effect handle content updates
     });
   };
 });

@@ -13,15 +13,10 @@
  */
 
 import { effect } from '../core/reactivity/effect.js';
-import { isSignal } from '../core/reactivity/signal.js';
 import type { JSXElement } from '../jsxruntime/types.js';
 import { createDOMFromVNode } from './create-dom.js';
 import {
-  createTextVNode,
-  createFragmentVNode,
   type VNode,
-  normalizeChildren,
-  getVNodeKey,
 } from './vnode.js';
 
 /**

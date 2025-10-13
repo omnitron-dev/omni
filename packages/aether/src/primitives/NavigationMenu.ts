@@ -325,8 +325,7 @@ export const NavigationMenuContent = defineComponent<NavigationMenuContentProps>
 /**
  * Navigation Menu Link
  */
-export const NavigationMenuLink = defineComponent<NavigationMenuLinkProps>((props) => {
-  return () => {
+export const NavigationMenuLink = defineComponent<NavigationMenuLinkProps>((props) => () => {
     // Evaluate function children during render (Pattern 17)
     const children = typeof props.children === 'function' ? props.children() : props.children;
     const { children: _children, href, active, ...restProps } = props;
@@ -339,15 +338,13 @@ export const NavigationMenuLink = defineComponent<NavigationMenuLinkProps>((prop
       'aria-current': active ? 'page' : undefined,
       children,
     });
-  };
-});
+  });
 
 /**
  * Navigation Menu Indicator
  * Visual indicator showing which item is active
  */
-export const NavigationMenuIndicator = defineComponent<NavigationMenuIndicatorProps>((props) => {
-  return () => {
+export const NavigationMenuIndicator = defineComponent<NavigationMenuIndicatorProps>((props) => () => {
     // Evaluate function children during render (Pattern 17)
     const children = typeof props.children === 'function' ? props.children() : props.children;
     const { children: _children, ...restProps } = props;
@@ -358,15 +355,13 @@ export const NavigationMenuIndicator = defineComponent<NavigationMenuIndicatorPr
       'aria-hidden': 'true',
       children,
     });
-  };
-});
+  });
 
 /**
  * Navigation Menu Viewport
  * Container for content positioning
  */
-export const NavigationMenuViewport = defineComponent<NavigationMenuViewportProps>((props) => {
-  return () => {
+export const NavigationMenuViewport = defineComponent<NavigationMenuViewportProps>((props) => () => {
     // Evaluate function children during render (Pattern 17)
     const children = typeof props.children === 'function' ? props.children() : props.children;
     const { children: _children, ...restProps } = props;
@@ -376,8 +371,7 @@ export const NavigationMenuViewport = defineComponent<NavigationMenuViewportProp
       'data-navigation-menu-viewport': '',
       children,
     });
-  };
-});
+  });
 
 // ============================================================================
 // Attach sub-components

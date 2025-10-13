@@ -758,7 +758,7 @@ export function createOverlayPrimitive(config: OverlayConfig) {
       const evaluatedChildren = typeof children === 'function' ? children() : children;
 
       const ariaProps: any = {
-        role: role,
+        role,
         ...(modal && { 'aria-modal': 'true' }),
         ...(hasTitle && ctx.titleId && { 'aria-labelledby': ctx.titleId }),
         ...(hasDescription && ctx.descriptionId && { 'aria-describedby': ctx.descriptionId }),

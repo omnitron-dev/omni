@@ -12,7 +12,7 @@
  * Part of the reconciliation engine - Phase 3 Diffing & Patching.
  */
 
-import { VNode, VNodeType } from './vnode.js';
+import { VNode } from './vnode.js';
 import { createDOMFromVNode } from './create-dom.js';
 import { PatchType, type Patch, type PropPatch } from './diff.js';
 

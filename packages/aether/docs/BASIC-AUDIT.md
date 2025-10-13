@@ -52,7 +52,7 @@
    - ✅ Refactored ALL 9/9 overlay components (858 lines saved)
    - ✅ Net reduction: -179 lines after factory investment
    - ✅ Maintenance significantly improved: bug fixes in ONE place
-   - ⬜ Layout components redundancy (Stack/Flex, Center)
+   - ✅ Layout components redundancy fixed (Flex enhanced, Stack/Center deprecated)
 
 5. **DI System Overhead** (P1)
    - Adds 70KB minified vs 2KB Context API alternative

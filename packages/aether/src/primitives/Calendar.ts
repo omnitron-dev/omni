@@ -459,7 +459,7 @@ export const CalendarHeading = defineComponent<CalendarHeadingProps>((props) => 
       'data-calendar-heading': '',
       'aria-live': 'polite',
       'aria-atomic': 'true',
-      children: children,
+      children,
     });
   };
 });

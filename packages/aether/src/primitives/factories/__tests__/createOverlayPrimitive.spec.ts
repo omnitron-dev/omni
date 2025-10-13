@@ -5,7 +5,7 @@
  * with appropriate behavior and accessibility features.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createOverlayPrimitive } from '../createOverlayPrimitive.js';
 import { signal } from '../../../core/reactivity/signal.js';
 

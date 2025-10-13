@@ -153,9 +153,7 @@ export const PinInput = defineComponent<PinInputProps>((props) => {
     return [...chars, ...Array(Math.max(0, length - chars.length)).fill('')];
   };
 
-  const joinValues = (values: string[]): string => {
-    return values.join('');
-  };
+  const joinValues = (values: string[]): string => values.join('');
 
   // Pattern 19: Use useControlledState for flexible value handling
   // Note: PinInput works with strings externally but arrays internally
@@ -170,9 +168,7 @@ export const PinInput = defineComponent<PinInputProps>((props) => {
   const internalValuesArray = signal<string[]>(parseValue(getValueString()));
 
   // Get current values as array (for internal operations)
-  const currentValues = (): string[] => {
-    return internalValuesArray();
-  };
+  const currentValues = (): string[] => internalValuesArray();
 
   // Track if we're updating from internal change to avoid loops
   let isInternalUpdate = false;

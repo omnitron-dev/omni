@@ -12,7 +12,6 @@ import type {
   Inspector,
   ComponentMetadata,
   SignalMetadata,
-  EffectMetadata,
 } from './types.js';
 
 /**

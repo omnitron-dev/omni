@@ -100,9 +100,7 @@ export class CodeSplittingManager {
       path,
       loading: loading || this.config.defaultLoading,
       errorBoundary,
-      lazy: async () => {
-        return this.loadChunk(chunkId, importFn);
-      },
+      lazy: async () => this.loadChunk(chunkId, importFn),
     };
   }
 

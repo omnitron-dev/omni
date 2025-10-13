@@ -2,7 +2,7 @@
  * Profiler UI Tests
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createProfiler } from '../../src/devtools/profiler.js';
 import { createProfilerUI } from '../../src/devtools/profiler-ui.js';
 

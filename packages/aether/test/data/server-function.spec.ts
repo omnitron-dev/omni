@@ -199,8 +199,7 @@ describe('Server Function', () => {
       expect(attemptCount).toBe(3);
     });
 
-    it.skip('should fail after max retries', async () => {
-      // SKIPPED: Test has deadlock issue with fake timers
+    it('should fail after max retries', async () => {
       let attemptCount = 0;
       const fn = serverFunction(
         async () => {
@@ -216,19 +215,22 @@ describe('Server Function', () => {
         }
       );
 
-      await expect(async () => {
-        await fn();
-        await vi.runAllTimersAsync();
-      }).rejects.toThrow('Permanent failure');
+      // Start promise with catch handler to prevent unhandled rejection
+      const promise = fn().catch(err => { throw err; });
 
+      // Advance timers for all retry delays
+      for (let i = 0; i < 3; i++) {
+        vi.advanceTimersByTime(100);
+        await vi.runAllTimersAsync();
+      }
+
+      await expect(promise).rejects.toThrow('Permanent failure');
       expect(attemptCount).toBe(3); // Initial + 2 retries
     });
   });
 
   describe('Timeout', () => {
-    it.skip('should timeout after specified duration', async () => {
-      // SKIPPED: Test has deadlock issue with fake timers
-      vi.useRealTimers();
+    it('should timeout after specified duration', async () => {
       const fn = serverFunction(
         async () => new Promise((resolve) => {
             setTimeout(() => resolve('success'), 100);
@@ -238,8 +240,14 @@ describe('Server Function', () => {
         }
       );
 
-      await expect(fn()).rejects.toThrow('timeout');
-      vi.useFakeTimers();
+      // Start promise with catch handler to prevent unhandled rejection
+      const promise = fn().catch(err => { throw err; });
+
+      // Advance past timeout but not past full duration
+      vi.advanceTimersByTime(10);
+      await vi.runAllTimersAsync();
+
+      await expect(promise).rejects.toThrow('timeout');
     });
 
     it('should succeed if completed before timeout', async () => {

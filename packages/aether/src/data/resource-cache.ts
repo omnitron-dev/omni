@@ -62,6 +62,9 @@ export function createCachedResource<T>(
   // Initialize cache key early (important for SWR)
   let cacheKey = keyFn ? keyFn() : generateCacheKey(name, [refetchCounter]);
 
+  // Store reference to base resource for background revalidation
+  let baseResourceRef: any;
+
   /**
    * Wrapped fetcher with caching logic
    */
@@ -83,6 +86,10 @@ export function createCachedResource<T>(
           .then((result) => {
             cache.set(cacheKey, result, ttl);
             cache.setRevalidating(cacheKey, false);
+            // CRITICAL FIX: Update the resource signal with new data
+            if (baseResourceRef) {
+              baseResourceRef.mutate(result);
+            }
             if (onSuccess) {
               onSuccess(result);
             }
@@ -121,6 +128,7 @@ export function createCachedResource<T>(
 
   // Create base resource
   const baseResource = coreResource(wrappedFetcher);
+  baseResourceRef = baseResource;
 
   // Add revalidation strategies
   if (revalidateOnFocus && typeof window !== 'undefined') {
@@ -207,9 +215,51 @@ export function createCachedResource<T>(
     return cacheKey;
   }
 
+  /**
+   * Accessor function with SWR staleness check
+   *
+   * On every access, checks if data is stale and triggers background revalidation
+   */
+  function accessWithSWRCheck(): T | undefined {
+    const data = baseResource();
+
+    // If SWR is enabled and we have data, check if it's stale
+    if (staleWhileRevalidate && data !== undefined && !baseResource.loading()) {
+      const currentKey = cacheKey || (keyFn ? keyFn() : generateCacheKey(name, [refetchCounter]));
+
+      // Check if data is stale and not already revalidating
+      if (cache.isStale(currentKey, staleTime) && !cache.isRevalidating(currentKey)) {
+        // Trigger background revalidation
+        cache.setRevalidating(currentKey, true);
+
+        fetcher()
+          .then((result) => {
+            cache.set(currentKey, result, ttl);
+            cache.setRevalidating(currentKey, false);
+            // Update the resource signal with new data
+            if (baseResourceRef) {
+              baseResourceRef.mutate(result);
+            }
+            if (onSuccess) {
+              onSuccess(result);
+            }
+          })
+          .catch((error) => {
+            console.error('Background revalidation failed:', error);
+            cache.setRevalidating(currentKey, false);
+            if (onError) {
+              onError(error as Error);
+            }
+          });
+      }
+    }
+
+    return data;
+  }
+
   // Create cached resource interface
   const cachedResource = Object.assign(
-    () => baseResource(),
+    accessWithSWRCheck,
     {
       loading: () => baseResource.loading(),
       error: () => baseResource.error(),

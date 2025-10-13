@@ -5,7 +5,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createInspector } from '../../src/devtools/inspector.js';
 import { createInspectorUI } from '../../src/devtools/inspector-ui.js';
-import type { ComponentMetadata } from '../../src/devtools/types.js';
 
 describe('InspectorUI', () => {
   let inspector: ReturnType<typeof createInspector>;

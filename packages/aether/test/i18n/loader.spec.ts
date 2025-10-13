@@ -5,7 +5,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   TranslationLoader,
-  createFileLoader,
   createDynamicLoader,
   createChunkedLoader,
   createFallbackLoader,
@@ -42,9 +41,7 @@ describe('TranslationLoader', () => {
     it('should load different locales', async () => {
       const loader = new TranslationLoader();
 
-      loader.setLoader(async (locale) => {
-        return { greeting: locale === 'en' ? 'Hello' : 'Bonjour' };
-      });
+      loader.setLoader(async (locale) => ({ greeting: locale === 'en' ? 'Hello' : 'Bonjour' }));
 
       const en = await loader.load('en');
       const fr = await loader.load('fr');

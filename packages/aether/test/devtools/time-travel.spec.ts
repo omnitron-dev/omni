@@ -2,7 +2,7 @@
  * Time-Travel Debugger Tests
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { createRecorder } from '../../src/devtools/recorder.js';
 import { createTimeTravelDebugger } from '../../src/devtools/time-travel.js';
 

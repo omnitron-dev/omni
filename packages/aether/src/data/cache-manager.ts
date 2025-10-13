@@ -193,6 +193,17 @@ class CacheManagerImpl implements ICacheManager {
   }
 
   /**
+   * Check if entry is currently revalidating
+   *
+   * @param key - Cache key
+   * @returns True if entry is currently revalidating
+   */
+  isRevalidating(key: string): boolean {
+    const entry = this.cache.get(key);
+    return entry?.revalidating ?? false;
+  }
+
+  /**
    * Check if entry is stale
    *
    * @param key - Cache key

@@ -274,8 +274,13 @@ export async function atomicOptimisticUpdate<T extends any[]>(
       updates.map(({ mutation }) => mutation())
     );
 
-    // Revalidate all resources
-    await Promise.all(updates.map(({ resource }) => resource.refetch()));
+    // CRITICAL FIX: Update resources with mutation results instead of refetching
+    // Refetch would call the original fetcher and overwrite the mutation results
+    await Promise.all(
+      updates.map(async ({ resource }, index) => {
+        await resource.mutate(results[index]);
+      })
+    );
 
     return results as T;
   } catch (error) {

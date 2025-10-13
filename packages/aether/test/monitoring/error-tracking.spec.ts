@@ -4,7 +4,6 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ErrorTracker, getErrorTracker, resetErrorTracker } from '../../src/monitoring/error-tracking.js';
-import type { ErrorInfo } from '../../src/monitoring/types.js';
 
 describe('ErrorTracker', () => {
   let tracker: ErrorTracker;

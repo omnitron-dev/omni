@@ -50,9 +50,7 @@ describe('Optimistic Updates', () => {
       await promise;
     });
 
-    it.skip('should revalidate after mutation', async () => {
-      // SKIPPED: Test has deadlock issue with fake timers
-      // Cannot fix without modifying test structure
+    it('should revalidate after mutation', async () => {
       let fetchCount = 0;
       const resource = createCachedResource(async () => {
         fetchCount++;
@@ -62,7 +60,8 @@ describe('Optimistic Updates', () => {
       await vi.runAllTimersAsync();
       expect(resource()?.count).toBe(1);
 
-      await optimisticUpdate(
+      // Start mutation but don't await yet to avoid deadlock
+      const promise = optimisticUpdate(
         resource,
         async () => {
           await new Promise((resolve) => setTimeout(resolve, 100));
@@ -73,8 +72,10 @@ describe('Optimistic Updates', () => {
         }
       );
 
+      // Advance timers before awaiting
       vi.advanceTimersByTime(100);
       await vi.runAllTimersAsync();
+      await promise;
 
       // Should refetch after mutation
       expect(fetchCount).toBe(2);
@@ -159,9 +160,7 @@ describe('Optimistic Updates', () => {
   });
 
   describe('Optimistic Mutation', () => {
-    it.skip('should create reusable optimistic mutation', async () => {
-      // SKIPPED: Test has deadlock issue with fake timers
-      // Cannot fix without modifying test structure
+    it('should create reusable optimistic mutation', async () => {
       const resource = createCachedResource(async () => ({ count: 0 }));
 
       await vi.runAllTimersAsync();
@@ -175,15 +174,19 @@ describe('Optimistic Updates', () => {
         (amount: number) => (prev) => ({ count: (prev?.count ?? 0) + amount })
       );
 
-      await increment(5);
+      // Start first increment but don't await yet
+      const promise1 = increment(5);
       vi.advanceTimersByTime(100);
       await vi.runAllTimersAsync();
+      await promise1;
 
       expect(resource()?.count).toBe(5);
 
-      await increment(3);
+      // Start second increment
+      const promise2 = increment(3);
       vi.advanceTimersByTime(100);
       await vi.runAllTimersAsync();
+      await promise2;
 
       expect(resource()?.count).toBe(8);
     });
@@ -226,29 +229,42 @@ describe('Optimistic Updates', () => {
   });
 
   describe('Atomic Optimistic Update', () => {
-    it.skip('should update multiple resources atomically', async () => {
-      // SKIPPED: Atomic updates have timing issues with resource synchronization
-      // Works in production, but test timing is too strict
-      const resource1 = createCachedResource(async () => ({ count: 1 }));
-      const resource2 = createCachedResource(async () => ({ count: 2 }));
+    it('should update multiple resources atomically', async () => {
+      const resource1 = createCachedResource(async () => ({ count: 1 }), { name: 'res1' });
+      const resource2 = createCachedResource(async () => ({ count: 2 }), { name: 'res2' });
 
       await vi.runAllTimersAsync();
 
-      await atomicOptimisticUpdate([
+      // Check resources are initialized
+      expect(resource1()?.count).toBe(1);
+      expect(resource2()?.count).toBe(2);
+
+      // Apply atomic update
+      const promise = atomicOptimisticUpdate([
         {
           resource: resource1,
-          mutation: async () => {},
+          mutation: async () => {
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            return { count: 10 };
+          },
           optimisticData: { count: 10 },
         },
         {
           resource: resource2,
-          mutation: async () => {},
+          mutation: async () => {
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            return { count: 20 };
+          },
           optimisticData: { count: 20 },
         },
       ]);
 
+      // Wait for mutations to complete
+      await vi.runAllTimersAsync();
+      await promise;
       await vi.runAllTimersAsync();
 
+      // Both should be updated
       expect(resource1()?.count).toBe(10);
       expect(resource2()?.count).toBe(20);
     });
@@ -263,7 +279,7 @@ describe('Optimistic Updates', () => {
         await atomicOptimisticUpdate([
           {
             resource: resource1,
-            mutation: async () => {},
+            mutation: async () => ({ count: 10 }),
             optimisticData: { count: 10 },
           },
           {

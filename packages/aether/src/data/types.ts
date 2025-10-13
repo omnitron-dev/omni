@@ -349,6 +349,11 @@ export interface CacheManager {
   setRevalidating: (key: string, revalidating: boolean) => void;
 
   /**
+   * Check if entry is currently revalidating
+   */
+  isRevalidating: (key: string) => boolean;
+
+  /**
    * Check if entry is stale
    */
   isStale: (key: string, staleTime: number) => boolean;

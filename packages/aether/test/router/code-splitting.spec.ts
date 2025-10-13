@@ -7,7 +7,6 @@ import {
   CodeSplittingManager,
   getCodeSplittingManager,
   lazyRoute,
-  preloadRoute,
 } from '../../src/router/code-splitting.js';
 import type { RouteDefinition } from '../../src/router/types.js';
 

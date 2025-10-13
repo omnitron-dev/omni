@@ -122,9 +122,9 @@ export function ErrorBoundary(props: ErrorBoundaryProps): any {
   });
 
   // Return setup function that returns render function
-  return () => {
+  return () => 
     // This is the setup/component function
-    return () => {
+     () => {
       // This is the render function
       const error = errorSignal();
 
@@ -154,8 +154,8 @@ export function ErrorBoundary(props: ErrorBoundaryProps): any {
           return fallback;
         }
       }
-    };
-  };
+    }
+  ;
 }
 
 /**

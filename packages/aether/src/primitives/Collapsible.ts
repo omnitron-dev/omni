@@ -8,7 +8,6 @@
 import { defineComponent } from '../core/component/define.js';
 import { createContext, useContext, provideContext } from '../core/component/context.js';
 import type { Signal, WritableSignal } from '../core/reactivity/types.js';
-import { signal } from '../core/reactivity/signal.js';
 import { computed } from '../core/reactivity/computed.js';
 import { effect } from '../core/reactivity/effect.js';
 import { createRef } from '../core/component/refs.js';

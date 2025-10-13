@@ -45,8 +45,9 @@ describe('Sheet Primitive', () => {
       expect(SheetContext.defaultValue.close).toBeTypeOf('function');
     });
 
-    it('should have default side of right', () => {
-      expect(SheetContext.defaultValue.side).toBe('right');
+    it('should have default context values', () => {
+      // Note: side is component-specific, not part of the factory's default context
+      expect(SheetContext.defaultValue.isOpen()).toBe(false);
     });
 
     it('should have empty default IDs', () => {

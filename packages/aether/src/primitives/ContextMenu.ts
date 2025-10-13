@@ -8,12 +8,27 @@
  */
 
 import { defineComponent } from '../core/component/define.js';
-import { signal } from '../core/reactivity/signal.js';
-import { createContext, useContext } from '../core/component/context.js';
-import { onMount } from '../core/component/lifecycle.js';
+import { useContext } from '../core/component/context.js';
 import { jsx } from '../jsx-runtime.js';
-import { Portal } from '../control-flow/Portal.js';
-import { generateId } from './utils/id.js';
+import { createOverlayPrimitive } from './factories/createOverlayPrimitive.js';
+
+// ============================================================================
+// Create Base ContextMenu using Factory
+// ============================================================================
+
+const ContextMenuBase = createOverlayPrimitive({
+  name: 'context-menu',
+  modal: false,
+  role: 'menu',
+  positioning: false, // Uses custom mouse position, not anchor positioning
+  focusTrap: false,
+  scrollLock: false,
+  closeOnEscape: true,
+  closeOnClickOutside: true,
+  triggerBehavior: 'contextmenu', // Right-click to open
+  hasTitle: false,
+  hasDescription: false,
+});
 
 // ============================================================================
 // Types
@@ -47,22 +62,11 @@ export interface ContextMenuContextValue {
   close: () => void;
   position: () => { x: number; y: number } | null;
   menuId: string;
+  triggerId: string;
+  contentId: string;
 }
 
-const noop = () => {};
-const noopGetter = () => false;
-const noopPositionGetter = () => null;
-
-export const ContextMenuContext = createContext<ContextMenuContextValue>(
-  {
-    isOpen: noopGetter,
-    open: noop,
-    close: noop,
-    position: noopPositionGetter,
-    menuId: '',
-  },
-  'ContextMenu'
-);
+export const ContextMenuContext = ContextMenuBase.Context;
 
 // ============================================================================
 // Components
@@ -85,131 +89,19 @@ export const ContextMenuContext = createContext<ContextMenuContextValue>(
  * </ContextMenu>
  * ```
  */
-export const ContextMenu = defineComponent<ContextMenuProps>((props) => {
-  const isOpen = signal(false);
-  const position = signal<{ x: number; y: number } | null>(null);
-
-  const menuId = generateId('context-menu');
-
-  const contextValue: ContextMenuContextValue = {
-    isOpen: () => isOpen(),
-    open: (x: number, y: number) => {
-      position.set({ x, y });
-      isOpen.set(true);
-      props.onOpenChange?.(true);
-    },
-    close: () => {
-      isOpen.set(false);
-      props.onOpenChange?.(false);
-    },
-    position: () => position(),
-    menuId,
-  };
-
-  return () =>
-    jsx(ContextMenuContext.Provider, {
-      value: contextValue,
-      children: props.children,
-    });
-});
+export const ContextMenu = ContextMenuBase.Root;
 
 /**
  * ContextMenu Trigger component
+ * Uses factory-generated Trigger with contextmenu behavior
  */
-export const ContextMenuTrigger = defineComponent<ContextMenuTriggerProps>((props) => {
-  const ctx = useContext(ContextMenuContext);
-
-  const handleContextMenu = (e: MouseEvent) => {
-    if (props.disabled) return;
-
-    e.preventDefault();
-    e.stopPropagation();
-
-    ctx.open(e.clientX, e.clientY);
-  };
-
-  return () =>
-    jsx('div', {
-      ...props,
-      onContextMenu: handleContextMenu,
-    });
-});
+export const ContextMenuTrigger = ContextMenuBase.Trigger;
 
 /**
  * ContextMenu Content component
+ * Uses factory-generated Content with custom positioning at mouse coordinates
  */
-export const ContextMenuContent = defineComponent<ContextMenuContentProps>((props) => {
-  const ctx = useContext(ContextMenuContext);
-  let contentRef: HTMLElement | null = null;
-
-  onMount(() => {
-    if (!ctx.isOpen() || !contentRef) return;
-
-    const pos = ctx.position();
-    if (!pos) return;
-
-    // Position at click location
-    contentRef.style.position = 'fixed';
-    contentRef.style.left = `${pos.x}px`;
-    contentRef.style.top = `${pos.y}px`;
-
-    // Adjust if off-screen
-    const rect = contentRef.getBoundingClientRect();
-    if (rect.right > window.innerWidth) {
-      contentRef.style.left = `${pos.x - rect.width}px`;
-    }
-    if (rect.bottom > window.innerHeight) {
-      contentRef.style.top = `${pos.y - rect.height}px`;
-    }
-
-    // Focus first item
-    const firstItem = contentRef.querySelector<HTMLElement>('[role="menuitem"]:not([disabled])');
-    firstItem?.focus();
-  });
-
-  const handleEscapeKey = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      ctx.close();
-      props.onEscapeKeyDown?.(e);
-    }
-  };
-
-  const handleClickOutside = (e: MouseEvent) => {
-    if (contentRef && e.target instanceof Node && !contentRef.contains(e.target)) {
-      ctx.close();
-    }
-  };
-
-  onMount(() => {
-    if (ctx.isOpen()) {
-      document.addEventListener('click', handleClickOutside);
-      document.addEventListener('contextmenu', handleClickOutside);
-
-      return () => {
-        document.removeEventListener('click', handleClickOutside);
-        document.removeEventListener('contextmenu', handleClickOutside);
-      };
-    }
-    return undefined;
-  });
-
-  return () => {
-    if (!ctx.isOpen()) return null;
-
-    return jsx(Portal, {
-      children: jsx('div', {
-        ...props,
-        ref: ((el: HTMLElement) => (contentRef = el)) as any,
-        id: ctx.menuId,
-        role: 'menu',
-        'data-state': 'open',
-        tabIndex: -1,
-        onKeyDown: handleEscapeKey,
-      }),
-    });
-  };
-});
+export const ContextMenuContent = ContextMenuBase.Content;
 
 /**
  * ContextMenu Item component

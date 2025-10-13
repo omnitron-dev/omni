@@ -12,11 +12,11 @@
  * - ARIA support for accessibility
  */
 
-import { defineComponent, onCleanup } from '../core/component/index.js';
-import { createContext, useContext } from '../core/component/context.js';
-import type { Signal, WritableSignal } from '../core/reactivity/types.js';
-import { signal, computed } from '../core/reactivity/index.js';
+import { defineComponent } from '../core/component/index.js';
+import { type WritableSignal } from '../core/reactivity/index.js';
 import { jsx } from '../jsx-runtime.js';
+import { createOverlayPrimitive } from './factories/createOverlayPrimitive.js';
+import { effect } from '../core/reactivity/effect.js';
 
 // ============================================================================
 // Types
@@ -25,307 +25,286 @@ import { jsx } from '../jsx-runtime.js';
 export type DrawerSide = 'top' | 'right' | 'bottom' | 'left';
 
 export interface DrawerProps {
-  /** Controlled open state */
-  open?: boolean;
-  /** Open state change callback */
+  /**
+   * Controlled open state (supports WritableSignal for reactive updates - Pattern 19)
+   */
+  open?: WritableSignal<boolean> | boolean;
+
+  /**
+   * Open state change callback
+   */
   onOpenChange?: (open: boolean) => void;
-  /** Default open state (uncontrolled) */
+
+  /**
+   * Default open state (uncontrolled)
+   */
   defaultOpen?: boolean;
-  /** Side to slide from */
+
+  /**
+   * Side to slide from
+   * @default 'right'
+   */
   side?: DrawerSide;
-  /** Whether the drawer is modal (blocks interaction with content behind) */
+
+  /**
+   * Whether the drawer is modal (blocks interaction with content behind)
+   * @default true
+   */
   modal?: boolean;
-  /** Whether to close on outside click */
-  closeOnOutsideClick?: boolean;
-  /** Whether to close on Escape key */
-  closeOnEscape?: boolean;
-  /** Children */
+
+  /**
+   * Children
+   */
   children?: any;
 }
 
 export interface DrawerTriggerProps {
-  /** Children */
+  /**
+   * Children
+   */
   children?: any;
-  /** Additional props */
+
+  /**
+   * Additional props
+   */
   [key: string]: any;
 }
 
+export interface DrawerPortalProps {
+  /**
+   * Target container to render into
+   * @default document.body
+   */
+  container?: HTMLElement;
+
+  /**
+   * Children
+   */
+  children: any;
+}
+
 export interface DrawerContentProps {
-  /** Children */
+  /**
+   * Side to slide from (can override root side prop)
+   */
+  side?: DrawerSide;
+
+  /**
+   * Children
+   */
   children?: any;
-  /** Additional props */
+
+  /**
+   * Additional props
+   */
   [key: string]: any;
 }
 
 export interface DrawerOverlayProps {
-  /** Children */
+  /**
+   * Children
+   */
   children?: any;
-  /** Additional props */
+
+  /**
+   * Additional props
+   */
   [key: string]: any;
 }
 
 export interface DrawerTitleProps {
-  /** Children */
+  /**
+   * Children
+   */
   children?: any;
-  /** Additional props */
+
+  /**
+   * Additional props
+   */
   [key: string]: any;
 }
 
 export interface DrawerDescriptionProps {
-  /** Children */
+  /**
+   * Children
+   */
   children?: any;
-  /** Additional props */
+
+  /**
+   * Additional props
+   */
   [key: string]: any;
 }
 
 export interface DrawerCloseProps {
-  /** Children */
+  /**
+   * Children
+   */
   children?: any;
-  /** Additional props */
-  [key: string]: any;
-}
 
-interface DrawerContextValue {
-  /** Open state */
-  isOpen: Signal<boolean>;
-  /** Set open state */
-  setOpen: (open: boolean) => void;
-  /** Side */
-  side: DrawerSide;
-  /** Modal */
-  modal: boolean;
-  /** Close on outside click */
-  closeOnOutsideClick: boolean;
+  /**
+   * Additional props
+   */
+  [key: string]: any;
 }
 
 // ============================================================================
 // Context
 // ============================================================================
 
-const DrawerContext = createContext<DrawerContextValue | null>(null);
-
-const useDrawerContext = (): DrawerContextValue => {
-  const context = useContext(DrawerContext);
-  if (!context) {
-    throw new Error('Drawer components must be used within a Drawer');
-  }
-  return context;
-};
+export interface DrawerContextValue {
+  isOpen: () => boolean;
+  open: () => void;
+  close: () => void;
+  toggle: () => void;
+  triggerId: string;
+  contentId: string;
+  titleId: string;
+  descriptionId: string;
+}
 
 // ============================================================================
-// Drawer Root
+// Create Base Drawer using Factory
 // ============================================================================
 
+const DrawerBase = createOverlayPrimitive({
+  name: 'drawer',
+  modal: true, // Default modal, but can be overridden
+  role: 'dialog',
+  focusTrap: true,
+  scrollLock: true,
+  closeOnEscape: true,
+  closeOnClickOutside: true, // Drawer allows clicking overlay to close by default
+  hasTitle: true,
+  hasDescription: true,
+});
+
+export const DrawerContext = DrawerBase.Context;
+
+// ============================================================================
+// Root Component with Side and Modal Support
+// ============================================================================
+
+/**
+ * Drawer root component
+ *
+ * @example
+ * ```tsx
+ * <Drawer side="bottom" modal={true}>
+ *   <Drawer.Trigger>Open Drawer</Drawer.Trigger>
+ *   <Drawer.Content>
+ *     <Drawer.Title>Title</Drawer.Title>
+ *     <Drawer.Description>Description</Drawer.Description>
+ *     <Drawer.Close>Close</Drawer.Close>
+ *   </Drawer.Content>
+ * </Drawer>
+ * ```
+ */
 export const Drawer = defineComponent<DrawerProps>((props) => {
+  // Store side in a way that child components can access it
   const side = props.side ?? 'right';
   const modal = props.modal ?? true;
-  const closeOnOutsideClick = props.closeOnOutsideClick ?? true;
-  const closeOnEscape = props.closeOnEscape ?? true;
 
-  // State
-  const internalOpen: WritableSignal<boolean> = signal<boolean>(props.defaultOpen ?? false);
+  return () => {
+    const children = typeof props.children === 'function' ? props.children() : props.children;
 
-  const isOpen = (): boolean => {
-    if (props.open !== undefined) {
-      return props.open;
-    }
-    return internalOpen();
-  };
-
-  const setOpen = (open: boolean) => {
-    if (props.open === undefined) {
-      internalOpen.set(open);
-    }
-    props.onOpenChange?.(open);
-  };
-
-  // Handle escape key
-  if (closeOnEscape) {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen()) {
-        setOpen(false);
-      }
-    };
-
-    if (typeof document !== 'undefined') {
-      document.addEventListener('keydown', handleKeyDown);
-      onCleanup(() => {
-        document.removeEventListener('keydown', handleKeyDown);
-      });
-    }
-  }
-
-  const contextValue: DrawerContextValue = {
-    isOpen: computed(() => isOpen()),
-    setOpen,
-    side,
-    modal,
-    closeOnOutsideClick,
-  };
-
-  return () =>
-    jsx(DrawerContext.Provider, {
-      value: contextValue,
+    return jsx(DrawerBase.Root, {
+      open: props.open,
+      defaultOpen: props.defaultOpen,
+      modal,
+      onOpenChange: props.onOpenChange,
       children: jsx('div', {
-        'data-drawer': '',
-        'data-state': isOpen() ? 'open' : 'closed',
-        children: props.children,
+        'data-drawer-root': '',
+        'data-side': side,
+        'data-modal': modal,
+        children,
       }),
     });
+  };
 });
 
 // ============================================================================
-// Drawer Trigger
+// Content Component with Side Attribute
 // ============================================================================
 
-export const DrawerTrigger = defineComponent<DrawerTriggerProps>((props) => {
-  const context = useDrawerContext();
+/**
+ * Drawer Content component - wraps factory Content to add data-side attribute
+ */
+export const DrawerContent = defineComponent<DrawerContentProps>((props) => () => {
+    const { side, children, ...restProps } = props;
 
-  const handleClick = () => {
-    context.setOpen(!context.isOpen());
-  };
+    // Get side from props or default to 'right'
+    const effectiveSide = side || 'right';
 
-  return () => {
-    const { children, ...rest } = props;
-
-    return jsx('button', {
-      type: 'button',
-      'data-drawer-trigger': '',
-      'aria-expanded': context.isOpen(),
-      onClick: handleClick,
-      ...rest,
+    const content = jsx(DrawerBase.Content, {
+      ...restProps,
       children,
-    });
-  };
-});
+    }) as HTMLElement;
 
-// ============================================================================
-// Drawer Overlay
-// ============================================================================
-
-export const DrawerOverlay = defineComponent<DrawerOverlayProps>((props) => {
-  const context = useDrawerContext();
-
-  const handleClick = () => {
-    if (context.closeOnOutsideClick) {
-      context.setOpen(false);
+    // Add data-side attribute to content element
+    if (content) {
+      effect(() => {
+        content.setAttribute('data-side', effectiveSide);
+      });
     }
-  };
 
-  return () => {
-    if (!context.isOpen() || !context.modal) return null;
-
-    const { children, ...rest } = props;
-
-    return jsx('div', {
-      'data-drawer-overlay': '',
-      'data-side': context.side,
-      onClick: handleClick,
-      'aria-hidden': 'true',
-      ...rest,
-      children,
-    });
-  };
-});
-
-// ============================================================================
-// Drawer Content
-// ============================================================================
-
-export const DrawerContent = defineComponent<DrawerContentProps>((props) => {
-  const context = useDrawerContext();
-  const contentRef: { current: HTMLDivElement | null } = { current: null };
-
-  const handleOverlayClick = (e: MouseEvent) => {
-    // Prevent closing when clicking inside content
-    e.stopPropagation();
-  };
-
-  return () => {
-    if (!context.isOpen()) return null;
-
-    const { children, ...rest } = props;
-
-    return jsx('div', {
-      ref: contentRef,
-      'data-drawer-content': '',
-      'data-side': context.side,
-      role: 'dialog',
-      'aria-modal': context.modal,
-      tabIndex: -1,
-      onClick: handleOverlayClick,
-      ...rest,
-      children,
-    });
-  };
-});
-
-// ============================================================================
-// Drawer Title
-// ============================================================================
-
-export const DrawerTitle = defineComponent<DrawerTitleProps>((props) => () => {
-  const { children, ...rest } = props;
-
-  return jsx('h2', {
-    'data-drawer-title': '',
-    ...rest,
-    children,
+    return content;
   });
-});
 
 // ============================================================================
-// Drawer Description
+// Overlay Component
 // ============================================================================
 
-export const DrawerDescription = defineComponent<DrawerDescriptionProps>((props) => () => {
-  const { children, ...rest } = props;
+/**
+ * Drawer Overlay component - wraps factory Overlay
+ */
+export const DrawerOverlay = defineComponent<DrawerOverlayProps>((props) => () => {
+    const { children, ...restProps } = props;
 
-  return jsx('p', {
-    'data-drawer-description': '',
-    ...rest,
-    children,
-  });
-});
-
-// ============================================================================
-// Drawer Close
-// ============================================================================
-
-export const DrawerClose = defineComponent<DrawerCloseProps>((props) => {
-  const context = useDrawerContext();
-
-  const handleClick = () => {
-    context.setOpen(false);
-  };
-
-  return () => {
-    const { children = '×', ...rest } = props;
-
-    return jsx('button', {
-      type: 'button',
-      'data-drawer-close': '',
-      onClick: handleClick,
-      'aria-label': 'Close drawer',
-      ...rest,
+    return jsx(DrawerBase.Overlay, {
+      ...restProps,
       children,
     });
-  };
-});
+  });
+
+// ============================================================================
+// Re-export other components directly from factory
+// ============================================================================
+
+/**
+ * Drawer Trigger component
+ */
+export const DrawerTrigger = DrawerBase.Trigger;
+
+/**
+ * Drawer Portal component
+ * Renders children into a different part of the DOM
+ */
+export const DrawerPortal = DrawerBase.Portal;
+
+/**
+ * Drawer Title component
+ */
+export const DrawerTitle = DrawerBase.Title;
+
+/**
+ * Drawer Description component
+ */
+export const DrawerDescription = DrawerBase.Description;
+
+/**
+ * Drawer Close button component
+ */
+export const DrawerClose = DrawerBase.Close;
 
 // ============================================================================
 // Attach sub-components
 // ============================================================================
 
 (Drawer as any).Trigger = DrawerTrigger;
+(Drawer as any).Portal = DrawerPortal;
 (Drawer as any).Overlay = DrawerOverlay;
 (Drawer as any).Content = DrawerContent;
 (Drawer as any).Title = DrawerTitle;
 (Drawer as any).Description = DrawerDescription;
 (Drawer as any).Close = DrawerClose;
-
-// ============================================================================
-// Export types
-// ============================================================================
-
-export type { DrawerContextValue };

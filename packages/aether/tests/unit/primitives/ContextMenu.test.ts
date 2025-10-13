@@ -48,8 +48,8 @@ describe('ContextMenu Primitive', () => {
       expect(ContextMenuContext.defaultValue.position).toBeTypeOf('function');
     });
 
-    it('should have stable default menuId', () => {
-      expect(ContextMenuContext.defaultValue.menuId).toBe('');
+    it('should have stable default contentId', () => {
+      expect(ContextMenuContext.defaultValue.contentId).toBe('');
     });
 
     it('should return null position by default', () => {

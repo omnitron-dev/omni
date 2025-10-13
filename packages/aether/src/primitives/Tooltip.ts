@@ -8,13 +8,36 @@
  */
 
 import { defineComponent } from '../core/component/define.js';
-import { createContext, useContext, provideContext } from '../core/component/context.js';
-import { signal } from '../core/reactivity/signal.js';
+import { useContext, provideContext, createContext } from '../core/component/context.js';
 import { onMount } from '../core/component/lifecycle.js';
 import { Portal } from '../control-flow/Portal.js';
 import { jsx } from '../jsx-runtime.js';
 import { effect } from '../core/reactivity/effect.js';
-import { generateId, calculatePosition, applyPosition, type Side, type Align } from './utils/index.js';
+import { createOverlayPrimitive } from './factories/createOverlayPrimitive.js';
+import { calculatePosition, applyPosition, type Side, type Align } from './utils/index.js';
+
+// ============================================================================
+// Create Base Tooltip using Factory
+// ============================================================================
+
+const TooltipBase = createOverlayPrimitive({
+  name: 'tooltip',
+  modal: false,
+  role: 'tooltip',
+  positioning: true,
+  focusTrap: false,
+  scrollLock: false,
+  closeOnEscape: false, // Tooltips typically don't close on Escape
+  closeOnClickOutside: false, // Tooltips close on hover out, not click
+  triggerBehavior: 'hover',
+  hoverDelays: {
+    openDelay: 700,
+    closeDelay: 0,
+  },
+  hasArrow: true,
+  hasTitle: false,
+  hasDescription: false,
+});
 
 // ============================================================================
 // Types
@@ -127,33 +150,27 @@ export interface TooltipContextValue {
   triggerId: string;
   contentId: string;
   disabled: boolean;
+  openDelay: () => number;
+  closeDelay: () => number;
 }
 
-const noop = () => {};
-const noopGetter = () => false;
+export const TooltipContext = TooltipBase.Context;
 
-export const TooltipContext = createContext<TooltipContextValue>(
-  {
-    isOpen: noopGetter,
-    open: noop,
-    close: noop,
-    triggerId: '',
-    contentId: '',
-    disabled: false,
-  },
-  'Tooltip'
-);
+// Extended context for disabled prop (component-specific, not in factory)
+const TooltipExtendedContext = createContext<{ disabled: boolean }>({
+  disabled: false,
+});
 
 // ============================================================================
 // Components
 // ============================================================================
 
 /**
- * Tooltip root component
+ * Tooltip root component with disabled support
  *
  * @example
  * ```tsx
- * <Tooltip>
+ * <Tooltip disabled={false}>
  *   <Tooltip.Trigger>Hover me</Tooltip.Trigger>
  *   <Tooltip.Content>
  *     Helpful information
@@ -162,53 +179,27 @@ export const TooltipContext = createContext<TooltipContextValue>(
  * ```
  */
 export const Tooltip = defineComponent<TooltipProps>((props) => {
-  const isOpen = signal(false);
-  const disabled = () => !!props.disabled;
+  const disabled = props.disabled ?? false;
 
-  const baseId = generateId('tooltip');
-  const triggerId = `${baseId}-trigger`;
-  const contentId = `${baseId}-content`;
+  provideContext(TooltipExtendedContext, { disabled });
 
-  const contextValue: TooltipContextValue = {
-    isOpen: () => isOpen(),
-    open: () => {
-      if (!disabled()) {
-        isOpen.set(true);
-      }
-    },
-    close: () => {
-      isOpen.set(false);
-    },
-    triggerId,
-    contentId,
-    disabled: disabled(),
-  };
-
-  // Provide context in setup phase (Pattern 4)
-  provideContext(TooltipContext, contextValue);
-
-  return () => {
-    // Evaluate function children in render phase
-    const children = typeof props.children === 'function' ? props.children() : props.children;
-
-    return jsx('div', {
-      'data-tooltip': '',
-      children,
+  return () =>
+    jsx(TooltipBase.Root, {
+      delayDuration: props.delayDuration,
+      closeDelay: props.closeDelay,
+      children: props.children,
     });
-  };
 });
 
 /**
  * Tooltip Trigger component
+ * Custom implementation that renders as button and handles hover delays
  */
-export const TooltipTrigger = defineComponent<{ children: any; [key: string]: any }>((props) => {
-  // Defer context access to render time (like HoverCard)
-  let ctx: TooltipContextValue;
+export const TooltipTrigger = defineComponent<{ children: any; disabled?: boolean; [key: string]: any }>((props) => {
+  const ctx = useContext(TooltipContext);
+  const extCtx = useContext(TooltipExtendedContext);
   let openTimeoutId: ReturnType<typeof setTimeout> | null = null;
   let closeTimeoutId: ReturnType<typeof setTimeout> | null = null;
-
-  const delayDuration = 700; // default delay
-  const closeDelay = 0;
 
   onMount(() => () => {
     if (openTimeoutId) clearTimeout(openTimeoutId);
@@ -216,11 +207,9 @@ export const TooltipTrigger = defineComponent<{ children: any; [key: string]: an
   });
 
   return () => {
-    // Get context at render time
-    ctx = useContext(TooltipContext);
-
     const handlePointerEnter = () => {
-      if (ctx.disabled) return;
+      // Check both props.disabled and context disabled (from root component)
+      if (props.disabled || extCtx.disabled) return;
 
       if (closeTimeoutId) {
         clearTimeout(closeTimeoutId);
@@ -229,7 +218,7 @@ export const TooltipTrigger = defineComponent<{ children: any; [key: string]: an
 
       openTimeoutId = setTimeout(() => {
         ctx.open();
-      }, delayDuration);
+      }, ctx.openDelay());
     };
 
     const handlePointerLeave = () => {
@@ -240,11 +229,12 @@ export const TooltipTrigger = defineComponent<{ children: any; [key: string]: an
 
       closeTimeoutId = setTimeout(() => {
         ctx.close();
-      }, closeDelay);
+      }, ctx.closeDelay());
     };
 
     const handleFocus = () => {
-      if (ctx.disabled) return;
+      // Check both props.disabled and context disabled (from root component)
+      if (props.disabled || extCtx.disabled) return;
       ctx.open();
     };
 
@@ -287,16 +277,15 @@ export const TooltipTrigger = defineComponent<{ children: any; [key: string]: an
 
 /**
  * Tooltip Content component
+ * Custom implementation that always renders (with display:none when closed)
+ * and handles positioning with collision detection
  */
 export const TooltipContent = defineComponent<TooltipContentProps>((props) => {
-  // Defer context access to render time
-  let ctx: TooltipContextValue;
+  const ctx = useContext(TooltipContext);
   let contentRef: HTMLElement | null = null;
   let triggerElement: HTMLElement | null = null;
 
   onMount(() => {
-    if (!ctx) return; // Context not available yet
-
     triggerElement = document.getElementById(ctx.triggerId);
 
     if (contentRef && triggerElement && ctx.isOpen()) {
@@ -315,13 +304,14 @@ export const TooltipContent = defineComponent<TooltipContentProps>((props) => {
       });
 
       applyPosition(contentRef, position);
+
+      // Store position data for arrow
+      contentRef.setAttribute('data-side', position.side);
+      contentRef.setAttribute('data-align', position.align);
     }
   });
 
   return () => {
-    // Get context at render time
-    ctx = useContext(TooltipContext);
-
     const handlePointerEnter = () => {
       // Keep tooltip open when hovering over it
     };
@@ -330,7 +320,7 @@ export const TooltipContent = defineComponent<TooltipContentProps>((props) => {
       ctx.close();
     };
 
-    // Create refCallback to set up effect ONCE on mount
+    // Create refCallback to set up effect for visibility changes
     const refCallback = (el: HTMLElement | null) => {
       contentRef = el;
       if (!el) return;
@@ -376,13 +366,10 @@ export const TooltipContent = defineComponent<TooltipContentProps>((props) => {
  * Tooltip Arrow component
  */
 export const TooltipArrow = defineComponent<TooltipArrowProps>((props) => {
-  // Defer context access to render time (like HoverCard)
-  let ctx: TooltipContextValue;
+  const ctx = useContext(TooltipContext);
   let arrowRef: HTMLElement | null = null;
 
   onMount(() => {
-    if (!ctx) return; // Context not available yet
-
     const contentElement = document.getElementById(ctx.contentId);
     const triggerElement = document.getElementById(ctx.triggerId);
 
@@ -393,14 +380,18 @@ export const TooltipArrow = defineComponent<TooltipArrowProps>((props) => {
     }
   });
 
-  return () => {
-    // Get context at render time
-    ctx = useContext(TooltipContext);
-
-    return jsx('div', {
+  return () =>
+    jsx('div', {
       ...props,
       ref: ((el: HTMLElement) => (arrowRef = el)) as any,
       'data-tooltip-arrow': '',
     });
-  };
 });
+
+// ============================================================================
+// Sub-component Attachment
+// ============================================================================
+
+(Tooltip as any).Trigger = TooltipTrigger;
+(Tooltip as any).Content = TooltipContent;
+(Tooltip as any).Arrow = TooltipArrow;

@@ -10,21 +10,40 @@
  * - Checkbox and radio items
  * - Disabled items
  * - Separators and labels
- * - Smart positioning (via Popover)
+ * - Smart positioning (via factory)
  * - ARIA compliance
  *
  * @see https://www.w3.org/WAI/ARIA/apg/patterns/menu/
  * @see https://www.w3.org/WAI/ARIA/apg/patterns/menubutton/
  */
 
+import { createOverlayPrimitive } from './factories/createOverlayPrimitive.js';
 import { defineComponent } from '../core/component/define.js';
 import { signal, type WritableSignal } from '../core/reactivity/signal.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { onMount } from '../core/component/lifecycle.js';
 import { jsx } from '../jsx-runtime.js';
-import { Portal } from '../control-flow/Portal.js';
 import { generateId } from './utils/id.js';
-import { calculatePosition, applyPosition, type Side, type Align } from './utils/position.js';
+import type { Side, Align } from './utils/position.js';
+
+// ============================================================================
+// Create Base DropdownMenu using Factory
+// ============================================================================
+
+const DropdownMenuBase = createOverlayPrimitive({
+  name: 'dropdown-menu',
+  modal: false,
+  role: 'menu',
+  positioning: true,
+  focusTrap: false,
+  scrollLock: false,
+  closeOnEscape: true,
+  closeOnClickOutside: true,
+  hasTitle: false,
+  hasDescription: false,
+  hasArrow: false,
+  supportsSignalControl: true,
+});
 
 // ============================================================================
 // Types
@@ -109,7 +128,7 @@ export interface DropdownMenuItemIndicatorProps {
 }
 
 // ============================================================================
-// Context
+// Menu-Specific Context (extends base context with item management)
 // ============================================================================
 
 export interface DropdownMenuContextValue {
@@ -121,6 +140,7 @@ export interface DropdownMenuContextValue {
   contentId: string;
   anchorElement: () => HTMLElement | null;
   setAnchorElement: (el: HTMLElement | null) => void;
+  // Menu-specific: item management for keyboard navigation
   focusedIndex: () => number;
   setFocusedIndex: (index: number) => void;
   items: () => HTMLElement[];
@@ -128,7 +148,7 @@ export interface DropdownMenuContextValue {
   unregisterItem: (el: HTMLElement) => void;
 }
 
-export const DropdownMenuContext = createContext<DropdownMenuContextValue>({
+export const MenuItemContext = createContext<DropdownMenuContextValue>({
   isOpen: () => false,
   open: () => {},
   close: () => {},
@@ -159,38 +179,17 @@ export const RadioGroupContext = createContext<RadioGroupContextValue>({
 });
 
 // ============================================================================
-// Root Component
+// Root Component (wraps factory Root with menu-specific context)
 // ============================================================================
 
 export const DropdownMenu = defineComponent<DropdownMenuProps>((props) => {
-  const isOpen = props.open || signal(props.defaultOpen || false);
-  const anchorElement = signal<HTMLElement | null>(null);
+  // Menu-specific signals for keyboard navigation and item management
   const focusedIndex = signal(-1);
   const itemsSignal = signal<HTMLElement[]>([]);
 
-  const contextValue: DropdownMenuContextValue = {
-    isOpen: () => isOpen(),
-    open: () => {
-      isOpen.set(true);
-      props.onOpenChange?.(true);
-    },
-    close: () => {
-      isOpen.set(false);
-      props.onOpenChange?.(false);
-      focusedIndex.set(-1);
-    },
-    toggle: () => {
-      const newState = !isOpen();
-      isOpen.set(newState);
-      props.onOpenChange?.(newState);
-      if (!newState) {
-        focusedIndex.set(-1);
-      }
-    },
-    triggerId: generateId('dropdown-trigger'),
-    contentId: generateId('dropdown-content'),
-    anchorElement: () => anchorElement(),
-    setAnchorElement: (el) => anchorElement.set(el),
+  // Create menu item context value (extends factory's context)
+  // This provides item registration and focus management for keyboard navigation
+  const menuItemContextValue: Partial<DropdownMenuContextValue> = {
     focusedIndex: () => focusedIndex(),
     setFocusedIndex: (index) => focusedIndex.set(index),
     items: () => itemsSignal(),
@@ -206,99 +205,84 @@ export const DropdownMenu = defineComponent<DropdownMenuProps>((props) => {
     },
   };
 
+  // Provide menu-specific context
+  provideContext(MenuItemContext, menuItemContextValue as DropdownMenuContextValue);
+
   return () =>
-    jsx(DropdownMenuContext.Provider, {
-      value: contextValue,
+    jsx(DropdownMenuBase.Root, {
+      open: props.open,
+      defaultOpen: props.defaultOpen,
+      onOpenChange: (open: boolean) => {
+        // Reset focus when closing
+        if (!open) {
+          focusedIndex.set(-1);
+        }
+        props.onOpenChange?.(open);
+      },
       children: props.children,
     });
 });
 
 // ============================================================================
-// Trigger
+// Trigger (extends factory trigger with menu-specific keyboard shortcuts)
 // ============================================================================
 
 export const DropdownMenuTrigger = defineComponent<DropdownMenuTriggerProps>((props) => {
-  const ctx = useContext(DropdownMenuContext);
+  const baseCtx = useContext(DropdownMenuBase.Context);
 
-  onMount(() => {
-    const el = document.getElementById(ctx.triggerId);
-    if (el instanceof HTMLElement) {
-      ctx.setAnchorElement(el);
-    }
-  });
-
-  const handleClick = (e: MouseEvent) => {
-    if (props.disabled) return;
-    ctx.toggle();
-    props.onClick?.(e);
-  };
-
+  // Add menu-specific keyboard behavior
   const handleKeyDown = (e: KeyboardEvent) => {
     if (props.disabled) return;
 
-    if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
+    // ArrowDown opens menu and focuses first item (menu pattern)
+    if (e.key === 'ArrowDown') {
       e.preventDefault();
-      ctx.open();
+      baseCtx.open();
     }
 
     props.onKeyDown?.(e);
   };
 
-  const { disabled, onClick, onKeyDown, children, ...restProps } = props;
+  const { disabled, onKeyDown, children, ...restProps } = props;
 
   return () =>
-    jsx('button', {
+    jsx(DropdownMenuBase.Trigger, {
       ...restProps,
-      id: ctx.triggerId,
-      type: 'button',
-      'aria-haspopup': 'menu',
-      'aria-expanded': ctx.isOpen() ? 'true' : 'false',
-      'aria-controls': ctx.contentId,
-      'data-disabled': disabled ? 'true' : undefined,
-      onClick: handleClick,
+      disabled,
       onKeyDown: handleKeyDown,
       children,
     });
 });
 
 // ============================================================================
-// Content
+// Content (wraps factory Content with menu-specific keyboard navigation)
 // ============================================================================
 
+/**
+ * Custom Content wrapper that adds:
+ * - Keyboard navigation (ArrowUp/Down, Home, End)
+ * - Typeahead search
+ * - Focus management for menu items
+ */
 export const DropdownMenuContent = defineComponent<DropdownMenuContentProps>((props) => {
-  const ctx = useContext(DropdownMenuContext);
+  const baseCtx = useContext(DropdownMenuBase.Context);
+  const menuCtx = useContext(MenuItemContext);
   let typeaheadTimeout: ReturnType<typeof setTimeout> | null = null;
   let typeaheadString = '';
 
-  const updatePosition = () => {
-    const anchor = ctx.anchorElement();
-    const content = document.getElementById(ctx.contentId);
-
-    if (!anchor || !content) return;
-
-    const position = calculatePosition(anchor, content, {
-      side: props.side || 'bottom',
-      align: props.align || 'start',
-      sideOffset: props.sideOffset,
-      alignOffset: props.alignOffset,
-      avoidCollisions: props.avoidCollisions,
-      collisionPadding: props.collisionPadding,
-    });
-
-    applyPosition(content, position);
-  };
-
+  // Menu-specific keyboard navigation
   const handleKeyDown = (e: KeyboardEvent) => {
-    const items = ctx.items().filter((item: HTMLElement) => !item.hasAttribute('data-disabled'));
-    const currentIndex = ctx.focusedIndex();
+    const items = menuCtx.items().filter((item: HTMLElement) => !item.hasAttribute('data-disabled'));
+    const currentIndex = menuCtx.focusedIndex();
 
     switch (e.key) {
       case 'Escape':
+        // Let factory handle Escape, but restore focus to trigger
         e.preventDefault();
         props.onEscapeKeyDown?.(e);
         if (!e.defaultPrevented) {
-          ctx.close();
-          const trigger = document.getElementById(ctx.triggerId);
+          baseCtx.close();
+          const trigger = document.getElementById(baseCtx.triggerId);
           trigger?.focus();
         }
         break;
@@ -307,7 +291,7 @@ export const DropdownMenuContent = defineComponent<DropdownMenuContentProps>((pr
         e.preventDefault();
         if (items.length === 0) break;
         const nextIndex = currentIndex < items.length - 1 ? currentIndex + 1 : props.loop ? 0 : currentIndex;
-        ctx.setFocusedIndex(nextIndex);
+        menuCtx.setFocusedIndex(nextIndex);
         items[nextIndex]?.focus();
         break;
 
@@ -315,14 +299,14 @@ export const DropdownMenuContent = defineComponent<DropdownMenuContentProps>((pr
         e.preventDefault();
         if (items.length === 0) break;
         const prevIndex = currentIndex > 0 ? currentIndex - 1 : props.loop ? items.length - 1 : currentIndex;
-        ctx.setFocusedIndex(prevIndex);
+        menuCtx.setFocusedIndex(prevIndex);
         items[prevIndex]?.focus();
         break;
 
       case 'Home':
         e.preventDefault();
         if (items.length > 0) {
-          ctx.setFocusedIndex(0);
+          menuCtx.setFocusedIndex(0);
           items[0]?.focus();
         }
         break;
@@ -331,7 +315,7 @@ export const DropdownMenuContent = defineComponent<DropdownMenuContentProps>((pr
         e.preventDefault();
         if (items.length > 0) {
           const lastIndex = items.length - 1;
-          ctx.setFocusedIndex(lastIndex);
+          menuCtx.setFocusedIndex(lastIndex);
           items[lastIndex]?.focus();
         }
         break;
@@ -351,7 +335,7 @@ export const DropdownMenuContent = defineComponent<DropdownMenuContentProps>((pr
 
           if (matchingItem) {
             const index = items.indexOf(matchingItem);
-            ctx.setFocusedIndex(index);
+            menuCtx.setFocusedIndex(index);
             matchingItem.focus();
           }
 
@@ -363,77 +347,32 @@ export const DropdownMenuContent = defineComponent<DropdownMenuContentProps>((pr
     }
   };
 
-  const handlePointerDownOutside = (e: PointerEvent) => {
-    const target = e.target as Node;
-    const content = document.getElementById(ctx.contentId);
-    const trigger = document.getElementById(ctx.triggerId);
-
-    if (content && !content.contains(target) && trigger && !trigger.contains(target)) {
-      props.onPointerDownOutside?.(e);
-      if (!e.defaultPrevented) {
-        ctx.close();
-      }
-    }
-  };
-
+  // Focus first item when menu opens
   onMount(() => {
-    if (!ctx.isOpen()) return;
+    if (!baseCtx.isOpen()) return;
 
-    updatePosition();
-
-    const handleScroll = () => updatePosition();
-    const handleResize = () => updatePosition();
-    const handleOutsideClick = (e: Event) => handlePointerDownOutside(e as PointerEvent);
-
-    window.addEventListener('scroll', handleScroll, true);
-    window.addEventListener('resize', handleResize);
-    document.addEventListener('pointerdown', handleOutsideClick);
-
-    // Focus first item on open
-    const items = ctx.items().filter((item: HTMLElement) => !item.hasAttribute('data-disabled'));
+    const items = menuCtx.items().filter((item: HTMLElement) => !item.hasAttribute('data-disabled'));
     if (items.length > 0) {
-      ctx.setFocusedIndex(0);
+      menuCtx.setFocusedIndex(0);
       setTimeout(() => items[0]?.focus(), 0);
     }
 
     return () => {
-      window.removeEventListener('scroll', handleScroll, true);
-      window.removeEventListener('resize', handleResize);
-      document.removeEventListener('pointerdown', handleOutsideClick);
       if (typeaheadTimeout) clearTimeout(typeaheadTimeout);
     };
   });
 
-  const {
-    side,
-    align,
-    sideOffset,
-    alignOffset,
-    avoidCollisions,
-    collisionPadding,
-    loop,
-    onEscapeKeyDown,
-    onPointerDownOutside,
-    children,
-    ...restProps
-  } = props;
+  const { loop, children, ...restProps } = props;
 
-  return () => {
-    if (!ctx.isOpen()) return null;
-
-    return jsx(Portal, {
-      children: jsx('div', {
-        ...restProps,
-        id: ctx.contentId,
-        role: 'menu',
-        'aria-labelledby': ctx.triggerId,
-        'aria-orientation': 'vertical',
-        tabIndex: -1,
-        onKeyDown: handleKeyDown,
-        children,
-      }),
+  return () =>
+    jsx(DropdownMenuBase.Content, {
+      ...restProps,
+      onKeyDown: (e: KeyboardEvent) => {
+        handleKeyDown(e);
+        restProps.onKeyDown?.(e);
+      },
+      children,
     });
-  };
 });
 
 // ============================================================================
@@ -441,14 +380,15 @@ export const DropdownMenuContent = defineComponent<DropdownMenuContentProps>((pr
 // ============================================================================
 
 export const DropdownMenuItem = defineComponent<DropdownMenuItemProps>((props) => {
-  const ctx = useContext(DropdownMenuContext);
+  const baseCtx = useContext(DropdownMenuBase.Context);
+  const menuCtx = useContext(MenuItemContext);
   const itemId = generateId('dropdown-item');
 
   onMount(() => {
     const el = document.getElementById(itemId);
     if (el instanceof HTMLElement) {
-      ctx.registerItem(el);
-      return () => ctx.unregisterItem(el);
+      menuCtx.registerItem(el);
+      return () => menuCtx.unregisterItem(el);
     }
     return undefined;
   });
@@ -459,8 +399,8 @@ export const DropdownMenuItem = defineComponent<DropdownMenuItemProps>((props) =
     props.onSelect?.(e);
 
     if (!e.defaultPrevented) {
-      ctx.close();
-      const trigger = document.getElementById(ctx.triggerId);
+      baseCtx.close();
+      const trigger = document.getElementById(baseCtx.triggerId);
       trigger?.focus();
     }
 
@@ -499,15 +439,15 @@ export const DropdownMenuItem = defineComponent<DropdownMenuItemProps>((props) =
 // ============================================================================
 
 export const DropdownMenuCheckboxItem = defineComponent<DropdownMenuCheckboxItemProps>((props) => {
-  const ctx = useContext(DropdownMenuContext);
+  const menuCtx = useContext(MenuItemContext);
   const checked = props.checked || signal(props.defaultChecked || false);
   const itemId = generateId('dropdown-checkbox-item');
 
   onMount(() => {
     const el = document.getElementById(itemId);
     if (el instanceof HTMLElement) {
-      ctx.registerItem(el);
-      return () => ctx.unregisterItem(el);
+      menuCtx.registerItem(el);
+      return () => menuCtx.unregisterItem(el);
     }
     return undefined;
   });
@@ -578,15 +518,15 @@ export const DropdownMenuRadioGroup = defineComponent<DropdownMenuRadioGroupProp
 // ============================================================================
 
 export const DropdownMenuRadioItem = defineComponent<DropdownMenuRadioItemProps>((props) => {
-  const ctx = useContext(DropdownMenuContext);
+  const menuCtx = useContext(MenuItemContext);
   const radioCtx = useContext(RadioGroupContext);
   const itemId = generateId('dropdown-radio-item');
 
   onMount(() => {
     const el = document.getElementById(itemId);
     if (el instanceof HTMLElement) {
-      ctx.registerItem(el);
-      return () => ctx.unregisterItem(el);
+      menuCtx.registerItem(el);
+      return () => menuCtx.unregisterItem(el);
     }
     return undefined;
   });
@@ -686,6 +626,17 @@ export const DropdownMenuShortcut = defineComponent<DropdownMenuShortcutProps>(
       children: props.children,
     })
 );
+
+// ============================================================================
+// Context Export (for backward compatibility)
+// ============================================================================
+
+/**
+ * For backward compatibility, export the context with the expected name
+ * Note: The actual menu functionality uses MenuItemContext internally,
+ * but we export it as DropdownMenuContext for API compatibility
+ */
+export const DropdownMenuContext = MenuItemContext;
 
 // ============================================================================
 // Sub-component Attachments

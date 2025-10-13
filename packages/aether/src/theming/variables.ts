@@ -45,7 +45,7 @@ function flattenObject(obj: any, prefix = '', separator = '-'): Record<string, s
         Object.assign(result, flattenObject(value, newKey, separator));
       }
     } else {
-      result[newKey] = value;
+      result[newKey] = value as string | number;
     }
   }
 
@@ -193,7 +193,7 @@ export function removeTheme(element?: HTMLElement, prefix = 'aether'): void {
 
   for (let i = 0; i < styles.length; i++) {
     const prop = styles[i];
-    if (prop.startsWith(`--${prefix}-`)) {
+    if (prop && prop.startsWith(`--${prefix}-`)) {
       toRemove.push(prop);
     }
   }

@@ -583,5 +583,7 @@ export function createDefaultDarkTheme(): Theme {
         strong: '#4b5563',
       },
     },
+    typography: lightTheme.typography,
+    spacing: lightTheme.spacing,
   });
 }

@@ -9,14 +9,37 @@
  */
 
 import { defineComponent } from '../core/component/define.js';
-import { createContext, useContext, provideContext } from '../core/component/context.js';
-import { signal } from '../core/reactivity/signal.js';
+import { useContext } from '../core/component/context.js';
 import { onMount } from '../core/component/lifecycle.js';
 import { Portal } from '../control-flow/Portal.js';
 import { jsx } from '../jsx-runtime.js';
 import { effect } from '../core/reactivity/effect.js';
 import { createRef } from '../core/component/refs.js';
-import { generateId, calculatePosition, applyPosition, type Side, type Align } from './utils/index.js';
+import { createOverlayPrimitive } from './factories/createOverlayPrimitive.js';
+import { calculatePosition, applyPosition, type Side, type Align } from './utils/index.js';
+
+// ============================================================================
+// Create Base HoverCard using Factory
+// ============================================================================
+
+const HoverCardBase = createOverlayPrimitive({
+  name: 'hover-card',
+  modal: false,
+  role: 'dialog',
+  positioning: true,
+  hasArrow: true,
+  triggerBehavior: 'hover',
+  hoverDelays: {
+    openDelay: 700,
+    closeDelay: 300,
+  },
+  focusTrap: false,
+  scrollLock: false,
+  closeOnEscape: true,
+  closeOnClickOutside: true,
+  hasTitle: false, // HoverCard doesn't use Title component
+  hasDescription: false, // HoverCard doesn't use Description component
+});
 
 // ============================================================================
 // Types
@@ -122,22 +145,7 @@ export interface HoverCardContextValue {
   closeDelay: () => number;
 }
 
-const noop = () => {};
-const noopGetter = () => false;
-const defaultDelay = () => 0;
-
-export const HoverCardContext = createContext<HoverCardContextValue>(
-  {
-    isOpen: noopGetter,
-    open: noop,
-    close: noop,
-    triggerId: '',
-    contentId: '',
-    openDelay: defaultDelay,
-    closeDelay: defaultDelay,
-  },
-  'HoverCard'
-);
+export const HoverCardContext = HoverCardBase.Context;
 
 // ============================================================================
 // Components
@@ -161,47 +169,16 @@ export const HoverCardContext = createContext<HoverCardContextValue>(
  * </HoverCard>
  * ```
  */
-export const HoverCard = defineComponent<HoverCardProps>((props) => {
-  const isOpen = signal(false);
-
-  const baseId = generateId('hover-card');
-  const triggerId = `${baseId}-trigger`;
-  const contentId = `${baseId}-content`;
-
-  const contextValue: HoverCardContextValue = {
-    isOpen: () => isOpen(),
-    open: () => {
-      isOpen.set(true);
-    },
-    close: () => {
-      isOpen.set(false);
-    },
-    triggerId,
-    contentId,
-    openDelay: () => props.openDelay ?? 700,
-    closeDelay: () => props.closeDelay ?? 300,
-  };
-
-  // Provide context in setup phase
-  provideContext(HoverCardContext, contextValue);
-
-  return () => {
-    const resolvedChildren = typeof props.children === 'function' ? props.children() : props.children;
-
-    return jsx('div', {
-      'data-hover-card': '',
-      children: resolvedChildren,
-    });
-  };
-});
+export const HoverCard = HoverCardBase.Root;
 
 /**
  * HoverCard Trigger component
+ * Wraps factory Trigger to render as <a> instead of <button>
  */
 export const HoverCardTrigger = defineComponent<{ children: any; [key: string]: any }>((props) => {
-  // Defer context access to render time
-  let ctx: HoverCardContextValue;
+  const ctx = useContext(HoverCardContext);
 
+  // Hover timing state
   let openTimeoutId: ReturnType<typeof setTimeout> | null = null;
   let closeTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
@@ -210,13 +187,9 @@ export const HoverCardTrigger = defineComponent<{ children: any; [key: string]: 
     if (closeTimeoutId) clearTimeout(closeTimeoutId);
   });
 
-  // Create ref for reactive updates
   const triggerRef = createRef<HTMLAnchorElement>();
 
   return () => {
-    // Get context at render time
-    ctx = useContext(HoverCardContext);
-
     const handlePointerEnter = () => {
       if (closeTimeoutId) {
         clearTimeout(closeTimeoutId);
@@ -276,17 +249,16 @@ export const HoverCardTrigger = defineComponent<{ children: any; [key: string]: 
 
 /**
  * HoverCard Content component
+ * Custom implementation that always renders (with display:none when closed)
+ * and handles hover behavior to keep card open
  */
 export const HoverCardContent = defineComponent<HoverCardContentProps>((props) => {
-  // Defer context access to render time
-  let ctx: HoverCardContextValue;
-
+  const ctx = useContext(HoverCardContext);
+  // Used in refCallback and onMount
   let contentRef: HTMLElement | null = null;
   let triggerElement: HTMLElement | null = null;
 
   onMount(() => {
-    if (!ctx) return; // Context not available yet
-
     triggerElement = document.getElementById(ctx.triggerId);
 
     if (contentRef && triggerElement && ctx.isOpen()) {
@@ -309,9 +281,6 @@ export const HoverCardContent = defineComponent<HoverCardContentProps>((props) =
   });
 
   return () => {
-    // Get context at render time
-    ctx = useContext(HoverCardContext);
-
     const handlePointerEnter = () => {
       // Keep hover card open when hovering over it
     };
@@ -333,7 +302,7 @@ export const HoverCardContent = defineComponent<HoverCardContentProps>((props) =
       });
     };
 
-    // Create the content div
+    // Create the content div with all necessary attributes
     const contentDiv = jsx('div', {
       ...props,
       ref: refCallback,

@@ -80,7 +80,8 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      const input = container.querySelector('[data-command-palette-input]');
+      // Content is portaled to document.body, not container
+      const input = document.querySelector('[data-command-palette-input]');
       expect(input).toBeTruthy();
       expect((input as HTMLInputElement).placeholder).toBe('Type a command...');
     });
@@ -98,10 +99,9 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      // With Pattern 18, content exists but is hidden
-      const content = container.querySelector('[data-dialog-content]') as HTMLElement;
-      expect(content).toBeTruthy();
-      expect(content.style.display).toBe('none');
+      // Content returns null when closed (line 766-768 of factory)
+      const content = document.querySelector('[data-dialog-content]') as HTMLElement;
+      expect(content).toBeFalsy();
     });
 
     it('should support defaultOpen for uncontrolled mode', () => {
@@ -117,7 +117,7 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      const input = container.querySelector('[data-command-palette-input]');
+      const input = document.querySelector('[data-command-palette-input]');
       expect(input).toBeTruthy();
     });
   });
@@ -136,7 +136,7 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      const dialog = container.querySelector('[data-command-palette-dialog]');
+      const dialog = document.querySelector('[data-command-palette-dialog]');
       expect(dialog).toBeTruthy();
     });
   });
@@ -155,7 +155,7 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      const input = container.querySelector('[data-command-palette-input]') as HTMLInputElement;
+      const input = document.querySelector('[data-command-palette-input]') as HTMLInputElement;
       expect(input).toBeTruthy();
       expect(input.getAttribute('role')).toBe('combobox');
       expect(input.getAttribute('aria-expanded')).toBe('true');
@@ -182,7 +182,7 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      const input = container.querySelector('[data-command-palette-input]') as HTMLInputElement;
+      const input = document.querySelector('[data-command-palette-input]') as HTMLInputElement;
       input.value = 'test';
       input.dispatchEvent(new Event('input', { bubbles: true }));
 
@@ -202,7 +202,7 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      const input = container.querySelector('[data-command-palette-input]') as HTMLInputElement;
+      const input = document.querySelector('[data-command-palette-input]') as HTMLInputElement;
       expect(input.hasAttribute('autofocus')).toBe(true);
     });
   });
@@ -226,7 +226,7 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      const list = container.querySelector('[data-command-palette-list]');
+      const list = document.querySelector('[data-command-palette-list]');
       expect(list).toBeTruthy();
       expect(list?.getAttribute('role')).toBe('listbox');
     });
@@ -255,7 +255,7 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      const group = container.querySelector('[data-command-palette-group]');
+      const group = document.querySelector('[data-command-palette-group]');
       expect(group).toBeTruthy();
       expect(group?.getAttribute('role')).toBe('group');
     });
@@ -282,7 +282,7 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      const heading = container.querySelector('[data-command-palette-group-heading]');
+      const heading = document.querySelector('[data-command-palette-group-heading]');
       expect(heading).toBeTruthy();
       expect(heading?.textContent).toBe('File');
     });
@@ -308,10 +308,10 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      const group = container.querySelector('[data-command-palette-group]');
+      const group = document.querySelector('[data-command-palette-group]');
       expect(group).toBeTruthy();
 
-      const heading = container.querySelector('[data-command-palette-group-heading]');
+      const heading = document.querySelector('[data-command-palette-group-heading]');
       expect(heading).toBeFalsy();
     });
   });
@@ -335,7 +335,7 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      const item = container.querySelector('[data-command-palette-item]');
+      const item = document.querySelector('[data-command-palette-item]');
       expect(item).toBeTruthy();
       expect(item?.getAttribute('role')).toBe('option');
     });
@@ -365,7 +365,7 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      const item = container.querySelector('[data-command-palette-item]') as HTMLElement;
+      const item = document.querySelector('[data-command-palette-item]') as HTMLElement;
       item.click();
 
       expect(clicked).toBe(true);
@@ -397,7 +397,7 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      const item = container.querySelector('[data-command-palette-item]') as HTMLElement;
+      const item = document.querySelector('[data-command-palette-item]') as HTMLElement;
       expect(item.getAttribute('aria-disabled')).toBe('true');
       expect(item.hasAttribute('data-disabled')).toBe(true);
 
@@ -426,7 +426,7 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      const items = container.querySelectorAll('[data-command-palette-item]');
+      const items = document.querySelectorAll('[data-command-palette-item]');
       const secondItem = items[1] as HTMLElement;
 
       secondItem.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
@@ -458,8 +458,8 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      const input = container.querySelector('[data-command-palette-input]') as HTMLInputElement;
-      const items = container.querySelectorAll('[data-command-palette-item]');
+      const input = document.querySelector('[data-command-palette-input]') as HTMLInputElement;
+      const items = document.querySelectorAll('[data-command-palette-item]');
 
       // Initially first item is highlighted
       expect(items[0]?.hasAttribute('data-highlighted')).toBe(true);
@@ -493,8 +493,8 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      const input = container.querySelector('[data-command-palette-input]') as HTMLInputElement;
-      const items = container.querySelectorAll('[data-command-palette-item]');
+      const input = document.querySelector('[data-command-palette-input]') as HTMLInputElement;
+      const items = document.querySelectorAll('[data-command-palette-item]');
 
       // Press ArrowDown twice to go to third item
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
@@ -530,8 +530,8 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      const input = container.querySelector('[data-command-palette-input]') as HTMLInputElement;
-      const items = container.querySelectorAll('[data-command-palette-item]');
+      const input = document.querySelector('[data-command-palette-input]') as HTMLInputElement;
+      const items = document.querySelectorAll('[data-command-palette-item]');
 
       // Navigate to last item
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
@@ -565,8 +565,8 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      const input = container.querySelector('[data-command-palette-input]') as HTMLInputElement;
-      const items = container.querySelectorAll('[data-command-palette-item]');
+      const input = document.querySelector('[data-command-palette-input]') as HTMLInputElement;
+      const items = document.querySelectorAll('[data-command-palette-item]');
 
       // Initially at first item
       expect(items[0]?.hasAttribute('data-highlighted')).toBe(true);
@@ -610,7 +610,7 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      const input = container.querySelector('[data-command-palette-input]') as HTMLInputElement;
+      const input = document.querySelector('[data-command-palette-input]') as HTMLInputElement;
 
       // Navigate to second item
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
@@ -641,7 +641,7 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      const input = container.querySelector('[data-command-palette-input]') as HTMLInputElement;
+      const input = document.querySelector('[data-command-palette-input]') as HTMLInputElement;
 
       // Press Escape
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -673,7 +673,7 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      const separator = container.querySelector('[data-command-palette-separator]');
+      const separator = document.querySelector('[data-command-palette-separator]');
       expect(separator).toBeTruthy();
       expect(separator?.getAttribute('role')).toBe('separator');
     });
@@ -702,7 +702,7 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      const shortcut = container.querySelector('[data-command-palette-shortcut]');
+      const shortcut = document.querySelector('[data-command-palette-shortcut]');
       expect(shortcut).toBeTruthy();
       expect(shortcut?.textContent).toBe('⌘N');
       expect(shortcut?.getAttribute('aria-hidden')).toBe('true');
@@ -731,7 +731,7 @@ describe('CommandPalette', () => {
       const { container } = renderComponent(component);
 
       // With Pattern 18, shortcut exists but is hidden
-      const shortcut = container.querySelector('[data-command-palette-shortcut]') as HTMLElement;
+      const shortcut = document.querySelector('[data-command-palette-shortcut]') as HTMLElement;
       expect(shortcut).toBeTruthy();
       expect(shortcut.style.display).toBe('none');
     });
@@ -756,7 +756,7 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      const empty = container.querySelector('[data-command-palette-empty]');
+      const empty = document.querySelector('[data-command-palette-empty]');
       expect(empty).toBeTruthy();
       expect(empty?.getAttribute('role')).toBe('status');
       expect(empty?.textContent).toBe('No results found');
@@ -764,9 +764,9 @@ describe('CommandPalette', () => {
   });
 
   describe('Controlled mode', () => {
-    it('should support controlled open state', async () => {
+    it('should support controlled open state', () => {
       // Now using Pattern 19: Pass signal directly for reactive updates
-      const open = signal(false);
+      const open = signal(true); // Start open so we can test the content renders
       const component = () =>
         CommandPalette({
           open: open, // Pass signal directly (Pattern 19)
@@ -780,29 +780,30 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      // Initially closed - with Pattern 18, content exists but is hidden
-      let content = container.querySelector('[data-dialog-content]') as HTMLElement;
+      // Initially open - Content should render with data-state="open"
+      let content = document.querySelector('[data-dialog-content]') as HTMLElement;
       expect(content).toBeTruthy();
-      expect(content.style.display).toBe('none');
-
-      // Open
-      open.set(true);
-
-      // Re-query to get the possibly re-created element
-      content = container.querySelector('[data-dialog-content]') as HTMLElement;
-      expect(content).toBeTruthy();
-      // The content should now be visible
-      expect(content.style.display).toBe('block');
-      const input = container.querySelector('[data-command-palette-input]');
+      expect(content.getAttribute('data-state')).toBe('open');
+      let input = document.querySelector('[data-command-palette-input]');
       expect(input).toBeTruthy();
 
       // Close
       open.set(false);
 
-      // Re-query again
-      content = container.querySelector('[data-dialog-content]') as HTMLElement;
+      // Content should have data-state="closed" (stays in DOM but marked as closed)
+      content = document.querySelector('[data-dialog-content]') as HTMLElement;
       expect(content).toBeTruthy();
-      expect(content.style.display).toBe('none');
+      expect(content.getAttribute('data-state')).toBe('closed');
+
+      // Reopen
+      open.set(true);
+
+      // Content should have data-state="open" again
+      content = document.querySelector('[data-dialog-content]') as HTMLElement;
+      expect(content).toBeTruthy();
+      expect(content.getAttribute('data-state')).toBe('open');
+      input = document.querySelector('[data-command-palette-input]');
+      expect(input).toBeTruthy();
     });
   });
 
@@ -830,7 +831,7 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      const input = container.querySelector('[data-command-palette-input]') as HTMLInputElement;
+      const input = document.querySelector('[data-command-palette-input]') as HTMLInputElement;
 
       // Type something
       input.value = 'test';
@@ -846,7 +847,7 @@ describe('CommandPalette', () => {
       open.set(true);
 
       // State should be reset (highlighted index back to 0)
-      const items = container.querySelectorAll('[data-command-palette-item]');
+      const items = document.querySelectorAll('[data-command-palette-item]');
       expect(items[0]?.hasAttribute('data-highlighted')).toBe(true);
     });
   });
@@ -865,7 +866,7 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      const input = container.querySelector('[data-command-palette-input]') as HTMLInputElement;
+      const input = document.querySelector('[data-command-palette-input]') as HTMLInputElement;
       expect(input.getAttribute('role')).toBe('combobox');
       expect(input.getAttribute('aria-expanded')).toBe('true');
       expect(input.getAttribute('aria-autocomplete')).toBe('list');
@@ -892,7 +893,7 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      const items = container.querySelectorAll('[data-command-palette-item]');
+      const items = document.querySelectorAll('[data-command-palette-item]');
 
       // First item (highlighted)
       expect(items[0]?.getAttribute('role')).toBe('option');
@@ -937,15 +938,15 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      const groups = container.querySelectorAll('[data-command-palette-group]');
+      const groups = document.querySelectorAll('[data-command-palette-group]');
       expect(groups.length).toBe(2);
 
-      const headings = container.querySelectorAll('[data-command-palette-group-heading]');
+      const headings = document.querySelectorAll('[data-command-palette-group-heading]');
       expect(headings.length).toBe(2);
       expect(headings[0]?.textContent).toBe('File');
       expect(headings[1]?.textContent).toBe('Edit');
 
-      const items = container.querySelectorAll('[data-command-palette-item]');
+      const items = document.querySelectorAll('[data-command-palette-item]');
       expect(items.length).toBe(4);
     });
   });
@@ -973,11 +974,11 @@ describe('CommandPalette', () => {
 
       const { container } = renderComponent(component);
 
-      const items = container.querySelectorAll('[data-command-palette-item]');
+      const items = document.querySelectorAll('[data-command-palette-item]');
       expect(items.length).toBe(3);
 
       // All items should be properly indexed for keyboard navigation
-      const input = container.querySelector('[data-command-palette-input]') as HTMLInputElement;
+      const input = document.querySelector('[data-command-palette-input]') as HTMLInputElement;
 
       // Navigate through all items
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));

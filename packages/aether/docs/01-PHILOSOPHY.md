@@ -1,12 +1,16 @@
 # Philosophy and Design Principles of Aether
 
+> **Development Status**: Aether is under active development. Core features are implemented, with advanced optimizations (including reconciliation engine) in progress. This document describes both implemented features and architectural goals.
+
 ## Introduction
 
-Aether Framework is not just another JavaScript framework. It is a fundamental rethinking of what web application development should look like. Every architectural decision in Aether was made with three key principles in mind:
+Aether Framework is a comprehensive TypeScript framework for building modern web applications. It combines fine-grained reactivity, optional dependency injection, and flexible rendering strategies into a cohesive developer experience. Every architectural decision in Aether was made with three key principles in mind:
 
-1. **Minimalism** — Less code, fewer concepts, lower cognitive load
-2. **Performance** — Fine-grained reactivity, zero virtual DOM overhead
-3. **Type Safety** — TypeScript first, full type inference everywhere
+1. **Developer Experience** — Intuitive APIs, powerful features, TypeScript-first
+2. **Performance** — Fine-grained reactivity, efficient DOM updates, runtime-agnostic
+3. **Flexibility** — Comprehensive features with optional complexity
+
+**Philosophy**: Aether is designed as a **feature-rich, pragmatic framework** that provides powerful tools while keeping them optional. It's not the smallest framework, but it aims to be the most productive for building real-world applications.
 
 ## Problems with Modern Frameworks
 
@@ -92,25 +96,31 @@ export const Counter = defineComponent(() => {
 ```
 
 **Benefits:**
-- No boilerplate (bundle: ~6KB core)
+- Minimal boilerplate (bundle: ~14KB tree-shaken core, +8KB with DI)
 - Granular updates (only the button text)
 - Obvious reactivity
 - Standard TypeScript/JSX (no custom compiler)
 - TypeScript out of the box
 
-## Principle 1: Minimalism
+## Principle 1: Core Simplicity with Optional Complexity
 
-### 1.1 Cognitive Load
+### 1.1 Layered Architecture
 
-Every new concept increases cognitive load. Aether strives for a minimal set of orthogonal primitives.
+Aether provides a layered architecture where complexity is opt-in. The core concepts are minimal, with advanced features available when needed.
 
-**Aether primitives:**
+**Core Layer (always available):**
 1. **Signals** — reactive state
 2. **Computed** — derived values
 3. **Effects** — side effects
 4. **Components** — reusable UI building blocks
 
-Everything else is built on top of these four concepts.
+**Optional Layers (use when needed):**
+5. **Dependency Injection** — for testability and modularity (+70KB)
+6. **Module System** — for code organization (+5-8KB)
+7. **Routing** — file-based routing
+8. **SSR/SSG** — server rendering strategies
+
+Start simple with just the core, add complexity as your application grows.
 
 ### 1.2 Principle of Least Astonishment (POLA)
 
@@ -198,25 +208,26 @@ When `firstName()` changes:
 - **React/Vue**: Re-render the entire component (3 spans)
 - **Aether**: Update only the first text node
 
-### 2.2 Zero Virtual DOM Overhead
+### 2.2 No Virtual DOM Overhead
 
-```typescript
-// Bundle size comparison (gzipped)
-{
-  "Hello World": {
-    "Aether": "~6KB",   // runtime + component
-    "Qwik": "1KB",
-    "Svelte": "2KB",
-    "SolidJS": "7KB",
-    "Vue": "34KB",
-    "React": "42KB"
-  }
-}
-```
+Aether uses fine-grained reactivity instead of virtual DOM diffing, resulting in more efficient updates. The framework is designed to be lightweight and performant, though actual bundle sizes depend on the features used in your application.
 
-### 2.3 Direct DOM Updates
+**Realistic Bundle Sizes (production, gzipped):**
+- Core reactivity + components: ~14KB (tree-shaken)
+- With DI system (reflect-metadata): +70KB (~84KB total)
+- Without DI (using Context API): ~14KB
 
-Aether's reactivity compiles to direct DOM operations:
+For comparison, other frameworks have different trade-offs:
+- Qwik: ~1KB (resumable, compiler-heavy)
+- Svelte: ~2KB (compiler-based)
+- SolidJS: ~7KB (signals-based, similar approach)
+- Preact: ~4KB (virtual DOM)
+- Vue 3: ~34KB (proxy reactivity + virtual DOM)
+- React: ~42KB (virtual DOM)
+
+### 2.3 Fine-Grained Updates
+
+Aether's reactivity system is designed for fine-grained DOM updates:
 
 ```typescript
 // Source
@@ -225,10 +236,13 @@ effect(() => {
   textNode.data = `Count: ${count()}`;
 });
 
-// No virtual DOM diffing
-// No reconciliation
-// Just direct property updates
+// Goals:
+// - Fine-grained updates (only changed nodes)
+// - Efficient reconciliation
+// - Direct property updates where possible
 ```
+
+**Note:** Reconciliation engine is currently under active development. The framework aims to achieve SolidJS-style fine-grained updates while maintaining a simple API.
 
 ### 2.4 Automatic Batching
 
@@ -818,15 +832,15 @@ const server = createServer({
 await server.listen();
 ```
 
-## Principle 11: Lightweight Dependency Injection
+## Principle 11: Optional Dependency Injection
 
 ### 11.1 Why DI in a Frontend Framework?
 
-**Architectural Decision**: Aether includes a **lightweight, type-safe DI system** designed specifically for frontend applications.
+**Architectural Decision**: Aether includes an **optional, type-safe DI system** designed for complex frontend applications.
 
 **Common Objection**: "Why use DI? Just import modules directly!"
 
-**Answer**: For simple cases, ES6 imports are sufficient. But DI becomes essential for:
+**Answer**: For simple cases, **ES6 imports are recommended**. DI adds significant bundle size (~70KB) but provides value for:
 
 1. **Testing** — Easy to mock dependencies without hacking imports
 2. **Modularity** — Swap implementations without changing consumer code
@@ -858,25 +872,28 @@ const mockHttp = { get: vi.fn().mockResolvedValue([]) };
 const component = new UserComponent(mockHttp);
 ```
 
-### 11.2 Lightweight vs Angular DI
+### 11.2 Aether DI vs Angular DI
 
 **Architectural Comparison**: Aether DI vs Angular DI
 
 | Aspect | Angular DI | Aether DI |
 |--------|-----------|-----------|
-| **Bundle Size** | ~40KB | ~8KB |
+| **Bundle Size (core)** | ~40KB | ~8KB |
 | **Decorators Required** | Yes, everywhere | Optional (can use explicit deps) |
-| **Runtime Metadata** | reflect-metadata (~4KB) | reflect-metadata (~4KB) |
+| **Runtime Metadata** | reflect-metadata (~70KB minified) | reflect-metadata (~70KB minified) |
+| **Total with metadata** | ~110KB | ~78KB |
 | **Scopes** | 4 (root, module, component, platform) | 4 (singleton, module, transient, request) |
 | **Hierarchical** | Yes | Yes |
 | **Tree-Shakeable** | Limited | Better |
 | **Learning Curve** | Steep | Gentle |
 
-**Trade-off Acknowledged**: Aether DI uses `reflect-metadata` for decorator-based injection, adding ~4KB runtime overhead. This is a **conscious trade-off**:
+**Trade-off Acknowledged**: Aether DI uses `reflect-metadata` for decorator-based injection, adding **~70KB minified overhead**. This is a **conscious trade-off**:
 
-- **Pro**: Better developer experience, automatic dependency resolution
-- **Con**: 4KB runtime overhead
-- **Alternative**: Manual dependency specification without decorators (zero overhead)
+- **Pro**: Better developer experience, automatic dependency resolution, testability
+- **Con**: ~70KB runtime overhead
+- **Alternative**: Use Context API (~2KB) for simpler applications
+- **When to use DI**: Complex apps needing testability, mocking, advanced scoping
+- **When to skip DI**: Simple apps, component libraries, static sites
 
 ```typescript
 // With reflect-metadata (automatic)
@@ -1074,10 +1091,13 @@ class DateFormatter {
 | **Declaration** | `@NgModule` decorator | `defineModule()` function |
 | **Syntax** | Class-based | Object-based |
 | **Imports** | Implicit global | Explicit ES6 imports |
-| **Tree-Shaking** | Limited | Full |
-| **Boilerplate** | High | Low |
+| **Tree-Shaking** | Limited | Improved |
+| **Boilerplate** | High | Lower |
 | **Components Array** | Required | Optional |
-| **Bootstrap** | Complex | Simple |
+| **Bootstrap** | Complex | Simpler |
+| **Bundle Impact** | High | Moderate |
+
+**Note**: Aether's module system is **optional**. For simple applications, standard ES6 imports are recommended. Use modules only when you need lazy loading, code splitting, or DI scoping.
 
 ```typescript
 // ❌ Angular: Verbose, class-based
@@ -1284,13 +1304,15 @@ await server.listen();
 
 **Runtime Performance**:
 
-| Runtime | Requests/sec | Memory | Startup |
-|---------|--------------|--------|---------|
-| **Bun** | ~90,000 | 25 MB | 8ms |
-| **Node.js** | ~35,000 | 40 MB | 50ms |
-| **Deno** | ~55,000 | 30 MB | 30ms |
+Aether's server works across multiple runtimes with different performance characteristics. Performance varies based on application complexity and workload.
 
-**Result**: Write once, deploy anywhere, get optimal performance.
+| Runtime | Status | Notes |
+|---------|--------|-------|
+| **Bun** | ✅ Supported | Generally fastest for I/O |
+| **Node.js 22+** | ✅ Supported | Mature, production-ready |
+| **Deno 2.0+** | 🚧 Experimental | Under development |
+
+**Result**: Write once, deploy anywhere. Performance benchmarks will be published as the framework matures.
 
 ### 13.3 SSR + SSG + Islands: Unified Architecture
 
@@ -1354,13 +1376,17 @@ export const loader = async ({ request }) => {
 
 **Performance Characteristics:**
 
-| Strategy | TTFB | FCP | LCP | JavaScript | SEO |
-|----------|------|-----|-----|------------|-----|
-| **SSG** | < 100ms | < 0.5s | < 1s | 5-20 KB | ★★★★★ |
-| **SSG + Islands** | < 100ms | < 0.5s | < 1s | 5-30 KB | ★★★★★ |
-| **SSR** | < 300ms | < 1s | < 2s | 10-40 KB | ★★★★★ |
-| **SSR + Islands** | < 300ms | < 1s | < 2s | 10-40 KB | ★★★★★ |
-| **SPA (React)** | < 100ms | > 2s | > 3s | 100+ KB | ★★☆☆☆ |
+Different rendering strategies provide different trade-offs. Actual performance depends on application complexity and implementation.
+
+| Strategy | Initial Load | JavaScript | SEO | Use Case |
+|----------|-------------|------------|-----|----------|
+| **SSG** | Fastest | Minimal | ★★★★★ | Blogs, docs, marketing |
+| **SSG + Islands** | Fastest | Selective | ★★★★★ | Interactive static sites |
+| **SSR** | Fast | Moderate | ★★★★★ | Personalized content |
+| **SSR + Islands** | Fast | Selective | ★★★★★ | Complex apps |
+| **SPA** | Initial setup | Full bundle | ★★☆☆☆ | Admin panels, tools |
+
+**Note**: Performance metrics will be published with detailed benchmarks as the framework reaches production readiness.
 
 ### 13.4 Server Components: Zero-JS Server-Rendered Content
 
@@ -1537,51 +1563,52 @@ Clear migration guides and codemods for major version upgrades.
 
 ## Architectural Philosophy Conclusion
 
-Aether is the answer to the question: "What would a frontend framework look like if it were designed from scratch with the lessons of the last 10 years in mind?"
+Aether is designed to answer: "What would a comprehensive TypeScript framework look like that balances power with pragmatism?"
 
-We took the best of:
+We took inspiration from:
 - **React**: Component model and unidirectional data flow
-- **SolidJS**: Fine-grained reactivity
-- **TypeScript**: First-class type safety
+- **SolidJS**: Fine-grained reactivity with signals
+- **TypeScript**: First-class type safety throughout
 - **Standard JSX**: No custom compiler needed
-- **Angular**: Structured DI and modules (simplified)
+- **Angular**: Structured DI and modules (optional and simplified)
 - **Next.js**: SSR/SSG strategies (self-contained)
 - **Titan**: Optional backend integration via Netron RPC
 
-And discarded the worst:
-- Virtual DOM overhead
-- Custom template syntax
-- Complex build tooling
-- Magical implicit behavior
-- Manual optimizations
-- Mandatory server dependencies
-- Heavyweight module systems
+We aimed to improve on:
+- Virtual DOM overhead → Fine-grained reactivity
+- Custom template syntax → Standard TypeScript/JSX
+- Complex mandatory tooling → Optional, layered features
+- Magical implicit behavior → Explicit, predictable APIs
+- Mandatory heavy dependencies → Optional DI and modules
+- Mandatory server dependencies → Built-in, self-contained server
 
 The result is a framework that is:
-- **Minimal**: ~6KB core runtime, +8KB DI (optional), fewer concepts
-- **Fast**: Fine-grained reactivity, zero VDOM overhead, runtime-agnostic SSR
+- **Comprehensive**: ~14KB core runtime (tree-shaken), +70KB with DI (optional)
+- **Fast**: Fine-grained reactivity approach, no VDOM diffing, runtime-agnostic SSR
 - **Type-safe**: TypeScript everywhere, from UI to backend contracts
-- **Standard**: Pure TypeScript/JSX, no custom compiler
+- **Standard**: Pure TypeScript/JSX, no custom compiler required
 - **Self-Contained**: Built-in HTTP server, no Express/Fastify needed
 - **Flexible**: Works standalone or integrates with Titan backend
 - **Scalable**: Optional module system for large apps, ES6 imports for simple apps
 - **Progressive**: SSR → SSG → Islands, all in one framework
-- **Developer-Friendly**: Excellent DX out of the box
+- **Developer-Friendly**: Focused on excellent DX out of the box
+
+**Development Status**: Aether is under active development. Core features are implemented, with reconciliation engine and additional optimizations in progress.
 
 ### 14 Core Principles Summary:
 
-1. **Minimalism** — Fewer concepts, lower cognitive load
-2. **Performance** — Fine-grained reactivity, direct DOM updates
-3. **Type Safety** — TypeScript first, full inference
-4. **Developer Experience** — Hot reload, clear errors, zero config
+1. **Core Simplicity with Optional Complexity** — Simple core, add features as needed
+2. **Performance** — Fine-grained reactivity approach, efficient updates
+3. **Type Safety** — TypeScript first, full inference everywhere
+4. **Developer Experience** — Hot reload, clear errors, pragmatic defaults
 5. **Composition Over Inheritance** — Functions, not classes
 6. **Explicit Over Implicit** — No magic, clear dependencies
 7. **Conventions Over Configuration** — File-based routing, auto code splitting
 8. **Utility-Based Enhancement** — Strategic utilities, no custom compiler
 9. **Control Flow Components** — Show/For/Switch, not custom syntax
-10. **Full-Stack Coherence** — TypeScript everywhere, Titan integration
-11. **Lightweight DI** — Optional, type-safe, ~8KB (vs Angular's 40KB)
-12. **Module System** — Optional, for large apps, simpler than Angular
+10. **Full-Stack Coherence** — TypeScript everywhere, optional Titan integration
+11. **Optional DI** — Type-safe, ~78KB total (use for complex apps, skip for simple ones)
+12. **Optional Module System** — For large apps when needed, ES6 imports otherwise
 13. **Self-Contained SSR** — Built-in server, runtime-agnostic, standalone
 14. **Evolution Without Breaking Changes** — Backward compatibility, clear migrations
 
@@ -1589,9 +1616,33 @@ The result is a framework that is:
 
 Aether makes **conscious, documented trade-offs**:
 
-1. **reflect-metadata (~4KB)** for DI — Better DX vs bundle size
-2. **Module system** — Organization vs simplicity (optional)
-3. **Built-in server** — Simplicity vs flexibility (works for 95% of use cases)
-4. **SSR overhead** — Better SEO/performance vs server CPU (use SSG when possible)
+1. **DI System (~70KB minified with reflect-metadata)**
+   - **Pro**: Better testability, modularity, backend integration
+   - **Con**: Significant bundle overhead
+   - **Alternative**: Use Context API (~2KB) for simpler apps
+   - **Recommendation**: Skip DI for simple sites, use for complex apps
 
-**Aether is not a compromise. It is a synthesis of the best ideas, implemented with pragmatic architectural choices, where every trade-off is conscious and documented.**
+2. **Module System (~5-8KB)**
+   - **Pro**: Better code organization, lazy loading, DI scoping
+   - **Con**: Additional complexity
+   - **Alternative**: Use ES6 imports for simple apps
+   - **Recommendation**: Optional feature, not required
+
+3. **Built-in Server**
+   - **Pro**: Zero config, optimized for Aether, runtime-agnostic
+   - **Con**: Less flexibility than Express/Fastify
+   - **Works for**: 95% of use cases
+   - **When to use external server**: Custom middleware, legacy integrations
+
+4. **SSR Overhead**
+   - **Pro**: Better SEO, faster initial load, better UX
+   - **Con**: Server CPU cost, caching complexity
+   - **Recommendation**: Use SSG when possible, SSR for personalization
+
+5. **Bundle Size Reality**
+   - **Minimum**: ~14KB (core, tree-shaken, no DI)
+   - **With DI**: ~84KB (includes reflect-metadata)
+   - **Comparison**: Smaller than Vue/React, larger than Svelte/Preact
+   - **Position**: Feature-rich framework, not ultra-minimal
+
+**Aether is a pragmatic framework that favors functionality and developer experience while being honest about trade-offs. It's designed for building real applications, not winning bundle size competitions.**

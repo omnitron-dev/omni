@@ -7,50 +7,29 @@
  * https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/
  */
 
-import { defineComponent } from '../core/component/define.js';
-import { signal, computed, type WritableSignal } from '../core/reactivity/index.js';
-import { createContext, useContext, provideContext } from '../core/component/context.js';
-import { onMount } from '../core/component/lifecycle.js';
-import { effect } from '../core/reactivity/effect.js';
-import { Portal } from '../control-flow/Portal.js';
-import { jsx } from '../jsx-runtime.js';
-import { generateId, trapFocus, saveFocus, restoreFocus, disableBodyScroll, enableBodyScroll } from './utils/index.js';
+import { type WritableSignal } from '../core/reactivity/index.js';
+import { createOverlayPrimitive } from './factories/createOverlayPrimitive.js';
 
-/**
- * Dialog context
- */
-export interface DialogContextValue {
-  isOpen: () => boolean;
-  open: () => void;
-  close: () => void;
-  toggle: () => void;
-  triggerId: string;
-  contentId: string;
-  titleId: string;
-  descriptionId: string;
-}
+// ============================================================================
+// Create Base Dialog using Factory
+// ============================================================================
 
-// Create context with default no-op implementation
-const noop = () => {};
-const noopGetter = () => false;
+const DialogBase = createOverlayPrimitive({
+  name: 'dialog',
+  modal: true,
+  role: 'dialog',
+  focusTrap: true,
+  scrollLock: true,
+  closeOnEscape: true, // Less strict than AlertDialog
+  closeOnClickOutside: false,
+  hasTitle: true,
+  hasDescription: true,
+});
 
-export const DialogContext = createContext<DialogContextValue>(
-  {
-    isOpen: noopGetter,
-    open: noop,
-    close: noop,
-    toggle: noop,
-    triggerId: '',
-    contentId: '',
-    titleId: '',
-    descriptionId: '',
-  },
-  'Dialog'
-);
+// ============================================================================
+// Types
+// ============================================================================
 
-/**
- * Dialog props
- */
 export interface DialogProps {
   /**
    * Controlled open state (supports WritableSignal for reactive updates - Pattern 19)
@@ -79,6 +58,76 @@ export interface DialogProps {
   children: any;
 }
 
+export interface DialogTriggerProps {
+  /**
+   * Children
+   */
+  children: any;
+
+  /**
+   * Additional props to spread on button
+   */
+  [key: string]: any;
+}
+
+export interface DialogPortalProps {
+  /**
+   * Target container to render into
+   * @default document.body
+   */
+  container?: HTMLElement;
+
+  /**
+   * Children
+   */
+  children: any;
+}
+
+export interface DialogOverlayProps {
+  /**
+   * Children
+   */
+  children?: any;
+
+  /**
+   * Additional props
+   */
+  [key: string]: any;
+}
+
+export interface DialogContentProps {
+  /**
+   * Children
+   */
+  children: any;
+
+  /**
+   * Additional props
+   */
+  [key: string]: any;
+}
+
+// ============================================================================
+// Context
+// ============================================================================
+
+export interface DialogContextValue {
+  isOpen: () => boolean;
+  open: () => void;
+  close: () => void;
+  toggle: () => void;
+  triggerId: string;
+  contentId: string;
+  titleId: string;
+  descriptionId: string;
+}
+
+export const DialogContext = DialogBase.Context;
+
+// ============================================================================
+// Components
+// ============================================================================
+
 /**
  * Dialog root component
  *
@@ -94,334 +143,49 @@ export interface DialogProps {
  * </Dialog>
  * ```
  */
-export const Dialog = defineComponent<DialogProps>((props) => {
-  // Pattern 19: Support both signal and value-based control (like Tree)
-  const isSignal = (val: any): val is WritableSignal<boolean> => typeof val === 'function' && 'set' in val;
-  const openSignal = isSignal(props.open) ? props.open : signal<boolean>(props.defaultOpen ?? false);
-
-  // Current open state - supports both static boolean and signal
-  const currentOpen = () => {
-    if (typeof props.open === 'boolean') {
-      return props.open;
-    }
-    return openSignal();
-  };
-
-  // Computed that tracks the signal reactively
-  const effectiveOpen = computed(() => currentOpen());
-
-  const setOpen = (value: boolean) => {
-    // Update internal signal if not using plain boolean control
-    if (typeof props.open !== 'boolean') {
-      openSignal.set(value);
-    }
-    props.onOpenChange?.(value);
-  };
-
-  // Generate stable IDs for accessibility
-  const baseId = generateId('dialog');
-  const triggerId = `${baseId}-trigger`;
-  const contentId = `${baseId}-content`;
-  const titleId = `${baseId}-title`;
-  const descriptionId = `${baseId}-description`;
-
-  // Context value
-  const contextValue: DialogContextValue = {
-    isOpen: () => effectiveOpen(),
-    open: () => setOpen(true),
-    close: () => setOpen(false),
-    toggle: () => setOpen(!effectiveOpen()),
-    triggerId,
-    contentId,
-    titleId,
-    descriptionId,
-  };
-
-  // Provide context during setup phase (Pattern 17)
-  provideContext(DialogContext, contextValue);
-
-  return () => {
-    // Evaluate function children during render (Pattern 17)
-    // No need to sync props - computed() handles reactivity tracking
-    const children = typeof props.children === 'function' ? props.children() : props.children;
-    return jsx('div', {
-      'data-dialog-root': '',
-      children,
-    });
-  };
-});
+export const Dialog = DialogBase.Root;
 
 /**
- * Dialog trigger props
+ * Dialog Trigger component
  */
-export interface DialogTriggerProps {
-  /**
-   * Children
-   */
-  children: any;
-
-  /**
-   * Additional props to spread on button
-   */
-  [key: string]: any;
-}
+export const DialogTrigger = DialogBase.Trigger;
 
 /**
- * Dialog trigger button
- */
-export const DialogTrigger = defineComponent<DialogTriggerProps>((props) => {
-  const ctx = useContext(DialogContext);
-
-  return () => {
-    const { children, ...restProps } = props;
-
-    const trigger = jsx('button', {
-      ...restProps,
-      id: ctx.triggerId,
-      type: 'button',
-      'aria-haspopup': 'dialog',
-      'aria-controls': ctx.contentId,
-      onClick: ctx.toggle,
-      children,
-    }) as HTMLButtonElement;
-
-    // Reactively update aria-expanded (Pattern 18)
-    effect(() => {
-      trigger.setAttribute('aria-expanded', String(ctx.isOpen()));
-    });
-
-    return trigger;
-  };
-});
-
-/**
- * Dialog portal props
- */
-export interface DialogPortalProps {
-  /**
-   * Target container to render into
-   * @default document.body
-   */
-  container?: HTMLElement;
-
-  /**
-   * Children
-   */
-  children: any;
-}
-
-/**
- * Dialog portal component
+ * Dialog Portal component
  * Renders children into a different part of the DOM
  */
-export const DialogPortal = defineComponent<DialogPortalProps>(
-  (props) => () =>
-    jsx(Portal, {
-      target: props.container,
-      children: props.children,
-    })
-);
+export const DialogPortal = DialogBase.Portal;
 
 /**
- * Dialog overlay props
- */
-export interface DialogOverlayProps {
-  /**
-   * Children
-   */
-  children?: any;
-
-  /**
-   * Additional props
-   */
-  [key: string]: any;
-}
-
-/**
- * Dialog overlay component
+ * Dialog Overlay component
  * Renders a backdrop/overlay behind the dialog
  */
-export const DialogOverlay = defineComponent<DialogOverlayProps>((props) => {
-  const ctx = useContext(DialogContext);
-
-  // Handle click on overlay to close dialog
-  const handleClick = (event: MouseEvent) => {
-    // Only close if clicking directly on overlay (not on content inside)
-    if (event.target === event.currentTarget) {
-      ctx.close();
-    }
-  };
-
-  return () => {
-    const { children, ...restProps } = props;
-
-    const overlay = jsx('div', {
-      ...restProps,
-      'data-dialog-overlay': '',
-      onClick: handleClick,
-      style: {
-        position: 'fixed',
-        inset: '0',
-        zIndex: 50,
-        display: ctx.isOpen() ? 'block' : 'none',
-        ...restProps.style,
-      },
-      children,
-    }) as HTMLElement;
-
-    // Reactively toggle visibility and state (Pattern 18)
-    effect(() => {
-      const open = ctx.isOpen();
-      overlay.style.display = open ? 'block' : 'none';
-      overlay.setAttribute('data-state', open ? 'open' : 'closed');
-      overlay.setAttribute('aria-hidden', open ? 'false' : 'true');
-    });
-
-    return overlay;
-  };
-});
+export const DialogOverlay = DialogBase.Overlay;
 
 /**
- * Dialog content props
+ * Dialog Content component
  */
-export interface DialogContentProps {
-  /**
-   * Children
-   */
-  children: any;
-
-  /**
-   * Additional props
-   */
-  [key: string]: any;
-}
+export const DialogContent = DialogBase.Content;
 
 /**
- * Dialog content
+ * Dialog Title component
  */
-export const DialogContent = defineComponent<DialogContentProps>((props) => {
-  const ctx = useContext(DialogContext);
-  let previousFocus: HTMLElement | null = null;
-  let cleanupFocusTrap: (() => void) | null = null;
-
-  onMount(() => {
-    // Setup focus trap and scroll lock when dialog opens
-    if (ctx.isOpen()) {
-      previousFocus = saveFocus();
-      disableBodyScroll();
-
-      // Find the dialog element and setup focus trap
-      const dialogElement = document.getElementById(ctx.contentId);
-      if (dialogElement instanceof HTMLElement) {
-        cleanupFocusTrap = trapFocus(dialogElement);
-        dialogElement.focus();
-      }
-    }
-
-    // Cleanup on unmount
-    return () => {
-      if (cleanupFocusTrap) {
-        cleanupFocusTrap();
-      }
-      enableBodyScroll();
-      if (previousFocus) {
-        restoreFocus(previousFocus);
-      }
-    };
-  });
-
-  // Handle Escape key
-  const handleKeyDown = (event: KeyboardEvent) => {
-    if (event.key === 'Escape') {
-      ctx.close();
-    }
-  };
-
-  return () => {
-    const { children, ...restProps } = props;
-
-    const content = jsx('div', {
-      ...restProps,
-      id: ctx.contentId,
-      'data-dialog-content': '',
-      role: 'dialog',
-      'aria-modal': 'true',
-      'aria-labelledby': ctx.titleId,
-      'aria-describedby': ctx.descriptionId,
-      tabIndex: -1,
-      onKeyDown: handleKeyDown,
-      style: {
-        display: ctx.isOpen() ? 'block' : 'none',
-        ...restProps.style,
-      },
-      children,
-    }) as HTMLElement;
-
-    // Reactively toggle visibility and state (Pattern 18)
-    effect(() => {
-      const open = ctx.isOpen();
-      content.style.display = open ? 'block' : 'none';
-      content.setAttribute('data-state', open ? 'open' : 'closed');
-      content.setAttribute('aria-hidden', open ? 'false' : 'true');
-    });
-
-    return content;
-  };
-});
+export const DialogTitle = DialogBase.Title;
 
 /**
- * Dialog title
+ * Dialog Description component
  */
-export const DialogTitle = defineComponent<{ children: any; [key: string]: any }>((props) => {
-  const ctx = useContext(DialogContext);
-
-  return () => {
-    const { children, ...restProps } = props;
-
-    return jsx('h2', {
-      ...restProps,
-      id: ctx.titleId,
-      children,
-    });
-  };
-});
+export const DialogDescription = DialogBase.Description;
 
 /**
- * Dialog description
+ * Dialog Close button component
  */
-export const DialogDescription = defineComponent<{ children: any; [key: string]: any }>((props) => {
-  const ctx = useContext(DialogContext);
+export const DialogClose = DialogBase.Close;
 
-  return () => {
-    const { children, ...restProps } = props;
+// ============================================================================
+// Sub-component Attachment
+// ============================================================================
 
-    return jsx('p', {
-      ...restProps,
-      id: ctx.descriptionId,
-      children,
-    });
-  };
-});
-
-/**
- * Dialog close button
- */
-export const DialogClose = defineComponent<{ children: any; [key: string]: any }>((props) => {
-  const ctx = useContext(DialogContext);
-
-  return () => {
-    const { children, ...restProps } = props;
-
-    return jsx('button', {
-      ...restProps,
-      type: 'button',
-      onClick: ctx.close,
-      children,
-    });
-  };
-});
-
-// Attach sub-components to Dialog
 (Dialog as any).Trigger = DialogTrigger;
 (Dialog as any).Portal = DialogPortal;
 (Dialog as any).Overlay = DialogOverlay;

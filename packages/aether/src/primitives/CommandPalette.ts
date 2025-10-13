@@ -241,10 +241,16 @@ export const CommandPaletteDialog = defineComponent<CommandPaletteDialogProps>((
   // Evaluate function children (Pattern 17)
   const evaluatedChildren = typeof children === 'function' ? children() : children;
 
-  return jsx((Dialog as any).Content, {
-    'data-command-palette-dialog': '',
-    children: evaluatedChildren,
-  });
+  // Factory Content already wraps in Portal and checks isOpen(), so we return
+  // both Overlay and Content. They will both handle their own rendering logic.
+  // Cannot wrap in a div because Content portals itself to document.body.
+  return [
+    jsx((Dialog as any).Overlay, {}),
+    jsx((Dialog as any).Content, {
+      'data-command-palette-dialog': '',
+      children: evaluatedChildren,
+    }),
+  ];
 });
 
 /**

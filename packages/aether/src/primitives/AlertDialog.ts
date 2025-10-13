@@ -9,12 +9,26 @@
  */
 
 import { defineComponent } from '../core/component/define.js';
-import { signal } from '../core/reactivity/signal.js';
-import { createContext, useContext } from '../core/component/context.js';
+import { useContext } from '../core/component/context.js';
 import { onMount } from '../core/component/lifecycle.js';
-import { Portal } from '../control-flow/Portal.js';
 import { jsx } from '../jsx-runtime.js';
-import { generateId, trapFocus, saveFocus, restoreFocus, disableBodyScroll, enableBodyScroll } from './utils/index.js';
+import { createOverlayPrimitive } from './factories/createOverlayPrimitive.js';
+
+// ============================================================================
+// Create Base AlertDialog using Factory
+// ============================================================================
+
+const AlertDialogBase = createOverlayPrimitive({
+  name: 'alert-dialog',
+  modal: true,
+  role: 'alertdialog',
+  focusTrap: true,
+  scrollLock: true,
+  closeOnEscape: false, // Stricter than Dialog - won't close by default
+  closeOnClickOutside: false, // Stricter than Dialog - won't close by default
+  hasTitle: true,
+  hasDescription: true,
+});
 
 // ============================================================================
 // Types
@@ -81,22 +95,7 @@ export interface AlertDialogContextValue {
   descriptionId: string;
 }
 
-const noop = () => {};
-const noopGetter = () => false;
-
-export const AlertDialogContext = createContext<AlertDialogContextValue>(
-  {
-    isOpen: noopGetter,
-    open: noop,
-    close: noop,
-    toggle: noop,
-    triggerId: '',
-    contentId: '',
-    titleId: '',
-    descriptionId: '',
-  },
-  'AlertDialog'
-);
+export const AlertDialogContext = AlertDialogBase.Context;
 
 // ============================================================================
 // Components
@@ -120,156 +119,83 @@ export const AlertDialogContext = createContext<AlertDialogContextValue>(
  * </AlertDialog>
  * ```
  */
-export const AlertDialog = defineComponent<AlertDialogProps>((props) => {
-  const isOpen = signal(props.defaultOpen || false);
-
-  const baseId = generateId('alert-dialog');
-  const triggerId = `${baseId}-trigger`;
-  const contentId = `${baseId}-content`;
-  const titleId = `${baseId}-title`;
-  const descriptionId = `${baseId}-description`;
-
-  const contextValue: AlertDialogContextValue = {
-    isOpen: () => isOpen(),
-    open: () => {
-      isOpen.set(true);
-      props.onOpenChange?.(true);
-    },
-    close: () => {
-      isOpen.set(false);
-      props.onOpenChange?.(false);
-    },
-    toggle: () => {
-      const newState = !isOpen();
-      isOpen.set(newState);
-      props.onOpenChange?.(newState);
-    },
-    triggerId,
-    contentId,
-    titleId,
-    descriptionId,
-  };
-
-  return () =>
-    jsx(AlertDialogContext.Provider, {
-      value: contextValue,
-      children: props.children,
-    });
-});
+export const AlertDialog = AlertDialogBase.Root;
 
 /**
  * AlertDialog Trigger component
  */
-export const AlertDialogTrigger = defineComponent<{ children: any; [key: string]: any }>((props) => {
-  const ctx = useContext(AlertDialogContext);
-
-  return () =>
-    jsx('button', {
-      ...props,
-      id: ctx.triggerId,
-      type: 'button',
-      'aria-haspopup': 'dialog',
-      'aria-expanded': ctx.isOpen() ? 'true' : 'false',
-      'data-state': ctx.isOpen() ? 'open' : 'closed',
-      onClick: (e: Event) => {
-        props.onClick?.(e);
-        ctx.open();
-      },
-    });
-});
+export const AlertDialogTrigger = AlertDialogBase.Trigger;
 
 /**
  * AlertDialog Content component
+ * Wraps factory Content to handle AlertDialog-specific props and behavior
  */
 export const AlertDialogContent = defineComponent<AlertDialogContentProps>((props) => {
   const ctx = useContext(AlertDialogContext);
-  let contentRef: HTMLElement | null = null;
-  let savedFocusElement: HTMLElement | null = null;
 
+  // Setup event handlers for AlertDialog-specific behavior
   onMount(() => {
     if (!ctx.isOpen()) return;
 
-    // Save current focus and trap focus within dialog
-    if (contentRef) {
-      savedFocusElement = saveFocus();
-      trapFocus(contentRef);
-    }
+    const contentElement = document.getElementById(ctx.contentId);
+    if (!contentElement) return;
 
-    // Disable body scroll
-    disableBodyScroll();
+    // Handle Escape key - only close if explicitly enabled
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (props.closeOnEscape) {
+          ctx.close();
+        }
+        // Always prevent default to stop event propagation
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+
+    // Handle outside click - only close if explicitly enabled
+    const handlePointerDown = (e: PointerEvent) => {
+      const target = e.target as Node;
+      if (contentElement && !contentElement.contains(target)) {
+        if (props.closeOnOutsideClick) {
+          ctx.close();
+        }
+        // Always prevent default to stop event propagation
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+
+    contentElement.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('pointerdown', handlePointerDown);
 
     return () => {
-      restoreFocus(savedFocusElement);
-      enableBodyScroll();
+      contentElement.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('pointerdown', handlePointerDown);
     };
   });
 
-  const handleEscapeKey = (e: KeyboardEvent) => {
-    if (e.key === 'Escape' && props.closeOnEscape) {
-      e.preventDefault();
-      ctx.close();
-    }
-  };
-
-  const handleOutsideClick = (e: MouseEvent) => {
-    if (props.closeOnOutsideClick && contentRef && e.target instanceof Node && !contentRef.contains(e.target)) {
-      ctx.close();
-    }
-  };
-
   return () => {
+    // Handle forceMount - render even when closed for animations
     if (!ctx.isOpen() && !props.forceMount) {
       return null;
     }
 
-    return jsx(Portal, {
-      children: jsx('div', {
-        'data-alert-dialog-overlay': '',
-        'data-state': ctx.isOpen() ? 'open' : 'closed',
-        onClick: handleOutsideClick,
-        children: jsx('div', {
-          ...props,
-          ref: ((el: HTMLElement) => (contentRef = el)) as any,
-          id: ctx.contentId,
-          role: 'alertdialog',
-          'aria-modal': 'true',
-          'aria-labelledby': ctx.titleId,
-          'aria-describedby': ctx.descriptionId,
-          'data-state': ctx.isOpen() ? 'open' : 'closed',
-          tabIndex: -1,
-          onKeyDown: handleEscapeKey,
-          onClick: (e: Event) => e.stopPropagation(),
-        }),
-      }),
-    });
+    // Remove AlertDialog-specific props before passing to factory
+    const { closeOnOutsideClick, forceMount, closeOnEscape, ...restProps } = props;
+
+    return AlertDialogBase.Content(restProps);
   };
 });
 
 /**
  * AlertDialog Title component
  */
-export const AlertDialogTitle = defineComponent<{ children: any; [key: string]: any }>((props) => {
-  const ctx = useContext(AlertDialogContext);
-
-  return () =>
-    jsx('h2', {
-      ...props,
-      id: ctx.titleId,
-    });
-});
+export const AlertDialogTitle = AlertDialogBase.Title;
 
 /**
  * AlertDialog Description component
  */
-export const AlertDialogDescription = defineComponent<{ children: any; [key: string]: any }>((props) => {
-  const ctx = useContext(AlertDialogContext);
-
-  return () =>
-    jsx('p', {
-      ...props,
-      id: ctx.descriptionId,
-    });
-});
+export const AlertDialogDescription = AlertDialogBase.Description;
 
 /**
  * AlertDialog Action component (confirm/primary action)

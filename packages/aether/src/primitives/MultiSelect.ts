@@ -156,7 +156,11 @@ export const MultiSelect = defineComponent<MultiSelectProps>((props) => {
   const searchable = props.searchable ?? false;
 
   // Pattern 19: Use controlled state helper
-  const [currentValue, setValue] = useControlledState<string[]>(props.value, props.defaultValue ?? [], props.onValueChange);
+  const [currentValue, setValue] = useControlledState<string[]>(
+    props.value,
+    props.defaultValue ?? [],
+    props.onValueChange
+  );
 
   // State
   const isOpen: WritableSignal<boolean> = signal<boolean>(false);

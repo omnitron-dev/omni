@@ -191,9 +191,7 @@ export function createCachedResource<T>(
   function mutate(updater: T | ((prev: T | undefined) => T)): Promise<void> {
     const current = baseResource();
 
-    const newData = typeof updater === 'function'
-      ? (updater as (prev: T | undefined) => T)(current)
-      : updater;
+    const newData = typeof updater === 'function' ? (updater as (prev: T | undefined) => T)(current) : updater;
 
     // Update cache with the new data using CURRENT key
     // This ensures immediate update without changing the cache key
@@ -259,17 +257,14 @@ export function createCachedResource<T>(
   }
 
   // Create cached resource interface
-  const cachedResource = Object.assign(
-    accessWithSWRCheck,
-    {
-      loading: () => baseResource.loading(),
-      error: () => baseResource.error(),
-      refetch,
-      invalidate,
-      mutate,
-      getCacheKey: getCacheKeyValue,
-    }
-  );
+  const cachedResource = Object.assign(accessWithSWRCheck, {
+    loading: () => baseResource.loading(),
+    error: () => baseResource.error(),
+    refetch,
+    invalidate,
+    mutate,
+    getCacheKey: getCacheKeyValue,
+  });
 
   return cachedResource as CachedResource<T>;
 }
@@ -293,15 +288,11 @@ export function createCachedResource<T>(
  * });
  * ```
  */
-export function createCachedResources<
-  T extends Record<string, () => Promise<any>>
->(
+export function createCachedResources<T extends Record<string, () => Promise<any>>>(
   resources: T,
   options: CachedResourceOptions = {}
 ): {
-  [K in keyof T]: CachedResource<
-    T[K] extends () => Promise<infer R> ? R : never
-  >;
+  [K in keyof T]: CachedResource<T[K] extends () => Promise<infer R> ? R : never>;
 } {
   const result: any = {};
 

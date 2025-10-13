@@ -24,7 +24,15 @@ import { jsx } from '../jsx-runtime.js';
 
 export type FlexDirection = 'row' | 'row-reverse' | 'column' | 'column-reverse' | 'vertical' | 'horizontal';
 export type FlexWrap = 'nowrap' | 'wrap' | 'wrap-reverse' | boolean;
-export type JustifyContent = 'flex-start' | 'flex-end' | 'center' | 'space-between' | 'space-around' | 'space-evenly' | 'start' | 'end';
+export type JustifyContent =
+  | 'flex-start'
+  | 'flex-end'
+  | 'center'
+  | 'space-between'
+  | 'space-around'
+  | 'space-evenly'
+  | 'start'
+  | 'end';
 export type AlignItems = 'flex-start' | 'flex-end' | 'center' | 'baseline' | 'stretch' | 'start' | 'end';
 export type AlignContent = 'flex-start' | 'flex-end' | 'center' | 'space-between' | 'space-around' | 'stretch';
 

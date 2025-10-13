@@ -3,11 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  CriticalCSSExtractor,
-  extractCriticalCSS,
-  RouteBasedCriticalCSS,
-} from '../../src/build/critical-css.js';
+import { CriticalCSSExtractor, extractCriticalCSS, RouteBasedCriticalCSS } from '../../src/build/critical-css.js';
 
 describe('CriticalCSSExtractor', () => {
   const sampleHTML = `

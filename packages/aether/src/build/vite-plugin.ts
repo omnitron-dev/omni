@@ -15,6 +15,7 @@ import {
 } from './build-performance.js';
 import { AssetPipeline } from './asset-pipeline.js';
 import { BundleOptimizer } from './bundle-optimization.js';
+import { WorkerBundler, type WorkerBundlingConfig } from './worker-bundling.js';
 import { AetherCompiler, type CompileResult } from '../compiler/compiler.js';
 import type { OptimizationLevel } from '../compiler/types.js';
 import * as path from 'path';
@@ -153,6 +154,17 @@ export interface AetherBuildPluginOptions {
      */
     cssOptimization?: boolean;
   };
+
+  /**
+   * Enable worker bundling
+   * @default true
+   */
+  workerBundling?: boolean;
+
+  /**
+   * Worker bundling options
+   */
+  workerOptions?: WorkerBundlingConfig;
 }
 
 export interface BuildReport {
@@ -188,6 +200,12 @@ export interface BuildReport {
     totalSizeReduction: number;
     averageSizeReduction: number;
   };
+  workers?: {
+    totalWorkers: number;
+    inlinedWorkers: number;
+    totalSize: number;
+    averageSize: number;
+  };
 }
 
 /**
@@ -209,6 +227,8 @@ export function aetherBuildPlugin(options: AetherBuildPluginOptions = {}): Plugi
     reportPath: 'dist/aether-build-report.json',
     compiler: true,
     compilerOptions: {},
+    workerBundling: true,
+    workerOptions: {},
     ...options,
   };
 
@@ -224,6 +244,7 @@ export function aetherBuildPlugin(options: AetherBuildPluginOptions = {}): Plugi
   let _routeTreeShaker: RouteTreeShaker;
   let performanceMonitor: BuildPerformanceMonitor;
   let aetherCompiler: AetherCompiler | undefined;
+  let workerBundler: WorkerBundler | undefined;
   let buildReport: BuildReport = {
     timestamp: new Date().toISOString(),
     duration: 0,
@@ -295,6 +316,18 @@ export function aetherBuildPlugin(options: AetherBuildPluginOptions = {}): Plugi
           },
         });
       }
+
+      // Initialize Worker bundler
+      if (opts.workerBundling) {
+        const isDevelopment = config.mode === 'development';
+        workerBundler = new WorkerBundler({
+          inline: opts.workerOptions.inline ?? true,
+          minify: config.build.minify !== false,
+          sourcemap: opts.workerOptions.sourcemap ?? true,
+          hmr: isDevelopment,
+          ...opts.workerOptions,
+        });
+      }
     },
 
     async buildStart() {
@@ -309,6 +342,41 @@ export function aetherBuildPlugin(options: AetherBuildPluginOptions = {}): Plugi
 
       let transformedCode = code;
       let sourceMap: any = undefined;
+
+      // Worker bundling - detect and transform worker imports
+      if (opts.workerBundling && workerBundler) {
+        const detectedWorkers = workerBundler.detectWorkers(code);
+
+        if (detectedWorkers.length > 0) {
+          for (const worker of detectedWorkers) {
+            try {
+              // Resolve worker path
+              const workerPath = path.resolve(path.dirname(id), worker.source);
+
+              // Read worker source
+              let workerSource: string;
+              try {
+                workerSource = await fs.readFile(workerPath, 'utf-8');
+              } catch {
+                // Worker file might not exist yet, skip for now
+                continue;
+              }
+
+              // Bundle worker
+              const bundle = await workerBundler.bundleWorker(worker.source, workerSource, worker.type, worker.options);
+
+              // Generate worker instantiation code
+              const workerCode = workerBundler.generateWorkerCode(bundle, worker.options);
+
+              // Replace original worker code
+              const originalCode = code.substring(worker.position.start, worker.position.end);
+              transformedCode = transformedCode.replace(originalCode, workerCode);
+            } catch (error) {
+              console.warn(`Failed to bundle worker ${worker.source}:`, error);
+            }
+          }
+        }
+      }
 
       // Check if this is a file that should be compiled
       const shouldCompile = opts.compiler && aetherCompiler && id.match(/\.(tsx|ts|jsx|js)$/);
@@ -577,6 +645,23 @@ export function aetherBuildPlugin(options: AetherBuildPluginOptions = {}): Plugi
               : 0,
         };
       }
+
+      // Add worker metrics to report
+      if (opts.workerBundling && workerBundler) {
+        const workers = workerBundler.getWorkers();
+        if (workers.size > 0) {
+          const workerArray = Array.from(workers.values());
+          const totalSize = workerArray.reduce((sum, w) => sum + w.size, 0);
+          const inlinedCount = workerArray.filter((w) => w.inlined).length;
+
+          buildReport.workers = {
+            totalWorkers: workers.size,
+            inlinedWorkers: inlinedCount,
+            totalSize,
+            averageSize: totalSize / workers.size,
+          };
+        }
+      }
     },
 
     async closeBundle() {
@@ -687,6 +772,14 @@ export function aetherBuildPlugin(options: AetherBuildPluginOptions = {}): Plugi
       console.log(`\n⚡ Performance:`);
       console.log(`   Cache Hit Rate: ${report.performance.cacheHitRate.toFixed(1)}%`);
       console.log(`   Workers: ${report.performance.workersUsed}`);
+    }
+
+    if (report.workers) {
+      console.log(`\n👷 Workers:`);
+      console.log(`   Total Workers: ${report.workers.totalWorkers}`);
+      console.log(`   Inlined: ${report.workers.inlinedWorkers}`);
+      console.log(`   Total Size: ${(report.workers.totalSize / 1024).toFixed(1)}KB`);
+      console.log(`   Avg Size: ${(report.workers.averageSize / 1024).toFixed(1)}KB`);
     }
 
     console.log('');

@@ -7,11 +7,7 @@ import { inject } from '../../di/index.js';
 import { signal } from '../../core/index.js';
 import { NetronClient } from '../client.js';
 import { getBackendName, getServiceName } from '../decorators/index.js';
-import type {
-  Type,
-  MutationOptions,
-  MutationResult,
-} from '../types.js';
+import type { Type, MutationOptions, MutationResult } from '../types.js';
 
 /**
  * useMutation - Perform mutations with optimistic updates
@@ -40,7 +36,7 @@ export function useMutation<
   TService,
   TMethod extends keyof TService,
   TData = TService[TMethod] extends (...args: any[]) => Promise<infer R> ? R : never,
-  TVariables = TService[TMethod] extends (...args: infer P) => any ? P[0] : never
+  TVariables = TService[TMethod] extends (...args: infer P) => any ? P[0] : never,
 >(
   serviceClass: Type<TService> | string,
   method: TMethod,
@@ -175,7 +171,7 @@ export function useOptimisticMutation<
   TMethod extends keyof TService,
   TData = TService[TMethod] extends (...args: any[]) => Promise<infer R> ? R : never,
   TVariables = TService[TMethod] extends (...args: infer P) => any ? P[0] : never,
-  TCurrentData = any
+  TCurrentData = any,
 >(
   serviceClass: Type<TService> | string,
   method: TMethod,
@@ -243,13 +239,7 @@ export function useMutations<
     service: Type<any> | string;
     method: string;
     options?: MutationOptions;
-  }>
+  }>,
 >(mutations: T): { [K in keyof T]: MutationResult } {
-  return mutations.map(mutation =>
-    useMutation(
-      mutation.service,
-      mutation.method,
-      mutation.options
-    )
-  ) as any;
+  return mutations.map((mutation) => useMutation(mutation.service, mutation.method, mutation.options)) as any;
 }

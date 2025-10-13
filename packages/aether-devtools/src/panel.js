@@ -34,7 +34,7 @@ function initialize() {
   profileBtn.addEventListener('click', handleProfile);
 
   // Setup tab switching
-  document.querySelectorAll('.tab').forEach(tab => {
+  document.querySelectorAll('.tab').forEach((tab) => {
     tab.addEventListener('click', () => {
       handleTabSwitch(tab.dataset.tab);
     });
@@ -49,7 +49,7 @@ function initialize() {
 /**
  * Handle messages from background script
  */
-window.handleMessage = function(message) {
+window.handleMessage = function (message) {
   console.log('[Aether DevTools] Panel received message:', message);
 
   if (message.type === 'from-page') {
@@ -66,7 +66,7 @@ function requestState() {
   if (window.devToolsPort) {
     window.devToolsPort.postMessage({
       type: 'request-state',
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
   }
 }
@@ -126,7 +126,7 @@ function renderInspectorTree() {
   // Signals
   if (currentState.signals && currentState.signals.length > 0) {
     const signalsNode = createTreeNode('Signals', 'signal', currentState.signals.length);
-    currentState.signals.forEach(signal => {
+    currentState.signals.forEach((signal) => {
       const node = createTreeNode(signal.name || signal.id, 'signal', signal);
       signalsNode.appendChild(node);
     });
@@ -136,7 +136,7 @@ function renderInspectorTree() {
   // Computed
   if (currentState.computed && currentState.computed.length > 0) {
     const computedNode = createTreeNode('Computed', 'computed', currentState.computed.length);
-    currentState.computed.forEach(comp => {
+    currentState.computed.forEach((comp) => {
       const node = createTreeNode(comp.name || comp.id, 'computed', comp);
       computedNode.appendChild(node);
     });
@@ -146,7 +146,7 @@ function renderInspectorTree() {
   // Effects
   if (currentState.effects && currentState.effects.length > 0) {
     const effectsNode = createTreeNode('Effects', 'effect', currentState.effects.length);
-    currentState.effects.forEach(effect => {
+    currentState.effects.forEach((effect) => {
       const node = createTreeNode(effect.name || effect.id, 'effect', effect);
       effectsNode.appendChild(node);
     });
@@ -156,7 +156,7 @@ function renderInspectorTree() {
   // Stores
   if (currentState.stores && currentState.stores.length > 0) {
     const storesNode = createTreeNode('Stores', 'store', currentState.stores.length);
-    currentState.stores.forEach(store => {
+    currentState.stores.forEach((store) => {
       const node = createTreeNode(store.name, 'store', store);
       storesNode.appendChild(node);
     });
@@ -239,12 +239,18 @@ function createTreeNode(label, type, data) {
  */
 function getIcon(type) {
   switch (type) {
-    case 'signal': return '○';
-    case 'computed': return '◉';
-    case 'effect': return '⚡';
-    case 'store': return '◻';
-    case 'component': return '⚙';
-    default: return '•';
+    case 'signal':
+      return '○';
+    case 'computed':
+      return '◉';
+    case 'effect':
+      return '⚡';
+    case 'store':
+      return '◻';
+    case 'component':
+      return '⚙';
+    default:
+      return '•';
   }
 }
 
@@ -253,7 +259,7 @@ function getIcon(type) {
  */
 function handleNodeSelect(node, data) {
   // Remove previous selection
-  document.querySelectorAll('.tree-node.selected').forEach(n => {
+  document.querySelectorAll('.tree-node.selected').forEach((n) => {
     n.classList.remove('selected');
   });
 
@@ -362,7 +368,7 @@ function handleRecord() {
     window.devToolsPort.postMessage({
       type: 'toggle-recording',
       value: isRecording,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
   }
 }
@@ -379,7 +385,7 @@ function handleProfile() {
     window.devToolsPort.postMessage({
       type: 'toggle-profiling',
       value: isProfiling,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
   }
 }
@@ -389,7 +395,7 @@ function handleProfile() {
  */
 function handleTabSwitch(tab) {
   // Update active tab
-  document.querySelectorAll('.tab').forEach(t => {
+  document.querySelectorAll('.tab').forEach((t) => {
     t.classList.remove('active');
   });
   document.querySelector(`.tab[data-tab="${tab}"]`).classList.add('active');

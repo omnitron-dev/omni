@@ -113,13 +113,7 @@ describe('Router Form Component', () => {
       });
       setRouter(router);
 
-      const methods: Array<'get' | 'post' | 'put' | 'patch' | 'delete'> = [
-        'get',
-        'post',
-        'put',
-        'patch',
-        'delete',
-      ];
+      const methods: Array<'get' | 'post' | 'put' | 'patch' | 'delete'> = ['get', 'post', 'put', 'patch', 'delete'];
 
       methods.forEach((method) => {
         const formComponent = Form({ method });

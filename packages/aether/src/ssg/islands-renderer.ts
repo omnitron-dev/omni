@@ -29,7 +29,7 @@ export async function renderRouteWithIslands(
     meta?: StaticPageMeta;
     jsonLd?: Record<string, any>;
     manifest?: IslandManifest;
-  },
+  }
 ): Promise<GeneratedPage & { islands: any[] }> {
   const { path, revalidate, staleWhileRevalidate, tags, meta, jsonLd, manifest } = options;
 
@@ -53,7 +53,9 @@ export async function renderRouteWithIslands(
       islands: result.islands,
     };
   } catch (error) {
-    throw new Error(`Error rendering route ${path} with islands: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `Error rendering route ${path} with islands: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }
 
@@ -71,7 +73,7 @@ export function generateDocumentWithIslands(
     scripts?: string[];
     styles?: string[];
     manifest?: IslandManifest;
-  } = {},
+  } = {}
 ): string {
   const { base = '/', scripts = [], styles = [], manifest } = options;
 
@@ -100,12 +102,14 @@ export function generateDocumentWithIslands(
     props: page.props,
     generatedAt: page.generatedAt.toISOString(),
   })};
-  window.__AETHER_ISLANDS__ = ${JSON.stringify(page.islands.map((island) => ({
-    id: island.id,
-    name: island.name,
-    strategy: island.strategy,
-    props: island.props,
-  })))};
+  window.__AETHER_ISLANDS__ = ${JSON.stringify(
+    page.islands.map((island) => ({
+      id: island.id,
+      name: island.name,
+      strategy: island.strategy,
+      props: island.props,
+    }))
+  )};
 </script>
   `.trim();
 
@@ -193,7 +197,7 @@ export function analyzeIslandsForSSG(islands: any[]): {
   for (const island of criticalIslands) {
     if (island.size && island.size > 50000) {
       recommendations.push(
-        `Island "${island.name}" is ${Math.round(island.size / 1024)}KB and uses immediate hydration. Consider deferring to 'idle' or 'visible'.`,
+        `Island "${island.name}" is ${Math.round(island.size / 1024)}KB and uses immediate hydration. Consider deferring to 'idle' or 'visible'.`
       );
     }
   }
@@ -201,14 +205,14 @@ export function analyzeIslandsForSSG(islands: any[]): {
   // Warn about too many islands
   if (islands.length > 10) {
     recommendations.push(
-      `Page has ${islands.length} islands. Consider combining related islands or making some components static.`,
+      `Page has ${islands.length} islands. Consider combining related islands or making some components static.`
     );
   }
 
   // Warn about total size
   if (totalSize > 100000) {
     recommendations.push(
-      `Total island size is ${Math.round(totalSize / 1024)}KB. Consider code splitting or lazy loading.`,
+      `Total island size is ${Math.round(totalSize / 1024)}KB. Consider code splitting or lazy loading.`
     );
   }
 
@@ -229,7 +233,7 @@ export function analyzeIslandsForSSG(islands: any[]): {
  */
 export function calculateSSGPerformanceMetrics(
   page: GeneratedPage & { islands: any[] },
-  manifest?: IslandManifest,
+  manifest?: IslandManifest
 ): {
   htmlSize: number;
   criticalJsSize: number;

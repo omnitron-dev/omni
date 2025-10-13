@@ -12,7 +12,7 @@ import {
   LayoutHeader,
   LayoutMain,
   LayoutSidebar,
-  LayoutFooter
+  LayoutFooter,
 } from '../../src/router/Outlet.js';
 import { signal } from '../../src/core/reactivity/signal.js';
 import type { RouteDefinition } from '../../src/router/types.js';
@@ -31,9 +31,7 @@ describe('Outlet component', () => {
       const result = Outlet({});
 
       expect(result).toBeNull();
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('No route context found')
-      );
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('No route context found'));
 
       consoleSpy.mockRestore();
     });
@@ -336,9 +334,7 @@ describe('Outlet component', () => {
     it('should resolve default outlet', () => {
       const mockRoute: RouteDefinition = {
         path: '/parent',
-        children: [
-          { path: '/parent/child', component: vi.fn() },
-        ],
+        children: [{ path: '/parent/child', component: vi.fn() }],
       };
 
       // Default outlet renders first child
@@ -355,12 +351,8 @@ describe('Outlet component', () => {
         ],
       };
 
-      const sidebarChild = mockRoute.children?.find(
-        child => child.meta?.outlet === 'sidebar'
-      );
-      const contentChild = mockRoute.children?.find(
-        child => child.meta?.outlet === 'content'
-      );
+      const sidebarChild = mockRoute.children?.find((child) => child.meta?.outlet === 'sidebar');
+      const contentChild = mockRoute.children?.find((child) => child.meta?.outlet === 'content');
 
       expect(sidebarChild).toBeDefined();
       expect(contentChild).toBeDefined();
@@ -372,9 +364,7 @@ describe('Outlet component', () => {
         children: [],
       };
 
-      const child = mockRoute.children?.find(
-        child => child.meta?.outlet === 'nonexistent'
-      );
+      const child = mockRoute.children?.find((child) => child.meta?.outlet === 'nonexistent');
 
       expect(child).toBeUndefined();
     });

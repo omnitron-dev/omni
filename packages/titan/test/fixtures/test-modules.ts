@@ -555,8 +555,7 @@ export class ApplicationModule implements IModule {
   readonly name = 'application';
   readonly version = '1.0.0';
 
-  constructor() // Services will be injected if DI is properly configured
-  {}
+  constructor() {} // Services will be injected if DI is properly configured
 
   async onStart(app: IApplication): Promise<void> {
     // Initialize application services

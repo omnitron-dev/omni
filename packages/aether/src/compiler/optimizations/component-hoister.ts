@@ -94,10 +94,7 @@ export class ComponentHoister implements OptimizationPass {
   /**
    * Transform code
    */
-  async transform(
-    code: string,
-    context: OptimizationContext,
-  ): Promise<OptimizationResult> {
+  async transform(code: string, context: OptimizationContext): Promise<OptimizationResult> {
     const changes: OptimizationChange[] = [];
     const warnings: string[] = [];
 
@@ -250,9 +247,9 @@ export class ComponentHoister implements OptimizationPass {
     // - Loops
 
     const dynamicPatterns = [
-      /\{[^}]*\}/,  // Any expression
-      /on\w+=/,     // Event handlers
-      /\.\.\./,     // Spread attributes
+      /\{[^}]*\}/, // Any expression
+      /on\w+=/, // Event handlers
+      /\.\.\./, // Spread attributes
     ];
 
     return !dynamicPatterns.some((pattern) => pattern.test(code));
@@ -367,8 +364,7 @@ ${id}.innerHTML = ${JSON.stringify(element.code)};`;
     let optimizedCode = code;
 
     // Pattern: Component definitions without props
-    const staticComponentPattern =
-      /const\s+(\w+)\s*=\s*\(\)\s*=>\s*\{([^}]+)\}/g;
+    const staticComponentPattern = /const\s+(\w+)\s*=\s*\(\)\s*=>\s*\{([^}]+)\}/g;
 
     const components: Array<{ name: string; body: string }> = [];
     let match: RegExpExecArray | null;
@@ -386,7 +382,7 @@ ${id}.innerHTML = ${JSON.stringify(element.code)};`;
     for (const component of components) {
       const memoizedCode = `const ${component.name} = memo(() => {${component.body}});`;
       const originalPattern = new RegExp(
-        `const\\s+${component.name}\\s*=\\s*\\(\\)\\s*=>\\s*\\{${this.escapeRegex(component.body)}\\}`,
+        `const\\s+${component.name}\\s*=\\s*\\(\\)\\s*=>\\s*\\{${this.escapeRegex(component.body)}\\}`
       );
 
       if (originalPattern.test(optimizedCode)) {
@@ -408,9 +404,9 @@ ${id}.innerHTML = ${JSON.stringify(element.code)};`;
   private hasDynamicDependencies(code: string): boolean {
     // Check for signal access, props access, etc.
     return (
-      /\b\w+\(\)/.test(code) ||  // Signal access
-      /\bprops\./.test(code) ||   // Props access
-      /\bcontext\./.test(code)    // Context access
+      /\b\w+\(\)/.test(code) || // Signal access
+      /\bprops\./.test(code) || // Props access
+      /\bcontext\./.test(code) // Context access
     );
   }
 

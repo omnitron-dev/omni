@@ -184,12 +184,8 @@ export class BundleAnalyzer {
       modules,
       duplicates: this.config.detectDuplicates ? this.detectDuplicates() : [],
       largeDependencies: this.config.analyzeImportCost ? this.analyzeLargeDependencies() : [],
-      treeShakingEffectiveness: this.config.analyzeTreeShaking
-        ? this.analyzeTreeShaking()
-        : [],
-      lazyLoadingOpportunities: this.config.analyzeLazyLoading
-        ? this.analyzeLazyLoading()
-        : [],
+      treeShakingEffectiveness: this.config.analyzeTreeShaking ? this.analyzeTreeShaking() : [],
+      lazyLoadingOpportunities: this.config.analyzeLazyLoading ? this.analyzeLazyLoading() : [],
       recommendations: [],
     };
 
@@ -337,7 +333,7 @@ export class BundleAnalyzer {
       if (versions.size > 1) {
         const versionArray = Array.from(versions.entries()).map(([version, locations]) => {
           const size = locations.reduce((sum, path) => {
-            const module = Array.from(this.modules.values()).find(m => m.path === path);
+            const module = Array.from(this.modules.values()).find((m) => m.path === path);
             return sum + (module?.size || 0);
           }, 0);
 
@@ -410,17 +406,13 @@ export class BundleAnalyzer {
 
     for (const module of this.modules.values()) {
       if (module.treeShakenExports && module.unusedExports) {
-        const totalExports =
-          module.treeShakenExports.length + module.unusedExports.length;
+        const totalExports = module.treeShakenExports.length + module.unusedExports.length;
         const usedExports = module.treeShakenExports.length;
 
-        const effectivenessPercent =
-          totalExports > 0 ? (usedExports / totalExports) * 100 : 100;
+        const effectivenessPercent = totalExports > 0 ? (usedExports / totalExports) * 100 : 100;
 
         // Estimate wasted size based on unused exports
-        const wastedSize = Math.floor(
-          (module.size * module.unusedExports.length) / totalExports,
-        );
+        const wastedSize = Math.floor((module.size * module.unusedExports.length) / totalExports);
 
         effectiveness.push({
           moduleName: module.name,
@@ -434,7 +426,7 @@ export class BundleAnalyzer {
     }
 
     return effectiveness
-      .filter(e => e.effectiveness < 80) // Focus on poorly tree-shaken modules
+      .filter((e) => e.effectiveness < 80) // Focus on poorly tree-shaken modules
       .sort((a, b) => b.wastedSize - a.wastedSize);
   }
 
@@ -477,15 +469,8 @@ export class BundleAnalyzer {
    */
   private isComponent(module: ModuleInfo): boolean {
     // Simple heuristic: check if name contains common component patterns
-    const componentPatterns = [
-      /Component$/,
-      /Page$/,
-      /Modal$/,
-      /Dialog$/,
-      /Drawer$/,
-      /Panel$/,
-    ];
-    return componentPatterns.some(pattern => pattern.test(module.name));
+    const componentPatterns = [/Component$/, /Page$/, /Modal$/, /Dialog$/, /Drawer$/, /Panel$/];
+    return componentPatterns.some((pattern) => pattern.test(module.name));
   }
 
   /**
@@ -493,7 +478,7 @@ export class BundleAnalyzer {
    */
   private isInCriticalPath(module: ModuleInfo): boolean {
     // Check if module is imported by entry point
-    const entryModules = Array.from(this.modules.values()).filter(m => m.isEntry);
+    const entryModules = Array.from(this.modules.values()).filter((m) => m.isEntry);
 
     for (const entry of entryModules) {
       if (this.hasDirectImport(entry.id, module.id)) {
@@ -535,44 +520,35 @@ export class BundleAnalyzer {
 
     // Bundle size recommendations
     if (analysis.totalSize > 500 * 1024) {
-      recommendations.push(
-        `Bundle size is ${this.formatSize(analysis.totalSize)}. Consider code splitting.`,
-      );
+      recommendations.push(`Bundle size is ${this.formatSize(analysis.totalSize)}. Consider code splitting.`);
     }
 
     // Duplicate recommendations
     if (analysis.duplicates.length > 0) {
       recommendations.push(
-        `Found ${analysis.duplicates.length} duplicate dependencies. Total wasted: ${this.formatSize(analysis.duplicates.reduce((sum, d) => sum + d.totalWastedSize, 0))}.`,
+        `Found ${analysis.duplicates.length} duplicate dependencies. Total wasted: ${this.formatSize(analysis.duplicates.reduce((sum, d) => sum + d.totalWastedSize, 0))}.`
       );
     }
 
     // Large dependency recommendations
-    const largeDeps = analysis.largeDependencies.filter(d => d.isLarge);
+    const largeDeps = analysis.largeDependencies.filter((d) => d.isLarge);
     if (largeDeps.length > 0) {
-      recommendations.push(
-        `Found ${largeDeps.length} large dependencies. Consider alternatives or lazy loading.`,
-      );
+      recommendations.push(`Found ${largeDeps.length} large dependencies. Consider alternatives or lazy loading.`);
     }
 
     // Tree-shaking recommendations
-    const poorTreeShaking = analysis.treeShakingEffectiveness.filter(
-      t => t.effectiveness < 50,
-    );
+    const poorTreeShaking = analysis.treeShakingEffectiveness.filter((t) => t.effectiveness < 50);
     if (poorTreeShaking.length > 0) {
       recommendations.push(
-        `Found ${poorTreeShaking.length} modules with poor tree-shaking. Use named imports instead of default imports.`,
+        `Found ${poorTreeShaking.length} modules with poor tree-shaking. Use named imports instead of default imports.`
       );
     }
 
     // Lazy loading recommendations
     if (analysis.lazyLoadingOpportunities.length > 0) {
-      const potentialSavings = analysis.lazyLoadingOpportunities.reduce(
-        (sum, o) => sum + o.potentialSavings,
-        0,
-      );
+      const potentialSavings = analysis.lazyLoadingOpportunities.reduce((sum, o) => sum + o.potentialSavings, 0);
       recommendations.push(
-        `Found ${analysis.lazyLoadingOpportunities.length} lazy loading opportunities. Potential savings: ${this.formatSize(potentialSavings)}.`,
+        `Found ${analysis.lazyLoadingOpportunities.length} lazy loading opportunities. Potential savings: ${this.formatSize(potentialSavings)}.`
       );
     }
 

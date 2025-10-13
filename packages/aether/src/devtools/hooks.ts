@@ -210,7 +210,7 @@ export function useTimeTravel(): Recorder | null {
  */
 export function withDevTools<P extends Record<string, any>>(
   component: (props: P) => any,
-  options: { name?: string; profile?: boolean } = {},
+  options: { name?: string; profile?: boolean } = {}
 ): (props: P) => any {
   const componentName = options.name || component.name || 'Anonymous';
 
@@ -251,7 +251,7 @@ export function withDevTools<P extends Record<string, any>>(
 export function debugSignal<T>(
   initialValue: T,
   name: string,
-  options?: { equals?: (a: T, b: T) => boolean },
+  options?: { equals?: (a: T, b: T) => boolean }
 ): WritableSignal<T> {
   // Import signal dynamically to avoid circular deps
   // eslint-disable-next-line @typescript-eslint/no-require-imports

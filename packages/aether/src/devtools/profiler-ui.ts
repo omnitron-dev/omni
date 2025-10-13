@@ -250,7 +250,7 @@ export class ProfilerUI {
       // Find available lane
       let lane = 0;
       for (const [key, laneNum] of lanes.entries()) {
-        const existing = events.find(e => e.id === key);
+        const existing = events.find((e) => e.id === key);
         if (existing) {
           const existingEnd = existing.startTime + existing.duration;
           if (measurement.startTime >= existingEnd) {
@@ -289,7 +289,7 @@ export class ProfilerUI {
     const threshold = this.config.bottleneckThreshold;
 
     const slowMeasurements = profile.measurements
-      .filter(m => m.duration > threshold)
+      .filter((m) => m.duration > threshold)
       .sort((a, b) => b.duration - a.duration);
 
     for (const measurement of slowMeasurements) {
@@ -619,7 +619,7 @@ export class ProfilerUI {
       },
       summary: profile.summary,
       breakdown,
-      bottlenecks: bottlenecks.map(b => ({
+      bottlenecks: bottlenecks.map((b) => ({
         name: b.measurement.name,
         type: b.measurement.type,
         duration: b.measurement.duration,

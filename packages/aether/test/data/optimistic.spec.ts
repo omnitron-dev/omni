@@ -342,13 +342,9 @@ describe('Optimistic Updates', () => {
 
       await vi.runAllTimersAsync();
 
-      await optimisticUpdate(
-        resource,
-        async () => {},
-        {
-          optimisticData: (prev) => ({ count: (prev?.count ?? 0) * 2 }),
-        }
-      );
+      await optimisticUpdate(resource, async () => {}, {
+        optimisticData: (prev) => ({ count: (prev?.count ?? 0) * 2 }),
+      });
 
       await vi.runAllTimersAsync();
 

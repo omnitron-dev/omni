@@ -6,7 +6,10 @@
  */
 
 import { styled } from '../../styling/styled.js';
-import { Calendar as CalendarPrimitive, type CalendarProps as CalendarPrimitiveProps } from '../../primitives/Calendar.js';
+import {
+  Calendar as CalendarPrimitive,
+  type CalendarProps as CalendarPrimitiveProps,
+} from '../../primitives/Calendar.js';
 
 /**
  * Calendar - Full calendar widget

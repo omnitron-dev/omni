@@ -98,8 +98,7 @@ export class TreeShaker {
   private usedIdentifiers: Set<string> = new Set();
   private exportedIdentifiers: Set<string> = new Set();
   private importedIdentifiers: Map<string, string> = new Map();
-  private sideEffects: Array<{ line: number; type: string; description: string }> =
-    [];
+  private sideEffects: Array<{ line: number; type: string; description: string }> = [];
   private pureFunctionNames: Set<string> = new Set();
 
   constructor(options: TreeShakingOptions) {
@@ -155,8 +154,7 @@ export class TreeShaker {
         originalSize,
         optimizedSize,
         savings: originalSize - optimizedSize,
-        savingsPercent:
-          originalSize > 0 ? ((originalSize - optimizedSize) / originalSize) * 100 : 0,
+        savingsPercent: originalSize > 0 ? ((originalSize - optimizedSize) / originalSize) * 100 : 0,
       },
     };
   }
@@ -180,9 +178,7 @@ export class TreeShaker {
         if (namedImports) {
           namedImports.split(',').forEach((name) => {
             const trimmed = name.trim();
-            const identifier = trimmed.includes(' as ')
-              ? trimmed.split(' as ')[1]?.trim()
-              : trimmed;
+            const identifier = trimmed.includes(' as ') ? trimmed.split(' as ')[1]?.trim() : trimmed;
             if (identifier && source) {
               this.importedIdentifiers.set(identifier, source);
             }
@@ -207,9 +203,7 @@ export class TreeShaker {
         if (namedExports) {
           namedExports.split(',').forEach((name) => {
             const trimmed = name.trim();
-            const identifier = trimmed.includes(' as ')
-              ? trimmed.split(' as ')[0]?.trim()
-              : trimmed;
+            const identifier = trimmed.includes(' as ') ? trimmed.split(' as ')[0]?.trim() : trimmed;
             if (identifier) {
               this.exportedIdentifiers.add(identifier);
             }
@@ -364,9 +358,7 @@ export class TreeShaker {
     if (namedImports) {
       const imports = namedImports.split(',').map((s) => {
         const trimmed = s.trim();
-        return trimmed.includes(' as ')
-          ? trimmed.split(' as ')[1]?.trim() || trimmed
-          : trimmed;
+        return trimmed.includes(' as ') ? trimmed.split(' as ')[1]?.trim() || trimmed : trimmed;
       });
 
       return imports.every((imp) => !this.usedIdentifiers.has(imp));
@@ -383,9 +375,7 @@ export class TreeShaker {
    * Check if export is unused
    */
   private isUnusedExport(line: string): boolean {
-    const exportMatch = /export\s+(?:const|let|var|function|class)\s+(\w+)/.exec(
-      line,
-    );
+    const exportMatch = /export\s+(?:const|let|var|function|class)\s+(\w+)/.exec(line);
     if (!exportMatch) return false;
 
     const identifier = exportMatch[1];
@@ -398,9 +388,7 @@ export class TreeShaker {
    * Check if line is start of dead function
    */
   private isDeadFunctionStart(line: string): boolean {
-    const functionMatch = /(?:function\s+(\w+)|(?:const|let)\s+(\w+)\s*=\s*(?:async\s+)?\([^)]*\)\s*=>)/.exec(
-      line,
-    );
+    const functionMatch = /(?:function\s+(\w+)|(?:const|let)\s+(\w+)\s*=\s*(?:async\s+)?\([^)]*\)\s*=>)/.exec(line);
     if (!functionMatch) return false;
 
     const identifier = functionMatch[1] || functionMatch[2];
@@ -468,11 +456,7 @@ export class TreeShaker {
       let match: RegExpExecArray | null;
       while ((match = variableRegex.exec(line)) !== null) {
         const identifier = match[1];
-        if (
-          identifier &&
-          !this.usedIdentifiers.has(identifier) &&
-          !this.exportedIdentifiers.has(identifier)
-        ) {
+        if (identifier && !this.usedIdentifiers.has(identifier) && !this.exportedIdentifiers.has(identifier)) {
           removed.push(identifier);
         }
       }
@@ -581,10 +565,7 @@ export class ComponentTreeShaker {
 
     for (const name of unused) {
       // Remove component definition
-      const regex = new RegExp(
-        `export\\s+(?:const|let|var|function)\\s+${name}[^;]*;`,
-        'g',
-      );
+      const regex = new RegExp(`export\\s+(?:const|let|var|function)\\s+${name}[^;]*;`, 'g');
       result = result.replace(regex, '');
     }
 

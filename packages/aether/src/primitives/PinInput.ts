@@ -158,11 +158,7 @@ export const PinInput = defineComponent<PinInputProps>((props) => {
   // Pattern 19: Use useControlledState for flexible value handling
   // Note: PinInput works with strings externally but arrays internally
   const defaultValue = props.defaultValue ?? '';
-  const [getValueString, setValueString] = useControlledState<string>(
-    props.value,
-    defaultValue,
-    props.onValueChange
-  );
+  const [getValueString, setValueString] = useControlledState<string>(props.value, defaultValue, props.onValueChange);
 
   // Internal array representation derived from the controlled string value
   const internalValuesArray = signal<string[]>(parseValue(getValueString()));

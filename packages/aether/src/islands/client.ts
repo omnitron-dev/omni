@@ -59,7 +59,7 @@ export async function hydrateIslands(
     strategy: HydrationStrategy;
     props: string;
   }>,
-  manifestData?: IslandManifest,
+  manifestData?: IslandManifest
 ): Promise<void> {
   if (manifestData) {
     loadIslandManifest(manifestData);
@@ -132,7 +132,7 @@ function createIslandInstance(
   component: IslandComponent,
   element: HTMLElement,
   props: any,
-  strategy: HydrationStrategy,
+  strategy: HydrationStrategy
 ): IslandInstance {
   const island: IslandInstance = {
     id,

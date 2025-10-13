@@ -140,10 +140,7 @@ describe('ErrorBoundary', () => {
         throw new Error('Test error');
       };
 
-      const SafeComponent = withErrorBoundary(
-        Component,
-        (error: Error) => `Error: ${error.message}`
-      );
+      const SafeComponent = withErrorBoundary(Component, (error: Error) => `Error: ${error.message}`);
 
       const renderFn = SafeComponent({})();
       expect(renderFn()).toBe('Error: Test error');

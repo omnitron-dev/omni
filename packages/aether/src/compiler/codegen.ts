@@ -24,10 +24,7 @@ import type { CodeGenOptions, SourceMap, TransformResult, CompilerOptions } from
  * console.log(result.code);
  * ```
  */
-export function generate(
-  sourceFile: ts.SourceFile,
-  options: CodeGenOptions = {}
-): TransformResult {
+export function generate(sourceFile: ts.SourceFile, options: CodeGenOptions = {}): TransformResult {
   const printer = createPrinter(options);
 
   // Generate code
@@ -62,11 +59,7 @@ function createPrinter(options: CodeGenOptions): ts.Printer {
 /**
  * Generate source map
  */
-function generateSourceMap(
-  sourceFile: ts.SourceFile,
-  generatedCode: string,
-  options: CodeGenOptions
-): SourceMap {
+function generateSourceMap(sourceFile: ts.SourceFile, generatedCode: string, options: CodeGenOptions): SourceMap {
   // Basic source map structure
   // In a real implementation, this would generate proper mappings
   const map: SourceMap = {
@@ -88,10 +81,7 @@ function generateSourceMap(
  * @param options - Code generation options
  * @returns Code with inline source map comment
  */
-export function generateWithInlineSourceMap(
-  sourceFile: ts.SourceFile,
-  options: CodeGenOptions = {}
-): string {
+export function generateWithInlineSourceMap(sourceFile: ts.SourceFile, options: CodeGenOptions = {}): string {
   const result = generate(sourceFile, {
     ...options,
     sourceMaps: true,
@@ -117,10 +107,7 @@ export function generateWithInlineSourceMap(
  * @param options - Compiler options
  * @returns Minified code
  */
-export function generateMinified(
-  sourceFile: ts.SourceFile,
-  options: CompilerOptions = {}
-): TransformResult {
+export function generateMinified(sourceFile: ts.SourceFile, options: CompilerOptions = {}): TransformResult {
   // Use compact output
   const codeGenOptions: CodeGenOptions = {
     pretty: false,
@@ -168,10 +155,7 @@ export function generatePretty(sourceFile: ts.SourceFile): string {
  * @param target - Target environment
  * @returns Generated code
  */
-export function generateForTarget(
-  sourceFile: ts.SourceFile,
-  target: 'es2015' | 'es2020' | 'esnext'
-): string {
+export function generateForTarget(sourceFile: ts.SourceFile, target: 'es2015' | 'es2020' | 'esnext'): string {
   // TypeScript printer doesn't need target-specific handling
   // as transpilation should happen during transformation
   const result = generate(sourceFile, {
@@ -242,10 +226,7 @@ export interface CodeGenContext {
  * @param options - Options
  * @returns Context
  */
-export function createContext(
-  sourceFile: ts.SourceFile,
-  options: CodeGenOptions = {}
-): CodeGenContext {
+export function createContext(sourceFile: ts.SourceFile, options: CodeGenOptions = {}): CodeGenContext {
   return {
     sourceFile,
     printer: createPrinter(options),
@@ -364,12 +345,7 @@ export function generateExport(specifiers: string[], from?: string): string {
  * generateFunction('add', ['a: number', 'b: number'], 'return a + b;', 'number')
  * ```
  */
-export function generateFunction(
-  name: string,
-  params: string[],
-  body: string,
-  returnType?: string
-): string {
+export function generateFunction(name: string, params: string[], body: string, returnType?: string): string {
   const returnTypeStr = returnType ? `: ${returnType}` : '';
   const paramsStr = params.join(', ');
 
@@ -390,11 +366,7 @@ export function generateFunction(
  * // "(x) => x * 2"
  * ```
  */
-export function generateArrowFunction(
-  params: string[],
-  body: string,
-  returnType?: string
-): string {
+export function generateArrowFunction(params: string[], body: string, returnType?: string): string {
   const returnTypeStr = returnType ? `: ${returnType}` : '';
   const paramsStr = params.length === 1 ? params[0] : `(${params.join(', ')})`;
 
@@ -420,12 +392,7 @@ export function generateArrowFunction(
  * generateVariable('const', 'count', 'signal(0)', 'WritableSignal<number>')
  * ```
  */
-export function generateVariable(
-  kind: 'const' | 'let' | 'var',
-  name: string,
-  value: string,
-  type?: string
-): string {
+export function generateVariable(kind: 'const' | 'let' | 'var', name: string, value: string, type?: string): string {
   const typeStr = type ? `: ${type}` : '';
   return `${kind} ${name}${typeStr} = ${value};`;
 }
@@ -471,11 +438,7 @@ export function generateObject(properties: Record<string, string>): string {
  * generateJSDoc('Add two numbers', [['a', 'First number'], ['b', 'Second number']], 'Sum')
  * ```
  */
-export function generateJSDoc(
-  description: string,
-  params?: Array<[string, string]>,
-  returns?: string
-): string {
+export function generateJSDoc(description: string, params?: Array<[string, string]>, returns?: string): string {
   const lines = ['/**', ` * ${description}`];
 
   if (params && params.length > 0) {

@@ -6,11 +6,7 @@
  */
 
 import { PassThrough } from 'node:stream';
-import type {
-  SuspenseBoundaryMarker,
-  SSRSuspenseContext,
-  StreamingSuspenseOptions,
-} from './types.js';
+import type { SuspenseBoundaryMarker, SSRSuspenseContext, StreamingSuspenseOptions } from './types.js';
 
 /**
  * Create SSR suspense context
@@ -90,11 +86,7 @@ export async function streamSuspenseBoundaries(
   context: SSRSuspenseContext,
   options: StreamingSuspenseOptions = {}
 ): Promise<void> {
-  const {
-    outOfOrder = false,
-    maxConcurrency = 10,
-    timeout = 10000,
-  } = options;
+  const { outOfOrder = false, maxConcurrency = 10, timeout = 10000 } = options;
 
   const { boundaries } = context;
 
@@ -126,9 +118,7 @@ async function streamInOrder(
       // Wait for boundary to resolve with timeout
       const html = await Promise.race([
         marker.promise,
-        new Promise<string>((_, reject) =>
-          setTimeout(() => reject(new Error('Boundary timeout')), timeout)
-        ),
+        new Promise<string>((_, reject) => setTimeout(() => reject(new Error('Boundary timeout')), timeout)),
       ]);
 
       // Write boundary chunk
@@ -137,11 +127,7 @@ async function streamInOrder(
     } catch (error) {
       // Write error fallback
       console.error(`Boundary ${id} failed:`, error);
-      const errorChunk = createBoundaryChunk(
-        id,
-        '<div>Error loading content</div>',
-        false
-      );
+      const errorChunk = createBoundaryChunk(id, '<div>Error loading content</div>', false);
       stream.write(errorChunk);
     }
   }
@@ -169,9 +155,7 @@ async function streamOutOfOrder(
         // Wait for boundary to resolve with timeout
         const html = await Promise.race([
           marker.promise,
-          new Promise<string>((_, reject) =>
-            setTimeout(() => reject(new Error('Boundary timeout')), timeout)
-          ),
+          new Promise<string>((_, reject) => setTimeout(() => reject(new Error('Boundary timeout')), timeout)),
         ]);
 
         // Write boundary chunk
@@ -180,11 +164,7 @@ async function streamOutOfOrder(
       } catch (error) {
         // Write error fallback
         console.error(`Boundary ${id} failed:`, error);
-        const errorChunk = createBoundaryChunk(
-          id,
-          '<div>Error loading content</div>',
-          true
-        );
+        const errorChunk = createBoundaryChunk(id, '<div>Error loading content</div>', true);
         stream.write(errorChunk);
       }
     });
@@ -276,14 +256,7 @@ export async function renderWithSuspenseStreaming(
   stream: NodeJS.ReadableStream;
   abort: () => void;
 }> {
-  const {
-    shellTimeout = 5000,
-    onShellReady,
-    onShellError,
-    onAllReady,
-    onError,
-    ...streamingOptions
-  } = options;
+  const { shellTimeout = 5000, onShellReady, onShellError, onAllReady, onError, ...streamingOptions } = options;
 
   const stream = new PassThrough();
   const context = createSSRSuspenseContext();
@@ -295,9 +268,7 @@ export async function renderWithSuspenseStreaming(
       // Render shell with timeout
       const shell = await Promise.race([
         renderFn(context),
-        new Promise<string>((_, reject) =>
-          setTimeout(() => reject(new Error('Shell timeout')), shellTimeout)
-        ),
+        new Promise<string>((_, reject) => setTimeout(() => reject(new Error('Shell timeout')), shellTimeout)),
       ]);
 
       if (aborted) return;
@@ -359,10 +330,7 @@ export async function renderToReadableStreamWithSuspense(
   renderFn: (context: SSRSuspenseContext) => Promise<string>,
   options: StreamingSuspenseOptions = {}
 ): Promise<ReadableStream<Uint8Array>> {
-  const {
-    shellTimeout = 5000,
-    ...streamingOptions
-  } = options;
+  const { shellTimeout = 5000, ...streamingOptions } = options;
 
   const context = createSSRSuspenseContext();
   let aborted = false;
@@ -373,9 +341,7 @@ export async function renderToReadableStreamWithSuspense(
         // Render shell with timeout
         const shell = await Promise.race([
           renderFn(context),
-          new Promise<string>((_, reject) =>
-            setTimeout(() => reject(new Error('Shell timeout')), shellTimeout)
-          ),
+          new Promise<string>((_, reject) => setTimeout(() => reject(new Error('Shell timeout')), shellTimeout)),
         ]);
 
         if (aborted) {

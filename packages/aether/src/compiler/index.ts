@@ -17,13 +17,7 @@
  * ```
  */
 
-import type {
-  CompilerOptions,
-  TransformResult,
-  CompilerContext,
-  AnalysisResult,
-  CompilerPlugin,
-} from './types.js';
+import type { CompilerOptions, TransformResult, CompilerContext, AnalysisResult, CompilerPlugin } from './types.js';
 import { parse, parseWithProgram } from './parser.js';
 import { analyze } from './analyzer.js';
 import { transform } from './transformer.js';
@@ -114,10 +108,7 @@ export async function compile(
   if (compilerOptions.plugins) {
     for (const plugin of compilerOptions.plugins) {
       if (plugin.enforce === 'post' && plugin.transform) {
-        const result = await plugin.transform(
-          generate(transformedSource).code,
-          filePath
-        );
+        const result = await plugin.transform(generate(transformedSource).code, filePath);
         if (result && typeof result === 'object' && 'code' in result) {
           // Re-parse transformed code
           const reparsed = parse(result.code, filePath, compilerOptions);
@@ -200,11 +191,7 @@ export async function compileWithTypeChecking(
   };
 
   // Analyze with type checker
-  const analysis = analyze(
-    context.sourceFile,
-    compilerOptions,
-    context.typeChecker
-  );
+  const analysis = analyze(context.sourceFile, compilerOptions, context.typeChecker);
   context.analysis = analysis;
 
   // Transform
@@ -308,35 +295,17 @@ export {
   type PerformanceMetrics,
 } from './optimizer.js';
 
-export {
-  SignalOptimizer,
-  type SignalOptimizerOptions,
-} from './optimizations/signal-optimizer.js';
+export { SignalOptimizer, type SignalOptimizerOptions } from './optimizations/signal-optimizer.js';
 
-export {
-  EffectBatcher,
-  type EffectBatcherOptions,
-} from './optimizations/effect-batcher.js';
+export { EffectBatcher, type EffectBatcherOptions } from './optimizations/effect-batcher.js';
 
-export {
-  ComponentHoister,
-  type ComponentHoisterOptions,
-} from './optimizations/component-hoister.js';
+export { ComponentHoister, type ComponentHoisterOptions } from './optimizations/component-hoister.js';
 
-export {
-  TreeShakerPass,
-  type TreeShakerOptions,
-} from './optimizations/tree-shaker.js';
+export { TreeShakerPass, type TreeShakerOptions } from './optimizations/tree-shaker.js';
 
-export {
-  DeadCodeEliminator,
-  type DeadCodeEliminatorOptions,
-} from './optimizations/dead-code-eliminator.js';
+export { DeadCodeEliminator, type DeadCodeEliminatorOptions } from './optimizations/dead-code-eliminator.js';
 
-export {
-  Minifier,
-  type MinifierOptions,
-} from './optimizations/minifier.js';
+export { Minifier, type MinifierOptions } from './optimizations/minifier.js';
 
 /**
  * Create a compiler plugin
@@ -424,9 +393,7 @@ export function validateOptions(options: CompilerOptions): CompilerOptions {
 
   // Validate combinations
   if (validated.optimize === 'aggressive' && validated.mode === 'development') {
-    console.warn(
-      'Warning: Aggressive optimization in development mode may slow down compilation'
-    );
+    console.warn('Warning: Aggressive optimization in development mode may slow down compilation');
   }
 
   return validated;

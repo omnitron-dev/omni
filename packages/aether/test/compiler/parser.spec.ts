@@ -78,10 +78,7 @@ describe('Parser', () => {
       const code = `const elem = <input />;`;
       const result = parse(code, 'test.tsx');
 
-      const jsxElements = findNodes<ts.JsxSelfClosingElement>(
-        result.sourceFile,
-        isJSXSelfClosingElement
-      );
+      const jsxElements = findNodes<ts.JsxSelfClosingElement>(result.sourceFile, isJSXSelfClosingElement);
       expect(jsxElements.length).toBe(1);
     });
 
@@ -132,9 +129,8 @@ describe('Parser', () => {
       `;
       const result = parse(code, 'test.tsx');
 
-      const fragments = findNodes<ts.JsxFragment>(
-        result.sourceFile,
-        (node): node is ts.JsxFragment => ts.isJsxFragment(node)
+      const fragments = findNodes<ts.JsxFragment>(result.sourceFile, (node): node is ts.JsxFragment =>
+        ts.isJsxFragment(node)
       );
       expect(fragments.length).toBe(1);
     });
@@ -154,10 +150,7 @@ describe('Parser', () => {
       const code = `const elem = <CustomComponent />;`;
       const result = parse(code, 'test.tsx');
 
-      const jsxElements = findNodes<ts.JsxSelfClosingElement>(
-        result.sourceFile,
-        isJSXSelfClosingElement
-      );
+      const jsxElements = findNodes<ts.JsxSelfClosingElement>(result.sourceFile, isJSXSelfClosingElement);
       const element = jsxElements[0];
 
       if (element) {
@@ -170,10 +163,7 @@ describe('Parser', () => {
       const code = `const elem = <Components.Button />;`;
       const result = parse(code, 'test.tsx');
 
-      const jsxElements = findNodes<ts.JsxSelfClosingElement>(
-        result.sourceFile,
-        isJSXSelfClosingElement
-      );
+      const jsxElements = findNodes<ts.JsxSelfClosingElement>(result.sourceFile, isJSXSelfClosingElement);
       const element = jsxElements[0];
 
       if (element) {
@@ -377,9 +367,8 @@ const z = 3;
       `;
       const result = parse(code, 'test.ts');
 
-      const varDecls = findNodes<ts.VariableDeclaration>(
-        result.sourceFile,
-        (node): node is ts.VariableDeclaration => ts.isVariableDeclaration(node)
+      const varDecls = findNodes<ts.VariableDeclaration>(result.sourceFile, (node): node is ts.VariableDeclaration =>
+        ts.isVariableDeclaration(node)
       );
 
       expect(varDecls.length).toBe(3);
@@ -392,9 +381,8 @@ const z = 3;
       `;
       const result = parse(code, 'test.ts');
 
-      const funcDecls = findNodes<ts.FunctionDeclaration>(
-        result.sourceFile,
-        (node): node is ts.FunctionDeclaration => ts.isFunctionDeclaration(node)
+      const funcDecls = findNodes<ts.FunctionDeclaration>(result.sourceFile, (node): node is ts.FunctionDeclaration =>
+        ts.isFunctionDeclaration(node)
       );
 
       expect(funcDecls.length).toBe(2);
@@ -408,9 +396,8 @@ const z = 3;
       `;
       const result = parse(code, 'test.ts');
 
-      const callExprs = findNodes<ts.CallExpression>(
-        result.sourceFile,
-        (node): node is ts.CallExpression => ts.isCallExpression(node)
+      const callExprs = findNodes<ts.CallExpression>(result.sourceFile, (node): node is ts.CallExpression =>
+        ts.isCallExpression(node)
       );
 
       expect(callExprs.length).toBe(3);
@@ -598,9 +585,8 @@ const z = 3;
       `;
       const result = parse(code, 'test.ts');
 
-      const funcDecls = findNodes<ts.FunctionDeclaration>(
-        result.sourceFile,
-        (node): node is ts.FunctionDeclaration => ts.isFunctionDeclaration(node)
+      const funcDecls = findNodes<ts.FunctionDeclaration>(result.sourceFile, (node): node is ts.FunctionDeclaration =>
+        ts.isFunctionDeclaration(node)
       );
 
       expect(funcDecls.length).toBe(1);

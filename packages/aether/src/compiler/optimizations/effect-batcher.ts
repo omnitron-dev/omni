@@ -89,10 +89,7 @@ export class EffectBatcher implements OptimizationPass {
   /**
    * Transform code
    */
-  async transform(
-    code: string,
-    context: OptimizationContext,
-  ): Promise<OptimizationResult> {
+  async transform(code: string, context: OptimizationContext): Promise<OptimizationResult> {
     const changes: OptimizationChange[] = [];
     const warnings: string[] = [];
 
@@ -203,12 +200,7 @@ export class EffectBatcher implements OptimizationPass {
       const signalName = match[1];
 
       // Filter out common functions that aren't signals
-      if (
-        signalName &&
-        !['console', 'log', 'error', 'warn', 'document', 'window'].includes(
-          signalName,
-        )
-      ) {
+      if (signalName && !['console', 'log', 'error', 'warn', 'document', 'window'].includes(signalName)) {
         dependencies.add(signalName);
       }
     }
@@ -279,19 +271,13 @@ export class EffectBatcher implements OptimizationPass {
 
       // Find related effects
       for (const other of effects) {
-        if (
-          processed.has(other.id) ||
-          !other.canBatch ||
-          batch.effects.length >= this.options.maxBatchSize
-        ) {
+        if (processed.has(other.id) || !other.canBatch || batch.effects.length >= this.options.maxBatchSize) {
           continue;
         }
 
         // Check if effects share dependencies
         if (this.options.batchByDependency) {
-          const hasSharedDependency = Array.from(other.dependencies).some((dep) =>
-            batch.dependencies.has(dep),
-          );
+          const hasSharedDependency = Array.from(other.dependencies).some((dep) => batch.dependencies.has(dep));
 
           if (hasSharedDependency) {
             batch.effects.push(other);
@@ -317,7 +303,7 @@ export class EffectBatcher implements OptimizationPass {
    */
   private applyBatching(
     code: string,
-    batches: EffectBatch[],
+    batches: EffectBatch[]
   ): {
     code: string;
     changes: OptimizationChange[];
@@ -370,10 +356,7 @@ export class EffectBatcher implements OptimizationPass {
   /**
    * Create batched effect code
    */
-  private createBatchedEffect(
-    bodies: string[],
-    dependencies: Set<string>,
-  ): string {
+  private createBatchedEffect(bodies: string[], dependencies: Set<string>): string {
     const dependencyList = Array.from(dependencies).join(', ');
     const batchedBody = bodies.join('\n  ');
 
@@ -413,11 +396,7 @@ export class EffectBatcher implements OptimizationPass {
       }
 
       // Check for consecutive effects
-      if (
-        line.includes('effect(') &&
-        i + 1 < lines.length &&
-        lines[i + 1]?.includes('effect(')
-      ) {
+      if (line.includes('effect(') && i + 1 < lines.length && lines[i + 1]?.includes('effect(')) {
         // Simple case: single-line effects
         if (line.includes('});') && lines[i + 1]?.includes('});')) {
           const effect1Body = this.extractSingleLineEffectBody(line);

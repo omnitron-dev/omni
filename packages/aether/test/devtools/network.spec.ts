@@ -322,7 +322,7 @@ describe('DevTools Network Inspector', () => {
       inspector.trackWebSocket(mockWs, 'ws://localhost:3000');
 
       const state = inspector.getState();
-      const openEvents = state.events.filter(e => e.wsEvent === 'open');
+      const openEvents = state.events.filter((e) => e.wsEvent === 'open');
       expect(openEvents.length).toBe(1);
     });
 
@@ -366,7 +366,7 @@ describe('DevTools Network Inspector', () => {
       closeHandler();
 
       const state = inspector.getState();
-      const closeEvents = state.events.filter(e => e.wsEvent === 'close');
+      const closeEvents = state.events.filter((e) => e.wsEvent === 'close');
       expect(closeEvents.length).toBe(1);
 
       const connection = Array.from(state.connections.values())[0];
@@ -390,7 +390,7 @@ describe('DevTools Network Inspector', () => {
       errorHandler(new Event('error'));
 
       const state = inspector.getState();
-      const errorEvents = state.events.filter(e => e.wsEvent === 'error');
+      const errorEvents = state.events.filter((e) => e.wsEvent === 'error');
       expect(errorEvents.length).toBe(1);
     });
 
@@ -412,7 +412,7 @@ describe('DevTools Network Inspector', () => {
       messageHandler({ data: jsonData });
 
       const state = inspector.getState();
-      const messageEvents = state.events.filter(e => e.wsEvent === 'message');
+      const messageEvents = state.events.filter((e) => e.wsEvent === 'message');
       const messageEvent = messageEvents[0];
 
       expect(messageEvent.response).toBeDefined();
@@ -436,7 +436,7 @@ describe('DevTools Network Inspector', () => {
       messageHandler({ data: buffer });
 
       const state = inspector.getState();
-      const messageEvents = state.events.filter(e => e.wsEvent === 'message');
+      const messageEvents = state.events.filter((e) => e.wsEvent === 'message');
       expect(messageEvents.length).toBe(1);
     });
   });
@@ -469,8 +469,8 @@ describe('DevTools Network Inspector', () => {
       const timeline = inspector.getNetworkTimeline();
 
       expect(timeline.length).toBeGreaterThan(1);
-      expect(timeline.some(e => e.type === 'request')).toBe(true);
-      expect(timeline.some(e => e.type === 'websocket')).toBe(true);
+      expect(timeline.some((e) => e.type === 'request')).toBe(true);
+      expect(timeline.some((e) => e.type === 'websocket')).toBe(true);
     });
   });
 

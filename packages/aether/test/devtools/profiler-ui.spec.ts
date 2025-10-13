@@ -142,7 +142,7 @@ describe('ProfilerUI', () => {
       profilerUI.enable();
 
       // Wait a bit for FPS tracking to start
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       const fpsHistory = profilerUI.getFPSHistory();
       expect(Array.isArray(fpsHistory)).toBe(true);

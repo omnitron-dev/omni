@@ -156,9 +156,9 @@ describe('Island Detector', () => {
     });
 
     it('should account for imports', () => {
-      const componentWithImports = defineComponent(() => 
+      const componentWithImports = defineComponent(() =>
         // Simulated imports in source
-         () => <div>Test</div>
+        () => <div>Test</div>
       );
 
       const size = estimateComponentSize(componentWithImports);
@@ -169,9 +169,7 @@ describe('Island Detector', () => {
 
   describe('isIslandComponent', () => {
     it('should identify island components', () => {
-      const component = island(
-        defineComponent(() => () => <div>Island</div>),
-      );
+      const component = island(defineComponent(() => () => <div>Island</div>));
 
       expect(isIslandComponent(component)).toBe(true);
     });

@@ -78,9 +78,9 @@ describe('auto-loader execution', () => {
       };
 
       const loader = async (ctx: LoaderContext) => ({
-          user: await ctx.netron.query('users', 'get', [ctx.params.userId]),
-          post: await ctx.netron.query('posts', 'get', [ctx.params.postId]),
-        });
+        user: await ctx.netron.query('users', 'get', [ctx.params.userId]),
+        post: await ctx.netron.query('posts', 'get', [ctx.params.postId]),
+      });
 
       const result = await executeLoader(loader, context);
 
@@ -98,7 +98,7 @@ describe('auto-loader execution', () => {
           key: 'user',
           loader: async (ctx: LoaderContext) => {
             startTimes.push(Date.now());
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
             return { name: 'John' };
           },
         },
@@ -106,7 +106,7 @@ describe('auto-loader execution', () => {
           key: 'posts',
           loader: async (ctx: LoaderContext) => {
             startTimes.push(Date.now());
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
             return [{ id: 1 }];
           },
         },
@@ -143,7 +143,12 @@ describe('auto-loader execution', () => {
 
       const loaders = [
         { key: 'user', loader: async () => ({ name: 'John' }) },
-        { key: 'posts', loader: async () => { throw new Error('Failed'); } },
+        {
+          key: 'posts',
+          loader: async () => {
+            throw new Error('Failed');
+          },
+        },
         { key: 'settings', loader: async () => ({ theme: 'dark' }) },
       ];
 
@@ -174,9 +179,7 @@ describe('auto-loader execution', () => {
       const loader = async (ctx: LoaderContext) => {
         const criticalData = await ctx.netron.query('users', 'getCurrent', []);
 
-        const deferredData = defer(
-          ctx.netron.query('posts', 'getAll', [])
-        );
+        const deferredData = defer(ctx.netron.query('posts', 'getAll', []));
 
         return {
           user: criticalData,
@@ -193,11 +196,9 @@ describe('auto-loader execution', () => {
 
     it('should allow mixing sync and deferred data', async () => {
       const loader = async () => ({
-          syncData: { value: 'immediate' },
-          deferredData: defer(
-            new Promise(resolve => setTimeout(() => resolve({ value: 'deferred' }), 10))
-          ),
-        });
+        syncData: { value: 'immediate' },
+        deferredData: defer(new Promise((resolve) => setTimeout(() => resolve({ value: 'deferred' }), 10))),
+      });
 
       const result = await executeLoader(loader, baseContext);
 
@@ -219,7 +220,9 @@ describe('auto-loader execution', () => {
 
     it('should support conditional loading', async () => {
       const loader = async (ctx: LoaderContext) => {
-        const cached = { /* cached data */ };
+        const cached = {
+          /* cached data */
+        };
 
         // Only fetch if not cached
         if (!cached) {
@@ -260,11 +263,9 @@ describe('auto-loader execution', () => {
         return parentData;
       };
 
-      const childLoader = async () => 
+      const childLoader = async () =>
         // In a real implementation, parent data would be available
-         ({ userId: parentData?.userId })
-      ;
-
+        ({ userId: parentData?.userId });
       const loaders = [
         { key: 'parent', loader: parentLoader },
         { key: 'child', loader: childLoader },
@@ -295,9 +296,7 @@ describe('auto-loader execution', () => {
 
     it('should handle timeout errors', async () => {
       const loader = async () => {
-        await new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Timeout')), 100)
-        );
+        await new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 100));
       };
 
       await expect(executeLoader(loader, baseContext)).rejects.toThrow('Timeout');
@@ -328,10 +327,9 @@ describe('auto-loader execution', () => {
         { key: 'user', loader: async () => ({ id: '123', name: 'John' }) },
         {
           key: 'posts',
-          loader: async () => 
+          loader: async () =>
             // In real implementation, would access user from previous loader
-             [{ userId: '123', title: 'Post' }]
-          ,
+            [{ userId: '123', title: 'Post' }],
         },
       ];
 
@@ -360,14 +358,20 @@ describe('auto-loader execution', () => {
       const delay = 50;
 
       const loaders = [
-        { key: 'slow1', loader: async () => {
-          await new Promise(resolve => setTimeout(resolve, delay));
-          return 'data1';
-        }},
-        { key: 'slow2', loader: async () => {
-          await new Promise(resolve => setTimeout(resolve, delay));
-          return 'data2';
-        }},
+        {
+          key: 'slow1',
+          loader: async () => {
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            return 'data1';
+          },
+        },
+        {
+          key: 'slow2',
+          loader: async () => {
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            return 'data2';
+          },
+        },
       ];
 
       const start = Date.now();

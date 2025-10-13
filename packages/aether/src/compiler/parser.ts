@@ -40,11 +40,7 @@ export interface ParseResult {
  * console.log(result.sourceFile.statements);
  * ```
  */
-export function parse(
-  code: string,
-  filePath: string,
-  options: CompilerOptions = {}
-): ParseResult {
+export function parse(code: string, filePath: string, options: CompilerOptions = {}): ParseResult {
   const warnings: CompilerWarning[] = [];
 
   // Create TypeScript compiler options
@@ -112,10 +108,7 @@ export function parseWithProgram(
   const typeChecker = program.getTypeChecker();
 
   // Collect diagnostics
-  const diagnostics = [
-    ...program.getSyntacticDiagnostics(sourceFile),
-    ...program.getSemanticDiagnostics(sourceFile),
-  ];
+  const diagnostics = [...program.getSyntacticDiagnostics(sourceFile), ...program.getSemanticDiagnostics(sourceFile)];
 
   for (const diagnostic of diagnostics) {
     warnings.push(convertDiagnosticToWarning(diagnostic, sourceFile));
@@ -180,11 +173,7 @@ function convertTarget(target: string): ts.ScriptTarget {
 /**
  * Create in-memory compiler host
  */
-function createCompilerHost(
-  code: string,
-  filePath: string,
-  options: ts.CompilerOptions
-): ts.CompilerHost {
+function createCompilerHost(code: string, filePath: string, options: ts.CompilerOptions): ts.CompilerHost {
   const files = new Map<string, string>();
   files.set(filePath, code);
 
@@ -252,10 +241,7 @@ function createCompilerHost(
 /**
  * Convert TypeScript diagnostic to compiler warning
  */
-function convertDiagnosticToWarning(
-  diagnostic: ts.Diagnostic,
-  sourceFile?: ts.SourceFile
-): CompilerWarning {
+function convertDiagnosticToWarning(diagnostic: ts.Diagnostic, sourceFile?: ts.SourceFile): CompilerWarning {
   const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n');
 
   let location: SourceLocation | undefined;
@@ -294,9 +280,7 @@ export function isJSXSelfClosingElement(node: ts.Node): node is ts.JsxSelfClosin
 /**
  * Check if node is any JSX element type
  */
-export function isAnyJSXElement(
-  node: ts.Node
-): node is ts.JsxElement | ts.JsxSelfClosingElement | ts.JsxFragment {
+export function isAnyJSXElement(node: ts.Node): node is ts.JsxElement | ts.JsxSelfClosingElement | ts.JsxFragment {
   return ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node) || ts.isJsxFragment(node);
 }
 
@@ -432,10 +416,7 @@ export function walkAST(node: ts.Node, visitor: (node: ts.Node) => void): void {
  * const signals = findNodes(sourceFile, isSignalCall);
  * ```
  */
-export function findNodes<T extends ts.Node>(
-  node: ts.Node,
-  predicate: (node: ts.Node) => boolean
-): T[] {
+export function findNodes<T extends ts.Node>(node: ts.Node, predicate: (node: ts.Node) => boolean): T[] {
   const results: T[] = [];
 
   walkAST(node, (n) => {

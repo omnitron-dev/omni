@@ -8,7 +8,10 @@
  */
 
 import { styled } from '../../styling/styled.js';
-import { VirtualList as VirtualListPrimitive, type VirtualListProps as VirtualListPrimitiveProps } from '../../primitives/VirtualList.js';
+import {
+  VirtualList as VirtualListPrimitive,
+  type VirtualListProps as VirtualListPrimitiveProps,
+} from '../../primitives/VirtualList.js';
 
 // ============================================================================
 // Styled Component

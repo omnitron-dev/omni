@@ -141,8 +141,7 @@ describe('VNode System', () => {
     });
 
     describe('createComponentVNode', () => {
-      const TestComponent: ComponentFunction = (props: any) =>
-        createElementVNode('div', props);
+      const TestComponent: ComponentFunction = (props: any) => createElementVNode('div', props);
 
       test('creates component VNode with correct type', () => {
         const vnode = createComponentVNode(TestComponent);
@@ -226,10 +225,7 @@ describe('VNode System', () => {
       });
 
       test('creates fragment VNode with children', () => {
-        const children = [
-          createElementVNode('div'),
-          createElementVNode('span'),
-        ];
+        const children = [createElementVNode('div'), createElementVNode('span')];
         const vnode = createFragmentVNode(children);
 
         expect(vnode.children).toEqual(children);
@@ -537,10 +533,7 @@ describe('VNode System', () => {
       });
 
       test('flattens nested arrays', () => {
-        const result = normalizeChildren([
-          'Hello',
-          ['World', ['!']],
-        ]);
+        const result = normalizeChildren(['Hello', ['World', ['!']]]);
 
         expect(result).toHaveLength(3);
         expect(result[0].text).toBe('Hello');
@@ -582,18 +575,7 @@ describe('VNode System', () => {
       });
 
       test('handles deeply nested arrays', () => {
-        const result = normalizeChildren([
-          'A',
-          [
-            'B',
-            [
-              'C',
-              [
-                'D',
-              ],
-            ],
-          ],
-        ]);
+        const result = normalizeChildren(['A', ['B', ['C', ['D']]]]);
 
         expect(result).toHaveLength(4);
         expect(result[0].text).toBe('A');

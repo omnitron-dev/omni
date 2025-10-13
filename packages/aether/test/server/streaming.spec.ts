@@ -98,9 +98,12 @@ describe('Streaming SSR', () => {
 
       try {
         // Return a promise that will reject after a slight delay to allow catch handlers to be set up
-        mock.mockImplementationOnce(() => new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Shell error')), 10);
-          }));
+        mock.mockImplementationOnce(
+          () =>
+            new Promise((_, reject) => {
+              setTimeout(() => reject(new Error('Shell error')), 10);
+            })
+        );
 
         await new Promise<void>((resolve, reject) => {
           const onShellError = vi.fn((error: Error) => {
@@ -372,9 +375,12 @@ describe('Streaming SSR', () => {
 
       try {
         // Return a promise that will reject after a slight delay to allow catch handlers to be set up
-        mock.mockImplementationOnce(() => new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Stream error')), 10);
-          }));
+        mock.mockImplementationOnce(
+          () =>
+            new Promise((_, reject) => {
+              setTimeout(() => reject(new Error('Stream error')), 10);
+            })
+        );
 
         const result = await renderToReadableStream(ErrorComponent);
         const reader = result.stream.getReader();
@@ -629,9 +635,12 @@ describe('Streaming SSR', () => {
 
       try {
         // Return a promise that will reject after a slight delay to allow catch handlers to be set up
-        mock.mockImplementationOnce(() => new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Render error')), 10);
-          }));
+        mock.mockImplementationOnce(
+          () =>
+            new Promise((_, reject) => {
+              setTimeout(() => reject(new Error('Render error')), 10);
+            })
+        );
 
         await new Promise<void>((resolve, reject) => {
           const onShellError = vi.fn((error: Error) => {

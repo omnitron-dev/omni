@@ -364,17 +364,25 @@ describe('DevTools Inspector', () => {
       const parentComponent = function Parent() {};
       const childComponent = function Child() {};
 
-      inspector.trackComponent(parentComponent, {}, {
-        name: 'Parent',
-      });
+      inspector.trackComponent(
+        parentComponent,
+        {},
+        {
+          name: 'Parent',
+        }
+      );
 
       const parentState = inspector.getState();
       const parentId = Array.from(parentState.components.values())[0].id;
 
-      inspector.trackComponent(childComponent, {}, {
-        name: 'Child',
-        parentId,
-      });
+      inspector.trackComponent(
+        childComponent,
+        {},
+        {
+          name: 'Child',
+          parentId,
+        }
+      );
 
       const state = inspector.getState();
       const parentMeta = Array.from(state.components.values())[0];
@@ -436,8 +444,8 @@ describe('DevTools Inspector', () => {
       const stateTree = inspector.getStateTree();
 
       expect(stateTree.length).toBeGreaterThan(0);
-      expect(stateTree.find(node => node.label.includes('Signals'))).toBeDefined();
-      expect(stateTree.find(node => node.label.includes('Computed'))).toBeDefined();
+      expect(stateTree.find((node) => node.label.includes('Signals'))).toBeDefined();
+      expect(stateTree.find((node) => node.label.includes('Computed'))).toBeDefined();
     });
 
     it('should organize state tree by categories', () => {
@@ -448,8 +456,8 @@ describe('DevTools Inspector', () => {
       inspector.trackEffect(mockEffect, [], { name: 'Effect1' });
 
       const stateTree = inspector.getStateTree();
-      const signalCategory = stateTree.find(n => n.id === 'signals-root');
-      const effectCategory = stateTree.find(n => n.id === 'effects-root');
+      const signalCategory = stateTree.find((n) => n.id === 'signals-root');
+      const effectCategory = stateTree.find((n) => n.id === 'effects-root');
 
       expect(signalCategory).toBeDefined();
       expect(signalCategory?.children.length).toBe(1);
@@ -468,10 +476,14 @@ describe('DevTools Inspector', () => {
       const parentState = inspector.getState();
       const parentId = Array.from(parentState.components.values())[0].id;
 
-      inspector.trackComponent(childComponent, {}, {
-        name: 'Child',
-        parentId,
-      });
+      inspector.trackComponent(
+        childComponent,
+        {},
+        {
+          name: 'Child',
+          parentId,
+        }
+      );
 
       const componentTree = inspector.getComponentTree();
 

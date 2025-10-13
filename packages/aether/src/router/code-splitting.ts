@@ -362,11 +362,13 @@ export class CodeSplittingManager {
    */
   private defaultChunkName(path: string): string {
     // Convert path to valid chunk name
-    return path
-      .replace(/^\//, '')
-      .replace(/\//g, '-')
-      .replace(/[^a-zA-Z0-9-]/g, '')
-      .toLowerCase() || 'index';
+    return (
+      path
+        .replace(/^\//, '')
+        .replace(/\//g, '-')
+        .replace(/[^a-zA-Z0-9-]/g, '')
+        .toLowerCase() || 'index'
+    );
   }
 
   /**

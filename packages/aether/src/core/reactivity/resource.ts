@@ -178,9 +178,7 @@ class ResourceImpl<T> {
    */
   mutate(value: T | ((prev: T | undefined) => T)): void {
     const current = this.state.peek().data;
-    const newData = typeof value === 'function'
-      ? (value as (prev: T | undefined) => T)(current)
-      : value;
+    const newData = typeof value === 'function' ? (value as (prev: T | undefined) => T)(current) : value;
 
     batch(() => {
       this.state.set({

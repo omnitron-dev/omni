@@ -3,7 +3,14 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { defineStore, defineStoreTyped, defineComputedStore, clearAllStoreInstances, getActiveStoreIds, isStoreActive } from '../../src/store/defineStore.js';
+import {
+  defineStore,
+  defineStoreTyped,
+  defineComputedStore,
+  clearAllStoreInstances,
+  getActiveStoreIds,
+  isStoreActive,
+} from '../../src/store/defineStore.js';
 import { signal } from '../../src/core/reactivity/signal.js';
 import { computed } from '../../src/core/reactivity/computed.js';
 
@@ -70,10 +77,14 @@ describe('defineStore', () => {
     });
 
     it('should create a store with custom name', () => {
-      const useTestStore = defineStore('test', () => {
-        const count = signal(0);
-        return { count };
-      }, { name: 'TestStore' });
+      const useTestStore = defineStore(
+        'test',
+        () => {
+          const count = signal(0);
+          return { count };
+        },
+        { name: 'TestStore' }
+      );
 
       expect(useTestStore.name).toBe('TestStore');
     });
@@ -347,14 +358,10 @@ describe('defineStore', () => {
       useStore1();
       useStore2();
 
-      const useComputedStore = defineComputedStore(
-        'computed',
-        ['store1', 'store2'],
-        (netron, [store1, store2]) => {
-          const sum = computed(() => store1.value() + store2.value());
-          return { sum };
-        }
-      );
+      const useComputedStore = defineComputedStore('computed', ['store1', 'store2'], (netron, [store1, store2]) => {
+        const sum = computed(() => store1.value() + store2.value());
+        return { sum };
+      });
 
       const store = useComputedStore();
       expect(store.sum()).toBe(30);
@@ -372,14 +379,10 @@ describe('defineStore', () => {
       useB();
       useC();
 
-      const useSum = defineComputedStore(
-        'sum',
-        ['a', 'b', 'c'],
-        (netron, [a, b, c]) => {
-          const total = computed(() => a.value() + b.value() + c.value());
-          return { total };
-        }
-      );
+      const useSum = defineComputedStore('sum', ['a', 'b', 'c'], (netron, [a, b, c]) => {
+        const total = computed(() => a.value() + b.value() + c.value());
+        return { total };
+      });
 
       const store = useSum();
       expect(store.total()).toBe(6);

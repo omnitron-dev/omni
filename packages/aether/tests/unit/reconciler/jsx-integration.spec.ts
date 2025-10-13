@@ -931,9 +931,7 @@ describe('JSX Integration', () => {
         const vnode = createElementVNode('div');
         const element = document.createElement('div');
 
-        expect(() =>
-          handleReactiveEventHandlers(vnode, element, { onClick, onMouseover })
-        ).not.toThrow();
+        expect(() => handleReactiveEventHandlers(vnode, element, { onClick, onMouseover })).not.toThrow();
       });
 
       it('should not create reactive bindings for event handlers', () => {

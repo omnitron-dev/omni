@@ -122,7 +122,9 @@ class PersistManagerImpl implements PersistManager {
     private options: PersistOptions
   ) {
     this.storage =
-      typeof options.storage === 'string' ? getStorageBackend(options.storage) : options.storage ?? getStorageBackend('local');
+      typeof options.storage === 'string'
+        ? getStorageBackend(options.storage)
+        : (options.storage ?? getStorageBackend('local'));
 
     this.serialize = options.serialize ?? JSON.stringify;
     this.deserialize = options.deserialize ?? JSON.parse;
@@ -213,7 +215,9 @@ class PersistManagerImpl implements PersistManager {
    * Start watching signal for changes
    */
   startWatching(): void {
-    const persistFn = this.options.debounce ? debounce(() => this.persist(this.signal.peek()), this.options.debounce) : () => this.persist(this.signal.peek());
+    const persistFn = this.options.debounce
+      ? debounce(() => this.persist(this.signal.peek()), this.options.debounce)
+      : () => this.persist(this.signal.peek());
 
     // Watch signal changes and persist
     this.disposeEffect = effect(() => {

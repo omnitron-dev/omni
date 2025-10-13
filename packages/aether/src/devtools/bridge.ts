@@ -116,7 +116,7 @@ export class BridgeImpl implements Bridge {
         type: 'app-ready',
         timestamp: Date.now(),
       },
-      '*',
+      '*'
     );
   }
 
@@ -131,11 +131,7 @@ export class BridgeImpl implements Bridge {
       }, CONNECTION_TIMEOUT);
 
       const handler = (event: MessageEvent) => {
-        if (
-          event.data &&
-          event.data.source === HANDSHAKE_EVENT &&
-          event.data.type === 'extension-ready'
-        ) {
+        if (event.data && event.data.source === HANDSHAKE_EVENT && event.data.type === 'extension-ready') {
           clearTimeout(timeout);
           window.removeEventListener('message', handler);
           resolve();
@@ -187,7 +183,7 @@ export class BridgeImpl implements Bridge {
         source: BRIDGE_EVENT,
         message: this.serializeMessage(message),
       },
-      '*',
+      '*'
     );
   }
 

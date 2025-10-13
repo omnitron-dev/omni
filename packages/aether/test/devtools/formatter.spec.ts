@@ -55,9 +55,7 @@ describe('DevTools Custom Formatters', () => {
 
       const formatters = (global.window as any).devtoolsFormatters;
       expect(formatters.length).toBe(3);
-      expect(consoleSpy).toHaveBeenCalledWith(
-        '[Aether DevTools] Custom formatters installed'
-      );
+      expect(consoleSpy).toHaveBeenCalledWith('[Aether DevTools] Custom formatters installed');
 
       consoleSpy.mockRestore();
     });
@@ -92,9 +90,7 @@ describe('DevTools Custom Formatters', () => {
 
       installFormatters();
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('not supported')
-      );
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('not supported'));
 
       consoleSpy.mockRestore();
     });
@@ -140,9 +136,7 @@ describe('DevTools Custom Formatters', () => {
       mockSignal.subscribe = vi.fn();
 
       const formatters = (global.window as any).devtoolsFormatters;
-      const signalFormatter = formatters.find((f: any) =>
-        f.header(mockSignal)
-      );
+      const signalFormatter = formatters.find((f: any) => f.header(mockSignal));
 
       expect(signalFormatter).toBeDefined();
 
@@ -160,9 +154,7 @@ describe('DevTools Custom Formatters', () => {
       mockWritableSignal.set = vi.fn();
 
       const formatters = (global.window as any).devtoolsFormatters;
-      const signalFormatter = formatters.find((f: any) =>
-        f.header(mockWritableSignal)
-      );
+      const signalFormatter = formatters.find((f: any) => f.header(mockWritableSignal));
 
       const header = signalFormatter.header(mockWritableSignal);
       expect(header).toBeDefined();
@@ -188,9 +180,7 @@ describe('DevTools Custom Formatters', () => {
       mockSignal.subscribe = vi.fn();
 
       const formatters = (global.window as any).devtoolsFormatters;
-      const signalFormatter = formatters.find((f: any) =>
-        f.header(mockSignal)
-      );
+      const signalFormatter = formatters.find((f: any) => f.header(mockSignal));
 
       expect(signalFormatter.hasBody(mockSignal)).toBe(true);
 
@@ -210,9 +200,7 @@ describe('DevTools Custom Formatters', () => {
       };
 
       const formatters = (global.window as any).devtoolsFormatters;
-      const signalFormatter = formatters.find((f: any) =>
-        f.header(mockSignal)
-      );
+      const signalFormatter = formatters.find((f: any) => f.header(mockSignal));
 
       const body = signalFormatter.body(mockSignal);
       expect(body).toBeDefined();
@@ -231,9 +219,7 @@ describe('DevTools Custom Formatters', () => {
       };
 
       const formatters = (global.window as any).devtoolsFormatters;
-      const storeFormatter = formatters.find((f: any) =>
-        f.header(mockStore)
-      );
+      const storeFormatter = formatters.find((f: any) => f.header(mockStore));
 
       expect(storeFormatter).toBeDefined();
 
@@ -268,9 +254,7 @@ describe('DevTools Custom Formatters', () => {
       };
 
       const formatters = (global.window as any).devtoolsFormatters;
-      const storeFormatter = formatters.find((f: any) =>
-        f.header(mockStore)
-      );
+      const storeFormatter = formatters.find((f: any) => f.header(mockStore));
 
       expect(storeFormatter.hasBody(mockStore)).toBe(true);
 
@@ -289,9 +273,7 @@ describe('DevTools Custom Formatters', () => {
       };
 
       const formatters = (global.window as any).devtoolsFormatters;
-      const storeFormatter = formatters.find((f: any) =>
-        f.header(mockStore)
-      );
+      const storeFormatter = formatters.find((f: any) => f.header(mockStore));
 
       const body = storeFormatter.body(mockStore);
       expect(body).toBeDefined();
@@ -324,9 +306,7 @@ describe('DevTools Custom Formatters', () => {
       };
 
       const formatters = (global.window as any).devtoolsFormatters;
-      const componentFormatter = formatters.find((f: any) =>
-        f.header(mockComponent)
-      );
+      const componentFormatter = formatters.find((f: any) => f.header(mockComponent));
 
       expect(componentFormatter).toBeDefined();
 
@@ -358,9 +338,7 @@ describe('DevTools Custom Formatters', () => {
       };
 
       const formatters = (global.window as any).devtoolsFormatters;
-      const componentFormatter = formatters.find((f: any) =>
-        f.header(mockComponent)
-      );
+      const componentFormatter = formatters.find((f: any) => f.header(mockComponent));
 
       expect(componentFormatter.hasBody(mockComponent)).toBe(true);
 
@@ -379,9 +357,7 @@ describe('DevTools Custom Formatters', () => {
       };
 
       const formatters = (global.window as any).devtoolsFormatters;
-      const componentFormatter = formatters.find((f: any) =>
-        f.header(mockComponent)
-      );
+      const componentFormatter = formatters.find((f: any) => f.header(mockComponent));
 
       const header = componentFormatter.header(mockComponent);
       expect(header).toBeDefined();
@@ -396,9 +372,7 @@ describe('DevTools Custom Formatters', () => {
       };
 
       const formatters = (global.window as any).devtoolsFormatters;
-      const componentFormatter = formatters.find((f: any) =>
-        f.header(mockComponent)
-      );
+      const componentFormatter = formatters.find((f: any) => f.header(mockComponent));
 
       const body = componentFormatter.body(mockComponent);
       expect(body).toBeDefined();
@@ -722,7 +696,7 @@ describe('DevTools Custom Formatters', () => {
 
       const start = performance.now();
 
-      signals.forEach(signal => formatSignal(signal));
+      signals.forEach((signal) => formatSignal(signal));
 
       const duration = performance.now() - start;
 

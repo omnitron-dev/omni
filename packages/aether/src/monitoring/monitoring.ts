@@ -87,17 +87,13 @@ export class Monitoring implements MonitoringInstance {
 
     // Initialize core modules
     if (this.config.errorTracking) {
-      const errorConfig = typeof this.config.errorTracking === 'object'
-        ? this.config.errorTracking
-        : {};
+      const errorConfig = typeof this.config.errorTracking === 'object' ? this.config.errorTracking : {};
       this.errorTracker = getErrorTracker(errorConfig);
       this.setupErrorTracking();
     }
 
     if (this.config.performance) {
-      const perfConfig = typeof this.config.performance === 'object'
-        ? this.config.performance
-        : {};
+      const perfConfig = typeof this.config.performance === 'object' ? this.config.performance : {};
       this.performanceMonitor = getPerformanceMonitor(perfConfig);
       this.setupPerformanceMonitoring();
     }
@@ -112,9 +108,7 @@ export class Monitoring implements MonitoringInstance {
 
     // Initialize devtools in development
     if (this.config.devtools && process.env.NODE_ENV === 'development') {
-      const devtoolsConfig = typeof this.config.devtools === 'object'
-        ? this.config.devtools
-        : {};
+      const devtoolsConfig = typeof this.config.devtools === 'object' ? this.config.devtools : {};
       this.devtools = getDevTools(devtoolsConfig);
     }
 
@@ -208,9 +202,7 @@ export class Monitoring implements MonitoringInstance {
 
     // Google Analytics
     if (this.config.googleAnalytics?.enabled && this.config.googleAnalytics.measurementId) {
-      this.googleAnalyticsIntegration = new GoogleAnalyticsIntegration(
-        this.config.googleAnalytics
-      );
+      this.googleAnalyticsIntegration = new GoogleAnalyticsIntegration(this.config.googleAnalytics);
       await this.googleAnalyticsIntegration.init();
     }
 

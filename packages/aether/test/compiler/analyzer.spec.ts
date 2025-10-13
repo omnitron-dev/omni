@@ -398,9 +398,7 @@ describe('Analyzer', () => {
       const analysis = analyze(sourceFile);
 
       // Reactive element should not be in static elements
-      const staticElements = analysis.staticElements.filter(
-        (e) => e.tag === 'div' && e.hoistable
-      );
+      const staticElements = analysis.staticElements.filter((e) => e.tag === 'div' && e.hoistable);
       expect(staticElements.length).toBe(0);
     });
 

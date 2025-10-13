@@ -6,7 +6,10 @@
  */
 
 import { styled } from '../../styling/styled.js';
-import { Skeleton as SkeletonPrimitive, type SkeletonProps as SkeletonPrimitiveProps } from '../../primitives/Skeleton.js';
+import {
+  Skeleton as SkeletonPrimitive,
+  type SkeletonProps as SkeletonPrimitiveProps,
+} from '../../primitives/Skeleton.js';
 
 /**
  * Skeleton - Loading placeholder component
@@ -38,7 +41,8 @@ export const Skeleton = styled<
       bottom: '0',
       left: '0',
       transform: 'translateX(-100%)',
-      background: 'linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.2) 20%, rgba(255, 255, 255, 0.5) 60%, rgba(255, 255, 255, 0))',
+      background:
+        'linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.2) 20%, rgba(255, 255, 255, 0.5) 60%, rgba(255, 255, 255, 0))',
     },
   },
   variants: {

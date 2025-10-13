@@ -335,7 +335,6 @@ export function defineComputedStore<T>(
   return defineStore(
     id,
     (netron) => {
-
       // Get dependent stores
       const stores = dependencies.map((depId) => useStore(depId));
 

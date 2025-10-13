@@ -265,10 +265,7 @@ export async function revalidatePath(path: string, regenerate: () => Promise<Gen
  * @param regenerate - Function to regenerate a page
  * @returns Promise that resolves when all revalidations are complete
  */
-export async function revalidateTag(
-  tag: string,
-  regenerate: (path: string) => Promise<GeneratedPage>,
-): Promise<void> {
+export async function revalidateTag(tag: string, regenerate: (path: string) => Promise<GeneratedPage>): Promise<void> {
   const cache = getRevalidationCache();
   const paths = cache.getPathsByTag(tag);
 
@@ -276,7 +273,7 @@ export async function revalidateTag(
   await Promise.all(
     Array.from(paths).map(async (path) => {
       await revalidatePath(path, () => regenerate(path));
-    }),
+    })
   );
 }
 
@@ -308,7 +305,7 @@ export function createRevalidationHandler(
   options: {
     secret?: string;
   },
-  regenerate: (path: string) => Promise<GeneratedPage>,
+  regenerate: (path: string) => Promise<GeneratedPage>
 ): (request: Request) => Promise<Response> {
   return async (request: Request) => {
     try {

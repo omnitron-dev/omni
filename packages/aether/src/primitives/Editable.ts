@@ -151,9 +151,7 @@ export const Editable = defineComponent<EditableProps>((props) => {
   };
 
   // Initialize inputValue with current value if starting in edit mode
-  const inputValue: WritableSignal<string> = signal<string>(
-    props.startWithEditView ? currentValue() : '',
-  );
+  const inputValue: WritableSignal<string> = signal<string>(props.startWithEditView ? currentValue() : '');
 
   const setValue = (newValue: string) => {
     if (props.value === undefined) {
@@ -297,7 +295,7 @@ export const EditablePreview = defineComponent<EditablePreviewProps>((props) => 
       role: 'button',
       'aria-label': 'Click to edit',
       ...rest,
-      children,  // Let the effect handle content updates
+      children, // Let the effect handle content updates
     });
   };
 });

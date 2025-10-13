@@ -212,11 +212,7 @@ export const Accordion = defineComponent<AccordionProps>((props) => {
     ? (props as AccordionSingleProps).onValueChange
     : (props as AccordionMultipleProps).onValueChange;
 
-  const [getValue, setValue] = useControlledState(
-    props.value as any,
-    defaultValue as any,
-    onValueChange as any
-  );
+  const [getValue, setValue] = useControlledState(props.value as any, defaultValue as any, onValueChange as any);
 
   const type = signal(props.type);
   const collapsible = signal((props as AccordionSingleProps).collapsible ?? false);

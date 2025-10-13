@@ -303,7 +303,7 @@ export class Patcher {
     // Handle event listeners
     if (key.startsWith('on') && key.length > 2) {
       const eventName = key.slice(2).toLowerCase();
-      
+
       // Remove old listener if exists
       const oldListener = (element as any)[`__${key}`];
       if (oldListener) {

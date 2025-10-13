@@ -15,7 +15,7 @@ import type { GetStaticPaths, StaticPath, StaticPathsContext, StaticPathsResult 
  */
 export async function executeStaticPaths(
   getStaticPaths: GetStaticPaths,
-  context?: StaticPathsContext,
+  context?: StaticPathsContext
 ): Promise<StaticPathsResult> {
   try {
     const result = await getStaticPaths(context);
@@ -230,7 +230,7 @@ export function isDynamicRoute(pattern: string): boolean {
  * @returns Array of param combinations
  */
 export function generateParamCombinations(
-  paramSets: Record<string, Array<string | string[]>>,
+  paramSets: Record<string, Array<string | string[]>>
 ): Array<Record<string, string | string[]>> {
   const keys = Object.keys(paramSets);
   if (keys.length === 0) {
@@ -333,7 +333,7 @@ export function deduplicatePaths(paths: StaticPath[]): StaticPath[] {
  */
 export function createStaticPathsResult(
   paths: Array<Record<string, any>> | StaticPath[],
-  fallback: boolean | 'blocking' = false,
+  fallback: boolean | 'blocking' = false
 ): StaticPathsResult {
   const normalizedPaths = paths.map((path) => {
     if ('params' in path) {

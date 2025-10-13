@@ -95,7 +95,7 @@ export class RecorderImpl implements Recorder {
     targetId: string,
     prevValue: any,
     newValue: any,
-    description: string,
+    description: string
   ): void {
     if (!this.isRecording) return;
 

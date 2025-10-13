@@ -309,8 +309,7 @@ export class PerformanceMonitor {
   private getResourceType(url: string, initiatorType: string): string {
     if (initiatorType === 'script' || url.endsWith('.js')) return 'script';
     if (initiatorType === 'css' || url.endsWith('.css')) return 'stylesheet';
-    if (initiatorType === 'img' || /\.(png|jpg|jpeg|gif|svg|webp)$/i.test(url))
-      return 'image';
+    if (initiatorType === 'img' || /\.(png|jpg|jpeg|gif|svg|webp)$/i.test(url)) return 'image';
     if (initiatorType === 'fetch' || initiatorType === 'xmlhttprequest') return 'xhr';
     return initiatorType || 'other';
   }

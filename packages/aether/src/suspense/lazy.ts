@@ -44,16 +44,8 @@ const lazyComponentCache = new Map<AsyncComponentLoader, LazyComponentState>();
  * );
  * ```
  */
-export function lazy<T = any>(
-  loader: AsyncComponentLoader<T>,
-  options: LazyOptions = {}
-): LazyComponent<T> {
-  const {
-    preload: preloadStrategy,
-    timeout = 0,
-    retries = 0,
-    onError,
-  } = options;
+export function lazy<T = any>(loader: AsyncComponentLoader<T>, options: LazyOptions = {}): LazyComponent<T> {
+  const { preload: preloadStrategy, timeout = 0, retries = 0, onError } = options;
 
   // Get or create cache entry
   const getState = (): LazyComponentState<T> => {
@@ -78,9 +70,7 @@ export function lazy<T = any>(
       if (timeout > 0) {
         loadPromise = Promise.race([
           loadPromise,
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('Lazy load timeout')), timeout)
-          ),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Lazy load timeout')), timeout)),
         ]);
       }
 

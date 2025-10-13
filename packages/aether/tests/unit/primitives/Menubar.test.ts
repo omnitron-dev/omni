@@ -409,10 +409,7 @@ describe('Menubar', () => {
               children: () => [
                 MenubarTrigger({ children: 'File' }),
                 MenubarContent({
-                  children: () => [
-                    MenubarLabel({ children: 'Actions' }),
-                    MenubarItem({ children: 'New' }),
-                  ],
+                  children: () => [MenubarLabel({ children: 'Actions' }), MenubarItem({ children: 'New' })],
                 }),
               ],
             }),
@@ -440,10 +437,7 @@ describe('Menubar', () => {
                 MenubarContent({
                   children: () =>
                     MenubarItem({
-                      children: () => [
-                        'New',
-                        MenubarShortcut({ children: '⌘N' }),
-                      ],
+                      children: () => ['New', MenubarShortcut({ children: '⌘N' })],
                     }),
                 }),
               ],
@@ -518,9 +512,7 @@ describe('Menubar', () => {
 
       const { container } = renderComponent(component);
 
-      const triggers = container.querySelectorAll(
-        '[data-menubar-trigger]'
-      ) as NodeListOf<HTMLElement>;
+      const triggers = container.querySelectorAll('[data-menubar-trigger]') as NodeListOf<HTMLElement>;
 
       // Open first menu
       triggers[0]?.click();

@@ -172,10 +172,7 @@ describe('IncrementalCompiler', () => {
   });
 
   it('should detect modules needing recompilation', async () => {
-    const needsRecompilation = await compiler.needsRecompilation(
-      'module.js',
-      'content',
-    );
+    const needsRecompilation = await compiler.needsRecompilation('module.js', 'content');
 
     expect(needsRecompilation).toBe(true);
   });
@@ -366,10 +363,7 @@ describe('BuildPerformanceMonitor', () => {
 
     const report = monitor.generateReport();
 
-    const totalPercentage = Object.values(report.breakdown).reduce(
-      (sum, val) => sum + val,
-      0,
-    );
+    const totalPercentage = Object.values(report.breakdown).reduce((sum, val) => sum + val, 0);
 
     expect(totalPercentage).toBeGreaterThan(0);
   });

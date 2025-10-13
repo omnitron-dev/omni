@@ -155,9 +155,7 @@ export class InspectorUI {
     if (!element) return null;
 
     // Get signals for this component
-    const signals = Array.from(state.signals.values()).filter(
-      s => s.componentId === componentId,
-    );
+    const signals = Array.from(state.signals.values()).filter((s) => s.componentId === componentId);
 
     // Calculate update frequency
     const updateFrequency = this.calculateUpdateFrequency(component);
@@ -494,7 +492,7 @@ Signals: ${signalCount} | Effects: ${effectCount}
     const state = this.inspector.getState();
     const componentTree = state.componentTree;
 
-    return componentTree.map(node => this.buildTreeVisualization(node));
+    return componentTree.map((node) => this.buildTreeVisualization(node));
   }
 
   /**
@@ -567,9 +565,6 @@ export interface ComponentMetrics {
 /**
  * Create inspector UI instance
  */
-export function createInspectorUI(
-  inspector: Inspector,
-  config?: Partial<InspectorUIConfig>,
-): InspectorUI {
+export function createInspectorUI(inspector: Inspector, config?: Partial<InspectorUIConfig>): InspectorUI {
   return new InspectorUI(inspector, config);
 }

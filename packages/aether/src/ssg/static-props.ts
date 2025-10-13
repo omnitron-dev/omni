@@ -15,7 +15,7 @@ import type { GetStaticProps, StaticPropsContext, StaticPropsResult } from './ty
  */
 export async function executeStaticProps<T = any>(
   getStaticProps: GetStaticProps<T>,
-  context: StaticPropsContext,
+  context: StaticPropsContext
 ): Promise<StaticPropsResult<T>> {
   try {
     const result = await getStaticProps(context);
@@ -66,7 +66,7 @@ export function createStaticPropsContext(
     locale?: string;
     preview?: boolean;
     previewData?: any;
-  } = {},
+  } = {}
 ): StaticPropsContext {
   return {
     params,
@@ -272,7 +272,7 @@ export function createStaticPropsResult<T = any>(
     tags?: string[];
     meta?: StaticPropsResult['meta'];
     jsonLd?: Record<string, any>;
-  } = {},
+  } = {}
 ): StaticPropsResult<T> {
   return {
     props,

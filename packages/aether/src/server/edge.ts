@@ -24,8 +24,7 @@ type EdgeRuntime = 'cloudflare' | 'vercel' | 'deno' | 'node';
  */
 function detectRuntime(): EdgeRuntime {
   // Check for Cloudflare Workers
-  if (typeof (globalThis as any).caches !== 'undefined' &&
-      typeof (globalThis as any).WebSocketPair !== 'undefined') {
+  if (typeof (globalThis as any).caches !== 'undefined' && typeof (globalThis as any).WebSocketPair !== 'undefined') {
     return 'cloudflare';
   }
 
@@ -78,12 +77,14 @@ function detectRuntime(): EdgeRuntime {
  */
 export async function renderToEdge(
   component: any,
-  options: Partial<EdgeOptions & {
-    props?: Record<string, any>;
-    url?: string | URL;
-    initialState?: Record<string, any>;
-    streaming?: boolean;
-  }> = {}
+  options: Partial<
+    EdgeOptions & {
+      props?: Record<string, any>;
+      url?: string | URL;
+      initialState?: Record<string, any>;
+      streaming?: boolean;
+    }
+  > = {}
 ): Promise<Response> {
   const {
     runtime: _runtime = 'auto',
@@ -237,9 +238,11 @@ export function createEdgeHandler(
  */
 export function optimizeForEdge(
   component: any,
-  _options: Partial<EdgeOptions & {
-    stripServerCode?: boolean;
-  }> = {}
+  _options: Partial<
+    EdgeOptions & {
+      stripServerCode?: boolean;
+    }
+  > = {}
 ): any {
   // const { maxBundleSize = 100000, stripServerCode = true } = options;
 
@@ -257,10 +260,7 @@ export function optimizeForEdge(
 /**
  * Get cached response from edge runtime
  */
-async function getCachedResponse(
-  request: Request,
-  runtime: EdgeRuntime | 'auto'
-): Promise<Response | null> {
+async function getCachedResponse(request: Request, runtime: EdgeRuntime | 'auto'): Promise<Response | null> {
   try {
     if (runtime === 'cloudflare' || runtime === 'auto') {
       // Cloudflare Workers Cache API
@@ -310,7 +310,6 @@ async function cacheResponse(
 
     // Vercel Edge caching is automatic via Cache-Control headers
     // Already set in renderToEdge
-
   } catch (error) {
     console.error('Cache write error:', error);
   }

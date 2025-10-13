@@ -23,7 +23,7 @@ import { executeLoader, setLoaderData } from '../router/data.js';
 export async function renderToStringWithIslandsSSR(
   config: ServerConfig,
   context: RenderContext,
-  manifest?: IslandManifest,
+  manifest?: IslandManifest
 ): Promise<Omit<RenderResult, 'islands'> & { islands: IslandBoundary[] }> {
   const { routes, base = '/' } = config;
   const { url, method, headers = {} } = context;
@@ -146,7 +146,7 @@ export function generateDocumentForSSR(
     scripts?: string[];
     styles?: string[];
     base?: string;
-  } = {},
+  } = {}
 ): string {
   const {
     title = 'Aether App',
@@ -162,8 +162,7 @@ export function generateDocumentForSSR(
   const preloadHints = manifest && result.islands.length > 0 ? generatePreloadHints(manifest, '/') : '';
 
   // Generate island loader
-  const islandLoader =
-    manifest && result.islands.length > 0 ? generateIslandLoader(manifest, '/') : '';
+  const islandLoader = manifest && result.islands.length > 0 ? generateIslandLoader(manifest, '/') : '';
 
   // Build meta tags
   const metaTags = Object.entries(meta)
@@ -273,7 +272,7 @@ function escapeHTML(str: string): string {
 export async function* streamSSRWithIslands(
   config: ServerConfig,
   context: RenderContext,
-  manifest?: IslandManifest,
+  manifest?: IslandManifest
 ): AsyncIterable<string> {
   const result = await renderToStringWithIslandsSSR(config, context, manifest);
 

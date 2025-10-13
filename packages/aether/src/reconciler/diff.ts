@@ -152,11 +152,7 @@ export function diff(oldVNode: VNode | null, newVNode: VNode | null): Patch[] {
   // Handle element/component/fragment nodes
   // Check for prop changes
   const propPatch = diffProps(old.props, newNode.props);
-  const childrenPatches = diffChildren(
-    old.children || [],
-    newNode.children || [],
-    hasKeys(newNode.children || [])
-  );
+  const childrenPatches = diffChildren(old.children || [], newNode.children || [], hasKeys(newNode.children || []));
 
   // Only create UPDATE patch if there are actual changes
   if (
@@ -196,10 +192,7 @@ export function diff(oldVNode: VNode | null, newVNode: VNode | null): Patch[] {
  * // }
  * ```
  */
-export function diffProps(
-  oldProps?: Record<string, any>,
-  newProps?: Record<string, any>
-): PropPatch {
+export function diffProps(oldProps?: Record<string, any>, newProps?: Record<string, any>): PropPatch {
   const patch: PropPatch = {};
   const set: Record<string, any> = {};
   const remove: string[] = [];
@@ -257,11 +250,7 @@ export function diffProps(
  * const patches = diffChildren(oldChildren, newChildren, true);
  * ```
  */
-export function diffChildren(
-  oldChildren: VNode[],
-  newChildren: VNode[],
-  useKeys: boolean
-): Patch[] {
+export function diffChildren(oldChildren: VNode[], newChildren: VNode[], useKeys: boolean): Patch[] {
   // Early exit for same reference
   if (oldChildren === newChildren) {
     return [];

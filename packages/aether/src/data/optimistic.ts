@@ -9,11 +9,7 @@
  */
 
 import type { CachedResource } from './types.js';
-import type {
-  OptimisticUpdateOptions,
-  OptimisticUpdateResult,
-  MutationFunction,
-} from './types.js';
+import type { OptimisticUpdateOptions, OptimisticUpdateResult, MutationFunction } from './types.js';
 
 /**
  * Perform an optimistic update on a cached resource
@@ -57,7 +53,7 @@ export async function optimisticUpdate<T, TResult = void>(
 ): Promise<TResult> {
   const {
     optimisticData,
-    revalidate = false,  // Don't revalidate by default - let caller control when to refetch
+    revalidate = false, // Don't revalidate by default - let caller control when to refetch
     rollbackOnError = true,
     onError,
   } = options;
@@ -260,19 +256,14 @@ export async function atomicOptimisticUpdate<T extends any[]>(
   // Apply all optimistic updates
   await Promise.all(
     updates.map(async ({ resource, optimisticData }) => {
-      const newData =
-        typeof optimisticData === 'function'
-          ? optimisticData(resource())
-          : optimisticData;
+      const newData = typeof optimisticData === 'function' ? optimisticData(resource()) : optimisticData;
       await resource.mutate(newData);
     })
   );
 
   try {
     // Execute all mutations in parallel
-    const results = await Promise.all(
-      updates.map(({ mutation }) => mutation())
-    );
+    const results = await Promise.all(updates.map(({ mutation }) => mutation()));
 
     // CRITICAL FIX: Update resources with mutation results instead of refetching
     // Refetch would call the original fetcher and overwrite the mutation results

@@ -53,7 +53,7 @@ describe('TimeTravelDebugger', () => {
 
       const log = timeTravel.getActionLog();
       expect(log.length).toBeGreaterThan(0);
-      expect(log.some(entry => entry.action === 'undo')).toBe(true);
+      expect(log.some((entry) => entry.action === 'undo')).toBe(true);
     });
 
     it('should clear action log', () => {

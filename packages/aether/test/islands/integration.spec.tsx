@@ -19,11 +19,11 @@ describe('Islands Integration', () => {
   describe('End-to-end rendering', () => {
     it('should render static component without islands', () => {
       const StaticComponent = defineComponent(() => () => (
-          <div>
-            <h1>Static Header</h1>
-            <p>This is static content</p>
-          </div>
-        ));
+        <div>
+          <h1>Static Header</h1>
+          <p>This is static content</p>
+        </div>
+      ));
 
       const result = renderToStringWithIslands(StaticComponent);
 
@@ -34,20 +34,16 @@ describe('Islands Integration', () => {
 
     it('should render component with islands', () => {
       const InteractiveCounter: IslandComponent = island(
-        defineComponent(() => () => (
-            <button onClick={() => {}}>
-              Count: 0
-            </button>
-          )),
-        { hydrate: 'interaction' },
+        defineComponent(() => () => <button onClick={() => {}}>Count: 0</button>),
+        { hydrate: 'interaction' }
       );
 
       const Page = defineComponent(() => () => (
-          <div>
-            <h1>My Page</h1>
-            <InteractiveCounter />
-          </div>
-        ));
+        <div>
+          <h1>My Page</h1>
+          <InteractiveCounter />
+        </div>
+      ));
 
       const result = renderToStringWithIslands(Page);
 
@@ -58,17 +54,15 @@ describe('Islands Integration', () => {
     });
 
     it('should handle nested islands', () => {
-      const NestedIsland: IslandComponent = island(
-        defineComponent(() => () => <div>Nested</div>),
-      );
+      const NestedIsland: IslandComponent = island(defineComponent(() => () => <div>Nested</div>));
 
       const ParentIsland: IslandComponent = island(
         defineComponent(() => () => (
-            <div>
-              Parent
-              <NestedIsland />
-            </div>
-          )),
+          <div>
+            Parent
+            <NestedIsland />
+          </div>
+        ))
       );
 
       const result = renderToStringWithIslands(ParentIsland);
@@ -78,7 +72,7 @@ describe('Islands Integration', () => {
 
     it('should serialize island props', () => {
       const PropsIsland: IslandComponent = island(
-        defineComponent<{ count: number; label: string }>(() => () => <div>Test</div>),
+        defineComponent<{ count: number; label: string }>(() => () => <div>Test</div>)
       );
 
       const Page = defineComponent(() => () => <PropsIsland count={5} label="Test" />);
@@ -91,20 +85,16 @@ describe('Islands Integration', () => {
     });
 
     it('should generate unique island IDs', () => {
-      const Island1: IslandComponent = island(
-        defineComponent(() => () => <div>Island 1</div>),
-      );
+      const Island1: IslandComponent = island(defineComponent(() => () => <div>Island 1</div>));
 
-      const Island2: IslandComponent = island(
-        defineComponent(() => () => <div>Island 2</div>),
-      );
+      const Island2: IslandComponent = island(defineComponent(() => () => <div>Island 2</div>));
 
       const Page = defineComponent(() => () => (
-          <div>
-            <Island1 />
-            <Island2 />
-          </div>
-        ));
+        <div>
+          <Island1 />
+          <Island2 />
+        </div>
+      ));
 
       const result = renderToStringWithIslands(Page);
 
@@ -117,7 +107,7 @@ describe('Islands Integration', () => {
     it('should apply immediate hydration', () => {
       const ImmediateIsland: IslandComponent = island(
         defineComponent(() => () => <div>Immediate</div>),
-        { hydrate: 'immediate' },
+        { hydrate: 'immediate' }
       );
 
       const result = renderToStringWithIslands(ImmediateIsland);
@@ -128,7 +118,7 @@ describe('Islands Integration', () => {
     it('should apply visible hydration with rootMargin', () => {
       const VisibleIsland: IslandComponent = island(
         defineComponent(() => () => <div>Visible</div>),
-        { hydrate: 'visible', rootMargin: '100px' },
+        { hydrate: 'visible', rootMargin: '100px' }
       );
 
       const result = renderToStringWithIslands(VisibleIsland);
@@ -139,7 +129,7 @@ describe('Islands Integration', () => {
     it('should apply interaction hydration', () => {
       const InteractionIsland: IslandComponent = island(
         defineComponent(() => () => <div>Interaction</div>),
-        { hydrate: 'interaction', events: ['click', 'focus'] },
+        { hydrate: 'interaction', events: ['click', 'focus'] }
       );
 
       const result = renderToStringWithIslands(InteractionIsland);
@@ -150,7 +140,7 @@ describe('Islands Integration', () => {
     it('should apply idle hydration', () => {
       const IdleIsland: IslandComponent = island(
         defineComponent(() => () => <div>Idle</div>),
-        { hydrate: 'idle', timeout: 3000 },
+        { hydrate: 'idle', timeout: 3000 }
       );
 
       const result = renderToStringWithIslands(IdleIsland);
@@ -161,7 +151,7 @@ describe('Islands Integration', () => {
     it('should apply media hydration', () => {
       const MediaIsland: IslandComponent = island(
         defineComponent(() => () => <div>Media</div>),
-        { hydrate: 'media', query: '(max-width: 768px)' },
+        { hydrate: 'media', query: '(max-width: 768px)' }
       );
 
       const result = renderToStringWithIslands(MediaIsland);
@@ -195,22 +185,22 @@ describe('Islands Integration', () => {
   describe('Mixed content', () => {
     it('should handle mix of static and interactive content', () => {
       const InteractiveButton: IslandComponent = island(
-        defineComponent(() => () => <button onClick={() => {}}>Click</button>),
+        defineComponent(() => () => <button onClick={() => {}}>Click</button>)
       );
 
       const MixedPage = defineComponent(() => () => (
-          <div>
-            <header>
-              <h1>Static Header</h1>
-            </header>
-            <main>
-              <p>Static paragraph</p>
-              <InteractiveButton />
-              <p>More static content</p>
-            </main>
-            <footer>Static Footer</footer>
-          </div>
-        ));
+        <div>
+          <header>
+            <h1>Static Header</h1>
+          </header>
+          <main>
+            <p>Static paragraph</p>
+            <InteractiveButton />
+            <p>More static content</p>
+          </main>
+          <footer>Static Footer</footer>
+        </div>
+      ));
 
       const result = renderToStringWithIslands(MixedPage);
 
@@ -222,19 +212,17 @@ describe('Islands Integration', () => {
 
   describe('Performance', () => {
     it('should minimize JavaScript for mostly static pages', () => {
-      const TinyIsland: IslandComponent = island(
-        defineComponent(() => () => <button onClick={() => {}}>Like</button>),
-      );
+      const TinyIsland: IslandComponent = island(defineComponent(() => () => <button onClick={() => {}}>Like</button>));
 
       const MostlyStaticPage = defineComponent(() => () => (
-          <article>
-            <h1>Blog Post Title</h1>
-            <div>Long static content...</div>
-            <div>More static content...</div>
-            <div>Even more static content...</div>
-            <TinyIsland />
-          </article>
-        ));
+        <article>
+          <h1>Blog Post Title</h1>
+          <div>Long static content...</div>
+          <div>More static content...</div>
+          <div>Even more static content...</div>
+          <TinyIsland />
+        </article>
+      ));
 
       const result = renderToStringWithIslands(MostlyStaticPage);
 

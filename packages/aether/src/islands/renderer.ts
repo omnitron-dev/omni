@@ -45,7 +45,7 @@ export function renderToStringWithIslands(
   options: {
     routePath?: string;
     manifest?: IslandManifest;
-  } = {},
+  } = {}
 ): IslandRenderResult {
   if (!isSSR()) {
     throw new Error('[Aether Islands] renderToStringWithIslands can only be called during SSR');
@@ -282,7 +282,7 @@ export function renderDocumentWithIslands(
     description?: string;
     meta?: Record<string, string>;
     manifest?: IslandManifest;
-  } = {},
+  } = {}
 ): string {
   const title = options.title || 'Aether App';
   const description = options.description || '';

@@ -194,25 +194,25 @@ export const Sheet = defineComponent<SheetProps>((props) => {
  * Sheet Content component - wraps factory Content to add data-side attribute
  */
 export const SheetContent = defineComponent<SheetContentProps>((props) => () => {
-    const { side, children, ...restProps } = props;
+  const { side, children, ...restProps } = props;
 
-    // Get side from props or from parent element
-    const effectiveSide = side || 'right';
+  // Get side from props or from parent element
+  const effectiveSide = side || 'right';
 
-    const content = jsx(SheetBase.Content, {
-      ...restProps,
-      children,
-    }) as HTMLElement;
+  const content = jsx(SheetBase.Content, {
+    ...restProps,
+    children,
+  }) as HTMLElement;
 
-    // Add data-side attribute to content element
-    if (content) {
-      effect(() => {
-        content.setAttribute('data-side', effectiveSide);
-      });
-    }
+  // Add data-side attribute to content element
+  if (content) {
+    effect(() => {
+      content.setAttribute('data-side', effectiveSide);
+    });
+  }
 
-    return content;
-  });
+  return content;
+});
 
 // ============================================================================
 // Overlay Component with Click-to-Close Support

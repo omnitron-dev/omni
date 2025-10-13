@@ -125,11 +125,7 @@ export const CollapsibleContext = createContext<CollapsibleContextValue>(
  */
 export const Collapsible = defineComponent<CollapsibleProps>((props) => {
   // Pattern 19: Use unified controlled state helper
-  const [isOpen, setIsOpen] = useControlledBooleanState(
-    props.open,
-    props.defaultOpen ?? false,
-    props.onOpenChange
-  );
+  const [isOpen, setIsOpen] = useControlledBooleanState(props.open, props.defaultOpen ?? false, props.onOpenChange);
 
   const baseId = generateId('collapsible');
   const triggerId = `${baseId}-trigger`;

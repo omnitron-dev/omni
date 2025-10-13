@@ -17,7 +17,7 @@ import {
 import { defineComponent } from '../../core/component/index.js';
 
 // Temporary placeholder until primitive component is implemented
-const TooltipProviderPrimitive = defineComponent<{children?: any}>((props) => () => props.children);
+const TooltipProviderPrimitive = defineComponent<{ children?: any }>((props) => () => props.children);
 
 /**
  * TooltipProvider - Context provider

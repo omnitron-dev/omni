@@ -145,7 +145,7 @@ export function enableDevTools(options: Partial<DevToolsOptions> = {}): DevTools
 
       // Connect to extension
       if (isDevToolsAvailable()) {
-        bridge.connect().catch(err => {
+        bridge.connect().catch((err) => {
           if (mergedOptions.verbose) {
             console.warn('[Aether DevTools] Failed to connect to extension:', err);
           }

@@ -179,7 +179,7 @@ export function createFileLoader(baseUrl: string): LoaderFunction {
  * Uses dynamic imports for code-splitting
  */
 export function createDynamicLoader(
-  importer: (locale: LocaleCode) => Promise<{ default: TranslationMessages }>,
+  importer: (locale: LocaleCode) => Promise<{ default: TranslationMessages }>
 ): LoaderFunction {
   return async (locale: LocaleCode) => {
     const module = await importer(locale);
@@ -191,9 +191,7 @@ export function createDynamicLoader(
  * Create a chunked loader
  * Loads translations in chunks/namespaces
  */
-export function createChunkedLoader(
-  loaders: Record<string, LoaderFunction>,
-): LoaderFunction {
+export function createChunkedLoader(loaders: Record<string, LoaderFunction>): LoaderFunction {
   return async (locale: LocaleCode) => {
     const messages: TranslationMessages = {};
 
@@ -203,7 +201,7 @@ export function createChunkedLoader(
       entries.map(async ([namespace, loader]) => ({
         namespace,
         messages: await loader(locale),
-      })),
+      }))
     );
 
     // Merge all chunks
@@ -239,10 +237,7 @@ export function createFallbackLoader(loaders: LoaderFunction[]): LoaderFunction 
  * Create a cached loader
  * Wraps another loader with caching
  */
-export function createCachedLoader(
-  loader: LoaderFunction,
-  options?: { cacheDuration?: number },
-): LoaderFunction {
+export function createCachedLoader(loader: LoaderFunction, options?: { cacheDuration?: number }): LoaderFunction {
   const translationLoader = new TranslationLoader(options);
   translationLoader.setLoader(loader);
 

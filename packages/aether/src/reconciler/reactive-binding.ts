@@ -81,11 +81,7 @@ export function bindSignalToTextNode(node: Text, getValue: () => any): ReactiveB
  * binding.cleanup(); // dispose when done
  * ```
  */
-export function bindSignalToAttribute(
-  element: HTMLElement,
-  attr: string,
-  getValue: () => any
-): ReactiveBinding {
+export function bindSignalToAttribute(element: HTMLElement, attr: string, getValue: () => any): ReactiveBinding {
   const effectInstance = effect(() => {
     const value = getValue();
     if (value == null) {
@@ -124,11 +120,7 @@ export function bindSignalToAttribute(
  * binding.cleanup(); // dispose when done
  * ```
  */
-export function bindSignalToProperty(
-  element: HTMLElement,
-  prop: string,
-  getValue: () => any
-): ReactiveBinding {
+export function bindSignalToProperty(element: HTMLElement, prop: string, getValue: () => any): ReactiveBinding {
   const effectInstance = effect(() => {
     const value = getValue();
     (element as any)[prop] = value;
@@ -184,10 +176,7 @@ function camelToKebab(str: string): string {
  * binding.cleanup(); // dispose when done
  * ```
  */
-export function bindSignalToStyle(
-  element: HTMLElement,
-  getStyle: () => Record<string, any>
-): ReactiveBinding {
+export function bindSignalToStyle(element: HTMLElement, getStyle: () => Record<string, any>): ReactiveBinding {
   const effectInstance = effect(() => {
     const styleObj = getStyle();
     if (styleObj && typeof styleObj === 'object') {
@@ -245,10 +234,7 @@ export function bindSignalToStyle(
  * binding.cleanup(); // dispose when done
  * ```
  */
-export function bindSignalToClass(
-  element: HTMLElement,
-  getClasses: () => any
-): ReactiveBinding {
+export function bindSignalToClass(element: HTMLElement, getClasses: () => any): ReactiveBinding {
   const effectInstance = effect(() => {
     const classes = getClasses();
 

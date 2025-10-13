@@ -68,11 +68,7 @@ function generateClassName(prefix = 'aether'): string {
 /**
  * Hash a style object to detect duplicates
  */
-function hashStyleObject(
-  properties: Record<string, string | number>,
-  media?: string,
-  pseudo?: string
-): string {
+function hashStyleObject(properties: Record<string, string | number>, media?: string, pseudo?: string): string {
   const sortedProps = Object.keys(properties)
     .sort()
     .map((key) => `${key}:${properties[key]}`)
@@ -280,10 +276,7 @@ export function getGlobalSheet(): StyleSheet {
 /**
  * Inject styles at runtime
  */
-export function injectStyles(
-  properties: Record<string, string | number>,
-  options: InjectStylesOptions = {}
-): string {
+export function injectStyles(properties: Record<string, string | number>, options: InjectStylesOptions = {}): string {
   const sheet = options.sheetId ? styleSheets.get(options.sheetId) || getGlobalSheet() : getGlobalSheet();
 
   // Apply nonce if provided

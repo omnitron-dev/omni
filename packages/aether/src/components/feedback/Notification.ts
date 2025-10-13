@@ -6,7 +6,10 @@
  */
 
 import { styled } from '../../styling/styled.js';
-import { Notification as NotificationPrimitive, type NotificationProps as NotificationPrimitiveProps } from '../../primitives/Notification.js';
+import {
+  Notification as NotificationPrimitive,
+  type NotificationProps as NotificationPrimitiveProps,
+} from '../../primitives/Notification.js';
 
 /**
  * Notification - Styled notification component

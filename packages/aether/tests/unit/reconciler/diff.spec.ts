@@ -15,11 +15,7 @@ import {
   type Patch,
   type PropPatch,
 } from '../../../src/reconciler/diff.js';
-import {
-  diffChildrenWithKeys,
-  diffChildrenByIndex,
-  detectListPattern,
-} from '../../../src/reconciler/diff-children.js';
+import { diffChildrenWithKeys, diffChildrenByIndex, detectListPattern } from '../../../src/reconciler/diff-children.js';
 import {
   createElementVNode,
   createTextVNode,
@@ -446,10 +442,7 @@ describe('Diffing Algorithm', () => {
 
   describe('diffChildrenWithKeys() - Key-Based Reconciliation', () => {
     test('identical children returns no structural patches', () => {
-      const children = [
-        createElementVNode('li', null, undefined, 'a'),
-        createElementVNode('li', null, undefined, 'b'),
-      ];
+      const children = [createElementVNode('li', null, undefined, 'a'), createElementVNode('li', null, undefined, 'b')];
       const patches = diffChildrenWithKeys(children, children);
 
       expect(patches).toEqual([]);
@@ -663,10 +656,7 @@ describe('Diffing Algorithm', () => {
 
   describe('detectListPattern() - Pattern Detection', () => {
     test('detects no-change pattern', () => {
-      const children = [
-        createElementVNode('li', null, undefined, 'a'),
-        createElementVNode('li', null, undefined, 'b'),
-      ];
+      const children = [createElementVNode('li', null, undefined, 'a'), createElementVNode('li', null, undefined, 'b')];
       const pattern = detectListPattern(children, children);
 
       expect(pattern).toBe('no-change');
@@ -865,14 +855,8 @@ describe('Diffing Algorithm', () => {
     });
 
     test('handles mixed keyed and non-keyed children gracefully', () => {
-      const oldChildren = [
-        createElementVNode('li', null, undefined, 'keyed'),
-        createElementVNode('li'),
-      ];
-      const newChildren = [
-        createElementVNode('li'),
-        createElementVNode('li', null, undefined, 'keyed'),
-      ];
+      const oldChildren = [createElementVNode('li', null, undefined, 'keyed'), createElementVNode('li')];
+      const newChildren = [createElementVNode('li'), createElementVNode('li', null, undefined, 'keyed')];
 
       // Should not throw
       expect(() => diffChildren(oldChildren, newChildren, true)).not.toThrow();
@@ -881,16 +865,15 @@ describe('Diffing Algorithm', () => {
 
   describe('Complex Scenarios', () => {
     test('multiple simultaneous changes', () => {
-      const oldVNode = createElementVNode(
-        'div',
-        { class: 'old', id: 'test' },
-        [createTextVNode('A'), createTextVNode('B')]
-      );
-      const newVNode = createElementVNode(
-        'div',
-        { class: 'new', title: 'Test' },
-        [createTextVNode('A'), createTextVNode('C'), createTextVNode('D')]
-      );
+      const oldVNode = createElementVNode('div', { class: 'old', id: 'test' }, [
+        createTextVNode('A'),
+        createTextVNode('B'),
+      ]);
+      const newVNode = createElementVNode('div', { class: 'new', title: 'Test' }, [
+        createTextVNode('A'),
+        createTextVNode('C'),
+        createTextVNode('D'),
+      ]);
       const patches = diff(oldVNode, newVNode);
 
       expect(patches[0].type).toBe(PatchType.UPDATE);
@@ -915,22 +898,14 @@ describe('Diffing Algorithm', () => {
     });
 
     test('prop change combined with children reorder', () => {
-      const oldVNode = createElementVNode(
-        'div',
-        { class: 'container' },
-        [
-          createElementVNode('span', null, undefined, 'a'),
-          createElementVNode('span', null, undefined, 'b'),
-        ]
-      );
-      const newVNode = createElementVNode(
-        'div',
-        { class: 'wrapper' },
-        [
-          createElementVNode('span', null, undefined, 'b'),
-          createElementVNode('span', null, undefined, 'a'),
-        ]
-      );
+      const oldVNode = createElementVNode('div', { class: 'container' }, [
+        createElementVNode('span', null, undefined, 'a'),
+        createElementVNode('span', null, undefined, 'b'),
+      ]);
+      const newVNode = createElementVNode('div', { class: 'wrapper' }, [
+        createElementVNode('span', null, undefined, 'b'),
+        createElementVNode('span', null, undefined, 'a'),
+      ]);
       const patches = diff(oldVNode, newVNode);
 
       expect(patches[0].type).toBe(PatchType.UPDATE);

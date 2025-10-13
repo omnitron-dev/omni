@@ -111,9 +111,7 @@ describe('View Transitions', () => {
         throw new Error('Update failed');
       };
 
-      await expect(manager.executeTransition('/from', '/to', updateDOM)).rejects.toThrow(
-        'Update failed'
-      );
+      await expect(manager.executeTransition('/from', '/to', updateDOM)).rejects.toThrow('Update failed');
     });
 
     it('should update config', () => {

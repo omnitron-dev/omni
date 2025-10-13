@@ -3,11 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import {
-  createCachedResource,
-  createCachedResources,
-  preloadCachedResource,
-} from '../../src/data/resource-cache.js';
+import { createCachedResource, createCachedResources, preloadCachedResource } from '../../src/data/resource-cache.js';
 import { resetCacheManager } from '../../src/data/cache-manager.js';
 
 describe('Cached Resource', () => {

@@ -178,14 +178,13 @@ export const DatePicker = defineComponent<DatePickerProps>((props) => {
   // Provide context during setup phase (Pattern 17)
   provideContext(DatePickerContext, contextValue);
 
-  return () => 
+  return () =>
     // Don't evaluate children here - pass directly to Popover
     // so Popover can evaluate them AFTER providing PopoverContext (Pattern 17)
-     jsx(Popover, {
+    jsx(Popover, {
       defaultOpen: props.defaultOpen,
-      children: props.children,  // Pass function through, don't evaluate!
-    })
-  ;
+      children: props.children, // Pass function through, don't evaluate!
+    });
 });
 
 /**

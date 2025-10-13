@@ -8,12 +8,7 @@ import { signal, onCleanup } from '../../core/index.js';
 import { NetronClient } from '../client.js';
 import { getBackendName, getServiceName } from '../decorators/index.js';
 import type { Signal } from '../../core/reactivity/types.js';
-import type {
-  Type,
-  StreamOptions,
-  StreamResult,
-  StreamStatus,
-} from '../types.js';
+import type { Type, StreamOptions, StreamResult, StreamStatus } from '../types.js';
 
 /**
  * useStream - Subscribe to real-time data streams
@@ -360,16 +355,9 @@ export function useMultiStream<
     method: string;
     args: any[];
     options?: StreamOptions;
-  }>
+  }>,
 >(streams: T): { [K in keyof T]: StreamResult } {
-  return streams.map(stream =>
-    useStream(
-      stream.service,
-      stream.method,
-      stream.args,
-      stream.options
-    )
-  ) as any;
+  return streams.map((stream) => useStream(stream.service, stream.method, stream.args, stream.options)) as any;
 }
 
 /**

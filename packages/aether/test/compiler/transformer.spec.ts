@@ -367,9 +367,11 @@ describe('Transformer', () => {
 
   describe('Custom Transform Passes', () => {
     it('should create custom transform pass', () => {
-      const customPass = createTransformPass('custom-pass', (sourceFile) => 
-        // Return unmodified
-         sourceFile
+      const customPass = createTransformPass(
+        'custom-pass',
+        (sourceFile) =>
+          // Return unmodified
+          sourceFile
       );
 
       expect(customPass.name).toBe('custom-pass');

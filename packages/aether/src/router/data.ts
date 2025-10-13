@@ -191,11 +191,7 @@ export function defer<T>(promise: Promise<T>): DeferredData<T> {
  */
 export function isDeferred(value: any): value is DeferredData {
   return Boolean(
-    value &&
-    typeof value === 'object' &&
-    'promise' in value &&
-    'resolved' in value &&
-    value.promise instanceof Promise
+    value && typeof value === 'object' && 'promise' in value && 'resolved' in value && value.promise instanceof Promise
   );
 }
 

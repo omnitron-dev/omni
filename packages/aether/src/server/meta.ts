@@ -9,14 +9,7 @@
  * - SEO optimization
  */
 
-import type {
-  HeadContext,
-  MetaTag,
-  LinkTag,
-  ScriptTag,
-  StyleTag,
-  MetaTags,
-} from './types.js';
+import type { HeadContext, MetaTag, LinkTag, ScriptTag, StyleTag, MetaTags } from './types.js';
 
 /**
  * Global head context
@@ -349,10 +342,7 @@ function renderMetaTag(meta: MetaTag): string {
  * Render link tag to HTML
  */
 function renderLinkTag(link: LinkTag): string {
-  const attrs: string[] = [
-    `rel="${escapeHTML(link.rel)}"`,
-    `href="${escapeHTML(link.href)}"`,
-  ];
+  const attrs: string[] = [`rel="${escapeHTML(link.rel)}"`, `href="${escapeHTML(link.href)}"`];
 
   // Add other attributes
   for (const [key, value] of Object.entries(link)) {

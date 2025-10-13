@@ -24,7 +24,7 @@ export async function renderRoute(
     tags?: string[];
     meta?: StaticPageMeta;
     jsonLd?: Record<string, any>;
-  },
+  }
 ): Promise<GeneratedPage> {
   const { path, revalidate, staleWhileRevalidate, tags, meta, jsonLd } = options;
 
@@ -279,7 +279,7 @@ export function generateDocument(
     scripts?: string[];
     styles?: string[];
     hydrate?: boolean;
-  } = {},
+  } = {}
 ): string {
   const { base = '/', scripts = [], styles = [], hydrate = true } = options;
 
@@ -364,7 +364,7 @@ export function buildMetaTags(meta?: StaticPageMeta): string {
   for (const [key, value] of Object.entries(meta)) {
     if (
       !['title', 'description', 'canonical', 'ogTitle', 'ogDescription', 'ogImage', 'ogType', 'twitterCard'].includes(
-        key,
+        key
       )
     ) {
       tags.push(`<meta name="${escapeHTML(key)}" content="${escapeHTML(String(value))}">`);
@@ -384,7 +384,7 @@ export function generate404Page(
   options: {
     base?: string;
     message?: string;
-  } = {},
+  } = {}
 ): string {
   const { base = '/', message = 'Page Not Found' } = options;
 
@@ -454,7 +454,7 @@ export function optimizeHTML(
     minify?: boolean;
     removeComments?: boolean;
     collapseWhitespace?: boolean;
-  } = {},
+  } = {}
 ): string {
   let optimized = html;
 
@@ -465,10 +465,7 @@ export function optimizeHTML(
 
   // Collapse whitespace
   if (options.collapseWhitespace) {
-    optimized = optimized
-      .replace(/\s+/g, ' ')
-      .replace(/>\s+</g, '><')
-      .trim();
+    optimized = optimized.replace(/\s+/g, ' ').replace(/>\s+</g, '><').trim();
   }
 
   return optimized;

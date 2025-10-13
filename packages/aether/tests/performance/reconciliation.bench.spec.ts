@@ -15,11 +15,7 @@
 
 import { describe, test, expect } from 'vitest';
 import { signal } from '../../src/core/reactivity/signal.js';
-import {
-  createElementVNode,
-  createTextVNode,
-  type VNode,
-} from '../../src/reconciler/vnode.js';
+import { createElementVNode, createTextVNode, type VNode } from '../../src/reconciler/vnode.js';
 import { createDOMFromVNode } from '../../src/reconciler/create-dom.js';
 import { diff } from '../../src/reconciler/diff.js';
 import { patch } from '../../src/reconciler/patch.js';
@@ -119,10 +115,7 @@ describe('Reconciliation Performance Benchmarks', () => {
     test('element with text child update completes in <1ms', () => {
       const value = signal(0);
 
-      const createVNode = () =>
-        createElementVNode('div', { class: 'counter' }, [
-          createTextVNode(`Count: ${value()}`),
-        ]);
+      const createVNode = () => createElementVNode('div', { class: 'counter' }, [createTextVNode(`Count: ${value()}`)]);
 
       let vnode = createVNode();
       const dom = createDOMFromVNode(vnode);
@@ -162,9 +155,7 @@ describe('Reconciliation Performance Benchmarks', () => {
         createElementVNode(
           'ul',
           null,
-          items().map((item) =>
-            createElementVNode('li', null, [createTextVNode(`Item ${item}`)], String(item)),
-          ),
+          items().map((item) => createElementVNode('li', null, [createTextVNode(`Item ${item}`)], String(item)))
         );
 
       let vnode = createVNode();
@@ -216,9 +207,7 @@ describe('Reconciliation Performance Benchmarks', () => {
         createElementVNode(
           'ul',
           null,
-          items().map((item) =>
-            createElementVNode('li', null, [createTextVNode(`Item ${item}`)], String(item)),
-          ),
+          items().map((item) => createElementVNode('li', null, [createTextVNode(`Item ${item}`)], String(item)))
         );
 
       let vnode = createVNode();
@@ -230,10 +219,7 @@ describe('Reconciliation Performance Benchmarks', () => {
 
       for (let iter = 0; iter < iterations; iter++) {
         const currentItems = items();
-        const newItems = [
-          ...currentItems,
-          ...Array.from({ length: 100 }, (_, i) => currentItems.length + i),
-        ];
+        const newItems = [...currentItems, ...Array.from({ length: 100 }, (_, i) => currentItems.length + i)];
         items.set(newItems);
 
         const start = performance.now();
@@ -262,9 +248,7 @@ describe('Reconciliation Performance Benchmarks', () => {
         createElementVNode(
           'ul',
           null,
-          items().map((item) =>
-            createElementVNode('li', null, [createTextVNode(`Item ${item}`)], String(item)),
-          ),
+          items().map((item) => createElementVNode('li', null, [createTextVNode(`Item ${item}`)], String(item)))
         );
 
       let vnode = createVNode();
@@ -299,17 +283,13 @@ describe('Reconciliation Performance Benchmarks', () => {
 
   describe('Benchmark 3: 10K List Update', () => {
     test('updating 10000-item list completes in <50ms', () => {
-      const items = signal<number[]>(
-        Array.from({ length: 10000 }, (_, i) => i),
-      );
+      const items = signal<number[]>(Array.from({ length: 10000 }, (_, i) => i));
 
       const createVNode = () =>
         createElementVNode(
           'ul',
           null,
-          items().map((item) =>
-            createElementVNode('li', null, [createTextVNode(`Item ${item}`)], String(item)),
-          ),
+          items().map((item) => createElementVNode('li', null, [createTextVNode(`Item ${item}`)], String(item)))
         );
 
       let vnode = createVNode();
@@ -348,17 +328,13 @@ describe('Reconciliation Performance Benchmarks', () => {
     });
 
     test('appending 1000 items to 10000-item list completes in <50ms', () => {
-      let items = signal<number[]>(
-        Array.from({ length: 10000 }, (_, i) => i),
-      );
+      let items = signal<number[]>(Array.from({ length: 10000 }, (_, i) => i));
 
       const createVNode = () =>
         createElementVNode(
           'ul',
           null,
-          items().map((item) =>
-            createElementVNode('li', null, [createTextVNode(`Item ${item}`)], String(item)),
-          ),
+          items().map((item) => createElementVNode('li', null, [createTextVNode(`Item ${item}`)], String(item)))
         );
 
       let vnode = createVNode();
@@ -370,10 +346,7 @@ describe('Reconciliation Performance Benchmarks', () => {
 
       for (let iter = 0; iter < iterations; iter++) {
         const currentItems = items();
-        const newItems = [
-          ...currentItems,
-          ...Array.from({ length: 1000 }, (_, i) => currentItems.length + i),
-        ];
+        const newItems = [...currentItems, ...Array.from({ length: 1000 }, (_, i) => currentItems.length + i)];
         items.set(newItems);
 
         const start = performance.now();
@@ -469,10 +442,8 @@ describe('Reconciliation Performance Benchmarks', () => {
           'div',
           null,
           Array.from({ length: 50 }, (_, i) =>
-            createElementVNode('div', { id: `item-${i}` }, [
-              createTextVNode(`Item ${i} - Count: ${count()}`),
-            ]),
-          ),
+            createElementVNode('div', { id: `item-${i}` }, [createTextVNode(`Item ${i} - Count: ${count()}`)])
+          )
         );
 
       let vnode = createVNode();
@@ -565,9 +536,7 @@ describe('Reconciliation Performance Benchmarks', () => {
         createElementVNode(
           'ul',
           null,
-          items().map((item) =>
-            createElementVNode('li', null, [createTextVNode(`Item ${item}`)], String(item)),
-          ),
+          items().map((item) => createElementVNode('li', null, [createTextVNode(`Item ${item}`)], String(item)))
         );
 
       let vnode = createVNode();
@@ -611,9 +580,7 @@ describe('Reconciliation Performance Benchmarks', () => {
         createElementVNode(
           'ul',
           null,
-          items().map((item) =>
-            createElementVNode('li', null, [createTextVNode(`Item ${item}`)], String(item)),
-          ),
+          items().map((item) => createElementVNode('li', null, [createTextVNode(`Item ${item}`)], String(item)))
         );
 
       let vnode = createVNode();

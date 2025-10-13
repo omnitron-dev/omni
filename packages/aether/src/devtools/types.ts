@@ -151,12 +151,7 @@ export interface StateNode {
   /** Children nodes */
   children: StateNode[];
   /** Metadata */
-  metadata:
-    | SignalMetadata
-    | ComputedMetadata
-    | EffectMetadata
-    | ComponentMetadata
-    | StoreMetadata;
+  metadata: SignalMetadata | ComputedMetadata | EffectMetadata | ComponentMetadata | StoreMetadata;
 }
 
 /**

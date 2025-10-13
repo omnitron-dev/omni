@@ -4,9 +4,7 @@
  * Scans the routes directory and generates route configurations automatically
  */
 
-import type {
-  RouteDefinition,
-} from '../../router/types.js';
+import type { RouteDefinition } from '../../router/types.js';
 
 /**
  * File naming conventions
@@ -79,17 +77,20 @@ export interface RouteFile {
  */
 export function filePathToRoutePath(filePath: string): string {
   // Remove routes/ prefix
-  let path = filePath
-    .replace(/^routes\//, '')
-    .replace(/^src\/routes\//, '');
+  let path = filePath.replace(/^routes\//, '').replace(/^src\/routes\//, '');
 
   // Handle route groups - remove from path but track
   path = path.replace(/\/?\([^)]+\)\/?/g, '/');
 
   // Check if it's an index/page file at root
-  if (path === 'index.tsx' || path === 'index.ts' ||
-      path === 'page.tsx' || path === 'page.ts' ||
-      path === '+page.tsx' || path === '+page.ts') {
+  if (
+    path === 'index.tsx' ||
+    path === 'index.ts' ||
+    path === 'page.tsx' ||
+    path === 'page.ts' ||
+    path === '+page.tsx' ||
+    path === '+page.ts'
+  ) {
     return '/';
   }
 
@@ -168,33 +169,30 @@ export function extractRouteGroup(filePath: string): { isGroup: boolean; groupNa
 /**
  * Determine file type from path
  */
-export function getFileType(
-  fileName: string,
-  conventions = DEFAULT_CONVENTIONS
-): RouteFile['type'] | null {
+export function getFileType(fileName: string, conventions = DEFAULT_CONVENTIONS): RouteFile['type'] | null {
   // Check each convention
-  if (conventions.pagePatterns.some(pattern => fileName.endsWith(pattern))) {
+  if (conventions.pagePatterns.some((pattern) => fileName.endsWith(pattern))) {
     return 'page';
   }
-  if (conventions.layoutPatterns.some(pattern => fileName.endsWith(pattern))) {
+  if (conventions.layoutPatterns.some((pattern) => fileName.endsWith(pattern))) {
     return 'layout';
   }
-  if (conventions.errorPatterns.some(pattern => fileName.endsWith(pattern))) {
+  if (conventions.errorPatterns.some((pattern) => fileName.endsWith(pattern))) {
     return 'error';
   }
-  if (conventions.loadingPatterns.some(pattern => fileName.endsWith(pattern))) {
+  if (conventions.loadingPatterns.some((pattern) => fileName.endsWith(pattern))) {
     return 'loading';
   }
-  if (conventions.middlewarePatterns.some(pattern => fileName.endsWith(pattern))) {
+  if (conventions.middlewarePatterns.some((pattern) => fileName.endsWith(pattern))) {
     return 'middleware';
   }
-  if (conventions.loaderPatterns.some(pattern => fileName.endsWith(pattern))) {
+  if (conventions.loaderPatterns.some((pattern) => fileName.endsWith(pattern))) {
     return 'loader';
   }
-  if (conventions.actionPatterns.some(pattern => fileName.endsWith(pattern))) {
+  if (conventions.actionPatterns.some((pattern) => fileName.endsWith(pattern))) {
     return 'action';
   }
-  if (conventions.notFoundPatterns.some(pattern => fileName.endsWith(pattern))) {
+  if (conventions.notFoundPatterns.some((pattern) => fileName.endsWith(pattern))) {
     return 'notFound';
   }
 
@@ -341,17 +339,17 @@ export function buildRouteTree(files: RouteFile[], routeGroups: Map<string, Rout
       switch (file.type) {
         case 'page':
           // Page component will be loaded dynamically
-          route.lazy = () => import(/* @vite-ignore */ file.path).then(m => ({ default: m.default }));
+          route.lazy = () => import(/* @vite-ignore */ file.path).then((m) => ({ default: m.default }));
           break;
         case 'layout':
           // Layout will be applied to this route and children
-          route.layout = () => import(/* @vite-ignore */ file.path).then(m => m.default);
+          route.layout = () => import(/* @vite-ignore */ file.path).then((m) => m.default);
           break;
         case 'error':
-          route.errorBoundary = () => import(/* @vite-ignore */ file.path).then(m => m.default);
+          route.errorBoundary = () => import(/* @vite-ignore */ file.path).then((m) => m.default);
           break;
         case 'loading':
-          route.loading = () => import(/* @vite-ignore */ file.path).then(m => m.default);
+          route.loading = () => import(/* @vite-ignore */ file.path).then((m) => m.default);
           break;
         case 'middleware':
           // Middleware becomes a guard

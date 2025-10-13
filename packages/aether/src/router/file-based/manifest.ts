@@ -120,10 +120,7 @@ export function buildManifest(
 /**
  * Build manifest entry from route
  */
-function buildManifestEntry(
-  route: RouteDefinition,
-  fileMap: Map<string, string>
-): ManifestRouteEntry {
+function buildManifestEntry(route: RouteDefinition, fileMap: Map<string, string>): ManifestRouteEntry {
   return {
     path: route.path,
     file: findFileForRoute(route.path, fileMap),
@@ -137,7 +134,7 @@ function buildManifestEntry(
     params: extractParams(route.path),
     methods: route.meta?.methods as string[] | undefined,
     group: route.meta?.group as string | undefined,
-    children: route.children?.map(child => buildManifestEntry(child, fileMap)),
+    children: route.children?.map((child) => buildManifestEntry(child, fileMap)),
     meta: route.meta,
   };
 }
@@ -273,13 +270,12 @@ export function generateManifestStats(manifest: CompiledManifest): {
   details: Record<string, any>;
 } {
   const totalRoutes = manifest.stats.totalRoutes;
-  const avgParamsPerRoute =
-    manifest.routes.reduce((sum, r) => sum + r.params.length, 0) / manifest.routes.length || 0;
+  const avgParamsPerRoute = manifest.routes.reduce((sum, r) => sum + r.params.length, 0) / manifest.routes.length || 0;
 
-  const routesWithLoaders = manifest.routes.filter(r => r.hasLoader).length;
-  const routesWithActions = manifest.routes.filter(r => r.hasAction).length;
-  const routesWithLayouts = manifest.routes.filter(r => r.hasLayout).length;
-  const routesWithErrors = manifest.routes.filter(r => r.hasError).length;
+  const routesWithLoaders = manifest.routes.filter((r) => r.hasLoader).length;
+  const routesWithActions = manifest.routes.filter((r) => r.hasAction).length;
+  const routesWithLayouts = manifest.routes.filter((r) => r.hasLayout).length;
+  const routesWithErrors = manifest.routes.filter((r) => r.hasError).length;
 
   const summary = `
 Aether Route Manifest Statistics

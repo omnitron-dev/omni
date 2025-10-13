@@ -49,7 +49,7 @@ export class VisibleHydration implements HydrationStrategyImpl {
 
   constructor(
     private island: IslandInstance,
-    private rootMargin = '0px',
+    private rootMargin = '0px'
   ) {}
 
   init(island: IslandInstance): void {
@@ -75,7 +75,7 @@ export class VisibleHydration implements HydrationStrategyImpl {
       },
       {
         rootMargin: this.rootMargin,
-      },
+      }
     );
 
     this.observer.observe(island.element);
@@ -98,7 +98,7 @@ export class InteractionHydration implements HydrationStrategyImpl {
 
   constructor(
     private island: IslandInstance,
-    private events = ['click', 'focus', 'touchstart', 'mouseenter'],
+    private events = ['click', 'focus', 'touchstart', 'mouseenter']
   ) {}
 
   init(island: IslandInstance): void {
@@ -150,7 +150,7 @@ export class IdleHydration implements HydrationStrategyImpl {
 
   constructor(
     private island: IslandInstance,
-    private timeoutMs = 2000,
+    private timeoutMs = 2000
   ) {}
 
   init(island: IslandInstance): void {
@@ -166,7 +166,7 @@ export class IdleHydration implements HydrationStrategyImpl {
         },
         {
           timeout: this.timeoutMs,
-        },
+        }
       );
     } else {
       // Fallback to setTimeout
@@ -202,7 +202,7 @@ export class MediaHydration implements HydrationStrategyImpl {
 
   constructor(
     private island: IslandInstance,
-    private query: string,
+    private query: string
   ) {}
 
   init(island: IslandInstance): void {
@@ -255,7 +255,7 @@ export class CustomHydration implements HydrationStrategyImpl {
   constructor(
     private island: IslandInstance,
     private shouldHydrate: () => boolean,
-    private checkInterval = 100,
+    private checkInterval = 100
   ) {}
 
   init(island: IslandInstance): void {
@@ -297,10 +297,7 @@ export class CustomHydration implements HydrationStrategyImpl {
 /**
  * Create hydration strategy instance
  */
-export function createHydrationStrategy(
-  island: IslandInstance,
-  strategy: HydrationStrategy,
-): HydrationStrategyImpl {
+export function createHydrationStrategy(island: IslandInstance, strategy: HydrationStrategy): HydrationStrategyImpl {
   const options = island.component.__islandOptions;
 
   switch (strategy) {
@@ -418,7 +415,7 @@ export function setupPreloadOnViewport(island: IslandInstance, manifest?: any): 
     },
     {
       rootMargin: '200px', // Preload when within 200px of viewport
-    },
+    }
   );
 
   observer.observe(island.element);

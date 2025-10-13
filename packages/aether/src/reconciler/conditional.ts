@@ -15,9 +15,7 @@
 import { effect } from '../core/reactivity/effect.js';
 import type { JSXElement } from '../jsxruntime/types.js';
 import { createDOMFromVNode } from './create-dom.js';
-import {
-  type VNode,
-} from './vnode.js';
+import { type VNode } from './vnode.js';
 
 /**
  * Show component props
@@ -102,8 +100,7 @@ export function Show(props: ShowProps): JSXElement {
   let currentEffect: any = null;
 
   // Normalize the when condition to a function
-  const getCondition =
-    typeof props.when === 'function' ? props.when : () => props.when as boolean;
+  const getCondition = typeof props.when === 'function' ? props.when : () => props.when as boolean;
 
   // Create reactive effect that toggles between children and fallback
   const cleanup = effect(() => {
@@ -347,8 +344,7 @@ export function Switch(props: SwitchProps): JSXElement {
  */
 export function Match(props: MatchProps): JSXElement {
   // Normalize the when condition to a function
-  const getCondition =
-    typeof props.when === 'function' ? props.when : () => props.when as boolean;
+  const getCondition = typeof props.when === 'function' ? props.when : () => props.when as boolean;
 
   // Evaluate condition
   const condition = getCondition();

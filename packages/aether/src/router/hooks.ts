@@ -10,12 +10,7 @@ import { effect } from '../core/reactivity/effect.js';
 import type { Computed } from '../core/reactivity/types.js';
 import { getRouter } from './router.js';
 import { setActionData } from './data.js';
-import type {
-  RouteParams,
-  NavigationOptions,
-  RouteMatch,
-  Location as RouterLocation,
-} from './types.js';
+import type { RouteParams, NavigationOptions, RouteMatch, Location as RouterLocation } from './types.js';
 
 /**
  * Get the router instance
@@ -237,10 +232,7 @@ export function useSubmit() {
   const router = getRouter();
   const location = useLocation();
 
-  return async (
-    data: Record<string, any> | FormData,
-    options: SubmitOptions = {}
-  ) => {
+  return async (data: Record<string, any> | FormData, options: SubmitOptions = {}) => {
     const {
       method = 'post',
       action = location().pathname,
@@ -419,10 +411,7 @@ export function useBlocker(shouldBlock: boolean | BlockerFunction): Blocker {
  * });
  * ```
  */
-export function usePrompt(options: {
-  when: boolean | (() => boolean);
-  message?: string;
-}): void {
+export function usePrompt(options: { when: boolean | (() => boolean); message?: string }): void {
   const { when, message = 'Are you sure you want to leave?' } = options;
 
   const blocker = useBlocker(({ currentLocation, nextLocation }) => {

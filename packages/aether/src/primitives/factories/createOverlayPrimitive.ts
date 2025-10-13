@@ -419,11 +419,7 @@ export function createOverlayPrimitive(config: OverlayConfig) {
 
   const Root = defineComponent<BaseRootProps | HoverCardRootProps>((props: any) => {
     // Pattern 19: Use unified controlled state helper
-    const [isOpen, setIsOpen] = useControlledBooleanState(
-      props.open,
-      props.defaultOpen ?? false,
-      props.onOpenChange
-    );
+    const [isOpen, setIsOpen] = useControlledBooleanState(props.open, props.defaultOpen ?? false, props.onOpenChange);
 
     // Additional signals for specific behaviors
     const anchorElement = positioning ? signal<HTMLElement | null>(null) : null;

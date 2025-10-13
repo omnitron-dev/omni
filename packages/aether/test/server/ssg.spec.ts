@@ -94,9 +94,7 @@ describe('Static Site Generation', () => {
     it('should create output directory if not exists', async () => {
       const Component = () => 'Page';
 
-      (fs.promises.access as any).mockRejectedValueOnce(
-        new Error('Directory does not exist')
-      );
+      (fs.promises.access as any).mockRejectedValueOnce(new Error('Directory does not exist'));
 
       await generateStaticSite(Component, {
         routes: ['/'],
@@ -173,9 +171,7 @@ describe('Static Site Generation', () => {
         outDir: mockOutDir,
       });
 
-      expect(consoleLog).toHaveBeenCalledWith(
-        expect.stringContaining('Generated 3 pages')
-      );
+      expect(consoleLog).toHaveBeenCalledWith(expect.stringContaining('Generated 3 pages'));
 
       consoleLog.mockRestore();
     });
@@ -226,9 +222,7 @@ describe('Static Site Generation', () => {
       const Component = () => 'Page';
 
       (fs.promises.readdir as any)
-        .mockResolvedValueOnce([
-          { name: 'blog', isFile: () => false, isDirectory: () => true },
-        ])
+        .mockResolvedValueOnce([{ name: 'blog', isFile: () => false, isDirectory: () => true }])
         .mockResolvedValueOnce([
           { name: 'post-1.tsx', isFile: () => true, isDirectory: () => false },
           { name: 'post-2.tsx', isFile: () => true, isDirectory: () => false },
@@ -245,9 +239,7 @@ describe('Static Site Generation', () => {
     it('should handle file discovery errors', async () => {
       const Component = () => 'Page';
 
-      (fs.promises.readdir as any).mockRejectedValueOnce(
-        new Error('Directory not found')
-      );
+      (fs.promises.readdir as any).mockRejectedValueOnce(new Error('Directory not found'));
 
       const consoleError = vi.spyOn(console, 'error').mockImplementation();
 
@@ -256,10 +248,7 @@ describe('Static Site Generation', () => {
         outDir: mockOutDir,
       });
 
-      expect(consoleError).toHaveBeenCalledWith(
-        'Failed to discover routes:',
-        expect.any(Error)
-      );
+      expect(consoleError).toHaveBeenCalledWith('Failed to discover routes:', expect.any(Error));
 
       consoleError.mockRestore();
     });
@@ -433,11 +422,7 @@ describe('Static Site Generation', () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
 
       // Revalidate should regenerate
-      const regenerated = await revalidate(
-        '/revalidate-test',
-        Component,
-        mockOutDir
-      );
+      const regenerated = await revalidate('/revalidate-test', Component, mockOutDir);
 
       expect(regenerated).toBe(true);
     });

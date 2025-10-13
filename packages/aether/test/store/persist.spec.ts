@@ -3,7 +3,13 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { persist, createPersistManager, hydrateSignal, persistSignal, clearPersistedData } from '../../src/store/persist.js';
+import {
+  persist,
+  createPersistManager,
+  hydrateSignal,
+  persistSignal,
+  clearPersistedData,
+} from '../../src/store/persist.js';
 import { signal } from '../../src/core/reactivity/signal.js';
 
 describe('persist', () => {
@@ -42,7 +48,7 @@ describe('persist', () => {
       count.set(42);
 
       // Wait for persistence
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       const stored = storage.get('count');
       expect(stored).toBe('42');
@@ -56,7 +62,7 @@ describe('persist', () => {
       persist(count, { key: 'count', storage: 'local' });
 
       // Wait for hydration
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       expect(count()).toBe(42);
     });
@@ -68,7 +74,7 @@ describe('persist', () => {
 
       data.set({ value: 'updated' });
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       const stored = storage.get('data');
       expect(stored).toBeDefined();
@@ -82,7 +88,7 @@ describe('persist', () => {
 
       count.set(42);
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       // Memory storage doesn't persist to external storage
       expect(storage.has('count')).toBe(false);
@@ -101,7 +107,7 @@ describe('persist', () => {
 
       persist(state, { key: 'data', storage: 'local' });
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       expect(state()).toEqual(data);
     });
@@ -111,7 +117,7 @@ describe('persist', () => {
 
       persist(count, { key: 'missing', storage: 'local' });
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       // Should keep initial value when no stored data
       expect(count()).toBe(10);
@@ -125,7 +131,7 @@ describe('persist', () => {
 
       persist(state, { key: 'data', storage: 'local', onError });
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       expect(onError).toHaveBeenCalled();
       expect(state()).toEqual({ default: true });
@@ -152,7 +158,7 @@ describe('persist', () => {
         temp: 'ignored',
       });
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       const stored = JSON.parse(storage.get('user')!);
       expect(stored).toEqual({ name: 'Jane', age: 25 });
@@ -178,7 +184,7 @@ describe('persist', () => {
         password: 'secret123',
       });
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       const stored = JSON.parse(storage.get('user')!);
       expect(stored).toEqual({ name: 'Jane', age: 25 });
@@ -201,7 +207,7 @@ describe('persist', () => {
 
       state.set({ name: 'Jane', age: 25, temp: 'ignored' });
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       const stored = JSON.parse(storage.get('user')!);
       expect(stored).toEqual({ name: 'Jane' });
@@ -282,7 +288,7 @@ describe('persist', () => {
 
       state.set({ value: 'updated' });
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       const stored = JSON.parse(storage.get('data')!);
       expect(stored.__version).toBe(1);
@@ -290,10 +296,13 @@ describe('persist', () => {
 
     it('should migrate data when version changes', async () => {
       // Store old version
-      storage.set('data', JSON.stringify({
-        __version: 1,
-        oldField: 'value',
-      }));
+      storage.set(
+        'data',
+        JSON.stringify({
+          __version: 1,
+          oldField: 'value',
+        })
+      );
 
       const migrate = vi.fn((data, fromVersion, toVersion) => {
         if (fromVersion === 1 && toVersion === 2) {
@@ -313,21 +322,20 @@ describe('persist', () => {
         migrate,
       });
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
-      expect(migrate).toHaveBeenCalledWith(
-        expect.objectContaining({ oldField: 'value' }),
-        1,
-        2
-      );
+      expect(migrate).toHaveBeenCalledWith(expect.objectContaining({ oldField: 'value' }), 1, 2);
       expect(state()).toEqual({ newField: 'value', __version: 2 });
     });
 
     it('should handle multi-step migrations', async () => {
-      storage.set('data', JSON.stringify({
-        __version: 1,
-        value: 'old',
-      }));
+      storage.set(
+        'data',
+        JSON.stringify({
+          __version: 1,
+          value: 'old',
+        })
+      );
 
       const migrate = vi.fn((data, fromVersion, toVersion) => {
         let migrated = { ...data };
@@ -354,7 +362,7 @@ describe('persist', () => {
         migrate,
       });
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       expect(state()).toEqual({
         value: 'OLD',
@@ -382,13 +390,9 @@ describe('persist', () => {
         migrate,
       });
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
-      expect(migrate).toHaveBeenCalledWith(
-        expect.objectContaining({ value: 'old' }),
-        0,
-        1
-      );
+      expect(migrate).toHaveBeenCalledWith(expect.objectContaining({ value: 'old' }), 0, 1);
     });
   });
 
@@ -406,7 +410,7 @@ describe('persist', () => {
 
       count.set(42);
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       expect(serialize).toHaveBeenCalledWith(42);
       expect(storage.get('count')).toBe('custom:42');
@@ -425,7 +429,7 @@ describe('persist', () => {
         deserialize,
       });
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       expect(deserialize).toHaveBeenCalledWith('custom:42');
       expect(count()).toBe(42);
@@ -447,7 +451,7 @@ describe('persist', () => {
 
       count.set(42);
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       expect(onError).toHaveBeenCalledWith(expect.any(Error));
     });
@@ -516,7 +520,7 @@ describe('persist', () => {
       manager.startWatching();
 
       // Wait for initial value to be persisted
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
       expect(storage.get('count')).toBe('0');
 
       manager.dispose();
@@ -525,7 +529,7 @@ describe('persist', () => {
       count.set(42);
 
       // Wait to ensure no persistence happens
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       // Should still have the old value, not the new one
       expect(storage.get('count')).toBe('0');
@@ -547,7 +551,7 @@ describe('persist', () => {
 
       // Should not persist changes
       count.set(10);
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
       expect(storage.get('count')).toBe('42');
     });
 
@@ -563,7 +567,7 @@ describe('persist', () => {
 
       // Should not persist future changes
       count.set(10);
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
       expect(storage.get('count')).toBe('42');
     });
 
@@ -591,7 +595,7 @@ describe('persist', () => {
 
       count.set(42);
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       // Should not throw, uses memory storage
       expect(count()).toBe(42);
@@ -617,7 +621,7 @@ describe('persist', () => {
 
       count.set(42);
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       expect(onError).toHaveBeenCalledWith(expect.any(Error));
     });
@@ -637,7 +641,7 @@ describe('persist', () => {
         onError,
       });
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       expect(onError).toHaveBeenCalledWith(expect.any(Error));
     });
@@ -657,12 +661,9 @@ describe('persist', () => {
         },
       });
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        'Failed to hydrate from storage:',
-        expect.any(Error)
-      );
+      expect(consoleSpy).toHaveBeenCalledWith('Failed to hydrate from storage:', expect.any(Error));
 
       consoleSpy.mockRestore();
     });
@@ -679,7 +680,7 @@ describe('persist', () => {
 
       items.set([4, 5, 6]);
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       const stored = JSON.parse(storage.get('items')!);
       expect(stored).toEqual([4, 5, 6]);
@@ -713,7 +714,7 @@ describe('persist', () => {
         },
       });
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       const stored = JSON.parse(storage.get('state')!);
       expect(stored.user.profile.settings.theme).toBe('light');
@@ -729,7 +730,7 @@ describe('persist', () => {
 
       value.set(null);
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       const stored = storage.get('value');
       expect(stored).toBe('null');
@@ -744,13 +745,13 @@ describe('persist', () => {
       });
 
       // Wait for initial value to be persisted
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
       expect(storage.get('value')).toBe('"initial"');
 
       // Set to undefined
       value.set(undefined);
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       // JSON.stringify(undefined) returns undefined (not a string),
       // which gets converted to "undefined" string by storage.setItem

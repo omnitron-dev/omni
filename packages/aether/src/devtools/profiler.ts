@@ -278,11 +278,7 @@ export class ProfilerImpl implements Profiler {
   /**
    * Update statistics
    */
-  private updateStats(
-    stats: Map<string, { total: number; count: number }>,
-    id: string,
-    duration: number,
-  ): void {
+  private updateStats(stats: Map<string, { total: number; count: number }>, id: string, duration: number): void {
     const existing = stats.get(id);
     if (existing) {
       existing.total += duration;
@@ -296,9 +292,9 @@ export class ProfilerImpl implements Profiler {
    * Calculate summary statistics
    */
   private calculateSummary(): PerformanceProfile['summary'] {
-    const componentMeasurements = this.measurements.filter(m => m.type === 'component');
-    const effectMeasurements = this.measurements.filter(m => m.type === 'effect');
-    const computedMeasurements = this.measurements.filter(m => m.type === 'computed');
+    const componentMeasurements = this.measurements.filter((m) => m.type === 'component');
+    const effectMeasurements = this.measurements.filter((m) => m.type === 'effect');
+    const computedMeasurements = this.measurements.filter((m) => m.type === 'computed');
 
     const slowestComponent = this.findSlowest(componentMeasurements);
     const slowestEffect = this.findSlowest(effectMeasurements);
@@ -319,9 +315,7 @@ export class ProfilerImpl implements Profiler {
    */
   private findSlowest(measurements: PerformanceMeasurement[]): PerformanceMeasurement | undefined {
     if (measurements.length === 0) return undefined;
-    return measurements.reduce((slowest, current) =>
-      current.duration > slowest.duration ? current : slowest,
-    );
+    return measurements.reduce((slowest, current) => (current.duration > slowest.duration ? current : slowest));
   }
 
   /**
@@ -335,9 +329,7 @@ export class ProfilerImpl implements Profiler {
    * Identify bottlenecks
    */
   identifyBottlenecks(threshold = DEFAULT_BOTTLENECK_THRESHOLD): PerformanceMeasurement[] {
-    return this.measurements
-      .filter(m => m.duration > threshold)
-      .sort((a, b) => b.duration - a.duration);
+    return this.measurements.filter((m) => m.duration > threshold).sort((a, b) => b.duration - a.duration);
   }
 
   /**
@@ -368,11 +360,7 @@ export class ProfilerImpl implements Profiler {
    */
   getAverageTime(targetId: string, type: 'component' | 'effect' | 'computed'): number {
     const stats =
-      type === 'component'
-        ? this.componentStats
-        : type === 'effect'
-          ? this.effectStats
-          : this.computedStats;
+      type === 'component' ? this.componentStats : type === 'effect' ? this.effectStats : this.computedStats;
 
     const stat = stats.get(targetId);
     if (!stat || stat.count === 0) return 0;

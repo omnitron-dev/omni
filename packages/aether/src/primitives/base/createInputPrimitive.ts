@@ -382,15 +382,11 @@ export function createInputPrimitive<TValue = string>(config: InputConfig<TValue
         return props.defaultValue;
       }
       // For string-based inputs, use empty string
-      return ('' as unknown) as TValue;
+      return '' as unknown as TValue;
     };
 
     // Pattern 19: Use useControlledState for flexible value handling
-    const [getValue, setValue] = useControlledState<TValue>(
-      props.value,
-      getDefaultValue(),
-      props.onValueChange
-    );
+    const [getValue, setValue] = useControlledState<TValue>(props.value, getDefaultValue(), props.onValueChange);
 
     // Element ref for focus management
     const elementRef = signal<HTMLInputElement | HTMLTextAreaElement | null>(null);
@@ -411,7 +407,7 @@ export function createInputPrimitive<TValue = string>(config: InputConfig<TValue
       if (transformValue) {
         newValue = transformValue(rawValue, getValue());
       } else {
-        newValue = (rawValue as unknown) as TValue;
+        newValue = rawValue as unknown as TValue;
       }
 
       // Validate if validator provided

@@ -11,10 +11,7 @@ import type { I18nContext } from './types.js';
 /**
  * I18n context
  */
-export const I18nContextSymbol: Context<I18nContext | null> = createContext<I18nContext | null>(
-  null,
-  'I18nContext',
-);
+export const I18nContextSymbol: Context<I18nContext | null> = createContext<I18nContext | null>(null, 'I18nContext');
 
 /**
  * Provide i18n context

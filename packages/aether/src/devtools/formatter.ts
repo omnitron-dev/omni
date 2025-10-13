@@ -68,7 +68,7 @@ export function uninstallFormatters(): void {
 
   // Remove Aether formatters
   win.devtoolsFormatters = win.devtoolsFormatters.filter(
-    (f: Formatter) => f !== signalFormatter && f !== storeFormatter && f !== componentFormatter,
+    (f: Formatter) => f !== signalFormatter && f !== storeFormatter && f !== componentFormatter
   );
 }
 
@@ -77,10 +77,7 @@ export function uninstallFormatters(): void {
  */
 function isSignal(obj: any): boolean {
   return (
-    obj != null &&
-    typeof obj === 'function' &&
-    typeof obj.peek === 'function' &&
-    typeof obj.subscribe === 'function'
+    obj != null && typeof obj === 'function' && typeof obj.peek === 'function' && typeof obj.subscribe === 'function'
   );
 }
 
@@ -155,12 +152,7 @@ const signalFormatter: Formatter = {
 const storeFormatter: Formatter = {
   header(obj: any): any[] | null {
     // Check if it's a store (has get, set, subscribe methods)
-    if (
-      !obj ||
-      typeof obj !== 'object' ||
-      typeof obj.get !== 'function' ||
-      typeof obj.subscribe !== 'function'
-    ) {
+    if (!obj || typeof obj !== 'object' || typeof obj.get !== 'function' || typeof obj.subscribe !== 'function') {
       return null;
     }
 
@@ -215,12 +207,7 @@ const storeFormatter: Formatter = {
 const componentFormatter: Formatter = {
   header(obj: any): any[] | null {
     // Check if it's a component instance
-    if (
-      !obj ||
-      typeof obj !== 'object' ||
-      !('__AETHER_COMPONENT__' in obj) ||
-      !obj.__AETHER_COMPONENT__
-    ) {
+    if (!obj || typeof obj !== 'object' || !('__AETHER_COMPONENT__' in obj) || !obj.__AETHER_COMPONENT__) {
       return null;
     }
 

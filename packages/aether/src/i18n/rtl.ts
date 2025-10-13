@@ -83,11 +83,7 @@ export function flipForRTL<T>(locale: LocaleCode, ltrValue: T, rtlValue: T): T {
  * Get logical property value
  * Converts physical properties (left/right) to logical properties (start/end)
  */
-export function getLogicalProperty(
-  property: string,
-  value: any,
-  locale: LocaleCode,
-): { property: string; value: any } {
+export function getLogicalProperty(property: string, value: any, locale: LocaleCode): { property: string; value: any } {
   const direction = getDirection(locale);
 
   // Map physical properties to logical equivalents
@@ -129,10 +125,7 @@ export function getLogicalProperty(
 /**
  * Create RTL-aware styles object
  */
-export function createDirectionStyles(
-  locale: LocaleCode,
-  styles: Record<string, any>,
-): Record<string, any> {
+export function createDirectionStyles(locale: LocaleCode, styles: Record<string, any>): Record<string, any> {
   const result: Record<string, any> = {};
 
   for (const [property, value] of Object.entries(styles)) {

@@ -11,14 +11,7 @@ import { ViewTransitionsManager } from './view-transitions.js';
 import { PrefetchManager } from './prefetch.js';
 import { CodeSplittingManager } from './code-splitting.js';
 import { ScrollRestorationManager } from './scroll.js';
-import type {
-  Router,
-  RouterConfig,
-  RouteMatch,
-  Location,
-  NavigationOptions,
-  RouteGuard,
-} from './types.js';
+import type { Router, RouterConfig, RouteMatch, Location, NavigationOptions, RouteGuard } from './types.js';
 
 /**
  * Create a new Router instance
@@ -51,9 +44,7 @@ export function createRouter(config: RouterConfig = {}): Router {
   // Initialize advanced features
   const viewTransitionsManager =
     viewTransitions !== false
-      ? new ViewTransitionsManager(
-          typeof viewTransitions === 'object' ? viewTransitions : { enabled: true }
-        )
+      ? new ViewTransitionsManager(typeof viewTransitions === 'object' ? viewTransitions : { enabled: true })
       : null;
 
   const prefetchManager =
@@ -73,9 +64,7 @@ export function createRouter(config: RouterConfig = {}): Router {
 
   const scrollManager =
     scrollRestoration !== false
-      ? new ScrollRestorationManager(
-          typeof scrollRestoration === 'object' ? scrollRestoration : { enabled: true }
-        )
+      ? new ScrollRestorationManager(typeof scrollRestoration === 'object' ? scrollRestoration : { enabled: true })
       : null;
 
   /**
@@ -247,10 +236,7 @@ export function createRouter(config: RouterConfig = {}): Router {
     // Handle scroll behavior with scroll manager
     if (scroll && scrollManager) {
       await scrollManager.handleNavigation(fromPath, pathname, {
-        position:
-          typeof scroll === 'object'
-            ? { left: scroll.left ?? 0, top: scroll.top ?? 0 }
-            : undefined,
+        position: typeof scroll === 'object' ? { left: scroll.left ?? 0, top: scroll.top ?? 0 } : undefined,
         skip: !scroll,
       });
     } else if (scroll && typeof window !== 'undefined') {

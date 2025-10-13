@@ -50,9 +50,7 @@ describe('DevTools Bridge', () => {
       );
 
       // Simulate handshake response
-      const handshakeHandler = mockAddEventListener.mock.calls.find(
-        call => call[0] === 'message'
-      )?.[1];
+      const handshakeHandler = mockAddEventListener.mock.calls.find((call) => call[0] === 'message')?.[1];
 
       handshakeHandler?.({
         data: {
@@ -79,9 +77,7 @@ describe('DevTools Bridge', () => {
       const connectPromise = bridge.connect();
 
       // Simulate handshake response
-      const handshakeHandler = mockAddEventListener.mock.calls.find(
-        call => call[0] === 'message'
-      )?.[1];
+      const handshakeHandler = mockAddEventListener.mock.calls.find((call) => call[0] === 'message')?.[1];
 
       handshakeHandler?.({
         data: {
@@ -93,9 +89,7 @@ describe('DevTools Bridge', () => {
       await connectPromise;
 
       // Should have message listener registered
-      const messageListeners = mockAddEventListener.mock.calls.filter(
-        call => call[0] === 'message'
-      );
+      const messageListeners = mockAddEventListener.mock.calls.filter((call) => call[0] === 'message');
       expect(messageListeners.length).toBeGreaterThan(0);
     });
 
@@ -103,9 +97,7 @@ describe('DevTools Bridge', () => {
       const connectPromise = bridge.connect();
 
       // Simulate handshake response
-      const handshakeHandler = mockAddEventListener.mock.calls.find(
-        call => call[0] === 'message'
-      )?.[1];
+      const handshakeHandler = mockAddEventListener.mock.calls.find((call) => call[0] === 'message')?.[1];
 
       handshakeHandler?.({
         data: {
@@ -135,9 +127,7 @@ describe('DevTools Bridge', () => {
     it('should not double-connect', async () => {
       const connectPromise1 = bridge.connect();
 
-      const handshakeHandler = mockAddEventListener.mock.calls.find(
-        call => call[0] === 'message'
-      )?.[1];
+      const handshakeHandler = mockAddEventListener.mock.calls.find((call) => call[0] === 'message')?.[1];
 
       handshakeHandler?.({
         data: {
@@ -170,9 +160,7 @@ describe('DevTools Bridge', () => {
     it('should disconnect from extension', async () => {
       const connectPromise = bridge.connect();
 
-      const handshakeHandler = mockAddEventListener.mock.calls.find(
-        call => call[0] === 'message'
-      )?.[1];
+      const handshakeHandler = mockAddEventListener.mock.calls.find((call) => call[0] === 'message')?.[1];
 
       handshakeHandler?.({
         data: {
@@ -191,9 +179,7 @@ describe('DevTools Bridge', () => {
     it('should stop heartbeat on disconnect', async () => {
       const connectPromise = bridge.connect();
 
-      const handshakeHandler = mockAddEventListener.mock.calls.find(
-        call => call[0] === 'message'
-      )?.[1];
+      const handshakeHandler = mockAddEventListener.mock.calls.find((call) => call[0] === 'message')?.[1];
 
       handshakeHandler?.({
         data: {
@@ -217,9 +203,7 @@ describe('DevTools Bridge', () => {
     it('should remove message listener on disconnect', async () => {
       const connectPromise = bridge.connect();
 
-      const handshakeHandler = mockAddEventListener.mock.calls.find(
-        call => call[0] === 'message'
-      )?.[1];
+      const handshakeHandler = mockAddEventListener.mock.calls.find((call) => call[0] === 'message')?.[1];
 
       handshakeHandler?.({
         data: {
@@ -232,10 +216,7 @@ describe('DevTools Bridge', () => {
 
       bridge.disconnect();
 
-      expect(mockRemoveEventListener).toHaveBeenCalledWith(
-        'message',
-        expect.any(Function)
-      );
+      expect(mockRemoveEventListener).toHaveBeenCalledWith('message', expect.any(Function));
     });
 
     it('should handle disconnect when not connected', () => {
@@ -247,9 +228,7 @@ describe('DevTools Bridge', () => {
     it('should send message when connected', async () => {
       const connectPromise = bridge.connect();
 
-      const handshakeHandler = mockAddEventListener.mock.calls.find(
-        call => call[0] === 'message'
-      )?.[1];
+      const handshakeHandler = mockAddEventListener.mock.calls.find((call) => call[0] === 'message')?.[1];
 
       handshakeHandler?.({
         data: {
@@ -314,9 +293,7 @@ describe('DevTools Bridge', () => {
 
       const connectPromise = bridge.connect();
 
-      const handshakeHandler = mockAddEventListener.mock.calls.find(
-        call => call[0] === 'message'
-      )?.[1];
+      const handshakeHandler = mockAddEventListener.mock.calls.find((call) => call[0] === 'message')?.[1];
 
       handshakeHandler?.({
         data: {
@@ -328,9 +305,7 @@ describe('DevTools Bridge', () => {
       await connectPromise;
 
       // Should have sent both queued messages
-      const messageCalls = mockPostMessage.mock.calls.filter(
-        call => call[0].source === '__AETHER_DEVTOOLS__'
-      );
+      const messageCalls = mockPostMessage.mock.calls.filter((call) => call[0].source === '__AETHER_DEVTOOLS__');
 
       expect(messageCalls.length).toBe(2);
     });
@@ -338,9 +313,7 @@ describe('DevTools Bridge', () => {
     it('should serialize messages safely', async () => {
       const connectPromise = bridge.connect();
 
-      const handshakeHandler = mockAddEventListener.mock.calls.find(
-        call => call[0] === 'message'
-      )?.[1];
+      const handshakeHandler = mockAddEventListener.mock.calls.find((call) => call[0] === 'message')?.[1];
 
       handshakeHandler?.({
         data: {
@@ -369,9 +342,7 @@ describe('DevTools Bridge', () => {
     it('should handle serialization errors', async () => {
       const connectPromise = bridge.connect();
 
-      const handshakeHandler = mockAddEventListener.mock.calls.find(
-        call => call[0] === 'message'
-      )?.[1];
+      const handshakeHandler = mockAddEventListener.mock.calls.find((call) => call[0] === 'message')?.[1];
 
       handshakeHandler?.({
         data: {
@@ -408,9 +379,7 @@ describe('DevTools Bridge', () => {
     it('should receive messages from extension', async () => {
       const connectPromise = bridge.connect();
 
-      const handshakeHandler = mockAddEventListener.mock.calls.find(
-        call => call[0] === 'message'
-      )?.[1];
+      const handshakeHandler = mockAddEventListener.mock.calls.find((call) => call[0] === 'message')?.[1];
 
       handshakeHandler?.({
         data: {
@@ -425,9 +394,7 @@ describe('DevTools Bridge', () => {
       bridge.receive(handler);
 
       // Get the message listener
-      const messageListeners = mockAddEventListener.mock.calls.filter(
-        call => call[0] === 'message'
-      );
+      const messageListeners = mockAddEventListener.mock.calls.filter((call) => call[0] === 'message');
       const messageHandler = messageListeners[messageListeners.length - 1]?.[1];
 
       // Simulate incoming message
@@ -450,9 +417,7 @@ describe('DevTools Bridge', () => {
     it('should respond to ping messages', async () => {
       const connectPromise = bridge.connect();
 
-      const handshakeHandler = mockAddEventListener.mock.calls.find(
-        call => call[0] === 'message'
-      )?.[1];
+      const handshakeHandler = mockAddEventListener.mock.calls.find((call) => call[0] === 'message')?.[1];
 
       handshakeHandler?.({
         data: {
@@ -463,9 +428,7 @@ describe('DevTools Bridge', () => {
 
       await connectPromise;
 
-      const messageListeners = mockAddEventListener.mock.calls.filter(
-        call => call[0] === 'message'
-      );
+      const messageListeners = mockAddEventListener.mock.calls.filter((call) => call[0] === 'message');
       const messageHandler = messageListeners[messageListeners.length - 1]?.[1];
 
       mockPostMessage.mockClear();
@@ -495,9 +458,7 @@ describe('DevTools Bridge', () => {
     it('should ignore messages from wrong source', async () => {
       const connectPromise = bridge.connect();
 
-      const handshakeHandler = mockAddEventListener.mock.calls.find(
-        call => call[0] === 'message'
-      )?.[1];
+      const handshakeHandler = mockAddEventListener.mock.calls.find((call) => call[0] === 'message')?.[1];
 
       handshakeHandler?.({
         data: {
@@ -511,9 +472,7 @@ describe('DevTools Bridge', () => {
       const handler = vi.fn();
       bridge.receive(handler);
 
-      const messageListeners = mockAddEventListener.mock.calls.filter(
-        call => call[0] === 'message'
-      );
+      const messageListeners = mockAddEventListener.mock.calls.filter((call) => call[0] === 'message');
       const messageHandler = messageListeners[messageListeners.length - 1]?.[1];
 
       // Send message from wrong source
@@ -530,9 +489,7 @@ describe('DevTools Bridge', () => {
     it('should unsubscribe handler', async () => {
       const connectPromise = bridge.connect();
 
-      const handshakeHandler = mockAddEventListener.mock.calls.find(
-        call => call[0] === 'message'
-      )?.[1];
+      const handshakeHandler = mockAddEventListener.mock.calls.find((call) => call[0] === 'message')?.[1];
 
       handshakeHandler?.({
         data: {
@@ -548,9 +505,7 @@ describe('DevTools Bridge', () => {
 
       unsubscribe();
 
-      const messageListeners = mockAddEventListener.mock.calls.filter(
-        call => call[0] === 'message'
-      );
+      const messageListeners = mockAddEventListener.mock.calls.filter((call) => call[0] === 'message');
       const messageHandler = messageListeners[messageListeners.length - 1]?.[1];
 
       messageHandler?.({
@@ -566,9 +521,7 @@ describe('DevTools Bridge', () => {
     it('should handle multiple handlers', async () => {
       const connectPromise = bridge.connect();
 
-      const handshakeHandler = mockAddEventListener.mock.calls.find(
-        call => call[0] === 'message'
-      )?.[1];
+      const handshakeHandler = mockAddEventListener.mock.calls.find((call) => call[0] === 'message')?.[1];
 
       handshakeHandler?.({
         data: {
@@ -585,9 +538,7 @@ describe('DevTools Bridge', () => {
       bridge.receive(handler1);
       bridge.receive(handler2);
 
-      const messageListeners = mockAddEventListener.mock.calls.filter(
-        call => call[0] === 'message'
-      );
+      const messageListeners = mockAddEventListener.mock.calls.filter((call) => call[0] === 'message');
       const messageHandler = messageListeners[messageListeners.length - 1]?.[1];
 
       const message: DevToolsMessage = {
@@ -609,9 +560,7 @@ describe('DevTools Bridge', () => {
     it('should handle handler errors gracefully', async () => {
       const connectPromise = bridge.connect();
 
-      const handshakeHandler = mockAddEventListener.mock.calls.find(
-        call => call[0] === 'message'
-      )?.[1];
+      const handshakeHandler = mockAddEventListener.mock.calls.find((call) => call[0] === 'message')?.[1];
 
       handshakeHandler?.({
         data: {
@@ -630,9 +579,7 @@ describe('DevTools Bridge', () => {
       bridge.receive(errorHandler);
       bridge.receive(goodHandler);
 
-      const messageListeners = mockAddEventListener.mock.calls.filter(
-        call => call[0] === 'message'
-      );
+      const messageListeners = mockAddEventListener.mock.calls.filter((call) => call[0] === 'message');
       const messageHandler = messageListeners[messageListeners.length - 1]?.[1];
 
       const message: DevToolsMessage = {
@@ -663,9 +610,7 @@ describe('DevTools Bridge', () => {
     it('should return true when connected', async () => {
       const connectPromise = bridge.connect();
 
-      const handshakeHandler = mockAddEventListener.mock.calls.find(
-        call => call[0] === 'message'
-      )?.[1];
+      const handshakeHandler = mockAddEventListener.mock.calls.find((call) => call[0] === 'message')?.[1];
 
       handshakeHandler?.({
         data: {
@@ -682,9 +627,7 @@ describe('DevTools Bridge', () => {
     it('should return false after disconnect', async () => {
       const connectPromise = bridge.connect();
 
-      const handshakeHandler = mockAddEventListener.mock.calls.find(
-        call => call[0] === 'message'
-      )?.[1];
+      const handshakeHandler = mockAddEventListener.mock.calls.find((call) => call[0] === 'message')?.[1];
 
       handshakeHandler?.({
         data: {
@@ -725,9 +668,7 @@ describe('DevTools Bridge', () => {
     it('should handle malformed messages', async () => {
       const connectPromise = bridge.connect();
 
-      const handshakeHandler = mockAddEventListener.mock.calls.find(
-        call => call[0] === 'message'
-      )?.[1];
+      const handshakeHandler = mockAddEventListener.mock.calls.find((call) => call[0] === 'message')?.[1];
 
       handshakeHandler?.({
         data: {
@@ -741,9 +682,7 @@ describe('DevTools Bridge', () => {
       const handler = vi.fn();
       bridge.receive(handler);
 
-      const messageListeners = mockAddEventListener.mock.calls.filter(
-        call => call[0] === 'message'
-      );
+      const messageListeners = mockAddEventListener.mock.calls.filter((call) => call[0] === 'message');
       const messageHandler = messageListeners[messageListeners.length - 1]?.[1];
 
       // Send malformed message
@@ -760,9 +699,7 @@ describe('DevTools Bridge', () => {
     it('should handle messages without type', async () => {
       const connectPromise = bridge.connect();
 
-      const handshakeHandler = mockAddEventListener.mock.calls.find(
-        call => call[0] === 'message'
-      )?.[1];
+      const handshakeHandler = mockAddEventListener.mock.calls.find((call) => call[0] === 'message')?.[1];
 
       handshakeHandler?.({
         data: {
@@ -776,9 +713,7 @@ describe('DevTools Bridge', () => {
       const handler = vi.fn();
       bridge.receive(handler);
 
-      const messageListeners = mockAddEventListener.mock.calls.filter(
-        call => call[0] === 'message'
-      );
+      const messageListeners = mockAddEventListener.mock.calls.filter((call) => call[0] === 'message');
       const messageHandler = messageListeners[messageListeners.length - 1]?.[1];
 
       messageHandler?.({

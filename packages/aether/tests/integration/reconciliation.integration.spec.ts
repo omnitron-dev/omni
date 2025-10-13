@@ -17,11 +17,7 @@ import { effect } from '../../src/core/reactivity/effect.js';
 import { defineComponent } from '../../src/core/component/define.js';
 import { jsx } from '../../src/jsxruntime/runtime.js';
 import { Show, For } from '../../src/reconciler/conditional.js';
-import {
-  createElementVNode,
-  createTextVNode,
-  type VNode,
-} from '../../src/reconciler/vnode.js';
+import { createElementVNode, createTextVNode, type VNode } from '../../src/reconciler/vnode.js';
 import { createDOMFromVNode } from '../../src/reconciler/create-dom.js';
 import { diff } from '../../src/reconciler/diff.js';
 import { patch } from '../../src/reconciler/patch.js';
@@ -47,18 +43,13 @@ describe('Reconciliation Engine - Full System Integration', () => {
       // Create counter component VNode
       const createCounterVNode = (): VNode => {
         return createElementVNode('div', { class: 'counter' }, [
-          createElementVNode('h1', null, [
-            createTextVNode('Count: '),
-            createTextVNode(String(count())),
-          ]),
+          createElementVNode('h1', null, [createTextVNode('Count: '), createTextVNode(String(count()))]),
           createElementVNode('input', {
             type: 'text',
             id: 'test-input',
             placeholder: 'Type here',
           }),
-          createElementVNode('button', { id: 'increment' }, [
-            createTextVNode('Increment'),
-          ]),
+          createElementVNode('button', { id: 'increment' }, [createTextVNode('Increment')]),
         ]);
       };
 
@@ -82,9 +73,7 @@ describe('Reconciliation Engine - Full System Integration', () => {
       vnode = newVNode;
 
       // Check that focus is preserved
-      const inputAfter = container.querySelector(
-        '#test-input',
-      ) as HTMLInputElement;
+      const inputAfter = container.querySelector('#test-input') as HTMLInputElement;
       expect(inputAfter.value).toBe('focused text');
       // Note: Focus preservation might not work in jsdom environment,
       // but the DOM node should be reused
@@ -96,9 +85,7 @@ describe('Reconciliation Engine - Full System Integration', () => {
 
       const createVNode = () =>
         createElementVNode('div', null, [
-          createElementVNode('span', { id: 'display' }, [
-            createTextVNode(`Count: ${count()}`),
-          ]),
+          createElementVNode('span', { id: 'display' }, [createTextVNode(`Count: ${count()}`)]),
           createElementVNode('input', { id: 'input', type: 'text' }),
         ]);
 
@@ -127,10 +114,7 @@ describe('Reconciliation Engine - Full System Integration', () => {
     test('handles rapid counter updates efficiently', () => {
       const count = signal(0);
 
-      const createVNode = () =>
-        createElementVNode('div', null, [
-          createTextVNode(`Count: ${count()}`),
-        ]);
+      const createVNode = () => createElementVNode('div', null, [createTextVNode(`Count: ${count()}`)]);
 
       let vnode = createVNode();
       const dom = createDOMFromVNode(vnode);
@@ -167,9 +151,7 @@ describe('Reconciliation Engine - Full System Integration', () => {
         return createElementVNode(
           'ul',
           null,
-          todos().map((todo) =>
-            createElementVNode('li', null, [createTextVNode(todo.text)], todo.id),
-          ),
+          todos().map((todo) => createElementVNode('li', null, [createTextVNode(todo.text)], todo.id))
         );
       };
 
@@ -181,10 +163,7 @@ describe('Reconciliation Engine - Full System Integration', () => {
       expect(container.textContent).toContain('Buy milk');
 
       // Add new todo
-      todos.set([
-        ...todos(),
-        { id: '3', text: 'Read book', done: false },
-      ]);
+      todos.set([...todos(), { id: '3', text: 'Read book', done: false }]);
 
       const newVNode = createListVNode();
       const patches = diff(vnode, newVNode);
@@ -205,9 +184,7 @@ describe('Reconciliation Engine - Full System Integration', () => {
         return createElementVNode(
           'ul',
           null,
-          todos().map((todo) =>
-            createElementVNode('li', null, [createTextVNode(todo.text)], todo.id),
-          ),
+          todos().map((todo) => createElementVNode('li', null, [createTextVNode(todo.text)], todo.id))
         );
       };
 
@@ -241,9 +218,7 @@ describe('Reconciliation Engine - Full System Integration', () => {
         return createElementVNode(
           'ul',
           null,
-          todos().map((todo) =>
-            createElementVNode('li', null, [createTextVNode(todo.text)], todo.id),
-          ),
+          todos().map((todo) => createElementVNode('li', null, [createTextVNode(todo.text)], todo.id))
         );
       };
 
@@ -281,9 +256,7 @@ describe('Reconciliation Engine - Full System Integration', () => {
         return createElementVNode(
           'ul',
           null,
-          todos().map((todo) =>
-            createElementVNode('li', null, [createTextVNode(todo.text)], todo.id),
-          ),
+          todos().map((todo) => createElementVNode('li', null, [createTextVNode(todo.text)], todo.id))
         );
       };
 
@@ -329,9 +302,9 @@ describe('Reconciliation Engine - Full System Integration', () => {
                 'data-id': todo.id,
               },
               [createTextVNode(todo.text)],
-              todo.id,
-            ),
-          ),
+              todo.id
+            )
+          )
         );
       };
 
@@ -378,9 +351,7 @@ describe('Reconciliation Engine - Full System Integration', () => {
             type: 'email',
             value: formData().email,
           }),
-          createElementVNode('p', null, [
-            createTextVNode(`Summary: ${formData().name} - ${formData().email}`),
-          ]),
+          createElementVNode('p', null, [createTextVNode(`Summary: ${formData().name} - ${formData().email}`)]),
         ]);
       };
 
@@ -414,9 +385,7 @@ describe('Reconciliation Engine - Full System Integration', () => {
 
       // Summary should be updated
       expect(container.querySelector('p')?.textContent).toContain('Jane Doe');
-      expect(container.querySelector('p')?.textContent).toContain(
-        'jane@example.com',
-      );
+      expect(container.querySelector('p')?.textContent).toContain('jane@example.com');
     });
 
     test('preserves checkbox state', () => {
@@ -429,12 +398,8 @@ describe('Reconciliation Engine - Full System Integration', () => {
             type: 'checkbox',
             checked: accepted(),
           }),
-          createElementVNode('label', { for: 'terms' }, [
-            createTextVNode('Accept terms'),
-          ]),
-          createElementVNode('p', null, [
-            createTextVNode(accepted() ? 'Accepted' : 'Not accepted'),
-          ]),
+          createElementVNode('label', { for: 'terms' }, [createTextVNode('Accept terms')]),
+          createElementVNode('p', null, [createTextVNode(accepted() ? 'Accepted' : 'Not accepted')]),
         ]);
       };
 
@@ -466,9 +431,7 @@ describe('Reconciliation Engine - Full System Integration', () => {
             id: 'content',
             value: content(),
           }),
-          createElementVNode('p', null, [
-            createTextVNode(`Length: ${content().length}`),
-          ]),
+          createElementVNode('p', null, [createTextVNode(`Length: ${content().length}`)]),
         ]);
       };
 
@@ -501,9 +464,7 @@ describe('Reconciliation Engine - Full System Integration', () => {
       const createVNode = (): VNode => {
         return createElementVNode('div', null, [
           createTextVNode('Before'),
-          ...(visible()
-            ? [createElementVNode('p', { id: 'content' }, [createTextVNode('Visible')])]
-            : []),
+          ...(visible() ? [createElementVNode('p', { id: 'content' }, [createTextVNode('Visible')])] : []),
           createTextVNode('After'),
         ]);
       };
@@ -544,9 +505,7 @@ describe('Reconciliation Engine - Full System Integration', () => {
         return createElementVNode(
           'ul',
           null,
-          items().map((item, index) =>
-            createElementVNode('li', null, [createTextVNode(item)], String(index)),
-          ),
+          items().map((item, index) => createElementVNode('li', null, [createTextVNode(item)], String(index)))
         );
       };
 
@@ -583,13 +542,7 @@ describe('Reconciliation Engine - Full System Integration', () => {
             ? [
                 createElementVNode('div', { id: 'outer' }, [
                   createTextVNode('Outer'),
-                  ...(showInner()
-                    ? [
-                        createElementVNode('div', { id: 'inner' }, [
-                          createTextVNode('Inner'),
-                        ]),
-                      ]
-                    : []),
+                  ...(showInner() ? [createElementVNode('div', { id: 'inner' }, [createTextVNode('Inner')])] : []),
                 ]),
               ]
             : []),
@@ -636,9 +589,7 @@ describe('Reconciliation Engine - Full System Integration', () => {
           createElementVNode('h1', null, [createTextVNode(parentData())]),
           createElementVNode('div', { id: 'child' }, [
             createElementVNode('p', null, [createTextVNode(childData())]),
-            createElementVNode('span', null, [
-              createTextVNode(`From parent: ${parentData()}`),
-            ]),
+            createElementVNode('span', null, [createTextVNode(`From parent: ${parentData()}`)]),
           ]),
         ]);
       };
@@ -648,9 +599,7 @@ describe('Reconciliation Engine - Full System Integration', () => {
       container.appendChild(dom);
 
       expect(container.querySelector('h1')?.textContent).toBe('Parent Value');
-      expect(container.querySelector('span')?.textContent).toContain(
-        'Parent Value',
-      );
+      expect(container.querySelector('span')?.textContent).toContain('Parent Value');
 
       // Update parent
       parentData.set('Updated Parent');
@@ -660,9 +609,7 @@ describe('Reconciliation Engine - Full System Integration', () => {
       patch(vnode, patches);
 
       expect(container.querySelector('h1')?.textContent).toBe('Updated Parent');
-      expect(container.querySelector('span')?.textContent).toContain(
-        'Updated Parent',
-      );
+      expect(container.querySelector('span')?.textContent).toContain('Updated Parent');
     });
 
     test('sibling components update independently', () => {
@@ -671,12 +618,8 @@ describe('Reconciliation Engine - Full System Integration', () => {
 
       const createVNode = (): VNode => {
         return createElementVNode('div', null, [
-          createElementVNode('div', { id: 'left' }, [
-            createTextVNode(leftData()),
-          ]),
-          createElementVNode('div', { id: 'right' }, [
-            createTextVNode(rightData()),
-          ]),
+          createElementVNode('div', { id: 'left' }, [createTextVNode(leftData())]),
+          createElementVNode('div', { id: 'right' }, [createTextVNode(rightData())]),
         ]);
       };
 
@@ -734,9 +677,7 @@ describe('Reconciliation Engine - Full System Integration', () => {
       const patches = diff(vnode, newVNode);
       patch(vnode, patches);
 
-      expect(container.querySelector('#level3')?.textContent).toContain(
-        'L1: L1-Updated',
-      );
+      expect(container.querySelector('#level3')?.textContent).toContain('L1: L1-Updated');
     });
   });
 
@@ -744,10 +685,7 @@ describe('Reconciliation Engine - Full System Integration', () => {
     test('handles 100 rapid text updates', () => {
       const value = signal(0);
 
-      const createVNode = () =>
-        createElementVNode('div', null, [
-          createTextVNode(`Value: ${value()}`),
-        ]);
+      const createVNode = () => createElementVNode('div', null, [createTextVNode(`Value: ${value()}`)]);
 
       let vnode = createVNode();
       const dom = createDOMFromVNode(vnode);
@@ -776,9 +714,7 @@ describe('Reconciliation Engine - Full System Integration', () => {
         createElementVNode(
           'ul',
           null,
-          items().map((item, idx) =>
-            createElementVNode('li', null, [createTextVNode(item)], String(idx)),
-          ),
+          items().map((item, idx) => createElementVNode('li', null, [createTextVNode(item)], String(idx)))
         );
 
       let vnode = createVNode();
@@ -808,13 +744,9 @@ describe('Reconciliation Engine - Full System Integration', () => {
 
       const createVNode = () =>
         createElementVNode('div', null, [
-          createElementVNode('div', null, [
-            createTextVNode(`Counter: ${counter()}`),
-          ]),
+          createElementVNode('div', null, [createTextVNode(`Counter: ${counter()}`)]),
           createElementVNode('div', null, [createTextVNode(`Text: ${text()}`)]),
-          ...(show()
-            ? [createElementVNode('div', null, [createTextVNode('Visible')])]
-            : []),
+          ...(show() ? [createElementVNode('div', null, [createTextVNode('Visible')])] : []),
         ]);
 
       let vnode = createVNode();
@@ -850,9 +782,7 @@ describe('Reconciliation Engine - Full System Integration', () => {
         createElementVNode(
           'ul',
           null,
-          items().map((item) =>
-            createElementVNode('li', null, [createTextVNode(item)]),
-          ),
+          items().map((item) => createElementVNode('li', null, [createTextVNode(item)]))
         );
 
       let vnode = createVNode();
@@ -877,9 +807,7 @@ describe('Reconciliation Engine - Full System Integration', () => {
         createElementVNode(
           'ul',
           null,
-          items().map((item) =>
-            createElementVNode('li', null, [createTextVNode(item)]),
-          ),
+          items().map((item) => createElementVNode('li', null, [createTextVNode(item)]))
         );
 
       let vnode = createVNode();
@@ -904,11 +832,7 @@ describe('Reconciliation Engine - Full System Integration', () => {
         createElementVNode('div', null, [
           createElementVNode('div', null, [
             createElementVNode('div', null, [
-              createElementVNode('div', null, [
-                createElementVNode('div', null, [
-                  createTextVNode(value()),
-                ]),
-              ]),
+              createElementVNode('div', null, [createElementVNode('div', null, [createTextVNode(value())])]),
             ]),
           ]),
         ]);

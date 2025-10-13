@@ -29,10 +29,11 @@ describe('Static Paths', () => {
     });
 
     it('should validate paths structure', async () => {
-      const getStaticPaths = async () => ({
-        paths: [{}],
-        fallback: false,
-      }) as any;
+      const getStaticPaths = async () =>
+        ({
+          paths: [{}],
+          fallback: false,
+        }) as any;
 
       await expect(executeStaticPaths(getStaticPaths)).rejects.toThrow();
     });

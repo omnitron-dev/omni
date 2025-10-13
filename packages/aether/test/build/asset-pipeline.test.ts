@@ -3,12 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  AssetPipeline,
-  ImageOptimizer,
-  FontSubsetter,
-  SVGOptimizer,
-} from '../../src/build/asset-pipeline.js';
+import { AssetPipeline, ImageOptimizer, FontSubsetter, SVGOptimizer } from '../../src/build/asset-pipeline.js';
 
 describe('AssetPipeline', () => {
   let pipeline: AssetPipeline;
@@ -45,9 +40,7 @@ describe('AssetPipeline', () => {
   });
 
   it('should process SVG assets', async () => {
-    const svgContent = Buffer.from(
-      '<svg><rect width="100" height="100"/></svg>',
-    );
+    const svgContent = Buffer.from('<svg><rect width="100" height="100"/></svg>');
     const result = await pipeline.processAsset('icon.svg', svgContent);
 
     expect(result.originalPath).toBe('icon.svg');
@@ -96,9 +89,7 @@ describe('AssetPipeline', () => {
   });
 
   it('should generate asset manifest', async () => {
-    const assets = new Map<string, Buffer>([
-      ['style.css', Buffer.from('.class { color: red; }')],
-    ]);
+    const assets = new Map<string, Buffer>([['style.css', Buffer.from('.class { color: red; }')]]);
 
     const result = await pipeline.processAssets(assets);
 

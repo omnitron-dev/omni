@@ -109,19 +109,23 @@ export class AnalyticsService extends NetronService<IAnalyticsService> {
 
   // Optional: Add convenience methods
   async trackPageView(path: string, userId: string): Promise<void> {
-    await this.mutate('trackEvent', [{
-      type: 'page_view',
-      userId,
-      metadata: { path, referrer: document.referrer },
-    }]);
+    await this.mutate('trackEvent', [
+      {
+        type: 'page_view',
+        userId,
+        metadata: { path, referrer: document.referrer },
+      },
+    ]);
   }
 
   async trackClick(elementId: string, userId: string): Promise<void> {
-    await this.mutate('trackEvent', [{
-      type: 'click',
-      userId,
-      metadata: { elementId, timestamp: new Date() },
-    }]);
+    await this.mutate('trackEvent', [
+      {
+        type: 'click',
+        userId,
+        metadata: { elementId, timestamp: new Date() },
+      },
+    ]);
   }
 }
 
@@ -191,10 +195,7 @@ export class UserStore extends NetronStore<IUserService> {
     const newUser = await this.mutate('createUser', [{ name, email }], {
       optimistic: () => {
         // Optimistic update
-        this.users.set([
-          ...this.users(),
-          { id: 'temp-' + Date.now(), name, email },
-        ]);
+        this.users.set([...this.users(), { id: 'temp-' + Date.now(), name, email }]);
       },
       invalidate: ['users'],
     });
@@ -224,12 +225,7 @@ const Dashboard = defineComponent(() => {
   const netron = inject(NetronClient);
 
   // Query data from multiple backends simultaneously
-  const { data: stats } = useQuery(
-    AnalyticsService,
-    'getStats',
-    [],
-    { cache: 30000 }
-  );
+  const { data: stats } = useQuery(AnalyticsService, 'getStats', [], { cache: 30000 });
 
   const isAuthenticated = signal(false);
 
@@ -261,8 +257,7 @@ const Dashboard = defineComponent(() => {
 
       {/* Auth Status */}
       <div class="auth-status">
-        <strong>Auth Status:</strong>{' '}
-        {isAuthenticated() ? '✅ Authenticated' : '❌ Not authenticated'}
+        <strong>Auth Status:</strong> {isAuthenticated() ? '✅ Authenticated' : '❌ Not authenticated'}
       </div>
 
       {/* Analytics Stats (analytics backend) */}
@@ -282,14 +277,10 @@ const Dashboard = defineComponent(() => {
       <div class="users-panel">
         <h2>Users (api.example.com)</h2>
         {userStore.loading() && <div>Loading users...</div>}
-        {userStore.error() && (
-          <div class="error">{userStore.error()!.message}</div>
-        )}
-        <div class="user-count">
-          Total Users: {userStore.userCount()}
-        </div>
+        {userStore.error() && <div class="error">{userStore.error()!.message}</div>}
+        <div class="user-count">Total Users: {userStore.userCount()}</div>
         <ul>
-          {userStore.users().map(user => (
+          {userStore.users().map((user) => (
             <li key={user.id}>
               {user.name} ({user.email})
             </li>
@@ -318,10 +309,8 @@ const Dashboard = defineComponent(() => {
       <div class="backend-info">
         <h2>Configured Backends</h2>
         <ul>
-          {netron.getBackends().map(name => (
-            <li key={name}>
-              ✅ {name}
-            </li>
+          {netron.getBackends().map((name) => (
+            <li key={name}>✅ {name}</li>
           ))}
         </ul>
       </div>
@@ -336,21 +325,21 @@ const PaymentComponent = defineComponent<{ amount: number }>((props) => {
   const paymentService = inject(PaymentService);
   const analytics = inject(AnalyticsService);
 
-  const { mutate, loading, data: paymentIntent } = useMutation(
-    PaymentService,
-    'createPaymentIntent',
-    {
-      onSuccess: async (intent) => {
-        console.log('Payment intent created:', intent);
-        // Track analytics (different backend!)
-        await analytics.trackEvent({
-          type: 'payment_initiated',
-          userId: 'user-123',
-          metadata: { amount: props.amount, intentId: intent.id },
-        });
-      },
-    }
-  );
+  const {
+    mutate,
+    loading,
+    data: paymentIntent,
+  } = useMutation(PaymentService, 'createPaymentIntent', {
+    onSuccess: async (intent) => {
+      console.log('Payment intent created:', intent);
+      // Track analytics (different backend!)
+      await analytics.trackEvent({
+        type: 'payment_initiated',
+        userId: 'user-123',
+        metadata: { amount: props.amount, intentId: intent.id },
+      });
+    },
+  });
 
   const handlePayment = async () => {
     await mutate(props.amount, 'USD');
@@ -381,16 +370,17 @@ const LoginComponent = defineComponent(() => {
   const email = signal('');
   const password = signal('');
 
-  const { mutate, loading, error, data: token } = useMutation(
-    AuthService,
-    'login',
-    {
-      onSuccess: (authToken) => {
-        localStorage.setItem('auth_token', authToken.token);
-        console.log('Logged in successfully!');
-      },
-    }
-  );
+  const {
+    mutate,
+    loading,
+    error,
+    data: token,
+  } = useMutation(AuthService, 'login', {
+    onSuccess: (authToken) => {
+      localStorage.setItem('auth_token', authToken.token);
+      console.log('Logged in successfully!');
+    },
+  });
 
   const handleLogin = async (e: Event) => {
     e.preventDefault();
@@ -518,13 +508,7 @@ const LoginComponent = defineComponent(() => {
       },
     }),
   ],
-  providers: [
-    UserService,
-    UserStore,
-    AnalyticsService,
-    AuthService,
-    PaymentService,
-  ],
+  providers: [UserService, UserStore, AnalyticsService, AuthService, PaymentService],
   bootstrap: Dashboard,
 })
 export class AppModule {}

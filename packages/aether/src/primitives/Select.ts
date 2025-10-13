@@ -551,8 +551,17 @@ export const SelectContent = defineComponent<SelectContentProps>((props) => {
     };
   });
 
-  const { _side, _align, _sideOffset, _alignOffset, _avoidCollisions, _collisionPadding, _position, children, ...restProps } =
-    props;
+  const {
+    _side,
+    _align,
+    _sideOffset,
+    _alignOffset,
+    _avoidCollisions,
+    _collisionPadding,
+    _position,
+    children,
+    ...restProps
+  } = props;
 
   // Use onMount to create and manage content reactively
   onMount(() => {

@@ -22,12 +22,7 @@ export default defineComponent(() => {
     <div>
       <h1>Login</h1>
       <form onSubmit={handleSubmit}>
-        <input
-          type="email"
-          placeholder="Email"
-          value={email()}
-          onInput={(e) => email.set(e.currentTarget.value)}
-        />
+        <input type="email" placeholder="Email" value={email()} onInput={(e) => email.set(e.currentTarget.value)} />
         <input
           type="password"
           placeholder="Password"

@@ -54,22 +54,12 @@ const hydrationState: HydrationState = {
  * });
  * ```
  */
-export function hydrate(
-  component: any,
-  container: HTMLElement | null,
-  options: HydrationOptions = {}
-): void {
+export function hydrate(component: any, container: HTMLElement | null, options: HydrationOptions = {}): void {
   if (!container) {
     throw new Error('Hydration container not found');
   }
 
-  const {
-    serverState = {},
-    progressive = false,
-    strategy = 'eager',
-    onMismatch,
-    islands = false,
-  } = options;
+  const { serverState = {}, progressive = false, strategy = 'eager', onMismatch, islands = false } = options;
 
   // Load server state
   loadServerState(serverState);
@@ -99,11 +89,7 @@ export function hydrate(
  * @param container - Container element
  * @param onMismatch - Mismatch handler
  */
-function hydrateEager(
-  component: any,
-  container: HTMLElement,
-  onMismatch?: (error: HydrationError) => void
-): void {
+function hydrateEager(component: any, container: HTMLElement, onMismatch?: (error: HydrationError) => void): void {
   createRoot(() => {
     try {
       hydrateNode(component, container, onMismatch);
@@ -160,11 +146,7 @@ function hydrateProgressive(
 /**
  * Hydrate when browser is idle
  */
-function hydrateOnIdle(
-  component: any,
-  container: HTMLElement,
-  onMismatch?: (error: HydrationError) => void
-): void {
+function hydrateOnIdle(component: any, container: HTMLElement, onMismatch?: (error: HydrationError) => void): void {
   if ('requestIdleCallback' in window) {
     (window as any).requestIdleCallback(() => {
       hydrateEager(component, container, onMismatch);
@@ -204,11 +186,7 @@ function hydrateOnInteraction(
 /**
  * Hydrate when scrolled into view
  */
-function hydrateOnVisible(
-  component: any,
-  container: HTMLElement,
-  onMismatch?: (error: HydrationError) => void
-): void {
+function hydrateOnVisible(component: any, container: HTMLElement, onMismatch?: (error: HydrationError) => void): void {
   if ('IntersectionObserver' in window) {
     const observer = new IntersectionObserver(
       (entries) => {
@@ -232,11 +210,7 @@ function hydrateOnVisible(
 /**
  * Hydrate a node and its children
  */
-function hydrateNode(
-  component: any,
-  element: HTMLElement,
-  onMismatch?: (error: HydrationError) => void
-): void {
+function hydrateNode(component: any, element: HTMLElement, onMismatch?: (error: HydrationError) => void): void {
   // Check if this is an island
   const islandId = element.getAttribute('data-island');
   if (islandId && hydrationState.islands.has(islandId)) {
@@ -280,11 +254,7 @@ function hydrateNode(
 /**
  * Hydrate an island component
  */
-function hydrateIsland(
-  islandId: string,
-  element: HTMLElement,
-  onMismatch?: (error: HydrationError) => void
-): void {
+function hydrateIsland(islandId: string, element: HTMLElement, onMismatch?: (error: HydrationError) => void): void {
   const marker = hydrationState.islands.get(islandId);
   if (!marker) {
     console.warn(`Island marker not found: ${islandId}`);

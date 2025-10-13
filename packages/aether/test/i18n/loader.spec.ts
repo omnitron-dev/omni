@@ -103,11 +103,7 @@ describe('TranslationLoader', () => {
       });
 
       // Start multiple loads concurrently
-      const [result1, result2, result3] = await Promise.all([
-        loader.load('en'),
-        loader.load('en'),
-        loader.load('en'),
-      ]);
+      const [result1, result2, result3] = await Promise.all([loader.load('en'), loader.load('en'), loader.load('en')]);
 
       expect(callCount).toBe(1);
       expect(result1).toEqual(result2);

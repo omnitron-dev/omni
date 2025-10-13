@@ -170,7 +170,7 @@ export class CriticalCSSExtractor {
    */
   private analyzeRules(
     rules: CSSRule[],
-    html: string,
+    html: string
   ): {
     critical: string[];
     nonCritical: string[];
@@ -233,10 +233,7 @@ export class CriticalCSSExtractor {
   /**
    * Determine if a rule is critical
    */
-  private isCriticalRule(
-    rule: CSSRule,
-    html: string,
-  ): { critical: boolean; reason: string } {
+  private isCriticalRule(rule: CSSRule, html: string): { critical: boolean; reason: string } {
     const { selector } = rule;
 
     // Check force include patterns
@@ -306,33 +303,16 @@ export class CriticalCSSExtractor {
    * Check if selector is for above-the-fold content
    */
   private isAboveFoldSelector(selector: string): boolean {
-    const aboveFoldPatterns = [
-      'header',
-      'nav',
-      'hero',
-      'banner',
-      'fold',
-      'top',
-      'main',
-    ];
+    const aboveFoldPatterns = ['header', 'nav', 'hero', 'banner', 'fold', 'top', 'main'];
 
-    return aboveFoldPatterns.some((pattern) =>
-      selector.toLowerCase().includes(pattern),
-    );
+    return aboveFoldPatterns.some((pattern) => selector.toLowerCase().includes(pattern));
   }
 
   /**
    * Check if selector matches critical patterns
    */
   private isCriticalPattern(selector: string): boolean {
-    const criticalPatterns = [
-      /^html/i,
-      /^body/i,
-      /^@font-face/i,
-      /^:root/i,
-      /^\*/,
-      /^@keyframes/i,
-    ];
+    const criticalPatterns = [/^html/i, /^body/i, /^@font-face/i, /^:root/i, /^\*/, /^@keyframes/i];
 
     return criticalPatterns.some((pattern) => pattern.test(selector));
   }
@@ -386,9 +366,7 @@ interface CSSRule {
 /**
  * Extract critical CSS for a route
  */
-export async function extractCriticalCSS(
-  options: CriticalCSSOptions,
-): Promise<CriticalCSSResult> {
+export async function extractCriticalCSS(options: CriticalCSSOptions): Promise<CriticalCSSResult> {
   const extractor = new CriticalCSSExtractor(options);
   return extractor.extract();
 }
@@ -402,10 +380,7 @@ export class RouteBasedCriticalCSS {
   /**
    * Add route critical CSS
    */
-  async addRoute(
-    route: string,
-    options: CriticalCSSOptions,
-  ): Promise<CriticalCSSResult> {
+  async addRoute(route: string, options: CriticalCSSOptions): Promise<CriticalCSSResult> {
     const result = await extractCriticalCSS(options);
     this.routes.set(route, result);
     return result;
@@ -429,9 +404,7 @@ export class RouteBasedCriticalCSS {
    * Get common critical CSS across all routes
    */
   getCommonCriticalCSS(): string {
-    const allCriticalCSS = Array.from(this.routes.values()).map(
-      (r) => r.critical,
-    );
+    const allCriticalCSS = Array.from(this.routes.values()).map((r) => r.critical);
 
     if (allCriticalCSS.length === 0) return '';
 
@@ -481,12 +454,8 @@ export class RouteBasedCriticalCSS {
 
     const totalRules = routes.reduce((sum, r) => sum + r.coverage.total, 0);
     const criticalRules = routes.reduce((sum, r) => sum + r.coverage.used, 0);
-    const nonCriticalRules = routes.reduce(
-      (sum, r) => sum + r.coverage.unused,
-      0,
-    );
-    const averageCoverage =
-      routes.reduce((sum, r) => sum + r.coverage.percentage, 0) / routes.length;
+    const nonCriticalRules = routes.reduce((sum, r) => sum + r.coverage.unused, 0);
+    const averageCoverage = routes.reduce((sum, r) => sum + r.coverage.percentage, 0) / routes.length;
 
     return {
       routes: routes.length,

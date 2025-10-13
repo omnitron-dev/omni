@@ -15,14 +15,7 @@
 
 import { defineComponent, signal, computed, onMount } from '@omnitron-dev/aether';
 import { Injectable, Module, bootstrapModule } from '@omnitron-dev/aether/di';
-import {
-  NetronModule,
-  NetronService,
-  useQuery,
-  useMutation,
-  Backend,
-  Service,
-} from '@omnitron-dev/aether/netron';
+import { NetronModule, NetronService, useQuery, useMutation, Backend, Service } from '@omnitron-dev/aether/netron';
 
 // ============================================================================
 // SHARED CONTRACTS (Shared between Aether and Titan)
@@ -80,7 +73,7 @@ export class UserService extends NetronService<IUserService> {
     const users = await this.query('getUsers', [], {
       cache: { maxAge: 60000, tags: ['users', 'active-users'] },
     });
-    return users.filter(u => u.active);
+    return users.filter((u) => u.active);
   }
 }
 
@@ -94,27 +87,22 @@ export class UserService extends NetronService<IUserService> {
 const UserList = defineComponent(() => {
   // useQuery returns reactive signals - NO external state management needed!
   const {
-    data: users,      // Signal<User[] | undefined>
-    loading,          // Signal<boolean>
-    error,            // Signal<Error | undefined>
-    refetch,          // () => Promise<void>
-    isStale,          // Signal<boolean>
-  } = useQuery(
-    UserService,
-    'getUsers',
-    [],
-    {
-      cache: 60000,                    // Cache for 60 seconds
-      refetchOnMount: true,            // Refetch when component mounts
-      refetchOnFocus: true,            // Refetch when window gains focus
-      // refetchInterval: 30000,       // Poll every 30 seconds (optional)
-    }
-  );
+    data: users, // Signal<User[] | undefined>
+    loading, // Signal<boolean>
+    error, // Signal<Error | undefined>
+    refetch, // () => Promise<void>
+    isStale, // Signal<boolean>
+  } = useQuery(UserService, 'getUsers', [], {
+    cache: 60000, // Cache for 60 seconds
+    refetchOnMount: true, // Refetch when component mounts
+    refetchOnFocus: true, // Refetch when window gains focus
+    // refetchInterval: 30000,       // Poll every 30 seconds (optional)
+  });
 
   // Computed values work seamlessly with query data
   const activeUserCount = computed(() => {
     const userList = users();
-    return userList ? userList.filter(u => u.active).length : 0;
+    return userList ? userList.filter((u) => u.active).length : 0;
   });
 
   return () => (
@@ -137,7 +125,7 @@ const UserList = defineComponent(() => {
 
       {users() && (
         <ul class="list">
-          {users()!.map(user => (
+          {users()!.map((user) => (
             <li key={user.id} class={user.active ? 'active' : 'inactive'}>
               <span class="name">{user.name}</span>
               <span class="email">{user.email}</span>
@@ -163,25 +151,21 @@ const CreateUserForm = defineComponent(() => {
     loading,
     error,
     data: createdUser,
-  } = useMutation(
-    UserService,
-    'createUser',
-    {
-      // Success callback
-      onSuccess: (newUser) => {
-        console.log('User created:', newUser);
-        // Clear form
-        name.set('');
-        email.set('');
-      },
-      // Error callback
-      onError: (err) => {
-        console.error('Failed to create user:', err);
-      },
-      // Invalidate related queries
-      invalidate: ['users'],
-    }
-  );
+  } = useMutation(UserService, 'createUser', {
+    // Success callback
+    onSuccess: (newUser) => {
+      console.log('User created:', newUser);
+      // Clear form
+      name.set('');
+      email.set('');
+    },
+    // Error callback
+    onError: (err) => {
+      console.error('Failed to create user:', err);
+    },
+    // Invalidate related queries
+    invalidate: ['users'],
+  });
 
   const handleSubmit = async (e: Event) => {
     e.preventDefault();
@@ -225,11 +209,7 @@ const CreateUserForm = defineComponent(() => {
         </div>
       )}
 
-      {createdUser() && (
-        <div class="success">
-          Successfully created user: {createdUser()!.name}
-        </div>
-      )}
+      {createdUser() && <div class="success">Successfully created user: {createdUser()!.name}</div>}
 
       <button type="submit" disabled={loading()}>
         {loading() ? 'Creating...' : 'Create User'}
@@ -243,12 +223,7 @@ const CreateUserForm = defineComponent(() => {
  */
 const EditUserForm = defineComponent<{ userId: string }>((props) => {
   // Query for user data
-  const { data: user, loading: userLoading } = useQuery(
-    UserService,
-    'getUser',
-    [props.userId],
-    { cache: 30000 }
-  );
+  const { data: user, loading: userLoading } = useQuery(UserService, 'getUser', [props.userId], { cache: 30000 });
 
   // Local form state
   const name = signal('');
@@ -263,22 +238,18 @@ const EditUserForm = defineComponent<{ userId: string }>((props) => {
   });
 
   // Mutation with optimistic updates
-  const { mutate, loading: saving } = useMutation(
-    UserService,
-    'updateUser',
-    {
-      // Optimistic update - UI updates IMMEDIATELY
-      optimistic: (id: string, data: UpdateUserDto) => ({
-        id,
-        ...data,
-      }),
-      // Auto-invalidate related queries
-      invalidate: ['users', `user:${props.userId}`],
-      // Callbacks
-      onSuccess: () => console.log('User updated!'),
-      onError: () => console.error('Failed to update, rolling back...'),
-    }
-  );
+  const { mutate, loading: saving } = useMutation(UserService, 'updateUser', {
+    // Optimistic update - UI updates IMMEDIATELY
+    optimistic: (id: string, data: UpdateUserDto) => ({
+      id,
+      ...data,
+    }),
+    // Auto-invalidate related queries
+    invalidate: ['users', `user:${props.userId}`],
+    // Callbacks
+    onSuccess: () => console.log('User updated!'),
+    onError: () => console.error('Failed to update, rolling back...'),
+  });
 
   const handleUpdate = async () => {
     await mutate(props.userId, {
@@ -320,8 +291,8 @@ const EditUserForm = defineComponent<{ userId: string }>((props) => {
           </button>
 
           <p class="note">
-            Note: UI updates immediately with optimistic update.
-            If the server request fails, changes are automatically rolled back.
+            Note: UI updates immediately with optimistic update. If the server request fails, changes are automatically
+            rolled back.
           </p>
         </>
       )}
@@ -339,9 +310,7 @@ const App = defineComponent(() => {
     <div class="app">
       <header>
         <h1>Aether-Netron Zero-Config Example</h1>
-        <p>
-          This example demonstrates zero-config Netron integration with:
-        </p>
+        <p>This example demonstrates zero-config Netron integration with:</p>
         <ul>
           <li>✅ Auto-configured services (no boilerplate)</li>
           <li>✅ Reactive queries with caching</li>
@@ -359,9 +328,7 @@ const App = defineComponent(() => {
         <div class="content">
           <CreateUserForm />
 
-          {selectedUserId() && (
-            <EditUserForm userId={selectedUserId()!} />
-          )}
+          {selectedUserId() && <EditUserForm userId={selectedUserId()!} />}
         </div>
       </main>
     </div>

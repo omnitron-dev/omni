@@ -23,7 +23,7 @@ describe('optimistic', () => {
 
       const mutation = optimistic(
         async () => {
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise((resolve) => setTimeout(resolve, 100));
           return 42;
         },
         {
@@ -51,7 +51,7 @@ describe('optimistic', () => {
 
       const mutation = optimistic(
         async () => {
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise((resolve) => setTimeout(resolve, 100));
           return 42;
         },
         {
@@ -76,7 +76,7 @@ describe('optimistic', () => {
 
       const mutation = optimistic(
         async () => {
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise((resolve) => setTimeout(resolve, 100));
           throw new Error('Test error');
         },
         {
@@ -104,7 +104,7 @@ describe('optimistic', () => {
 
       const mutation = optimistic(
         async () => {
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise((resolve) => setTimeout(resolve, 100));
           return { data: 'test' };
         },
         {
@@ -148,36 +148,27 @@ describe('optimistic', () => {
       const onConflict = vi.fn();
       const state = signal({ version: 1 });
 
-      const mutation = optimistic(
-        async () => ({ version: 2, data: 'server' }),
-        {
-          update: () => state.set({ version: 2 }),
-          rollback: (snapshot) => state.set(snapshot),
-          snapshot: () => state.peek(),
-          onConflict,
-        }
-      );
+      const mutation = optimistic(async () => ({ version: 2, data: 'server' }), {
+        update: () => state.set({ version: 2 }),
+        rollback: (snapshot) => state.set(snapshot),
+        snapshot: () => state.peek(),
+        onConflict,
+      });
 
       await mutation();
 
-      expect(onConflict).toHaveBeenCalledWith(
-        { version: 1 },
-        { version: 2, data: 'server' }
-      );
+      expect(onConflict).toHaveBeenCalledWith({ version: 1 }, { version: 2, data: 'server' });
     });
 
     it('should handle errors in callbacks gracefully', async () => {
-      const mutation = optimistic(
-        async () => ({ data: 'test' }),
-        {
-          update: () => {},
-          rollback: () => {},
-          snapshot: () => 0,
-          onSuccess: () => {
-            throw new Error('Callback error');
-          },
-        }
-      );
+      const mutation = optimistic(async () => ({ data: 'test' }), {
+        update: () => {},
+        rollback: () => {},
+        snapshot: () => 0,
+        onSuccess: () => {
+          throw new Error('Callback error');
+        },
+      });
 
       // Should not throw even if callback throws
       await expect(mutation()).resolves.toEqual({ data: 'test' });
@@ -322,7 +313,7 @@ describe('optimistic', () => {
     it('should track isPending state', async () => {
       const mutation = optimistic(
         async () => {
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise((resolve) => setTimeout(resolve, 100));
           return 'done';
         },
         {
@@ -385,7 +376,7 @@ describe('optimistic', () => {
     it('should prevent concurrent mutations', async () => {
       const mutation = optimistic(
         async () => {
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise((resolve) => setTimeout(resolve, 100));
           return 'done';
         },
         {
@@ -412,7 +403,7 @@ describe('optimistic', () => {
       const increment = optimisticSignal(
         count,
         async (amount: number) => {
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise((resolve) => setTimeout(resolve, 100));
           return amount;
         },
         (current, amount) => current + amount
@@ -477,7 +468,7 @@ describe('optimistic', () => {
         const addUser = optimisticArray(
           users,
           async (user: User) => {
-            await new Promise(resolve => setTimeout(resolve, 100));
+            await new Promise((resolve) => setTimeout(resolve, 100));
             return user;
           },
           'add'
@@ -523,7 +514,7 @@ describe('optimistic', () => {
         const updateUser = optimisticArray(
           users,
           async (id: string, data: Partial<User>) => {
-            await new Promise(resolve => setTimeout(resolve, 100));
+            await new Promise((resolve) => setTimeout(resolve, 100));
             return { id, ...data };
           },
           'update'
@@ -539,9 +530,7 @@ describe('optimistic', () => {
       });
 
       it('should rollback update on error', async () => {
-        const users = signal<User[]>([
-          { id: '1', name: 'John' },
-        ]);
+        const users = signal<User[]>([{ id: '1', name: 'John' }]);
 
         const updateUser = optimisticArray(
           users,
@@ -564,16 +553,11 @@ describe('optimistic', () => {
           title: string;
         }
 
-        const posts = signal<Post[]>([
-          { postId: 'p1', title: 'First' },
-        ]);
+        const posts = signal<Post[]>([{ postId: 'p1', title: 'First' }]);
 
-        const updatePost = optimisticArray(
-          posts,
-          async (id: string, data: Partial<Post>) => data,
-          'update',
-          { idField: 'postId' }
-        );
+        const updatePost = optimisticArray(posts, async (id: string, data: Partial<Post>) => data, 'update', {
+          idField: 'postId',
+        });
 
         await updatePost('p1', { title: 'Updated' });
         expect(posts()[0].title).toBe('Updated');
@@ -590,7 +574,7 @@ describe('optimistic', () => {
         const deleteUser = optimisticArray(
           users,
           async (id: string) => {
-            await new Promise(resolve => setTimeout(resolve, 100));
+            await new Promise((resolve) => setTimeout(resolve, 100));
             return id;
           },
           'delete'
@@ -632,16 +616,13 @@ describe('optimistic', () => {
 
   describe('edge cases', () => {
     it('should handle update function throwing error', async () => {
-      const mutation = optimistic(
-        async () => 'done',
-        {
-          update: () => {
-            throw new Error('Update error');
-          },
-          rollback: () => {},
-          snapshot: () => 0,
-        }
-      );
+      const mutation = optimistic(async () => 'done', {
+        update: () => {
+          throw new Error('Update error');
+        },
+        rollback: () => {},
+        snapshot: () => 0,
+      });
 
       await expect(mutation()).rejects.toThrow('Update error');
     });
@@ -663,10 +644,7 @@ describe('optimistic', () => {
       );
 
       await expect(mutation()).rejects.toThrow('Mutation error');
-      expect(consoleSpy).toHaveBeenCalledWith(
-        'Error rolling back optimistic update:',
-        expect.any(Error)
-      );
+      expect(consoleSpy).toHaveBeenCalledWith('Error rolling back optimistic update:', expect.any(Error));
 
       consoleSpy.mockRestore();
     });

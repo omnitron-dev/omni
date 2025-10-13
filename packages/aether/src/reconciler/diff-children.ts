@@ -221,7 +221,14 @@ export function longestIncreasingSubsequence(arr: number[]): number[] {
       const arrI = arr[i];
       const lengthsJ = lengths[j];
       const lengthsI = lengths[i];
-      if (arrJ !== undefined && arrI !== undefined && lengthsJ !== undefined && lengthsI !== undefined && arrJ < arrI && lengthsJ + 1 > lengthsI) {
+      if (
+        arrJ !== undefined &&
+        arrI !== undefined &&
+        lengthsJ !== undefined &&
+        lengthsI !== undefined &&
+        arrJ < arrI &&
+        lengthsJ + 1 > lengthsI
+      ) {
         lengths[i] = lengthsJ + 1;
         predecessors[i] = j;
       }

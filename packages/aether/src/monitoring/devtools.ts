@@ -218,11 +218,7 @@ export class DevTools {
     const originalOpen = XMLHttpRequest.prototype.open;
     const originalSend = XMLHttpRequest.prototype.send;
 
-    XMLHttpRequest.prototype.open = function xhrOpenInterceptor(
-      method: string,
-      url: string | URL,
-      ...args: any[]
-    ) {
+    XMLHttpRequest.prototype.open = function xhrOpenInterceptor(method: string, url: string | URL, ...args: any[]) {
       (this as any)._aether_url = typeof url === 'string' ? url : url.href;
       (this as any)._aether_method = method;
       (this as any)._aether_id = generateIdFn();
@@ -260,11 +256,7 @@ export class DevTools {
    */
   private logNetworkRequest(request: NetworkRequest): void {
     const color = request.status && request.status >= 200 && request.status < 300 ? 'green' : 'red';
-    console.log(
-      `%c[Network] ${request.method} ${request.url} (${request.duration}ms)`,
-      `color: ${color}`,
-      request
-    );
+    console.log(`%c[Network] ${request.method} ${request.url} (${request.duration}ms)`, `color: ${color}`, request);
   }
 
   /**
@@ -383,9 +375,7 @@ export class DevTools {
     // Log slow renders
     if (render.duration > 16) {
       // > 16ms
-      console.warn(
-        `[Aether DevTools] Slow component render: ${render.name} (${render.duration.toFixed(2)}ms)`
-      );
+      console.warn(`[Aether DevTools] Slow component render: ${render.name} (${render.duration.toFixed(2)}ms)`);
     }
 
     // Keep only last 1000 renders

@@ -285,7 +285,7 @@ export class NetworkInspectorImpl implements NetworkInspector {
         seen.add(val);
 
         if (Array.isArray(val)) {
-          return val.map(item => serialize(item, depth + 1));
+          return val.map((item) => serialize(item, depth + 1));
         }
 
         const result: any = {};
@@ -328,21 +328,21 @@ export class NetworkInspectorImpl implements NetworkInspector {
    * Get events by type
    */
   getEventsByType(type: NetworkEvent['type']): NetworkEvent[] {
-    return this.events.filter(e => e.type === type);
+    return this.events.filter((e) => e.type === type);
   }
 
   /**
    * Get events by service
    */
   getEventsByService(service: string): NetworkEvent[] {
-    return this.events.filter(e => e.service === service);
+    return this.events.filter((e) => e.service === service);
   }
 
   /**
    * Get active connections
    */
   getActiveConnections(): WebSocketConnection[] {
-    return Array.from(this.connections.values()).filter(c => c.state === 'open' || c.state === 'connecting');
+    return Array.from(this.connections.values()).filter((c) => c.state === 'open' || c.state === 'connecting');
   }
 
   /**

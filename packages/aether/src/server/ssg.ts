@@ -11,11 +11,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type {
-  SSGOptions,
-  StaticPathsResult,
-  StaticPropsResult,
-} from './types.js';
+import type { SSGOptions, StaticPathsResult, StaticPropsResult } from './types.js';
 import { renderToString } from './ssr.js';
 import { renderDocument } from './renderer.js';
 
@@ -55,10 +51,7 @@ const isrCache = new Map<string, ISRCacheEntry>();
  * });
  * ```
  */
-export async function generateStaticSite(
-  routeComponent: any,
-  options: SSGOptions
-): Promise<void> {
+export async function generateStaticSite(routeComponent: any, options: SSGOptions): Promise<void> {
   const {
     routes: routesInput,
     outDir,
@@ -162,11 +155,7 @@ async function generateRoute(
 /**
  * Generate 404 page
  */
-async function generate404Page(
-  component: any,
-  outDir: string,
-  _base: string
-): Promise<void> {
+async function generate404Page(component: any, outDir: string, _base: string): Promise<void> {
   try {
     const result = await renderToString(component, {
       url: '/404',
@@ -205,9 +194,7 @@ async function generate404Page(
  * });
  * ```
  */
-export async function getStaticPaths(
-  getStaticPathsFn: () => Promise<StaticPathsResult>
-): Promise<StaticPathsResult> {
+export async function getStaticPaths(getStaticPathsFn: () => Promise<StaticPathsResult>): Promise<StaticPathsResult> {
   return await getStaticPathsFn();
 }
 
@@ -257,11 +244,7 @@ export async function getStaticProps<T = any>(
  * }
  * ```
  */
-export async function revalidate(
-  route: string,
-  component: any,
-  outDir: string
-): Promise<boolean> {
+export async function revalidate(route: string, component: any, outDir: string): Promise<boolean> {
   const cached = isrCache.get(route);
 
   if (!cached) {

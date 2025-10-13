@@ -197,10 +197,7 @@ export class AssetPipeline {
   /**
    * Process asset
    */
-  async processAsset(
-    filePath: string,
-    content: Buffer,
-  ): Promise<ProcessedAsset> {
+  async processAsset(filePath: string, content: Buffer): Promise<ProcessedAsset> {
     const ext = path.extname(filePath).toLowerCase();
     const assetType = this.getAssetType(ext);
 
@@ -226,19 +223,12 @@ export class AssetPipeline {
         processedAsset = await this.processSVG(filePath, content, processedAsset);
         break;
       default:
-        processedAsset = await this.processGeneric(
-          filePath,
-          content,
-          processedAsset,
-        );
+        processedAsset = await this.processGeneric(filePath, content, processedAsset);
     }
 
     // Apply fingerprinting
     if (this.options.fingerprint) {
-      processedAsset.outputPath = this.fingerprintPath(
-        filePath,
-        processedAsset.hash,
-      );
+      processedAsset.outputPath = this.fingerprintPath(filePath, processedAsset.hash);
     } else {
       processedAsset.outputPath = filePath;
     }
@@ -260,15 +250,9 @@ export class AssetPipeline {
   /**
    * Process multiple assets
    */
-  async processAssets(
-    assets: Map<string, Buffer>,
-  ): Promise<AssetPipelineResult> {
+  async processAssets(assets: Map<string, Buffer>): Promise<AssetPipelineResult> {
     // Process all assets in parallel
-    await Promise.all(
-      Array.from(assets.entries()).map(([path, content]) =>
-        this.processAsset(path, content),
-      ),
-    );
+    await Promise.all(Array.from(assets.entries()).map(([path, content]) => this.processAsset(path, content)));
 
     const manifest = this.generateManifest();
     const stats = this.calculateStats();
@@ -283,11 +267,7 @@ export class AssetPipeline {
   /**
    * Process image asset
    */
-  private async processImage(
-    filePath: string,
-    content: Buffer,
-    asset: ProcessedAsset,
-  ): Promise<ProcessedAsset> {
+  private async processImage(filePath: string, content: Buffer, asset: ProcessedAsset): Promise<ProcessedAsset> {
     if (!this.options.optimizeImages) {
       return asset;
     }
@@ -314,11 +294,7 @@ export class AssetPipeline {
   /**
    * Process font asset
    */
-  private async processFont(
-    filePath: string,
-    content: Buffer,
-    asset: ProcessedAsset,
-  ): Promise<ProcessedAsset> {
+  private async processFont(filePath: string, content: Buffer, asset: ProcessedAsset): Promise<ProcessedAsset> {
     if (!this.options.subsetFonts) {
       return asset;
     }
@@ -347,11 +323,7 @@ export class AssetPipeline {
   /**
    * Process SVG asset
    */
-  private async processSVG(
-    _filePath: string,
-    content: Buffer,
-    asset: ProcessedAsset,
-  ): Promise<ProcessedAsset> {
+  private async processSVG(_filePath: string, content: Buffer, asset: ProcessedAsset): Promise<ProcessedAsset> {
     if (!this.options.optimizeSVG) {
       return asset;
     }
@@ -366,11 +338,7 @@ export class AssetPipeline {
   /**
    * Process generic asset
    */
-  private async processGeneric(
-    _filePath: string,
-    _content: Buffer,
-    asset: ProcessedAsset,
-  ): Promise<ProcessedAsset> {
+  private async processGeneric(_filePath: string, _content: Buffer, asset: ProcessedAsset): Promise<ProcessedAsset> {
     // No special processing for generic assets
     return asset;
   }
@@ -387,10 +355,7 @@ export class AssetPipeline {
   /**
    * Convert image format (placeholder)
    */
-  private async convertImageFormat(
-    content: Buffer,
-    _format: string,
-  ): Promise<Buffer> {
+  private async convertImageFormat(content: Buffer, _format: string): Promise<Buffer> {
     // In real implementation, use sharp or similar
     // For now, simulate format conversion
     return Buffer.from(content);
@@ -408,10 +373,7 @@ export class AssetPipeline {
   /**
    * Convert font format (placeholder)
    */
-  private async convertFontFormat(
-    content: Buffer,
-    _format: string,
-  ): Promise<Buffer> {
+  private async convertFontFormat(content: Buffer, _format: string): Promise<Buffer> {
     // In real implementation, use font conversion library
     return Buffer.from(content);
   }
@@ -429,7 +391,7 @@ export class AssetPipeline {
    * Compress asset
    */
   private async compressAsset(
-    content: Buffer,
+    content: Buffer
   ): Promise<Array<{ format: 'gzip' | 'brotli'; path: string; size: number }>> {
     const compressed: Array<{
       format: 'gzip' | 'brotli';
@@ -496,9 +458,7 @@ export class AssetPipeline {
    * Generate CDN URL
    */
   private generateCDNUrl(assetPath: string): string {
-    const normalizedPath = assetPath.startsWith('/')
-      ? assetPath.slice(1)
-      : assetPath;
+    const normalizedPath = assetPath.startsWith('/') ? assetPath.slice(1) : assetPath;
     return `${this.options.cdnUrl}/${normalizedPath}`;
   }
 
@@ -524,18 +484,13 @@ export class AssetPipeline {
     > = {};
 
     for (const [originalPath, asset] of this.assets) {
-      const publicUrl = this.options.cdnUrl
-        ? asset.cdnUrl!
-        : path.join(this.options.publicPath, asset.outputPath);
+      const publicUrl = this.options.cdnUrl ? asset.cdnUrl! : path.join(this.options.publicPath, asset.outputPath);
 
       assets[originalPath] = publicUrl;
 
       const variants: Record<string, string> = {};
       for (const variant of asset.variants) {
-        variants[variant.format] = path.join(
-          this.options.publicPath,
-          variant.path,
-        );
+        variants[variant.format] = path.join(this.options.publicPath, variant.path);
       }
 
       metadata[originalPath] = {
@@ -567,8 +522,7 @@ export class AssetPipeline {
     }
 
     const savings = totalOriginalSize - totalOptimizedSize;
-    const savingsPercent =
-      totalOriginalSize > 0 ? (savings / totalOriginalSize) * 100 : 0;
+    const savingsPercent = totalOriginalSize > 0 ? (savings / totalOriginalSize) * 100 : 0;
 
     return {
       totalAssets: this.assets.size,
@@ -602,10 +556,7 @@ export class ImageOptimizer {
   private _quality: number;
   private _formats: Array<'webp' | 'avif' | 'jpeg' | 'png'>;
 
-  constructor(
-    quality: number = 80,
-    formats: Array<'webp' | 'avif' | 'jpeg' | 'png'> = ['webp', 'avif'],
-  ) {
+  constructor(quality: number = 80, formats: Array<'webp' | 'avif' | 'jpeg' | 'png'> = ['webp', 'avif']) {
     this._quality = quality;
     this._formats = formats;
   }
@@ -613,10 +564,7 @@ export class ImageOptimizer {
   /**
    * Optimize image
    */
-  async optimize(
-    content: Buffer,
-    originalFormat: string,
-  ): Promise<Map<string, Buffer>> {
+  async optimize(content: Buffer, originalFormat: string): Promise<Map<string, Buffer>> {
     const results = new Map<string, Buffer>();
 
     // Original format optimization
@@ -643,10 +591,7 @@ export class ImageOptimizer {
   /**
    * Convert and optimize to target format
    */
-  private async convertAndOptimize(
-    content: Buffer,
-    _format: string,
-  ): Promise<Buffer> {
+  private async convertAndOptimize(content: Buffer, _format: string): Promise<Buffer> {
     // Placeholder implementation
     return Buffer.from(content);
   }
@@ -666,10 +611,7 @@ export class FontSubsetter {
   /**
    * Subset font to include only used glyphs
    */
-  async subset(
-    content: Buffer,
-    _glyphs: Set<string>,
-  ): Promise<Buffer> {
+  async subset(content: Buffer, _glyphs: Set<string>): Promise<Buffer> {
     // Placeholder implementation
     // In real implementation, use fontmin or harfbuzz
     return Buffer.from(content.slice(0, Math.floor(content.length * 0.7)));
@@ -700,12 +642,14 @@ export class SVGOptimizer {
   private removeHiddenElements: boolean;
   private minifyStyles: boolean;
 
-  constructor(options: {
-    removeComments?: boolean;
-    removeMetadata?: boolean;
-    removeHiddenElements?: boolean;
-    minifyStyles?: boolean;
-  } = {}) {
+  constructor(
+    options: {
+      removeComments?: boolean;
+      removeMetadata?: boolean;
+      removeHiddenElements?: boolean;
+      minifyStyles?: boolean;
+    } = {}
+  ) {
     this.removeComments = options.removeComments ?? true;
     this.removeMetadata = options.removeMetadata ?? true;
     this.removeHiddenElements = options.removeHiddenElements ?? true;

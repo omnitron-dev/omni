@@ -10,7 +10,7 @@ import {
   onStoreHydrate,
   runWithLifecycle,
   getCurrentLifecycle,
-  setCurrentLifecycle
+  setCurrentLifecycle,
 } from '../../src/store/lifecycle.js';
 import { defineStore, clearAllStoreInstances } from '../../src/store/defineStore.js';
 import { signal } from '../../src/core/reactivity/signal.js';
@@ -108,12 +108,12 @@ describe('LifecycleManager', () => {
       const order: number[] = [];
 
       lifecycle.on('onStoreInit', async () => {
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
         order.push(1);
       });
 
       lifecycle.on('onStoreInit', async () => {
-        await new Promise(resolve => setTimeout(resolve, 5));
+        await new Promise((resolve) => setTimeout(resolve, 5));
         order.push(2);
       });
 
@@ -378,7 +378,7 @@ describe('store lifecycle integration', () => {
     useTestStore();
 
     // Wait for async init
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(initHandler).toHaveBeenCalled();
   });
@@ -394,7 +394,7 @@ describe('store lifecycle integration', () => {
     useTestStore();
     useTestStore.dispose();
 
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(destroyHandler).toHaveBeenCalled();
   });
@@ -404,7 +404,7 @@ describe('store lifecycle integration', () => {
 
     const useTestStore = defineStore('test', () => {
       onStoreInit(async () => {
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
         initialized = true;
       });
 
@@ -413,7 +413,7 @@ describe('store lifecycle integration', () => {
 
     useTestStore();
 
-    await new Promise(resolve => setTimeout(resolve, 20));
+    await new Promise((resolve) => setTimeout(resolve, 20));
 
     expect(initialized).toBe(true);
   });
@@ -423,7 +423,7 @@ describe('store lifecycle integration', () => {
 
     const useTestStore = defineStore('test', () => {
       onStoreDestroy(async () => {
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
         destroyed = true;
       });
 
@@ -433,7 +433,7 @@ describe('store lifecycle integration', () => {
     useTestStore();
     useTestStore.dispose();
 
-    await new Promise(resolve => setTimeout(resolve, 20));
+    await new Promise((resolve) => setTimeout(resolve, 20));
 
     expect(destroyed).toBe(true);
   });
@@ -453,12 +453,12 @@ describe('store lifecycle integration', () => {
     });
 
     useTestStore();
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(initOrder).toEqual([1, 2]);
 
     useTestStore.dispose();
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(destroyOrder).toEqual([1, 2]);
   });
@@ -474,7 +474,7 @@ describe('store lifecycle integration', () => {
     useTestStore();
     useTestStore.dispose();
 
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(cleanup).toHaveBeenCalled();
   });
@@ -493,7 +493,7 @@ describe('store lifecycle integration', () => {
     });
 
     useTestStore();
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     // Should not prevent store creation
     expect(consoleSpy).toHaveBeenCalled();
@@ -518,7 +518,7 @@ describe('store lifecycle integration', () => {
     useTestStore();
     useTestStore.dispose();
 
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(consoleSpy).toHaveBeenCalled();
     expect(handler2).toHaveBeenCalled();
@@ -533,7 +533,7 @@ describe('store lifecycle integration', () => {
 
       onStoreInit(async () => {
         // Simulate data loading
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
         data.set({ loaded: true });
         loading.set(false);
       });
@@ -546,7 +546,7 @@ describe('store lifecycle integration', () => {
     expect(store.loading()).toBe(true);
     expect(store.data()).toBeNull();
 
-    await new Promise(resolve => setTimeout(resolve, 20));
+    await new Promise((resolve) => setTimeout(resolve, 20));
 
     expect(store.loading()).toBe(false);
     expect(store.data()).toEqual({ loaded: true });

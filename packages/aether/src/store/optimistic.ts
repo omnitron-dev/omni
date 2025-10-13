@@ -306,9 +306,7 @@ export function optimisticArray<T, TArgs extends any[], TResult>(
         case 'update': {
           // Assume first arg is ID, second is update data
           const [id, data] = args;
-          arraySignal.set(
-            current.map((item) => (item[idField] === id ? { ...item, ...(data as Partial<T>) } : item))
-          );
+          arraySignal.set(current.map((item) => (item[idField] === id ? { ...item, ...(data as Partial<T>) } : item)));
           break;
         }
 

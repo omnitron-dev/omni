@@ -6,13 +6,7 @@
 import type { Provider } from '../di/types.js';
 import { NetronClient } from './client.js';
 import { HttpCacheManager, HttpRemotePeer, RetryManager } from '@omnitron-dev/netron-browser';
-import {
-  BACKEND_CONFIG,
-  CACHE_MANAGER,
-  RETRY_MANAGER,
-  BACKEND_REGISTRY,
-  DEFAULT_BACKEND,
-} from './tokens.js';
+import { BACKEND_CONFIG, CACHE_MANAGER, RETRY_MANAGER, BACKEND_REGISTRY, DEFAULT_BACKEND } from './tokens.js';
 import type { BackendConfig, CacheConfig, RetryConfig } from './types.js';
 
 /**

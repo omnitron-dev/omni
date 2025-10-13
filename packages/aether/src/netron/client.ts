@@ -4,17 +4,8 @@
  */
 
 import { Injectable } from '../di/index.js';
-import {
-  HttpRemotePeer,
-  HttpCacheManager,
-  RetryManager,
-} from '@omnitron-dev/netron-browser';
-import type {
-  BackendConfig,
-  BackendOptions,
-  QueryOptions,
-  MutationOptions,
-} from './types.js';
+import { HttpRemotePeer, HttpCacheManager, RetryManager } from '@omnitron-dev/netron-browser';
+import type { BackendConfig, BackendOptions, QueryOptions, MutationOptions } from './types.js';
 
 /**
  * NetronClient - Central orchestrator for all netron operations
@@ -41,25 +32,29 @@ export class NetronClient {
     this.backends = registry || new Map();
 
     // Use provided or create default cache manager
-    this.cacheManager = cacheManager || new HttpCacheManager({
-      maxEntries: config?.cache?.maxEntries || 1000,
-      maxSizeBytes: config?.cache?.maxSizeBytes || 10_000_000,
-      defaultMaxAge: config?.cache?.defaultMaxAge || 60000,
-      debug: config?.cache?.debug || false,
-    });
+    this.cacheManager =
+      cacheManager ||
+      new HttpCacheManager({
+        maxEntries: config?.cache?.maxEntries || 1000,
+        maxSizeBytes: config?.cache?.maxSizeBytes || 10_000_000,
+        defaultMaxAge: config?.cache?.defaultMaxAge || 60000,
+        debug: config?.cache?.debug || false,
+      });
 
     // Use provided or create default retry manager
-    this.retryManager = retryManager || new RetryManager({
-      defaultOptions: {
-        attempts: config?.retry?.attempts || 3,
-        backoff: config?.retry?.backoff || 'exponential',
-        initialDelay: config?.retry?.initialDelay || 1000,
-        maxDelay: config?.retry?.maxDelay || 30000,
-        jitter: config?.retry?.jitter || 0.1,
-      },
-      circuitBreaker: config?.retry?.circuitBreaker,
-      debug: false,
-    });
+    this.retryManager =
+      retryManager ||
+      new RetryManager({
+        defaultOptions: {
+          attempts: config?.retry?.attempts || 3,
+          backoff: config?.retry?.backoff || 'exponential',
+          initialDelay: config?.retry?.initialDelay || 1000,
+          maxDelay: config?.retry?.maxDelay || 30000,
+          jitter: config?.retry?.jitter || 0.1,
+        },
+        circuitBreaker: config?.retry?.circuitBreaker,
+        debug: false,
+      });
 
     // Set default backend
     this.defaultBackend = defaultBackend || config?.default || 'main';

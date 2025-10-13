@@ -40,10 +40,7 @@ import type { LoaderIntegrationOptions, CachedResource } from './types.js';
  * );
  * ```
  */
-export function withLoaderCache(
-  loader: RouteLoader,
-  options: LoaderIntegrationOptions = {}
-): RouteLoader {
+export function withLoaderCache(loader: RouteLoader, options: LoaderIntegrationOptions = {}): RouteLoader {
   const { cache } = options;
 
   if (!cache) {
@@ -234,10 +231,7 @@ export function invalidateLoaderCache(path: string | RegExp): number {
     } catch {
       // Not a full URL, construct one with current location as base (browser)
       // or a default base (server/tests)
-      const base =
-        typeof window !== 'undefined' && window.location
-          ? window.location.origin
-          : 'http://localhost';
+      const base = typeof window !== 'undefined' && window.location ? window.location.origin : 'http://localhost';
       fullUrl = new URL(path, base).toString();
     }
 
@@ -279,9 +273,7 @@ export async function preloadLoaders(
   loaders: Array<{ loader: RouteLoader; context: Partial<LoaderContext> }>,
   options: LoaderIntegrationOptions = {}
 ): Promise<any[]> {
-  return Promise.all(
-    loaders.map(({ loader, context }) => prefetchLoader(loader, context, options))
-  );
+  return Promise.all(loaders.map(({ loader, context }) => prefetchLoader(loader, context, options)));
 }
 
 /**
@@ -308,10 +300,7 @@ export async function preloadLoaders(
  * );
  * ```
  */
-export function withSSR(
-  loader: RouteLoader,
-  options: LoaderIntegrationOptions = {}
-): RouteLoader {
+export function withSSR(loader: RouteLoader, options: LoaderIntegrationOptions = {}): RouteLoader {
   const { ssr } = options;
 
   if (!ssr?.enabled) {
@@ -384,10 +373,7 @@ export function withSSR(
  * );
  * ```
  */
-export function withStreaming(
-  loader: RouteLoader,
-  options: LoaderIntegrationOptions = {}
-): RouteLoader {
+export function withStreaming(loader: RouteLoader, options: LoaderIntegrationOptions = {}): RouteLoader {
   const { streaming } = options;
 
   if (!streaming?.enabled) {
@@ -398,11 +384,7 @@ export function withStreaming(
     const result = await executeLoader(loader, context);
 
     // Check if result is an async generator
-    if (
-      result &&
-      typeof result === 'object' &&
-      Symbol.asyncIterator in result
-    ) {
+    if (result && typeof result === 'object' && Symbol.asyncIterator in result) {
       // Return streaming result as-is
       return result;
     }
@@ -431,10 +413,7 @@ export function withStreaming(
  * );
  * ```
  */
-export function enhanceLoader(
-  loader: RouteLoader,
-  options: LoaderIntegrationOptions = {}
-): RouteLoader {
+export function enhanceLoader(loader: RouteLoader, options: LoaderIntegrationOptions = {}): RouteLoader {
   let enhanced = loader;
 
   // Apply strategies in order

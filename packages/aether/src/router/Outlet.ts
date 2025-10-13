@@ -246,9 +246,7 @@ export const Outlet = defineComponent<OutletProps>((props = {}) => {
  * };
  * ```
  */
-export function createNamedOutlets(
-  outlets: Record<string, Partial<RouteDefinition>>
-): RouteDefinition[] {
+export function createNamedOutlets(outlets: Record<string, Partial<RouteDefinition>>): RouteDefinition[] {
   return Object.entries(outlets).map(([name, config]) => ({
     path: '',
     ...config,
@@ -312,39 +310,54 @@ export function useOutlet(): {
 /**
  * Root layout wrapper
  */
-export const LayoutRoot = defineComponent<{ class?: string; children?: any }>((props) => () => jsx('div', {
-    class: ['layout-root', props.class].filter(Boolean).join(' '),
-    children: props.children
-  }));
+export const LayoutRoot = defineComponent<{ class?: string; children?: any }>(
+  (props) => () =>
+    jsx('div', {
+      class: ['layout-root', props.class].filter(Boolean).join(' '),
+      children: props.children,
+    })
+);
 
 /**
  * Layout header
  */
-export const LayoutHeader = defineComponent<{ class?: string; children?: any }>((props) => () => jsx('header', {
-    class: ['layout-header', props.class].filter(Boolean).join(' '),
-    children: props.children
-  }));
+export const LayoutHeader = defineComponent<{ class?: string; children?: any }>(
+  (props) => () =>
+    jsx('header', {
+      class: ['layout-header', props.class].filter(Boolean).join(' '),
+      children: props.children,
+    })
+);
 
 /**
  * Layout main content area
  */
-export const LayoutMain = defineComponent<{ class?: string; children?: any }>((props) => () => jsx('main', {
-    class: ['layout-main', props.class].filter(Boolean).join(' '),
-    children: props.children
-  }));
+export const LayoutMain = defineComponent<{ class?: string; children?: any }>(
+  (props) => () =>
+    jsx('main', {
+      class: ['layout-main', props.class].filter(Boolean).join(' '),
+      children: props.children,
+    })
+);
 
 /**
  * Layout sidebar
  */
-export const LayoutSidebar = defineComponent<{ class?: string; children?: any }>((props) => () => jsx('aside', {
-    class: ['layout-sidebar', props.class].filter(Boolean).join(' '),
-    children: props.children
-  }));
+export const LayoutSidebar = defineComponent<{ class?: string; children?: any }>(
+  (props) => () =>
+    jsx('aside', {
+      class: ['layout-sidebar', props.class].filter(Boolean).join(' '),
+      children: props.children,
+    })
+);
 
 /**
  * Layout footer
  */
-export const LayoutFooter = defineComponent<{ class?: string; children?: any }>((props) => () => jsx('footer', {
-    class: ['layout-footer', props.class].filter(Boolean).join(' '),
-    children: props.children
-  }));
+export const LayoutFooter = defineComponent<{ class?: string; children?: any }>(
+  (props) => () =>
+    jsx('footer', {
+      class: ['layout-footer', props.class].filter(Boolean).join(' '),
+      children: props.children,
+    })
+);

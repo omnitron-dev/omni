@@ -4,12 +4,7 @@
  * Date, time, number, and currency formatters using Intl API
  */
 
-import type {
-  LocaleCode,
-  NumberFormatOptions,
-  DateFormatOptions,
-  Formatters,
-} from './types.js';
+import type { LocaleCode, NumberFormatOptions, DateFormatOptions, Formatters } from './types.js';
 
 /**
  * Create formatters for a locale
@@ -26,11 +21,7 @@ export function createFormatters(locale: LocaleCode): Formatters {
   /**
    * Format a currency value
    */
-  function currency(
-    value: number,
-    currencyCode: string,
-    options?: NumberFormatOptions,
-  ): string {
+  function currency(value: number, currencyCode: string, options?: NumberFormatOptions): string {
     const effectiveLocale = options?.locale || locale;
     return new Intl.NumberFormat(effectiveLocale, {
       style: 'currency',
@@ -133,10 +124,7 @@ export function createFormatters(locale: LocaleCode): Formatters {
   /**
    * Format relative time
    */
-  function relativeTime(
-    value: Date | number,
-    options?: Intl.RelativeTimeFormatOptions,
-  ): string {
+  function relativeTime(value: Date | number, options?: Intl.RelativeTimeFormatOptions): string {
     const now = Date.now();
     const targetTime = value instanceof Date ? value.getTime() : value;
     const diffMs = targetTime - now;

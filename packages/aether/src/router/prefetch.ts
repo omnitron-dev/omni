@@ -172,7 +172,7 @@ export class PrefetchManager {
    */
   prefetchOnViewport(element: Element, path: string, options: PrefetchOptions = {}): () => void {
     if (typeof IntersectionObserver === 'undefined') {
-      return () => { }; // Not supported
+      return () => {}; // Not supported
     }
 
     const observer = new IntersectionObserver(
@@ -202,11 +202,7 @@ export class PrefetchManager {
   /**
    * Prefetch on hover with delay
    */
-  prefetchOnHover(
-    element: Element,
-    path: string,
-    options: PrefetchOptions & { hoverDelay?: number } = {}
-  ): () => void {
+  prefetchOnHover(element: Element, path: string, options: PrefetchOptions & { hoverDelay?: number } = {}): () => void {
     const { hoverDelay = 100 } = options;
     let timeoutId: NodeJS.Timeout | null = null;
 
@@ -435,8 +431,7 @@ export class PrefetchManager {
     this.stats.totalPrefetched++;
     const prefetchTime = Date.now() - startTime;
     this.stats.averagePrefetchTime =
-      (this.stats.averagePrefetchTime * (this.stats.totalPrefetched - 1) + prefetchTime) /
-      this.stats.totalPrefetched;
+      (this.stats.averagePrefetchTime * (this.stats.totalPrefetched - 1) + prefetchTime) / this.stats.totalPrefetched;
 
     // Evict old entries if cache is too large
     this.evictCache();

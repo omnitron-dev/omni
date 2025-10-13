@@ -106,6 +106,42 @@
       "types": "./dist/build/vite-plugin.d.ts",
       "import": "./dist/build/vite-plugin.js"
     },
+    "./build/module-federation": {
+      "types": "./dist/build/module-federation.d.ts",
+      "import": "./dist/build/module-federation.js"
+    },
+    "./build/shared-chunks": {
+      "types": "./dist/build/shared-chunks.d.ts",
+      "import": "./dist/build/shared-chunks.js"
+    },
+    "./build/worker-bundling": {
+      "types": "./dist/build/worker-bundling.d.ts",
+      "import": "./dist/build/worker-bundling.js"
+    },
+    "./build/pwa-manifest": {
+      "types": "./dist/build/pwa-manifest.d.ts",
+      "import": "./dist/build/pwa-manifest.js"
+    },
+    "./build/parallel-compilation": {
+      "types": "./dist/build/parallel-compilation.d.ts",
+      "import": "./dist/build/parallel-compilation.js"
+    },
+    "./build/persistent-cache": {
+      "types": "./dist/build/persistent-cache.d.ts",
+      "import": "./dist/build/persistent-cache.js"
+    },
+    "./build/dependency-graph": {
+      "types": "./dist/build/dependency-graph.d.ts",
+      "import": "./dist/build/dependency-graph.js"
+    },
+    "./build/lazy-compilation": {
+      "types": "./dist/build/lazy-compilation.d.ts",
+      "import": "./dist/build/lazy-compilation.js"
+    },
+    "./build/build-profiler": {
+      "types": "./dist/build/build-profiler.d.ts",
+      "import": "./dist/build/build-profiler.js"
+    },
     "./styling": {
       "types": "./dist/styling/index.d.ts",
       "import": "./dist/styling/index.js"

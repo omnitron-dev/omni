@@ -222,10 +222,12 @@ describe('Streaming SSR', () => {
       // Wait for end with timeout
       await Promise.race([
         new Promise((resolve) => stream.on('end', resolve)),
-        new Promise((resolve) => setTimeout(() => {
-          stream.end(); // Force end
-          resolve(null);
-        }, 500))
+        new Promise((resolve) =>
+          setTimeout(() => {
+            stream.end(); // Force end
+            resolve(null);
+          }, 500)
+        ),
       ]);
 
       expect(onShellReady).toHaveBeenCalled();
@@ -263,9 +265,15 @@ describe('Streaming SSR', () => {
       const { stream, abort } = await renderWithSuspenseStreaming(renderFn);
 
       let streamEnded = false;
-      stream.on('close', () => { streamEnded = true; });
-      stream.on('end', () => { streamEnded = true; });
-      stream.on('error', () => { streamEnded = true; });
+      stream.on('close', () => {
+        streamEnded = true;
+      });
+      stream.on('end', () => {
+        streamEnded = true;
+      });
+      stream.on('error', () => {
+        streamEnded = true;
+      });
 
       // Abort immediately
       abort();
@@ -292,9 +300,7 @@ describe('Streaming SSR', () => {
       for (let i = 1; i <= 5; i++) {
         context.registerBoundary(
           `test-${i}`,
-          new Promise((resolve) =>
-            setTimeout(() => resolve(`<div>Content ${i}</div>`), Math.random() * 100)
-          )
+          new Promise((resolve) => setTimeout(() => resolve(`<div>Content ${i}</div>`), Math.random() * 100))
         );
       }
 

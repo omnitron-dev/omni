@@ -3,12 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import {
-  PrefetchManager,
-  PrefetchPriority,
-  getPrefetchManager,
-  prefetchRoute,
-} from '../../src/router/prefetch.js';
+import { PrefetchManager, PrefetchPriority, getPrefetchManager, prefetchRoute } from '../../src/router/prefetch.js';
 import { createRouter } from '../../src/router/router.js';
 import type { RouteDefinition } from '../../src/router/types.js';
 

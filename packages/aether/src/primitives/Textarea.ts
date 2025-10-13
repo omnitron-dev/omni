@@ -156,11 +156,7 @@ export interface TextareaProps {
  * - Controlled and uncontrolled modes
  */
 export const Textarea = defineComponent<TextareaProps>((props) => {
-  const [getValue, setValue] = useControlledState(
-    props.value,
-    props.defaultValue ?? '',
-    props.onValueChange
-  );
+  const [getValue, setValue] = useControlledState(props.value, props.defaultValue ?? '', props.onValueChange);
 
   const textareaRef = signal<HTMLTextAreaElement | null>(null);
 

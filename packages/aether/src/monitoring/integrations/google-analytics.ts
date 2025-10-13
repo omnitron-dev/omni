@@ -209,8 +209,6 @@ export class GoogleAnalyticsIntegration {
 /**
  * Create Google Analytics integration
  */
-export function createGoogleAnalyticsIntegration(
-  config: GoogleAnalyticsConfig
-): GoogleAnalyticsIntegration {
+export function createGoogleAnalyticsIntegration(config: GoogleAnalyticsConfig): GoogleAnalyticsIntegration {
   return new GoogleAnalyticsIntegration(config);
 }

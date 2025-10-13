@@ -129,27 +129,19 @@ async function prefetchingExamples() {
   // Setup viewport prefetching for a link
   const linkElement = document.querySelector('a[href="/about"]');
   if (linkElement) {
-    const cleanup = prefetchManager.prefetchOnViewport(
-      linkElement,
-      '/about',
-      {
-        priority: PrefetchPriority.MEDIUM,
-      }
-    );
+    const cleanup = prefetchManager.prefetchOnViewport(linkElement, '/about', {
+      priority: PrefetchPriority.MEDIUM,
+    });
     // Call cleanup() when no longer needed
   }
 
   // Setup hover prefetching
   const hoverElement = document.querySelector('a[href="/blog"]');
   if (hoverElement) {
-    const cleanup = prefetchManager.prefetchOnHover(
-      hoverElement,
-      '/blog',
-      {
-        hoverDelay: 100,
-        priority: PrefetchPriority.HIGH,
-      }
-    );
+    const cleanup = prefetchManager.prefetchOnHover(hoverElement, '/blog', {
+      hoverDelay: 100,
+      priority: PrefetchPriority.HIGH,
+    });
     // Call cleanup() when no longer needed
   }
 
@@ -237,18 +229,12 @@ async function codeSplittingExamples() {
   });
 
   // Preload a chunk
-  await splittingManager.preloadChunk('blog-page', () =>
-    import('./pages/Blog')
-  );
+  await splittingManager.preloadChunk('blog-page', () => import('./pages/Blog'));
 
   // Setup hover preload
   const linkElement = document.querySelector('a[href="/blog"]');
   if (linkElement) {
-    const cleanup = splittingManager.setupHoverPreload(
-      linkElement,
-      '/blog',
-      [blogRoute]
-    );
+    const cleanup = splittingManager.setupHoverPreload(linkElement, '/blog', [blogRoute]);
     // Call cleanup() when no longer needed
   }
 
@@ -312,11 +298,7 @@ async function scrollRestorationExamples() {
   const sidebar = document.querySelector('.sidebar');
   if (sidebar) {
     scrollManager.registerScrollElement('sidebar', sidebar);
-    await scrollManager.scrollElement(
-      'sidebar',
-      { left: 0, top: 200 },
-      'smooth'
-    );
+    await scrollManager.scrollElement('sidebar', { left: 0, top: 200 }, 'smooth');
   }
 
   // Get saved positions
@@ -360,11 +342,7 @@ function monitorPerformance() {
     const prefetchStats = prefetchManager.getStats();
     console.log('Prefetch Performance:', {
       hitRate:
-        (
-          (prefetchStats.cacheHits /
-            (prefetchStats.cacheHits + prefetchStats.cacheMisses)) *
-          100
-        ).toFixed(2) + '%',
+        ((prefetchStats.cacheHits / (prefetchStats.cacheHits + prefetchStats.cacheMisses)) * 100).toFixed(2) + '%',
       avgTime: `${prefetchStats.averagePrefetchTime.toFixed(2)}ms`,
     });
   }, 30000); // Every 30 seconds
@@ -372,16 +350,8 @@ function monitorPerformance() {
   // Monitor bundle loading
   const bundleStats = splittingManager.getBundleStats();
   console.log('Bundle Performance:', {
-    loadedPercentage:
-      (
-        (bundleStats.loadedChunks / bundleStats.totalChunks) *
-        100
-      ).toFixed(2) + '%',
-    failureRate:
-      (
-        (bundleStats.failedChunks / bundleStats.totalChunks) *
-        100
-      ).toFixed(2) + '%',
+    loadedPercentage: ((bundleStats.loadedChunks / bundleStats.totalChunks) * 100).toFixed(2) + '%',
+    failureRate: ((bundleStats.failedChunks / bundleStats.totalChunks) * 100).toFixed(2) + '%',
   });
 }
 

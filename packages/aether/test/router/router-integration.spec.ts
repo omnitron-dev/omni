@@ -185,10 +185,10 @@ describe('Router Integration Tests', () => {
 
     it('should handle route params and query strings', async () => {
       const loader = vi.fn(async (ctx: LoaderContext) => ({
-          userId: ctx.params.userId,
-          page: ctx.url.searchParams.get('page'),
-          sort: ctx.url.searchParams.get('sort'),
-        }));
+        userId: ctx.params.userId,
+        page: ctx.url.searchParams.get('page'),
+        sort: ctx.url.searchParams.get('sort'),
+      }));
 
       const routes: RouteDefinition[] = [
         {
@@ -898,16 +898,16 @@ describe('Router Integration Tests', () => {
     it('should handle nested layouts with Outlet', async () => {
       // Simulate file-based routing structure
       const RootLayout = defineComponent(() => () => ({
-          type: 'div',
-          props: { class: 'root-layout' },
-          children: ['Root Layout'],
-        }));
+        type: 'div',
+        props: { class: 'root-layout' },
+        children: ['Root Layout'],
+      }));
 
       const DashboardLayout = defineComponent(() => () => ({
-          type: 'div',
-          props: { class: 'dashboard-layout' },
-          children: ['Dashboard Layout'],
-        }));
+        type: 'div',
+        props: { class: 'dashboard-layout' },
+        children: ['Dashboard Layout'],
+      }));
 
       const routes: RouteDefinition[] = [
         {
@@ -939,10 +939,10 @@ describe('Router Integration Tests', () => {
 
     it('should handle route-level error boundaries', async () => {
       const ErrorBoundary = defineComponent(() => () => ({
-          type: 'div',
-          props: { class: 'error' },
-          children: ['Error occurred'],
-        }));
+        type: 'div',
+        props: { class: 'error' },
+        children: ['Error occurred'],
+      }));
 
       const failingLoader = vi.fn(async () => {
         throw new Error('Component failed');
@@ -976,10 +976,10 @@ describe('Router Integration Tests', () => {
 
     it('should show loading states during navigation', async () => {
       const LoadingComponent = defineComponent(() => () => ({
-          type: 'div',
-          props: { class: 'loading' },
-          children: ['Loading...'],
-        }));
+        type: 'div',
+        props: { class: 'loading' },
+        children: ['Loading...'],
+      }));
 
       const slowLoader = vi.fn(async () => {
         await new Promise((resolve) => setTimeout(resolve, 50));

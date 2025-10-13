@@ -554,10 +554,7 @@ describe('TemplateCache', () => {
     });
 
     it('should store and retrieve VNode with children', () => {
-      const vnode = createElementVNode('div', null, [
-        createTextVNode('Child 1'),
-        createTextVNode('Child 2'),
-      ]);
+      const vnode = createElementVNode('div', null, [createTextVNode('Child 1'), createTextVNode('Child 2')]);
       cache.set('test', vnode);
 
       const retrieved = cache.get('test');

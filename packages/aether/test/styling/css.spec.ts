@@ -236,7 +236,10 @@ describe('CSS Utilities', () => {
 
   describe('darkMode', () => {
     it('should create dark mode styles', () => {
-      const className = darkMode({ color: 'black', backgroundColor: 'white' }, { color: 'white', backgroundColor: 'black' });
+      const className = darkMode(
+        { color: 'black', backgroundColor: 'white' },
+        { color: 'white', backgroundColor: 'black' }
+      );
 
       expect(className).toBeTruthy();
     });
@@ -305,8 +308,8 @@ describe('CSS Utilities', () => {
 
     it('should handle numeric values', () => {
       const vars = cssVariables({
-        'spacing': 16,
-        'opacity': 0.5,
+        spacing: 16,
+        opacity: 0.5,
       });
 
       expect(vars).toEqual({

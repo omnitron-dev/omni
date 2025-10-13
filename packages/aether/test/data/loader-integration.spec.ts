@@ -260,7 +260,7 @@ describe('Loader Integration', () => {
         name: string;
       }
 
-      const loader: RouteLoader = async () => ({ user: { id: 1, name: 'Alice' } } as { user: UserData });
+      const loader: RouteLoader = async () => ({ user: { id: 1, name: 'Alice' } }) as { user: UserData };
 
       const cachedLoader = withLoaderCache(loader, {
         cache: { ttl: 60000 },

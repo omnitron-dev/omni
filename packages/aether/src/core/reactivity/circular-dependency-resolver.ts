@@ -263,11 +263,7 @@ export const globalCircularResolver = new CircularDependencyResolver({
 /**
  * Helper decorator for marking computations as optional
  */
-export function optional(
-  _target: any,
-  _propertyKey: string,
-  descriptor: PropertyDescriptor
-): PropertyDescriptor {
+export function optional(_target: any, _propertyKey: string, descriptor: PropertyDescriptor): PropertyDescriptor {
   const original = descriptor.value;
   descriptor.value = function optionalWrapper(...args: any[]) {
     (this as any).isOptional = true;
@@ -280,7 +276,11 @@ export function optional(
  * Helper decorator for providing default values
  */
 export function withDefault<T>(defaultValue: T) {
-  return function withDefaultDecorator(_target: any, _propertyKey: string, descriptor: PropertyDescriptor): PropertyDescriptor {
+  return function withDefaultDecorator(
+    _target: any,
+    _propertyKey: string,
+    descriptor: PropertyDescriptor
+  ): PropertyDescriptor {
     const original = descriptor.value;
     descriptor.value = function withDefaultWrapper(...args: any[]) {
       (this as any).defaultValue = defaultValue;

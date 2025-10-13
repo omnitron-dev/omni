@@ -46,7 +46,7 @@ export const useUserStore = defineStore('user', (netron) => {
   const error = signal<Error | undefined>(undefined);
 
   // Computed values
-  const activeUsers = computed(() => users().filter(u => u.active));
+  const activeUsers = computed(() => users().filter((u) => u.active));
   const userCount = computed(() => users().length);
 
   // Lifecycle hooks
@@ -91,7 +91,7 @@ export const useUserStore = defineStore('user', (netron) => {
     },
     {
       update: (id, data) => {
-        users.set(users().map(u => u.id === id ? { ...u, ...data } : u));
+        users.set(users().map((u) => (u.id === id ? { ...u, ...data } : u)));
       },
       rollback: (snapshot) => {
         users.set(snapshot);
@@ -105,8 +105,8 @@ export const useUserStore = defineStore('user', (netron) => {
       },
       retry: {
         attempts: 3,
-        delay: (attempt) => attempt * 1000
-      }
+        delay: (attempt) => attempt * 1000,
+      },
     }
   );
 
@@ -117,12 +117,12 @@ export const useUserStore = defineStore('user', (netron) => {
     },
     {
       update: (id) => {
-        users.set(users().filter(u => u.id !== id));
+        users.set(users().filter((u) => u.id !== id));
       },
       rollback: (snapshot) => {
         users.set(snapshot);
       },
-      snapshot: () => users.peek()
+      snapshot: () => users.peek(),
     }
   );
 
@@ -131,7 +131,7 @@ export const useUserStore = defineStore('user', (netron) => {
     key: 'user-store',
     storage: 'local',
     exclude: ['loading', 'error'],
-    debounce: 500
+    debounce: 500,
   });
 
   // Return public API (readonly state, actions)

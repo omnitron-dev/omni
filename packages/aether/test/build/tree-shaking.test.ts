@@ -3,12 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  TreeShaker,
-  treeShake,
-  ComponentTreeShaker,
-  RouteTreeShaker,
-} from '../../src/build/tree-shaking.js';
+import { TreeShaker, treeShake, ComponentTreeShaker, RouteTreeShaker } from '../../src/build/tree-shaking.js';
 
 describe('TreeShaker', () => {
   const sampleCode = `
@@ -114,9 +109,7 @@ console.log(used);
     const result = shaker.analyze();
 
     expect(result.stats.originalSize).toBeGreaterThan(0);
-    expect(result.stats.optimizedSize).toBeLessThanOrEqual(
-      result.stats.originalSize,
-    );
+    expect(result.stats.optimizedSize).toBeLessThanOrEqual(result.stats.originalSize);
     expect(result.stats.savingsPercent).toBeGreaterThanOrEqual(0);
   });
 

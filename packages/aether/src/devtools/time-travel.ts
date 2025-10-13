@@ -161,7 +161,7 @@ export class TimeTravelDebugger {
    * Restore from snapshot
    */
   restoreSnapshot(snapshotId: string): void {
-    const snapshot = this.snapshots.find(s => s.id === snapshotId);
+    const snapshot = this.snapshots.find((s) => s.id === snapshotId);
     if (!snapshot) {
       throw new Error(`Snapshot not found: ${snapshotId}`);
     }
@@ -267,7 +267,7 @@ export class TimeTravelDebugger {
    * Delete snapshot
    */
   deleteSnapshot(snapshotId: string): void {
-    const index = this.snapshots.findIndex(s => s.id === snapshotId);
+    const index = this.snapshots.findIndex((s) => s.id === snapshotId);
     if (index !== -1) {
       this.snapshots.splice(index, 1);
     }
@@ -283,7 +283,7 @@ export class TimeTravelDebugger {
     const session = {
       ...parsed,
       actionLog: this.actionLog,
-      snapshots: this.snapshots.map(s => ({
+      snapshots: this.snapshots.map((s) => ({
         ...s,
         state: Array.from(s.state.entries()),
       })),
@@ -411,11 +411,7 @@ export class TimeTravelDebugger {
   /**
    * Add breakpoint
    */
-  addBreakpoint(
-    targetId: string,
-    type: Breakpoint['type'],
-    condition?: BreakpointCondition,
-  ): Breakpoint {
+  addBreakpoint(targetId: string, type: Breakpoint['type'], condition?: BreakpointCondition): Breakpoint {
     const breakpoint: Breakpoint = {
       id: `bp-${Date.now()}`,
       type,
@@ -477,10 +473,7 @@ export class TimeTravelDebugger {
           break;
 
         case 'value-range':
-          if (
-            breakpoint.condition?.min !== undefined &&
-            breakpoint.condition?.max !== undefined
-          ) {
+          if (breakpoint.condition?.min !== undefined && breakpoint.condition?.max !== undefined) {
             shouldBreak =
               typeof newValue === 'number' &&
               newValue >= breakpoint.condition.min &&
@@ -494,7 +487,7 @@ export class TimeTravelDebugger {
             shouldBreak = breakpoint.hitCount >= breakpoint.condition.value;
           }
           break;
-          default:
+        default:
           // Unknown breakpoint type
           break;
       }
@@ -560,7 +553,7 @@ export class TimeTravelDebugger {
       }
 
       // Schedule next frame
-      const delay = (1000 / 60) / options.speed; // Assuming 60fps baseline
+      const delay = 1000 / 60 / options.speed; // Assuming 60fps baseline
       this.playbackTimer = window.setTimeout(play, delay);
     };
 
@@ -604,10 +597,8 @@ export class TimeTravelDebugger {
         index,
         entry,
         isCurrent: index === state.currentIndex,
-        hasSnapshot: this.snapshots.some(s => s.index === index),
-        hasBreakpoint: Array.from(this.breakpoints.values()).some(
-          bp => bp.targetId === entry.targetId,
-        ),
+        hasSnapshot: this.snapshots.some((s) => s.index === index),
+        hasBreakpoint: Array.from(this.breakpoints.values()).some((bp) => bp.targetId === entry.targetId),
       })),
       currentIndex: state.currentIndex,
       totalEntries: history.length,
@@ -646,9 +637,6 @@ export interface HistoryVisualization {
 /**
  * Create time-travel debugger
  */
-export function createTimeTravelDebugger(
-  recorder: Recorder,
-  config?: Partial<TimeTravelConfig>,
-): TimeTravelDebugger {
+export function createTimeTravelDebugger(recorder: Recorder, config?: Partial<TimeTravelConfig>): TimeTravelDebugger {
   return new TimeTravelDebugger(recorder, config);
 }

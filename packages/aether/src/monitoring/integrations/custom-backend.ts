@@ -196,9 +196,7 @@ export class CustomBackendIntegration {
  * Webhook integration class
  */
 export class WebhookIntegration {
-  private config: Required<
-    Pick<CustomBackendConfig, 'endpoint' | 'headers'> & { method?: 'POST' | 'PUT' | 'PATCH' }
-  >;
+  private config: Required<Pick<CustomBackendConfig, 'endpoint' | 'headers'> & { method?: 'POST' | 'PUT' | 'PATCH' }>;
   private eventFilter?: (event: any) => boolean;
 
   constructor(config: CustomBackendConfig & { method?: 'POST' | 'PUT' | 'PATCH' }) {
@@ -268,9 +266,7 @@ export class WebhookIntegration {
 /**
  * Create custom backend integration
  */
-export function createCustomBackendIntegration(
-  config: CustomBackendConfig
-): CustomBackendIntegration {
+export function createCustomBackendIntegration(config: CustomBackendConfig): CustomBackendIntegration {
   return new CustomBackendIntegration(config);
 }
 

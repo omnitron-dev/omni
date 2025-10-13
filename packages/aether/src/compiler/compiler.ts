@@ -8,12 +8,7 @@ import { analyze } from './analyzer.js';
 import { transform } from './transformer.js';
 import { generate } from './codegen.js';
 import { Optimizer } from './optimizer.js';
-import type {
-  AnalysisResult,
-  CompilerOptions,
-  TransformResult,
-  CompilerWarning,
-} from './types.js';
+import type { AnalysisResult, CompilerOptions, TransformResult, CompilerWarning } from './types.js';
 
 /**
  * Compilation result
@@ -168,8 +163,7 @@ export class AetherCompiler {
         totalTime,
         originalSize,
         compiledSize,
-        sizeReduction:
-          originalSize > 0 ? ((originalSize - compiledSize) / originalSize) * 100 : 0,
+        sizeReduction: originalSize > 0 ? ((originalSize - compiledSize) / originalSize) * 100 : 0,
       };
 
       return {
@@ -198,9 +192,7 @@ export class AetherCompiler {
   /**
    * Compile multiple files
    */
-  async compileMany(
-    files: Array<{ code: string; path: string }>,
-  ): Promise<Map<string, CompileResult>> {
+  async compileMany(files: Array<{ code: string; path: string }>): Promise<Map<string, CompileResult>> {
     const results = new Map<string, CompileResult>();
 
     for (const file of files) {
@@ -287,7 +279,7 @@ export async function compile(code: string, options?: CompilerOptions): Promise<
 export async function compileWithResult(
   code: string,
   filePath?: string,
-  options?: CompilerOptions,
+  options?: CompilerOptions
 ): Promise<CompileResult> {
   const compiler = new AetherCompiler(options);
   return compiler.compile(code, filePath);

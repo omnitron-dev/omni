@@ -9,12 +9,7 @@
  * - Cache statistics
  */
 
-import type {
-  CacheEntry,
-  CacheInvalidationPattern,
-  CacheManager as ICacheManager,
-  CacheStats,
-} from './types.js';
+import type { CacheEntry, CacheInvalidationPattern, CacheManager as ICacheManager, CacheStats } from './types.js';
 
 /**
  * Cache manager implementation with LRU eviction

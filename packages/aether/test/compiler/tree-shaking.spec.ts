@@ -371,9 +371,7 @@ describe('TreeShakerPass', () => {
       const context = createContext(code);
       const result = await treeShaker.transform(code, context);
 
-      expect(result.changes.some((c) => c.description.includes("unused variable 'unused'"))).toBe(
-        true
-      );
+      expect(result.changes.some((c) => c.description.includes("unused variable 'unused'"))).toBe(true);
     });
 
     it('should keep used variables', async () => {

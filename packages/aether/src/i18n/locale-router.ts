@@ -141,9 +141,7 @@ export class LocaleRouter {
   createHreflangElements(path: string, baseUrl: string): string {
     const links = this.generateHreflangLinks(path, baseUrl);
 
-    return links
-      .map(({ locale, url }) => `<link rel="alternate" hreflang="${locale}" href="${url}" />`)
-      .join('\n');
+    return links.map(({ locale, url }) => `<link rel="alternate" hreflang="${locale}" href="${url}" />`).join('\n');
   }
 
   /**
@@ -201,7 +199,7 @@ export function createLocaleRouter(config: LocaleRouterConfig): LocaleRouter {
 export function createLocalizedLink(
   router: LocaleRouter,
   href: string,
-  locale?: LocaleCode,
+  locale?: LocaleCode
 ): { href: string; hreflang?: string } {
   const localizedHref = router.getLocalizedPath(href, locale);
 
@@ -216,7 +214,7 @@ export function createLocalizedLink(
  */
 export function createLocaleNavigate(
   router: LocaleRouter,
-  navigate: (path: string) => void,
+  navigate: (path: string) => void
 ): (path: string, locale?: LocaleCode) => void {
   return (path: string, locale?: LocaleCode) => {
     const localizedPath = router.getLocalizedPath(path, locale);

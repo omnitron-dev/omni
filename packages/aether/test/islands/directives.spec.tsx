@@ -20,9 +20,7 @@ import {
 describe('Island Directives', () => {
   describe('island', () => {
     it('should mark component as island', () => {
-      const component = island(
-        defineComponent(() => () => <div>Test</div>),
-      );
+      const component = island(defineComponent(() => () => <div>Test</div>));
 
       expect(component.__island).toBe(true);
       expect(component.__islandOptions).toBeDefined();
@@ -33,24 +31,20 @@ describe('Island Directives', () => {
         defineComponent(() => () => <div>Test</div>),
         {
           hydrate: 'visible',
-        },
+        }
       );
 
       expect(component.__islandOptions.hydrate).toBe('visible');
     });
 
     it('should auto-detect strategy if not provided', () => {
-      const component = island(
-        defineComponent(() => () => <button onClick={() => {}}>Click</button>),
-      );
+      const component = island(defineComponent(() => () => <button onClick={() => {}}>Click</button>));
 
       expect(component.__islandOptions.hydrate).toBeDefined();
     });
 
     it('should generate island ID', () => {
-      const component = island(
-        defineComponent(() => () => <div>Test</div>),
-      );
+      const component = island(defineComponent(() => () => <div>Test</div>));
 
       expect(component.__islandId).toBeDefined();
       expect(typeof component.__islandId).toBe('string');
@@ -61,7 +55,7 @@ describe('Island Directives', () => {
         defineComponent(() => () => <div>Test</div>),
         {
           name: 'MyIsland',
-        },
+        }
       );
 
       expect(component.__islandId).toBe('MyIsland');
@@ -75,7 +69,7 @@ describe('Island Directives', () => {
         defineComponent(() => () => <div>Test</div>),
         {
           hydrate: 'idle',
-        },
+        }
       );
 
       expect(component.__island).toBe(true);
@@ -86,9 +80,7 @@ describe('Island Directives', () => {
 
   describe('staticHint', () => {
     it('should mark component as static', () => {
-      const component = staticHint(
-        defineComponent(() => () => <div>Static</div>),
-      );
+      const component = staticHint(defineComponent(() => () => <div>Static</div>));
 
       expect(isStaticComponent(component)).toBe(true);
     });
@@ -96,9 +88,7 @@ describe('Island Directives', () => {
 
   describe('defer', () => {
     it('should create deferred island with idle strategy', () => {
-      const component = defer(
-        defineComponent(() => () => <div>Test</div>),
-      );
+      const component = defer(defineComponent(() => () => <div>Test</div>));
 
       expect(component.__island).toBe(true);
       expect(component.__islandOptions.hydrate).toBe('idle');
@@ -107,7 +97,7 @@ describe('Island Directives', () => {
     it('should allow custom defer strategy', () => {
       const component = defer(
         defineComponent(() => () => <div>Test</div>),
-        'visible',
+        'visible'
       );
 
       expect(component.__islandOptions.hydrate).toBe('visible');
@@ -119,7 +109,7 @@ describe('Island Directives', () => {
       const condition = () => true;
       const component = conditionalIsland(
         defineComponent(() => () => <div>Test</div>),
-        condition,
+        condition
       );
 
       expect(component.__island).toBe(true);
@@ -133,7 +123,7 @@ describe('Island Directives', () => {
       const query = '(max-width: 768px)';
       const component = mediaIsland(
         defineComponent(() => () => <div>Test</div>),
-        query,
+        query
       );
 
       expect(component.__island).toBe(true);
@@ -146,7 +136,7 @@ describe('Island Directives', () => {
     it('should create viewport island', () => {
       const component = viewportIsland(
         defineComponent(() => () => <div>Test</div>),
-        '100px',
+        '100px'
       );
 
       expect(component.__island).toBe(true);
@@ -155,9 +145,7 @@ describe('Island Directives', () => {
     });
 
     it('should use default root margin', () => {
-      const component = viewportIsland(
-        defineComponent(() => () => <div>Test</div>),
-      );
+      const component = viewportIsland(defineComponent(() => () => <div>Test</div>));
 
       expect(component.__islandOptions.rootMargin).toBe('0px');
     });
@@ -168,7 +156,7 @@ describe('Island Directives', () => {
       const events = ['click', 'focus'];
       const component = interactionIsland(
         defineComponent(() => () => <div>Test</div>),
-        events,
+        events
       );
 
       expect(component.__island).toBe(true);
@@ -177,9 +165,7 @@ describe('Island Directives', () => {
     });
 
     it('should use default events', () => {
-      const component = interactionIsland(
-        defineComponent(() => () => <div>Test</div>),
-      );
+      const component = interactionIsland(defineComponent(() => () => <div>Test</div>));
 
       expect(component.__islandOptions.events).toEqual(['click', 'focus', 'touchstart']);
     });
@@ -189,7 +175,7 @@ describe('Island Directives', () => {
     it('should create idle island', () => {
       const component = idleIsland(
         defineComponent(() => () => <div>Test</div>),
-        3000,
+        3000
       );
 
       expect(component.__island).toBe(true);
@@ -198,9 +184,7 @@ describe('Island Directives', () => {
     });
 
     it('should use default timeout', () => {
-      const component = idleIsland(
-        defineComponent(() => () => <div>Test</div>),
-      );
+      const component = idleIsland(defineComponent(() => () => <div>Test</div>));
 
       expect(component.__islandOptions.timeout).toBe(2000);
     });

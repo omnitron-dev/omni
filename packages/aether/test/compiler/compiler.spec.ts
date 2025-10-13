@@ -477,7 +477,7 @@ describe('AetherCompiler', () => {
     });
 
     it('should warn for incompatible option combinations', () => {
-      const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => { });
+      const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
       validateOptions({
         mode: 'development',
@@ -636,7 +636,10 @@ describe('AetherCompiler', () => {
 
     it('should handle large files', async () => {
       // Generate a large component
-      const components = Array.from({ length: 100 }, (_, i) => `const Component${i} = () => <div>Component ${i}</div>;`).join('\n');
+      const components = Array.from(
+        { length: 100 },
+        (_, i) => `const Component${i} = () => <div>Component ${i}</div>;`
+      ).join('\n');
 
       const code = `
         ${components}

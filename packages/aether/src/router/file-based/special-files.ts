@@ -534,12 +534,7 @@ export function calculateRouteSimilarity(path1: string, path2: string): number {
 /**
  * Find similar routes for 404 suggestions
  */
-export function findSimilarRoutes(
-  routes: RouteDefinition[],
-  pathname: string,
-  threshold = 0.5,
-  limit = 3
-): string[] {
+export function findSimilarRoutes(routes: RouteDefinition[], pathname: string, threshold = 0.5, limit = 3): string[] {
   const allPaths: string[] = [];
 
   function collectPaths(routeList: RouteDefinition[]) {
@@ -556,15 +551,15 @@ export function findSimilarRoutes(
   collectPaths(routes);
 
   // Calculate similarities
-  const similarities = allPaths.map(path => ({
+  const similarities = allPaths.map((path) => ({
     path,
     score: calculateRouteSimilarity(pathname, path),
   }));
 
   // Filter and sort by similarity
   return similarities
-    .filter(s => s.score >= threshold)
+    .filter((s) => s.score >= threshold)
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
-    .map(s => s.path);
+    .map((s) => s.path);
 }

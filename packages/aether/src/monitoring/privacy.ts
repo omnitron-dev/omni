@@ -375,13 +375,7 @@ export class ConsentBanner {
       settingsLabel = 'Settings',
     } = options || {};
 
-    this.bannerElement = this.createBannerElement(
-      position,
-      message,
-      acceptLabel,
-      declineLabel,
-      settingsLabel
-    );
+    this.bannerElement = this.createBannerElement(position, message, acceptLabel, declineLabel, settingsLabel);
 
     document.body.appendChild(this.bannerElement);
   }

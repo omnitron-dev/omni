@@ -172,10 +172,7 @@ export class Minifier implements OptimizationPass {
   /**
    * Transform code
    */
-  async transform(
-    code: string,
-    context: OptimizationContext,
-  ): Promise<OptimizationResult> {
+  async transform(code: string, context: OptimizationContext): Promise<OptimizationResult> {
     const changes: OptimizationChange[] = [];
     const warnings: string[] = [];
 
@@ -325,11 +322,7 @@ export class Minifier implements OptimizationPass {
       let match: RegExpExecArray | null;
       while ((match = pattern.exec(code)) !== null) {
         const name = match[1];
-        if (
-          name &&
-          !this.reservedNames.has(name) &&
-          !this.isExportedOrImported(code, name)
-        ) {
+        if (name && !this.reservedNames.has(name) && !this.isExportedOrImported(code, name)) {
           declarations.add(name);
         }
       }
@@ -353,8 +346,7 @@ export class Minifier implements OptimizationPass {
    */
   private generateShortName(): string {
     const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    const charsWithDigits =
-      'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const charsWithDigits = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 
     let name = '';
     let num = this.variableCounter++;
@@ -485,7 +477,7 @@ export class Minifier implements OptimizationPass {
     // Preserve space after keywords
     optimizedCode = optimizedCode.replace(
       /\b(if|for|while|function|return|const|let|var|new|typeof|instanceof)\(/g,
-      '$1 (',
+      '$1 ('
     );
 
     // Remove all newlines (aggressive)

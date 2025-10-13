@@ -231,25 +231,25 @@ export const Drawer = defineComponent<DrawerProps>((props) => {
  * Drawer Content component - wraps factory Content to add data-side attribute
  */
 export const DrawerContent = defineComponent<DrawerContentProps>((props) => () => {
-    const { side, children, ...restProps } = props;
+  const { side, children, ...restProps } = props;
 
-    // Get side from props or default to 'right'
-    const effectiveSide = side || 'right';
+  // Get side from props or default to 'right'
+  const effectiveSide = side || 'right';
 
-    const content = jsx(DrawerBase.Content, {
-      ...restProps,
-      children,
-    }) as HTMLElement;
+  const content = jsx(DrawerBase.Content, {
+    ...restProps,
+    children,
+  }) as HTMLElement;
 
-    // Add data-side attribute to content element
-    if (content) {
-      effect(() => {
-        content.setAttribute('data-side', effectiveSide);
-      });
-    }
+  // Add data-side attribute to content element
+  if (content) {
+    effect(() => {
+      content.setAttribute('data-side', effectiveSide);
+    });
+  }
 
-    return content;
-  });
+  return content;
+});
 
 // ============================================================================
 // Overlay Component
@@ -259,13 +259,13 @@ export const DrawerContent = defineComponent<DrawerContentProps>((props) => () =
  * Drawer Overlay component - wraps factory Overlay
  */
 export const DrawerOverlay = defineComponent<DrawerOverlayProps>((props) => () => {
-    const { children, ...restProps } = props;
+  const { children, ...restProps } = props;
 
-    return jsx(DrawerBase.Overlay, {
-      ...restProps,
-      children,
-    });
+  return jsx(DrawerBase.Overlay, {
+    ...restProps,
+    children,
   });
+});
 
 // ============================================================================
 // Re-export other components directly from factory

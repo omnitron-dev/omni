@@ -777,18 +777,16 @@ export class BundleOptimizer {
     for (const chunk of this.chunks.values()) {
       if (chunk.size > this.options.maxChunkSize) {
         recommendations.push(
-          `Chunk "${chunk.name}" is too large (${(chunk.size / 1024).toFixed(1)}KB). Consider code splitting.`,
+          `Chunk "${chunk.name}" is too large (${(chunk.size / 1024).toFixed(1)}KB). Consider code splitting.`
         );
       }
     }
 
     // Check for small chunks
-    const smallChunks = Array.from(this.chunks.values()).filter(
-      (c) => c.size < this.options.minChunkSize,
-    );
+    const smallChunks = Array.from(this.chunks.values()).filter((c) => c.size < this.options.minChunkSize);
     if (smallChunks.length > 0) {
       recommendations.push(
-        `${smallChunks.length} chunks are smaller than ${this.options.minChunkSize / 1024}KB. Consider merging them.`,
+        `${smallChunks.length} chunks are smaller than ${this.options.minChunkSize / 1024}KB. Consider merging them.`
       );
     }
 

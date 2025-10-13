@@ -42,24 +42,28 @@ class MockSubscription {
 let currentMockSubscription: MockSubscription;
 
 const createMockBackend = () => ({
-  queryFluentInterface: vi.fn().mockImplementation(async () => 
-    // Return a proxy that handles any method call
-     new Proxy({}, {
-      get: (target, prop) => {
-        // Don't intercept 'then' - this prevents the Proxy from being treated as a Promise
-        if (prop === 'then') {
-          return undefined;
-        }
+  queryFluentInterface: vi.fn().mockImplementation(
+    async () =>
+      // Return a proxy that handles any method call
+      new Proxy(
+        {},
+        {
+          get: (target, prop) => {
+            // Don't intercept 'then' - this prevents the Proxy from being treated as a Promise
+            if (prop === 'then') {
+              return undefined;
+            }
 
-        // Return a function that returns a Promise resolving to a subscribable stream
-        return async (...args: any[]) => ({
-            subscribe: (handlers: any) => {
-              currentMockSubscription = new MockSubscription(handlers);
-              return currentMockSubscription;
-            },
-          });
-      },
-    })
+            // Return a function that returns a Promise resolving to a subscribable stream
+            return async (...args: any[]) => ({
+              subscribe: (handlers: any) => {
+                currentMockSubscription = new MockSubscription(handlers);
+                return currentMockSubscription;
+              },
+            });
+          },
+        }
+      )
   ),
 });
 
@@ -120,7 +124,7 @@ describe('useStream', () => {
     it('should auto-connect by default', async () => {
       const result = useStream(PricingService, 'subscribePrices', ['BTC/USD']);
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(mockNetronClient.backend).toHaveBeenCalled();
     });
@@ -157,7 +161,7 @@ describe('useStream', () => {
 
       const result = useStream(PricingService, 'subscribePrices', ['BTC/USD']);
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Should handle error
       expect(result).toBeDefined();
@@ -180,14 +184,14 @@ describe('useStream', () => {
       await result.connect();
 
       // Simulate data emissions using the currentMockSubscription
-      await new Promise(resolve => setTimeout(resolve, 10)); // Let connection settle
+      await new Promise((resolve) => setTimeout(resolve, 10)); // Let connection settle
 
       if (currentMockSubscription) {
         currentMockSubscription.emitData({ symbol: 'BTC/USD', price: 50000 });
         currentMockSubscription.emitData({ symbol: 'BTC/USD', price: 51000 });
       }
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       // Should have accumulated data
       expect(Array.isArray(result.data())).toBe(true);
@@ -200,7 +204,7 @@ describe('useStream', () => {
       });
 
       await result.connect();
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       // Simulate multiple data emissions
       if (currentMockSubscription) {
@@ -209,7 +213,7 @@ describe('useStream', () => {
         currentMockSubscription.emitData({ price: 3 }); // Should evict first
       }
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       // Buffer should not exceed size
       const data = result.data();
@@ -223,7 +227,7 @@ describe('useStream', () => {
       });
 
       await result.connect();
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       const testData = { symbol: 'BTC/USD', price: 50000 };
 
@@ -231,7 +235,7 @@ describe('useStream', () => {
         currentMockSubscription.emitData(testData);
       }
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       // Callback should be called
       expect(onData).toHaveBeenCalledWith(testData);
@@ -245,7 +249,7 @@ describe('useStream', () => {
       });
 
       await result.connect();
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       const testError = new Error('Stream error');
 
@@ -253,7 +257,7 @@ describe('useStream', () => {
         currentMockSubscription.emitError(testError);
       }
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       // Error should be set
       expect(result.error()).toEqual(testError);
@@ -267,7 +271,7 @@ describe('useStream', () => {
       });
 
       await result.connect();
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       const testError = new Error('Stream error');
 
@@ -275,7 +279,7 @@ describe('useStream', () => {
         currentMockSubscription.emitError(testError);
       }
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       // Callback should be called
       expect(onError).toHaveBeenCalledWith(testError);
@@ -287,13 +291,13 @@ describe('useStream', () => {
       });
 
       await result.connect();
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       if (currentMockSubscription) {
         currentMockSubscription.emitError(new Error('Test'));
       }
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       // Status should reflect error
       expect(result.status()).toBe('error');
@@ -387,7 +391,7 @@ describe('useStream', () => {
       });
 
       await result.connect();
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       // onConnect should be called when first data arrives or subscription succeeds
       expect(onConnect).toHaveBeenCalled();
@@ -413,13 +417,13 @@ describe('useStream', () => {
       });
 
       await result.connect();
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       if (currentMockSubscription) {
         currentMockSubscription.complete();
       }
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       // Callback should be called
       expect(onComplete).toHaveBeenCalled();
@@ -431,13 +435,13 @@ describe('useStream', () => {
       const result = useStream(PricingService, 'subscribePrices', ['BTC/USD']);
 
       await result.connect();
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       if (currentMockSubscription) {
         currentMockSubscription.emitData({ price: 50000 });
       }
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       result.clear();
 

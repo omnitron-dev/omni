@@ -169,14 +169,7 @@ export interface OptimizationChange {
   /**
    * Type of change
    */
-  type:
-    | 'signal-inline'
-    | 'effect-batch'
-    | 'component-hoist'
-    | 'tree-shake'
-    | 'dead-code'
-    | 'minify'
-    | 'custom';
+  type: 'signal-inline' | 'effect-batch' | 'component-hoist' | 'tree-shake' | 'dead-code' | 'minify' | 'custom';
 
   /**
    * Description
@@ -317,9 +310,7 @@ export class Optimizer {
     }
 
     if (this.options.eliminateDeadCode) {
-      const { DeadCodeEliminator } = await import(
-        './optimizations/dead-code-eliminator.js'
-      );
+      const { DeadCodeEliminator } = await import('./optimizations/dead-code-eliminator.js');
       passes.push(new DeadCodeEliminator(this.options));
     }
 
@@ -385,7 +376,7 @@ export class Optimizer {
         }
       } catch (error) {
         allWarnings.push(
-          `Optimization pass "${pass.name}" failed: ${error instanceof Error ? error.message : String(error)}`,
+          `Optimization pass "${pass.name}" failed: ${error instanceof Error ? error.message : String(error)}`
         );
       }
 
@@ -409,8 +400,7 @@ export class Optimizer {
         originalSize,
         optimizedSize,
         sizeReduction: originalSize - optimizedSize,
-        sizeReductionPercent:
-          originalSize > 0 ? ((originalSize - optimizedSize) / originalSize) * 100 : 0,
+        sizeReductionPercent: originalSize > 0 ? ((originalSize - optimizedSize) / originalSize) * 100 : 0,
         totalChanges: allChanges.length,
         changesByType,
       };
@@ -476,10 +466,7 @@ export function createOptimizer(options?: OptimizerOptions): Optimizer {
 /**
  * Quick optimize function for simple use cases
  */
-export async function optimize(
-  code: string,
-  options?: OptimizerOptions,
-): Promise<string> {
+export async function optimize(code: string, options?: OptimizerOptions): Promise<string> {
   const optimizer = new Optimizer(options);
   const result = await optimizer.optimize(code);
   return result.code;

@@ -305,10 +305,7 @@ describe('Lazy Loading', () => {
         Component3: () => 'Content3',
       }));
 
-      const { Component1, Component2, Component3 } = splitCode(
-        loader,
-        ['Component1', 'Component2', 'Component3']
-      );
+      const { Component1, Component2, Component3 } = splitCode(loader, ['Component1', 'Component2', 'Component3']);
 
       // Load Component1
       const suspenseComponent = Suspense({

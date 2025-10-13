@@ -7,13 +7,7 @@
 import { computed } from '../core/reactivity/computed.js';
 import type { Computed } from '../core/reactivity/types.js';
 import { useContext } from '../core/component/context.js';
-import type {
-  I18nContext,
-  LocaleCode,
-  TranslateFunction,
-  Formatters,
-  InterpolationValues,
-} from './types.js';
+import type { I18nContext, LocaleCode, TranslateFunction, Formatters, InterpolationValues } from './types.js';
 import { I18nContextSymbol } from './context.js';
 
 /**
@@ -195,7 +189,7 @@ export function usePlural(): (key: string, count: number, values?: Interpolation
  */
 export function useFormattedDate(
   value: () => Date | number | string,
-  options?: () => Intl.DateTimeFormatOptions,
+  options?: () => Intl.DateTimeFormatOptions
 ): Computed<string> {
   const { formatters } = useTranslation();
 
@@ -213,10 +207,7 @@ export function useFormattedDate(
  * <p>{formattedNumber()}</p>
  * ```
  */
-export function useFormattedNumber(
-  value: () => number,
-  options?: () => Intl.NumberFormatOptions,
-): Computed<string> {
+export function useFormattedNumber(value: () => number, options?: () => Intl.NumberFormatOptions): Computed<string> {
   const { formatters } = useTranslation();
 
   return computed(() => formatters.number(value(), options?.()));
@@ -236,7 +227,7 @@ export function useFormattedNumber(
 export function useFormattedCurrency(
   value: () => number,
   currency: string,
-  options?: () => Intl.NumberFormatOptions,
+  options?: () => Intl.NumberFormatOptions
 ): Computed<string> {
   const { formatters } = useTranslation();
 

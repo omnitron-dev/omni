@@ -103,7 +103,7 @@ export function clientOnly<P = any>(
   component: Component<P>,
   options?: {
     fallback?: any;
-  },
+  }
 ): ClientComponent<P> {
   const clientComp = component as ClientComponent<P>;
   clientComp.__clientOnly = true;
@@ -327,7 +327,7 @@ export function createServerContextFromRequest(
   options?: {
     session?: any;
     data?: Map<string, any>;
-  },
+  }
 ): ServerContext {
   const url = new URL(request.url);
 

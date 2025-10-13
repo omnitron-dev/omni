@@ -12,12 +12,7 @@
 
 import type { VNode } from '../reconciler/vnode.js';
 import { VNodeType } from '../reconciler/vnode.js';
-import type {
-  SSRContext,
-  RenderToStringOptions,
-  RenderToStaticMarkupOptions,
-  IslandMarker,
-} from './types.js';
+import type { SSRContext, RenderToStringOptions, RenderToStaticMarkupOptions, IslandMarker } from './types.js';
 
 /**
  * Global SSR context - used during rendering to collect data
@@ -72,7 +67,15 @@ export async function renderToString(
   islands?: IslandMarker[];
   meta?: Record<string, string>;
 }> {
-  const { props = {}, initialState = {}, url, netron, islands = false, collectStyles = false, timeout = 5000 } = options;
+  const {
+    props = {},
+    initialState = {},
+    url,
+    netron,
+    islands = false,
+    collectStyles = false,
+    timeout = 5000,
+  } = options;
 
   // Create SSR context
   const context: SSRContext = {
@@ -96,9 +99,7 @@ export async function renderToString(
     const renderPromise = renderComponentToHTML(component, props, context, islands);
     const html = await Promise.race([
       renderPromise,
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('SSR render timeout')), timeout)
-      ),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('SSR render timeout')), timeout)),
     ]);
 
     // Wait for async operations to complete
@@ -307,9 +308,7 @@ async function renderComponentToHTML(
 
   // Handle arrays (fragments)
   if (Array.isArray(component)) {
-    const parts = await Promise.all(
-      component.map((child) => renderComponentToHTML(child, {}, context, enableIslands))
-    );
+    const parts = await Promise.all(component.map((child) => renderComponentToHTML(child, {}, context, enableIslands)));
     return parts.join('');
   }
 
@@ -372,9 +371,7 @@ async function renderElementVNode(vnode: VNode, context: SSRContext, enableIslan
   }
 
   // Render children
-  const childrenHTML = await Promise.all(
-    children.map((child) => renderVNodeToHTML(child, context, enableIslands))
-  );
+  const childrenHTML = await Promise.all(children.map((child) => renderVNodeToHTML(child, context, enableIslands)));
 
   return `<${tag}${attrString}>${childrenHTML.join('')}</${tag}>`;
 }
@@ -450,9 +447,8 @@ function buildStyleString(style: Record<string, any>): string {
       // Convert camelCase to kebab-case
       const cssKey = key.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
       // Handle reactive values
-      const actualValue = typeof value === 'function' && typeof (value as any).peek === 'function'
-        ? (value as any).peek()
-        : value;
+      const actualValue =
+        typeof value === 'function' && typeof (value as any).peek === 'function' ? (value as any).peek() : value;
       return `${cssKey}:${actualValue}`;
     })
     .join(';');

@@ -166,7 +166,7 @@ const PriceTicker = defineComponent<{ symbols: string[] }>((props) => {
   // Get latest price for each symbol
   const latestPrices = computed(() => {
     const priceMap = new Map<string, PriceUpdate>();
-    prices().forEach(price => {
+    prices().forEach((price) => {
       priceMap.set(price.symbol, price);
     });
     return priceMap;
@@ -202,31 +202,22 @@ const PriceTicker = defineComponent<{ symbols: string[] }>((props) => {
         </div>
       </div>
 
-      {error() && (
-        <div class="error">Error: {error()!.message}</div>
-      )}
+      {error() && <div class="error">Error: {error()!.message}</div>}
 
       <div class="ticker-list">
-        {props.symbols.map(symbol => {
+        {props.symbols.map((symbol) => {
           const price = latestPrices().get(symbol);
           return (
             <div key={symbol} class="ticker-item">
               <div class="symbol">{symbol}</div>
               {price && (
                 <>
-                  <div class="price">
-                    ${price.price.toFixed(2)}
-                  </div>
-                  <div
-                    class="change"
-                    style={{ color: getPriceColor(price.change) }}
-                  >
+                  <div class="price">${price.price.toFixed(2)}</div>
+                  <div class="change" style={{ color: getPriceColor(price.change) }}>
                     {price.change >= 0 ? '+' : ''}
                     {price.change.toFixed(2)} ({price.changePercent.toFixed(2)}%)
                   </div>
-                  <div class="volume">
-                    Vol: {(price.volume / 1000000).toFixed(2)}M
-                  </div>
+                  <div class="volume">Vol: {(price.volume / 1000000).toFixed(2)}M</div>
                 </>
               )}
               {!price && <div class="no-data">Waiting for data...</div>}
@@ -236,9 +227,7 @@ const PriceTicker = defineComponent<{ symbols: string[] }>((props) => {
       </div>
 
       <div class="ticker-footer">
-        <div class="update-count">
-          Updates received: {prices().length}
-        </div>
+        <div class="update-count">Updates received: {prices().length}</div>
       </div>
     </div>
   );
@@ -255,39 +244,31 @@ const ChatRoom = defineComponent<{ roomId: string; userId: string }>((props) => 
     data: messages,
     error,
     status,
-  } = useStream<ChatService, 'subscribeMessages', ChatMessage>(
-    ChatService,
-    'subscribeMessages',
-    [props.roomId],
-    {
-      // Keep last 50 messages
-      bufferSize: 50,
+  } = useStream<ChatService, 'subscribeMessages', ChatMessage>(ChatService, 'subscribeMessages', [props.roomId], {
+    // Keep last 50 messages
+    bufferSize: 50,
 
-      // Auto-connect on mount
-      autoConnect: true,
+    // Auto-connect on mount
+    autoConnect: true,
 
-      // Auto-reconnect
-      reconnect: true,
-      reconnectDelay: 2000,
+    // Auto-reconnect
+    reconnect: true,
+    reconnectDelay: 2000,
 
-      onData: (message) => {
-        // Play notification sound for new messages
-        if (message.userId !== props.userId) {
-          console.log('New message from', message.username);
-        }
-      },
-    }
-  );
+    onData: (message) => {
+      // Play notification sound for new messages
+      if (message.userId !== props.userId) {
+        console.log('New message from', message.username);
+      }
+    },
+  });
 
   // Send message (mutation)
   const {
     broadcast: sendMessage,
     broadcasting,
     error: sendError,
-  } = useBroadcast<ChatService, 'broadcastMessage', ChatMessage>(
-    ChatService,
-    'broadcastMessage'
-  );
+  } = useBroadcast<ChatService, 'broadcastMessage', ChatMessage>(ChatService, 'broadcastMessage');
 
   const handleSendMessage = async () => {
     if (messageInput().trim()) {
@@ -306,35 +287,24 @@ const ChatRoom = defineComponent<{ roomId: string; userId: string }>((props) => 
     <div class="chat-room">
       <div class="chat-header">
         <h3>Chat Room: {props.roomId}</h3>
-        <span class={`status-badge ${status()}`}>
-          {status()}
-        </span>
+        <span class={`status-badge ${status()}`}>{status()}</span>
       </div>
 
-      {error() && (
-        <div class="error">Connection error: {error()!.message}</div>
-      )}
+      {error() && <div class="error">Connection error: {error()!.message}</div>}
 
       <div class="chat-messages">
-        {messages().map(msg => (
-          <div
-            key={msg.id}
-            class={`message ${msg.userId === props.userId ? 'own' : 'other'}`}
-          >
+        {messages().map((msg) => (
+          <div key={msg.id} class={`message ${msg.userId === props.userId ? 'own' : 'other'}`}>
             <div class="message-header">
               <strong>{msg.username}</strong>
-              <span class="timestamp">
-                {new Date(msg.timestamp).toLocaleTimeString()}
-              </span>
+              <span class="timestamp">{new Date(msg.timestamp).toLocaleTimeString()}</span>
             </div>
             <div class="message-body">{msg.message}</div>
           </div>
         ))}
       </div>
 
-      {sendError() && (
-        <div class="error">Failed to send: {sendError()!.message}</div>
-      )}
+      {sendError() && <div class="error">Failed to send: {sendError()!.message}</div>}
 
       <div class="chat-input">
         <input
@@ -366,7 +336,7 @@ const ChatRoom = defineComponent<{ roomId: string; userId: string }>((props) => 
 const SensorDashboard = defineComponent<{ sensorIds: string[] }>((props) => {
   // Subscribe to multiple sensors simultaneously
   const sensorStreams = useMultiStream(
-    props.sensorIds.map(id => ({
+    props.sensorIds.map((id) => ({
       service: SensorService,
       method: 'subscribeSensor',
       args: [id],
@@ -390,11 +360,9 @@ const SensorDashboard = defineComponent<{ sensorIds: string[] }>((props) => {
   // Average temperature
   const avgTemperature = computed(() => {
     const temps = latestReadings()
-      .filter(r => r && r.type === 'temperature')
-      .map(r => r!.value);
-    return temps.length > 0
-      ? temps.reduce((sum, val) => sum + val, 0) / temps.length
-      : 0;
+      .filter((r) => r && r.type === 'temperature')
+      .map((r) => r!.value);
+    return temps.length > 0 ? temps.reduce((sum, val) => sum + val, 0) / temps.length : 0;
   });
 
   return () => (
@@ -403,8 +371,7 @@ const SensorDashboard = defineComponent<{ sensorIds: string[] }>((props) => {
 
       <div class="summary">
         <div class="summary-item">
-          <strong>Active Sensors:</strong>{' '}
-          {sensorStreams.filter(s => s.status() === 'connected').length} /{' '}
+          <strong>Active Sensors:</strong> {sensorStreams.filter((s) => s.status() === 'connected').length} /{' '}
           {props.sensorIds.length}
         </div>
         <div class="summary-item">
@@ -421,14 +388,10 @@ const SensorDashboard = defineComponent<{ sensorIds: string[] }>((props) => {
             <div key={id} class="sensor-card">
               <div class="sensor-header">
                 <h4>Sensor {id}</h4>
-                <span class={`badge ${stream.status()}`}>
-                  {stream.status()}
-                </span>
+                <span class={`badge ${stream.status()}`}>{stream.status()}</span>
               </div>
 
-              {stream.error() && (
-                <div class="error">{stream.error()!.message}</div>
-              )}
+              {stream.error() && <div class="error">{stream.error()!.message}</div>}
 
               {reading && (
                 <div class="sensor-data">
@@ -436,38 +399,24 @@ const SensorDashboard = defineComponent<{ sensorIds: string[] }>((props) => {
                   <div class="reading-value">
                     {reading.value.toFixed(2)} {reading.unit}
                   </div>
-                  <div class="reading-time">
-                    {new Date(reading.timestamp).toLocaleTimeString()}
-                  </div>
+                  <div class="reading-time">{new Date(reading.timestamp).toLocaleTimeString()}</div>
                 </div>
               )}
 
-              {!reading && stream.status() === 'connected' && (
-                <div class="no-data">Waiting for data...</div>
-              )}
+              {!reading && stream.status() === 'connected' && <div class="no-data">Waiting for data...</div>}
 
               <div class="sensor-stats">
-                <small>
-                  {stream.data().length} readings received
-                </small>
+                <small>{stream.data().length} readings received</small>
               </div>
 
               <div class="sensor-controls">
-                <button
-                  onClick={() => stream.connect()}
-                  disabled={stream.status() === 'connected'}
-                >
+                <button onClick={() => stream.connect()} disabled={stream.status() === 'connected'}>
                   Connect
                 </button>
-                <button
-                  onClick={() => stream.disconnect()}
-                  disabled={stream.status() === 'disconnected'}
-                >
+                <button onClick={() => stream.disconnect()} disabled={stream.status() === 'disconnected'}>
                   Disconnect
                 </button>
-                <button onClick={() => stream.clear()}>
-                  Clear
-                </button>
+                <button onClick={() => stream.clear()}>Clear</button>
               </div>
             </div>
           );
@@ -484,33 +433,28 @@ const NotificationCenter = defineComponent<{ userId: string }>((props) => {
   const showNotifications = signal(true);
 
   // Subscribe to user notifications
-  const { data: notifications, error, status } = useStream<
-    NotificationService,
-    'subscribe',
-    Notification
-  >(
-    NotificationService,
-    'subscribe',
-    [props.userId],
-    {
-      bufferSize: 10,
-      reconnect: true,
-      filter: (notification) => {
-        // Filter out old notifications (older than 5 minutes)
-        const age = Date.now() - new Date(notification.timestamp).getTime();
-        return age < 5 * 60 * 1000;
-      },
-      onData: (notification) => {
-        // Show browser notification
-        if ('Notification' in window && Notification.permission === 'granted') {
-          new Notification(notification.title, {
-            body: notification.message,
-            icon: '/notification-icon.png',
-          });
-        }
-      },
-    }
-  );
+  const {
+    data: notifications,
+    error,
+    status,
+  } = useStream<NotificationService, 'subscribe', Notification>(NotificationService, 'subscribe', [props.userId], {
+    bufferSize: 10,
+    reconnect: true,
+    filter: (notification) => {
+      // Filter out old notifications (older than 5 minutes)
+      const age = Date.now() - new Date(notification.timestamp).getTime();
+      return age < 5 * 60 * 1000;
+    },
+    onData: (notification) => {
+      // Show browser notification
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification(notification.title, {
+          body: notification.message,
+          icon: '/notification-icon.png',
+        });
+      }
+    },
+  });
 
   const unreadCount = computed(() => notifications().length);
 
@@ -519,32 +463,22 @@ const NotificationCenter = defineComponent<{ userId: string }>((props) => {
       <div class="notification-header">
         <h3>
           Notifications
-          {unreadCount() > 0 && (
-            <span class="badge">{unreadCount()}</span>
-          )}
+          {unreadCount() > 0 && <span class="badge">{unreadCount()}</span>}
         </h3>
         <button onClick={() => showNotifications.set(!showNotifications())}>
           {showNotifications() ? 'Hide' : 'Show'}
         </button>
       </div>
 
-      {status() !== 'connected' && (
-        <div class="warning">
-          Not connected to notification service
-        </div>
-      )}
+      {status() !== 'connected' && <div class="warning">Not connected to notification service</div>}
 
-      {error() && (
-        <div class="error">Error: {error()!.message}</div>
-      )}
+      {error() && <div class="error">Error: {error()!.message}</div>}
 
       {showNotifications() && (
         <div class="notification-list">
-          {notifications().length === 0 && (
-            <div class="empty">No new notifications</div>
-          )}
+          {notifications().length === 0 && <div class="empty">No new notifications</div>}
 
-          {notifications().map(notif => (
+          {notifications().map((notif) => (
             <div key={notif.id} class={`notification ${notif.type}`}>
               <div class="notification-icon">
                 {notif.type === 'success' && '✅'}
@@ -555,9 +489,7 @@ const NotificationCenter = defineComponent<{ userId: string }>((props) => {
               <div class="notification-content">
                 <strong>{notif.title}</strong>
                 <p>{notif.message}</p>
-                <small>
-                  {new Date(notif.timestamp).toLocaleTimeString()}
-                </small>
+                <small>{new Date(notif.timestamp).toLocaleTimeString()}</small>
               </div>
             </div>
           ))}
@@ -620,12 +552,7 @@ const StreamingApp = defineComponent(() => {
       },
     }),
   ],
-  providers: [
-    PriceFeedService,
-    ChatService,
-    SensorService,
-    NotificationService,
-  ],
+  providers: [PriceFeedService, ChatService, SensorService, NotificationService],
   bootstrap: StreamingApp,
 })
 export class AppModule {}

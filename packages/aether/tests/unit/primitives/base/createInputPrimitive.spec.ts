@@ -8,7 +8,11 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createInputPrimitive, createFocusManager, createValidator } from '../../../../src/primitives/base/createInputPrimitive.js';
+import {
+  createInputPrimitive,
+  createFocusManager,
+  createValidator,
+} from '../../../../src/primitives/base/createInputPrimitive.js';
 import { signal } from '../../../../src/core/reactivity/signal.js';
 
 describe('createInputPrimitive', () => {

@@ -181,9 +181,7 @@ export function optimizeManifest(manifest: IslandManifest): IslandManifest {
   const optimized = { ...manifest };
 
   // Remove unused islands
-  optimized.islands = Object.fromEntries(
-    Object.entries(manifest.islands).filter(([, entry]) => entry.used),
-  );
+  optimized.islands = Object.fromEntries(Object.entries(manifest.islands).filter(([, entry]) => entry.used));
 
   return optimized;
 }
@@ -205,9 +203,7 @@ export function generatePreloadHints(manifest: IslandManifest, routePath: string
     .map((id) => getIslandEntry(manifest, id))
     .filter((entry): entry is IslandManifestEntry => entry?.strategy === 'immediate');
 
-  return criticalIslands
-    .map((entry) => `<link rel="modulepreload" href="/${entry.chunk}">`)
-    .join('\n');
+  return criticalIslands.map((entry) => `<link rel="modulepreload" href="/${entry.chunk}">`).join('\n');
 }
 
 /**

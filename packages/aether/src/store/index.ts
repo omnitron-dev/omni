@@ -96,20 +96,10 @@ export {
 } from './composition.js';
 
 // Persistence
-export {
-  persist,
-  createPersistManager,
-  hydrateSignal,
-  persistSignal,
-  clearPersistedData,
-} from './persist.js';
+export { persist, createPersistManager, hydrateSignal, persistSignal, clearPersistedData } from './persist.js';
 
 // Optimistic updates
-export {
-  optimistic,
-  optimisticSignal,
-  optimisticArray,
-} from './optimistic.js';
+export { optimistic, optimisticSignal, optimisticArray } from './optimistic.js';
 
 // Lifecycle hooks
 export {

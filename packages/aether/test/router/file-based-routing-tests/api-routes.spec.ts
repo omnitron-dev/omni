@@ -134,9 +134,12 @@ describe('API Routes', () => {
     });
 
     it('should accept custom headers', async () => {
-      const response = json({ data: 'test' }, {
-        headers: { 'X-Custom': 'value' },
-      });
+      const response = json(
+        { data: 'test' },
+        {
+          headers: { 'X-Custom': 'value' },
+        }
+      );
 
       expect(response.headers.get('X-Custom')).toBe('value');
       expect(response.headers.get('Content-Type')).toBe('application/json');

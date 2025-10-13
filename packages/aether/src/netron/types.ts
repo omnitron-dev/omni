@@ -4,10 +4,7 @@
  */
 
 import type { Signal, WritableSignal } from '../core/reactivity/types.js';
-import type {
-  CacheOptions,
-  RetryOptions,
-} from '@omnitron-dev/netron-browser';
+import type { CacheOptions, RetryOptions } from '@omnitron-dev/netron-browser';
 
 // Re-export for convenience
 export type { Signal, WritableSignal };
@@ -308,7 +305,9 @@ export type MethodParameters<T, K extends keyof T> = T[K] extends (...args: infe
  * Type helper for extracting method return type
  */
 export type MethodReturnType<T, K extends keyof T> = T[K] extends (...args: any[]) => infer R
-  ? R extends Promise<infer U> ? U : R
+  ? R extends Promise<infer U>
+    ? U
+    : R
   : never;
 
 /**

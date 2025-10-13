@@ -344,7 +344,7 @@ describe('useMutation', () => {
 
       result.mutateAsync({ id: '1', name: 'Updated' });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Error should be in state
       expect(result.error()).toBeDefined();
@@ -397,14 +397,13 @@ describe('useOptimisticMutation', () => {
 
   it('should apply optimistic update immediately', async () => {
     const getCurrentData = vi.fn().mockReturnValue([{ id: '1', name: 'John' }]);
-    const applyOptimisticUpdate = vi.fn().mockImplementation((current, variables) => current.map((u: any) => u.id === variables.id ? { ...u, ...variables } : u));
+    const applyOptimisticUpdate = vi
+      .fn()
+      .mockImplementation((current, variables) =>
+        current.map((u: any) => (u.id === variables.id ? { ...u, ...variables } : u))
+      );
 
-    const result = useOptimisticMutation(
-      UserService,
-      'updateUser',
-      getCurrentData,
-      applyOptimisticUpdate
-    );
+    const result = useOptimisticMutation(UserService, 'updateUser', getCurrentData, applyOptimisticUpdate);
 
     await result.mutate({ id: '1', name: 'Updated' });
 
@@ -416,12 +415,7 @@ describe('useOptimisticMutation', () => {
     const getCurrentData = vi.fn().mockReturnValue([]);
     const applyOptimisticUpdate = vi.fn().mockReturnValue([]);
 
-    const result = useOptimisticMutation(
-      UserService,
-      'updateUser',
-      getCurrentData,
-      applyOptimisticUpdate
-    );
+    const result = useOptimisticMutation(UserService, 'updateUser', getCurrentData, applyOptimisticUpdate);
 
     expect(result.rollback).toBeInstanceOf(Function);
   });
@@ -442,13 +436,9 @@ describe('useOptimisticMutation', () => {
     const applyOptimisticUpdate = vi.fn().mockImplementation(() => [{ id: '1', name: 'Updated' }]);
     const onSuccess = vi.fn();
 
-    const result = useOptimisticMutation(
-      UserService,
-      'updateUser',
-      getCurrentData,
-      applyOptimisticUpdate,
-      { onSuccess }
-    );
+    const result = useOptimisticMutation(UserService, 'updateUser', getCurrentData, applyOptimisticUpdate, {
+      onSuccess,
+    });
 
     try {
       await result.mutate({ id: '1', name: 'Updated' });
@@ -489,13 +479,9 @@ describe('useOptimisticMutation', () => {
     const getCurrentData = vi.fn().mockReturnValue(snapshotData);
     const applyOptimisticUpdate = vi.fn().mockReturnValue([{ id: '1', name: 'Updated' }]);
 
-    const result = useOptimisticMutation(
-      UserService,
-      'updateUser',
-      getCurrentData,
-      applyOptimisticUpdate,
-      { onSuccess }
-    );
+    const result = useOptimisticMutation(UserService, 'updateUser', getCurrentData, applyOptimisticUpdate, {
+      onSuccess,
+    });
 
     // First execute a mutation to capture snapshot
     await result.mutate({ id: '1', name: 'Updated' });

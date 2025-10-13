@@ -3,7 +3,11 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { PerformanceMonitor, getPerformanceMonitor, resetPerformanceMonitor } from '../../src/monitoring/performance.js';
+import {
+  PerformanceMonitor,
+  getPerformanceMonitor,
+  resetPerformanceMonitor,
+} from '../../src/monitoring/performance.js';
 
 describe('PerformanceMonitor', () => {
   let monitor: PerformanceMonitor;

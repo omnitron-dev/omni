@@ -32,7 +32,7 @@ describe('router data loading', () => {
       const deferred = defer(promise);
 
       await promise;
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       expect(deferred.resolved).toBe(true);
       expect(deferred.data).toEqual({ data: 'test' });
@@ -43,7 +43,7 @@ describe('router data loading', () => {
       const deferred = defer(promise);
 
       await promise.catch(() => {});
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       expect(deferred.resolved).toBe(true);
       expect(deferred.error).toBeInstanceOf(Error);
@@ -55,7 +55,7 @@ describe('router data loading', () => {
       const deferred = defer(promise);
 
       await promise.catch(() => {});
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       expect(deferred.error).toBeInstanceOf(Error);
     });
@@ -103,7 +103,7 @@ describe('router data loading', () => {
       const deferred = defer(promise);
 
       await promise;
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       const result = await awaitDeferred(deferred);
       expect(result).toEqual({ data: 'test' });
@@ -120,7 +120,7 @@ describe('router data loading', () => {
       const deferred = defer(promise);
 
       await promise.catch(() => {});
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       await expect(awaitDeferred(deferred)).rejects.toThrow('Test error');
     });
@@ -169,7 +169,12 @@ describe('router data loading', () => {
 
       const loaders = [
         { key: 'user', loader: async () => ({ name: 'John' }) },
-        { key: 'posts', loader: async () => { throw new Error('Failed'); } },
+        {
+          key: 'posts',
+          loader: async () => {
+            throw new Error('Failed');
+          },
+        },
       ];
 
       const results = await executeLoadersParallel(loaders, {} as any);
@@ -185,12 +190,21 @@ describe('router data loading', () => {
       const order: number[] = [];
 
       const loaders = [
-        { key: 'fast', loader: async () => { order.push(1); return 'fast'; } },
-        { key: 'slow', loader: async () => {
-          await new Promise(resolve => setTimeout(resolve, 10));
-          order.push(2);
-          return 'slow';
-        }},
+        {
+          key: 'fast',
+          loader: async () => {
+            order.push(1);
+            return 'fast';
+          },
+        },
+        {
+          key: 'slow',
+          loader: async () => {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+            order.push(2);
+            return 'slow';
+          },
+        },
       ];
 
       const results = await executeLoadersParallel(loaders, {} as any);
@@ -341,10 +355,7 @@ describe('router data loading', () => {
       const deferred1 = defer(Promise.resolve('first'));
       const deferred2 = defer(Promise.resolve('second'));
 
-      const [result1, result2] = await Promise.all([
-        awaitDeferred(deferred1),
-        awaitDeferred(deferred2),
-      ]);
+      const [result1, result2] = await Promise.all([awaitDeferred(deferred1), awaitDeferred(deferred2)]);
 
       expect(result1).toBe('first');
       expect(result2).toBe('second');
@@ -355,14 +366,11 @@ describe('router data loading', () => {
       const deferred1 = defer(promise1);
 
       await promise1;
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       const deferred2 = defer(Promise.resolve('unresolved'));
 
-      const [result1, result2] = await Promise.all([
-        awaitDeferred(deferred1),
-        awaitDeferred(deferred2),
-      ]);
+      const [result1, result2] = await Promise.all([awaitDeferred(deferred1), awaitDeferred(deferred2)]);
 
       expect(result1).toBe('resolved');
       expect(result2).toBe('unresolved');

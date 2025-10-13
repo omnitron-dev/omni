@@ -89,10 +89,7 @@ export class TreeShakerPass implements OptimizationPass {
   /**
    * Transform code
    */
-  async transform(
-    code: string,
-    context: OptimizationContext,
-  ): Promise<OptimizationResult> {
+  async transform(code: string, context: OptimizationContext): Promise<OptimizationResult> {
     const changes: OptimizationChange[] = [];
     const warnings: string[] = [];
 
@@ -143,9 +140,7 @@ export class TreeShakerPass implements OptimizationPass {
       warnings,
       metadata: {
         symbolsAnalyzed: this.symbols.size,
-        unusedSymbols: Array.from(this.symbols.values()).filter(
-          (s) => s.used.size === 0,
-        ).length,
+        unusedSymbols: Array.from(this.symbols.values()).filter((s) => s.used.size === 0).length,
       },
     };
   }
@@ -172,8 +167,7 @@ export class TreeShakerPass implements OptimizationPass {
    */
   private findDeclarations(line: string, lineNumber: number): void {
     // Import declarations
-    const importMatch =
-      /import\s+(?:{([^}]+)}|(\w+))\s+from\s+['"]([^'"]+)['"]/.exec(line);
+    const importMatch = /import\s+(?:{([^}]+)}|(\w+))\s+from\s+['"]([^'"]+)['"]/.exec(line);
     if (importMatch) {
       const namedImports = importMatch[1];
       const defaultImport = importMatch[2];
@@ -181,9 +175,7 @@ export class TreeShakerPass implements OptimizationPass {
       if (namedImports) {
         namedImports.split(',').forEach((name) => {
           const trimmed = name.trim();
-          const identifier = trimmed.includes(' as ')
-            ? trimmed.split(' as ')[1]?.trim()
-            : trimmed;
+          const identifier = trimmed.includes(' as ') ? trimmed.split(' as ')[1]?.trim() : trimmed;
 
           if (identifier) {
             this.symbols.set(identifier, {
@@ -235,9 +227,7 @@ export class TreeShakerPass implements OptimizationPass {
     }
 
     // Function declarations
-    const functionMatch = /(?:function|const|let|var)\s+(\w+)\s*=?\s*(?:async\s*)?\(/.exec(
-      line,
-    );
+    const functionMatch = /(?:function|const|let|var)\s+(\w+)\s*=?\s*(?:async\s*)?\(/.exec(line);
     if (functionMatch) {
       const name = functionMatch[1];
       if (name && !this.symbols.has(name)) {
@@ -438,9 +428,7 @@ export class TreeShakerPass implements OptimizationPass {
       if (names) {
         names.split(',').forEach((name) => {
           const trimmed = name.trim();
-          const identifier = trimmed.includes(' as ')
-            ? trimmed.split(' as ')[1]?.trim()
-            : trimmed;
+          const identifier = trimmed.includes(' as ') ? trimmed.split(' as ')[1]?.trim() : trimmed;
           if (identifier) {
             symbols.push(identifier);
           }
@@ -523,9 +511,7 @@ export class TreeShakerPass implements OptimizationPass {
       const line = lines[i] || '';
 
       // Check for unused function
-      const functionMatch = /(?:function|const|let)\s+(\w+)\s*=?\s*(?:async\s*)?\(/.exec(
-        line,
-      );
+      const functionMatch = /(?:function|const|let)\s+(\w+)\s*=?\s*(?:async\s*)?\(/.exec(line);
       if (functionMatch) {
         const name = functionMatch[1];
         const symbol = name ? this.symbols.get(name) : undefined;
@@ -588,16 +574,9 @@ export class TreeShakerPass implements OptimizationPass {
     let optimizedCode = code;
 
     for (const [name, symbol] of this.symbols) {
-      if (
-        symbol.type === 'variable' &&
-        symbol.used.size === 0 &&
-        !symbol.exported
-      ) {
+      if (symbol.type === 'variable' && symbol.used.size === 0 && !symbol.exported) {
         // Remove variable declaration
-        const varPattern = new RegExp(
-          `(?:const|let|var)\\s+${name}\\s*=\\s*[^;]+;?\\s*\n?`,
-          'g',
-        );
+        const varPattern = new RegExp(`(?:const|let|var)\\s+${name}\\s*=\\s*[^;]+;?\\s*\n?`, 'g');
 
         const beforeLength = optimizedCode.length;
         optimizedCode = optimizedCode.replace(varPattern, '');

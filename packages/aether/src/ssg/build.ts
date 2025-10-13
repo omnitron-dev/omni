@@ -294,7 +294,7 @@ async function generateDynamicRoute(route: SSGRoute, context: BuildContext): Pro
           console.error(`Error generating path ${JSON.stringify(staticPath.params)}:`, error);
           throw error;
         }
-      }),
+      })
     );
   }
 }
@@ -437,7 +437,7 @@ async function runBuildPlugins(hook: 'buildStart' | 'buildEnd', context: BuildCo
  */
 export async function exportBuild(
   context: BuildContext,
-  platform: 'vercel' | 'netlify' | 'cloudflare' | 'static',
+  platform: 'vercel' | 'netlify' | 'cloudflare' | 'static'
 ): Promise<void> {
   console.log(`\nExporting for ${platform}...`);
 

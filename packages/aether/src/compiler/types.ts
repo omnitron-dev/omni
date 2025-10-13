@@ -38,14 +38,16 @@ export interface MinifyConfig {
   /** Mangle variable names */
   mangle?: boolean;
   /** Compress code */
-  compress?: boolean | {
-    /** Drop console statements */
-    drop_console?: boolean;
-    /** Drop debugger statements */
-    drop_debugger?: boolean;
-    /** Pure function annotations */
-    pure_funcs?: string[];
-  };
+  compress?:
+    | boolean
+    | {
+        /** Drop console statements */
+        drop_console?: boolean;
+        /** Drop debugger statements */
+        drop_debugger?: boolean;
+        /** Pure function annotations */
+        pure_funcs?: string[];
+      };
 }
 
 /**
@@ -375,11 +377,7 @@ export interface TransformPass {
    * @param options - Compiler options
    * @returns Transformed AST
    */
-  transform(
-    ast: ts.SourceFile,
-    analysis: AnalysisResult,
-    options: CompilerOptions
-  ): ts.SourceFile;
+  transform(ast: ts.SourceFile, analysis: AnalysisResult, options: CompilerOptions): ts.SourceFile;
 }
 
 /**

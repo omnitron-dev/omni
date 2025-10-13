@@ -6,13 +6,7 @@
 import { inject } from '../../di/index.js';
 import { NetronClient } from '../client.js';
 import { getBackendName, getServiceName } from '../decorators/index.js';
-import type {
-  QueryOptions,
-  MutationOptions,
-  INetronService,
-  MethodParameters,
-  MethodReturnType,
-} from '../types.js';
+import type { QueryOptions, MutationOptions, INetronService, MethodParameters, MethodReturnType } from '../types.js';
 
 /**
  * NetronService - Base class for netron services with auto-configuration
@@ -62,7 +56,7 @@ export abstract class NetronService<T> implements INetronService<T> {
    */
   async getService(): Promise<T> {
     const peer = this.netron.backend(this.backendName);
-    return await peer.queryFluentInterface<T>(this.serviceName) as T;
+    return (await peer.queryFluentInterface<T>(this.serviceName)) as T;
   }
 
   /**
@@ -78,13 +72,7 @@ export abstract class NetronService<T> implements INetronService<T> {
     args: MethodParameters<T, K>,
     options?: QueryOptions
   ): Promise<MethodReturnType<T, K>> {
-    return await this.netron.query(
-      this.serviceName,
-      method as string,
-      args as any[],
-      options,
-      this.backendName
-    );
+    return await this.netron.query(this.serviceName, method as string, args as any[], options, this.backendName);
   }
 
   /**
@@ -100,13 +88,7 @@ export abstract class NetronService<T> implements INetronService<T> {
     args: MethodParameters<T, K>,
     options?: MutationOptions
   ): Promise<MethodReturnType<T, K>> {
-    return await this.netron.mutate(
-      this.serviceName,
-      method as string,
-      args as any[],
-      options,
-      this.backendName
-    );
+    return await this.netron.mutate(this.serviceName, method as string, args as any[], options, this.backendName);
   }
 
   /**

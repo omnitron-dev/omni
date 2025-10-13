@@ -85,10 +85,7 @@ export class SignalOptimizer implements OptimizationPass {
   /**
    * Transform code
    */
-  async transform(
-    code: string,
-    context: OptimizationContext,
-  ): Promise<OptimizationResult> {
+  async transform(code: string, context: OptimizationContext): Promise<OptimizationResult> {
     const changes: OptimizationChange[] = [];
     const warnings: string[] = [];
 
@@ -139,8 +136,7 @@ export class SignalOptimizer implements OptimizationPass {
       warnings,
       metadata: {
         signalsAnalyzed: signalUsage.size,
-        constantSignals: Array.from(signalUsage.values()).filter((s) => s.isConstant)
-          .length,
+        constantSignals: Array.from(signalUsage.values()).filter((s) => s.isConstant).length,
       },
     };
   }
@@ -153,8 +149,7 @@ export class SignalOptimizer implements OptimizationPass {
     const lines = code.split('\n');
 
     // Pattern: const [count, setCount] = signal(initialValue)
-    const signalDeclarationRegex =
-      /const\s+\[(\w+),\s*(\w+)\]\s*=\s*signal\(([^)]+)\)/g;
+    const signalDeclarationRegex = /const\s+\[(\w+),\s*(\w+)\]\s*=\s*signal\(([^)]+)\)/g;
     // Pattern: const count = signal(initialValue)
     const simpleSignalRegex = /const\s+(\w+)\s*=\s*signal\(([^)]+)\)/g;
 
@@ -238,9 +233,7 @@ export class SignalOptimizer implements OptimizationPass {
     const trimmed = value.trim();
 
     // Literals
-    if (
-      /^(?:true|false|null|undefined|\d+|'[^']*'|"[^"]*"|`[^`]*`)$/.test(trimmed)
-    ) {
+    if (/^(?:true|false|null|undefined|\d+|'[^']*'|"[^"]*"|`[^`]*`)$/.test(trimmed)) {
       return true;
     }
 
@@ -278,7 +271,7 @@ export class SignalOptimizer implements OptimizationPass {
    */
   private inlineConstantSignals(
     code: string,
-    usage: Map<string, SignalUsage>,
+    usage: Map<string, SignalUsage>
   ): { code: string; changes: OptimizationChange[] } {
     let optimizedCode = code;
     const changes: OptimizationChange[] = [];
@@ -290,9 +283,7 @@ export class SignalOptimizer implements OptimizationPass {
       // 3. Accessed at least once
       if (info.isConstant && info.updateCount === 0 && info.accessCount > 0) {
         const constantValue =
-          typeof info.constantValue === 'string'
-            ? info.constantValue
-            : JSON.stringify(info.constantValue);
+          typeof info.constantValue === 'string' ? info.constantValue : JSON.stringify(info.constantValue);
 
         // Replace signal() calls with constant value
         const accessPattern = new RegExp(`\\b${signalName}\\(\\)`, 'g');
@@ -310,7 +301,7 @@ export class SignalOptimizer implements OptimizationPass {
           // Remove signal declaration if no longer needed
           const declarationPattern = new RegExp(
             `const\\s+(?:\\[${signalName},\\s*\\w+\\]|${signalName})\\s*=\\s*signal\\([^)]+\\);?\\s*\n?`,
-            'g',
+            'g'
           );
           optimizedCode = optimizedCode.replace(declarationPattern, '');
         }
@@ -325,7 +316,7 @@ export class SignalOptimizer implements OptimizationPass {
    */
   private removeUnusedSubscriptions(
     code: string,
-    usage: Map<string, SignalUsage>,
+    usage: Map<string, SignalUsage>
   ): { code: string; changes: OptimizationChange[] } {
     let optimizedCode = code;
     const changes: OptimizationChange[] = [];
@@ -336,7 +327,7 @@ export class SignalOptimizer implements OptimizationPass {
         // Remove signal declaration
         const declarationPattern = new RegExp(
           `const\\s+(?:\\[${signalName},\\s*\\w+\\]|${signalName})\\s*=\\s*signal\\([^)]+\\);?\\s*\n?`,
-          'g',
+          'g'
         );
 
         const beforeLength = optimizedCode.length;
@@ -361,7 +352,7 @@ export class SignalOptimizer implements OptimizationPass {
    */
   private optimizeAccessPatterns(
     code: string,
-    usage: Map<string, SignalUsage>,
+    usage: Map<string, SignalUsage>
   ): { code: string; changes: OptimizationChange[]; warnings: string[] } {
     const optimizedCode = code;
     const changes: OptimizationChange[] = [];
@@ -379,7 +370,7 @@ export class SignalOptimizer implements OptimizationPass {
 
           if (matches && matches.length > 2) {
             warnings.push(
-              `Signal '${signalName}' accessed ${matches.length} times on line ${index + 1}. Consider caching the value.`,
+              `Signal '${signalName}' accessed ${matches.length} times on line ${index + 1}. Consider caching the value.`
             );
           }
         });
@@ -448,7 +439,7 @@ export class SignalOptimizer implements OptimizationPass {
    */
   private convertSingleUseSignals(
     code: string,
-    usage: Map<string, SignalUsage>,
+    usage: Map<string, SignalUsage>
   ): { code: string; changes: OptimizationChange[] } {
     let optimizedCode = code;
     const changes: OptimizationChange[] = [];
@@ -458,17 +449,10 @@ export class SignalOptimizer implements OptimizationPass {
       // 1. Accessed only once
       // 2. Never updated
       // 3. No subscriptions
-      if (
-        info.accessCount === 1 &&
-        info.updateCount === 0 &&
-        info.subscriptionCount === 0
-      ) {
+      if (info.accessCount === 1 && info.updateCount === 0 && info.subscriptionCount === 0) {
         // Replace signal with direct value
         const accessPattern = new RegExp(`\\b${signalName}\\(\\)`, 'g');
-        const value =
-          typeof info.constantValue === 'string'
-            ? info.constantValue
-            : JSON.stringify(info.constantValue);
+        const value = typeof info.constantValue === 'string' ? info.constantValue : JSON.stringify(info.constantValue);
 
         const beforeLength = optimizedCode.length;
         optimizedCode = optimizedCode.replace(accessPattern, value);
@@ -476,7 +460,7 @@ export class SignalOptimizer implements OptimizationPass {
         // Remove declaration
         const declarationPattern = new RegExp(
           `const\\s+(?:\\[${signalName},\\s*\\w+\\]|${signalName})\\s*=\\s*signal\\([^)]+\\);?\\s*\n?`,
-          'g',
+          'g'
         );
         optimizedCode = optimizedCode.replace(declarationPattern, '');
         const afterLength = optimizedCode.length;

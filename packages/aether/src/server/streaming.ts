@@ -10,11 +10,7 @@
  */
 
 import { PassThrough } from 'node:stream';
-import type {
-  StreamingOptions,
-  StreamingResult,
-  RenderToStreamOptions,
-} from './types.js';
+import type { StreamingOptions, StreamingResult, RenderToStreamOptions } from './types.js';
 import { renderToString } from './ssr.js';
 
 /**
@@ -304,7 +300,8 @@ export async function renderToReadableStream(
 export function createStreamingRenderer(
   defaultOptions: Partial<StreamingOptions> = {}
 ): (component: any, options?: Partial<RenderToStreamOptions>) => Promise<StreamingResult> {
-  return async (comp: any, options: Partial<RenderToStreamOptions> = {}) => renderToReadableStream(comp, {
+  return async (comp: any, options: Partial<RenderToStreamOptions> = {}) =>
+    renderToReadableStream(comp, {
       ...defaultOptions,
       ...options,
     });
@@ -390,9 +387,7 @@ async function streamSuspenseBoundaries(
       try {
         const html = await Promise.race([
           boundary.promise,
-          new Promise<string>((_, reject) =>
-            setTimeout(() => reject(new Error('Suspense timeout')), suspenseTimeout)
-          ),
+          new Promise<string>((_, reject) => setTimeout(() => reject(new Error('Suspense timeout')), suspenseTimeout)),
         ]);
 
         boundary.resolved = true;

@@ -130,12 +130,7 @@ export class ScrollRestorationManager {
   /**
    * Handle navigation scroll behavior
    */
-  async handleNavigation(
-    from: string,
-    to: string,
-    options: ScrollOptions = {},
-    isPop: boolean = false
-  ): Promise<void> {
+  async handleNavigation(from: string, to: string, options: ScrollOptions = {}, isPop: boolean = false): Promise<void> {
     if (!this.config.enabled || options.skip) {
       return;
     }
@@ -306,11 +301,7 @@ export class ScrollRestorationManager {
   /**
    * Scroll a registered element
    */
-  async scrollElement(
-    name: string,
-    position: ScrollPosition,
-    behavior?: ScrollBehaviorType
-  ): Promise<void> {
+  async scrollElement(name: string, position: ScrollPosition, behavior?: ScrollBehaviorType): Promise<void> {
     const element = this.scrollElements.get(name);
     if (!element) {
       console.warn(`Scroll element not found: ${name}`);
@@ -421,9 +412,7 @@ export class ScrollRestorationManager {
     }
 
     // Sort by timestamp and remove oldest
-    const entries = Array.from(this.savedPositions.entries()).sort(
-      (a, b) => a[1].timestamp - b[1].timestamp
-    );
+    const entries = Array.from(this.savedPositions.entries()).sort((a, b) => a[1].timestamp - b[1].timestamp);
 
     const toRemove = entries.slice(0, this.savedPositions.size - this.config.maxSavedPositions);
     for (const [path] of toRemove) {

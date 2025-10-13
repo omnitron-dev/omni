@@ -33,7 +33,7 @@ function initialize() {
   sendToPage({
     source: '__AETHER_DEVTOOLS_HANDSHAKE__',
     type: 'extension-ready',
-    timestamp: Date.now()
+    timestamp: Date.now(),
   });
 
   console.log('[Aether DevTools] Content script initialized');
@@ -52,7 +52,7 @@ function checkForAether() {
     // Notify background that Aether is available
     port.postMessage({
       type: 'aether-detected',
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
   } else {
     // Retry after a delay
@@ -80,7 +80,7 @@ function handlePageMessage(event) {
       sendToPage({
         source: '__AETHER_DEVTOOLS_HANDSHAKE__',
         type: 'extension-ready',
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
     }
     return;
@@ -94,7 +94,7 @@ function handlePageMessage(event) {
     port.postMessage({
       type: 'from-page',
       message: data.message,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
   }
 }
@@ -113,14 +113,14 @@ function handleBackgroundMessage(message) {
       source: '__AETHER_DEVTOOLS__',
       message: {
         type: 'init',
-        timestamp: Date.now()
-      }
+        timestamp: Date.now(),
+      },
     });
   } else {
     // Forward to page
     sendToPage({
       source: '__AETHER_DEVTOOLS__',
-      message
+      message,
     });
   }
 }

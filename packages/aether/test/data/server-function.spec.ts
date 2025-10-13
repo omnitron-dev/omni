@@ -3,10 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import {
-  serverFunction,
-  batchServerFunctions,
-} from '../../src/data/server-function.js';
+import { serverFunction, batchServerFunctions } from '../../src/data/server-function.js';
 import { resetCacheManager } from '../../src/data/cache-manager.js';
 
 describe('Server Function', () => {
@@ -30,9 +27,12 @@ describe('Server Function', () => {
     });
 
     it('should handle async operations', async () => {
-      const fn = serverFunction(async (delay: number) => new Promise((resolve) => {
-          setTimeout(() => resolve('done'), delay);
-        }));
+      const fn = serverFunction(
+        async (delay: number) =>
+          new Promise((resolve) => {
+            setTimeout(() => resolve('done'), delay);
+          })
+      );
 
       const promise = fn(100);
       vi.advanceTimersByTime(100);
@@ -216,7 +216,9 @@ describe('Server Function', () => {
       );
 
       // Start promise with catch handler to prevent unhandled rejection
-      const promise = fn().catch(err => { throw err; });
+      const promise = fn().catch((err) => {
+        throw err;
+      });
 
       // Advance timers for all retry delays
       for (let i = 0; i < 3; i++) {
@@ -232,7 +234,8 @@ describe('Server Function', () => {
   describe('Timeout', () => {
     it('should timeout after specified duration', async () => {
       const fn = serverFunction(
-        async () => new Promise((resolve) => {
+        async () =>
+          new Promise((resolve) => {
             setTimeout(() => resolve('success'), 100);
           }),
         {
@@ -241,7 +244,9 @@ describe('Server Function', () => {
       );
 
       // Start promise with catch handler to prevent unhandled rejection
-      const promise = fn().catch(err => { throw err; });
+      const promise = fn().catch((err) => {
+        throw err;
+      });
 
       // Advance past timeout but not past full duration
       vi.advanceTimersByTime(10);
@@ -253,7 +258,8 @@ describe('Server Function', () => {
     it('should succeed if completed before timeout', async () => {
       vi.useRealTimers();
       const fn = serverFunction(
-        async () => new Promise((resolve) => {
+        async () =>
+          new Promise((resolve) => {
             setTimeout(() => resolve('success'), 10);
           }),
         {
@@ -297,13 +303,10 @@ describe('Server Function', () => {
     });
 
     it('should get cached result without triggering request', async () => {
-      const fn = serverFunction(
-        async (x: number) => x * 2,
-        {
-          name: 'double',
-          cache: { ttl: 60000 },
-        }
-      );
+      const fn = serverFunction(async (x: number) => x * 2, {
+        name: 'double',
+        cache: { ttl: 60000 },
+      });
 
       // Not cached yet
       expect(fn.getCached(5)).toBeUndefined();
@@ -358,11 +361,7 @@ describe('Server Function', () => {
       const getPosts = async () => [{ id: 1, title: 'Post 1' }];
       const getCount = async () => 42;
 
-      const [user, posts, count] = await batchServerFunctions([
-        getUser(),
-        getPosts(),
-        getCount(),
-      ]);
+      const [user, posts, count] = await batchServerFunctions([getUser(), getPosts(), getCount()]);
 
       // TypeScript should infer correct types
       expect(user.id).toBe(1);

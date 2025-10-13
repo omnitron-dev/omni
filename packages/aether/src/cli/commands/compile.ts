@@ -163,7 +163,7 @@ async function compileSources(
   compiler: AetherCompiler,
   patterns: string[],
   outDir: string,
-  options: CompileCommandOptions,
+  options: CompileCommandOptions
 ): Promise<CompileStats> {
   const stats: CompileStats = {
     filesCompiled: 0,
@@ -269,7 +269,7 @@ async function runWatchMode(
   compiler: AetherCompiler,
   patterns: string[],
   outDir: string,
-  options: CompileCommandOptions,
+  options: CompileCommandOptions
 ): Promise<void> {
   console.log('👀 Watching for changes...\n');
 
@@ -398,9 +398,8 @@ function displayStats(stats: CompileStats): void {
   console.log(`  ✓ Total Size: ${formatBytes(stats.totalSize)}`);
   console.log(`  ✓ Optimized Size: ${formatBytes(stats.optimizedSize)}`);
 
-  const reduction = stats.totalSize > 0
-    ? ((stats.totalSize - stats.optimizedSize) / stats.totalSize * 100).toFixed(1)
-    : '0.0';
+  const reduction =
+    stats.totalSize > 0 ? (((stats.totalSize - stats.optimizedSize) / stats.totalSize) * 100).toFixed(1) : '0.0';
   console.log(`  ✓ Size Reduction: ${reduction}%`);
   console.log(`  ✓ Total Time: ${(stats.totalTime / 1000).toFixed(2)}s`);
 
@@ -413,9 +412,7 @@ function displayStats(stats: CompileStats): void {
     console.log(`\n⚠️  ${stats.warnings.length} warnings:`);
     const uniqueWarnings = new Set(stats.warnings.map((w) => w.warning));
     uniqueWarnings.forEach((warning) => {
-      const files = stats.warnings
-        .filter((w) => w.warning === warning)
-        .map((w) => path.basename(w.file));
+      const files = stats.warnings.filter((w) => w.warning === warning).map((w) => path.basename(w.file));
       console.log(`  - ${warning} (${files.length} files)`);
     });
   }
@@ -438,12 +435,9 @@ async function generateReport(stats: CompileStats, outputPath: string): Promise<
   const report = {
     timestamp: new Date().toISOString(),
     ...stats,
-    sizeReduction: stats.totalSize > 0
-      ? ((stats.totalSize - stats.optimizedSize) / stats.totalSize * 100).toFixed(1) + '%'
-      : '0%',
-    averageTime: stats.filesCompiled > 0
-      ? (stats.totalTime / stats.filesCompiled).toFixed(0) + 'ms'
-      : '0ms',
+    sizeReduction:
+      stats.totalSize > 0 ? (((stats.totalSize - stats.optimizedSize) / stats.totalSize) * 100).toFixed(1) + '%' : '0%',
+    averageTime: stats.filesCompiled > 0 ? (stats.totalTime / stats.filesCompiled).toFixed(0) + 'ms' : '0ms',
   };
 
   await fs.writeFile(outputPath, JSON.stringify(report, null, 2), 'utf-8');

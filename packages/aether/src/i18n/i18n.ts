@@ -57,11 +57,7 @@ export class I18n {
       ? this.config.fallbackLocale
       : [this.config.fallbackLocale];
 
-    this.translator = new Translator(
-      this.config.defaultLocale,
-      this.config.messages,
-      fallbackLocales,
-    );
+    this.translator = new Translator(this.config.defaultLocale, this.config.messages, fallbackLocales);
 
     // Create loader
     this.loader = new TranslationLoader();
@@ -208,7 +204,7 @@ export class I18n {
         case 'navigator':
           detectedLocale = this.detectFromBrowser();
           break;
-          default:
+        default:
           // Unknown detection strategy
           break;
       }

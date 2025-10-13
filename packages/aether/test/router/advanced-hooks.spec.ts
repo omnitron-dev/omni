@@ -8,14 +8,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Window } from 'happy-dom';
 import { createRouter, setRouter } from '../../src/router/router.js';
-import {
-  useMatches,
-  useRevalidator,
-  useSubmit,
-  useFormAction,
-  useBlocker,
-  usePrompt,
-} from '../../src/router/hooks.js';
+import { useMatches, useRevalidator, useSubmit, useFormAction, useBlocker, usePrompt } from '../../src/router/hooks.js';
 import type { RouteDefinition } from '../../src/router/types.js';
 
 describe('Advanced Router Hooks', () => {
@@ -35,11 +28,7 @@ describe('Advanced Router Hooks', () => {
     }
 
     // Reset router
-    const routes: RouteDefinition[] = [
-      { path: '/' },
-      { path: '/about' },
-      { path: '/users/[id]' },
-    ];
+    const routes: RouteDefinition[] = [{ path: '/' }, { path: '/about' }, { path: '/users/[id]' }];
 
     const router = createRouter({
       mode: 'memory',
@@ -87,11 +76,7 @@ describe('Advanced Router Hooks', () => {
     it('should update when route changes', async () => {
       const router = createRouter({
         mode: 'memory',
-        routes: [
-          { path: '/home' },
-          { path: '/about' },
-          { path: '/contact' },
-        ],
+        routes: [{ path: '/home' }, { path: '/about' }, { path: '/contact' }],
       });
       setRouter(router);
 
@@ -264,10 +249,13 @@ describe('Advanced Router Hooks', () => {
       setRouter(router);
 
       const submit = useSubmit();
-      await submit({ data: 'test' }, {
-        action: '/test',
-        replace: true,
-      });
+      await submit(
+        { data: 'test' },
+        {
+          action: '/test',
+          replace: true,
+        }
+      );
 
       expect(router.current.pathname).toBe('/test');
     });
@@ -323,10 +311,7 @@ describe('Advanced Router Hooks', () => {
     it('should update when route changes', async () => {
       const router = createRouter({
         mode: 'memory',
-        routes: [
-          { path: '/page1' },
-          { path: '/page2' },
-        ],
+        routes: [{ path: '/page1' }, { path: '/page2' }],
       });
       setRouter(router);
 
@@ -349,10 +334,7 @@ describe('Advanced Router Hooks', () => {
     it('should block navigation when condition is true', async () => {
       const router = createRouter({
         mode: 'memory',
-        routes: [
-          { path: '/' },
-          { path: '/about' },
-        ],
+        routes: [{ path: '/' }, { path: '/about' }],
       });
       setRouter(router);
 
@@ -372,10 +354,7 @@ describe('Advanced Router Hooks', () => {
     it('should proceed with navigation when proceed is called', async () => {
       const router = createRouter({
         mode: 'memory',
-        routes: [
-          { path: '/' },
-          { path: '/about' },
-        ],
+        routes: [{ path: '/' }, { path: '/about' }],
       });
       setRouter(router);
 
@@ -399,10 +378,7 @@ describe('Advanced Router Hooks', () => {
     it('should reset blocker state', async () => {
       const router = createRouter({
         mode: 'memory',
-        routes: [
-          { path: '/' },
-          { path: '/about' },
-        ],
+        routes: [{ path: '/' }, { path: '/about' }],
       });
       setRouter(router);
 
@@ -420,17 +396,16 @@ describe('Advanced Router Hooks', () => {
     it('should support function-based blocking', async () => {
       const router = createRouter({
         mode: 'memory',
-        routes: [
-          { path: '/' },
-          { path: '/about' },
-        ],
+        routes: [{ path: '/' }, { path: '/about' }],
       });
       setRouter(router);
 
       await router.ready();
 
       let shouldBlock = false;
-      const blocker = useBlocker(({ currentLocation, nextLocation }) => shouldBlock && currentLocation.pathname !== nextLocation.pathname);
+      const blocker = useBlocker(
+        ({ currentLocation, nextLocation }) => shouldBlock && currentLocation.pathname !== nextLocation.pathname
+      );
 
       // First navigation to /about - not blocked
       shouldBlock = false;
@@ -454,10 +429,7 @@ describe('Advanced Router Hooks', () => {
 
       const router = createRouter({
         mode: 'memory',
-        routes: [
-          { path: '/' },
-          { path: '/about' },
-        ],
+        routes: [{ path: '/' }, { path: '/about' }],
       });
       setRouter(router);
 
@@ -475,10 +447,7 @@ describe('Advanced Router Hooks', () => {
 
       const router = createRouter({
         mode: 'memory',
-        routes: [
-          { path: '/' },
-          { path: '/about' },
-        ],
+        routes: [{ path: '/' }, { path: '/about' }],
       });
       setRouter(router);
 
@@ -500,10 +469,7 @@ describe('Advanced Router Hooks', () => {
 
       const router = createRouter({
         mode: 'memory',
-        routes: [
-          { path: '/home' },
-          { path: '/about' },
-        ],
+        routes: [{ path: '/home' }, { path: '/about' }],
       });
       setRouter(router);
 

@@ -4,10 +4,7 @@
  */
 
 import { NetronService } from './netron-service.js';
-import type {
-  WritableSignal,
-  INetronStore,
-} from '../types.js';
+import type { WritableSignal, INetronStore } from '../types.js';
 
 /**
  * NetronStore - Base class for stores with netron integration

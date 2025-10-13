@@ -19,16 +19,7 @@
  */
 
 // Table
-export {
-  Table,
-  TableCaption,
-  TableHeader,
-  TableBody,
-  TableFooter,
-  TableRow,
-  TableHead,
-  TableCell,
-} from './Table.js';
+export { Table, TableCaption, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from './Table.js';
 export type {
   TableProps,
   TableCaptionProps,

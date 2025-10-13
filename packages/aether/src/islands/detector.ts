@@ -6,12 +6,7 @@
  */
 
 import type { Component } from '../core/component/types.js';
-import type {
-  InteractivityDetection,
-  InteractivitySignal,
-  HydrationStrategy,
-  IslandDetectionConfig,
-} from './types.js';
+import type { InteractivityDetection, InteractivitySignal, HydrationStrategy, IslandDetectionConfig } from './types.js';
 
 /**
  * Default detection configuration
@@ -36,10 +31,7 @@ const DEFAULT_CONFIG: Required<IslandDetectionConfig> = {
  * @param config - Detection configuration
  * @returns Detection result
  */
-export function detectInteractivity(
-  component: Component,
-  config: IslandDetectionConfig = {},
-): InteractivityDetection {
+export function detectInteractivity(component: Component, config: IslandDetectionConfig = {}): InteractivityDetection {
   const cfg = { ...DEFAULT_CONFIG, ...config };
 
   // Check if component is explicitly excluded
@@ -233,7 +225,7 @@ function recommendHydrationStrategy(signals: InteractivitySignal[], source: stri
  */
 export function analyzeComponentTree(
   rootComponent: Component,
-  config: IslandDetectionConfig = {},
+  config: IslandDetectionConfig = {}
 ): Map<Component, InteractivityDetection> {
   const results = new Map<Component, InteractivityDetection>();
   const visited = new Set<Component>();
@@ -265,10 +257,7 @@ export function analyzeComponentTree(
  * @param config - Detection configuration
  * @returns Components that should be islands
  */
-export function getIslandComponents(
-  components: Component[],
-  config: IslandDetectionConfig = {},
-): Component[] {
+export function getIslandComponents(components: Component[], config: IslandDetectionConfig = {}): Component[] {
   return components.filter((component) => {
     const detection = detectInteractivity(component, config);
     return detection.isInteractive;

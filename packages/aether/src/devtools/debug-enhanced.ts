@@ -8,11 +8,7 @@
  * @module devtools/debug-enhanced
  */
 
-import type {
-  Inspector,
-  ComponentMetadata,
-  SignalMetadata,
-} from './types.js';
+import type { Inspector, ComponentMetadata, SignalMetadata } from './types.js';
 
 /**
  * Render analysis result
@@ -220,16 +216,16 @@ export class DebugEnhanced {
     if (!wasNecessary) {
       reason = 'Render was triggered but no props or state changed (possible wasted render)';
     } else if (changedProps.length > 0) {
-      reason = `Props changed: ${changedProps.map(p => p.name).join(', ')}`;
+      reason = `Props changed: ${changedProps.map((p) => p.name).join(', ')}`;
     } else if (changedSignals.length > 0) {
-      reason = `Signals changed: ${changedSignals.map(s => s.name || s.id).join(', ')}`;
+      reason = `Signals changed: ${changedSignals.map((s) => s.name || s.id).join(', ')}`;
     }
 
     // Generate recommendation
     let recommendation: string | undefined;
     if (!wasNecessary) {
       recommendation = 'Consider using React.memo() or shouldComponentUpdate() to prevent unnecessary renders';
-    } else if (changedProps.some(p => !p.isReferenceEqual && p.isDeepEqual)) {
+    } else if (changedProps.some((p) => !p.isReferenceEqual && p.isDeepEqual)) {
       recommendation = 'Some props have deep equality but different references. Consider memoization.';
     }
 
@@ -269,7 +265,7 @@ export class DebugEnhanced {
     }
 
     const history = this.renderHistory.get(component.id) || [];
-    const wastedCount = history.filter(r => !r.wasNecessary).length;
+    const wastedCount = history.filter((r) => !r.wasNecessary).length;
     const totalTime = history.reduce((sum, r) => (r.wasNecessary ? sum : sum + r.renderTime), 0);
 
     const frequency = this.calculateUpdateFrequency(component).frequency;
@@ -329,7 +325,7 @@ export class DebugEnhanced {
 
     if (!effect) return null;
 
-    const dependencies = effect.dependencies.map(depId => {
+    const dependencies = effect.dependencies.map((depId) => {
       const signal = state.signals.get(depId) || state.computed.get(depId);
       return {
         signalId: depId,
@@ -373,7 +369,7 @@ export class DebugEnhanced {
     signal: SignalMetadata,
     state: ReturnType<Inspector['getState']>,
     visited: Set<string>,
-    depth: number,
+    depth: number
   ): SignalGraphNode {
     if (visited.has(signal.id)) {
       // Circular dependency
@@ -496,7 +492,7 @@ export class DebugEnhanced {
 
     const totalWastedTime = wastedRenders.reduce((sum, w) => sum + w.totalWastedTime, 0);
     const totalComponents = state.components.size;
-    const componentsWithWaste = new Set(wastedRenders.map(w => w.componentId)).size;
+    const componentsWithWaste = new Set(wastedRenders.map((w) => w.componentId)).size;
 
     return {
       summary: {
@@ -514,28 +510,21 @@ export class DebugEnhanced {
   /**
    * Generate recommendations
    */
-  private generateRecommendations(
-    wastedRenders: WastedRender[],
-    highFrequency: UpdateFrequency[],
-  ): string[] {
+  private generateRecommendations(wastedRenders: WastedRender[], highFrequency: UpdateFrequency[]): string[] {
     const recommendations: string[] = [];
 
     if (wastedRenders.length > 0) {
-      recommendations.push(
-        `Found ${wastedRenders.length} components with wasted renders. Consider using memoization.`,
-      );
+      recommendations.push(`Found ${wastedRenders.length} components with wasted renders. Consider using memoization.`);
     }
 
     if (highFrequency.length > 0) {
-      recommendations.push(
-        `Found ${highFrequency.length} components updating frequently. Review state management.`,
-      );
+      recommendations.push(`Found ${highFrequency.length} components updating frequently. Review state management.`);
     }
 
     const topWasted = wastedRenders[0];
     if (topWasted && topWasted.totalWastedTime > 100) {
       recommendations.push(
-        `Component "${topWasted.componentName}" has significant wasted render time (${topWasted.totalWastedTime.toFixed(2)}ms). Priority optimization candidate.`,
+        `Component "${topWasted.componentName}" has significant wasted render time (${topWasted.totalWastedTime.toFixed(2)}ms). Priority optimization candidate.`
       );
     }
 
@@ -572,9 +561,6 @@ export interface DebugReport {
 /**
  * Create enhanced debugger
  */
-export function createDebugEnhanced(
-  inspector: Inspector,
-  config?: Partial<DebugEnhancedConfig>,
-): DebugEnhanced {
+export function createDebugEnhanced(inspector: Inspector, config?: Partial<DebugEnhancedConfig>): DebugEnhanced {
   return new DebugEnhanced(inspector, config);
 }

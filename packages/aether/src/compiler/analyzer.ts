@@ -445,11 +445,7 @@ function isPureFunction(node: ts.Node): boolean {
 /**
  * Check if signal can be optimized
  */
-function canOptimizeSignal(
-  call: ts.CallExpression,
-  accesses: SourceLocation[],
-  updates: SourceLocation[]
-): boolean {
+function canOptimizeSignal(call: ts.CallExpression, accesses: SourceLocation[], updates: SourceLocation[]): boolean {
   // If signal has no accesses, it can be eliminated
   if (accesses.length === 0) {
     return true;

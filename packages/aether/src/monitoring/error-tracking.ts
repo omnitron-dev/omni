@@ -5,12 +5,7 @@
  * Integrates with Error Boundary components for automatic error capture.
  */
 
-import type {
-  ErrorInfo,
-  Breadcrumb,
-  UserInfo,
-  ErrorTrackingConfig,
-} from './types.js';
+import type { ErrorInfo, Breadcrumb, UserInfo, ErrorTrackingConfig } from './types.js';
 
 /**
  * Error event callback

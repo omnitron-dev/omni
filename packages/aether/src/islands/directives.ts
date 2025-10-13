@@ -98,7 +98,7 @@ export function hydrateOn(trigger: HydrateOnOptions['trigger'], component: () =>
       }
 
       // Create div element without JSX to avoid TypeScript errors in .ts files
-       
+
       return { type: 'div', props: { ...handlers, children: content as any } };
     };
   });
@@ -179,7 +179,7 @@ export const ServerOnly = defineComponent<{
  */
 export function lazyIsland<P = any>(
   loader: () => Promise<{ default: Component<P> } | Component<P>>,
-  options: IslandOptions = {},
+  options: IslandOptions = {}
 ): IslandComponent<P> {
   let loadedComponent: Component<P> | undefined;
   let loading = false;
@@ -233,7 +233,7 @@ export function lazyIsland<P = any>(
 export function islandBoundary<P = any>(
   name: string,
   component: Component<P>,
-  options: IslandOptions = {},
+  options: IslandOptions = {}
 ): IslandComponent<P> {
   return island(component, { ...options, name });
 }
@@ -255,11 +255,12 @@ export function islandBoundary<P = any>(
 export const PreloadHint = defineComponent<{
   island: string;
   trigger: 'intent' | 'viewport' | 'immediate';
-}>((props) => () => 
+}>(
+  (props) => () =>
     // This is a hint component that doesn't render anything
     // Build tools can use this to generate preload hints
-     null
-  );
+    null
+);
 
 /**
  * Static hint directive
@@ -327,7 +328,7 @@ export function priorityHint(priority: 'high' | 'low' | 'auto') {
  */
 export function defer<P = any>(
   component: Component<P>,
-  strategy: Exclude<IslandOptions['hydrate'], 'immediate'> = 'idle',
+  strategy: Exclude<IslandOptions['hydrate'], 'immediate'> = 'idle'
 ): IslandComponent<P> {
   return island(component, { hydrate: strategy });
 }
@@ -349,10 +350,7 @@ export function defer<P = any>(
  * );
  * ```
  */
-export function conditionalIsland<P = any>(
-  component: Component<P>,
-  condition: () => boolean,
-): IslandComponent<P> {
+export function conditionalIsland<P = any>(component: Component<P>, condition: () => boolean): IslandComponent<P> {
   return island(component, {
     hydrate: 'custom',
     shouldHydrate: condition,
@@ -426,7 +424,7 @@ export function viewportIsland<P = any>(component: Component<P>, rootMargin = '0
  */
 export function interactionIsland<P = any>(
   component: Component<P>,
-  events = ['click', 'focus', 'touchstart'],
+  events = ['click', 'focus', 'touchstart']
 ): IslandComponent<P> {
   return island(component, {
     hydrate: 'interaction',

@@ -261,15 +261,14 @@ export function createThemedComponent(
     const componentStyles = computed(() => styles(theme()));
 
     return () =>
-    // Return a styled component based on theme
-    ({
-      type: 'div',
-      props: {
-        ...props,
-        style: componentStyles().base,
-      },
-    })
-      ;
+      // Return a styled component based on theme
+      ({
+        type: 'div',
+        props: {
+          ...props,
+          style: componentStyles().base,
+        },
+      });
   });
 }
 

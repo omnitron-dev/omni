@@ -139,11 +139,7 @@ export interface InputProps {
  * - Controlled and uncontrolled modes
  */
 export const Input = defineComponent<InputProps>((props) => {
-  const [getValue, setValue] = useControlledState(
-    props.value,
-    props.defaultValue ?? '',
-    props.onValueChange
-  );
+  const [getValue, setValue] = useControlledState(props.value, props.defaultValue ?? '', props.onValueChange);
 
   const handleInput = (e: Event) => {
     const target = e.target as HTMLInputElement;

@@ -165,7 +165,11 @@ export const Combobox = defineComponent<ComboboxProps>((props) => {
     props.onValueChange
   );
 
-  const [currentOpen, setOpenInternal] = useControlledBooleanState(props.open, props.defaultOpen ?? false, props.onOpenChange);
+  const [currentOpen, setOpenInternal] = useControlledBooleanState(
+    props.open,
+    props.defaultOpen ?? false,
+    props.onOpenChange
+  );
 
   const inputValue: WritableSignal<string> = signal<string>('');
   const inputRef: WritableSignal<HTMLInputElement | null> = signal<HTMLInputElement | null>(null);

@@ -125,15 +125,12 @@ export interface ServerFunctionOptions {
 /**
  * Server function type
  */
-export type ServerFunction<TArgs extends any[], TReturn> = (
-  ...args: TArgs
-) => Promise<TReturn>;
+export type ServerFunction<TArgs extends any[], TReturn> = (...args: TArgs) => Promise<TReturn>;
 
 /**
  * Wrapped server function with client-side enhancements
  */
-export interface WrappedServerFunction<TArgs extends any[], TReturn>
-  extends ServerFunction<TArgs, TReturn> {
+export interface WrappedServerFunction<TArgs extends any[], TReturn> extends ServerFunction<TArgs, TReturn> {
   /**
    * Invalidate cached results
    */
@@ -235,9 +232,7 @@ export interface OptimisticUpdateResult<T> {
 /**
  * Mutation function type
  */
-export type MutationFunction<TArgs extends any[], TReturn> = (
-  ...args: TArgs
-) => Promise<TReturn>;
+export type MutationFunction<TArgs extends any[], TReturn> = (...args: TArgs) => Promise<TReturn>;
 
 /**
  * Revalidation strategy

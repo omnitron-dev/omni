@@ -13,27 +13,23 @@ import {
 } from '../../src/server/hydration.js';
 
 // Mock DOM environment
-const createMockElement = (
-  tagName: string,
-  attributes: Record<string, string> = {},
-  children: any[] = []
-): any => ({
-    tagName: tagName.toUpperCase(),
-    nodeName: tagName.toUpperCase(),
-    textContent: '',
-    innerHTML: '',
-    childNodes: children,
-    children,
-    attributes,
-    getAttribute: (name: string) => attributes[name] || null,
-    setAttribute: vi.fn(),
-    removeAttribute: vi.fn(),
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    replaceWith: vi.fn(),
-    appendChild: vi.fn(),
-    parentElement: null,
-  });
+const createMockElement = (tagName: string, attributes: Record<string, string> = {}, children: any[] = []): any => ({
+  tagName: tagName.toUpperCase(),
+  nodeName: tagName.toUpperCase(),
+  textContent: '',
+  innerHTML: '',
+  childNodes: children,
+  children,
+  attributes,
+  getAttribute: (name: string) => attributes[name] || null,
+  setAttribute: vi.fn(),
+  removeAttribute: vi.fn(),
+  addEventListener: vi.fn(),
+  removeEventListener: vi.fn(),
+  replaceWith: vi.fn(),
+  appendChild: vi.fn(),
+  parentElement: null,
+});
 
 describe('Hydration System', () => {
   let mockContainer: any;
@@ -75,9 +71,7 @@ describe('Hydration System', () => {
       hydrate(Component, mockContainer, { serverState });
 
       expect(preserveServerState('user')).toEqual({ id: 1, name: 'Alice' });
-      expect(preserveServerState('posts')).toEqual([
-        { id: 1, title: 'Post 1' },
-      ]);
+      expect(preserveServerState('posts')).toEqual([{ id: 1, title: 'Post 1' }]);
     });
 
     it('should use eager strategy by default', () => {
@@ -362,9 +356,7 @@ describe('Hydration System', () => {
 
       hydrate(() => 'App', mockContainer, { islands: true });
 
-      expect(consoleWarn).toHaveBeenCalledWith(
-        expect.stringContaining('Island component not registered')
-      );
+      expect(consoleWarn).toHaveBeenCalledWith(expect.stringContaining('Island component not registered'));
 
       consoleWarn.mockRestore();
     });
@@ -484,10 +476,7 @@ describe('Hydration System', () => {
       hydrate(Component, mockContainer);
 
       // Should clear container and re-render
-      expect(consoleError).toHaveBeenCalledWith(
-        'Hydration failed:',
-        expect.any(Error)
-      );
+      expect(consoleError).toHaveBeenCalledWith('Hydration failed:', expect.any(Error));
 
       consoleError.mockRestore();
     });
@@ -518,9 +507,7 @@ describe('Hydration System', () => {
 
       hydrate(() => 'App', mockContainer, { islands: true });
 
-      expect(consoleWarn).not.toHaveBeenCalledWith(
-        expect.stringContaining('not registered')
-      );
+      expect(consoleWarn).not.toHaveBeenCalledWith(expect.stringContaining('not registered'));
 
       consoleWarn.mockRestore();
     });
@@ -579,8 +566,8 @@ describe('Hydration System', () => {
 
     it('should handle deeply nested components', () => {
       const DeepComponent = () => ({
-          children: [{ children: [{ children: ['Deep'] }] }],
-        });
+        children: [{ children: [{ children: ['Deep'] }] }],
+      });
 
       expect(() => {
         hydrate(DeepComponent, mockContainer);

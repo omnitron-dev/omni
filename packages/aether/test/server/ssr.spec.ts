@@ -72,9 +72,7 @@ describe('SSR Engine', () => {
         return 'Never rendered';
       };
 
-      await expect(
-        renderToString(SlowComponent, { timeout: 100 })
-      ).rejects.toThrow('SSR render timeout');
+      await expect(renderToString(SlowComponent, { timeout: 100 })).rejects.toThrow('SSR render timeout');
     });
 
     it('should extract signal values during rendering', async () => {
@@ -290,10 +288,7 @@ describe('SSR Engine', () => {
       const InteractiveComponent = (props: { onClick: () => void }) => '<button>Click Me</button>';
       InteractiveComponent.__island = true;
 
-      const result = await renderToString(
-        InteractiveComponent,
-        { islands: true, props: { onClick: () => {} } }
-      );
+      const result = await renderToString(InteractiveComponent, { islands: true, props: { onClick: () => {} } });
 
       expect(result.islands).toBeDefined();
       expect(result.islands?.length).toBeGreaterThan(0);
@@ -329,9 +324,7 @@ describe('SSR Engine', () => {
         throw new Error('Rendering error');
       };
 
-      await expect(renderToString(ErrorComponent)).rejects.toThrow(
-        'Rendering error'
-      );
+      await expect(renderToString(ErrorComponent)).rejects.toThrow('Rendering error');
     });
 
     it('should log errors to console', async () => {
@@ -369,16 +362,10 @@ describe('SSR Engine', () => {
 
     it('should wait for multiple async operations', async () => {
       const AsyncComponent = () => {
-        const promise1 = new Promise((resolve) =>
-          setTimeout(() => resolve('A'), 10)
-        );
-        const promise2 = new Promise((resolve) =>
-          setTimeout(() => resolve('B'), 20)
-        );
+        const promise1 = new Promise((resolve) => setTimeout(() => resolve('A'), 10));
+        const promise2 = new Promise((resolve) => setTimeout(() => resolve('B'), 20));
 
-        return Promise.all([promise1, promise2]).then((results) =>
-          results.join('')
-        );
+        return Promise.all([promise1, promise2]).then((results) => results.join(''));
       };
 
       const result = await renderToString(AsyncComponent);
@@ -392,9 +379,7 @@ describe('SSR Engine', () => {
         return 'Slow';
       };
 
-      await expect(
-        renderToString(SlowAsync, { timeout: 100 })
-      ).rejects.toThrow();
+      await expect(renderToString(SlowAsync, { timeout: 100 })).rejects.toThrow();
     });
   });
 

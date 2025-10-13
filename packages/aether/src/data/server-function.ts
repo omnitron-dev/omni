@@ -10,11 +10,7 @@
  */
 
 import { getCacheManager, generateCacheKey } from './cache-manager.js';
-import type {
-  ServerFunction,
-  ServerFunctionOptions,
-  WrappedServerFunction,
-} from './types.js';
+import type { ServerFunction, ServerFunctionOptions, WrappedServerFunction } from './types.js';
 
 /**
  * Default server function options
@@ -66,10 +62,7 @@ export function serverFunction<TArgs extends any[], TReturn>(
   /**
    * Execute function with retry logic
    */
-  async function executeWithRetry(
-    args: TArgs,
-    attempt = 0
-  ): Promise<TReturn> {
+  async function executeWithRetry(args: TArgs, attempt = 0): Promise<TReturn> {
     try {
       // Create timeout promise with cleanup
       let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -82,10 +75,7 @@ export function serverFunction<TArgs extends any[], TReturn>(
 
       try {
         // Race between function execution and timeout
-        const result = await Promise.race([
-          fn(...args),
-          timeoutPromise,
-        ]);
+        const result = await Promise.race([fn(...args), timeoutPromise]);
 
         // Clear timeout if function completed first
         if (timeoutId !== undefined) {
@@ -128,9 +118,7 @@ export function serverFunction<TArgs extends any[], TReturn>(
   async function wrappedFunction(...args: TArgs): Promise<TReturn> {
     // Check cache if enabled
     if (cache && options.cache) {
-      const cacheKey = options.cache.key
-        ? options.cache.key(...args)
-        : generateCacheKey(opts.name, args);
+      const cacheKey = options.cache.key ? options.cache.key(...args) : generateCacheKey(opts.name, args);
 
       // Check if cached and valid
       const cached = cache.get<TReturn>(cacheKey);
@@ -181,9 +169,7 @@ export function serverFunction<TArgs extends any[], TReturn>(
       return;
     }
 
-    const cacheKey = options.cache.key
-      ? options.cache.key(...args)
-      : generateCacheKey(opts.name, args);
+    const cacheKey = options.cache.key ? options.cache.key(...args) : generateCacheKey(opts.name, args);
 
     cache.delete(cacheKey);
   }
@@ -196,9 +182,7 @@ export function serverFunction<TArgs extends any[], TReturn>(
       return undefined;
     }
 
-    const cacheKey = options.cache.key
-      ? options.cache.key(...args)
-      : generateCacheKey(opts.name, args);
+    const cacheKey = options.cache.key ? options.cache.key(...args) : generateCacheKey(opts.name, args);
 
     return cache.get<TReturn>(cacheKey);
   }
@@ -288,9 +272,7 @@ export function netronServerFunction<TArgs extends any[], TReturn>(
  * ]);
  * ```
  */
-export async function batchServerFunctions<T extends any[]>(
-  calls: { [K in keyof T]: Promise<T[K]> }
-): Promise<T> {
+export async function batchServerFunctions<T extends any[]>(calls: { [K in keyof T]: Promise<T[K]> }): Promise<T> {
   return Promise.all(calls) as Promise<T>;
 }
 

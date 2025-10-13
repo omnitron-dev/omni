@@ -6,7 +6,10 @@
  */
 
 import { styled } from '../../styling/styled.js';
-import { VisuallyHidden as VisuallyHiddenPrimitive, type VisuallyHiddenProps as VisuallyHiddenPrimitiveProps } from '../../primitives/VisuallyHidden.js';
+import {
+  VisuallyHidden as VisuallyHiddenPrimitive,
+  type VisuallyHiddenProps as VisuallyHiddenPrimitiveProps,
+} from '../../primitives/VisuallyHidden.js';
 
 /**
  * VisuallyHidden - Screen reader only content

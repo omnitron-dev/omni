@@ -84,10 +84,7 @@ describe('NetronStore', () => {
     it('should wrap async function with loading state', async () => {
       const store = new UserStore();
 
-      const wrappedFn = store['withLoading'](
-        async () => [{ id: '1', name: 'John', active: true }],
-        store.loading
-      );
+      const wrappedFn = store['withLoading'](async () => [{ id: '1', name: 'John', active: true }], store.loading);
 
       expect(store.loading()).toBe(false);
 
@@ -119,11 +116,7 @@ describe('NetronStore', () => {
       const store = new UserStore();
       store.error.set(new Error('Previous error'));
 
-      const wrappedFn = store['withLoading'](
-        async () => 'success',
-        store.loading,
-        store.error
-      );
+      const wrappedFn = store['withLoading'](async () => 'success', store.loading, store.error);
 
       await wrappedFn();
       expect(store.error()).toBe(null);
@@ -141,10 +134,7 @@ describe('NetronStore', () => {
 
     it('should return function result', async () => {
       const store = new UserStore();
-      const wrappedFn = store['withLoading'](
-        async () => 'test result',
-        store.loading
-      );
+      const wrappedFn = store['withLoading'](async () => 'test result', store.loading);
 
       const result = await wrappedFn();
       expect(result).toBe('test result');
@@ -158,7 +148,8 @@ describe('NetronStore', () => {
 
       const wrappedFn = store['withOptimistic'](
         store.users,
-        (current, userId: string, update: Partial<User>) => current.map(u => u.id === userId ? { ...u, ...update } : u),
+        (current, userId: string, update: Partial<User>) =>
+          current.map((u) => (u.id === userId ? { ...u, ...update } : u)),
         async (userId: string, update: Partial<User>) => ({ id: userId, name: update.name!, active: true })
       );
 
@@ -177,7 +168,7 @@ describe('NetronStore', () => {
 
       const wrappedFn = store['withOptimistic'](
         store.users,
-        (current, userId: string) => current.filter(u => u.id !== userId),
+        (current, userId: string) => current.filter((u) => u.id !== userId),
         async () => {
           throw new Error('Mutation failed');
         }
@@ -230,11 +221,7 @@ describe('NetronStore', () => {
       const store = new UserStore();
       const order: number[] = [];
 
-      store['batch']([
-        () => order.push(1),
-        () => order.push(2),
-        () => order.push(3),
-      ]);
+      store['batch']([() => order.push(1), () => order.push(2), () => order.push(3)]);
 
       expect(order).toEqual([1, 2, 3]);
     });
@@ -446,7 +433,7 @@ describe('NetronStore', () => {
         async updateUser(id: string, update: Partial<User>) {
           return this.withOptimistic(
             this.users,
-            (current) => current.map(u => u.id === id ? { ...u, ...update } : u),
+            (current) => current.map((u) => (u.id === id ? { ...u, ...update } : u)),
             async () => {
               const result = await this.mutate('updateUser', [id, update]);
               this.invalidate(['users']);

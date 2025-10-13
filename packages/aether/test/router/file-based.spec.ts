@@ -32,8 +32,9 @@ describe('file-based routing', () => {
 
     it('should convert dynamic segments', () => {
       expect(filePathToRoutePath('routes/users/[id]/+page.ts')).toBe('/users/:id');
-      expect(filePathToRoutePath('routes/posts/[postId]/comments/[commentId]/+page.ts'))
-        .toBe('/posts/:postId/comments/:commentId');
+      expect(filePathToRoutePath('routes/posts/[postId]/comments/[commentId]/+page.ts')).toBe(
+        '/posts/:postId/comments/:commentId'
+      );
     });
 
     it('should handle optional segments', () => {
@@ -46,13 +47,11 @@ describe('file-based routing', () => {
     });
 
     it('should handle mixed segments', () => {
-      expect(filePathToRoutePath('routes/users/[id]/posts/[...rest]/+page.ts'))
-        .toBe('/users/:id/posts/*rest');
+      expect(filePathToRoutePath('routes/users/[id]/posts/[...rest]/+page.ts')).toBe('/users/:id/posts/*rest');
     });
 
     it('should handle nested directories', () => {
-      expect(filePathToRoutePath('routes/admin/dashboard/users/+page.ts'))
-        .toBe('/admin/dashboard/users');
+      expect(filePathToRoutePath('routes/admin/dashboard/users/+page.ts')).toBe('/admin/dashboard/users');
     });
 
     it('should handle different file conventions', () => {
@@ -122,7 +121,7 @@ describe('file-based routing', () => {
       const groups = groupRouteFiles(files);
       const userFiles = groups.get('routes/users')!;
 
-      const types = userFiles.map(f => f.type);
+      const types = userFiles.map((f) => f.type);
       expect(types).toContain('page');
       expect(types).toContain('layout');
       expect(types).toContain('loader');
@@ -132,11 +131,7 @@ describe('file-based routing', () => {
     });
 
     it('should handle nested routes', () => {
-      const files = [
-        'routes/users/+page.ts',
-        'routes/users/[id]/+page.ts',
-        'routes/users/[id]/posts/+page.ts',
-      ];
+      const files = ['routes/users/+page.ts', 'routes/users/[id]/+page.ts', 'routes/users/[id]/posts/+page.ts'];
 
       const groups = groupRouteFiles(files);
 
@@ -146,11 +141,7 @@ describe('file-based routing', () => {
     });
 
     it('should ignore non-route files', () => {
-      const files = [
-        'routes/users/+page.ts',
-        'routes/users/helper.ts',
-        'routes/users/utils.ts',
-      ];
+      const files = ['routes/users/+page.ts', 'routes/users/helper.ts', 'routes/users/utils.ts'];
 
       const groups = groupRouteFiles(files);
       const userFiles = groups.get('routes/users')!;
@@ -197,10 +188,7 @@ describe('file-based routing', () => {
         loader: vi.fn(),
       };
 
-      const route = buildRouteFromModules(
-        { page: pageModule, loader: loaderModule },
-        '/test'
-      );
+      const route = buildRouteFromModules({ page: pageModule, loader: loaderModule }, '/test');
 
       expect(route.loader).toBe(loaderModule.loader);
     });
@@ -229,10 +217,7 @@ describe('file-based routing', () => {
       const loaderModule = { default: vi.fn() };
       const actionModule = { default: vi.fn() };
 
-      const route = buildRouteFromModules(
-        { loader: loaderModule, action: actionModule },
-        '/test'
-      );
+      const route = buildRouteFromModules({ loader: loaderModule, action: actionModule }, '/test');
 
       expect(route.loader).toBe(loaderModule.default);
       expect(route.action).toBe(actionModule.default);
@@ -241,9 +226,7 @@ describe('file-based routing', () => {
 
   describe('createRouteTree', () => {
     it('should create flat tree from single route', () => {
-      const routes: RouteDefinition[] = [
-        { path: '/', component: vi.fn() },
-      ];
+      const routes: RouteDefinition[] = [{ path: '/', component: vi.fn() }];
 
       const tree = createRouteTree(routes);
 
@@ -313,11 +296,7 @@ describe('file-based routing', () => {
 
   describe('generateRoutesFromFiles', () => {
     it('should generate routes from files', async () => {
-      const files = [
-        'routes/+page.ts',
-        'routes/users/+page.ts',
-        'routes/users/[id]/+page.ts',
-      ];
+      const files = ['routes/+page.ts', 'routes/users/+page.ts', 'routes/users/[id]/+page.ts'];
 
       const importModules = vi.fn(async (path: string) => ({
         default: vi.fn(),
@@ -332,10 +311,7 @@ describe('file-based routing', () => {
     it('should handle import errors gracefully', async () => {
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-      const files = [
-        'routes/valid/+page.ts',
-        'routes/invalid/+page.ts',
-      ];
+      const files = ['routes/valid/+page.ts', 'routes/invalid/+page.ts'];
 
       const importModules = vi.fn(async (path: string) => {
         if (path.includes('invalid')) {
@@ -353,11 +329,7 @@ describe('file-based routing', () => {
     });
 
     it('should combine multiple file types per route', async () => {
-      const files = [
-        'routes/users/+page.ts',
-        'routes/users/+layout.ts',
-        'routes/users/+loader.ts',
-      ];
+      const files = ['routes/users/+page.ts', 'routes/users/+layout.ts', 'routes/users/+loader.ts'];
 
       const importModules = vi.fn(async (path: string) => {
         if (path.includes('page')) return { default: vi.fn() };
@@ -406,7 +378,7 @@ describe('file-based routing', () => {
 
       const errors = validateRoute(route);
 
-      expect(errors.some(e => e.includes('must start with /'))).toBe(true);
+      expect(errors.some((e) => e.includes('must start with /'))).toBe(true);
     });
 
     it('should allow wildcard path', () => {
@@ -427,15 +399,13 @@ describe('file-based routing', () => {
 
       const errors = validateRoute(route);
 
-      expect(errors.some(e => e.includes('must have a component or children'))).toBe(true);
+      expect(errors.some((e) => e.includes('must have a component or children'))).toBe(true);
     });
 
     it('should allow route with only children', () => {
       const route: RouteDefinition = {
         path: '/users',
-        children: [
-          { path: '/users/:id', component: vi.fn() },
-        ],
+        children: [{ path: '/users/:id', component: vi.fn() }],
       };
 
       const errors = validateRoute(route);
@@ -454,7 +424,7 @@ describe('file-based routing', () => {
 
       const errors = validateRoute(route);
 
-      expect(errors.some(e => e.includes('must start with /'))).toBe(true);
+      expect(errors.some((e) => e.includes('must start with /'))).toBe(true);
     });
   });
 
@@ -503,10 +473,7 @@ describe('file-based routing', () => {
 
   describe('edge cases', () => {
     it('should handle empty file list', async () => {
-      const routes = await generateRoutesFromFiles(
-        vi.fn(),
-        []
-      );
+      const routes = await generateRoutesFromFiles(vi.fn(), []);
 
       expect(routes).toEqual([]);
     });

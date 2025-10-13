@@ -232,10 +232,7 @@ export function asyncComponent<T, P = any>(
  * }
  * ```
  */
-export function useAsync<T>(
-  fetcher: () => Promise<T>,
-  deps: any[] = []
-): T {
+export function useAsync<T>(fetcher: () => Promise<T>, deps: any[] = []): T {
   const key = JSON.stringify(deps);
   const suspenseContext = getCurrentSuspenseContext();
 
@@ -307,10 +304,7 @@ export function useAsync<T>(
  * </button>
  * ```
  */
-export function prefetch<T>(
-  fetcher: () => Promise<T>,
-  deps: any[] = []
-): Promise<T> {
+export function prefetch<T>(fetcher: () => Promise<T>, deps: any[] = []): Promise<T> {
   const key = JSON.stringify(deps);
 
   // Check if already cached

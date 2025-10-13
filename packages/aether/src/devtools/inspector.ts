@@ -61,7 +61,7 @@ function serializeValue(value: any): any {
 
       // Handle arrays
       if (Array.isArray(val)) {
-        return val.map(item => serialize(item, depth + 1));
+        return val.map((item) => serialize(item, depth + 1));
       }
 
       // Handle Date
@@ -86,7 +86,7 @@ function serializeValue(value: any): any {
       if (val instanceof Set) {
         return {
           __type: 'Set',
-          value: Array.from(val).map(item => serialize(item, depth + 1)),
+          value: Array.from(val).map((item) => serialize(item, depth + 1)),
         };
       }
 
@@ -132,8 +132,7 @@ export class InspectorImpl implements Inspector {
 
     // For testing: accept both function signals and object mocks with peek/subscribe
     const isValidSignal =
-      typeof signal === 'function' ||
-      (typeof signal === 'object' && 'peek' in signal && 'subscribe' in signal);
+      typeof signal === 'function' || (typeof signal === 'object' && 'peek' in signal && 'subscribe' in signal);
 
     if (!isValidSignal) {
       return;
@@ -197,7 +196,7 @@ export class InspectorImpl implements Inspector {
         createdAt: now,
         updatedAt: now,
         dependentCount: 0,
-        dependencies: deps.map(dep => this.signalToId.get(dep as any) || 'unknown'),
+        dependencies: deps.map((dep) => this.signalToId.get(dep as any) || 'unknown'),
         componentId: metadata?.componentId,
         stack: getStackTrace(),
         source: metadata?.source,
@@ -210,7 +209,7 @@ export class InspectorImpl implements Inspector {
       this.computed.set(id, computedMeta);
 
       // Update dependent counts for dependencies
-      computedMeta.dependencies.forEach(depId => {
+      computedMeta.dependencies.forEach((depId) => {
         const signal = this.signals.get(depId) || this.computed.get(depId);
         if (signal) {
           signal.dependentCount++;
@@ -246,7 +245,7 @@ export class InspectorImpl implements Inspector {
         createdAt: now,
         lastExecutedAt: now,
         executionCount: 1,
-        dependencies: deps.map(dep => this.signalToId.get(dep as any) || 'unknown'),
+        dependencies: deps.map((dep) => this.signalToId.get(dep as any) || 'unknown'),
         avgExecutionTime: 0,
         componentId: metadata?.componentId,
         source: metadata?.source,
@@ -358,7 +357,7 @@ export class InspectorImpl implements Inspector {
     const roots: StateNode[] = [];
 
     // Group by type
-    const signalNodes: StateNode[] = Array.from(this.signals.values()).map(meta => ({
+    const signalNodes: StateNode[] = Array.from(this.signals.values()).map((meta) => ({
       id: meta.id,
       label: meta.name || meta.id,
       type: 'signal' as const,
@@ -367,7 +366,7 @@ export class InspectorImpl implements Inspector {
       metadata: meta,
     }));
 
-    const computedNodes: StateNode[] = Array.from(this.computed.values()).map(meta => ({
+    const computedNodes: StateNode[] = Array.from(this.computed.values()).map((meta) => ({
       id: meta.id,
       label: meta.name || meta.id,
       type: 'computed' as const,
@@ -376,7 +375,7 @@ export class InspectorImpl implements Inspector {
       metadata: meta,
     }));
 
-    const effectNodes: StateNode[] = Array.from(this.effects.values()).map(meta => ({
+    const effectNodes: StateNode[] = Array.from(this.effects.values()).map((meta) => ({
       id: meta.id,
       label: meta.name || meta.id,
       type: 'effect' as const,
@@ -385,7 +384,7 @@ export class InspectorImpl implements Inspector {
       metadata: meta,
     }));
 
-    const storeNodes: StateNode[] = Array.from(this.stores.values()).map(meta => ({
+    const storeNodes: StateNode[] = Array.from(this.stores.values()).map((meta) => ({
       id: meta.id,
       label: meta.name,
       type: 'store' as const,
@@ -448,8 +447,8 @@ export class InspectorImpl implements Inspector {
   getComponentTree(): StateNode[] {
     // Find root components (no parent)
     const roots = Array.from(this.components.values())
-      .filter(comp => !comp.parentId)
-      .map(comp => this.buildComponentNode(comp));
+      .filter((comp) => !comp.parentId)
+      .map((comp) => this.buildComponentNode(comp));
 
     return roots;
   }
@@ -458,10 +457,12 @@ export class InspectorImpl implements Inspector {
    * Build component node with children
    */
   private buildComponentNode(comp: ComponentMetadata): StateNode {
-    const children = comp.children.map(childId => {
-      const child = this.components.get(childId);
-      return child ? this.buildComponentNode(child) : null;
-    }).filter(Boolean) as StateNode[];
+    const children = comp.children
+      .map((childId) => {
+        const child = this.components.get(childId);
+        return child ? this.buildComponentNode(child) : null;
+      })
+      .filter(Boolean) as StateNode[];
 
     return {
       id: comp.id,

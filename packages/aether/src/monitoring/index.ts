@@ -6,12 +6,7 @@
  */
 
 // Main monitoring API
-export {
-  Monitoring,
-  monitor,
-  getMonitoring,
-  initMonitoring,
-} from './monitoring.js';
+export { Monitoring, monitor, getMonitoring, initMonitoring } from './monitoring.js';
 
 // Core modules
 export {
@@ -23,33 +18,13 @@ export {
   SourceMapSupport,
 } from './error-tracking.js';
 
-export {
-  PerformanceMonitor,
-  getPerformanceMonitor,
-  resetPerformanceMonitor,
-} from './performance.js';
+export { PerformanceMonitor, getPerformanceMonitor, resetPerformanceMonitor } from './performance.js';
 
-export {
-  Analytics,
-  getAnalytics,
-  resetAnalytics,
-  ABTest,
-  ConversionTracker,
-} from './analytics.js';
+export { Analytics, getAnalytics, resetAnalytics, ABTest, ConversionTracker } from './analytics.js';
 
-export {
-  PrivacyManager,
-  getPrivacyManager,
-  resetPrivacyManager,
-  ConsentBanner,
-} from './privacy.js';
+export { PrivacyManager, getPrivacyManager, resetPrivacyManager, ConsentBanner } from './privacy.js';
 
-export {
-  DevTools,
-  getDevTools,
-  resetDevTools,
-  Profile,
-} from './devtools.js';
+export { DevTools, getDevTools, resetDevTools, Profile } from './devtools.js';
 
 // Integrations
 export {

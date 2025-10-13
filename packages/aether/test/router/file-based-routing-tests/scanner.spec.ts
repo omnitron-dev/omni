@@ -139,13 +139,13 @@ describe('File-Based Routing Scanner', () => {
 
       expect(scanned.length).toBeGreaterThan(0);
       // Check that we have the different types of files
-      expect(scanned.some(f => f.type === 'page')).toBe(true);
-      expect(scanned.some(f => f.type === 'layout')).toBe(true);
-      expect(scanned.some(f => f.type === 'error')).toBe(true);
-      expect(scanned.some(f => f.isApi)).toBe(true);
+      expect(scanned.some((f) => f.type === 'page')).toBe(true);
+      expect(scanned.some((f) => f.type === 'layout')).toBe(true);
+      expect(scanned.some((f) => f.type === 'error')).toBe(true);
+      expect(scanned.some((f) => f.isApi)).toBe(true);
 
       // Check some specific route paths
-      const pageRoutes = scanned.filter(f => f.type === 'page');
+      const pageRoutes = scanned.filter((f) => f.type === 'page');
       expect(pageRoutes.length).toBeGreaterThan(0);
     });
 
@@ -158,9 +158,9 @@ describe('File-Based Routing Scanner', () => {
 
       const scanned = scanRouteFiles(files);
 
-      expect(scanned.every(f => f.isGroup)).toBe(true);
-      expect(scanned.find(f => f.routePath === '/login')?.groupName).toBe('auth');
-      expect(scanned.find(f => f.routePath === '/dashboard')?.groupName).toBe('app');
+      expect(scanned.every((f) => f.isGroup)).toBe(true);
+      expect(scanned.find((f) => f.routePath === '/login')?.groupName).toBe('auth');
+      expect(scanned.find((f) => f.routePath === '/dashboard')?.groupName).toBe('app');
     });
 
     it('should skip non-route files', () => {
@@ -174,18 +174,14 @@ describe('File-Based Routing Scanner', () => {
       const scanned = scanRouteFiles(files);
 
       expect(scanned.length).toBe(2); // Only index and about
-      expect(scanned.some(f => f.fileName === '_component.tsx')).toBe(false);
-      expect(scanned.some(f => f.fileName === 'utils.ts')).toBe(false);
+      expect(scanned.some((f) => f.fileName === '_component.tsx')).toBe(false);
+      expect(scanned.some((f) => f.fileName === 'utils.ts')).toBe(false);
     });
   });
 
   describe('sortRoutesBySpecificity', () => {
     it('should sort static routes before dynamic', () => {
-      const routes: RouteDefinition[] = [
-        { path: '/users/:id' },
-        { path: '/users/new' },
-        { path: '/users' },
-      ];
+      const routes: RouteDefinition[] = [{ path: '/users/:id' }, { path: '/users/new' }, { path: '/users' }];
 
       const sorted = sortRoutesBySpecificity(routes);
 
@@ -198,11 +194,7 @@ describe('File-Based Routing Scanner', () => {
     });
 
     it('should sort dynamic routes before catch-all', () => {
-      const routes: RouteDefinition[] = [
-        { path: '/docs/*path' },
-        { path: '/docs/:category' },
-        { path: '/docs' },
-      ];
+      const routes: RouteDefinition[] = [{ path: '/docs/*path' }, { path: '/docs/:category' }, { path: '/docs' }];
 
       const sorted = sortRoutesBySpecificity(routes);
 

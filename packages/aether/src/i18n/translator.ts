@@ -4,12 +4,7 @@
  * Translation engine with interpolation, formatting, and pluralization
  */
 
-import type {
-  TranslationMessages,
-  LocaleCode,
-  InterpolationValues,
-  PluralRules,
-} from './types.js';
+import type { TranslationMessages, LocaleCode, InterpolationValues, PluralRules } from './types.js';
 import { selectPluralForm } from './pluralization.js';
 
 /**
@@ -23,7 +18,7 @@ export class Translator {
   constructor(
     defaultLocale: LocaleCode,
     messages: Record<LocaleCode, TranslationMessages> = {},
-    fallbackLocales: LocaleCode[] = [],
+    fallbackLocales: LocaleCode[] = []
   ) {
     this.currentLocale = defaultLocale;
     this.fallbackLocales = fallbackLocales;
@@ -73,7 +68,7 @@ export class Translator {
       locale?: LocaleCode;
       defaultValue?: string;
       count?: number;
-    },
+    }
   ): string {
     const locale = options?.locale || this.currentLocale;
     const count = values?.count as number | undefined;
@@ -144,12 +139,7 @@ export class Translator {
    * Check if value is plural rules object
    */
   private isPluralRules(value: any): value is PluralRules {
-    return (
-      typeof value === 'object' &&
-      value !== null &&
-      'other' in value &&
-      typeof value.other === 'string'
-    );
+    return typeof value === 'object' && value !== null && 'other' in value && typeof value.other === 'string';
   }
 
   /**
@@ -162,7 +152,10 @@ export class Translator {
    */
   private interpolate(text: string, values: InterpolationValues): string {
     return text.replace(/\{([^}]+)\}/g, (match, expr) => {
-      const parts = expr.trim().split(',').map((s: string) => s.trim());
+      const parts = expr
+        .trim()
+        .split(',')
+        .map((s: string) => s.trim());
       const key = parts[0];
       const format = parts[1];
 

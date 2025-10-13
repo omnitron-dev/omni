@@ -621,10 +621,7 @@ describe('Edge Runtime Support', () => {
 
       const handler = createEdgeHandler(Component);
 
-      const requests = Array.from(
-        { length: 10 },
-        (_, i) => new Request(`https://example.com/page-${i}`)
-      );
+      const requests = Array.from({ length: 10 }, (_, i) => new Request(`https://example.com/page-${i}`));
 
       const responses = await Promise.all(requests.map(handler));
 
@@ -684,10 +681,7 @@ describe('Edge Runtime Support', () => {
         cache: true,
       });
 
-      const requests = Array.from(
-        { length: 100 },
-        () => new Request('https://example.com/page')
-      );
+      const requests = Array.from({ length: 100 }, () => new Request('https://example.com/page'));
 
       const startTime = Date.now();
 

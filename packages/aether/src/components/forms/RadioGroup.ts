@@ -6,11 +6,7 @@
  */
 
 import { styled } from '../../styling/styled.js';
-import {
-  RadioGroup as RadioGroupPrimitive,
-  RadioGroupItem,
-  RadioGroupIndicator,
-} from '../../primitives/RadioGroup.js';
+import { RadioGroup as RadioGroupPrimitive, RadioGroupItem, RadioGroupIndicator } from '../../primitives/RadioGroup.js';
 
 /**
  * RadioGroup - Custom styled radio button group

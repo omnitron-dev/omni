@@ -77,10 +77,7 @@ export class DeadCodeEliminator implements OptimizationPass {
   /**
    * Transform code
    */
-  async transform(
-    code: string,
-    context: OptimizationContext,
-  ): Promise<OptimizationResult> {
+  async transform(code: string, context: OptimizationContext): Promise<OptimizationResult> {
     const changes: OptimizationChange[] = [];
     const warnings: string[] = [];
 
@@ -333,16 +330,13 @@ export class DeadCodeEliminator implements OptimizationPass {
 
     // String concatenation
     const stringConcatPattern = /(['"])([^'"]*)\1\s*\+\s*(['"])([^'"]*)\3/g;
-    optimizedCode = optimizedCode.replace(
-      stringConcatPattern,
-      (match, q1, s1, q2, s2) => {
-        changes.push({
-          type: 'dead-code',
-          description: `Folded string concatenation`,
-        });
-        return `${q1}${s1}${s2}${q1}`;
-      },
-    );
+    optimizedCode = optimizedCode.replace(stringConcatPattern, (match, q1, s1, q2, s2) => {
+      changes.push({
+        type: 'dead-code',
+        description: `Folded string concatenation`,
+      });
+      return `${q1}${s1}${s2}${q1}`;
+    });
 
     // Boolean operations
     const booleanPatterns = [

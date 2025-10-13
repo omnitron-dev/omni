@@ -124,9 +124,7 @@ describe('Router E2E Tests', () => {
     });
 
     it('should handle query string changes reactively', async () => {
-      const routes: RouteDefinition[] = [
-        { path: '/search', component: 'Search' },
-      ];
+      const routes: RouteDefinition[] = [{ path: '/search', component: 'Search' }];
 
       router = createRouter({ mode: 'history', routes });
       setRouter(router);
@@ -222,11 +220,7 @@ describe('Router E2E Tests', () => {
       await router.ready();
 
       // Rapid navigation
-      await Promise.all([
-        router.navigate('/page1'),
-        router.navigate('/page2'),
-        router.navigate('/page3'),
-      ]);
+      await Promise.all([router.navigate('/page1'), router.navigate('/page2'), router.navigate('/page3')]);
 
       // Should end up on the last navigation
       expect(router.current.pathname).toBe('/page3');
@@ -290,9 +284,7 @@ describe('Router E2E Tests', () => {
     });
 
     it('should scroll to hash element', async () => {
-      const routes: RouteDefinition[] = [
-        { path: '/page', component: 'Page' },
-      ];
+      const routes: RouteDefinition[] = [{ path: '/page', component: 'Page' }];
 
       router = createRouter({
         mode: 'history',
@@ -374,9 +366,7 @@ describe('Router E2E Tests', () => {
 
   describe('External Links & Edge Cases', () => {
     it('should handle same-page navigation', async () => {
-      const routes: RouteDefinition[] = [
-        { path: '/page', component: 'Page' },
-      ];
+      const routes: RouteDefinition[] = [{ path: '/page', component: 'Page' }];
 
       router = createRouter({ mode: 'history', routes });
       setRouter(router);
@@ -408,9 +398,7 @@ describe('Router E2E Tests', () => {
     });
 
     it('should handle paths with trailing slashes', async () => {
-      const routes: RouteDefinition[] = [
-        { path: '/page', component: 'Page' },
-      ];
+      const routes: RouteDefinition[] = [{ path: '/page', component: 'Page' }];
 
       router = createRouter({ mode: 'history', routes });
       setRouter(router);
@@ -423,9 +411,7 @@ describe('Router E2E Tests', () => {
     });
 
     it('should handle paths with query strings', async () => {
-      const routes: RouteDefinition[] = [
-        { path: '/search', component: 'Search' },
-      ];
+      const routes: RouteDefinition[] = [{ path: '/search', component: 'Search' }];
 
       router = createRouter({ mode: 'history', routes });
       setRouter(router);
@@ -439,9 +425,7 @@ describe('Router E2E Tests', () => {
     });
 
     it('should handle paths with hashes', async () => {
-      const routes: RouteDefinition[] = [
-        { path: '/docs', component: 'Docs' },
-      ];
+      const routes: RouteDefinition[] = [{ path: '/docs', component: 'Docs' }];
 
       router = createRouter({ mode: 'history', routes });
       setRouter(router);
@@ -651,11 +635,7 @@ describe('Router E2E Tests', () => {
       await router.ready();
 
       // Create race condition
-      const results = await Promise.allSettled([
-        router.navigate('/a'),
-        router.navigate('/b'),
-        router.navigate('/c'),
-      ]);
+      const results = await Promise.allSettled([router.navigate('/a'), router.navigate('/b'), router.navigate('/c')]);
 
       // All should complete without errors
       results.forEach((result) => {
@@ -689,27 +669,23 @@ describe('Router E2E Tests', () => {
       expect(true).toBe(true); // No error should occur
     });
 
-    it(
-      'should handle memory after many navigations',
-      async () => {
-        const routes: RouteDefinition[] = [
-          { path: '/', component: 'Home' },
-          { path: '/page/[id]', component: 'Page' },
-        ];
+    it('should handle memory after many navigations', async () => {
+      const routes: RouteDefinition[] = [
+        { path: '/', component: 'Home' },
+        { path: '/page/[id]', component: 'Page' },
+      ];
 
-        router = createRouter({ mode: 'history', routes });
-        setRouter(router);
-        await router.ready();
+      router = createRouter({ mode: 'history', routes });
+      setRouter(router);
+      await router.ready();
 
-        // Perform many navigations (reduced from 100 to 20 for performance)
-        for (let i = 0; i < 20; i++) {
-          await router.navigate(`/page/${i}`);
-        }
+      // Perform many navigations (reduced from 100 to 20 for performance)
+      for (let i = 0; i < 20; i++) {
+        await router.navigate(`/page/${i}`);
+      }
 
-        expect(router.current.pathname).toMatch(/^\/page\/\d+$/);
-      },
-      10000
-    ); // 10 second timeout
+      expect(router.current.pathname).toMatch(/^\/page\/\d+$/);
+    }, 10000); // 10 second timeout
 
     it('should cleanup guards after unregistration', async () => {
       const routes: RouteDefinition[] = [
@@ -882,9 +858,7 @@ describe('Router E2E Tests', () => {
     });
 
     it('should handle search with filters and pagination', async () => {
-      const routes: RouteDefinition[] = [
-        { path: '/search', component: 'Search' },
-      ];
+      const routes: RouteDefinition[] = [{ path: '/search', component: 'Search' }];
 
       router = createRouter({ mode: 'history', routes });
       setRouter(router);
@@ -956,9 +930,7 @@ describe('Router E2E Tests', () => {
       await router.ready();
 
       // Rapid fire navigation
-      const navigations = Array.from({ length: 20 }, (_, i) =>
-        router.navigate(`/page/${i}`)
-      );
+      const navigations = Array.from({ length: 20 }, (_, i) => router.navigate(`/page/${i}`));
 
       await Promise.all(navigations);
 
@@ -984,9 +956,7 @@ describe('Router E2E Tests', () => {
     });
 
     it('should handle navigation with complex query strings', async () => {
-      const routes: RouteDefinition[] = [
-        { path: '/api', component: 'API' },
-      ];
+      const routes: RouteDefinition[] = [{ path: '/api', component: 'API' }];
 
       router = createRouter({ mode: 'history', routes });
       setRouter(router);
@@ -999,35 +969,31 @@ describe('Router E2E Tests', () => {
       expect(router.current.search).toContain('filter=active');
     });
 
-    it(
-      'should handle deep navigation stack',
-      async () => {
-        const routes: RouteDefinition[] = Array.from({ length: 20 }, (_, i) => ({
-          path: `/level${i}`,
-          component: `Level${i}`,
-        }));
+    it('should handle deep navigation stack', async () => {
+      const routes: RouteDefinition[] = Array.from({ length: 20 }, (_, i) => ({
+        path: `/level${i}`,
+        component: `Level${i}`,
+      }));
 
-        router = createRouter({ mode: 'history', routes });
-        setRouter(router);
-        await router.ready();
+      router = createRouter({ mode: 'history', routes });
+      setRouter(router);
+      await router.ready();
 
-        // Navigate deep (reduced from 50 to 20 for performance)
-        for (let i = 0; i < 20; i++) {
-          await router.navigate(`/level${i}`);
-        }
+      // Navigate deep (reduced from 50 to 20 for performance)
+      for (let i = 0; i < 20; i++) {
+        await router.navigate(`/level${i}`);
+      }
 
-        expect(router.current.pathname).toBe('/level19');
+      expect(router.current.pathname).toBe('/level19');
 
-        // Navigate back
-        for (let i = 0; i < 5; i++) {
-          router.back();
-          await new Promise((resolve) => setTimeout(resolve, 20));
-        }
+      // Navigate back
+      for (let i = 0; i < 5; i++) {
+        router.back();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
 
-        expect(router.current.pathname).toMatch(/^\/level\d+$/);
-      },
-      10000
-    ); // 10 second timeout
+      expect(router.current.pathname).toMatch(/^\/level\d+$/);
+    }, 10000); // 10 second timeout
   });
 
   describe('Error Handling & Edge Cases', () => {

@@ -62,15 +62,9 @@ describe('useQuery', () => {
       const result = useQuery(UserService, 'getUsers', []);
 
       // Wait for async operation
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
-      expect(mockNetronClient.query).toHaveBeenCalledWith(
-        'users',
-        'getUsers',
-        [],
-        undefined,
-        'main'
-      );
+      expect(mockNetronClient.query).toHaveBeenCalledWith('users', 'getUsers', [], undefined, 'main');
     });
 
     it('should work with service name string', () => {
@@ -89,15 +83,9 @@ describe('useQuery', () => {
 
       const result = useQuery(UserService, 'getUsers', [], options);
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
-      expect(mockNetronClient.query).toHaveBeenCalledWith(
-        'users',
-        'getUsers',
-        [],
-        options,
-        'main'
-      );
+      expect(mockNetronClient.query).toHaveBeenCalledWith('users', 'getUsers', [], options, 'main');
     });
   });
 
@@ -112,7 +100,7 @@ describe('useQuery', () => {
     it('should track isFetching state', async () => {
       const result = useQuery(UserService, 'getUsers', []);
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(result.isFetching).toBeDefined();
     });
@@ -124,7 +112,7 @@ describe('useQuery', () => {
 
       const result = useQuery(UserService, 'getUsers', [], { enabled: false });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Note: depends on resource implementation
     });
@@ -132,7 +120,7 @@ describe('useQuery', () => {
     it('should fetch when enabled is true', async () => {
       const result = useQuery(UserService, 'getUsers', [], { enabled: true });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(mockNetronClient.query).toHaveBeenCalled();
     });
@@ -158,7 +146,7 @@ describe('useQuery', () => {
     it('should re-execute query on refetch', async () => {
       const result = useQuery(UserService, 'getUsers', []);
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
       mockNetronClient.query.mockClear();
 
       await result.refetch();
@@ -229,7 +217,7 @@ describe('useQuery', () => {
 
       const result = useQuery(UserService, 'getUsers', []);
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Error should be captured in resource
       expect(result.error).toBeDefined();
@@ -242,7 +230,7 @@ describe('useQuery', () => {
 
       const result = useQuery(UserService, 'getUsers', []);
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // After successful retry, error should be undefined
       expect(result).toBeDefined();
@@ -260,7 +248,7 @@ describe('useQuery', () => {
     it('should set isStale to false after successful fetch', async () => {
       const result = useQuery(UserService, 'getUsers', []);
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Should be marked as fresh after fetch
       expect(result.isStale).toBeDefined();
@@ -310,9 +298,7 @@ describe('useQueries', () => {
   });
 
   it('should support single query', () => {
-    const results = useQueries([
-      { service: UserService, method: 'getUsers', args: [] },
-    ]);
+    const results = useQueries([{ service: UserService, method: 'getUsers', args: [] }]);
 
     expect(results).toHaveLength(1);
   });
@@ -344,7 +330,7 @@ describe('usePaginatedQuery', () => {
     const page = signal(2);
     const result = usePaginatedQuery(UserService, 'getUsers', page, 20);
 
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     // Should include pagination params in args
     expect(mockNetronClient.query).toHaveBeenCalled();
@@ -355,7 +341,7 @@ describe('usePaginatedQuery', () => {
     const result = usePaginatedQuery(UserService, 'getUsers', page, 10);
 
     // Wait for data to load so totalPages is set
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     result.nextPage();
 
@@ -384,7 +370,7 @@ describe('usePaginatedQuery', () => {
     const page = signal(1);
     const result = usePaginatedQuery(UserService, 'getUsers', page, 10);
 
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     result.goToPage(3);
 
@@ -395,7 +381,7 @@ describe('usePaginatedQuery', () => {
     const page = signal(1);
     const result = usePaginatedQuery(UserService, 'getUsers', page, 10);
 
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     result.goToPage(10); // Beyond totalPages (5)
 
@@ -426,7 +412,7 @@ describe('useInfiniteQuery', () => {
     const getNextPageParam = (lastPage: any) => lastPage.nextCursor;
     const result = useInfiniteQuery(UserService, 'getUsers', getNextPageParam);
 
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     await result.fetchNextPage();
 
@@ -438,7 +424,7 @@ describe('useInfiniteQuery', () => {
     const getNextPageParam = (lastPage: any) => lastPage.nextCursor;
     const result = useInfiniteQuery(UserService, 'getUsers', getNextPageParam);
 
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     const pages = result.data();
     expect(Array.isArray(pages)).toBe(true);
@@ -448,7 +434,7 @@ describe('useInfiniteQuery', () => {
     const getNextPageParam = (lastPage: any) => lastPage.nextCursor;
     const result = useInfiniteQuery(UserService, 'getUsers', getNextPageParam);
 
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     expect(result.hasNextPage).toBeDefined();
   });
@@ -462,7 +448,7 @@ describe('useInfiniteQuery', () => {
     const getNextPageParam = (lastPage: any) => lastPage.nextCursor;
     const result = useInfiniteQuery(UserService, 'getUsers', getNextPageParam);
 
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     mockNetronClient.query.mockClear();
     await result.fetchNextPage();
@@ -475,7 +461,7 @@ describe('useInfiniteQuery', () => {
     const getNextPageParam = (lastPage: any) => lastPage.nextCursor;
     const result = useInfiniteQuery(UserService, 'getUsers', getNextPageParam);
 
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     expect(result.isFetchingNextPage()).toBe(false);
 

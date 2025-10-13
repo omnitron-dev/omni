@@ -65,7 +65,7 @@ describe('Translator', () => {
           greeting: 'Hi',
           name: 'Bob',
           count: 5,
-        }),
+        })
       ).toBe('Hi, Bob! You have 5 messages.');
     });
 
@@ -124,7 +124,7 @@ describe('Translator', () => {
           },
           fr: {},
         },
-        ['en'],
+        ['en']
       );
 
       expect(translator.translate('hello')).toBe('Hello');
@@ -141,7 +141,7 @@ describe('Translator', () => {
             hello: 'Bonjour',
           },
         },
-        ['en'],
+        ['en']
       );
 
       expect(translator.translate('hello')).toBe('Bonjour');

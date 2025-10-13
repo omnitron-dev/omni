@@ -213,11 +213,7 @@ export function getPluralRule(locale: string): PluralRuleFunction {
 /**
  * Select plural form from message
  */
-export function selectPluralForm(
-  count: number,
-  forms: Record<string, string>,
-  locale: string,
-): string {
+export function selectPluralForm(count: number, forms: Record<string, string>, locale: string): string {
   const rule = getPluralRule(locale);
   const form = rule(count);
 

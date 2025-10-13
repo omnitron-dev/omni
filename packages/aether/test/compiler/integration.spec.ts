@@ -574,10 +574,7 @@ describe('Compiler Integration', () => {
 
     it('should handle large components efficiently', async () => {
       // Generate large component with many signals
-      const signals = Array.from(
-        { length: 50 },
-        (_, i) => `const signal${i} = signal(${i});`
-      ).join('\n');
+      const signals = Array.from({ length: 50 }, (_, i) => `const signal${i} = signal(${i});`).join('\n');
 
       const accesses = Array.from({ length: 50 }, (_, i) => `<p>{signal${i}()}</p>`).join('\n');
 

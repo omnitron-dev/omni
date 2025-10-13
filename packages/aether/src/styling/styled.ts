@@ -85,10 +85,7 @@ export type StyledProps<V extends VariantConfig = VariantConfig> = VariantProps<
 /**
  * Check if compound variant matches current props
  */
-function matchesCompoundVariant<V extends VariantConfig>(
-  compound: CompoundVariant,
-  props: VariantProps<V>
-): boolean {
+function matchesCompoundVariant<V extends VariantConfig>(compound: CompoundVariant, props: VariantProps<V>): boolean {
   for (const [key, value] of Object.entries(compound)) {
     if (key === 'css') continue;
 
@@ -290,8 +287,7 @@ type StyledHTML = {
  * Create styled element factory
  */
 function createStyledElement(element: string) {
-  return <V extends VariantConfig = VariantConfig>(styleConfig: StyleConfig<V>) =>
-    styled<any, V>(element, styleConfig);
+  return <V extends VariantConfig = VariantConfig>(styleConfig: StyleConfig<V>) => styled<any, V>(element, styleConfig);
 }
 
 /**

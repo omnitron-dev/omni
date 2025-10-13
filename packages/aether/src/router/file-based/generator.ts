@@ -56,21 +56,15 @@ export interface RouteManifest {
 /**
  * Generate routes from file list
  */
-export async function generateRoutes(
-  files: string[],
-  config: GeneratorConfig = {}
-): Promise<RouteManifest> {
-  const {
-    conventions = DEFAULT_CONVENTIONS,
-    includeApi = true,
-  } = config;
+export async function generateRoutes(files: string[], config: GeneratorConfig = {}): Promise<RouteManifest> {
+  const { conventions = DEFAULT_CONVENTIONS, includeApi = true } = config;
 
   // Scan and categorize files
   const routeFiles = scanRouteFiles(files, conventions);
 
   // Separate API routes
-  const apiFiles = routeFiles.filter(f => f.isApi);
-  const pageFiles = routeFiles.filter(f => !f.isApi);
+  const apiFiles = routeFiles.filter((f) => f.isApi);
+  const pageFiles = routeFiles.filter((f) => !f.isApi);
 
   // Group by directory
   const pageGroups = groupFilesByDirectory(pageFiles);
@@ -195,10 +189,7 @@ export function generateManifestJson(manifest: RouteManifest): string {
     routes: manifest.routes.map(simplifyRoute),
     apiRoutes: manifest.apiRoutes.map(simplifyRoute),
     groups: Object.fromEntries(
-      Array.from(manifest.groups.entries()).map(([key, routes]) => [
-        key,
-        routes.map(simplifyRoute),
-      ])
+      Array.from(manifest.groups.entries()).map(([key, routes]) => [key, routes.map(simplifyRoute)])
     ),
     generatedAt: manifest.generatedAt.toISOString(),
     validation: manifest.validation,
@@ -246,7 +237,7 @@ export function generateRouteTypes(manifest: RouteManifest): string {
   // Generate route paths type
   lines.push('export type RoutePaths =');
   const allRoutes = [...manifest.routes, ...manifest.apiRoutes];
-  const paths = allRoutes.map(r => `  | '${r.path}'`);
+  const paths = allRoutes.map((r) => `  | '${r.path}'`);
   lines.push(paths.join('\n') || "  | '/'");
   lines.push(';');
   lines.push('');
@@ -272,7 +263,7 @@ export function generateRouteTypes(manifest: RouteManifest): string {
   // Generate route groups type
   if (manifest.groups.size > 0) {
     lines.push('export type RouteGroups =');
-    const groupNames = Array.from(manifest.groups.keys()).map(g => `  | '${g}'`);
+    const groupNames = Array.from(manifest.groups.keys()).map((g) => `  | '${g}'`);
     lines.push(groupNames.join('\n'));
     lines.push(';');
     lines.push('');
@@ -281,7 +272,7 @@ export function generateRouteTypes(manifest: RouteManifest): string {
   // Generate API routes type
   if (manifest.apiRoutes.length > 0) {
     lines.push('export type ApiRoutePaths =');
-    const apiPaths = manifest.apiRoutes.map(r => `  | '${r.path}'`);
+    const apiPaths = manifest.apiRoutes.map((r) => `  | '${r.path}'`);
     lines.push(apiPaths.join('\n'));
     lines.push(';');
     lines.push('');
@@ -291,7 +282,7 @@ export function generateRouteTypes(manifest: RouteManifest): string {
     for (const route of manifest.apiRoutes) {
       if (route.meta?.methods && Array.isArray(route.meta.methods)) {
         const methods = route.meta.methods as string[];
-        lines.push(`  '${route.path}': ${methods.map(m => `'${m}'`).join(' | ')};`);
+        lines.push(`  '${route.path}': ${methods.map((m) => `'${m}'`).join(' | ')};`);
       }
     }
     lines.push('}');

@@ -205,9 +205,7 @@ export class BuildCache {
     if (this.strategy === 'disk' || this.strategy === 'hybrid') {
       try {
         const files = await fs.readdir(this.cacheDir);
-        await Promise.all(
-          files.map((file) => fs.unlink(path.join(this.cacheDir, file))),
-        );
+        await Promise.all(files.map((file) => fs.unlink(path.join(this.cacheDir, file))));
       } catch {
         // Ignore errors
       }
@@ -284,7 +282,7 @@ export class WorkerPool {
 
   constructor(
     private workerCount: number,
-    private workerScript: string,
+    private workerScript: string
   ) {}
 
   /**
@@ -327,7 +325,7 @@ export class WorkerPool {
     worker: Worker,
     task: WorkerTask,
     resolve: (result: any) => void,
-    reject: (error: Error) => void,
+    reject: (error: Error) => void
   ): void {
     const onMessage = (result: any) => {
       worker.off('message', onMessage);
@@ -409,10 +407,7 @@ export class IncrementalCompiler {
   /**
    * Check if module needs recompilation
    */
-  async needsRecompilation(
-    filePath: string,
-    content: string,
-  ): Promise<boolean> {
+  async needsRecompilation(filePath: string, content: string): Promise<boolean> {
     // Check if file content changed
     const hasChanged = await this.cache.hasChanged(filePath, content);
     if (hasChanged) return true;
@@ -423,11 +418,7 @@ export class IncrementalCompiler {
       const depTimestamp = this.moduleTimestamps.get(dep);
       const currentTimestamp = this.moduleTimestamps.get(filePath);
 
-      if (
-        !depTimestamp ||
-        !currentTimestamp ||
-        depTimestamp > currentTimestamp
-      ) {
+      if (!depTimestamp || !currentTimestamp || depTimestamp > currentTimestamp) {
         return true;
       }
     }
@@ -713,10 +704,7 @@ export class BuildPerformanceMonitor {
   /**
    * Calculate percentage breakdown
    */
-  private calculateBreakdown(
-    metrics: Record<string, number>,
-    total: number,
-  ): Record<string, number> {
+  private calculateBreakdown(metrics: Record<string, number>, total: number): Record<string, number> {
     const breakdown: Record<string, number> = {};
 
     for (const [name, duration] of Object.entries(metrics)) {

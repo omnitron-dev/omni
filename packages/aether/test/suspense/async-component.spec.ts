@@ -137,8 +137,7 @@ describe('Async Component', () => {
 
   describe('asyncComponent', () => {
     it('should wrap component with async data fetching', async () => {
-      const Component = (props: { data: string; name: string }) =>
-        `${props.name}: ${props.data}`;
+      const Component = (props: { data: string; name: string }) => `${props.name}: ${props.data}`;
 
       const dataFetcher = async (props: { name: string }) => {
         await new Promise((resolve) => setTimeout(resolve, 10));

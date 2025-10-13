@@ -3,11 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import {
-  prefetchRoute,
-  clearPrefetchCache,
-  isPrefetched,
-} from '../../src/router/prefetch.js';
+import { prefetchRoute, clearPrefetchCache, isPrefetched } from '../../src/router/prefetch.js';
 import type { Router } from '../../src/router/types.js';
 
 describe('route prefetching', () => {
@@ -128,10 +124,7 @@ describe('route prefetching', () => {
 
       await prefetchRoute(mockRouter, '/users');
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        'Prefetch failed for /users:',
-        expect.any(Error)
-      );
+      expect(consoleSpy).toHaveBeenCalledWith('Prefetch failed for /users:', expect.any(Error));
 
       // Should remove from cache on error
       expect(isPrefetched('/users')).toBe(false);
@@ -214,7 +207,7 @@ describe('route prefetching', () => {
 
       element.dispatchEvent(new Event('mouseenter'));
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       expect(isPrefetched('/users')).toBe(true);
     });
@@ -287,11 +280,9 @@ describe('route prefetching', () => {
     it('should prefetch multiple routes concurrently', async () => {
       const paths = ['/users', '/posts', '/about', '/contact'];
 
-      await Promise.all(
-        paths.map(path => prefetchRoute(mockRouter, path))
-      );
+      await Promise.all(paths.map((path) => prefetchRoute(mockRouter, path)));
 
-      paths.forEach(path => {
+      paths.forEach((path) => {
         expect(isPrefetched(path)).toBe(true);
       });
     });
@@ -316,7 +307,7 @@ describe('route prefetching', () => {
         route: {
           path: '/slow',
           loader: async () => {
-            await new Promise(resolve => setTimeout(resolve, 100));
+            await new Promise((resolve) => setTimeout(resolve, 100));
             resolved = true;
             return { data: 'slow' };
           },

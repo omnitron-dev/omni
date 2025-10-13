@@ -250,7 +250,7 @@ window.__AETHER_HYDRATION_STRATEGY__='${strategy}';
  */
 export function buildHybridManifest(
   routes: SSGRoute[],
-  pages: Map<string, GeneratedPage>,
+  pages: Map<string, GeneratedPage>
 ): {
   routes: Record<
     string,
@@ -392,7 +392,7 @@ export function validateHybridConfig(routes: SSGRoute[]): string[] {
  */
 export function generateBuildReport(
   routes: SSGRoute[],
-  pages: Map<string, GeneratedPage>,
+  pages: Map<string, GeneratedPage>
 ): {
   summary: string;
   details: HybridPageInfo[];

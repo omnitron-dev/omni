@@ -11,20 +11,20 @@ import type { QueryOptions, MutationOptions } from '../../../src/netron/types.js
 
 // Mock NetronClient
 vi.mock('../../../src/netron/client.js', () => ({
-    NetronClient: vi.fn().mockImplementation(() => ({
-      backend: vi.fn().mockReturnValue({
-        queryFluentInterface: vi.fn().mockResolvedValue({
-          getUsers: vi.fn().mockResolvedValue([{ id: '1', name: 'John' }]),
-          getUser: vi.fn().mockResolvedValue({ id: '1', name: 'John' }),
-          updateUser: vi.fn().mockResolvedValue({ id: '1', name: 'John Updated' }),
-        }),
+  NetronClient: vi.fn().mockImplementation(() => ({
+    backend: vi.fn().mockReturnValue({
+      queryFluentInterface: vi.fn().mockResolvedValue({
+        getUsers: vi.fn().mockResolvedValue([{ id: '1', name: 'John' }]),
+        getUser: vi.fn().mockResolvedValue({ id: '1', name: 'John' }),
+        updateUser: vi.fn().mockResolvedValue({ id: '1', name: 'John Updated' }),
       }),
-      query: vi.fn().mockResolvedValue({ id: '1', name: 'John' }),
-      mutate: vi.fn().mockResolvedValue({ id: '1', name: 'John Updated' }),
-      invalidate: vi.fn(),
-      getCacheStats: vi.fn().mockReturnValue({ entries: 0, size: 0, hits: 0, misses: 0, hitRate: 0 }),
-    })),
-  }));
+    }),
+    query: vi.fn().mockResolvedValue({ id: '1', name: 'John' }),
+    mutate: vi.fn().mockResolvedValue({ id: '1', name: 'John Updated' }),
+    invalidate: vi.fn(),
+    getCacheStats: vi.fn().mockReturnValue({ entries: 0, size: 0, hits: 0, misses: 0, hitRate: 0 }),
+  })),
+}));
 
 // Mock DI inject
 vi.mock('../../../src/di/index.js', () => ({
@@ -131,13 +131,7 @@ describe('NetronService', () => {
 
       await service['query']('getUser', ['123']);
 
-      expect(querySpy).toHaveBeenCalledWith(
-        'users@1.0.0',
-        'getUser',
-        ['123'],
-        undefined,
-        'api'
-      );
+      expect(querySpy).toHaveBeenCalledWith('users@1.0.0', 'getUser', ['123'], undefined, 'api');
     });
 
     it('should accept query options', async () => {
@@ -150,13 +144,7 @@ describe('NetronService', () => {
 
       await service['query']('getUsers', [], options);
 
-      expect(querySpy).toHaveBeenCalledWith(
-        'users@1.0.0',
-        'getUsers',
-        [],
-        options,
-        'api'
-      );
+      expect(querySpy).toHaveBeenCalledWith('users@1.0.0', 'getUsers', [], options, 'api');
     });
 
     it('should return typed result', async () => {
@@ -200,13 +188,7 @@ describe('NetronService', () => {
 
       await service['mutate']('updateUser', ['123', { name: 'Updated' }], options);
 
-      expect(mutateSpy).toHaveBeenCalledWith(
-        'users@1.0.0',
-        'updateUser',
-        ['123', { name: 'Updated' }],
-        options,
-        'api'
-      );
+      expect(mutateSpy).toHaveBeenCalledWith('users@1.0.0', 'updateUser', ['123', { name: 'Updated' }], options, 'api');
     });
 
     it('should return typed result', async () => {

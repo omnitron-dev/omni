@@ -9,11 +9,7 @@ import { resource } from '../../core/reactivity/resource.js';
 import { NetronClient } from '../client.js';
 import { getBackendName, getServiceName } from '../decorators/index.js';
 import type { WritableSignal } from '../../core/reactivity/types.js';
-import type {
-  Type,
-  QueryOptions,
-  QueryResult,
-} from '../types.js';
+import type { Type, QueryOptions, QueryResult } from '../types.js';
 
 /**
  * useQuery - Reactive hook for data fetching with caching
@@ -57,29 +53,21 @@ export function useQuery<TService, TMethod extends keyof TService>(
   const isStale = signal(false);
 
   // Create resource for async data
-  const resourceImpl = resource(
-    async () => {
-      // Check if query is enabled
-      if (!enabled()) {
-        return options?.fallback;
-      }
-
-      isFetching.set(true);
-      try {
-        const result = await netron.query(
-          serviceName,
-          method as string,
-          args as any[],
-          options,
-          backendName
-        );
-        isStale.set(false);
-        return result;
-      } finally {
-        isFetching.set(false);
-      }
+  const resourceImpl = resource(async () => {
+    // Check if query is enabled
+    if (!enabled()) {
+      return options?.fallback;
     }
-  );
+
+    isFetching.set(true);
+    try {
+      const result = await netron.query(serviceName, method as string, args as any[], options, backendName);
+      isStale.set(false);
+      return result;
+    } finally {
+      isFetching.set(false);
+    }
+  });
 
   // Handle refetch on mount
   if (options?.refetchOnMount) {
@@ -144,20 +132,15 @@ export function useQuery<TService, TMethod extends keyof TService>(
  * ]);
  * ```
  */
-export function useQueries<T extends ReadonlyArray<{
-  service: Type<any> | string;
-  method: string;
-  args: any[];
-  options?: QueryOptions;
-}>>(queries: T): { [K in keyof T]: QueryResult } {
-  return queries.map(query =>
-    useQuery(
-      query.service,
-      query.method,
-      query.args,
-      query.options
-    )
-  ) as any;
+export function useQueries<
+  T extends ReadonlyArray<{
+    service: Type<any> | string;
+    method: string;
+    args: any[];
+    options?: QueryOptions;
+  }>,
+>(queries: T): { [K in keyof T]: QueryResult } {
+  return queries.map((query) => useQuery(query.service, query.method, query.args, query.options)) as any;
 }
 
 /**
@@ -196,16 +179,11 @@ export function usePaginatedQuery<TService, TMethod extends keyof TService>(
     {
       page: page(),
       pageSize,
-    }
+    },
   ]);
 
   // Execute query with reactive args
-  const result = useQuery(
-    serviceClass,
-    method,
-    args() as any,
-    options
-  );
+  const result = useQuery(serviceClass, method, args() as any, options);
 
   // Extract total pages from response
   effect(() => {
@@ -267,7 +245,7 @@ export function usePaginatedQuery<TService, TMethod extends keyof TService>(
 export function useInfiniteQuery<
   TService,
   TMethod extends keyof TService,
-  TData = TService[TMethod] extends (...args: any[]) => Promise<infer R> ? R : any
+  TData = TService[TMethod] extends (...args: any[]) => Promise<infer R> ? R : any,
 >(
   serviceClass: Type<TService> | string,
   method: TMethod,
@@ -290,13 +268,7 @@ export function useInfiniteQuery<
 
     isFetchingNextPage.set(true);
     try {
-      const result = await netron.query(
-        serviceName,
-        method as string,
-        [nextPageParam()],
-        options,
-        backendName
-      );
+      const result = await netron.query(serviceName, method as string, [nextPageParam()], options, backendName);
 
       // Add to pages
       pages.set([...pages(), result as TData]);
@@ -312,12 +284,7 @@ export function useInfiniteQuery<
   };
 
   // Initial fetch
-  const { data, loading, error, refetch } = useQuery(
-    serviceClass,
-    method,
-    [] as any,
-    options
-  );
+  const { data, loading, error, refetch } = useQuery(serviceClass, method, [] as any, options);
 
   // Update pages when initial data loads
   effect(() => {

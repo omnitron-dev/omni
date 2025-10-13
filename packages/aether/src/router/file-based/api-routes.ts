@@ -316,10 +316,7 @@ export function cors(
 /**
  * API middleware type
  */
-export type ApiMiddleware = (
-  context: ApiContext,
-  next: () => Promise<Response>
-) => Promise<Response>;
+export type ApiMiddleware = (context: ApiContext, next: () => Promise<Response>) => Promise<Response>;
 
 /**
  * Compose API middlewares
@@ -393,10 +390,7 @@ export function authMiddleware(verify: (token: string) => Promise<boolean>): Api
 /**
  * Example middleware: Rate limiting
  */
-export function rateLimitMiddleware(options: {
-  max: number;
-  window: number;
-}): ApiMiddleware {
+export function rateLimitMiddleware(options: { max: number; window: number }): ApiMiddleware {
   const requests = new Map<string, { count: number; resetAt: number }>();
 
   return async (context, next) => {

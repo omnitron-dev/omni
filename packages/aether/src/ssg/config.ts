@@ -109,10 +109,13 @@ export function generateSitemap(paths: string[], config: SitemapConfig): string 
   const { hostname, exclude = [], priority = {}, changefreq = {}, additionalUrls = [] } = config;
 
   // Filter excluded paths
-  const filteredPaths = paths.filter((path) => !exclude.some((pattern) => {
-      const regex = new RegExp(pattern.replace(/\*/g, '.*'));
-      return regex.test(path);
-    }));
+  const filteredPaths = paths.filter(
+    (path) =>
+      !exclude.some((pattern) => {
+        const regex = new RegExp(pattern.replace(/\*/g, '.*'));
+        return regex.test(path);
+      })
+  );
 
   // Build URLs
   const urls = [
@@ -131,12 +134,14 @@ export function generateSitemap(paths: string[], config: SitemapConfig): string 
     <priority>${pri}</priority>
   </url>`;
     }),
-    ...additionalUrls.map((url) => `  <url>
+    ...additionalUrls.map(
+      (url) => `  <url>
     <loc>${url.url}</loc>
     ${url.changefreq ? `<changefreq>${url.changefreq}</changefreq>` : ''}
     ${url.priority ? `<priority>${url.priority}</priority>` : ''}
     ${url.lastmod ? `<lastmod>${url.lastmod}</lastmod>` : ''}
-  </url>`),
+  </url>`
+    ),
   ];
 
   return `<?xml version="1.0" encoding="UTF-8"?>

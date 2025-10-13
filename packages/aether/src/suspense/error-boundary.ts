@@ -59,12 +59,7 @@ let errorBoundaryIdCounter = 0;
  * ```
  */
 export function ErrorBoundary(props: ErrorBoundaryProps): any {
-  const {
-    fallback,
-    children,
-    onError,
-    resetKeys = [],
-  } = props;
+  const { fallback, children, onError, resetKeys = [] } = props;
 
   // Track error state
   const errorSignal = signal<Error | null>(null);
@@ -122,9 +117,9 @@ export function ErrorBoundary(props: ErrorBoundaryProps): any {
   });
 
   // Return setup function that returns render function
-  return () => 
+  return () =>
     // This is the setup/component function
-     () => {
+    () => {
       // This is the render function
       const error = errorSignal();
 
@@ -154,8 +149,7 @@ export function ErrorBoundary(props: ErrorBoundaryProps): any {
           return fallback;
         }
       }
-    }
-  ;
+    };
 }
 
 /**
@@ -194,7 +188,8 @@ export function withErrorBoundary<T>(
   fallback: ((error: Error, retry: () => void) => any) | any,
   options?: { onError?: (error: Error, info: ErrorInfo) => void }
 ): (props: T) => any {
-  return (props: T) => ErrorBoundary({
+  return (props: T) =>
+    ErrorBoundary({
       fallback,
       onError: options?.onError,
       children: () => Component(props),
@@ -227,15 +222,7 @@ export function Boundary(props: {
   onResolve?: () => void;
   suspenseTimeout?: number;
 }): any {
-  const {
-    children,
-    fallback,
-    errorFallback,
-    onError,
-    onSuspend,
-    onResolve,
-    suspenseTimeout,
-  } = props;
+  const { children, fallback, errorFallback, onError, onSuspend, onResolve, suspenseTimeout } = props;
 
   // Create components outside to avoid re-instantiation
   const suspense = Suspense({
@@ -294,12 +281,7 @@ export function withRetry<T>(
     onRetry?: (attempt: number, error: Error) => void;
   } = {}
 ): () => Promise<T> {
-  const {
-    maxRetries = 3,
-    backoff = 'exponential',
-    initialDelay = 1000,
-    onRetry,
-  } = options;
+  const { maxRetries = 3, backoff = 'exponential', initialDelay = 1000, onRetry } = options;
 
   return async () => {
     let lastError: Error | null = null;
@@ -311,10 +293,7 @@ export function withRetry<T>(
         lastError = error as Error;
 
         if (attempt < maxRetries) {
-          const delay =
-            backoff === 'exponential'
-              ? initialDelay * Math.pow(2, attempt)
-              : initialDelay * (attempt + 1);
+          const delay = backoff === 'exponential' ? initialDelay * Math.pow(2, attempt) : initialDelay * (attempt + 1);
 
           if (onRetry) {
             onRetry(attempt + 1, lastError);

@@ -19,10 +19,10 @@ import {
 import { defineComponent } from '../../core/component/index.js';
 
 // Temporary placeholders until primitive components are implemented
-const PopconfirmTitlePrimitive = defineComponent<{children?: any}>((props) => () => ({ type: 'div', props }));
-const PopconfirmDescriptionPrimitive = defineComponent<{children?: any}>((props) => () => ({ type: 'div', props }));
-const PopconfirmActionPrimitive = defineComponent<{children?: any}>((props) => () => ({ type: 'button', props }));
-const PopconfirmCancelPrimitive = defineComponent<{children?: any}>((props) => () => ({ type: 'button', props }));
+const PopconfirmTitlePrimitive = defineComponent<{ children?: any }>((props) => () => ({ type: 'div', props }));
+const PopconfirmDescriptionPrimitive = defineComponent<{ children?: any }>((props) => () => ({ type: 'div', props }));
+const PopconfirmActionPrimitive = defineComponent<{ children?: any }>((props) => () => ({ type: 'button', props }));
+const PopconfirmCancelPrimitive = defineComponent<{ children?: any }>((props) => () => ({ type: 'button', props }));
 
 /**
  * Popconfirm - Root component

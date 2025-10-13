@@ -28,9 +28,15 @@ export default defineComponent(() => {
     <div>
       <h1>User Profile</h1>
       <div>
-        <p><strong>ID:</strong> {params.id}</p>
-        <p><strong>Name:</strong> {user().name}</p>
-        <p><strong>Email:</strong> {user().email}</p>
+        <p>
+          <strong>ID:</strong> {params.id}
+        </p>
+        <p>
+          <strong>Name:</strong> {user().name}
+        </p>
+        <p>
+          <strong>Email:</strong> {user().email}
+        </p>
       </div>
     </div>
   );

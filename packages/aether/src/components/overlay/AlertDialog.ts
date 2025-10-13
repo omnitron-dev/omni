@@ -21,7 +21,7 @@ import {
 import { defineComponent } from '../../core/component/index.js';
 
 // Temporary placeholders until primitive components are implemented
-const AlertDialogPortalPrimitive = defineComponent<{children?: any}>((props) => () => props.children);
+const AlertDialogPortalPrimitive = defineComponent<{ children?: any }>((props) => () => props.children);
 const AlertDialogOverlayPrimitive = defineComponent(() => () => ({ type: 'div', props: {} }));
 
 /**

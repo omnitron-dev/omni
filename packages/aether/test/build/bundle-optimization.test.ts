@@ -3,10 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  BundleOptimizer,
-  CodeSplitter,
-} from '../../src/build/bundle-optimization.js';
+import { BundleOptimizer, CodeSplitter } from '../../src/build/bundle-optimization.js';
 
 describe('BundleOptimizer', () => {
   let optimizer: BundleOptimizer;
@@ -87,9 +84,7 @@ describe('BundleOptimizer', () => {
 
     const result = await optimizer.optimize();
 
-    const vendorChunk = Array.from(result.chunks.values()).find(
-      (c) => c.type === 'vendor',
-    );
+    const vendorChunk = Array.from(result.chunks.values()).find((c) => c.type === 'vendor');
 
     expect(vendorChunk).toBeDefined();
     expect(vendorChunk?.modules.has('node_modules/react/index.js')).toBe(true);
@@ -124,9 +119,7 @@ describe('BundleOptimizer', () => {
 
     const result = await optimizer.optimize();
 
-    const commonChunk = Array.from(result.chunks.values()).find(
-      (c) => c.type === 'common',
-    );
+    const commonChunk = Array.from(result.chunks.values()).find((c) => c.type === 'common');
 
     expect(commonChunk).toBeDefined();
   });
@@ -164,9 +157,7 @@ describe('BundleOptimizer', () => {
 
     const result = await optimizer.optimize();
 
-    const concatenationStep = result.report.steps.find((s) =>
-      s.name.includes('Concatenate'),
-    );
+    const concatenationStep = result.report.steps.find((s) => s.name.includes('Concatenate'));
 
     expect(concatenationStep).toBeDefined();
     expect(concatenationStep?.savings).toBeGreaterThanOrEqual(0);
@@ -183,9 +174,7 @@ describe('BundleOptimizer', () => {
 
     const result = await optimizer.optimize();
 
-    const hoistingStep = result.report.steps.find((s) =>
-      s.name.includes('Scope hoisting'),
-    );
+    const hoistingStep = result.report.steps.find((s) => s.name.includes('Scope hoisting'));
 
     expect(hoistingStep).toBeDefined();
     expect(hoistingStep?.savings).toBeGreaterThanOrEqual(0);

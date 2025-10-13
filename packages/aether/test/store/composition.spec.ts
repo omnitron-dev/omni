@@ -88,9 +88,7 @@ describe('store composition', () => {
       defineStore('test', () => ({ value: signal(1) }));
       defineStore('test', () => ({ value: signal(2) }));
 
-      expect(warnSpy).toHaveBeenCalledWith(
-        "Store 'test' is already registered. Replacing existing store."
-      );
+      expect(warnSpy).toHaveBeenCalledWith("Store 'test' is already registered. Replacing existing store.");
 
       warnSpy.mockRestore();
     });
@@ -214,13 +212,10 @@ describe('store composition', () => {
       useStore('user');
       useStore('settings');
 
-      const derived = deriveStore(
-        { user: 'user', settings: 'settings' },
-        ({ user, settings }) => {
-          const display = computed(() => `${user.name()} - ${settings.theme()}`);
-          return { display };
-        }
-      );
+      const derived = deriveStore({ user: 'user', settings: 'settings' }, ({ user, settings }) => {
+        const display = computed(() => `${user.name()} - ${settings.theme()}`);
+        return { display };
+      });
 
       expect(derived.display()).toBe('John - dark');
     });
@@ -232,13 +227,10 @@ describe('store composition', () => {
       useStore('count1');
       useStore('count2');
 
-      const derived = deriveStore(
-        { c1: 'count1', c2: 'count2' },
-        ({ c1, c2 }) => {
-          const sum = computed(() => c1.value() + c2.value());
-          return { sum };
-        }
-      );
+      const derived = deriveStore({ c1: 'count1', c2: 'count2' }, ({ c1, c2 }) => {
+        const sum = computed(() => c1.value() + c2.value());
+        return { sum };
+      });
 
       expect(derived.sum()).toBe(3);
 
@@ -251,19 +243,13 @@ describe('store composition', () => {
       defineStore('base', () => ({ value: signal(10) }));
       useStore('base');
 
-      const derived1 = deriveStore(
-        { base: 'base' },
-        ({ base }) => ({
-          doubled: computed(() => base.value() * 2),
-        })
-      );
+      const derived1 = deriveStore({ base: 'base' }, ({ base }) => ({
+        doubled: computed(() => base.value() * 2),
+      }));
 
-      const derived2 = deriveStore(
-        { base: 'base' },
-        ({ base }) => ({
-          tripled: computed(() => base.value() * 3),
-        })
-      );
+      const derived2 = deriveStore({ base: 'base' }, ({ base }) => ({
+        tripled: computed(() => base.value() * 3),
+      }));
 
       expect(derived1.doubled()).toBe(20);
       expect(derived2.tripled()).toBe(30);
@@ -494,12 +480,9 @@ describe('store composition', () => {
         doubled: computed(() => base.value() * 2),
       }));
 
-      const level2 = deriveStore(
-        { base: 'base' },
-        ({ base }) => ({
-          tripled: computed(() => base.value() * 3),
-        })
-      );
+      const level2 = deriveStore({ base: 'base' }, ({ base }) => ({
+        tripled: computed(() => base.value() * 3),
+      }));
 
       expect(level1.doubled()).toBe(2);
       expect(level2.tripled()).toBe(3);
@@ -524,17 +507,14 @@ describe('store composition', () => {
       useStore('store1');
       useStore('store2');
 
-      const derived = deriveStore(
-        { s1: 'store1', s2: 'store2' },
-        ({ s1, s2 }) => {
-          const combined = computed(() => {
-            const v1 = s1.value();
-            const v2 = s2.value();
-            return v1 + v2;
-          });
-          return { combined };
-        }
-      );
+      const derived = deriveStore({ s1: 'store1', s2: 'store2' }, ({ s1, s2 }) => {
+        const combined = computed(() => {
+          const v1 = s1.value();
+          const v2 = s2.value();
+          return v1 + v2;
+        });
+        return { combined };
+      });
 
       expect(derived.combined()).toBe(3);
     });

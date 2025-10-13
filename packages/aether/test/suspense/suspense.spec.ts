@@ -135,9 +135,7 @@ describe('Suspense', () => {
     it('should throw error when called outside suspense boundary', () => {
       const promise = Promise.resolve('data');
 
-      expect(() => suspend(promise)).toThrow(
-        'suspend() called outside of a Suspense boundary'
-      );
+      expect(() => suspend(promise)).toThrow('suspend() called outside of a Suspense boundary');
     });
   });
 

@@ -720,9 +720,7 @@ describe('Patching Engine', () => {
     test('handles deeply nested updates', () => {
       const oldVNode = createElementVNode('div', null, [
         createElementVNode('ul', null, [
-          createElementVNode('li', null, [
-            createElementVNode('span', null, [createTextVNode('Deep')]),
-          ]),
+          createElementVNode('li', null, [createElementVNode('span', null, [createTextVNode('Deep')])]),
         ]),
       ]);
       const oldDom = createDOMFromVNode(oldVNode);
@@ -730,9 +728,7 @@ describe('Patching Engine', () => {
 
       const newVNode = createElementVNode('div', null, [
         createElementVNode('ul', null, [
-          createElementVNode('li', null, [
-            createElementVNode('span', null, [createTextVNode('Updated')]),
-          ]),
+          createElementVNode('li', null, [createElementVNode('span', null, [createTextVNode('Updated')])]),
         ]),
       ]);
 
@@ -811,9 +807,7 @@ describe('Patching Engine', () => {
 
   describe('batchPatches()', () => {
     test('returns patches as-is for now', () => {
-      const patches: Patch[] = [
-        { type: PatchType.CREATE, newVNode: createElementVNode('div') },
-      ];
+      const patches: Patch[] = [{ type: PatchType.CREATE, newVNode: createElementVNode('div') }];
 
       const batched = batchPatches(patches);
       expect(batched).toEqual(patches);

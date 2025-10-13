@@ -3,11 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import {
-  CodeSplittingManager,
-  getCodeSplittingManager,
-  lazyRoute,
-} from '../../src/router/code-splitting.js';
+import { CodeSplittingManager, getCodeSplittingManager, lazyRoute } from '../../src/router/code-splitting.js';
 import type { RouteDefinition } from '../../src/router/types.js';
 
 describe('Code Splitting', () => {

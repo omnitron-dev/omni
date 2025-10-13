@@ -5,11 +5,7 @@
  */
 
 import * as ts from 'typescript';
-import type {
-  AnalysisResult,
-  CompilerOptions,
-  TransformPass,
-} from './types.js';
+import type { AnalysisResult, CompilerOptions, TransformPass } from './types.js';
 import { getNodeLocation, isAnyJSXElement, getJSXTagName } from './parser.js';
 
 /**
@@ -125,20 +121,14 @@ const hoistStaticElementsPass: TransformPass = {
         // Look for static JSX elements
         if (isAnyJSXElement(node)) {
           const location = getNodeLocation(node, sourceFile);
-          const staticElement = analysis.staticElements.find(
-            (e) => e.location.line === location.line && e.hoistable
-          );
+          const staticElement = analysis.staticElements.find((e) => e.location.line === location.line && e.hoistable);
 
           if (staticElement && staticElement.cloneable) {
             // Create template variable
             const templateName = `_template_${hoistedTemplates.length}`;
 
             // Create template declaration
-            const templateDecl = createTemplateDeclaration(
-              templateName,
-              node,
-              factory
-            );
+            const templateDecl = createTemplateDeclaration(templateName, node, factory);
             hoistedTemplates.push(templateDecl);
 
             // Replace with template clone
@@ -157,10 +147,7 @@ const hoistStaticElementsPass: TransformPass = {
 
     // Add hoisted templates at the top
     if (hoistedTemplates.length > 0) {
-      transformed = factory.updateSourceFile(transformed, [
-        ...hoistedTemplates,
-        ...transformed.statements,
-      ]);
+      transformed = factory.updateSourceFile(transformed, [...hoistedTemplates, ...transformed.statements]);
     }
 
     return transformed;
@@ -184,11 +171,7 @@ const optimizeSignalsPass: TransformPass = {
         // Optimize signals that are never updated (convert to constants)
         if (ts.isVariableDeclaration(node) && ts.isCallExpression(node.initializer!)) {
           const call = node.initializer;
-          if (
-            ts.isIdentifier(call.expression) &&
-            call.expression.text === 'signal' &&
-            ts.isIdentifier(node.name)
-          ) {
+          if (ts.isIdentifier(call.expression) && call.expression.text === 'signal' && ts.isIdentifier(node.name)) {
             const signalName = node.name.text;
             const signalAnalysis = analysis.signals.find((s) => s.name === signalName);
 
@@ -252,11 +235,9 @@ const batchEffectsPass: TransformPass = {
     }
 
     const transformer = <T extends ts.Node>(context: ts.TransformationContext) => {
-      const visit: ts.Visitor = (node): ts.Node => 
+      const visit: ts.Visitor = (node): ts.Node =>
         // TODO: Implement effect batching logic
-         ts.visitEachChild(node, visit, context)
-      ;
-
+        ts.visitEachChild(node, visit, context);
       return (node: T) => ts.visitNode(node, visit) as T;
     };
 
@@ -400,8 +381,7 @@ function transformJSXElement(
   const tagName = getJSXTagName(node);
 
   // Get attributes
-  const attributes =
-    ts.isJsxElement(node) ? node.openingElement.attributes : node.attributes;
+  const attributes = ts.isJsxElement(node) ? node.openingElement.attributes : node.attributes;
 
   const props = transformJSXAttributes(attributes, factory);
 
@@ -424,24 +404,17 @@ function transformJSXElement(
 
   // Create jsx() call
   const pragma = options.jsx?.pragma || 'jsx';
-  return factory.createCallExpression(
-    factory.createIdentifier(pragma),
-    undefined,
-    [
-      factory.createStringLiteral(tagName),
-      props,
-      ...(children.length > 0 ? children : []),
-    ]
-  );
+  return factory.createCallExpression(factory.createIdentifier(pragma), undefined, [
+    factory.createStringLiteral(tagName),
+    props,
+    ...(children.length > 0 ? children : []),
+  ]);
 }
 
 /**
  * Transform JSX fragment to DOM operations
  */
-function transformJSXFragment(
-  node: ts.JsxFragment,
-  factory: ts.NodeFactory
-): ts.Expression {
+function transformJSXFragment(node: ts.JsxFragment, factory: ts.NodeFactory): ts.Expression {
   // Create Fragment identifier
   return factory.createIdentifier('Fragment');
 }
@@ -449,10 +422,7 @@ function transformJSXFragment(
 /**
  * Transform JSX attributes to props object
  */
-function transformJSXAttributes(
-  attributes: ts.JsxAttributes,
-  factory: ts.NodeFactory
-): ts.Expression {
+function transformJSXAttributes(attributes: ts.JsxAttributes, factory: ts.NodeFactory): ts.Expression {
   const properties: ts.ObjectLiteralElementLike[] = [];
 
   for (const attr of attributes.properties) {
@@ -468,9 +438,7 @@ function transformJSXAttributes(
         }
       }
 
-      properties.push(
-        factory.createPropertyAssignment(factory.createIdentifier(name), value)
-      );
+      properties.push(factory.createPropertyAssignment(factory.createIdentifier(name), value));
     } else if (ts.isJsxSpreadAttribute(attr)) {
       properties.push(factory.createSpreadAssignment(attr.expression));
     }
@@ -486,11 +454,7 @@ function transformJSXAttributes(
 /**
  * Create template declaration for hoisting
  */
-function createTemplateDeclaration(
-  name: string,
-  node: ts.Node,
-  factory: ts.NodeFactory
-): ts.Statement {
+function createTemplateDeclaration(name: string, node: ts.Node, factory: ts.NodeFactory): ts.Statement {
   // Create: const _template = document.createElement('template');
   const createTemplate = factory.createVariableStatement(
     undefined,
@@ -520,10 +484,7 @@ function createTemplateDeclaration(
 /**
  * Create template clone expression
  */
-function createTemplateClone(
-  templateName: string,
-  factory: ts.NodeFactory
-): ts.Expression {
+function createTemplateClone(templateName: string, factory: ts.NodeFactory): ts.Expression {
   // Return: _template.content.cloneNode(true)
   return factory.createCallExpression(
     factory.createPropertyAccessExpression(
@@ -555,11 +516,7 @@ function createTemplateClone(
  */
 export function createTransformPass(
   name: string,
-  transformFn: (
-    sourceFile: ts.SourceFile,
-    analysis: AnalysisResult,
-    options: CompilerOptions
-  ) => ts.SourceFile
+  transformFn: (sourceFile: ts.SourceFile, analysis: AnalysisResult, options: CompilerOptions) => ts.SourceFile
 ): TransformPass {
   return {
     name,

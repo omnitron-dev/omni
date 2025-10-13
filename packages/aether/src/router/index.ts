@@ -44,13 +44,29 @@ export { createRouter, getRouter, setRouter } from './router.js';
 export { parseRoutePattern, matchRoute, findBestMatch, buildPath, normalizePath } from './route-matcher.js';
 
 // Hooks
-export { useRouter, useParams, useNavigate, useLocation, useSearchParams, useIsActive } from './hooks.js';
+export {
+  useRouter,
+  useParams,
+  useNavigate,
+  useLocation,
+  useSearchParams,
+  useIsActive,
+  useMatches,
+  useRevalidator,
+  useSubmit,
+  useFormAction,
+  useBlocker,
+  usePrompt,
+} from './hooks.js';
+export type { Revalidator, SubmitOptions, BlockerFunction, Blocker } from './hooks.js';
 
 // Components
 export { Link } from './Link.js';
 export type { LinkProps } from './Link.js';
 export { RouterView } from './RouterView.js';
 export type { RouterProps } from './RouterView.js';
+export { Form } from './Form.js';
+export type { FormProps } from './Form.js';
 
 // Layouts
 export { Outlet, RouteContextSymbol, useRouteContext } from './Outlet.js';

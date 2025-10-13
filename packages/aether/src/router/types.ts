@@ -64,6 +64,8 @@ export interface GuardContext {
   params: RouteParams;
   url: URL;
   from?: string;
+  meta?: RouteMeta;
+  query?: Record<string, string>;
 }
 
 /**

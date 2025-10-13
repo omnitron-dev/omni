@@ -85,13 +85,36 @@ export function createRouter(config: RouterConfig = {}): Router {
 
     // Run before guards
     const previousMatch = currentMatch();
-    for (const guard of beforeGuards) {
-      if (match) {
-        const result = await guard({
+    const guardContext = match
+      ? {
           params: match.params,
           url,
           from: previousMatch?.path,
-        });
+          meta: match.route.meta,
+          query: Object.fromEntries(url.searchParams.entries()),
+        }
+      : null;
+
+    // Execute global guards
+    for (const guard of beforeGuards) {
+      if (guardContext) {
+        const result = await guard(guardContext);
+
+        if (result === false) {
+          return undefined; // Navigation cancelled
+        }
+
+        if (typeof result === 'object' && 'redirect' in result) {
+          // Redirect to different location
+          return navigate(result.redirect, { replace: true });
+        }
+      }
+    }
+
+    // Execute route-level guards if defined
+    if (match?.route.guards && guardContext) {
+      for (const guard of match.route.guards) {
+        const result = await guard(guardContext);
 
         if (result === false) {
           return undefined; // Navigation cancelled

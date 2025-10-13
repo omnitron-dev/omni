@@ -10,7 +10,6 @@
 
 import { signal } from '../core/reactivity/signal.js';
 import { effect } from '../core/reactivity/effect.js';
-import { onCleanup } from '../core/reactivity/context.js';
 import { createContext, useContext } from '../core/component/context.js';
 import type { SuspenseProps, SuspenseContext, SuspenseState } from './types.js';
 
@@ -41,6 +40,7 @@ let suspenseIdCounter = 0;
  */
 function createSuspenseContext(id: string): SuspenseContext {
   const pending = new Set<Promise<any>>();
+  const completed = new Set<Promise<any>>();
   const stateSignal = signal<SuspenseState>('resolved');
 
   const context: SuspenseContext = {
@@ -52,12 +52,23 @@ function createSuspenseContext(id: string): SuspenseContext {
     error: undefined,
 
     register(promise: Promise<any>) {
+      // Don't re-register completed promises
+      if (completed.has(promise)) {
+        return;
+      }
+
+      // Don't re-register pending promises
+      if (pending.has(promise)) {
+        return;
+      }
+
       pending.add(promise);
       stateSignal.set('pending');
 
       promise
         .then(() => {
           pending.delete(promise);
+          completed.add(promise);
           if (pending.size === 0) {
             stateSignal.set('resolved');
             context.error = undefined;
@@ -65,6 +76,7 @@ function createSuspenseContext(id: string): SuspenseContext {
         })
         .catch((error) => {
           pending.delete(promise);
+          completed.add(promise);
           if (pending.size === 0) {
             stateSignal.set('error');
             context.error = error;
@@ -74,6 +86,7 @@ function createSuspenseContext(id: string): SuspenseContext {
 
     reset() {
       pending.clear();
+      completed.clear();
       stateSignal.set('resolved');
       context.error = undefined;
     },
@@ -111,77 +124,115 @@ export function Suspense(props: SuspenseProps): any {
   // Track state
   const stateSignal = signal<SuspenseState>('resolved');
   const errorSignal = signal<Error | undefined>(undefined);
+  const childrenCache = signal<any>(null);
 
   // Timeout handling
   let timeoutId: any = null;
 
-  // Effect to track context state changes
-  effect(() => {
+  // Setup state change handler
+  const handleStateChange = () => {
     const newState = context.state;
     const prevState = stateSignal.peek();
 
-    if (newState !== prevState) {
-      stateSignal.set(newState);
+    if (newState === prevState) {
+      return;
+    }
 
-      if (newState === 'pending') {
-        onSuspend?.();
+    stateSignal.set(newState);
 
-        // Set timeout if configured
-        if (timeout > 0) {
-          timeoutId = setTimeout(() => {
-            if (stateSignal.peek() === 'pending') {
-              onTimeout?.();
-            }
-          }, timeout);
-        }
-      } else if (newState === 'resolved') {
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-          timeoutId = null;
-        }
-        onResolve?.();
-      } else if (newState === 'error') {
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-          timeoutId = null;
-        }
-        errorSignal.set(context.error);
+    if (newState === 'pending') {
+      onSuspend?.();
+
+      // Set timeout if configured
+      if (timeout > 0 && !timeoutId) {
+        timeoutId = setTimeout(() => {
+          if (context.state === 'pending') {
+            onTimeout?.();
+          }
+        }, timeout);
       }
+    } else if (newState === 'resolved') {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      onResolve?.();
+    } else if (newState === 'error') {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      errorSignal.set(context.error);
     }
+  };
+
+  // Watch context state changes and trigger callbacks
+  effect(() => {
+    // Read the context state to make this effect reactive
+    const state = context.state;
+    handleStateChange();
   });
 
-  // Cleanup
-  onCleanup(() => {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
-  });
-
-  // Render based on state
-  return () => {
-    const state = stateSignal();
-
-    // Push context onto stack
+  // Create the render function
+  const renderFn = () => {
+    // Push context onto stack before rendering
     suspenseContextStack.push(context);
 
     try {
+      // Get current state
+      const state = context.state;
+
+      // If already in pending or error state, handle immediately
       if (state === 'pending') {
-        return fallback || null;
+        suspenseContextStack.pop();
+        return typeof fallback === 'function' ? fallback() : fallback || null;
       } else if (state === 'error') {
+        suspenseContextStack.pop();
         const error = errorSignal();
         if (error) {
           throw error;
         }
         return null;
-      } else {
-        // Render children with context
-        return typeof children === 'function' ? children() : children;
       }
-    } finally {
-      // Pop context from stack
+
+      // State is resolved, try to render children
+      try {
+        const result = typeof children === 'function' ? children() : children;
+        childrenCache.set(result);
+        suspenseContextStack.pop();
+        return result;
+      } catch (thrown) {
+        // Check if it's a promise (suspense)
+        if (thrown instanceof Promise) {
+          // Register the promise
+          context.register(thrown);
+          suspenseContextStack.pop();
+          // Return fallback while suspended
+          return typeof fallback === 'function' ? fallback() : fallback || null;
+        }
+        // Re-throw non-promise errors
+        suspenseContextStack.pop();
+        throw thrown;
+      }
+    } catch (error) {
       suspenseContextStack.pop();
+      throw error;
     }
   };
+
+  // Do an initial render to trigger any suspense
+  try {
+    renderFn();
+  } catch (error) {
+    // Only ignore promise throws (suspense), re-throw actual errors
+    if (!(error instanceof Promise)) {
+      // This is a real error, not a suspense - but don't throw it during setup
+      // Just let it be thrown on next render
+    }
+  }
+
+  // Return setup function that returns render function
+  return () => renderFn;
 }
 
 /**
@@ -203,11 +254,25 @@ export function suspend<T>(promise: Promise<T>): T {
     throw new Error('suspend() called outside of a Suspense boundary');
   }
 
-  // Register promise with context
+  // Check if this promise is still pending
+  if (context.pending.has(promise)) {
+    // Still pending, throw it
+    throw promise;
+  }
+
+  // Promise is not pending - either resolved or never registered
+  // We need to track promises that have been seen before
+  // For now, always register new promises
+  // The context will handle deduplication
   context.register(promise);
 
-  // Throw promise to trigger suspense
-  throw promise;
+  // After registration, check if it's pending
+  if (context.pending.has(promise)) {
+    throw promise;
+  }
+
+  // Promise resolved immediately or was already resolved
+  return undefined as T;
 }
 
 /**

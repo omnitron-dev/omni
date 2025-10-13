@@ -78,28 +78,42 @@ export interface RouteFile {
  * - (group)/page.tsx -> /page (route groups)
  */
 export function filePathToRoutePath(filePath: string): string {
-  // Remove routes/ prefix and file extension
+  // Remove routes/ prefix
   let path = filePath
     .replace(/^routes\//, '')
-    .replace(/^src\/routes\//, '')
-    .replace(/\/(index|page|\+page)\.(tsx?|jsx?)$/, '')
-    .replace(/\/_?(layout|error|loading|middleware|\+\w+)\.(tsx?|jsx?)$/, '');
+    .replace(/^src\/routes\//, '');
 
   // Handle route groups - remove from path but track
   path = path.replace(/\/?\([^)]+\)\/?/g, '/');
 
-  // Handle index at root
-  if (!path || path === '/') {
+  // Check if it's an index/page file at root
+  if (path === 'index.tsx' || path === 'index.ts' ||
+      path === 'page.tsx' || path === 'page.ts' ||
+      path === '+page.tsx' || path === '+page.ts') {
+    return '/';
+  }
+
+  // Remove file extensions and special files
+  path = path
+    .replace(/\/(index|page|\+page)\.(tsx?|jsx?)$/, '')
+    .replace(/\/_?(layout|error|loading|middleware|\+\w+)\.(tsx?|jsx?)$/, '');
+
+  // Handle index at root after removals
+  if (!path || path === '/' || path === '') {
     return '/';
   }
 
   // Convert Next.js dynamic routes to standard format
   // [id] -> :id
-  path = path.replace(/\[([^\]]+)\]/g, (match, param) => {
+  path = path.replace(/\[\[([^\]]+)\]\]/g, (_, param) => {
     // Optional catch-all: [[...slug]] -> *slug?
-    if (param.startsWith('...') && match.startsWith('[[')) {
+    if (param.startsWith('...')) {
       return `*${param.slice(3)}?`;
     }
+    return `*${param}?`;
+  });
+
+  path = path.replace(/\[([^\]]+)\]/g, (_, param) => {
     // Catch-all: [...slug] -> *slug
     if (param.startsWith('...')) {
       return `*${param.slice(3)}`;
@@ -200,14 +214,26 @@ export function scanRouteFiles(files: string[], conventions = DEFAULT_CONVENTION
     // Check if it's an API route
     const isApi = filePath.includes('/api/') || filePath.startsWith('routes/api/');
 
-    // Skip non-route files
+    // Skip non-route files that start with underscore
     if (fileName.startsWith('_') && !fileName.match(/^_(layout|error|loading|middleware|404)/)) {
       continue;
     }
 
-    const fileType = getFileType(fileName, conventions);
+    // Skip non-TypeScript/JavaScript files
+    if (!fileName.match(/\.(tsx?|jsx?)$/)) {
+      continue;
+    }
+
+    let fileType = getFileType(fileName, conventions);
+
+    // Skip files that don't match any known pattern and aren't API routes
     if (!fileType && !isApi) {
       continue;
+    }
+
+    // If it's an API route without a specific type, mark it as 'api'
+    if (!fileType && isApi) {
+      fileType = 'api';
     }
 
     // Extract route group information

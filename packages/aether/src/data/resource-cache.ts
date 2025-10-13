@@ -57,14 +57,16 @@ export function createCachedResource<T>(
   } = options;
 
   const cache = getCacheManager();
-  let cacheKey = '';
   let refetchCounter = 0;
+
+  // Initialize cache key early (important for SWR)
+  let cacheKey = keyFn ? keyFn() : generateCacheKey(name, [refetchCounter]);
 
   /**
    * Wrapped fetcher with caching logic
    */
   const wrappedFetcher = async (): Promise<T> => {
-    // Generate cache key (includes dependencies from reactive tracking)
+    // Update cache key (includes dependencies from reactive tracking)
     cacheKey = keyFn ? keyFn() : generateCacheKey(name, [refetchCounter]);
 
     // Check cache first
@@ -181,13 +183,11 @@ export function createCachedResource<T>(
       ? (updater as (prev: T | undefined) => T)(current)
       : updater;
 
-    // Generate new cache key for the mutation
-    refetchCounter++;
-    const key = keyFn ? keyFn() : generateCacheKey(name, [refetchCounter]);
-
-    // Update cache FIRST with the new data
-    cache.set(key, newData, ttl);
-    cacheKey = key;
+    // Update cache with the new data using CURRENT key
+    // This ensures immediate update without changing the cache key
+    const currentKey = cacheKey || (keyFn ? keyFn() : generateCacheKey(name, [refetchCounter]));
+    cache.set(currentKey, newData, ttl);
+    cacheKey = currentKey;
 
     // Trigger refetch to update resource signal with the cached data
     // This will read from cache immediately since we just set it
@@ -352,8 +352,8 @@ export async function preloadCachedResource<T>(
   const { name = 'anonymous', ttl = Infinity, key: keyFn } = options;
   const cache = getCacheManager();
 
-  // Generate cache key
-  const cacheKey = keyFn ? keyFn() : generateCacheKey(name, []);
+  // Generate cache key (use [0] to match initial refetchCounter in createCachedResource)
+  const cacheKey = keyFn ? keyFn() : generateCacheKey(name, [0]);
 
   // Check if already cached
   const cached = cache.get<T>(cacheKey);

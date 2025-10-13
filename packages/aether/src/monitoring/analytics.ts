@@ -79,13 +79,6 @@ export class Analytics {
    * Track page views automatically
    */
   private trackPageViewsAutomatically(): void {
-    // Initial page view
-    this.trackPageView({
-      url: window.location.href,
-      title: document.title,
-      referrer: document.referrer,
-    });
-
     // Track navigation
     const originalPushState = history.pushState;
     const originalReplaceState = history.replaceState;
@@ -179,6 +172,9 @@ export class Analytics {
 
     if (this.sessionInfo) {
       this.sessionInfo.pageViews++;
+      // Decrement events count as page views are tracked separately
+      // This prevents double-counting since trackEvent increments it
+      this.sessionInfo.events--;
     }
 
     // Track as event

@@ -9,6 +9,7 @@ import { signal } from '../core/reactivity/signal.js';
 import { onCleanup } from '../core/reactivity/context.js';
 import { createContext, useContext } from '../core/component/context.js';
 import type { ErrorBoundaryProps, ErrorInfo } from './types.js';
+import { Suspense } from './suspense.js';
 
 /**
  * Error boundary context
@@ -120,36 +121,40 @@ export function ErrorBoundary(props: ErrorBoundaryProps): any {
     errorInfoSignal.set(null);
   });
 
-  // Render
+  // Return setup function that returns render function
   return () => {
-    const error = errorSignal();
+    // This is the setup/component function
+    return () => {
+      // This is the render function
+      const error = errorSignal();
 
-    if (error) {
-      // Render fallback
-      if (typeof fallback === 'function') {
-        return fallback(error, () => context.reset());
-      } else {
-        return fallback;
+      if (error) {
+        // Render fallback
+        if (typeof fallback === 'function') {
+          return fallback(error, () => context.reset());
+        } else {
+          return fallback;
+        }
       }
-    }
 
-    // Wrap children in error boundary context
-    try {
-      return typeof children === 'function' ? children() : children;
-    } catch (err) {
-      // Catch synchronous errors
-      const errorObj = err as Error;
-      context.reportError(errorObj, {
-        componentStack: new Error().stack,
-      });
+      // Wrap children in error boundary context
+      try {
+        return typeof children === 'function' ? children() : children;
+      } catch (err) {
+        // Catch synchronous errors
+        const errorObj = err as Error;
+        context.reportError(errorObj, {
+          componentStack: new Error().stack,
+        });
 
-      // Render fallback
-      if (typeof fallback === 'function') {
-        return fallback(errorObj, () => context.reset());
-      } else {
-        return fallback;
+        // Render fallback
+        if (typeof fallback === 'function') {
+          return fallback(errorObj, () => context.reset());
+        } else {
+          return fallback;
+        }
       }
-    }
+    };
   };
 }
 
@@ -232,29 +237,25 @@ export function Boundary(props: {
     suspenseTimeout,
   } = props;
 
-  // Import Suspense dynamically to avoid circular dependency
-  // Note: This is a lazy import that happens at runtime
-  let SuspenseComponent: any;
+  // Compose ErrorBoundary and Suspense
+  const errorBoundary = ErrorBoundary({
+    fallback: errorFallback,
+    onError,
+    children: () => {
+      const suspense = Suspense({
+        fallback,
+        onSuspend,
+        onResolve,
+        timeout: suspenseTimeout,
+        children,
+      });
+      // Suspense returns setup function, call it to get render function
+      return suspense();
+    },
+  });
 
-  return () => {
-    if (!SuspenseComponent) {
-      // Dynamic import at runtime
-      SuspenseComponent = require('./suspense.js').Suspense;
-    }
-
-    return ErrorBoundary({
-      fallback: errorFallback,
-      onError,
-      children: () =>
-        SuspenseComponent({
-          fallback,
-          onSuspend,
-          onResolve,
-          timeout: suspenseTimeout,
-          children,
-        })(),
-    })();
-  };
+  // ErrorBoundary returns setup function, so return it directly
+  return errorBoundary;
 }
 
 /**

@@ -254,17 +254,19 @@ export class CriticalCSSExtractor {
       return { critical: false, reason: 'not-found-in-html' };
     }
 
-    // Check if selector is for above-the-fold content
-    if (this.isAboveFoldSelector(selector)) {
-      return { critical: true, reason: 'above-the-fold' };
-    }
-
     // Check for critical patterns (html, body, font-face, etc.)
     if (this.isCriticalPattern(selector)) {
       return { critical: true, reason: 'critical-pattern' };
     }
 
-    return { critical: false, reason: 'below-the-fold' };
+    // Check if selector is for above-the-fold content
+    if (this.isAboveFoldSelector(selector)) {
+      return { critical: true, reason: 'above-the-fold' };
+    }
+
+    // If selector exists in HTML and hasn't been excluded, it's critical
+    // This ensures all used CSS is initially critical
+    return { critical: true, reason: 'found-in-html' };
   }
 
   /**

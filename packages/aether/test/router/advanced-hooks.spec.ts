@@ -89,19 +89,26 @@ describe('Advanced Router Hooks', () => {
       const router = createRouter({
         mode: 'memory',
         routes: [
-          { path: '/' },
+          { path: '/home' },
           { path: '/about' },
+          { path: '/contact' },
         ],
       });
       setRouter(router);
 
-      await router.navigate('/');
+      // Navigate to establish a known state
+      await router.navigate('/home');
+
       const matches = useMatches();
 
-      expect(matches()[0]?.path).toBe('/');
+      // Check that it shows /home
+      expect(matches()[0]?.path).toBe('/home');
 
       await router.navigate('/about');
       expect(matches()[0]?.path).toBe('/about');
+
+      await router.navigate('/contact');
+      expect(matches()[0]?.path).toBe('/contact');
     });
   });
 
@@ -379,23 +386,21 @@ describe('Advanced Router Hooks', () => {
       });
       setRouter(router);
 
-      await router.navigate('/');
+      await router.ready();
 
       const blocker = useBlocker(true);
 
-      // Try to navigate
-      const promise = router.navigate('/about');
-      await promise;
+      await router.navigate('/');
 
+      // Try to navigate - should be blocked
+      await router.navigate('/about');
       expect(blocker.state).toBe('blocked');
 
       // Proceed with navigation
-      blocker.proceed();
-
-      // Wait for navigation
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await blocker.proceed();
 
       expect(router.current.pathname).toBe('/about');
+      expect(blocker.state).toBe('unblocked');
     });
 
     it('should reset blocker state', async () => {
@@ -429,21 +434,25 @@ describe('Advanced Router Hooks', () => {
       });
       setRouter(router);
 
-      await router.navigate('/');
+      await router.ready();
 
       let shouldBlock = false;
       const blocker = useBlocker(({ currentLocation, nextLocation }) => {
         return shouldBlock && currentLocation.pathname !== nextLocation.pathname;
       });
 
-      // First navigation - not blocked
+      // First navigation to /about - not blocked
       shouldBlock = false;
       await router.navigate('/about');
       expect(blocker.state).toBe('unblocked');
 
-      // Second navigation - blocked
-      shouldBlock = true;
+      // Go back to / first so we have a different starting point
       await router.navigate('/');
+      expect(blocker.state).toBe('unblocked');
+
+      // Second navigation back to /about - blocked
+      shouldBlock = true;
+      await router.navigate('/about');
       expect(blocker.state).toBe('blocked');
     });
   });
@@ -501,13 +510,13 @@ describe('Advanced Router Hooks', () => {
       const router = createRouter({
         mode: 'memory',
         routes: [
-          { path: '/' },
+          { path: '/home' },
           { path: '/about' },
         ],
       });
       setRouter(router);
 
-      await router.navigate('/');
+      await router.navigate('/home');
 
       let hasUnsavedChanges = false;
       usePrompt({
@@ -516,14 +525,15 @@ describe('Advanced Router Hooks', () => {
       });
 
       // No unsaved changes - should not prompt
+      hasUnsavedChanges = false;
       await router.navigate('/about');
       expect(confirmSpy).not.toHaveBeenCalled();
 
       // Has unsaved changes - should prompt
       hasUnsavedChanges = true;
-      await router.navigate('/');
+      await router.navigate('/home');
 
-      // Wait for effect
+      // Wait for blocker state change and effect to execute
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       expect(confirmSpy).toHaveBeenCalled();

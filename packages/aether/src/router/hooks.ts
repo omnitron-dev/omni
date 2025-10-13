@@ -319,7 +319,7 @@ export type BlockerFunction = (args: {
  */
 export interface Blocker {
   state: 'blocked' | 'proceeding' | 'unblocked';
-  proceed: () => void;
+  proceed: () => Promise<void>;
   reset: () => void;
 }
 
@@ -352,6 +352,11 @@ export function useBlocker(shouldBlock: boolean | BlockerFunction): Blocker {
 
   // Register blocker with router
   const unregister = router.beforeEach(async (context) => {
+    // Skip blocking if in proceeding state
+    if (state() === 'proceeding') {
+      return true;
+    }
+
     const currentLocation = router.current;
     const next = {
       pathname: context.url.pathname,
@@ -375,11 +380,6 @@ export function useBlocker(shouldBlock: boolean | BlockerFunction): Blocker {
       return false; // Block navigation
     }
 
-    if (state() === 'proceeding') {
-      state.set('unblocked');
-      return true; // Allow navigation
-    }
-
     return true;
   });
 
@@ -390,11 +390,13 @@ export function useBlocker(shouldBlock: boolean | BlockerFunction): Blocker {
     get state() {
       return state();
     },
-    proceed: () => {
-      state.set('proceeding');
+    proceed: async () => {
       const next = nextLocation();
       if (next) {
-        router.navigate(next);
+        state.set('proceeding');
+        await router.navigate(next);
+        state.set('unblocked');
+        nextLocation.set(null);
       }
     },
     reset: () => {

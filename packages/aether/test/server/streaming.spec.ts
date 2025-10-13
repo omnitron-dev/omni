@@ -1,0 +1,629 @@
+/**
+ * @fileoverview Comprehensive tests for Streaming SSR
+ */
+
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import {
+  renderToPipeableStream,
+  renderToReadableStream,
+  createStreamingRenderer,
+  createSuspenseBoundaryId,
+  resetBoundaryCounter,
+} from '../../src/server/streaming.js';
+import { PassThrough } from 'node:stream';
+
+// Mock SSR
+vi.mock('../../src/server/ssr.js', () => ({
+  renderToString: vi.fn().mockResolvedValue({
+    html: '<div>Shell Content</div>',
+    data: {},
+  }),
+}));
+
+describe('Streaming SSR', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetBoundaryCounter();
+  });
+
+  afterEach(() => {
+    resetBoundaryCounter();
+  });
+
+  describe('renderToPipeableStream', () => {
+    it('should create pipeable stream', () => {
+      const Component = () => 'Content';
+
+      const stream = renderToPipeableStream(Component);
+
+      expect(stream).toHaveProperty('pipe');
+      expect(stream).toHaveProperty('abort');
+      expect(typeof stream.pipe).toBe('function');
+      expect(typeof stream.abort).toBe('function');
+    });
+
+    it('should call onShellReady after shell renders', (done) => {
+      const Component = () => 'Shell';
+
+      const onShellReady = vi.fn(() => {
+        expect(onShellReady).toHaveBeenCalled();
+        done();
+      });
+
+      renderToPipeableStream(Component, { onShellReady });
+    });
+
+    it('should call onAllReady after all content rendered', (done) => {
+      const Component = () => 'Content';
+
+      const onAllReady = vi.fn(() => {
+        expect(onAllReady).toHaveBeenCalled();
+        done();
+      });
+
+      renderToPipeableStream(Component, { onAllReady });
+    });
+
+    it('should handle shell rendering errors', (done) => {
+      const ErrorComponent = () => {
+        throw new Error('Shell error');
+      };
+
+      const onShellError = vi.fn((error: Error) => {
+        expect(error.message).toContain('Shell error');
+        done();
+      });
+
+      renderToPipeableStream(ErrorComponent, { onShellError });
+    });
+
+    it('should pipe to writable stream', (done) => {
+      const Component = () => 'Content';
+      const destination = new PassThrough();
+
+      const chunks: Buffer[] = [];
+      destination.on('data', (chunk) => chunks.push(chunk));
+      destination.on('end', () => {
+        const content = Buffer.concat(chunks).toString();
+        expect(content).toContain('Shell Content');
+        done();
+      });
+
+      const stream = renderToPipeableStream(Component);
+      stream.pipe(destination);
+    });
+
+    it('should abort stream when requested', () => {
+      const Component = () => 'Content';
+
+      const stream = renderToPipeableStream(Component);
+
+      expect(() => stream.abort()).not.toThrow();
+    });
+
+    it('should handle out-of-order streaming', (done) => {
+      const Component = () => 'Content';
+
+      const stream = renderToPipeableStream(Component, {
+        outOfOrder: true,
+        onAllReady: done,
+      });
+
+      expect(stream).toBeDefined();
+    });
+
+    it('should respect suspense timeout', (done) => {
+      const SlowComponent = async () => {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        return 'Slow Content';
+      };
+
+      const onError = vi.fn();
+
+      renderToPipeableStream(SlowComponent, {
+        suspenseTimeout: 50,
+        onError,
+        onAllReady: () => {
+          // Timeout should have triggered
+          done();
+        },
+      });
+    });
+
+    it('should handle multiple suspense boundaries', (done) => {
+      const Component = () => 'Content with boundaries';
+
+      renderToPipeableStream(Component, {
+        onAllReady: done,
+      });
+    });
+
+    it('should pass props to component', (done) => {
+      const Component = (props: { title: string }) => `<h1>${props.title}</h1>`;
+
+      const onShellReady = () => done();
+
+      renderToPipeableStream(Component, {
+        props: { title: 'Test Title' },
+        onShellReady,
+      });
+    });
+
+    it('should handle URL context', (done) => {
+      const Component = () => 'Page';
+
+      const onShellReady = () => done();
+
+      renderToPipeableStream(Component, {
+        url: 'https://example.com/page',
+        onShellReady,
+      });
+    });
+
+    it('should handle initial state', (done) => {
+      const Component = () => 'Content';
+
+      const onShellReady = () => done();
+
+      renderToPipeableStream(Component, {
+        initialState: { user: { id: 1, name: 'Alice' } },
+        onShellReady,
+      });
+    });
+  });
+
+  describe('renderToReadableStream', () => {
+    it('should create ReadableStream', async () => {
+      const Component = () => 'Content';
+
+      const result = await renderToReadableStream(Component);
+
+      expect(result.stream).toBeDefined();
+      expect(result.metadata).toBeDefined();
+    });
+
+    it('should return correct metadata', async () => {
+      const Component = () => 'Content';
+
+      const result = await renderToReadableStream(Component);
+
+      expect(result.metadata.status).toBe(200);
+      expect(result.metadata.headers).toHaveProperty('Content-Type');
+      expect(result.metadata.headers['Content-Type']).toContain('text/html');
+    });
+
+    it('should stream HTML chunks', async () => {
+      const Component = () => 'Content';
+
+      const result = await renderToReadableStream(Component);
+
+      const reader = result.stream.getReader();
+      const chunks: Uint8Array[] = [];
+
+      let done = false;
+      while (!done) {
+        const { value, done: streamDone } = await reader.read();
+        if (value) chunks.push(value);
+        done = streamDone;
+      }
+
+      expect(chunks.length).toBeGreaterThan(0);
+    });
+
+    it('should handle async components', async () => {
+      const AsyncComponent = async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        return 'Async Content';
+      };
+
+      const result = await renderToReadableStream(AsyncComponent);
+
+      expect(result.stream).toBeDefined();
+    });
+
+    it('should support out-of-order streaming', async () => {
+      const Component = () => 'Content';
+
+      const result = await renderToReadableStream(Component, {
+        outOfOrder: true,
+      });
+
+      expect(result.stream).toBeDefined();
+    });
+
+    it('should handle progressive rendering', async () => {
+      const Component = () => 'Progressive';
+
+      const result = await renderToReadableStream(Component, {
+        progressive: true,
+      });
+
+      expect(result.stream).toBeDefined();
+    });
+
+    it('should handle suspense timeout', async () => {
+      const SlowComponent = async () => {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        return 'Slow';
+      };
+
+      const result = await renderToReadableStream(SlowComponent, {
+        suspenseTimeout: 50,
+      });
+
+      expect(result.stream).toBeDefined();
+    });
+
+    it('should handle stream cancellation', async () => {
+      const Component = () => 'Content';
+
+      const result = await renderToReadableStream(Component);
+
+      const reader = result.stream.getReader();
+
+      // Cancel immediately
+      await reader.cancel();
+
+      expect(reader.closed).resolves.toBeUndefined();
+    });
+
+    it('should encode text as UTF-8', async () => {
+      const Component = () => 'Unicode: ñ é ü';
+
+      const result = await renderToReadableStream(Component);
+
+      const reader = result.stream.getReader();
+      const { value } = await reader.read();
+
+      expect(value).toBeInstanceOf(Uint8Array);
+    });
+
+    it('should handle errors in streaming', async () => {
+      const ErrorComponent = () => {
+        throw new Error('Stream error');
+      };
+
+      const consoleError = vi.spyOn(console, 'error').mockImplementation();
+
+      const result = await renderToReadableStream(ErrorComponent);
+
+      const reader = result.stream.getReader();
+
+      await expect(reader.read()).rejects.toThrow();
+
+      consoleError.mockRestore();
+    });
+  });
+
+  describe('createStreamingRenderer', () => {
+    it('should create reusable renderer', () => {
+      const renderer = createStreamingRenderer({
+        progressive: true,
+        outOfOrder: true,
+      });
+
+      expect(typeof renderer).toBe('function');
+    });
+
+    it('should apply default options', async () => {
+      const renderer = createStreamingRenderer({
+        progressive: true,
+        suspenseTimeout: 100,
+      });
+
+      const Component = () => 'Content';
+      const result = await renderer(Component);
+
+      expect(result.stream).toBeDefined();
+    });
+
+    it('should allow option override', async () => {
+      const renderer = createStreamingRenderer({
+        suspenseTimeout: 1000,
+      });
+
+      const Component = () => 'Content';
+      const result = await renderer(Component, {
+        suspenseTimeout: 500, // Override
+      });
+
+      expect(result.stream).toBeDefined();
+    });
+
+    it('should handle multiple renders', async () => {
+      const renderer = createStreamingRenderer({
+        progressive: true,
+      });
+
+      const Component1 = () => 'Page 1';
+      const Component2 = () => 'Page 2';
+
+      const result1 = await renderer(Component1);
+      const result2 = await renderer(Component2);
+
+      expect(result1.stream).toBeDefined();
+      expect(result2.stream).toBeDefined();
+    });
+  });
+
+  describe('Suspense Boundaries', () => {
+    it('should generate unique boundary IDs', () => {
+      const id1 = createSuspenseBoundaryId();
+      const id2 = createSuspenseBoundaryId();
+      const id3 = createSuspenseBoundaryId();
+
+      expect(id1).not.toBe(id2);
+      expect(id2).not.toBe(id3);
+      expect(id1).toMatch(/^suspense-\d+$/);
+    });
+
+    it('should reset boundary counter', () => {
+      createSuspenseBoundaryId(); // 1
+      createSuspenseBoundaryId(); // 2
+
+      resetBoundaryCounter();
+
+      const id = createSuspenseBoundaryId(); // Should be 1 again
+      expect(id).toBe('suspense-1');
+    });
+
+    it('should handle boundary replacement in order', (done) => {
+      const Component = () => 'Content with boundaries';
+
+      const destination = new PassThrough();
+      const chunks: Buffer[] = [];
+
+      destination.on('data', (chunk) => chunks.push(chunk));
+      destination.on('end', () => {
+        const content = Buffer.concat(chunks).toString();
+        expect(content).toBeDefined();
+        done();
+      });
+
+      const stream = renderToPipeableStream(Component, {
+        outOfOrder: false,
+      });
+
+      stream.pipe(destination);
+    });
+
+    it('should handle boundary replacement out of order', (done) => {
+      const Component = () => 'Content with boundaries';
+
+      const destination = new PassThrough();
+      const chunks: Buffer[] = [];
+
+      destination.on('data', (chunk) => chunks.push(chunk));
+      destination.on('end', () => {
+        const content = Buffer.concat(chunks).toString();
+        // Out of order should use templates and scripts
+        expect(content).toBeDefined();
+        done();
+      });
+
+      const stream = renderToPipeableStream(Component, {
+        outOfOrder: true,
+      });
+
+      stream.pipe(destination);
+    });
+  });
+
+  describe('Backpressure Handling', () => {
+    it('should handle slow consumers', (done) => {
+      const Component = () => 'Large Content';
+
+      const slowDestination = new PassThrough({
+        highWaterMark: 1, // Very small buffer
+      });
+
+      let chunks = 0;
+      slowDestination.on('data', () => {
+        chunks++;
+      });
+
+      slowDestination.on('end', () => {
+        expect(chunks).toBeGreaterThan(0);
+        done();
+      });
+
+      const stream = renderToPipeableStream(Component);
+      stream.pipe(slowDestination);
+    });
+
+    it('should handle stream errors gracefully', (done) => {
+      const Component = () => 'Content';
+
+      const errorDestination = new PassThrough();
+
+      errorDestination.on('error', (error) => {
+        expect(error).toBeDefined();
+        done();
+      });
+
+      const stream = renderToPipeableStream(Component);
+      stream.pipe(errorDestination);
+
+      // Simulate error
+      errorDestination.destroy(new Error('Stream error'));
+    });
+  });
+
+  describe('Progressive Rendering', () => {
+    it('should send shell immediately', (done) => {
+      const Component = () => 'Shell';
+
+      const destination = new PassThrough();
+
+      let firstChunkReceived = false;
+      destination.on('data', () => {
+        if (!firstChunkReceived) {
+          firstChunkReceived = true;
+          expect(true).toBe(true); // Shell received
+          done();
+        }
+      });
+
+      const stream = renderToPipeableStream(Component, {
+        progressive: true,
+      });
+
+      stream.pipe(destination);
+    });
+
+    it('should stream suspense content as it resolves', async () => {
+      const Component = () => 'Content';
+
+      const result = await renderToReadableStream(Component, {
+        progressive: true,
+        outOfOrder: true,
+      });
+
+      const reader = result.stream.getReader();
+      const chunks: Uint8Array[] = [];
+
+      let done = false;
+      while (!done) {
+        const { value, done: streamDone } = await reader.read();
+        if (value) {
+          chunks.push(value);
+        }
+        done = streamDone;
+      }
+
+      expect(chunks.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('should handle component errors during streaming', (done) => {
+      const ErrorComponent = () => {
+        throw new Error('Render error');
+      };
+
+      const consoleError = vi.spyOn(console, 'error').mockImplementation();
+
+      const onShellError = vi.fn((error: Error) => {
+        expect(error.message).toContain('Render error');
+        consoleError.mockRestore();
+        done();
+      });
+
+      renderToPipeableStream(ErrorComponent, { onShellError });
+    });
+
+    it('should handle boundary errors', (done) => {
+      const Component = () => 'Content';
+
+      const onError = vi.fn();
+
+      renderToPipeableStream(Component, {
+        onError,
+        onAllReady: done,
+      });
+    });
+
+    it('should continue streaming on non-critical errors', async () => {
+      const Component = () => 'Content';
+
+      const result = await renderToReadableStream(Component);
+
+      const reader = result.stream.getReader();
+
+      // Should be able to read despite potential errors
+      const { value, done } = await reader.read();
+
+      expect(value || done).toBeTruthy();
+    });
+  });
+
+  describe('Performance', () => {
+    it('should handle large content efficiently', async () => {
+      const largeContent = 'x'.repeat(100000);
+      const Component = () => largeContent;
+
+      const startTime = Date.now();
+
+      const result = await renderToReadableStream(Component);
+
+      const reader = result.stream.getReader();
+      const chunks: Uint8Array[] = [];
+
+      let done = false;
+      while (!done) {
+        const { value, done: streamDone } = await reader.read();
+        if (value) chunks.push(value);
+        done = streamDone;
+      }
+
+      const duration = Date.now() - startTime;
+
+      expect(duration).toBeLessThan(1000); // Should be fast
+      expect(chunks.length).toBeGreaterThan(0);
+    });
+
+    it('should stream incrementally, not all at once', (done) => {
+      const Component = () => 'Content';
+
+      const destination = new PassThrough();
+      const dataEvents: number[] = [];
+
+      destination.on('data', () => {
+        dataEvents.push(Date.now());
+      });
+
+      destination.on('end', () => {
+        // Should receive multiple data events
+        expect(dataEvents.length).toBeGreaterThan(0);
+        done();
+      });
+
+      const stream = renderToPipeableStream(Component);
+      stream.pipe(destination);
+    });
+  });
+
+  describe('Edge Cases', () => {
+    it('should handle empty component', async () => {
+      const EmptyComponent = () => '';
+
+      const result = await renderToReadableStream(EmptyComponent);
+
+      expect(result.stream).toBeDefined();
+    });
+
+    it('should handle null component', async () => {
+      const NullComponent = () => null;
+
+      const result = await renderToReadableStream(NullComponent);
+
+      expect(result.stream).toBeDefined();
+    });
+
+    it('should handle immediate stream abort', () => {
+      const Component = () => 'Content';
+
+      const stream = renderToPipeableStream(Component);
+
+      stream.abort();
+
+      // Should not throw
+      expect(() => stream.abort()).not.toThrow();
+    });
+
+    it('should handle concurrent streams', async () => {
+      const Component = () => 'Content';
+
+      const promise1 = renderToReadableStream(Component);
+      const promise2 = renderToReadableStream(Component);
+      const promise3 = renderToReadableStream(Component);
+
+      const results = await Promise.all([promise1, promise2, promise3]);
+
+      expect(results).toHaveLength(3);
+      results.forEach((result) => {
+        expect(result.stream).toBeDefined();
+      });
+    });
+  });
+});

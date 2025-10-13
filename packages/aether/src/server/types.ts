@@ -1,7 +1,7 @@
 /**
  * Server Types
  *
- * Type definitions for SSR/SSG server
+ * Type definitions for SSR/SSG/Hydration/Streaming/Edge
  */
 
 import type { RouteDefinition } from '../router/types.js';
@@ -89,6 +89,11 @@ export interface RenderContext {
    * User context (for authentication, etc.)
    */
   user?: any;
+
+  /**
+   * Netron client for data fetching
+   */
+  netron?: any;
 }
 
 /**
@@ -119,6 +124,16 @@ export interface RenderResult {
    * Meta tags for SEO
    */
   meta?: MetaTags;
+
+  /**
+   * Collected styles for critical CSS
+   */
+  styles?: string[];
+
+  /**
+   * Island markers for partial hydration
+   */
+  islands?: IslandMarker[];
 }
 
 /**
@@ -152,4 +167,428 @@ export interface Server {
    * Render a route
    */
   render(context: RenderContext): Promise<RenderResult>;
+}
+
+/**
+ * SSR Options
+ */
+export interface SSROptions {
+  /**
+   * Initial state to serialize for hydration
+   */
+  initialState?: Record<string, any>;
+
+  /**
+   * Netron client for server-side data fetching
+   */
+  netron?: any;
+
+  /**
+   * Enable islands architecture
+   */
+  islands?: boolean;
+
+  /**
+   * Enable streaming
+   */
+  streaming?: boolean;
+
+  /**
+   * Collect styles for critical CSS
+   */
+  collectStyles?: boolean;
+
+  /**
+   * Maximum time to wait for async operations (ms)
+   */
+  timeout?: number;
+
+  /**
+   * Enable progressive hydration
+   */
+  progressive?: boolean;
+}
+
+/**
+ * SSG Options
+ */
+export interface SSGOptions {
+  /**
+   * Routes to pre-render
+   */
+  routes: string[] | (() => Promise<string[]>);
+
+  /**
+   * Output directory
+   */
+  outDir: string;
+
+  /**
+   * Base URL
+   */
+  base?: string;
+
+  /**
+   * Enable incremental static regeneration
+   */
+  isr?: boolean;
+
+  /**
+   * ISR revalidation time (seconds)
+   */
+  revalidate?: number;
+
+  /**
+   * Fallback for dynamic routes ('blocking' | 'static' | false)
+   */
+  fallback?: 'blocking' | 'static' | false;
+
+  /**
+   * Parallel rendering limit
+   */
+  parallel?: number;
+}
+
+/**
+ * Static paths result
+ */
+export interface StaticPathsResult {
+  /**
+   * Paths to pre-render
+   */
+  paths: string[];
+
+  /**
+   * Fallback behavior
+   */
+  fallback?: 'blocking' | 'static' | false;
+}
+
+/**
+ * Static props result
+ */
+export interface StaticPropsResult<T = any> {
+  /**
+   * Props for the page
+   */
+  props: T;
+
+  /**
+   * Revalidation time (seconds) for ISR
+   */
+  revalidate?: number;
+
+  /**
+   * Redirect to another page
+   */
+  redirect?: {
+    destination: string;
+    permanent?: boolean;
+  };
+
+  /**
+   * Return 404
+   */
+  notFound?: boolean;
+}
+
+/**
+ * Hydration Options
+ */
+export interface HydrationOptions {
+  /**
+   * Server state to restore
+   */
+  serverState?: Record<string, any>;
+
+  /**
+   * Enable progressive hydration
+   */
+  progressive?: boolean;
+
+  /**
+   * Hydration strategy
+   */
+  strategy?: HydrationStrategy;
+
+  /**
+   * Handle hydration mismatches
+   */
+  onMismatch?: (error: HydrationError) => void;
+
+  /**
+   * Enable island architecture
+   */
+  islands?: boolean;
+}
+
+/**
+ * Hydration strategy
+ */
+export type HydrationStrategy = 'eager' | 'lazy' | 'idle' | 'visible';
+
+/**
+ * Hydration error
+ */
+export interface HydrationError {
+  type: 'mismatch' | 'missing' | 'extra';
+  path: string;
+  server: string;
+  client: string;
+}
+
+/**
+ * Streaming Options
+ */
+export interface StreamingOptions {
+  /**
+   * Enable out-of-order streaming
+   */
+  outOfOrder?: boolean;
+
+  /**
+   * Maximum concurrent streams
+   */
+  maxConcurrency?: number;
+
+  /**
+   * Suspense timeout (ms)
+   */
+  suspenseTimeout?: number;
+
+  /**
+   * Enable progressive rendering
+   */
+  progressive?: boolean;
+
+  /**
+   * Placeholder for suspended content
+   */
+  placeholder?: string | ((boundary: string) => string);
+}
+
+/**
+ * Streaming result
+ */
+export interface StreamingResult {
+  /**
+   * Readable stream of HTML
+   */
+  stream: ReadableStream<Uint8Array> | NodeJS.ReadableStream;
+
+  /**
+   * Metadata about the stream
+   */
+  metadata: {
+    status: number;
+    headers: Record<string, string>;
+    meta?: MetaTags;
+  };
+}
+
+/**
+ * Edge Options
+ */
+export interface EdgeOptions {
+  /**
+   * Target edge runtime
+   */
+  runtime: 'cloudflare' | 'vercel' | 'deno' | 'auto';
+
+  /**
+   * Enable edge caching
+   */
+  cache?: boolean;
+
+  /**
+   * Cache TTL (seconds)
+   */
+  cacheTtl?: number;
+
+  /**
+   * Regions to deploy to
+   */
+  regions?: string[];
+
+  /**
+   * Maximum bundle size (bytes)
+   */
+  maxBundleSize?: number;
+}
+
+/**
+ * Island marker for partial hydration
+ */
+export interface IslandMarker {
+  /**
+   * Unique ID for the island
+   */
+  id: string;
+
+  /**
+   * Component name or path
+   */
+  component: string;
+
+  /**
+   * Props for the island
+   */
+  props: Record<string, any>;
+
+  /**
+   * Hydration strategy
+   */
+  strategy: HydrationStrategy;
+}
+
+/**
+ * Render to string options
+ */
+export interface RenderToStringOptions extends SSROptions {
+  /**
+   * Component to render
+   */
+  component: any;
+
+  /**
+   * Component props
+   */
+  props?: Record<string, any>;
+
+  /**
+   * Current URL
+   */
+  url?: string | URL;
+}
+
+/**
+ * Render to stream options
+ */
+export interface RenderToStreamOptions extends RenderToStringOptions, StreamingOptions {}
+
+/**
+ * Render to static markup options (no hydration)
+ */
+export interface RenderToStaticMarkupOptions {
+  /**
+   * Component to render
+   */
+  component: any;
+
+  /**
+   * Component props
+   */
+  props?: Record<string, any>;
+
+  /**
+   * Collect styles
+   */
+  collectStyles?: boolean;
+}
+
+/**
+ * SSR context - internal rendering context
+ */
+export interface SSRContext {
+  /**
+   * Collected data during rendering
+   */
+  data: Map<string, any>;
+
+  /**
+   * Collected styles
+   */
+  styles: Set<string>;
+
+  /**
+   * Island markers
+   */
+  islands: IslandMarker[];
+
+  /**
+   * Current URL
+   */
+  url?: URL;
+
+  /**
+   * Netron client
+   */
+  netron?: any;
+
+  /**
+   * Async operations tracker
+   */
+  async: {
+    pending: Set<Promise<any>>;
+    completed: boolean;
+  };
+}
+
+/**
+ * Head context for meta tag management
+ */
+export interface HeadContext {
+  /**
+   * Title
+   */
+  title?: string;
+
+  /**
+   * Meta tags
+   */
+  meta: MetaTag[];
+
+  /**
+   * Link tags
+   */
+  links: LinkTag[];
+
+  /**
+   * Script tags
+   */
+  scripts: ScriptTag[];
+
+  /**
+   * Style tags
+   */
+  styles: StyleTag[];
+}
+
+/**
+ * Meta tag
+ */
+export interface MetaTag {
+  name?: string;
+  property?: string;
+  content: string;
+  [key: string]: string | undefined;
+}
+
+/**
+ * Link tag
+ */
+export interface LinkTag {
+  rel: string;
+  href: string;
+  [key: string]: string | undefined;
+}
+
+/**
+ * Script tag
+ */
+export interface ScriptTag {
+  src?: string;
+  content?: string;
+  type?: string;
+  async?: boolean;
+  defer?: boolean;
+  [key: string]: string | boolean | undefined;
+}
+
+/**
+ * Style tag
+ */
+export interface StyleTag {
+  content: string;
+  [key: string]: string | undefined;
 }

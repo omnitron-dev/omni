@@ -44,9 +44,9 @@ export function useControlledState<T>(
   onChange?: (value: T) => void
 ): [() => T, (value: T) => void] {
   // If a signal was passed, use it directly
-  if (isSignal(controlledValue)) {
-    const getter = () => controlledValue();
-    const setter = (value: T) => {
+  if (isSignal<T>(controlledValue)) {
+    const getter = (): T => controlledValue();
+    const setter = (value: T): void => {
       controlledValue.set(value);
       onChange?.(value);
     };
@@ -56,16 +56,16 @@ export function useControlledState<T>(
   // Otherwise create internal signal for uncontrolled mode
   const internalSignal = signal<T>(defaultValue);
 
-  const getter = () => {
+  const getter = (): T => {
     // If controlled value is provided, use it
     if (controlledValue !== undefined) {
-      return controlledValue;
+      return controlledValue as T;
     }
     // Otherwise use internal signal
     return internalSignal();
   };
 
-  const setter = (value: T) => {
+  const setter = (value: T): void => {
     // If controlled, only fire callback (parent handles state)
     if (controlledValue !== undefined) {
       onChange?.(value);

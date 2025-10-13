@@ -13,7 +13,7 @@
 import { defineComponent } from '../core/component/index.js';
 import { createContext, useContext, provideContext } from '../core/component/context.js';
 import type { Signal, WritableSignal } from '../core/reactivity/types.js';
-import { signal, computed, effect } from '../core/reactivity/index.js';
+import { computed, effect } from '../core/reactivity/index.js';
 import { jsx } from '../jsx-runtime.js';
 import { useControlledState } from '../utils/controlled-state.js';
 

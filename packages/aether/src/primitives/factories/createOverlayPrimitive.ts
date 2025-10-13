@@ -23,7 +23,7 @@
  */
 
 import { defineComponent } from '../../core/component/define.js';
-import { signal, computed, type WritableSignal } from '../../core/reactivity/index.js';
+import { signal, type WritableSignal } from '../../core/reactivity/index.js';
 import { createContext, useContext, provideContext } from '../../core/component/context.js';
 import { onMount } from '../../core/component/lifecycle.js';
 import { effect } from '../../core/reactivity/effect.js';
@@ -378,7 +378,7 @@ export function createOverlayPrimitive(config: OverlayConfig) {
     hasTitle = true,
     hasDescription = true,
     hasArrow = false,
-    supportsSignalControl = true,
+    supportsSignalControl: _supportsSignalControl = true, // Reserved for future use
     triggerBehavior = 'click',
     hoverDelays = { openDelay: 700, closeDelay: 300 },
   } = config;

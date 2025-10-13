@@ -42,7 +42,7 @@ export interface CalendarProps {
    * Selected date
    * Pattern 19: Controlled state - accepts WritableSignal or plain value
    */
-  value?: WritableSignal<Date | undefined> | Date | null;
+  value?: WritableSignal<Date | null> | Date | null;
   /** Callback when date changes */
   onValueChange?: (date: Date | null) => void;
   /** Default value (uncontrolled) */
@@ -254,7 +254,7 @@ function generateCalendarDays(
 export const Calendar = defineComponent<CalendarProps>((props) => {
   // Pattern 19: Use controlled state helper for signal/value normalization
   const [getValue, setValue] = useControlledState<Date | null>(
-    props.value as WritableSignal<Date | undefined> | Date | null | undefined,
+    props.value,
     props.defaultValue ?? null,
     props.onValueChange
   );

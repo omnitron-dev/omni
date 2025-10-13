@@ -6,6 +6,8 @@
 
 import { signal } from '../core/reactivity/signal.js';
 import type { Signal } from '../core/reactivity/types.js';
+import { effect } from '../core/reactivity/effect.js';
+import { onCleanup } from '../core/reactivity/context.js';
 import { useRouter } from './hooks.js';
 import type { LoaderContext, ActionContext, RouteLoader, RouteAction } from './types.js';
 
@@ -110,8 +112,21 @@ export function useLoaderData<T = any>(): Signal<T | undefined> {
   // Update initially
   updateData();
 
-  // TODO: Subscribe to route changes
-  // This would require router to expose an observable for route changes
+  // Subscribe to route changes
+  // Router.current is reactive (signal), so effect will re-run on navigation
+  const disposable = effect(() => {
+    // Access router.current to create reactivity dependency
+    const _current = router.current;
+    void _current; // Suppress unused var warning
+
+    // Update data when route changes
+    updateData();
+  });
+
+  // Cleanup subscription on component unmount
+  onCleanup(() => {
+    disposable.dispose();
+  });
 
   return dataSignal;
 }
@@ -149,6 +164,22 @@ export function useActionData<T = any>(): Signal<T | undefined> {
 
   // Update initially
   updateData();
+
+  // Subscribe to route changes
+  // Router.current is reactive (signal), so effect will re-run on navigation
+  const disposable = effect(() => {
+    // Access router.current to create reactivity dependency
+    const _current = router.current;
+    void _current; // Suppress unused var warning
+
+    // Update data when route changes
+    updateData();
+  });
+
+  // Cleanup subscription on component unmount
+  onCleanup(() => {
+    disposable.dispose();
+  });
 
   return dataSignal;
 }
@@ -231,16 +262,56 @@ export function useFetcher(): Fetcher {
       stateSignal.set('submitting');
 
       try {
-        // TODO: Implement actual fetch to action endpoint
-        console.debug('Fetcher submit:', { data, method, actionPath });
+        // Determine target URL
+        // If action path is provided, use it; otherwise use current route
+        const router = useRouter();
+        const targetPath = actionPath || router.current.pathname;
 
-        // Simulate action call
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        // Create fetch request to action endpoint
+        // Actions are handled at /_aether/action?path={route}
+        const url = new URL('/_aether/action', window.location.origin);
+        url.searchParams.set('path', targetPath);
 
-        dataSignal.set({ success: true });
+        // Prepare request body
+        let body: BodyInit;
+        let contentType: string;
+
+        if (data instanceof FormData) {
+          // Send FormData as-is
+          body = data;
+          contentType = 'multipart/form-data';
+        } else {
+          // Send JSON for object data
+          body = JSON.stringify(data);
+          contentType = 'application/json';
+        }
+
+        // Execute fetch request
+        const response = await fetch(url.toString(), {
+          method: method.toUpperCase(),
+          headers:
+            data instanceof FormData
+              ? {} // Let browser set Content-Type with boundary for FormData
+              : {
+                  'Content-Type': contentType,
+                },
+          body,
+          credentials: 'same-origin',
+        });
+
+        // Parse response
+        if (!response.ok) {
+          throw new Error(`Action failed: ${response.status} ${response.statusText}`);
+        }
+
+        const result = await response.json();
+        dataSignal.set(result);
+
+        // Update action data map for this route
+        setActionData(targetPath, result);
       } catch (error) {
         console.error('Fetcher submit error:', error);
-        dataSignal.set({ error });
+        dataSignal.set({ error: error instanceof Error ? error.message : String(error) });
       } finally {
         stateSignal.set('idle');
       }
@@ -249,16 +320,42 @@ export function useFetcher(): Fetcher {
       stateSignal.set('loading');
 
       try {
-        // TODO: Implement actual fetch to loader endpoint
-        console.debug('Fetcher load:', href);
+        // Parse the href to extract pathname
+        const url = new URL(href, window.location.origin);
+        const pathname = url.pathname;
 
-        // Simulate loader call
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        // Create fetch request to loader endpoint
+        // Loaders are handled at /_aether/loader?path={route}
+        const loaderUrl = new URL('/_aether/loader', window.location.origin);
+        loaderUrl.searchParams.set('path', pathname);
 
-        dataSignal.set({ loaded: true });
+        // Preserve search params from the original href
+        for (const [key, value] of url.searchParams.entries()) {
+          loaderUrl.searchParams.set(key, value);
+        }
+
+        // Execute fetch request
+        const response = await fetch(loaderUrl.toString(), {
+          method: 'GET',
+          headers: {
+            Accept: 'application/json',
+          },
+          credentials: 'same-origin',
+        });
+
+        // Parse response
+        if (!response.ok) {
+          throw new Error(`Loader failed: ${response.status} ${response.statusText}`);
+        }
+
+        const result = await response.json();
+        dataSignal.set(result);
+
+        // Update loader data map for this route
+        setLoaderData(pathname, result);
       } catch (error) {
         console.error('Fetcher load error:', error);
-        dataSignal.set({ error });
+        dataSignal.set({ error: error instanceof Error ? error.message : String(error) });
       } finally {
         stateSignal.set('idle');
       }

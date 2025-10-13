@@ -165,7 +165,7 @@ export async function createFileBasedRouter(
   }
 ) {
   // Dynamic import of router - must be provided by consuming application
-  const routerModule = await import('../../router/router.js');
+  const routerModule = await import('../router.js');
   if (!routerModule.createRouter) {
     throw new Error('Router module does not export createRouter function');
   }

@@ -12,7 +12,7 @@ import {
   composeMiddleware,
   type ApiContext,
   type ApiHandlers,
-} from '../../../src/routing/file-based/api-routes.js';
+} from '../../../src/router/file-based/api-routes.js';
 
 describe('API Routes', () => {
   let mockContext: ApiContext;

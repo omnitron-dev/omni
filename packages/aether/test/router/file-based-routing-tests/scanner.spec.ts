@@ -10,7 +10,7 @@ import {
   scanRouteFiles,
   sortRoutesBySpecificity,
   DEFAULT_CONVENTIONS,
-} from '../../../src/routing/file-based/scanner.js';
+} from '../../../src/router/file-based/scanner.js';
 import type { RouteDefinition } from '../../../src/routing/types.js';
 
 describe('File-Based Routing Scanner', () => {

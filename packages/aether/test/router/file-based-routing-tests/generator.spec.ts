@@ -8,7 +8,7 @@ import {
   generateManifestJson,
   generateRouteTypes,
   generateDevManifest,
-} from '../../../src/routing/file-based/generator.js';
+} from '../../../src/router/file-based/generator.js';
 
 describe('Route Generator', () => {
   const mockFiles = [

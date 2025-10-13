@@ -169,7 +169,7 @@ export function Suspense(props: SuspenseProps): any {
   // Watch context state changes and trigger callbacks
   effect(() => {
     // Read the context state to make this effect reactive
-    const state = context.state;
+    context.state;
     handleStateChange();
   });
 

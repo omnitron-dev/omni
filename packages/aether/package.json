@@ -106,6 +106,14 @@
       "types": "./dist/build/vite-plugin.d.ts",
       "import": "./dist/build/vite-plugin.js"
     },
+    "./styling": {
+      "types": "./dist/styling/index.d.ts",
+      "import": "./dist/styling/index.js"
+    },
+    "./theming": {
+      "types": "./dist/theming/index.d.ts",
+      "import": "./dist/theming/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

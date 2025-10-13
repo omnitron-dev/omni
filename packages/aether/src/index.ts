@@ -179,5 +179,68 @@ export {
   type DirectiveResult,
 } from './utils/index.js';
 
+// Styling system exports
+export {
+  // Runtime
+  createStyleSheet,
+  getGlobalSheet,
+  injectStyles,
+  extractStyles,
+  getSSRStyleTags,
+  cleanupStyles,
+  // Styled components
+  styled,
+  createVariant,
+  composeStyles,
+  // CSS utilities
+  css,
+  keyframes,
+  globalStyles,
+  cssReset,
+  responsive,
+  darkMode,
+  mergeCSS,
+  cssVariables,
+  // Types
+  type StyledProps,
+  type VariantConfig,
+  type VariantProps,
+  type StyleConfig,
+  type CompoundVariant,
+  type DefaultVariants,
+  type Keyframe,
+} from './styling/index.js';
+
+// Theme system exports
+export {
+  // Theme definition
+  defineTheme,
+  getToken,
+  createDefaultLightTheme,
+  createDefaultDarkTheme,
+  // CSS variables
+  generateCSSVariables,
+  applyTheme,
+  removeTheme,
+  getCSSVariable,
+  createThemeVars,
+  // Theme provider
+  ThemeProvider,
+  useTheme,
+  useThemeToken,
+  useThemeVar,
+  withTheme,
+  useThemeToggle,
+  // Types
+  type Theme,
+  type ThemeConfig,
+  type ColorTokens,
+  type ColorScale,
+  type TypographyTokens,
+  type SpacingTokens,
+  type ThemeContextType,
+  type ThemeProviderProps,
+} from './theming/index.js';
+
 // Re-export everything from core for convenience
 export * from './core/index.js';

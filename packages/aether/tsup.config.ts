@@ -19,6 +19,8 @@ export default defineConfig({
     'data/index': 'src/data/index.ts',
     'suspense/index': 'src/suspense/index.ts',
     'i18n/index': 'src/i18n/index.ts',
+    'styling/index': 'src/styling/index.ts',
+    'theming/index': 'src/theming/index.ts',
   },
   format: ['esm'],
   dts: true,

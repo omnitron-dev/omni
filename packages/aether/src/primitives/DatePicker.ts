@@ -41,6 +41,7 @@ import { signal, computed, type WritableSignal, type Signal } from '../core/reac
 import { jsx } from '../jsx-runtime.js';
 import { Popover, PopoverContext } from './Popover.js';
 import { Calendar } from './Calendar.js';
+import { useControlledState } from '../utils/controlled-state.js';
 
 // ============================================================================
 // Types
@@ -48,8 +49,11 @@ import { Calendar } from './Calendar.js';
 
 export interface DatePickerProps {
   children?: any;
-  /** Selected date */
-  value?: Date | null;
+  /**
+   * Selected date
+   * Pattern 19: Controlled state - accepts WritableSignal or plain value
+   */
+  value?: WritableSignal<Date | undefined> | Date | null;
   /** Callback when date changes */
   onValueChange?: (date: Date | null) => void;
   /** Default value (uncontrolled) */
@@ -134,29 +138,40 @@ function useDatePickerContext(): DatePickerContextValue {
  * Container with state management
  */
 export const DatePicker = defineComponent<DatePickerProps>((props) => {
-  const internalValue: WritableSignal<Date | null> = signal(props.value ?? props.defaultValue ?? null);
+  // Pattern 19: Use controlled state helper for signal/value normalization
+  const [getValue, setValue] = useControlledState<Date | null>(
+    props.value as WritableSignal<Date | undefined> | Date | null | undefined,
+    props.defaultValue ?? null,
+    props.onValueChange
+  );
 
-  const isControlled = () => props.value !== undefined;
-  const currentValue = () => (isControlled() ? (props.value ?? null) : internalValue());
-
-  const setValue = (date: Date | null) => {
-    if (!isControlled()) {
-      internalValue.set(date);
-    }
-    props.onValueChange?.(date);
+  // Wrap setValue to create new Date instance for reactivity
+  const setValueWithDateCopy = (date: Date | null) => {
+    // Create new Date instance to trigger reactivity
+    setValue(date ? new Date(date) : null);
     // Note: popover closing is handled in DatePickerCalendar
   };
 
+  // Calculate defaultMonth safely
+  const getDefaultMonth = (): Date => {
+    if (props.defaultMonth) return props.defaultMonth;
+
+    const currentValue = getValue();
+    if (currentValue) return currentValue;
+
+    return new Date();
+  };
+
   const contextValue: DatePickerContextValue = {
-    value: computed(() => currentValue()),
+    value: computed(() => getValue()),
     open: signal(false), // Not used, Popover manages its own state
     disabled: props.disabled ?? false,
     minDate: props.minDate,
     maxDate: props.maxDate,
     isDateDisabled: props.isDateDisabled,
     weekStartsOn: props.weekStartsOn ?? 0,
-    defaultMonth: props.defaultMonth ?? props.value ?? props.defaultValue ?? new Date(),
-    setValue,
+    defaultMonth: getDefaultMonth(),
+    setValue: setValueWithDateCopy,
     setOpen: () => {}, // Not used, Popover manages its own state
   };
 

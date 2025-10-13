@@ -15,14 +15,18 @@ import { createContext, useContext, provideContext } from '../core/component/con
 import type { Signal, WritableSignal } from '../core/reactivity/types.js';
 import { signal, computed, effect } from '../core/reactivity/index.js';
 import { jsx } from '../jsx-runtime.js';
+import { useControlledState } from '../utils/controlled-state.js';
 
 // ============================================================================
 // Types
 // ============================================================================
 
 export interface ToggleGroupProps {
-  /** Controlled value (single mode: string, multiple mode: string[]) */
-  value?: string | string[];
+  /**
+   * Controlled value (single mode: string, multiple mode: string[])
+   * Pattern 19: Accepts WritableSignal<T> | T
+   */
+  value?: WritableSignal<string | string[]> | string | string[];
   /** Value change callback */
   onValueChange?: (value: string | string[]) => void;
   /** Default value (uncontrolled) */
@@ -120,29 +124,17 @@ export const ToggleGroup = defineComponent<ToggleGroupProps>((props) => {
   const required = props.required ?? false;
   const loop = props.loop ?? true;
 
-  // State
-  const internalValue: WritableSignal<string | string[]> = signal<string | string[]>(
-    props.defaultValue ?? (type === 'single' ? '' : [])
+  // Pattern 19: Use useControlledState for flexible value handling
+  const defaultValue = props.defaultValue ?? (type === 'single' ? '' : []);
+  const [currentValue, setValue] = useControlledState<string | string[]>(
+    props.value,
+    defaultValue,
+    props.onValueChange
   );
 
   // Items registry
   const items = new Map<string, HTMLElement>();
   const itemOrder: string[] = [];
-
-  const currentValue = (): string | string[] => {
-    if (props.value !== undefined) {
-      // Handle signal props - if value is a function (signal), call it
-      return typeof props.value === 'function' ? (props.value as any)() : props.value;
-    }
-    return internalValue();
-  };
-
-  const setValue = (newValue: string | string[]) => {
-    if (props.value === undefined) {
-      internalValue.set(newValue);
-    }
-    props.onValueChange?.(newValue);
-  };
 
   const isSelected = (value: string): boolean => {
     const current = currentValue();

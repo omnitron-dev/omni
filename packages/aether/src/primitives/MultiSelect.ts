@@ -18,14 +18,18 @@ import type { Signal, WritableSignal } from '../core/reactivity/types.js';
 import { signal, computed } from '../core/reactivity/index.js';
 import { effect } from '../core/reactivity/effect.js';
 import { jsx } from '../jsx-runtime.js';
+import { useControlledState } from '../utils/controlled-state.js';
 
 // ============================================================================
 // Types
 // ============================================================================
 
 export interface MultiSelectProps {
-  /** Controlled value (array of selected values) */
-  value?: string[];
+  /**
+   * Controlled value (array of selected values)
+   * Pattern 19: Supports WritableSignal<string[]> for reactive binding
+   */
+  value?: WritableSignal<string[]> | string[];
   /** Value change callback */
   onValueChange?: (value: string[]) => void;
   /** Default value (uncontrolled) */
@@ -151,25 +155,13 @@ export const MultiSelect = defineComponent<MultiSelectProps>((props) => {
   const maxSelections = props.maxSelections ?? 0;
   const searchable = props.searchable ?? false;
 
+  // Pattern 19: Use controlled state helper
+  const [currentValue, setValue] = useControlledState<string[]>(props.value, props.defaultValue ?? [], props.onValueChange);
+
   // State
-  const internalValue: WritableSignal<string[]> = signal<string[]>(props.defaultValue ?? []);
   const isOpen: WritableSignal<boolean> = signal<boolean>(false);
   const searchQuery: WritableSignal<string> = signal<string>('');
   const allValues: WritableSignal<string[]> = signal<string[]>([]);
-
-  const currentValue = (): string[] => {
-    if (props.value !== undefined) {
-      return props.value;
-    }
-    return internalValue();
-  };
-
-  const setValue = (newValue: string[]) => {
-    if (props.value === undefined) {
-      internalValue.set(newValue);
-    }
-    props.onValueChange?.(newValue);
-  };
 
   const toggleValue = (value: string) => {
     if (disabled) return;

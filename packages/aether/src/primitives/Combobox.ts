@@ -33,6 +33,7 @@ import { signal, computed, type WritableSignal, type Signal } from '../core/reac
 import { effect } from '../core/reactivity/effect.js';
 import { jsx } from '../jsx-runtime.js';
 import { Portal } from '../control-flow/Portal.js';
+import { useControlledState, useControlledBooleanState } from '../utils/controlled-state.js';
 
 // ============================================================================
 // Types
@@ -40,16 +41,22 @@ import { Portal } from '../control-flow/Portal.js';
 
 export interface ComboboxProps {
   children?: any;
-  /** Current selected value */
-  value?: string | null;
+  /**
+   * Current selected value
+   * Pattern 19: Supports WritableSignal<string | null> for reactive binding
+   */
+  value?: WritableSignal<string | null> | string | null;
   /** Callback when value changes */
   onValueChange?: (value: string | null) => void;
   /** Default value (uncontrolled) */
   defaultValue?: string | null;
   /** Whether the combobox is open by default */
   defaultOpen?: boolean;
-  /** Controlled open state */
-  open?: boolean;
+  /**
+   * Controlled open state
+   * Pattern 19: Supports WritableSignal<boolean> for reactive binding
+   */
+  open?: WritableSignal<boolean> | boolean;
   /** Callback when open state changes */
   onOpenChange?: (open: boolean) => void;
   /** Whether the combobox is disabled */
@@ -151,8 +158,15 @@ function generateId(prefix: string): string {
  * Container for the combobox with state management
  */
 export const Combobox = defineComponent<ComboboxProps>((props) => {
-  const internalValue: WritableSignal<string | null> = signal<string | null>(props.value ?? props.defaultValue ?? null);
-  const internalOpen: WritableSignal<boolean> = signal<boolean>(props.defaultOpen ?? false);
+  // Pattern 19: Use controlled state helpers
+  const [currentValue, setValue] = useControlledState<string | null>(
+    props.value,
+    props.defaultValue ?? null,
+    props.onValueChange
+  );
+
+  const [currentOpen, setOpenInternal] = useControlledBooleanState(props.open, props.defaultOpen ?? false, props.onOpenChange);
+
   const inputValue: WritableSignal<string> = signal<string>('');
   const inputRef: WritableSignal<HTMLInputElement | null> = signal<HTMLInputElement | null>(null);
   const contentRef: WritableSignal<HTMLDivElement | null> = signal<HTMLDivElement | null>(null);
@@ -162,25 +176,9 @@ export const Combobox = defineComponent<ComboboxProps>((props) => {
   const triggerId = generateId('combobox-trigger');
   const contentId = generateId('combobox-content');
 
-  const isControlled = () => props.value !== undefined;
-  const currentValue = () => (isControlled() ? (props.value ?? null) : internalValue());
-
-  const isOpenControlled = () => props.open !== undefined;
-  const currentOpen = () => (isOpenControlled() ? (props.open ?? false) : internalOpen());
-
-  const setValue = (value: string | null) => {
-    if (!isControlled()) {
-      internalValue.set(value);
-    }
-    props.onValueChange?.(value);
-  };
-
   const setOpen = (open: boolean) => {
     if (!props.disabled) {
-      if (!isOpenControlled()) {
-        internalOpen.set(open);
-      }
-      props.onOpenChange?.(open);
+      setOpenInternal(open);
     }
   };
 

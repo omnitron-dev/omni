@@ -19,14 +19,18 @@ import { signal } from '../core/reactivity/index.js';
 import { effect } from '../core/reactivity/effect.js';
 import { onMount } from '../core/component/lifecycle.js';
 import { jsx } from '../jsx-runtime.js';
+import { useControlledState } from '../utils/controlled-state.js';
 
 // ============================================================================
 // Types
 // ============================================================================
 
 export interface PinInputProps {
-  /** Controlled value */
-  value?: string;
+  /**
+   * Controlled value
+   * Pattern 19: Accepts WritableSignal<string> | string
+   */
+  value?: WritableSignal<string> | string;
   /** Value change callback */
   onValueChange?: (value: string) => void;
   /** Default value (uncontrolled) */
@@ -141,15 +145,6 @@ export const PinInput = defineComponent<PinInputProps>((props) => {
   const length = props.length ?? 6;
   const autoFocus = props.autoFocus ?? false;
 
-  // State
-  const internalValue: WritableSignal<string[]> = signal<string[]>(Array(length).fill(''));
-
-  // Working values for optimistic updates in controlled mode
-  const workingValues: WritableSignal<string[] | null> = signal<string[] | null>(null);
-
-  // Track last prop value to detect changes
-  let lastPropValue: string | undefined = undefined;
-
   // Input elements registry
   const inputs = new Map<number, HTMLInputElement>();
 
@@ -158,53 +153,73 @@ export const PinInput = defineComponent<PinInputProps>((props) => {
     return [...chars, ...Array(Math.max(0, length - chars.length)).fill('')];
   };
 
-  onMount(() => {
-    if (props.defaultValue) {
-      internalValue.set(parseValue(props.defaultValue));
-    }
-
-    if (autoFocus) {
-      // Use queueMicrotask instead of setTimeout for better test compatibility
-      // Microtasks run before next tick, so await nextTick() in tests will catch this
-      queueMicrotask(() => focusInput(0));
-    }
-  });
-
-  // currentValues now directly reads from props each time
-  // In controlled mode, merges prop value with optimistic updates
-  const currentValues = (): string[] => {
-    // Check if prop value changed - if so, clear working values (prop update wins)
-    if (props.value !== lastPropValue) {
-      lastPropValue = props.value;
-      workingValues.set(null);
-    }
-
-    // If we have pending changes (optimistic update), use them
-    const working = workingValues();
-    if (working !== null) {
-      return working;
-    }
-
-    // Otherwise use prop or internal value
-    if (props.value !== undefined) {
-      return parseValue(props.value);
-    }
-    return internalValue();
+  const joinValues = (values: string[]): string => {
+    return values.join('');
   };
 
-  const setValues = (newValues: string[]) => {
-    if (props.value === undefined) {
-      internalValue.set(newValues);
-    }
+  // Pattern 19: Use useControlledState for flexible value handling
+  // Note: PinInput works with strings externally but arrays internally
+  const defaultValue = props.defaultValue ?? '';
+  const [getValueString, setValueString] = useControlledState<string>(
+    props.value,
+    defaultValue,
+    props.onValueChange
+  );
 
-    const fullValue = newValues.join('');
-    props.onValueChange?.(fullValue);
+  // Internal array representation derived from the controlled string value
+  const internalValuesArray = signal<string[]>(parseValue(getValueString()));
+
+  // Get current values as array (for internal operations)
+  const currentValues = (): string[] => {
+    return internalValuesArray();
+  };
+
+  // Track if we're updating from internal change to avoid loops
+  let isInternalUpdate = false;
+
+  // Set values as array (converts to string and updates controlled state)
+  const setValues = (newValues: string[]) => {
+    // Mark as internal update to prevent effect from overwriting
+    isInternalUpdate = true;
+
+    // Update internal array for immediate UI updates
+    internalValuesArray.set(newValues);
+
+    const fullValue = joinValues(newValues);
+    setValueString(fullValue);
+
+    // Reset flag after microtask to allow effect to process external changes
+    queueMicrotask(() => {
+      isInternalUpdate = false;
+    });
 
     // Check if complete
     if (fullValue.length === length && newValues.every((v) => v !== '')) {
       props.onComplete?.(fullValue);
     }
   };
+
+  // Sync internal array when external value changes (not from internal updates)
+  effect(() => {
+    // Skip if this is an internal update
+    if (isInternalUpdate) return;
+
+    const externalValue = getValueString();
+    const parsedArray = parseValue(externalValue);
+    // Only update if different to avoid loops
+    const currentArray = internalValuesArray();
+    if (joinValues(currentArray) !== externalValue) {
+      internalValuesArray.set(parsedArray);
+    }
+  });
+
+  onMount(() => {
+    if (autoFocus) {
+      // Use queueMicrotask instead of setTimeout for better test compatibility
+      // Microtasks run before next tick, so await nextTick() in tests will catch this
+      queueMicrotask(() => focusInput(0));
+    }
+  });
 
   const isValidChar = (char: string): boolean => {
     const type = props.type ?? 'numeric';
@@ -226,11 +241,6 @@ export const PinInput = defineComponent<PinInputProps>((props) => {
 
     const newValues = [...currentValues()];
     newValues[index] = newChar;
-
-    // In controlled mode, set as working values for optimistic update
-    if (props.value !== undefined) {
-      workingValues.set(newValues);
-    }
 
     setValues(newValues);
 

@@ -30,6 +30,7 @@ import { defineComponent } from '../core/component/index.js';
 import { createContext, useContext, provideContext } from '../core/component/context.js';
 import { signal, computed, effect, type WritableSignal, type Signal } from '../core/reactivity/index.js';
 import { jsx } from '../jsx-runtime.js';
+import { useControlledState } from '../utils/controlled-state.js';
 
 // ============================================================================
 // Types
@@ -37,8 +38,11 @@ import { jsx } from '../jsx-runtime.js';
 
 export interface CalendarProps {
   children?: any;
-  /** Selected date */
-  value?: Date | null;
+  /**
+   * Selected date
+   * Pattern 19: Controlled state - accepts WritableSignal or plain value
+   */
+  value?: WritableSignal<Date | undefined> | Date | null;
   /** Callback when date changes */
   onValueChange?: (date: Date | null) => void;
   /** Default value (uncontrolled) */
@@ -248,20 +252,24 @@ function generateCalendarDays(
  * Container with state management and date logic
  */
 export const Calendar = defineComponent<CalendarProps>((props) => {
-  const internalValue: WritableSignal<Date | null> = signal<Date | null>(props.value ?? props.defaultValue ?? null);
-  const currentMonth: WritableSignal<Date> = signal<Date>(
-    props.defaultMonth ?? props.value ?? props.defaultValue ?? new Date()
+  // Pattern 19: Use controlled state helper for signal/value normalization
+  const [getValue, setValue] = useControlledState<Date | null>(
+    props.value as WritableSignal<Date | undefined> | Date | null | undefined,
+    props.defaultValue ?? null,
+    props.onValueChange
   );
 
-  const isControlled = () => props.value !== undefined;
-  const currentValue = () => (isControlled() ? (props.value ?? null) : internalValue());
+  // Calculate defaultMonth safely
+  const getDefaultMonth = (): Date => {
+    if (props.defaultMonth) return props.defaultMonth;
 
-  const setValue = (date: Date | null) => {
-    if (!isControlled()) {
-      internalValue.set(date);
-    }
-    props.onValueChange?.(date);
+    const currentValue = getValue();
+    if (currentValue) return currentValue;
+
+    return new Date();
   };
+
+  const currentMonth: WritableSignal<Date> = signal<Date>(getDefaultMonth());
 
   const goToPrevMonth = () => {
     currentMonth.set(addMonths(currentMonth(), -1));
@@ -273,12 +281,13 @@ export const Calendar = defineComponent<CalendarProps>((props) => {
 
   const selectDate = (date: Date) => {
     if (!props.disabled) {
-      setValue(date);
+      // Create new Date instance to trigger reactivity
+      setValue(new Date(date));
     }
   };
 
   const isDateSelected = (date: Date) => {
-    const selected = currentValue();
+    const selected = getValue();
     return selected ? isSameDay(date, selected) : false;
   };
 
@@ -314,7 +323,7 @@ export const Calendar = defineComponent<CalendarProps>((props) => {
   });
 
   const contextValue: CalendarContextValue = {
-    value: computed(() => currentValue()),
+    value: computed(() => getValue()),
     currentMonth,
     minDate: props.minDate,
     maxDate: props.maxDate,

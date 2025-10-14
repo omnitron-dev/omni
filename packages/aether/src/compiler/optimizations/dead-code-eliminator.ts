@@ -145,7 +145,7 @@ export class DeadCodeEliminator implements OptimizationPass {
 
     let inUnreachable = false;
     let functionDepth = 0;
-    let braceDepth = 0;
+    let _braceDepth = 0; // Track block depth (reserved for future use)
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i] || '';
@@ -160,8 +160,8 @@ export class DeadCodeEliminator implements OptimizationPass {
         functionDepth++;
       }
 
-      braceDepth += openBraces;
-      braceDepth -= closeBraces;
+      _braceDepth += openBraces;
+      _braceDepth -= closeBraces;
 
       // Check for return/throw
       if (/^\s*(?:return|throw)\b/.test(trimmed)) {

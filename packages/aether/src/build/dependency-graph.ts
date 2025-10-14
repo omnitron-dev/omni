@@ -579,10 +579,12 @@ export class DependencyGraph {
         const match = node.id.match(/^(@?[^@]+)@(.+)$/);
         if (match) {
           const [, pkg, version] = match;
-          if (!packageVersions.has(pkg)) {
-            packageVersions.set(pkg, new Set());
+          if (pkg && version) {
+            if (!packageVersions.has(pkg)) {
+              packageVersions.set(pkg, new Set());
+            }
+            packageVersions.get(pkg)!.add(node.id);
           }
-          packageVersions.get(pkg)!.add(node.id);
         }
       }
     }

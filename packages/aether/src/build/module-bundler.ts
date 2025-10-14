@@ -149,13 +149,8 @@ export class ModuleBundler {
         stores: module.stores as any,
         routes: module.routes as any,
         islands: module.islands as any,
-        exports: module.exports
-          ? {
-              providers: module.exports.providers as any,
-              stores: module.exports.stores,
-            }
-          : undefined,
-        optimization: module.optimization,
+        exports: module.exports as any,
+        optimization: module.optimization || undefined,
       };
 
       this.moduleGraph.addNode(module.id, definition);
@@ -237,7 +232,8 @@ export class ModuleBundler {
       }
 
       // Skip if chunk would exceed max async requests
-      if (lazy.length >= this.options.maxAsyncRequests) {
+      const lazyCount = chunks.filter((c) => c.strategy === 'lazy').length;
+      if (lazyCount >= this.options.maxAsyncRequests) {
         mainModules.push(...chunkModules);
         continue;
       }

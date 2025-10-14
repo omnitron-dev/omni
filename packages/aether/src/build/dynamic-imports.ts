@@ -278,6 +278,7 @@ export class DynamicImportsHandler {
 
       // Extract specifier
       const specifier = match[3];
+      if (!specifier) continue;
 
       // Determine strategy
       const strategy = this.determineStrategy(specifier, magicComments, moduleId);
@@ -529,10 +530,10 @@ export class DynamicImportsHandler {
    */
   private extractRoutePath(specifier: string): string {
     const routeMatch = specifier.match(/\/routes\/(.+?)(?:\.[^.]+)?$/);
-    if (routeMatch) return routeMatch[1];
+    if (routeMatch && routeMatch[1]) return routeMatch[1];
 
     const pageMatch = specifier.match(/\/pages\/(.+?)(?:\.[^.]+)?$/);
-    if (pageMatch) return pageMatch[1];
+    if (pageMatch && pageMatch[1]) return pageMatch[1];
 
     return path.basename(specifier, path.extname(specifier));
   }
@@ -550,10 +551,10 @@ export class DynamicImportsHandler {
   private extractLibraryName(specifier: string): string {
     // For scoped packages: @scope/package -> scope-package
     if (specifier.startsWith('@')) {
-      return specifier.slice(1).replace('/', '-').split('/')[0];
+      return specifier.slice(1).replace('/', '-').split('/')[0] || specifier;
     }
 
-    return specifier.split('/')[0];
+    return specifier.split('/')[0] || specifier;
   }
 
   /**

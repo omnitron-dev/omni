@@ -592,14 +592,14 @@ export class SharedChunksOptimizer {
       } else if (module.isVendor) {
         // Split vendors by package
         const match = id.match(/node_modules\/(@[^/]+\/[^/]+|[^/]+)/);
-        groupName = match ? `vendor-${match[1].replace(/[@/]/g, '-')}` : 'vendor-other';
+        groupName = match && match[1] ? `vendor-${match[1].replace(/[@/]/g, '-')}` : 'vendor-other';
       } else {
         // Split by directory
         const parts = id.split('/');
         if (parts.length > 2) {
           groupName = parts.slice(0, 2).join('-');
         } else {
-          groupName = parts[0];
+          groupName = parts[0] || 'default';
         }
       }
 

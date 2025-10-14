@@ -563,5 +563,5 @@ export function withIslandContext<T>(islandId: string, fn: () => T): T {
 
 // Webpack share scopes support
 declare global {
-  const __webpack_share_scopes__: any;
+  var __webpack_share_scopes__: any;
 }

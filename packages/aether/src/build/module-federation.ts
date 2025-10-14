@@ -257,7 +257,7 @@ export class ModuleFederationRuntime {
    */
   private async doLoadRemote(remote: RemoteContainer, moduleName?: string): Promise<any> {
     let lastError: Error | undefined;
-    const maxAttempts = this.options.retry ? this.options.maxRetries : 1;
+    const maxAttempts = this.options.retry ? (this.options.maxRetries || 1) : 1;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
@@ -305,7 +305,7 @@ export class ModuleFederationRuntime {
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         reject(new Error(`Timeout loading remote "${remote.name}" from ${remote.url}`));
-      }, this.options.timeout);
+      }, this.options.timeout || 30000);
 
       const script = document.createElement('script');
       script.src = remote.url;
@@ -416,7 +416,7 @@ export class ModuleFederationManager {
         normalized[key] = {
           version: value.version || '1.0.0',
           singleton: value.singleton || false,
-          requiredVersion: value.requiredVersion,
+          requiredVersion: value.requiredVersion || '',
           eager: value.eager || false,
           packageName: value.packageName,
           shareScope: value.shareScope || 'default',
@@ -548,9 +548,9 @@ export function moduleFederationPlugin(config: ModuleFederationConfig): Plugin {
     name: 'aether-module-federation',
     enforce: 'post',
 
-    async configResolved(config) {
-      resolvedConfig = config;
-      isDev = config.mode === 'development';
+    async configResolved(resolvedCfg) {
+      resolvedConfig = resolvedCfg;
+      isDev = resolvedCfg.mode === 'development';
       manager = new ModuleFederationManager(config);
     },
 
@@ -620,7 +620,12 @@ const ${imports} = __remote_${remoteName};
           type: 'asset',
           fileName,
           source: remoteEntry,
-        };
+          needsCodeReference: false,
+          name: undefined,
+          names: [],
+          originalFileName: null,
+          originalFileNames: [],
+        } as any;
       }
 
       // Generate manifest file
@@ -630,7 +635,12 @@ const ${imports} = __remote_${remoteName};
           type: 'asset',
           fileName: 'federation-manifest.json',
           source: JSON.stringify(manifest, null, 2),
-        };
+          needsCodeReference: false,
+          name: undefined,
+          names: [],
+          originalFileName: null,
+          originalFileNames: [],
+        } as any;
       }
     },
 
@@ -800,9 +810,9 @@ declare global {
   }
 
   // eslint-disable-next-line @typescript-eslint/naming-convention
-  const __webpack_init_sharing__: (scope: string) => Promise<void>;
+  var __webpack_init_sharing__: (scope: string) => Promise<void>;
   // eslint-disable-next-line @typescript-eslint/naming-convention
-  const __webpack_share_scopes__: {
+  var __webpack_share_scopes__: {
     default: any;
   };
 }

@@ -1,9 +1,5 @@
 /**
  * Tests for SVG Gradient Primitives
- *
- * Note: Tests marked with .skip require ENABLE_REACTIVITY=true in jsxruntime/runtime.ts
- * These tests verify automatic DOM updates when signals change, which requires the full
- * reactivity system to be enabled.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -16,7 +12,7 @@ import {
   ClipPath
 } from '../../../src/svg/primitives/gradients';
 import { createSignal } from '../../../src/core/reactivity/signal';
-import { render, cleanup, waitFor } from '../../test-utils';
+import { render, cleanup } from '../../test-utils';
 
 describe('SVG Gradient Primitives', () => {
   afterEach(() => {
@@ -62,9 +58,7 @@ describe('SVG Gradient Primitives', () => {
       expect(gradient?.getAttribute('y2')).toBe('100%');
     });
 
-    it.skip('should support reactive coordinates', async () => {
-      // SKIP: Requires ENABLE_REACTIVITY=true in jsxruntime/runtime.ts
-      // This test expects automatic DOM updates when signals change
+    it('should support reactive coordinates', () => {
       const [x2, setX2] = createSignal('50%');
 
       const { container } = render(() => (
@@ -81,9 +75,7 @@ describe('SVG Gradient Primitives', () => {
       expect(gradient?.getAttribute('x2')).toBe('50%');
 
       setX2('100%');
-      await waitFor(() => {
-        expect(gradient?.getAttribute('x2')).toBe('100%');
-      });
+      expect(gradient?.getAttribute('x2')).toBe('100%');
     });
 
     it('should apply gradientUnits', () => {
@@ -136,9 +128,7 @@ describe('SVG Gradient Primitives', () => {
       });
     });
 
-    it.skip('should support reactive gradientTransform', async () => {
-      // SKIP: Requires ENABLE_REACTIVITY=true in jsxruntime/runtime.ts
-      // This test expects automatic DOM updates when signals change
+    it('should support reactive gradientTransform', () => {
       const [transform, setTransform] = createSignal('rotate(0)');
 
       const { container } = render(() => (
@@ -155,9 +145,7 @@ describe('SVG Gradient Primitives', () => {
       expect(gradient?.getAttribute('gradientTransform')).toBe('rotate(0)');
 
       setTransform('rotate(90)');
-      await waitFor(() => {
-        expect(gradient?.getAttribute('gradientTransform')).toBe('rotate(90)');
-      });
+      expect(gradient?.getAttribute('gradientTransform')).toBe('rotate(90)');
     });
   });
 
@@ -213,9 +201,7 @@ describe('SVG Gradient Primitives', () => {
       expect(gradient?.getAttribute('fr')).toBe('10%');
     });
 
-    it.skip('should support reactive coordinates', async () => {
-      // SKIP: Requires ENABLE_REACTIVITY=true in jsxruntime/runtime.ts
-      // This test expects automatic DOM updates when signals change
+    it('should support reactive coordinates', () => {
       const [cx, setCx] = createSignal('25%');
 
       const { container } = render(() => (
@@ -232,9 +218,7 @@ describe('SVG Gradient Primitives', () => {
       expect(gradient?.getAttribute('cx')).toBe('25%');
 
       setCx('75%');
-      await waitFor(() => {
-        expect(gradient?.getAttribute('cx')).toBe('75%');
-      });
+      expect(gradient?.getAttribute('cx')).toBe('75%');
     });
 
     it('should apply gradientUnits', () => {
@@ -316,9 +300,7 @@ describe('SVG Gradient Primitives', () => {
       expect(stop?.getAttribute('stopOpacity')).toBe('0.5');
     });
 
-    it.skip('should support reactive stopColor', async () => {
-      // SKIP: Requires ENABLE_REACTIVITY=true in jsxruntime/runtime.ts
-      // This test expects automatic DOM updates when signals change
+    it('should support reactive stopColor', () => {
       const [color, setColor] = createSignal('red');
 
       const { container } = render(() => (
@@ -335,14 +317,10 @@ describe('SVG Gradient Primitives', () => {
       expect(stop?.getAttribute('stopColor')).toBe('red');
 
       setColor('blue');
-      await waitFor(() => {
-        expect(stop?.getAttribute('stopColor')).toBe('blue');
-      });
+      expect(stop?.getAttribute('stopColor')).toBe('blue');
     });
 
-    it.skip('should support reactive offset', async () => {
-      // SKIP: Requires ENABLE_REACTIVITY=true in jsxruntime/runtime.ts
-      // This test expects automatic DOM updates when signals change
+    it('should support reactive offset', () => {
       const [offset, setOffset] = createSignal('25%');
 
       const { container } = render(() => (
@@ -359,9 +337,7 @@ describe('SVG Gradient Primitives', () => {
       expect(stop?.getAttribute('offset')).toBe('25%');
 
       setOffset('75%');
-      await waitFor(() => {
-        expect(stop?.getAttribute('offset')).toBe('75%');
-      });
+      expect(stop?.getAttribute('offset')).toBe('75%');
     });
   });
 
@@ -460,9 +436,7 @@ describe('SVG Gradient Primitives', () => {
       expect(pattern?.getAttribute('patternTransform')).toBe('rotate(45)');
     });
 
-    it.skip('should support reactive dimensions', async () => {
-      // SKIP: Requires ENABLE_REACTIVITY=true in jsxruntime/runtime.ts
-      // This test expects automatic DOM updates when signals change
+    it('should support reactive dimensions', () => {
       const [width, setWidth] = createSignal(10);
 
       const { container } = render(() => (
@@ -479,9 +453,7 @@ describe('SVG Gradient Primitives', () => {
       expect(pattern?.getAttribute('width')).toBe('10');
 
       setWidth(20);
-      await waitFor(() => {
-        expect(pattern?.getAttribute('width')).toBe('20');
-      });
+      expect(pattern?.getAttribute('width')).toBe('20');
     });
   });
 
@@ -550,9 +522,7 @@ describe('SVG Gradient Primitives', () => {
       expect(mask?.getAttribute('maskContentUnits')).toBe('objectBoundingBox');
     });
 
-    it.skip('should support reactive dimensions', async () => {
-      // SKIP: Requires ENABLE_REACTIVITY=true in jsxruntime/runtime.ts
-      // This test expects automatic DOM updates when signals change
+    it('should support reactive dimensions', () => {
       const [width, setWidth] = createSignal(100);
 
       const { container } = render(() => (
@@ -569,9 +539,7 @@ describe('SVG Gradient Primitives', () => {
       expect(mask?.getAttribute('width')).toBe('100');
 
       setWidth(200);
-      await waitFor(() => {
-        expect(mask?.getAttribute('width')).toBe('200');
-      });
+      expect(mask?.getAttribute('width')).toBe('200');
     });
   });
 

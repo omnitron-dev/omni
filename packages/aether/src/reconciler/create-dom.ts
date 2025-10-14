@@ -104,6 +104,10 @@ function createTextFromVNode(vnode: VNode): Text {
  * Executes component function with props and processes the result.
  * Handles various return types (VNode, Node, string, null).
  *
+ * NOTE: This function is called during initial VNode tree creation.
+ * If the component returns a VNode with reactive props, the reactive bindings
+ * will be set up later by jsx-integration's renderVNodeWithBindings.
+ *
  * @param vnode - Component VNode
  * @returns Created DOM node
  * @throws Error if tag is not a function or result is invalid
@@ -134,9 +138,55 @@ function createComponentFromVNode(vnode: VNode): Node {
   }
 
   // Component returned a VNode - recursively create DOM
+  // IMPORTANT: We need to check if this VNode has reactive props and set up bindings
+  // Store the child VNode so reactive bindings can be set up later
+  if (hasReactiveProps(result)) {
+    // Import dynamically to avoid circular dependency
+    const { renderVNodeWithBindings } = require('./jsx-integration.js');
+    const dom = renderVNodeWithBindings(result);
+    vnode.dom = dom;
+    // Store child VNode reference for cleanup
+    if (!vnode.children) {
+      vnode.children = [];
+    }
+    vnode.children.push(result);
+    return dom;
+  }
+
+  // No reactive props - use standard DOM creation
   const dom = createDOMFromVNode(result);
   vnode.dom = dom;
   return dom;
+}
+
+/**
+ * Check if a VNode has reactive props
+ */
+function hasReactiveProps(vnode: VNode): boolean {
+  if (!vnode.props) return false;
+
+  for (const [key, value] of Object.entries(vnode.props)) {
+    // Skip internal props
+    if (key.startsWith('__')) continue;
+
+    if (isSignal(value)) return true;
+
+    // Check nested values in style object
+    if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Node)) {
+      for (const nestedValue of Object.values(value)) {
+        if (isSignal(nestedValue)) return true;
+      }
+    }
+
+    // Check array values
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (isSignal(item)) return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 /**

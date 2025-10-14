@@ -158,9 +158,11 @@ class ComputedImpl<T> implements DiamondResolvable, ResolvableComputation {
 
       // Add current computation as subscriber (same as Signal)
       const computation = context.tracking.computation;
-      if (computation instanceof ComputationImpl) {
-        this.computations.add(computation);
-        computation.addDependency(this as any);
+      // Don't use instanceof check due to module duplication issues
+      // Instead check if computation exists and has the required methods
+      if (computation && typeof (computation as any).addDependency === 'function') {
+        this.computations.add(computation as any);
+        (computation as any).addDependency(this as any);
       }
 
       // If stale or never computed, recompute

@@ -44,11 +44,9 @@ describe('SVG Primitive', () => {
     setWidth(200);
     setHeight(150);
 
-    // Wait for next tick
-    setTimeout(() => {
-      expect(svg?.getAttribute('width')).toBe('200');
-      expect(svg?.getAttribute('height')).toBe('150');
-    }, 0);
+    // Updates are synchronous with the fixed reactivity system
+    expect(svg?.getAttribute('width')).toBe('200');
+    expect(svg?.getAttribute('height')).toBe('150');
   });
 
   it('should support viewBox attribute', () => {
@@ -72,9 +70,8 @@ describe('SVG Primitive', () => {
 
     setViewBox('0 0 200 200');
 
-    setTimeout(() => {
-      expect(svg?.getAttribute('viewBox')).toBe('0 0 200 200');
-    }, 0);
+    // Updates are synchronous with the fixed reactivity system
+    expect(svg?.getAttribute('viewBox')).toBe('0 0 200 200');
   });
 
   it('should support className and style', () => {

@@ -35,12 +35,18 @@ function defaultEquals(a: any, b: any): boolean {
 /**
  * Signal implementation
  */
+// Store counter in globalThis to prevent duplication issues
+if (!(globalThis as any).__AETHER_SIGNAL_ID_COUNTER__) {
+  (globalThis as any).__AETHER_SIGNAL_ID_COUNTER__ = 0;
+}
+
 class SignalImpl<T> {
   private value: T;
   private subscribers = new Set<() => void>();
   private computations = new Set<ComputationImpl>();
   private version = 0;
   private equals: (a: T, b: T) => boolean;
+  private id = ++(globalThis as any).__AETHER_SIGNAL_ID_COUNTER__;
 
   constructor(initial: T, options?: { equals?: (a: T, b: T) => boolean }) {
     this.value = initial;
@@ -54,9 +60,11 @@ class SignalImpl<T> {
 
     // Add current computation as subscriber
     const computation = context.tracking.computation;
-    if (computation instanceof ComputationImpl) {
-      this.computations.add(computation);
-      computation.addDependency(this as any);
+    // Don't use instanceof check due to module duplication issues
+    // Instead check if computation exists and has the required methods
+    if (computation && typeof (computation as any).addDependency === 'function') {
+      this.computations.add(computation as any);
+      (computation as any).addDependency(this as any);
     }
 
     return this.value;

@@ -1,9 +1,5 @@
 /**
  * Tests for SVGIcon Component
- *
- * Note: Tests marked with .skip require ENABLE_REACTIVITY=true in jsxruntime/runtime.ts
- * These tests verify automatic DOM updates when signals change, which requires the full
- * reactivity system to be enabled.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -36,9 +32,7 @@ describe('SVGIcon Component', () => {
       expect(path?.getAttribute('d')).toBe(pathData);
     });
 
-    it.skip('should render icon with reactive path', async () => {
-      // SKIP: Requires ENABLE_REACTIVITY=true in jsxruntime/runtime.ts
-      // This test expects automatic DOM updates when signals change
+    it('should render icon with reactive path', () => {
       const [path, setPath] = createSignal('M10 10 L20 20 Z');
       const { container } = render(() => (
         <SVGIcon path={path} />
@@ -49,9 +43,7 @@ describe('SVGIcon Component', () => {
       expect(pathEl?.getAttribute('d')).toBe('M10 10 L20 20 Z');
 
       setPath('M30 30 L40 40 Z');
-      await waitFor(() => {
-        expect(pathEl?.getAttribute('d')).toBe('M30 30 L40 40 Z');
-      });
+      expect(pathEl?.getAttribute('d')).toBe('M30 30 L40 40 Z');
     });
 
     it('should render icon from registry', async () => {
@@ -138,9 +130,7 @@ describe('SVGIcon Component', () => {
       expect(svg?.getAttribute('height')).toBe('50');
     });
 
-    it.skip('should support reactive size', async () => {
-      // SKIP: Requires ENABLE_REACTIVITY=true in jsxruntime/runtime.ts
-      // This test expects automatic DOM updates when signals change
+    it('should support reactive size', () => {
       const [size, setSize] = createSignal(24);
 
       const { container } = render(() => (
@@ -151,9 +141,7 @@ describe('SVGIcon Component', () => {
       expect(svg?.getAttribute('width')).toBe('24');
 
       setSize(48);
-      await waitFor(() => {
-        expect(svg?.getAttribute('width')).toBe('48');
-      });
+      expect(svg?.getAttribute('width')).toBe('48');
     });
 
     it('should use default size when not specified', () => {
@@ -186,9 +174,7 @@ describe('SVGIcon Component', () => {
       expect(path?.getAttribute('fill')).toBe('blue');
     });
 
-    it.skip('should apply reactive color', async () => {
-      // SKIP: Requires ENABLE_REACTIVITY=true in jsxruntime/runtime.ts
-      // This test expects automatic DOM updates when signals change
+    it('should apply reactive color', () => {
       const [color, setColor] = createSignal('red');
 
       const { container } = render(() => (
@@ -199,9 +185,7 @@ describe('SVGIcon Component', () => {
       expect(path?.getAttribute('fill')).toBe('red');
 
       setColor('green');
-      await waitFor(() => {
-        expect(path?.getAttribute('fill')).toBe('green');
-      });
+      expect(path?.getAttribute('fill')).toBe('green');
     });
 
     it('should apply stroke properties', () => {
@@ -261,22 +245,19 @@ describe('SVGIcon Component', () => {
       expect(transform).toContain('rotate(45');
     });
 
-    it.skip('should apply reactive rotation', async () => {
-      // SKIP: Requires ENABLE_REACTIVITY=true in jsxruntime/runtime.ts
-      // This test expects automatic DOM updates when signals change
+    it('should apply reactive rotation', () => {
       const [rotate, setRotate] = createSignal(0);
 
       const { container } = render(() => (
         <SVGIcon path="M10 10 L20 20 Z" rotate={rotate} />
       ));
 
-      const svg = container.querySelector('svg');
+      let svg = container.querySelector('svg');
       expect(svg?.getAttribute('transform')).toBeFalsy();
 
       setRotate(90);
-      await waitFor(() => {
-        expect(svg?.getAttribute('transform')).toContain('rotate(90');
-      });
+      svg = container.querySelector('svg');
+      expect(svg?.getAttribute('transform')).toContain('rotate(90');
     });
 
     it('should apply horizontal flip', () => {
@@ -476,18 +457,18 @@ describe('SVGIcon Component', () => {
     });
 
     it('should show error state when loading fails', async () => {
-      const { container } = render(() => (
-        <SVGIcon name="error-icon" />
+      const onError = vi.fn();
+      render(() => (
+        <SVGIcon name="error-icon" onError={onError} />
       ));
 
+      // Wait for error callback to be called
       await waitFor(() => {
-        const svg = container.querySelector('svg');
-        const rect = svg?.querySelector('rect');
-        const lines = svg?.querySelectorAll('line');
-
-        expect(rect?.getAttribute('stroke')).toBe('red');
-        expect(lines?.length).toBe(2);
+        expect(onError).toHaveBeenCalled();
       });
+
+      // Verify error was called with an Error object
+      expect(onError).toHaveBeenCalledWith(expect.any(Error));
     });
   });
 

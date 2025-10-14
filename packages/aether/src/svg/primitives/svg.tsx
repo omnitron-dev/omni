@@ -105,12 +105,6 @@ export const SVG = defineComponent<SVGProps>((props) => {
       return <div style={{ width: width ? `${width}px` : undefined, height: height ? `${height}px` : undefined }} />;
     }
 
-    const width = getNumericValue(props.width);
-    const height = getNumericValue(props.height);
-    const viewBox = resolveValue(props.viewBox);
-    const className = resolveValue(props.className);
-    const style = resolveValue(props.style);
-
     // Create title and desc elements for accessibility
     const accessibilityElements: JSX.Element[] = [];
     if (props.title) {
@@ -123,15 +117,15 @@ export const SVG = defineComponent<SVGProps>((props) => {
     // Process all props and convert camelCase to kebab-case
     const processedProps = processProps(props);
 
-    // Cast to any to bypass strict type checking for Signal props
+    // Pass signals directly to JSX for reactive tracking
     const svgProps = {
       ...processedProps,
-      width,
-      height,
-      viewBox,
-      className,
-      style,
-      preserveAspectRatio: resolveValue(props.preserveAspectRatio),
+      width: props.width,
+      height: props.height,
+      viewBox: props.viewBox,
+      className: props.className,
+      style: props.style,
+      preserveAspectRatio: props.preserveAspectRatio,
       role: props.role || (props['aria-label'] ? 'img' : undefined),
       'aria-label': props['aria-label'],
       'aria-labelledby': props['aria-labelledby'],

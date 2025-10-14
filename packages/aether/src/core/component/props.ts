@@ -133,10 +133,10 @@ export function reactiveProps<T extends Record<string, any>>(props: T): T & { [P
         };
       }
 
-      // Read from signal - this creates dependency in reactive context
-      // Note: This creates a dependency on the entire props object, not granular per-property
-      // This is simpler and works correctly, though less optimal than per-property tracking
-      const currentProps = propsSignal();
+      // Read from signal WITHOUT tracking dependency
+      // This is critical: we don't want to track the wrapper props signal,
+      // we want to track the individual signal values inside the props
+      const currentProps = context.untrack(() => propsSignal());
       const value = Reflect.get(currentProps, property);
 
       // If value is a function, bind it to preserve 'this' context

@@ -30,9 +30,20 @@ export enum ComputationType {
 
 /**
  * Global state for reactive system
+ *
+ * IMPORTANT: Stored in globalThis to prevent module duplication issues.
+ * When this module is loaded multiple times (different bundles or test env),
+ * we need to ensure all instances share the same reactive context.
  */
-let currentComputation: Computation | null = null;
-let currentOwner: Owner | null = null;
+const globalKey = '__AETHER_REACTIVE_STATE__';
+if (!(globalThis as any)[globalKey]) {
+  (globalThis as any)[globalKey] = {
+    currentComputation: null as Computation | null,
+    currentOwner: null as Owner | null,
+  };
+}
+const state = (globalThis as any)[globalKey];
+// Use state.currentComputation and state.currentOwner throughout this file
 let batchDepth = 0;
 const batchedUpdates = new Set<Computation>();
 const batchedSubscribers = new Set<() => void>();
@@ -111,7 +122,7 @@ export class ComputationImpl implements Computation {
 
   constructor(
     fn: () => void,
-    owner: Owner | null = currentOwner,
+    owner: Owner | null = state.currentOwner,
     synchronous: boolean = false,
     priority: UpdatePriority = UpdatePriority.NORMAL,
     type: ComputationType = ComputationType.EFFECT
@@ -145,14 +156,14 @@ export class ComputationImpl implements Computation {
       this.lastUpdateVersion = updateVersion;
     }
 
-    const prevComputation = currentComputation;
-    const prevOwner = currentOwner;
+    const prevComputation = state.currentComputation;
+    const prevOwner = state.currentOwner;
 
     try {
       this.isRunning = true;
       // eslint-disable-next-line @typescript-eslint/no-this-alias
-      currentComputation = this;
-      currentOwner = this.owner;
+      state.currentComputation = this;
+      state.currentOwner = this.owner;
 
       // Clear old dependencies
       this.clearDependencies();
@@ -171,8 +182,8 @@ export class ComputationImpl implements Computation {
       this.isStale = false;
     } finally {
       this.isRunning = false;
-      currentComputation = prevComputation;
-      currentOwner = prevOwner;
+      state.currentComputation = prevComputation;
+      state.currentOwner = prevOwner;
     }
   }
 
@@ -292,7 +303,7 @@ export class OwnerImpl implements Owner {
   readonly cleanups: (() => void)[] = [];
   private errorBoundary?: (error: Error) => void;
 
-  constructor(parent: Owner | null = currentOwner) {
+  constructor(parent: Owner | null = state.currentOwner) {
     this.parent = parent;
   }
 
@@ -405,12 +416,12 @@ export class OwnerImpl implements Owner {
  */
 class TrackingContextImpl implements TrackingContext {
   get computation(): Computation | null {
-    return currentComputation;
+    return state.currentComputation;
   }
 
   track<T>(signal: Signal<T>): void {
-    if (currentComputation) {
-      (currentComputation as ComputationImpl).addDependency(signal);
+    if (state.currentComputation) {
+      (state.currentComputation as ComputationImpl).addDependency(signal);
     }
   }
 
@@ -419,12 +430,12 @@ class TrackingContextImpl implements TrackingContext {
   }
 
   untrack<T>(fn: () => T): T {
-    const prev = currentComputation;
-    currentComputation = null;
+    const prev = state.currentComputation;
+    state.currentComputation = null;
     try {
       return fn();
     } finally {
-      currentComputation = prev;
+      state.currentComputation = prev;
     }
   }
 }
@@ -436,32 +447,32 @@ class ReactiveContextImpl implements ReactiveContext {
   readonly tracking = new TrackingContextImpl();
 
   get owner(): Owner | null {
-    return currentOwner;
+    return state.currentOwner;
   }
 
   createRoot<T>(fn: (dispose: () => void) => T): T {
     const owner = new OwnerImpl(null);
-    const prevOwner = currentOwner;
+    const prevOwner = state.currentOwner;
     const prevSyncContext = inSyncContext;
 
     try {
-      currentOwner = owner;
+      state.currentOwner = owner;
       inSyncContext = true;
       const result = fn(() => owner.dispose());
       return result;
     } finally {
       inSyncContext = prevSyncContext;
-      currentOwner = prevOwner;
+      state.currentOwner = prevOwner;
     }
   }
 
   runWithOwner<T>(owner: Owner | null, fn: () => T): T {
-    const prevOwner = currentOwner;
-    currentOwner = owner;
+    const prevOwner = state.currentOwner;
+    state.currentOwner = owner;
     try {
       return fn();
     } finally {
-      currentOwner = prevOwner;
+      state.currentOwner = prevOwner;
     }
   }
 
@@ -660,7 +671,7 @@ export const context = new ReactiveContextImpl();
  * Helper to get current owner
  */
 export function getOwner(): Owner | null {
-  return currentOwner;
+  return state.currentOwner;
 }
 
 /**
@@ -689,8 +700,8 @@ export function queueSubscriberNotification(fn: () => void): void {
  * Helper to run cleanup on current owner
  */
 export function onCleanup(fn: () => void): void {
-  if (currentOwner) {
-    currentOwner.cleanups.push(fn);
+  if (state.currentOwner) {
+    state.currentOwner.cleanups.push(fn);
   }
 }
 

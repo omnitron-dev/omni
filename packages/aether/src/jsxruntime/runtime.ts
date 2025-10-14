@@ -9,6 +9,16 @@ import { FragmentType, isComponent, normalizeChildren } from './types.js';
 import { createElementVNode, normalizeChildren as normalizeVNodeChildren } from '../reconciler/vnode.js';
 import type { VNode } from '../reconciler/vnode.js';
 
+// Import renderVNodeWithBindings - will be set lazily to avoid circular dependency
+let _renderVNodeWithBindings: ((vnode: VNode) => Node) | null = null;
+function getRenderVNodeWithBindings(): (vnode: VNode) => Node {
+  if (!_renderVNodeWithBindings) {
+    const { renderVNodeWithBindings } = require('../reconciler/jsx-integration.js');
+    _renderVNodeWithBindings = renderVNodeWithBindings;
+  }
+  return _renderVNodeWithBindings;
+}
+
 /**
  * Feature flag to enable reactive VNode creation when signals are detected
  *
@@ -70,7 +80,8 @@ function createJSXElement(type: JSXElementType, props: JSXProps | null, key?: st
   // Handle DOM element
   if (typeof type === 'string') {
     // Check if reactivity is enabled and props contain signals
-    if (ENABLE_REACTIVITY && detectReactiveProps(props)) {
+    const hasReactiveProps = detectReactiveProps(props);
+    if (ENABLE_REACTIVITY && hasReactiveProps) {
       // Return VNode for reactive rendering
       // Type assertion needed until VNode-JSXElement integration is complete
       return createReactiveVNode(type, props, key) as any as JSXElement;
@@ -118,6 +129,30 @@ function createComponentElement(
 
   const result = Component(componentProps);
 
+  // Handle VNode results with reactive props
+  if (isVNode(result)) {
+    console.log('[COMPONENT] Result is VNode');
+    // Check if the VNode has reactive props
+    const hasReactive = hasReactivePropsInVNode(result);
+    console.log('[COMPONENT] Has reactive props:', hasReactive);
+    if (hasReactive) {
+      console.log('[COMPONENT] Rendering with bindings');
+      const renderVNodeWithBindings = getRenderVNodeWithBindings();
+      const dom = renderVNodeWithBindings(result);
+
+      // Assign ref if provided
+      if (ref && dom instanceof Node) {
+        if (typeof ref === 'function') {
+          ref(dom);
+        } else {
+          ref.current = dom;
+        }
+      }
+
+      return dom as any;
+    }
+  }
+
   // Assign ref if provided
   if (ref && result instanceof Node) {
     if (typeof ref === 'function') {
@@ -128,6 +163,36 @@ function createComponentElement(
   }
 
   return result;
+}
+
+/**
+ * Check if a VNode has reactive props (signals)
+ */
+function hasReactivePropsInVNode(vnode: any): boolean {
+  if (!vnode || !vnode.props) return false;
+
+  for (const [key, value] of Object.entries(vnode.props)) {
+    // Skip internal props
+    if (key.startsWith('__')) continue;
+
+    if (isSignal(value)) return true;
+
+    // Check nested values in style object
+    if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Node)) {
+      for (const nestedValue of Object.values(value)) {
+        if (isSignal(nestedValue)) return true;
+      }
+    }
+
+    // Check array values
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (isSignal(item)) return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 /**
@@ -323,9 +388,23 @@ function renderChild(child: any): Node | null {
     return fragment;
   }
 
+  // VNode - render with reactive bindings
+  if (isVNode(child)) {
+    const renderVNodeWithBindings = getRenderVNodeWithBindings();
+    const dom = renderVNodeWithBindings(child);
+    return dom;
+  }
+
   // Unknown type
   console.warn('Unknown child type:', child);
   return null;
+}
+
+/**
+ * Check if value is a VNode
+ */
+function isVNode(value: any): boolean {
+  return value != null && typeof value === 'object' && 'type' in value && 'tag' in value;
 }
 
 /**
@@ -350,7 +429,10 @@ function detectReactiveProps(props: JSXProps | null): boolean {
   }
 
   // Check each prop value
-  for (const value of Object.values(props)) {
+  for (const [key, value] of Object.entries(props)) {
+    // Skip internal props
+    if (key.startsWith('__')) continue;
+
     // Check if value is a signal (has peek method)
     if (isSignal(value)) {
       return true;

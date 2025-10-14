@@ -82,22 +82,27 @@ export const SVGIcon = defineComponent<SVGIconProps>((props) => {
     return typeof value === 'function' ? (value as Signal<T>)() : value;
   };
 
-  // Calculate dimensions
-  const dimensions = computed(() => {
-    if (props.width && props.height) {
-      return {
-        width: resolveValue(props.width),
-        height: resolveValue(props.height),
-      };
+  // Calculate dimensions as separate computed signals for reactivity
+  const width = computed(() => {
+    if (props.width) {
+      return resolveValue(props.width);
     }
-
     const size = resolveValue(props.size);
     if (size) {
-      const sizeValue = typeof size === 'string' ? SIZE_PRESETS[size] : size;
-      return { width: sizeValue, height: sizeValue };
+      return typeof size === 'string' ? SIZE_PRESETS[size] : size;
     }
+    return 24; // Default size
+  });
 
-    return { width: 24, height: 24 }; // Default size
+  const height = computed(() => {
+    if (props.height) {
+      return resolveValue(props.height);
+    }
+    const size = resolveValue(props.size);
+    if (size) {
+      return typeof size === 'string' ? SIZE_PRESETS[size] : size;
+    }
+    return 24; // Default size
   });
 
   // Load icon from registry
@@ -149,9 +154,10 @@ export const SVGIcon = defineComponent<SVGIconProps>((props) => {
   // Build transform string
   const buildTransform = computed(() => {
     const transforms: string[] = [];
-    const { width, height } = dimensions();
-    const centerX = Number(width) / 2;
-    const centerY = Number(height) / 2;
+    const w = width();
+    const h = height();
+    const centerX = Number(w) / 2;
+    const centerY = Number(h) / 2;
 
     // Rotation
     const rotate = resolveValue(props.rotate);
@@ -164,8 +170,8 @@ export const SVGIcon = defineComponent<SVGIconProps>((props) => {
       const scaleX = props.flip === 'horizontal' || props.flip === 'both' ? -1 : 1;
       const scaleY = props.flip === 'vertical' || props.flip === 'both' ? -1 : 1;
       transforms.push(`scale(${scaleX} ${scaleY})`);
-      if (scaleX === -1) transforms.push(`translate(${-Number(width)} 0)`);
-      if (scaleY === -1) transforms.push(`translate(0 ${-Number(height)})`);
+      if (scaleX === -1) transforms.push(`translate(${-Number(w)} 0)`);
+      if (scaleY === -1) transforms.push(`translate(0 ${-Number(h)})`);
     }
 
     return transforms.length > 0 ? transforms.join(' ') : undefined;
@@ -187,14 +193,25 @@ export const SVGIcon = defineComponent<SVGIconProps>((props) => {
     return styles;
   });
 
+  // Calculate viewBox as computed signal (created once, not on every render)
+  const viewBox = computed(() => props.viewBox || `0 0 ${width()} ${height()}`);
+
+  // Loading state styles (created once, not on every render)
+  const loadingStyles = computed(() => ({ opacity: 0.3, ...animationStyles(), ...props.style }));
+
+  // Determine fill/stroke values (pass signals when possible)
+  const fill = computed(() => {
+    const f = resolveValue(props.fill);
+    const c = resolveValue(props.color);
+    return f || c || 'currentColor';
+  });
+
+  const stroke = computed(() => resolveValue(props.stroke));
+  const strokeWidth = computed(() => resolveValue(props.strokeWidth));
+
   return () => {
-    const { width, height } = dimensions();
-    // Pass color/fill/stroke as signals for reactivity, with fallback logic
-    const fill = props.fill || props.color || 'currentColor';
-    const stroke = props.stroke;
-    const strokeWidth = props.strokeWidth;
-    const transform = buildTransform();
-    const styles = { ...animationStyles(), ...props.style };
+    // Merge styles at render time (animations + custom styles)
+    const mergedStyles = { ...animationStyles(), ...props.style };
 
     // Build accessibility props
     const accessibilityProps: any = {
@@ -207,94 +224,57 @@ export const SVGIcon = defineComponent<SVGIconProps>((props) => {
       desc: props.desc,
     };
 
-    // Create all possible SVG states manually
-    const errorSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    errorSvg.setAttribute('width', String(width));
-    errorSvg.setAttribute('height', String(height));
-    if (props.className) errorSvg.setAttribute('class', props.className);
-    Object.assign(errorSvg.style, styles);
-    Object.entries(accessibilityProps).forEach(([key, value]) => {
-      if (value !== undefined) errorSvg.setAttribute(key, String(value));
-    });
-    const errorRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    errorRect.setAttribute('width', String(width));
-    errorRect.setAttribute('height', String(height));
-    errorRect.setAttribute('fill', 'none');
-    errorRect.setAttribute('stroke', 'red');
-    errorRect.setAttribute('stroke-width', '2');
-    errorSvg.appendChild(errorRect);
-    const errorLine1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    errorLine1.setAttribute('x1', '0');
-    errorLine1.setAttribute('y1', '0');
-    errorLine1.setAttribute('x2', String(width));
-    errorLine1.setAttribute('y2', String(height));
-    errorLine1.setAttribute('stroke', 'red');
-    errorLine1.setAttribute('stroke-width', '2');
-    errorSvg.appendChild(errorLine1);
-    const errorLine2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    errorLine2.setAttribute('x1', String(width));
-    errorLine2.setAttribute('y1', '0');
-    errorLine2.setAttribute('x2', '0');
-    errorLine2.setAttribute('y2', String(height));
-    errorLine2.setAttribute('stroke', 'red');
-    errorLine2.setAttribute('stroke-width', '2');
-    errorSvg.appendChild(errorLine2);
+    // Determine state
+    const hasError = error() !== null;
+    const hasPath = props.path !== undefined;
+    const hasIconData = iconData() !== null;
+    const loaded = isLoaded();
 
-    const pathSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    pathSvg.setAttribute('width', String(width));
-    pathSvg.setAttribute('height', String(height));
-    pathSvg.setAttribute('viewBox', props.viewBox || `0 0 ${width} ${height}`);
-    if (props.className) pathSvg.setAttribute('class', props.className);
-    if (transform) pathSvg.setAttribute('transform', transform);
-    if (props.onClick) pathSvg.addEventListener('click', props.onClick as any);
-    Object.assign(pathSvg.style, styles);
-    Object.entries(accessibilityProps).forEach(([key, value]) => {
-      if (value !== undefined) pathSvg.setAttribute(key, String(value));
-    });
-    if (props.path) {
-      const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      const pathValue = typeof props.path === 'function' ? props.path() : props.path;
-      pathEl.setAttribute('d', pathValue || '');
-      pathEl.setAttribute('fill', typeof fill === 'function' ? fill() : fill);
-      if (stroke) pathEl.setAttribute('stroke', typeof stroke === 'function' ? stroke() : stroke);
-      if (strokeWidth) pathEl.setAttribute('strokeWidth', String(strokeWidth));
-      pathSvg.appendChild(pathEl);
+    // Error state
+    if (hasError) {
+      return (
+        <svg
+          width={width}
+          height={height}
+          className={props.className}
+          style={mergedStyles}
+          {...accessibilityProps}
+        >
+          <rect width={width} height={height} fill="none" stroke="red" strokeWidth="2" />
+          <line x1="0" y1="0" x2={width} y2={height} stroke="red" strokeWidth="2" />
+          <line x1={width} y1="0" x2="0" y2={height} stroke="red" strokeWidth="2" />
+        </svg>
+      );
     }
 
-    const loadingSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    loadingSvg.setAttribute('width', String(width));
-    loadingSvg.setAttribute('height', String(height));
-    if (props.className) loadingSvg.setAttribute('class', props.className);
-    Object.assign(loadingSvg.style, { opacity: 0.3, ...styles });
-    Object.entries(accessibilityProps).forEach(([key, value]) => {
-      if (value !== undefined) loadingSvg.setAttribute(key, String(value));
-    });
-    const loadingRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    loadingRect.setAttribute('width', String(width));
-    loadingRect.setAttribute('height', String(height));
-    loadingRect.setAttribute('fill', typeof fill === 'function' ? fill() : fill);
-    loadingRect.setAttribute('opacity', '0.1');
-    loadingSvg.appendChild(loadingRect);
+    // Path state - use JSX to enable reactivity
+    if (hasPath) {
+      return (
+        <svg
+          width={width}
+          height={height}
+          viewBox={viewBox}
+          className={props.className}
+          transform={buildTransform}
+          onClick={props.onClick}
+          style={mergedStyles}
+          {...accessibilityProps}
+        >
+          <path
+            d={props.path}
+            fill={fill}
+            stroke={stroke}
+            strokeWidth={strokeWidth}
+          />
+        </svg>
+      );
+    }
 
-    // Create container
-    const container = document.createElement('div');
-    container.style.display = 'contents';
-
-    // Helper to set current SVG
-    const setCurrentSvg = (svg: SVGElement | null) => {
-      // Remove all children
-      while (container.firstChild) {
-        container.removeChild(container.firstChild);
-      }
-      // Add the new SVG if provided
-      if (svg) {
-        container.appendChild(svg);
-      }
-    };
-
-    // Helper to render iconData as HTML
-    const renderIconData = () => {
+    // Icon data state
+    if (hasIconData) {
       const svgString = iconData();
+      const w = width();
+      const h = height();
       if (svgString) {
         // Create a temp div to parse the HTML
         const temp = document.createElement('div');
@@ -304,64 +284,33 @@ export const SVGIcon = defineComponent<SVGIconProps>((props) => {
         if (child) {
           // Apply dimensions and styles
           if (child.tagName.toLowerCase() === 'svg') {
-            child.setAttribute('width', String(width));
-            child.setAttribute('height', String(height));
-            Object.assign((child as HTMLElement).style, styles);
+            child.setAttribute('width', String(w));
+            child.setAttribute('height', String(h));
+            Object.assign((child as HTMLElement).style, mergedStyles);
             if (props.className) child.setAttribute('class', props.className);
           }
-          return child;
+          return child as any;
         }
       }
-      return null;
-    };
-
-    // Determine initial state and set appropriate element
-    const hasError = error() !== null;
-    const hasPath = props.path !== undefined;
-    const hasIconData = iconData() !== null;
-    const loaded = isLoaded();
-
-    if (hasError) {
-      setCurrentSvg(errorSvg);
-    } else if (hasPath) {
-      setCurrentSvg(pathSvg);
-    } else if (hasIconData) {
-      const iconElement = renderIconData();
-      if (iconElement) {
-        container.appendChild(iconElement);
-      }
-    } else if (!loaded) {
-      setCurrentSvg(loadingSvg);
     }
 
-    // Set up reactive effect to swap elements when state changes
-    effect(() => {
-      const hasError = error() !== null;
-      const hasPath = props.path !== undefined;
-      const hasIconData = iconData() !== null;
-      const loaded = isLoaded();
+    // Loading state
+    if (!loaded) {
+      return (
+        <svg
+          width={width}
+          height={height}
+          className={props.className}
+          style={{ opacity: 0.3, ...mergedStyles }}
+          {...accessibilityProps}
+        >
+          <rect width={width} height={height} fill={fill} opacity="0.1" />
+        </svg>
+      );
+    }
 
-      if (hasError) {
-        setCurrentSvg(errorSvg);
-      } else if (hasPath) {
-        setCurrentSvg(pathSvg);
-      } else if (hasIconData) {
-        const iconElement = renderIconData();
-        if (iconElement) {
-          // Remove all children
-          while (container.firstChild) {
-            container.removeChild(container.firstChild);
-          }
-          container.appendChild(iconElement);
-        }
-      } else if (!loaded) {
-        setCurrentSvg(loadingSvg);
-      } else {
-        setCurrentSvg(null);
-      }
-    });
-
-    return container;
+    // Empty state
+    return null;
   };
 });
 

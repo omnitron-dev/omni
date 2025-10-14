@@ -81,6 +81,13 @@ export function renderVNodeWithBindings(vnode: VNode): Node {
 }
 
 /**
+ * Check if element is an SVG element
+ */
+function isSVGElement(element: Element): boolean {
+  return element.namespaceURI === 'http://www.w3.org/2000/svg';
+}
+
+/**
  * Set up reactive bindings for element props
  *
  * Scans props for signals and creates appropriate reactive bindings.
@@ -95,6 +102,8 @@ export function renderVNodeWithBindings(vnode: VNode): Node {
  * @param vnode - VNode to store effects on
  */
 function setupReactiveProps(element: HTMLElement, props: Record<string, any>, vnode: VNode): void {
+  const isSVG = isSVGElement(element);
+
   for (const [key, value] of Object.entries(props)) {
     // Skip certain keys
     if (key === 'children' || key === 'key' || key === 'ref') {
@@ -156,15 +165,23 @@ function setupReactiveProps(element: HTMLElement, props: Record<string, any>, vn
 
     // Handle reactive regular props
     if (isSignal(value)) {
-      // Determine if this should be attribute or property
-      if (key in element) {
-        // Property binding (value, checked, etc.)
-        const binding = bindSignalToProperty(element, key, () => value());
-        vnode.effects!.push(binding.effect);
-      } else {
-        // Attribute binding (data-*, aria-*, etc.)
+      // For SVG elements, always use attribute binding
+      // For HTML elements, use property binding if available, otherwise attribute
+      if (isSVG) {
+        // SVG - always use attribute binding
         const binding = bindSignalToAttribute(element, key, () => value());
         vnode.effects!.push(binding.effect);
+      } else {
+        // HTML - check if property exists
+        if (key in element) {
+          // Property binding (value, checked, etc.)
+          const binding = bindSignalToProperty(element, key, () => value());
+          vnode.effects!.push(binding.effect);
+        } else {
+          // Attribute binding (data-*, aria-*, etc.)
+          const binding = bindSignalToAttribute(element, key, () => value());
+          vnode.effects!.push(binding.effect);
+        }
       }
     }
   }

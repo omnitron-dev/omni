@@ -43,9 +43,7 @@ describe('SVG Text Primitives', () => {
       expect(text?.getAttribute('y')).toBe('50%');
     });
 
-    it.skip('should support reactive coordinates', async () => {
-      // SKIP: Requires ENABLE_REACTIVITY=true in jsxruntime/runtime.ts
-      // This test expects automatic DOM updates when signals change
+    it('should support reactive coordinates', async () => {
       const x = signal(10);
       const y = signal(20);
 
@@ -80,9 +78,7 @@ describe('SVG Text Primitives', () => {
       expect(text?.getAttribute('dy')).toBe('10');
     });
 
-    it.skip('should support reactive offsets', async () => {
-      // SKIP: Requires ENABLE_REACTIVITY=true in jsxruntime/runtime.ts
-      // This test expects automatic DOM updates when signals change
+    it('should support reactive offsets', async () => {
       const dx = signal(0);
 
       const { container } = render(() => (
@@ -123,9 +119,7 @@ describe('SVG Text Primitives', () => {
       expect(text?.getAttribute('rotate')).toBe('10 20 30 40');
     });
 
-    it.skip('should support reactive rotate', async () => {
-      // SKIP: Requires ENABLE_REACTIVITY=true in jsxruntime/runtime.ts
-      // This test expects automatic DOM updates when signals change
+    it('should support reactive rotate', async () => {
       const rotate = signal('0');
 
       const { container } = render(() => (
@@ -176,9 +170,7 @@ describe('SVG Text Primitives', () => {
       });
     });
 
-    it.skip('should support reactive textLength', async () => {
-      // SKIP: Requires ENABLE_REACTIVITY=true in jsxruntime/runtime.ts
-      // This test expects automatic DOM updates when signals change
+    it('should support reactive textLength', async () => {
       const length = signal(100);
 
       const { container } = render(() => (
@@ -284,9 +276,7 @@ describe('SVG Text Primitives', () => {
       expect(tspan?.getAttribute('dy')).toBe('10');
     });
 
-    it.skip('should support reactive attributes', async () => {
-      // SKIP: Requires ENABLE_REACTIVITY=true in jsxruntime/runtime.ts
-      // This test expects automatic DOM updates when signals change
+    it('should support reactive attributes', async () => {
       const x = signal(10);
       const fill = signal('red');
 
@@ -413,9 +403,7 @@ describe('SVG Text Primitives', () => {
       expect(textPath?.getAttribute('startOffset')).toBe('50');
     });
 
-    it.skip('should support reactive startOffset', async () => {
-      // SKIP: Requires ENABLE_REACTIVITY=true in jsxruntime/runtime.ts
-      // This test expects automatic DOM updates when signals change
+    it('should support reactive startOffset', async () => {
       const offset = signal(0);
 
       const { container } = render(() => (

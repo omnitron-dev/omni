@@ -44,9 +44,7 @@ describe('SVG Shape Primitives', () => {
       expect(circle?.getAttribute('fill')).toBe('red');
     });
 
-    it.skip('should support reactive attributes', async () => {
-      // SKIP: Requires ENABLE_REACTIVITY=true in jsxruntime/runtime.ts
-      // This test expects automatic DOM updates when signals change
+    it('should support reactive attributes', async () => {
       const [r, setR] = createSignal(40);
 
       const { container } = render(() => (
@@ -56,10 +54,15 @@ describe('SVG Shape Primitives', () => {
       ));
 
       const circle = container.querySelector('circle');
+      console.log('[TEST] Initial r:', circle?.getAttribute('r'));
       expect(circle?.getAttribute('r')).toBe('40');
 
+      console.log('[TEST] Setting r to 60');
       setR(60);
+      console.log('[TEST] After setR, r is:', circle?.getAttribute('r'));
+
       await nextTick();
+      console.log('[TEST] After nextTick, r is:', circle?.getAttribute('r'));
       expect(circle?.getAttribute('r')).toBe('60');
     });
 
@@ -106,9 +109,7 @@ describe('SVG Shape Primitives', () => {
       expect(rect?.getAttribute('ry')).toBe('10');
     });
 
-    it.skip('should support reactive dimensions', async () => {
-      // SKIP: Requires ENABLE_REACTIVITY=true in jsxruntime/runtime.ts
-      // This test expects automatic DOM updates when signals change
+    it('should support reactive dimensions', async () => {
       const [width, setWidth] = createSignal(100);
       const [height, setHeight] = createSignal(50);
 
@@ -144,9 +145,7 @@ describe('SVG Shape Primitives', () => {
       expect(path?.getAttribute('stroke')).toBe('black');
     });
 
-    it.skip('should support reactive path data', async () => {
-      // SKIP: Requires ENABLE_REACTIVITY=true in jsxruntime/runtime.ts
-      // This test expects automatic DOM updates when signals change
+    it('should support reactive path data', async () => {
       const [d, setD] = createSignal('M 0 0 L 100 100');
 
       const { container } = render(() => (
@@ -208,9 +207,7 @@ describe('SVG Shape Primitives', () => {
       expect(polygon?.getAttribute('fill')).toBe('yellow');
     });
 
-    it.skip('should support reactive points', async () => {
-      // SKIP: Requires ENABLE_REACTIVITY=true in jsxruntime/runtime.ts
-      // This test expects automatic DOM updates when signals change
+    it('should support reactive points', async () => {
       const [points, setPoints] = createSignal('0,0 50,0 25,50');
 
       const { container } = render(() => (
@@ -303,9 +300,7 @@ describe('SVG Shape Primitives', () => {
       expect(use?.getAttribute('y')).toBe('50');
     });
 
-    it.skip('should support reactive href', async () => {
-      // SKIP: Requires ENABLE_REACTIVITY=true in jsxruntime/runtime.ts
-      // This test expects automatic DOM updates when signals change
+    it('should support reactive href', async () => {
       const [href, setHref] = createSignal('#icon1');
 
       const { container } = render(() => (

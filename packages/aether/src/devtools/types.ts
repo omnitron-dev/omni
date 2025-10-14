@@ -205,7 +205,7 @@ export interface InspectorState {
   /** All tracked signals */
   signals: Map<string, SignalMetadata>;
   /** All tracked computed */
-  computeds: Map<string, ComputedMetadata>;
+  computed: Map<string, ComputedMetadata>;
   /** All tracked effects */
   effects: Map<string, EffectMetadata>;
   /** All tracked components */

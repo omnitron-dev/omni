@@ -634,7 +634,7 @@ export class InspectorImpl implements Inspector {
 
     return {
       signals: signalsByName,
-      computeds: computedByName, // Use 'computeds' for consistency with test expectations
+      computed: computedByName, // Use 'computed' for consistency with codebase
       effects: effectsByName,
       components: componentsByName,
       stores: storesByName,

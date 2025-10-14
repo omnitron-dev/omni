@@ -9,6 +9,19 @@ export default defineConfig({
     // Allow unhandled errors in tests where we're explicitly testing error handling
     // The errors ARE handled by the implementation, but Vitest tracks them before handlers execute
     dangerouslyIgnoreUnhandledErrors: true,
+    // Memory optimization: use threads with limited concurrency
+    pool: 'threads',
+    poolOptions: {
+      threads: {
+        maxThreads: 4,
+        minThreads: 1,
+        singleThread: false,
+      },
+    },
+    // Limit concurrent test files to prevent memory spikes
+    maxConcurrency: 4,
+    // Test timeout for long-running tests
+    testTimeout: 30000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

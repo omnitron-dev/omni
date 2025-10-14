@@ -11,6 +11,8 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import remarkFrontmatter from 'remark-frontmatter';
 import remarkDirective from 'remark-directive';
+import { remarkCustomHeadingId } from '../plugins/remark-custom-heading-id.js';
+import { preprocessHeadingIds } from '../plugins/preprocess-heading-ids.js';
 import type { Root as MdastRoot } from 'mdast';
 import type { CompileMDXOptions, MDXNode } from '../types.js';
 
@@ -38,12 +40,16 @@ export interface ParserOptions {
  * Create a unified processor with configured plugins
  */
 function createProcessor(options: ParserOptions): Processor<MdastRoot, undefined, undefined, MdastRoot, string> {
-  let processor: Processor<any, any, any, any, any> = unified().use(remarkParse);
+  let processor: Processor<any, any, any, any, any> = unified()
+    .use(remarkParse);
 
-  // MDX support (must be before other plugins)
+  // MDX support (must be after remarkParse)
   if (options.jsx !== false) {
     processor = processor.use(remarkMdx as any);
   }
+
+  // Custom heading ID plugin (must be AFTER remarkMdx so it can find mdxTextExpression nodes)
+  processor = processor.use(remarkCustomHeadingId as any);
 
   // GitHub Flavored Markdown
   if (options.gfm) {
@@ -104,7 +110,9 @@ export class AetherMDXParser {
    * Parse MDX content to AST
    */
   parse(content: string): MdastRoot {
-    const file = this.processor.parse(content);
+    // Preprocess to handle {#id} syntax
+    const preprocessed = preprocessHeadingIds(content);
+    const file = this.processor.parse(preprocessed);
     return file as MdastRoot;
   }
 
@@ -112,7 +120,9 @@ export class AetherMDXParser {
    * Parse MDX content asynchronously
    */
   async parseAsync(content: string): Promise<MdastRoot> {
-    const file = await this.processor.run(this.processor.parse(content));
+    // Preprocess to handle {#id} syntax
+    const preprocessed = preprocessHeadingIds(content);
+    const file = await this.processor.run(this.processor.parse(preprocessed));
     return file as MdastRoot;
   }
 
@@ -157,16 +167,25 @@ export class AetherMDXParser {
         break;
 
       // MDAST-specific nodes
-      case 'heading':
+      case 'heading': {
         mdxNode.tagName = `h${node.depth || 1}`;
         mdxNode.children = this.convertChildren(node.children);
-        // Generate ID for heading
-        const headingText = this.extractText(node);
-        const headingId = this.generateUniqueId(headingText);
+        // Check if custom ID is provided via remark plugin
+        let headingId: string;
+        if (node.data?.hProperties?.id || node.data?.id) {
+          // Use custom ID from {#id} syntax
+          headingId = node.data.hProperties?.id || node.data.id;
+          // Note: Don't call generateUniqueId as the custom ID should be used as-is
+        } else {
+          // Generate ID from text
+          const headingText = this.extractText(node);
+          headingId = this.generateUniqueId(headingText);
+        }
         mdxNode.attributes = [
           { type: 'mdxJsxAttribute' as const, name: 'id', value: headingId }
         ];
         break;
+      }
 
       case 'paragraph':
         mdxNode.tagName = 'p';
@@ -392,7 +411,8 @@ export class AetherMDXParser {
     const visit = (node: any) => {
       if (node.type === 'heading') {
         const title = this.extractText(node);
-        const id = this.generateId(title);
+        // Use custom ID if available, otherwise generate from title
+        const id = node.data?.hProperties?.id || node.data?.id || this.generateId(title);
         toc.push({
           level: node.depth,
           title,

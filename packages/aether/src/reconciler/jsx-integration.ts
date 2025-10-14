@@ -188,6 +188,32 @@ function setupReactiveProps(element: HTMLElement, props: Record<string, any>, vn
 }
 
 /**
+ * Evaluate expression with scope
+ *
+ * Safely evaluates a JavaScript expression string with provided scope variables.
+ *
+ * @param expression - JavaScript expression to evaluate
+ * @param scope - Scope variables to use in evaluation
+ * @returns Evaluated result
+ */
+function evaluateExpression(expression: string, scope: Record<string, any>): any {
+  try {
+    // Create a function with scope variables as parameters
+    const scopeKeys = Object.keys(scope);
+    const scopeValues = scopeKeys.map(key => scope[key]);
+
+    // Create function that evaluates the expression
+    const fn = new Function(...scopeKeys, `return ${expression}`);
+
+    // Call with scope values
+    return fn(...scopeValues);
+  } catch (error) {
+    console.error('Error evaluating expression:', expression, error);
+    return '';
+  }
+}
+
+/**
  * Set up reactive bindings for children
  *
  * Recursively processes child VNodes and sets up reactive text bindings.
@@ -201,10 +227,22 @@ function setupReactiveChildren(vnode: VNode): void {
     vnode.effects = [];
   }
 
-  // Handle reactive text nodes
-  if (vnode.type === VNodeType.TEXT && vnode.dom && vnode.text) {
-    // Check if text contains a signal reference (this would be handled differently)
-    // For now, reactive text is handled via textContent prop
+  // Handle reactive text nodes with expressions
+  if (vnode.type === VNodeType.TEXT && vnode.dom) {
+    const vnodeData = (vnode as any).data;
+    if (vnodeData?.isReactive && vnodeData?.expression) {
+      // This is a reactive expression VNode from MDX
+      const expression = vnodeData.expression;
+      const scope = vnodeData.scope || {};
+      const textNode = vnode.dom as Text;
+
+      // Create a reactive binding that evaluates the expression
+      const binding = bindSignalToTextNode(textNode, () =>
+        String(evaluateExpression(expression, scope))
+      );
+
+      vnode.effects!.push(binding.effect);
+    }
   }
 
   // Handle element children

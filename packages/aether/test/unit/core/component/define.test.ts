@@ -5,6 +5,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { defineComponent, component } from '../../../../src/core/component/define.js';
 import { signal } from '../../../../src/core/reactivity/signal.js';
+import { getTextContent } from '../../../utils/test-helpers.js';
 
 describe('defineComponent', () => {
   describe('Basic component creation', () => {
@@ -31,7 +32,7 @@ describe('defineComponent', () => {
 
       const result = MyComponent({});
 
-      expect(result).toBe('Hello World');
+      expect(getTextContent(result)).toBe('Hello World');
     });
 
     it('should set display name when provided', () => {
@@ -47,7 +48,7 @@ describe('defineComponent', () => {
 
       const result = MyComponent({ name: 'Alice' });
 
-      expect(result).toBe('Hello Alice');
+      expect(getTextContent(result)).toBe('Hello Alice');
     });
 
     it('should handle props reactively', () => {
@@ -58,7 +59,7 @@ describe('defineComponent', () => {
 
       const result = MyComponent({ count: 42 });
 
-      expect(result).toBe(42);
+      expect(getTextContent(result)).toBe(42);
     });
   });
 
@@ -79,7 +80,7 @@ describe('defineComponent', () => {
 
       const result = MyComponent({});
 
-      expect(typeof result).toBe('number');
+      expect(typeof getTextContent(result)).toBe('number');
     });
 
     it('should isolate component reactivity', () => {
@@ -98,8 +99,8 @@ describe('defineComponent', () => {
       const result1 = Component1({});
       const result2 = Component2({});
 
-      expect(result1).toBe(1);
-      expect(result2).toBe(2);
+      expect(getTextContent(result1)).toBe(1);
+      expect(getTextContent(result2)).toBe(2);
     });
   });
 
@@ -119,7 +120,7 @@ describe('defineComponent', () => {
       const result1 = Component1({});
       const result2 = Component2({});
 
-      expect(result1).toBe(result2);
+      expect(getTextContent(result1)).toBe(getTextContent(result2));
       expect(setupFn).toHaveBeenCalledTimes(2);
     });
   });
@@ -167,14 +168,14 @@ describe('defineComponent', () => {
         age: number;
       }
 
-      const MyComponent = defineComponent<Props>((props) => 
+      const MyComponent = defineComponent<Props>((props) =>
         // TypeScript should enforce props.name is string and props.age is number
          () => `${props.name} is ${props.age}`
       );
 
       const result = MyComponent({ name: 'Alice', age: 30 });
 
-      expect(result).toBe('Alice is 30');
+      expect(getTextContent(result)).toBe('Alice is 30');
     });
   });
 
@@ -189,7 +190,7 @@ describe('defineComponent', () => {
 
       const result = Parent({});
 
-      expect(result).toBe(42);
+      expect(getTextContent(result)).toBe(42);
     });
   });
 });

@@ -22,8 +22,8 @@ export function sanitizeMDX(
   options: SanitizeOptions = {}
 ): string {
   const {
-    allowedTags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'a', 'code', 'pre', 'blockquote', 'em', 'strong'],
-    allowedAttributes = { a: ['href', 'target'], code: ['className'] },
+    allowedTags: _allowedTags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'a', 'code', 'pre', 'blockquote', 'em', 'strong'],
+    allowedAttributes: _allowedAttributes = { a: ['href', 'target'], code: ['className'] },
     allowedProtocols = ['http', 'https', 'mailto']
   } = options;
 

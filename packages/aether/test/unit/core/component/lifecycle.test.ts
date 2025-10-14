@@ -6,6 +6,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { onMount, onError } from '../../../../src/core/component/lifecycle.js';
 import { defineComponent } from '../../../../src/core/component/define.js';
 import { signal } from '../../../../src/core/reactivity/signal.js';
+import { getTextContent } from '../../../utils/test-helpers.js';
 
 describe('Component Lifecycle', () => {
   describe('onMount', () => {
@@ -67,7 +68,7 @@ describe('Component Lifecycle', () => {
 
       const result = MyComponent({});
 
-      expect(result).toBe(42);
+      expect(getTextContent(result)).toBe(42);
     });
 
     it('should throw error when called outside component setup', () => {
@@ -207,7 +208,7 @@ describe('Component Lifecycle', () => {
 
       const result = ErrorBoundary({});
 
-      expect(result).toBe('No error');
+      expect(getTextContent(result)).toBe('No error');
     });
 
     it('should catch and handle child errors in boundary', () => {

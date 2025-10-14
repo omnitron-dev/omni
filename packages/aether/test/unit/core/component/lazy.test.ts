@@ -6,6 +6,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { lazy, preloadComponent } from '../../../../src/core/component/lazy.js';
 import { defineComponent } from '../../../../src/core/component/define.js';
 import { signal } from '../../../../src/core/reactivity/signal.js';
+import { getTextContent } from '../../../utils/test-helpers.js';
 
 describe('lazy', () => {
   describe('Basic functionality', () => {
@@ -50,7 +51,7 @@ describe('lazy', () => {
 
       // Second call should return component result
       const result = LazyComponent({});
-      expect(result).toBe('Loaded');
+      expect(getTextContent(result)).toBe('Loaded');
     });
 
     it('should cache loaded component', async () => {
@@ -75,8 +76,8 @@ describe('lazy', () => {
       const result2 = LazyComponent({});
 
       expect(loaderSpy).toHaveBeenCalledTimes(1);
-      expect(result1).toBe('Component');
-      expect(result2).toBe('Component');
+      expect(getTextContent(result1)).toBe('Component');
+      expect(getTextContent(result2)).toBe('Component');
     });
 
     it('should pass props to loaded component', async () => {
@@ -96,7 +97,7 @@ describe('lazy', () => {
 
       const result = LazyComponent({ name: 'Alice' });
 
-      expect(result).toBe('Hello Alice');
+      expect(getTextContent(result)).toBe('Hello Alice');
     });
   });
 
@@ -167,7 +168,7 @@ describe('lazy', () => {
 
       const result = LazyComponent({});
 
-      expect(result).toBe('Loaded Content');
+      expect(getTextContent(result)).toBe('Loaded Content');
     });
   });
 
@@ -188,7 +189,7 @@ describe('lazy', () => {
 
       const result = LazyComponent({});
 
-      expect(result).toBe('Dynamic Import');
+      expect(getTextContent(result)).toBe('Dynamic Import');
     });
   });
 });
@@ -209,7 +210,7 @@ describe('preloadComponent', () => {
     // Component should be loaded, so calling it won't throw
     const result = LazyComponent({});
 
-    expect(result).toBe('Preloaded');
+    expect(getTextContent(result)).toBe('Preloaded');
     expect(loaderSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -233,7 +234,7 @@ describe('preloadComponent', () => {
     // Should work fine
     const result = LazyComponent({});
 
-    expect(result).toBe('Already Loaded');
+    expect(getTextContent(result)).toBe('Already Loaded');
   });
 
   it('should handle preload errors gracefully', async () => {
@@ -264,7 +265,7 @@ describe('preloadComponent', () => {
     // Component should be ready
     const result = RouteComponent({});
 
-    expect(result).toBe('Route Component');
+    expect(getTextContent(result)).toBe('Route Component');
     expect(loaderSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -291,7 +292,7 @@ describe('preloadComponent', () => {
     // Component should be loaded
     const result = HoverComponent({});
 
-    expect(result).toBe('Hover Component');
+    expect(getTextContent(result)).toBe('Hover Component');
   });
 });
 
@@ -313,7 +314,7 @@ describe('Lazy component with state', () => {
 
     // First render
     const result1 = LazyCounter({});
-    expect(result1).toBe(0);
+    expect(getTextContent(result1)).toBe(0);
 
     // Note: In real implementation, state would be managed by the component instance
     // This test shows that the component function is cached
@@ -360,7 +361,7 @@ describe('Edge cases', () => {
 
     const result = LazyComponent({});
 
-    expect(result).toBe('Slow Component');
+    expect(getTextContent(result)).toBe('Slow Component');
   });
 
   it('should handle multiple simultaneous calls during loading', async () => {
@@ -401,6 +402,6 @@ describe('Edge cases', () => {
     await loaderPromise;
 
     // All calls should now work
-    expect(LazyComponent({})).toBe('Multi-call Component');
+    expect(getTextContent(LazyComponent({}))).toBe('Multi-call Component');
   });
 });

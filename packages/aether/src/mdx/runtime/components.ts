@@ -90,7 +90,7 @@ export const MDXCodeBlock = defineComponent<{
   };
 
   // Parse highlighted lines
-  const highlightedLines = computed(() => {
+  const _highlightedLines = computed(() => {
     if (!props.highlight) return new Set<number>();
 
     const lines = new Set<number>();

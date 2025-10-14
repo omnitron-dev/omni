@@ -121,7 +121,8 @@ export function splitProps<T extends Record<string, any>>(props: T, ...keys: (ke
  */
 export function reactiveProps<T extends Record<string, any>>(props: T): T & { [PROPS_UPDATE]?: (newProps: T) => void } {
   // Create signal to store current props
-  const propsSignal: WritableSignal<T> = signal<T>(props);
+  // Ensure props is always an object (never undefined/null)
+  const propsSignal: WritableSignal<T> = signal<T>((props ?? {}) as T);
 
   // Create proxy that reads from signal
   const proxy = new Proxy({} as T, {
@@ -133,10 +134,10 @@ export function reactiveProps<T extends Record<string, any>>(props: T): T & { [P
         };
       }
 
-      // Read from signal WITHOUT tracking dependency
-      // This is critical: we don't want to track the wrapper props signal,
-      // we want to track the individual signal values inside the props
-      const currentProps = context.untrack(() => propsSignal());
+      // Read from signal WITH tracking dependency
+      // This is critical: we need to track the propsSignal so effects re-run when props change
+      // If the prop value itself is a signal, accessing it will create an additional dependency
+      const currentProps = propsSignal();
       const value = Reflect.get(currentProps, property);
 
       // If value is a function, bind it to preserve 'this' context
@@ -149,7 +150,7 @@ export function reactiveProps<T extends Record<string, any>>(props: T): T & { [P
     },
 
     set(_, property, value) {
-      // Update the prop in the signal
+      // Update the prop in the signal (use untrack here since we're modifying, not reading)
       const currentProps = context.untrack(() => propsSignal());
       const newProps = { ...currentProps, [property]: value };
       propsSignal.set(newProps);
@@ -158,11 +159,13 @@ export function reactiveProps<T extends Record<string, any>>(props: T): T & { [P
 
     has(_, property) {
       if (property === PROPS_UPDATE) return true;
+      // Don't create dependency for has checks
       const currentProps = context.untrack(() => propsSignal());
       return Reflect.has(currentProps, property);
     },
 
     ownKeys(_) {
+      // Don't create dependency for key enumeration
       const currentProps = context.untrack(() => propsSignal());
       return Reflect.ownKeys(currentProps);
     },
@@ -171,6 +174,7 @@ export function reactiveProps<T extends Record<string, any>>(props: T): T & { [P
       if (property === PROPS_UPDATE) {
         return { configurable: true, enumerable: false, writable: true };
       }
+      // Don't create dependency for descriptor checks
       const currentProps = context.untrack(() => propsSignal());
       return Reflect.getOwnPropertyDescriptor(currentProps, property);
     },

@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { createContext, useContext } from '../../../../src/core/component/context.js';
 import { defineComponent } from '../../../../src/core/component/define.js';
 import { signal } from '../../../../src/core/reactivity/signal.js';
+import { getTextContent } from '../../../utils/test-helpers.js';
 
 describe('Component Context', () => {
   describe('createContext', () => {
@@ -60,7 +61,7 @@ describe('Component Context', () => {
 
       const result = Consumer({});
 
-      expect(result).toBe('light');
+      expect(getTextContent(result)).toBe('light');
     });
 
     it('should throw when called outside component', () => {
@@ -87,7 +88,7 @@ describe('Component Context', () => {
 
       const result = ProviderComponent({});
 
-      expect(result).toBe('provider-rendered');
+      expect(getTextContent(result)).toBe('provider-rendered');
     });
   });
 
@@ -107,7 +108,7 @@ describe('Component Context', () => {
 
       const result = Parent({});
 
-      expect(typeof result).toBe('number');
+      expect(typeof getTextContent(result)).toBe('number');
     });
 
     it('should handle nested providers', () => {
@@ -122,7 +123,7 @@ describe('Component Context', () => {
 
       const result = Level1({});
 
-      expect(result).toBe('light');
+      expect(getTextContent(result)).toBe('light');
     });
 
     it('should support multiple contexts', () => {
@@ -132,13 +133,22 @@ describe('Component Context', () => {
       const Consumer = defineComponent(() => {
         const theme = useContext(ThemeContext);
         const user = useContext(UserContext);
-        return () => ({ theme, user });
+        // Return values separately to test each context
+        return () => theme;
       });
 
       const result = Consumer({});
 
-      expect(result.theme).toBe('light');
-      expect(result.user.name).toBe('Guest');
+      expect(getTextContent(result)).toBe('light');
+
+      // Test user context separately
+      const UserConsumer = defineComponent(() => {
+        const user = useContext(UserContext);
+        return () => user.name;
+      });
+
+      const userResult = UserConsumer({});
+      expect(getTextContent(userResult)).toBe('Guest');
     });
 
     it('should throw when Provider used outside component', () => {
@@ -169,7 +179,7 @@ describe('Component Context', () => {
 
       const result = ThemedComponent({});
 
-      expect(result).toBe('#000');
+      expect(getTextContent(result)).toBe('#000');
     });
 
     it('should support dependency injection pattern', () => {
@@ -181,15 +191,19 @@ describe('Component Context', () => {
         log: () => {},
       });
 
+      let capturedLogger: Logger | null = null;
+
       const Component = defineComponent(() => {
         const logger = useContext(LoggerContext);
-        return () => logger;
+        capturedLogger = logger;
+        return () => 'logged';
       });
 
       const result = Component({});
 
-      expect(result).toBeDefined();
-      expect(typeof result.log).toBe('function');
+      expect(capturedLogger).toBeDefined();
+      expect(typeof capturedLogger!.log).toBe('function');
+      expect(getTextContent(result)).toBe('logged');
     });
 
     it('should support reactive context values', () => {
@@ -203,7 +217,7 @@ describe('Component Context', () => {
 
       const result = Consumer({});
 
-      expect(result).toBe(42);
+      expect(getTextContent(result)).toBe(42);
     });
 
     it('should support context with complex state', () => {
@@ -226,7 +240,7 @@ describe('Component Context', () => {
 
       const result = Consumer({});
 
-      expect(result).toBe('Guest');
+      expect(getTextContent(result)).toBe('Guest');
     });
   });
 
@@ -244,20 +258,27 @@ describe('Component Context', () => {
         email: '',
       });
 
-      const Consumer = defineComponent(() => {
+      const NameConsumer = defineComponent(() => {
         const user = useContext(UserContext);
 
         // TypeScript should enforce these are correct types
         const name: string = user.name;
-        const id: number = user.id;
 
-        return () => ({ name, id });
+        return () => name;
       });
 
-      const result = Consumer({});
+      const IdConsumer = defineComponent(() => {
+        const user = useContext(UserContext);
+        const id: number = user.id;
 
-      expect(result.name).toBe('');
-      expect(result.id).toBe(0);
+        return () => id;
+      });
+
+      const nameResult = NameConsumer({});
+      const idResult = IdConsumer({});
+
+      expect(getTextContent(nameResult)).toBe('');
+      expect(getTextContent(idResult)).toBe(0);
     });
 
     it('should support optional context values', () => {
@@ -270,7 +291,8 @@ describe('Component Context', () => {
 
       const result = Consumer({});
 
-      expect(result).toBeUndefined();
+      // undefined renders as empty string in DOM
+      expect(getTextContent(result)).toBe('');
     });
 
     it('should support null context values', () => {
@@ -283,7 +305,8 @@ describe('Component Context', () => {
 
       const result = Consumer({});
 
-      expect(result).toBeNull();
+      // null renders as empty string in DOM
+      expect(getTextContent(result)).toBe('');
     });
   });
 
@@ -298,11 +321,11 @@ describe('Component Context', () => {
       });
 
       const result1 = Consumer({});
-      expect(result1).toBe('initial');
+      expect(getTextContent(result1)).toBe('initial');
 
       valueSignal.set('updated');
       const result2 = Consumer({});
-      expect(result2).toBe('updated');
+      expect(getTextContent(result2)).toBe('updated');
     });
 
     it('should handle context with signal-based state', () => {
@@ -323,13 +346,13 @@ describe('Component Context', () => {
       });
 
       const result1 = Consumer({});
-      expect(result1).toBe(0);
+      expect(getTextContent(result1)).toBe(0);
 
       const state = CounterContext.defaultValue;
       state.increment();
 
       const result2 = Consumer({});
-      expect(result2).toBe(1);
+      expect(getTextContent(result2)).toBe(1);
     });
   });
 
@@ -345,7 +368,7 @@ describe('Component Context', () => {
       const result = Consumer({});
 
       // Sum of 0..99
-      expect(result).toBe(4950);
+      expect(getTextContent(result)).toBe(4950);
     });
 
     it('should not recreate context on each render', () => {

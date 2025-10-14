@@ -8,7 +8,6 @@ import { getOwner, onCleanup, context, OwnerImpl } from '../reactivity/context.j
 import { triggerMount, cleanupComponentContext, handleComponentError } from './lifecycle.js';
 import { reactiveProps } from './props.js';
 import type { ComponentSetup, Component, RenderFunction } from './types.js';
-import { templateCache, generateCacheKey } from '../../reconciler/template-cache.js';
 import type { VNode } from '../../reconciler/vnode.js';
 import { effect } from '../reactivity/effect.js';
 import { renderVNodeWithBindings } from '../../reconciler/jsx-integration.js';
@@ -21,6 +20,43 @@ import { isSignal } from '../reactivity/signal.js';
  * @default false (will be enabled when reconciliation engine is complete)
  */
 export const ENABLE_TEMPLATE_CACHE = false;
+
+/**
+ * WeakMap to track owners associated with DOM nodes
+ * When a DOM node is removed, we can dispose its associated owner
+ */
+const nodeOwners = new WeakMap<Node, any>();
+
+/**
+ * Attach an owner to a DOM node for lifecycle management
+ * @internal
+ */
+function attachOwnerToNode(node: Node, owner: any): void {
+  nodeOwners.set(node, owner);
+}
+
+/**
+ * Dispose the owner associated with a DOM node and its children
+ * @internal
+ */
+function disposeNodeOwner(node: Node): void {
+  const owner = nodeOwners.get(node);
+  if (owner) {
+    try {
+      owner.dispose();
+    } catch (error) {
+      console.error('Error disposing node owner:', error);
+    }
+    nodeOwners.delete(node);
+  }
+
+  // Recursively dispose children
+  if (node.childNodes) {
+    for (const child of Array.from(node.childNodes)) {
+      disposeNodeOwner(child);
+    }
+  }
+}
 
 /**
  * Check if a value is a VNode
@@ -83,6 +119,8 @@ function updateDOM(oldNode: Node, newNode: Node): void {
     // If tag names differ, we have to replace the whole element
     if (oldEl.tagName !== newEl.tagName) {
       if (oldNode.parentNode) {
+        // Dispose owner before replacing
+        disposeNodeOwner(oldNode);
         oldNode.parentNode.replaceChild(newNode, oldNode);
       }
       return;
@@ -98,8 +136,14 @@ function updateDOM(oldNode: Node, newNode: Node): void {
 
     // Set new/updated attributes
     Array.from(newEl.attributes).forEach(attr => {
-      if (oldEl.getAttribute(attr.name) !== attr.value) {
-        oldEl.setAttribute(attr.name, attr.value);
+      const oldValue = oldEl.getAttribute(attr.name);
+      if (oldValue !== attr.value) {
+        // Special handling for class attribute - use className for better performance
+        if (attr.name === 'class') {
+          oldEl.className = attr.value;
+        } else {
+          oldEl.setAttribute(attr.name, attr.value);
+        }
       }
     });
 
@@ -118,7 +162,8 @@ function updateDOM(oldNode: Node, newNode: Node): void {
         // Add new child
         oldNode.appendChild(newChild.cloneNode(true));
       } else if (oldChild && !newChild) {
-        // Remove old child
+        // Remove old child - dispose owner first
+        disposeNodeOwner(oldChild);
         oldNode.removeChild(oldChild);
       } else if (oldChild && newChild) {
         // Update existing child recursively
@@ -131,6 +176,8 @@ function updateDOM(oldNode: Node, newNode: Node): void {
 
   // Different node types - have to replace
   if (oldNode.parentNode) {
+    // Dispose owner before replacing
+    disposeNodeOwner(oldNode);
     oldNode.parentNode.replaceChild(newNode, oldNode);
   }
 }
@@ -189,7 +236,8 @@ export function defineComponent<P = {}>(setup: ComponentSetup<P>, name?: string)
         // Register cleanup
         onCleanup(() => {
           cleanupComponentContext(owner);
-          owner.dispose();
+          // Note: Don't call owner.dispose() here as it would cause infinite recursion
+          // The owner dispose is triggered by the cleanup chain from disposeNodeOwner
         });
       });
     } catch (_setupError) {
@@ -217,12 +265,11 @@ export function defineComponent<P = {}>(setup: ComponentSetup<P>, name?: string)
           // If it does, we wrap it in an effect to make it reactive
           // If it doesn't, we just render it once
 
-          let hasReactiveDependencies = false;
           let rootElement: Node | null = null;
 
           // Create an effect that wraps the render function
           // This tracks signal dependencies automatically
-          const renderEffect = effect(() => {
+          effect(() => {
             try {
               // Execute render function - this will track signal dependencies
               const result = render!();
@@ -248,12 +295,46 @@ export function defineComponent<P = {}>(setup: ComponentSetup<P>, name?: string)
               }
 
               if (!rootElement) {
-                // First render - just set the root
+                // First render - just set the root and attach owner (if not already attached)
                 rootElement = newNode;
-                hasReactiveDependencies = true; // If effect runs, we have dependencies
+                // Only attach owner if the node doesn't already have one (from a child component)
+                if (!nodeOwners.has(rootElement)) {
+                  attachOwnerToNode(rootElement, owner);
+                }
               } else {
-                // Subsequent render - update existing element to preserve references and event listeners
-                updateDOM(rootElement, newNode);
+                // Subsequent render - update existing element
+                // Check if we need to replace the element
+                const needsReplace =
+                  // Different node types
+                  rootElement.nodeType !== newNode.nodeType ||
+                  // Different element tags
+                  (rootElement.nodeType === Node.ELEMENT_NODE &&
+                   (rootElement as Element).tagName !== (newNode as Element).tagName) ||
+                  // Root has an owner from a child component (means it's from a different component)
+                  (nodeOwners.has(rootElement) && nodeOwners.get(rootElement) !== owner);
+
+                if (needsReplace) {
+                  // Must replace the element
+                  if (rootElement.parentNode) {
+                    // Dispose old root's children (but not root itself, as it's managed by this component's owner)
+                    if (rootElement.childNodes) {
+                      for (const child of Array.from(rootElement.childNodes)) {
+                        disposeNodeOwner(child);
+                      }
+                    }
+                    // Dispose the old root's owner if it has one (could be from a child component)
+                    disposeNodeOwner(rootElement);
+                    rootElement.parentNode.replaceChild(newNode, rootElement);
+                    rootElement = newNode;
+                    // Only attach owner if the new node doesn't already have one
+                    if (!nodeOwners.has(rootElement)) {
+                      attachOwnerToNode(rootElement, owner);
+                    }
+                  }
+                } else {
+                  // Same type and same owner - update in place
+                  updateDOM(rootElement, newNode);
+                }
               }
             } catch (err) {
               // Handle render errors

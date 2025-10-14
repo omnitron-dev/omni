@@ -315,9 +315,11 @@ export function createMDXModule(
   // Create a real component that renders the VNode tree
   const MDXContentComponent = defineComponent((props: any) => () => {
       // Create a wrapper div containing all VNodes
+      // Ensure props is an object before spreading
+      const safeProps = props && typeof props === 'object' ? props : {};
       const wrapperVNode = createElementVNode(
         'div',
-        { class: 'mdx-content', ...props },
+        { class: 'mdx-content', ...safeProps },
         vnodes
       );
 

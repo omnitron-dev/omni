@@ -186,15 +186,17 @@ export class MDXToVNodeTransformer {
     this.context.reactiveExpressions.add(expression);
 
     // Create a text VNode with reactive binding
+    // We need to evaluate the expression with the scope
     const vnode: VNode = {
       type: 'text' as any,
-      text: '',
+      text: '', // Will be populated by reactive binding
       dom: null,
       effects: [],
       // Store the expression for later evaluation
       data: {
         expression,
-        isReactive: true
+        isReactive: true,
+        scope: this.context.scope // Pass scope for evaluation
       }
     } as any;
 
@@ -321,11 +323,27 @@ export class MDXToVNodeTransformer {
    * Resolve attribute value
    */
   private resolveAttributeValue(value: any): any {
-    if (typeof value === 'object' && value?.type === 'expression') {
+    // Check for MDX expression attribute (from remark-mdx parser)
+    if (typeof value === 'object' && (value?.type === 'expression' || value?.type === 'mdxJsxAttributeValueExpression')) {
       // Mark as reactive expression
-      this.context.reactiveExpressions.add(value.value);
+      const expression = value.value;
+      this.context.reactiveExpressions.add(expression);
+
+      if (expression && this.context.scope) {
+        // Check if the expression is a simple variable reference
+        const varMatch = expression.match(/^([a-zA-Z_$][a-zA-Z0-9_$]*)$/);
+
+        if (varMatch) {
+          const varName = varMatch[1];
+          if (varName in this.context.scope) {
+            // Return the actual value from scope
+            return this.context.scope[varName];
+          }
+        }
+      }
+
       // Return a marker for reactive binding
-      return { __expression: value.value, __reactive: true };
+      return { __expression: expression, __reactive: true };
     }
 
     return value;

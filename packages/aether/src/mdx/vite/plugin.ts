@@ -130,7 +130,7 @@ export function aetherMDX(options: AetherMDXPluginOptions = {}): Plugin {
   /**
    * Get cache key for file
    */
-  const getCacheKey = (id: string, timestamp: number): string => `${id}:${timestamp}`;
+  const _getCacheKey = (id: string, timestamp: number): string => `${id}:${timestamp}`;
 
   /**
    * Compile MDX file

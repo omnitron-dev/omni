@@ -225,5 +225,19 @@ export function handleComponentError(owner: any, error: Error): void {
  * @internal
  */
 export function cleanupComponentContext(owner: any): void {
+  const ctx = componentContexts.get(owner);
+
+  // Call cleanup callbacks before deleting the context
+  if (ctx) {
+    const cleanupCallbacks = (ctx as any).cleanupCallbacks || [];
+    for (const callback of cleanupCallbacks) {
+      try {
+        callback();
+      } catch (error) {
+        console.error('Error in cleanup callback:', error);
+      }
+    }
+  }
+
   componentContexts.delete(owner);
 }

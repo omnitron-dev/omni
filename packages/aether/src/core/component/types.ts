@@ -58,6 +58,17 @@ export interface ComponentContext {
 export namespace JSX {
   export type Element = any;
   export interface IntrinsicElements {
+    // SVG animation elements
+    animate?: any;
+    animateMotion?: any;
+    animateTransform?: any;
+    animateColor?: any;
+    set?: any;
+    // Allow any other elements
     [elemName: string]: any;
   }
+
+  // Re-export SVG and CSS types from global JSX namespace
+  export type SVGAttributes<T = SVGElement> = globalThis.JSX.SVGAttributes<T>;
+  export type CSSProperties = globalThis.JSX.CSSProperties;
 }

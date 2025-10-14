@@ -55,6 +55,6 @@
     "**/*.test.ts",
     "**/*.bench.ts",
     "**/*.example.ts",
-    "src/jsx-types.d.ts"
+    "test/**/*"
   ]
 }

@@ -131,11 +131,25 @@ function createComponentElement(
 }
 
 /**
+ * SVG element tags that need special namespace handling
+ */
+const SVG_TAGS = new Set([
+  'svg', 'path', 'circle', 'rect', 'line', 'polyline', 'polygon', 'ellipse',
+  'g', 'text', 'tspan', 'textPath', 'defs', 'use', 'symbol',
+  'linearGradient', 'radialGradient', 'stop', 'pattern', 'mask', 'clipPath',
+  'title', 'desc', 'image', 'foreignObject', 'marker', 'animate', 'animateMotion',
+  'animateTransform', 'animateColor', 'set', 'filter', 'feBlend', 'feColorMatrix',
+  'feComponentTransfer', 'feComposite', 'feConvolveMatrix', 'feDiffuseLighting',
+  'feDisplacementMap', 'feFlood', 'feGaussianBlur', 'feImage', 'feMerge',
+  'feMorphology', 'feOffset', 'feSpecularLighting', 'feTile', 'feTurbulence'
+]);
+
+/**
  * Create DOM element
  */
 function createDOMElement(tag: string, props: JSXProps | null, key?: string | number): HTMLElement | SVGElement {
   // Create element (handle SVG)
-  const isSVG = tag === 'svg' || tag === 'path' || tag === 'circle' || tag === 'rect';
+  const isSVG = SVG_TAGS.has(tag);
   const element = isSVG ? document.createElementNS('http://www.w3.org/2000/svg', tag) : document.createElement(tag);
 
   // Apply props

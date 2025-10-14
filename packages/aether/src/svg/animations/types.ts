@@ -82,3 +82,111 @@ export interface TimelineController extends AnimationController {
   remove(animation: AnimationConfig): void;
   clear(): void;
 }
+
+// SMIL Animation Types
+export interface SMILAnimationProps {
+  // Timing
+  begin?: string | number;
+  dur?: string | number;
+  end?: string | number;
+  min?: string | number;
+  max?: string | number;
+  repeatCount?: number | 'indefinite';
+  repeatDur?: string | number;
+  fill?: 'freeze' | 'remove';
+
+  // Animation
+  calcMode?: 'discrete' | 'linear' | 'paced' | 'spline';
+  keyTimes?: string;
+  keySplines?: string;
+  from?: string | number;
+  to?: string | number;
+  by?: string | number;
+  values?: string;
+
+  // Target
+  attributeName: string;
+  attributeType?: 'CSS' | 'XML' | 'auto';
+  additive?: 'replace' | 'sum';
+  accumulate?: 'none' | 'sum';
+}
+
+export interface SMILMotionProps extends Omit<SMILAnimationProps, 'attributeName'> {
+  path?: string;
+  keyPoints?: string;
+  rotate?: 'auto' | 'auto-reverse' | number;
+}
+
+export interface SMILTransformProps extends SMILAnimationProps {
+  type: 'translate' | 'scale' | 'rotate' | 'skewX' | 'skewY';
+}
+
+// CSS Animation Types
+export interface CSSAnimationConfig {
+  // Keyframes
+  keyframes: Record<string, Record<string, string | number>>;
+
+  // Timing
+  duration?: number | string;
+  delay?: number | string;
+  timingFunction?: string;
+  iterationCount?: number | 'infinite';
+  direction?: 'normal' | 'reverse' | 'alternate' | 'alternate-reverse';
+  fillMode?: 'none' | 'forwards' | 'backwards' | 'both';
+  playState?: 'running' | 'paused';
+}
+
+// JavaScript Animation Types
+export interface JSAnimationConfig {
+  // Target
+  target: Element | string;
+
+  // Properties to animate
+  props: Record<string, {
+    from?: any;
+    to?: any;
+    through?: any[]; // Intermediate values
+  }>;
+
+  // Timing
+  duration?: number;
+  delay?: number;
+  easing?: EasingFunction;
+
+  // Spring physics
+  spring?: SpringConfig;
+
+  // Playback
+  loop?: boolean | number;
+  alternate?: boolean;
+
+  // Callbacks
+  onUpdate?: (progress: number, values: Record<string, any>) => void;
+  onComplete?: () => void;
+}
+
+// Path Animation Types
+export interface PathAnimationConfig {
+  // Path morphing
+  morph?: {
+    from: string;
+    to: string;
+    precision?: number;
+  };
+
+  // Path drawing
+  draw?: {
+    duration?: number;
+    delay?: number;
+    easing?: EasingFunction;
+    reverse?: boolean;
+  };
+
+  // Motion along path
+  motion?: {
+    path: string;
+    duration?: number;
+    rotate?: boolean | 'auto' | 'auto-reverse';
+    offset?: { x?: number; y?: number };
+  };
+}

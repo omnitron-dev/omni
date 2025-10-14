@@ -1,10 +1,18 @@
 import { defineConfig } from 'vitest/config';
+import path from 'node:path';
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      '@omnitron-dev/aether/jsx-runtime': path.resolve(__dirname, './dist/jsx-runtime.js'),
+      '@omnitron-dev/aether/jsx-dev-runtime': path.resolve(__dirname, './dist/jsx-dev-runtime.js'),
+      '@omnitron-dev/aether': path.resolve(__dirname, './src/index.ts'),
+    },
+  },
   test: {
     globals: true,
     environment: 'happy-dom',
-    include: ['tests/**/*.{test,spec}.ts', 'test/**/*.{test,spec}.ts'],
+    include: ['tests/**/*.{test,spec}.{ts,tsx}', 'test/**/*.{test,spec}.{ts,tsx}'],
     exclude: ['benchmarks/**/*.bench.ts'],
     // Allow unhandled errors in tests where we're explicitly testing error handling
     // The errors ARE handled by the implementation, but Vitest tracks them before handlers execute

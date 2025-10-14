@@ -2,7 +2,7 @@
  * Tests for SVG base element
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { SVG } from '../../../src/svg/primitives/svg';
 import { createSignal } from '../../../src/core/reactivity/signal';
 import { render, cleanup } from '../../test-utils';

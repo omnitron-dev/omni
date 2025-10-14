@@ -4,7 +4,7 @@
  * High-level component for rendering SVG icons with animation and optimization support
  */
 
-import { defineComponent, signal, computed, effect, onCleanup } from '../../index.js';
+import { defineComponent, signal, computed, effect } from '../../index.js';
 import type { Signal } from '../../index.js';
 import { SVG } from '../primitives/svg.js';
 import { Path } from '../primitives/shapes.js';
@@ -76,7 +76,7 @@ export const SVGIcon = defineComponent<SVGIconProps>((props) => {
   const isLoaded = signal(false);
   const error = signal<Error | null>(null);
   const iconData = signal<string | null>(null);
-  const isHovered = signal(false);
+  const _isHovered = signal(false);
 
   // Resolve value from signal or static value
   const resolveValue = <T,>(value: T | Signal<T> | undefined): T | undefined => {
@@ -103,47 +103,49 @@ export const SVGIcon = defineComponent<SVGIconProps>((props) => {
   });
 
   // Load icon from registry
-  effect(async () => {
-    if (props.name) {
-      try {
-        const registry = getIconRegistry();
-        const icon = await registry.get(props.name);
-        if (icon) {
-          iconData.set(icon.content || icon.path || null);
-          isLoaded.set(true);
-          props.onLoad?.();
-        } else {
-          throw new Error(`Icon "${props.name}" not found in registry`);
-        }
-      } catch (e) {
-        const err = e instanceof Error ? e : new Error(String(e));
-        error.set(err);
-        props.onError?.(err);
-      }
-    } else if (props.src) {
-      // Load from URL
-      if (props.src.startsWith('http') || props.src.startsWith('/')) {
+  effect(() => {
+    (async () => {
+      if (props.name) {
         try {
-          const response = await fetch(props.src);
-          const svg = await response.text();
-          iconData.set(svg);
-          isLoaded.set(true);
-          props.onLoad?.();
+          const registry = getIconRegistry();
+          const icon = await registry.get(props.name);
+          if (icon) {
+            iconData.set(icon.content || icon.path || null);
+            isLoaded.set(true);
+            props.onLoad?.();
+          } else {
+            throw new Error(`Icon "${props.name}" not found in registry`);
+          }
         } catch (e) {
           const err = e instanceof Error ? e : new Error(String(e));
           error.set(err);
           props.onError?.(err);
         }
-      } else {
-        // Inline SVG
-        iconData.set(props.src);
+      } else if (props.src) {
+        // Load from URL
+        if (props.src.startsWith('http') || props.src.startsWith('/')) {
+          try {
+            const response = await fetch(props.src);
+            const svg = await response.text();
+            iconData.set(svg);
+            isLoaded.set(true);
+            props.onLoad?.();
+          } catch (e) {
+            const err = e instanceof Error ? e : new Error(String(e));
+            error.set(err);
+            props.onError?.(err);
+          }
+        } else {
+          // Inline SVG
+          iconData.set(props.src);
+          isLoaded.set(true);
+          props.onLoad?.();
+        }
+      } else if (props.path) {
         isLoaded.set(true);
         props.onLoad?.();
       }
-    } else if (props.path) {
-      isLoaded.set(true);
-      props.onLoad?.();
-    }
+    })();
   });
 
   // Build transform string

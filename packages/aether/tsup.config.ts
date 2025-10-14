@@ -35,5 +35,16 @@ export default defineConfig({
   target: 'es2022',
   outDir: 'dist',
   tsconfig: './tsconfig.json',
-  external: ['@omnitron-dev/netron-browser'],
+  external: [
+    '@omnitron-dev/netron-browser',
+    '@omnitron-dev/aether/jsx-runtime',
+    '@omnitron-dev/aether/jsx-dev-runtime',
+  ],
+  esbuildOptions(options) {
+    // Allow jsx-runtime imports to be resolved after build
+    options.alias = {
+      '@omnitron-dev/aether/jsx-runtime': './jsx-runtime.js',
+      '@omnitron-dev/aether/jsx-dev-runtime': './jsx-dev-runtime.js',
+    };
+  },
 });

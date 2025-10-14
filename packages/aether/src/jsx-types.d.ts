@@ -191,6 +191,9 @@ declare global {
 
     // HTML element attributes
     interface HTMLAttributes<T = HTMLElement> extends DOMAttributes<T> {
+      // React-like attributes
+      dangerouslySetInnerHTML?: { __html: string };
+
       // Standard HTML Attributes
       accessKey?: string;
       className?: string;
@@ -533,7 +536,7 @@ declare global {
     // DOM event attributes
     interface DOMAttributes<T = Element> {
       children?: any;
-      ref?: { current: T | null };
+      ref?: { current: T | null } | ((element: T | null) => void);
 
       // Clipboard Events
       onCopy?: (event: ClipboardEvent) => void;

@@ -68,23 +68,31 @@ export interface RadialGradientProps extends Omit<JSX.SVGAttributes<SVGRadialGra
   children?: JSX.Element;
 }
 
-export const RadialGradient = defineComponent<RadialGradientProps>((props) => () => (
-  <radialGradient
-    {...props}
-    id={props.id}
-    cx={resolveValue(props.cx)}
-    cy={resolveValue(props.cy)}
-    r={resolveValue(props.r)}
-    fx={resolveValue(props.fx)}
-    fy={resolveValue(props.fy)}
-    fr={resolveValue(props.fr)}
-    gradientUnits={props.gradientUnits}
-    gradientTransform={resolveValue(props.gradientTransform)}
-    spreadMethod={props.spreadMethod}
-  >
-    {props.children}
-  </radialGradient>
-));
+export const RadialGradient = defineComponent<RadialGradientProps>((props) => () => {
+  const baseProps: any = {
+    ...props,
+    id: props.id,
+    cx: resolveValue(props.cx),
+    cy: resolveValue(props.cy),
+    r: resolveValue(props.r),
+    fx: resolveValue(props.fx),
+    fy: resolveValue(props.fy),
+    gradientUnits: props.gradientUnits,
+    gradientTransform: resolveValue(props.gradientTransform),
+    spreadMethod: props.spreadMethod,
+  };
+
+  // Add fr if provided (not all browsers support it)
+  if (props.fr !== undefined) {
+    baseProps.fr = resolveValue(props.fr);
+  }
+
+  return (
+    <radialGradient {...baseProps}>
+      {props.children}
+    </radialGradient>
+  );
+});
 
 /**
  * Stop element for gradient color stops

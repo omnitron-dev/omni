@@ -158,7 +158,7 @@ export const G = defineComponent<GroupProps>((props) => () => <g {...props}>{pro
 /**
  * Use element for reusing SVG elements
  */
-export interface UseProps extends Omit<JSX.SVGAttributes<SVGUseElement>, 'x' | 'y' | 'width' | 'height'> {
+export interface UseProps extends Omit<JSX.SVGAttributes<SVGUseElement>, 'x' | 'y' | 'width' | 'height' | 'href'> {
   href?: string | Signal<string>;
   x?: string | number | Signal<string | number>;
   y?: string | number | Signal<string | number>;
@@ -180,7 +180,7 @@ export const Use = defineComponent<UseProps>((props) => () => (
 /**
  * Symbol element for defining reusable SVG elements
  */
-export interface SymbolProps extends Omit<JSX.SVGAttributes<SVGSymbolElement>, 'viewBox'> {
+export interface SymbolProps extends Omit<JSX.SVGAttributes<SVGSymbolElement>, 'viewBox' | 'preserveAspectRatio'> {
   id: string;
   viewBox?: string | Signal<string>;
   preserveAspectRatio?: string | Signal<string>;

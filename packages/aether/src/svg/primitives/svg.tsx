@@ -8,7 +8,7 @@ import { defineComponent, signal, effect } from '../../index.js';
 import type { Signal } from '../../index.js';
 import type { JSX } from '../../core/component/types.js';
 
-export interface SVGProps extends Omit<JSX.SVGAttributes<SVGSVGElement>, 'width' | 'height' | 'viewBox' | 'style' | 'className'> {
+export interface SVGProps extends Omit<JSX.SVGAttributes<SVGSVGElement>, 'width' | 'height' | 'viewBox' | 'style' | 'className' | 'preserveAspectRatio'> {
   // Viewport
   width?: string | number | Signal<string | number>;
   height?: string | number | Signal<string | number>;
@@ -47,12 +47,12 @@ export const SVG = defineComponent<SVGProps>((props) => {
     return typeof resolved === 'number' ? `${resolved}` : resolved;
   };
 
-  const [isVisible, setIsVisible] = signal(!props.lazy);
+  const isVisible = signal(!props.lazy);
 
   if (props.lazy && typeof window !== 'undefined') {
     const observer = new IntersectionObserver((entries) => {
       if (entries[0]?.isIntersecting) {
-        setIsVisible(true);
+        isVisible.set(true);
         observer.disconnect();
       }
     });
@@ -85,20 +85,23 @@ export const SVG = defineComponent<SVGProps>((props) => {
       accessibilityElements.push(<desc>{props.desc}</desc>);
     }
 
+    // Cast to any to bypass strict type checking for Signal props
+    const svgProps = {
+      ...props,
+      width,
+      height,
+      viewBox,
+      className,
+      style,
+      preserveAspectRatio: resolveValue(props.preserveAspectRatio),
+      role: props.role || (props['aria-label'] ? 'img' : undefined),
+      'aria-label': props['aria-label'],
+      'aria-labelledby': props['aria-labelledby'],
+      'aria-describedby': props['aria-describedby'],
+    } as any;
+
     return (
-      <svg
-        {...props}
-        width={width}
-        height={height}
-        viewBox={viewBox}
-        className={className}
-        style={style}
-        preserveAspectRatio={resolveValue(props.preserveAspectRatio)}
-        role={props.role || (props['aria-label'] ? 'img' : undefined)}
-        aria-label={props['aria-label']}
-        aria-labelledby={props['aria-labelledby']}
-        aria-describedby={props['aria-describedby']}
-      >
+      <svg {...svgProps}>
         {accessibilityElements}
         {props.children}
       </svg>

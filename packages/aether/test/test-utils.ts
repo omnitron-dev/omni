@@ -17,8 +17,11 @@ export function render(component: Component | (() => JSX.Element)) {
   // Simple rendering - in real implementation, this would use the reconciler
   if (typeof result === 'string') {
     container.innerHTML = result;
+  } else if (result instanceof Node) {
+    // Already a DOM node - just append it
+    container.appendChild(result);
   } else if (result && typeof result === 'object') {
-    // Handle JSX element
+    // Handle JSX element object
     const element = createDOMElement(result);
     if (element) {
       container.appendChild(element);
@@ -32,6 +35,9 @@ export function render(component: Component | (() => JSX.Element)) {
       const newResult = typeof newComponent === 'function' ? newComponent() : newComponent;
       if (typeof newResult === 'string') {
         container.innerHTML = newResult;
+      } else if (newResult instanceof Node) {
+        // Already a DOM node - just append it
+        container.appendChild(newResult);
       } else if (newResult && typeof newResult === 'object') {
         const element = createDOMElement(newResult);
         if (element) {
@@ -85,7 +91,17 @@ function createDOMElement(jsx: any): Element | null {
 
     // Handle function components
     if (typeof type === 'function') {
+      // Component might be wrapped by defineComponent
+      // Try calling it and see if it returns a function (render function) or JSX
       const result = type(props);
+
+      // If result is a function, it's the render function from defineComponent - call it
+      if (typeof result === 'function') {
+        const jsx = result();
+        return createDOMElement(jsx);
+      }
+
+      // Otherwise it's already JSX, process it
       return createDOMElement(result);
     }
 

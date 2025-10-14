@@ -140,8 +140,9 @@ export interface ModuleFederationConfig {
 /**
  * Normalized share configuration
  */
-interface NormalizedShareConfig extends Required<Omit<ShareConfig, 'packageName'>> {
+interface NormalizedShareConfig extends Required<Omit<ShareConfig, 'packageName' | 'requiredVersion'>> {
   packageName?: string;
+  requiredVersion?: string;
 }
 
 /**
@@ -409,13 +410,13 @@ export class ModuleFederationManager {
           singleton: false,
           eager: false,
           shareScope: 'default',
-          requiredVersion: '',
+          requiredVersion: undefined,
         };
       } else {
         const config: NormalizedShareConfig = {
           version: value.version || '1.0.0',
           singleton: value.singleton || false,
-          requiredVersion: value.requiredVersion || '',
+          requiredVersion: value.requiredVersion,
           eager: value.eager || false,
           shareScope: value.shareScope || 'default',
         };

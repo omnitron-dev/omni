@@ -558,6 +558,349 @@ describe('IconRegistry', () => {
       expect(registry.has('🏠')).toBe(true);
       expect(registry.has('⭐')).toBe(true);
     });
+
+    // New comprehensive edge cases
+    it('should handle null icon name gracefully', async () => {
+      const icon = await registry.get(null as any);
+      expect(icon).toBeNull();
+    });
+
+    it('should handle undefined icon name gracefully', async () => {
+      const icon = await registry.get(undefined as any);
+      expect(icon).toBeNull();
+    });
+
+    it('should handle empty string icon name', async () => {
+      const icon = await registry.get('');
+      expect(icon).toBeNull();
+    });
+
+    it('should handle whitespace-only icon name', async () => {
+      const icon = await registry.get('   ');
+      expect(icon).toBeNull();
+    });
+
+    it('should handle malformed SVG in URL response', async () => {
+      const source: IconSource = {
+        name: 'malformed',
+        type: 'url',
+        source: 'https://example.com/bad.svg'
+      };
+
+      registry.register(source);
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        text: async () => 'not valid svg at all'
+      });
+
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const icon = await registry.get('bad-icon');
+
+      expect(icon).toBeNull();
+      consoleError.mockRestore();
+    });
+
+    it('should handle duplicate icon registration (should overwrite)', async () => {
+      registry.registerSet('test', {
+        duplicate: 'M0 0 L10 10'
+      });
+
+      registry.registerSet('test2', {
+        duplicate: 'M0 0 L20 20'
+      });
+
+      const icon = await registry.get('duplicate');
+      expect(icon?.path).toBe('M0 0 L20 20');
+    });
+
+    it('should handle icon with null path', async () => {
+      const icons: IconSet = {
+        nullPath: {
+          path: null as any,
+          viewBox: '0 0 24 24'
+        }
+      };
+
+      registry.registerSet('test', icons);
+      const icon = await registry.get('nullPath');
+      expect(icon).toBeTruthy();
+    });
+
+    it('should handle icon with NaN dimensions', async () => {
+      const icons: IconSet = {
+        nanDims: {
+          path: 'M0 0 L10 10',
+          width: NaN,
+          height: NaN
+        }
+      };
+
+      registry.registerSet('test', icons);
+      const icon = await registry.get('nanDims');
+      expect(icon).toBeTruthy();
+    });
+
+    it('should handle icon with Infinity dimensions', async () => {
+      const icons: IconSet = {
+        infDims: {
+          path: 'M0 0 L10 10',
+          width: Infinity,
+          height: -Infinity
+        }
+      };
+
+      registry.registerSet('test', icons);
+      const icon = await registry.get('infDims');
+      expect(icon).toBeTruthy();
+    });
+
+    it('should handle icon with negative dimensions', async () => {
+      const icons: IconSet = {
+        negative: {
+          path: 'M0 0 L10 10',
+          width: -100,
+          height: -200
+        }
+      };
+
+      registry.registerSet('test', icons);
+      const icon = await registry.get('negative');
+      expect(icon?.width).toBe(-100);
+      expect(icon?.height).toBe(-200);
+    });
+
+    it('should handle icon with zero dimensions', async () => {
+      const icons: IconSet = {
+        zeroDims: {
+          path: 'M0 0 L10 10',
+          width: 0,
+          height: 0
+        }
+      };
+
+      registry.registerSet('test', icons);
+      const icon = await registry.get('zeroDims');
+      expect(icon?.width).toBe(0);
+      expect(icon?.height).toBe(0);
+    });
+
+    it('should handle malformed viewBox string', async () => {
+      const icons: IconSet = {
+        badViewBox: {
+          path: 'M0 0',
+          viewBox: 'not a valid viewbox'
+        }
+      };
+
+      registry.registerSet('test', icons);
+      const icon = await registry.get('badViewBox');
+      expect(icon).toBeTruthy();
+    });
+
+    it('should handle transformer that throws error', async () => {
+      registry.registerSet('test', {
+        home: 'M10 20 L30 5 L50 20 V45 H10 Z'
+      });
+
+      registry.addTransformer({
+        name: 'error-transformer',
+        transform: () => {
+          throw new Error('Transformer error');
+        }
+      });
+
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const icon = await registry.get('home');
+
+      // Should still return icon even if transformer fails
+      expect(icon).toBeTruthy();
+      consoleError.mockRestore();
+    });
+
+    it('should handle transformer that returns null', async () => {
+      registry.registerSet('test', {
+        home: 'M10 20 L30 5 L50 20 V45 H10 Z'
+      });
+
+      registry.addTransformer({
+        name: 'null-transformer',
+        transform: () => null as any
+      });
+
+      const icon = await registry.get('home');
+      expect(icon).toBeTruthy();
+    });
+
+    it('should handle transformer that modifies to invalid type', async () => {
+      registry.registerSet('test', {
+        home: 'M10 20 L30 5 L50 20 V45 H10 Z'
+      });
+
+      registry.addTransformer({
+        name: 'bad-transformer',
+        transform: () => 'not an icon' as any
+      });
+
+      const icon = await registry.get('home');
+      expect(icon).toBeTruthy();
+    });
+
+    it('should handle very large number of icons', () => {
+      const largeSet: IconSet = {};
+      for (let i = 0; i < 10000; i++) {
+        largeSet[`icon-${i}`] = `M${i} ${i} L${i+10} ${i+10}`;
+      }
+
+      registry.registerSet('large', largeSet);
+      expect(registry.list().length).toBeGreaterThanOrEqual(10000);
+    });
+
+    it('should handle rapid successive gets for same icon', async () => {
+      registry.registerSet('test', {
+        rapid: 'M0 0 L10 10'
+      });
+
+      const promises = Array(100).fill(0).map(() => registry.get('rapid'));
+      const results = await Promise.all(promises);
+
+      results.forEach(result => {
+        expect(result).toBeTruthy();
+        expect(result?.path).toBe('M0 0 L10 10');
+      });
+    });
+
+    it('should handle icon with circular reference in metadata', async () => {
+      const metadata: any = { name: 'test' };
+      metadata.self = metadata;
+
+      const icons: IconSet = {
+        circular: {
+          path: 'M0 0',
+          metadata
+        }
+      };
+
+      registry.registerSet('test', icons);
+      const icon = await registry.get('circular');
+      expect(icon).toBeTruthy();
+    });
+
+    it('should handle empty string as icon path', async () => {
+      const icons: IconSet = {
+        emptyPath: ''
+      };
+
+      registry.registerSet('test', icons);
+      const icon = await registry.get('emptyPath');
+      expect(icon?.path).toBe('');
+    });
+
+    it('should handle whitespace-only path string', async () => {
+      const icons: IconSet = {
+        whitespace: '    \n\t   '
+      };
+
+      registry.registerSet('test', icons);
+      const icon = await registry.get('whitespace');
+      expect(icon?.path).toBe('    \n\t   ');
+    });
+
+    it('should handle URL fetch timeout simulation', async () => {
+      const source: IconSource = {
+        name: 'timeout-test',
+        type: 'url',
+        source: 'https://example.com/slow.svg'
+      };
+
+      registry.register(source);
+
+      global.fetch = vi.fn().mockImplementation(() =>
+        new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Timeout')), 0);
+        })
+      );
+
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const icon = await registry.get('slow-icon');
+
+      expect(icon).toBeNull();
+      consoleError.mockRestore();
+    });
+
+    it('should handle malformed sprite SVG', async () => {
+      const spriteContent = '<svg><<broken xml</svg>';
+
+      const source: IconSource = {
+        name: 'broken-sprite',
+        type: 'sprite',
+        source: 'https://example.com/broken.svg'
+      };
+
+      registry.register(source);
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        text: async () => spriteContent
+      });
+
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const icon = await registry.get('any-icon');
+
+      expect(icon).toBeNull();
+      consoleError.mockRestore();
+    });
+
+    it('should handle preload with empty array', async () => {
+      await expect(registry.preload([])).resolves.not.toThrow();
+    });
+
+    it('should handle preload with null values', async () => {
+      registry.registerSet('test', { valid: 'M0 0' });
+
+      await expect(
+        registry.preload([null as any, 'valid', undefined as any])
+      ).resolves.not.toThrow();
+    });
+
+    it('should handle multiple clears in succession', () => {
+      registry.registerSet('test', { icon: 'M0 0' });
+      registry.clear();
+      registry.clear();
+      registry.clear();
+
+      expect(registry.list()).toHaveLength(0);
+    });
+
+    it('should handle registration after clear', async () => {
+      registry.registerSet('test', { icon: 'M0 0' });
+      registry.clear();
+      registry.registerSet('test2', { icon2: 'M10 10' });
+
+      const icon = await registry.get('icon2');
+      expect(icon).toBeTruthy();
+    });
+
+    it('should handle icon with very large path data', async () => {
+      const hugePath = 'M' + Array(100000).fill('10 10 L 20 20').join(' ');
+
+      registry.registerSet('test', { huge: hugePath });
+      const icon = await registry.get('huge');
+
+      expect(icon?.path).toBe(hugePath);
+    });
+
+    it('should handle concurrent registrations', () => {
+      const sets = Array(100).fill(0).map((_, i) => ({
+        [`icon-${i}`]: `M${i} ${i}`
+      }));
+
+      sets.forEach((set, i) => {
+        registry.registerSet(`set-${i}`, set);
+      });
+
+      expect(registry.list().length).toBeGreaterThanOrEqual(100);
+    });
   });
 
   describe('Lazy Loading', () => {

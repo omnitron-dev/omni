@@ -221,3 +221,64 @@ export async function waitFor(
     check();
   });
 }
+
+/**
+ * Animation testing utilities
+ */
+
+/**
+ * Wait for animation to complete with fake timers
+ * Advances timers by the specified duration and allows for animation frame callbacks
+ *
+ * @param duration - Duration in milliseconds to wait
+ * @param vi - Vitest instance (import { vi } from 'vitest')
+ */
+export async function waitForAnimation(duration: number, vi?: any): Promise<void> {
+  if (vi && vi.advanceTimersByTimeAsync) {
+    // Use fake timers if available
+    await vi.advanceTimersByTimeAsync(duration);
+  } else {
+    // Fallback to real timers
+    await new Promise(resolve => setTimeout(resolve, duration));
+  }
+}
+
+/**
+ * Flush all pending microtasks
+ * Useful when you need to ensure all promise callbacks have executed
+ */
+export async function flushMicrotasks(): Promise<void> {
+  return new Promise(resolve => queueMicrotask(resolve));
+}
+
+/**
+ * Run all animation frames
+ * Advances timers and processes all pending animation frames
+ *
+ * @param vi - Vitest instance (import { vi } from 'vitest')
+ * @param maxFrames - Maximum number of frames to process (default: 60 = 1 second at 60fps)
+ */
+export async function runAnimationFrames(vi: any, maxFrames: number = 60): Promise<void> {
+  const frameTime = 1000 / 60; // ~16.67ms per frame at 60fps
+
+  for (let i = 0; i < maxFrames; i++) {
+    await vi.advanceTimersByTimeAsync(frameTime);
+  }
+}
+
+/**
+ * Advance timers with proper animation frame handling
+ * Combines timer advancement with animation frame processing
+ *
+ * @param duration - Duration in milliseconds
+ * @param vi - Vitest instance (import { vi } from 'vitest')
+ */
+export async function advanceTimersWithAnimation(duration: number, vi: any): Promise<void> {
+  // Advance in small chunks to process animation frames
+  const chunkSize = 16.67; // One animation frame
+  const chunks = Math.ceil(duration / chunkSize);
+
+  for (let i = 0; i < chunks; i++) {
+    await vi.advanceTimersByTimeAsync(Math.min(chunkSize, duration - (i * chunkSize)));
+  }
+}

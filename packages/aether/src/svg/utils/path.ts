@@ -45,18 +45,42 @@ export interface Point {
  * ```
  */
 export function parsePath(pathData: string): PathCommand[] {
-  const commands: PathCommand[] = [];
-  const commandRegex = /([MLHVCSQTAZmlhvcsqtaz])([^MLHVCSQTAZmlhvcsqtaz]*)/g;
-  let match;
+  // Handle null, undefined, or empty input
+  if (!pathData || typeof pathData !== 'string') {
+    return [];
+  }
 
+  const commands: PathCommand[] = [];
+  // Updated regex to avoid matching letters inside NaN/Infinity
+  // Look for command letters followed by whitespace, comma, digit, sign, or end
+  const commandRegex = /([MLHVCSQTAZmlhvcsqtaz])(?=[\s,\d.+-]|$)/g;
+
+  let match;
+  const matches: Array<{ type: string; start: number; end: number }> = [];
+
+  // Find all command positions
   while ((match = commandRegex.exec(pathData)) !== null) {
-    const type = match[1]!;
-    const valueString = match[2]?.trim() || '';
+    matches.push({
+      type: match[1]!,
+      start: match.index,
+      end: match.index + 1,
+    });
+  }
+
+  // Extract values between commands
+  for (let i = 0; i < matches.length; i++) {
+    const current = matches[i]!;
+    const next = matches[i + 1];
+    const type = current.type;
+    const valueString = pathData
+      .substring(current.end, next ? next.start : pathData.length)
+      .trim();
 
     // Parse values
     const values: number[] = [];
     if (valueString) {
-      const valueRegex = /[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?/g;
+      // Updated regex to also match NaN and Infinity
+      const valueRegex = /[-+]?(?:NaN|Infinity|[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)/g;
       let valueMatch;
       while ((valueMatch = valueRegex.exec(valueString)) !== null) {
         values.push(parseFloat(valueMatch[0]!));

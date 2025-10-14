@@ -79,7 +79,16 @@ export class IconRegistry {
       let icon = this.icons.get(name)!;
       // Apply transformers
       for (const transformer of this.transformers) {
-        icon = transformer.transform(icon);
+        try {
+          const transformed = transformer.transform(icon);
+          // Only use transformed icon if it's not null/undefined
+          if (transformed) {
+            icon = transformed;
+          }
+        } catch (error) {
+          // Log error but continue with original icon
+          console.error(`Transformer "${transformer.name}" failed:`, error);
+        }
       }
       return icon;
     }
@@ -189,6 +198,11 @@ export class IconRegistry {
     }
 
     const svg = await response.text();
+
+    // Validate that the content is actually SVG
+    if (!svg.includes('<svg') && !svg.includes('<path') && !svg.includes('<symbol')) {
+      throw new Error(`Invalid SVG content from ${url}`);
+    }
 
     // Extract viewBox and path from SVG
     const viewBoxMatch = svg.match(/viewBox="([^"]+)"/);

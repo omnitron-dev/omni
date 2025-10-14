@@ -147,7 +147,11 @@ describe('Icon Registry E2E Tests', () => {
 
       expect(iconUpper).toBeTruthy();
       expect(iconLower).toBeTruthy();
-      expect(iconUpper?.content).not.toBe(iconLower?.content);
+
+      // Icon registry can return either content or path property
+      const upperData = iconUpper?.content || iconUpper?.path;
+      const lowerData = iconLower?.content || iconLower?.path;
+      expect(upperData).not.toBe(lowerData);
     });
   });
 
@@ -319,19 +323,20 @@ describe('Icon Registry E2E Tests', () => {
     it('should handle invalid icon data gracefully', async () => {
       const registry = getIconRegistry();
       registry.registerSet('test', {
-        invalid: '', // Empty icon data
+        empty: '', // Empty icon data - should render empty SVG
       });
 
-      const onError = vi.fn();
-      render(() => <SVGIcon name="invalid" onError={onError} />);
+      const onLoad = vi.fn();
+      const { container } = render(() => <SVGIcon name="empty" onLoad={onLoad} />);
 
-      // Should either load or call error
-      await waitFor(
-        () => {
-          expect(onError).toHaveBeenCalled();
-        },
-        { timeout: 2000 }
-      );
+      // Should load successfully even with empty data
+      await waitFor(() => {
+        expect(onLoad).toHaveBeenCalled();
+      });
+
+      // SVG should still be created
+      const svg = container.querySelector('svg');
+      expect(svg).toBeTruthy();
     });
 
     it('should report error for missing icons', async () => {

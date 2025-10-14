@@ -65,9 +65,14 @@ export interface PreserveAspectRatio {
  * ```
  */
 export function parseViewBox(viewBox: string): ViewBox {
-  const parts = viewBox.trim().split(/\s+|,/).map(Number);
+  // Split by spaces or commas, filter out empty strings
+  const parts = viewBox
+    .trim()
+    .split(/[\s,]+/)
+    .filter((p) => p !== '')
+    .map(Number);
 
-  if (parts.length !== 4 || parts.some(isNaN)) {
+  if (parts.length !== 4 || parts.some((n) => isNaN(n) || !isFinite(n))) {
     throw new Error(`Invalid viewBox: ${viewBox}`);
   }
 

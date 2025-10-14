@@ -47,14 +47,14 @@ export interface Point {
  */
 export function parseTransform(transformString: string): Transform[] {
   const transforms: Transform[] = [];
-  const regex = /(matrix|translate|scale|rotate|skewX|skewY)\s*\(([^)]+)\)/g;
+  const regex = /(matrix|translate|scale|rotate|skewX|skewY)\s*\(([^)]*)\)/g;
   let match;
 
   while ((match = regex.exec(transformString)) !== null) {
     const type = match[1] as Transform['type'];
     const valuesStr = match[2];
-    if (!valuesStr) continue;
-    const values = valuesStr.split(/[,\s]+/).map(Number).filter((n) => !isNaN(n));
+    // Handle empty values string
+    const values = valuesStr ? valuesStr.split(/[,\s]+/).map(Number).filter((n) => !isNaN(n)) : [];
 
     transforms.push({ type, values });
   }
@@ -78,8 +78,18 @@ export function transformToMatrix(transform: Transform): TransformMatrix {
   const { type, values } = transform;
 
   switch (type) {
-    case 'matrix':
-      return values.slice(0, 6) as TransformMatrix;
+    case 'matrix': {
+      // Pad array to 6 values with identity matrix defaults
+      const matrix: TransformMatrix = [
+        values[0] ?? 1,
+        values[1] ?? 0,
+        values[2] ?? 0,
+        values[3] ?? 1,
+        values[4] ?? 0,
+        values[5] ?? 0,
+      ];
+      return matrix;
+    }
 
     case 'translate': {
       const tx = values[0] || 0;
@@ -88,7 +98,7 @@ export function transformToMatrix(transform: Transform): TransformMatrix {
     }
 
     case 'scale': {
-      const sx = values[0] || 1;
+      const sx = values[0] ?? 1;
       const sy = values[1] ?? sx;
       return [sx, 0, 0, sy, 0, 0];
     }
@@ -174,9 +184,16 @@ export function multiplyMatrices(m1: TransformMatrix, m2: TransformMatrix): Tran
  */
 export function applyTransform(matrix: TransformMatrix, point: Point): Point {
   const [a, b, c, d, e, f] = matrix;
+
+  // Calculate transformations, treating 0 * Infinity as 0 (not NaN)
+  const xTerm1 = a === 0 ? 0 : a * point.x;
+  const xTerm2 = c === 0 ? 0 : c * point.y;
+  const yTerm1 = b === 0 ? 0 : b * point.x;
+  const yTerm2 = d === 0 ? 0 : d * point.y;
+
   return {
-    x: a * point.x + c * point.y + e,
-    y: b * point.x + d * point.y + f,
+    x: xTerm1 + xTerm2 + e,
+    y: yTerm1 + yTerm2 + f,
   };
 }
 
@@ -290,7 +307,17 @@ export function invertMatrix(matrix: TransformMatrix): TransformMatrix {
     return [1, 0, 0, 1, 0, 0];
   }
 
-  return [d / det, -b / det, -c / det, a / det, (c * f - d * e) / det, (b * e - a * f) / det];
+  // Normalize -0 to 0 by adding 0
+  const result: TransformMatrix = [
+    d / det + 0,
+    -b / det + 0,
+    -c / det + 0,
+    a / det + 0,
+    (c * f - d * e) / det + 0,
+    (b * e - a * f) / det + 0,
+  ];
+
+  return result;
 }
 
 /**
@@ -300,7 +327,7 @@ export function invertMatrix(matrix: TransformMatrix): TransformMatrix {
  * @param tolerance - Tolerance for floating point comparison
  * @returns True if matrix is identity
  */
-export function isIdentityMatrix(matrix: TransformMatrix, tolerance: number = 1e-10): boolean {
+export function isIdentityMatrix(matrix: TransformMatrix, tolerance: number = 1e-9): boolean {
   const [a, b, c, d, e, f] = matrix;
   return (
     Math.abs(a - 1) < tolerance &&

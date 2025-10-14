@@ -162,4 +162,208 @@ describe('Path Animations', () => {
       document.body.removeChild(pathElement);
     });
   });
+
+  describe('Edge Cases - Path Animations', () => {
+    it('should handle null path element', () => {
+      expect(() => getPathLength(null as any)).not.toThrow();
+    });
+
+    it('should handle undefined path element', () => {
+      expect(() => getPathLength(undefined as any)).not.toThrow();
+    });
+
+    it('should handle empty path string', () => {
+      const length = getPathLength('');
+      expect(length).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should handle malformed path string', () => {
+      const length = getPathLength('not a path');
+      expect(length).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should handle path with NaN coordinates', () => {
+      const length = getPathLength('M NaN NaN L NaN NaN');
+      expect(length).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should handle path with Infinity', () => {
+      const length = getPathLength('M Infinity -Infinity');
+      expect(length).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should handle getPointAtLength with negative distance', () => {
+      const point = getPointAtLength('M 0 0 L 100 0', -10);
+      expect(point).toBeDefined();
+    });
+
+    it('should handle getPointAtLength with distance > path length', () => {
+      const point = getPointAtLength('M 0 0 L 100 0', 1000);
+      expect(point).toBeDefined();
+    });
+
+    it('should handle getPointAtLength with NaN distance', () => {
+      const point = getPointAtLength('M 0 0 L 100 0', NaN);
+      expect(point).toBeDefined();
+    });
+
+    it('should handle interpolatePath with progress < 0', () => {
+      const result = interpolatePath('M 0 0 L 100 0', 'M 0 0 L 0 100', -0.5);
+      expect(result).toBeDefined();
+    });
+
+    it('should handle interpolatePath with progress > 1', () => {
+      const result = interpolatePath('M 0 0 L 100 0', 'M 0 0 L 0 100', 1.5);
+      expect(result).toBeDefined();
+    });
+
+    it('should handle interpolatePath with NaN progress', () => {
+      const result = interpolatePath('M 0 0 L 100 0', 'M 0 0 L 0 100', NaN);
+      expect(result).toBeDefined();
+    });
+
+    it('should handle interpolatePath with different command counts', () => {
+      const result = interpolatePath('M 0 0 L 100 0', 'M 0 0 L 50 50 L 100 100', 0.5);
+      expect(result).toBeDefined();
+    });
+
+    it('should handle interpolatePath with empty paths', () => {
+      const result = interpolatePath('', '', 0.5);
+      expect(result).toBeDefined();
+    });
+
+    it('should handle splitPath with empty string', () => {
+      const segments = splitPath('');
+      expect(segments).toBeInstanceOf(Array);
+    });
+
+    it('should handle splitPath with malformed path', () => {
+      const segments = splitPath('not a path');
+      expect(segments).toBeInstanceOf(Array);
+    });
+
+    it('should handle reversePath with empty string', () => {
+      const reversed = reversePath('');
+      expect(reversed).toBeDefined();
+    });
+
+    it('should handle reversePath with single command', () => {
+      const reversed = reversePath('M 0 0');
+      expect(reversed).toBeDefined();
+    });
+
+    it('should handle animatePathDraw with zero duration', () => {
+      const pathElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      pathElement.setAttribute('d', 'M 0 0 L 100 0');
+      document.body.appendChild(pathElement);
+
+      const controller = animatePathDraw(pathElement, { duration: 0 });
+      expect(controller).toBeDefined();
+
+      controller.stop();
+      document.body.removeChild(pathElement);
+    });
+
+    it('should handle animatePathDraw with negative duration', () => {
+      const pathElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      pathElement.setAttribute('d', 'M 0 0 L 100 0');
+      document.body.appendChild(pathElement);
+
+      const controller = animatePathDraw(pathElement, { duration: -100 });
+      expect(controller).toBeDefined();
+
+      controller.stop();
+      document.body.removeChild(pathElement);
+    });
+
+    it('should handle animatePathDraw with very large duration', () => {
+      const pathElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      pathElement.setAttribute('d', 'M 0 0 L 100 0');
+      document.body.appendChild(pathElement);
+
+      const controller = animatePathDraw(pathElement, { duration: 1e10 });
+      expect(controller).toBeDefined();
+
+      controller.stop();
+      document.body.removeChild(pathElement);
+    });
+
+    it('should handle multiple pause/resume cycles', () => {
+      const pathElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      pathElement.setAttribute('d', 'M 0 0 L 100 0');
+      document.body.appendChild(pathElement);
+
+      const controller = animatePathDraw(pathElement, { duration: 1000 });
+
+      for (let i = 0; i < 10; i++) {
+        controller.pause();
+        controller.resume();
+      }
+
+      controller.stop();
+      document.body.removeChild(pathElement);
+    });
+
+    it('should handle stop without start', () => {
+      const pathElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      pathElement.setAttribute('d', 'M 0 0 L 100 0');
+      document.body.appendChild(pathElement);
+
+      const controller = animatePathDraw(pathElement, { duration: 1000 });
+      controller.stop();
+      controller.stop(); // Double stop
+
+      document.body.removeChild(pathElement);
+    });
+
+    it('should handle path with zero length', () => {
+      const pathElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      pathElement.setAttribute('d', 'M 0 0');
+      document.body.appendChild(pathElement);
+
+      const controller = animatePathDraw(pathElement, { duration: 100 });
+      expect(controller).toBeDefined();
+
+      controller.stop();
+      document.body.removeChild(pathElement);
+    });
+
+    it('should handle onUpdate throwing error', () => {
+      const pathElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      pathElement.setAttribute('d', 'M 0 0 L 100 0');
+      document.body.appendChild(pathElement);
+
+      const controller = animatePathDraw(pathElement, {
+        duration: 100,
+        onUpdate: () => {
+          throw new Error('Update error');
+        },
+      });
+
+      expect(controller).toBeDefined();
+
+      controller.stop();
+      document.body.removeChild(pathElement);
+    });
+
+    it('should handle onComplete throwing error', () => {
+      const pathElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      pathElement.setAttribute('d', 'M 0 0 L 100 0');
+      document.body.appendChild(pathElement);
+
+      const controller = animatePathDraw(pathElement, {
+        duration: 10,
+        onComplete: () => {
+          throw new Error('Complete error');
+        },
+      });
+
+      expect(controller).toBeDefined();
+
+      setTimeout(() => {
+        controller.stop();
+        document.body.removeChild(pathElement);
+      }, 50);
+    });
+  });
 });

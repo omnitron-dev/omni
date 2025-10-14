@@ -533,8 +533,8 @@ describe('Icon Management Integration', () => {
 
       const icon = await registry.get('malformed');
 
-      expect(icon).toBeDefined();
-      expect(icon?.content).toBe('<not-valid-svg>');
+      // Malformed SVG should be rejected and return null
+      expect(icon).toBeNull();
 
       fetchSpy.mockRestore();
     });

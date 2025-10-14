@@ -10,6 +10,9 @@ import type { EasingFunction } from './types.js';
  * Get the total length of an SVG path
  */
 export function getPathLength(path: string | SVGPathElement): number {
+  // Handle null/undefined
+  if (!path) return 0;
+
   if (typeof path === 'string') {
     // Create temporary path element to calculate length
     if (typeof document === 'undefined') return 0;

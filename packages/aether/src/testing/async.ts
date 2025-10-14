@@ -13,13 +13,28 @@ export async function waitFor<T>(
   while (Date.now() - startTime < timeout) {
     try {
       const result = await callback();
-      return result;
+
+      // If result is truthy (or 0, empty string, etc that might be valid),
+      // consider it a success. Only retry if explicitly falsy (false, null, undefined)
+      if (result !== false && result !== null && result !== undefined) {
+        return result;
+      }
+
+      // Result was explicitly falsy, treat as failure and retry
+      await new Promise(resolve => setTimeout(resolve, interval));
     } catch (_error) {
+      // Callback threw or assertion failed, wait and retry
       await new Promise(resolve => setTimeout(resolve, interval));
     }
   }
 
-  throw new Error('Timeout waiting for condition');
+  // One final attempt
+  try {
+    const result = await callback();
+    return result;
+  } catch (_error) {
+    throw new Error('Timeout waiting for condition');
+  }
 }
 
 export async function waitForElementToBeRemoved<T>(
@@ -32,6 +47,11 @@ export async function waitForElementToBeRemoved<T>(
   }, options);
 }
 
-export function act<T>(callback: () => T | Promise<T>): Promise<T> {
-  return Promise.resolve(callback());
+export async function act<T>(callback: () => T | Promise<T>): Promise<T> {
+  try {
+    return await callback();
+  } catch (error) {
+    // Re-throw the error so tests can catch it
+    throw error;
+  }
 }

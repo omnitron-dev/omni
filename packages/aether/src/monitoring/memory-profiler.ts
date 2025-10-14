@@ -71,11 +71,29 @@ export class MemoryProfiler {
     }, this.config.snapshotInterval);
   }
 
-  takeSnapshot(): MemorySnapshot | null {
-    if (!this.enabled || typeof performance === 'undefined') return null;
+  takeSnapshot(): MemorySnapshot {
+    if (!this.enabled || typeof performance === 'undefined') {
+      // Return a mock snapshot in environments without performance.memory
+      return {
+        timestamp: Date.now(),
+        usedJSHeapSize: 0,
+        totalJSHeapSize: 0,
+        jsHeapSizeLimit: 0,
+        percentage: 0,
+      };
+    }
 
     const memory = (performance as any).memory;
-    if (!memory) return null;
+    if (!memory) {
+      // Return a mock snapshot in environments without performance.memory
+      return {
+        timestamp: performance.now(),
+        usedJSHeapSize: 0,
+        totalJSHeapSize: 0,
+        jsHeapSizeLimit: 0,
+        percentage: 0,
+      };
+    }
 
     const snapshot: MemorySnapshot = {
       timestamp: performance.now(),
@@ -100,19 +118,20 @@ export class MemoryProfiler {
     return snapshot;
   }
 
-  trackComponent(name: string, domNodes: number = 0, eventListeners: number = 0): void {
+  trackComponent(name: string, estimatedSize: number = 0, domNodes: number = 0, eventListeners: number = 0): void {
     if (!this.enabled) return;
 
     const existing = this.componentMemory.get(name);
     if (existing) {
       existing.instanceCount++;
+      existing.estimatedSize += estimatedSize;
       existing.domNodes += domNodes;
       existing.eventListeners += eventListeners;
     } else {
       this.componentMemory.set(name, {
         componentName: name,
         instanceCount: 1,
-        estimatedSize: 0,
+        estimatedSize,
         domNodes,
         eventListeners,
       });
@@ -175,6 +194,46 @@ export class MemoryProfiler {
     return Array.from(this.componentMemory.values()).reduce((sum, info) => sum + info.eventListeners, 0);
   }
 
+  /**
+   * Get largest components by memory usage
+   */
+  getLargestComponents(limit: number = 10): Array<{ name: string; memory: number }> {
+    return Array.from(this.componentMemory.values())
+      .map((info) => ({
+        name: info.componentName,
+        memory: info.estimatedSize,
+      }))
+      .sort((a, b) => b.memory - a.memory)
+      .slice(0, limit);
+  }
+
+  /**
+   * Get memory statistics
+   */
+  getStatistics(): {
+    totalComponents: number;
+    totalMemory: number;
+    averageMemory: number;
+  } {
+    const components = Array.from(this.componentMemory.values());
+    const totalComponents = components.length;
+    const totalMemory = components.reduce((sum, info) => sum + info.estimatedSize, 0);
+    const averageMemory = totalComponents > 0 ? totalMemory / totalComponents : 0;
+
+    return {
+      totalComponents,
+      totalMemory,
+      averageMemory,
+    };
+  }
+
+  /**
+   * Start profiling (alias for enable with snapshot start)
+   */
+  start(): void {
+    this.enable();
+  }
+
   clear(): void {
     this.snapshots = [];
     this.componentMemory.clear();
@@ -194,6 +253,13 @@ export class MemoryProfiler {
       clearInterval(this.snapshotTimer);
       this.snapshotTimer = undefined;
     }
+  }
+
+  /**
+   * Stop profiling (alias for disable)
+   */
+  stop(): void {
+    this.disable();
   }
 
   isEnabled(): boolean {

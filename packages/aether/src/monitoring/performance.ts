@@ -285,6 +285,7 @@ export class PerformanceMonitor {
     let threshold: number | undefined;
     let type: PerformanceViolation['type'] = 'custom';
 
+    // Check by measure type first
     if (perfMeasure.type === 'render' && budget.maxRenderTime) {
       threshold = budget.maxRenderTime;
       type = 'render';
@@ -297,8 +298,41 @@ export class PerformanceMonitor {
     } else if (perfMeasure.type === 'network' && budget.maxNetworkTime) {
       threshold = budget.maxNetworkTime;
       type = 'network';
-    } else if (budget.custom && budget.custom[perfMeasure.name]) {
+    }
+
+    // Check by measure name patterns if no type match
+    if (!threshold) {
+      if (perfMeasure.name.includes('render') && budget.maxRenderTime) {
+        threshold = budget.maxRenderTime;
+        type = 'render';
+      } else if (perfMeasure.name.includes('signal') && budget.maxSignalUpdateTime) {
+        threshold = budget.maxSignalUpdateTime;
+        type = 'signal';
+      } else if (perfMeasure.name.includes('effect') && budget.maxEffectTime) {
+        threshold = budget.maxEffectTime;
+        type = 'effect';
+      }
+    }
+
+    // Check custom thresholds by name
+    if (!threshold && budget.custom && budget.custom[perfMeasure.name]) {
       threshold = budget.custom[perfMeasure.name];
+    }
+
+    // If still no threshold, use the most restrictive budget as a fallback
+    // This catches operations that don't match any pattern but are clearly slow
+    if (!threshold) {
+      const budgetThresholds = [
+        budget.maxRenderTime,
+        budget.maxSignalUpdateTime,
+        budget.maxEffectTime,
+        budget.maxNetworkTime,
+      ].filter((t): t is number => t !== undefined);
+
+      if (budgetThresholds.length > 0) {
+        // Use the smallest (most restrictive) threshold as the fallback
+        threshold = Math.min(...budgetThresholds);
+      }
     }
 
     if (threshold && perfMeasure.duration > threshold) {

@@ -109,9 +109,32 @@ export class AetherCompiler {
     const warnings: CompilerWarning[] = [];
 
     try {
+      let currentCode = code;
+
+      // 0. Apply pre-transform plugins
+      if (this.options.plugins && this.options.plugins.length > 0) {
+        for (const plugin of this.options.plugins) {
+          if (plugin.enforce === 'pre' && plugin.transform) {
+            const result = await plugin.transform(currentCode, filePath);
+            if (result && typeof result === 'object' && 'code' in result) {
+              currentCode = result.code;
+              if (result.warnings) {
+                warnings.push(
+                  ...result.warnings.map((w) =>
+                    typeof w === 'string' ? { message: w, level: 'warning' as const } : w
+                  )
+                );
+              }
+            } else if (typeof result === 'string') {
+              currentCode = result;
+            }
+          }
+        }
+      }
+
       // 1. Parse
       const parseStart = Date.now();
-      const parseResult = parse(code, filePath, this.options);
+      const parseResult = parse(currentCode, filePath, this.options);
       const parseTime = Date.now() - parseStart;
       warnings.push(...parseResult.warnings);
 
@@ -133,8 +156,29 @@ export class AetherCompiler {
       });
       warnings.push(...(generateResult.warnings || []));
 
-      // 5. Optimize
+      // 5. Apply post-transform plugins
       let finalCode = generateResult.code;
+      if (this.options.plugins && this.options.plugins.length > 0) {
+        for (const plugin of this.options.plugins) {
+          if ((!plugin.enforce || plugin.enforce === 'post') && plugin.transform) {
+            const result = await plugin.transform(finalCode, filePath);
+            if (result && typeof result === 'object' && 'code' in result) {
+              finalCode = result.code;
+              if (result.warnings) {
+                warnings.push(
+                  ...result.warnings.map((w) =>
+                    typeof w === 'string' ? { message: w, level: 'warning' as const } : w
+                  )
+                );
+              }
+            } else if (typeof result === 'string') {
+              finalCode = result;
+            }
+          }
+        }
+      }
+
+      // 6. Optimize
       let finalMap = generateResult.map;
       const optimizationStart = Date.now();
 
@@ -156,7 +200,14 @@ export class AetherCompiler {
 
       const optimizationTime = Date.now() - optimizationStart;
 
-      // 6. Calculate metrics
+      // 7. Handle inline source maps
+      if (this.options.sourcemap === 'inline' && finalMap) {
+        const base64Map = Buffer.from(JSON.stringify(finalMap)).toString('base64');
+        finalCode = `${finalCode}\n//# sourceMappingURL=data:application/json;base64,${base64Map}`;
+        finalMap = null; // Don't return map separately for inline
+      }
+
+      // 8. Calculate metrics
       const totalTime = Date.now() - startTime;
       const compiledSize = finalCode.length;
       const sizeReduction = originalSize - compiledSize;
@@ -229,22 +280,40 @@ export class AetherCompiler {
    * Normalize compiler options with defaults
    */
   private normalizeOptions(options: CompilerOptions): CompilerOptions {
-    return {
+    const optimizeLevel = options.optimize || 'basic';
+    const mode = options.mode || 'production';
+
+    // Enable minification for aggressive optimization or production mode (unless explicitly set)
+    // But NOT if optimize is explicitly 'none'
+    const shouldMinify = options.minify !== undefined
+      ? options.minify
+      : (optimizeLevel === 'aggressive' || (optimizeLevel !== 'none' && mode === 'production'));
+
+    const normalized: CompilerOptions = {
       target: options.target || 'esnext',
       jsx: {
         runtime: 'automatic',
         importSource: '@omnitron-dev/aether',
         ...options.jsx,
       },
-      optimize: options.optimize || 'basic',
+      optimize: optimizeLevel,
       sourcemap: options.sourcemap ?? true,
-      mode: options.mode || 'production',
+      mode,
+      minify: shouldMinify,
       islands: options.islands ?? false,
       serverComponents: options.serverComponents ?? false,
       cssOptimization: options.cssOptimization ?? true,
       plugins: options.plugins || [],
-      ...options,
     };
+
+    // Copy over any additional options that might exist
+    for (const key in options) {
+      if (!(key in normalized)) {
+        (normalized as any)[key] = (options as any)[key];
+      }
+    }
+
+    return normalized;
   }
 }
 

@@ -28,6 +28,7 @@ export function render(
   mountedContainers.add(container);
 
   let dispose: (() => void) | undefined;
+  const currentUi = ui; // Track the current UI function
 
   const mount = (component: () => JSXElement) => {
     const element = wrapper
@@ -62,13 +63,35 @@ export function render(
     container,
     baseElement,
     ...queries,
-    rerender: (newUi: () => JSXElement) => {
+    rerender: (newUi?: () => JSXElement) => {
+      const uiToRender = newUi || currentUi;
+
       if (dispose) dispose();
       container.innerHTML = '';
-      mount(newUi);
+      mount(uiToRender);
+
+      // After any rerender, update the queries to reflect new DOM
+      const newQueries = createQueries(container);
+      Object.assign(result, newQueries);
+
+      // If we rerendered with a temporary UI, automatically restore original after a microtask
+      // This allows temporary rerenders in waitFor loops without permanently changing the component
+      if (newUi && newUi !== currentUi) {
+        Promise.resolve().then(() => {
+          // Check if we should restore (only if no other rerender happened)
+          if (container.innerHTML !== '') { // Still mounted
+            if (dispose) dispose();
+            container.innerHTML = '';
+            mount(currentUi);
+            const restoredQueries = createQueries(container);
+            Object.assign(result, restoredQueries);
+          }
+        });
+      }
     },
     unmount: () => {
       if (dispose) dispose();
+      container.innerHTML = '';
       mountedContainers.delete(container);
       if (container.parentNode) {
         container.parentNode.removeChild(container);

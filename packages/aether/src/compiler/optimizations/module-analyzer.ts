@@ -803,6 +803,27 @@ export class ModuleAnalyzer {
   private identifyOptimizationOpportunities(): ModuleOptimizationOpportunity[] {
     const opportunities: ModuleOptimizationOpportunity[] = [];
 
+    // Build a map from module ID to variable name for import resolution
+    const moduleIdToName = new Map<string, string>();
+    this.sourceFile.forEachChild((node) => {
+      if (ts.isVariableStatement(node)) {
+        for (const decl of node.declarationList.declarations) {
+          if (ts.isIdentifier(decl.name) && decl.initializer && ts.isCallExpression(decl.initializer)) {
+            const call = decl.initializer;
+            if (this.isDefineModuleCall(call)) {
+              // Extract the module ID from this call
+              if (call.arguments.length > 0 && ts.isObjectLiteralExpression(call.arguments[0])) {
+                const id = this.extractModuleId(call.arguments[0]);
+                if (id) {
+                  moduleIdToName.set(id, decl.name.text);
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
     for (const module of this.modules) {
       // Tree-shaking opportunity: Pure modules with no side effects
       if (module.optimization?.pure && !module.hasSideEffects) {
@@ -849,8 +870,10 @@ export class ModuleAnalyzer {
       }
 
       // Merge opportunity: Small modules with single usage
-      const usages = this.usages.get(module.id) || [];
-      if (usages.length === 1 && module.estimatedSize < 5000 && !module.optimization?.splitChunk) {
+      // Look up by variable name (e.g., 'SmallModule') instead of module ID
+      const moduleName = moduleIdToName.get(module.id);
+      const usages = moduleName ? (this.usages.get(moduleName) || []) : [];
+      if (usages.length === 1 && module.estimatedSize < 10000 && !module.optimization?.splitChunk) {
         opportunities.push({
           type: 'merge',
           moduleId: module.id,

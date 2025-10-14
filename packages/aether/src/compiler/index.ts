@@ -21,7 +21,7 @@ import type { CompilerOptions, TransformResult, CompilerContext, AnalysisResult,
 import { parse, parseWithProgram } from './parser.js';
 import { analyze } from './analyzer.js';
 import { transform } from './transformer.js';
-import { generate, generateMinified, generateWithInlineSourceMap } from './codegen.js';
+import { generate } from './codegen.js';
 
 /**
  * Compile TypeScript/JSX source code
@@ -75,75 +75,147 @@ export async function compile(
   };
 
   try {
+    let currentCode = code;
+
+    // Step 0: Apply pre-transform plugins
+    if (compilerOptions.plugins) {
+      for (const plugin of compilerOptions.plugins) {
+        if (plugin.enforce === 'pre' && plugin.transform) {
+          const result = await plugin.transform(currentCode, filePath);
+          if (result && typeof result === 'object' && 'code' in result) {
+            currentCode = result.code;
+            if (result.warnings) {
+              context.warnings.push(...result.warnings.map((w) =>
+                typeof w === 'string' ? { message: w, level: 'warning' as const } : w
+              ));
+            }
+          } else if (typeof result === 'string') {
+            currentCode = result;
+          }
+        }
+      }
+    }
+
     // Step 1: Parse
-    const parseResult = parse(code, filePath, compilerOptions);
+    const parseResult = parse(currentCode, filePath, compilerOptions);
     context.sourceFile = parseResult.sourceFile;
     context.warnings.push(...parseResult.warnings);
 
-  // Step 2: Analyze
-  const analysis = analyze(context.sourceFile, compilerOptions);
-  context.analysis = analysis;
-
-  // Step 3: Apply plugins (pre-transform)
-  let transformedSource = context.sourceFile;
-  if (compilerOptions.plugins) {
-    for (const plugin of compilerOptions.plugins) {
-      if (plugin.enforce === 'pre' && plugin.transform) {
-        const result = await plugin.transform(code, filePath);
-        if (result && typeof result === 'object' && 'code' in result) {
-          // Re-parse if plugin transformed code
-          const reparsed = parse(result.code, filePath, compilerOptions);
-          transformedSource = reparsed.sourceFile;
-          if (result.warnings) {
-            context.warnings.push(...result.warnings);
-          }
-        }
-      }
+    // Check for parse errors - if critical, return original code
+    const hasParseErrors = parseResult.warnings.some((w) => w.level === 'error');
+    if (hasParseErrors) {
+      return {
+        code,
+        map: null,
+        warnings: context.warnings,
+      };
     }
-  }
 
-  // Step 4: Transform
-  transformedSource = transform(transformedSource, analysis, compilerOptions);
+    // Step 2: Analyze
+    const analysis = analyze(context.sourceFile, compilerOptions);
+    context.analysis = analysis;
 
-  // Step 5: Apply plugins (post-transform)
-  if (compilerOptions.plugins) {
-    for (const plugin of compilerOptions.plugins) {
-      if (plugin.enforce === 'post' && plugin.transform) {
-        const result = await plugin.transform(generate(transformedSource).code, filePath);
-        if (result && typeof result === 'object' && 'code' in result) {
-          // Re-parse transformed code
-          const reparsed = parse(result.code, filePath, compilerOptions);
-          transformedSource = reparsed.sourceFile;
-          if (result.warnings) {
-            context.warnings.push(...result.warnings);
-          }
-        }
-      }
-    }
-  }
+    // Step 3: Transform
+    const transformedSource = transform(context.sourceFile, analysis, compilerOptions);
 
-  // Step 6: Generate code
-  let result: TransformResult;
-
-  if (compilerOptions.minify) {
-    result = generateMinified(transformedSource, compilerOptions);
-  } else if (compilerOptions.sourcemap === 'inline') {
-    const generatedCode = generateWithInlineSourceMap(transformedSource, {
-      sourceMaps: true,
-      inlineSourceMaps: true,
-      pretty: compilerOptions.mode === 'development',
-    });
-    result = { code: generatedCode, map: null, warnings: context.warnings };
-  } else {
-    result = generate(transformedSource, {
+    // Step 4: Generate code
+    const generateResult = generate(transformedSource, {
       sourceMaps: !!compilerOptions.sourcemap && compilerOptions.sourcemap !== 'hidden',
       pretty: compilerOptions.mode === 'development',
       comments: compilerOptions.mode === 'development',
     });
-  }
+
+    let finalCode = generateResult.code;
+    let finalMap = generateResult.map;
+
+    // Step 5: Apply post-transform plugins
+    if (compilerOptions.plugins) {
+      for (const plugin of compilerOptions.plugins) {
+        if ((!plugin.enforce || plugin.enforce === 'post') && plugin.transform) {
+          const result = await plugin.transform(finalCode, filePath);
+          if (result && typeof result === 'object' && 'code' in result) {
+            finalCode = result.code;
+            if (result.warnings) {
+              context.warnings.push(...result.warnings.map((w) =>
+                typeof w === 'string' ? { message: w, level: 'warning' as const } : w
+              ));
+            }
+          } else if (typeof result === 'string') {
+            finalCode = result;
+          }
+        }
+      }
+    }
+
+    // Step 6: Apply minification separately if requested
+    if (compilerOptions.minify) {
+      const { Minifier } = await import('./optimizations/minifier.js');
+      const minifier = new Minifier({
+        mode: 'aggressive',
+        development: compilerOptions.mode === 'development',
+        sourceMaps: !!compilerOptions.sourcemap,
+        minify: true,
+      });
+
+      const minifyContext = {
+        source: finalCode,
+        modulePath: filePath,
+        options: {
+          mode: 'aggressive' as const,
+          optimizeSignals: false,
+          batchEffects: false,
+          hoistComponents: false,
+          treeShake: false,
+          eliminateDeadCode: false,
+          minify: true,
+          target: 'browser' as const,
+          development: compilerOptions.mode === 'development',
+          sourceMaps: !!compilerOptions.sourcemap,
+          customPasses: [],
+          collectMetrics: false,
+        },
+        sourceMap: finalMap,
+        metadata: new Map(),
+      };
+
+      const minified = await minifier.transform(finalCode, minifyContext);
+      finalCode = minified.code;
+      if (minified.sourceMap) {
+        finalMap = minified.sourceMap;
+      }
+    }
+
+    // Step 7: Apply optimization if requested
+    if (compilerOptions.optimize && compilerOptions.optimize !== 'none') {
+      const { Optimizer } = await import('./optimizer.js');
+      const optimizer = new Optimizer({
+        mode: compilerOptions.optimize,
+        development: compilerOptions.mode === 'development',
+        sourceMaps: !!compilerOptions.sourcemap,
+        minify: false, // Don't double-minify
+      });
+
+      const optimized = await optimizer.optimize(finalCode, filePath);
+      finalCode = optimized.code;
+      if (optimized.sourceMap) {
+        finalMap = optimized.sourceMap;
+      }
+      context.warnings.push(...optimized.warnings.map((w) => ({ message: w, level: 'warning' as const })));
+    }
+
+    // Step 8: Handle inline source maps
+    if (compilerOptions.sourcemap === 'inline' && finalMap) {
+      const base64Map = Buffer.from(JSON.stringify(finalMap)).toString('base64');
+      finalCode = `${finalCode}\n//# sourceMappingURL=data:application/json;base64,${base64Map}`;
+      finalMap = null; // Don't return map separately for inline
+    }
 
     // Add warnings from context
-    result.warnings = [...(result.warnings || []), ...context.warnings];
+    const result: TransformResult = {
+      code: finalCode,
+      map: finalMap,
+      warnings: [...(generateResult.warnings || []), ...context.warnings],
+    };
 
     return result;
   } catch (error) {

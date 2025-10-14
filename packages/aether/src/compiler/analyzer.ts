@@ -325,6 +325,27 @@ function identifyOptimizations(context: AnalysisContext): void {
     return;
   }
 
+  // Optimize signals
+  for (const signal of context.signals) {
+    if (signal.optimizable) {
+      if (signal.accesses.length === 0) {
+        context.optimizations.push({
+          type: 'eliminate-unused',
+          location: signal.location,
+          description: `Eliminate unused signal '${signal.name}'`,
+          impact: 'low',
+        });
+      } else if (signal.updates.length === 0) {
+        context.optimizations.push({
+          type: 'inline-constant',
+          location: signal.location,
+          description: `Convert signal '${signal.name}' to constant (never updated)`,
+          impact: 'medium',
+        });
+      }
+    }
+  }
+
   // Hoist static elements
   for (const element of context.staticElements) {
     if (element.hoistable) {
@@ -460,9 +481,20 @@ function canOptimizeSignal(call: ts.CallExpression, accesses: SourceLocation[], 
     return true;
   }
 
-  // If signal is never updated, it can be constant
-  if (updates.length === 0) {
-    return true;
+  // If signal is never updated AND has initial value, it can be converted to constant
+  if (updates.length === 0 && call.arguments.length > 0) {
+    const arg = call.arguments[0];
+    // If the initial value is a literal, it's definitely optimizable
+    if (
+      arg &&
+      (ts.isStringLiteral(arg) ||
+        ts.isNumericLiteral(arg) ||
+        arg.kind === ts.SyntaxKind.TrueKeyword ||
+        arg.kind === ts.SyntaxKind.FalseKeyword ||
+        arg.kind === ts.SyntaxKind.NullKeyword)
+    ) {
+      return true;
+    }
   }
 
   return false;

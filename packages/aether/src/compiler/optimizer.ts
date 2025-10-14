@@ -256,7 +256,7 @@ export class Optimizer {
 
   constructor(options: OptimizerOptions = {}) {
     this.options = this.normalizeOptions(options);
-    this.initializePasses();
+    // Note: initializePasses is async and will be called lazily in optimize()
   }
 
   /**
@@ -266,14 +266,17 @@ export class Optimizer {
     const mode = options.mode || 'basic';
     const development = options.development ?? false;
 
+    // Enable minification for aggressive mode and when explicitly requested
+    const shouldMinify = options.minify ?? (mode === 'aggressive' || !development);
+
     return {
       mode,
-      optimizeSignals: options.optimizeSignals ?? true,
-      batchEffects: options.batchEffects ?? true,
-      hoistComponents: options.hoistComponents ?? true,
-      treeShake: options.treeShake ?? true,
-      eliminateDeadCode: options.eliminateDeadCode ?? true,
-      minify: options.minify ?? !development,
+      optimizeSignals: options.optimizeSignals ?? (mode !== 'none'),
+      batchEffects: options.batchEffects ?? (mode !== 'none'),
+      hoistComponents: options.hoistComponents ?? (mode === 'aggressive'),
+      treeShake: options.treeShake ?? (mode !== 'none'),
+      eliminateDeadCode: options.eliminateDeadCode ?? (mode !== 'none'),
+      minify: shouldMinify,
       target: options.target || 'browser',
       development,
       sourceMaps: options.sourceMaps ?? development,
@@ -352,6 +355,17 @@ export class Optimizer {
     const allWarnings: string[] = [];
     const passTimings = new Map<string, number>();
 
+    // If source maps are enabled but not initialized, create a basic one
+    if (this.options.sourceMaps && !currentSourceMap) {
+      currentSourceMap = {
+        version: 3,
+        sources: [modulePath || 'source.tsx'],
+        names: [],
+        mappings: '',
+        sourcesContent: [code],
+      };
+    }
+
     // Run optimization passes
     for (const pass of this.passes) {
       const passStartTime = Date.now();
@@ -408,7 +422,7 @@ export class Optimizer {
 
     return {
       code: currentCode,
-      sourceMap: currentSourceMap,
+      sourceMap: this.options.sourceMaps ? currentSourceMap : undefined,
       changes: allChanges,
       warnings: allWarnings,
     };

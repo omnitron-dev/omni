@@ -51,10 +51,26 @@ export interface ComponentMountInfo {
   lifetime?: number;
   /** Total number of renders */
   totalRenders: number;
+  /** Current render count (alias for totalRenders) */
+  renderCount?: number;
+  /** Mount count */
+  mountCount?: number;
+  /** Update count */
+  updateCount?: number;
+  /** Unmount count */
+  unmountCount?: number;
   /** Average render duration */
   averageRenderDuration: number;
+  /** Average render time (alias for averageRenderDuration) */
+  avgRenderTime?: number;
+  /** Minimum render time */
+  minRenderTime?: number;
+  /** Maximum render time */
+  maxRenderTime?: number;
   /** Props at mount time */
   mountProps?: Record<string, any>;
+  /** Current props */
+  currentProps?: Record<string, any>;
 }
 
 /**
@@ -164,25 +180,48 @@ export class ComponentTracker {
   }
 
   /**
-   * Track component mount
+   * Track component mount (overloaded for different parameter types)
    */
-  trackMount(name: string, props?: Record<string, any>): void {
+  trackMount(componentId: string, name: string, props?: Record<string, any>): void;
+  trackMount(name: string, props?: Record<string, any>): void;
+  trackMount(componentIdOrName: string, nameOrProps?: string | Record<string, any>, propsOrUndefined?: Record<string, any>): void {
     if (!this.enabled) return;
+
+    // Handle overloaded parameters
+    let componentId: string;
+    let name: string;
+    let props: Record<string, any> | undefined;
+
+    if (typeof nameOrProps === 'string') {
+      // Called with (componentId, name, props)
+      componentId = componentIdOrName;
+      name = nameOrProps;
+      props = propsOrUndefined;
+    } else {
+      // Called with (name, props)
+      componentId = componentIdOrName;
+      name = componentIdOrName;
+      props = nameOrProps;
+    }
 
     const mountTime = performance.now();
 
-    this.mountInfo.set(name, {
+    // Use componentId as the key for uniqueness
+    this.mountInfo.set(componentId, {
       name,
       mountTime,
       totalRenders: 0,
+      mountCount: 1,
+      updateCount: 0,
+      unmountCount: 0,
       averageRenderDuration: 0,
       mountProps: this.config.trackProps ? this.sanitizeProps(props) : undefined,
     });
 
-    this.renderCounts.set(name, 0);
+    this.renderCounts.set(componentId, 0);
 
     // Create performance mark
-    getPerformanceMonitor().mark(`${name}-mount`, {
+    getPerformanceMonitor().mark(`${componentId}-mount`, {
       type: 'component',
       component: name,
       event: 'mount',
@@ -201,6 +240,7 @@ export class ComponentTracker {
     if (info) {
       info.unmountTime = unmountTime;
       info.lifetime = unmountTime - info.mountTime;
+      info.unmountCount = (info.unmountCount || 0) + 1;
 
       // Create performance mark
       getPerformanceMonitor().mark(`${name}-unmount`, {
@@ -304,6 +344,74 @@ export class ComponentTracker {
   }
 
   /**
+   * Track render (simplified API that increments render count)
+   */
+  trackRender(componentId: string, duration?: number): void {
+    if (!this.enabled) return;
+
+    const name = componentId;
+    const currentCount = this.renderCounts.get(name) || 0;
+    const newCount = currentCount + 1;
+    this.renderCounts.set(name, newCount);
+
+    // Track render duration if provided
+    if (duration !== undefined) {
+      const info: ComponentRenderInfo = {
+        name,
+        startTime: performance.now() - duration,
+        endTime: performance.now(),
+        duration,
+        renderCount: newCount,
+        isMount: newCount === 1,
+      };
+
+      // Store render info
+      if (!this.renderInfo.has(name)) {
+        this.renderInfo.set(name, []);
+      }
+      const renders = this.renderInfo.get(name)!;
+      renders.push(info);
+
+      // Enforce max limit
+      if (renders.length > this.config.maxRenderInfo) {
+        renders.shift();
+      }
+    }
+
+    // Update mount info
+    const mountInfo = this.mountInfo.get(name);
+    if (mountInfo) {
+      mountInfo.totalRenders = newCount;
+
+      // Update average render time if we have render info
+      const allRenders = this.renderInfo.get(name) || [];
+      if (allRenders.length > 0) {
+        const totalDuration = allRenders.reduce((sum, r) => sum + r.duration, 0);
+        mountInfo.averageRenderDuration = totalDuration / allRenders.length;
+      }
+    }
+  }
+
+  /**
+   * Track component update (simplified API for prop changes)
+   */
+  trackUpdate(componentId: string, newProps: Record<string, any>): void {
+    if (!this.enabled) return;
+
+    const mountInfo = this.mountInfo.get(componentId);
+    if (mountInfo) {
+      // Track update count
+      if (!mountInfo.updateCount) {
+        mountInfo.updateCount = 0;
+      }
+      mountInfo.updateCount++;
+
+      // Update current props
+      mountInfo.currentProps = this.sanitizeProps(newProps);
+    }
+  }
+
+  /**
    * Track props change
    */
   trackPropsChange(
@@ -354,7 +462,47 @@ export class ComponentTracker {
    * Get component statistics
    */
   getComponentStats(name: string): ComponentMountInfo | null {
-    return this.mountInfo.get(name) || null;
+    const info = this.mountInfo.get(name);
+    if (!info) return null;
+
+    // Calculate min/max render times
+    const allRenders = this.renderInfo.get(name) || [];
+    const minRenderTime = allRenders.length > 0 ? Math.min(...allRenders.map(r => r.duration)) : undefined;
+    const maxRenderTime = allRenders.length > 0 ? Math.max(...allRenders.map(r => r.duration)) : undefined;
+
+    // Add aliases and computed fields
+    return {
+      ...info,
+      renderCount: info.totalRenders,
+      avgRenderTime: info.averageRenderDuration,
+      minRenderTime,
+      maxRenderTime,
+    };
+  }
+
+  /**
+   * Get component info (alias for getComponentStats)
+   */
+  getComponentInfo(componentId: string): ComponentMountInfo | null {
+    return this.getComponentStats(componentId);
+  }
+
+  /**
+   * Get overall statistics
+   */
+  getStatistics(): { totalComponents: number; totalRenders: number; averageRenderDuration: number; avgRenderTime: number } {
+    const components = Array.from(this.mountInfo.values());
+    const totalComponents = components.length;
+    const totalRenders = components.reduce((sum, c) => sum + c.totalRenders, 0);
+    const totalDuration = components.reduce((sum, c) => sum + (c.averageRenderDuration * c.totalRenders), 0);
+    const averageRenderDuration = totalRenders > 0 ? totalDuration / totalRenders : 0;
+
+    return {
+      totalComponents,
+      totalRenders,
+      averageRenderDuration,
+      avgRenderTime: averageRenderDuration, // Alias for consistency
+    };
   }
 
   /**

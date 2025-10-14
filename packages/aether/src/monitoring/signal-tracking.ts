@@ -145,10 +145,10 @@ export class SignalTracker {
   /**
    * Track signal creation and return unique ID
    */
-  trackSignalCreation(name?: string): string {
+  trackSignalCreation(name?: string | number, initialValue?: any): string {
     if (!this.enabled) return '';
 
-    const signalId = name || `signal-${this.signalIdCounter++}`;
+    const signalId = typeof name === 'string' ? name : (name !== undefined ? `signal-${name}` : `signal-${this.signalIdCounter++}`);
 
     this.dependencies.set(signalId, {
       signalId,
@@ -173,6 +173,31 @@ export class SignalTracker {
   }
 
   /**
+   * Track signal read (simplified API)
+   */
+  trackSignalRead(signalId: string): void {
+    if (!this.enabled) return;
+
+    // Track as a subscription
+    this.trackSubscription(signalId);
+
+    getPerformanceMonitor().mark(`${signalId}-read`, {
+      type: 'signal',
+      event: 'read',
+    });
+  }
+
+  /**
+   * Track signal write (simplified API)
+   */
+  trackSignalWrite(signalId: string, previousValue: any, newValue: any): void {
+    if (!this.enabled) return;
+
+    // Track as an update with 1 subscriber (simplified)
+    this.trackUpdate(signalId, previousValue, newValue, 1, 0);
+  }
+
+  /**
    * Track signal update
    */
   trackUpdate(
@@ -189,8 +214,8 @@ export class SignalTracker {
     const updateInfo: SignalUpdateInfo = {
       signalId,
       timestamp,
-      previousValue: this.config.trackValues ? this.sanitizeValue(previousValue) : undefined,
-      newValue: this.config.trackValues ? this.sanitizeValue(newValue) : undefined,
+      previousValue: this.sanitizeValue(previousValue),
+      newValue: this.sanitizeValue(newValue),
       subscribersNotified,
       duration,
       stack: this.captureStack(),
@@ -377,10 +402,52 @@ export class SignalTracker {
   }
 
   /**
+   * Get signal info (alias for getSignalStats with additional fields)
+   */
+  getSignalInfo(signalId: string): {
+    reads: number;
+    writes: number;
+    computations?: number;
+    currentValue?: any;
+    subscriptionCount?: number;
+  } | null {
+    const dependency = this.dependencies.get(signalId);
+    if (!dependency) return null;
+
+    const updates = this.updates.get(signalId) || [];
+    const subscription = this.subscriptions.get(signalId);
+
+    // Get the latest value from updates
+    const latestUpdate = updates[updates.length - 1];
+
+    // For computed signals, computations means the number of times it has been recomputed
+    // For regular signals, it means the number of dependents
+    // We can check if this is a computed signal by checking if it has dependencies
+    const isComputed = dependency.dependencies.length > 0;
+    const computations = isComputed ? updates.length : dependency.dependents.length;
+
+    return {
+      reads: subscription?.subscriptionCount || 0,
+      writes: updates.length,
+      computations,
+      currentValue: latestUpdate ? latestUpdate.newValue : undefined,
+      subscriptionCount: subscription?.subscriptionCount || 0,
+    };
+  }
+
+  /**
    * Get signal update history
    */
   getUpdateHistory(signalId: string): SignalUpdateInfo[] {
     return this.updates.get(signalId) || [];
+  }
+
+  /**
+   * Get dependencies for a signal
+   */
+  getDependencies(signalId: string): string[] {
+    const dependency = this.dependencies.get(signalId);
+    return dependency ? [...dependency.dependencies] : [];
   }
 
   /**
@@ -395,6 +462,46 @@ export class SignalTracker {
    */
   getCircularDependencies(): CircularDependency[] {
     return [...this.circularDependencies];
+  }
+
+  /**
+   * Track computed signal creation
+   */
+  trackComputedCreation(signalId: string, dependencies: string[]): void {
+    if (!this.enabled) return;
+
+    // Create the signal in dependencies map
+    this.dependencies.set(signalId, {
+      signalId,
+      dependents: [],
+      dependencies: [...dependencies],
+      depth: 0,
+    });
+
+    // Track dependencies
+    for (const dep of dependencies) {
+      this.trackDependency(signalId, dep);
+    }
+
+    getPerformanceMonitor().mark(`${signalId}-computed-created`, {
+      type: 'signal',
+      event: 'computed-created',
+    });
+  }
+
+  /**
+   * Track computed signal update
+   */
+  trackComputedUpdate(signalId: string, previousValue: any, newValue: any): void {
+    if (!this.enabled) return;
+
+    // Track as an update with 0 subscribers (computed signals don't have direct subscribers)
+    this.trackUpdate(signalId, previousValue, newValue, 0, 0);
+
+    getPerformanceMonitor().mark(`${signalId}-computed-update`, {
+      type: 'signal',
+      event: 'computed-update',
+    });
   }
 
   /**
@@ -425,6 +532,58 @@ export class SignalTracker {
       .slice(0, limit);
 
     return signals;
+  }
+
+  /**
+   * Get hot signals (most active signals by reads and writes)
+   */
+  getHotSignals(limit: number = 10): Array<{ id: string; reads: number; writes: number; activity: number }> {
+    const signals: Array<{ id: string; reads: number; writes: number; activity: number }> = [];
+
+    for (const [signalId, updates] of this.updates.entries()) {
+      const subscription = this.subscriptions.get(signalId);
+      const reads = subscription?.subscriptionCount || 0;
+      const writes = updates.length;
+      const activity = reads + writes;
+
+      signals.push({ id: signalId, reads, writes, activity });
+    }
+
+    return signals.sort((a, b) => b.activity - a.activity).slice(0, limit);
+  }
+
+  /**
+   * Get overall signal statistics
+   */
+  getStatistics(): {
+    totalSignals: number;
+    totalReads: number;
+    totalWrites: number;
+    totalComputations: number;
+  } {
+    const totalSignals = this.dependencies.size;
+    let totalReads = 0;
+    let totalWrites = 0;
+    let totalComputations = 0;
+
+    for (const subscription of this.subscriptions.values()) {
+      totalReads += subscription.subscriptionCount;
+    }
+
+    for (const updates of this.updates.values()) {
+      totalWrites += updates.length;
+    }
+
+    for (const dependency of this.dependencies.values()) {
+      totalComputations += dependency.dependents.length;
+    }
+
+    return {
+      totalSignals,
+      totalReads,
+      totalWrites,
+      totalComputations,
+    };
   }
 
   /**

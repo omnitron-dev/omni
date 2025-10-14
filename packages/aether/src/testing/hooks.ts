@@ -10,17 +10,21 @@ export function renderHook<TResult, TProps = any>(
 ): RenderHookResult<TResult, TProps> {
   const { initialProps } = options;
   let dispose: (() => void) | undefined;
+  let unmounted = false;
 
   const result: RenderHookResult<TResult, TProps>['result'] = {
     current: null as any,
   };
 
-  const runHook = (props?: TProps) => {
+  const runHook = (propsToUse: TProps) => {
+    if (unmounted) return; // Don't run hook after unmount
     if (dispose) dispose();
 
     dispose = createRoot((disposeFn) => {
       try {
-        result.current = hook(props || initialProps as TProps);
+        result.current = hook(propsToUse);
+        // Clear error on successful execution
+        delete result.error;
       } catch (error) {
         result.error = error as Error;
       }
@@ -28,11 +32,20 @@ export function renderHook<TResult, TProps = any>(
     });
   };
 
-  runHook(initialProps);
+  runHook(initialProps as TProps);
 
   return {
     result,
-    rerender: (props?: TProps) => runHook(props),
-    unmount: () => { if (dispose) dispose(); },
+    // When rerender is called without arguments, pass an empty object
+    // This matches React Testing Library behavior
+    rerender: function (props?: TProps) {
+      // eslint-disable-next-line prefer-rest-params
+      const propsToUse = arguments.length > 0 ? props : ({} as TProps);
+      runHook(propsToUse);
+    },
+    unmount: () => {
+      unmounted = true;
+      if (dispose) dispose();
+    },
   };
 }

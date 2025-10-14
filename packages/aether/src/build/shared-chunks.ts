@@ -1442,3 +1442,51 @@ export function createSharedChunksPlugin(config: SharedChunksConfig = {}) {
     },
   };
 }
+
+/**
+ * Shared Chunk Manager (simplified API for testing)
+ */
+export class SharedChunkManager {
+  private config: { minSize: number; minChunks: number };
+  private modules: Map<string, string[]> = new Map();
+
+  constructor(config: { minSize: number; minChunks: number }) {
+    this.config = config;
+  }
+
+  addModule(moduleName: string, dependencies: string[]): void {
+    this.modules.set(moduleName, dependencies);
+  }
+
+  generateChunks(): Array<{ name: string; modules: string[] }> {
+    // Simple chunk generation for testing
+    const chunks: Array<{ name: string; modules: string[] }> = [];
+
+    // Group modules by common dependencies
+    const dependencyGroups = new Map<string, Set<string>>();
+
+    for (const [moduleName, deps] of this.modules) {
+      const depsKey = deps.sort().join(',');
+      if (!dependencyGroups.has(depsKey)) {
+        dependencyGroups.set(depsKey, new Set());
+      }
+      dependencyGroups.get(depsKey)!.add(moduleName);
+    }
+
+    // Create chunks from groups
+    let chunkId = 0;
+    for (const [depsKey, moduleSet] of dependencyGroups) {
+      if (moduleSet.size >= this.config.minChunks) {
+        chunks.push({
+          name: `chunk-${chunkId++}`,
+          modules: Array.from(moduleSet),
+        });
+      }
+    }
+
+    return chunks;
+  }
+}
+
+// Alias for backwards compatibility
+export { SharedChunksOptimizer as SharedChunksManager };

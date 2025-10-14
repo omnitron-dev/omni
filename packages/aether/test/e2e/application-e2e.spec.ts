@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { signal, computed } from '../../src/core/reactivity/index.js';
+import { signal, computed, effect } from '../../src/core/reactivity/index.js';
 import { render, cleanup, fireEvent, waitFor } from '../../src/testing/index.js';
 import { createInspector } from '../../src/devtools/inspector.js';
 import { createProfiler } from '../../src/devtools/profiler.js';
@@ -177,7 +177,6 @@ describe('Application E2E Tests', () => {
                   t.id === todo.id ? { ...t, completed: !t.completed } : t
                 )
               );
-              updateList();
             };
 
             const text = document.createElement('span');
@@ -190,7 +189,6 @@ describe('Application E2E Tests', () => {
             deleteBtn.textContent = 'Delete';
             deleteBtn.onclick = () => {
               todos.set(todos().filter(t => t.id !== todo.id));
-              updateList();
             };
 
             item.appendChild(checkbox);
@@ -200,7 +198,10 @@ describe('Application E2E Tests', () => {
           });
         };
 
-        updateList();
+        // Set up reactive effect to update list when todos change
+        effect(() => {
+          updateList();
+        });
 
         container.appendChild(input);
         container.appendChild(addBtn);
@@ -292,9 +293,9 @@ describe('Application E2E Tests', () => {
       };
 
       const FormApp = () => {
-        const container = document.createElement('form');
-        container.className = 'form-app';
-        container.onsubmit = (e) => {
+        const form = document.createElement('form');
+        form.className = 'form-app';
+        form.onsubmit = (e) => {
           e.preventDefault();
           if (validate()) {
             submitted.set(true);
@@ -329,17 +330,18 @@ describe('Application E2E Tests', () => {
         submitBtn.type = 'submit';
         submitBtn.textContent = 'Submit';
 
-        container.appendChild(nameInput);
-        container.appendChild(emailInput);
-        container.appendChild(ageInput);
-        container.appendChild(submitBtn);
+        form.appendChild(nameInput);
+        form.appendChild(emailInput);
+        form.appendChild(ageInput);
+        form.appendChild(submitBtn);
 
-        return container as any;
+        return form as any;
       };
 
       const { container } = render(FormApp);
 
-      fireEvent.submit(container);
+      const form = container.querySelector('.form-app') as HTMLFormElement;
+      fireEvent.submit(form);
       expect(submitted()).toBe(false);
       expect(Object.keys(errors()).length).toBeGreaterThan(0);
 
@@ -351,7 +353,7 @@ describe('Application E2E Tests', () => {
       emailInput.value = 'invalid-email';
       fireEvent.input(emailInput);
 
-      fireEvent.submit(container);
+      fireEvent.submit(form);
       expect(submitted()).toBe(false);
       expect(errors().email).toContain('invalid');
 
@@ -362,7 +364,7 @@ describe('Application E2E Tests', () => {
       ageInput.value = '30';
       fireEvent.input(ageInput);
 
-      fireEvent.submit(container);
+      fireEvent.submit(form);
       expect(submitted()).toBe(true);
       expect(Object.keys(errors()).length).toBe(0);
     });

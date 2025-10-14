@@ -250,8 +250,7 @@ export class ModuleTreeShakerPass implements OptimizationPass {
 
     // Use AST transformation to remove modules
     const printer = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed });
-    const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => {
-      return (rootNode) => {
+    const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => (rootNode) => {
         const visit: ts.Visitor = (node) => {
           // Check if this is an export const declaration with defineModule
           if (ts.isVariableStatement(node) &&
@@ -303,7 +302,6 @@ export class ModuleTreeShakerPass implements OptimizationPass {
 
         return ts.visitNode(rootNode, visit) as ts.SourceFile;
       };
-    };
 
     const result = ts.transform(sourceFile, [transformer]);
     const transformedSourceFile = result.transformed[0];

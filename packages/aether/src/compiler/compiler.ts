@@ -225,6 +225,9 @@ export class AetherCompiler {
         sizeReductionPercent,
       };
 
+      // Store metrics for getMetrics() method
+      this.metrics = metrics;
+
       return {
         code: finalCode,
         map: finalMap,
@@ -275,6 +278,15 @@ export class AetherCompiler {
   getOptions(): CompilerOptions {
     return { ...this.options };
   }
+
+  /**
+   * Get compilation metrics from the last compile() call
+   */
+  getMetrics(): CompilationMetrics | undefined {
+    return this.metrics;
+  }
+
+  private metrics: CompilationMetrics | undefined;
 
   /**
    * Normalize compiler options with defaults

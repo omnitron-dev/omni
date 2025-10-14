@@ -235,7 +235,8 @@ describe('Optimizer', () => {
         collectMetrics: true,
       });
 
-      const code = `const x = 42;`;
+      // Use code that won't be tree-shaken (exports are always kept)
+      const code = `export const x = 42;`;
       await optimizer.optimize(code);
 
       const metrics = optimizer.getMetrics();

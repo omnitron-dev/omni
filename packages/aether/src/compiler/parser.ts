@@ -55,84 +55,53 @@ export function parse(code: string, filePath: string, options: CompilerOptions =
     ts.ScriptKind.TSX // Always parse as TSX to support JSX
   );
 
-  // Check for syntax errors by walking the AST
-  const collectSyntaxErrors = (node: ts.Node) => {
-    // Check for parse errors in the node
-    if ((node as any).parserContextFlags !== undefined) {
-      const flags = (node as any).parserContextFlags;
-      if (flags & ts.NodeFlags.ThisNodeHasError) {
+  // Collect TypeScript's own syntactic diagnostics
+  // This catches all syntax errors including unclosed parentheses, braces, etc.
+  const syntacticDiagnostics = (sourceFile as any).parseDiagnostics || [];
+
+  for (const diagnostic of syntacticDiagnostics) {
+    const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n');
+    let location: SourceLocation | undefined;
+
+    if (diagnostic.start !== undefined) {
+      const { line, character } = sourceFile.getLineAndCharacterOfPosition(diagnostic.start);
+      location = {
+        file: filePath,
+        line: line + 1,
+        column: character + 1,
+        length: diagnostic.length,
+      };
+    }
+
+    warnings.push({
+      message,
+      code: `TS${diagnostic.code}`,
+      location,
+      level: 'error',
+    });
+  }
+
+  // Check for mismatched JSX tags using AST traversal
+  // This is more reliable than regex-based approaches for complex JSX
+  function checkJSXBalance(node: ts.Node): void {
+    if (ts.isJsxElement(node)) {
+      const openTagName = node.openingElement.tagName.getText(sourceFile);
+      const closeTagName = node.closingElement.tagName.getText(sourceFile);
+
+      if (openTagName !== closeTagName) {
         warnings.push({
-          message: `Syntax error at position ${node.getStart(sourceFile)}`,
+          message: `JSX element '${openTagName}' is closed with '${closeTagName}'`,
           level: 'error',
           location: getNodeLocation(node, sourceFile),
         });
       }
     }
 
-    ts.forEachChild(node, collectSyntaxErrors);
-  };
+    ts.forEachChild(node, checkJSXBalance);
+  }
 
-  // Look for common syntax errors
   try {
-    // Check for unclosed JSX tags
-    const text = sourceFile.getText();
-
-    // Check for unclosed JSX elements (simple heuristic)
-    const jsxOpenTags = text.match(/<([A-Z][a-zA-Z0-9]*|[a-z][a-zA-Z0-9]*)\s*[^/>]*>/g) || [];
-    const jsxCloseTags = text.match(/<\/([A-Z][a-zA-Z0-9]*|[a-z][a-zA-Z0-9]*)>/g) || [];
-    const _jsxSelfClosing = text.match(/<([A-Z][a-zA-Z0-9]*|[a-z][a-zA-Z0-9]*)\s*[^>]*\/>/g) || []; // Not used but kept for future enhancement
-
-    // Extract tag names
-    const openTagNames = jsxOpenTags.map((tag) => {
-      const match = tag.match(/<([A-Z][a-zA-Z0-9]*|[a-z][a-zA-Z0-9]*)/);
-      return match ? match[1] : '';
-    }).filter(Boolean);
-
-    const closeTagNames = jsxCloseTags.map((tag) => {
-      const match = tag.match(/<\/([A-Z][a-zA-Z0-9]*|[a-z][a-zA-Z0-9]*)/);
-      return match ? match[1] : '';
-    }).filter(Boolean);
-
-    // Check if tags are balanced
-    if (openTagNames.length !== closeTagNames.length) {
-      warnings.push({
-        message: `Unclosed JSX element: ${openTagNames.length} opening tags, ${closeTagNames.length} closing tags`,
-        level: 'error',
-      });
-    }
-
-    // Check for invalid JSX patterns (e.g., text after closing fragment)
-    if (text.includes('<><//>') && text.indexOf('<><//>') < text.length - 6) {
-      const afterFragment = text.substring(text.indexOf('<><//>') + 6).trim();
-      if (afterFragment && !afterFragment.startsWith(';') && !afterFragment.startsWith(')')) {
-        warnings.push({
-          message: `Invalid syntax after JSX fragment`,
-          level: 'error',
-        });
-      }
-    }
-
-    // Check for unclosed brackets, braces, etc.
-    const openBraces = (text.match(/{/g) || []).length;
-    const closeBraces = (text.match(/}/g) || []).length;
-    const openParens = (text.match(/\(/g) || []).length;
-    const closeParens = (text.match(/\)/g) || []).length;
-
-    if (openBraces !== closeBraces) {
-      warnings.push({
-        message: `Mismatched braces: ${openBraces} opening, ${closeBraces} closing`,
-        level: 'error',
-      });
-    }
-
-    if (openParens !== closeParens) {
-      warnings.push({
-        message: `Mismatched parentheses: ${openParens} opening, ${closeParens} closing`,
-        level: 'error',
-      });
-    }
-
-    collectSyntaxErrors(sourceFile);
+    checkJSXBalance(sourceFile);
   } catch (error) {
     warnings.push({
       message: `Parse error: ${error instanceof Error ? error.message : String(error)}`,

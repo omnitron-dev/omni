@@ -249,15 +249,17 @@ export class TreeShakerPass implements OptimizationPass {
     const variableMatch = /(?:const|let|var)\s+(\w+)\s*=\s*(.*)/.exec(line);
     if (variableMatch) {
       const name = variableMatch[1];
-      const _value = variableMatch[2]; // Value not used but matched for pattern completeness
+      const value = variableMatch[2] || '';
       if (
         name &&
         !this.symbols.has(name) &&
         !functionMatch // Avoid duplicates with function declarations
       ) {
-        // Only mark as pure if explicitly annotated
-        // Don't automatically mark simple literals as pure to be more conservative
-        const isPure = this.isPureAnnotated(line);
+        // Mark as pure if:
+        // 1. Explicitly annotated with @__PURE__
+        // 2. Is a simple literal (number, string, boolean, null, undefined)
+        // 3. Is a simple array or object literal
+        const isPure = this.isPureAnnotated(line) || this.isSimpleLiteral(value) || this.isPureExpression(value);
 
         this.symbols.set(name, {
           name,
@@ -387,6 +389,25 @@ export class TreeShakerPass implements OptimizationPass {
     // Simple literals: numbers, strings, booleans, null, undefined, simple objects/arrays
     return (
       /^(?:\d+|true|false|null|undefined|'[^']*'|"[^"]*"|`[^`]*`|\[[^\]]*\]|\{[^}]*\})(?:;.*)?$/.test(trimmed)
+    );
+  }
+
+  /**
+   * Check if expression is pure (safe to remove if unused)
+   * Checks for function calls like signal(), computed(), etc that are constructors
+   */
+  private isPureExpression(value: string): boolean {
+    const trimmed = value.trim();
+    // Check for common pure constructor patterns:
+    // - signal(...)
+    // - computed(...)
+    // - createX(...)
+    // - Numbers, literals, etc.
+    return (
+      /^(?:signal|computed|create\w+)\s*\([^)]*\)/.test(trimmed) ||
+      /^\d+$/.test(trimmed) || // Plain numbers
+      /^['"`].*['"`]$/.test(trimmed) || // Strings
+      /^(?:true|false|null|undefined)$/.test(trimmed) // Primitives
     );
   }
 

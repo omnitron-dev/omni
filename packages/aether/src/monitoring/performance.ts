@@ -440,3 +440,11 @@ export function mark(name: string, metadata?: Record<string, any>): PerformanceM
 export function measure(name: string, startMark: string, endMark: string): PerformanceMeasure | null {
   return getPerformanceMonitor().measure(name, startMark, endMark);
 }
+
+/**
+ * Create a new performance monitor instance
+ * This is useful for isolated testing or multiple monitor instances
+ */
+export function createPerformanceMonitor(config?: PerformanceConfig): PerformanceMonitor {
+  return new PerformanceMonitor(config);
+}

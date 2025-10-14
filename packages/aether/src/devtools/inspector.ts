@@ -123,8 +123,29 @@ export class InspectorImpl implements Inspector {
 
   /**
    * Track signal creation and updates
+   *
+   * Supports two call signatures for flexibility:
+   * - trackSignal(signal, metadata) - standard usage
+   * - trackSignal(name, signal) - legacy/convenience usage
    */
-  trackSignal<T>(signal: Signal<T> | WritableSignal<T>, metadata?: Partial<SignalMetadata>): void {
+  trackSignal<T>(
+    signalOrName: Signal<T> | WritableSignal<T> | string,
+    metadataOrSignal?: Partial<SignalMetadata> | Signal<T> | WritableSignal<T>
+  ): void {
+    // Detect parameter order
+    let signal: Signal<T> | WritableSignal<T>;
+    let metadata: Partial<SignalMetadata> | undefined;
+
+    if (typeof signalOrName === 'string') {
+      // Legacy: trackSignal(name, signal)
+      signal = metadataOrSignal as Signal<T> | WritableSignal<T>;
+      metadata = { name: signalOrName };
+    } else {
+      // Standard: trackSignal(signal, metadata)
+      signal = signalOrName;
+      metadata = metadataOrSignal as Partial<SignalMetadata> | undefined;
+    }
+
     // Guard against null/undefined signals
     if (!signal) {
       return;
@@ -476,14 +497,47 @@ export class InspectorImpl implements Inspector {
 
   /**
    * Get current state
+   *
+   * Returns signals/computed/effects/components/stores Maps keyed by name (when available) or ID
    */
   getState(): InspectorState {
+    // Build maps indexed by name for easier lookups
+    const signalsByName = new Map<string, SignalMetadata>();
+    for (const [id, meta] of this.signals) {
+      const key = meta.name || id;
+      signalsByName.set(key, meta);
+    }
+
+    const computedByName = new Map<string, ComputedMetadata>();
+    for (const [id, meta] of this.computed) {
+      const key = meta.name || id;
+      computedByName.set(key, meta);
+    }
+
+    const effectsByName = new Map<string, EffectMetadata>();
+    for (const [id, meta] of this.effects) {
+      const key = meta.name || id;
+      effectsByName.set(key, meta);
+    }
+
+    const componentsByName = new Map<string, ComponentMetadata>();
+    for (const [id, meta] of this.components) {
+      const key = meta.name || id;
+      componentsByName.set(key, meta);
+    }
+
+    const storesByName = new Map<string, StoreMetadata>();
+    for (const [id, meta] of this.stores) {
+      const key = meta.name || id;
+      storesByName.set(key, meta);
+    }
+
     return {
-      signals: new Map(this.signals),
-      computed: new Map(this.computed),
-      effects: new Map(this.effects),
-      components: new Map(this.components),
-      stores: new Map(this.stores),
+      signals: signalsByName,
+      computed: computedByName,
+      effects: effectsByName,
+      components: componentsByName,
+      stores: storesByName,
       stateTree: this.getStateTree(),
       componentTree: this.getComponentTree(),
     };

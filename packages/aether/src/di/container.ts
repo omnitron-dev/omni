@@ -265,6 +265,11 @@ export class DIContainer implements Container, Injector {
     const injectableOptions = Reflect.getMetadata?.('injectable:options', Class);
     let paramTypes = injectableOptions?.deps ?? [];
 
+    // Check for Aether-attached metadata (from compileModule for non-decorator classes)
+    if (!paramTypes || paramTypes.length === 0) {
+      paramTypes = (Class as any).__aether_deps__ ?? [];
+    }
+
     // Fallback to design:paramtypes (may not work in all environments)
     if (!paramTypes || paramTypes.length === 0) {
       paramTypes = Reflect.getMetadata?.('design:paramtypes', Class) ?? [];

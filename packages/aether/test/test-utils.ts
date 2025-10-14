@@ -196,7 +196,10 @@ export async function waitFor(
   const startTime = Date.now();
 
   return new Promise((resolve, reject) => {
-    const check = () => {
+    const check = async () => {
+      // Allow microtasks to complete before checking condition
+      await flushMicrotasks();
+
       try {
         const result = callback();
         if (result !== false) {
@@ -218,7 +221,8 @@ export async function waitFor(
       setTimeout(check, interval);
     };
 
-    check();
+    // Start checking after a microtask to allow initial effects to run
+    queueMicrotask(() => check());
   });
 }
 

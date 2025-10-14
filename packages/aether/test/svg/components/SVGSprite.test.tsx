@@ -206,23 +206,34 @@ describe('SVGSprite', () => {
   });
 
   it('should return null when not loaded', () => {
-    const render = SVGSprite({
+    // Mock fetch to never resolve so sprite never loads
+    global.fetch = vi.fn().mockImplementation(() => new Promise(() => {}));
+
+    const result = SVGSprite({
       url: 'http://example.com/sprite.svg',
     });
 
-    expect(render).toBeNull();
+    // defineComponent returns a Node synchronously (initially empty text node)
+    // The render function returns null initially, which gets converted to empty text
+    expect(result).toBeDefined();
+    expect(result instanceof Node).toBe(true);
+    expect(result?.textContent).toBe('');
   });
 
-  it('should return null on error', async () => {
+  it('should return empty node on error', async () => {
     global.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
 
-    const render = SVGSprite({
+    const result = SVGSprite({
       url: 'http://example.com/sprite.svg',
     });
 
+    // Wait for async error to complete
     await new Promise(resolve => setTimeout(resolve, 10));
 
-    expect(render).toBeNull();
+    // After error, component still returns a node (empty text node from null render)
+    expect(result).toBeDefined();
+    expect(result instanceof Node).toBe(true);
+    expect(result?.textContent).toBe('');
   });
 });
 

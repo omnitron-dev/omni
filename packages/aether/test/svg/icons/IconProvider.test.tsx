@@ -23,12 +23,15 @@ describe('IconProvider', () => {
   });
 
   it('should create IconProvider component', () => {
-    const provider = IconProvider({
+    const result = IconProvider({
       children: () => 'test',
     });
 
-    expect(provider).toBeDefined();
-    expect(typeof provider).toBe('function');
+    // IconProvider is a component defined with defineComponent
+    // When called with props, it returns either a Node or render function
+    expect(result).toBeDefined();
+    expect(IconProvider).toBeDefined();
+    expect(typeof IconProvider).toBe('function');
   });
 
   it('should accept registry prop', () => {
@@ -298,23 +301,24 @@ describe('useIcons', () => {
 
   it('should access registry from context', () => {
     const customRegistry = new IconRegistry();
+    let capturedRegistry: IconRegistry | null = null;
 
     const TestComponent = defineComponent(() => {
-      const registry = useIcons();
-
-      // In a full implementation with proper context,
-      // this would be the custom registry
-      expect(registry).toBeInstanceOf(IconRegistry);
-
+      capturedRegistry = useIcons();
       return () => 'test';
     });
 
-    const provider = IconProvider({
+    // Render the provider with a function that returns the test component
+    // This ensures TestComponent() is called inside the provider's context
+    IconProvider({
       registry: customRegistry,
       children: () => TestComponent(),
     });
 
-    provider();
+    // The registry should be captured during rendering
+    expect(capturedRegistry).toBeInstanceOf(IconRegistry);
+    // It should be the custom registry we provided
+    expect(capturedRegistry).toBe(customRegistry);
   });
 });
 
@@ -337,23 +341,21 @@ describe('useIconDefaults', () => {
       size: 24,
       color: 'red',
     };
+    let capturedDefaults: any = null;
 
     const TestComponent = defineComponent(() => {
-      const defaults = useIconDefaults();
-
-      // In full implementation with proper context,
-      // this would return the default props
-      expect(defaults).toBeDefined();
-
+      capturedDefaults = useIconDefaults();
       return () => 'test';
     });
 
-    const provider = IconProvider({
+    // Render the provider with the test component
+    IconProvider({
       defaults: defaultProps,
       children: () => TestComponent(),
     });
 
-    provider();
+    // The defaults should be captured during rendering
+    expect(capturedDefaults).toEqual(defaultProps);
   });
 });
 
@@ -372,21 +374,21 @@ describe('useIconFallback', () => {
 
   it('should return fallback from context', () => {
     const Fallback = () => 'fallback';
+    let capturedFallback: any = null;
 
     const TestComponent = defineComponent(() => {
-      const fallback = useIconFallback();
-
-      expect(fallback).toBeDefined();
-
+      capturedFallback = useIconFallback();
       return () => 'test';
     });
 
-    const provider = IconProvider({
+    // Render the provider with the test component
+    IconProvider({
       fallback: Fallback,
       children: () => TestComponent(),
     });
 
-    provider();
+    // The fallback should be captured during rendering
+    expect(capturedFallback).toBe(Fallback);
   });
 });
 
@@ -404,83 +406,82 @@ describe('useIconContext', () => {
   });
 
   it('should return context value from provider', () => {
+    let capturedContext: any = null;
+
     const TestComponent = defineComponent(() => {
-      const context = useIconContext();
-
-      // In full implementation, this would return the context value
-      expect(context).toBeDefined();
-
+      capturedContext = useIconContext();
       return () => 'test';
     });
 
-    const provider = IconProvider({
+    // Render the provider with the test component
+    IconProvider({
       defaults: { size: 24 },
       children: () => TestComponent(),
     });
 
-    provider();
+    // The context should be captured during rendering
+    expect(capturedContext).toBeDefined();
+    expect(capturedContext.defaults).toEqual({ size: 24 });
   });
 
   it('should return registry from context', () => {
     const customRegistry = new IconRegistry();
+    let capturedContext: any = null;
 
     const TestComponent = defineComponent(() => {
-      const context = useIconContext();
-
-      if (context) {
-        expect(context.registry).toBeInstanceOf(IconRegistry);
-      }
-
+      capturedContext = useIconContext();
       return () => 'test';
     });
 
-    const provider = IconProvider({
+    // Render the provider with the test component
+    IconProvider({
       registry: customRegistry,
       children: () => TestComponent(),
     });
 
-    provider();
+    // The context should be captured during rendering
+    expect(capturedContext).toBeDefined();
+    expect(capturedContext.registry).toBeInstanceOf(IconRegistry);
+    expect(capturedContext.registry).toBe(customRegistry);
   });
 
   it('should return defaults from context', () => {
     const defaultProps = { size: 24, color: 'red' };
+    let capturedContext: any = null;
 
     const TestComponent = defineComponent(() => {
-      const context = useIconContext();
-
-      if (context) {
-        expect(context.defaults).toEqual(defaultProps);
-      }
-
+      capturedContext = useIconContext();
       return () => 'test';
     });
 
-    const provider = IconProvider({
+    // Render the provider with the test component
+    IconProvider({
       defaults: defaultProps,
       children: () => TestComponent(),
     });
 
-    provider();
+    // The context should be captured during rendering
+    expect(capturedContext).toBeDefined();
+    expect(capturedContext.defaults).toEqual(defaultProps);
   });
 
   it('should return fallback from context', () => {
     const Fallback = () => 'fallback';
+    let capturedContext: any = null;
 
     const TestComponent = defineComponent(() => {
-      const context = useIconContext();
-
-      if (context) {
-        expect(context.fallback).toBe(Fallback);
-      }
-
+      capturedContext = useIconContext();
       return () => 'test';
     });
 
-    const provider = IconProvider({
+    // Render the provider with the test component
+    IconProvider({
       fallback: Fallback,
       children: () => TestComponent(),
     });
 
-    provider();
+    // The context should be captured during rendering
+    expect(capturedContext).toBeDefined();
+    expect(capturedContext.fallback).toBe(Fallback);
   });
 });

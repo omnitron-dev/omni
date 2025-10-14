@@ -113,7 +113,8 @@ export const SVGIcon = defineComponent<SVGIconProps>((props) => {
           const registry = getIconRegistry();
           const icon = await registry.get(props.name);
           if (icon) {
-            iconData.set(icon.content || icon.path || null);
+            // Use nullish coalescing to preserve empty strings
+            iconData.set(icon.content ?? icon.path ?? null);
             isLoaded.set(true);
             props.onLoad?.();
           } else {
@@ -269,25 +270,61 @@ export const SVGIcon = defineComponent<SVGIconProps>((props) => {
 
     // Icon data state
     if (hasIconData) {
-      const svgString = iconData();
-      const w = width();
-      const h = height();
-      if (svgString) {
-        // Create a temp div to parse the HTML
+      const iconContent = iconData();
+
+      // Handle empty or invalid data - render empty SVG
+      if (!iconContent || iconContent.trim() === '') {
+        return (
+          <svg
+            width={width as any}
+            height={height as any}
+            viewBox={viewBox as any}
+            className={props.className}
+            style={mergedStyles}
+            {...accessibilityProps}
+          />
+        );
+      }
+
+      // Check if it's a full SVG string or just path data
+      const isFullSVG = iconContent.trim().startsWith('<svg') || iconContent.trim().startsWith('<');
+
+      if (isFullSVG) {
+        // Parse full SVG content
         const temp = document.createElement('div');
-        temp.innerHTML = svgString;
-        // Get the first child (should be SVG or wrapper)
+        temp.innerHTML = iconContent;
         const child = temp.firstElementChild;
         if (child) {
           // Apply dimensions and styles
           if (child.tagName.toLowerCase() === 'svg') {
-            child.setAttribute('width', String(w));
-            child.setAttribute('height', String(h));
+            child.setAttribute('width', String(width()));
+            child.setAttribute('height', String(height()));
             Object.assign((child as HTMLElement).style, mergedStyles);
             if (props.className) child.setAttribute('class', props.className);
           }
           return child as any;
         }
+      } else {
+        // It's just path data - render as SVG with path element
+        return (
+          <svg
+            width={width as any}
+            height={height as any}
+            viewBox={viewBox as any}
+            className={props.className}
+            transform={buildTransform as any}
+            onClick={props.onClick}
+            style={mergedStyles}
+            {...accessibilityProps}
+          >
+            <path
+              d={iconContent}
+              fill={fill as any}
+              stroke={stroke as any}
+              strokeWidth={strokeWidth as any}
+            />
+          </svg>
+        );
       }
     }
 

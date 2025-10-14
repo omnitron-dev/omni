@@ -5,7 +5,7 @@
  */
 
 import { defineComponent, createContext, useContext, effect, signal } from '../../index.js';
-import { jsx } from '../../jsx-runtime.js';
+import { provideContext } from '../../core/component/context.js';
 import { IconRegistry, getIconRegistry, type IconSet, type IconSource } from './IconRegistry.js';
 import type { SVGIconProps } from '../components/SVGIcon.js';
 
@@ -117,18 +117,21 @@ export const IconProvider = defineComponent<IconProviderProps>((props) => {
     })();
   });
 
-  // Create context value
+  // Create context value and provide it directly during setup
   const contextValue: IconContextValue = {
     registry,
     defaults: props.defaults,
     fallback: props.fallback,
   };
 
-  return () =>
-    jsx(IconContext.Provider, {
-      value: contextValue,
-      children: props.children,
-    });
+  // Use provideContext to make context available to children
+  // This is done during setup, before children are rendered
+  provideContext(IconContext, contextValue);
+
+  return () => {
+    // Simply render children - context is already provided
+    return typeof props.children === 'function' ? props.children() : props.children;
+  };
 });
 
 /**

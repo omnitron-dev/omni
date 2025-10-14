@@ -147,6 +147,29 @@ function updateDOM(oldNode: Node, newNode: Node): void {
       }
     });
 
+    // IMPORTANT: Copy event listeners from new element to old element
+    // Event listeners are not stored as attributes, so we need to check for them
+    // on the new element and transfer them to the old element
+    // We store a mapping of event names to handlers on the element itself
+    const newEventMap = (newEl as any).__eventListeners;
+    if (newEventMap) {
+      // Remove old event listeners
+      const oldEventMap = (oldEl as any).__eventListeners;
+      if (oldEventMap) {
+        for (const [eventName, handler] of Object.entries(oldEventMap)) {
+          oldEl.removeEventListener(eventName, handler as EventListener);
+        }
+      }
+
+      // Add new event listeners
+      const newListenerMap: Record<string, EventListener> = {};
+      for (const [eventName, handler] of Object.entries(newEventMap)) {
+        oldEl.addEventListener(eventName, handler as EventListener);
+        newListenerMap[eventName] = handler as EventListener;
+      }
+      (oldEl as any).__eventListeners = newListenerMap;
+    }
+
     // Update children
     const oldChildren = Array.from(oldNode.childNodes);
     const newChildren = Array.from(newNode.childNodes);
@@ -159,8 +182,9 @@ function updateDOM(oldNode: Node, newNode: Node): void {
       const newChild = newChildren[i];
 
       if (!oldChild && newChild) {
-        // Add new child
-        oldNode.appendChild(newChild.cloneNode(true));
+        // Add new child - use the actual node, not a clone
+        // This preserves event listeners that were attached during creation
+        oldNode.appendChild(newChild);
       } else if (oldChild && !newChild) {
         // Remove old child - dispose owner first
         disposeNodeOwner(oldChild);
@@ -271,8 +295,9 @@ export function defineComponent<P = {}>(setup: ComponentSetup<P>, name?: string)
           // This tracks signal dependencies automatically
           effect(() => {
             try {
-              // Execute render function - this will track signal dependencies
-              const result = render!();
+              // Execute render function with owner context so child components
+              // created during render have correct parent owner for context access
+              const result = context.runWithOwner(owner, () => render!());
 
               // Convert result to DOM if needed
               let newNode: Node;

@@ -283,6 +283,11 @@ function applyProp(element: HTMLElement | SVGElement, key: string, value: any, i
     const eventName = key.slice(2).toLowerCase();
     if (typeof resolvedValue === 'function') {
       element.addEventListener(eventName, resolvedValue);
+      // Store event listener mapping on element for updateDOM to access
+      if (!(element as any).__eventListeners) {
+        (element as any).__eventListeners = {};
+      }
+      (element as any).__eventListeners[eventName] = resolvedValue;
       return;
     }
   }

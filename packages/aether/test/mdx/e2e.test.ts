@@ -1235,9 +1235,7 @@ describe('MDX E2E Tests - Complex Integration', () => {
     cleanupContainer(container);
   });
 
-  test.skip('should handle full application with MDX, reactivity, and events', async () => {
-    // TODO: Fix onClick event handling in JSX runtime
-    // Issue: Click events on dynamically rendered list items are not triggering updates
+  test('should handle full application with MDX, reactivity, and events', async () => {
     // Create shared signals that both test and component will use
     const todos = signal<Array<{ id: number; text: string; done: boolean }>>([]);
     const input = signal('');

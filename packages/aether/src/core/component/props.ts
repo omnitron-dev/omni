@@ -140,12 +140,8 @@ export function reactiveProps<T extends Record<string, any>>(props: T): T & { [P
       const currentProps = propsSignal();
       const value = Reflect.get(currentProps, property);
 
-      // If value is a function, bind it to preserve 'this' context
-      // CRITICAL: Don't bind signals! They have their own properties that must be preserved
-      if (typeof value === 'function' && !isSignal(value)) {
-        return (value as any).bind(currentProps);
-      }
-
+      // Return value as-is to preserve function references
+      // Modern React-style components don't rely on 'this' context
       return value;
     },
 

@@ -256,6 +256,11 @@ function applyProp(element: HTMLElement | SVGElement, key: string, value: any): 
 
     if (typeof value === 'function') {
       element.addEventListener(eventName, value);
+      // Store event listener mapping on element for updateDOM to access
+      if (!(element as any).__eventListeners) {
+        (element as any).__eventListeners = {};
+      }
+      (element as any).__eventListeners[eventName] = value;
     }
     return;
   }

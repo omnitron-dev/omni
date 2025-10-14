@@ -182,7 +182,9 @@ export class ErrorAnalytics {
 
     const recent = this.trends[this.trends.length - 1];
     const previous = this.trends[0];
+    if (!recent || !previous) return 0;
     const timeRange = (recent.timestamp - previous.timestamp) / 1000;
+    if (timeRange === 0) return 0;
 
     return (recent.errorCount - previous.errorCount) / timeRange;
   }

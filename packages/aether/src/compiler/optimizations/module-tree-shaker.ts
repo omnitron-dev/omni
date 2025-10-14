@@ -305,6 +305,10 @@ export class ModuleTreeShakerPass implements OptimizationPass {
 
     const result = ts.transform(sourceFile, [transformer]);
     const transformedSourceFile = result.transformed[0];
+    if (!transformedSourceFile) {
+      result.dispose();
+      return { code, changes: [] };
+    }
     const optimizedCode = printer.printFile(transformedSourceFile);
     result.dispose();
 

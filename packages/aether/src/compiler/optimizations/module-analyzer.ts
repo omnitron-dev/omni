@@ -812,8 +812,9 @@ export class ModuleAnalyzer {
             const call = decl.initializer;
             if (this.isDefineModuleCall(call)) {
               // Extract the module ID from this call
-              if (call.arguments.length > 0 && ts.isObjectLiteralExpression(call.arguments[0])) {
-                const id = this.extractModuleId(call.arguments[0]);
+              const arg = call.arguments[0];
+              if (call.arguments.length > 0 && arg && ts.isObjectLiteralExpression(arg)) {
+                const id = this.extractModuleId(arg);
                 if (id) {
                   moduleIdToName.set(id, decl.name.text);
                 }

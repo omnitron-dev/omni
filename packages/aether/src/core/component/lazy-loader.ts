@@ -157,7 +157,7 @@ export class LazyLoader {
       // If already loaded, use cached component
       if (meta.loadedComponent) {
         this.stats.cached++;
-        return meta.loadedComponent(props);
+        return meta.loadedComponent(props as any);
       }
 
       // If loading failed, throw error (caught by ErrorBoundary)

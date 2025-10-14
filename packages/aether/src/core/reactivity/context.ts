@@ -161,7 +161,7 @@ export class ComputationImpl implements Computation {
 
     try {
       this.isRunning = true;
-      // eslint-disable-next-line @typescript-eslint/no-this-alias
+       
       state.currentComputation = this;
       state.currentOwner = this.owner;
 
@@ -420,8 +420,8 @@ class TrackingContextImpl implements TrackingContext {
   }
 
   track<T>(signal: Signal<T>): void {
-    if (state.currentComputation) {
-      (state.currentComputation as ComputationImpl).addDependency(signal);
+    if (state.currentComputation && typeof state.currentComputation.addDependency === 'function') {
+      state.currentComputation.addDependency(signal);
     }
   }
 

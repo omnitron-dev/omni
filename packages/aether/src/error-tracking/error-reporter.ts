@@ -204,7 +204,7 @@ export class ErrorReporter {
     return lines
       .map((line) => {
         const match = line.match(/at\s+([^\s]+)\s+\(([^)]+):(\d+):(\d+)\)/);
-        if (match) {
+        if (match && match[1] && match[2] && match[3] && match[4]) {
           return {
             function: match[1],
             filename: match[2],

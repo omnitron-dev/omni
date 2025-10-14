@@ -21,7 +21,7 @@ export interface CircleProps extends Omit<JSX.SVGAttributes<SVGCircleElement>, '
 }
 
 export const Circle = defineComponent<CircleProps>((props) => () => (
-  <circle {...props} cx={props.cx} cy={props.cy} r={props.r} />
+  <circle {...props} cx={props.cx as any} cy={props.cy as any} r={props.r as any} />
 ));
 
 /**
@@ -37,7 +37,7 @@ export interface RectProps extends Omit<JSX.SVGAttributes<SVGRectElement>, 'x' |
 }
 
 export const Rect = defineComponent<RectProps>((props) => () => (
-  <rect {...props} x={props.x} y={props.y} width={props.width} height={props.height} rx={props.rx} ry={props.ry} />
+  <rect {...props} x={props.x as any} y={props.y as any} width={props.width as any} height={props.height as any} rx={props.rx as any} ry={props.ry as any} />
 ));
 
 /**
@@ -49,7 +49,7 @@ export interface PathProps extends Omit<JSX.SVGAttributes<SVGPathElement>, 'd' |
 }
 
 export const Path = defineComponent<PathProps>((props) => () => (
-  <path {...props} d={props.d} pathLength={props.pathLength} />
+  <path {...props} d={props.d as any} pathLength={props.pathLength as any} />
 ));
 
 /**
@@ -63,7 +63,7 @@ export interface LineProps extends Omit<JSX.SVGAttributes<SVGLineElement>, 'x1' 
 }
 
 export const Line = defineComponent<LineProps>((props) => () => (
-  <line {...props} x1={props.x1} y1={props.y1} x2={props.x2} y2={props.y2} />
+  <line {...props} x1={props.x1 as any} y1={props.y1 as any} x2={props.x2 as any} y2={props.y2 as any} />
 ));
 
 /**
@@ -74,7 +74,7 @@ export interface PolygonProps extends Omit<JSX.SVGAttributes<SVGPolygonElement>,
 }
 
 export const Polygon = defineComponent<PolygonProps>((props) => () => (
-  <polygon {...props} points={props.points} />
+  <polygon {...props} points={props.points as any} />
 ));
 
 /**
@@ -85,7 +85,7 @@ export interface PolylineProps extends Omit<JSX.SVGAttributes<SVGPolylineElement
 }
 
 export const Polyline = defineComponent<PolylineProps>((props) => () => (
-  <polyline {...props} points={props.points} />
+  <polyline {...props} points={props.points as any} />
 ));
 
 /**
@@ -99,7 +99,7 @@ export interface EllipseProps extends Omit<JSX.SVGAttributes<SVGEllipseElement>,
 }
 
 export const Ellipse = defineComponent<EllipseProps>((props) => () => (
-  <ellipse {...props} cx={props.cx} cy={props.cy} rx={props.rx} ry={props.ry} />
+  <ellipse {...props} cx={props.cx as any} cy={props.cy as any} rx={props.rx as any} ry={props.ry as any} />
 ));
 
 /**
@@ -123,7 +123,7 @@ export interface UseProps extends Omit<JSX.SVGAttributes<SVGUseElement>, 'x' | '
 }
 
 export const Use = defineComponent<UseProps>((props) => () => (
-  <use {...props} href={props.href} x={props.x} y={props.y} width={props.width} height={props.height} />
+  <use {...props} href={props.href as any} x={props.x as any} y={props.y as any} width={props.width as any} height={props.height as any} />
 ));
 
 /**
@@ -137,7 +137,7 @@ export interface SymbolProps extends Omit<JSX.SVGAttributes<SVGSymbolElement>, '
 }
 
 export const Symbol = defineComponent<SymbolProps>((props) => () => (
-  <symbol {...props} id={props.id} viewBox={props.viewBox} preserveAspectRatio={props.preserveAspectRatio}>
+  <symbol {...props} id={props.id} viewBox={props.viewBox as any} preserveAspectRatio={props.preserveAspectRatio as any}>
     {props.children}
   </symbol>
 ));

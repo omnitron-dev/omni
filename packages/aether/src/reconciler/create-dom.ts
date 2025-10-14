@@ -9,6 +9,7 @@
 
 import { isSignal } from '../core/index.js';
 import { VNode, VNodeType, ComponentFunction } from './vnode.js';
+import { renderVNodeWithBindings } from './jsx-integration.js';
 
 /**
  * Create DOM node from VNode
@@ -141,8 +142,6 @@ function createComponentFromVNode(vnode: VNode): Node {
   // IMPORTANT: We need to check if this VNode has reactive props and set up bindings
   // Store the child VNode so reactive bindings can be set up later
   if (hasReactiveProps(result)) {
-    // Import dynamically to avoid circular dependency
-    const { renderVNodeWithBindings } = require('./jsx-integration.js');
     const dom = renderVNodeWithBindings(result);
     vnode.dom = dom;
     // Store child VNode reference for cleanup

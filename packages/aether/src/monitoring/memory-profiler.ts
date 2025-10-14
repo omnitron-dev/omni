@@ -154,7 +154,10 @@ export class MemoryProfiler {
     if (this.snapshots.length < 10) return;
 
     const recent = this.snapshots.slice(-10);
-    const growthRate = (recent[recent.length - 1].usedJSHeapSize - recent[0].usedJSHeapSize) / recent[0].usedJSHeapSize;
+    const firstSnapshot = recent[0];
+    const lastSnapshot = recent[recent.length - 1];
+    if (!firstSnapshot || !lastSnapshot || firstSnapshot.usedJSHeapSize === 0) return;
+    const growthRate = (lastSnapshot.usedJSHeapSize - firstSnapshot.usedJSHeapSize) / firstSnapshot.usedJSHeapSize;
 
     if (growthRate > this.config.leakDetectionThreshold) {
       const leak: MemoryLeak = {

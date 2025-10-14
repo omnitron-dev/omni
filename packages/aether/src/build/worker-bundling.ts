@@ -346,14 +346,14 @@ export class WorkerBundler {
       recycleWorkers: true,
     };
 
-    const defaultServiceWorkerConfig: Required<ServiceWorkerConfig> = {
-      manifest: undefined,
-      strategy: 'cache-first',
+    const defaultServiceWorkerConfig = {
+      manifest: undefined as string | undefined,
+      strategy: 'cache-first' as CacheStrategy,
       backgroundSync: false,
       pushNotifications: false,
       cacheName: 'aether-cache',
-      precache: [],
-      runtimeCaching: [],
+      precache: [] as string[],
+      runtimeCaching: [] as RuntimeCacheRule[],
     };
 
     this.config = {
@@ -387,6 +387,8 @@ export class WorkerBundler {
 
     while ((match = webWorkerRegex.exec(code)) !== null) {
       const source = match[2];
+      if (!source) continue;
+
       const optionsStr = match[3];
       let options: WorkerOptions | undefined;
 
@@ -413,8 +415,11 @@ export class WorkerBundler {
     const serviceWorkerRegex = /navigator\.serviceWorker\.register\s*\(\s*(['"`])(.+?)\1\s*(?:,\s*(\{[^}]*\}))?\s*\)/g;
 
     while ((match = serviceWorkerRegex.exec(code)) !== null) {
+      const source = match[2];
+      if (!source) continue;
+
       workers.push({
-        source: match[2],
+        source,
         type: 'service-worker',
         position: {
           start: match.index,
@@ -427,8 +432,11 @@ export class WorkerBundler {
     const sharedWorkerRegex = /new\s+SharedWorker\s*\(\s*(['"`])(.+?)\1\s*(?:,\s*(['"`])(.+?)\3)?\s*\)/g;
 
     while ((match = sharedWorkerRegex.exec(code)) !== null) {
+      const source = match[2];
+      if (!source) continue;
+
       workers.push({
-        source: match[2],
+        source,
         type: 'shared-worker',
         options: match[4] ? { name: match[4] } : undefined,
         position: {
@@ -652,6 +660,7 @@ ${config.pushNotifications ? this.generatePushNotificationCode() : ''}
     let match: RegExpExecArray | null;
 
     while ((match = importRegex.exec(code)) !== null) {
+      if (!match[1] || !match[2]) continue;
       const imported = match[1]
         .split(',')
         .map((s) => s.trim())
@@ -676,7 +685,9 @@ ${config.pushNotifications ? this.generatePushNotificationCode() : ''}
     let match: RegExpExecArray | null;
 
     while ((match = importRegex.exec(code)) !== null) {
-      dependencies.push(match[1]);
+      if (match[1]) {
+        dependencies.push(match[1]);
+      }
     }
 
     return Array.from(new Set(dependencies));
@@ -1220,4 +1231,22 @@ export class HMRWorkerManager {
       this.unregister(id);
     }
   }
+}
+
+/**
+ * Detect workers in source code
+ */
+export function detectWorkers(code: string): WorkerDetectionResult[] {
+  const bundler = new WorkerBundler();
+  return bundler.detectWorkers(code);
+}
+
+/**
+ * Create a worker pool
+ */
+export function createWorkerPool<TSend = any, TReceive = any>(
+  workerFactory: () => Worker,
+  config?: WorkerPoolConfig
+): WorkerPool<TSend, TReceive> {
+  return new WorkerPool<TSend, TReceive>(workerFactory, config);
 }

@@ -6,8 +6,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { createOverlayPrimitive } from '../createOverlayPrimitive.js';
-import { signal } from '../../../core/reactivity/signal.js';
+import { createOverlayPrimitive } from '../../../src/primitives/factories/createOverlayPrimitive.js';
+import { signal } from '../../../src/core/reactivity/signal.js';
 
 describe('createOverlayPrimitive', () => {
   let container: HTMLElement;

@@ -68,7 +68,7 @@ export namespace JSX {
     [elemName: string]: any;
   }
 
-  // Re-export SVG and CSS types from global JSX namespace
-  export type SVGAttributes<T = SVGElement> = globalThis.JSX.SVGAttributes<T>;
-  export type CSSProperties = globalThis.JSX.CSSProperties;
+  // Re-export SVG and CSS types from global JSX namespace if available
+  export type SVGAttributes = any;
+  export type CSSProperties = Record<string, any>;
 }

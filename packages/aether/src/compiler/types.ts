@@ -354,6 +354,7 @@ export type OptimizationType =
   | 'inline-component'
   | 'batch-effects'
   | 'eliminate-dead-code'
+  | 'eliminate-unused'
   | 'constant-folding'
   | 'tree-shake'
   | 'inline-constant'

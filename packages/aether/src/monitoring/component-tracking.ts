@@ -426,8 +426,8 @@ export class ComponentTracker {
       component,
       timestamp: performance.now(),
       changedProps,
-      previousValues: this.sanitizeProps(previousValues),
-      newValues: this.sanitizeProps(newValues),
+      previousValues: this.sanitizeProps(previousValues) || {},
+      newValues: this.sanitizeProps(newValues) || {},
     };
 
     if (!this.propsChanges.has(component)) {

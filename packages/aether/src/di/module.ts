@@ -208,14 +208,14 @@ function analyzeConstructor(Class: any): { paramCount: number; paramNames: strin
   const paramsStr = constructorMatch[1].trim();
   const paramNames = paramsStr
     .split(',')
-    .map((param) => {
+    .map((param: string) => {
       // Remove visibility modifiers and get the parameter name
       const cleaned = param.trim().replace(/^(private|public|protected|readonly)\s+/, '');
       // Get just the name (before any type annotation or assignment)
       const nameMatch = cleaned.match(/^(\w+)/);
       return nameMatch ? nameMatch[1] : '';
     })
-    .filter((name) => name.length > 0);
+    .filter((name: string) => name.length > 0);
 
   return { paramCount: paramNames.length, paramNames };
 }

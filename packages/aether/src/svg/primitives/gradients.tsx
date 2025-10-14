@@ -8,18 +8,6 @@ import { defineComponent } from '../../index.js';
 import type { Signal } from '../../index.js';
 import type { JSX } from '../../core/component/types.js';
 
-// Utility to resolve signal values
-const resolveValue = <T,>(value: T | Signal<T> | undefined): T | undefined => {
-  if (value === undefined) return undefined;
-  return typeof value === 'function' ? (value as Signal<T>)() : value;
-};
-
-const getNumericValue = (value: string | number | Signal<string | number> | undefined): string | undefined => {
-  if (value === undefined) return undefined;
-  const resolved = resolveValue(value);
-  return typeof resolved === 'number' ? `${resolved}` : resolved;
-};
-
 /**
  * LinearGradient element
  */
@@ -39,12 +27,12 @@ export const LinearGradient = defineComponent<LinearGradientProps>((props) => ()
   <linearGradient
     {...props}
     id={props.id}
-    x1={props.x1}
-    y1={props.y1}
-    x2={props.x2}
-    y2={props.y2}
+    x1={props.x1 as any}
+    y1={props.y1 as any}
+    x2={props.x2 as any}
+    y2={props.y2 as any}
     gradientUnits={props.gradientUnits}
-    gradientTransform={props.gradientTransform}
+    gradientTransform={props.gradientTransform as any}
     spreadMethod={props.spreadMethod}
   >
     {props.children}
@@ -72,14 +60,14 @@ export const RadialGradient = defineComponent<RadialGradientProps>((props) => ()
   <radialGradient
     {...props}
     id={props.id}
-    cx={props.cx}
-    cy={props.cy}
-    r={props.r}
-    fx={props.fx}
-    fy={props.fy}
-    fr={props.fr}
+    cx={props.cx as any}
+    cy={props.cy as any}
+    r={props.r as any}
+    fx={props.fx as any}
+    fy={props.fy as any}
+    
     gradientUnits={props.gradientUnits}
-    gradientTransform={props.gradientTransform}
+    gradientTransform={props.gradientTransform as any}
     spreadMethod={props.spreadMethod}
   >
     {props.children}
@@ -98,9 +86,9 @@ export interface StopProps extends Omit<JSX.SVGAttributes<SVGStopElement>, 'offs
 export const Stop = defineComponent<StopProps>((props) => () => (
   <stop
     {...props}
-    offset={props.offset}
-    stopColor={props.stopColor}
-    stopOpacity={props.stopOpacity}
+    offset={props.offset as any}
+    stopColor={props.stopColor as any}
+    stopOpacity={props.stopOpacity as any}
   />
 ));
 
@@ -123,13 +111,13 @@ export const Pattern = defineComponent<PatternProps>((props) => () => (
   <pattern
     {...props}
     id={props.id}
-    x={props.x}
-    y={props.y}
-    width={props.width}
-    height={props.height}
+    x={props.x as any}
+    y={props.y as any}
+    width={props.width as any}
+    height={props.height as any}
     patternUnits={props.patternUnits}
     patternContentUnits={props.patternContentUnits}
-    patternTransform={props.patternTransform}
+    patternTransform={props.patternTransform as any}
   >
     {props.children}
   </pattern>
@@ -153,10 +141,10 @@ export const Mask = defineComponent<MaskProps>((props) => () => (
   <mask
     {...props}
     id={props.id}
-    x={props.x}
-    y={props.y}
-    width={props.width}
-    height={props.height}
+    x={props.x as any}
+    y={props.y as any}
+    width={props.width as any}
+    height={props.height as any}
     maskUnits={props.maskUnits}
     maskContentUnits={props.maskContentUnits}
   >

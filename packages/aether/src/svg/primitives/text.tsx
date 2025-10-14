@@ -8,18 +8,6 @@ import { defineComponent } from '../../index.js';
 import type { Signal } from '../../index.js';
 import type { JSX } from '../../core/component/types.js';
 
-// Utility to resolve signal values
-const resolveValue = <T,>(value: T | Signal<T> | undefined): T | undefined => {
-  if (value === undefined) return undefined;
-  return typeof value === 'function' ? (value as Signal<T>)() : value;
-};
-
-const getNumericValue = (value: string | number | Signal<string | number> | undefined): string | undefined => {
-  if (value === undefined) return undefined;
-  const resolved = resolveValue(value);
-  return typeof resolved === 'number' ? `${resolved}` : resolved;
-};
-
 // Convert camelCase to kebab-case for SVG attributes
 const toKebabCase = (str: string): string => str.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase();
 

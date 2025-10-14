@@ -664,10 +664,14 @@ export class SharedChunksOptimizer {
         }
 
         // Determine chunk name
+        const firstModuleId = Array.from(matchingModules)[0];
+        const firstModule = firstModuleId ? this.modules.get(firstModuleId) : undefined;
         const chunkName =
-          typeof group.name === 'function'
-            ? group.name(this.modules.get(Array.from(matchingModules)[0])!)
-            : group.name || groupName;
+          typeof group.name === 'function' && firstModule
+            ? group.name(firstModule)
+            : typeof group.name === 'string'
+              ? group.name
+              : groupName;
 
         // Create or update chunk
         const existingChunk = this.chunks.get(chunkName);
@@ -697,12 +701,15 @@ export class SharedChunksOptimizer {
 
     for (const id of this.analysis.vendorModules) {
       const match = id.match(/node_modules\/(@[^/]+\/[^/]+|[^/]+)/);
-      const packageName = match ? match[1] : 'other';
+      const packageName = match?.[1] ?? 'other';
 
       if (!vendorsByPackage.has(packageName)) {
         vendorsByPackage.set(packageName, new Set());
       }
-      vendorsByPackage.get(packageName)!.add(id);
+      const packageModules = vendorsByPackage.get(packageName);
+      if (packageModules) {
+        packageModules.add(id);
+      }
     }
 
     // Create chunks for large packages
@@ -916,7 +923,10 @@ export class SharedChunksOptimizer {
 
     // Assign load order
     for (let i = 0; i < sorted.length; i++) {
-      sorted[i].loadOrder = i;
+      const chunk = sorted[i];
+      if (chunk) {
+        chunk.loadOrder = i;
+      }
     }
   }
 
@@ -1218,7 +1228,7 @@ export class SharedChunksOptimizer {
    */
   private generateChunkName(moduleId: string): string {
     const parts = moduleId.split('/');
-    const fileName = parts[parts.length - 1];
+    const fileName = parts[parts.length - 1] ?? moduleId;
     const name = fileName.replace(/\.[^.]+$/, '');
     return name.replace(/[^a-zA-Z0-9-_]/g, '-');
   }
@@ -1424,7 +1434,7 @@ export function createSharedChunksPlugin(config: SharedChunksConfig = {}) {
         if (config.vendorChunk !== false && optimizer['isVendorModule'](id)) {
           // Split large vendors
           const match = id.match(/node_modules\/(@[^/]+\/[^/]+|[^/]+)/);
-          if (match) {
+          if (match?.[1]) {
             return `vendor-${match[1].replace(/[@/]/g, '-')}`;
           }
           return config.vendorChunkName || 'vendor';

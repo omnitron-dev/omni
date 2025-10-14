@@ -196,9 +196,6 @@ export const SVGIcon = defineComponent<SVGIconProps>((props) => {
   // Calculate viewBox as computed signal (created once, not on every render)
   const viewBox = computed(() => props.viewBox || `0 0 ${width()} ${height()}`);
 
-  // Loading state styles (created once, not on every render)
-  const loadingStyles = computed(() => ({ opacity: 0.3, ...animationStyles(), ...props.style }));
-
   // Determine fill/stroke values (pass signals when possible)
   const fill = computed(() => {
     const f = resolveValue(props.fill);
@@ -234,15 +231,15 @@ export const SVGIcon = defineComponent<SVGIconProps>((props) => {
     if (hasError) {
       return (
         <svg
-          width={width}
-          height={height}
+          width={width as any}
+          height={height as any}
           className={props.className}
           style={mergedStyles}
           {...accessibilityProps}
         >
-          <rect width={width} height={height} fill="none" stroke="red" strokeWidth="2" />
-          <line x1="0" y1="0" x2={width} y2={height} stroke="red" strokeWidth="2" />
-          <line x1={width} y1="0" x2="0" y2={height} stroke="red" strokeWidth="2" />
+          <rect width={width as any} height={height as any} fill="none" stroke="red" strokeWidth="2" />
+          <line x1="0" y1="0" x2={width as any} y2={height as any} stroke="red" strokeWidth="2" />
+          <line x1={width as any} y1="0" x2="0" y2={height as any} stroke="red" strokeWidth="2" />
         </svg>
       );
     }
@@ -251,20 +248,20 @@ export const SVGIcon = defineComponent<SVGIconProps>((props) => {
     if (hasPath) {
       return (
         <svg
-          width={width}
-          height={height}
-          viewBox={viewBox}
+          width={width as any}
+          height={height as any}
+          viewBox={viewBox as any}
           className={props.className}
-          transform={buildTransform}
+          transform={buildTransform as any}
           onClick={props.onClick}
           style={mergedStyles}
           {...accessibilityProps}
         >
           <path
-            d={props.path}
-            fill={fill}
-            stroke={stroke}
-            strokeWidth={strokeWidth}
+            d={props.path as any}
+            fill={fill as any}
+            stroke={stroke as any}
+            strokeWidth={strokeWidth as any}
           />
         </svg>
       );
@@ -298,13 +295,13 @@ export const SVGIcon = defineComponent<SVGIconProps>((props) => {
     if (!loaded) {
       return (
         <svg
-          width={width}
-          height={height}
+          width={width as any}
+          height={height as any}
           className={props.className}
           style={{ opacity: 0.3, ...mergedStyles }}
           {...accessibilityProps}
         >
-          <rect width={width} height={height} fill={fill} opacity="0.1" />
+          <rect width={width as any} height={height as any} fill={fill as any} opacity="0.1" />
         </svg>
       );
     }

@@ -526,7 +526,7 @@ export class PerformanceMonitor {
       // Get largest contentful paint
       const lcpEntries = performance.getEntriesByType('largest-contentful-paint');
       if (lcpEntries.length > 0) {
-        vitals.LCP = lcpEntries[lcpEntries.length - 1].startTime;
+        vitals.LCP = lcpEntries[lcpEntries.length - 1]?.startTime ?? 0;
       }
 
       // Get first input delay
@@ -613,7 +613,7 @@ export function mark(name: string, metadata?: Record<string, any>): PerformanceM
 }
 
 export function measure(name: string, startMark: string, endMark: string): PerformanceMeasure | null {
-  return getPerformanceMonitor().measure(name, startMark, endMark);
+  return getPerformanceMonitor().measure(name, startMark, endMark) as PerformanceMeasure | null;
 }
 
 /**

@@ -145,11 +145,13 @@ export class ActionReplaySystem {
       const action = actions[i];
       const nextAction = actions[i + 1];
 
-      await this.executeAction(action);
+      if (action) {
+        await this.executeAction(action);
 
-      if (nextAction) {
-        const delay = (nextAction.timestamp - action.timestamp) / speed;
-        await new Promise((resolve) => setTimeout(resolve, delay));
+        if (nextAction && action) {
+          const delay = (nextAction.timestamp - action.timestamp) / speed;
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
       }
     }
 

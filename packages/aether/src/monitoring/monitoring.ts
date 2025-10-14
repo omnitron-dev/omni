@@ -94,7 +94,7 @@ export class Monitoring implements MonitoringInstance {
 
     if (this.config.performance) {
       const perfConfig = typeof this.config.performance === 'object' ? this.config.performance : {};
-      this.performanceMonitor = getPerformanceMonitor(perfConfig);
+      this.performanceMonitor = getPerformanceMonitor(perfConfig as any);
       this.setupPerformanceMonitoring();
     }
 
@@ -325,7 +325,7 @@ export class Monitoring implements MonitoringInstance {
   measure(name: string, startMark: string, endMark?: string): number {
     if (!this.initialized || !this.performanceMonitor) return 0;
 
-    return this.performanceMonitor.measure(name, startMark, endMark);
+    return this.performanceMonitor.measure(name, startMark, endMark) as number;
   }
 
   /**

@@ -365,7 +365,7 @@ export class ProfilerImpl implements Profiler {
     }
 
     // If not profiling but we have measurements, create a temporary profile
-    if (this.measurements.length > 0) {
+    if (this.measurements.length > 0 && this.measurements[0]) {
       return {
         id: generateProfileId(),
         startTime: this.measurements[0].startTime,

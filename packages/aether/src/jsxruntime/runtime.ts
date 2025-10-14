@@ -8,16 +8,7 @@ import type { JSXElement, JSXElementType, JSXProps } from './types.js';
 import { FragmentType, isComponent, normalizeChildren } from './types.js';
 import { createElementVNode, normalizeChildren as normalizeVNodeChildren } from '../reconciler/vnode.js';
 import type { VNode } from '../reconciler/vnode.js';
-
-// Import renderVNodeWithBindings - will be set lazily to avoid circular dependency
-let _renderVNodeWithBindings: ((vnode: VNode) => Node) | null = null;
-function getRenderVNodeWithBindings(): (vnode: VNode) => Node {
-  if (!_renderVNodeWithBindings) {
-    const { renderVNodeWithBindings } = require('../reconciler/jsx-integration.js');
-    _renderVNodeWithBindings = renderVNodeWithBindings;
-  }
-  return _renderVNodeWithBindings;
-}
+import { renderVNodeWithBindings } from '../reconciler/jsx-integration.js';
 
 /**
  * Feature flag to enable reactive VNode creation when signals are detected
@@ -137,8 +128,7 @@ function createComponentElement(
     console.log('[COMPONENT] Has reactive props:', hasReactive);
     if (hasReactive) {
       console.log('[COMPONENT] Rendering with bindings');
-      const renderVNodeWithBindings = getRenderVNodeWithBindings();
-      const dom = renderVNodeWithBindings(result);
+      const dom = renderVNodeWithBindings(result as any);
 
       // Assign ref if provided
       if (ref && dom instanceof Node) {
@@ -390,7 +380,6 @@ function renderChild(child: any): Node | null {
 
   // VNode - render with reactive bindings
   if (isVNode(child)) {
-    const renderVNodeWithBindings = getRenderVNodeWithBindings();
     const dom = renderVNodeWithBindings(child);
     return dom;
   }

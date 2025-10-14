@@ -438,9 +438,10 @@ export function aetherBuildPlugin(options: AetherBuildPluginOptions = {}): Plugi
         if (!needsRecompilation) {
           const cached = await buildCache.get(cacheKey);
           if (cached) {
+            const firstDep = cached.dependencies[0];
             return {
               code: cached.content,
-              map: cached.dependencies.length > 0 ? JSON.parse(cached.dependencies[0]) : null,
+              map: firstDep ? JSON.parse(firstDep) : null,
             };
           }
         }

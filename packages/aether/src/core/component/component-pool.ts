@@ -82,8 +82,8 @@ export class ComponentPool {
   constructor(config: ComponentPoolConfig = {}) {
     this.config = {
       maxSizePerType: config.maxPoolSize ?? config.maxSizePerType ?? 50,
-      maxPoolSize: config.maxPoolSize,
-      maxInstanceAge: config.maxInstanceAge,
+      maxPoolSize: config.maxPoolSize ?? Infinity,
+      maxInstanceAge: config.maxInstanceAge ?? Infinity,
       enableWarming: config.enableWarming ?? false,
       autoCleanup: config.autoCleanup ?? true,
       cleanupInterval: config.cleanupInterval ?? 60000,
@@ -169,7 +169,7 @@ export class ComponentPool {
         }
       } else {
         // No state, call factory to create new result
-        result = factory(actualProps);
+        result = factory(actualProps as P);
         instance.state = result;
       }
 
@@ -189,7 +189,7 @@ export class ComponentPool {
     this.activeInstances.set(instance, componentId);
 
     // Call factory to get result
-    const result = factory(actualProps);
+    const result = factory(actualProps as P);
 
     // Store result in instance and create bidirectional mapping
     instance.state = result;

@@ -193,16 +193,15 @@ export class ModuleFederationRuntime {
   private remotes: Map<string, RemoteContainer> = new Map();
   private shared: Map<string, any> = new Map();
   private loading: Map<string, Promise<any>> = new Map();
-  private options: Required<ModuleFederationConfig['runtime']>;
+  private options: Required<NonNullable<ModuleFederationConfig['runtime']>>;
 
   constructor(options: ModuleFederationConfig['runtime'] = {}) {
     this.options = {
-      errorBoundaries: true,
-      retry: true,
-      maxRetries: 3,
-      timeout: 30000,
-      ...options,
-    };
+      errorBoundaries: options?.errorBoundaries ?? true,
+      retry: options?.retry ?? true,
+      maxRetries: options?.maxRetries ?? 3,
+      timeout: options?.timeout ?? 30000,
+    } as Required<NonNullable<ModuleFederationConfig['runtime']>>;
   }
 
   /**
@@ -257,7 +256,7 @@ export class ModuleFederationRuntime {
    */
   private async doLoadRemote(remote: RemoteContainer, moduleName?: string): Promise<any> {
     let lastError: Error | undefined;
-    const maxAttempts = this.options.retry ? (this.options.maxRetries || 1) : 1;
+    const maxAttempts = this.options.retry ? this.options.maxRetries : 1;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
@@ -305,7 +304,7 @@ export class ModuleFederationRuntime {
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         reject(new Error(`Timeout loading remote "${remote.name}" from ${remote.url}`));
-      }, this.options.timeout || 30000);
+      }, this.options.timeout);
 
       const script = document.createElement('script');
       script.src = remote.url;
@@ -410,13 +409,13 @@ export class ModuleFederationManager {
           singleton: false,
           eager: false,
           shareScope: 'default',
-          requiredVersion: undefined,
+          requiredVersion: '',
         };
       } else {
         const config: NormalizedShareConfig = {
           version: value.version || '1.0.0',
           singleton: value.singleton || false,
-          requiredVersion: value.requiredVersion,
+          requiredVersion: value.requiredVersion || '',
           eager: value.eager || false,
           shareScope: value.shareScope || 'default',
         };

@@ -152,12 +152,20 @@ export async function compile(
       const { Minifier } = await import('./optimizations/minifier.js');
       const minifier = new Minifier({
         mode: 'aggressive',
+        optimizeSignals: false,
+        batchEffects: false,
+        hoistComponents: false,
+        treeShake: false,
+        eliminateDeadCode: false,
+        minify: true,
+        target: 'browser',
         development: compilerOptions.mode === 'development',
         sourceMaps: !!compilerOptions.sourcemap,
-        minify: true,
+        customPasses: [],
+        collectMetrics: false,
       });
 
-      const minifyContext = {
+      const minifyContext: import('./optimizer.js').OptimizationContext = {
         source: finalCode,
         modulePath: filePath,
         options: {
@@ -174,7 +182,7 @@ export async function compile(
           customPasses: [],
           collectMetrics: false,
         },
-        sourceMap: finalMap,
+        sourceMap: (finalMap ?? undefined) as import('./optimizer.js').SourceMap | undefined,
         metadata: new Map(),
       };
 

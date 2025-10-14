@@ -14,12 +14,12 @@ import {
   AetherComponentGenerator,
   TransformPipeline,
   ReactiveContentTransform
-} from '../../src/mdx/compiler/index';
-import { signal, computed, effect } from '../../src/core/reactivity/index';
-import { batch } from '../../src/core/reactivity/batch';
-import { MDXProvider, useMDXContext } from '../../src/mdx/runtime/provider';
-import { useMDXCompiler, useFrontmatter, useMDXNavigation } from '../../src/mdx/hooks/index';
-import type { AetherMDXPlugin, MDXNode, CompileMDXOptions } from '../../src/mdx/types';
+} from '../../src/mdx/compiler/index.js';
+import { signal, computed, effect } from '../../src/core/reactivity/index.js';
+import { batch } from '../../src/core/reactivity/batch.js';
+import { MDXProvider, useMDXContext } from '../../src/mdx/runtime/provider.js';
+import { useMDXCompiler, useFrontmatter, useMDXNavigation } from '../../src/mdx/hooks/index.js';
+import type { AetherMDXPlugin, MDXNode, CompileMDXOptions } from '../../src/mdx/types.js';
 
 describe('MDX Integration Tests', () => {
   // ============================================================================

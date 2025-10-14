@@ -3,9 +3,9 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
-import { signal } from '../../src/core/reactivity/signal';
-import { effect } from '../../src/core/reactivity/effect';
-import { batch } from '../../src/core/reactivity/batch';
+import { signal } from '../../src/core/reactivity/signal.js';
+import { effect } from '../../src/core/reactivity/effect.js';
+import { batch } from '../../src/core/reactivity/batch.js';
 import {
   useMDXCompiler,
   useFrontmatter,
@@ -14,7 +14,7 @@ import {
   useReadingTime,
   useMDXTheme,
   useMDXSearch
-} from '../../src/mdx/hooks/index';
+} from '../../src/mdx/hooks/index.js';
 
 // Mock MDX context
 vi.mock('../../src/mdx/runtime/provider', () => ({

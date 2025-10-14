@@ -85,6 +85,7 @@ function createProcessor(options: ParserOptions): Processor<MdastRoot, undefined
 export class AetherMDXParser {
   private processor: Processor<MdastRoot, undefined, undefined, MdastRoot, string>;
   private options: ParserOptions;
+  private headingIds: Map<string, number>;
 
   constructor(options: ParserOptions = {}) {
     this.options = {
@@ -96,6 +97,7 @@ export class AetherMDXParser {
       ...options
     };
     this.processor = createProcessor(this.options);
+    this.headingIds = new Map();
   }
 
   /**
@@ -118,6 +120,8 @@ export class AetherMDXParser {
    * Transform MDAST to MDXNode format for Aether
    */
   transformToMDXNode(mdast: any): MDXNode {
+    // Reset heading IDs for each transformation
+    this.headingIds.clear();
     return this.convertNode(mdast);
   }
 
@@ -150,6 +154,88 @@ export class AetherMDXParser {
         if (node.data?.estree) {
           mdxNode.data = { estree: node.data.estree };
         }
+        break;
+
+      // MDAST-specific nodes
+      case 'heading':
+        mdxNode.tagName = `h${node.depth || 1}`;
+        mdxNode.children = this.convertChildren(node.children);
+        // Generate ID for heading
+        const headingText = this.extractText(node);
+        const headingId = this.generateUniqueId(headingText);
+        mdxNode.attributes = [
+          { type: 'mdxJsxAttribute' as const, name: 'id', value: headingId }
+        ];
+        break;
+
+      case 'paragraph':
+        mdxNode.tagName = 'p';
+        mdxNode.children = this.convertChildren(node.children);
+        break;
+
+      case 'strong':
+        mdxNode.tagName = 'strong';
+        mdxNode.children = this.convertChildren(node.children);
+        break;
+
+      case 'emphasis':
+        mdxNode.tagName = 'em';
+        mdxNode.children = this.convertChildren(node.children);
+        break;
+
+      case 'list':
+        mdxNode.tagName = node.ordered ? 'ol' : 'ul';
+        mdxNode.children = this.convertChildren(node.children);
+        break;
+
+      case 'listItem':
+        mdxNode.tagName = 'li';
+        mdxNode.children = this.convertChildren(node.children);
+        break;
+
+      case 'link':
+        mdxNode.tagName = 'a';
+        mdxNode.attributes = [{ type: 'mdxJsxAttribute', name: 'href', value: node.url }];
+        mdxNode.children = this.convertChildren(node.children);
+        break;
+
+      case 'code':
+        mdxNode.tagName = 'code';
+        mdxNode.value = node.value;
+        if (node.lang) {
+          mdxNode.attributes = [{ type: 'mdxJsxAttribute', name: 'class', value: `language-${node.lang}` }];
+        }
+        break;
+
+      case 'inlineCode':
+        mdxNode.tagName = 'code';
+        mdxNode.value = node.value;
+        break;
+
+      case 'blockquote':
+        mdxNode.tagName = 'blockquote';
+        mdxNode.children = this.convertChildren(node.children);
+        break;
+
+      case 'table':
+        mdxNode.tagName = 'table';
+        mdxNode.children = this.convertChildren(node.children);
+        break;
+
+      case 'tableRow':
+        mdxNode.tagName = 'tr';
+        mdxNode.children = this.convertChildren(node.children);
+        break;
+
+      case 'tableCell':
+        mdxNode.tagName = 'td';
+        mdxNode.children = this.convertChildren(node.children);
+        break;
+
+      case 'root':
+        // Root node should be converted to a fragment or div
+        mdxNode.tagName = 'div';
+        mdxNode.children = this.convertChildren(node.children);
         break;
 
       default:
@@ -349,6 +435,27 @@ export class AetherMDXParser {
       .replace(/[^\w\s-]/g, '')
       .replace(/\s+/g, '-')
       .trim();
+  }
+
+  /**
+   * Generate unique ID from text, handling duplicates
+   */
+  private generateUniqueId(text: string): string {
+    const baseId = this.generateId(text);
+
+    // Check if this ID has been used before
+    const count = this.headingIds.get(baseId);
+
+    if (count === undefined) {
+      // First time using this ID
+      this.headingIds.set(baseId, 1);
+      return baseId;
+    } else {
+      // ID already used, append counter
+      const newCount = count + 1;
+      this.headingIds.set(baseId, newCount);
+      return `${baseId}-${newCount}`;
+    }
   }
 }
 

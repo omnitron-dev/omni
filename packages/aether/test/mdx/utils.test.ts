@@ -16,7 +16,7 @@ import {
   generateId,
   highlightMatches,
   truncateMDX
-} from '../../src/mdx/utils/index';
+} from '../../src/mdx/utils/index.js';
 
 describe('MDX Utilities', () => {
   describe('sanitizeMDX', () => {

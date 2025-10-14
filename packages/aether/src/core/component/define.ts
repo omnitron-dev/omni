@@ -10,6 +10,10 @@ import { reactiveProps } from './props.js';
 import type { ComponentSetup, Component, RenderFunction } from './types.js';
 import { templateCache, generateCacheKey } from '../../reconciler/template-cache.js';
 import type { VNode } from '../../reconciler/vnode.js';
+import { effect } from '../reactivity/effect.js';
+import { renderVNodeWithBindings } from '../../reconciler/jsx-integration.js';
+import { createDOMFromVNode } from '../../reconciler/create-dom.js';
+import { isSignal } from '../reactivity/signal.js';
 
 /**
  * Feature flag to enable template caching
@@ -24,6 +28,111 @@ export const ENABLE_TEMPLATE_CACHE = false;
  */
 function isVNode(value: any): value is VNode {
   return value != null && typeof value === 'object' && 'type' in value && 'dom' in value;
+}
+
+/**
+ * Check if a VNode has reactive props (signals)
+ * @internal
+ */
+function hasReactivePropsInVNode(vnode: VNode): boolean {
+  if (!vnode.props) return false;
+
+  for (const [key, value] of Object.entries(vnode.props)) {
+    // Skip internal props
+    if (key.startsWith('__')) continue;
+
+    if (isSignal(value)) return true;
+
+    // Check nested values in style object
+    if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Node)) {
+      for (const nestedValue of Object.values(value)) {
+        if (isSignal(nestedValue)) return true;
+      }
+    }
+
+    // Check array values
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (isSignal(item)) return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Update existing DOM node to match new node without replacing it
+ * This preserves element references and event listeners
+ * @internal
+ */
+function updateDOM(oldNode: Node, newNode: Node): void {
+  // If both are text nodes, just update content
+  if (oldNode.nodeType === Node.TEXT_NODE && newNode.nodeType === Node.TEXT_NODE) {
+    if (oldNode.textContent !== newNode.textContent) {
+      oldNode.textContent = newNode.textContent;
+    }
+    return;
+  }
+
+  // If both are elements
+  if (oldNode.nodeType === Node.ELEMENT_NODE && newNode.nodeType === Node.ELEMENT_NODE) {
+    const oldEl = oldNode as Element;
+    const newEl = newNode as Element;
+
+    // If tag names differ, we have to replace the whole element
+    if (oldEl.tagName !== newEl.tagName) {
+      if (oldNode.parentNode) {
+        oldNode.parentNode.replaceChild(newNode, oldNode);
+      }
+      return;
+    }
+
+    // Update attributes
+    // Remove old attributes that don't exist in new element
+    Array.from(oldEl.attributes).forEach(attr => {
+      if (!newEl.hasAttribute(attr.name)) {
+        oldEl.removeAttribute(attr.name);
+      }
+    });
+
+    // Set new/updated attributes
+    Array.from(newEl.attributes).forEach(attr => {
+      if (oldEl.getAttribute(attr.name) !== attr.value) {
+        oldEl.setAttribute(attr.name, attr.value);
+      }
+    });
+
+    // Update children
+    const oldChildren = Array.from(oldNode.childNodes);
+    const newChildren = Array.from(newNode.childNodes);
+
+    // Simple algorithm: update existing children, add new ones, remove extras
+    const maxLength = Math.max(oldChildren.length, newChildren.length);
+
+    for (let i = 0; i < maxLength; i++) {
+      const oldChild = oldChildren[i];
+      const newChild = newChildren[i];
+
+      if (!oldChild && newChild) {
+        // Add new child
+        oldNode.appendChild(newChild.cloneNode(true));
+      } else if (oldChild && !newChild) {
+        // Remove old child
+        oldNode.removeChild(oldChild);
+      } else if (oldChild && newChild) {
+        // Update existing child recursively
+        updateDOM(oldChild, newChild);
+      }
+    }
+
+    return;
+  }
+
+  // Different node types - have to replace
+  if (oldNode.parentNode) {
+    oldNode.parentNode.replaceChild(newNode, oldNode);
+  }
 }
 
 /**
@@ -104,30 +213,56 @@ export function defineComponent<P = {}>(setup: ComponentSetup<P>, name?: string)
     try {
       return context.runWithOwner(owner, () => {
         try {
-          // Execute render function
-          const result = render!();
+          // We need to detect if the render function reads any signals
+          // If it does, we wrap it in an effect to make it reactive
+          // If it doesn't, we just render it once
 
-          // Template caching for VNode results (when enabled)
-          if (ENABLE_TEMPLATE_CACHE && isVNode(result)) {
-            // Generate cache key from component and props
-            const cacheKey = generateCacheKey(comp, props);
+          let hasReactiveDependencies = false;
+          let rootElement: Node | null = null;
 
-            // Check if we have a cached template
-            const cachedVNode = templateCache.get(cacheKey);
+          // Create an effect that wraps the render function
+          // This tracks signal dependencies automatically
+          const renderEffect = effect(() => {
+            try {
+              // Execute render function - this will track signal dependencies
+              const result = render!();
 
-            if (cachedVNode) {
-              // Cache hit: reuse cached VNode structure
-              // The reactive bindings will be updated automatically by effects
-              return cachedVNode;
-            } else {
-              // Cache miss: cache the new VNode
-              templateCache.set(cacheKey, result);
-              return result;
+              // Convert result to DOM if needed
+              let newNode: Node;
+
+              if (result === null || result === undefined) {
+                newNode = document.createTextNode('');
+              } else if (result instanceof Node) {
+                newNode = result;
+              } else if (isVNode(result)) {
+                // Check if VNode has reactive props
+                const hasReactiveProps = hasReactivePropsInVNode(result);
+                if (hasReactiveProps) {
+                  newNode = renderVNodeWithBindings(result);
+                } else {
+                  newNode = createDOMFromVNode(result);
+                }
+              } else {
+                // Fallback: convert to text
+                newNode = document.createTextNode(String(result));
+              }
+
+              if (!rootElement) {
+                // First render - just set the root
+                rootElement = newNode;
+                hasReactiveDependencies = true; // If effect runs, we have dependencies
+              } else {
+                // Subsequent render - update existing element to preserve references and event listeners
+                updateDOM(rootElement, newNode);
+              }
+            } catch (err) {
+              // Handle render errors
+              handleComponentError(owner, err as Error);
             }
-          }
+          });
 
-          // Return result as-is (DOM node or other value)
-          return result;
+          // Return the root element (effect runs immediately so it's already set)
+          return rootElement;
         } catch (err) {
           // Handle render errors
           handleComponentError(owner, err as Error);

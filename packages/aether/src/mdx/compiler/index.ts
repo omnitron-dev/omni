@@ -123,8 +123,8 @@ export class MDXCompiler {
         }
       );
 
-      // Create module
-      return createMDXModule(code, {
+      // Create module with VNode tree for actual rendering
+      return createMDXModule(code, [vnodes], {
         frontmatter,
         toc,
         usedComponents: metadata.usedComponents
@@ -165,8 +165,8 @@ export class MDXCompiler {
         scope: this.options.scope
       });
 
-      // Create module
-      return createMDXModule(code, {
+      // Create module with VNode tree for actual rendering
+      return createMDXModule(code, [vnodes], {
         frontmatter,
         toc,
         usedComponents: metadata.usedComponents
@@ -182,8 +182,7 @@ export class MDXCompiler {
    */
   private transformSyncUnsafe(mdxNode: any): any {
     // This is a simplified sync version that skips async plugin transforms
-    // In production, we should properly handle this
-    return this.transformer.transform(mdxNode) as any;
+    return this.transformer.transformSync(mdxNode);
   }
 }
 

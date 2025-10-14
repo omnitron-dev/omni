@@ -6,8 +6,9 @@
 
 import type { VNode } from '../../reconciler/vnode.js';
 import type { CompileMDXOptions, MDXModule } from '../types.js';
+import { createElementVNode } from '../../reconciler/vnode.js';
+import { renderVNodeWithBindings } from '../../reconciler/jsx-integration.js';
 import { defineComponent } from '../../core/component/define.js';
-import { jsx } from '../../jsx-runtime.js';
 
 /**
  * Generator options
@@ -300,23 +301,33 @@ export async function generateComponent(
 }
 
 /**
- * Create MDX module from generated code
+ * Create MDX module from generated code and VNode tree
  */
 export function createMDXModule(
   code: string,
+  vnodes: VNode[],
   metadata: {
     frontmatter?: Record<string, any>;
     toc?: any[];
     usedComponents?: string[];
   }
 ): MDXModule {
-  // In a real implementation, we would evaluate the code
-  // For now, return a mock module
-  const mockComponent = defineComponent(() => () => jsx('div', {}, 'MDX Content'));
+  // Create a real component that renders the VNode tree
+  const MDXContentComponent = defineComponent((props: any) => () => {
+      // Create a wrapper div containing all VNodes
+      const wrapperVNode = createElementVNode(
+        'div',
+        { class: 'mdx-content', ...props },
+        vnodes
+      );
+
+      // Render the VNode tree with reactive bindings
+      return renderVNodeWithBindings(wrapperVNode);
+    });
 
   return {
     code,
-    default: mockComponent as any,
+    default: MDXContentComponent as any,
     frontmatter: metadata.frontmatter,
     toc: metadata.toc,
     usedComponents: metadata.usedComponents,

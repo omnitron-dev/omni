@@ -393,7 +393,7 @@ function renderChild(child: any): Node | null {
  * Check if value is a VNode
  */
 function isVNode(value: any): boolean {
-  return value != null && typeof value === 'object' && 'type' in value && 'tag' in value;
+  return value != null && typeof value === 'object' && 'type' in value;
 }
 
 /**

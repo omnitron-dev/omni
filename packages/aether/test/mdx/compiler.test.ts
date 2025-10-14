@@ -9,7 +9,7 @@ import {
   AetherMDXParser,
   MDXToVNodeTransformer,
   AetherComponentGenerator
-} from '../../src/mdx/compiler/index';
+} from '../../src/mdx/compiler/index.js';
 
 describe('MDX Compiler', () => {
   describe('Parser', () => {

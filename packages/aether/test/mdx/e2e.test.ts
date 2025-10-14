@@ -6,8 +6,8 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
-import { signal, computed, effect, batch } from '../../src/core/reactivity/index';
-import { createRoot, onCleanup, onMount } from '../../src/core/component/lifecycle';
+import { signal, computed, effect, batch } from '../../src/core/reactivity/index.js';
+import { createRoot, onCleanup, onMount } from '../../src/core/component/lifecycle.js';
 import {
   compileMDX,
   compileMDXSync,
@@ -16,10 +16,10 @@ import {
   createMDXScope,
   evaluateMDX,
   renderMDX
-} from '../../src/mdx/index';
-import { defineComponent } from '../../src/core/component/define';
-import { jsx } from '../../src/jsx-runtime';
-import { render } from '../../src/testing/render';
+} from '../../src/mdx/index.js';
+import { defineComponent } from '../../src/core/component/define.js';
+import { jsx } from '../../src/jsx-runtime.js';
+import { render } from '../../src/testing/render.js';
 
 // ============================================================================
 // Test Utilities
@@ -53,6 +53,9 @@ async function waitForDOM(ms = 0): Promise<void> {
 
 /**
  * Helper to render MDX with provider
+ *
+ * This function compiles MDX source synchronously and renders the actual compiled component
+ * wrapped with MDXProvider for proper context support.
  */
 async function renderMDXWithProvider(
   source: string,
@@ -60,18 +63,32 @@ async function renderMDXWithProvider(
   components?: Record<string, any>,
   scope?: Record<string, any>
 ): Promise<{ dispose: () => void; unmount: () => void }> {
-  const module = await compileMDX(source);
+  // Compile MDX synchronously to get the module with the actual component
+  const module = compileMDXSync(source, {
+    components,
+    scope,
+    mode: 'production',
+    jsx: true,
+    gfm: true,
+    frontmatter: true
+  });
 
+  // Extract the default component from the module
+  const MDXContent = module.default;
+
+  // Create wrapper component that provides MDX context
   const App = defineComponent(() => {
     return () => jsx(MDXProvider, {
       components,
       scope,
-      children: jsx(module.default as any, {})
+      children: jsx(MDXContent, {})
     });
   });
 
+  // Render the app using the testing library
   const result = render(() => jsx(App, {}), { container });
 
+  // Wait for initial render to complete
   await waitForDOM(10);
 
   return {

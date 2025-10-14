@@ -83,6 +83,35 @@ export class MDXToVNodeTransformer {
   }
 
   /**
+   * Transform MDX node to VNode synchronously (no plugin support)
+   */
+  transformSync(mdxNode: MDXNode): VNode | null {
+    // Note: This skips plugin transformations for synchronous operation
+    const node = mdxNode;
+
+    // Transform based on node type
+    switch (node.type) {
+      case 'element':
+        return this.transformElementSync(node);
+      case 'text':
+        return this.transformText(node);
+      case 'mdxJsxFlowElement':
+      case 'mdxJsxTextElement':
+        return this.transformJSXElementSync(node);
+      case 'mdxFlowExpression':
+      case 'mdxTextExpression':
+        return this.transformExpression(node);
+      default:
+        // Unknown node type, try to render children if any
+        if (node.children) {
+          const children = this.transformChildrenSync(node.children);
+          return createElementVNode('div', {}, children);
+        }
+        return null;
+    }
+  }
+
+  /**
    * Transform element node
    */
   private async transformElement(node: MDXNode): Promise<VNode> {
@@ -180,6 +209,80 @@ export class MDXToVNodeTransformer {
 
     for (const child of children) {
       const vnode = await this.transform(child);
+      if (vnode) {
+        vnodes.push(vnode);
+      }
+    }
+
+    return vnodes;
+  }
+
+  /**
+   * Transform element node synchronously
+   */
+  private transformElementSync(node: MDXNode): VNode {
+    const children = node.children ? this.transformChildrenSync(node.children) : undefined;
+    const props = this.extractProps(node);
+
+    // Check if this is a component override
+    const Component = this.context.components[node.tagName!];
+    if (Component) {
+      this.context.usedComponents.add(node.tagName!);
+      // Return component VNode
+      return {
+        type: 'component' as any,
+        tag: Component,
+        props: { ...props, children },
+        key: props.key,
+        dom: null,
+        effects: []
+      };
+    }
+
+    // Detect reactive props
+    const hasReactiveProps = this.detectReactiveProps(props);
+    if (hasReactiveProps) {
+      this.context.reactiveExpressions.add(node.tagName!);
+    }
+
+    return createElementVNode(node.tagName!, props, children);
+  }
+
+  /**
+   * Transform JSX element synchronously
+   */
+  private transformJSXElementSync(node: MDXNode): VNode {
+    const children = node.children ? this.transformChildrenSync(node.children) : undefined;
+    const props = this.extractProps(node);
+
+    // Check if component exists in scope or components
+    const componentName = node.tagName!;
+    const Component = this.context.components[componentName] || this.context.scope[componentName];
+
+    if (Component) {
+      this.context.usedComponents.add(componentName);
+      return {
+        type: 'component' as any,
+        tag: Component,
+        props: { ...props, children },
+        key: props.key,
+        dom: null,
+        effects: []
+      };
+    }
+
+    // Fall back to HTML element
+    return createElementVNode(componentName.toLowerCase(), props, children);
+  }
+
+  /**
+   * Transform children nodes synchronously
+   */
+  private transformChildrenSync(children: MDXNode[]): VNode[] {
+    const vnodes: VNode[] = [];
+
+    for (const child of children) {
+      const vnode = this.transformSync(child);
       if (vnode) {
         vnodes.push(vnode);
       }

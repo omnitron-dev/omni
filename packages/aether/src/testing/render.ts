@@ -43,12 +43,18 @@ export function render(
 
       // Render element into container
       const result = element as any;
-      if (result && typeof result === 'object') {
-        if (result.el) {
-          container.appendChild(result.el);
-        } else if (result instanceof Node) {
+      if (result != null) {
+        if (result instanceof Node) {
+          // JSX runtime returns DOM nodes directly (HTMLElement, SVGElement, DocumentFragment)
           container.appendChild(result);
+        } else if (typeof result === 'object' && result.el instanceof Node) {
+          // Old VNode format with .el property
+          container.appendChild(result.el);
+        } else if (typeof result === 'object' && result.el) {
+          // Fallback for non-Node .el property
+          container.appendChild(result.el);
         }
+        // Silently ignore null/undefined/primitive results
       }
 
       return disposeFn;

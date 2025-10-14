@@ -156,3 +156,21 @@ export {
   validateRoutes,
   defaultConventions,
 } from './file-based.js';
+
+// Module integration
+export {
+  ModuleAwareRouter,
+  createModuleAwareRouter,
+  RouterLifecycleManager,
+  createRouteGroup,
+  extractRoutesFromModules,
+  getModuleRouter,
+  setModuleRouter,
+  resetModuleRouter,
+} from './module-integration.js';
+export type {
+  ModuleRouteMetadata,
+  ModuleRouteDefinition,
+  ModuleAwareRouterConfig,
+  RouteGroup,
+} from './module-integration.js';

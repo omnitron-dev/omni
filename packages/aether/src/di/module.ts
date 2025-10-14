@@ -5,6 +5,7 @@
  */
 
 import { DIContainer } from './container.js';
+import { InjectionToken } from './tokens.js';
 import type { Module, ModuleDefinition, ModuleWithProviders, Provider } from './types.js';
 
 /**
@@ -82,6 +83,18 @@ export function compileModule(rootModule: Module | ModuleWithProviders, parentCo
     container.register(getProviderToken(provider), provider);
   });
 
+  // Register stores as providers (if any)
+  if (module.definition.stores) {
+    module.definition.stores.forEach((storeFactory, index) => {
+      const token = new InjectionToken(`STORE_${module.definition.id}_${index}`);
+      container.register(token, {
+        provide: token,
+        useFactory: storeFactory,
+        scope: 'singleton',
+      });
+    });
+  }
+
   // Process imported modules
   if (module.definition.imports) {
     module.definition.imports.forEach((importedModule) => {
@@ -91,6 +104,17 @@ export function compileModule(rootModule: Module | ModuleWithProviders, parentCo
       if (importedModule.definition.exportProviders) {
         importedModule.definition.exportProviders.forEach((exportedProvider) => {
           const token = getProviderToken(exportedProvider);
+          if (importedContainer.has(token)) {
+            const instance = importedContainer.get(token);
+            container.register(token, { provide: token, useValue: instance });
+          }
+        });
+      }
+
+      // Re-export stores from imported modules
+      if (importedModule.definition.exportStores) {
+        importedModule.definition.exportStores.forEach((storeId) => {
+          const token = new InjectionToken(`STORE_${storeId}`);
           if (importedContainer.has(token)) {
             const instance = importedContainer.get(token);
             container.register(token, { provide: token, useValue: instance });

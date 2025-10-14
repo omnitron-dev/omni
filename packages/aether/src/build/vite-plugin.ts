@@ -18,9 +18,13 @@ import { BundleOptimizer } from './bundle-optimization.js';
 import { WorkerBundler, type WorkerBundlingConfig } from './worker-bundling.js';
 import { AetherCompiler, type CompileResult } from '../compiler/compiler.js';
 import type { OptimizationLevel } from '../compiler/types.js';
+import { ModuleBundler } from './module-bundler.js';
+import { analyzeModules } from '../compiler/optimizations/module-analyzer.js';
+import type { ModuleAnalysisResult } from '../compiler/optimizations/module-analyzer.js';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import * as crypto from 'crypto';
+import * as ts from 'typescript';
 
 export interface AetherBuildPluginOptions {
   /**
@@ -51,6 +55,28 @@ export interface AetherBuildPluginOptions {
     aggressive?: boolean;
     removeUnusedImports?: boolean;
     removeUnusedExports?: boolean;
+  };
+
+  /**
+   * Enable module optimization
+   * @default true
+   */
+  moduleOptimization?: boolean;
+
+  /**
+   * Module optimization options
+   */
+  moduleOptions?: {
+    /** Enable module tree shaking */
+    treeShake?: boolean;
+    /** Enable module bundling optimization */
+    bundleOptimization?: boolean;
+    /** Max chunk size for module bundles */
+    maxChunkSize?: number;
+    /** Min chunk size for module bundles */
+    minChunkSize?: number;
+    /** Aggressive code splitting */
+    aggressiveSplitting?: boolean;
   };
 
   /**
@@ -206,6 +232,14 @@ export interface BuildReport {
     totalSize: number;
     averageSize: number;
   };
+  modules?: {
+    modulesAnalyzed: number;
+    modulesOptimized: number;
+    totalChunks: number;
+    mainChunkSize: number;
+    lazyChunksSize: number;
+    sharedChunksSize: number;
+  };
 }
 
 /**
@@ -217,6 +251,8 @@ export function aetherBuildPlugin(options: AetherBuildPluginOptions = {}): Plugi
     criticalCSSOptions: {},
     treeShaking: true,
     treeShakingOptions: {},
+    moduleOptimization: true,
+    moduleOptions: {},
     performance: true,
     performanceOptions: {},
     assets: true,
@@ -245,6 +281,8 @@ export function aetherBuildPlugin(options: AetherBuildPluginOptions = {}): Plugi
   let performanceMonitor: BuildPerformanceMonitor;
   let aetherCompiler: AetherCompiler | undefined;
   let workerBundler: WorkerBundler | undefined;
+  let moduleBundler: ModuleBundler | undefined;
+  let moduleAnalysis: Map<string, ModuleAnalysisResult> = new Map();
   let buildReport: BuildReport = {
     timestamp: new Date().toISOString(),
     duration: 0,
@@ -326,6 +364,15 @@ export function aetherBuildPlugin(options: AetherBuildPluginOptions = {}): Plugi
           sourcemap: opts.workerOptions.sourcemap ?? true,
           hmr: isDevelopment,
           ...opts.workerOptions,
+        });
+      }
+
+      // Initialize Module bundler
+      if (opts.moduleOptimization) {
+        moduleBundler = new ModuleBundler({
+          maxChunkSize: opts.moduleOptions.maxChunkSize,
+          minChunkSize: opts.moduleOptions.minChunkSize,
+          aggressiveSplitting: opts.moduleOptions.aggressiveSplitting ?? false,
         });
       }
     },
@@ -501,6 +548,21 @@ export function aetherBuildPlugin(options: AetherBuildPluginOptions = {}): Plugi
         }
       }
 
+      // Module analysis for optimization
+      if (opts.moduleOptimization && id.match(/\.(tsx|ts|jsx|js)$/)) {
+        try {
+          const sourceFile = ts.createSourceFile(id, transformedCode, ts.ScriptTarget.Latest, true);
+          const analysis = analyzeModules(sourceFile);
+
+          if (analysis.modules.length > 0) {
+            moduleAnalysis.set(id, analysis);
+          }
+        } catch (error) {
+          // Module analysis failed, continue without it
+          console.warn(`Module analysis failed for ${id}:`, error);
+        }
+      }
+
       // Update dependencies for incremental compilation
       if (opts.performance && incrementalCompiler) {
         const imports = extractImports(transformedCode);
@@ -597,6 +659,66 @@ export function aetherBuildPlugin(options: AetherBuildPluginOptions = {}): Plugi
           routes: coverageReport.routes,
           averageCoverage: coverageReport.averageCoverage,
         };
+      }
+
+      // Module bundling optimization
+      if (opts.moduleOptimization && moduleBundler && moduleAnalysis.size > 0) {
+        // Combine all module analysis results
+        const allModules: any[] = [];
+        const allDependencies = new Map<string, string[]>();
+        const allUsages = new Map<string, string[]>();
+
+        for (const analysis of moduleAnalysis.values()) {
+          allModules.push(...analysis.modules);
+          for (const [key, value] of analysis.dependencies) {
+            allDependencies.set(key, value);
+          }
+          for (const [key, value] of analysis.usages) {
+            allUsages.set(key, value);
+          }
+        }
+
+        // Build module graph
+        const combinedAnalysis = {
+          modules: allModules,
+          dependencies: allDependencies,
+          usages: allUsages,
+          opportunities: [],
+        };
+
+        moduleBundler.buildGraph(combinedAnalysis);
+
+        // Generate bundle strategy (if entry module found)
+        const entryModule = allModules.find((m) => m.id === 'app' || m.id === 'main');
+        if (entryModule) {
+          const strategy = moduleBundler.generateStrategy(entryModule.id);
+          const stats = moduleBundler.getBundleStats(strategy);
+
+          buildReport.modules = {
+            modulesAnalyzed: allModules.length,
+            modulesOptimized: strategy.lazy.length + strategy.shared.length,
+            totalChunks: stats.totalChunks,
+            mainChunkSize: stats.mainSize,
+            lazyChunksSize: stats.lazySize,
+            sharedChunksSize: stats.sharedSize,
+          };
+
+          // Generate manifest for module chunks
+          const manifest = {
+            version: '1.0.0',
+            strategy,
+            stats,
+          };
+
+          // Write module manifest
+          const manifestPath = path.join(config.build.outDir, 'module-manifest.json');
+          try {
+            await fs.mkdir(path.dirname(manifestPath), { recursive: true });
+            await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf-8');
+          } catch (error) {
+            console.warn('Failed to write module manifest:', error);
+          }
+        }
       }
 
       if (opts.performance && performanceMonitor) {
@@ -780,6 +902,16 @@ export function aetherBuildPlugin(options: AetherBuildPluginOptions = {}): Plugi
       console.log(`   Inlined: ${report.workers.inlinedWorkers}`);
       console.log(`   Total Size: ${(report.workers.totalSize / 1024).toFixed(1)}KB`);
       console.log(`   Avg Size: ${(report.workers.averageSize / 1024).toFixed(1)}KB`);
+    }
+
+    if (report.modules) {
+      console.log(`\n📦 Module Optimization:`);
+      console.log(`   Modules Analyzed: ${report.modules.modulesAnalyzed}`);
+      console.log(`   Modules Optimized: ${report.modules.modulesOptimized}`);
+      console.log(`   Total Chunks: ${report.modules.totalChunks}`);
+      console.log(`   Main Chunk: ${(report.modules.mainChunkSize / 1024).toFixed(1)}KB`);
+      console.log(`   Lazy Chunks: ${(report.modules.lazyChunksSize / 1024).toFixed(1)}KB`);
+      console.log(`   Shared Chunks: ${(report.modules.sharedChunksSize / 1024).toFixed(1)}KB`);
     }
 
     console.log('');

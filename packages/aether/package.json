@@ -34,6 +34,10 @@
       "types": "./dist/di/index.d.ts",
       "import": "./dist/di/index.js"
     },
+    "./modules": {
+      "types": "./dist/modules/index.d.ts",
+      "import": "./dist/modules/index.js"
+    },
     "./router": {
       "types": "./dist/router/index.d.ts",
       "import": "./dist/router/index.js"

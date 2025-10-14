@@ -24,6 +24,19 @@ export type {
   Module,
   Injector,
   Container,
+  StoreFactory,
+  RouteDefinition,
+  IslandDefinition,
+  AssetDefinition,
+  SetupContext,
+  ModuleContext,
+  ModuleSetup,
+  ModuleTeardown,
+  TeardownContext,
+  OptimizationHints,
+  LoadedModule,
+  ModuleNode,
+  SplitPoint,
 } from './types.js';
 
 // Tokens

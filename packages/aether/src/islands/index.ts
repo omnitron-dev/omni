@@ -137,3 +137,18 @@ export {
   CustomHydration,
   type HydrationStrategyImpl,
 } from './hydration.js';
+
+// Module integration
+export {
+  ModuleIslandManager,
+  IslandLifecycleManager,
+  createModuleIslandManager,
+  getModuleIslandManager,
+  setModuleIslandManager,
+  resetModuleIslandManager,
+  useIslandHydration,
+} from './module-integration.js';
+export type {
+  ModuleIslandDefinition,
+  IslandHydrationContext,
+} from './module-integration.js';

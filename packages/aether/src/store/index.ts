@@ -145,3 +145,20 @@ export { batch as batchUpdates, untrack, createRoot } from '../core/reactivity/b
 
 // Re-export types
 export type { Signal, WritableSignal, Computed } from '../core/reactivity/types.js';
+
+// Module integration
+export {
+  ModuleScopedStoreManager,
+  StoreLifecycleManager,
+  StoreExportManager,
+  defineModuleStore,
+  useModuleStore,
+  useIslandStore,
+  getModuleScopedStoreManager,
+  resetModuleScopedStoreManager,
+  setModuleContext,
+  setIslandContext,
+  clearModuleContext,
+  clearIslandContext,
+} from './module-integration.js';
+export type { StoreScope, ModuleScopedStoreOptions } from './module-integration.js';

@@ -9,6 +9,7 @@ export default defineConfig({
     'jsx-runtime': 'src/jsx-runtime.ts',
     'jsx-dev-runtime': 'src/jsx-dev-runtime.ts',
     'di/index': 'src/di/index.ts',
+    'modules/index': 'src/modules/index.ts',
     'router/index': 'src/router/index.ts',
     'forms/index': 'src/forms/index.ts',
     'control-flow/index': 'src/control-flow/index.ts',

@@ -103,17 +103,45 @@ export interface InjectOptions {
 /**
  * Module definition
  */
-export interface ModuleDefinition {
+export interface ModuleDefinition<T extends ModuleMetadata = ModuleMetadata> {
+  // Identity
   id: string;
+  version?: string;
+
+  // Dependencies
   imports?: Module[];
-  components?: any[];
-  directives?: any[];
-  pipes?: any[];
+
+  // Services & Stores
   providers?: Provider[];
+  stores?: StoreFactory[];
+
+  // Routes
+  routes?: RouteDefinition[];
+
+  // Assets
+  styles?: string[] | (() => Promise<string[]>);
+  assets?: AssetDefinition[];
+
+  // Islands & Hydration
+  islands?: IslandDefinition[];
+
+  // Exports
   exports?: any[];
   exportProviders?: (Provider | Type)[];
+  exportStores?: string[];
+
+  // Lifecycle
+  setup?: ModuleSetup<T>;
+  teardown?: ModuleTeardown;
+
+  // Legacy (keep for backwards compatibility)
   bootstrap?: any;
-  metadata?: ModuleMetadata;
+
+  // Metadata
+  metadata?: T;
+
+  // Optimization hints
+  optimization?: OptimizationHints;
 }
 
 /**
@@ -125,6 +153,136 @@ export interface ModuleMetadata {
   description?: string;
   author?: string;
   dependencies?: string[];
+  [key: string]: any;
+}
+
+/**
+ * Store factory type
+ */
+export type StoreFactory = () => any | Promise<any>;
+
+/**
+ * Route definition (simplified reference)
+ */
+export interface RouteDefinition {
+  path: string;
+  component?: any;
+  loader?: (context: any) => any | Promise<any>;
+  action?: (context: any) => any | Promise<any>;
+  guards?: Array<(context: any) => boolean | Promise<boolean> | { redirect: string }>;
+  children?: RouteDefinition[];
+  meta?: Record<string, any>;
+  rendering?: 'static' | 'server' | 'client';
+  lazy?: () => Promise<any>;
+}
+
+/**
+ * Island definition
+ */
+export interface IslandDefinition {
+  id: string;
+  component: () => Promise<any>;
+  strategy?: 'interaction' | 'visible' | 'idle' | 'immediate';
+  props?: Record<string, any>;
+  rootMargin?: string;
+  timeout?: number;
+}
+
+/**
+ * Asset definition
+ */
+export interface AssetDefinition {
+  type: 'font' | 'image' | 'style' | 'script';
+  src: string;
+  preload?: boolean;
+  eager?: boolean;
+  async?: boolean;
+  defer?: boolean;
+}
+
+/**
+ * Module setup context
+ */
+export interface SetupContext {
+  container: Container;
+  router?: any;
+  stores?: any;
+  config?: Record<string, any>;
+  parent?: ModuleContext;
+}
+
+/**
+ * Module context (returned from setup)
+ */
+export interface ModuleContext {
+  [key: string]: any;
+}
+
+/**
+ * Module setup function
+ */
+export type ModuleSetup<T extends ModuleMetadata = ModuleMetadata> = (
+  context: SetupContext
+) => ModuleContext | Promise<ModuleContext>;
+
+/**
+ * Module teardown function
+ */
+export type ModuleTeardown = (context: TeardownContext) => void | Promise<void>;
+
+/**
+ * Module teardown context
+ */
+export interface TeardownContext {
+  container: Container;
+  stores?: any;
+}
+
+/**
+ * Optimization hints
+ */
+export interface OptimizationHints {
+  preloadModules?: string[];
+  prefetchModules?: string[];
+  lazyBoundary?: boolean;
+  splitChunk?: boolean;
+  inline?: boolean;
+  sideEffects?: boolean;
+  pure?: boolean;
+  priority?: 'high' | 'normal' | 'low';
+  budget?: {
+    maxSize?: number;
+    maxAsyncRequests?: number;
+  };
+}
+
+/**
+ * Loaded module
+ */
+export interface LoadedModule {
+  id: string;
+  definition: ModuleDefinition;
+  container: Container;
+  context: ModuleContext;
+  status: 'loading' | 'loaded' | 'error';
+  error?: Error;
+}
+
+/**
+ * Module node (for graph)
+ */
+export interface ModuleNode {
+  id: string;
+  data: ModuleDefinition;
+}
+
+/**
+ * Split point (for code splitting)
+ */
+export interface SplitPoint {
+  module: string;
+  strategy: 'preload' | 'prefetch' | 'lazy';
+  size: number;
 }
 
 /**

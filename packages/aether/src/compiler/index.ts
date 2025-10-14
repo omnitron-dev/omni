@@ -321,6 +321,27 @@ export { DeadCodeEliminator, type DeadCodeEliminatorOptions } from './optimizati
 
 export { Minifier, type MinifierOptions } from './optimizations/minifier.js';
 
+export {
+  ModuleAnalyzer,
+  analyzeModules,
+  type ModuleMetadata,
+  type ModuleAnalysisResult,
+  type ModuleImport,
+  type ProviderMetadata,
+  type StoreMetadata,
+  type RouteMetadata,
+  type IslandMetadata,
+  type ExportMetadata,
+  type OptimizationMetadata,
+  type ModuleOptimizationOpportunity,
+} from './optimizations/module-analyzer.js';
+
+export {
+  ModuleTreeShakerPass,
+  createModuleTreeShaker,
+  type ModuleTreeShakerOptions,
+} from './optimizations/module-tree-shaker.js';
+
 /**
  * Create a compiler plugin
  *

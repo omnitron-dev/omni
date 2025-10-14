@@ -14,7 +14,7 @@ export async function waitFor<T>(
     try {
       const result = await callback();
       return result;
-    } catch (error) {
+    } catch (_error) {
       await new Promise(resolve => setTimeout(resolve, interval));
     }
   }

@@ -10,12 +10,12 @@
  * - All monitoring systems integrated
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { PerformanceMonitor, getPerformanceMonitor, resetPerformanceMonitor } from '../../src/monitoring/performance.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { PerformanceMonitor } from '../../src/monitoring/performance.js';
 import { ComponentTracker } from '../../src/monitoring/component-tracking.js';
 import { SignalTracker } from '../../src/monitoring/signal-tracking.js';
 import { MemoryProfiler } from '../../src/monitoring/memory-profiler.js';
-import { signal, computed, effect, batch } from '../../src/core/reactivity/index.js';
+import { signal, computed } from '../../src/core/reactivity/index.js';
 
 describe('Monitoring Integration', () => {
   describe('Performance Monitoring', () => {

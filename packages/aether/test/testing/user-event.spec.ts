@@ -2,7 +2,7 @@
  * User Event Tests
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, userEvent, cleanup } from '../../src/testing/index.js';
 
 describe('userEvent', () => {

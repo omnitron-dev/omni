@@ -466,7 +466,7 @@ export function calculateMoves(oldPositions: Map<any, number>, newPositions: Map
   const sequence: number[] = [];
   const keys: any[] = [];
 
-  for (const [key, newPos] of newPositions) {
+  for (const [key] of newPositions) {
     const oldPos = oldPositions.get(key);
     if (oldPos !== undefined) {
       sequence.push(oldPos);

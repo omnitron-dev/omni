@@ -9,8 +9,8 @@
  * - Integration with performance monitoring
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, cleanup, waitFor, fireEvent, screen } from '../../src/testing/index.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { render, cleanup, waitFor, fireEvent } from '../../src/testing/index.js';
 import { signal, computed, effect, batch } from '../../src/core/reactivity/index.js';
 import { PerformanceMonitor } from '../../src/monitoring/performance.js';
 

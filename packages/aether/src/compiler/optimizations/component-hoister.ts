@@ -489,7 +489,7 @@ ${id}.innerHTML = ${JSON.stringify(element.code)};`;
     }
 
     // Simple objects/arrays without dynamic content
-    if (/^(?:\{[^{}]*\}|\[[^\[\]]*\])$/.test(trimmed)) {
+    if (/^(?:\{[^{}]*\}|\[[^\]]*\])$/.test(trimmed)) {
       return !trimmed.includes('${') && !trimmed.includes('()');
     }
 

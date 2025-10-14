@@ -30,7 +30,7 @@ import {
   clearCurrentModuleContext,
 } from '../../src/modules/helpers.js';
 import { setApp } from '../../src/core/application.js';
-import type { Module, ModuleDefinition } from '../../src/di/types.js';
+import type { Module } from '../../src/di/types.js';
 
 describe('Module Helpers', () => {
   describe('lazy()', () => {
@@ -680,11 +680,7 @@ describe('Module Helpers', () => {
     });
 
     it('should handle nested context calls', () => {
-      const result = withModuleContext('outer', () => {
-        return withModuleContext('inner', () => {
-          return 'nested';
-        });
-      });
+      const result = withModuleContext('outer', () => withModuleContext('inner', () => 'nested'));
 
       expect(result).toBe('nested');
     });

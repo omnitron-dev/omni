@@ -221,6 +221,10 @@ export class BatchManager {
       case FlushStrategy.IDLE:
         this.flushIdle();
         break;
+      default:
+        // Unknown strategy, use async
+        this.flushAsync();
+        break;
     }
   }
 
@@ -390,6 +394,13 @@ export class BatchManager {
             this.executeUpdates();
           }, 50);
         }
+        break;
+      default:
+        // Unknown strategy, use async
+        Promise.resolve().then(() => {
+          this.flushScheduled = false;
+          this.executeUpdates();
+        });
         break;
     }
   }

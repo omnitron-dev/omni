@@ -10,7 +10,6 @@ import type { LazyModule, DynamicModule } from './manager.js';
 import { getApp } from '../core/application.js';
 import { useModuleStore, useIslandStore } from '../store/module-integration.js';
 import { signal } from '../core/reactivity/signal.js';
-import type { StoreFactory } from '../store/types.js';
 
 /**
  * Preload strategy for lazy modules
@@ -58,10 +57,10 @@ export function lazy(
     type: 'lazy',
     load: async () => {
       if (!loadPromise) {
-        loadPromise = load().then((loaded) => {
+        loadPromise = load().then((loaded) => 
           // Handle default export
-          return 'default' in loaded ? loaded.default : loaded;
-        });
+           'default' in loaded ? loaded.default : loaded
+        );
       }
       return loadPromise;
     },

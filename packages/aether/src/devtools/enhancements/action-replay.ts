@@ -181,6 +181,9 @@ export class ActionReplaySystem {
           })
         );
         break;
+      default:
+        // Other action types (scroll, focus, blur) not implemented yet
+        break;
     }
   }
 

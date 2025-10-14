@@ -55,19 +55,15 @@ export function createQueries(container: HTMLElement) {
     queryByRole: (role: string) => {
       try { return getByRole(role); } catch { return null; }
     },
-    findByText: async (text: Matcher) => {
-      return new Promise<HTMLElement>((resolve, reject) => {
+    findByText: async (text: Matcher) => new Promise<HTMLElement>((resolve, reject) => {
         const element = getByText(text);
         if (element) resolve(element);
         else reject(new Error(`Unable to find element with text: ${text}`));
-      });
-    },
-    findByRole: async (role: string) => {
-      return new Promise<HTMLElement>((resolve, reject) => {
+      }),
+    findByRole: async (role: string) => new Promise<HTMLElement>((resolve, reject) => {
         const element = getByRole(role);
         if (element) resolve(element);
         else reject(new Error(`Unable to find element with role: ${role}`));
-      });
-    },
+      }),
   };
 }

@@ -6,8 +6,6 @@
  * @module error-tracking/error-analytics
  */
 
-import { signal } from '../core/reactivity/signal.js';
-import { computed } from '../core/reactivity/computed.js';
 
 export interface ErrorPattern {
   fingerprint: string;

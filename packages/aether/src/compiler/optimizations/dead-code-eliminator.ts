@@ -144,8 +144,8 @@ export class DeadCodeEliminator implements OptimizationPass {
     const optimizedLines: string[] = [];
 
     let inUnreachable = false;
-    let braceDepth = 0;
     let functionDepth = 0;
+    let braceDepth = 0;
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i] || '';

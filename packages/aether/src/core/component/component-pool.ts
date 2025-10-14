@@ -308,7 +308,7 @@ export class ComponentPool {
    */
   getStats() {
     let totalPoolSize = 0;
-    let totalActiveSize = this.activeInstances.size;
+    const totalActiveSize = this.activeInstances.size;
 
     for (const pool of this.pools.values()) {
       totalPoolSize += pool.length;
@@ -380,7 +380,7 @@ export function pooled<P = any>(component: Component<P>, poolSize?: number): Com
 
   const PooledComponent: Component<P> = (props: P) => {
     // Acquire instance
-    const instance = pool.acquire(component, props);
+    pool.acquire(component, props);
 
     // Render component
     const result = component(props);

@@ -133,6 +133,7 @@ export class ConsoleIntegration {
         const lines = stack.split('\n').slice(3, 6);
         return lines.join('\n');
       }
+      return undefined;
     } catch {
       return undefined;
     }

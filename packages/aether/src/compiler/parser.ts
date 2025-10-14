@@ -186,7 +186,9 @@ function createCompilerHost(code: string, filePath: string, options: ts.Compiler
 
       // Try to read from file system for lib files
       try {
-        const fs = require('fs');
+        // Use dynamic import for fs module
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const fs = require('fs') as typeof import('fs');
         if (fs.existsSync(fileName)) {
           const content = fs.readFileSync(fileName, 'utf-8');
           return ts.createSourceFile(fileName, content, languageVersion, true);
@@ -198,8 +200,8 @@ function createCompilerHost(code: string, filePath: string, options: ts.Compiler
       return undefined;
     },
 
-    getDefaultLibFileName(options) {
-      return ts.getDefaultLibFilePath(options);
+    getDefaultLibFileName(opts) {
+      return ts.getDefaultLibFilePath(opts);
     },
 
     writeFile() {

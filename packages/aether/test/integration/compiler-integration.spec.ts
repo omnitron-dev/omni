@@ -10,8 +10,8 @@
  * - Bundle size verification
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { AetherCompiler, createCompiler, compile, compileWithResult } from '../../src/compiler/compiler.js';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { createCompiler, compile, compileWithResult } from '../../src/compiler/compiler.js';
 import { Optimizer } from '../../src/compiler/optimizer.js';
 
 describe('Compiler Integration', () => {

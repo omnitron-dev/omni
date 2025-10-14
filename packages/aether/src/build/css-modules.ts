@@ -315,7 +315,10 @@ export class CSSModulesProcessor {
     let match: RegExpExecArray | null;
     while ((match = composesRegex.exec(css)) !== null) {
       const className = match[1];
-      const composesValue = match[2].trim();
+      if (!className) continue;
+
+      const composesValue = match[2]?.trim();
+      if (!composesValue) continue;
 
       // Parse composes value
       const composedClasses = this.parseComposesValue(composesValue, filename);
@@ -339,7 +342,7 @@ export class CSSModulesProcessor {
     const fromMatch = value.match(/(.+?)\s+from\s+['"]([^'"]+)['"]/);
 
     if (fromMatch) {
-      const classNames = fromMatch[1].split(/\s+/).filter(Boolean);
+      const classNames = fromMatch[1]?.split(/\s+/).filter(Boolean) ?? [];
       const _fromFile = fromMatch[2];
       // For now, just add the class names
       // In a full implementation, we'd resolve the external module
@@ -396,7 +399,9 @@ export class CSSModulesProcessor {
       let classMatch: RegExpExecArray | null;
 
       while ((classMatch = classRegex.exec(content)) !== null) {
-        globals.add(classMatch[1]);
+        if (classMatch[1]) {
+          globals.add(classMatch[1]);
+        }
       }
 
       return content;
@@ -419,6 +424,7 @@ export class CSSModulesProcessor {
     let match: RegExpExecArray | null;
     while ((match = classRegex.exec(css)) !== null) {
       const originalClass = match[1];
+      if (!originalClass) continue;
 
       // Skip if already global
       if (globals.has(originalClass)) continue;
@@ -492,12 +498,12 @@ export class CSSModulesProcessor {
 
     // Replace [hash:base64:N]
     const hashMatch = result.match(/\[hash:base64:(\d+)\]/);
-    if (hashMatch) {
-      const length = parseInt(hashMatch[1], 10) || hashLength;
+    if (hashMatch && hashMatch[1]) {
+      const length = parseInt(hashMatch[1], 10) || (hashLength ?? 8);
       const hash = this.generateHash(filename, className, css, length);
       result = result.replace(/\[hash:base64:\d+\]/, hash);
     } else if (result.includes('[hash]')) {
-      const hash = this.generateHash(filename, className, css, hashLength);
+      const hash = this.generateHash(filename, className, css, hashLength ?? 8);
       result = result.replace(/\[hash\]/g, hash);
     }
 
@@ -526,14 +532,14 @@ export class CSSModulesProcessor {
 
     // Add local classes
     for (const [original, scoped] of Object.entries(locals)) {
-      const exportName = this.convertClassName(original, exportLocalsConvention);
+      const exportName = this.convertClassName(original, exportLocalsConvention ?? 'camelCase');
       exports[exportName] = scoped;
     }
 
     // Add global classes if configured
     if (exportGlobals) {
       for (const globalClass of globals) {
-        const exportName = this.convertClassName(globalClass, exportLocalsConvention);
+        const exportName = this.convertClassName(globalClass, exportLocalsConvention ?? 'camelCase');
         exports[exportName] = globalClass;
       }
     }
@@ -602,13 +608,13 @@ export class CSSModulesProcessor {
     const classNames = new Set<string>();
 
     for (const original of Object.keys(locals)) {
-      const exportName = this.convertClassName(original, exportLocalsConvention);
+      const exportName = this.convertClassName(original, exportLocalsConvention ?? 'camelCase');
       classNames.add(exportName);
     }
 
     if (exportGlobals) {
       for (const globalClass of globals) {
-        const exportName = this.convertClassName(globalClass, exportLocalsConvention);
+        const exportName = this.convertClassName(globalClass, exportLocalsConvention ?? 'camelCase');
         classNames.add(exportName);
       }
     }
@@ -770,7 +776,9 @@ export function extractClassNames(css: string): string[] {
 
   let match: RegExpExecArray | null;
   while ((match = regex.exec(css)) !== null) {
-    classNames.push(match[1]);
+    if (match[1]) {
+      classNames.push(match[1]);
+    }
   }
 
   return Array.from(new Set(classNames));

@@ -179,14 +179,14 @@ export class PerformanceMonitor {
 
     const timestamp = performance.now();
 
-    const mark: PerformanceMark = {
+    const perfMark: PerformanceMark = {
       name,
       timestamp,
       metadata,
       type: metadata?.type || 'custom',
     };
 
-    this.marks.set(name, mark);
+    this.marks.set(name, perfMark);
 
     if (typeof performance !== 'undefined' && performance.mark) {
       try {
@@ -203,7 +203,7 @@ export class PerformanceMonitor {
       }
     }
 
-    return mark;
+    return perfMark;
   }
 
   /**
@@ -222,7 +222,7 @@ export class PerformanceMonitor {
 
     const duration = end.timestamp - start.timestamp;
 
-    const measure: PerformanceMeasure = {
+    const perfMeasure: PerformanceMeasure = {
       name,
       startMark,
       endMark,
@@ -234,7 +234,7 @@ export class PerformanceMonitor {
       type: start.type === end.type ? (start.type as any) : 'custom',
     };
 
-    this.measures.push(measure);
+    this.measures.push(perfMeasure);
 
     if (typeof performance !== 'undefined' && performance.measure) {
       try {
@@ -244,44 +244,44 @@ export class PerformanceMonitor {
       }
     }
 
-    this.checkBudgetViolation(measure);
+    this.checkBudgetViolation(perfMeasure);
 
     if (this.measures.length > this.config.maxMeasures) {
       this.measures.shift();
     }
 
-    return measure;
+    return perfMeasure;
   }
 
-  private checkBudgetViolation(measure: PerformanceMeasure): void {
+  private checkBudgetViolation(perfMeasure: PerformanceMeasure): void {
     const { budget } = this.config;
     let threshold: number | undefined;
     let type: PerformanceViolation['type'] = 'custom';
 
-    if (measure.type === 'render' && budget.maxRenderTime) {
+    if (perfMeasure.type === 'render' && budget.maxRenderTime) {
       threshold = budget.maxRenderTime;
       type = 'render';
-    } else if (measure.metadata?.type === 'signal' && budget.maxSignalUpdateTime) {
+    } else if (perfMeasure.metadata?.type === 'signal' && budget.maxSignalUpdateTime) {
       threshold = budget.maxSignalUpdateTime;
       type = 'signal';
-    } else if (measure.metadata?.type === 'effect' && budget.maxEffectTime) {
+    } else if (perfMeasure.metadata?.type === 'effect' && budget.maxEffectTime) {
       threshold = budget.maxEffectTime;
       type = 'effect';
-    } else if (measure.type === 'network' && budget.maxNetworkTime) {
+    } else if (perfMeasure.type === 'network' && budget.maxNetworkTime) {
       threshold = budget.maxNetworkTime;
       type = 'network';
-    } else if (budget.custom && budget.custom[measure.name]) {
-      threshold = budget.custom[measure.name];
+    } else if (budget.custom && budget.custom[perfMeasure.name]) {
+      threshold = budget.custom[perfMeasure.name];
     }
 
-    if (threshold && measure.duration > threshold) {
+    if (threshold && perfMeasure.duration > threshold) {
       const violation: PerformanceViolation = {
         type,
-        name: measure.name,
-        duration: measure.duration,
+        name: perfMeasure.name,
+        duration: perfMeasure.duration,
         threshold,
         timestamp: performance.now(),
-        metadata: measure.metadata,
+        metadata: perfMeasure.metadata,
       };
 
       this.violations.push(violation);
@@ -371,14 +371,14 @@ export class PerformanceMonitor {
       const now = performance.now();
       const maxAge = this.config.cleanupInterval;
 
-      for (const [name, mark] of this.marks.entries()) {
-        if (now - mark.timestamp > maxAge) {
+      for (const [name, perfMark] of this.marks.entries()) {
+        if (now - perfMark.timestamp > maxAge) {
           this.marks.delete(name);
         }
       }
 
-      this.measures = this.measures.filter((measure) => {
-        const endMark = this.marks.get(measure.endMark);
+      this.measures = this.measures.filter((perfMeasure) => {
+        const endMark = this.marks.get(perfMeasure.endMark);
         return endMark && now - endMark.timestamp <= maxAge;
       });
     }, this.config.cleanupInterval);

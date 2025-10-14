@@ -2,16 +2,14 @@
  * Hook Testing Utilities Tests
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { renderHook } from '../../src/testing/index.js';
 import { signal, computed, effect } from '../../src/core/reactivity/index.js';
 
 describe('renderHook', () => {
   describe('basic usage', () => {
     it('should render a simple hook', () => {
-      const { result } = renderHook(() => {
-        return { value: 42 };
-      });
+      const { result } = renderHook(() => ({ value: 42 }));
 
       expect(result.current.value).toBe(42);
     });
@@ -39,9 +37,7 @@ describe('renderHook', () => {
   describe('hook props updates', () => {
     it('should accept initial props', () => {
       const { result } = renderHook(
-        (props: { value: number }) => {
-          return { doubled: props.value * 2 };
-        },
+        (props: { value: number }) => ({ doubled: props.value * 2 }),
         { initialProps: { value: 5 } }
       );
 
@@ -50,9 +46,7 @@ describe('renderHook', () => {
 
     it('should rerender with new props', () => {
       const { result, rerender } = renderHook(
-        (props: { value: number }) => {
-          return { doubled: props.value * 2 };
-        },
+        (props: { value: number }) => ({ doubled: props.value * 2 }),
         { initialProps: { value: 5 } }
       );
 
@@ -65,9 +59,7 @@ describe('renderHook', () => {
 
     it('should handle undefined props on rerender', () => {
       const { result, rerender } = renderHook(
-        (props: { value?: number }) => {
-          return { value: props.value || 0 };
-        },
+        (props: { value?: number }) => ({ value: props.value || 0 }),
         { initialProps: { value: 5 } }
       );
 
@@ -196,14 +188,10 @@ describe('renderHook', () => {
 
   describe('custom wrapper', () => {
     it('should wrap hook with custom component', () => {
-      const wrapper = ({ children }: { children: any }) => {
-        return children;
-      };
+      const wrapper = ({ children }: { children: any }) => children;
 
       const { result } = renderHook(
-        () => {
-          return { value: 'wrapped' };
-        },
+        () => ({ value: 'wrapped' }),
         { wrapper }
       );
 

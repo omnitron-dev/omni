@@ -259,12 +259,12 @@ export class SignalTracker {
   trackDependency(signalId: string, dependsOn: string): void {
     if (!this.enabled) return;
 
-    const signal = this.dependencies.get(signalId);
+    const signalDep = this.dependencies.get(signalId);
     const dependency = this.dependencies.get(dependsOn);
 
-    if (signal && dependency) {
-      if (!signal.dependencies.includes(dependsOn)) {
-        signal.dependencies.push(dependsOn);
+    if (signalDep && dependency) {
+      if (!signalDep.dependencies.includes(dependsOn)) {
+        signalDep.dependencies.push(dependsOn);
       }
 
       if (!dependency.dependents.includes(signalId)) {
@@ -272,7 +272,7 @@ export class SignalTracker {
       }
 
       // Update depth
-      signal.depth = Math.max(signal.depth, dependency.depth + 1);
+      signalDep.depth = Math.max(signalDep.depth, dependency.depth + 1);
 
       // Check for circular dependencies
       if (this.config.detectCircular) {
@@ -293,9 +293,9 @@ export class SignalTracker {
       recursionStack.add(signalId);
       path.push(signalId);
 
-      const signal = this.dependencies.get(signalId);
-      if (signal) {
-        for (const dep of signal.dependencies) {
+      const signalDep = this.dependencies.get(signalId);
+      if (signalDep) {
+        for (const dep of signalDep.dependencies) {
           if (!visited.has(dep)) {
             const cycle = dfs(dep, [...path]);
             if (cycle) return cycle;

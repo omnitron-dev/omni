@@ -13,8 +13,8 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { signal, computed, effect, batch } from '../../src/core/reactivity/index.js';
-import { SubscriptionPool, globalSubscriptionPool } from '../../src/core/reactivity/subscription-pool.js';
-import { BatchManager, BatchPriority, FlushStrategy, globalBatchManager } from '../../src/core/reactivity/batch-manager.js';
+import { SubscriptionPool } from '../../src/core/reactivity/subscription-pool.js';
+import { BatchManager, BatchPriority, FlushStrategy } from '../../src/core/reactivity/batch-manager.js';
 import { ComponentPool } from '../../src/core/component/component-pool.js';
 import { PerformanceMonitor } from '../../src/monitoring/performance.js';
 

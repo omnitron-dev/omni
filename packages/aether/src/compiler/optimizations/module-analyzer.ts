@@ -6,7 +6,7 @@
  */
 
 import * as ts from 'typescript';
-import { walkAST, findNodes, getNodeLocation } from '../parser.js';
+import { findNodes, getNodeLocation } from '../parser.js';
 import type { SourceLocation } from '../types.js';
 
 /**

@@ -224,9 +224,7 @@ const batchEffectsPass: TransformPass = {
   name: 'batch-effects',
   description: 'Batch effects together',
 
-  transform(sourceFile, analysis, options) {
-    const factory = ts.factory;
-
+  transform(sourceFile, analysis) {
     // Find consecutive effects that can be batched
     const batchableEffects = analysis.effects.filter((e) => e.batchable);
 
@@ -256,9 +254,8 @@ const eliminateDeadCodePass: TransformPass = {
   description: 'Remove unreachable code',
 
   transform(sourceFile, analysis, options) {
-    const factory = ts.factory;
-
     const transformer = <T extends ts.Node>(context: ts.TransformationContext) => {
+      const factory = ts.factory;
       const visit: ts.Visitor = (node): ts.Node | undefined => {
         // Remove code after return
         if (ts.isBlock(node)) {
@@ -317,9 +314,8 @@ const constantFoldingPass: TransformPass = {
   description: 'Fold constant expressions',
 
   transform(sourceFile, analysis, options) {
-    const factory = ts.factory;
-
     const transformer = <T extends ts.Node>(context: ts.TransformationContext) => {
+      const factory = ts.factory;
       const visit: ts.Visitor = (node): ts.Node => {
         // Fold binary expressions with literals
         if (ts.isBinaryExpression(node)) {
@@ -343,6 +339,9 @@ const constantFoldingPass: TransformPass = {
                 break;
               case ts.SyntaxKind.SlashToken:
                 result = leftVal / rightVal;
+                break;
+              default:
+                // Other operators not supported
                 break;
             }
 

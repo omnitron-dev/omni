@@ -2,8 +2,6 @@
  * Testing Library Types
  */
 
-/// <reference path="../jsx-types.d.ts" />
-
 export type Matcher = string | RegExp | ((content: string, element: Element) => boolean);
 
 export interface MatcherOptions {
@@ -15,7 +13,7 @@ export interface MatcherOptions {
 
 export interface RenderOptions {
   container?: HTMLElement;
-  wrapper?: (props: { children: JSX.Element }) => JSX.Element;
+  wrapper?: (props: { children: any }) => any;
   baseElement?: HTMLElement;
   hydrate?: boolean;
 }
@@ -23,7 +21,7 @@ export interface RenderOptions {
 export interface RenderResult {
   container: HTMLElement;
   baseElement: HTMLElement;
-  rerender: (ui: () => JSX.Element) => void;
+  rerender: (ui: () => any) => void;
   unmount: () => void;
   debug: (element?: HTMLElement) => void;
   getByRole: (role: string, options?: any) => HTMLElement;
@@ -44,7 +42,7 @@ export interface WaitForOptions {
 
 export interface RenderHookOptions<TProps> {
   initialProps?: TProps;
-  wrapper?: (props: { children: JSX.Element }) => JSX.Element;
+  wrapper?: (props: { children: any }) => any;
 }
 
 export interface RenderHookResult<TResult, TProps> {

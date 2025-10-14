@@ -15,6 +15,7 @@ import type {
   LoaderContext,
   ActionContext,
   NavigationOptions,
+  RedirectResult,
 } from './types.js';
 import { createRouter } from './router.js';
 
@@ -137,22 +138,33 @@ export class ModuleAwareRouter {
    * Register before navigation guard
    */
   beforeEach(guard: RouteGuard): () => void {
-    return this.baseRouter.beforeEach(async (context) => {
+    return this.baseRouter.beforeEach((context) => {
       // Execute module-specific guards first
-      const moduleId = this.routeModules.get(context.params.path || '');
+      const pathParam = context.params.path;
+      const pathString = Array.isArray(pathParam) ? (pathParam[0] || '') : (pathParam || '');
+      const moduleId = this.routeModules.get(pathString);
+
       if (moduleId) {
         const moduleGuards = this.moduleGuards.get(moduleId);
         if (moduleGuards) {
-          for (const moduleGuard of moduleGuards) {
-            const result = await moduleGuard(context);
-            if (result === false || (typeof result === 'object' && 'redirect' in result)) {
-              return result;
+          // Process module guards sequentially
+          // Returns Promise<boolean | RedirectResult> which is compatible with RouteGuard
+          return (async (): Promise<boolean | RedirectResult> => {
+            for (const moduleGuard of moduleGuards) {
+              const result = await moduleGuard(context);
+              // Type guard: check if result is RedirectResult
+              if (result === false || (typeof result === 'object' && result !== null && 'redirect' in result)) {
+                return result;
+              }
             }
-          }
+            // Then execute global guard
+            const guardResult = await guard(context);
+            return guardResult;
+          })() as ReturnType<RouteGuard>;
         }
       }
 
-      // Then execute global guard
+      // No module guards, just execute global guard
       return guard(context);
     });
   }
@@ -276,39 +288,52 @@ export class ModuleAwareRouter {
    * Wrap loader to inject root container
    */
   private wrapLoader(loader: any): any {
-    return (context: LoaderContext) => {
+    return (context: LoaderContext) =>
       // Add root container to context
-      return loader({
+       loader({
         ...context,
         container: this.rootContainer,
-      });
-    };
+      })
+    ;
+  }
+
+  /**
+   * Wrap action to inject root container
+   */
+  private wrapAction(action: any): any {
+    return (context: ActionContext) =>
+      // Add root container to context
+       action({
+        ...context,
+        container: this.rootContainer,
+      })
+    ;
   }
 
   /**
    * Wrap loader to inject module container
    */
   private wrapLoaderWithContainer(loader: any, container: DIContainer): any {
-    return (context: LoaderContext) => {
+    return (context: LoaderContext) => 
       // Add module container to context
-      return loader({
+       loader({
         ...context,
         container,
-      });
-    };
+      })
+    ;
   }
 
   /**
    * Wrap action to inject module container
    */
   private wrapActionWithContainer(action: any, container: DIContainer): any {
-    return (context: ActionContext) => {
+    return (context: ActionContext) => 
       // Add module container to context
-      return action({
+       action({
         ...context,
         container,
-      });
-    };
+      })
+    ;
   }
 }
 

@@ -2,7 +2,7 @@
  * Async Utilities Tests
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { waitFor, waitForElementToBeRemoved, act, render, cleanup } from '../../src/testing/index.js';
 import { signal } from '../../src/core/reactivity/index.js';
 
@@ -73,9 +73,7 @@ describe('async utilities', () => {
     });
 
     it('should work with async callbacks', async () => {
-      const result = await waitFor(async () => {
-        return Promise.resolve('async result');
-      });
+      const result = await waitFor(async () => Promise.resolve('async result'));
 
       expect(result).toBe('async result');
     });

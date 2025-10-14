@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, fireEvent } from '../../src/testing/index.js';
+import { fireEvent } from '../../src/testing/index.js';
 
 describe('fireEvent', () => {
   let element: HTMLButtonElement;

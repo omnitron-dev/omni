@@ -10,7 +10,7 @@
 
 import { describe, it, expect } from 'vitest';
 import * as ts from 'typescript';
-import { ModuleAnalyzer, analyzeModules } from '../../src/compiler/optimizations/module-analyzer.js';
+import { analyzeModules } from '../../src/compiler/optimizations/module-analyzer.js';
 
 /**
  * Helper to create TypeScript source file from code

@@ -5,6 +5,7 @@
  */
 
 import { DIContainer } from '../di/container.js';
+import { InjectionToken } from '../di/tokens.js';
 import { ModuleGraph } from './graph.js';
 import type {
   Module,
@@ -15,6 +16,7 @@ import type {
   RouteDefinition,
   IslandDefinition,
   StoreFactory,
+  Container,
 } from '../di/types.js';
 
 /**
@@ -293,7 +295,7 @@ export class ModuleManager {
    */
   private async registerStores(
     stores: StoreFactory[],
-    container: DIContainer,
+    container: Container,
     moduleId: string
   ): Promise<void> {
     if (!this.storeManager) return;
@@ -308,8 +310,9 @@ export class ModuleManager {
 
       // Make store available in DI
       const storeId = store.id || `store_${moduleId}_${Math.random().toString(36).slice(2)}`;
-      container.register(`STORE_${storeId}`, {
-        provide: `STORE_${storeId}`,
+      const storeToken = new InjectionToken<any>(`STORE_${storeId}`);
+      container.register(storeToken, {
+        provide: storeToken,
         useValue: store,
       });
     }
@@ -320,7 +323,7 @@ export class ModuleManager {
    */
   private registerRoutes(
     routes: RouteDefinition[],
-    container: DIContainer,
+    container: Container,
     moduleId: string
   ): void {
     if (!this.router) return;
@@ -349,21 +352,21 @@ export class ModuleManager {
   /**
    * Wrap route loader with container
    */
-  private wrapLoader(loader: any, container: DIContainer): any {
-    return (context: any) => {
+  private wrapLoader(loader: any, container: Container): any {
+    return (context: any) =>
       // Add container to loader context
-      return loader({ ...context, container });
-    };
+       loader({ ...context, container })
+    ;
   }
 
   /**
    * Wrap route action with container
    */
-  private wrapAction(action: any, container: DIContainer): any {
-    return (context: any) => {
+  private wrapAction(action: any, container: Container): any {
+    return (context: any) =>
       // Add container to action context
-      return action({ ...context, container });
-    };
+       action({ ...context, container })
+    ;
   }
 
   /**
@@ -371,7 +374,7 @@ export class ModuleManager {
    */
   private registerIslands(
     islands: IslandDefinition[],
-    container: DIContainer,
+    container: Container,
     moduleId: string
   ): void {
     // Register islands for hydration

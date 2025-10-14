@@ -8,7 +8,7 @@ export function renderHook<TResult, TProps = any>(
   hook: (props: TProps) => TResult,
   options: RenderHookOptions<TProps> = {}
 ): RenderHookResult<TResult, TProps> {
-  const { initialProps, wrapper } = options;
+  const { initialProps } = options;
   let dispose: (() => void) | undefined;
 
   const result: RenderHookResult<TResult, TProps>['result'] = {

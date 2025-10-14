@@ -128,12 +128,12 @@ export async function compile(
   if (compilerOptions.minify) {
     result = generateMinified(transformedSource, compilerOptions);
   } else if (compilerOptions.sourcemap === 'inline') {
-    const code = generateWithInlineSourceMap(transformedSource, {
+    const generatedCode = generateWithInlineSourceMap(transformedSource, {
       sourceMaps: true,
       inlineSourceMaps: true,
       pretty: compilerOptions.mode === 'development',
     });
-    result = { code, map: null, warnings: context.warnings };
+    result = { code: generatedCode, map: null, warnings: context.warnings };
   } else {
     result = generate(transformedSource, {
       sourceMaps: !!compilerOptions.sourcemap && compilerOptions.sourcemap !== 'hidden',

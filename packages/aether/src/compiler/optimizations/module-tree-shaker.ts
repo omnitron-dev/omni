@@ -6,7 +6,6 @@
  */
 
 import * as ts from 'typescript';
-import { walkAST, getNodeLocation } from '../parser.js';
 import type { ModuleMetadata, ModuleAnalysisResult } from './module-analyzer.js';
 import type { OptimizationPass, OptimizationResult, OptimizationChange, OptimizationContext, OptimizerOptions } from '../optimizer.js';
 
@@ -76,7 +75,7 @@ export class ModuleTreeShakerPass implements OptimizationPass {
       removeUnusedProviders: true,
       removeUnusedStores: true,
       removeUnusedModules: true,
-      aggressive: optimizerOptions.level === 'aggressive',
+      aggressive: optimizerOptions.mode === 'aggressive',
     };
   }
 
@@ -88,7 +87,7 @@ export class ModuleTreeShakerPass implements OptimizationPass {
     const warnings: string[] = [];
 
     // Parse code to AST
-    const sourceFile = ts.createSourceFile(context.filePath || 'input.tsx', code, ts.ScriptTarget.Latest, true);
+    const sourceFile = ts.createSourceFile(context.modulePath || 'input.tsx', code, ts.ScriptTarget.Latest, true);
 
     // Analyze modules
     const { analyzeModules } = await import('./module-analyzer.js');
@@ -149,7 +148,7 @@ export class ModuleTreeShakerPass implements OptimizationPass {
   private buildUsageInfo(): void {
     if (!this.moduleAnalysis) return;
 
-    const { modules, dependencies, usages } = this.moduleAnalysis;
+    const { modules, dependencies } = this.moduleAnalysis;
 
     // Initialize usage info for each module
     for (const module of modules) {
@@ -227,7 +226,9 @@ export class ModuleTreeShakerPass implements OptimizationPass {
               type: 'tree-shake',
               description: `Removed unused module '${module.id}'`,
               sizeImpact: beforeLength - afterLength,
-              location: module.location,
+              location: module.location?.line !== undefined && module.location?.column !== undefined
+                ? { line: module.location.line, column: module.location.column }
+                : undefined,
             });
           }
         }
@@ -341,7 +342,9 @@ export class ModuleTreeShakerPass implements OptimizationPass {
                 type: 'tree-shake',
                 description: `Removed unused provider '${provider.name}' from module '${module.id}'`,
                 sizeImpact: beforeLength - afterLength,
-                location: provider.location,
+                location: provider.location?.line !== undefined && provider.location?.column !== undefined
+                  ? { line: provider.location.line, column: provider.location.column }
+                  : undefined,
               });
             }
           }
@@ -390,7 +393,9 @@ export class ModuleTreeShakerPass implements OptimizationPass {
                 type: 'tree-shake',
                 description: `Removed unused store '${store.id}' from module '${module.id}'`,
                 sizeImpact: beforeLength - afterLength,
-                location: store.location,
+                location: store.location?.line !== undefined && store.location?.column !== undefined
+                  ? { line: store.location.line, column: store.location.column }
+                  : undefined,
               });
             }
           }

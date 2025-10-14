@@ -258,7 +258,7 @@ class AetherApplication implements Application {
       const moduleIds = Array.from(nodes.keys()).reverse();
 
       for (const moduleId of moduleIds) {
-        await this.teardownModule(moduleId);
+        await this.teardownModule(moduleId as string);
       }
 
       // Dispose router
@@ -289,7 +289,10 @@ class AetherApplication implements Application {
 
     // Cleanup stores
     if (loaded.definition.stores) {
-      await this.storeLifecycle.cleanupStores(moduleId, loaded.definition.stores);
+      await this.storeLifecycle.cleanupStores(
+        moduleId,
+        loaded.definition.stores as Array<import('../store/types.js').StoreFactory<any>>
+      );
     }
 
     // Cleanup routes

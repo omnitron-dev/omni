@@ -223,7 +223,7 @@ export class SubscriptionPool {
   /**
    * Generate subscription ID for deduplication
    */
-  private generateSubscriptionId(callback: Function, subscriber: any): string {
+  private generateSubscriptionId(callback: (...args: any[]) => any, subscriber: any): string {
     // Use function reference + subscriber identity
     const callbackId = (callback as any).__subscriptionId ?? callback.toString().slice(0, 50);
     const subscriberId = this.getObjectId(subscriber);

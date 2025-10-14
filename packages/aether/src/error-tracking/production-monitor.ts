@@ -7,7 +7,6 @@
  */
 
 import { signal } from '../core/reactivity/signal.js';
-import { computed } from '../core/reactivity/computed.js';
 import { getErrorAnalytics } from './error-analytics.js';
 import { getErrorReporter } from './error-reporter.js';
 
@@ -123,7 +122,6 @@ export class ProductionMonitor {
 
   private updateMetrics(): void {
     const analytics = getErrorAnalytics();
-    const topErrors = analytics.getTopErrors();
     const affectedUsers = analytics.getMostAffectedUsers().length;
 
     this.metrics.set({

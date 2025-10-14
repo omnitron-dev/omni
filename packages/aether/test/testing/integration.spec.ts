@@ -463,13 +463,11 @@ describe('Testing Library Integration', () => {
     it('should cleanup large component trees', () => {
       const items = Array.from({ length: 50 }, (_, i) => i);
 
-      const results = items.map(i => {
-        return render(() => {
+      const results = items.map(i => render(() => {
           const div = document.createElement('div');
           div.textContent = `Component ${i}`;
           return div as any;
-        });
-      });
+        }));
 
       // All should be mounted
       results.forEach(r => {

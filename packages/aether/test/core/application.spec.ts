@@ -18,7 +18,7 @@ import {
   setApp,
   getApp,
 } from '../../src/core/application.js';
-import type { Module, ModuleDefinition } from '../../src/di/types.js';
+import type { Module } from '../../src/di/types.js';
 
 // Mock dependencies
 vi.mock('../../src/router/module-integration.js', () => ({

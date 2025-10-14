@@ -9,6 +9,7 @@ import type { DIContainer } from '../di/container.js';
 import type { StoreFactory, StoreOptions } from './types.js';
 import { defineStore } from './defineStore.js';
 import { signal } from '../core/reactivity/signal.js';
+import { InjectionToken } from '../di/tokens.js';
 
 /**
  * Store scope types
@@ -199,7 +200,7 @@ export class ModuleScopedStoreManager {
    * Dispose all stores
    */
   dispose(): void {
-    for (const [storeId, metadata] of this.stores.entries()) {
+    for (const [_storeId, metadata] of this.stores.entries()) {
       // Dispose singleton
       if (metadata.singleton && typeof metadata.singleton.dispose === 'function') {
         metadata.singleton.dispose();
@@ -338,11 +339,12 @@ export class StoreLifecycleManager {
 
     // Wait for ongoing initialization
     if (this.initializing.has(key)) {
-      return this.initializing.get(key);
+      await this.initializing.get(key);
+      return;
     }
 
     // Start initialization
-    const initPromise = (async () => {
+    const initPromise = (async (): Promise<void> => {
       for (const factory of storeFactories) {
         // Instantiate store (triggers setup)
         factory();
@@ -350,8 +352,9 @@ export class StoreLifecycleManager {
         // Register in DI container if needed
         const storeId = (factory as any).id;
         if (storeId) {
-          container.register(`STORE_${storeId}`, {
-            provide: `STORE_${storeId}`,
+          const storeToken = new InjectionToken<any>(`STORE_${storeId}`);
+          container.register(storeToken, {
+            provide: storeToken,
             useValue: factory(),
           });
         }

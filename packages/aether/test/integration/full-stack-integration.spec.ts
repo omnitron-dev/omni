@@ -10,7 +10,7 @@
  * - Complete workflow from source to deployed application
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { AetherCompiler, createCompiler } from '../../src/compiler/compiler.js';
 import { render, cleanup, waitFor, fireEvent } from '../../src/testing/index.js';
 import { signal, computed, effect, batch } from '../../src/core/reactivity/index.js';
@@ -20,9 +20,8 @@ import { SignalTracker } from '../../src/monitoring/signal-tracking.js';
 import { MemoryProfiler } from '../../src/monitoring/memory-profiler.js';
 import { ParallelCompiler } from '../../src/build/parallel-compilation.js';
 import { SharedChunkManager } from '../../src/build/shared-chunks.js';
-import { ModuleFederationRuntime, testUtils } from '../../src/build/module-federation.js';
+import { testUtils } from '../../src/build/module-federation.js';
 import { SubscriptionPool } from '../../src/core/reactivity/subscription-pool.js';
-import { BatchManager, BatchPriority } from '../../src/core/reactivity/batch-manager.js';
 
 describe('Full-Stack Integration', () => {
   describe('Complete Build Pipeline', () => {

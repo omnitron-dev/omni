@@ -7,9 +7,7 @@
  */
 
 import { signal } from '../../core/reactivity/signal.js';
-import { computed } from '../../core/reactivity/computed.js';
 import { getComponentTracker } from '../../monitoring/component-tracking.js';
-import { getPerformanceMonitor } from '../../monitoring/performance.js';
 
 export interface OverlayConfig {
   enabled?: boolean;

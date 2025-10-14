@@ -221,7 +221,7 @@ export interface ModuleContext {
 /**
  * Module setup function
  */
-export type ModuleSetup<T extends ModuleMetadata = ModuleMetadata> = (
+export type ModuleSetup<_T extends ModuleMetadata = ModuleMetadata> = (
   context: SetupContext
 ) => ModuleContext | Promise<ModuleContext>;
 
@@ -302,16 +302,6 @@ export interface Module {
 }
 
 /**
- * Injector interface
- */
-export interface Injector {
-  get<T>(token: InjectableToken<T>, options?: InjectOptions): T;
-  has(token: InjectableToken): boolean;
-  createChild(providers?: Provider[]): Injector;
-  dispose(): void;
-}
-
-/**
  * Container interface
  */
 export interface Container {
@@ -319,4 +309,13 @@ export interface Container {
   resolve<T>(token: InjectableToken<T>): T;
   has(token: InjectableToken): boolean;
   clear(): void;
+  dispose(): void;
+}
+
+/**
+ * Injector interface
+ */
+export interface Injector extends Container {
+  get<T>(token: InjectableToken<T>, options?: InjectOptions): T;
+  createChild(providers?: Provider[]): Injector;
 }

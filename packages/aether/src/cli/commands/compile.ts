@@ -531,6 +531,9 @@ export function createCompileCommand() {
             options.format = value as 'esm' | 'cjs' | 'both';
             i++;
             break;
+          default:
+            // Unknown argument, skip
+            break;
         }
       }
 

@@ -2,19 +2,20 @@
  * Component Rendering Utilities
  */
 
-/// <reference path="../jsx-types.d.ts" />
-
-import type { RenderOptions, RenderResult, Matcher, MatcherOptions } from './types.js';
+import type { RenderOptions, RenderResult } from './types.js';
 import { createRoot } from '../core/reactivity/batch.js';
 import { createQueries } from './queries.js';
 
-let mountedContainers = new Set<HTMLElement>();
+// Type alias for JSX elements (avoid JSX namespace issues in DTS generation)
+type JSXElement = any;
+
+const mountedContainers = new Set<HTMLElement>();
 
 /**
  * Render a component for testing
  */
 export function render(
-  ui: () => JSX.Element,
+  ui: () => JSXElement,
   options: RenderOptions = {}
 ): RenderResult {
   const {
@@ -28,7 +29,7 @@ export function render(
 
   let dispose: (() => void) | undefined;
 
-  const mount = (component: () => JSX.Element) => {
+  const mount = (component: () => JSXElement) => {
     const element = wrapper
       ? wrapper({ children: component() })
       : component();
@@ -61,7 +62,7 @@ export function render(
     container,
     baseElement,
     ...queries,
-    rerender: (newUi: () => JSX.Element) => {
+    rerender: (newUi: () => JSXElement) => {
       if (dispose) dispose();
       container.innerHTML = '';
       mount(newUi);

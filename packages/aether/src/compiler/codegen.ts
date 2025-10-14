@@ -190,7 +190,7 @@ export function generateDeclaration(sourceFile: ts.SourceFile): string {
 
   // Emit declarations
   let declarationCode = '';
-  const emitResult = program.emit(undefined, (fileName, data) => {
+  program.emit(undefined, (fileName, data) => {
     if (fileName.endsWith('.d.ts')) {
       declarationCode = data;
     }
@@ -243,8 +243,8 @@ export function createContext(sourceFile: ts.SourceFile, options: CodeGenOptions
  * @param line - Line to write
  */
 export function writeLine(context: CodeGenContext, line: string): void {
-  const indent = '  '.repeat(context.indentLevel);
-  context.output.push(indent + line);
+  const indentation = '  '.repeat(context.indentLevel);
+  context.output.push(indentation + line);
 }
 
 /**

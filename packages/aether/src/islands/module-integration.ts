@@ -195,6 +195,11 @@ export class ModuleIslandManager {
       case 'custom':
         this.hydrateCustom(instance);
         break;
+
+      default:
+        // Default to immediate hydration for unknown strategies
+        await instance.hydrate();
+        break;
     }
   }
 
@@ -213,7 +218,7 @@ export class ModuleIslandManager {
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting) {
+        if (entries[0]?.isIntersecting) {
           observer.disconnect();
           instance.hydrate();
         }
@@ -392,12 +397,11 @@ export class ModuleIslandManager {
 
     for (let i = 0; i < markers.length; i++) {
       const marker = markers[i];
+      if (!marker) continue;
+
       const islandId = marker.getAttribute('data-island-id');
-      const propsData = marker.getAttribute('data-island-props');
 
       if (!islandId) continue;
-
-      const props = propsData ? JSON.parse(propsData) : {};
 
       // Queue for hydration
       this.hydrationQueue.push(islandId);

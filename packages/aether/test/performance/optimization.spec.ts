@@ -14,12 +14,12 @@
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { signal } from '../../src/core/reactivity/signal.js';
 import { batch } from '../../src/core/reactivity/batch.js';
-import { globalSubscriptionPool, SubscriptionPool } from '../../src/core/reactivity/subscription-pool.js';
-import { globalBatchManager, BatchManager, BatchPriority } from '../../src/core/reactivity/batch-manager.js';
+import { SubscriptionPool } from '../../src/core/reactivity/subscription-pool.js';
+import { BatchManager, BatchPriority } from '../../src/core/reactivity/batch-manager.js';
 import { globalVNodePool, VNodePool } from '../../src/reconciler/vnode-pool.js';
-import { OptimizedDiffer, optimizedDiff } from '../../src/reconciler/optimized-diff.js';
-import { globalComponentPool, ComponentPool } from '../../src/core/component/component-pool.js';
-import { RequestCache, cachedFetch } from '../../src/data/request-cache.js';
+import { OptimizedDiffer } from '../../src/reconciler/optimized-diff.js';
+import { ComponentPool } from '../../src/core/component/component-pool.js';
+import { RequestCache } from '../../src/data/request-cache.js';
 import { createElementVNode, createTextVNode } from '../../src/reconciler/vnode.js';
 
 describe('Performance Optimizations', () => {

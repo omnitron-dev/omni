@@ -6,7 +6,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Resizable, ResizablePanel, ResizableHandle } from '../../../src/primitives/Resizable.js';
-import { renderComponent, nextTick, createSpy } from '../../helpers/test-utils.js';
+import { renderComponent, createSpy } from '../../helpers/test-utils.js';
 
 describe('Resizable', () => {
   beforeEach(() => {

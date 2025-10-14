@@ -12,7 +12,7 @@ import {
   TimelineDescription,
   TimelineTimestamp,
 } from '../../../src/primitives/Timeline.js';
-import { renderComponent, nextTick } from '../../helpers/test-utils.js';
+import { renderComponent } from '../../helpers/test-utils.js';
 
 describe('Timeline', () => {
   beforeEach(() => {

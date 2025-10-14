@@ -47,6 +47,8 @@ export interface ComponentContext {
   mountCallbacks: MountCallback[];
   /** Error callbacks */
   errorCallbacks: ErrorCallback[];
+  /** Cleanup callbacks */
+  cleanupCallbacks?: CleanupFunction[];
   /** Whether component is mounted */
   isMounted: boolean;
 }

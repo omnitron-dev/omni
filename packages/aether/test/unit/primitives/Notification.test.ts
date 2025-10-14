@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Notification, notify, closeNotification } from '../../../src/primitives/Notification.js';
-import { renderComponent, nextTick } from '../../helpers/test-utils.js';
+import { renderComponent } from '../../helpers/test-utils.js';
 
 describe('Notification', () => {
   let cleanup: (() => void) | undefined;

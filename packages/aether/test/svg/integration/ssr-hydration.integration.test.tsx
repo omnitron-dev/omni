@@ -13,9 +13,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { signal, computed } from '../../../src/index.js';
 import { renderSVGToString, renderSVGBatch } from '../../../src/svg/ssr/render.js';
-import { hydrateSVG, hydrateAll, isHydrated, getHydrationData } from '../../../src/svg/ssr/hydrate.js';
-import { SVG } from '../../../src/svg/primitives/svg.js';
-import { Circle } from '../../../src/svg/primitives/shapes.js';
+import { hydrateSVG, isHydrated, getHydrationData } from '../../../src/svg/ssr/hydrate.js';
 import { SVGIcon } from '../../../src/svg/components/SVGIcon.js';
 import { ProgressiveSVG } from '../../../src/svg/components/ProgressiveSVG.js';
 import type { Component } from '../../../src/core/component/types.js';

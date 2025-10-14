@@ -4,7 +4,7 @@
  * Verifies that the testing library works correctly with Aether components
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { render, cleanup, fireEvent, userEvent, waitFor } from '../../src/testing/index.js';
 import { signal } from '../../src/core/reactivity/signal.js';
 import { defineComponent } from '../../src/core/component/define.js';
@@ -16,13 +16,11 @@ describe('Testing Library', () => {
 
   describe('render', () => {
     it('should render a simple component', () => {
-      const TestComponent = defineComponent(() => {
-        return () => {
+      const TestComponent = defineComponent(() => () => {
           const div = document.createElement('div');
           div.textContent = 'Hello World';
           return div;
-        };
-      });
+        });
 
       const { container } = render(() => TestComponent({}));
 
@@ -30,14 +28,12 @@ describe('Testing Library', () => {
     });
 
     it('should provide query utilities', () => {
-      const TestComponent = defineComponent(() => {
-        return () => {
+      const TestComponent = defineComponent(() => () => {
           const div = document.createElement('div');
           div.setAttribute('data-testid', 'test-div');
           div.textContent = 'Test Content';
           return div;
-        };
-      });
+        });
 
       const { getByTestId, getByText } = render(() => TestComponent({}));
 
@@ -48,14 +44,12 @@ describe('Testing Library', () => {
     it('should support rerender', () => {
       let renderCount = 0;
 
-      const TestComponent = defineComponent(() => {
-        return () => {
+      const TestComponent = defineComponent(() => () => {
           renderCount++;
           const div = document.createElement('div');
           div.textContent = `Render ${renderCount}`;
           return div;
-        };
-      });
+        });
 
       const { container, rerender } = render(() => TestComponent({}));
 
@@ -67,13 +61,11 @@ describe('Testing Library', () => {
     });
 
     it('should cleanup on unmount', () => {
-      const TestComponent = defineComponent(() => {
-        return () => {
+      const TestComponent = defineComponent(() => () => {
           const div = document.createElement('div');
           div.textContent = 'Test';
           return div;
-        };
-      });
+        });
 
       const { container, unmount } = render(() => TestComponent({}));
 
@@ -89,16 +81,14 @@ describe('Testing Library', () => {
     it('should fire click events', () => {
       let clicked = false;
 
-      const TestComponent = defineComponent(() => {
-        return () => {
+      const TestComponent = defineComponent(() => () => {
           const button = document.createElement('button');
           button.textContent = 'Click Me';
           button.onclick = () => {
             clicked = true;
           };
           return button;
-        };
-      });
+        });
 
       const { getByText } = render(() => TestComponent({}));
 
@@ -109,13 +99,11 @@ describe('Testing Library', () => {
     });
 
     it('should fire input events', () => {
-      const TestComponent = defineComponent(() => {
-        return () => {
+      const TestComponent = defineComponent(() => () => {
           const input = document.createElement('input');
           input.setAttribute('data-testid', 'test-input');
           return input;
-        };
-      });
+        });
 
       const { getByTestId } = render(() => TestComponent({}));
 
@@ -129,13 +117,11 @@ describe('Testing Library', () => {
 
   describe('userEvent', () => {
     it('should simulate typing', async () => {
-      const TestComponent = defineComponent(() => {
-        return () => {
+      const TestComponent = defineComponent(() => () => {
           const input = document.createElement('input');
           input.setAttribute('data-testid', 'test-input');
           return input;
-        };
-      });
+        });
 
       const { getByTestId } = render(() => TestComponent({}));
 
@@ -148,16 +134,14 @@ describe('Testing Library', () => {
     it('should simulate clicking', async () => {
       let clicked = false;
 
-      const TestComponent = defineComponent(() => {
-        return () => {
+      const TestComponent = defineComponent(() => () => {
           const button = document.createElement('button');
           button.textContent = 'Click Me';
           button.onclick = () => {
             clicked = true;
           };
           return button;
-        };
-      });
+        });
 
       const { getByText } = render(() => TestComponent({}));
 
@@ -168,14 +152,12 @@ describe('Testing Library', () => {
     });
 
     it('should clear input values', async () => {
-      const TestComponent = defineComponent(() => {
-        return () => {
+      const TestComponent = defineComponent(() => () => {
           const input = document.createElement('input');
           input.setAttribute('data-testid', 'test-input');
           input.value = 'initial value';
           return input;
-        };
-      });
+        });
 
       const { getByTestId } = render(() => TestComponent({}));
 

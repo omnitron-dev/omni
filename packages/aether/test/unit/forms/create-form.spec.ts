@@ -2,9 +2,8 @@
  * Tests for createForm
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createForm } from '../../../src/forms/create-form';
-import type { FormConfig } from '../../../src/forms/types';
 
 describe('createForm', () => {
   describe('Basic Form Creation', () => {

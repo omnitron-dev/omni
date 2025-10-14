@@ -7,9 +7,6 @@ import {
   getPathCenter,
   reversePath,
   toRelativePath,
-  type PathCommand,
-  type PathBounds,
-  type Point,
 } from '../../../src/svg/utils/path';
 
 describe('SVG Path Utils', () => {

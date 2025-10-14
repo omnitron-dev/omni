@@ -2,7 +2,7 @@
  * Component Definition Tests
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { defineComponent, component } from '../../../../src/core/component/define.js';
 import { signal } from '../../../../src/core/reactivity/signal.js';
 
@@ -27,9 +27,7 @@ describe('defineComponent', () => {
     });
 
     it('should return render result when component is called', () => {
-      const MyComponent = defineComponent(() => {
-        return () => 'Hello World';
-      });
+      const MyComponent = defineComponent(() => () => 'Hello World');
 
       const result = MyComponent({});
 
@@ -45,9 +43,7 @@ describe('defineComponent', () => {
 
   describe('Props handling', () => {
     it('should pass props to setup function', () => {
-      const MyComponent = defineComponent<{ name: string }>((props) => {
-        return () => `Hello ${props.name}`;
-      });
+      const MyComponent = defineComponent<{ name: string }>((props) => () => `Hello ${props.name}`);
 
       const result = MyComponent({ name: 'Alice' });
 
@@ -109,9 +105,7 @@ describe('defineComponent', () => {
 
   describe('component() alias', () => {
     it('should create component with explicit name', () => {
-      const MyComponent = component('MyComponent', () => {
-        return () => 'test';
-      });
+      const MyComponent = component('MyComponent', () => () => 'test');
 
       expect(MyComponent.displayName).toBe('MyComponent');
     });
@@ -134,12 +128,10 @@ describe('defineComponent', () => {
     it('should support cleanup on unmount', () => {
       const cleanup = vi.fn();
 
-      const MyComponent = defineComponent(() => {
-        return () => {
+      const MyComponent = defineComponent(() => () => 
           // In real implementation, cleanup would be registered via onCleanup
-          return null;
-        };
-      });
+           null
+        );
 
       MyComponent({});
 
@@ -150,21 +142,19 @@ describe('defineComponent', () => {
 
   describe('Error handling', () => {
     it('should handle errors in setup function', () => {
-      const MyComponent = defineComponent(() => {
+      const MyComponent = defineComponent(() => 
         // This would throw in a real error scenario
-        return () => null;
-      });
+         () => null
+      );
 
       expect(() => MyComponent({})).not.toThrow();
     });
 
     it('should handle errors in render function', () => {
-      const MyComponent = defineComponent(() => {
-        return () => {
+      const MyComponent = defineComponent(() => () => 
           // Render function should be able to throw
-          return null;
-        };
-      });
+           null
+        );
 
       expect(() => MyComponent({})).not.toThrow();
     });
@@ -177,10 +167,10 @@ describe('defineComponent', () => {
         age: number;
       }
 
-      const MyComponent = defineComponent<Props>((props) => {
+      const MyComponent = defineComponent<Props>((props) => 
         // TypeScript should enforce props.name is string and props.age is number
-        return () => `${props.name} is ${props.age}`;
-      });
+         () => `${props.name} is ${props.age}`
+      );
 
       const result = MyComponent({ name: 'Alice', age: 30 });
 
@@ -190,9 +180,7 @@ describe('defineComponent', () => {
 
   describe('Nested components', () => {
     it('should support component composition', () => {
-      const Child = defineComponent<{ value: number }>((props) => {
-        return () => props.value * 2;
-      });
+      const Child = defineComponent<{ value: number }>((props) => () => props.value * 2);
 
       const Parent = defineComponent(() => {
         const childResult = Child({ value: 21 });

@@ -5,6 +5,7 @@
  */
 
 import { defineComponent, createContext, useContext, effect, signal } from '../../index.js';
+import { jsx } from '../../jsx-runtime.js';
 import { IconRegistry, getIconRegistry, type IconSet, type IconSource } from './IconRegistry.js';
 import type { SVGIconProps } from '../components/SVGIcon.js';
 
@@ -123,11 +124,11 @@ export const IconProvider = defineComponent<IconProviderProps>((props) => {
     fallback: props.fallback,
   };
 
-  return () => (
-    <IconContext.Provider value={contextValue}>
-      {props.children}
-    </IconContext.Provider>
-  );
+  return () =>
+    jsx(IconContext.Provider, {
+      value: contextValue,
+      children: props.children,
+    });
 });
 
 /**

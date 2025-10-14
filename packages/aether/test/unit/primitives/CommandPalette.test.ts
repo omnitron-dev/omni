@@ -14,7 +14,7 @@ import {
   CommandPaletteShortcut,
   CommandPaletteEmpty,
 } from '../../../src/primitives/CommandPalette.js';
-import { renderComponent, nextTick } from '../../helpers/test-utils.js';
+import { renderComponent } from '../../helpers/test-utils.js';
 
 // Track active element globally for focus mocking
 let _activeElement: Element | null = null;
@@ -34,7 +34,7 @@ describe('CommandPalette', () => {
 
     // Mock focus/blur methods
     Object.defineProperty(HTMLElement.prototype, 'focus', {
-      value: function (this: HTMLElement) {
+      value (this: HTMLElement) {
         _activeElement = this;
         this.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       },
@@ -43,7 +43,7 @@ describe('CommandPalette', () => {
     });
 
     Object.defineProperty(HTMLElement.prototype, 'blur', {
-      value: function (this: HTMLElement) {
+      value (this: HTMLElement) {
         _activeElement = document.body;
         this.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
       },
@@ -53,7 +53,7 @@ describe('CommandPalette', () => {
 
     // Mock scrollIntoView
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
-      value: function () {
+      value () {
         // No-op for tests
       },
       writable: true,
@@ -627,7 +627,7 @@ describe('CommandPalette', () => {
       const open = signal(true);
       const component = () =>
         CommandPalette({
-          open: open,
+          open,
           onOpenChange: (value) => open.set(value),
           children: () => [
             CommandPaletteDialog({
@@ -771,7 +771,7 @@ describe('CommandPalette', () => {
       const open = signal(true); // Start open so we can test the content renders
       const component = () =>
         CommandPalette({
-          open: open, // Pass signal directly (Pattern 19)
+          open, // Pass signal directly (Pattern 19)
           onOpenChange: (value) => open.set(value),
           children: () => [
             CommandPaletteDialog({
@@ -814,7 +814,7 @@ describe('CommandPalette', () => {
       const open = signal(true);
       const component = () =>
         CommandPalette({
-          open: open,
+          open,
           onOpenChange: (value) => open.set(value),
           children: () => [
             CommandPaletteDialog({

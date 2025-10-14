@@ -18,7 +18,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { signal, computed, effect, context, createRoot, getOwner, onCleanup } from '../../../../src/core/reactivity/index.js';
+import { signal, computed, effect, createRoot, getOwner, onCleanup } from '../../../../src/core/reactivity/index.js';
 
 describe('Global State Management', () => {
   describe('GlobalThis state initialization', () => {

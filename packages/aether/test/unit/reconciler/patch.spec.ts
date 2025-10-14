@@ -12,8 +12,6 @@ import {
   createElementVNode,
   createTextVNode,
   createFragmentVNode,
-  VNodeType,
-  type VNode,
 } from '../../../src/reconciler/vnode.js';
 import { createDOMFromVNode } from '../../../src/reconciler/create-dom.js';
 

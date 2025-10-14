@@ -59,6 +59,42 @@ export function onMount(callback: MountCallback): void {
 }
 
 /**
+ * Register a cleanup callback to run when component unmounts
+ *
+ * This is an alias for registering cleanup in onMount.
+ * onCleanup must be called inside onMount, not at component setup level.
+ *
+ * @param callback - Cleanup function
+ *
+ * @example
+ * ```typescript
+ * const MyComponent = defineComponent(() => {
+ *   onMount(() => {
+ *     const timer = setInterval(() => console.log('tick'), 1000);
+ *
+ *     onCleanup(() => {
+ *       clearInterval(timer);
+ *     });
+ *   });
+ *
+ *   return () => <div>Hello</div>;
+ * });
+ * ```
+ */
+export function onCleanup(callback: () => void): void {
+  // onCleanup should be called within an onMount callback
+  // We'll store it on the component context and call it during cleanup
+  const ctx = getComponentContext();
+
+  // Add a cleanup callback that will be called during unmount
+  // We need to ensure this is called in the right context
+  if (!ctx.cleanupCallbacks) {
+    (ctx as any).cleanupCallbacks = [];
+  }
+  (ctx as any).cleanupCallbacks.push(callback);
+}
+
+/**
  * Register error handler for component tree
  *
  * @param callback - Error handler function

@@ -1,8 +1,7 @@
 /**
  * @vitest-environment happy-dom
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { signal } from '../../../src/core/reactivity/signal.js';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { Textarea } from '../../../src/primitives/Textarea.js';
 import { renderComponent, nextTick, createSpy } from '../../helpers/test-utils.js';
 

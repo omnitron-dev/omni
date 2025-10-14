@@ -30,7 +30,7 @@ describe('RadioGroup', () => {
 
     // Mock focus/blur for happy-dom compatibility
     Object.defineProperty(HTMLElement.prototype, 'focus', {
-      value: function (this: HTMLElement) {
+      value (this: HTMLElement) {
         _activeElement = this;
         this.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       },
@@ -39,7 +39,7 @@ describe('RadioGroup', () => {
     });
 
     Object.defineProperty(HTMLElement.prototype, 'blur', {
-      value: function (this: HTMLElement) {
+      value (this: HTMLElement) {
         _activeElement = document.body;
         this.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
       },

@@ -4,7 +4,7 @@
  * @vitest-environment happy-dom
  */
 
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   Popover,
   PopoverTrigger,

@@ -2,7 +2,7 @@
  * Lazy Component Loading Tests
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { lazy, preloadComponent } from '../../../../src/core/component/lazy.js';
 import { defineComponent } from '../../../../src/core/component/define.js';
 import { signal } from '../../../../src/core/reactivity/signal.js';
@@ -84,9 +84,7 @@ describe('lazy', () => {
         name: string;
       }
 
-      const TestComponent = defineComponent<TestProps>((props) => {
-        return () => `Hello ${props.name}`;
-      });
+      const TestComponent = defineComponent<TestProps>((props) => () => `Hello ${props.name}`);
 
       const LazyComponent = lazy<TestProps>(() => Promise.resolve({ default: TestComponent }));
 
@@ -302,9 +300,7 @@ describe('Lazy component with state', () => {
     const Counter = defineComponent(() => {
       const count = signal(0);
 
-      return () => {
-        return count();
-      };
+      return () => count();
     });
 
     const LazyCounter = lazy(() => Promise.resolve({ default: Counter }));

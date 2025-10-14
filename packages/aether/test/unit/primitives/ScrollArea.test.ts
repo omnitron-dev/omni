@@ -11,7 +11,7 @@ import {
   ScrollAreaScrollbar,
   ScrollAreaThumb,
 } from '../../../src/primitives/ScrollArea.js';
-import { renderComponent, nextTick, createSpy } from '../../helpers/test-utils.js';
+import { renderComponent } from '../../helpers/test-utils.js';
 
 describe('ScrollArea', () => {
   beforeEach(() => {

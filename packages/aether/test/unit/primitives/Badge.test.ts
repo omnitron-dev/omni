@@ -2,7 +2,6 @@
  * @vitest-environment happy-dom
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { signal } from '../../../src/core/reactivity/signal.js';
 import { Badge } from '../../../src/primitives/Badge.js';
 import { renderComponent } from '../../helpers/test-utils.js';
 

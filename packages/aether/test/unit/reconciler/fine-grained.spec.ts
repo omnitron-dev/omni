@@ -19,7 +19,7 @@ import {
   type StyleValue,
 } from '../../../src/reconciler/fine-grained.js';
 import { signal } from '../../../src/core/reactivity/signal.js';
-import { createElementVNode, createTextVNode, type VNode } from '../../../src/reconciler/vnode.js';
+import { createElementVNode, createTextVNode } from '../../../src/reconciler/vnode.js';
 
 describe('Fine-Grained Reactivity', () => {
   beforeEach(() => {
@@ -563,9 +563,7 @@ describe('Fine-Grained Reactivity', () => {
 
   describe('batchEffects', () => {
     it('should execute function and return result', () => {
-      const result = batchEffects(() => {
-        return 42;
-      });
+      const result = batchEffects(() => 42);
 
       expect(result).toBe(42);
     });
@@ -575,13 +573,11 @@ describe('Fine-Grained Reactivity', () => {
       const count2 = signal(2);
       const count3 = signal(3);
 
-      const nodes = batchEffects(() => {
-        return [
+      const nodes = batchEffects(() => [
           createReactiveTextNode(() => count1()),
           createReactiveTextNode(() => count2()),
           createReactiveTextNode(() => count3()),
-        ];
-      });
+        ]);
 
       expect(nodes.length).toBe(3);
       expect(nodes[0].textContent).toBe('1');

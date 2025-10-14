@@ -2,12 +2,12 @@ import { defineConfig } from 'tsup';
 
 export default defineConfig({
   entry: {
+    'jsx-runtime': 'src/jsx-runtime.ts',
+    'jsx-dev-runtime': 'src/jsx-dev-runtime.ts',
     index: 'src/index.ts',
     'core/index': 'src/core/index.ts',
     'core/reactivity/index': 'src/core/reactivity/index.ts',
     'core/component/index': 'src/core/component/index.ts',
-    'jsx-runtime': 'src/jsx-runtime.ts',
-    'jsx-dev-runtime': 'src/jsx-dev-runtime.ts',
     'di/index': 'src/di/index.ts',
     'modules/index': 'src/modules/index.ts',
     'router/index': 'src/router/index.ts',
@@ -26,7 +26,7 @@ export default defineConfig({
     'testing/index': 'src/testing/index.ts',
   },
   format: ['esm'],
-  dts: true,
+  dts: false, // Temporarily disabled due to TSX circular dependency with jsx-runtime types
   sourcemap: true,
   clean: true,
   splitting: false,

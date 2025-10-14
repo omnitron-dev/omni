@@ -3,7 +3,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Masonry } from '../../../src/primitives/Masonry.js';
-import { renderComponent, nextTick, waitFor } from '../../helpers/test-utils.js';
+import { renderComponent } from '../../helpers/test-utils.js';
 
 describe('Masonry', () => {
   // Store original offsetHeight getter

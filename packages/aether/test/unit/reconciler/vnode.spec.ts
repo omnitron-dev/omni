@@ -20,7 +20,6 @@ import {
   createVNodeFromValue,
   getVNodeKey,
   VNodeType,
-  type VNode,
   type ComponentFunction,
 } from '../../../src/reconciler/vnode.js';
 

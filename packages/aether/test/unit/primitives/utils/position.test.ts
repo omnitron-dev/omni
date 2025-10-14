@@ -9,8 +9,6 @@ import {
   calculatePosition,
   applyPosition,
   calculateArrowPosition,
-  type Side,
-  type Align,
 } from '../../../../src/primitives/utils/position.js';
 
 describe('Positioning Utilities', () => {

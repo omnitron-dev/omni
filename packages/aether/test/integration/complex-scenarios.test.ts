@@ -3,7 +3,7 @@
  * Tests edge cases and complex interactions in the reactive system
  */
 
-import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import {
   signal,
   computed,

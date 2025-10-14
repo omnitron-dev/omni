@@ -12,8 +12,6 @@ import {
   diffChildren,
   PatchType,
   shallowEqual,
-  type Patch,
-  type PropPatch,
 } from '../../../src/reconciler/diff.js';
 import { diffChildrenWithKeys, diffChildrenByIndex, detectListPattern } from '../../../src/reconciler/diff-children.js';
 import {
@@ -21,8 +19,6 @@ import {
   createTextVNode,
   createComponentVNode,
   createFragmentVNode,
-  VNodeType,
-  type VNode,
   type ComponentFunction,
 } from '../../../src/reconciler/vnode.js';
 

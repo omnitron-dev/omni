@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { signal } from '../../../src/core/reactivity/signal.js';
 import { Input } from '../../../src/primitives/Input.js';
-import { renderComponent, nextTick, createSpy } from '../../helpers/test-utils.js';
+import { renderComponent, createSpy } from '../../helpers/test-utils.js';
 
 describe('Input', () => {
   beforeEach(() => {

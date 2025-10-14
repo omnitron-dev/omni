@@ -2,7 +2,7 @@
  * ID Generation Utilities Tests
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { generateId, useId, createIdGenerator } from '../../../../src/primitives/utils/id.js';
 
 describe('ID Generation Utilities', () => {

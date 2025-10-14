@@ -1,7 +1,7 @@
 /**
  * @vitest-environment happy-dom
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   Menubar,
   MenubarMenu,
@@ -32,7 +32,7 @@ describe('Menubar', () => {
 
     // Mock focus/blur methods
     Object.defineProperty(HTMLElement.prototype, 'focus', {
-      value: function (this: HTMLElement) {
+      value (this: HTMLElement) {
         _activeElement = this;
         this.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       },
@@ -41,7 +41,7 @@ describe('Menubar', () => {
     });
 
     Object.defineProperty(HTMLElement.prototype, 'blur', {
-      value: function (this: HTMLElement) {
+      value (this: HTMLElement) {
         _activeElement = document.body;
         this.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
       },

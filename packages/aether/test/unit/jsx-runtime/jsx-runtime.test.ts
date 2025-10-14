@@ -4,9 +4,8 @@
  * @vitest-environment happy-dom
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { jsx, jsxs, Fragment } from '../../../src/jsx-runtime.js';
-import { signal } from '../../../src/core/reactivity/signal.js';
 import { defineComponent } from '../../../src/core/component/define.js';
 
 describe('JSX Runtime', () => {
@@ -315,9 +314,7 @@ describe('JSX Runtime', () => {
 
   describe('Component rendering', () => {
     it('should render component', () => {
-      const MyComponent = defineComponent<{ name: string }>((props) => {
-        return () => jsx('div', { children: `Hello ${props.name}` });
-      });
+      const MyComponent = defineComponent<{ name: string }>((props) => () => jsx('div', { children: `Hello ${props.name}` }));
 
       const result = jsx(MyComponent, { name: 'World' }) as HTMLDivElement;
 
@@ -326,9 +323,7 @@ describe('JSX Runtime', () => {
     });
 
     it('should pass props to component', () => {
-      const MyComponent = defineComponent<{ count: number }>((props) => {
-        return () => jsx('span', { children: `Count: ${props.count}` });
-      });
+      const MyComponent = defineComponent<{ count: number }>((props) => () => jsx('span', { children: `Count: ${props.count}` }));
 
       const result = jsx(MyComponent, { count: 42 }) as HTMLSpanElement;
 
@@ -336,9 +331,7 @@ describe('JSX Runtime', () => {
     });
 
     it('should pass children to component', () => {
-      const Container = defineComponent<{ children: any }>((props) => {
-        return () => jsx('div', { className: 'container', children: props.children });
-      });
+      const Container = defineComponent<{ children: any }>((props) => () => jsx('div', { className: 'container', children: props.children }));
 
       const result = jsx(Container, {
         children: jsx('p', { children: 'Content' }),
@@ -349,13 +342,9 @@ describe('JSX Runtime', () => {
     });
 
     it('should handle nested components', () => {
-      const Inner = defineComponent(() => {
-        return () => jsx('span', { children: 'Inner' });
-      });
+      const Inner = defineComponent(() => () => jsx('span', { children: 'Inner' }));
 
-      const Outer = defineComponent(() => {
-        return () => jsx('div', { children: jsx(Inner, {}) });
-      });
+      const Outer = defineComponent(() => () => jsx('div', { children: jsx(Inner, {}) }));
 
       const result = jsx(Outer, {}) as HTMLDivElement;
 

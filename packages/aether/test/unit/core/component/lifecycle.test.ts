@@ -2,7 +2,7 @@
  * Component Lifecycle Hooks Tests
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { onMount, onError } from '../../../../src/core/component/lifecycle.js';
 import { defineComponent } from '../../../../src/core/component/define.js';
 import { signal } from '../../../../src/core/reactivity/signal.js';
@@ -27,9 +27,7 @@ describe('Component Lifecycle', () => {
       const cleanup = vi.fn();
 
       const MyComponent = defineComponent(() => {
-        onMount(() => {
-          return cleanup;
-        });
+        onMount(() => cleanup);
         return () => null;
       });
 
@@ -265,15 +263,9 @@ describe('Component Lifecycle', () => {
       const cleanups: number[] = [];
 
       const MyComponent = defineComponent(() => {
-        onMount(() => {
-          return () => cleanups.push(1);
-        });
-        onMount(() => {
-          return () => cleanups.push(2);
-        });
-        onMount(() => {
-          return () => cleanups.push(3);
-        });
+        onMount(() => () => cleanups.push(1));
+        onMount(() => () => cleanups.push(2));
+        onMount(() => () => cleanups.push(3));
         return () => null;
       });
 

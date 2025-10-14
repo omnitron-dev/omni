@@ -1,7 +1,7 @@
 /**
  * @vitest-environment happy-dom
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { Label } from '../../../src/primitives/Label.js';
 import { renderComponent } from '../../helpers/test-utils.js';
 

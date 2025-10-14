@@ -2,7 +2,7 @@
  * Error Boundary Tests
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   ErrorBoundary,
   useErrorBoundary,
@@ -33,14 +33,12 @@ describe('ErrorBoundary', () => {
       });
 
       // Wrap in a parent component so ErrorChild is called in the right context
-      const Wrapper = defineComponent(() => {
-        return () =>
+      const Wrapper = defineComponent(() => () =>
           ErrorBoundary({
             onError: errorSpy,
             // Pass children as function so it's called inside ErrorBoundary context
             children: () => ErrorChild({}),
-          });
-      });
+          }));
 
       Wrapper({});
 
@@ -376,9 +374,7 @@ describe('ErrorBoundary', () => {
         name: string;
       }
 
-      const TestComponent = defineComponent<TestProps>((props) => {
-        return () => `Hello ${props.name}`;
-      });
+      const TestComponent = defineComponent<TestProps>((props) => () => `Hello ${props.name}`);
 
       const WrappedComponent = withErrorBoundary(TestComponent, {
         onError: () => {},

@@ -2,9 +2,8 @@
  * @vitest-environment happy-dom
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { signal } from '../../../src/core/reactivity/signal.js';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipArrow } from '../../../src/primitives/Tooltip.js';
-import { renderComponent, nextTick, createSpy } from '../../helpers/test-utils.js';
+import { renderComponent } from '../../helpers/test-utils.js';
 
 describe('Tooltip', () => {
   beforeEach(() => {

@@ -11,7 +11,6 @@ import {
   getPathCenter,
   reversePath,
   toRelativePath,
-  type PathCommand,
 } from '../../../src/svg/utils/path.js';
 
 describe('SVG Path Utils - Edge Cases', () => {

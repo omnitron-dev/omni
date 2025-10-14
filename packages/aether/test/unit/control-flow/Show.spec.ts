@@ -2,7 +2,7 @@
  * Tests for Show component
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { Show } from '../../../src/control-flow/Show';
 import { signal } from '../../../src/core/reactivity/signal';
 import { jsx } from '../../../src/jsx-runtime';

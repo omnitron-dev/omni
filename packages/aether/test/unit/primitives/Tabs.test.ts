@@ -24,7 +24,7 @@ describe('Tabs', () => {
 
     // Mock focus/blur methods
     Object.defineProperty(HTMLElement.prototype, 'focus', {
-      value: function (this: HTMLElement) {
+      value (this: HTMLElement) {
         _activeElement = this;
         this.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       },
@@ -33,7 +33,7 @@ describe('Tabs', () => {
     });
 
     Object.defineProperty(HTMLElement.prototype, 'blur', {
-      value: function (this: HTMLElement) {
+      value (this: HTMLElement) {
         _activeElement = document.body;
         this.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
       },

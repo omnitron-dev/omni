@@ -140,7 +140,7 @@ describe('Rating', () => {
       const value = signal(2);
       const component = () =>
         Rating({
-          value: value, // Pass signal directly
+          value, // Pass signal directly
           max: 5,
           children: (index: number) => RatingItem({ index, children: '★' }),
         });

@@ -674,7 +674,7 @@ describe('Progress', () => {
 
       const component = () =>
         Progress({
-          value: value, // Pass signal directly, not value()
+          value, // Pass signal directly, not value()
           children: ProgressIndicator({}),
         });
 

@@ -13,7 +13,7 @@ import {
 } from '../../../src/primitives/Stepper.js';
 import { signal } from '../../../src/core/reactivity/signal.js';
 import { createRoot } from '../../../src/core/reactivity/batch.js';
-import { renderComponent, nextTick } from '../../helpers/test-utils.js';
+import { renderComponent } from '../../helpers/test-utils.js';
 
 describe('Stepper Primitive', () => {
   let container: HTMLDivElement;

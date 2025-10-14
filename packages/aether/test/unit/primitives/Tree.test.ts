@@ -359,7 +359,7 @@ describe('Tree', () => {
 
       const component = () =>
         Tree({
-          expanded: expanded,
+          expanded,
           onExpandedChange: (value) => expanded.set(value),
           children: () =>
             TreeItem({
@@ -439,7 +439,7 @@ describe('Tree', () => {
 
       const component = () =>
         Tree({
-          selected: selected,
+          selected,
           onSelectedChange: (value) => selected.set(value),
           children: () => [
             TreeItem({

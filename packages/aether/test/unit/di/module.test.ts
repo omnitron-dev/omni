@@ -3,7 +3,7 @@
  */
 
 import 'reflect-metadata';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { defineModule, compileModule, bootstrapModule } from '../../../src/di/module.js';
 import { Injectable } from '../../../src/di/injectable.js';
 import { InjectionToken } from '../../../src/di/tokens.js';

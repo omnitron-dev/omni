@@ -5,10 +5,9 @@
  * with fine-grained reactivity and efficient reconciliation.
  */
 
-import { describe, test, expect, beforeEach, afterEach } from 'vitest';
+import { describe, test, expect } from 'vitest';
 import { signal } from '../../../src/core/reactivity/signal.js';
 import { Show, For, Switch, Match } from '../../../src/reconciler/conditional.js';
-import type { ShowProps, ForProps, SwitchProps, MatchProps } from '../../../src/reconciler/conditional.js';
 
 describe('Conditional Rendering - Show Component', () => {
   describe('Basic boolean conditions', () => {

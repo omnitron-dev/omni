@@ -8,6 +8,7 @@
 export * from './vnode.js';
 export * from './create-dom.js';
 export * from './reactive-binding.js';
+export * from './jsx-integration.js';
 
 // Conditional rendering components
 export * from './conditional.js';

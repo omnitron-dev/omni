@@ -11,7 +11,7 @@ import {
   ToolbarToggleGroup,
   ToolbarToggleItem,
 } from '../../../src/primitives/Toolbar.js';
-import { renderComponent, createSpy, nextTick } from '../../helpers/test-utils.js';
+import { renderComponent, createSpy } from '../../helpers/test-utils.js';
 
 describe('Toolbar', () => {
   beforeEach(() => {

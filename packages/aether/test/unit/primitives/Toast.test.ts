@@ -95,12 +95,10 @@ describe('ToastProvider', () => {
         return () => '';
       });
 
-      const App = defineComponent(() => {
-        return () =>
+      const App = defineComponent(() => () =>
           ToastProvider({
             children: () => TestComponent({}),
-          });
-      });
+          }));
 
       const { cleanup: dispose } = renderComponent(() => App({}));
       cleanup = dispose;
@@ -225,13 +223,11 @@ describe('ToastProvider', () => {
         return () => '';
       });
 
-      const App = defineComponent(() => {
-        return () =>
+      const App = defineComponent(() => () =>
           ToastProvider({
             duration: 3000,
             children: () => TestComponent({}),
-          });
-      });
+          }));
 
       const { cleanup: dispose } = renderComponent(() => App({}));
       cleanup = dispose;
@@ -248,13 +244,11 @@ describe('ToastProvider', () => {
         return () => '';
       });
 
-      const App = defineComponent(() => {
-        return () =>
+      const App = defineComponent(() => () =>
           ToastProvider({
             duration: 3000,
             children: () => TestComponent({}),
-          });
-      });
+          }));
 
       const { cleanup: dispose } = renderComponent(() => App({}));
       cleanup = dispose;
@@ -382,13 +376,11 @@ describe('ToastProvider', () => {
         return () => '';
       });
 
-      const App = defineComponent(() => {
-        return () =>
+      const App = defineComponent(() => () =>
           ToastProvider({
             maxToasts: 1,
             children: () => TestComponent({}),
-          });
-      });
+          }));
 
       const { cleanup: dispose } = renderComponent(() => App({}));
       cleanup = dispose;

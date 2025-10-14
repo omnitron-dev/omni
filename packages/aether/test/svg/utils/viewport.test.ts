@@ -13,9 +13,7 @@ import {
   viewBoxToViewport,
   type ViewBox,
   type Viewport,
-  type PreserveAspectRatio,
   type AspectRatioAlign,
-  type AspectRatioMeetOrSlice,
 } from '../../../src/svg/utils/viewport';
 
 describe('SVG Viewport Utils', () => {

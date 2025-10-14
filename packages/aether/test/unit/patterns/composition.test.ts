@@ -31,9 +31,7 @@ describe('Component Composition Patterns', () => {
 
       // Component using the render prop
       const Consumer = defineComponent(() => {
-        const renderFn = (data: { value: number; increment: () => void }) => {
-          return `Count: ${data.value}`;
-        };
+        const renderFn = (data: { value: number; increment: () => void }) => `Count: ${data.value}`;
 
         return () => DataProvider({ render: renderFn });
       });
@@ -75,13 +73,11 @@ describe('Component Composition Patterns', () => {
         header: () => any;
         content: () => any;
         footer: () => any;
-      }>((props) => {
-        return () => ({
+      }>((props) => () => ({
           header: props.header(),
           content: props.content(),
           footer: props.footer(),
-        });
-      });
+        }));
 
       const result = MultiSlot({
         header: () => 'Header',
@@ -99,19 +95,15 @@ describe('Component Composition Patterns', () => {
     it('should create HOC that adds functionality to components', () => {
       // HOC that adds loading state
       function withLoading<P extends object>(Component: (props: P) => any, isLoading: () => boolean) {
-        return defineComponent<P>((props) => {
-          return () => {
+        return defineComponent<P>((props) => () => {
             if (isLoading()) {
               return 'Loading...';
             }
             return Component(props);
-          };
-        });
+          });
       }
 
-      const BaseComponent = defineComponent<{ name: string }>((props) => {
-        return () => `Hello, ${props.name}`;
-      });
+      const BaseComponent = defineComponent<{ name: string }>((props) => () => `Hello, ${props.name}`);
 
       const loading = signal(true);
       const EnhancedComponent = withLoading(BaseComponent, () => loading());
@@ -168,9 +160,7 @@ describe('Component Composition Patterns', () => {
         });
       }
 
-      const Component = defineComponent<{ value: number }>((props) => {
-        return () => `Value: ${props.value}`;
-      });
+      const Component = defineComponent<{ value: number }>((props) => () => `Value: ${props.value}`);
 
       const Enhanced = withDefaults(Component);
 
@@ -321,13 +311,11 @@ describe('Component Composition Patterns', () => {
     it('should provide and consume context across component tree', () => {
       const ThemeContext = createContext({ theme: 'light' });
 
-      const ThemeProvider = defineComponent<{ theme: string; children: any }>((props) => {
-        return () =>
+      const ThemeProvider = defineComponent<{ theme: string; children: any }>((props) => () =>
           ThemeContext.Provider({
             value: { theme: props.theme },
             children: props.children,
-          });
-      });
+          }));
 
       const ThemedComponent = defineComponent(() => {
         const context = useContext(ThemeContext);
@@ -346,8 +334,7 @@ describe('Component Composition Patterns', () => {
       const UserContext = createContext({ user: 'guest' });
       const SettingsContext = createContext({ lang: 'en' });
 
-      const App = defineComponent(() => {
-        return () =>
+      const App = defineComponent(() => () =>
           UserContext.Provider({
             value: { user: 'admin' },
             children: SettingsContext.Provider({
@@ -358,8 +345,7 @@ describe('Component Composition Patterns', () => {
                 return () => `${user?.user}-${settings?.lang}`;
               })({}),
             }),
-          });
-      });
+          }));
 
       const result = App({});
       expect(result).toBeTruthy();
@@ -392,8 +378,7 @@ describe('Component Composition Patterns', () => {
     it('should support multiple context consumers', () => {
       const DataContext = createContext({ data: 'shared-data' });
 
-      const Provider = defineComponent<{ children: any }>(() => {
-        return () =>
+      const Provider = defineComponent<{ children: any }>(() => () =>
           DataContext.Provider({
             value: { data: 'test-data' },
             children: [
@@ -406,8 +391,7 @@ describe('Component Composition Patterns', () => {
                 return () => `Consumer2: ${ctx?.data}`;
               })({}),
             ],
-          });
-      });
+          }));
 
       const result = Provider({ children: null });
       expect(result).toBeTruthy();
@@ -491,9 +475,7 @@ describe('Component Composition Patterns', () => {
         });
       }
 
-      const BaseComponent = defineComponent<{ data: string }>((props) => {
-        return () => `Data: ${props.data}`;
-      });
+      const BaseComponent = defineComponent<{ data: string }>((props) => () => `Data: ${props.data}`);
 
       const Enhanced = withData(BaseComponent);
       const result = Enhanced({} as any);
@@ -531,12 +513,10 @@ describe('Component Composition Patterns', () => {
       (Tabs as any).Tab = Tab;
 
       // Test that compound pattern works - Tabs provides context
-      const CompoundTest = defineComponent(() => {
-        return () =>
+      const CompoundTest = defineComponent(() => () =>
           Tabs({
             children: Tab({ index: 0, children: 'Tab Content' }),
-          });
-      });
+          }));
 
       const result = CompoundTest({});
       // Result should be the Provider structure, not null

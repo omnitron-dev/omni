@@ -9,10 +9,8 @@ import {
   TemplateCache,
   generateCacheKey,
   templateCache,
-  type CacheStats,
 } from '../../../src/reconciler/template-cache.js';
 import { createElementVNode, createTextVNode } from '../../../src/reconciler/vnode.js';
-import type { VNode } from '../../../src/reconciler/vnode.js';
 
 describe('TemplateCache', () => {
   describe('Basic Operations', () => {

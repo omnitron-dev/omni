@@ -2,7 +2,7 @@
  * Tests for computed values with store patterns and nested signals
  */
 
-import { it, vi, expect, describe, afterEach, beforeEach } from 'vitest';
+import { it, vi, expect, describe, afterEach } from 'vitest';
 import { signal, computed, effect, createRoot } from '../../../../src/core/reactivity/index.js';
 
 describe('Computed with Store Pattern', () => {
@@ -26,10 +26,10 @@ describe('Computed with Store Pattern', () => {
         };
 
         // Computed that uses the store pattern
-        const theme = computed(() => {
+        const theme = computed(() => 
           // This pattern won't track changes!
-          return store.sidebarComponent()?.focused ? 'accent' : 'muted';
-        });
+           store.sidebarComponent()?.focused ? 'accent' : 'muted'
+        );
 
         expect(theme()).toBe('muted');
 
@@ -84,9 +84,7 @@ describe('Computed with Store Pattern', () => {
         };
 
         // Computed calls the signal
-        const theme = computed(() => {
-          return store.sidebarComponent()?.focused ? 'accent' : 'muted';
-        });
+        const theme = computed(() => store.sidebarComponent()?.focused ? 'accent' : 'muted');
 
         expect(theme()).toBe('muted');
 
@@ -147,9 +145,7 @@ describe('Computed with Store Pattern', () => {
         const store = new Store();
 
         // This WILL track because sidebarComponent() calls a signal
-        const theme = computed(() => {
-          return store.sidebarComponent()?.focused ? 'accent' : 'muted';
-        });
+        const theme = computed(() => store.sidebarComponent()?.focused ? 'accent' : 'muted');
 
         expect(theme()).toBe('muted');
 
@@ -181,9 +177,7 @@ describe('Computed with Store Pattern', () => {
         const store = new Store();
 
         // Computed that depends on another computed
-        const theme = computed(() => {
-          return store.sidebarComponent()?.focused ? 'accent' : 'muted';
-        });
+        const theme = computed(() => store.sidebarComponent()?.focused ? 'accent' : 'muted');
 
         expect(theme()).toBe('muted');
 
@@ -254,9 +248,7 @@ describe('Computed with Store Pattern', () => {
           data: () => dataSignal(),
         };
 
-        const theme = computed(() => {
-          return store.data()?.user?.profile?.settings?.theme ?? 'default';
-        });
+        const theme = computed(() => store.data()?.user?.profile?.settings?.theme ?? 'default');
 
         expect(theme()).toBe('default');
 
@@ -302,9 +294,7 @@ describe('Computed with Store Pattern', () => {
           },
         };
 
-        const activeCount = computed(() => {
-          return store.items().filter((item) => item.active).length;
-        });
+        const activeCount = computed(() => store.items().filter((item) => item.active).length);
 
         expect(activeCount()).toBe(0);
 
@@ -335,9 +325,7 @@ describe('Computed with Store Pattern', () => {
           user: () => userSignal(),
         };
 
-        const computeFn = vi.fn(() => {
-          return store.sidebar().focused ? 'accent' : 'muted';
-        });
+        const computeFn = vi.fn(() => store.sidebar().focused ? 'accent' : 'muted');
 
         const theme = computed(computeFn);
 
@@ -454,9 +442,7 @@ describe('Computed with Store Pattern', () => {
         };
 
         // Computed with optional chaining and getter
-        const theme = computed(() => {
-          return appStore.sidebarComponent()?.focused ? 'accent' : 'muted';
-        });
+        const theme = computed(() => appStore.sidebarComponent()?.focused ? 'accent' : 'muted');
 
         // Initial value
         expect(theme()).toBe('muted');
@@ -534,9 +520,7 @@ describe('Computed with Store Pattern', () => {
           }),
         };
 
-        const theme = computed(() => {
-          return appStore.sidebarComponent()?.focused ? 'accent' : 'muted';
-        });
+        const theme = computed(() => appStore.sidebarComponent()?.focused ? 'accent' : 'muted');
 
         // Getter not called until computed is evaluated
         expect(getterCallCount).toBe(0);
@@ -574,9 +558,7 @@ describe('Computed with Store Pattern', () => {
           },
         };
 
-        const theme = computed(() => {
-          return appStore.sidebarComponent?.()?.focused ? 'accent' : 'muted';
-        });
+        const theme = computed(() => appStore.sidebarComponent?.()?.focused ? 'accent' : 'muted');
 
         // undefined component
         expect(theme()).toBe('muted');
@@ -665,9 +647,7 @@ describe('Computed with Store Pattern', () => {
           }),
         };
 
-        const theme = computed(() => {
-          return appStore.sidebarComponent()?.focused ? 'accent' : 'muted';
-        });
+        const theme = computed(() => appStore.sidebarComponent()?.focused ? 'accent' : 'muted');
 
         expect(focusedGetterCalls).toBe(0);
         expect(widthGetterCalls).toBe(0);

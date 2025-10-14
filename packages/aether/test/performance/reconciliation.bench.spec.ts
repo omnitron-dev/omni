@@ -15,7 +15,7 @@
 
 import { describe, test, expect } from 'vitest';
 import { signal } from '../../src/core/reactivity/signal.js';
-import { createElementVNode, createTextVNode, type VNode } from '../../src/reconciler/vnode.js';
+import { createElementVNode, createTextVNode } from '../../src/reconciler/vnode.js';
 import { createDOMFromVNode } from '../../src/reconciler/create-dom.js';
 import { diff } from '../../src/reconciler/diff.js';
 import { patch } from '../../src/reconciler/patch.js';

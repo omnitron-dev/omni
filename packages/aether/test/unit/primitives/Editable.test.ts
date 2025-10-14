@@ -187,7 +187,7 @@ describe('Editable', () => {
       const value = signal('Initial');
       const component = () =>
         Editable({
-          value: value, // Pass signal directly
+          value, // Pass signal directly
           children: () => [EditablePreview({}), EditableInput({})],
         });
       const { container } = renderComponent(component);

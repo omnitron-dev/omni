@@ -10,7 +10,6 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { defineComponent } from '../../../src/core/component/define.js';
-import { signal } from '../../../src/core/reactivity/signal.js';
 import { ErrorBoundary, useErrorBoundary, withErrorBoundary } from '../../../src/core/component/error-boundary.js';
 import { onMount } from '../../../src/core/component/lifecycle.js';
 
@@ -35,11 +34,9 @@ describe('Error Handling Patterns', () => {
     it('should catch errors in render functions', () => {
       const errorSpy = vi.fn();
 
-      const BrokenRender = defineComponent(() => {
-        return () => {
+      const BrokenRender = defineComponent(() => () => {
           throw new Error('Render error');
-        };
-      });
+        });
 
       ErrorBoundary({
         onError: errorSpy,
@@ -70,9 +67,7 @@ describe('Error Handling Patterns', () => {
     });
 
     it('should render fallback UI on error', () => {
-      const FallbackComponent = defineComponent(() => {
-        return () => 'Error occurred';
-      });
+      const FallbackComponent = defineComponent(() => () => 'Error occurred');
 
       const BrokenComponent = defineComponent(() => {
         throw new Error('Test error');
@@ -96,13 +91,11 @@ describe('Error Handling Patterns', () => {
         throw new Error('Inner error');
       });
 
-      const InnerBoundary = defineComponent(() => {
-        return () =>
+      const InnerBoundary = defineComponent(() => () =>
           ErrorBoundary({
             onError: innerErrorSpy,
             children: () => ErrorComponent({}),
-          });
-      });
+          }));
 
       ErrorBoundary({
         onError: outerErrorSpy,
@@ -122,10 +115,10 @@ describe('Error Handling Patterns', () => {
         throw new Error('Test error');
       });
 
-      const Wrapper = defineComponent(() => {
+      const Wrapper = defineComponent(() => 
         // This component doesn't have error handler
-        return () => ErrorComponent({});
-      });
+         () => ErrorComponent({})
+      );
 
       ErrorBoundary({
         onError: outerErrorSpy,
@@ -144,21 +137,17 @@ describe('Error Handling Patterns', () => {
         throw new Error('Deep error');
       });
 
-      const Level3 = defineComponent(() => {
-        return () =>
+      const Level3 = defineComponent(() => () =>
           ErrorBoundary({
             onError: level3Spy,
             children: () => ErrorComponent({}),
-          });
-      });
+          }));
 
-      const Level2 = defineComponent(() => {
-        return () =>
+      const Level2 = defineComponent(() => () =>
           ErrorBoundary({
             onError: level2Spy,
             children: () => Level3({}),
-          });
-      });
+          }));
 
       ErrorBoundary({
         onError: level1Spy,
@@ -183,8 +172,7 @@ describe('Error Handling Patterns', () => {
         throw new Error('Right error');
       });
 
-      const App = defineComponent(() => {
-        return () => [
+      const App = defineComponent(() => () => [
           ErrorBoundary({
             onError: leftSpy,
             children: () => LeftError({}),
@@ -193,8 +181,7 @@ describe('Error Handling Patterns', () => {
             onError: rightSpy,
             children: () => RightError({}),
           }),
-        ];
-      });
+        ]);
 
       App({});
 
@@ -381,9 +368,7 @@ describe('Error Handling Patterns', () => {
         throw new Error('Child error');
       });
 
-      const ParentComponent = defineComponent(() => {
-        return () => ChildComponent({});
-      });
+      const ParentComponent = defineComponent(() => () => ChildComponent({}));
 
       ErrorBoundary({
         onError: errorSpy,
@@ -440,9 +425,7 @@ describe('Error Handling Patterns', () => {
     });
 
     it('should pass props through wrapped component', () => {
-      const Component = defineComponent<{ value: number }>((props) => {
-        return () => `Value: ${props.value}`;
-      });
+      const Component = defineComponent<{ value: number }>((props) => () => `Value: ${props.value}`);
 
       const SafeComponent = withErrorBoundary(Component, {
         onError: () => {},
@@ -453,9 +436,7 @@ describe('Error Handling Patterns', () => {
     });
 
     it('should allow custom fallback in HOC', () => {
-      const FallbackComponent = defineComponent(() => {
-        return () => 'Custom Fallback';
-      });
+      const FallbackComponent = defineComponent(() => () => 'Custom Fallback');
 
       const BrokenComponent = defineComponent(() => {
         throw new Error('Test');

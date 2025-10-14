@@ -49,9 +49,7 @@ describe('Directive Utilities', () => {
 
     it('should call cleanup function on dispose', () => {
       const cleanup = vi.fn();
-      const directive = createDirective<void>(() => {
-        return cleanup;
-      });
+      const directive = createDirective<void>(() => cleanup);
 
       const div = document.createElement('div');
 
@@ -115,9 +113,7 @@ describe('Directive Utilities', () => {
 
     it('should call destroy on dispose', () => {
       const destroy = vi.fn();
-      const directive = createUpdatableDirective<void>(() => {
-        return { destroy };
-      });
+      const directive = createUpdatableDirective<void>(() => ({ destroy }));
 
       const div = document.createElement('div');
 
@@ -365,11 +361,9 @@ describe('Directive Utilities', () => {
     it('should handle errors in cleanup', () => {
       const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-      const directive = createDirective<void>(() => {
-        return () => {
+      const directive = createDirective<void>(() => () => {
           throw new Error('Cleanup error');
-        };
-      });
+        });
 
       const div = document.createElement('div');
 
@@ -793,11 +787,9 @@ describe('Directive Utilities', () => {
 
   describe('createDirectiveFactory', () => {
     it('should create directive factory', () => {
-      const factory = createDirectiveFactory<string, { prefix: string }>((config) => {
-        return (element, text) => {
+      const factory = createDirectiveFactory<string, { prefix: string }>((config) => (element, text) => {
           element.textContent = `${config.prefix}: ${text}`;
-        };
-      });
+        });
 
       const directive = factory({ prefix: 'Hello' });
       const div = document.createElement('div');
@@ -812,12 +804,10 @@ describe('Directive Utilities', () => {
     });
 
     it('should create multiple directives from same factory', () => {
-      const factory = createDirectiveFactory<string, { theme: string }>((config) => {
-        return (element, text) => {
+      const factory = createDirectiveFactory<string, { theme: string }>((config) => (element, text) => {
           element.className = `tooltip-${config.theme}`;
           element.textContent = text;
-        };
-      });
+        });
 
       const darkDirective = factory({ theme: 'dark' });
       const lightDirective = factory({ theme: 'light' });
@@ -841,15 +831,13 @@ describe('Directive Utilities', () => {
 
     it('should support cleanup in factory directives', () => {
       const cleanup = vi.fn();
-      const factory = createDirectiveFactory<void, { id: string }>((config) => {
-        return (element) => {
+      const factory = createDirectiveFactory<void, { id: string }>((config) => (element) => {
           element.setAttribute('data-id', config.id);
           return () => {
             cleanup(config.id);
             element.removeAttribute('data-id');
           };
-        };
-      });
+        });
 
       const directive = factory({ id: 'test' });
       const div = document.createElement('div');
@@ -875,8 +863,7 @@ describe('Directive Utilities', () => {
     it('should create directive with shared context', () => {
       const sharedData: { value: string | null } = { value: null };
 
-      const { setter, getter } = createDirectiveWithContext(() => {
-        return {
+      const { setter, getter } = createDirectiveWithContext(() => ({
           setter: createDirective<string>((element, text) => {
             sharedData.value = text;
             element.textContent = text;
@@ -884,8 +871,7 @@ describe('Directive Utilities', () => {
           getter: createDirective<void>((element) => {
             element.textContent = sharedData.value || 'empty';
           }),
-        };
-      });
+        }));
 
       const div1 = document.createElement('div');
       const div2 = document.createElement('div');

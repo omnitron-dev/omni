@@ -2,9 +2,8 @@
  * @vitest-environment happy-dom
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { Avatar, AvatarImage, AvatarFallback, AvatarContext } from '../../../src/primitives/Avatar.js';
-import { renderComponent, nextTick, waitFor } from '../../helpers/test-utils.js';
-import { signal } from '../../../src/core/reactivity/signal.js';
+import { Avatar, AvatarImage, AvatarFallback } from '../../../src/primitives/Avatar.js';
+import { renderComponent, nextTick } from '../../helpers/test-utils.js';
 
 describe('Avatar', () => {
   beforeEach(() => {

@@ -389,7 +389,12 @@ describe('Build System Integration', () => {
       const result2 = await compiler.compile(file.path, file.content);
       const duration = performance.now() - startTime;
 
-      expect(result2).toEqual(result1);
+      // Results should be equal except for the 'cached' flag
+      expect(result1.cached).toBe(false);
+      expect(result2.cached).toBe(true);
+      expect(result2.filePath).toBe(result1.filePath);
+      expect(result2.output).toBe(result1.output);
+      expect(result2.diagnostics).toEqual(result1.diagnostics);
       // Cached compilation should be very fast
       expect(duration).toBeLessThan(10);
     });

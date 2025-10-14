@@ -73,6 +73,10 @@ export function serverFunction<TArgs extends any[], TReturn>(
         );
       });
 
+      // Add catch handler to prevent unhandled rejection if function completes first
+      // The Promise.race will handle the rejection if timeout wins
+      timeoutPromise.catch(() => {});
+
       try {
         // Race between function execution and timeout
         const result = await Promise.race([fn(...args), timeoutPromise]);

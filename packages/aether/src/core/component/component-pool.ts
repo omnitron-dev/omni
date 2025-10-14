@@ -132,7 +132,7 @@ export class ComponentPool {
     if (pool && pool.length > 0) {
       const instance = pool.pop() as ComponentInstance<P>;
 
-      // Reset instance
+      // Update instance metadata
       instance.component = factory;
       instance.props = actualProps;
       instance.active = true;
@@ -150,8 +150,35 @@ export class ComponentPool {
         (factory as any).onRecycle(instance, actualProps);
       }
 
-      // Return the instance itself (for old API compatibility)
-      return instance as any as T;
+      // Reuse existing state or call factory
+      let result: any;
+      if (instance.state && typeof instance.state === 'object' && Object.keys(instance.state).length > 0) {
+        // State exists, reuse it (true object pooling)
+        result = instance.state;
+
+        // Update props if provided and result has props property
+        if (actualProps && typeof result === 'object') {
+          // If the result has a props property, update it
+          if ('props' in result) {
+            result.props = actualProps;
+          } else {
+            // Otherwise, call factory to get new result and copy properties
+            const newResult = factory(actualProps);
+            Object.assign(result, newResult);
+          }
+        }
+      } else {
+        // No state, call factory to create new result
+        result = factory(actualProps);
+        instance.state = result;
+      }
+
+      // Create bidirectional mapping
+      if (result && typeof result === 'object') {
+        this.resultToInstance.set(result, instance);
+      }
+
+      return result as T;
     }
 
     // Create new instance
@@ -161,8 +188,16 @@ export class ComponentPool {
     // Track active instance
     this.activeInstances.set(instance, componentId);
 
-    // Return the instance itself (for old API compatibility)
-    return instance as any as T;
+    // Call factory to get result
+    const result = factory(actualProps);
+
+    // Store result in instance and create bidirectional mapping
+    instance.state = result;
+    if (result && typeof result === 'object') {
+      this.resultToInstance.set(result, instance);
+    }
+
+    return result as T;
   }
 
   /**
@@ -321,12 +356,9 @@ export class ComponentPool {
     // Clear props
     instance.props = undefined;
 
-    // Reset state (keep object reference)
-    if (instance.state && typeof instance.state === 'object') {
-      for (const key in instance.state) {
-        delete instance.state[key];
-      }
-    }
+    // DON'T clear state - preserve it for true object pooling
+    // The state object will be reused when the instance is acquired again
+    // This allows reusing the same result object, reducing allocations
 
     // Clear cleanups
     instance.cleanups = [];

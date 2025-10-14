@@ -16,13 +16,10 @@ import { ModuleGraph } from '../../src/modules/graph.js';
 import { DIContainer } from '../../src/di/container.js';
 import { createApp, type Application } from '../../src/core/application.js';
 import { createCompiler } from '../../src/compiler/compiler.js';
-import { signal, computed, effect } from '../../src/core/reactivity/index.js';
+import { signal, computed } from '../../src/core/reactivity/index.js';
 import { PerformanceMonitor } from '../../src/monitoring/performance.js';
 import type {
-  Module,
   ModuleDefinition,
-  RouteDefinition,
-  IslandDefinition,
 } from '../../src/di/types.js';
 
 describe('Module System Integration', () => {
@@ -532,8 +529,7 @@ describe('Module System Integration', () => {
 
     it('should support dynamic module configuration', async () => {
       const ConfigurableModule = {
-        forRoot: (config: { apiUrl: string }) => {
-          return defineModule({
+        forRoot: (config: { apiUrl: string }) => defineModule({
             id: 'configurable',
             providers: [
               {
@@ -541,8 +537,7 @@ describe('Module System Integration', () => {
                 useValue: config,
               },
             ],
-          });
-        },
+          }),
       };
 
       const module = ConfigurableModule.forRoot({ apiUrl: 'https://api.example.com' });
@@ -769,9 +764,7 @@ describe('Module System Integration', () => {
           {
             path: '/',
             component: {},
-            loader: async ({ container }) => {
-              return { count: count() };
-            },
+            loader: async ({ container }) => ({ count: count() }),
           },
         ],
       });

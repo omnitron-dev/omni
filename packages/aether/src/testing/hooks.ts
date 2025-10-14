@@ -41,7 +41,7 @@ export function renderHook<TResult, TProps = any>(
     rerender(props?: TProps) {
       // Check if props were explicitly passed using arguments.length
       // This allows distinguishing between rerender() and rerender(undefined)
-      const propsToUse = arguments.length > 0 ? props : ({} as TProps);
+      const propsToUse = arguments.length > 0 ? (props ?? ({} as TProps)) : ({} as TProps);
       runHook(propsToUse);
     },
     unmount: () => {

@@ -200,6 +200,9 @@ describe('Server Function', () => {
     });
 
     it('should fail after max retries', async () => {
+      // Use real timers for this test to avoid unhandled rejection issues with fake timers
+      vi.useRealTimers();
+
       let attemptCount = 0;
       const fn = serverFunction(
         async () => {
@@ -209,30 +212,25 @@ describe('Server Function', () => {
         {
           retry: {
             maxRetries: 2,
-            delay: 100,
+            delay: 10, // Short delay for faster test
             backoff: 1,
           },
         }
       );
 
-      // Start promise with catch handler to prevent unhandled rejection
-      const promise = fn().catch((err) => {
-        throw err;
-      });
-
-      // Advance timers for all retry delays
-      for (let i = 0; i < 3; i++) {
-        vi.advanceTimersByTime(100);
-        await vi.runAllTimersAsync();
-      }
-
-      await expect(promise).rejects.toThrow('Permanent failure');
+      await expect(fn()).rejects.toThrow('Permanent failure');
       expect(attemptCount).toBe(3); // Initial + 2 retries
+
+      // Restore fake timers for other tests
+      vi.useFakeTimers();
     });
   });
 
   describe('Timeout', () => {
     it('should timeout after specified duration', async () => {
+      // Already using real timers - no change needed
+      vi.useRealTimers();
+
       const fn = serverFunction(
         async () =>
           new Promise((resolve) => {
@@ -243,16 +241,10 @@ describe('Server Function', () => {
         }
       );
 
-      // Start promise with catch handler to prevent unhandled rejection
-      const promise = fn().catch((err) => {
-        throw err;
-      });
+      await expect(fn()).rejects.toThrow('timeout');
 
-      // Advance past timeout but not past full duration
-      vi.advanceTimersByTime(10);
-      await vi.runAllTimersAsync();
-
-      await expect(promise).rejects.toThrow('timeout');
+      // Restore fake timers for other tests
+      vi.useFakeTimers();
     });
 
     it('should succeed if completed before timeout', async () => {

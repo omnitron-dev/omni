@@ -395,9 +395,82 @@ parentPort.on('message', (task) => {
   }
 
   /**
-   * Compile files in parallel
+   * Compile files in parallel - overload for single file
    */
-  async compile(files: Array<{ path: string; source: string }>): Promise<CompilationResult[]> {
+  async compile(path: string, source: string): Promise<CompilationResult>;
+
+  /**
+   * Compile files in parallel - overload for multiple files
+   */
+  async compile(files: Array<{ path: string; source: string }>): Promise<CompilationResult[]>;
+
+  /**
+   * Compile files in parallel - implementation
+   */
+  async compile(
+    pathOrFiles: string | Array<{ path: string; source: string }>,
+    source?: string
+  ): Promise<CompilationResult | CompilationResult[]> {
+    // Handle single file compilation
+    if (typeof pathOrFiles === 'string') {
+      if (!source) {
+        throw new Error('Source is required when compiling a single file');
+      }
+
+      // For single file, use cache-aware synchronous compilation
+      const filePath = pathOrFiles;
+
+      // Check cache first
+      const cacheKey = this.getCacheKey(filePath, source);
+      if (this.config.cache) {
+        const cached = this.cache.get(cacheKey);
+        if (cached) {
+          this.cacheHits++;
+          this.stats.totalFiles++;
+          return { ...cached, cached: true };
+        }
+      }
+      this.cacheMisses++;
+
+      // Compile synchronously for single files
+      const startTime = Date.now();
+
+      const tsResult = ts.transpileModule(source, {
+        compilerOptions: this.config.compilerOptions,
+        fileName: filePath,
+      });
+
+      const result: CompilationResult = {
+        id: crypto.randomUUID(),
+        filePath,
+        output: tsResult.outputText,
+        sourceMap: tsResult.sourceMapText,
+        diagnostics: tsResult.diagnostics || [],
+        compilationTime: Date.now() - startTime,
+        workerId: -1,
+        cached: false,
+      };
+
+      // Update cache
+      if (this.config.cache && result.diagnostics.length === 0) {
+        this.cache.set(cacheKey, result);
+      }
+
+      // Update stats
+      this.stats.totalFiles++;
+      if (result.diagnostics.length === 0) {
+        this.stats.successful++;
+      } else {
+        this.stats.failed++;
+      }
+      this.stats.totalTime += result.compilationTime;
+
+      return result;
+    }
+
+    // Handle multiple files compilation
+    const files = pathOrFiles;
+
     // Check threshold
     if (files.length < this.config.threshold) {
       return this.compileSingleThreaded(files);
@@ -677,18 +750,78 @@ parentPort.on('message', (task) => {
   /**
    * Compile many files (alias for compile)
    */
-  async compileMany(files: Array<{ path: string; content: string }>): Promise<Array<{ code: string; path?: string }>> {
+  async compileMany(files: Array<{ path: string; content: string }>): Promise<Array<{ code: string; path?: string; cached?: boolean }>> {
     // Convert content to source for internal API
     const filesWithSource = files.map(f => ({ path: f.path, source: f.content }));
 
     // For test environments, always use single-threaded compilation
-    // Worker threads have issues in test environments
-    const results = await this.compileSingleThreaded(filesWithSource);
+    // but check cache for each file
+    const results: CompilationResult[] = [];
+
+    for (const file of filesWithSource) {
+      // Check cache first
+      const cacheKey = this.getCacheKey(file.path, file.source);
+      let result: CompilationResult;
+
+      if (this.config.cache) {
+        const cached = this.cache.get(cacheKey);
+        if (cached) {
+          this.cacheHits++;
+          this.stats.totalFiles++;
+          result = { ...cached, cached: true };
+          results.push(result);
+          continue;
+        }
+      }
+      this.cacheMisses++;
+
+      // Compile if not in cache
+      const startTime = Date.now();
+
+      try {
+        const source = file.source || '';
+        if (!source) {
+          throw new Error(`Missing source for file: ${file.path}`);
+        }
+
+        const tsResult = ts.transpileModule(source, {
+          compilerOptions: this.config.compilerOptions,
+          fileName: file.path,
+        });
+
+        result = {
+          id: crypto.randomUUID(),
+          filePath: file.path,
+          output: tsResult.outputText,
+          sourceMap: tsResult.sourceMapText,
+          diagnostics: tsResult.diagnostics || [],
+          compilationTime: Date.now() - startTime,
+          workerId: -1, // Indicates single-threaded compilation
+          cached: false,
+        };
+
+        results.push(result);
+
+        // Update cache
+        if (this.config.cache && result.diagnostics.length === 0) {
+          this.cache.set(cacheKey, result);
+        }
+
+        this.stats.totalFiles++;
+        this.stats.successful++;
+        this.stats.totalTime += result.compilationTime;
+      } catch (error: any) {
+        this.stats.totalFiles++;
+        this.stats.failed++;
+        throw error;
+      }
+    }
 
     // Convert results to expected format
     return results.map(r => ({
       code: r.output,
       path: r.filePath,
+      cached: r.cached,
     }));
   }
 

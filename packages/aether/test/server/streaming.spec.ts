@@ -97,12 +97,13 @@ describe('Streaming SSR', () => {
       process.on('unhandledRejection', testUnhandledRejectionHandler);
 
       try {
-        // Return a promise that will reject after a slight delay to allow catch handlers to be set up
-        mock.mockImplementationOnce(
-          () =>
-            new Promise((_, reject) => {
-              setTimeout(() => reject(new Error('Shell error')), 10);
-            })
+        // Return a rejected promise with proper error handling
+        mock.mockImplementationOnce(() => 
+          // Create a promise that rejects but handles its own rejection
+           new Promise((_, reject) => {
+            // Use setImmediate/nextTick to allow the streaming code to attach its handler first
+            setImmediate(() => reject(new Error('Shell error')));
+          })
         );
 
         await new Promise<void>((resolve, reject) => {
@@ -374,12 +375,13 @@ describe('Streaming SSR', () => {
       process.on('unhandledRejection', testUnhandledRejectionHandler);
 
       try {
-        // Return a promise that will reject after a slight delay to allow catch handlers to be set up
-        mock.mockImplementationOnce(
-          () =>
-            new Promise((_, reject) => {
-              setTimeout(() => reject(new Error('Stream error')), 10);
-            })
+        // Return a rejected promise with proper error handling
+        mock.mockImplementationOnce(() => 
+          // Create a promise that rejects but handles its own rejection
+           new Promise((_, reject) => {
+            // Use setImmediate to allow the streaming code to attach its handler first
+            setImmediate(() => reject(new Error('Stream error')));
+          })
         );
 
         const result = await renderToReadableStream(ErrorComponent);
@@ -634,12 +636,13 @@ describe('Streaming SSR', () => {
       process.on('unhandledRejection', testUnhandledRejectionHandler);
 
       try {
-        // Return a promise that will reject after a slight delay to allow catch handlers to be set up
-        mock.mockImplementationOnce(
-          () =>
-            new Promise((_, reject) => {
-              setTimeout(() => reject(new Error('Render error')), 10);
-            })
+        // Return a rejected promise with proper error handling
+        mock.mockImplementationOnce(() => 
+          // Create a promise that rejects but handles its own rejection
+           new Promise((_, reject) => {
+            // Use setImmediate to allow the streaming code to attach its handler first
+            setImmediate(() => reject(new Error('Render error')));
+          })
         );
 
         await new Promise<void>((resolve, reject) => {

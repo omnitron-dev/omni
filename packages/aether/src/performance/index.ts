@@ -13,6 +13,15 @@
  * @module performance
  */
 
+// Import global instances for internal use
+import { globalSubscriptionPool } from '../core/reactivity/subscription-pool.js';
+import { globalBatchManager } from '../core/reactivity/batch-manager.js';
+import { globalLazyLoader } from '../core/component/lazy-loader.js';
+import { globalVNodePool } from '../reconciler/vnode-pool.js';
+import { globalDiffer } from '../reconciler/optimized-diff.js';
+import { globalComponentPool } from '../core/component/component-pool.js';
+import { globalRequestCache } from '../data/request-cache.js';
+
 // Subscription Pool
 export {
   SubscriptionPool,

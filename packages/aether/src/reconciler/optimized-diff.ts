@@ -459,13 +459,13 @@ export function longestIncreasingSubsequence(arr: number[]): number[] {
 
   // Reconstruct the sequence
   const lis: number[] = [];
-  let current = tailIndices[tailIndices.length - 1];
+  let current: number | undefined = tailIndices[tailIndices.length - 1];
 
   if (current !== undefined) {
-    while (current !== -1) {
+    while (current !== -1 && current !== undefined) {
       lis.unshift(current);
-      const prev = prevIndices[current];
-      current = prev ?? -1;
+      const prev: number | undefined = prevIndices[current];
+      current = prev !== undefined ? prev : -1;
     }
   }
 

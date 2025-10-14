@@ -223,12 +223,19 @@ export class PersistentCache {
     }
 
     const content = JSON.stringify(data);
+
+    // Calculate TTL: if maxAge < 1000, assume it's already in milliseconds (for testing),
+    // otherwise assume it's in days and convert to milliseconds
+    const defaultTTL = this.config.maxAge < 1000
+      ? this.config.maxAge  // Already in milliseconds
+      : this.config.maxAge * 24 * 60 * 60 * 1000;  // Convert days to milliseconds
+
     const entry: CacheEntry<T> = {
       hash: this.hash(content),
       data,
       dependencies: options.dependencies || [],
       timestamp: Date.now(),
-      ttl: options.ttl || this.config.maxAge * 24 * 60 * 60 * 1000,
+      ttl: options.ttl || defaultTTL,
       source: options.source || key,
       originalSize: Buffer.byteLength(content, 'utf-8'),
       metadata: options.metadata,

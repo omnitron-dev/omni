@@ -293,35 +293,38 @@ describe('Performance Optimizations', () => {
     });
 
     it('should reuse component instances', () => {
-      const component = () => null;
-      const instance1 = pool.acquire(component);
-      pool.release(instance1);
+      const component = () => ({ id: Math.random() });
+      const result1 = pool.acquire(component);
+      const id1 = result1.id;
+      pool.release(result1);
 
-      const instance2 = pool.acquire(component);
-      expect(instance2).toBe(instance1);
+      const result2 = pool.acquire(component);
+      // Should reuse the same result object from pool
+      expect(result2.id).toBe(id1);
 
       const stats = pool.getStats();
       expect(stats.reused).toBeGreaterThan(0);
     });
 
     it('should reset component state', () => {
-      const component = () => null;
-      const instance = pool.acquire(component, { value: 1 });
+      const component = (props) => ({ props });
+      const result1 = pool.acquire(component, { value: 1 });
 
-      expect(instance.props).toEqual({ value: 1 });
+      expect(result1.props).toEqual({ value: 1 });
 
-      pool.release(instance);
+      pool.release(result1);
 
-      expect(instance.props).toBeUndefined();
-      expect(instance.active).toBe(false);
+      const result2 = pool.acquire(component, { value: 2 });
+      // Should get new props
+      expect(result2.props).toEqual({ value: 2 });
     });
 
     it('should track pool statistics', () => {
-      const component = () => null;
+      const component = () => ({ id: Math.random() });
 
-      pool.acquire(component);
-      const instance = pool.acquire(component);
-      pool.release(instance);
+      const result1 = pool.acquire(component);
+      const result2 = pool.acquire(component);
+      pool.release(result2);
 
       const stats = pool.getStats();
       expect(stats.created).toBeGreaterThan(0);

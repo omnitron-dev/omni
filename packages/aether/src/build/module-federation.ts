@@ -413,14 +413,20 @@ export class ModuleFederationManager {
           requiredVersion: undefined,
         };
       } else {
-        normalized[key] = {
+        const config: NormalizedShareConfig = {
           version: value.version || '1.0.0',
           singleton: value.singleton || false,
-          requiredVersion: value.requiredVersion || '',
+          requiredVersion: value.requiredVersion,
           eager: value.eager || false,
-          packageName: value.packageName,
           shareScope: value.shareScope || 'default',
         };
+
+        // Only add packageName if it's defined
+        if (value.packageName !== undefined) {
+          config.packageName = value.packageName;
+        }
+
+        normalized[key] = config;
       }
     }
 

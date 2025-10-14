@@ -249,14 +249,15 @@ export class TreeShakerPass implements OptimizationPass {
     const variableMatch = /(?:const|let|var)\s+(\w+)\s*=\s*(.*)/.exec(line);
     if (variableMatch) {
       const name = variableMatch[1];
-      const value = variableMatch[2];
+      const _value = variableMatch[2]; // Value not used but matched for pattern completeness
       if (
         name &&
         !this.symbols.has(name) &&
         !functionMatch // Avoid duplicates with function declarations
       ) {
-        // Check if pure annotated or is a simple literal
-        const isPure = this.isPureAnnotated(line) || this.isSimpleLiteral(value || '');
+        // Only mark as pure if explicitly annotated
+        // Don't automatically mark simple literals as pure to be more conservative
+        const isPure = this.isPureAnnotated(line);
 
         this.symbols.set(name, {
           name,

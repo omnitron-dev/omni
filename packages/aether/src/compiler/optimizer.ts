@@ -333,13 +333,38 @@ export class Optimizer {
    * Optimize code
    */
   async optimize(code: string, modulePath = ''): Promise<OptimizationResult> {
+    const startTime = Date.now();
+    const originalSize = code.length;
+
+    // If mode is 'none', skip all optimizations and return original code
+    if (this.options.mode === 'none') {
+      const result: OptimizationResult = {
+        code,
+        changes: [],
+        warnings: [],
+      };
+
+      // Collect metrics if enabled
+      if (this.options.collectMetrics) {
+        this.metrics = {
+          totalTime: Date.now() - startTime,
+          passTimings: new Map(),
+          originalSize,
+          optimizedSize: code.length,
+          sizeReduction: 0,
+          sizeReductionPercent: 0,
+          totalChanges: 0,
+          changesByType: new Map(),
+        };
+      }
+
+      return result;
+    }
+
     // Ensure passes are initialized
     if (this.passes.length === 0) {
       await this.initializePasses();
     }
-
-    const startTime = Date.now();
-    const originalSize = code.length;
 
     // Initialize context
     const context: OptimizationContext = {
@@ -371,6 +396,9 @@ export class Optimizer {
       const passStartTime = Date.now();
 
       try {
+        // Track metadata keys before pass execution
+        const metadataKeysBefore = new Set(context.metadata.keys());
+
         const result = await pass.transform(currentCode, {
           ...context,
           source: currentCode,
@@ -382,11 +410,28 @@ export class Optimizer {
         allChanges.push(...result.changes);
         allWarnings.push(...result.warnings);
 
-        // Merge metadata
+        // Merge metadata from result
         if (result.metadata) {
           for (const [key, value] of Object.entries(result.metadata)) {
             context.metadata.set(`${pass.name}.${key}`, value);
           }
+        }
+
+        // Handle metadata added directly to context during pass execution
+        // Find new keys that were added and prefix them
+        const metadataKeysAfter = new Set(context.metadata.keys());
+        const newKeys: string[] = [];
+        for (const key of metadataKeysAfter) {
+          if (!metadataKeysBefore.has(key) && !key.startsWith(`${pass.name}.`)) {
+            newKeys.push(key);
+          }
+        }
+
+        // Prefix new keys with pass name
+        for (const key of newKeys) {
+          const value = context.metadata.get(key);
+          context.metadata.delete(key);
+          context.metadata.set(`${pass.name}.${key}`, value);
         }
       } catch (error) {
         allWarnings.push(

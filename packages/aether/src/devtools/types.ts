@@ -205,7 +205,7 @@ export interface InspectorState {
   /** All tracked signals */
   signals: Map<string, SignalMetadata>;
   /** All tracked computed */
-  computed: Map<string, ComputedMetadata>;
+  computeds: Map<string, ComputedMetadata>;
   /** All tracked effects */
   effects: Map<string, EffectMetadata>;
   /** All tracked components */
@@ -466,6 +466,8 @@ export interface Inspector {
   getStateTree(): StateNode[];
   /** Get component tree */
   getComponentTree(): StateNode[];
+  /** Get dependency graph */
+  getDependencyGraph(): { nodes: any[]; edges: any[] };
   /** Get current state */
   getState(): InspectorState;
   /** Clear tracking data */
@@ -545,6 +547,8 @@ export interface Profiler {
   measureEffect(effect: () => void, fn: () => void): void;
   /** Get performance report */
   getPerformanceReport(): PerformanceProfile | undefined;
+  /** Get profile (alias for backward compatibility) */
+  getProfile(): (PerformanceProfile & { samples: PerformanceMeasurement[] }) | undefined;
   /** Identify bottlenecks */
   identifyBottlenecks(threshold?: number): PerformanceMeasurement[];
   /** Get current state */

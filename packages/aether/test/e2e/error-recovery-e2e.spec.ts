@@ -581,7 +581,7 @@ describe('Error Recovery E2E Tests', () => {
       expect(getUserFriendlyError(new Error('Unknown'))).toContain('unexpected error');
     });
 
-    it('should allow users to retry failed operations', () => {
+    it('should allow users to retry failed operations', async () => {
       const attemptCount = signal(0);
       const success = signal(false);
 
@@ -615,7 +615,11 @@ describe('Error Recovery E2E Tests', () => {
       const button = container.querySelector('button')!;
 
       fireEvent.click(button);
-      expect(button.textContent).toContain('Retry');
+
+      // Wait for the async operation to complete
+      await waitFor(() => {
+        expect(button.textContent).toContain('Retry');
+      });
     });
   });
 

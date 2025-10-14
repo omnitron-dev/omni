@@ -21,6 +21,12 @@ import type { Component } from './types.js';
 export interface ComponentPoolConfig {
   /** Maximum pool size per component type (default: 50) */
   maxSizePerType?: number;
+  /** Maximum pool size total (default: unlimited) */
+  maxPoolSize?: number;
+  /** Maximum instance age in ms (default: unlimited) */
+  maxInstanceAge?: number;
+  /** Enable warming (default: false) */
+  enableWarming?: boolean;
   /** Enable automatic cleanup (default: true) */
   autoCleanup?: boolean;
   /** Cleanup interval in ms (default: 60000) */
@@ -63,6 +69,7 @@ interface PoolStats {
 export class ComponentPool {
   private pools = new Map<string, ComponentInstance[]>();
   private activeInstances = new Map<ComponentInstance, string>();
+  private resultToInstance = new WeakMap<any, ComponentInstance>();
   private config: Required<ComponentPoolConfig>;
   private cleanupTimer?: NodeJS.Timeout | number;
   private stats: PoolStats = {
@@ -74,7 +81,10 @@ export class ComponentPool {
 
   constructor(config: ComponentPoolConfig = {}) {
     this.config = {
-      maxSizePerType: config.maxSizePerType ?? 50,
+      maxSizePerType: config.maxPoolSize ?? config.maxSizePerType ?? 50,
+      maxPoolSize: config.maxPoolSize,
+      maxInstanceAge: config.maxInstanceAge,
+      enableWarming: config.enableWarming ?? false,
       autoCleanup: config.autoCleanup ?? true,
       cleanupInterval: config.cleanupInterval ?? 60000,
       enableStats: config.enableStats ?? true,
@@ -88,12 +98,12 @@ export class ComponentPool {
   /**
    * Acquire component instance from pool
    *
-   * @param component - Component function
-   * @param props - Component props
-   * @returns Component instance
+   * @param componentId - Component identifier/name
+   * @param factory - Component factory function
+   * @param props - Component props (optional)
+   * @returns Component result (the actual component object)
    */
-  acquire<P = any>(component: Component<P>, props?: P): ComponentInstance<P> {
-    const componentId = this.getComponentId(component);
+  acquire<P = any, T = any>(componentId: string, factory: Component<P>, props?: P): T {
     const pool = this.pools.get(componentId);
 
     // Try to reuse from pool
@@ -101,6 +111,7 @@ export class ComponentPool {
       const instance = pool.pop() as ComponentInstance<P>;
 
       // Reset instance
+      instance.component = factory;
       instance.props = props;
       instance.active = true;
       instance.lastUsed = Date.now();
@@ -112,46 +123,75 @@ export class ComponentPool {
         this.stats.reused++;
       }
 
-      // Call recycle lifecycle hook if exists
-      if (typeof (component as any).onRecycle === 'function') {
-        (component as any).onRecycle(instance, props);
+      // Call the factory to get the component result
+      const result = factory(props as P);
+
+      // Store the result in state for later access
+      instance.state = result;
+
+      // Track result -> instance mapping
+      if (typeof result === 'object' && result !== null) {
+        this.resultToInstance.set(result, instance);
       }
 
-      return instance;
+      // Call recycle lifecycle hook if exists
+      if (typeof (factory as any).onRecycle === 'function') {
+        (factory as any).onRecycle(instance, props);
+      }
+
+      return result as T;
     }
 
     // Create new instance
-    const instance: ComponentInstance<P> = {
-      component,
-      props,
-      active: true,
-      lastUsed: Date.now(),
-      state: {},
-      cleanups: [],
-    };
+    const instance = this.createInstance(factory, props);
+    instance.active = true;
 
     // Track active instance
     this.activeInstances.set(instance, componentId);
 
-    if (this.config.enableStats) {
-      this.stats.created++;
+    // Call the factory to get the component result
+    const result = factory(props as P);
+
+    // Store the result in state
+    instance.state = result;
+
+    // Track result -> instance mapping
+    if (typeof result === 'object' && result !== null) {
+      this.resultToInstance.set(result, instance);
     }
 
-    return instance;
+    return result as T;
   }
 
   /**
    * Release component instance back to pool
    *
-   * @param instance - Component instance to release
+   * @param componentId - Component identifier/name
+   * @param resultOrInstance - Component result object or instance to release
    */
-  release<P = any>(instance: ComponentInstance<P>): void {
+  release<P = any>(componentId: string, resultOrInstance: any): void {
+    // If it's a result object, look up the instance
+    let instance: ComponentInstance<P> | undefined;
+
+    if (typeof resultOrInstance === 'object' && resultOrInstance !== null) {
+      // Check if it's already an instance or if we need to look it up
+      if (this.activeInstances.has(resultOrInstance)) {
+        instance = resultOrInstance;
+      } else {
+        instance = this.resultToInstance.get(resultOrInstance);
+      }
+    } else {
+      instance = resultOrInstance;
+    }
+
     if (!instance || !instance.active) {
       return;
     }
 
-    const componentId = this.activeInstances.get(instance);
-    if (!componentId) {
+    // Verify the instance belongs to this component ID
+    const trackedId = this.activeInstances.get(instance);
+    if (trackedId && trackedId !== componentId) {
+      console.warn(`Instance released to wrong pool: expected ${trackedId}, got ${componentId}`);
       return;
     }
 
@@ -202,6 +242,51 @@ export class ComponentPool {
   }
 
   /**
+   * Warm component pool by pre-creating instances
+   *
+   * @param componentId - Component identifier
+   * @param component - Component function
+   * @param count - Number of instances to create
+   */
+  warm<P = any>(componentId: string, component: Component<P>, count: number): void {
+    for (let i = 0; i < count; i++) {
+      const instance = this.createInstance(component);
+
+      // Add to pool
+      let pool = this.pools.get(componentId);
+      if (!pool) {
+        pool = [];
+        this.pools.set(componentId, pool);
+      }
+
+      // Check pool size limit
+      if (pool.length < this.config.maxSizePerType) {
+        pool.push(instance);
+      }
+    }
+  }
+
+  /**
+   * Create a new component instance
+   */
+  private createInstance<P>(component: Component<P>, props?: P): ComponentInstance<P> {
+    const instance: ComponentInstance<P> = {
+      component,
+      props,
+      active: false,
+      lastUsed: Date.now(),
+      state: {},
+      cleanups: [],
+    };
+
+    if (this.config.enableStats) {
+      this.stats.created++;
+    }
+
+    return instance;
+  }
+
+  /**
    * Reset component instance for reuse
    */
   private resetInstance<P>(instance: ComponentInstance<P>): void {
@@ -222,34 +307,6 @@ export class ComponentPool {
     instance.lastUsed = Date.now();
 
     this.stats.recycled++;
-  }
-
-  /**
-   * Get component ID for pooling
-   */
-  private getComponentId(component: Component): string {
-    // Use function name or displayName
-    const name = (component as any).displayName || component.name || 'anonymous';
-
-    // Try to get existing ID
-    if ((component as any).__poolId) {
-      return (component as any).__poolId;
-    }
-
-    // Generate and cache ID
-    const id = `${name}-${Math.random().toString(36).slice(2, 11)}`;
-    try {
-      Object.defineProperty(component, '__poolId', {
-        value: id,
-        writable: false,
-        enumerable: false,
-        configurable: true,
-      });
-    } catch {
-      // Function may be frozen
-    }
-
-    return id;
   }
 
   /**
@@ -317,6 +374,7 @@ export class ComponentPool {
     return {
       ...this.stats,
       poolCount: this.pools.size,
+      poolSize: totalPoolSize,
       totalPoolSize,
       activeInstances: totalActiveSize,
       reuseRate: this.stats.reused / Math.max(1, this.stats.created + this.stats.reused),
@@ -325,10 +383,9 @@ export class ComponentPool {
   }
 
   /**
-   * Get pool size for component
+   * Get pool size for component by ID
    */
-  getPoolSize(component: Component): number {
-    const componentId = this.getComponentId(component);
+  getPoolSize(componentId: string): number {
     const pool = this.pools.get(componentId);
     return pool ? pool.length : 0;
   }
@@ -378,9 +435,12 @@ export function pooled<P = any>(component: Component<P>, poolSize?: number): Com
       })
     : globalComponentPool;
 
+  // Generate component ID
+  const componentId = `${(component as any).displayName || component.name || 'Component'}-${Math.random().toString(36).slice(2, 9)}`;
+
   const PooledComponent: Component<P> = (props: P) => {
     // Acquire instance
-    pool.acquire(component, props);
+    pool.acquire(componentId, component, props);
 
     // Render component
     const result = component(props);
@@ -394,7 +454,7 @@ export function pooled<P = any>(component: Component<P>, poolSize?: number): Com
   PooledComponent.displayName = `Pooled(${(component as any).displayName || component.name || 'Component'})`;
 
   // Add pool methods
-  (PooledComponent as any).getPoolSize = () => pool.getPoolSize(component);
+  (PooledComponent as any).getPoolSize = () => pool.getPoolSize(componentId);
   (PooledComponent as any).clearPool = () => pool.clear();
 
   return PooledComponent;

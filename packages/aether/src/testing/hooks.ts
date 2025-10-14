@@ -38,8 +38,9 @@ export function renderHook<TResult, TProps = any>(
     result,
     // When rerender is called without arguments, pass an empty object
     // This matches React Testing Library behavior
-    rerender: function (props?: TProps) {
-      // eslint-disable-next-line prefer-rest-params
+    rerender(props?: TProps) {
+      // Check if props were explicitly passed using arguments.length
+      // This allows distinguishing between rerender() and rerender(undefined)
       const propsToUse = arguments.length > 0 ? props : ({} as TProps);
       runHook(propsToUse);
     },

@@ -536,18 +536,39 @@ describe('Compiler Integration', () => {
     it('should update compiler options dynamically', async () => {
       const compiler = createCompiler({
         optimize: 'none',
+        sourcemap: false,
       });
 
-      const source = 'export const A = () => <div />;';
+      // Use more complex code that benefits from optimization
+      const source = `
+        import { signal, computed } from '@omnitron-dev/aether';
 
-      const result1 = await compiler.compile(source);
+        export function Component() {
+          const count = signal(0);
+          const doubled = computed(() => count() * 2);
+          const tripled = computed(() => count() * 3);
+          const quadrupled = computed(() => count() * 4);
+
+          return () => (
+            <div className="component">
+              <p>Count: {count()}</p>
+              <p>Doubled: {doubled()}</p>
+              <p>Tripled: {tripled()}</p>
+              <p>Quadrupled: {quadrupled()}</p>
+              <button onClick={() => count.set(count() + 1)}>Increment</button>
+            </div>
+          );
+        }
+      `;
+
+      const result1 = await compiler.compile(source, 'Component.tsx');
 
       compiler.setOptions({ optimize: 'aggressive' });
 
-      const result2 = await compiler.compile(source);
+      const result2 = await compiler.compile(source, 'Component.tsx');
 
-      // Aggressive should produce smaller output
-      expect(result2.code.length).toBeLessThanOrEqual(result1.code.length);
+      // Aggressive should produce smaller output due to optimizations
+      expect(result2.code.length).toBeLessThan(result1.code.length);
     });
   });
 

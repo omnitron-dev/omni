@@ -80,7 +80,7 @@ export function parse(code: string, filePath: string, options: CompilerOptions =
     // Check for unclosed JSX elements (simple heuristic)
     const jsxOpenTags = text.match(/<([A-Z][a-zA-Z0-9]*|[a-z][a-zA-Z0-9]*)\s*[^/>]*>/g) || [];
     const jsxCloseTags = text.match(/<\/([A-Z][a-zA-Z0-9]*|[a-z][a-zA-Z0-9]*)>/g) || [];
-    const jsxSelfClosing = text.match(/<([A-Z][a-zA-Z0-9]*|[a-z][a-zA-Z0-9]*)\s*[^>]*\/>/g) || [];
+    const _jsxSelfClosing = text.match(/<([A-Z][a-zA-Z0-9]*|[a-z][a-zA-Z0-9]*)\s*[^>]*\/>/g) || []; // Not used but kept for future enhancement
 
     // Extract tag names
     const openTagNames = jsxOpenTags.map((tag) => {

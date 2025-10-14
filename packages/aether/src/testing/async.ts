@@ -48,10 +48,5 @@ export async function waitForElementToBeRemoved<T>(
 }
 
 export async function act<T>(callback: () => T | Promise<T>): Promise<T> {
-  try {
-    return await callback();
-  } catch (error) {
-    // Re-throw the error so tests can catch it
-    throw error;
-  }
+  return await callback();
 }

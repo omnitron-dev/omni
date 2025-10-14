@@ -213,10 +213,11 @@ describe('Real-World Application E2E Tests', () => {
 
     it('should handle real-time notifications', () => {
       const notifications = signal<any[]>([]);
+      let notificationIdCounter = 1;
 
       const addNotification = (message: string, type: 'info' | 'warning' | 'error') => {
         const notification = {
-          id: Date.now(),
+          id: notificationIdCounter++,
           message,
           type,
           timestamp: Date.now(),
@@ -234,7 +235,11 @@ describe('Real-World Application E2E Tests', () => {
 
       expect(notifications().length).toBe(3);
 
-      dismissNotification(notifications()[0].id);
+      // Store the ID before dismissing to avoid timing issues
+      const firstNotificationId = notifications()[0].id;
+      dismissNotification(firstNotificationId);
+
+      // Re-read the signal to get updated value
       expect(notifications().length).toBe(2);
     });
   });
@@ -658,7 +663,7 @@ describe('Real-World Application E2E Tests', () => {
         Array.from({ length: 1000 }, (_, i) => ({
           id: i,
           value: Math.random() * 100,
-          date: new Date(2024, 0, 1 + i),
+          date: new Date(2024, 0, 1 + (i % 365)), // Ensure dates stay within year
         }))
       );
 

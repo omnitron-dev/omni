@@ -393,7 +393,7 @@ export class LazyCompilationManager extends EventEmitter {
     const state = this.modules.get(id)!;
     state.status = 'compiling';
 
-    const startTime = Date.now();
+    const startTime = performance.now();
 
     try {
       const result = await Promise.race([
@@ -403,9 +403,10 @@ export class LazyCompilationManager extends EventEmitter {
         ),
       ]);
 
+      const endTime = performance.now();
       state.status = 'compiled';
       state.result = result;
-      state.compilationTime = Date.now() - startTime;
+      state.compilationTime = Math.max(0.001, endTime - startTime); // Ensure non-zero even for instant compilations
 
       this.recordAccess(id);
       this.emit('compiled', id, result);
@@ -415,7 +416,10 @@ export class LazyCompilationManager extends EventEmitter {
       state.status = 'error';
       state.error = error as Error;
 
-      this.emit('error', id, error);
+      // Only emit error event if there are listeners (to avoid unhandled error exceptions)
+      if (this.listenerCount('error') > 0) {
+        this.emit('error', id, error);
+      }
       throw error;
     }
   }

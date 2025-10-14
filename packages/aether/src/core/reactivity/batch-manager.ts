@@ -131,6 +131,7 @@ export class BatchManager {
         existing.priority = priority;
       }
       this.stats.deduped++;
+      this.stats.updates++;
       return;
     }
 
@@ -151,18 +152,19 @@ export class BatchManager {
     this.stats.updates++;
 
     // Check if we should flush immediately
-    if (priority === BatchPriority.IMMEDIATE) {
+    if (priority === BatchPriority.IMMEDIATE && this.batchDepth === 0) {
       this.flush();
       return;
     }
 
-    // Schedule flush if not already scheduled
-    if (!this.flushScheduled) {
+    // Schedule flush if not already scheduled and not batching
+    // For SYNC strategy, don't auto-schedule - let caller control flush
+    if (!this.flushScheduled && this.batchDepth === 0 && this.config.strategy !== FlushStrategy.SYNC) {
       this.scheduleFlush();
     }
 
-    // Check for auto-flush conditions
-    if (this.shouldAutoFlush()) {
+    // Check for auto-flush conditions (only if not batching)
+    if (this.batchDepth === 0 && this.shouldAutoFlush()) {
       this.flush();
     }
   }

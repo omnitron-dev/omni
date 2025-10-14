@@ -481,8 +481,15 @@ describe('Production Deployment E2E Tests', () => {
 
       const { container } = render(SafeComponent);
 
-      expect(container.innerHTML).not.toContain('onerror');
+      // Using textContent prevents XSS by escaping HTML
+      // The innerHTML should contain escaped entities, not actual HTML tags
+      expect(container.innerHTML).toContain('&lt;img');
+      expect(container.innerHTML).toContain('&gt;');
+      // textContent displays the raw text (safe, not executed)
       expect(container.textContent).toContain('<img');
+      // Verify no actual script-capable elements were created
+      expect(container.querySelector('img')).toBeNull();
+      expect(container.querySelector('script')).toBeNull();
     });
   });
 

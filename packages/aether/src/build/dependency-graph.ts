@@ -141,6 +141,7 @@ export class DependencyGraph {
       imports?: Map<string, string>;
       size?: number;
       isEntry?: boolean;
+      isExternal?: boolean;
       metadata?: Record<string, any>;
     } = {}
   ): void {
@@ -156,12 +157,17 @@ export class DependencyGraph {
         depth: 0,
         size: 0,
         isEntry: false,
-        isExternal: this.isExternal(normalizedId),
+        isExternal: options.isExternal !== undefined ? options.isExternal : this.isExternal(normalizedId),
         metadata: {},
       });
     }
 
     const node = this.nodes.get(normalizedId)!;
+
+    // Update isExternal if provided (allow overriding for existing nodes)
+    if (options.isExternal !== undefined) {
+      node.isExternal = options.isExternal;
+    }
 
     // Update node properties
     if (options.dependencies) {

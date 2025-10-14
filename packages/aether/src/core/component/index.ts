@@ -44,5 +44,8 @@ export type {
   ComponentContext,
 } from './types.js';
 
+// JSX namespace for type definitions
+export type { JSX } from './types.js';
+
 // Re-export onCleanup from reactivity for convenience
 export { onCleanup } from '../reactivity/context.js';

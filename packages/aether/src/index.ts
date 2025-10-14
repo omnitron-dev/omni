@@ -242,5 +242,67 @@ export {
   type ThemeProviderProps,
 } from './theming/index.js';
 
+// SVG system exports
+export {
+  // Primitives
+  SVG,
+  Circle,
+  Rect,
+  Path,
+  Line,
+  Polygon,
+  Polyline,
+  Ellipse,
+  G,
+  Use,
+  Symbol,
+  Defs,
+  Text,
+  TSpan,
+  TextPath,
+  LinearGradient,
+  RadialGradient,
+  Stop,
+  Pattern,
+  Mask,
+  ClipPath,
+  // Components
+  SVGIcon,
+  // Icon Registry
+  IconRegistry,
+  getIconRegistry,
+  resetIconRegistry,
+  // Types
+  type SVGProps,
+  type CircleProps,
+  type RectProps,
+  type PathProps,
+  type LineProps,
+  type PolygonProps,
+  type PolylineProps,
+  type EllipseProps,
+  type GroupProps,
+  type UseProps,
+  type SymbolProps,
+  type DefsProps,
+  type TextProps,
+  type TSpanProps,
+  type TextPathProps,
+  type LinearGradientProps,
+  type RadialGradientProps,
+  type StopProps,
+  type PatternProps,
+  type MaskProps,
+  type ClipPathProps,
+  type SVGIconProps,
+  type IconDefinition,
+  type IconSource,
+  type IconSet,
+  type IconTransformer,
+  type AnimationConfig,
+  type TimelineConfig,
+  type AnimationController,
+} from './svg/index.js';
+
 // Re-export everything from core for convenience
 export * from './core/index.js';

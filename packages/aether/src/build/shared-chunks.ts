@@ -814,22 +814,25 @@ export class SharedChunksOptimizer {
       const modules = Array.from(largeChunk.modules);
       const targetChunks = Math.ceil(largeChunk.size / this.config.maxChunkSize);
 
-      // Simple split by module count
-      const modulesPerChunk = Math.ceil(modules.length / targetChunks);
+      // Only split if we need more than 1 chunk
+      if (targetChunks > 1) {
+        // Simple split by module count
+        const modulesPerChunk = Math.ceil(modules.length / targetChunks);
 
-      for (let i = 0; i < targetChunks; i++) {
-        const start = i * modulesPerChunk;
-        const end = Math.min(start + modulesPerChunk, modules.length);
-        const chunkModules = new Set(modules.slice(start, end));
+        for (let i = 0; i < targetChunks; i++) {
+          const start = i * modulesPerChunk;
+          const end = Math.min(start + modulesPerChunk, modules.length);
+          const chunkModules = new Set(modules.slice(start, end));
 
-        if (chunkModules.size > 0) {
-          const chunkName = i === 0 ? largeChunk.name : `${largeChunk.name}-${i}`;
-          this.createChunk(chunkName, largeChunk.type, chunkModules);
+          if (chunkModules.size > 0) {
+            const chunkName = i === 0 ? largeChunk.name : `${largeChunk.name}-${i}`;
+            this.createChunk(chunkName, largeChunk.type, chunkModules);
+          }
         }
-      }
 
-      // Remove original large chunk
-      this.chunks.delete(largeChunk.id);
+        // Remove original large chunk
+        this.chunks.delete(largeChunk.id);
+      }
     }
   }
 

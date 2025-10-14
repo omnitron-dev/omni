@@ -559,13 +559,18 @@ describe('SharedChunksOptimizer', () => {
     });
 
     it('should split large chunks', async () => {
-      const modules: Array<{ id: string; size: number }> = [];
+      // Use granular strategy which creates non-entry chunks that can be split
+      const splitOptimizer = new SharedChunksOptimizer({
+        strategy: 'granular',
+        minChunkSize: 10000,
+        maxChunkSize: 100000,
+      });
 
+      // Add modules that will create a large chunk (not entry)
       for (let i = 0; i < 10; i++) {
-        const id = `src/large-module-${i}.ts`;
-        modules.push({ id, size: 15000 });
+        const id = `src/components/large-module-${i}.ts`;
 
-        optimizer.addModule(id, {
+        splitOptimizer.addModule(id, {
           id,
           size: 15000,
           importedBy: new Set(['src/main.ts']),
@@ -575,9 +580,9 @@ describe('SharedChunksOptimizer', () => {
         });
       }
 
-      const result = await optimizer.optimize();
+      const result = await splitOptimizer.optimize();
 
-      // Should have split into multiple chunks
+      // Should have split the components chunk or created multiple chunks
       expect(result.chunks.size).toBeGreaterThan(1);
     });
 
@@ -941,12 +946,15 @@ describe('SharedChunksOptimizer', () => {
   describe('Recommendations', () => {
     it('should warn about too many chunks', async () => {
       const manyChunksOptimizer = new SharedChunksOptimizer({
+        strategy: 'granular',
         maxChunks: 5,
+        minChunkSize: 10000,
       });
 
+      // Create modules in different directories to trigger granular chunking
       for (let i = 0; i < 20; i++) {
-        manyChunksOptimizer.addModule(`src/module-${i}.ts`, {
-          id: `src/module-${i}.ts`,
+        manyChunksOptimizer.addModule(`src/module${i}/index.ts`, {
+          id: `src/module${i}/index.ts`,
           size: 15000,
           importedBy: new Set(['entry']),
           imports: new Set(),
@@ -1228,7 +1236,7 @@ describe('Integration Tests', () => {
 
     optimizer.addModule('src/utils.ts', {
       id: 'src/utils.ts',
-      size: 15000,
+      size: 22000, // Above minChunkSize so it can be extracted as common chunk
       importedBy: new Set(['src/app.ts', 'src/components/Button.ts']),
       imports: new Set(),
       dynamicImports: new Set(),

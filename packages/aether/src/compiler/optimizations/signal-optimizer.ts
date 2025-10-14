@@ -94,21 +94,7 @@ export class SignalOptimizer implements OptimizationPass {
     // Analyze signal usage
     const signalUsage = this.analyzeSignalUsage(optimizedCode);
 
-    // Pass 1: Inline constant signals
-    if (this.options.inlineConstants) {
-      const result = this.inlineConstantSignals(optimizedCode, signalUsage);
-      optimizedCode = result.code;
-      changes.push(...result.changes);
-    }
-
-    // Pass 2: Remove unused subscriptions
-    if (this.options.removeUnusedSubscriptions) {
-      const result = this.removeUnusedSubscriptions(optimizedCode, signalUsage);
-      optimizedCode = result.code;
-      changes.push(...result.changes);
-    }
-
-    // Pass 3: Optimize access patterns
+    // Pass 0: Optimize access patterns (analyze first, before modifications)
     if (this.options.optimizeAccessPatterns) {
       const result = this.optimizeAccessPatterns(optimizedCode, signalUsage);
       optimizedCode = result.code;
@@ -116,16 +102,30 @@ export class SignalOptimizer implements OptimizationPass {
       warnings.push(...result.warnings);
     }
 
-    // Pass 4: Merge sequential updates
-    if (this.options.mergeSequentialUpdates) {
-      const result = this.mergeSequentialUpdates(optimizedCode);
+    // Pass 1: Convert single-use signals (aggressive only) - must run before inline
+    if (this.options.convertSingleUseSignals) {
+      const result = this.convertSingleUseSignals(optimizedCode, signalUsage);
       optimizedCode = result.code;
       changes.push(...result.changes);
     }
 
-    // Pass 5: Convert single-use signals (aggressive only)
-    if (this.options.convertSingleUseSignals) {
-      const result = this.convertSingleUseSignals(optimizedCode, signalUsage);
+    // Pass 2: Inline constant signals (for multi-use constants)
+    if (this.options.inlineConstants) {
+      const result = this.inlineConstantSignals(optimizedCode, signalUsage);
+      optimizedCode = result.code;
+      changes.push(...result.changes);
+    }
+
+    // Pass 3: Remove unused subscriptions
+    if (this.options.removeUnusedSubscriptions) {
+      const result = this.removeUnusedSubscriptions(optimizedCode, signalUsage);
+      optimizedCode = result.code;
+      changes.push(...result.changes);
+    }
+
+    // Pass 4: Merge sequential updates
+    if (this.options.mergeSequentialUpdates) {
+      const result = this.mergeSequentialUpdates(optimizedCode);
       optimizedCode = result.code;
       changes.push(...result.changes);
     }
@@ -280,8 +280,8 @@ export class SignalOptimizer implements OptimizationPass {
       // Only inline if:
       // 1. Signal is constant
       // 2. Never updated (updateCount === 0)
-      // 3. Accessed at least once
-      if (info.isConstant && info.updateCount === 0 && info.accessCount > 0) {
+      // 3. Accessed exactly once (single-use only for inlining)
+      if (info.isConstant && info.updateCount === 0 && info.accessCount === 1) {
         const constantValue =
           typeof info.constantValue === 'string' ? info.constantValue : JSON.stringify(info.constantValue);
 
@@ -298,7 +298,7 @@ export class SignalOptimizer implements OptimizationPass {
             sizeImpact: beforeLength - afterLength,
           });
 
-          // Remove signal declaration if no longer needed
+          // Remove signal declaration after inlining single-use signal
           const declarationPattern = new RegExp(
             `const\\s+(?:\\[${signalName},\\s*\\w+\\]|${signalName})\\s*=\\s*signal\\([^)]+\\);?\\s*\n?`,
             'g'
@@ -321,9 +321,9 @@ export class SignalOptimizer implements OptimizationPass {
     let optimizedCode = code;
     const changes: OptimizationChange[] = [];
 
-    // Find signals that are never accessed
+    // Find signals that are never accessed AND never updated
     for (const [signalName, info] of usage) {
-      if (info.accessCount === 0 && info.subscriptionCount === 0) {
+      if (info.accessCount === 0 && info.subscriptionCount === 0 && info.updateCount === 0) {
         // Remove signal declaration
         const declarationPattern = new RegExp(
           `const\\s+(?:\\[${signalName},\\s*\\w+\\]|${signalName})\\s*=\\s*signal\\([^)]+\\);?\\s*\n?`,
@@ -368,7 +368,7 @@ export class SignalOptimizer implements OptimizationPass {
           const accessPattern = new RegExp(`\\b${signalName}\\(\\)`, 'g');
           const matches = line.match(accessPattern);
 
-          if (matches && matches.length > 2) {
+          if (matches && matches.length >= 2) {
             warnings.push(
               `Signal '${signalName}' accessed ${matches.length} times on line ${index + 1}. Consider caching the value.`
             );
@@ -449,7 +449,13 @@ export class SignalOptimizer implements OptimizationPass {
       // 1. Accessed only once
       // 2. Never updated
       // 3. No subscriptions
-      if (info.accessCount === 1 && info.updateCount === 0 && info.subscriptionCount === 0) {
+      // 4. Is a constant value
+      if (
+        info.accessCount === 1 &&
+        info.updateCount === 0 &&
+        info.subscriptionCount === 0 &&
+        info.isConstant
+      ) {
         // Replace signal with direct value
         const accessPattern = new RegExp(`\\b${signalName}\\(\\)`, 'g');
         const value = typeof info.constantValue === 'string' ? info.constantValue : JSON.stringify(info.constantValue);

@@ -22,6 +22,7 @@ export default defineConfig({
     'styling/index': 'src/styling/index.ts',
     'theming/index': 'src/theming/index.ts',
     'compiler/index': 'src/compiler/index.ts',
+    'testing/index': 'src/testing/index.ts',
   },
   format: ['esm'],
   dts: true,

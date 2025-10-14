@@ -65,9 +65,14 @@ export interface CompilationMetrics {
   compiledSize: number;
 
   /**
-   * Size reduction percentage
+   * Size reduction in bytes
    */
   sizeReduction: number;
+
+  /**
+   * Size reduction percentage
+   */
+  sizeReductionPercent: number;
 }
 
 /**
@@ -154,6 +159,8 @@ export class AetherCompiler {
       // 6. Calculate metrics
       const totalTime = Date.now() - startTime;
       const compiledSize = finalCode.length;
+      const sizeReduction = originalSize - compiledSize;
+      const sizeReductionPercent = originalSize > 0 ? (sizeReduction / originalSize) * 100 : 0;
 
       const metrics: CompilationMetrics = {
         parseTime,
@@ -163,7 +170,8 @@ export class AetherCompiler {
         totalTime,
         originalSize,
         compiledSize,
-        sizeReduction: originalSize > 0 ? ((originalSize - compiledSize) / originalSize) * 100 : 0,
+        sizeReduction,
+        sizeReductionPercent,
       };
 
       return {

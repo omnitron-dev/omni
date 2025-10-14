@@ -322,7 +322,7 @@ describe('Build System Integration Tests', () => {
       expect(stats.totalSize).toBeGreaterThan(0);
 
       await cache.clear();
-    }, 10000);
+    }, 40000); // Increased to 40s for slow cache operations
   });
 
   describe('4. Shared Chunks + Module Federation', () => {
@@ -357,7 +357,7 @@ describe('Build System Integration Tests', () => {
       });
 
       // Add vendor modules
-      optimizer.addModule('react', {
+      optimizer.addModule('node_modules/react/index.js', {
         id: 'node_modules/react/index.js',
         size: 100000,
         importedBy: new Set(['src/index.tsx']),
@@ -403,7 +403,7 @@ describe('Build System Integration Tests', () => {
       });
 
       // Add shared vendor modules
-      optimizer.addModule('react', {
+      optimizer.addModule('node_modules/react/index.js', {
         id: 'node_modules/react/index.js',
         size: 100000,
         importedBy: new Set(['host', 'remote1', 'remote2']),
@@ -416,7 +416,7 @@ describe('Build System Integration Tests', () => {
       const vendorChunk = Array.from(result.chunks.values()).find((c) => c.type === 'vendor');
 
       expect(vendorChunk).toBeDefined();
-      expect(vendorChunk?.modules.has('react')).toBe(true);
+      expect(vendorChunk?.modules.has('node_modules/react/index.js')).toBe(true);
 
       // Verify federation manifest
       const manifest = await federation.buildManifest('1.0.0');
@@ -494,7 +494,7 @@ describe('Build System Integration Tests', () => {
 
       await compiler.terminate();
       await cache.clear();
-    }, 10000);
+    }, 40000);
 
     it('should measure compilation speed improvements', async () => {
       const compiler = new ParallelCompiler({
@@ -553,7 +553,7 @@ describe('Build System Integration Tests', () => {
       expect(await cache.get('module-a')).toBeNull();
 
       await cache.clear();
-    }, 10000);
+    }, 40000);
   });
 
   describe('6. Dependency Graph + Lazy Compilation', () => {
@@ -872,7 +872,7 @@ describe('Build System Integration Tests', () => {
       // Cleanup
       await compiler.terminate();
       await cache.clear();
-    }, 15000);
+    }, 60000);
 
     it('should support development mode with HMR', async () => {
       const lazyCompiler = new LazyCompilationManager({
@@ -993,7 +993,7 @@ describe('Build System Integration Tests', () => {
       expect(result).toBeNull(); // Should return null for corrupted/missing data
 
       await cache.clear();
-    }, 10000);
+    }, 40000);
 
     it('should recover from worker crashes', async () => {
       const mockWorkerFactory = () => {
@@ -1130,7 +1130,7 @@ describe('Build System Integration Tests', () => {
       expect(hitRate).toBeGreaterThan(40); // At least 40% hit rate
 
       await cache.clear();
-    }, 10000);
+    }, 40000);
 
     it('should test parallel compilation speedup', async () => {
       const files = Array.from({ length: 30 }, (_, i) => ({

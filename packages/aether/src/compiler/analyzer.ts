@@ -400,16 +400,25 @@ function extractLiteralValue(node: ts.Node): any {
  */
 function extractDependencies(node: ts.Node): string[] {
   const dependencies = new Set<string>();
+  const excludedIdentifiers = new Set(['console', 'Math', 'Date', 'Object', 'Array', 'String', 'Number', 'Boolean']);
 
   walkAST(node, (child) => {
     // Look for signal reads (function calls)
     if (ts.isCallExpression(child) && ts.isIdentifier(child.expression)) {
-      dependencies.add(child.expression.text);
+      const name = child.expression.text;
+      // Exclude built-in objects and console
+      if (!excludedIdentifiers.has(name)) {
+        dependencies.add(name);
+      }
     }
 
     // Look for property accesses
     if (ts.isPropertyAccessExpression(child) && ts.isIdentifier(child.expression)) {
-      dependencies.add(child.expression.text);
+      const name = child.expression.text;
+      // Exclude built-in objects and console
+      if (!excludedIdentifiers.has(name)) {
+        dependencies.add(name);
+      }
     }
   });
 

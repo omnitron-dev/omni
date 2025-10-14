@@ -57,7 +57,7 @@ export async function compile(
   // Set default options
   const compilerOptions: CompilerOptions = {
     mode: 'production',
-    optimize: 'basic',
+    optimize: 'none',
     sourcemap: false,
     jsx: {
       runtime: 'automatic',
@@ -74,10 +74,11 @@ export async function compile(
     warnings: [],
   };
 
-  // Step 1: Parse
-  const parseResult = parse(code, filePath, compilerOptions);
-  context.sourceFile = parseResult.sourceFile;
-  context.warnings.push(...parseResult.warnings);
+  try {
+    // Step 1: Parse
+    const parseResult = parse(code, filePath, compilerOptions);
+    context.sourceFile = parseResult.sourceFile;
+    context.warnings.push(...parseResult.warnings);
 
   // Step 2: Analyze
   const analysis = analyze(context.sourceFile, compilerOptions);
@@ -141,10 +142,23 @@ export async function compile(
     });
   }
 
-  // Add warnings from context
-  result.warnings = [...(result.warnings || []), ...context.warnings];
+    // Add warnings from context
+    result.warnings = [...(result.warnings || []), ...context.warnings];
 
-  return result;
+    return result;
+  } catch (error) {
+    // On error, return original code with error warning
+    context.warnings.push({
+      message: `Compilation error: ${error instanceof Error ? error.message : String(error)}`,
+      level: 'error',
+    });
+
+    return {
+      code,
+      map: null,
+      warnings: context.warnings,
+    };
+  }
 }
 
 /**

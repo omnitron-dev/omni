@@ -344,9 +344,28 @@ export function isComponentDefinition(node: ts.Node): boolean {
     }
   }
 
-  // Check for function returning JSX
-  if (ts.isFunctionDeclaration(node) || ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
-    // Would need more analysis to check if it returns JSX
+  // Check for top-level function declarations
+  if (ts.isFunctionDeclaration(node)) {
+    return true;
+  }
+
+  // Check for arrow functions and function expressions assigned to top-level variables
+  // (ComponentA = () => ..., ComponentB = function() ...)
+  if ((ts.isArrowFunction(node) || ts.isFunctionExpression(node)) && ts.isVariableDeclaration(node.parent)) {
+    // Must be a top-level variable declaration (not nested inside functions)
+    const varDecl = node.parent;
+    if (ts.isVariableDeclarationList(varDecl.parent) && ts.isVariableStatement(varDecl.parent.parent)) {
+      // Check if this is at the top level (parent is a SourceFile only)
+      const statement = varDecl.parent.parent;
+      const grandParent = statement.parent;
+      if (ts.isSourceFile(grandParent)) {
+        return true;
+      }
+    }
+  }
+
+  // Check for exported default arrow functions
+  if (ts.isArrowFunction(node) && ts.isExportAssignment(node.parent)) {
     return true;
   }
 

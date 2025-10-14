@@ -226,8 +226,10 @@ export class TreeShakerPass implements OptimizationPass {
       }
     }
 
-    // Function declarations
-    const functionMatch = /(?:function|const|let|var)\s+(\w+)\s*=?\s*(?:async\s*)?\(/.exec(line);
+    // Function declarations (with optional pure annotation)
+    const functionMatch = /(?:\/\*[^*]*\*\/\s*)?(?:function|const|let|var)\s+(\w+)\s*=?\s*(?:async\s*)?\(/.exec(
+      line
+    );
     if (functionMatch) {
       const name = functionMatch[1];
       if (name && !this.symbols.has(name)) {
@@ -244,14 +246,18 @@ export class TreeShakerPass implements OptimizationPass {
     }
 
     // Variable declarations
-    const variableMatch = /(?:const|let|var)\s+(\w+)\s*=/.exec(line);
+    const variableMatch = /(?:const|let|var)\s+(\w+)\s*=\s*(.*)/.exec(line);
     if (variableMatch) {
       const name = variableMatch[1];
+      const value = variableMatch[2];
       if (
         name &&
         !this.symbols.has(name) &&
         !functionMatch // Avoid duplicates with function declarations
       ) {
+        // Check if pure annotated or is a simple literal
+        const isPure = this.isPureAnnotated(line) || this.isSimpleLiteral(value || '');
+
         this.symbols.set(name, {
           name,
           type: 'variable',
@@ -259,7 +265,7 @@ export class TreeShakerPass implements OptimizationPass {
           used: new Set(),
           exported: false,
           imported: false,
-          isPure: this.isPureAnnotated(line),
+          isPure,
         });
       }
     }
@@ -286,16 +292,23 @@ export class TreeShakerPass implements OptimizationPass {
    * Find symbol usages
    */
   private findUsages(line: string, lineNumber: number): void {
-    // Skip declaration lines
-    if (
-      line.includes('import ') ||
-      line.includes('export ') ||
-      line.includes('const ') ||
-      line.includes('let ') ||
-      line.includes('var ') ||
-      line.includes('function ') ||
-      line.includes('class ')
-    ) {
+    // Skip import/export declaration keywords themselves, but check content
+    if (line.includes('import ') || line.includes('export ')) {
+      return;
+    }
+
+    // For variable/function declarations, scan the right-hand side for usage
+    // Example: "const count = signal(0);" - 'signal' is used here
+    const declarationMatch = /(?:const|let|var|function|class)\s+\w+\s*=\s*(.+)/.exec(line);
+    let searchLine = line;
+
+    if (declarationMatch) {
+      // Only search the right-hand side of declarations
+      searchLine = declarationMatch[1] || line;
+    }
+
+    // Skip function declarations entirely - they don't use their own name
+    if (/(?:\/\*[^*]*\*\/\s*)?function\s+\w+\s*\(/.test(line)) {
       return;
     }
 
@@ -303,7 +316,7 @@ export class TreeShakerPass implements OptimizationPass {
     const identifierRegex = /\b([a-zA-Z_$][a-zA-Z0-9_$]*)\b/g;
     let match: RegExpExecArray | null;
 
-    while ((match = identifierRegex.exec(line)) !== null) {
+    while ((match = identifierRegex.exec(searchLine)) !== null) {
       const identifier = match[1];
       if (!identifier) continue;
 
@@ -363,6 +376,17 @@ export class TreeShakerPass implements OptimizationPass {
    */
   private isPureAnnotated(line: string): boolean {
     return /\/\*\s*[@#]__PURE__\s*\*\//.test(line);
+  }
+
+  /**
+   * Check if value is a simple literal (safe to remove if unused)
+   */
+  private isSimpleLiteral(value: string): boolean {
+    const trimmed = value.trim();
+    // Simple literals: numbers, strings, booleans, null, undefined, simple objects/arrays
+    return (
+      /^(?:\d+|true|false|null|undefined|'[^']*'|"[^"]*"|`[^`]*`|\[[^\]]*\]|\{[^}]*\})(?:;.*)?$/.test(trimmed)
+    );
   }
 
   /**
@@ -510,8 +534,8 @@ export class TreeShakerPass implements OptimizationPass {
 
       const line = lines[i] || '';
 
-      // Check for unused function
-      const functionMatch = /(?:function|const|let)\s+(\w+)\s*=?\s*(?:async\s*)?\(/.exec(line);
+      // Check for unused function (with optional pure annotation)
+      const functionMatch = /(?:\/\*[^*]*\*\/\s*)?(?:function|const|let)\s+(\w+)\s*=?\s*(?:async\s*)?\(/.exec(line);
       if (functionMatch) {
         const name = functionMatch[1];
         const symbol = name ? this.symbols.get(name) : undefined;
@@ -574,7 +598,11 @@ export class TreeShakerPass implements OptimizationPass {
     let optimizedCode = code;
 
     for (const [name, symbol] of this.symbols) {
-      if (symbol.type === 'variable' && symbol.used.size === 0 && !symbol.exported) {
+      // Only remove if:
+      // 1. Variable is unused
+      // 2. Not exported
+      // 3. Either has pure annotation OR is a simple literal
+      if (symbol.type === 'variable' && symbol.used.size === 0 && !symbol.exported && symbol.isPure) {
         // Remove variable declaration
         const varPattern = new RegExp(`(?:const|let|var)\\s+${name}\\s*=\\s*[^;]+;?\\s*\n?`, 'g');
 
@@ -618,13 +646,14 @@ export class TreeShakerPass implements OptimizationPass {
     }
 
     // Pattern: condition ? trueValue : falseValue with constant condition
-    const ternaryPattern = /(true|false)\s*\?\s*([^:]+)\s*:\s*([^;]+)/g;
+    // Match ternaries more precisely - values can be numbers, identifiers, or simple expressions
+    const ternaryPattern = /(true|false)\s*\?\s*([^:;]+?)\s*:\s*([^;,)\n]+)/g;
     optimizedCode = optimizedCode.replace(ternaryPattern, (match, condition, trueVal, falseVal) => {
       changes.push({
         type: 'tree-shake',
         description: 'Simplified constant ternary',
       });
-      return condition === 'true' ? trueVal : falseVal;
+      return condition === 'true' ? trueVal.trim() : falseVal.trim();
     });
 
     return { code: optimizedCode, changes };

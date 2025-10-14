@@ -519,6 +519,7 @@ describe('E2E: CSS-Heavy Application', () => {
       generateScopedName: '[name]__[local]___[hash:base64:5]',
       typescript: {
         enabled: true,
+        declarationDir: path.join(env.tempDir, 'css-types'),
       },
       modules: {
         exportLocalsConvention: 'camelCase',
@@ -997,7 +998,10 @@ describe('E2E: Complete Build Pipeline', () => {
     // 2. Initialize build tools
     const compiler = new AetherCompiler({ mode: 'production', optimize: 'aggressive' });
     const cssProcessor = new CSSModulesProcessor({
-      typescript: { enabled: true },
+      typescript: {
+        enabled: true,
+        declarationDir: path.join(env.tempDir, 'css-types'),
+      },
     });
     const cache = new BuildCache(env.cacheDir, 'memory');
     await cache.init();

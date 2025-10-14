@@ -2,7 +2,10 @@
  * Tests for CSS Modules Support
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterAll } from 'vitest';
+import * as os from 'os';
+import * as path from 'path';
+import * as fs from 'fs/promises';
 import {
   CSSModulesProcessor,
   createCSSModulesProcessor,
@@ -12,14 +15,39 @@ import {
   type CSSModulesConfig,
 } from '../../src/build/css-modules.js';
 
+// Create a temporary directory for TypeScript definitions
+const tempDir = path.join(os.tmpdir(), `aether-css-modules-test-${Date.now()}`);
+
+// Helper function to create processor with temporary directory for .d.ts files
+function createTestProcessor(config: CSSModulesConfig = {}): CSSModulesProcessor {
+  return new CSSModulesProcessor({
+    ...config,
+    typescript: {
+      enabled: config.typescript?.enabled ?? true,
+      declarationDir: tempDir,
+      watch: config.typescript?.watch ?? false,
+      ...config.typescript,
+    },
+  });
+}
+
 describe('CSSModulesProcessor', () => {
   let processor: CSSModulesProcessor;
 
   beforeEach(() => {
-    processor = new CSSModulesProcessor({
+    processor = createTestProcessor({
       dev: false,
       generateScopedName: '[hash:base64:8]',
     });
+  });
+
+  afterAll(async () => {
+    // Clean up temporary directory
+    try {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    } catch (error) {
+      // Ignore cleanup errors
+    }
   });
 
   describe('shouldProcess', () => {
@@ -40,7 +68,7 @@ describe('CSSModulesProcessor', () => {
     });
 
     it('should support custom regex', () => {
-      const customProcessor = new CSSModulesProcessor({
+      const customProcessor = createTestProcessor({
         modules: {
           auto: /\.custom\.css$/,
         },
@@ -51,7 +79,7 @@ describe('CSSModulesProcessor', () => {
     });
 
     it('should support predicate function', () => {
-      const customProcessor = new CSSModulesProcessor({
+      const customProcessor = createTestProcessor({
         modules: {
           auto: (id: string) => id.includes('scoped'),
         },
@@ -170,7 +198,7 @@ describe('CSSModulesProcessor', () => {
 
   describe('class name generation', () => {
     it('should use pattern with [local]', async () => {
-      const customProcessor = new CSSModulesProcessor({
+      const customProcessor = createTestProcessor({
         generateScopedName: '[local]__[hash:base64:5]',
       });
 
@@ -181,7 +209,7 @@ describe('CSSModulesProcessor', () => {
     });
 
     it('should use pattern with [name]', async () => {
-      const customProcessor = new CSSModulesProcessor({
+      const customProcessor = createTestProcessor({
         generateScopedName: '[name]__[local]',
       });
 
@@ -192,7 +220,7 @@ describe('CSSModulesProcessor', () => {
     });
 
     it('should use pattern with [hash]', async () => {
-      const customProcessor = new CSSModulesProcessor({
+      const customProcessor = createTestProcessor({
         generateScopedName: '[hash:base64:8]',
       });
 
@@ -203,7 +231,7 @@ describe('CSSModulesProcessor', () => {
     });
 
     it('should support custom hash length', async () => {
-      const customProcessor = new CSSModulesProcessor({
+      const customProcessor = createTestProcessor({
         modules: {
           hashLength: 10,
         },
@@ -217,7 +245,7 @@ describe('CSSModulesProcessor', () => {
     });
 
     it('should support custom function', async () => {
-      const customProcessor = new CSSModulesProcessor({
+      const customProcessor = createTestProcessor({
         generateScopedName: (name, filename) => {
           const baseName = filename.split('/').pop()?.replace('.module.css', '');
           return `${baseName}_${name}_scoped`;
@@ -251,7 +279,7 @@ describe('CSSModulesProcessor', () => {
 
   describe('export generation', () => {
     it('should generate named exports', async () => {
-      const customProcessor = new CSSModulesProcessor({
+      const customProcessor = createTestProcessor({
         modules: {
           namedExport: true,
         },
@@ -265,7 +293,7 @@ describe('CSSModulesProcessor', () => {
     });
 
     it('should generate default export only', async () => {
-      const customProcessor = new CSSModulesProcessor({
+      const customProcessor = createTestProcessor({
         modules: {
           namedExport: false,
         },
@@ -279,7 +307,7 @@ describe('CSSModulesProcessor', () => {
     });
 
     it('should support camelCase convention', async () => {
-      const customProcessor = new CSSModulesProcessor({
+      const customProcessor = createTestProcessor({
         modules: {
           exportLocalsConvention: 'camelCase',
         },
@@ -292,7 +320,7 @@ describe('CSSModulesProcessor', () => {
     });
 
     it('should support dashes convention', async () => {
-      const customProcessor = new CSSModulesProcessor({
+      const customProcessor = createTestProcessor({
         modules: {
           exportLocalsConvention: 'dashes',
         },
@@ -305,7 +333,7 @@ describe('CSSModulesProcessor', () => {
     });
 
     it('should support camelCaseOnly convention', async () => {
-      const customProcessor = new CSSModulesProcessor({
+      const customProcessor = createTestProcessor({
         modules: {
           exportLocalsConvention: 'camelCaseOnly',
         },
@@ -319,7 +347,7 @@ describe('CSSModulesProcessor', () => {
     });
 
     it('should support asIs convention', async () => {
-      const customProcessor = new CSSModulesProcessor({
+      const customProcessor = createTestProcessor({
         modules: {
           exportLocalsConvention: 'asIs',
         },
@@ -332,7 +360,7 @@ describe('CSSModulesProcessor', () => {
     });
 
     it('should export globals when configured', async () => {
-      const customProcessor = new CSSModulesProcessor({
+      const customProcessor = createTestProcessor({
         exportGlobals: true,
       });
 
@@ -358,7 +386,7 @@ describe('CSSModulesProcessor', () => {
     });
 
     it('should include named exports in definition', async () => {
-      const customProcessor = new CSSModulesProcessor({
+      const customProcessor = createTestProcessor({
         modules: {
           namedExport: true,
         },
@@ -385,7 +413,7 @@ describe('CSSModulesProcessor', () => {
     });
 
     it('should skip TypeScript generation when disabled', async () => {
-      const customProcessor = new CSSModulesProcessor({
+      const customProcessor = createTestProcessor({
         typescript: {
           enabled: false,
         },
@@ -464,7 +492,7 @@ describe('CSSModulesProcessor', () => {
     });
 
     it('should disable composition when configured', async () => {
-      const customProcessor = new CSSModulesProcessor({
+      const customProcessor = createTestProcessor({
         modules: {
           composition: false,
         },
@@ -684,7 +712,7 @@ describe('CSSModulesProcessor', () => {
 
   describe('development mode', () => {
     it('should use readable class names in dev mode', async () => {
-      const devProcessor = new CSSModulesProcessor({
+      const devProcessor = createTestProcessor({
         dev: true,
       });
 
@@ -695,7 +723,7 @@ describe('CSSModulesProcessor', () => {
     });
 
     it('should use shorter hashes in dev mode', async () => {
-      const devProcessor = new CSSModulesProcessor({
+      const devProcessor = createTestProcessor({
         dev: true,
         modules: {
           hashLength: 5,

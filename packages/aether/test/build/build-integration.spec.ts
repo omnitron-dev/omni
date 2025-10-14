@@ -820,7 +820,13 @@ describe('Build System Integration Tests', () => {
 
       // 5. CSS Modules
       profiler.startMetric('css-processing');
-      const cssProcessor = new CSSModulesProcessor({ dev: false });
+      const cssProcessor = new CSSModulesProcessor({
+        dev: false,
+        typescript: {
+          enabled: true,
+          declarationDir: path.join(buildDir, 'css-types'),
+        },
+      });
       await cssProcessor.process('./App.module.css', '.app { color: blue; }');
       profiler.endMetric('css-processing');
 

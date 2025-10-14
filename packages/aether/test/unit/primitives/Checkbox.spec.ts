@@ -953,7 +953,8 @@ describe('Checkbox', () => {
       const component = () =>
         Checkbox({
           checked,
-          children: CheckboxIndicator({ class: 'indicator', forceMount: true }),
+          // Wrap in function so CheckboxIndicator is created AFTER Checkbox establishes context
+          children: () => CheckboxIndicator({ class: 'indicator', forceMount: true }),
         });
 
       const { container } = renderComponent(component);

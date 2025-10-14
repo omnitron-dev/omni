@@ -300,10 +300,11 @@ export const CheckboxIndicator = defineComponent<CheckboxIndicatorProps>((props)
       const dataState = checked === 'indeterminate' ? 'indeterminate' : checked ? 'checked' : 'unchecked';
       element.setAttribute('data-state', dataState);
 
-      // Control visibility
+      // Control visibility - with forceMount, always visible
       if (!props.forceMount) {
         element.style.display = shouldShow ? '' : 'none';
       }
+      // If forceMount is true, don't set display style (leave it as-is or empty)
     });
   };
 
@@ -313,16 +314,24 @@ export const CheckboxIndicator = defineComponent<CheckboxIndicatorProps>((props)
 
     const dataState = checked === 'indeterminate' ? 'indeterminate' : checked ? 'checked' : 'unchecked';
 
+    // With forceMount, always render visible. Without forceMount, only show when checked/indeterminate
+    const shouldShow = props.forceMount || shouldRender;
+
+    // Build style object
+    const baseStyle = (props.style as any) || {};
+    const style = {
+      ...baseStyle,
+      // Only set display:none if we should hide. Otherwise, preserve original display or leave empty
+      ...(shouldShow ? {} : { display: 'none' }),
+    };
+
     // Always render the span, but control visibility with display style
     // This ensures the element exists in the DOM and can be updated reactively
     return jsx('span', {
       ...props,
       ref: refCallback,
       'data-state': dataState,
-      style: {
-        ...((props.style as any) || {}),
-        display: shouldRender || props.forceMount ? (props.style as any)?.display || '' : 'none',
-      },
+      style,
     });
   };
 });

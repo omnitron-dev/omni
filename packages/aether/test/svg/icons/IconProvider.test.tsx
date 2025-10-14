@@ -11,7 +11,7 @@ import {
   useIconContext,
 } from '../../../src/svg/icons/IconProvider.js';
 import { IconRegistry, getIconRegistry, resetIconRegistry } from '../../../src/svg/icons/IconRegistry.js';
-import { defineComponent } from '../../../src/core/component/component.js';
+import { defineComponent } from '../../../src/core/component/define.js';
 
 describe('IconProvider', () => {
   beforeEach(() => {
@@ -105,6 +105,9 @@ describe('IconProvider', () => {
   it('should call onError when icon loading fails', async () => {
     const onError = vi.fn();
 
+    // Save original fetch
+    const originalFetch = global.fetch;
+
     // Mock fetch to fail
     global.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
 
@@ -119,10 +122,13 @@ describe('IconProvider', () => {
       children: () => 'test',
     });
 
-    // Wait for effect
-    await new Promise(resolve => setTimeout(resolve, 10));
+    // Wait for effect to complete
+    await new Promise(resolve => setTimeout(resolve, 50));
 
     expect(onError).toHaveBeenCalled();
+
+    // Restore original fetch
+    global.fetch = originalFetch;
   });
 
   it('should apply prefix to icon set', async () => {

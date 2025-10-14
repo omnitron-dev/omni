@@ -14,7 +14,7 @@ export { computed } from './computed.js';
 // Resource management
 export { resource } from './resource.js';
 // Core reactive primitives
-export { signal, isSignal } from './signal.js';
+export { signal, isSignal, createSignal } from './signal.js';
 
 export { batch, untrack, createRoot } from './batch.js';
 

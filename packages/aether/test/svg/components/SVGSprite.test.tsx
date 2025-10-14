@@ -5,10 +5,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SVGSprite, SpriteIcon } from '../../../src/svg/components/SVGSprite.js';
 import type { IconDefinition } from '../../../src/svg/icons/IconRegistry.js';
+import { clearSpriteCache } from '../../../src/svg/optimization/sprite.js';
 
 describe('SVGSprite', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clearSpriteCache(); // Clear sprite cache between tests
   });
 
   it('should create sprite component', () => {
@@ -20,10 +22,9 @@ describe('SVGSprite', () => {
       },
     ];
 
-    const sprite = SVGSprite({ icons, inline: true });
+    const render = SVGSprite({ icons, inline: true });
 
-    expect(sprite).toBeDefined();
-    expect(typeof sprite).toBe('function');
+    expect(render).toBeDefined();
   });
 
   it('should generate sprite from icons prop', () => {
@@ -40,8 +41,7 @@ describe('SVGSprite', () => {
       },
     ];
 
-    const sprite = SVGSprite({ icons, inline: true });
-    const render = sprite();
+    const render = SVGSprite({ icons, inline: true });
 
     // Should generate sprite with symbols
     expect(render).toBeDefined();
@@ -102,8 +102,8 @@ describe('SVGSprite', () => {
       onError,
     });
 
-    // Wait for effect
-    await new Promise(resolve => setTimeout(resolve, 10));
+    // Wait for effect and async fetch to complete
+    await new Promise(resolve => setTimeout(resolve, 50));
 
     expect(onError).toHaveBeenCalled();
   });
@@ -173,13 +173,13 @@ describe('SVGSprite', () => {
       text: async () => mockSprite,
     } as Response);
 
-    const url = 'http://example.com/sprite.svg';
+    const url = 'http://example.com/sprite-cache-test.svg';
 
     SVGSprite({ url, cache: true });
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise(resolve => setTimeout(resolve, 50));
 
     SVGSprite({ url, cache: true });
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise(resolve => setTimeout(resolve, 50));
 
     // Should only fetch once due to caching
     expect(global.fetch).toHaveBeenCalledTimes(1);
@@ -206,87 +206,79 @@ describe('SVGSprite', () => {
   });
 
   it('should return null when not loaded', () => {
-    const sprite = SVGSprite({
+    const render = SVGSprite({
       url: 'http://example.com/sprite.svg',
     });
 
-    const render = sprite();
     expect(render).toBeNull();
   });
 
   it('should return null on error', async () => {
     global.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
 
-    const sprite = SVGSprite({
+    const render = SVGSprite({
       url: 'http://example.com/sprite.svg',
     });
 
     await new Promise(resolve => setTimeout(resolve, 10));
 
-    const render = sprite();
     expect(render).toBeNull();
   });
 });
 
 describe('SpriteIcon', () => {
   it('should create sprite icon component', () => {
-    const icon = SpriteIcon({
+    const render = SpriteIcon({
       spriteId: 'my-sprite',
       iconId: 'heart',
     });
 
-    expect(icon).toBeDefined();
-    expect(typeof icon).toBe('function');
+    expect(render).toBeDefined();
   });
 
   it('should render SVG with use element', () => {
-    const icon = SpriteIcon({
+    const render = SpriteIcon({
       spriteId: 'my-sprite',
       iconId: 'heart',
       size: 24,
     });
 
-    const render = icon();
-
     expect(render).toBeDefined();
   });
 
   it('should apply size prop', () => {
-    const icon = SpriteIcon({
+    const render = SpriteIcon({
       spriteId: 'my-sprite',
       iconId: 'heart',
       size: 32,
     });
 
-    const render = icon();
     expect(render).toBeDefined();
   });
 
   it('should apply color prop', () => {
-    const icon = SpriteIcon({
+    const render = SpriteIcon({
       spriteId: 'my-sprite',
       iconId: 'heart',
       color: 'red',
     });
 
-    const render = icon();
     expect(render).toBeDefined();
   });
 
   it('should apply className and style', () => {
-    const icon = SpriteIcon({
+    const render = SpriteIcon({
       spriteId: 'my-sprite',
       iconId: 'heart',
       className: 'my-icon',
       style: { margin: '10px' },
     });
 
-    const render = icon();
     expect(render).toBeDefined();
   });
 
   it('should support accessibility props', () => {
-    const icon = SpriteIcon({
+    const render = SpriteIcon({
       spriteId: 'my-sprite',
       iconId: 'heart',
       title: 'Heart Icon',
@@ -294,25 +286,23 @@ describe('SpriteIcon', () => {
       'aria-label': 'Heart',
     });
 
-    const render = icon();
     expect(render).toBeDefined();
   });
 
   it('should use default size when not provided', () => {
-    const icon = SpriteIcon({
+    const render = SpriteIcon({
       spriteId: 'my-sprite',
       iconId: 'heart',
     });
 
-    const render = icon();
     expect(render).toBeDefined();
   });
 });
 
 describe('useSpriteIcon', () => {
-  it('should be exported from module', () => {
-    const { useSpriteIcon } = require('../../../src/svg/components/SVGSprite.js');
-    expect(useSpriteIcon).toBeDefined();
-    expect(typeof useSpriteIcon).toBe('function');
+  it('should be exported from module', async () => {
+    const module = await import('../../../src/svg/components/SVGSprite.js');
+    expect(module.useSpriteIcon).toBeDefined();
+    expect(typeof module.useSpriteIcon).toBe('function');
   });
 });

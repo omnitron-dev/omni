@@ -47,6 +47,34 @@ export const SVG = defineComponent<SVGProps>((props) => {
     return typeof resolved === 'number' ? `${resolved}` : resolved;
   };
 
+  // Convert camelCase to kebab-case for SVG attributes
+  const toKebabCase = (str: string): string => str.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase();
+
+  // Process props to handle camelCase to kebab-case conversion
+  const processProps = (inputProps: any) => {
+    const processed: any = {};
+    const specialProps = ['children', 'lazy', 'placeholder', 'title', 'desc', 'width', 'height', 'viewBox', 'className', 'style', 'preserveAspectRatio', 'role', 'aria-label', 'aria-labelledby', 'aria-describedby'];
+
+    for (const key in inputProps) {
+      if (Object.prototype.hasOwnProperty.call(inputProps, key)) {
+        const value = inputProps[key];
+        // Skip special props that are handled explicitly
+        if (specialProps.includes(key)) {
+          continue;
+        }
+        // Pass through event handlers (functions that start with 'on')
+        if (key.startsWith('on') && typeof value === 'function') {
+          processed[key] = value;
+          continue;
+        }
+        // Convert camelCase to kebab-case for SVG attributes
+        const kebabKey = toKebabCase(key);
+        processed[kebabKey] = value;
+      }
+    }
+    return processed;
+  };
+
   const isVisible = signal(!props.lazy);
 
   if (props.lazy && typeof window !== 'undefined') {
@@ -67,7 +95,14 @@ export const SVG = defineComponent<SVGProps>((props) => {
 
   return () => {
     if (props.lazy && !isVisible()) {
-      return props.placeholder || <div style={{ width: getNumericValue(props.width), height: getNumericValue(props.height) }} />;
+      if (props.placeholder) {
+        return props.placeholder;
+      }
+
+      // Create default placeholder with proper numeric values
+      const width = getNumericValue(props.width);
+      const height = getNumericValue(props.height);
+      return <div style={{ width: width ? `${width}px` : undefined, height: height ? `${height}px` : undefined }} />;
     }
 
     const width = getNumericValue(props.width);
@@ -85,9 +120,12 @@ export const SVG = defineComponent<SVGProps>((props) => {
       accessibilityElements.push(<desc>{props.desc}</desc>);
     }
 
+    // Process all props and convert camelCase to kebab-case
+    const processedProps = processProps(props);
+
     // Cast to any to bypass strict type checking for Signal props
     const svgProps = {
-      ...props,
+      ...processedProps,
       width,
       height,
       viewBox,

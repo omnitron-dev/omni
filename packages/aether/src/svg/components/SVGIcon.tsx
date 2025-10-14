@@ -6,8 +6,6 @@
 
 import { defineComponent, signal, computed, effect } from '../../index.js';
 import type { Signal } from '../../index.js';
-import { SVG } from '../primitives/svg.js';
-import { Path } from '../primitives/shapes.js';
 import { getIconRegistry } from '../icons/IconRegistry.js';
 import type { AnimationConfig } from '../animations/types.js';
 
@@ -191,10 +189,10 @@ export const SVGIcon = defineComponent<SVGIconProps>((props) => {
 
   return () => {
     const { width, height } = dimensions();
-    const color = resolveValue(props.color);
-    const fill = resolveValue(props.fill) ?? color ?? 'currentColor';
-    const stroke = resolveValue(props.stroke);
-    const strokeWidth = resolveValue(props.strokeWidth);
+    // Pass color/fill/stroke as signals for reactivity, with fallback logic
+    const fill = props.fill || props.color || 'currentColor';
+    const stroke = props.stroke;
+    const strokeWidth = props.strokeWidth;
     const transform = buildTransform();
     const styles = { ...animationStyles(), ...props.style };
 
@@ -209,79 +207,161 @@ export const SVGIcon = defineComponent<SVGIconProps>((props) => {
       desc: props.desc,
     };
 
-    // Handle error state - return error indicator
-    if (error()) {
-      return SVG({
-        width,
-        height,
-        className: props.className,
-        style: styles,
-        ...accessibilityProps,
-        children: () => {
-          const errorMarkup = `
-            <rect width="${width}" height="${height}" fill="none" stroke="red" stroke-width="2" />
-            <line x1="0" y1="0" x2="${width}" y2="${height}" stroke="red" stroke-width="2" />
-            <line x1="${width}" y1="0" x2="0" y2="${height}" stroke="red" stroke-width="2" />
-          `;
-          return errorMarkup;
-        }
-      });
+    // Create all possible SVG states manually
+    const errorSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    errorSvg.setAttribute('width', String(width));
+    errorSvg.setAttribute('height', String(height));
+    if (props.className) errorSvg.setAttribute('class', props.className);
+    Object.assign(errorSvg.style, styles);
+    Object.entries(accessibilityProps).forEach(([key, value]) => {
+      if (value !== undefined) errorSvg.setAttribute(key, String(value));
+    });
+    const errorRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    errorRect.setAttribute('width', String(width));
+    errorRect.setAttribute('height', String(height));
+    errorRect.setAttribute('fill', 'none');
+    errorRect.setAttribute('stroke', 'red');
+    errorRect.setAttribute('stroke-width', '2');
+    errorSvg.appendChild(errorRect);
+    const errorLine1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    errorLine1.setAttribute('x1', '0');
+    errorLine1.setAttribute('y1', '0');
+    errorLine1.setAttribute('x2', String(width));
+    errorLine1.setAttribute('y2', String(height));
+    errorLine1.setAttribute('stroke', 'red');
+    errorLine1.setAttribute('stroke-width', '2');
+    errorSvg.appendChild(errorLine1);
+    const errorLine2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    errorLine2.setAttribute('x1', String(width));
+    errorLine2.setAttribute('y1', '0');
+    errorLine2.setAttribute('x2', '0');
+    errorLine2.setAttribute('y2', String(height));
+    errorLine2.setAttribute('stroke', 'red');
+    errorLine2.setAttribute('stroke-width', '2');
+    errorSvg.appendChild(errorLine2);
+
+    const pathSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    pathSvg.setAttribute('width', String(width));
+    pathSvg.setAttribute('height', String(height));
+    pathSvg.setAttribute('viewBox', props.viewBox || `0 0 ${width} ${height}`);
+    if (props.className) pathSvg.setAttribute('class', props.className);
+    if (transform) pathSvg.setAttribute('transform', transform);
+    if (props.onClick) pathSvg.addEventListener('click', props.onClick as any);
+    Object.assign(pathSvg.style, styles);
+    Object.entries(accessibilityProps).forEach(([key, value]) => {
+      if (value !== undefined) pathSvg.setAttribute(key, String(value));
+    });
+    if (props.path) {
+      const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      const pathValue = typeof props.path === 'function' ? props.path() : props.path;
+      pathEl.setAttribute('d', pathValue || '');
+      pathEl.setAttribute('fill', typeof fill === 'function' ? fill() : fill);
+      if (stroke) pathEl.setAttribute('stroke', typeof stroke === 'function' ? stroke() : stroke);
+      if (strokeWidth) pathEl.setAttribute('strokeWidth', String(strokeWidth));
+      pathSvg.appendChild(pathEl);
     }
 
-    // Render path
-    const pathData = resolveValue(props.path);
-    if (pathData) {
-      return SVG({
-        width,
-        height,
-        viewBox: props.viewBox || `0 0 ${width} ${height}`,
-        className: props.className,
-        style: styles,
-        transform,
-        onClick: props.onClick,
-        ...accessibilityProps,
-        children: () => Path({
-          d: pathData,
-          fill,
-          stroke,
-          strokeWidth,
-        })
-      });
-    }
+    const loadingSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    loadingSvg.setAttribute('width', String(width));
+    loadingSvg.setAttribute('height', String(height));
+    if (props.className) loadingSvg.setAttribute('class', props.className);
+    Object.assign(loadingSvg.style, { opacity: 0.3, ...styles });
+    Object.entries(accessibilityProps).forEach(([key, value]) => {
+      if (value !== undefined) loadingSvg.setAttribute(key, String(value));
+    });
+    const loadingRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    loadingRect.setAttribute('width', String(width));
+    loadingRect.setAttribute('height', String(height));
+    loadingRect.setAttribute('fill', typeof fill === 'function' ? fill() : fill);
+    loadingRect.setAttribute('opacity', '0.1');
+    loadingSvg.appendChild(loadingRect);
 
-    // Render loaded icon data
-    if (iconData()) {
-      // For now, we return raw SVG as HTML
-      // In a real implementation, this would parse and render properly
+    // Create container
+    const container = document.createElement('div');
+    container.style.display = 'contents';
+
+    // Helper to set current SVG
+    const setCurrentSvg = (svg: SVGElement | null) => {
+      // Remove all children
+      while (container.firstChild) {
+        container.removeChild(container.firstChild);
+      }
+      // Add the new SVG if provided
+      if (svg) {
+        container.appendChild(svg);
+      }
+    };
+
+    // Helper to render iconData as HTML
+    const renderIconData = () => {
       const svgString = iconData();
       if (svgString) {
-        // Create wrapper div with proper dimensions and styles
-        const wrapperStyles = {
-          width: `${width}px`,
-          height: `${height}px`,
-          display: 'inline-block',
-          ...styles,
-        };
-
-        // Return wrapper element
-        // This is a simplified approach - in production would parse and render SVG properly
-        return `<div style="${Object.entries(wrapperStyles).map(([k, v]) => `${k}: ${v}`).join('; ')}">${svgString}</div>`;
+        // Create a temp div to parse the HTML
+        const temp = document.createElement('div');
+        temp.innerHTML = svgString;
+        // Get the first child (should be SVG or wrapper)
+        const child = temp.firstElementChild;
+        if (child) {
+          // Apply dimensions and styles
+          if (child.tagName.toLowerCase() === 'svg') {
+            child.setAttribute('width', String(width));
+            child.setAttribute('height', String(height));
+            Object.assign((child as HTMLElement).style, styles);
+            if (props.className) child.setAttribute('class', props.className);
+          }
+          return child;
+        }
       }
+      return null;
+    };
+
+    // Determine initial state and set appropriate element
+    const hasError = error() !== null;
+    const hasPath = props.path !== undefined;
+    const hasIconData = iconData() !== null;
+    const loaded = isLoaded();
+
+    if (hasError) {
+      setCurrentSvg(errorSvg);
+    } else if (hasPath) {
+      setCurrentSvg(pathSvg);
+    } else if (hasIconData) {
+      const iconElement = renderIconData();
+      if (iconElement) {
+        container.appendChild(iconElement);
+      }
+    } else if (!loaded) {
+      setCurrentSvg(loadingSvg);
     }
 
-    // Loading state
-    if (!isLoaded()) {
-      return SVG({
-        width,
-        height,
-        className: props.className,
-        style: { opacity: 0.3, ...styles },
-        ...accessibilityProps,
-        children: () => `<rect width="${width}" height="${height}" fill="${fill}" opacity="0.1" />`
-      });
-    }
+    // Set up reactive effect to swap elements when state changes
+    effect(() => {
+      const hasError = error() !== null;
+      const hasPath = props.path !== undefined;
+      const hasIconData = iconData() !== null;
+      const loaded = isLoaded();
 
-    return null;
+      if (hasError) {
+        setCurrentSvg(errorSvg);
+      } else if (hasPath) {
+        setCurrentSvg(pathSvg);
+      } else if (hasIconData) {
+        const iconElement = renderIconData();
+        if (iconElement) {
+          // Remove all children
+          while (container.firstChild) {
+            container.removeChild(container.firstChild);
+          }
+          container.appendChild(iconElement);
+        }
+      } else if (!loaded) {
+        setCurrentSvg(loadingSvg);
+      } else {
+        setCurrentSvg(null);
+      }
+    });
+
+    return container;
   };
 });
 

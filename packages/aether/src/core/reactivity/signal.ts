@@ -218,3 +218,22 @@ export function isSignal<T = any>(value: any): value is Signal<T> {
 
 // Export for internal use by other reactive primitives
 export { SignalImpl };
+
+/**
+ * Create a signal with SolidJS-compatible API
+ * Returns [getter, setter] tuple instead of a callable signal
+ */
+export function createSignal<T>(
+  initial: T,
+  options?: { equals?: (a: T, b: T) => boolean }
+): [() => T, (value: T | ((prev: T) => T)) => void] {
+  const s = signal(initial, options);
+
+  // Create getter function with signal methods for detection
+  const getter = () => s();
+  // Attach signal methods to the getter for isSignal detection
+  (getter as any).peek = () => s.peek();
+  (getter as any).subscribe = (fn: any) => s.subscribe(fn);
+
+  return [getter as any, (value: T | ((prev: T) => T)) => s.set(value)];
+}

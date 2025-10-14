@@ -94,6 +94,14 @@ export const IconProvider = defineComponent<IconProviderProps>((props) => {
               lazy: props.loading === 'lazy',
             };
             registry.register(source);
+
+            // For eager loading, preload the sprite to validate it exists
+            if (props.loading !== 'lazy') {
+              const response = await fetch(set.url);
+              if (!response.ok) {
+                throw new Error(`Failed to load sprite from ${set.url}: ${response.statusText}`);
+              }
+            }
           }
         });
 

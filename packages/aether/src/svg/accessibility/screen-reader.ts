@@ -218,11 +218,7 @@ export function useVerboseDescription(
  * Get accessible name from an element
  */
 function getAccessibleName(element: SVGElement): string {
-  // Check aria-label
-  const ariaLabel = element.getAttribute('aria-label');
-  if (ariaLabel) return ariaLabel;
-
-  // Check aria-labelledby
+  // Check aria-labelledby (highest priority per ARIA spec)
   const labelledBy = element.getAttribute('aria-labelledby');
   if (labelledBy) {
     const labelElement = document.getElementById(labelledBy);
@@ -230,6 +226,10 @@ function getAccessibleName(element: SVGElement): string {
       return labelElement.textContent || '';
     }
   }
+
+  // Check aria-label
+  const ariaLabel = element.getAttribute('aria-label');
+  if (ariaLabel) return ariaLabel;
 
   // Check title element
   const titleElement = element.querySelector('title');

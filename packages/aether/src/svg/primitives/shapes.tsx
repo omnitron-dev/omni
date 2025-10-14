@@ -8,20 +8,11 @@ import { defineComponent } from '../../index.js';
 import type { Signal } from '../../index.js';
 import type { JSX } from '../../core/component/types.js';
 
-// Utility to resolve signal values
-const resolveValue = <T,>(value: T | Signal<T> | undefined): T | undefined => {
-  if (value === undefined) return undefined;
-  return typeof value === 'function' ? (value as Signal<T>)() : value;
-};
-
-const getNumericValue = (value: string | number | Signal<string | number> | undefined): string | undefined => {
-  if (value === undefined) return undefined;
-  const resolved = resolveValue(value);
-  return typeof resolved === 'number' ? `${resolved}` : resolved;
-};
-
 /**
  * Circle primitive
+ *
+ * Supports reactive attributes via signals. The JSX runtime and reconciler
+ * will automatically set up reactive bindings for signal props.
  */
 export interface CircleProps extends Omit<JSX.SVGAttributes<SVGCircleElement>, 'cx' | 'cy' | 'r'> {
   cx?: string | number | Signal<string | number>;
@@ -30,12 +21,7 @@ export interface CircleProps extends Omit<JSX.SVGAttributes<SVGCircleElement>, '
 }
 
 export const Circle = defineComponent<CircleProps>((props) => () => (
-  <circle
-    {...props}
-    cx={getNumericValue(props.cx)}
-    cy={getNumericValue(props.cy)}
-    r={getNumericValue(props.r)}
-  />
+  <circle {...props} cx={props.cx} cy={props.cy} r={props.r} />
 ));
 
 /**
@@ -51,15 +37,7 @@ export interface RectProps extends Omit<JSX.SVGAttributes<SVGRectElement>, 'x' |
 }
 
 export const Rect = defineComponent<RectProps>((props) => () => (
-  <rect
-    {...props}
-    x={getNumericValue(props.x)}
-    y={getNumericValue(props.y)}
-    width={getNumericValue(props.width)}
-    height={getNumericValue(props.height)}
-    rx={getNumericValue(props.rx)}
-    ry={getNumericValue(props.ry)}
-  />
+  <rect {...props} x={props.x} y={props.y} width={props.width} height={props.height} rx={props.rx} ry={props.ry} />
 ));
 
 /**
@@ -71,11 +49,7 @@ export interface PathProps extends Omit<JSX.SVGAttributes<SVGPathElement>, 'd' |
 }
 
 export const Path = defineComponent<PathProps>((props) => () => (
-  <path
-    {...props}
-    d={resolveValue(props.d)}
-    pathLength={resolveValue(props.pathLength)}
-  />
+  <path {...props} d={props.d} pathLength={props.pathLength} />
 ));
 
 /**
@@ -89,13 +63,7 @@ export interface LineProps extends Omit<JSX.SVGAttributes<SVGLineElement>, 'x1' 
 }
 
 export const Line = defineComponent<LineProps>((props) => () => (
-  <line
-    {...props}
-    x1={getNumericValue(props.x1)}
-    y1={getNumericValue(props.y1)}
-    x2={getNumericValue(props.x2)}
-    y2={getNumericValue(props.y2)}
-  />
+  <line {...props} x1={props.x1} y1={props.y1} x2={props.x2} y2={props.y2} />
 ));
 
 /**
@@ -106,10 +74,7 @@ export interface PolygonProps extends Omit<JSX.SVGAttributes<SVGPolygonElement>,
 }
 
 export const Polygon = defineComponent<PolygonProps>((props) => () => (
-  <polygon
-    {...props}
-    points={resolveValue(props.points)}
-  />
+  <polygon {...props} points={props.points} />
 ));
 
 /**
@@ -120,10 +85,7 @@ export interface PolylineProps extends Omit<JSX.SVGAttributes<SVGPolylineElement
 }
 
 export const Polyline = defineComponent<PolylineProps>((props) => () => (
-  <polyline
-    {...props}
-    points={resolveValue(props.points)}
-  />
+  <polyline {...props} points={props.points} />
 ));
 
 /**
@@ -137,13 +99,7 @@ export interface EllipseProps extends Omit<JSX.SVGAttributes<SVGEllipseElement>,
 }
 
 export const Ellipse = defineComponent<EllipseProps>((props) => () => (
-  <ellipse
-    {...props}
-    cx={getNumericValue(props.cx)}
-    cy={getNumericValue(props.cy)}
-    rx={getNumericValue(props.rx)}
-    ry={getNumericValue(props.ry)}
-  />
+  <ellipse {...props} cx={props.cx} cy={props.cy} rx={props.rx} ry={props.ry} />
 ));
 
 /**
@@ -167,14 +123,7 @@ export interface UseProps extends Omit<JSX.SVGAttributes<SVGUseElement>, 'x' | '
 }
 
 export const Use = defineComponent<UseProps>((props) => () => (
-  <use
-    {...props}
-    href={resolveValue(props.href)}
-    x={getNumericValue(props.x)}
-    y={getNumericValue(props.y)}
-    width={getNumericValue(props.width)}
-    height={getNumericValue(props.height)}
-  />
+  <use {...props} href={props.href} x={props.x} y={props.y} width={props.width} height={props.height} />
 ));
 
 /**
@@ -188,12 +137,7 @@ export interface SymbolProps extends Omit<JSX.SVGAttributes<SVGSymbolElement>, '
 }
 
 export const Symbol = defineComponent<SymbolProps>((props) => () => (
-  <symbol
-    {...props}
-    id={props.id}
-    viewBox={resolveValue(props.viewBox)}
-    preserveAspectRatio={resolveValue(props.preserveAspectRatio)}
-  >
+  <symbol {...props} id={props.id} viewBox={props.viewBox} preserveAspectRatio={props.preserveAspectRatio}>
     {props.children}
   </symbol>
 ));

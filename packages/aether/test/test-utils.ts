@@ -3,6 +3,15 @@
  */
 
 import { Component, JSX } from '../src/index';
+import { renderVNodeWithBindings } from '../src/reconciler/jsx-integration';
+import type { VNode } from '../src/reconciler/vnode';
+
+/**
+ * Helper to check if a value is a VNode
+ */
+function isVNode(value: any): value is VNode {
+  return value && typeof value === 'object' && 'type' in value && 'props' in value;
+}
 
 /**
  * Render a component for testing
@@ -14,14 +23,18 @@ export function render(component: Component | (() => JSX.Element)) {
   // Execute component function and append to container
   const result = typeof component === 'function' ? component() : component;
 
-  // Simple rendering - in real implementation, this would use the reconciler
+  // Handle different result types
   if (typeof result === 'string') {
     container.innerHTML = result;
+  } else if (isVNode(result)) {
+    // VNode - render with reactive bindings
+    const dom = renderVNodeWithBindings(result);
+    container.appendChild(dom);
   } else if (result instanceof Node) {
     // Already a DOM node - just append it
     container.appendChild(result);
   } else if (result && typeof result === 'object') {
-    // Handle JSX element object
+    // Handle JSX element object (legacy path)
     const element = createDOMElement(result);
     if (element) {
       container.appendChild(element);
@@ -35,6 +48,10 @@ export function render(component: Component | (() => JSX.Element)) {
       const newResult = typeof newComponent === 'function' ? newComponent() : newComponent;
       if (typeof newResult === 'string') {
         container.innerHTML = newResult;
+      } else if (isVNode(newResult)) {
+        // VNode - render with reactive bindings
+        const dom = renderVNodeWithBindings(newResult);
+        container.appendChild(dom);
       } else if (newResult instanceof Node) {
         // Already a DOM node - just append it
         container.appendChild(newResult);
@@ -120,19 +137,27 @@ function createDOMElement(jsx: any): Element | null {
     // Set attributes
     for (const [key, value] of Object.entries(props)) {
       if (key === 'children') continue;
+
+      // Resolve signal values
+      let resolvedValue = value;
+      if (typeof value === 'function' && value.peek !== undefined) {
+        // It's a signal
+        resolvedValue = value();
+      }
+
       if (key === 'className') {
-        element.className = String(value);
-      } else if (key === 'style' && typeof value === 'object') {
-        Object.assign((element as HTMLElement).style, value);
-      } else if (key.startsWith('on') && typeof value === 'function') {
+        element.className = String(resolvedValue);
+      } else if (key === 'style' && typeof resolvedValue === 'object') {
+        Object.assign((element as HTMLElement).style, resolvedValue);
+      } else if (key.startsWith('on') && typeof resolvedValue === 'function') {
         const event = key.toLowerCase().substring(2);
-        element.addEventListener(event, value as any);
+        element.addEventListener(event, resolvedValue as any);
       } else if (key === 'innerHTML') {
-        element.innerHTML = String(value);
-      } else if (value !== null && value !== undefined && value !== false) {
+        element.innerHTML = String(resolvedValue);
+      } else if (resolvedValue !== null && resolvedValue !== undefined && resolvedValue !== false) {
         // Handle aria and data attributes
         const attrName = key.replace(/([A-Z])/g, '-$1').toLowerCase();
-        element.setAttribute(attrName, String(value));
+        element.setAttribute(attrName, String(resolvedValue));
       }
     }
 

@@ -39,12 +39,12 @@ export const LinearGradient = defineComponent<LinearGradientProps>((props) => ()
   <linearGradient
     {...props}
     id={props.id}
-    x1={resolveValue(props.x1)}
-    y1={resolveValue(props.y1)}
-    x2={resolveValue(props.x2)}
-    y2={resolveValue(props.y2)}
+    x1={props.x1}
+    y1={props.y1}
+    x2={props.x2}
+    y2={props.y2}
     gradientUnits={props.gradientUnits}
-    gradientTransform={resolveValue(props.gradientTransform)}
+    gradientTransform={props.gradientTransform}
     spreadMethod={props.spreadMethod}
   >
     {props.children}
@@ -106,9 +106,9 @@ export interface StopProps extends Omit<JSX.SVGAttributes<SVGStopElement>, 'offs
 export const Stop = defineComponent<StopProps>((props) => () => (
   <stop
     {...props}
-    offset={getNumericValue(props.offset)}
-    stopColor={resolveValue(props.stopColor)}
-    stopOpacity={getNumericValue(props.stopOpacity)}
+    offset={props.offset}
+    stopColor={props.stopColor}
+    stopOpacity={props.stopOpacity}
   />
 ));
 
@@ -131,13 +131,13 @@ export const Pattern = defineComponent<PatternProps>((props) => () => (
   <pattern
     {...props}
     id={props.id}
-    x={getNumericValue(props.x)}
-    y={getNumericValue(props.y)}
-    width={getNumericValue(props.width)}
-    height={getNumericValue(props.height)}
+    x={props.x}
+    y={props.y}
+    width={props.width}
+    height={props.height}
     patternUnits={props.patternUnits}
     patternContentUnits={props.patternContentUnits}
-    patternTransform={resolveValue(props.patternTransform)}
+    patternTransform={props.patternTransform}
   >
     {props.children}
   </pattern>
@@ -161,10 +161,10 @@ export const Mask = defineComponent<MaskProps>((props) => () => (
   <mask
     {...props}
     id={props.id}
-    x={getNumericValue(props.x)}
-    y={getNumericValue(props.y)}
-    width={getNumericValue(props.width)}
-    height={getNumericValue(props.height)}
+    x={props.x}
+    y={props.y}
+    width={props.width}
+    height={props.height}
     maskUnits={props.maskUnits}
     maskContentUnits={props.maskContentUnits}
   >

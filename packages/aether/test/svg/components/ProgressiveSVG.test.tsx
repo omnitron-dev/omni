@@ -2,7 +2,74 @@
  * Tests for ProgressiveSVG Component
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
+
+// Mock browser APIs
+beforeAll(() => {
+  // Mock IntersectionObserver
+  global.IntersectionObserver = class IntersectionObserver {
+    constructor(
+      private callback: IntersectionObserverCallback,
+      private options?: IntersectionObserverInit
+    ) {}
+
+    observe() {
+      // Trigger callback with mock entry
+      this.callback(
+        [
+          {
+            isIntersecting: true,
+            target: document.body,
+            boundingClientRect: {} as DOMRectReadOnly,
+            intersectionRatio: 1,
+            intersectionRect: {} as DOMRectReadOnly,
+            rootBounds: null,
+            time: Date.now(),
+          } as IntersectionObserverEntry,
+        ],
+        this as unknown as IntersectionObserver
+      );
+    }
+
+    disconnect() {}
+    unobserve() {}
+    takeRecords() {
+      return [];
+    }
+  } as any;
+
+  // Mock requestIdleCallback
+  global.requestIdleCallback = ((callback: IdleRequestCallback) => {
+    const id = setTimeout(() => {
+      callback({
+        didTimeout: false,
+        timeRemaining: () => 50,
+      } as IdleDeadline);
+    }, 0);
+    return id as unknown as number;
+  }) as any;
+
+  global.cancelIdleCallback = ((id: number) => {
+    clearTimeout(id);
+  }) as any;
+
+  // Mock document.querySelector for progressive SVG elements
+  const originalQuerySelector = document.querySelector.bind(document);
+  document.querySelector = vi.fn((selector: string) => {
+    if (selector === '[data-progressive-svg]') {
+      // Return a mock element
+      return {
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      } as any;
+    }
+    return originalQuerySelector(selector);
+  });
+});
+
+afterEach(() => {
+  vi.clearAllMocks();
+});
 
 describe('ProgressiveSVG Component - Module Imports', () => {
   it('should import ProgressiveSVG components', async () => {
@@ -30,41 +97,42 @@ describe('ProgressiveSVG Component - Server-Side Behavior', () => {
     const { ProgressiveSVG } = await import('../../../src/svg/components/ProgressiveSVG.js');
 
     // On server (Node.js), should render basic SVG
-    const renderFn = ProgressiveSVG({
+    const result = ProgressiveSVG({
       width: 100,
       height: 100,
-      children: () => 'Test content',
+      children: 'Test content',
     });
 
-    expect(typeof renderFn).toBe('function');
-    const result = renderFn();
     expect(result).toBeDefined();
+    expect(result).not.toBeNull();
   });
 
   it('should include noscript fallback', async () => {
     const { ProgressiveSVG } = await import('../../../src/svg/components/ProgressiveSVG.js');
 
-    const renderFn = ProgressiveSVG({
+    const result = ProgressiveSVG({
       width: 100,
       height: 100,
-      noscript: () => 'Fallback content',
-      children: () => 'Main content',
+      noscript: 'Fallback content',
+      children: 'Main content',
     });
 
-    expect(typeof renderFn).toBe('function');
+    expect(result).toBeDefined();
+    expect(result).not.toBeNull();
   });
 
   it('should handle nojs mode', async () => {
     const { ProgressiveSVG } = await import('../../../src/svg/components/ProgressiveSVG.js');
 
-    const renderFn = ProgressiveSVG({
+    const result = ProgressiveSVG({
       width: 100,
       height: 100,
       nojs: true,
-      children: () => 'Content',
+      children: 'Content',
     });
 
-    expect(typeof renderFn).toBe('function');
+    expect(result).toBeDefined();
+    expect(result).not.toBeNull();
   });
 });
 
@@ -72,60 +140,64 @@ describe('ProgressiveSVG Component - Enhancement Configuration', () => {
   it('should support enhancement on load', async () => {
     const { ProgressiveSVG } = await import('../../../src/svg/components/ProgressiveSVG.js');
 
-    const renderFn = ProgressiveSVG({
+    const result = ProgressiveSVG({
       width: 100,
       height: 100,
       enhance: true,
       enhanceOn: 'load',
-      children: () => 'Content',
+      children: 'Content',
     });
 
-    expect(typeof renderFn).toBe('function');
+    expect(result).toBeDefined();
+    expect(result).not.toBeNull();
   });
 
   it('should support enhancement on idle', async () => {
     const { ProgressiveSVG } = await import('../../../src/svg/components/ProgressiveSVG.js');
 
-    const renderFn = ProgressiveSVG({
+    const result = ProgressiveSVG({
       width: 100,
       height: 100,
       enhance: true,
       enhanceOn: 'idle',
       idleTimeout: 2000,
-      children: () => 'Content',
+      children: 'Content',
     });
 
-    expect(typeof renderFn).toBe('function');
+    expect(result).toBeDefined();
+    expect(result).not.toBeNull();
   });
 
   it('should support enhancement on visible', async () => {
     const { ProgressiveSVG } = await import('../../../src/svg/components/ProgressiveSVG.js');
 
-    const renderFn = ProgressiveSVG({
+    const result = ProgressiveSVG({
       width: 100,
       height: 100,
       enhance: true,
       enhanceOn: 'visible',
       intersectionOptions: { threshold: 0.5 },
-      children: () => 'Content',
+      children: 'Content',
     });
 
-    expect(typeof renderFn).toBe('function');
+    expect(result).toBeDefined();
+    expect(result).not.toBeNull();
   });
 
   it('should support enhancement on interaction', async () => {
     const { ProgressiveSVG } = await import('../../../src/svg/components/ProgressiveSVG.js');
 
-    const renderFn = ProgressiveSVG({
+    const result = ProgressiveSVG({
       width: 100,
       height: 100,
       enhance: true,
       enhanceOn: 'interaction',
       interactionEvents: ['click', 'mouseenter'],
-      children: () => 'Content',
+      children: 'Content',
     });
 
-    expect(typeof renderFn).toBe('function');
+    expect(result).toBeDefined();
+    expect(result).not.toBeNull();
   });
 });
 
@@ -133,40 +205,43 @@ describe('ProgressiveSVG Component - Feature Flags', () => {
   it('should support animation enablement', async () => {
     const { ProgressiveSVG } = await import('../../../src/svg/components/ProgressiveSVG.js');
 
-    const renderFn = ProgressiveSVG({
+    const result = ProgressiveSVG({
       width: 100,
       height: 100,
       enableAnimations: true,
-      children: () => 'Content',
+      children: 'Content',
     });
 
-    expect(typeof renderFn).toBe('function');
+    expect(result).toBeDefined();
+    expect(result).not.toBeNull();
   });
 
   it('should support interactivity enablement', async () => {
     const { ProgressiveSVG } = await import('../../../src/svg/components/ProgressiveSVG.js');
 
-    const renderFn = ProgressiveSVG({
+    const result = ProgressiveSVG({
       width: 100,
       height: 100,
       enableInteractivity: true,
-      children: () => 'Content',
+      children: 'Content',
     });
 
-    expect(typeof renderFn).toBe('function');
+    expect(result).toBeDefined();
+    expect(result).not.toBeNull();
   });
 
   it('should support dynamic loading enablement', async () => {
     const { ProgressiveSVG } = await import('../../../src/svg/components/ProgressiveSVG.js');
 
-    const renderFn = ProgressiveSVG({
+    const result = ProgressiveSVG({
       width: 100,
       height: 100,
       enableDynamicLoading: true,
-      children: () => 'Content',
+      children: 'Content',
     });
 
-    expect(typeof renderFn).toBe('function');
+    expect(result).toBeDefined();
+    expect(result).not.toBeNull();
   });
 });
 
@@ -175,32 +250,34 @@ describe('ProgressiveSVG Component - Event Callbacks', () => {
     const { ProgressiveSVG } = await import('../../../src/svg/components/ProgressiveSVG.js');
 
     let enhanced = false;
-    const renderFn = ProgressiveSVG({
+    const result = ProgressiveSVG({
       width: 100,
       height: 100,
       onEnhanced: () => {
         enhanced = true;
       },
-      children: () => 'Content',
+      children: 'Content',
     });
 
-    expect(typeof renderFn).toBe('function');
+    expect(result).toBeDefined();
+    expect(result).not.toBeNull();
   });
 
   it('should accept onEnhancementError callback', async () => {
     const { ProgressiveSVG } = await import('../../../src/svg/components/ProgressiveSVG.js');
 
     let errorCaught = false;
-    const renderFn = ProgressiveSVG({
+    const result = ProgressiveSVG({
       width: 100,
       height: 100,
       onEnhancementError: (error) => {
         errorCaught = true;
       },
-      children: () => 'Content',
+      children: 'Content',
     });
 
-    expect(typeof renderFn).toBe('function');
+    expect(result).toBeDefined();
+    expect(result).not.toBeNull();
   });
 });
 
@@ -208,23 +285,25 @@ describe('NoScriptSVG Component', () => {
   it('should render children and fallback', async () => {
     const { NoScriptSVG } = await import('../../../src/svg/components/ProgressiveSVG.js');
 
-    const renderFn = NoScriptSVG({
-      fallback: () => 'Fallback',
-      children: () => 'Main content',
+    const result = NoScriptSVG({
+      fallback: 'Fallback',
+      children: 'Main content',
     });
 
-    expect(typeof renderFn).toBe('function');
+    expect(result).toBeDefined();
+    expect(result).not.toBeNull();
   });
 
   it('should handle string fallback', async () => {
     const { NoScriptSVG } = await import('../../../src/svg/components/ProgressiveSVG.js');
 
-    const renderFn = NoScriptSVG({
+    const result = NoScriptSVG({
       fallback: 'Fallback text',
-      children: () => 'Main content',
+      children: 'Main content',
     });
 
-    expect(typeof renderFn).toBe('function');
+    expect(result).toBeDefined();
+    expect(result).not.toBeNull();
   });
 });
 
@@ -232,42 +311,45 @@ describe('SSRSafeSVG Component', () => {
   it('should accept server content', async () => {
     const { SSRSafeSVG } = await import('../../../src/svg/components/ProgressiveSVG.js');
 
-    const renderFn = SSRSafeSVG({
+    const result = SSRSafeSVG({
       width: 100,
       height: 100,
       serverContent: '<svg><circle r="5" /></svg>',
-      children: () => 'Client content',
+      children: 'Client content',
     });
 
-    expect(typeof renderFn).toBe('function');
+    expect(result).toBeDefined();
+    expect(result).not.toBeNull();
   });
 
   it('should accept onHydrate callback', async () => {
     const { SSRSafeSVG } = await import('../../../src/svg/components/ProgressiveSVG.js');
 
     let hydrated = false;
-    const renderFn = SSRSafeSVG({
+    const result = SSRSafeSVG({
       width: 100,
       height: 100,
       onHydrate: () => {
         hydrated = true;
       },
-      children: () => 'Content',
+      children: 'Content',
     });
 
-    expect(typeof renderFn).toBe('function');
+    expect(result).toBeDefined();
+    expect(result).not.toBeNull();
   });
 
   it('should handle missing server content', async () => {
     const { SSRSafeSVG } = await import('../../../src/svg/components/ProgressiveSVG.js');
 
-    const renderFn = SSRSafeSVG({
+    const result = SSRSafeSVG({
       width: 100,
       height: 100,
-      children: () => 'Content',
+      children: 'Content',
     });
 
-    expect(typeof renderFn).toBe('function');
+    expect(result).toBeDefined();
+    expect(result).not.toBeNull();
   });
 });
 
@@ -275,30 +357,32 @@ describe('ProgressiveSVG Component - SVG Props Pass-through', () => {
   it('should pass through standard SVG props', async () => {
     const { ProgressiveSVG } = await import('../../../src/svg/components/ProgressiveSVG.js');
 
-    const renderFn = ProgressiveSVG({
+    const result = ProgressiveSVG({
       width: 100,
       height: 200,
       viewBox: '0 0 100 200',
       className: 'test-class',
       role: 'img',
       'aria-label': 'Test Icon',
-      children: () => 'Content',
+      children: 'Content',
     });
 
-    expect(typeof renderFn).toBe('function');
+    expect(result).toBeDefined();
+    expect(result).not.toBeNull();
   });
 
   it('should handle style prop', async () => {
     const { ProgressiveSVG } = await import('../../../src/svg/components/ProgressiveSVG.js');
 
-    const renderFn = ProgressiveSVG({
+    const result = ProgressiveSVG({
       width: 100,
       height: 100,
       style: { fill: 'red' },
-      children: () => 'Content',
+      children: 'Content',
     });
 
-    expect(typeof renderFn).toBe('function');
+    expect(result).toBeDefined();
+    expect(result).not.toBeNull();
   });
 });
 
@@ -306,17 +390,15 @@ describe('ProgressiveSVG Component - Error States', () => {
   it('should handle rendering errors gracefully', async () => {
     const { ProgressiveSVG } = await import('../../../src/svg/components/ProgressiveSVG.js');
 
-    // Component that might error
-    const renderFn = ProgressiveSVG({
+    // Component that should render valid content
+    const result = ProgressiveSVG({
       width: 100,
       height: 100,
-      children: () => 
-        // Simulate error during render
-         'Valid content'
-      ,
+      children: 'Valid content',
     });
 
-    expect(typeof renderFn).toBe('function');
+    expect(result).toBeDefined();
+    expect(result).not.toBeNull();
   });
 });
 

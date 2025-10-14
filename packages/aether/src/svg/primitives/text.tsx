@@ -20,6 +20,27 @@ const getNumericValue = (value: string | number | Signal<string | number> | unde
   return typeof resolved === 'number' ? `${resolved}` : resolved;
 };
 
+// Convert camelCase to kebab-case for SVG attributes
+const toKebabCase = (str: string): string => str.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase();
+
+// Process props to handle camelCase to kebab-case conversion
+const processProps = (inputProps: any, excludeKeys: string[] = []) => {
+  const processed: any = {};
+  for (const key in inputProps) {
+    if (Object.prototype.hasOwnProperty.call(inputProps, key)) {
+      const value = inputProps[key];
+      // Skip excluded keys and children
+      if (excludeKeys.includes(key) || key === 'children') {
+        continue;
+      }
+      // Convert camelCase to kebab-case for SVG attributes
+      const kebabKey = toKebabCase(key);
+      processed[kebabKey] = value;
+    }
+  }
+  return processed;
+};
+
 /**
  * Text element for rendering text in SVG
  */
@@ -34,20 +55,24 @@ export interface TextProps extends Omit<JSX.SVGAttributes<SVGTextElement>, 'x' |
   children?: JSX.Element;
 }
 
-export const Text = defineComponent<TextProps>((props) => () => (
-  <text
-    {...props}
-    x={getNumericValue(props.x)}
-    y={getNumericValue(props.y)}
-    dx={getNumericValue(props.dx)}
-    dy={getNumericValue(props.dy)}
-    rotate={resolveValue(props.rotate)}
-    lengthAdjust={props.lengthAdjust}
-    textLength={getNumericValue(props.textLength)}
-  >
-    {props.children}
-  </text>
-));
+export const Text = defineComponent<TextProps>((props) => () => {
+  const processedProps = processProps(props, ['x', 'y', 'dx', 'dy', 'rotate', 'lengthAdjust', 'textLength']);
+
+  return (
+    <text
+      {...processedProps}
+      x={props.x}
+      y={props.y}
+      dx={props.dx}
+      dy={props.dy}
+      rotate={props.rotate}
+      lengthAdjust={props.lengthAdjust}
+      textLength={props.textLength}
+    >
+      {props.children}
+    </text>
+  );
+});
 
 /**
  * TSpan element for text spans within Text elements
@@ -63,20 +88,24 @@ export interface TSpanProps extends Omit<JSX.SVGAttributes<SVGTSpanElement>, 'x'
   children?: JSX.Element;
 }
 
-export const TSpan = defineComponent<TSpanProps>((props) => () => (
-  <tspan
-    {...props}
-    x={getNumericValue(props.x)}
-    y={getNumericValue(props.y)}
-    dx={getNumericValue(props.dx)}
-    dy={getNumericValue(props.dy)}
-    rotate={resolveValue(props.rotate)}
-    lengthAdjust={props.lengthAdjust}
-    textLength={getNumericValue(props.textLength)}
-  >
-    {props.children}
-  </tspan>
-));
+export const TSpan = defineComponent<TSpanProps>((props) => () => {
+  const processedProps = processProps(props, ['x', 'y', 'dx', 'dy', 'rotate', 'lengthAdjust', 'textLength']);
+
+  return (
+    <tspan
+      {...processedProps}
+      x={props.x}
+      y={props.y}
+      dx={props.dx}
+      dy={props.dy}
+      rotate={props.rotate}
+      lengthAdjust={props.lengthAdjust}
+      textLength={props.textLength}
+    >
+      {props.children}
+    </tspan>
+  );
+});
 
 /**
  * TextPath element for rendering text along a path
@@ -89,14 +118,18 @@ export interface TextPathProps extends Omit<JSX.SVGAttributes<SVGTextPathElement
   children?: JSX.Element;
 }
 
-export const TextPath = defineComponent<TextPathProps>((props) => () => (
-  <textPath
-    {...props}
-    href={props.href}
-    method={props.method}
-    spacing={props.spacing}
-    startOffset={getNumericValue(props.startOffset)}
-  >
-    {props.children}
-  </textPath>
-));
+export const TextPath = defineComponent<TextPathProps>((props) => () => {
+  const processedProps = processProps(props, ['href', 'method', 'spacing', 'startOffset']);
+
+  return (
+    <textPath
+      {...processedProps}
+      href={props.href}
+      method={props.method}
+      spacing={props.spacing}
+      startOffset={props.startOffset}
+    >
+      {props.children}
+    </textPath>
+  );
+});

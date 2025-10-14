@@ -7,6 +7,7 @@
  * Part of the reconciliation engine - Phase 1 VNode system.
  */
 
+import { isSignal } from '../core/index.js';
 import { VNode, VNodeType, ComponentFunction } from './vnode.js';
 
 /**
@@ -188,6 +189,13 @@ function applyProps(element: HTMLElement | SVGElement, props: Record<string, any
 }
 
 /**
+ * Resolve a potentially reactive value to its current value
+ */
+function resolveValue(value: any): any {
+  return isSignal(value) ? value() : value;
+}
+
+/**
  * Apply single prop to element
  *
  * Determines prop type and applies appropriately:
@@ -198,46 +206,53 @@ function applyProps(element: HTMLElement | SVGElement, props: Record<string, any
  * - Boolean attrs: Set/remove attribute
  * - Regular props: Set property or attribute
  *
+ * NOTE: This applies the INITIAL value only. Reactive bindings are set up later
+ * by jsx-integration.ts which will track signal changes and update the DOM.
+ *
  * @param element - Target element
  * @param key - Prop name
- * @param value - Prop value
+ * @param value - Prop value (may be a signal)
  * @param isSVG - Whether element is SVG
  */
 function applyProp(element: HTMLElement | SVGElement, key: string, value: any, isSVG: boolean): void {
+  // Resolve signal to its initial value
+  const resolvedValue = resolveValue(value);
+
   // Handle ref
   if (key === 'ref') {
-    if (typeof value === 'function') {
-      value(element);
-    } else if (value && typeof value === 'object' && 'current' in value) {
-      value.current = element;
+    if (typeof resolvedValue === 'function') {
+      resolvedValue(element);
+    } else if (resolvedValue && typeof resolvedValue === 'object' && 'current' in resolvedValue) {
+      resolvedValue.current = element;
     }
     return;
   }
 
   // Handle event listeners (onClick, onChange, onInput, etc.)
+  // Event handlers should NOT be signals - they are static
   if (key.startsWith('on') && key.length > 2) {
     const eventName = key.slice(2).toLowerCase();
-    if (typeof value === 'function') {
-      element.addEventListener(eventName, value);
+    if (typeof resolvedValue === 'function') {
+      element.addEventListener(eventName, resolvedValue);
       return;
     }
   }
 
   // Handle style object
-  if (key === 'style' && typeof value === 'object') {
-    applyStyle(element, value);
+  if (key === 'style' && typeof resolvedValue === 'object') {
+    applyStyle(element, resolvedValue);
     return;
   }
 
   // Handle className/class
   if (key === 'className' || key === 'class') {
-    applyClass(element, value);
+    applyClass(element, resolvedValue);
     return;
   }
 
   // Handle boolean attributes (checked, disabled, readonly, etc.)
-  if (typeof value === 'boolean') {
-    if (value) {
+  if (typeof resolvedValue === 'boolean') {
+    if (resolvedValue) {
       element.setAttribute(key, '');
     } else {
       element.removeAttribute(key);
@@ -247,20 +262,20 @@ function applyProp(element: HTMLElement | SVGElement, key: string, value: any, i
 
   // For SVG, use setAttribute for all remaining props
   if (isSVG) {
-    element.setAttribute(key, String(value));
+    element.setAttribute(key, String(resolvedValue));
     return;
   }
 
   // For HTML, try setting property first, fallback to attribute
   if (key in element) {
     try {
-      (element as any)[key] = value;
+      (element as any)[key] = resolvedValue;
     } catch {
       // Some properties are read-only, fallback to attribute
-      element.setAttribute(key, String(value));
+      element.setAttribute(key, String(resolvedValue));
     }
   } else {
-    element.setAttribute(key, String(value));
+    element.setAttribute(key, String(resolvedValue));
   }
 }
 

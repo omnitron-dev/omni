@@ -590,10 +590,10 @@ describe('Animation Integration', () => {
     });
 
     it('should use requestAnimationFrame for smooth animations', () => {
-      const rafSpy = vi.spyOn(global, 'requestAnimationFrame').mockImplementation(cb => {
-        cb(performance.now());
-        return 1;
-      });
+      const rafSpy = vi.spyOn(global, 'requestAnimationFrame').mockImplementation(() =>
+        // Don't execute the callback to avoid infinite recursion
+        1
+      );
 
       const animate = () => {
         requestAnimationFrame(animate);

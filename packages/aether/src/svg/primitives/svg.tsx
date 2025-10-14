@@ -8,7 +8,7 @@ import { defineComponent, signal, effect } from '../../index.js';
 import type { Signal } from '../../index.js';
 import type { JSX } from '../../core/component/types.js';
 
-export interface SVGProps extends Omit<JSX.SVGAttributes<SVGSVGElement>, 'width' | 'height' | 'viewBox' | 'style' | 'className' | 'preserveAspectRatio'> {
+export interface SVGProps extends Omit<JSX.SVGAttributes, 'width' | 'height' | 'viewBox' | 'style' | 'className' | 'preserveAspectRatio'> {
   // Viewport
   width?: string | number | Signal<string | number>;
   height?: string | number | Signal<string | number>;

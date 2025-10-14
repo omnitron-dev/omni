@@ -32,7 +32,7 @@ const processProps = (inputProps: any, excludeKeys: string[] = []) => {
 /**
  * Text element for rendering text in SVG
  */
-export interface TextProps extends Omit<JSX.SVGAttributes<SVGTextElement>, 'x' | 'y' | 'dx' | 'dy' | 'rotate' | 'textLength'> {
+export interface TextProps extends Omit<JSX.SVGAttributes, 'x' | 'y' | 'dx' | 'dy' | 'rotate' | 'textLength'> {
   x?: string | number | Signal<string | number>;
   y?: string | number | Signal<string | number>;
   dx?: string | number | Signal<string | number>;
@@ -65,7 +65,7 @@ export const Text = defineComponent<TextProps>((props) => () => {
 /**
  * TSpan element for text spans within Text elements
  */
-export interface TSpanProps extends Omit<JSX.SVGAttributes<SVGTSpanElement>, 'x' | 'y' | 'dx' | 'dy' | 'rotate' | 'textLength'> {
+export interface TSpanProps extends Omit<JSX.SVGAttributes, 'x' | 'y' | 'dx' | 'dy' | 'rotate' | 'textLength'> {
   x?: string | number | Signal<string | number>;
   y?: string | number | Signal<string | number>;
   dx?: string | number | Signal<string | number>;
@@ -98,7 +98,7 @@ export const TSpan = defineComponent<TSpanProps>((props) => () => {
 /**
  * TextPath element for rendering text along a path
  */
-export interface TextPathProps extends Omit<JSX.SVGAttributes<SVGTextPathElement>, 'startOffset'> {
+export interface TextPathProps extends Omit<JSX.SVGAttributes, 'startOffset'> {
   href?: string;
   method?: 'align' | 'stretch';
   spacing?: 'auto' | 'exact';

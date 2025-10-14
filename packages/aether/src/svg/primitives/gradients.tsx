@@ -11,7 +11,7 @@ import type { JSX } from '../../core/component/types.js';
 /**
  * LinearGradient element
  */
-export interface LinearGradientProps extends Omit<JSX.SVGAttributes<SVGLinearGradientElement>, 'x1' | 'y1' | 'x2' | 'y2' | 'gradientTransform'> {
+export interface LinearGradientProps extends Omit<JSX.SVGAttributes, 'x1' | 'y1' | 'x2' | 'y2' | 'gradientTransform'> {
   id: string;
   x1?: string | Signal<string>;
   y1?: string | Signal<string>;
@@ -42,7 +42,7 @@ export const LinearGradient = defineComponent<LinearGradientProps>((props) => ()
 /**
  * RadialGradient element
  */
-export interface RadialGradientProps extends Omit<JSX.SVGAttributes<SVGRadialGradientElement>, 'cx' | 'cy' | 'r' | 'fx' | 'fy' | 'fr' | 'gradientTransform'> {
+export interface RadialGradientProps extends Omit<JSX.SVGAttributes, 'cx' | 'cy' | 'r' | 'fx' | 'fy' | 'fr' | 'gradientTransform'> {
   id: string;
   cx?: string | Signal<string>;
   cy?: string | Signal<string>;
@@ -77,7 +77,7 @@ export const RadialGradient = defineComponent<RadialGradientProps>((props) => ()
 /**
  * Stop element for gradient color stops
  */
-export interface StopProps extends Omit<JSX.SVGAttributes<SVGStopElement>, 'offset' | 'stopColor' | 'stopOpacity'> {
+export interface StopProps extends Omit<JSX.SVGAttributes, 'offset' | 'stopColor' | 'stopOpacity'> {
   offset?: string | number | Signal<string | number>;
   stopColor?: string | Signal<string>;
   stopOpacity?: string | number | Signal<string | number>;
@@ -95,7 +95,7 @@ export const Stop = defineComponent<StopProps>((props) => () => (
 /**
  * Pattern element for creating repeating patterns
  */
-export interface PatternProps extends Omit<JSX.SVGAttributes<SVGPatternElement>, 'x' | 'y' | 'width' | 'height' | 'patternTransform'> {
+export interface PatternProps extends Omit<JSX.SVGAttributes, 'x' | 'y' | 'width' | 'height' | 'patternTransform'> {
   id: string;
   x?: string | number | Signal<string | number>;
   y?: string | number | Signal<string | number>;
@@ -126,7 +126,7 @@ export const Pattern = defineComponent<PatternProps>((props) => () => (
 /**
  * Mask element for masking
  */
-export interface MaskProps extends Omit<JSX.SVGAttributes<SVGMaskElement>, 'x' | 'y' | 'width' | 'height'> {
+export interface MaskProps extends Omit<JSX.SVGAttributes, 'x' | 'y' | 'width' | 'height'> {
   id: string;
   x?: string | number | Signal<string | number>;
   y?: string | number | Signal<string | number>;
@@ -155,7 +155,7 @@ export const Mask = defineComponent<MaskProps>((props) => () => (
 /**
  * ClipPath element for clipping
  */
-export interface ClipPathProps extends JSX.SVGAttributes<SVGClipPathElement> {
+export interface ClipPathProps extends JSX.SVGAttributes {
   id: string;
   clipPathUnits?: 'userSpaceOnUse' | 'objectBoundingBox';
   children?: JSX.Element;

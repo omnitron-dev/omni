@@ -128,7 +128,7 @@ describe('SVG Keyboard Navigation', () => {
       useSVGKeyboardNavigation(ref, config);
     });
 
-    it('should handle keyboard events', (done) => {
+    it('should handle keyboard events', async () => {
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       const circle1 = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       const circle2 = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
@@ -144,11 +144,13 @@ describe('SVG Keyboard Navigation', () => {
       useSVGKeyboardNavigation(ref);
 
       // Simulate keyboard event
-      setTimeout(() => {
-        const event = new KeyboardEvent('keydown', { key: 'ArrowDown' });
-        svg.dispatchEvent(event);
-        done();
-      }, 0);
+      await new Promise<void>((resolve) => {
+        setTimeout(() => {
+          const event = new KeyboardEvent('keydown', { key: 'ArrowDown' });
+          svg.dispatchEvent(event);
+          resolve();
+        }, 0);
+      });
     });
   });
 
@@ -241,7 +243,7 @@ describe('SVG Keyboard Navigation', () => {
       // Focus ring should be positioned around circle
     });
 
-    it('should hide focus ring on blur', (done) => {
+    it('should hide focus ring on blur', async () => {
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       circle.setAttribute('tabindex', '0');
@@ -251,12 +253,14 @@ describe('SVG Keyboard Navigation', () => {
       const ref = signal<SVGElement | null>(svg);
       useSVGKeyboardNavigation(ref, { focusRing: true });
 
-      setTimeout(() => {
-        // Trigger blur
-        const blurEvent = new FocusEvent('focusout');
-        svg.dispatchEvent(blurEvent);
-        done();
-      }, 0);
+      await new Promise<void>((resolve) => {
+        setTimeout(() => {
+          // Trigger blur
+          const blurEvent = new FocusEvent('focusout');
+          svg.dispatchEvent(blurEvent);
+          resolve();
+        }, 0);
+      });
     });
   });
 
@@ -322,7 +326,7 @@ describe('SVG Keyboard Navigation', () => {
       // Should cycle back to first element
     });
 
-    it('should restore focus on exit', (done) => {
+    it('should restore focus on exit', async () => {
       const button = document.createElement('button');
       button.textContent = 'Test';
       document.body.appendChild(button);
@@ -334,22 +338,24 @@ describe('SVG Keyboard Navigation', () => {
       const ref = signal<SVGElement | null>(svg);
       useSVGKeyboardNavigation(ref, { restoreFocus: true });
 
-      setTimeout(() => {
-        // Trigger exit (Escape key)
-        const event = new KeyboardEvent('keydown', { key: 'Escape' });
-        svg.dispatchEvent(event);
-
-        // Focus should be restored to button
+      await new Promise<void>((resolve) => {
         setTimeout(() => {
-          document.body.removeChild(button);
-          done();
+          // Trigger exit (Escape key)
+          const event = new KeyboardEvent('keydown', { key: 'Escape' });
+          svg.dispatchEvent(event);
+
+          // Focus should be restored to button
+          setTimeout(() => {
+            document.body.removeChild(button);
+            resolve();
+          }, 0);
         }, 0);
-      }, 0);
+      });
     });
   });
 
   describe('Auto Focus', () => {
-    it('should auto focus first element when enabled', (done) => {
+    it('should auto focus first element when enabled', async () => {
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       circle.setAttribute('tabindex', '0');
@@ -359,10 +365,12 @@ describe('SVG Keyboard Navigation', () => {
       const ref = signal<SVGElement | null>(svg);
       useSVGKeyboardNavigation(ref, { autoFocus: true });
 
-      setTimeout(() => {
-        // First element should be focused
-        done();
-      }, 0);
+      await new Promise<void>((resolve) => {
+        setTimeout(() => {
+          // First element should be focused
+          resolve();
+        }, 0);
+      });
     });
   });
 });

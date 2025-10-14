@@ -14,7 +14,7 @@ import type { JSX } from '../../core/component/types.js';
  * Supports reactive attributes via signals. The JSX runtime and reconciler
  * will automatically set up reactive bindings for signal props.
  */
-export interface CircleProps extends Omit<JSX.SVGAttributes<SVGCircleElement>, 'cx' | 'cy' | 'r'> {
+export interface CircleProps extends Omit<JSX.SVGAttributes, 'cx' | 'cy' | 'r'> {
   cx?: string | number | Signal<string | number>;
   cy?: string | number | Signal<string | number>;
   r?: string | number | Signal<string | number>;
@@ -27,7 +27,7 @@ export const Circle = defineComponent<CircleProps>((props) => () => (
 /**
  * Rectangle primitive
  */
-export interface RectProps extends Omit<JSX.SVGAttributes<SVGRectElement>, 'x' | 'y' | 'width' | 'height' | 'rx' | 'ry'> {
+export interface RectProps extends Omit<JSX.SVGAttributes, 'x' | 'y' | 'width' | 'height' | 'rx' | 'ry'> {
   x?: string | number | Signal<string | number>;
   y?: string | number | Signal<string | number>;
   width?: string | number | Signal<string | number>;
@@ -43,7 +43,7 @@ export const Rect = defineComponent<RectProps>((props) => () => (
 /**
  * Path primitive - the most versatile SVG element
  */
-export interface PathProps extends Omit<JSX.SVGAttributes<SVGPathElement>, 'd' | 'pathLength'> {
+export interface PathProps extends Omit<JSX.SVGAttributes, 'd' | 'pathLength'> {
   d?: string | Signal<string>;
   pathLength?: number | Signal<number>;
 }
@@ -55,7 +55,7 @@ export const Path = defineComponent<PathProps>((props) => () => (
 /**
  * Line primitive
  */
-export interface LineProps extends Omit<JSX.SVGAttributes<SVGLineElement>, 'x1' | 'y1' | 'x2' | 'y2'> {
+export interface LineProps extends Omit<JSX.SVGAttributes, 'x1' | 'y1' | 'x2' | 'y2'> {
   x1?: string | number | Signal<string | number>;
   y1?: string | number | Signal<string | number>;
   x2?: string | number | Signal<string | number>;
@@ -69,7 +69,7 @@ export const Line = defineComponent<LineProps>((props) => () => (
 /**
  * Polygon primitive
  */
-export interface PolygonProps extends Omit<JSX.SVGAttributes<SVGPolygonElement>, 'points'> {
+export interface PolygonProps extends Omit<JSX.SVGAttributes, 'points'> {
   points?: string | Signal<string>;
 }
 
@@ -80,7 +80,7 @@ export const Polygon = defineComponent<PolygonProps>((props) => () => (
 /**
  * Polyline primitive
  */
-export interface PolylineProps extends Omit<JSX.SVGAttributes<SVGPolylineElement>, 'points'> {
+export interface PolylineProps extends Omit<JSX.SVGAttributes, 'points'> {
   points?: string | Signal<string>;
 }
 
@@ -91,7 +91,7 @@ export const Polyline = defineComponent<PolylineProps>((props) => () => (
 /**
  * Ellipse primitive
  */
-export interface EllipseProps extends Omit<JSX.SVGAttributes<SVGEllipseElement>, 'cx' | 'cy' | 'rx' | 'ry'> {
+export interface EllipseProps extends Omit<JSX.SVGAttributes, 'cx' | 'cy' | 'rx' | 'ry'> {
   cx?: string | number | Signal<string | number>;
   cy?: string | number | Signal<string | number>;
   rx?: string | number | Signal<string | number>;
@@ -105,7 +105,7 @@ export const Ellipse = defineComponent<EllipseProps>((props) => () => (
 /**
  * Group element for grouping SVG elements
  */
-export interface GroupProps extends JSX.SVGAttributes<SVGGElement> {
+export interface GroupProps extends JSX.SVGAttributes {
   children?: JSX.Element;
 }
 
@@ -114,7 +114,7 @@ export const G = defineComponent<GroupProps>((props) => () => <g {...props}>{pro
 /**
  * Use element for reusing SVG elements
  */
-export interface UseProps extends Omit<JSX.SVGAttributes<SVGUseElement>, 'x' | 'y' | 'width' | 'height' | 'href'> {
+export interface UseProps extends Omit<JSX.SVGAttributes, 'x' | 'y' | 'width' | 'height' | 'href'> {
   href?: string | Signal<string>;
   x?: string | number | Signal<string | number>;
   y?: string | number | Signal<string | number>;
@@ -129,7 +129,7 @@ export const Use = defineComponent<UseProps>((props) => () => (
 /**
  * Symbol element for defining reusable SVG elements
  */
-export interface SymbolProps extends Omit<JSX.SVGAttributes<SVGSymbolElement>, 'viewBox' | 'preserveAspectRatio'> {
+export interface SymbolProps extends Omit<JSX.SVGAttributes, 'viewBox' | 'preserveAspectRatio'> {
   id: string;
   viewBox?: string | Signal<string>;
   preserveAspectRatio?: string | Signal<string>;
@@ -145,7 +145,7 @@ export const Symbol = defineComponent<SymbolProps>((props) => () => (
 /**
  * Defs element for defining reusable elements
  */
-export interface DefsProps extends JSX.SVGAttributes<SVGDefsElement> {
+export interface DefsProps extends JSX.SVGAttributes {
   children?: JSX.Element;
 }
 

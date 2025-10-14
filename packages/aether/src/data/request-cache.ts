@@ -187,10 +187,17 @@ export class RequestCache {
    * Execute real fetch
    */
   private async fetchReal<T>(key: string, request: RequestFunction<T>, options: RequestOptions): Promise<T> {
+    // Check if already in flight (race condition protection)
+    const existing = this.inFlight.get(key);
+    if (existing) {
+      this.stats.deduped++;
+      return existing;
+    }
+
     // Create promise
     const promise = request();
 
-    // Track in-flight request
+    // Track in-flight request BEFORE awaiting
     this.inFlight.set(key, promise);
 
     try {

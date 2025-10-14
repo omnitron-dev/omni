@@ -144,6 +144,11 @@ export interface CompilationResult {
    * Worker ID that processed this task
    */
   workerId: number;
+
+  /**
+   * Whether result was from cache
+   */
+  cached?: boolean;
 }
 
 /**
@@ -423,7 +428,7 @@ parentPort.on('message', (task) => {
       if (cached) {
         this.cacheHits++;
         this.stats.totalFiles++;
-        return cached;
+        return { ...cached, cached: true };
       }
     }
     this.cacheMisses++;
@@ -572,7 +577,13 @@ parentPort.on('message', (task) => {
       const startTime = Date.now();
 
       try {
-        const result = ts.transpileModule(file.source, {
+        // Ensure source is defined
+        const source = file.source || '';
+        if (!source) {
+          throw new Error(`Missing source for file: ${file.path}`);
+        }
+
+        const result = ts.transpileModule(source, {
           compilerOptions: this.config.compilerOptions,
           fileName: file.path,
         });

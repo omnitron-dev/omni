@@ -1447,44 +1447,154 @@ export function createSharedChunksPlugin(config: SharedChunksConfig = {}) {
  * Shared Chunk Manager (simplified API for testing)
  */
 export class SharedChunkManager {
-  private config: { minSize: number; minChunks: number };
-  private modules: Map<string, string[]> = new Map();
+  private config: { minSize: number; maxSize?: number; minChunks: number };
+  private modules: Map<string, { dependencies: string[]; size: number }> = new Map();
 
-  constructor(config: { minSize: number; minChunks: number }) {
+  constructor(config: { minSize: number; maxSize?: number; minChunks: number }) {
     this.config = config;
   }
 
-  addModule(moduleName: string, dependencies: string[]): void {
-    this.modules.set(moduleName, dependencies);
+  addModule(moduleName: string, dependencies: string[], size: number = 1000): void {
+    this.modules.set(moduleName, { dependencies, size });
   }
 
-  generateChunks(): Array<{ name: string; modules: string[] }> {
-    // Simple chunk generation for testing
-    const chunks: Array<{ name: string; modules: string[] }> = [];
+  /**
+   * Analyze which modules are shared across multiple entry points
+   * Returns a map of dependency -> Set of modules that depend on it
+   */
+  analyzeSharedModules(): Map<string, Set<string>> {
+    const analysis = new Map<string, Set<string>>();
 
-    // Group modules by common dependencies
+    // For each module's dependencies, track which modules use them
+    for (const [moduleName, { dependencies }] of this.modules) {
+      for (const dep of dependencies) {
+        if (!analysis.has(dep)) {
+          analysis.set(dep, new Set());
+        }
+        analysis.get(dep)!.add(moduleName);
+      }
+    }
+
+    return analysis;
+  }
+
+  generateChunks(): Array<{ name: string; modules: string[]; size: number }> {
+    // Simple chunk generation for testing
+    const chunks: Array<{ name: string; modules: string[]; size: number }> = [];
+
+    // Analyze shared dependencies
+    const sharedDeps = this.analyzeSharedModules();
+
+    // Find dependencies used by at least minChunks modules
+    const commonDeps = new Set<string>();
+    for (const [dep, users] of sharedDeps) {
+      if (users.size >= this.config.minChunks) {
+        commonDeps.add(dep);
+      }
+    }
+
+    // Create vendor chunk for common dependencies if they exist
+    if (commonDeps.size > 0) {
+      chunks.push({
+        name: 'vendor',
+        modules: Array.from(commonDeps),
+        size: commonDeps.size * 50, // Estimate: 50 bytes per dependency name
+      });
+    }
+
+    // Group all modules by their dependency patterns
     const dependencyGroups = new Map<string, Set<string>>();
 
-    for (const [moduleName, deps] of this.modules) {
-      const depsKey = deps.sort().join(',');
+    for (const [moduleName, { dependencies }] of this.modules) {
+      // Filter out common deps that are in vendor chunk
+      const uniqueDeps = dependencies.filter(d => !commonDeps.has(d));
+      const depsKey = uniqueDeps.sort().join(',');
+
       if (!dependencyGroups.has(depsKey)) {
         dependencyGroups.set(depsKey, new Set());
       }
       dependencyGroups.get(depsKey)!.add(moduleName);
     }
 
-    // Create chunks from groups
+    // Create chunks from groups, respecting size constraints
     let chunkId = 0;
     for (const [depsKey, moduleSet] of dependencyGroups) {
-      if (moduleSet.size >= this.config.minChunks) {
+      // Calculate total size for this group
+      let totalSize = 0;
+      for (const moduleName of moduleSet) {
+        const moduleData = this.modules.get(moduleName);
+        if (moduleData) {
+          totalSize += moduleData.size;
+        }
+      }
+
+      // Check if we need to split based on size
+      if (this.config.maxSize && totalSize > this.config.maxSize) {
+        // Split into multiple chunks
+        const modulesArray = Array.from(moduleSet);
+        let currentChunk: string[] = [];
+        let currentSize = 0;
+
+        for (const moduleName of modulesArray) {
+          const moduleData = this.modules.get(moduleName);
+          const moduleSize = moduleData?.size || 0;
+
+          // If adding this module exceeds maxSize and we have modules in current chunk, start a new chunk
+          if (currentSize + moduleSize > this.config.maxSize && currentChunk.length > 0) {
+            chunks.push({
+              name: `chunk-${chunkId++}`,
+              modules: currentChunk,
+              size: currentSize,
+            });
+            currentChunk = [];
+            currentSize = 0;
+          }
+
+          currentChunk.push(moduleName);
+          currentSize += moduleSize;
+        }
+
+        // Add remaining modules
+        if (currentChunk.length > 0) {
+          chunks.push({
+            name: `chunk-${chunkId++}`,
+            modules: currentChunk,
+            size: currentSize,
+          });
+        }
+      } else if (moduleSet.size >= this.config.minChunks || totalSize >= this.config.minSize) {
+        // Create a single chunk if it meets the criteria
         chunks.push({
           name: `chunk-${chunkId++}`,
           modules: Array.from(moduleSet),
+          size: totalSize,
         });
       }
     }
 
     return chunks;
+  }
+
+  /**
+   * Get statistics about chunks and modules
+   */
+  getStatistics() {
+    const chunks = this.generateChunks();
+    const sharedModules = this.analyzeSharedModules();
+
+    // Count how many dependencies are shared
+    let sharedCount = 0;
+    for (const [dep, users] of sharedModules) {
+      if (users.size >= this.config.minChunks) {
+        sharedCount++;
+      }
+    }
+
+    return {
+      totalModules: this.modules.size,
+      totalChunks: chunks.length,
+      sharedModules: sharedCount,
+    };
   }
 }
 

@@ -33,6 +33,7 @@ interface DiffCache {
 export class OptimizedDiffer {
   private cache = new Map<string, DiffCache>();
   private fragmentCache = new Map<string, VNode[]>();
+  private patchCache = new Map<string, Patch[]>(); // Cache for diff results
 
   // Statistics
   private stats = {
@@ -51,6 +52,15 @@ export class OptimizedDiffer {
    * @returns Array of patches
    */
   diff(oldVNode: VNode | null, newVNode: VNode | null, cacheKey?: string): Patch[] {
+    // Check top-level cache if cache key provided
+    if (cacheKey) {
+      const cached = this.patchCache.get(cacheKey);
+      if (cached) {
+        this.stats.cacheHits++;
+        return cached;
+      }
+    }
+
     // Fast path: Same reference
     if (oldVNode === newVNode) {
       this.stats.fastPaths++;
@@ -113,6 +123,11 @@ export class OptimizedDiffer {
         props: propPatch,
         children: childrenPatches,
       });
+    }
+
+    // Store result in cache if cache key provided
+    if (cacheKey) {
+      this.patchCache.set(cacheKey, patches);
     }
 
     return patches;
@@ -238,7 +253,7 @@ export class OptimizedDiffer {
     if (cacheKey) {
       const cached = this.fragmentCache.get(cacheKey);
       if (cached && this.arraysEqual(cached, newChildren)) {
-        this.stats.cacheHits++;
+        this.stats.cacheHits++; // Already tracking cache hits here
         return [];
       }
     }
@@ -370,6 +385,7 @@ export class OptimizedDiffer {
   clearCache(): void {
     this.cache.clear();
     this.fragmentCache.clear();
+    this.patchCache.clear();
   }
 
   /**

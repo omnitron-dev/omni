@@ -104,7 +104,7 @@ describe('Development Workflow E2E Tests', () => {
       inspector.trackComputed('doubled', doubled);
 
       expect(inspector.getState().signals.has('count')).toBe(true);
-      expect(inspector.getState().computeds.has('doubled')).toBe(true);
+      expect(inspector.getState().computed.has('doubled')).toBe(true);
 
       count.set(5);
 

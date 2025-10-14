@@ -98,12 +98,34 @@ export class ComponentPool {
   /**
    * Acquire component instance from pool
    *
-   * @param componentId - Component identifier/name
-   * @param factory - Component factory function
-   * @param props - Component props (optional)
+   * @param componentIdOrFactory - Component identifier/name or factory function
+   * @param factoryOrProps - Component factory function or props (if first param is factory)
+   * @param props - Component props (optional, if first two params are componentId and factory)
    * @returns Component result (the actual component object)
    */
-  acquire<P = any, T = any>(componentId: string, factory: Component<P>, props?: P): T {
+  acquire<P = any, T = any>(
+    componentIdOrFactory: string | Component<P>,
+    factoryOrProps?: Component<P> | P,
+    props?: P
+  ): T {
+    // Handle overloaded signatures
+    let componentId: string;
+    let factory: Component<P>;
+    let actualProps: P | undefined;
+
+    if (typeof componentIdOrFactory === 'function') {
+      // Old API: acquire(factory) or acquire(factory, props)
+      factory = componentIdOrFactory;
+      // Generate a stable ID from the function
+      componentId = (factory as any).__poolId || ((factory as any).__poolId = `comp-${Math.random().toString(36).slice(2, 11)}`);
+      actualProps = factoryOrProps as P | undefined;
+    } else {
+      // New API: acquire(componentId, factory, props)
+      componentId = componentIdOrFactory;
+      factory = factoryOrProps as Component<P>;
+      actualProps = props;
+    }
+
     const pool = this.pools.get(componentId);
 
     // Try to reuse from pool
@@ -112,7 +134,7 @@ export class ComponentPool {
 
       // Reset instance
       instance.component = factory;
-      instance.props = props;
+      instance.props = actualProps;
       instance.active = true;
       instance.lastUsed = Date.now();
 
@@ -123,75 +145,81 @@ export class ComponentPool {
         this.stats.reused++;
       }
 
-      // Call the factory to get the component result
-      const result = factory(props as P);
-
-      // Store the result in state for later access
-      instance.state = result;
-
-      // Track result -> instance mapping
-      if (typeof result === 'object' && result !== null) {
-        this.resultToInstance.set(result, instance);
-      }
-
       // Call recycle lifecycle hook if exists
       if (typeof (factory as any).onRecycle === 'function') {
-        (factory as any).onRecycle(instance, props);
+        (factory as any).onRecycle(instance, actualProps);
       }
 
-      return result as T;
+      // Return the instance itself (for old API compatibility)
+      return instance as any as T;
     }
 
     // Create new instance
-    const instance = this.createInstance(factory, props);
+    const instance = this.createInstance(factory, actualProps);
     instance.active = true;
 
     // Track active instance
     this.activeInstances.set(instance, componentId);
 
-    // Call the factory to get the component result
-    const result = factory(props as P);
-
-    // Store the result in state
-    instance.state = result;
-
-    // Track result -> instance mapping
-    if (typeof result === 'object' && result !== null) {
-      this.resultToInstance.set(result, instance);
-    }
-
-    return result as T;
+    // Return the instance itself (for old API compatibility)
+    return instance as any as T;
   }
 
   /**
    * Release component instance back to pool
    *
-   * @param componentId - Component identifier/name
-   * @param resultOrInstance - Component result object or instance to release
+   * @param componentIdOrResult - Component identifier/name or result object/instance (for old API)
+   * @param resultOrInstance - Component result object or instance to release (if first param is componentId)
    */
-  release<P = any>(componentId: string, resultOrInstance: any): void {
+  release<P = any>(componentIdOrResult: string | any, resultOrInstance?: any): void {
+    // Handle overloaded signatures
+    let componentId: string | undefined;
+    let instanceOrResult: any;
+
+    if (typeof componentIdOrResult === 'string') {
+      // New API: release(componentId, instance/result)
+      componentId = componentIdOrResult;
+      instanceOrResult = resultOrInstance;
+    } else {
+      // Old API: release(instance/result)
+      instanceOrResult = componentIdOrResult;
+      componentId = undefined;
+    }
+
     // If it's a result object, look up the instance
     let instance: ComponentInstance<P> | undefined;
 
-    if (typeof resultOrInstance === 'object' && resultOrInstance !== null) {
+    if (typeof instanceOrResult === 'object' && instanceOrResult !== null) {
       // Check if it's already an instance or if we need to look it up
-      if (this.activeInstances.has(resultOrInstance)) {
-        instance = resultOrInstance;
+      if (this.activeInstances.has(instanceOrResult)) {
+        instance = instanceOrResult;
       } else {
-        instance = this.resultToInstance.get(resultOrInstance);
+        instance = this.resultToInstance.get(instanceOrResult);
       }
     } else {
-      instance = resultOrInstance;
+      instance = instanceOrResult;
     }
 
     if (!instance || !instance.active) {
       return;
     }
 
-    // Verify the instance belongs to this component ID
+    // Get the tracked component ID
     const trackedId = this.activeInstances.get(instance);
-    if (trackedId && trackedId !== componentId) {
+
+    // If componentId was provided (new API), verify it matches
+    if (componentId && trackedId && trackedId !== componentId) {
       console.warn(`Instance released to wrong pool: expected ${trackedId}, got ${componentId}`);
+      return;
+    }
+
+    // Use the tracked ID if no componentId was provided (old API)
+    if (!componentId) {
+      componentId = trackedId;
+    }
+
+    if (!componentId) {
+      console.warn('Cannot release instance: no component ID found');
       return;
     }
 

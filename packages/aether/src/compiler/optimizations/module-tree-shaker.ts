@@ -175,10 +175,22 @@ export class ModuleTreeShakerPass implements OptimizationPass {
 
     // Track what is actually used from each module
     for (const module of modules) {
-      if (module.exports) {
-        // Mark exported providers as potentially used if module is imported
-        const usageInfo = this.usageInfo.get(module.id);
-        if (usageInfo && usageInfo.isImported) {
+      const usageInfo = this.usageInfo.get(module.id);
+      if (!usageInfo) continue;
+
+      // In non-aggressive mode, mark ALL exported items as used to be conservative
+      if (!this.options.aggressive && module.exports) {
+        for (const provider of module.exports.providers) {
+          usageInfo.exportsUsed.add(provider);
+          usageInfo.providersUsed.add(provider);
+        }
+        for (const store of module.exports.stores) {
+          usageInfo.exportsUsed.add(store);
+          usageInfo.storesUsed.add(store);
+        }
+      } else if (module.exports) {
+        // In aggressive mode, only mark as used if module is imported
+        if (usageInfo.isImported) {
           for (const provider of module.exports.providers) {
             usageInfo.exportsUsed.add(provider);
             usageInfo.providersUsed.add(provider);
@@ -187,6 +199,16 @@ export class ModuleTreeShakerPass implements OptimizationPass {
             usageInfo.exportsUsed.add(store);
             usageInfo.storesUsed.add(store);
           }
+        }
+      }
+
+      // Mark all providers as used in non-aggressive mode
+      if (!this.options.aggressive) {
+        for (const provider of module.providers) {
+          usageInfo.providersUsed.add(provider.name);
+        }
+        for (const store of module.stores) {
+          usageInfo.storesUsed.add(store.id);
         }
       }
     }
@@ -200,6 +222,11 @@ export class ModuleTreeShakerPass implements OptimizationPass {
     sourceFile: ts.SourceFile
   ): { code: string; changes: OptimizationChange[] } {
     if (!this.moduleAnalysis) {
+      return { code, changes: [] };
+    }
+
+    // In non-aggressive mode, don't remove any modules to be conservative
+    if (!this.options.aggressive) {
       return { code, changes: [] };
     }
 
@@ -246,6 +273,11 @@ export class ModuleTreeShakerPass implements OptimizationPass {
     sourceFile: ts.SourceFile
   ): { code: string; changes: OptimizationChange[] } {
     if (!this.moduleAnalysis) {
+      return { code, changes: [] };
+    }
+
+    // In non-aggressive mode, don't remove any exports to be conservative
+    if (!this.options.aggressive) {
       return { code, changes: [] };
     }
 

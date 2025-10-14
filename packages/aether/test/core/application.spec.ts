@@ -667,7 +667,9 @@ describe('Application', () => {
 
   describe('global app instance', () => {
     beforeEach(() => {
-      global.window = {} as any;
+      global.window = {
+        addEventListener: vi.fn(),
+      } as any;
     });
 
     afterEach(() => {

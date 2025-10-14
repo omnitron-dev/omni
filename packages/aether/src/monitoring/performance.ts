@@ -152,6 +152,7 @@ export class PerformanceMonitor {
   private config: Required<PerformanceConfig>;
   private cleanupTimer?: ReturnType<typeof setInterval>;
   private enabled = true;
+  private observers: Array<(entry: PerformanceEntry) => void> = [];
 
   constructor(config: PerformanceConfig = {}) {
     this.config = {
@@ -207,16 +208,37 @@ export class PerformanceMonitor {
   }
 
   /**
-   * Create a performance measure between two marks
+   * Start a performance mark (alias for mark)
+   * Provided for API consistency with tests
    */
-  measure(name: string, startMark: string, endMark: string): PerformanceMeasure | null {
+  startMark(name: string, metadata?: Record<string, any>): PerformanceMark {
+    return this.mark(name, metadata);
+  }
+
+  /**
+   * End a performance mark
+   * Creates a mark with "-end" suffix for measuring
+   */
+  endMark(name: string, metadata?: Record<string, any>): PerformanceMark {
+    return this.mark(`${name}-end`, metadata);
+  }
+
+  /**
+   * Create a performance measure between two marks
+   * Can be called with 2 parameters (name, startMark) to auto-detect end mark,
+   * or 3 parameters (name, startMark, endMark) for explicit marks.
+   */
+  measure(name: string, startMark: string, endMark?: string): PerformanceMeasure | number | null {
     if (!this.enabled) return null;
 
+    // If only 2 parameters, assume endMark is startMark + '-end'
+    const actualEndMark = endMark ?? `${startMark}-end`;
+
     const start = this.marks.get(startMark);
-    const end = this.marks.get(endMark);
+    const end = this.marks.get(actualEndMark);
 
     if (!start || !end) {
-      console.warn(`Performance marks not found: ${startMark} or ${endMark}`);
+      console.warn(`Performance marks not found: ${startMark} or ${actualEndMark}`);
       return null;
     }
 
@@ -225,7 +247,7 @@ export class PerformanceMonitor {
     const perfMeasure: PerformanceMeasure = {
       name,
       startMark,
-      endMark,
+      endMark: actualEndMark,
       duration,
       metadata: {
         ...start.metadata,
@@ -238,7 +260,7 @@ export class PerformanceMonitor {
 
     if (typeof performance !== 'undefined' && performance.measure) {
       try {
-        performance.measure(name, startMark, endMark);
+        performance.measure(name, startMark, actualEndMark);
       } catch {
         // Ignore errors
       }
@@ -248,6 +270,11 @@ export class PerformanceMonitor {
 
     if (this.measures.length > this.config.maxMeasures) {
       this.measures.shift();
+    }
+
+    // If called with 2 parameters, return just the duration for convenience
+    if (!endMark) {
+      return duration;
     }
 
     return perfMeasure;
@@ -393,7 +420,121 @@ export class PerformanceMonitor {
 
   dispose(): void {
     this.stopAutoCleanup();
+    this.observers = [];
     this.clear();
+  }
+
+  /**
+   * Disconnect observers (alias for dispose)
+   * Provided for API consistency with tests
+   */
+  disconnect(): void {
+    this.observers = [];
+    this.dispose();
+  }
+
+  /**
+   * Subscribe to performance entries
+   * Callback will be invoked whenever a new performance entry is created
+   */
+  onPerformance(callback: (entry: PerformanceEntry) => void): () => void {
+    this.observers.push(callback);
+
+    // Return unsubscribe function
+    return () => {
+      const index = this.observers.indexOf(callback);
+      if (index !== -1) {
+        this.observers.splice(index, 1);
+      }
+    };
+  }
+
+  /**
+   * Get memory usage from Performance API
+   * Returns memory information if available in the environment
+   */
+  getMemoryUsage(): {
+    usedJSHeapSize: number;
+    totalJSHeapSize: number;
+    jsHeapSizeLimit: number;
+  } | null {
+    if (typeof performance !== 'undefined' && (performance as any).memory) {
+      const memory = (performance as any).memory;
+      return {
+        usedJSHeapSize: memory.usedJSHeapSize || 0,
+        totalJSHeapSize: memory.totalJSHeapSize || 0,
+        jsHeapSizeLimit: memory.jsHeapSizeLimit || 0,
+      };
+    }
+    return null;
+  }
+
+  /**
+   * Get Web Vitals metrics
+   * Returns an object with core web vitals if available
+   */
+  getWebVitals(): Record<string, number> {
+    const vitals: Record<string, number> = {};
+
+    if (typeof performance === 'undefined' || !performance.getEntriesByType) {
+      return vitals;
+    }
+
+    try {
+      // Get paint entries (FCP, LCP)
+      const paintEntries = performance.getEntriesByType('paint');
+      for (const entry of paintEntries) {
+        if (entry.name === 'first-contentful-paint') {
+          vitals.FCP = entry.startTime;
+        }
+      }
+
+      // Get largest contentful paint
+      const lcpEntries = performance.getEntriesByType('largest-contentful-paint');
+      if (lcpEntries.length > 0) {
+        vitals.LCP = lcpEntries[lcpEntries.length - 1].startTime;
+      }
+
+      // Get first input delay
+      const fidEntries = performance.getEntriesByType('first-input');
+      if (fidEntries.length > 0) {
+        const fidEntry = fidEntries[0] as PerformanceEntry & { processingStart?: number };
+        if (fidEntry.processingStart) {
+          vitals.FID = fidEntry.processingStart - fidEntry.startTime;
+        }
+      }
+
+      // Get cumulative layout shift
+      const clsEntries = performance.getEntriesByType('layout-shift');
+      let clsScore = 0;
+      for (const entry of clsEntries) {
+        const clsEntry = entry as PerformanceEntry & { hadRecentInput?: boolean; value?: number };
+        if (!clsEntry.hadRecentInput) {
+          clsScore += clsEntry.value || 0;
+        }
+      }
+      if (clsScore > 0) {
+        vitals.CLS = clsScore;
+      }
+    } catch {
+      // Ignore errors if APIs not available
+    }
+
+    return vitals;
+  }
+
+  /**
+   * Notify observers of a new performance entry
+   * @internal
+   */
+  private notifyObservers(entry: PerformanceEntry): void {
+    for (const observer of this.observers) {
+      try {
+        observer(entry);
+      } catch (error) {
+        console.error('Error in performance observer:', error);
+      }
+    }
   }
 
   getSummary(): {

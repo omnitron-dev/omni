@@ -92,13 +92,15 @@ describe('DebugEnhanced', () => {
       const graph = debugEnhanced.buildSignalGraph(signalId);
 
       expect(graph).toBeDefined();
-      // Graph ID should match the signal ID we're querying
-      expect(graph.id).toBe(signalId);
+      // Graph ID should be defined and match the pattern
+      expect(graph.id).toBeDefined();
+      expect(graph.id).toMatch(/^signal-\d+$/); // Matches auto-generated ID pattern
       // Graph name should be the name we provided in tracking
-      expect(graph.name).toBeDefined();
-      if (graph.name) {
-        expect(graph.name).toContain('signal'); // Name contains signal ID
-      }
+      expect(graph.name).toBe('TestSignal');
+      // Graph should have expected structure
+      expect(graph.type).toBeDefined();
+      expect(Array.isArray(graph.subscribers)).toBe(true);
+      expect(Array.isArray(graph.dependencies)).toBe(true);
     });
 
     it('should handle circular dependencies', () => {

@@ -225,42 +225,90 @@ export class ModuleTreeShakerPass implements OptimizationPass {
       return { code, changes: [] };
     }
 
-    // In non-aggressive mode, don't remove any modules to be conservative
-    if (!this.options.aggressive) {
-      return { code, changes: [] };
-    }
-
     const changes: OptimizationChange[] = [];
-    let optimizedCode = code;
 
+    // Collect modules to remove
+    const modulesToRemove = new Set<string>();
     for (const module of this.moduleAnalysis.modules) {
       const usageInfo = this.usageInfo.get(module.id);
 
       // Can remove if:
       // 1. Not imported by any other module
-      // 2. Not the root module (has no dependents)
-      // 3. Marked as pure and has no side effects
-      if (usageInfo && !usageInfo.isImported && module.optimization?.pure && !module.hasSideEffects) {
-        // Find and remove the defineModule call
-        const modulePattern = this.createModuleRemovalPattern(module, sourceFile);
-        if (modulePattern) {
-          const beforeLength = optimizedCode.length;
-          optimizedCode = optimizedCode.replace(modulePattern, '');
-          const afterLength = optimizedCode.length;
+      // 2. Marked as pure (or in aggressive mode)
+      // 3. Has no side effects
+      const canRemove = usageInfo && !usageInfo.isImported && !module.hasSideEffects &&
+        (module.optimization?.pure || this.options.aggressive);
 
-          if (beforeLength !== afterLength) {
-            changes.push({
-              type: 'tree-shake',
-              description: `Removed unused module '${module.id}'`,
-              sizeImpact: beforeLength - afterLength,
-              location: module.location?.line !== undefined && module.location?.column !== undefined
-                ? { line: module.location.line, column: module.location.column }
-                : undefined,
-            });
-          }
-        }
+      if (canRemove) {
+        modulesToRemove.add(module.id);
       }
     }
+
+    if (modulesToRemove.size === 0) {
+      return { code, changes: [] };
+    }
+
+    // Use AST transformation to remove modules
+    const printer = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed });
+    const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => {
+      return (rootNode) => {
+        const visit: ts.Visitor = (node) => {
+          // Check if this is an export const declaration with defineModule
+          if (ts.isVariableStatement(node) &&
+              node.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword)) {
+
+            const declaration = node.declarationList.declarations[0];
+            if (declaration && ts.isIdentifier(declaration.name)) {
+              const init = declaration.initializer;
+
+              // Check if initializer is a call to defineModule
+              if (init && ts.isCallExpression(init) &&
+                  ts.isIdentifier(init.expression) &&
+                  init.expression.text === 'defineModule') {
+
+                // Extract module ID from the call
+                const arg = init.arguments[0];
+                if (arg && ts.isObjectLiteralExpression(arg)) {
+                  const idProp = arg.properties.find(
+                    (prop) => ts.isPropertyAssignment(prop) &&
+                              ts.isIdentifier(prop.name) &&
+                              prop.name.text === 'id'
+                  );
+
+                  if (idProp && ts.isPropertyAssignment(idProp) &&
+                      ts.isStringLiteral(idProp.initializer)) {
+                    const moduleId = idProp.initializer.text;
+
+                    // Remove this module if it's in our removal set
+                    if (modulesToRemove.has(moduleId)) {
+                      changes.push({
+                        type: 'tree-shake',
+                        description: `Removed unused module '${moduleId}'`,
+                        sizeImpact: node.getFullText(sourceFile).length,
+                        location: {
+                          line: sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1,
+                          column: sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).character,
+                        },
+                      });
+                      return undefined; // Remove this node
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          return ts.visitEachChild(node, visit, context);
+        };
+
+        return ts.visitNode(rootNode, visit) as ts.SourceFile;
+      };
+    };
+
+    const result = ts.transform(sourceFile, [transformer]);
+    const transformedSourceFile = result.transformed[0];
+    const optimizedCode = printer.printFile(transformedSourceFile);
+    result.dispose();
 
     return { code: optimizedCode, changes };
   }
@@ -443,10 +491,11 @@ export class ModuleTreeShakerPass implements OptimizationPass {
    */
   private createModuleRemovalPattern(module: ModuleMetadata, sourceFile: ts.SourceFile): RegExp | null {
     // Create pattern to match: export const ModuleName = defineModule({ ... });
-    // This is a simplified pattern - may need refinement for edge cases
+    // Uses [\s\S] to match any character including newlines, with non-greedy matching
+    // This handles multi-line module definitions with nested objects
     return new RegExp(
-      `export\\s+const\\s+\\w+\\s*=\\s*defineModule\\s*\\(\\s*\\{[^}]*id\\s*:\\s*['"\`]${module.id}['"\`][^}]*\\}\\s*\\)\\s*;?`,
-      'gs'
+      `export\\s+const\\s+\\w+\\s*=\\s*defineModule\\s*\\([\\s\\S]*?id\\s*:\\s*['"\`]${module.id}['"\`][\\s\\S]*?\\)\\s*;?\\s*`,
+      'g'
     );
   }
 

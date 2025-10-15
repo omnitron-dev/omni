@@ -99,9 +99,26 @@ export function renderToStringWithIslands(
     // Regular component - render normally
     if (typeof comp === 'function') {
       const result = comp(compProps);
+
+      // Check if result is a VNode (must check before Node, as VNodes may have dom property)
+      const isVNode = result && typeof result === 'object' && 'type' in result && !('nodeType' in result);
+      const isNode = result && typeof result === 'object' && 'nodeType' in result;
+
+      // Handle VNodes (JSX objects from SSR mode)
+      if (isVNode) {
+        return renderJSX(result);
+      }
+
+      // Handle DOM nodes
+      if (isNode) {
+        return serializeDOMToHTML(result);
+      }
+
       if (typeof result === 'function') {
         return renderJSX(result());
       }
+
+      // Fallback
       return renderJSX(result);
     }
 
@@ -123,7 +140,19 @@ export function renderToStringWithIslands(
 
     // Render island content
     const result = island(islandProps);
-    const content = typeof result === 'function' ? renderJSX(result()) : renderJSX(result);
+
+    // Handle different result types
+    let content: string;
+    if (result instanceof Node) {
+      // DOM node from defineComponent
+      content = serializeDOMToHTML(result);
+    } else if (typeof result === 'function') {
+      // Render function
+      content = renderJSX(result());
+    } else {
+      // JSX/VNode object
+      content = renderJSX(result);
+    }
 
     // Serialize props for hydration
     const serializedProps = serializeData(islandProps);
@@ -339,6 +368,64 @@ function escapeHTML(str: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+/**
+ * Serialize DOM node to HTML string
+ */
+function serializeDOMToHTML(node: Node): string {
+  // Text nodes
+  if (node.nodeType === Node.TEXT_NODE) {
+    return escapeHTML(node.textContent || '');
+  }
+
+  // Element nodes
+  if (node.nodeType === Node.ELEMENT_NODE) {
+    const element = node as Element;
+    const tag = element.tagName.toLowerCase();
+
+    // Build attributes
+    const attrs: string[] = [];
+    for (let i = 0; i < element.attributes.length; i++) {
+      const attr = element.attributes[i];
+      if (attr.value === '') {
+        attrs.push(attr.name);
+      } else {
+        attrs.push(`${attr.name}="${escapeHTML(attr.value)}"`);
+      }
+    }
+    const attrString = attrs.length > 0 ? ' ' + attrs.join(' ') : '';
+
+    // Self-closing tags
+    if (isSelfClosing(tag)) {
+      return `<${tag}${attrString} />`;
+    }
+
+    // Serialize children
+    const children: string[] = [];
+    for (let i = 0; i < node.childNodes.length; i++) {
+      children.push(serializeDOMToHTML(node.childNodes[i]));
+    }
+    const childrenHTML = children.join('');
+
+    return `<${tag}${attrString}>${childrenHTML}</${tag}>`;
+  }
+
+  // Comment nodes
+  if (node.nodeType === Node.COMMENT_NODE) {
+    return `<!--${node.textContent}-->`;
+  }
+
+  // Document fragment
+  if (node.nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
+    const children: string[] = [];
+    for (let i = 0; i < node.childNodes.length; i++) {
+      children.push(serializeDOMToHTML(node.childNodes[i]));
+    }
+    return children.join('');
+  }
+
+  return '';
 }
 
 /**

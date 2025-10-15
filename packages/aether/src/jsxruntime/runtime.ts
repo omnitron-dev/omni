@@ -70,7 +70,12 @@ function createJSXElement(type: JSXElementType, props: JSXProps | null, key?: st
 
   // Handle DOM element
   if (typeof type === 'string') {
-    // Check if reactivity is enabled and props contain signals
+    // SSR Mode: Always return VNode for string elements
+    if (isSSRMode()) {
+      return createReactiveVNode(type, props, key) as any as JSXElement;
+    }
+
+    // Client Mode: Check if reactivity is enabled and props contain signals
     const hasReactiveProps = detectReactiveProps(props);
     if (ENABLE_REACTIVITY && hasReactiveProps) {
       // Return VNode for reactive rendering
@@ -87,7 +92,18 @@ function createJSXElement(type: JSXElementType, props: JSXProps | null, key?: st
 /**
  * Create Fragment (DocumentFragment with children)
  */
-function createFragment(children: any): DocumentFragment {
+function createFragment(children: any): DocumentFragment | any {
+  // SSR Mode: Return VNode for fragment
+  if (isSSRMode()) {
+    return {
+      type: Fragment,
+      props: { children },
+      key: undefined,
+      children: normalizeChildren(children)
+    };
+  }
+
+  // Client Mode: Create actual DocumentFragment
   const fragment = document.createDocumentFragment();
 
   const childArray = normalizeChildren(children);
@@ -101,6 +117,13 @@ function createFragment(children: any): DocumentFragment {
 }
 
 /**
+ * Check if running in SSR mode
+ */
+function isSSRMode(): boolean {
+  return typeof window === 'undefined';
+}
+
+/**
  * Create component element
  */
 function createComponentElement(
@@ -111,23 +134,34 @@ function createComponentElement(
   // Extract ref from props
   const { ref, children, ...restProps } = props || {};
 
-  // Call component with props
+  // Prepare component props
   const componentProps = {
     ...restProps,
     ...(children !== undefined && { children }),
     ...(key !== undefined && { key }),
   };
 
+  // SSR Mode: Return VNode with component type instead of executing component
+  // This allows SSR renderer to traverse component tree and detect islands
+  if (isSSRMode()) {
+    // Return a VNode-like object with the component as type
+    // The SSR renderer will handle executing components
+    return {
+      type: Component,
+      props: componentProps,
+      key,
+      children: []
+    } as any;
+  }
+
+  // Client Mode: Execute component immediately
   const result = Component(componentProps);
 
   // Handle VNode results with reactive props
   if (isVNode(result)) {
-    console.log('[COMPONENT] Result is VNode');
     // Check if the VNode has reactive props
     const hasReactive = hasReactivePropsInVNode(result);
-    console.log('[COMPONENT] Has reactive props:', hasReactive);
     if (hasReactive) {
-      console.log('[COMPONENT] Rendering with bindings');
       const dom = renderVNodeWithBindings(result as any);
 
       // Assign ref if provided

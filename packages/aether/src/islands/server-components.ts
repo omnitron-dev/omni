@@ -299,7 +299,28 @@ export const server = {
  * @returns Serialized string
  */
 export function serializeData(data: any): string {
-  return JSON.stringify(data)
+  // Use JSON.stringify with replacer to handle circular references
+  const seen = new WeakSet();
+  const json = JSON.stringify(data, (key, value) => {
+    // Skip functions
+    if (typeof value === 'function') {
+      return undefined;
+    }
+    // Skip symbols
+    if (typeof value === 'symbol') {
+      return undefined;
+    }
+    // Handle circular references
+    if (typeof value === 'object' && value !== null) {
+      if (seen.has(value)) {
+        return '[Circular]';
+      }
+      seen.add(value);
+    }
+    return value;
+  });
+
+  return json
     .replace(/</g, '\\u003c')
     .replace(/>/g, '\\u003e')
     .replace(/&/g, '\\u0026')

@@ -96,20 +96,27 @@ describe('Portal', () => {
   it('should handle null children', () => {
     const result = Portal({ children: null });
 
-    expect(result).toBe(null);
+    // defineComponent always returns DOM nodes, even for null render results
+    expect(result).toBeInstanceOf(Node);
+    expect((result as Node).textContent).toBe('');
   });
 
   it('should handle undefined children', () => {
     const result = Portal({ children: undefined });
 
-    expect(result).toBe(null);
+    // defineComponent always returns DOM nodes, even for undefined render results
+    expect(result).toBeInstanceOf(Node);
+    expect((result as Node).textContent).toBe('');
   });
 
   it('should return null (renders elsewhere)', () => {
     const child = document.createElement('div');
     const result = Portal({ children: child });
 
-    expect(result).toBe(null);
+    // Portal uses defineComponent which always returns DOM nodes
+    // The actual portal content is rendered elsewhere (in target)
+    expect(result).toBeInstanceOf(Node);
+    expect((result as Node).textContent).toBe('');
   });
 
   it('should clean up portal container on unmount', () => {

@@ -15,6 +15,14 @@ import { createDOMFromVNode } from '../../reconciler/create-dom.js';
 import { isSignal } from '../reactivity/signal.js';
 
 /**
+ * Check if running in SSR mode
+ * @internal
+ */
+function isSSR(): boolean {
+  return typeof window === 'undefined';
+}
+
+/**
  * Feature flag to enable template caching
  * When enabled, components that return VNodes will have their templates cached
  * @default false (will be enabled when reconciliation engine is complete)
@@ -289,6 +297,22 @@ export function defineComponent<P = {}>(setup: ComponentSetup<P>, name?: string)
       return null;
     }
 
+    // SSR Mode: Return VNode directly without converting to DOM
+    // This allows the SSR renderer to traverse the component tree
+    if (isSSR()) {
+      try {
+        return context.runWithOwner(owner, () => render!());
+      } catch (err) {
+        // Handle render errors in SSR
+        if (err instanceof Promise) {
+          throw err;
+        }
+        handleComponentError(owner, err as Error);
+        return null;
+      }
+    }
+
+    // Client Mode: Convert to DOM with reactivity
     // Outer try-catch for render phase errors
     try {
       return context.runWithOwner(owner, () => {

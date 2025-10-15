@@ -106,10 +106,11 @@ interface CommandPaletteContextValue {
   inputValue: WritableSignal<string>;
   highlightedIndex: WritableSignal<number>;
   itemElements: WritableSignal<HTMLElement[]>;
+  stateVersion: WritableSignal<number>;
   showShortcuts: boolean;
   setOpen: (open: boolean) => void;
   selectItem: (index: number) => void;
-  registerItem: (element: HTMLElement) => void;
+  registerItem: (element: HTMLElement, creationIndex: number) => void;
   unregisterItem: (element: HTMLElement) => void;
 }
 
@@ -146,6 +147,8 @@ export const CommandPalette = defineComponent<CommandPaletteProps>((props) => {
   const inputValue: WritableSignal<string> = signal<string>('');
   const highlightedIndex: WritableSignal<number> = signal<number>(0);
   const itemElements: WritableSignal<HTMLElement[]> = signal<HTMLElement[]>([]);
+  // Version counter to force effects to re-run when reopening
+  const stateVersion: WritableSignal<number> = signal<number>(0);
 
   // Support both value and signal-based open prop
   const currentOpen = () => {
@@ -161,28 +164,35 @@ export const CommandPalette = defineComponent<CommandPaletteProps>((props) => {
       openSignal.set(value);
     }
     props.onOpenChange?.(value);
+  };
+
+  // Watch for open state changes to reset state
+  // This handles both setOpen calls AND external signal updates (e.g., test calling open.set(true))
+  let previousOpen = currentOpen();
+  effect(() => {
+    const isOpen = currentOpen();
+
+    // Only react to changes, not initial render
+    if (isOpen === previousOpen) {
+      previousOpen = isOpen;
+      return;
+    }
+    previousOpen = isOpen;
 
     // Reset state when closing or opening
-    if (!value) {
+    if (!isOpen) {
       inputValue.set('');
       highlightedIndex.set(0);
     } else {
       // Reset item creation index synchronously when opening
       itemCreationIndex = 0;
-    }
-  };
-
-  // Pattern 19: Watch for open state changes to reset state
-  effect(() => {
-    const isOpen = currentOpen();
-    if (isOpen) {
-      // Reset state when opening
-      inputValue.set('');
+      // Reset highlighted index to 0 when opening
       highlightedIndex.set(0);
-      // Reset item creation index for proper first-item detection
-      itemCreationIndex = 0;
+      // Increment version synchronously to force item effects to re-run
+      stateVersion.set(stateVersion() + 1);
     }
   });
+
 
   const selectItem = (index: number) => {
     const items = itemElements();
@@ -192,10 +202,21 @@ export const CommandPalette = defineComponent<CommandPaletteProps>((props) => {
     }
   };
 
-  const registerItem = (element: HTMLElement) => {
+  const registerItem = (element: HTMLElement, creationIndex: number) => {
     const items = itemElements();
     if (!items.includes(element)) {
-      itemElements.set([...items, element]);
+      // Insert element at correct position based on creation index
+      // Store creation index on element for sorting
+      (element as any)._commandPaletteIndex = creationIndex;
+
+      const newItems = [...items, element];
+      // Sort by creation index to maintain DOM order
+      newItems.sort((a, b) => {
+        const indexA = (a as any)._commandPaletteIndex ?? 0;
+        const indexB = (b as any)._commandPaletteIndex ?? 0;
+        return indexA - indexB;
+      });
+      itemElements.set(newItems);
     }
   };
 
@@ -209,6 +230,7 @@ export const CommandPalette = defineComponent<CommandPaletteProps>((props) => {
     inputValue,
     highlightedIndex,
     itemElements,
+    stateVersion,
     showShortcuts: props.showShortcuts ?? true,
     setOpen,
     selectItem,
@@ -243,16 +265,14 @@ export const CommandPalette = defineComponent<CommandPaletteProps>((props) => {
  * Command Palette Dialog
  * Modal dialog container
  */
-export const CommandPaletteDialog = defineComponent<CommandPaletteDialogProps>((props) => () => {
-  const { children } = props;
-
-  // Evaluate function children (Pattern 17)
-  const evaluatedChildren = typeof children === 'function' ? children() : children;
+export const CommandPaletteDialog = defineComponent<CommandPaletteDialogProps>((props) => {
+  // Evaluate children ONCE during setup to prevent recreating items on every render
+  const evaluatedChildren = typeof props.children === 'function' ? props.children() : props.children;
 
   // Factory Content already wraps in Portal and checks isOpen(), so we return
   // both Overlay and Content. They will both handle their own rendering logic.
   // Cannot wrap in a div because Content portals itself to document.body.
-  return [
+  return () => [
     jsx((Dialog as any).Overlay, {}),
     jsx((Dialog as any).Content, {
       'data-command-palette-dialog': '',
@@ -324,44 +344,48 @@ export const CommandPaletteInput = defineComponent<CommandPaletteInputProps>((pr
  * Command Palette List
  * Container for command groups and items
  */
-export const CommandPaletteList = defineComponent<CommandPaletteListProps>((props) => () => {
-  const { children, ...restProps } = props;
+export const CommandPaletteList = defineComponent<CommandPaletteListProps>((props) => {
+  // Evaluate children ONCE during setup to prevent recreating items on every render
+  const evaluatedChildren = typeof props.children === 'function' ? props.children() : props.children;
 
-  // Evaluate function children (Pattern 17)
-  const evaluatedChildren = typeof children === 'function' ? children() : children;
+  return () => {
+    const { children: _children, ...restProps } = props;
 
-  return jsx('div', {
-    ...restProps,
-    role: 'listbox',
-    'data-command-palette-list': '',
-    children: evaluatedChildren,
-  });
+    return jsx('div', {
+      ...restProps,
+      role: 'listbox',
+      'data-command-palette-list': '',
+      children: evaluatedChildren,
+    });
+  };
 });
 
 /**
  * Command Palette Group
  * Group of related commands with optional heading
  */
-export const CommandPaletteGroup = defineComponent<CommandPaletteGroupProps>((props) => () => {
-  const { children, heading, ...restProps } = props;
+export const CommandPaletteGroup = defineComponent<CommandPaletteGroupProps>((props) => {
+  // Evaluate children ONCE during setup to prevent recreating items on every render
+  const evaluatedChildren = typeof props.children === 'function' ? props.children() : props.children;
 
-  // Evaluate function children (Pattern 17)
-  const evaluatedChildren = typeof children === 'function' ? children() : children;
+  return () => {
+    const { children: _children, heading, ...restProps } = props;
 
-  return jsx('div', {
-    ...restProps,
-    role: 'group',
-    'data-command-palette-group': '',
-    children: [
-      heading
-        ? jsx('div', {
-            'data-command-palette-group-heading': '',
-            children: heading,
-          })
-        : null,
-      evaluatedChildren,
-    ],
-  });
+    return jsx('div', {
+      ...restProps,
+      role: 'group',
+      'data-command-palette-group': '',
+      children: [
+        heading
+          ? jsx('div', {
+              'data-command-palette-group-heading': '',
+              children: heading,
+            })
+          : null,
+        evaluatedChildren,
+      ],
+    });
+  };
 });
 
 // Track item creation order globally (reset when CommandPalette opens)
@@ -374,26 +398,93 @@ let itemCreationIndex = 0;
 export const CommandPaletteItem = defineComponent<CommandPaletteItemProps>((props) => {
   const context = useCommandPaletteContext();
   let element: HTMLElement | null = null;
-  // Capture creation index for this item
+  // Capture creation index for this item - this is stable and won't change
   const creationIndex = itemCreationIndex++;
 
+  // Store disposable effects so we can clean them up when element changes
+  let highlightEffectDispose: (() => void) | null = null;
+  let disabledEffectDispose: (() => void) | null = null;
+
   const handleRef = (el: HTMLElement | null) => {
-    if (element && element !== el) {
+    // If ref is called with null, clean up
+    if (!el && element) {
       context.unregisterItem(element);
+      highlightEffectDispose?.();
+      disabledEffectDispose?.();
+      highlightEffectDispose = null;
+      disabledEffectDispose = null;
+      element = null;
+      return;
     }
-    element = el;
-    if (el) {
-      // Set initial highlighted state BEFORE registering
-      // First item (creationIndex === 0) is highlighted by default
-      const isInitiallyHighlighted = creationIndex === 0 && context.highlightedIndex() === 0;
-      el.setAttribute('aria-selected', String(isInitiallyHighlighted));
-      if (isInitiallyHighlighted) {
+
+    // If element is being attached for the first time
+    if (el && !element) {
+      element = el;
+
+      // Register the item with its creation index
+      context.registerItem(el, creationIndex);
+
+      // Set initial state synchronously
+      const items = context.itemElements();
+      const index = items.indexOf(el);
+      const highlightedIdx = context.highlightedIndex();
+      const isHighlighted = highlightedIdx === index;
+
+      el.setAttribute('aria-selected', String(isHighlighted));
+      if (isHighlighted) {
         el.setAttribute('data-highlighted', '');
+      } else {
+        el.removeAttribute('data-highlighted');
       }
 
-      // Now register the item
-      context.registerItem(el);
+      if (props.disabled) {
+        el.setAttribute('aria-disabled', 'true');
+        el.setAttribute('data-disabled', '');
+      }
+
+      // CRITICAL FIX: Create effects INSIDE ref callback AFTER element exists
+      // Store dispose functions so we can clean them up if element changes
+      // Effects are NOT automatically cleaned up when created in ref callbacks
+
+      // Effect for highlight state - tracks highlightedIndex, itemElements, and stateVersion
+      const highlightEffect = effect(() => {
+        // Track dependencies so effect re-runs when they change
+        const currentItems = context.itemElements();
+        const currentHighlightedIdx = context.highlightedIndex();
+        const _version = context.stateVersion(); // Track version to force re-runs on reopen
+
+        // Find current position in the array
+        const currentIndex = currentItems.indexOf(el);
+
+        // If element is not in array, skip
+        if (currentIndex === -1) return;
+
+        const currentIsHighlighted = currentHighlightedIdx === currentIndex;
+
+        el.setAttribute('aria-selected', String(currentIsHighlighted));
+        if (currentIsHighlighted) {
+          el.setAttribute('data-highlighted', '');
+        } else {
+          el.removeAttribute('data-highlighted');
+        }
+      });
+      highlightEffectDispose = () => highlightEffect.dispose();
+
+      // Effect for disabled state
+      const disabledEffect = effect(() => {
+        if (props.disabled) {
+          el.setAttribute('aria-disabled', 'true');
+          el.setAttribute('data-disabled', '');
+        } else {
+          el.removeAttribute('aria-disabled');
+          el.removeAttribute('data-disabled');
+        }
+      });
+      disabledEffectDispose = () => disabledEffect.dispose();
     }
+
+    // If ref is called with the same element (re-render), do nothing
+    // This prevents re-registration loops
   };
 
   const handleClick = (e: MouseEvent) => {
@@ -415,13 +506,13 @@ export const CommandPaletteItem = defineComponent<CommandPaletteItemProps>((prop
     props.onMouseEnter?.(e);
   };
 
+  // Evaluate children ONCE during setup
+  const evaluatedChildren = typeof props.children === 'function' ? props.children() : props.children;
+
   return () => {
-    const { children, value: _value, onSelect: _onSelect, disabled, keywords: _keywords, ...restProps } = props;
+    const { children: _children, value: _value, onSelect: _onSelect, disabled: _disabled, keywords: _keywords, ...restProps } = props;
 
-    // Evaluate function children (Pattern 17)
-    const evaluatedChildren = typeof children === 'function' ? children() : children;
-
-    const item = jsx('div', {
+    return jsx('div', {
       ...restProps,
       ref: handleRef as any,
       role: 'option',
@@ -429,46 +520,7 @@ export const CommandPaletteItem = defineComponent<CommandPaletteItemProps>((prop
       onClick: handleClick,
       onMouseEnter: handleMouseEnter,
       children: evaluatedChildren,
-    }) as HTMLElement;
-
-    // Set initial disabled state synchronously
-    if (disabled) {
-      item.setAttribute('aria-disabled', 'true');
-      item.setAttribute('data-disabled', '');
-    }
-
-    // Reactively update highlighted state (Pattern 18)
-    effect(() => {
-      // Track dependencies so effect re-runs when they change
-      const items = context.itemElements();
-      const highlightedIdx = context.highlightedIndex();
-
-      // Only update attributes after element is registered
-      if (!element) return;
-
-      const index = items.indexOf(element);
-      const isHighlighted = highlightedIdx === index;
-
-      item.setAttribute('aria-selected', String(isHighlighted));
-      if (isHighlighted) {
-        item.setAttribute('data-highlighted', '');
-      } else {
-        item.removeAttribute('data-highlighted');
-      }
     });
-
-    // Reactively update disabled state (Pattern 18)
-    effect(() => {
-      if (disabled) {
-        item.setAttribute('aria-disabled', 'true');
-        item.setAttribute('data-disabled', '');
-      } else {
-        item.removeAttribute('aria-disabled');
-        item.removeAttribute('data-disabled');
-      }
-    });
-
-    return item;
   };
 });
 

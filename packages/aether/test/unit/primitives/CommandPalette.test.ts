@@ -14,15 +14,19 @@ import {
   CommandPaletteShortcut,
   CommandPaletteEmpty,
 } from '../../../src/primitives/CommandPalette.js';
-import { renderComponent } from '../../helpers/test-utils.js';
+import { renderComponent, nextTick, waitFor } from '../../helpers/test-utils.js';
 
 // Track active element globally for focus mocking
 let _activeElement: Element | null = null;
+
+// Track cleanup functions to ensure proper cleanup between tests
+let cleanupFunctions: Array<() => void> = [];
 
 describe('CommandPalette', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
     _activeElement = document.body;
+    cleanupFunctions = [];
 
     // Mock document.activeElement
     Object.defineProperty(document, 'activeElement', {
@@ -61,6 +65,19 @@ describe('CommandPalette', () => {
     });
   });
 
+  afterEach(() => {
+    // Clean up all components created during the test
+    cleanupFunctions.forEach(cleanup => cleanup());
+    cleanupFunctions = [];
+  });
+
+  // Helper to track cleanup
+  const render = (component: () => any) => {
+    const result = renderComponent(component);
+    cleanupFunctions.push(result.cleanup);
+    return result;
+  };
+
   describe('Basic functionality', () => {
     it('should render command palette when open', () => {
       const component = () =>
@@ -78,7 +95,7 @@ describe('CommandPalette', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       // Content is portaled to document.body, not container
       const input = document.querySelector('[data-command-palette-input]');
@@ -97,7 +114,7 @@ describe('CommandPalette', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       // ✅ With display toggle pattern: Content exists but is hidden
       const content = document.querySelector('[data-dialog-content]') as HTMLElement;
@@ -117,7 +134,7 @@ describe('CommandPalette', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = document.querySelector('[data-command-palette-input]');
       expect(input).toBeTruthy();
@@ -136,7 +153,7 @@ describe('CommandPalette', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const dialog = document.querySelector('[data-command-palette-dialog]');
       expect(dialog).toBeTruthy();
@@ -155,7 +172,7 @@ describe('CommandPalette', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = document.querySelector('[data-command-palette-input]') as HTMLInputElement;
       expect(input).toBeTruthy();
@@ -182,7 +199,7 @@ describe('CommandPalette', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = document.querySelector('[data-command-palette-input]') as HTMLInputElement;
       input.value = 'test';
@@ -202,7 +219,7 @@ describe('CommandPalette', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = document.querySelector('[data-command-palette-input]') as HTMLInputElement;
       expect(input.hasAttribute('autofocus')).toBe(true);
@@ -226,7 +243,7 @@ describe('CommandPalette', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const list = document.querySelector('[data-command-palette-list]');
       expect(list).toBeTruthy();
@@ -255,7 +272,7 @@ describe('CommandPalette', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const group = document.querySelector('[data-command-palette-group]');
       expect(group).toBeTruthy();
@@ -282,7 +299,7 @@ describe('CommandPalette', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const heading = document.querySelector('[data-command-palette-group-heading]');
       expect(heading).toBeTruthy();
@@ -308,7 +325,7 @@ describe('CommandPalette', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const group = document.querySelector('[data-command-palette-group]');
       expect(group).toBeTruthy();
@@ -335,7 +352,7 @@ describe('CommandPalette', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const item = document.querySelector('[data-command-palette-item]');
       expect(item).toBeTruthy();
@@ -365,7 +382,7 @@ describe('CommandPalette', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const item = document.querySelector('[data-command-palette-item]') as HTMLElement;
       item.click();
@@ -397,7 +414,7 @@ describe('CommandPalette', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const item = document.querySelector('[data-command-palette-item]') as HTMLElement;
       expect(item.getAttribute('aria-disabled')).toBe('true');
@@ -407,7 +424,7 @@ describe('CommandPalette', () => {
       expect(clicked).toBe(false);
     });
 
-    it('should highlight item on mouse enter', () => {
+    it('should highlight item on mouse enter', async () => {
       const component = () =>
         CommandPalette({
           open: true,
@@ -426,19 +443,22 @@ describe('CommandPalette', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const items = document.querySelectorAll('[data-command-palette-item]');
       const secondItem = items[1] as HTMLElement;
 
       secondItem.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
 
+      // Wait for effects to process the highlightedIndex change
+      await nextTick();
+
       expect(secondItem.hasAttribute('data-highlighted')).toBe(true);
     });
   });
 
   describe('Keyboard navigation', () => {
-    it('should navigate down with ArrowDown', () => {
+    it('should navigate down with ArrowDown', async () => {
       const component = () =>
         CommandPalette({
           open: true,
@@ -458,7 +478,7 @@ describe('CommandPalette', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = document.querySelector('[data-command-palette-input]') as HTMLInputElement;
       const items = document.querySelectorAll('[data-command-palette-item]');
@@ -469,11 +489,14 @@ describe('CommandPalette', () => {
       // Press ArrowDown
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
 
+      // Wait for effects to process the highlightedIndex change
+      await nextTick();
+
       // Second item should be highlighted
       expect(items[1]?.hasAttribute('data-highlighted')).toBe(true);
     });
 
-    it('should navigate up with ArrowUp', () => {
+    it('should navigate up with ArrowUp', async () => {
       const component = () =>
         CommandPalette({
           open: true,
@@ -493,7 +516,7 @@ describe('CommandPalette', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = document.querySelector('[data-command-palette-input]') as HTMLInputElement;
       const items = document.querySelectorAll('[data-command-palette-item]');
@@ -502,16 +525,22 @@ describe('CommandPalette', () => {
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
 
+      // Wait for effects after navigation
+      await nextTick();
+
       expect(items[2]?.hasAttribute('data-highlighted')).toBe(true);
 
       // Press ArrowUp
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
 
+      // Wait for effects after navigation
+      await nextTick();
+
       // Second item should be highlighted
       expect(items[1]?.hasAttribute('data-highlighted')).toBe(true);
     });
 
-    it('should wrap around when navigating down from last item', () => {
+    it('should wrap around when navigating down from last item', async () => {
       const component = () =>
         CommandPalette({
           open: true,
@@ -530,23 +559,25 @@ describe('CommandPalette', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = document.querySelector('[data-command-palette-input]') as HTMLInputElement;
       const items = document.querySelectorAll('[data-command-palette-item]');
 
       // Navigate to last item
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      await nextTick();
       expect(items[1]?.hasAttribute('data-highlighted')).toBe(true);
 
       // Press ArrowDown again
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      await nextTick();
 
       // Should wrap to first item
       expect(items[0]?.hasAttribute('data-highlighted')).toBe(true);
     });
 
-    it('should wrap around when navigating up from first item', () => {
+    it('should wrap around when navigating up from first item', async () => {
       const component = () =>
         CommandPalette({
           open: true,
@@ -565,7 +596,7 @@ describe('CommandPalette', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = document.querySelector('[data-command-palette-input]') as HTMLInputElement;
       const items = document.querySelectorAll('[data-command-palette-item]');
@@ -576,11 +607,14 @@ describe('CommandPalette', () => {
       // Press ArrowUp
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
 
+      // Wait for effects
+      await nextTick();
+
       // Should wrap to last item
       expect(items[1]?.hasAttribute('data-highlighted')).toBe(true);
     });
 
-    it('should select item with Enter key', () => {
+    it('should select item with Enter key', async () => {
       let selectedItem = '';
       const component = () =>
         CommandPalette({
@@ -610,12 +644,15 @@ describe('CommandPalette', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = document.querySelector('[data-command-palette-input]') as HTMLInputElement;
 
       // Navigate to second item
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+      // Wait for navigation to complete
+      await nextTick();
 
       // Press Enter
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
@@ -641,7 +678,7 @@ describe('CommandPalette', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = document.querySelector('[data-command-palette-input]') as HTMLInputElement;
 
@@ -673,7 +710,7 @@ describe('CommandPalette', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const separator = document.querySelector('[data-command-palette-separator]');
       expect(separator).toBeTruthy();
@@ -702,7 +739,7 @@ describe('CommandPalette', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const shortcut = document.querySelector('[data-command-palette-shortcut]');
       expect(shortcut).toBeTruthy();
@@ -730,7 +767,7 @@ describe('CommandPalette', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       // With Pattern 18, shortcut exists but is hidden
       const shortcut = document.querySelector('[data-command-palette-shortcut]') as HTMLElement;
@@ -756,7 +793,7 @@ describe('CommandPalette', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const empty = document.querySelector('[data-command-palette-empty]');
       expect(empty).toBeTruthy();
@@ -780,7 +817,7 @@ describe('CommandPalette', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       // Initially open - Content should render with data-state="open"
       let content = document.querySelector('[data-dialog-content]') as HTMLElement;
@@ -810,7 +847,7 @@ describe('CommandPalette', () => {
   });
 
   describe('State reset', () => {
-    it('should reset state when closing', () => {
+    it('should reset state when closing', async () => {
       const open = signal(true);
       const component = () =>
         CommandPalette({
@@ -831,7 +868,7 @@ describe('CommandPalette', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = document.querySelector('[data-command-palette-input]') as HTMLInputElement;
 
@@ -848,8 +885,14 @@ describe('CommandPalette', () => {
       // Reopen
       open.set(true);
 
-      // State should be reset (highlighted index back to 0)
+      // Wait for reactive effects to process state reset
+      // Effects in Aether are asynchronous, so we need to wait for them to execute
       const items = document.querySelectorAll('[data-command-palette-item]');
+
+      // Use waitFor to poll until the attribute is set correctly
+      await waitFor(() => items[0]?.hasAttribute('data-highlighted') === true, 1000);
+
+      // State should be reset (highlighted index back to 0)
       expect(items[0]?.hasAttribute('data-highlighted')).toBe(true);
     });
   });
@@ -866,7 +909,7 @@ describe('CommandPalette', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const input = document.querySelector('[data-command-palette-input]') as HTMLInputElement;
       expect(input.getAttribute('role')).toBe('combobox');
@@ -893,7 +936,7 @@ describe('CommandPalette', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const items = document.querySelectorAll('[data-command-palette-item]');
 
@@ -938,7 +981,7 @@ describe('CommandPalette', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const groups = document.querySelectorAll('[data-command-palette-group]');
       expect(groups.length).toBe(2);
@@ -954,7 +997,7 @@ describe('CommandPalette', () => {
   });
 
   describe('Item registration', () => {
-    it('should register and track items', () => {
+    it('should register and track items', async () => {
       const component = () =>
         CommandPalette({
           open: true,
@@ -974,7 +1017,7 @@ describe('CommandPalette', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      const { container } = render(component);
 
       const items = document.querySelectorAll('[data-command-palette-item]');
       expect(items.length).toBe(3);
@@ -984,9 +1027,11 @@ describe('CommandPalette', () => {
 
       // Navigate through all items
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      await nextTick();
       expect(items[1]?.hasAttribute('data-highlighted')).toBe(true);
 
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      await nextTick();
       expect(items[2]?.hasAttribute('data-highlighted')).toBe(true);
     });
   });

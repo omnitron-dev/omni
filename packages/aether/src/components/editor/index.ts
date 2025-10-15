@@ -83,7 +83,16 @@ export {
 export { CommandManager, ChainedCommands } from './commands/index.js';
 
 // Components
-export { Toolbar, ToolbarButton, getDefaultToolbarItems } from './components/index.js';
+export {
+  Toolbar,
+  ToolbarButton,
+  LinkEditor,
+  BubbleMenu,
+  Statusbar,
+  getDefaultToolbarItems,
+  getDefaultBubbleMenuItems,
+  getDefaultStatusbarItems,
+} from './components/index.js';
 export type {
   ToolbarProps,
   ToolbarItem,
@@ -92,8 +101,46 @@ export type {
   ToolbarDivider,
   ToolbarGroup,
   ToolbarButtonProps,
+  LinkEditorProps,
+  BubbleMenuProps,
+  BubbleMenuItem,
+  StatusbarProps,
+  StatusbarItem,
+  StatusbarText,
+  StatusbarButton,
+  StatusbarCustom,
 } from './components/index.js';
 
 // Behavior extensions
-export { HistoryExtension } from './extensions/behavior/index.js';
-export type { HistoryOptions } from './extensions/behavior/index.js';
+export {
+  HistoryExtension,
+  PlaceholderExtension,
+  DropCursorExtension,
+  GapCursorExtension,
+} from './extensions/behavior/index.js';
+export type {
+  HistoryOptions,
+  PlaceholderOptions,
+  DropCursorOptions,
+} from './extensions/behavior/index.js';
+
+// Table extensions
+export {
+  TableExtension,
+  TableRowExtension,
+  TableCellExtension,
+  TableHeaderExtension,
+} from './extensions/table/index.js';
+export type {
+  TableOptions,
+  TableCellOptions,
+  TableHeaderOptions,
+} from './extensions/table/index.js';
+
+// Media extensions
+export { LinkExtension, ImageExtension } from './extensions/media/index.js';
+export type { LinkOptions, ImageOptions } from './extensions/media/index.js';
+
+// Code extensions
+export { CodeBlockExtension, SyntaxHighlightExtension } from './extensions/code/index.js';
+export type { CodeBlockOptions, SyntaxHighlightOptions } from './extensions/code/index.js';

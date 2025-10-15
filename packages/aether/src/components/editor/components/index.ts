@@ -10,3 +10,18 @@ export type {
 
 export { ToolbarButton } from './ToolbarButton.js';
 export type { ToolbarButtonProps } from './ToolbarButton.js';
+
+export { LinkEditor } from './LinkEditor.js';
+export type { LinkEditorProps } from './LinkEditor.js';
+
+export { BubbleMenu, getDefaultBubbleMenuItems } from './BubbleMenu.js';
+export type { BubbleMenuProps, BubbleMenuItem } from './BubbleMenu.js';
+
+export { Statusbar, getDefaultStatusbarItems } from './Statusbar.js';
+export type {
+  StatusbarProps,
+  StatusbarItem,
+  StatusbarText,
+  StatusbarButton,
+  StatusbarCustom,
+} from './Statusbar.js';

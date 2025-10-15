@@ -168,12 +168,16 @@ export const Collapsible = defineComponent<CollapsibleProps>((props) => {
   return () => {
     const children = typeof props.children === 'function' ? props.children() : props.children;
 
+    // Filter out component-specific props before spreading to DOM element
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { open, defaultOpen, onOpenChange, disabled, ...domProps } = props;
+
     return jsx('div', {
-      ...props,
+      ...domProps,
       ref: refCallback,
       'data-collapsible': '',
       'data-state': isOpen() ? 'open' : 'closed',
-      'data-disabled': props.disabled ? '' : undefined,
+      'data-disabled': disabled ? '' : undefined,
       children,
     });
   };
@@ -214,6 +218,8 @@ export const CollapsibleTrigger = defineComponent<CollapsibleTriggerProps>((prop
   };
 
   return () =>
+    // No component-specific props to filter out for CollapsibleTrigger
+    // All props can be safely spread to the button element
     jsx('button', {
       ...props,
       ref: refCallback,
@@ -239,9 +245,13 @@ export const CollapsibleContent = defineComponent<CollapsibleContentProps>((prop
   // Compute initial state
   const isOpen = ctx.isOpen();
 
+  // Filter out component-specific props before spreading to DOM element
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { forceMount, ...domProps } = props;
+
   // Always create the element (Aether framework doesn't support conditional rendering)
   const content = jsx('div', {
-    ...props,
+    ...domProps,
     id: ctx.contentId,
     'data-collapsible-content': '',
     'data-state': isOpen ? 'open' : 'closed',

@@ -103,13 +103,16 @@ export function detectInteractivity(component: Component, config: IslandDetectio
  * Check if component has event handlers
  */
 function hasEventHandlers(source: string): boolean {
-  // Check for JSX event attributes
+  // Check for JSX event attributes (before transformation)
   const jsxEventPattern = /\bon[A-Z]\w+\s*=/;
+
+  // Check for object properties (after JSX transformation)
+  const objEventPattern = /['"]?on[A-Z]\w+['"]?\s*:/;
 
   // Check for addEventListener
   const addEventListenerPattern = /addEventListener\s*\(/;
 
-  return jsxEventPattern.test(source) || addEventListenerPattern.test(source);
+  return jsxEventPattern.test(source) || objEventPattern.test(source) || addEventListenerPattern.test(source);
 }
 
 /**
@@ -147,8 +150,17 @@ function hasLifecycleHooks(source: string): boolean {
 
 /**
  * Check if component uses browser APIs
+ *
+ * Note: We filter out framework-internal calls (jsx, createElement, etc.)
+ * and only detect direct browser API usage in component code
  */
 function hasBrowserAPIs(source: string): boolean {
+  // Remove jsx/createElement calls to avoid false positives from framework code
+  const cleanedSource = source
+    .replace(/jsx\([^)]*\)/g, '')
+    .replace(/createElement\([^)]*\)/g, '')
+    .replace(/defineComponent\([^)]*\)/g, '');
+
   const browserAPIPatterns = [
     /\bwindow\./,
     /\bdocument\./,
@@ -163,7 +175,7 @@ function hasBrowserAPIs(source: string): boolean {
     /\brequestIdleCallback\b/,
   ];
 
-  return browserAPIPatterns.some((pattern) => pattern.test(source));
+  return browserAPIPatterns.some((pattern) => pattern.test(cleanedSource));
 }
 
 /**

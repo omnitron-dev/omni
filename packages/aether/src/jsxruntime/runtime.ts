@@ -6,7 +6,7 @@
 
 import type { JSXElement, JSXElementType, JSXProps } from './types.js';
 import { FragmentType, isComponent, normalizeChildren } from './types.js';
-import { createElementVNode, normalizeChildren as normalizeVNodeChildren } from '../reconciler/vnode.js';
+import { createElementVNode } from '../reconciler/vnode.js';
 import type { VNode } from '../reconciler/vnode.js';
 import { renderVNodeWithBindings } from '../reconciler/jsx-integration.js';
 
@@ -488,9 +488,11 @@ function createReactiveVNode(type: string, props: JSXProps | null, key?: string 
   // Separate children from other props
   const { children, ...restProps } = props || {};
 
-  // Normalize children to VNodes
-  const childVNodes = children !== undefined ? normalizeVNodeChildren(children) : undefined;
+  // For reactive VNodes, children should be stored in props, not as VNode children
+  // The VNode system is for describing DOM structure, not for holding actual DOM nodes
+  // Children will be processed by the reconciler when rendering
+  const propsWithChildren = children !== undefined ? { ...restProps, children } : restProps;
 
-  // Create element VNode with props and children
-  return createElementVNode(type, restProps, childVNodes, key);
+  // Create element VNode with props (including children in props, not as VNode children)
+  return createElementVNode(type, propsWithChildren, undefined, key);
 }

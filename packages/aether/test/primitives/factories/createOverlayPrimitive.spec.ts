@@ -193,8 +193,7 @@ describe('createOverlayPrimitive', () => {
       });
 
       // Verify root has correct data attribute
-      const root = Dialog.Root({ children: null });
-      const rendered = root();
+      const rendered = Dialog.Root({ children: null }) as Node;
 
       // The factory should create elements with data-{name}-root, etc.
       expect(typeof rendered).toBe('object');

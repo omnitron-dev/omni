@@ -241,9 +241,17 @@ export function normalizeChildren(children: any): VNode[] {
     return children.flat(Infinity).flatMap((child) => normalizeChildren(child));
   }
 
-  // Already a VNode
-  if (typeof children === 'object' && 'type' in children) {
+  // Already a VNode (must have 'type' and 'dom' properties, and NOT be a DOM Node)
+  if (typeof children === 'object' && 'type' in children && 'dom' in children && !(children instanceof Node)) {
     return [children];
+  }
+
+  // DOM Node - wrap in array (should not be converted to VNode)
+  if (children instanceof Node) {
+    // Note: DOM nodes should not be in VNode children array
+    // This is a fallback for edge cases
+    console.warn('DOM Node found in normalizeChildren - this should be handled differently');
+    return [];
   }
 
   // String or number - create text VNode

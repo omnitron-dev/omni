@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a TypeScript monorepo for the Omnitron ecosystem - a collection of minimalist, high-performance libraries for building distributed systems. At its core is **Titan**, a lightweight framework designed for distributed, runtime-agnostic applications with enterprise reliability. The monorepo uses Turborepo for build orchestration and Yarn 4.9.2 for package management.
+This is a TypeScript monorepo for the Omnitron ecosystem - a collection of minimalist, high-performance libraries for building distributed systems. At its core is **Titan**, a lightweight framework designed for distributed, runtime-agnostic applications with enterprise reliability. The monorepo uses Turborepo for build orchestration and pnpm 9.15.0 for package management.
 
 ### Runtime Support
 - **Node.js**: >=22.0.0 (primary runtime)
@@ -17,51 +17,51 @@ This is a TypeScript monorepo for the Omnitron ecosystem - a collection of minim
 ### Development Workflow
 ```bash
 # Install dependencies
-yarn install
+pnpm install
 
 # Build all packages
-yarn build
+pnpm build
 
 # Run development mode
-yarn dev
+pnpm dev
 
 # Run tests
-yarn test
+pnpm test
 
 # Fix linting and formatting issues before committing
-yarn fix:all
+pnpm fix:all
 
 # Run linting only
-yarn lint
-yarn lint:fix
+pnpm lint
+pnpm lint:fix
 
 # Run formatting only
-yarn fm:check
-yarn fm:fix
+pnpm fm:check
+pnpm fm:fix
 
 # Create changesets for version management
-yarn changeset
+pnpm changeset
 
 # Clean up all node_modules
-yarn cleanup
+pnpm cleanup
 ```
 
 ### Testing Commands
 ```bash
 # Run all tests
-yarn test
+pnpm test
 
 # Run tests for a specific package
-yarn workspace @omnitron-dev/[package-name] test
+pnpm --filter @omnitron-dev/[package-name] test
 
 # Run a single test file
-yarn workspace @omnitron-dev/[package-name] test path/to/test.spec.ts
+pnpm --filter @omnitron-dev/[package-name] test path/to/test.spec.ts
 
 # Run Bun tests for compatible packages
-yarn workspace @omnitron-dev/[package-name] test:bun
+pnpm --filter @omnitron-dev/[package-name] test:bun
 
 # Run Deno tests (experimental)
-yarn workspace @omnitron-dev/[package-name] test:deno
+pnpm --filter @omnitron-dev/[package-name] test:deno
 ```
 
 ## Architecture Overview
@@ -206,7 +206,7 @@ The following packages have been removed from the monorepo:
 - **Language**: TypeScript 5.8.3 - 5.9.2 with strict mode
 - **Runtime**: Node.js 22+ and Bun 1.2+ (both fully supported)
 - **Build**: Turborepo for orchestration, TSC for compilation
-- **Package Manager**: Yarn 4.9.2 with workspaces
+- **Package Manager**: pnpm 9.15.0 with workspaces
 - **Testing**: Jest 30.x with ts-jest (Node.js), Bun test (Bun runtime)
 - **Linting**: ESLint v9 with flat config
 - **Formatting**: Prettier with consistent style
@@ -301,7 +301,7 @@ export class OrderService {
 ### Working with the Monorepo
 
 1. When adding dependencies, add them to the specific package, not the root
-2. Use `yarn workspace @omnitron-dev/[package-name] add [dependency]`
+2. Use `pnpm --filter @omnitron-dev/[package-name] add [dependency]`
 3. Follow existing package structure when creating new packages
 4. Ensure all packages build successfully before committing
 5. Use changesets for version management when making changes

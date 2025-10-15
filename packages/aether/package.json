@@ -174,7 +174,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "node --max-old-space-size=8192 ./node_modules/.bin/tsup",
+    "build": "NODE_OPTIONS='--max-old-space-size=8192' tsup",
     "dev": "tsup --watch",
     "test": "vitest",
     "test:ui": "vitest --ui",

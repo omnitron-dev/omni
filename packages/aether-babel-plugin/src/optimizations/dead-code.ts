@@ -7,7 +7,7 @@
  *   <Show when={false}><ExpensiveComponent /></Show>
  *
  * After:
- *   {/* Entire Show removed */}
+ *   (entire Show removed - no output)
  */
 
 import * as t from '@babel/types';

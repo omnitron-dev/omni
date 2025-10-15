@@ -10,7 +10,7 @@
     "lint:print": "eslint --print-config eslint.config.mjs > eslint-show-config.json",
     "fm:check": "prettier --check \"{apps,packages}/**/*.{js,jsx,ts,tsx}\"",
     "fm:fix": "prettier --write \"{apps,packages}/**/*.{js,jsx,ts,tsx}\"",
-    "fix:all": "npm run lint:fix && npm run fm:fix",
+    "fix:all": "pnpm lint:fix && pnpm fm:fix",
     "cleanup": "find . -name \"node_modules\" -type d -prune -exec rm -rf '{}' +",
     "changeset": "changeset",
     "ai-prompt": "ts-node scripts/gen-aiprompt.ts",
@@ -37,15 +37,9 @@
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.44.0"
   },
-  "packageManager": "yarn@4.10.3",
+  "packageManager": "pnpm@9.15.0",
   "engines": {
-    "node": ">=22"
-  },
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
-  "publishConfig": {
-    "workspaceProtocol": "version"
+    "node": ">=22",
+    "pnpm": ">=9"
   }
 }

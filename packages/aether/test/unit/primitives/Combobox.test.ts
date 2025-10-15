@@ -13,7 +13,7 @@ import {
   ComboboxItem,
   ComboboxEmpty,
 } from '../../../src/primitives/Combobox.js';
-import { renderComponent } from '../../helpers/test-utils.js';
+import { renderComponent, nextTick } from '../../helpers/test-utils.js';
 
 describe('Combobox', () => {
   let cleanup: (() => void) | undefined;
@@ -1321,7 +1321,7 @@ describe('Combobox', () => {
       expect(onValueChange).not.toHaveBeenCalled();
     });
 
-    it('should focus input after item selection', () => {
+    it('should focus input after item selection', async () => {
       const { container, cleanup: dispose } = renderComponent(() =>
         Combobox({
           defaultOpen: true,
@@ -1339,11 +1339,12 @@ describe('Combobox', () => {
       const input = container.querySelector('[data-combobox-input]') as HTMLInputElement;
       const item = container.querySelector('[data-combobox-item]') as HTMLElement;
 
-      // Mock focus for happy-dom
-      input.focus = vi.fn();
+      // Click item to select it
       item.click();
 
-      expect(input.focus).toHaveBeenCalled();
+      // Check that input received focus immediately after click
+      // (focus() is called synchronously in selectItem before setOpen)
+      expect(document.activeElement).toBe(input);
     });
 
     it('should reset highlighted index on input', () => {

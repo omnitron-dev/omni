@@ -188,11 +188,17 @@ export const Combobox = defineComponent<ComboboxProps>((props) => {
 
   const selectItem = (value: string) => {
     setValue(value);
-    setOpen(false);
-    // Focus input after selection
+    // Focus input BEFORE closing dropdown to preserve focus
     const input = inputRef();
     if (input) {
       input.focus();
+      // Close dropdown in next microtask to allow focus to settle
+      queueMicrotask(() => {
+        setOpen(false);
+      });
+    } else {
+      // If no input ref, close immediately
+      setOpen(false);
     }
   };
 

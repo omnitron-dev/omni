@@ -143,11 +143,11 @@ module.exports = [
   },
   // Base configuration
   {
-    files: ['packages/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}'],
+    files: ['packages/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/web/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/shared/**/*.{js,mjs,cjs,ts,jsx,tsx}'],
     languageOptions: {
       parser: eslintTs.parser,
       parserOptions: {
-        project: './tsconfig.json',
+        project: ['./packages/*/tsconfig.json', './apps/*/tsconfig*.json'],
         tsconfigRootDir: __dirname,
       },
       globals: { ...globals.browser, ...globals.node },
@@ -155,17 +155,17 @@ module.exports = [
   },
   // Recommended JavaScript rules
   {
-    files: ['packages/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}'],
+    files: ['packages/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/web/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/shared/**/*.{js,mjs,cjs,ts,jsx,tsx}'],
     ...eslintJs.configs.recommended,
   },
   // Recommended TypeScript rules
   ...eslintTs.configs.recommended.map(config => ({
     ...config,
-    files: ['packages/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}']
+    files: ['packages/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/web/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/shared/**/*.{js,mjs,cjs,ts,jsx,tsx}']
   })),
   // Our custom configuration (should be last to override previous rules)
   {
-    files: ['packages/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}'],
+    files: ['packages/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/src/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/web/**/*.{js,mjs,cjs,ts,jsx,tsx}', 'apps/*/shared/**/*.{js,mjs,cjs,ts,jsx,tsx}'],
     ...customConfig,
   },
   // Special configuration for packages/titan with @nexus alias

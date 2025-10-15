@@ -24,6 +24,8 @@ export default defineConfig({
     'theming/index': 'src/theming/index.ts',
     'compiler/index': 'src/compiler/index.ts',
     'testing/index': 'src/testing/index.ts',
+    'build/index': 'src/build/index.ts',
+    'build/vite-plugin': 'src/build/vite-plugin.ts',
   },
   format: ['esm'],
   dts: false, // Temporarily disabled due to TSX circular dependency with jsx-runtime types
@@ -39,6 +41,11 @@ export default defineConfig({
     '@omnitron-dev/netron-browser',
     '@omnitron-dev/aether/jsx-runtime',
     '@omnitron-dev/aether/jsx-dev-runtime',
+    'typescript',
+    'vite',
+    'fs',
+    'path',
+    'crypto',
   ],
   esbuildOptions(options) {
     // Allow jsx-runtime imports to be resolved after build

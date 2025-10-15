@@ -384,8 +384,8 @@ export function aetherBuildPlugin(options: AetherBuildPluginOptions = {}): Plugi
     },
 
     async transform(code, id) {
-      // Skip node_modules
-      if (id.includes('node_modules')) return null;
+      // Skip node_modules and vite internal modules
+      if (id.includes('node_modules') || id.startsWith('\0') || id.startsWith('vite/')) return null;
 
       let transformedCode = code;
       let sourceMap: any = undefined;

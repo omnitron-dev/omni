@@ -37,5 +37,22 @@ export { TagsInput } from './TagsInput.js';
 export { Mentions } from './Mentions.js';
 export { Editable } from './Editable.js';
 
+// Property Grid
+export { PropertyGrid } from './PropertyGrid.js';
+export type {
+  PropertyDescriptor,
+  PropertyGridProps,
+  StringPropertyDescriptor,
+  NumberPropertyDescriptor,
+  BooleanPropertyDescriptor,
+  SelectPropertyDescriptor,
+  ColorPropertyDescriptor,
+  DatePropertyDescriptor,
+  ArrayPropertyDescriptor,
+  ObjectPropertyDescriptor,
+  GroupPropertyDescriptor,
+  CustomPropertyDescriptor,
+} from './PropertyGrid.js';
+
 // Form Wrapper
 export { Form } from './Form.js';

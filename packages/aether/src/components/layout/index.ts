@@ -7,6 +7,7 @@
  */
 
 // Export all layout components
+export { ApplicationShell } from './ApplicationShell.js';
 export { Box } from './Box.js';
 export { Flex } from './Flex.js';
 export { Grid } from './Grid.js';
@@ -20,8 +21,18 @@ export { Divider } from './Divider.js';
 export { Separator } from './Separator.js';
 export { Space } from './Space.js';
 export { Spacer } from './Spacer.js';
+export { SplitView } from './SplitView.js';
 
 // Export types
+export type {
+  ApplicationShellProps,
+  ApplicationShellHeaderProps,
+  ApplicationShellActivityBarProps,
+  ApplicationShellSidebarProps,
+  ApplicationShellMainProps,
+  ApplicationShellPanelProps,
+  ApplicationShellStatusBarProps,
+} from './ApplicationShell.js';
 export type { BoxProps } from './Box.js';
 export type { FlexProps } from './Flex.js';
 export type { GridProps } from './Grid.js';
@@ -35,3 +46,4 @@ export type { DividerProps } from './Divider.js';
 export type { SeparatorProps } from './Separator.js';
 export type { SpaceProps } from './Space.js';
 export type { SpacerProps } from './Spacer.js';
+export type { SplitViewProps, PanelConfig, SplitViewPanelProps } from './SplitView.js';

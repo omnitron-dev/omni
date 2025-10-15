@@ -204,6 +204,26 @@ export {
   type AlertDialogContextValue,
 } from './AlertDialog.js';
 
+// ApplicationShell
+export {
+  ApplicationShell,
+  ApplicationShellHeader,
+  ApplicationShellActivityBar,
+  ApplicationShellSidebar,
+  ApplicationShellMain,
+  ApplicationShellPanel,
+  ApplicationShellStatusBar,
+  type ApplicationShellProps,
+  type ApplicationShellHeaderProps,
+  type ApplicationShellActivityBarProps,
+  type ApplicationShellSidebarProps,
+  type ApplicationShellMainProps,
+  type ApplicationShellPanelProps,
+  type ApplicationShellStatusBarProps,
+  type ApplicationShellContextValue,
+  type ApplicationShellLayout,
+} from './ApplicationShell.js';
+
 // Slider
 export {
   Slider,

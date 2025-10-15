@@ -14,6 +14,7 @@
  * - Rating: Star rating display/input
  * - Timeline: Vertical timeline display
  * - Tree: Hierarchical tree view
+ * - TreeView: High-performance tree view with virtual scrolling
  * - Transfer: List transfer component
  * - VirtualList: Virtualized long lists
  */
@@ -99,6 +100,10 @@ export type {
 // Tree
 export { Tree, TreeItem, TreeTrigger, TreeContent, TreeLabel } from './Tree.js';
 export type { TreeProps, TreeItemProps, TreeTriggerProps, TreeContentProps, TreeLabelProps } from './Tree.js';
+
+// TreeView
+export { TreeView } from './TreeView.js';
+export type { TreeViewProps, TreeNodeData, FlattenedNode, TreeViewContextValue } from './TreeView.js';
 
 // Transfer
 export { Transfer, TransferList, TransferControls } from './Transfer.js';

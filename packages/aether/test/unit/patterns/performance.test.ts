@@ -17,6 +17,7 @@ import { batch } from '../../../src/core/reactivity/batch.js';
 import { effect } from '../../../src/core/reactivity/effect.js';
 import { lazy, preloadComponent } from '../../../src/core/component/lazy.js';
 import { Suspense } from '../../../src/control-flow/Suspense.js';
+import { getTextContent } from '../../utils/test-helpers.js';
 
 describe('Performance Patterns', () => {
   describe('Batching Updates', () => {
@@ -280,17 +281,28 @@ describe('Performance Patterns', () => {
         return () => memoizedValue();
       });
 
-      MemoizedComponent({});
+      // Create first instance - computed runs once during setup
+      const instance1 = MemoizedComponent({});
       expect(renderSpy).toHaveBeenCalledTimes(1);
+      expect(getTextContent(instance1)).toBe(2);
 
-      // Access again without changing data
-      MemoizedComponent({});
-      expect(renderSpy).toHaveBeenCalledTimes(2); // New instance = new memo
+      // Create second instance - new computed runs once during setup
+      // This is a new component instance, so it creates a new computed
+      const instance2 = MemoizedComponent({});
+      expect(renderSpy).toHaveBeenCalledTimes(2);
+      expect(getTextContent(instance2)).toBe(2);
 
-      // Update data
+      renderSpy.mockClear();
+
+      // Update data - both instances should react
+      // Each instance has its own effect that watches the computed
       data.set({ value: 2 });
-      MemoizedComponent({});
-      expect(renderSpy).toHaveBeenCalledTimes(3);
+
+      // After update, both instances should have updated
+      // The computed should be called for each instance
+      expect(renderSpy).toHaveBeenCalledTimes(2);
+      expect(getTextContent(instance1)).toBe(4);
+      expect(getTextContent(instance2)).toBe(4);
     });
 
     it('should support nested memoization', () => {
@@ -457,23 +469,44 @@ describe('Performance Patterns', () => {
         { id: 3, text: 'Item 3' },
       ]);
 
-      const List = defineComponent(() => () => items().map((item) => ({
-            key: item.id,
-            value: item.text,
-          })));
+      // Track rendering for each item
+      const renderCounts = new Map<number, number>();
+
+      const List = defineComponent(() => {
+        // Create a computed that maps items to text with tracking
+        const itemsWithTracking = computed(() =>
+          items().map((item) => {
+            renderCounts.set(item.id, (renderCounts.get(item.id) || 0) + 1);
+            return `${item.text}`;
+          }).join(', ')
+        );
+
+        return () => itemsWithTracking();
+      });
 
       const result = List({});
-      expect(result).toHaveLength(3);
+      expect(getTextContent(result)).toBe('Item 1, Item 2, Item 3');
 
-      // Reorder items
+      // Each item was rendered once
+      expect(renderCounts.get(1)).toBe(1);
+      expect(renderCounts.get(2)).toBe(1);
+      expect(renderCounts.get(3)).toBe(1);
+
+      renderCounts.clear();
+
+      // Reorder items - all items will be re-rendered due to reactive update
       items.set([
         { id: 3, text: 'Item 3' },
         { id: 1, text: 'Item 1' },
         { id: 2, text: 'Item 2' },
       ]);
 
-      const newResult = List({});
-      expect(newResult).toHaveLength(3);
+      expect(getTextContent(result)).toBe('Item 3, Item 1, Item 2');
+
+      // With fine-grained reactivity, items are re-evaluated on change
+      expect(renderCounts.get(1)).toBe(1);
+      expect(renderCounts.get(2)).toBe(1);
+      expect(renderCounts.get(3)).toBe(1);
     });
 
     it('should use shallow comparison for object changes', () => {
@@ -594,12 +627,13 @@ describe('Performance Patterns', () => {
       });
 
       const result = VirtualList({});
-      expect(result).toBe(50);
+      expect(getTextContent(result)).toBe(50);
 
       // Scroll - update visible range
       visibleRange.set({ start: 100, end: 150 });
-      const newResult = VirtualList({});
-      expect(newResult).toBe(50);
+
+      // After update, the component should show new range
+      expect(getTextContent(result)).toBe(50);
     });
 
     it('should debounce expensive operations', async () => {

@@ -139,6 +139,10 @@ export class EffectImpl implements Disposable, ResolvableComputation {
               console.warn(`Circular dependency in effect '${this.name || this.id}':`, error.message);
             }
             // Skip execution on circular dependency
+          } else if (error instanceof Promise) {
+            // If it's a Promise (from lazy component/Suspense), re-throw it
+            // so it can be caught by Suspense boundary
+            throw error;
           } else {
             console.error('Error in effect:', error);
           }

@@ -252,6 +252,10 @@ export function defineComponent<P = {}>(setup: ComponentSetup<P>, name?: string)
           // Cast to P since reactiveProps adds internal methods
           render = setup(reactivePropsInstance as P);
         } catch (err) {
+          // If it's a Promise (from lazy component/Suspense), re-throw
+          if (err instanceof Promise) {
+            throw err;
+          }
           // Handle setup errors
           handleComponentError(owner, err as Error);
           // Don't throw - error was handled
@@ -265,6 +269,10 @@ export function defineComponent<P = {}>(setup: ComponentSetup<P>, name?: string)
         });
       });
     } catch (_setupError) {
+      // If it's a Promise, re-throw for Suspense
+      if (_setupError instanceof Promise) {
+        throw _setupError;
+      }
       // If handleComponentError re-threw (no error boundary found),
       // catch it here and return null to prevent component from rendering
       return null;
@@ -362,7 +370,12 @@ export function defineComponent<P = {}>(setup: ComponentSetup<P>, name?: string)
                 }
               }
             } catch (err) {
-              // Handle render errors
+              // If it's a Promise (from lazy component/Suspense), re-throw it
+              // so it can be caught by Suspense boundary
+              if (err instanceof Promise) {
+                throw err;
+              }
+              // Handle actual render errors
               handleComponentError(owner, err as Error);
             }
           });
@@ -370,6 +383,10 @@ export function defineComponent<P = {}>(setup: ComponentSetup<P>, name?: string)
           // Return the root element (effect runs immediately so it's already set)
           return rootElement;
         } catch (err) {
+          // If it's a Promise, re-throw for Suspense
+          if (err instanceof Promise) {
+            throw err;
+          }
           // Handle render errors
           handleComponentError(owner, err as Error);
           // Return fallback or null on render error
@@ -377,6 +394,10 @@ export function defineComponent<P = {}>(setup: ComponentSetup<P>, name?: string)
         }
       });
     } catch (_renderError) {
+      // If it's a Promise, re-throw for Suspense
+      if (_renderError instanceof Promise) {
+        throw _renderError;
+      }
       // If handleComponentError re-threw during render (no error boundary found),
       // catch it here and return null
       return null;

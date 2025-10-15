@@ -120,87 +120,46 @@ export const For = defineComponent(<T>(props: ForProps<T>) => () => {
     // Update data attribute for testing
     container.setAttribute('data-for-count', String(items.length));
 
-    // Clear existing items that are no longer needed
-    const newIndices = new Set(items.map((_, index) => index));
-    for (const [index, node] of renderedItems.entries()) {
-      if (!newIndices.has(index)) {
-        if (node.parentNode === listContainer) {
-          listContainer.removeChild(node);
-        }
-        renderedItems.delete(index);
-      }
+    // Clear all existing children from listContainer
+    // This prevents duplicates and ensures clean re-render
+    while (listContainer.firstChild) {
+      listContainer.removeChild(listContainer.firstChild);
     }
 
-    // Render or update items
+    // Clear the rendered items map
+    renderedItems.clear();
+
+    // Render all items fresh (since we cleared the list)
     items.forEach((item, index) => {
-      let node = renderedItems.get(index);
+      // Render new item - always create wrapper even for null/undefined
+      const itemWrapper = document.createElement('div');
+      itemWrapper.style.display = 'contents';
+      itemWrapper.setAttribute('data-for-item', String(index));
 
-      if (!node) {
-        // Render new item - always create wrapper even for null/undefined
-        const itemWrapper = document.createElement('div');
-        itemWrapper.style.display = 'contents';
-        itemWrapper.setAttribute('data-for-item', String(index));
+      const rendered = props.children(item, index);
 
-        const rendered = props.children(item, index);
-
-        // Append content to wrapper (even if null/undefined)
-        if (rendered !== null && rendered !== undefined) {
-          if (Array.isArray(rendered)) {
-            rendered.forEach((child) => {
-              if (child instanceof Node) {
-                itemWrapper.appendChild(child);
-              } else if (typeof child === 'string' || typeof child === 'number') {
-                itemWrapper.appendChild(document.createTextNode(String(child)));
-              }
-            });
-          } else if (rendered instanceof Node) {
-            itemWrapper.appendChild(rendered);
-          } else if (typeof rendered === 'string' || typeof rendered === 'number') {
-            itemWrapper.appendChild(document.createTextNode(String(rendered)));
-          }
-        }
-
-        node = itemWrapper;
-        renderedItems.set(index, node);
-      } else {
-        // Update existing item (re-render)
-        // Clear the wrapper and re-render
-        const itemWrapper = node as HTMLElement;
-        itemWrapper.innerHTML = '';
-        itemWrapper.setAttribute('data-for-item', String(index));
-
-        const rendered = props.children(item, index);
-
-        if (rendered !== null && rendered !== undefined) {
-          if (Array.isArray(rendered)) {
-            rendered.forEach((child) => {
-              if (child instanceof Node) {
-                itemWrapper.appendChild(child);
-              } else if (typeof child === 'string' || typeof child === 'number') {
-                itemWrapper.appendChild(document.createTextNode(String(child)));
-              }
-            });
-          } else if (rendered instanceof Node) {
-            itemWrapper.appendChild(rendered);
-          } else if (typeof rendered === 'string' || typeof rendered === 'number') {
-            itemWrapper.appendChild(document.createTextNode(String(rendered)));
-          }
+      // Append content to wrapper (even if null/undefined)
+      if (rendered !== null && rendered !== undefined) {
+        if (Array.isArray(rendered)) {
+          rendered.forEach((child) => {
+            if (child instanceof Node) {
+              itemWrapper.appendChild(child);
+            } else if (typeof child === 'string' || typeof child === 'number') {
+              itemWrapper.appendChild(document.createTextNode(String(child)));
+            }
+          });
+        } else if (rendered instanceof Node) {
+          itemWrapper.appendChild(rendered);
+        } else if (typeof rendered === 'string' || typeof rendered === 'number') {
+          itemWrapper.appendChild(document.createTextNode(String(rendered)));
         }
       }
 
-      // Ensure node is in the correct position
-      if (node && node.parentNode !== listContainer) {
-        if (index === 0) {
-          listContainer.insertBefore(node, listContainer.firstChild);
-        } else {
-          const prevNode = renderedItems.get(index - 1);
-          if (prevNode && prevNode.parentNode === listContainer) {
-            listContainer.insertBefore(node, prevNode.nextSibling);
-          } else {
-            listContainer.appendChild(node);
-          }
-        }
-      }
+      // Add to list container
+      listContainer.appendChild(itemWrapper);
+
+      // Track rendered item
+      renderedItems.set(index, itemWrapper);
     });
   });
 

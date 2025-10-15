@@ -30,7 +30,10 @@ describe('Outlet component', () => {
       // Outlet is a component, calling it runs setup and render immediately
       const result = Outlet({});
 
-      expect(result).toBeNull();
+      // defineComponent always returns DOM nodes, not raw values
+      // When render function returns null, it becomes an empty text node
+      expect(result).toBeInstanceOf(Node);
+      expect((result as Node).textContent).toBe('');
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('No route context found'));
 
       consoleSpy.mockRestore();

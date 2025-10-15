@@ -519,38 +519,6 @@ export const SelectContent = defineComponent<SelectContentProps>((props) => {
     }
   };
 
-  onMount(() => {
-    if (!ctx.isOpen()) return undefined;
-
-    updatePosition();
-
-    const handleScroll = () => updatePosition();
-    const handleResize = () => updatePosition();
-    const handleOutsideClick = (e: Event) => handlePointerDownOutside(e as PointerEvent);
-
-    window.addEventListener('scroll', handleScroll, true);
-    window.addEventListener('resize', handleResize);
-    document.addEventListener('pointerdown', handleOutsideClick);
-
-    // Highlight selected item or first item
-    const items = ctx.items().filter((item: HTMLElement) => !item.hasAttribute('data-disabled'));
-    const selectedIndex = items.findIndex((item: HTMLElement) => item.getAttribute('data-value') === ctx.value());
-
-    if (selectedIndex >= 0) {
-      ctx.setHighlightedIndex(selectedIndex);
-      setTimeout(() => items[selectedIndex]?.scrollIntoView({ block: 'nearest' }), 0);
-    } else if (items.length > 0) {
-      ctx.setHighlightedIndex(0);
-    }
-
-    return () => {
-      window.removeEventListener('scroll', handleScroll, true);
-      window.removeEventListener('resize', handleResize);
-      document.removeEventListener('pointerdown', handleOutsideClick);
-      if (typeaheadTimeout) clearTimeout(typeaheadTimeout);
-    };
-  });
-
   const {
     _side,
     _align,
@@ -563,7 +531,7 @@ export const SelectContent = defineComponent<SelectContentProps>((props) => {
     ...restProps
   } = props;
 
-  // Use onMount to create and manage content reactively
+  // Single onMount to manage content lifecycle
   onMount(() => {
     // Evaluate function children (Pattern 17)
     const evaluatedChildren = typeof children === 'function' ? children() : children;
@@ -588,6 +556,46 @@ export const SelectContent = defineComponent<SelectContentProps>((props) => {
     }
 
     let isAttached = false;
+    let cleanupPositioning: (() => void) | undefined;
+
+    const setupPositioning = () => {
+      if (cleanupPositioning) return; // Already set up
+
+      updatePosition();
+
+      const handleScroll = () => updatePosition();
+      const handleResize = () => updatePosition();
+      const handleOutsideClick = (e: Event) => handlePointerDownOutside(e as PointerEvent);
+
+      window.addEventListener('scroll', handleScroll, true);
+      window.addEventListener('resize', handleResize);
+      document.addEventListener('pointerdown', handleOutsideClick);
+
+      // Highlight selected item or first item
+      const items = ctx.items().filter((item: HTMLElement) => !item.hasAttribute('data-disabled'));
+      const selectedIndex = items.findIndex((item: HTMLElement) => item.getAttribute('data-value') === ctx.value());
+
+      if (selectedIndex >= 0) {
+        ctx.setHighlightedIndex(selectedIndex);
+        setTimeout(() => items[selectedIndex]?.scrollIntoView({ block: 'nearest' }), 0);
+      } else if (items.length > 0) {
+        ctx.setHighlightedIndex(0);
+      }
+
+      cleanupPositioning = () => {
+        window.removeEventListener('scroll', handleScroll, true);
+        window.removeEventListener('resize', handleResize);
+        document.removeEventListener('pointerdown', handleOutsideClick);
+        if (typeaheadTimeout) clearTimeout(typeaheadTimeout);
+        cleanupPositioning = undefined;
+      };
+    };
+
+    const teardownPositioning = () => {
+      if (cleanupPositioning) {
+        cleanupPositioning();
+      }
+    };
 
     // Reactive effect to control visibility
     effect(() => {
@@ -597,9 +605,10 @@ export const SelectContent = defineComponent<SelectContentProps>((props) => {
         // Add to portal
         portalContainer.appendChild(contentDiv);
         isAttached = true;
-        updatePosition();
+        setupPositioning();
       } else if (!shouldShow && isAttached) {
         // Remove from portal
+        teardownPositioning();
         if (contentDiv.parentNode) {
           contentDiv.parentNode.removeChild(contentDiv);
         }
@@ -612,6 +621,7 @@ export const SelectContent = defineComponent<SelectContentProps>((props) => {
 
     return () => {
       // Cleanup on unmount
+      teardownPositioning();
       if (contentDiv.parentNode) {
         contentDiv.parentNode.removeChild(contentDiv);
       }

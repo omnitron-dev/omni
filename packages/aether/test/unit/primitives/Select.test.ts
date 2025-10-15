@@ -440,7 +440,7 @@ describe('Select Primitive', () => {
           ],
         });
 
-      const { container } = renderComponent(component);
+      renderComponent(component);
 
       await nextTick();
 

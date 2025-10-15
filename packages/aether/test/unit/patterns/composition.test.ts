@@ -36,8 +36,8 @@ describe('Component Composition Patterns', () => {
         return () => DataProvider({ render: renderFn });
       });
 
-      const result = Consumer({});
-      expect(result).toBe('Count: 0');
+      const result = Consumer({}) as Node;
+      expect(result.textContent).toBe('Count: 0');
     });
 
     it('should pass reactive data through render props', () => {
@@ -63,31 +63,43 @@ describe('Component Composition Patterns', () => {
           latestValue = pos.x;
           return `X: ${pos.x}, Y: ${pos.y}`;
         },
-      });
+      }) as Node;
 
-      expect(tracker).toContain('X: 0');
+      expect(tracker.textContent).toContain('X: 0');
     });
 
     it('should support multiple render props', () => {
+      // Store references to rendered content
+      let headerContent = '';
+      let contentContent = '';
+      let footerContent = '';
+
       const MultiSlot = defineComponent<{
         header: () => any;
         content: () => any;
         footer: () => any;
-      }>((props) => () => ({
-          header: props.header(),
-          content: props.content(),
-          footer: props.footer(),
-        }));
+      }>((props) => {
+        // Execute render props and capture their results
+        headerContent = props.header();
+        contentContent = props.content();
+        footerContent = props.footer();
+
+        // Return combined content as string for DOM rendering
+        return () => `${headerContent}|${contentContent}|${footerContent}`;
+      });
 
       const result = MultiSlot({
         header: () => 'Header',
         content: () => 'Content',
         footer: () => 'Footer',
-      });
+      }) as Node;
 
-      expect(result.header).toBe('Header');
-      expect(result.content).toBe('Content');
-      expect(result.footer).toBe('Footer');
+      // Verify the combined content is rendered
+      expect(result.textContent).toBe('Header|Content|Footer');
+      // Verify individual parts were captured
+      expect(headerContent).toBe('Header');
+      expect(contentContent).toBe('Content');
+      expect(footerContent).toBe('Footer');
     });
   });
 
@@ -108,12 +120,12 @@ describe('Component Composition Patterns', () => {
       const loading = signal(true);
       const EnhancedComponent = withLoading(BaseComponent, () => loading());
 
-      let result = EnhancedComponent({ name: 'World' });
-      expect(result).toBe('Loading...');
+      let result = EnhancedComponent({ name: 'World' }) as Node;
+      expect(result.textContent).toBe('Loading...');
 
       loading.set(false);
-      result = EnhancedComponent({ name: 'World' });
-      expect(result).toBe('Hello, World');
+      result = EnhancedComponent({ name: 'World' }) as Node;
+      expect(result.textContent).toBe('Hello, World');
     });
 
     it('should compose multiple HOCs', () => {
@@ -164,8 +176,8 @@ describe('Component Composition Patterns', () => {
 
       const Enhanced = withDefaults(Component);
 
-      expect(Enhanced({} as any)).toBe('Value: 42');
-      expect(Enhanced({ value: 100 })).toBe('Value: 100');
+      expect((Enhanced({} as any) as Node).textContent).toBe('Value: 42');
+      expect((Enhanced({ value: 100 }) as Node).textContent).toBe('Value: 100');
     });
   });
 
@@ -191,8 +203,8 @@ describe('Component Composition Patterns', () => {
         return () => `Count: ${counter.count()}`;
       });
 
-      const result = Counter({});
-      expect(result).toBe('Count: 10');
+      const result = Counter({}) as Node;
+      expect(result.textContent).toBe('Count: 10');
     });
 
     it('should create composable with lifecycle hooks', () => {
@@ -260,19 +272,28 @@ describe('Component Composition Patterns', () => {
         };
       }
 
+      // Capture the hook values to verify they work correctly
+      let toggleValue = false;
+      let counterValue = 0;
+
       const Component = defineComponent(() => {
         const toggle = useToggle();
         const counter = useCounter();
 
-        return () => ({
-          isToggled: toggle.value(),
-          count: counter.count(),
-        });
+        // Capture values for testing
+        toggleValue = toggle.value();
+        counterValue = counter.count();
+
+        // Return a renderable string instead of an object
+        return () => `toggled:${toggle.value()},count:${counter.count()}`;
       });
 
-      const result = Component({});
-      expect(result.isToggled).toBe(false);
-      expect(result.count).toBe(0);
+      const result = Component({}) as Node;
+      // Verify hooks were initialized correctly
+      expect(toggleValue).toBe(false);
+      expect(counterValue).toBe(0);
+      // Verify the rendered output
+      expect(result.textContent).toBe('toggled:false,count:0');
     });
 
     it('should create composable with reactive effects', () => {
@@ -302,8 +323,8 @@ describe('Component Composition Patterns', () => {
         return () => localStorage.value();
       });
 
-      const result = Component({});
-      expect(result).toBe('default');
+      const result = Component({}) as Node;
+      expect(result.textContent).toBe('default');
     });
   });
 
@@ -478,8 +499,8 @@ describe('Component Composition Patterns', () => {
       const BaseComponent = defineComponent<{ data: string }>((props) => () => `Data: ${props.data}`);
 
       const Enhanced = withData(BaseComponent);
-      const result = Enhanced({} as any);
-      expect(result).toBe('Data: test-data');
+      const result = Enhanced({} as any) as Node;
+      expect(result.textContent).toBe('Data: test-data');
     });
 
     it('should create compound components pattern', () => {

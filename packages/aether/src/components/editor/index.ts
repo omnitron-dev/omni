@@ -78,3 +78,22 @@ export {
   getSelectedText,
   computeDerivedState,
 } from './signals/derivedSignals.js';
+
+// Commands
+export { CommandManager, ChainedCommands } from './commands/index.js';
+
+// Components
+export { Toolbar, ToolbarButton, getDefaultToolbarItems } from './components/index.js';
+export type {
+  ToolbarProps,
+  ToolbarItem,
+  ToolbarButtonConfig,
+  ToolbarDropdown,
+  ToolbarDivider,
+  ToolbarGroup,
+  ToolbarButtonProps,
+} from './components/index.js';
+
+// Behavior extensions
+export { HistoryExtension } from './extensions/behavior/index.js';
+export type { HistoryOptions } from './extensions/behavior/index.js';

@@ -126,6 +126,13 @@ export interface EditorInstance {
   // Signals (Aether integration)
   signals: EditorSignals;
 
+  // Commands (for toolbar integration)
+  commands?: {
+    execute(name: string, ...args: any[]): boolean;
+    can(name: string, ...args: any[]): boolean;
+    chain(): any;
+  };
+
   // Content methods
   getHTML(): string;
   getJSON(): JSONContent;

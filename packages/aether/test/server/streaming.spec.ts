@@ -97,14 +97,19 @@ describe('Streaming SSR', () => {
       process.on('unhandledRejection', testUnhandledRejectionHandler);
 
       try {
-        // Return a rejected promise with proper error handling
-        mock.mockImplementationOnce(() => 
-          // Create a promise that rejects but handles its own rejection
-           new Promise((_, reject) => {
-            // Use setImmediate/nextTick to allow the streaming code to attach its handler first
-            setImmediate(() => reject(new Error('Shell error')));
-          })
-        );
+        // Create a safely rejected promise that won't trigger unhandled rejection
+        const createSafeRejectedPromise = () => {
+          const error = new Error('Shell error');
+          const promise = new Promise<never>((_, reject) => {
+            // Reject in next tick to allow handler attachment
+            setTimeout(() => reject(error), 0);
+          });
+          // Attach default handler to prevent unhandled rejection
+          promise.catch(() => {});
+          return promise;
+        };
+
+        mock.mockImplementationOnce(createSafeRejectedPromise);
 
         await new Promise<void>((resolve, reject) => {
           const onShellError = vi.fn((error: Error) => {
@@ -375,14 +380,19 @@ describe('Streaming SSR', () => {
       process.on('unhandledRejection', testUnhandledRejectionHandler);
 
       try {
-        // Return a rejected promise with proper error handling
-        mock.mockImplementationOnce(() => 
-          // Create a promise that rejects but handles its own rejection
-           new Promise((_, reject) => {
-            // Use setImmediate to allow the streaming code to attach its handler first
-            setImmediate(() => reject(new Error('Stream error')));
-          })
-        );
+        // Create a safely rejected promise that won't trigger unhandled rejection
+        const createSafeRejectedPromise = () => {
+          const error = new Error('Stream error');
+          const promise = new Promise<never>((_, reject) => {
+            // Reject in next tick to allow handler attachment
+            setTimeout(() => reject(error), 0);
+          });
+          // Attach default handler to prevent unhandled rejection
+          promise.catch(() => {});
+          return promise;
+        };
+
+        mock.mockImplementationOnce(createSafeRejectedPromise);
 
         const result = await renderToReadableStream(ErrorComponent);
         const reader = result.stream.getReader();
@@ -636,14 +646,19 @@ describe('Streaming SSR', () => {
       process.on('unhandledRejection', testUnhandledRejectionHandler);
 
       try {
-        // Return a rejected promise with proper error handling
-        mock.mockImplementationOnce(() => 
-          // Create a promise that rejects but handles its own rejection
-           new Promise((_, reject) => {
-            // Use setImmediate to allow the streaming code to attach its handler first
-            setImmediate(() => reject(new Error('Render error')));
-          })
-        );
+        // Create a safely rejected promise that won't trigger unhandled rejection
+        const createSafeRejectedPromise = () => {
+          const error = new Error('Render error');
+          const promise = new Promise<never>((_, reject) => {
+            // Reject in next tick to allow handler attachment
+            setTimeout(() => reject(error), 0);
+          });
+          // Attach default handler to prevent unhandled rejection
+          promise.catch(() => {});
+          return promise;
+        };
+
+        mock.mockImplementationOnce(createSafeRejectedPromise);
 
         await new Promise<void>((resolve, reject) => {
           const onShellError = vi.fn((error: Error) => {
@@ -681,6 +696,7 @@ describe('Streaming SSR', () => {
           }, 100);
         });
       } finally {
+        consoleError.mockRestore();
         // Restore original listeners
         process.removeListener('unhandledRejection', testUnhandledRejectionHandler);
         originalListeners.forEach((listener) => {

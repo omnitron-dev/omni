@@ -212,6 +212,10 @@ describe('Build System Integration Tests', () => {
         modules: {
           composition: true,
         },
+        typescript: {
+          enabled: true,
+          declarationDir: path.join(tempDir, 'css-types'),
+        },
       });
 
       // Base component CSS

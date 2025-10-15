@@ -141,6 +141,8 @@ export const Checkbox = defineComponent<CheckboxProps>((props) => {
   const buttonRef = createRef<HTMLButtonElement>();
   const hiddenInputRef = createRef<HTMLInputElement>();
 
+  // Create context value that will be provided
+  // Store as const so it's the same reference across renders
   const contextValue: CheckboxContextValue = {
     checked: () => checkedSignal(),
     disabled: disabled(),
@@ -301,10 +303,13 @@ export const CheckboxIndicator = defineComponent<CheckboxIndicatorProps>((props)
       element.setAttribute('data-state', dataState);
 
       // Control visibility - with forceMount, always visible
-      if (!props.forceMount) {
+      if (props.forceMount) {
+        // Force mount: always visible, don't change display
+        element.style.display = '';
+      } else {
+        // Normal mode: hide when unchecked
         element.style.display = shouldShow ? '' : 'none';
       }
-      // If forceMount is true, don't set display style (leave it as-is or empty)
     });
   };
 
@@ -321,8 +326,10 @@ export const CheckboxIndicator = defineComponent<CheckboxIndicatorProps>((props)
     const baseStyle = (props.style as any) || {};
     const style = {
       ...baseStyle,
-      // Only set display:none if we should hide. Otherwise, preserve original display or leave empty
-      ...(shouldShow ? {} : { display: 'none' }),
+      // Set initial display based on shouldShow
+      // With forceMount, always visible (display empty string)
+      // Without forceMount, hide if not checked/indeterminate
+      display: shouldShow ? (baseStyle.display || '') : 'none',
     };
 
     // Always render the span, but control visibility with display style

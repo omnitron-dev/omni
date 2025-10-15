@@ -79,9 +79,15 @@ function createElementFromVNode(vnode: VNode): HTMLElement | SVGElement {
     applyProps(element, vnode.props, isSVG);
   }
 
-  // Create and append children
+  // Create and append children from vnode.children
   if (vnode.children && vnode.children.length > 0) {
     appendChildren(element, vnode.children);
+  }
+
+  // Also process children from props.children (for reactive VNodes)
+  // When ENABLE_REACTIVITY is true, children are stored in props instead of vnode.children
+  if (vnode.props?.children) {
+    appendChildrenFromProps(element, vnode.props.children);
   }
 
   return element;
@@ -404,6 +410,59 @@ function appendChildren(parent: HTMLElement | SVGElement | DocumentFragment, chi
     // Set parent reference for traversal
     child.parent = null; // Will be set by reconciler
   }
+}
+
+/**
+ * Append children from props.children to parent element
+ *
+ * Handles various child types:
+ * - Arrays: Recursively process each item
+ * - VNodes: Convert to DOM and append
+ * - DOM Nodes: Append directly
+ * - Primitives (string, number): Create text nodes
+ * - null/undefined/boolean: Skip
+ *
+ * This function is needed because when ENABLE_REACTIVITY is true,
+ * children are stored in props.children instead of vnode.children.
+ *
+ * @param parent - Parent element or fragment
+ * @param children - Children to append (any type)
+ */
+function appendChildrenFromProps(parent: HTMLElement | SVGElement | DocumentFragment, children: any): void {
+  // Handle arrays
+  if (Array.isArray(children)) {
+    for (const child of children) {
+      appendChildrenFromProps(parent, child);
+    }
+    return;
+  }
+
+  // Skip null, undefined, boolean
+  if (children == null || typeof children === 'boolean') {
+    return;
+  }
+
+  // Handle DOM Nodes (already created, just append)
+  if (children instanceof Node) {
+    parent.appendChild(children);
+    return;
+  }
+
+  // Handle VNodes
+  if (children && typeof children === 'object' && 'type' in children) {
+    const childNode = createDOMFromVNode(children as VNode);
+    parent.appendChild(childNode);
+    return;
+  }
+
+  // Handle primitives (string, number) - create text nodes
+  if (typeof children === 'string' || typeof children === 'number') {
+    parent.appendChild(document.createTextNode(String(children)));
+    return;
+  }
+
+  // Unknown type - try to stringify
+  console.warn('Unknown child type in appendChildrenFromProps:', children);
 }
 
 /**

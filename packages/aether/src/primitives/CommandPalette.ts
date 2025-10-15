@@ -136,6 +136,9 @@ function useCommandPaletteContext(): CommandPaletteContextValue {
  * Container with state management
  */
 export const CommandPalette = defineComponent<CommandPaletteProps>((props) => {
+  // Reset item creation index for this palette instance
+  itemCreationIndex = 0;
+
   // Pattern 19: Support both signal and value-based control
   const isSignal = (val: any): val is WritableSignal<boolean> => typeof val === 'function' && 'set' in val;
   const openSignal = isSignal(props.open) ? props.open : signal<boolean>(props.defaultOpen ?? false);
@@ -159,10 +162,13 @@ export const CommandPalette = defineComponent<CommandPaletteProps>((props) => {
     }
     props.onOpenChange?.(value);
 
-    // Reset state when closing
+    // Reset state when closing or opening
     if (!value) {
       inputValue.set('');
       highlightedIndex.set(0);
+    } else {
+      // Reset item creation index synchronously when opening
+      itemCreationIndex = 0;
     }
   };
 
@@ -173,6 +179,8 @@ export const CommandPalette = defineComponent<CommandPaletteProps>((props) => {
       // Reset state when opening
       inputValue.set('');
       highlightedIndex.set(0);
+      // Reset item creation index for proper first-item detection
+      itemCreationIndex = 0;
     }
   });
 
@@ -356,6 +364,9 @@ export const CommandPaletteGroup = defineComponent<CommandPaletteGroupProps>((pr
   });
 });
 
+// Track item creation order globally (reset when CommandPalette opens)
+let itemCreationIndex = 0;
+
 /**
  * Command Palette Item
  * Selectable command item
@@ -363,6 +374,8 @@ export const CommandPaletteGroup = defineComponent<CommandPaletteGroupProps>((pr
 export const CommandPaletteItem = defineComponent<CommandPaletteItemProps>((props) => {
   const context = useCommandPaletteContext();
   let element: HTMLElement | null = null;
+  // Capture creation index for this item
+  const creationIndex = itemCreationIndex++;
 
   const handleRef = (el: HTMLElement | null) => {
     if (element && element !== el) {
@@ -370,6 +383,15 @@ export const CommandPaletteItem = defineComponent<CommandPaletteItemProps>((prop
     }
     element = el;
     if (el) {
+      // Set initial highlighted state BEFORE registering
+      // First item (creationIndex === 0) is highlighted by default
+      const isInitiallyHighlighted = creationIndex === 0 && context.highlightedIndex() === 0;
+      el.setAttribute('aria-selected', String(isInitiallyHighlighted));
+      if (isInitiallyHighlighted) {
+        el.setAttribute('data-highlighted', '');
+      }
+
+      // Now register the item
       context.registerItem(el);
     }
   };
@@ -394,7 +416,7 @@ export const CommandPaletteItem = defineComponent<CommandPaletteItemProps>((prop
   };
 
   return () => {
-    const { children, _value, _onSelect, disabled, _keywords, ...restProps } = props;
+    const { children, value: _value, onSelect: _onSelect, disabled, keywords: _keywords, ...restProps } = props;
 
     // Evaluate function children (Pattern 17)
     const evaluatedChildren = typeof children === 'function' ? children() : children;
@@ -409,11 +431,23 @@ export const CommandPaletteItem = defineComponent<CommandPaletteItemProps>((prop
       children: evaluatedChildren,
     }) as HTMLElement;
 
+    // Set initial disabled state synchronously
+    if (disabled) {
+      item.setAttribute('aria-disabled', 'true');
+      item.setAttribute('data-disabled', '');
+    }
+
     // Reactively update highlighted state (Pattern 18)
     effect(() => {
+      // Track dependencies so effect re-runs when they change
       const items = context.itemElements();
-      const index = element ? items.indexOf(element) : -1;
-      const isHighlighted = context.highlightedIndex() === index;
+      const highlightedIdx = context.highlightedIndex();
+
+      // Only update attributes after element is registered
+      if (!element) return;
+
+      const index = items.indexOf(element);
+      const isHighlighted = highlightedIdx === index;
 
       item.setAttribute('aria-selected', String(isHighlighted));
       if (isHighlighted) {

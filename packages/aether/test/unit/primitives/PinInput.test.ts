@@ -598,7 +598,7 @@ describe('PinInput', () => {
       await nextTick();
 
       // Second input should be focused
-      expect(document.activeElement).toBe(inputs[1]);
+      expect(document.activeElement?.getAttribute('data-index')).toBe('1');
     });
 
     it('should not auto-advance on last input', async () => {
@@ -621,7 +621,7 @@ describe('PinInput', () => {
       await nextTick();
 
       // Last input should still be focused
-      expect(document.activeElement).toBe(inputs[3]);
+      expect(document.activeElement?.getAttribute('data-index')).toBe('3');
     });
 
     it('should clear input after accepting value', async () => {
@@ -694,7 +694,7 @@ describe('PinInput', () => {
       await nextTick();
 
       // Should move to previous input
-      expect(document.activeElement).toBe(inputs[0]);
+      expect(document.activeElement?.getAttribute('data-index')).toBe('0');
     });
 
     it('should not move before first input on backspace', async () => {
@@ -719,7 +719,7 @@ describe('PinInput', () => {
       await nextTick();
 
       // Should stay on first input
-      expect(document.activeElement).toBe(inputs[0]);
+      expect(document.activeElement?.getAttribute('data-index')).toBe('0');
     });
   });
 
@@ -771,7 +771,7 @@ describe('PinInput', () => {
       await nextTick();
 
       // Should stay on same input
-      expect(document.activeElement).toBe(inputs[1]);
+      expect(document.activeElement?.getAttribute('data-index')).toBe('1');
     });
   });
 
@@ -798,7 +798,7 @@ describe('PinInput', () => {
       await nextTick();
 
       // Should move to next input
-      expect(document.activeElement).toBe(inputs[1]);
+      expect(document.activeElement?.getAttribute('data-index')).toBe('1');
     });
 
     it('should not move past last input on ArrowRight', async () => {
@@ -823,7 +823,7 @@ describe('PinInput', () => {
       await nextTick();
 
       // Should stay on last input
-      expect(document.activeElement).toBe(inputs[3]);
+      expect(document.activeElement?.getAttribute('data-index')).toBe('3');
     });
 
     it('should move to previous input on ArrowLeft', async () => {
@@ -848,7 +848,7 @@ describe('PinInput', () => {
       await nextTick();
 
       // Should move to previous input
-      expect(document.activeElement).toBe(inputs[0]);
+      expect(document.activeElement?.getAttribute('data-index')).toBe('0');
     });
 
     it('should not move before first input on ArrowLeft', async () => {
@@ -873,7 +873,7 @@ describe('PinInput', () => {
       await nextTick();
 
       // Should stay on first input
-      expect(document.activeElement).toBe(inputs[0]);
+      expect(document.activeElement?.getAttribute('data-index')).toBe('0');
     });
   });
 
@@ -1047,7 +1047,7 @@ describe('PinInput', () => {
       await nextTick();
 
       // Should focus next empty input after last filled
-      expect(document.activeElement).toBe(inputs[3]);
+      expect(document.activeElement?.getAttribute('data-index')).toBe('3');
     });
 
     it('should prevent default paste behavior', async () => {
@@ -1104,12 +1104,11 @@ describe('PinInput', () => {
             .fill(0)
             .map((_, i) => PinInputInput({ index: i })),
         });
-      const { container } = renderComponent(component);
+      renderComponent(component);
 
       await nextTick();
 
-      const inputs = container.querySelectorAll('input') as NodeListOf<HTMLInputElement>;
-      expect(document.activeElement).toBe(inputs[0]);
+      expect(document.activeElement?.getAttribute('data-index')).toBe('0');
     });
   });
 

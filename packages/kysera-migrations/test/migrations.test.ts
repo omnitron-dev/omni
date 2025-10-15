@@ -7,8 +7,8 @@ import {
   createMigrationRunner,
   createMigration,
   type Migration
-} from '../src/index'
-import { safeDbDestroy, safeSqliteClose } from '../../core/test/helpers/cleanup'
+} from '../src/index.js'
+import { safeDbDestroy, safeSqliteClose } from '../../xec-core/test/helpers/cleanup.js'
 
 describe('Migration System', () => {
   let db: Kysely<any>

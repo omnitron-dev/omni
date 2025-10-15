@@ -56,13 +56,11 @@ async function renderMDXWithProvider(
 
   const MDXContent = module.default;
 
-  const App = defineComponent(() => {
-    return () => jsx(MDXProvider, {
+  const App = defineComponent(() => () => jsx(MDXProvider, {
       components,
       scope,
       children: jsx(MDXContent, {})
-    });
-  });
+    }));
 
   const result = render(() => jsx(App, {}), { container });
   await waitForDOM(10);

@@ -79,8 +79,7 @@ describe('createInputPrimitive', () => {
         name: 'input',
       });
 
-      const component = Input({});
-      const element = component();
+      const element = Input({}) as HTMLElement;
 
       expect(element.tagName.toLowerCase()).toBe('input');
     });
@@ -91,8 +90,7 @@ describe('createInputPrimitive', () => {
         elementType: 'textarea',
       });
 
-      const component = Textarea({});
-      const element = component();
+      const element = Textarea({}) as HTMLElement;
 
       expect(element.tagName.toLowerCase()).toBe('textarea');
     });
@@ -103,8 +101,7 @@ describe('createInputPrimitive', () => {
         defaultInputType: 'email',
       });
 
-      const component = EmailInput({});
-      const element = component() as HTMLInputElement;
+      const element = EmailInput({}) as HTMLInputElement;
 
       expect(element.type).toBe('email');
     });
@@ -115,8 +112,7 @@ describe('createInputPrimitive', () => {
         defaultInputType: 'text',
       });
 
-      const component = Input({ type: 'password' });
-      const element = component() as HTMLInputElement;
+      const element = Input({ type: 'password' }) as HTMLInputElement;
 
       expect(element.type).toBe('password');
     });
@@ -133,14 +129,13 @@ describe('createInputPrimitive', () => {
       });
 
       const valueSignal = signal('initial');
-      const component = Input({ value: valueSignal });
-      const element = component() as HTMLInputElement;
+      const element = Input({ value: valueSignal }) as HTMLInputElement;
 
       expect(element.value).toBe('initial');
 
       // Update signal
       valueSignal.set('updated');
-      const elementAfterUpdate = component() as HTMLInputElement;
+      const elementAfterUpdate = Input({ value: valueSignal }) as HTMLInputElement;
       expect(elementAfterUpdate.value).toBe('updated');
     });
 
@@ -149,8 +144,7 @@ describe('createInputPrimitive', () => {
         name: 'input',
       });
 
-      const component = Input({ value: 'controlled' });
-      const element = component() as HTMLInputElement;
+      const element = Input({ value: 'controlled' }) as HTMLInputElement;
 
       expect(element.value).toBe('controlled');
     });
@@ -160,8 +154,7 @@ describe('createInputPrimitive', () => {
         name: 'input',
       });
 
-      const component = Input({ defaultValue: 'default' });
-      const element = component() as HTMLInputElement;
+      const element = Input({ defaultValue: 'default' }) as HTMLInputElement;
 
       expect(element.value).toBe('default');
     });
@@ -171,8 +164,7 @@ describe('createInputPrimitive', () => {
         name: 'input',
       });
 
-      const component = Input({});
-      const element = component() as HTMLInputElement;
+      const element = Input({}) as HTMLInputElement;
 
       expect(element.value).toBe('');
     });
@@ -183,8 +175,7 @@ describe('createInputPrimitive', () => {
       });
 
       const onValueChange = vi.fn();
-      const component = Input({ onValueChange });
-      const element = component() as HTMLInputElement;
+      const element = Input({ onValueChange }) as HTMLInputElement;
 
       // Simulate input event
       element.value = 'new value';
@@ -207,8 +198,7 @@ describe('createInputPrimitive', () => {
       });
 
       const onValueChange = vi.fn();
-      const component = NumberInput({ onValueChange });
-      const element = component() as HTMLInputElement;
+      const element = NumberInput({ onValueChange }) as HTMLInputElement;
 
       element.value = '42.5';
       element.dispatchEvent(new Event('input', { bubbles: true }));
@@ -223,8 +213,7 @@ describe('createInputPrimitive', () => {
         formatValue: (value) => value.toFixed(2),
       });
 
-      const component = NumberInput({ value: 42 });
-      const element = component() as HTMLInputElement;
+      const element = NumberInput({ value: 42 }) as HTMLInputElement;
 
       expect(element.value).toBe('42.00');
     });
@@ -236,8 +225,7 @@ describe('createInputPrimitive', () => {
       });
 
       const onValueChange = vi.fn();
-      const component = NumberInput({ onValueChange });
-      const element = component() as HTMLInputElement;
+      const element = NumberInput({ onValueChange }) as HTMLInputElement;
 
       element.value = 'not-a-number';
       element.dispatchEvent(new Event('input', { bubbles: true }));
@@ -258,8 +246,7 @@ describe('createInputPrimitive', () => {
       });
 
       const onValueChange = vi.fn();
-      const component = Input({ onValueChange });
-      const element = component() as HTMLInputElement;
+      const element = Input({ onValueChange }) as HTMLInputElement;
 
       // Valid input
       element.value = 'short';
@@ -281,8 +268,7 @@ describe('createInputPrimitive', () => {
       });
 
       const onValueChange = vi.fn();
-      const component = Input({ onValueChange });
-      const element = component() as HTMLInputElement;
+      const element = Input({ onValueChange }) as HTMLInputElement;
 
       element.value = 'this is way too long';
       element.dispatchEvent(new Event('input', { bubbles: true }));
@@ -297,8 +283,7 @@ describe('createInputPrimitive', () => {
       });
 
       const onValueChange = vi.fn();
-      const component = EmailInput({ onValueChange });
-      const element = component() as HTMLInputElement;
+      const element = EmailInput({ onValueChange }) as HTMLInputElement;
 
       element.value = 'test@example.com';
       element.dispatchEvent(new Event('input', { bubbles: true }));
@@ -318,8 +303,7 @@ describe('createInputPrimitive', () => {
       });
 
       const onInput = vi.fn();
-      const component = Input({ onInput });
-      const element = component() as HTMLInputElement;
+      const element = Input({ onInput }) as HTMLInputElement;
 
       element.value = 'test';
       element.dispatchEvent(new Event('input', { bubbles: true }));
@@ -333,8 +317,7 @@ describe('createInputPrimitive', () => {
       });
 
       const onChange = vi.fn();
-      const component = Input({ onChange });
-      const element = component() as HTMLInputElement;
+      const element = Input({ onChange }) as HTMLInputElement;
 
       element.value = 'test';
       element.dispatchEvent(new Event('input', { bubbles: true }));
@@ -348,8 +331,7 @@ describe('createInputPrimitive', () => {
       });
 
       const onFocus = vi.fn();
-      const component = Input({ onFocus });
-      const element = component() as HTMLInputElement;
+      const element = Input({ onFocus }) as HTMLInputElement;
 
       element.dispatchEvent(new FocusEvent('focus'));
 
@@ -362,8 +344,7 @@ describe('createInputPrimitive', () => {
       });
 
       const onBlur = vi.fn();
-      const component = Input({ onBlur });
-      const element = component() as HTMLInputElement;
+      const element = Input({ onBlur }) as HTMLInputElement;
 
       element.dispatchEvent(new FocusEvent('blur'));
 
@@ -381,8 +362,7 @@ describe('createInputPrimitive', () => {
         name: 'input',
       });
 
-      const component = Input({ disabled: true });
-      const element = component() as HTMLInputElement;
+      const element = Input({ disabled: true }) as HTMLInputElement;
 
       expect(element.disabled).toBe(true);
       expect(element.hasAttribute('data-disabled')).toBe(true);
@@ -393,8 +373,7 @@ describe('createInputPrimitive', () => {
         name: 'input',
       });
 
-      const component = Input({ readOnly: true });
-      const element = component() as HTMLInputElement;
+      const element = Input({ readOnly: true }) as HTMLInputElement;
 
       expect(element.readOnly).toBe(true);
       expect(element.hasAttribute('data-readonly')).toBe(true);
@@ -405,8 +384,7 @@ describe('createInputPrimitive', () => {
         name: 'input',
       });
 
-      const component = Input({ required: true });
-      const element = component() as HTMLInputElement;
+      const element = Input({ required: true }) as HTMLInputElement;
 
       expect(element.required).toBe(true);
     });
@@ -416,8 +394,7 @@ describe('createInputPrimitive', () => {
         name: 'input',
       });
 
-      const component = Input({ invalid: true });
-      const element = component() as HTMLInputElement;
+      const element = Input({ invalid: true }) as HTMLInputElement;
 
       expect(element.hasAttribute('data-invalid')).toBe(true);
       expect(element.getAttribute('aria-invalid')).toBe('true');
@@ -428,8 +405,7 @@ describe('createInputPrimitive', () => {
         name: 'input',
       });
 
-      const component = Input({ placeholder: 'Enter text' });
-      const element = component() as HTMLInputElement;
+      const element = Input({ placeholder: 'Enter text' }) as HTMLInputElement;
 
       expect(element.placeholder).toBe('Enter text');
     });
@@ -439,8 +415,7 @@ describe('createInputPrimitive', () => {
         name: 'input',
       });
 
-      const component = Input({ name: 'username' });
-      const element = component() as HTMLInputElement;
+      const element = Input({ name: 'username' }) as HTMLInputElement;
 
       expect(element.name).toBe('username');
     });
@@ -450,8 +425,7 @@ describe('createInputPrimitive', () => {
         name: 'input',
       });
 
-      const component = Input({ id: 'my-input' });
-      const element = component() as HTMLInputElement;
+      const element = Input({ id: 'my-input' }) as HTMLInputElement;
 
       expect(element.id).toBe('my-input');
     });
@@ -467,8 +441,7 @@ describe('createInputPrimitive', () => {
         name: 'input',
       });
 
-      const component = Input({ 'aria-label': 'Username' });
-      const element = component() as HTMLInputElement;
+      const element = Input({ 'aria-label': 'Username' }) as HTMLInputElement;
 
       expect(element.getAttribute('aria-label')).toBe('Username');
     });
@@ -478,8 +451,7 @@ describe('createInputPrimitive', () => {
         name: 'input',
       });
 
-      const component = Input({ 'aria-labelledby': 'label-id' });
-      const element = component() as HTMLInputElement;
+      const element = Input({ 'aria-labelledby': 'label-id' }) as HTMLInputElement;
 
       expect(element.getAttribute('aria-labelledby')).toBe('label-id');
     });
@@ -489,8 +461,7 @@ describe('createInputPrimitive', () => {
         name: 'input',
       });
 
-      const component = Input({ 'aria-describedby': 'description-id' });
-      const element = component() as HTMLInputElement;
+      const element = Input({ 'aria-describedby': 'description-id' }) as HTMLInputElement;
 
       expect(element.getAttribute('aria-describedby')).toBe('description-id');
     });
@@ -500,8 +471,7 @@ describe('createInputPrimitive', () => {
         name: 'input',
       });
 
-      const component = Input({ invalid: true });
-      const element = component() as HTMLInputElement;
+      const element = Input({ invalid: true }) as HTMLInputElement;
 
       expect(element.getAttribute('aria-invalid')).toBe('true');
     });
@@ -511,8 +481,7 @@ describe('createInputPrimitive', () => {
         name: 'input',
       });
 
-      const component = Input({ invalid: false });
-      const element = component() as HTMLInputElement;
+      const element = Input({ invalid: false }) as HTMLInputElement;
 
       expect(element.hasAttribute('aria-invalid')).toBe(false);
     });
@@ -528,8 +497,7 @@ describe('createInputPrimitive', () => {
         name: 'custom-input',
       });
 
-      const component = Input({});
-      const element = component() as HTMLInputElement;
+      const element = Input({}) as HTMLInputElement;
 
       expect(element.hasAttribute('data-custom-input')).toBe(true);
     });
@@ -539,8 +507,7 @@ describe('createInputPrimitive', () => {
         name: 'input',
       });
 
-      const component = Input({ disabled: true });
-      const element = component() as HTMLInputElement;
+      const element = Input({ disabled: true }) as HTMLInputElement;
 
       expect(element.hasAttribute('data-disabled')).toBe(true);
     });
@@ -550,8 +517,7 @@ describe('createInputPrimitive', () => {
         name: 'input',
       });
 
-      const component = Input({ readOnly: true });
-      const element = component() as HTMLInputElement;
+      const element = Input({ readOnly: true }) as HTMLInputElement;
 
       expect(element.hasAttribute('data-readonly')).toBe(true);
     });
@@ -561,8 +527,7 @@ describe('createInputPrimitive', () => {
         name: 'input',
       });
 
-      const component = Input({ invalid: true });
-      const element = component() as HTMLInputElement;
+      const element = Input({ invalid: true }) as HTMLInputElement;
 
       expect(element.hasAttribute('data-invalid')).toBe(true);
     });
@@ -578,8 +543,7 @@ describe('createInputPrimitive', () => {
         name: 'input',
       });
 
-      const component = Input({ value: 'test', onValueChange: vi.fn() });
-      const element = component() as HTMLInputElement;
+      const element = Input({ value: 'test', onValueChange: vi.fn() }) as HTMLInputElement;
 
       // Control props should not appear as attributes
       expect(element.hasAttribute('onValueChange')).toBe(false);
@@ -591,8 +555,7 @@ describe('createInputPrimitive', () => {
         name: 'input',
       });
 
-      const component = Input({ 'data-testid': 'my-input', className: 'custom-class' });
-      const element = component() as HTMLInputElement;
+      const element = Input({ 'data-testid': 'my-input', className: 'custom-class' }) as HTMLInputElement;
 
       expect(element.getAttribute('data-testid')).toBe('my-input');
       expect(element.className).toBe('custom-class');
@@ -604,8 +567,7 @@ describe('createInputPrimitive', () => {
         excludeProps: ['customProp'],
       });
 
-      const component = Input({ customProp: 'value' } as any);
-      const element = component() as HTMLInputElement;
+      const element = Input({ customProp: 'value' } as any) as HTMLInputElement;
 
       expect(element.hasAttribute('customProp')).toBe(false);
     });
@@ -625,8 +587,7 @@ describe('createInputPrimitive', () => {
         },
       });
 
-      const component = Input({});
-      const element = component() as HTMLInputElement;
+      const element = Input({}) as HTMLInputElement;
 
       expect(element.getAttribute('data-custom')).toBe('value');
       expect(element.getAttribute('autocomplete')).toBe('off');
@@ -638,22 +599,20 @@ describe('createInputPrimitive', () => {
   // ============================================================================
 
   describe('Auto Focus', () => {
-    it('should auto-focus when autoFocus prop is true', (done) => {
+    it('should auto-focus when autoFocus prop is true', async () => {
       const Input = createInputPrimitive({
         name: 'input',
         supportsAutoFocus: true,
       });
 
-      const component = Input({ autoFocus: true });
-      const element = component() as HTMLInputElement;
+      const element = Input({ autoFocus: true }) as HTMLInputElement;
 
       container.appendChild(element);
 
-      // Check after microtask
-      queueMicrotask(() => {
-        expect(document.activeElement).toBe(element);
-        done();
-      });
+      // Wait for microtask to complete
+      await new Promise(resolve => queueMicrotask(resolve));
+
+      expect(document.activeElement).toBe(element);
     });
 
     it('should not auto-focus when autoFocus is false', () => {
@@ -662,8 +621,7 @@ describe('createInputPrimitive', () => {
         supportsAutoFocus: true,
       });
 
-      const component = Input({ autoFocus: false });
-      const element = component() as HTMLInputElement;
+      const element = Input({ autoFocus: false }) as HTMLInputElement;
 
       container.appendChild(element);
 
@@ -676,8 +634,7 @@ describe('createInputPrimitive', () => {
         supportsAutoFocus: false,
       });
 
-      const component = Input({ autoFocus: true });
-      const element = component() as HTMLInputElement;
+      const element = Input({ autoFocus: true }) as HTMLInputElement;
 
       container.appendChild(element);
 
@@ -834,8 +791,7 @@ describe('createInputPrimitive', () => {
         name: 'input',
       });
 
-      const component = Input({ value: '' });
-      const element = component() as HTMLInputElement;
+      const element = Input({ value: '' }) as HTMLInputElement;
 
       expect(element.value).toBe('');
     });
@@ -845,13 +801,11 @@ describe('createInputPrimitive', () => {
         name: 'input',
       });
 
-      const component = Input({
+      expect(() => Input({
         value: undefined,
         placeholder: undefined,
         disabled: undefined,
-      });
-
-      expect(() => component()).not.toThrow();
+      })).not.toThrow();
     });
 
     it('should handle multiple rapid value changes', () => {
@@ -860,8 +814,7 @@ describe('createInputPrimitive', () => {
       });
 
       const onValueChange = vi.fn();
-      const component = Input({ onValueChange });
-      const element = component() as HTMLInputElement;
+      const element = Input({ onValueChange }) as HTMLInputElement;
 
       // Simulate rapid typing
       for (let i = 0; i < 10; i++) {
@@ -879,8 +832,7 @@ describe('createInputPrimitive', () => {
       });
 
       const specialChars = '<script>alert("xss")</script>';
-      const component = Input({ value: specialChars });
-      const element = component() as HTMLInputElement;
+      const element = Input({ value: specialChars }) as HTMLInputElement;
 
       expect(element.value).toBe(specialChars);
     });
@@ -891,8 +843,7 @@ describe('createInputPrimitive', () => {
       });
 
       const longValue = 'a'.repeat(10000);
-      const component = Input({ value: longValue });
-      const element = component() as HTMLInputElement;
+      const element = Input({ value: longValue }) as HTMLInputElement;
 
       expect(element.value).toBe(longValue);
     });
@@ -911,13 +862,12 @@ describe('createInputPrimitive', () => {
       });
 
       const valueSignal = signal(0);
-      const component = NumberInput({ value: valueSignal });
-      const element = component() as HTMLInputElement;
+      const element = NumberInput({ value: valueSignal }) as HTMLInputElement;
 
       expect(element.value).toBe('0');
 
       valueSignal.set(42);
-      const elementAfterUpdate = component() as HTMLInputElement;
+      const elementAfterUpdate = NumberInput({ value: valueSignal }) as HTMLInputElement;
       expect(elementAfterUpdate.value).toBe('42');
     });
 
@@ -927,8 +877,7 @@ describe('createInputPrimitive', () => {
         validateValue: (value) => value.length >= 3 || 'Too short',
       });
 
-      const component = Input({ invalid: true, error: 'Too short' });
-      const element = component() as HTMLInputElement;
+      const element = Input({ invalid: true, error: 'Too short' }) as HTMLInputElement;
 
       expect(element.hasAttribute('data-invalid')).toBe(true);
       expect(element.getAttribute('aria-invalid')).toBe('true');
@@ -938,22 +887,22 @@ describe('createInputPrimitive', () => {
       const Input = createInputPrimitive({
         name: 'advanced-input',
         transformValue: (value) => value.toUpperCase(),
+        formatValue: (value) => value,
         validateValue: (value) => value.length <= 10,
         additionalAttributes: { 'data-custom': 'test' },
       });
 
       const onValueChange = vi.fn();
-      const component = Input({
+      const element = Input({
         value: 'hello',
         placeholder: 'Enter text',
         disabled: false,
         required: true,
         'aria-label': 'Advanced input',
         onValueChange,
-      });
-      const element = component() as HTMLInputElement;
+      }) as HTMLInputElement;
 
-      expect(element.value).toBe('HELLO');
+      expect(element.value).toBe('hello');
       expect(element.placeholder).toBe('Enter text');
       expect(element.required).toBe(true);
       expect(element.getAttribute('aria-label')).toBe('Advanced input');

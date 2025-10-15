@@ -4,7 +4,6 @@
 
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { signal } from '../../src/core/reactivity/signal.js';
-import { effect } from '../../src/core/reactivity/effect.js';
 import { batch } from '../../src/core/reactivity/batch.js';
 import {
   useMDXCompiler,

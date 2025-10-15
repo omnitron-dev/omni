@@ -4,7 +4,7 @@
  * Helper functions for component props manipulation
  */
 
-import { signal, type WritableSignal, isSignal } from '../reactivity/signal.js';
+import { signal, type WritableSignal } from '../reactivity/signal.js';
 import { context } from '../reactivity/context.js';
 
 /**

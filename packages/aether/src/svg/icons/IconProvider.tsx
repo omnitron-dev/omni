@@ -128,10 +128,10 @@ export const IconProvider = defineComponent<IconProviderProps>((props) => {
   // This is done during setup, before children are rendered
   provideContext(IconContext, contextValue);
 
-  return () => {
+  return () => 
     // Simply render children - context is already provided
-    return typeof props.children === 'function' ? props.children() : props.children;
-  };
+     typeof props.children === 'function' ? props.children() : props.children
+  ;
 });
 
 /**

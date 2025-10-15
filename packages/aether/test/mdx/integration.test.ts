@@ -4,22 +4,16 @@
  * Comprehensive integration tests for the complete MDX compilation pipeline
  */
 
-import { describe, test, expect, beforeEach, vi } from 'vitest';
+import { describe, test, expect, vi } from 'vitest';
 import {
   compileMDX,
   compileMDXSync,
   MDXCompiler,
-  AetherMDXParser,
-  MDXToVNodeTransformer,
-  AetherComponentGenerator,
   TransformPipeline,
   ReactiveContentTransform
 } from '../../src/mdx/compiler/index.js';
-import { signal, computed, effect } from '../../src/core/reactivity/index.js';
-import { batch } from '../../src/core/reactivity/batch.js';
-import { MDXProvider, useMDXContext } from '../../src/mdx/runtime/provider.js';
-import { useMDXCompiler, useFrontmatter, useMDXNavigation } from '../../src/mdx/hooks/index.js';
-import type { AetherMDXPlugin, MDXNode, CompileMDXOptions } from '../../src/mdx/types.js';
+import { signal, computed } from '../../src/core/reactivity/index.js';
+import type { AetherMDXPlugin, MDXNode } from '../../src/mdx/types.js';
 
 describe('MDX Integration Tests', () => {
   // ============================================================================

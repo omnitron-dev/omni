@@ -7,15 +7,11 @@
 
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { signal, computed, effect, batch } from '../../src/core/reactivity/index.js';
-import { createRoot, onCleanup, onMount } from '../../src/core/component/lifecycle.js';
+import { onCleanup, onMount } from '../../src/core/component/lifecycle.js';
 import {
   compileMDX,
   compileMDXSync,
-  MDXProvider,
-  useMDXContext,
-  createMDXScope,
-  evaluateMDX,
-  renderMDX
+  MDXProvider
 } from '../../src/mdx/index.js';
 import { defineComponent } from '../../src/core/component/define.js';
 import { jsx } from '../../src/jsx-runtime.js';
@@ -77,13 +73,11 @@ async function renderMDXWithProvider(
   const MDXContent = module.default;
 
   // Create wrapper component that provides MDX context
-  const App = defineComponent(() => {
-    return () => jsx(MDXProvider, {
+  const App = defineComponent(() => () => jsx(MDXProvider, {
       components,
       scope,
       children: jsx(MDXContent, {})
-    });
-  });
+    }));
 
   // Render the app using the testing library
   const result = render(() => jsx(App, {}), { container });
@@ -163,12 +157,10 @@ const code = true;
   });
 
   test('should render JSX components in MDX', async () => {
-    const Button = defineComponent<{ children?: any }>((props) => {
-      return () => jsx('button', {
+    const Button = defineComponent<{ children?: any }>((props) => () => jsx('button', {
         class: 'custom-button',
         children: props.children
-      });
-    });
+      }));
 
     const source = '# Title\n\n<Button>Click me</Button>';
     const result = await renderMDXWithProvider(source, container, { Button });
@@ -180,15 +172,13 @@ const code = true;
   });
 
   test('should render nested MDX components', async () => {
-    const Card = defineComponent<{ title?: string; children?: any }>((props) => {
-      return () => jsx('div', {
+    const Card = defineComponent<{ title?: string; children?: any }>((props) => () => jsx('div', {
         class: 'card',
         children: [
           props.title && jsx('h3', { children: props.title }),
           jsx('div', { class: 'card-body', children: props.children })
         ]
-      });
-    });
+      }));
 
     const source = `
 <Card title="My Card">
@@ -210,13 +200,11 @@ This is **markdown** inside a component!
   });
 
   test('should apply custom component styles', async () => {
-    const StyledDiv = defineComponent<{ children?: any }>((props) => {
-      return () => jsx('div', {
+    const StyledDiv = defineComponent<{ children?: any }>((props) => () => jsx('div', {
         style: 'color: red; font-size: 20px;',
         class: 'styled',
         children: props.children
-      });
-    });
+      }));
 
     const source = '<StyledDiv>Styled content</StyledDiv>';
     const result = await renderMDXWithProvider(source, container, { StyledDiv });
@@ -249,12 +237,10 @@ describe('MDX E2E Tests - Reactive Updates', () => {
   test('should update DOM when signal changes', async () => {
     const count = signal(0);
 
-    const Counter = defineComponent(() => {
-      return () => jsx('div', {
+    const Counter = defineComponent(() => () => jsx('div', {
         class: 'counter',
         children: `Count: ${count()}`
-      });
-    });
+      }));
 
     const source = '<Counter />';
     const result = await renderMDXWithProvider(source, container, { Counter });
@@ -278,12 +264,10 @@ describe('MDX E2E Tests - Reactive Updates', () => {
     const lastName = signal('Doe');
     const fullName = computed(() => `${firstName()} ${lastName()}`);
 
-    const Greeting = defineComponent(() => {
-      return () => jsx('div', {
+    const Greeting = defineComponent(() => () => jsx('div', {
         class: 'greeting',
         children: `Hello, ${fullName()}!`
-      });
-    });
+      }));
 
     const source = '<Greeting />';
     const result = await renderMDXWithProvider(source, container, { Greeting });
@@ -333,15 +317,13 @@ Current count: {count()}
 
     let renderCount = 0;
 
-    const SumDisplay = defineComponent(() => {
-      return () => {
+    const SumDisplay = defineComponent(() => () => {
         renderCount++;
         return jsx('div', {
           class: 'sum',
           children: `Sum: ${sum()}`
         });
-      };
-    });
+      });
 
     const source = '<SumDisplay />';
     const result = await renderMDXWithProvider(source, container, { SumDisplay });
@@ -366,12 +348,10 @@ Current count: {count()}
     const c = computed(() => b() + 3);
     const d = computed(() => c() * 4);
 
-    const Display = defineComponent(() => {
-      return () => jsx('div', {
+    const Display = defineComponent(() => () => jsx('div', {
         class: 'result',
         children: `Result: ${d()}`
-      });
-    });
+      }));
 
     const source = '<Display />';
     const result = await renderMDXWithProvider(source, container, { Display });
@@ -438,11 +418,9 @@ describe('MDX E2E Tests - Component Lifecycle', () => {
       return () => jsx('div', { class: 'cleanup', children: 'Content' });
     });
 
-    const Conditional = defineComponent(() => {
-      return () => show()
+    const Conditional = defineComponent(() => () => show()
         ? jsx(CleanupComponent, {})
-        : jsx('div', { children: 'Hidden' });
-    });
+        : jsx('div', { children: 'Hidden' }));
 
     const source = '<Conditional />';
     const result = await renderMDXWithProvider(source, container, { Conditional });
@@ -461,16 +439,12 @@ describe('MDX E2E Tests - Component Lifecycle', () => {
   test('should update component on prop changes', async () => {
     const name = signal('Alice');
 
-    const Greeting = defineComponent<{ name: string }>((props) => {
-      return () => jsx('div', {
+    const Greeting = defineComponent<{ name: string }>((props) => () => jsx('div', {
         class: 'greeting',
         children: `Hello, ${props.name}!`
-      });
-    });
+      }));
 
-    const Wrapper = defineComponent(() => {
-      return () => jsx(Greeting, { name: name() });
-    });
+    const Wrapper = defineComponent(() => () => jsx(Greeting, { name: name() }));
 
     const source = '<Wrapper />';
     const result = await renderMDXWithProvider(source, container, { Wrapper });
@@ -496,11 +470,9 @@ describe('MDX E2E Tests - Component Lifecycle', () => {
       return () => jsx('div', { class: 'tracker', children: 'Mounted' });
     });
 
-    const Conditional = defineComponent(() => {
-      return () => show()
+    const Conditional = defineComponent(() => () => show()
         ? jsx(MountTracker, {})
-        : null;
-    });
+        : null);
 
     const source = '<Conditional />';
     const result = await renderMDXWithProvider(source, container, { Conditional });
@@ -820,11 +792,9 @@ describe('MDX E2E Tests - Error Boundaries', () => {
   test('should handle component errors gracefully', async () => {
     const errors: Error[] = [];
 
-    const ErrorComponent = defineComponent(() => {
-      return () => {
+    const ErrorComponent = defineComponent(() => () => {
         throw new Error('Component error');
-      };
-    });
+      });
 
     const ErrorBoundary = defineComponent<{ children?: any }>((props) => {
       const hasError = signal(false);
@@ -895,13 +865,11 @@ describe('MDX E2E Tests - Custom Components', () => {
   });
 
   test('should integrate custom Alert component', async () => {
-    const Alert = defineComponent<{ type: string; children?: any }>((props) => {
-      return () => jsx('div', {
+    const Alert = defineComponent<{ type: string; children?: any }>((props) => () => jsx('div', {
         class: `alert alert-${props.type}`,
         role: 'alert',
         children: props.children
-      });
-    });
+      }));
 
     const source = '<Alert type="warning">This is a warning!</Alert>';
     const result = await renderMDXWithProvider(source, container, { Alert });
@@ -913,16 +881,14 @@ describe('MDX E2E Tests - Custom Components', () => {
   });
 
   test('should integrate custom Card with complex structure', async () => {
-    const Card = defineComponent<{ title: string; footer?: string; children?: any }>((props) => {
-      return () => jsx('div', {
+    const Card = defineComponent<{ title: string; footer?: string; children?: any }>((props) => () => jsx('div', {
         class: 'card',
         children: [
           jsx('div', { class: 'card-header', children: props.title }),
           jsx('div', { class: 'card-body', children: props.children }),
           props.footer && jsx('div', { class: 'card-footer', children: props.footer })
         ]
-      });
-    });
+      }));
 
     const source = `
 <Card title="My Card" footer="Footer text">
@@ -947,8 +913,7 @@ This is **markdown** inside the card.
   test('should integrate reactive custom components', async () => {
     const count = signal(0);
 
-    const Counter = defineComponent(() => {
-      return () => jsx('div', {
+    const Counter = defineComponent(() => () => jsx('div', {
         class: 'counter',
         children: [
           jsx('span', { children: `Count: ${count()}` }),
@@ -957,8 +922,7 @@ This is **markdown** inside the card.
             children: 'Increment'
           })
         ]
-      });
-    });
+      }));
 
     const source = '<Counter />';
     const result = await renderMDXWithProvider(source, container, { Counter });
@@ -974,12 +938,10 @@ This is **markdown** inside the card.
   });
 
   test('should pass props to custom components', async () => {
-    const Badge = defineComponent<{ color: string; size: string; children?: any }>((props) => {
-      return () => jsx('span', {
+    const Badge = defineComponent<{ color: string; size: string; children?: any }>((props) => () => jsx('span', {
         class: `badge badge-${props.color} badge-${props.size}`,
         children: props.children
-      });
-    });
+      }));
 
     const source = '<Badge color="blue" size="large">Premium</Badge>';
     const result = await renderMDXWithProvider(source, container, { Badge });
@@ -1418,8 +1380,7 @@ describe('MDX E2E Tests - Complex Integration', () => {
       value: signal(i)
     })));
 
-    const List = defineComponent(() => {
-      return () => jsx('div', {
+    const List = defineComponent(() => () => jsx('div', {
         class: 'perf-list',
         children: items().map(item =>
           jsx('div', {
@@ -1428,8 +1389,7 @@ describe('MDX E2E Tests - Complex Integration', () => {
             key: item.id
           })
         )
-      });
-    });
+      }));
 
     const source = '<List />';
     const result = await renderMDXWithProvider(source, container, { List });

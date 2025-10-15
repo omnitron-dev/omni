@@ -199,7 +199,9 @@ export const SheetContent = defineComponent<SheetContentProps>((props) => () => 
   // Get side from props or from parent element
   const effectiveSide = side || 'right';
 
-  const content = jsx(SheetBase.Content, {
+  // Call component directly instead of using jsx() to avoid VNode creation
+  // when restProps might contain reactive signals
+  const content = SheetBase.Content({
     ...restProps,
     children,
   }) as HTMLElement;

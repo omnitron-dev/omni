@@ -1,39 +1,66 @@
 {
-  "$schema": "https://json.schemastore.org/tsconfig",
-  "display": "Base",
   "compilerOptions": {
-    "moduleDetection": "force",
-    "declaration": true,
-    "removeComments": true,
-    "emitDecoratorMetadata": true,
-    "experimentalDecorators": true,
-    "allowSyntheticDefaultImports": true,
-    "incremental": true,
-    "skipLibCheck": true,
+    // Target and Module
+    "target": "ES2022",
+    "module": "ESNext",
+    "lib": ["ES2022", "DOM"],
+    "moduleResolution": "bundler",
+
+    // Strict Type Checking - MAXIMUM SAFETY
     "strict": true,
     "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
     "noImplicitAny": true,
-    "strictBindCallApply": false,
-    "useDefineForClassFields": false,
-    "forceConsistentCasingInFileNames": true,
+    "noImplicitThis": true,
+    "useUnknownInCatchVariables": true,
+    "alwaysStrict": true,
+
+    // Additional Checks - NO COMPROMISES
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
     "noPropertyAccessFromIndexSignature": true,
-    "noImplicitReturns": true,
-    "noUncheckedIndexedAccess": true,
-    "noFallthroughCasesInSwitch": true,
-    "resolveJsonModule": true,
+    "allowUnusedLabels": false,
+    "allowUnreachableCode": false,
+
+    // Code Quality
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true, // We can't control external library types
+    "checkJs": false,
+    "verbatimModuleSyntax": true, // TypeScript 5.9.2 feature for better ESM support
+
+    // Module Resolution
     "esModuleInterop": true,
-    "lib": [
-      "ESNext",
-      "DOM",
-      "DOM.Iterable"
-    ],
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "target": "ESNext",
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+
+    // Emit
+    "declaration": true,
+    "declarationMap": true,
     "sourceMap": true,
-    "types": [
-      "node"
-    ]
-  }
+    "removeComments": false,
+    "importHelpers": false,
+    "importsNotUsedAsValues": "remove",
+    "downlevelIteration": false,
+    "preserveConstEnums": true,
+
+    // Advanced
+    "skipDefaultLibCheck": false,
+    "allowJs": false,
+    "experimentalDecorators": false,
+    "emitDecoratorMetadata": false
+  },
+  "exclude": [
+    "node_modules",
+    "dist",
+    "build",
+    "coverage"
+  ]
 }

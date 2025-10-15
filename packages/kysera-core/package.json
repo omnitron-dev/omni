@@ -1,0 +1,73 @@
+{
+  "name": "@kysera/core",
+  "version": "0.4.1",
+  "description": "Core utilities for Kysera ORM - debug, health, pagination, errors",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "test:coverage": "vitest run --coverage",
+    "test:multi-db": "vitest run test/multi-db.test.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  },
+  "peerDependencies": {
+    "kysely": ">=0.28.8"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.7.2",
+    "@types/pg": "^8.15.5",
+    "@vitest/coverage-v8": "^3.2.4",
+    "better-sqlite3": "^12.4.1",
+    "kysely": "^0.28.8",
+    "mysql2": "^3.15.2",
+    "pg": "^8.16.3",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "keywords": [
+    "kysely",
+    "orm",
+    "database",
+    "typescript",
+    "sql",
+    "postgres",
+    "mysql",
+    "sqlite"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kysera-dev/kysera.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/kysera-dev/kysera/issues"
+  },
+  "homepage": "https://github.com/kysera-dev/kysera#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20.0.0",
+    "bun": ">=1.0.0"
+  }
+}

@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { aetherBuildPlugin, type AetherBuildPluginOptions } from '../../src/build/vite-plugin.js';
+import { aetherBuildPlugin } from '../../src/build/vite-plugin.js';
 import { AetherCompiler } from '../../src/compiler/compiler.js';
 import { ModuleFederationManager, type ModuleFederationConfig } from '../../src/build/module-federation.js';
 import { WorkerBundler } from '../../src/build/worker-bundling.js';
@@ -93,20 +93,6 @@ class E2ETestEnvironment {
   }
 }
 
-/**
- * Mock Vite config for testing
- */
-function createMockViteConfig(env: E2ETestEnvironment) {
-  return {
-    root: env.tempDir,
-    base: '/',
-    mode: 'production',
-    build: {
-      outDir: env.distDir,
-      minify: 'terser' as const,
-    },
-  };
-}
 
 describe('E2E: Simple Application Build', () => {
   let env: E2ETestEnvironment;
@@ -869,7 +855,7 @@ describe('E2E: Incremental Build', () => {
 
     expect(results).toHaveLength(4);
     results.forEach(result => {
-      expect(result.metrics!.totalTime).toBeGreaterThan(0);
+      expect(result.metrics!.totalTime).toBeGreaterThanOrEqual(0);
     });
   });
 

@@ -35,6 +35,7 @@ export default defineConfig({
     'components/feedback/index': 'src/components/feedback/index.ts',
     'components/overlay/index': 'src/components/overlay/index.ts',
     'components/utility/index': 'src/components/utility/index.ts',
+    'components/editor/index': 'src/components/editor/index.ts',
   },
   format: ['esm'],
   dts: false, // Temporarily disabled due to TSX circular dependency with jsx-runtime types

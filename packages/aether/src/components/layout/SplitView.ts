@@ -31,7 +31,6 @@ import { defineComponent } from '../../core/component/define.js';
 import { createContext, useContext, provideContext } from '../../core/component/context.js';
 import type { Signal, WritableSignal } from '../../core/reactivity/types.js';
 import { signal, computed } from '../../core/reactivity/index.js';
-import { effect } from '../../core/reactivity/effect.js';
 import { jsx } from '../../jsx-runtime.js';
 import { styled } from '../../styling/styled.js';
 import {
@@ -286,9 +285,7 @@ export const SplitView = defineComponent<SplitViewProps>((props) => {
     collapsedState.set(newCollapsed);
   };
 
-  const isCollapsed = (id: string): boolean => {
-    return collapsedState().get(id) || false;
-  };
+  const isCollapsed = (id: string): boolean => collapsedState().get(id) || false;
 
   const contextValue: SplitViewContextValue = {
     direction,

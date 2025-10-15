@@ -164,9 +164,7 @@ export interface ApplicationShellContextValue {
 
 const ApplicationShellContext = createContext<ApplicationShellContextValue | null>(null);
 
-const useApplicationShellContext = (): ApplicationShellContextValue | null => {
-  return useContext(ApplicationShellContext);
-};
+const useApplicationShellContext = (): ApplicationShellContextValue | null => useContext(ApplicationShellContext);
 
 // ============================================================================
 // Components
@@ -226,7 +224,7 @@ export const ApplicationShell = defineComponent<ApplicationShellProps>((props) =
   return () => {
     const children = typeof props.children === 'function' ? props.children() : props.children;
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+     
     const {
       layout: _layout,
       defaultSidebarOpen,
@@ -326,7 +324,7 @@ export const ApplicationShellSidebar = defineComponent<ApplicationShellSidebarPr
     const isOpen = context ? context.sidebarOpen() : true;
     const width = props.width ?? 250;
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+     
     const { width: _width, minWidth, maxWidth, children, ...restProps } = props;
 
     return jsx('aside', {
@@ -396,7 +394,7 @@ export const ApplicationShellPanel = defineComponent<ApplicationShellPanelProps>
     const isOpen = context ? context.panelOpen() : false;
     const height = props.height ?? 200;
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+     
     const { height: _height, minHeight, maxHeight, children, ...restProps } = props;
 
     return jsx('section', {

@@ -166,6 +166,38 @@
       "types": "./dist/mdx/index.d.ts",
       "import": "./dist/mdx/index.js"
     },
+    "./components/forms": {
+      "types": "./dist/components/forms/index.d.ts",
+      "import": "./dist/components/forms/index.js"
+    },
+    "./components/data": {
+      "types": "./dist/components/data/index.d.ts",
+      "import": "./dist/components/data/index.js"
+    },
+    "./components/layout": {
+      "types": "./dist/components/layout/index.d.ts",
+      "import": "./dist/components/layout/index.js"
+    },
+    "./components/navigation": {
+      "types": "./dist/components/navigation/index.d.ts",
+      "import": "./dist/components/navigation/index.js"
+    },
+    "./components/interactive": {
+      "types": "./dist/components/interactive/index.d.ts",
+      "import": "./dist/components/interactive/index.js"
+    },
+    "./components/feedback": {
+      "types": "./dist/components/feedback/index.d.ts",
+      "import": "./dist/components/feedback/index.js"
+    },
+    "./components/overlay": {
+      "types": "./dist/components/overlay/index.d.ts",
+      "import": "./dist/components/overlay/index.js"
+    },
+    "./components/utility": {
+      "types": "./dist/components/utility/index.d.ts",
+      "import": "./dist/components/utility/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

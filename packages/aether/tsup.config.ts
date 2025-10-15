@@ -26,6 +26,15 @@ export default defineConfig({
     'testing/index': 'src/testing/index.ts',
     'build/index': 'src/build/index.ts',
     'build/vite-plugin': 'src/build/vite-plugin.ts',
+    // Styled Components
+    'components/forms/index': 'src/components/forms/index.ts',
+    'components/data/index': 'src/components/data/index.ts',
+    'components/layout/index': 'src/components/layout/index.ts',
+    'components/navigation/index': 'src/components/navigation/index.ts',
+    'components/interactive/index': 'src/components/interactive/index.ts',
+    'components/feedback/index': 'src/components/feedback/index.ts',
+    'components/overlay/index': 'src/components/overlay/index.ts',
+    'components/utility/index': 'src/components/utility/index.ts',
   },
   format: ['esm'],
   dts: false, // Temporarily disabled due to TSX circular dependency with jsx-runtime types

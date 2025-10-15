@@ -16,17 +16,27 @@
 
 import { defineComponent } from '../../core/component/define.js';
 import { createContext, useContext, provideContext } from '../../core/component/context.js';
-import type { Signal, WritableSignal } from '../../core/reactivity/types.js';
+import type { WritableSignal } from '../../core/reactivity/types.js';
 import { signal, computed } from '../../core/reactivity/index.js';
 import { jsx } from '../../jsx-runtime.js';
 import { styled } from '../../styling/styled.js';
 import { Input } from './Input.js';
-import { NumberInput } from './NumberInput.js';
-import { Switch } from './Switch.js';
-import { Select } from './Select.js';
-import { ColorPicker } from './ColorPicker.js';
-import { DatePicker } from './DatePicker.js';
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '../interactive/Collapsible.js';
+import {
+  NumberInput as NumberInputPrimitive,
+  NumberInputField,
+  NumberInputIncrement,
+  NumberInputDecrement,
+} from '../../primitives/NumberInput.js';
+import { Switch as SwitchPrimitive, SwitchThumb } from '../../primitives/Switch.js';
+import {
+  Select as SelectPrimitive,
+  SelectTrigger,
+  SelectValue,
+  SelectIcon,
+  SelectContent,
+  SelectViewport,
+  SelectItem,
+} from '../../primitives/Select.js';
 
 // ============================================================================
 // Types
@@ -433,27 +443,24 @@ const NumberPropertyRenderer = defineComponent<{
 
   return () => {
     const property = props.property;
-    return jsx(
-      NumberInput,
-      {
-        value: valueSignal,
-        onValueChange: (value: number) => {
-          valueSignal.set(value);
-          ctx.onChange(property.key, value);
-        },
-        min: property.min,
-        max: property.max,
-        step: property.step,
-        disabled: property.disabled,
-        readonly: property.readonly,
-        size: ctx.size,
+    return jsx(NumberInputPrimitive, {
+      value: valueSignal,
+      onValueChange: (value: number) => {
+        valueSignal.set(value);
+        ctx.onChange(property.key, value);
       },
-      [
-        jsx(NumberInput.Field, { placeholder: property.placeholder }),
-        jsx(NumberInput.Increment, { children: '▲' }),
-        jsx(NumberInput.Decrement, { children: '▼' }),
-      ]
-    );
+      min: property.min,
+      max: property.max,
+      step: property.step,
+      disabled: property.disabled,
+      readonly: property.readonly,
+      size: ctx.size,
+      children: [
+        jsx(NumberInputField, { placeholder: property.placeholder }),
+        jsx(NumberInputIncrement, {}, '▲'),
+        jsx(NumberInputDecrement, {}, '▼'),
+      ],
+    });
   };
 });
 
@@ -466,19 +473,16 @@ const BooleanPropertyRenderer = defineComponent<{
 
   return () => {
     const property = props.property;
-    return jsx(
-      Switch,
-      {
-        checked: checkedSignal,
-        onCheckedChange: (checked: boolean) => {
-          checkedSignal.set(checked);
-          ctx.onChange(property.key, checked);
-        },
-        disabled: property.disabled,
-        size: ctx.size,
+    return jsx(SwitchPrimitive, {
+      checked: checkedSignal,
+      onCheckedChange: (checked: boolean) => {
+        checkedSignal.set(checked);
+        ctx.onChange(property.key, checked);
       },
-      [jsx(Switch.Thumb, {})]
-    );
+      disabled: property.disabled,
+      size: ctx.size,
+      children: jsx(SwitchThumb, {}),
+    });
   };
 });
 
@@ -491,35 +495,30 @@ const SelectPropertyRenderer = defineComponent<{
 
   return () => {
     const property = props.property;
-    return jsx(
-      Select,
-      {
-        value: valueSignal,
-        onValueChange: (value: string) => {
-          valueSignal.set(value);
-          ctx.onChange(property.key, value);
-        },
-        disabled: property.disabled,
+    return jsx(SelectPrimitive, {
+      value: valueSignal,
+      onValueChange: (value: string) => {
+        valueSignal.set(value);
+        ctx.onChange(property.key, value);
       },
-      [
-        jsx(
-          Select.Trigger,
-          { size: ctx.size },
-          [jsx(Select.Value, { placeholder: property.placeholder || 'Select...' }), jsx(Select.Icon, { children: '▼' })]
-        ),
-        jsx(
-          Select.Content,
-          {},
-          jsx(
-            Select.Viewport,
-            {},
-            property.options.map((option) =>
-              jsx(Select.Item, { key: option.value, value: option.value }, option.label)
-            )
-          )
-        ),
-      ]
-    );
+      disabled: property.disabled,
+      children: [
+        jsx(SelectTrigger, {
+          size: ctx.size,
+          children: [
+            jsx(SelectValue, { placeholder: property.placeholder || 'Select...' }),
+            jsx(SelectIcon, {}, '▼'),
+          ],
+        }),
+        jsx(SelectContent, {
+          children: jsx(SelectViewport, {
+            children: property.options.map((option) =>
+              jsx(SelectItem, { key: option.value, value: option.value }, option.label)
+            ),
+          }),
+        }),
+      ],
+    });
   };
 });
 
@@ -564,9 +563,10 @@ const DatePropertyRenderer = defineComponent<{
     if (property.value) {
       if (property.value instanceof Date) {
         if (inputType === 'date') {
-          value = property.value.toISOString().split('T')[0];
+          value = property.value.toISOString().split('T')[0] || '';
         } else if (inputType === 'time') {
-          value = property.value.toTimeString().split(' ')[0].substring(0, 5);
+          const timeString = property.value.toTimeString().split(' ')[0];
+          value = timeString ? timeString.substring(0, 5) : '';
         } else {
           value = property.value.toISOString().slice(0, 16);
         }
@@ -618,70 +618,67 @@ const CustomPropertyRenderer = defineComponent<{
 const PropertyRowComponent = defineComponent<{
   property: PropertyDescriptor;
   size?: 'sm' | 'md' | 'lg';
-}>((props) => {
-  return () => {
-    const property = props.property;
+}>((props) => () => {
+  const property = props.property;
 
-    // Don't render group properties (they are rendered separately)
-    if (property.type === 'group') {
-      return null;
-    }
+  // Don't render group properties (they are rendered separately)
+  if (property.type === 'group') {
+    return null;
+  }
 
-    let renderer: any = null;
+  let renderer: any = null;
 
-    switch (property.type) {
-      case 'string':
-        renderer = jsx(StringPropertyRenderer, { property: property as StringPropertyDescriptor, size: props.size });
-        break;
-      case 'number':
-        renderer = jsx(NumberPropertyRenderer, { property: property as NumberPropertyDescriptor, size: props.size });
-        break;
-      case 'boolean':
-        renderer = jsx(BooleanPropertyRenderer, { property: property as BooleanPropertyDescriptor, size: props.size });
-        break;
-      case 'select':
-        renderer = jsx(SelectPropertyRenderer, { property: property as SelectPropertyDescriptor, size: props.size });
-        break;
-      case 'color':
-        renderer = jsx(ColorPropertyRenderer, { property: property as ColorPropertyDescriptor, size: props.size });
-        break;
-      case 'date':
-      case 'time':
-      case 'datetime':
-        renderer = jsx(DatePropertyRenderer, { property: property as DatePropertyDescriptor, size: props.size });
-        break;
-      case 'custom':
-        renderer = jsx(CustomPropertyRenderer, { property: property as CustomPropertyDescriptor, size: props.size });
-        break;
-      case 'array':
-      case 'object':
-        // Simple text representation for now
-        renderer = jsx('div', {
-          style: { fontSize: '0.875rem', color: '#6b7280' },
-          children: `${property.type} (not implemented)`,
-        });
-        break;
-    }
+  switch (property.type) {
+    case 'string':
+      renderer = jsx(StringPropertyRenderer, { property: property as StringPropertyDescriptor, size: props.size });
+      break;
+    case 'number':
+      renderer = jsx(NumberPropertyRenderer, { property: property as NumberPropertyDescriptor, size: props.size });
+      break;
+    case 'boolean':
+      renderer = jsx(BooleanPropertyRenderer, { property: property as BooleanPropertyDescriptor, size: props.size });
+      break;
+    case 'select':
+      renderer = jsx(SelectPropertyRenderer, { property: property as SelectPropertyDescriptor, size: props.size });
+      break;
+    case 'color':
+      renderer = jsx(ColorPropertyRenderer, { property: property as ColorPropertyDescriptor, size: props.size });
+      break;
+    case 'date':
+    case 'time':
+    case 'datetime':
+      renderer = jsx(DatePropertyRenderer, { property: property as DatePropertyDescriptor, size: props.size });
+      break;
+    case 'custom':
+      renderer = jsx(CustomPropertyRenderer, { property: property as CustomPropertyDescriptor, size: props.size });
+      break;
+    case 'array':
+    case 'object':
+    default:
+      // Simple text representation for now
+      renderer = jsx('div', {
+        style: { fontSize: '0.875rem', color: '#6b7280' },
+        children: `${property.type} (not implemented)`,
+      });
+      break;
+  }
 
-    return jsx(
-      PropertyRow,
-      { size: props.size },
-      [
-        jsx(
-          PropertyLabel,
-          {
-            required: property.required,
-            disabled: property.disabled,
-          },
-          [
-            jsx('span', { children: property.label }),
-            property.description && jsx(PropertyDescription, { children: property.description }),
-          ]
-        ),
-        jsx(PropertyValue, {}, [renderer, property.error && jsx(PropertyError, { children: property.error })]),
-      ]
-    );
-  };
+  return jsx(PropertyRow, {
+    size: props.size,
+    children: [
+      jsx(PropertyLabel, {
+        required: property.required,
+        disabled: property.disabled,
+        children: [
+          jsx('span', { children: property.label }),
+          property.description && jsx(PropertyDescription, { children: property.description }),
+        ],
+      }),
+      jsx(PropertyValue, {
+        children: [renderer, property.error && jsx(PropertyError, { children: property.error })],
+      }),
+    ],
+  });
 });
 
 // ============================================================================
@@ -697,26 +694,23 @@ const PropertyGroupComponent = defineComponent<{
   return () => {
     const group = props.group;
 
-    return jsx(PropertyGroupContainer, {}, [
-      jsx(
-        PropertyGroupHeader,
-        {
+    return jsx(PropertyGroupContainer, {
+      children: [
+        jsx(PropertyGroupHeader, {
           'data-state': isOpen() ? 'open' : 'closed',
           onClick: () => isOpen.set(!isOpen()),
-        },
-        group.label
-      ),
-      isOpen() &&
-        jsx(
-          PropertyGroupContent,
-          {},
-          group.children.map((child) =>
-            child.type === 'group'
-              ? jsx(PropertyGroupComponent, { key: child.key, group: child, size: props.size })
-              : jsx(PropertyRowComponent, { key: child.key, property: child, size: props.size })
-          )
-        ),
-    ]);
+          children: group.label,
+        }),
+        isOpen() &&
+          jsx(PropertyGroupContent, {
+            children: group.children.map((child) =>
+              child.type === 'group'
+                ? jsx(PropertyGroupComponent, { key: child.key, group: child, size: props.size })
+                : jsx(PropertyRowComponent, { key: child.key, property: child, size: props.size })
+            ),
+          }),
+      ],
+    });
   };
 });
 
@@ -759,37 +753,36 @@ export const PropertyGrid = defineComponent<PropertyGridProps>((props) => {
         .filter((p) => p !== null) as PropertyDescriptor[];
     });
 
-    const { properties: _, onChange: __, searchable, groups, filterFn: ___, size: ____, ...restProps } = props;
+    const { properties: _, onChange: __, filterFn: ___, size: ____, ...restProps } = props;
 
-    return jsx(PropertyGridContainer, restProps, [
-      // Search input
-      props.searchable &&
-        jsx(
-          PropertyGridSearch,
-          {},
-          jsx(Input, {
-            type: 'search',
-            placeholder: 'Search properties...',
-            value: searchTerm(),
-            onChange: (e: Event) => {
-              const target = e.target as HTMLInputElement;
-              searchTerm.set(target.value);
-            },
-            size,
-          })
-        ),
+    return jsx(PropertyGridContainer, {
+      ...restProps,
+      children: [
+        // Search input
+        props.searchable &&
+          jsx(PropertyGridSearch, {
+            children: jsx(Input, {
+              type: 'search',
+              placeholder: 'Search properties...',
+              value: searchTerm(),
+              onChange: (e: Event) => {
+                const target = e.target as HTMLInputElement;
+                searchTerm.set(target.value);
+              },
+              size,
+            }),
+          }),
 
-      // Property list
-      jsx(
-        PropertyGridList,
-        {},
-        filteredProperties().map((property) =>
-          property.type === 'group'
-            ? jsx(PropertyGroupComponent, { key: property.key, group: property, size })
-            : jsx(PropertyRowComponent, { key: property.key, property, size })
-        )
-      ),
-    ]);
+        // Property list
+        jsx(PropertyGridList, {
+          children: filteredProperties().map((property) =>
+            property.type === 'group'
+              ? jsx(PropertyGroupComponent, { key: property.key, group: property, size })
+              : jsx(PropertyRowComponent, { key: property.key, property, size })
+          ),
+        }),
+      ],
+    });
   };
 });
 

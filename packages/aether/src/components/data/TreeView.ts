@@ -42,7 +42,6 @@
 import { defineComponent } from '../../core/component/index.js';
 import { createContext, useContext, provideContext } from '../../core/component/context.js';
 import { signal, computed, type Signal, type WritableSignal } from '../../core/reactivity/index.js';
-import { effect } from '../../core/reactivity/effect.js';
 import { jsx } from '../../jsx-runtime.js';
 import { styled } from '../../styling/styled.js';
 import { VirtualList } from '../../primitives/VirtualList.js';

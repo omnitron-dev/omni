@@ -13,12 +13,11 @@
  */
 
 import { defineComponent } from '../../core/component/define.js';
-import { signal, type WritableSignal } from '../../core/reactivity/signal.js';
+import { signal } from '../../core/reactivity/signal.js';
 import { effect } from '../../core/reactivity/effect.js';
 import { computed } from '../../core/reactivity/computed.js';
 import { jsx } from '../../jsx-runtime.js';
 import { styled } from '../../styling/styled.js';
-import { generateId } from '../../primitives/utils/index.js';
 
 /**
  * Tab item configuration
@@ -450,9 +449,7 @@ export const DraggableTabs = defineComponent<DraggableTabsProps>((props) => {
   /**
    * Get tab index by ID
    */
-  const getTabIndex = (tabId: string): number => {
-    return tabs().findIndex((tab) => tab.id === tabId);
-  };
+  const getTabIndex = (tabId: string): number => tabs().findIndex((tab) => tab.id === tabId);
 
   /**
    * Reorder tabs

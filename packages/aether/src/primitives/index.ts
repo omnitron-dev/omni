@@ -213,6 +213,7 @@ export {
   ApplicationShellMain,
   ApplicationShellPanel,
   ApplicationShellStatusBar,
+  useApplicationShellContext,
   type ApplicationShellProps,
   type ApplicationShellHeaderProps,
   type ApplicationShellActivityBarProps,

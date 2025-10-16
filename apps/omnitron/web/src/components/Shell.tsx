@@ -28,12 +28,18 @@ export interface ShellProps {
  * - Status bar with current route and version info
  *
  * Powered by Aether - Minimalist, high-performance frontend framework
+ *
+ * NOTE: Due to an Aether bug where components are recreated instead of updated when props change,
+ * we use direct DOM manipulation to toggle sidebar/panel visibility instead of controlled props.
  */
 export const Shell = defineComponent((props: ShellProps) => {
-  const sidebarVisible = signal(true);
-  const panelVisible = signal(false);
+  // Local state for shell controls
   const activeView = signal('files');
   const activePanelTab = signal('terminal');
+  const sidebarOpen = signal(true);
+  const panelOpen = signal(false);
+
+  // Router state
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -44,22 +50,74 @@ export const Shell = defineComponent((props: ShellProps) => {
     navigate(path);
   };
 
-  // Keyboard shortcut handler
-  const handleKeyDown = (event: KeyboardEvent) => {
-    // Cmd+B or Ctrl+B: Toggle sidebar
-    if ((event.metaKey || event.ctrlKey) && event.key === 'b') {
-      event.preventDefault();
-      sidebarVisible.set(!sidebarVisible());
-    }
-    // Cmd+J or Ctrl+J: Toggle panel
-    if ((event.metaKey || event.ctrlKey) && event.key === 'j') {
-      event.preventDefault();
-      panelVisible.set(!panelVisible());
+  // Debounce flags to prevent infinite loops
+  let isTogglingRef = false;
+
+  // Toggle functions with direct DOM manipulation to work around Aether's component recreation bug
+  const toggleSidebar = () => {
+    if (isTogglingRef) return;
+
+    isTogglingRef = true;
+    try {
+      const newState = !sidebarOpen();
+      sidebarOpen.set(newState);
+
+      // Direct DOM manipulation as workaround for Aether bug
+      const sidebar = document.querySelector('[data-application-shell-sidebar]') as HTMLElement;
+      if (sidebar) {
+        sidebar.setAttribute('data-open', newState ? 'true' : 'false');
+        sidebar.style.display = newState ? 'flex' : 'none';
+      }
+    } finally {
+      setTimeout(() => { isTogglingRef = false; }, 100);
     }
   };
 
-  // Setup keyboard shortcuts
+  const togglePanel = () => {
+    if (isTogglingRef) return;
+
+    isTogglingRef = true;
+    try {
+      const newState = !panelOpen();
+      panelOpen.set(newState);
+
+      // Direct DOM manipulation as workaround for Aether bug
+      const panel = document.querySelector('[data-application-shell-panel]') as HTMLElement;
+      if (panel) {
+        panel.setAttribute('data-open', newState ? 'true' : 'false');
+        panel.style.display = newState ? 'flex' : 'none';
+      }
+    } finally {
+      setTimeout(() => { isTogglingRef = false; }, 100);
+    }
+  };
+
+  const setPanelOpen = (open: boolean) => {
+    panelOpen.set(open);
+
+    // Direct DOM manipulation as workaround for Aether bug
+    const panel = document.querySelector('[data-application-shell-panel]') as HTMLElement;
+    if (panel) {
+      panel.setAttribute('data-open', open ? 'true' : 'false');
+      panel.style.display = open ? 'flex' : 'none';
+    }
+  };
+
+  // Keyboard shortcuts
   effect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Cmd+B or Ctrl+B: Toggle sidebar
+      if ((event.metaKey || event.ctrlKey) && event.key === 'b') {
+        event.preventDefault();
+        toggleSidebar();
+      }
+      // Cmd+J or Ctrl+J: Toggle panel
+      if ((event.metaKey || event.ctrlKey) && event.key === 'j') {
+        event.preventDefault();
+        togglePanel();
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     onCleanup(() => {
       window.removeEventListener('keydown', handleKeyDown);
@@ -67,21 +125,14 @@ export const Shell = defineComponent((props: ShellProps) => {
   });
 
   return () => (
-    <ApplicationShell
-      defaultSidebarOpen={true}
-      sidebarOpen={sidebarVisible()}
-      onSidebarOpenChange={(open) => sidebarVisible.set(open)}
-      defaultPanelOpen={false}
-      panelOpen={panelVisible()}
-      onPanelOpenChange={(open) => panelVisible.set(open)}
-    >
-      {/* Header with branding, tabs, and actions */}
+    <ApplicationShell>
+      {/* Header */}
       <ApplicationShellHeader>
         <div class="shell-header-left">
           <button
             class="icon-button"
-            onClick={() => sidebarVisible.set(!sidebarVisible())}
-            title="Toggle Sidebar"
+            onClick={toggleSidebar}
+            title="Toggle Sidebar (Cmd+B)"
           >
             ☰
           </button>
@@ -128,111 +179,114 @@ export const Shell = defineComponent((props: ShellProps) => {
         </div>
       </ApplicationShellHeader>
 
-      {/* ActivityBar with icon-based primary navigation */}
-      <ApplicationShellActivityBar>
-        <div class="activity-bar-content">
-          <div class="activity-items-top">
-            <button
-              class={() => `activity-button ${activeView() === 'files' ? 'active' : ''}`}
-              onClick={() => {
-                activeView.set('files');
-                navigateTo('/canvas');
-              }}
-              title="Files (Ctrl+Shift+E)"
-              aria-label="Files"
-            >
-              📊
-            </button>
-            <button
-              class={() => `activity-button ${activeView() === 'search' ? 'active' : ''}`}
-              onClick={() => {
-                activeView.set('search');
-                navigateTo('/editor');
-              }}
-              title="Search (Ctrl+Shift+F)"
-              aria-label="Search"
-            >
-              🔍
-            </button>
-            <button
-              class={() => `activity-button ${activeView() === 'extensions' ? 'active' : ''}`}
-              onClick={() => {
-                activeView.set('extensions');
-                navigateTo('/chat');
-              }}
-              title="Extensions (Ctrl+Shift+X)"
-              aria-label="Extensions"
-            >
-              🧩
-            </button>
-            <button
-              class={() => `activity-button ${activeView() === 'terminal' ? 'active' : ''}`}
-              onClick={() => {
-                activeView.set('terminal');
-                navigateTo('/terminal');
-                panelVisible.set(true);
-              }}
-              title="Terminal (Ctrl+`)"
-              aria-label="Terminal"
-            >
-              💻
-            </button>
-          </div>
-          <div class="activity-items-bottom">
-            <button
-              class={() => `activity-button ${activeView() === 'settings' ? 'active' : ''}`}
-              onClick={() => {
-                activeView.set('settings');
-                navigateTo('/settings');
-              }}
-              title="Settings (Ctrl+,)"
-              aria-label="Settings"
-            >
-              ⚙️
-            </button>
-          </div>
-        </div>
-      </ApplicationShellActivityBar>
-
-      {/* Collapsible Sidebar with workspace navigation */}
-      <ApplicationShellSidebar width={280}>
-        <div class="sidebar-section">
-          <h3>Workspace</h3>
-          <div class="sidebar-content">
-            <div class="sidebar-nav">
-              <Link href="/canvas" class="sidebar-item">
-                📊 Flows
-              </Link>
-              <Link href="/editor" class="sidebar-item">
-                📝 Files
-              </Link>
-              <Link href="/terminal" class="sidebar-item">
-                💻 Terminal
-              </Link>
-              <Link href="/chat" class="sidebar-item">
-                🤖 AI Assistant
-              </Link>
-              <Link href="/settings" class="sidebar-item">
-                ⚙️ Settings
-              </Link>
+      {/* Main horizontal layout */}
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        {/* ActivityBar */}
+        <ApplicationShellActivityBar>
+          <div class="activity-bar-content">
+            <div class="activity-items-top">
+              <button
+                class={() => `activity-button ${activeView() === 'files' ? 'active' : ''}`}
+                onClick={() => {
+                  activeView.set('files');
+                  navigateTo('/canvas');
+                }}
+                title="Files (Ctrl+Shift+E)"
+                aria-label="Files"
+              >
+                📊
+              </button>
+              <button
+                class={() => `activity-button ${activeView() === 'search' ? 'active' : ''}`}
+                onClick={() => {
+                  activeView.set('search');
+                  navigateTo('/editor');
+                }}
+                title="Search (Ctrl+Shift+F)"
+                aria-label="Search"
+              >
+                🔍
+              </button>
+              <button
+                class={() => `activity-button ${activeView() === 'extensions' ? 'active' : ''}`}
+                onClick={() => {
+                  activeView.set('extensions');
+                  navigateTo('/chat');
+                }}
+                title="Extensions (Ctrl+Shift+X)"
+                aria-label="Extensions"
+              >
+                🧩
+              </button>
+              <button
+                class={() => `activity-button ${activeView() === 'terminal' ? 'active' : ''}`}
+                onClick={() => {
+                  activeView.set('terminal');
+                  navigateTo('/terminal');
+                  setPanelOpen(true);
+                }}
+                title="Terminal (Ctrl+`)"
+                aria-label="Terminal"
+              >
+                💻
+              </button>
+            </div>
+            <div class="activity-items-bottom">
+              <button
+                class={() => `activity-button ${activeView() === 'settings' ? 'active' : ''}`}
+                onClick={() => {
+                  activeView.set('settings');
+                  navigateTo('/settings');
+                }}
+                title="Settings (Ctrl+,)"
+                aria-label="Settings"
+              >
+                ⚙️
+              </button>
             </div>
           </div>
-        </div>
+        </ApplicationShellActivityBar>
 
-        <div class="sidebar-section">
-          <h3>Recent</h3>
-          <div class="sidebar-content">
-            <p class="sidebar-hint">No recent items</p>
+        {/* Sidebar */}
+        <ApplicationShellSidebar width={280}>
+          <div class="sidebar-section">
+            <h3>Workspace</h3>
+            <div class="sidebar-content">
+              <div class="sidebar-nav">
+                <Link href="/canvas" class="sidebar-item">
+                  📊 Flows
+                </Link>
+                <Link href="/editor" class="sidebar-item">
+                  📝 Files
+                </Link>
+                <Link href="/terminal" class="sidebar-item">
+                  💻 Terminal
+                </Link>
+                <Link href="/chat" class="sidebar-item">
+                  🤖 AI Assistant
+                </Link>
+                <Link href="/settings" class="sidebar-item">
+                  ⚙️ Settings
+                </Link>
+              </div>
+            </div>
           </div>
-        </div>
-      </ApplicationShellSidebar>
 
-      {/* Main content area with router view */}
-      <ApplicationShellMain>
-        {props.children}
-      </ApplicationShellMain>
+          <div class="sidebar-section">
+            <h3>Recent</h3>
+            <div class="sidebar-content">
+              <p class="sidebar-hint">No recent items</p>
+            </div>
+          </div>
+        </ApplicationShellSidebar>
 
-      {/* Collapsible Bottom Panel with tabs */}
+        {/* Main */}
+        <ApplicationShellMain>
+          {props.children}
+        </ApplicationShellMain>
+      </div>
+
+      {/* Panel */}
       <ApplicationShellPanel height={250} minHeight={150} maxHeight={600}>
         <div class="panel-container">
           <div class="panel-header">
@@ -253,7 +307,7 @@ export const Shell = defineComponent((props: ShellProps) => {
             </Tabs>
             <button
               class="panel-close-button"
-              onClick={() => panelVisible.set(false)}
+              onClick={() => setPanelOpen(false)}
               title="Close Panel (Cmd+J)"
               aria-label="Close Panel"
             >
@@ -285,7 +339,7 @@ export const Shell = defineComponent((props: ShellProps) => {
         </div>
       </ApplicationShellPanel>
 
-      {/* Status Bar with current state and version info */}
+      {/* StatusBar */}
       <ApplicationShellStatusBar>
         <div class="statusbar-left">
           <span class="status-indicator status-ready">●</span>

@@ -164,7 +164,7 @@ export interface ApplicationShellContextValue {
 
 const ApplicationShellContext = createContext<ApplicationShellContextValue | null>(null);
 
-const useApplicationShellContext = (): ApplicationShellContextValue | null => useContext(ApplicationShellContext);
+export const useApplicationShellContext = (): ApplicationShellContextValue | null => useContext(ApplicationShellContext);
 
 // ============================================================================
 // Components

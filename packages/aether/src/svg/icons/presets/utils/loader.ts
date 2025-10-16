@@ -1,11 +1,11 @@
 /**
  * Icon Preset Loader Utilities
  *
- * Functions for dynamically loading HugeIcons presets and individual icons
+ * Functions for dynamically loading icon presets and individual icons
  */
 
 import type { IconSet, IconDefinition } from '../../../IconRegistry.js';
-import type { HugeIconPreset } from './types.js';
+import type { IconPreset } from './types.js';
 
 /**
  * Load an entire icon preset dynamically
@@ -18,16 +18,16 @@ import type { HugeIconPreset } from './types.js';
  *
  * @example
  * ```typescript
- * import { loadIconPreset } from '@omnitron-dev/aether/svg/icons/presets/hugeicons';
+ * import { loadIconPreset } from '@omnitron-dev/aether/svg/icons/presets';
  * import { getIconRegistry } from '@omnitron-dev/aether';
  *
  * // Load the stroke preset
  * const strokeIcons = await loadIconPreset('stroke');
  * const registry = getIconRegistry();
- * registry.registerSet('hugeicons-stroke', strokeIcons);
+ * registry.registerSet('icons-stroke', strokeIcons);
  * ```
  */
-export async function loadIconPreset(preset: HugeIconPreset): Promise<IconSet> {
+export async function loadIconPreset(preset: IconPreset): Promise<IconSet> {
   try {
     let module;
 
@@ -66,7 +66,7 @@ export async function loadIconPreset(preset: HugeIconPreset): Promise<IconSet> {
     return iconSet;
   } catch (error) {
     throw new Error(
-      `Failed to load HugeIcons preset "${preset}": ${error instanceof Error ? error.message : String(error)}`
+      `Failed to load icon preset "${preset}": ${error instanceof Error ? error.message : String(error)}`
     );
   }
 }
@@ -84,7 +84,7 @@ export async function loadIconPreset(preset: HugeIconPreset): Promise<IconSet> {
  *
  * @example
  * ```typescript
- * import { loadIcon } from '@omnitron-dev/aether/svg/icons/presets/hugeicons';
+ * import { loadIcon } from '@omnitron-dev/aether/svg/icons/presets';
  *
  * // Load a single icon
  * const userIcon = await loadIcon('stroke', 'user');
@@ -92,7 +92,7 @@ export async function loadIconPreset(preset: HugeIconPreset): Promise<IconSet> {
  * ```
  */
 export async function loadIcon(
-  preset: HugeIconPreset,
+  preset: IconPreset,
   name: string
 ): Promise<IconDefinition> {
   try {
@@ -140,14 +140,14 @@ export async function loadIcon(
  *
  * @example
  * ```typescript
- * import { preloadIcons } from '@omnitron-dev/aether/svg/icons/presets/hugeicons';
+ * import { preloadIcons } from '@omnitron-dev/aether/svg/icons/presets';
  *
  * const icons = await preloadIcons('stroke', ['user', 'home-01', 'settings']);
  * const userIcon = icons.get('user');
  * ```
  */
 export async function preloadIcons(
-  preset: HugeIconPreset,
+  preset: IconPreset,
   names: string[]
 ): Promise<Map<string, IconDefinition>> {
   const results = await Promise.allSettled(

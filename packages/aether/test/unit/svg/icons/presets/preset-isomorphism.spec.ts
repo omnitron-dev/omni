@@ -5,8 +5,8 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { readdirSync } from 'fs';
 import { join } from 'path';
 
-describe('HugeIcons Preset Isomorphism', () => {
-  const ICONS_DIR = join(process.cwd(), 'src/svg/icons/presets/hugeicons');
+describe('Icon Presets Isomorphism', () => {
+  const ICONS_DIR = join(process.cwd(), 'src/svg/icons/presets');
   const PRESETS = ['stroke', 'duotone', 'twotone'] as const;
   const EXPECTED_ICON_COUNT = 4559;
 

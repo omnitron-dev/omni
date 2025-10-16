@@ -1,11 +1,11 @@
 /**
- * Tests for HugeIcons loader utilities
+ * Tests for Icon Preset loader utilities
  */
 
 import { describe, it, expect } from 'vitest';
-import { loadIconPreset, loadIcon } from '../utils/loader.js';
+import { loadIconPreset, loadIcon } from '../../../../../src/svg/icons/presets/utils/loader.js';
 
-describe('HugeIcons Loader', () => {
+describe('Icon Preset Loader', () => {
   describe('loadIconPreset', () => {
     it('should load stroke preset', async () => {
       const icons = await loadIconPreset('stroke');

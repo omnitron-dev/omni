@@ -1,15 +1,15 @@
 /**
  * Icon Search Utilities
  *
- * Functions for searching and filtering HugeIcons
+ * Functions for searching and filtering icon presets
  */
 
 import type { IconDefinition } from '../../../IconRegistry.js';
-import type { IconSearchOptions, IconSearchResult, HugeIconPreset } from './types.js';
+import type { IconSearchOptions, IconSearchResult, IconPreset } from './types.js';
 import { loadIconPreset } from './loader.js';
 
 /**
- * Search for icons across HugeIcons presets
+ * Search for icons across presets
  *
  * Searches icon names within the specified preset(s) and returns
  * matching results sorted by relevance.
@@ -19,7 +19,7 @@ import { loadIconPreset } from './loader.js';
  *
  * @example
  * ```typescript
- * import { searchIcons } from '@omnitron-dev/aether/svg/icons/presets/hugeicons';
+ * import { searchIcons } from '@omnitron-dev/aether/svg/icons/presets';
  *
  * // Search for user-related icons in stroke preset
  * const results = await searchIcons({
@@ -52,7 +52,7 @@ export async function searchIcons(
   }
 
   const searchQuery = caseSensitive ? query : query.toLowerCase();
-  const presetsToSearch: HugeIconPreset[] =
+  const presetsToSearch: IconPreset[] =
     preset === 'all' ? ['stroke', 'duotone', 'twotone'] : [preset];
 
   const allResults: IconSearchResult[] = [];
@@ -102,7 +102,7 @@ export async function searchIcons(
  *
  * @example
  * ```typescript
- * import { getMatchingIconNames } from '@omnitron-dev/aether/svg/icons/presets/hugeicons';
+ * import { getMatchingIconNames } from '@omnitron-dev/aether/svg/icons/presets';
  *
  * const names = await getMatchingIconNames({
  *   query: 'arrow',
@@ -189,8 +189,7 @@ function fuzzyMatch(str: string, pattern: string): boolean {
  * Search icons by category or metadata
  *
  * Note: This requires icons to have metadata.category or metadata.tags
- * populated. Currently, HugeIcons don't have comprehensive category
- * information, so this is a placeholder for future enhancement.
+ * populated. This is a placeholder for future enhancement.
  *
  * @param preset - Preset to search
  * @param filter - Metadata filter function
@@ -204,10 +203,10 @@ function fuzzyMatch(str: string, pattern: string): boolean {
  * ```
  */
 export async function searchByMetadata(
-  preset: HugeIconPreset | 'all',
+  preset: IconPreset | 'all',
   filter: (metadata: Record<string, any>) => boolean
 ): Promise<IconSearchResult[]> {
-  const presetsToSearch: HugeIconPreset[] =
+  const presetsToSearch: IconPreset[] =
     preset === 'all' ? ['stroke', 'duotone', 'twotone'] : [preset];
 
   const results: IconSearchResult[] = [];

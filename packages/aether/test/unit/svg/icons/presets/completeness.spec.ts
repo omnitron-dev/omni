@@ -5,8 +5,8 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 
-describe('HugeIcons Completeness Tests', () => {
-  const ICONS_DIR = join(process.cwd(), 'src/svg/icons/presets/hugeicons');
+describe('Icon Presets Completeness Tests', () => {
+  const ICONS_DIR = join(process.cwd(), 'src/svg/icons/presets');
   const PRESETS = ['stroke', 'duotone', 'twotone'] as const;
 
   /**

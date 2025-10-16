@@ -5,9 +5,9 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 
-describe('HugeIcons Transformation', () => {
+describe('Icon Presets Transformation', () => {
   const PRESETS = ['stroke', 'duotone', 'twotone'] as const;
-  const ICONS_DIR = join(process.cwd(), 'src/svg/icons/presets/hugeicons');
+  const ICONS_DIR = join(process.cwd(), 'src/svg/icons/presets');
 
   describe('Stroke Preset', () => {
     const strokeDir = join(ICONS_DIR, 'stroke');

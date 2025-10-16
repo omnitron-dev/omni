@@ -1,12 +1,12 @@
 /**
- * E2E Tests for HugeIcons Rendering
+ * E2E Tests for Icon Preset Rendering
  *
  * Note: These tests require a built dist/ directory.
  * Run `pnpm build` before executing E2E tests.
  */
 import { test, expect } from '@playwright/test';
 
-test.describe('HugeIcons E2E Rendering', () => {
+test.describe('Icon Presets E2E Rendering', () => {
   test.skip('should render stroke icon in browser', async ({ page }) => {
     // TODO: Create test page with icon rendering
     // TODO: Verify SVG is rendered correctly

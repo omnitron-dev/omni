@@ -5,10 +5,10 @@ import { describe, it, expect } from 'vitest';
 import { readdirSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 
-describe('HugeIcons Integrity Tests', () => {
-  const ICONS_DIR = join(process.cwd(), 'src/svg/icons/presets/hugeicons');
+describe('Icon Presets Integrity Tests', () => {
+  const ICONS_DIR = join(process.cwd(), 'src/svg/icons/presets');
   const PRESETS = ['stroke', 'duotone', 'twotone'] as const;
-  const EXPECTED_ICONS_PER_PRESET = 4559; // HugeIcons typically has 4,559 icons per preset
+  const EXPECTED_ICONS_PER_PRESET = 4559; // Icon library typically has 4,559 icons per preset
   const EXPECTED_TOTAL = EXPECTED_ICONS_PER_PRESET * 3; // 13,677 total
 
   describe('Icon Count', () => {

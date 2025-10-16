@@ -1,11 +1,11 @@
 /**
- * Tests for HugeIcons search utilities
+ * Tests for Icon Preset search utilities
  */
 
 import { describe, it, expect } from 'vitest';
-import { searchIcons, getMatchingIconNames } from '../utils/search.js';
+import { searchIcons, getMatchingIconNames } from '../../../../../src/svg/icons/presets/utils/search.js';
 
-describe('HugeIcons Search', () => {
+describe('Icon Preset Search', () => {
   describe('searchIcons', () => {
     it('should find icons by exact name match', async () => {
       const results = await searchIcons({

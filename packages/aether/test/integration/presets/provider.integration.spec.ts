@@ -3,17 +3,17 @@
  */
 import { describe, it, expect } from 'vitest';
 
-describe('HugeIcons Integration Tests', () => {
+describe('Icon Presets Integration Tests', () => {
   describe('IconProvider (Planned)', () => {
-    it.skip('should load HugeIcons stroke preset', () => {
+    it.skip('should load stroke preset', () => {
       // TODO: Implement once IconProvider exists
     });
 
-    it.skip('should load HugeIcons duotone preset', () => {
+    it.skip('should load duotone preset', () => {
       // TODO: Implement once IconProvider exists
     });
 
-    it.skip('should load HugeIcons twotone preset', () => {
+    it.skip('should load twotone preset', () => {
       // TODO: Implement once IconProvider exists
     });
 
@@ -23,7 +23,7 @@ describe('HugeIcons Integration Tests', () => {
   });
 
   describe('IconRegistry (Planned)', () => {
-    it.skip('should register all three HugeIcons presets', () => {
+    it.skip('should register all three icon presets', () => {
       // TODO: Implement once IconRegistry exists
     });
 
@@ -43,7 +43,7 @@ describe('HugeIcons Integration Tests', () => {
   describe('Tree-shaking', () => {
     it('should support importing individual icons', async () => {
       // Import a single icon
-      const { FirstBracketIcon } = await import('../../../src/svg/icons/presets/hugeicons/stroke/first-bracket.js');
+      const { FirstBracketIcon } = await import('../../../src/svg/icons/presets/stroke/first-bracket.js');
 
       expect(FirstBracketIcon).toBeDefined();
       expect(FirstBracketIcon.id).toBe('first-bracket');
@@ -51,7 +51,7 @@ describe('HugeIcons Integration Tests', () => {
     });
 
     it('should support importing from preset index', async () => {
-      const strokeModule = await import('../../../src/svg/icons/presets/hugeicons/stroke/index.js');
+      const strokeModule = await import('../../../src/svg/icons/presets/stroke/index.js');
 
       // Should have many exports
       const exports = Object.keys(strokeModule);
@@ -63,7 +63,7 @@ describe('HugeIcons Integration Tests', () => {
 
     it('should support selective imports for tree-shaking', async () => {
       // This import pattern allows bundlers to tree-shake unused icons
-      const { FirstBracketIcon, SecondBracketIcon } = await import('../../../src/svg/icons/presets/hugeicons/stroke/index.js');
+      const { FirstBracketIcon, SecondBracketIcon } = await import('../../../src/svg/icons/presets/stroke/index.js');
 
       expect(FirstBracketIcon).toBeDefined();
       expect(SecondBracketIcon).toBeDefined();
@@ -74,7 +74,7 @@ describe('HugeIcons Integration Tests', () => {
     it('should import icons without significant delay', async () => {
       const start = performance.now();
 
-      await import('../../../src/svg/icons/presets/hugeicons/stroke/first-bracket.js');
+      await import('../../../src/svg/icons/presets/stroke/first-bracket.js');
 
       const duration = performance.now() - start;
       expect(duration).toBeLessThan(100); // Should be very fast
@@ -83,7 +83,7 @@ describe('HugeIcons Integration Tests', () => {
     it('should import preset index without significant delay', async () => {
       const start = performance.now();
 
-      await import('../../../src/svg/icons/presets/hugeicons/stroke/index.js');
+      await import('../../../src/svg/icons/presets/stroke/index.js');
 
       const duration = performance.now() - start;
       expect(duration).toBeLessThan(500); // Allow more time for index

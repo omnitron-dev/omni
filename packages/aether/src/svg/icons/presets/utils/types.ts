@@ -1,19 +1,19 @@
 /**
- * HugeIcons Type Definitions
+ * Icon Preset Type Definitions
  */
 
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 /**
- * Available HugeIcon presets
+ * Available icon presets
  */
-export type HugeIconPreset = 'stroke' | 'duotone' | 'twotone';
+export type IconPreset = 'stroke' | 'duotone' | 'twotone';
 
 /**
- * HugeIcons preset metadata
+ * Icon preset metadata
  */
-export interface HugeIconsMetadata {
-  preset: HugeIconPreset;
+export interface IconPresetMetadata {
+  preset: IconPreset;
   count: number;
   license: string;
   source: string;
@@ -24,7 +24,7 @@ export interface HugeIconsMetadata {
  */
 export interface IconSearchOptions {
   /** Preset to search in, or 'all' for all presets */
-  preset?: HugeIconPreset | 'all';
+  preset?: IconPreset | 'all';
   /** Search query */
   query: string;
   /** Maximum number of results */
@@ -40,7 +40,7 @@ export interface IconSearchResult {
   /** Icon name (kebab-case) */
   name: string;
   /** Preset the icon belongs to */
-  preset: HugeIconPreset;
+  preset: IconPreset;
   /** Icon definition */
   definition: IconDefinition;
   /** Relevance score (0-1) */

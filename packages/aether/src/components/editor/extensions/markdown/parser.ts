@@ -58,7 +58,7 @@ function convertNode(node: Content, schema: Schema): PMNode | null {
       return convertListItem(node, schema);
 
     case 'thematicBreak':
-      return schema.nodes.horizontalRule?.create() || null;
+      return schema.nodes.horizontal_rule?.create() || null;
 
     case 'table':
       return convertTable(node, schema);
@@ -106,10 +106,10 @@ function convertBlockquote(node: any, schema: Schema): PMNode | null {
  * Convert code block node
  */
 function convertCodeBlock(node: any, schema: Schema): PMNode | null {
-  if (!schema.nodes.codeBlock) return null;
+  if (!schema.nodes.code_block) return null;
 
   const attrs = node.lang ? { language: node.lang } : {};
-  return schema.nodes.codeBlock.create(attrs, schema.text(node.value || ''));
+  return schema.nodes.code_block.create(attrs, schema.text(node.value || ''));
 }
 
 /**
@@ -117,9 +117,9 @@ function convertCodeBlock(node: any, schema: Schema): PMNode | null {
  */
 function convertList(node: any, schema: Schema): PMNode | null {
   const ordered = node.ordered;
-  const listType = ordered ? schema.nodes.orderedList : schema.nodes.bulletList;
+  const listType = ordered ? schema.nodes.ordered_list : schema.nodes.bullet_list;
 
-  if (!listType || !schema.nodes.listItem) return null;
+  if (!listType || !schema.nodes.list_item) return null;
 
   const items = node.children.map((child: any) => {
     // Child should be a list item
@@ -131,11 +131,11 @@ function convertList(node: any, schema: Schema): PMNode | null {
     }
 
     // Handle task list items
-    if (child.checked !== null && child.checked !== undefined && schema.nodes.taskItem) {
-      return schema.nodes.taskItem.create({ checked: child.checked }, content);
+    if (child.checked !== null && child.checked !== undefined && schema.nodes.task_item) {
+      return schema.nodes.task_item.create({ checked: child.checked }, content);
     }
 
-    return schema.nodes.listItem.create(null, content);
+    return schema.nodes.list_item.create(null, content);
   }).filter(Boolean) as PMNode[];
 
   return listType.create(ordered ? { order: node.start || 1 } : null, items);
@@ -145,7 +145,7 @@ function convertList(node: any, schema: Schema): PMNode | null {
  * Convert list item node (when called directly)
  */
 function convertListItem(node: any, schema: Schema): PMNode | null {
-  if (!schema.nodes.listItem) return null;
+  if (!schema.nodes.list_item) return null;
 
   const content = node.children.map((child: any) => convertNode(child, schema)).filter(Boolean) as PMNode[];
 
@@ -155,11 +155,11 @@ function convertListItem(node: any, schema: Schema): PMNode | null {
   }
 
   // Handle task list items
-  if (node.checked !== null && node.checked !== undefined && schema.nodes.taskItem) {
-    return schema.nodes.taskItem.create({ checked: node.checked }, content);
+  if (node.checked !== null && node.checked !== undefined && schema.nodes.task_item) {
+    return schema.nodes.task_item.create({ checked: node.checked }, content);
   }
 
-  return schema.nodes.listItem.create(null, content);
+  return schema.nodes.list_item.create(null, content);
 }
 
 /**
@@ -176,7 +176,7 @@ function convertTable(node: any, schema: Schema): PMNode | null {
  * Convert table row node
  */
 function convertTableRow(node: any, schema: Schema): PMNode | null {
-  if (!schema.nodes.tableRow) return null;
+  if (!schema.nodes.table_row) return null;
 
   const cells = node.children.map((child: any, index: number) => {
     // First row is header
@@ -184,14 +184,14 @@ function convertTableRow(node: any, schema: Schema): PMNode | null {
     return convertTableCell(child, schema, isHeader);
   }).filter(Boolean) as PMNode[];
 
-  return schema.nodes.tableRow.create(null, cells);
+  return schema.nodes.table_row.create(null, cells);
 }
 
 /**
  * Convert table cell node
  */
 function convertTableCell(node: any, schema: Schema, isHeader: boolean): PMNode | null {
-  const cellType = isHeader && schema.nodes.tableHeader ? schema.nodes.tableHeader : schema.nodes.tableCell;
+  const cellType = isHeader && schema.nodes.table_header ? schema.nodes.table_header : schema.nodes.table_cell;
   if (!cellType) return null;
 
   const content = convertInlineContent(node.children || [], schema);
@@ -267,8 +267,8 @@ function convertInlineContent(nodes: PhrasingContent[], schema: Schema): PMNode[
         break;
 
       case 'break':
-        if (schema.nodes.hardBreak) {
-          result.push(schema.nodes.hardBreak.create());
+        if (schema.nodes.hard_break) {
+          result.push(schema.nodes.hard_break.create());
         }
         break;
 

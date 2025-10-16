@@ -264,7 +264,7 @@ describe('Content Serialization', () => {
       editor.setContent('<ul><li><p>Item</p></li></ul>');
 
       const json = editor.getJSON();
-      expect(json.content![0].type).toBe('bulletList');
+      expect(json.content![0].type).toBe('bullet_list');
     });
 
     it('should serialize tables to JSON', () => {

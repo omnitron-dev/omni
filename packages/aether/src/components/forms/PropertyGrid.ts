@@ -457,8 +457,8 @@ const NumberPropertyRenderer = defineComponent<{
       size: ctx.size,
       children: [
         jsx(NumberInputField, { placeholder: property.placeholder }),
-        jsx(NumberInputIncrement, {}, '▲'),
-        jsx(NumberInputDecrement, {}, '▼'),
+        jsx(NumberInputIncrement, { children: '▲' }),
+        jsx(NumberInputDecrement, { children: '▼' }),
       ],
     });
   };
@@ -507,13 +507,13 @@ const SelectPropertyRenderer = defineComponent<{
           size: ctx.size,
           children: [
             jsx(SelectValue, { placeholder: property.placeholder || 'Select...' }),
-            jsx(SelectIcon, {}, '▼'),
+            jsx(SelectIcon, { children: '▼' }),
           ],
         }),
         jsx(SelectContent, {
           children: jsx(SelectViewport, {
             children: property.options.map((option) =>
-              jsx(SelectItem, { key: option.value, value: option.value }, option.label)
+              jsx(SelectItem, { key: option.value, value: option.value, children: option.label })
             ),
           }),
         }),

@@ -317,11 +317,22 @@ function applyProp(element: HTMLElement | SVGElement, key: string, value: any): 
   }
 
   // Handle boolean attributes
+  // Exception: data-*, aria-*, and draggable attributes should have string values 'true'/'false'
   if (typeof value === 'boolean') {
-    if (value) {
-      element.setAttribute(key, '');
+    if (key.startsWith('data-') || key.startsWith('aria-')) {
+      // For data-* and aria-* attributes, convert boolean to string
+      element.setAttribute(key, String(value));
+    } else if (key === 'draggable') {
+      // For draggable, set both attribute (string) and property (boolean)
+      element.setAttribute(key, String(value));
+      (element as any)[key] = value;
     } else {
-      element.removeAttribute(key);
+      // Standard HTML boolean attributes (disabled, checked, etc.)
+      if (value) {
+        element.setAttribute(key, '');
+      } else {
+        element.removeAttribute(key);
+      }
     }
     return;
   }

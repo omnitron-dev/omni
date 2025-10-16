@@ -304,21 +304,21 @@ describe('Markdown Parser', () => {
     it('should parse bullet list', () => {
       const markdown = '- Item 1\n- Item 2';
       const doc = parseMarkdown(markdown, schema);
-      expect(doc.firstChild?.type.name).toBe('bulletList');
+      expect(doc.firstChild?.type.name).toBe('bullet_list');
       expect(doc.firstChild?.childCount).toBe(2);
     });
 
     it('should parse ordered list', () => {
       const markdown = '1. Item 1\n2. Item 2';
       const doc = parseMarkdown(markdown, schema);
-      expect(doc.firstChild?.type.name).toBe('orderedList');
+      expect(doc.firstChild?.type.name).toBe('ordered_list');
       expect(doc.firstChild?.childCount).toBe(2);
     });
 
     it('should parse nested lists', () => {
       const markdown = '- Item 1\n  - Nested item';
       const doc = parseMarkdown(markdown, schema);
-      expect(doc.firstChild?.type.name).toBe('bulletList');
+      expect(doc.firstChild?.type.name).toBe('bullet_list');
     });
   });
 
@@ -340,13 +340,13 @@ describe('Markdown Parser', () => {
     it('should parse code block', () => {
       const markdown = '```\ncode\n```';
       const doc = parseMarkdown(markdown, schema);
-      expect(doc.firstChild?.type.name).toBe('codeBlock');
+      expect(doc.firstChild?.type.name).toBe('code_block');
     });
 
     it('should parse code block with language', () => {
       const markdown = '```javascript\nconst x = 1;\n```';
       const doc = parseMarkdown(markdown, schema);
-      expect(doc.firstChild?.type.name).toBe('codeBlock');
+      expect(doc.firstChild?.type.name).toBe('code_block');
       expect(doc.firstChild?.attrs.language).toBe('javascript');
     });
   });
@@ -374,13 +374,13 @@ describe('Markdown Parser', () => {
     it('should parse horizontal rule', () => {
       const markdown = '---';
       const doc = parseMarkdown(markdown, schema);
-      expect(doc.firstChild?.type.name).toBe('horizontalRule');
+      expect(doc.firstChild?.type.name).toBe('horizontal_rule');
     });
 
     it('should parse *** as horizontal rule', () => {
       const markdown = '***';
       const doc = parseMarkdown(markdown, schema);
-      expect(doc.firstChild?.type.name).toBe('horizontalRule');
+      expect(doc.firstChild?.type.name).toBe('horizontal_rule');
     });
   });
 });
@@ -521,8 +521,8 @@ describe('Markdown Serializer', () => {
   describe('Lists', () => {
     it('should serialize bullet list', () => {
       const doc = schema.node('doc', null, [
-        schema.node('bulletList', null, [
-          schema.node('listItem', null, [
+        schema.node('bullet_list', null, [
+          schema.node('list_item', null, [
             schema.node('paragraph', null, [schema.text('Item')]),
           ]),
         ]),
@@ -533,8 +533,8 @@ describe('Markdown Serializer', () => {
 
     it('should serialize ordered list', () => {
       const doc = schema.node('doc', null, [
-        schema.node('orderedList', null, [
-          schema.node('listItem', null, [
+        schema.node('ordered_list', null, [
+          schema.node('list_item', null, [
             schema.node('paragraph', null, [schema.text('Item')]),
           ]),
         ]),
@@ -559,7 +559,7 @@ describe('Markdown Serializer', () => {
   describe('Code blocks', () => {
     it('should serialize code block', () => {
       const doc = schema.node('doc', null, [
-        schema.node('codeBlock', null, [schema.text('code')]),
+        schema.node('code_block', null, [schema.text('code')]),
       ]);
       const markdown = serializeToMarkdown(doc);
       expect(markdown).toContain('```');
@@ -568,7 +568,7 @@ describe('Markdown Serializer', () => {
 
     it('should serialize code block with language', () => {
       const doc = schema.node('doc', null, [
-        schema.node('codeBlock', { language: 'javascript' }, [schema.text('const x = 1;')]),
+        schema.node('code_block', { language: 'javascript' }, [schema.text('const x = 1;')]),
       ]);
       const markdown = serializeToMarkdown(doc);
       expect(markdown).toContain('```javascript');
@@ -603,7 +603,7 @@ describe('Markdown Serializer', () => {
   describe('Horizontal rule', () => {
     it('should serialize horizontal rule', () => {
       const doc = schema.node('doc', null, [
-        schema.nodes.horizontalRule.create(),
+        schema.nodes.horizontal_rule.create(),
       ]);
       const markdown = serializeToMarkdown(doc);
       expect(markdown).toBe('---');

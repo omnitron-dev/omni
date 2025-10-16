@@ -674,14 +674,11 @@ export const DraggableTabs = defineComponent<DraggableTabsProps>((props) => {
         })
       : null;
 
-    return jsx(
-      'div',
-      {
-        className,
-        role: 'tablist',
-        'aria-orientation': 'horizontal',
-      },
-      jsx(TabsContainer, {
+    return jsx('div', {
+      className,
+      role: 'tablist',
+      'aria-orientation': 'horizontal',
+      children: jsx(TabsContainer, {
         children: [
           jsx(TabsScrollArea, {
             children: jsx(TabsList, {
@@ -690,8 +687,8 @@ export const DraggableTabs = defineComponent<DraggableTabsProps>((props) => {
           }),
           addButton,
         ].filter(Boolean),
-      })
-    );
+      }),
+    });
   };
 });
 

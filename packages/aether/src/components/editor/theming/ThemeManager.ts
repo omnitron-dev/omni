@@ -65,21 +65,21 @@ export class ThemeManager {
    * Get current theme name
    */
   get currentTheme(): string | null {
-    return this.currentThemeSignal.value;
+    return this.currentThemeSignal[0]();
   }
 
   /**
    * Get current theme signal (reactive)
    */
   get currentTheme$() {
-    return this.currentThemeSignal;
+    return this.currentThemeSignal[0];
   }
 
   /**
    * Check if theme is transitioning
    */
   get isTransitioning(): boolean {
-    return this.isTransitioningSignal.value;
+    return this.isTransitioningSignal[0]();
   }
 
   /**
@@ -105,7 +105,26 @@ export class ThemeManager {
    * Register multiple themes
    */
   registerThemes(themes: Theme[]): void {
-    themes.forEach(theme => this.registerTheme(theme));
+    const hadThemes = this.themes.size > 0;
+    themes.forEach((theme, index) => {
+      const validation = this.validateTheme(theme);
+      if (!validation.valid) {
+        throw new Error(
+          `Invalid theme: ${validation.errors.join(', ')}`
+        );
+      }
+      this.themes.set(theme.metadata.name, theme);
+    });
+
+    // Apply initial theme after all are registered (synchronously to avoid timing issues in tests)
+    if (!hadThemes && !this.currentTheme) {
+      if (this.config.autoDarkMode && this.darkModeMediaQuery) {
+        this.switchThemeMode(this.darkModeMediaQuery.matches);
+      } else if (themes.length > 0) {
+        // Apply theme without awaiting to maintain sync behavior
+        this.applyTheme(themes[0].metadata.name);
+      }
+    }
   }
 
   /**
@@ -140,9 +159,12 @@ export class ThemeManager {
 
     const previousTheme = this.currentTheme;
 
+    // Only use transitions when switching between themes (not on initial load)
+    const useTransitions = this.config.enableTransitions && previousTheme !== null;
+
     // Start transition
-    if (this.config.enableTransitions) {
-      this.isTransitioningSignal.value = true;
+    if (useTransitions) {
+      this.isTransitioningSignal[1](true);
       this.rootElement.classList.add('theme-transitioning');
     }
 
@@ -156,7 +178,7 @@ export class ThemeManager {
     this.updateThemeClass(theme.metadata.name);
 
     // Update current theme
-    this.currentThemeSignal.value = theme.metadata.name;
+    this.currentThemeSignal[1](theme.metadata.name);
 
     // Persist if enabled
     if (this.config.persist) {
@@ -164,9 +186,9 @@ export class ThemeManager {
     }
 
     // Wait for transition
-    if (this.config.enableTransitions) {
+    if (useTransitions) {
       await this.waitForTransition();
-      this.isTransitioningSignal.value = false;
+      this.isTransitioningSignal[1](false);
       this.rootElement.classList.remove('theme-transitioning');
     }
 

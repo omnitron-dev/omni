@@ -13,7 +13,10 @@ export default defineConfig({
     globals: true,
     environment: 'happy-dom',
     include: ['tests/**/*.{test,spec}.{ts,tsx}', 'test/**/*.{test,spec}.{ts,tsx}'],
-    exclude: ['benchmarks/**/*.bench.ts'],
+    exclude: [
+      'benchmarks/**/*.bench.ts',
+      'test/e2e/**/*.e2e.test.ts', // E2E tests require real browser environment
+    ],
     // Allow unhandled errors in tests where we're explicitly testing error handling
     // The errors ARE handled by the implementation, but Vitest tracks them before handlers execute
     dangerouslyIgnoreUnhandledErrors: true,

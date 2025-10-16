@@ -18,7 +18,7 @@ import type { JSONContent, ContentType, ParseOptions, SerializeOptions } from '.
 export function parseContent(
   content: string | JSONContent | undefined,
   schema: Schema,
-  type: ContentType = 'text',
+  type?: ContentType,
   options?: ParseOptions
 ): PMNode {
   // Default to empty document
@@ -26,7 +26,22 @@ export function parseContent(
     return schema.node('doc', null, [schema.node('paragraph')]);
   }
 
-  switch (type) {
+  // Auto-detect content type if not provided
+  let contentType = type;
+  if (!contentType && typeof content === 'string') {
+    // Check if content looks like HTML (contains HTML tags)
+    if (/<[a-z][\s\S]*>/i.test(content.trim())) {
+      contentType = 'html';
+    } else {
+      contentType = 'text';
+    }
+  } else if (!contentType && typeof content === 'object') {
+    contentType = 'json';
+  } else if (!contentType) {
+    contentType = 'text';
+  }
+
+  switch (contentType) {
     case 'json':
       return parseJSON(content as JSONContent, schema);
 
@@ -131,7 +146,7 @@ export function serializeText(doc: PMNode): string {
  */
 export function serializeContent(
   doc: PMNode,
-  type: ContentType = 'text',
+  type: ContentType = 'html',
   options?: SerializeOptions
 ): string | JSONContent {
   switch (type) {

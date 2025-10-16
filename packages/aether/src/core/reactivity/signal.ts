@@ -192,6 +192,14 @@ export function signal<T>(initial: T, options?: { equals?: (a: T, b: T) => boole
   // Store the internal signal instance for cleanup purposes
   (callable as any).__internal = s;
 
+  // Add .value getter/setter for compatibility with Vue and other frameworks
+  Object.defineProperty(callable, 'value', {
+    get: () => s.call(),
+    set: (value: T) => s.set(value),
+    enumerable: true,
+    configurable: true,
+  });
+
   // Add debug representation
   Object.defineProperty(callable, Symbol.for('nodejs.util.inspect.custom'), {
     value: () => `Signal(${JSON.stringify(s.peek())})`,
@@ -242,6 +250,13 @@ export function createSignal<T>(
   // Attach signal methods to the getter for isSignal detection
   (getter as any).peek = () => s.peek();
   (getter as any).subscribe = (fn: any) => s.subscribe(fn);
+
+  // Add .value getter for compatibility
+  Object.defineProperty(getter, 'value', {
+    get: () => s(),
+    enumerable: true,
+    configurable: true,
+  });
 
   return [getter as any, (value: T | ((prev: T) => T)) => s.set(value)];
 }

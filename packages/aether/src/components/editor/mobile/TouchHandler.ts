@@ -376,11 +376,9 @@ export class TouchHandlerExtension extends Extension {
    * Cancel long press timer
    */
   private cancelLongPress(): void {
-    if (this.touchState?.longPressTimer !== null) {
+    if (this.touchState && this.touchState.longPressTimer !== null) {
       clearTimeout(this.touchState.longPressTimer);
-      if (this.touchState) {
-        this.touchState.longPressTimer = null;
-      }
+      this.touchState.longPressTimer = null;
     }
   }
 

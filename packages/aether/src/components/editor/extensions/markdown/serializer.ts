@@ -54,7 +54,7 @@ class MarkdownSerializerState {
    */
   closeBlock(node: PMNode): void {
     this.closed = true;
-    if (node.type.name !== 'listItem') {
+    if (node.type.name !== 'list_item') {
       this.output += '\n';
     }
   }
@@ -155,7 +155,7 @@ const serializers: Record<string, (state: MarkdownSerializerState, node: PMNode,
     state.closeBlock(node);
   },
 
-  codeBlock(state, node) {
+  code_block(state, node) {
     const language = node.attrs.language || '';
     state.write('```' + language + '\n');
     state.write(node.textContent);
@@ -164,49 +164,49 @@ const serializers: Record<string, (state: MarkdownSerializerState, node: PMNode,
     state.closeBlock(node);
   },
 
-  horizontalRule(state) {
+  horizontal_rule(state, node) {
     state.write('---');
-    state.closeBlock({} as PMNode);
+    state.closeBlock(node);
   },
 
-  hardBreak(state, node, parent, index) {
+  hard_break(state, node, parent, index) {
     // Add two spaces at the end of the line for a hard break
     for (let i = index + 1; i < parent.childCount; i++) {
-      if (parent.child(i).type.name !== 'hardBreak') {
+      if (parent.child(i).type.name !== 'hard_break') {
         state.write('  \n');
         return;
       }
     }
   },
 
-  bulletList(state, node) {
+  bullet_list(state, node) {
     state.renderContent(node);
   },
 
-  orderedList(state, node) {
+  ordered_list(state, node) {
     const start = node.attrs.order || 1;
     node.forEach((child, _offset, index) => {
       state.write(`${start + index}. `);
-      if (child.type.name === 'listItem') {
+      if (child.type.name === 'list_item') {
         serializeListItem(state, child, node, index);
       }
     });
   },
 
-  listItem(state, node, parent) {
-    if (parent.type.name === 'bulletList') {
+  list_item(state, node, parent) {
+    if (parent.type.name === 'bullet_list') {
       state.write('- ');
       serializeListItem(state, node, parent, 0);
     }
   },
 
-  taskItem(state, node) {
+  task_item(state, node, parent) {
     const checked = node.attrs.checked;
     state.write(checked ? '- [x] ' : '- [ ] ');
-    serializeListItem(state, node, {} as PMNode, 0);
+    serializeListItem(state, node, parent, 0);
   },
 
-  taskList(state, node) {
+  task_list(state, node) {
     state.renderContent(node);
   },
 
@@ -240,15 +240,15 @@ const serializers: Record<string, (state: MarkdownSerializerState, node: PMNode,
     state.closeBlock(node);
   },
 
-  tableRow() {
+  table_row() {
     // Handled by table serializer
   },
 
-  tableCell() {
+  table_cell() {
     // Handled by table serializer
   },
 
-  tableHeader() {
+  table_header() {
     // Handled by table serializer
   },
 

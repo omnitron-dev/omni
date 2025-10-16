@@ -25,6 +25,21 @@
       "import": "./dist/core.js",
       "default": "./dist/core.js"
     },
+    "./reflection": {
+      "types": "./dist/reflection.d.ts",
+      "import": "./dist/reflection.js",
+      "default": "./dist/reflection.js"
+    },
+    "./registry": {
+      "types": "./dist/registry.d.ts",
+      "import": "./dist/registry.js",
+      "default": "./dist/registry.js"
+    },
+    "./flow-enhanced": {
+      "types": "./dist/flow-enhanced.d.ts",
+      "import": "./dist/flow-enhanced.js",
+      "default": "./dist/flow-enhanced.js"
+    },
     "./effects": {
       "types": "./dist/effects/index.d.ts",
       "import": "./dist/effects/index.js",
@@ -44,6 +59,41 @@
       "types": "./dist/effects/module.d.ts",
       "import": "./dist/effects/module.js",
       "default": "./dist/effects/module.js"
+    },
+    "./cognitive": {
+      "types": "./dist/cognitive/index.d.ts",
+      "import": "./dist/cognitive/index.js",
+      "default": "./dist/cognitive/index.js"
+    },
+    "./cognitive/knowledge": {
+      "types": "./dist/cognitive/knowledge.d.ts",
+      "import": "./dist/cognitive/knowledge.js",
+      "default": "./dist/cognitive/knowledge.js"
+    },
+    "./cognitive/memory": {
+      "types": "./dist/cognitive/memory.d.ts",
+      "import": "./dist/cognitive/memory.js",
+      "default": "./dist/cognitive/memory.js"
+    },
+    "./cognitive/learner": {
+      "types": "./dist/cognitive/learner.d.ts",
+      "import": "./dist/cognitive/learner.js",
+      "default": "./dist/cognitive/learner.js"
+    },
+    "./cognitive/reasoning": {
+      "types": "./dist/cognitive/reasoning.d.ts",
+      "import": "./dist/cognitive/reasoning.js",
+      "default": "./dist/cognitive/reasoning.js"
+    },
+    "./cognitive/planning": {
+      "types": "./dist/cognitive/planning.d.ts",
+      "import": "./dist/cognitive/planning.js",
+      "default": "./dist/cognitive/planning.js"
+    },
+    "./cognitive/patterns": {
+      "types": "./dist/cognitive/patterns.d.ts",
+      "import": "./dist/cognitive/patterns.js",
+      "default": "./dist/cognitive/patterns.js"
     },
     "./package.json": "./package.json"
   },

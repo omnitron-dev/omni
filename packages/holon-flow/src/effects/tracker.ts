@@ -150,7 +150,7 @@ export class EffectTracker {
     input: In,
     _context?: Context,
   ): Promise<Out> {
-    const effects = Array.from(flow.effects);
+    const effects = Array.from(flow._effects);
 
     // Track dependencies between effects
     for (let i = 0; i < effects.length - 1; i++) {
@@ -437,8 +437,9 @@ export function trackedFlow<In, Out>(
     return tracker.trackFlow(flow, input, context);
   }) as EffectFlow<In, Out>;
 
-  tracked.effects = flow.effects;
+  tracked._effects = flow._effects;
   tracked.flags = flow.flags;
+  tracked.effects = flow.effects.bind(flow);
   tracked.pipe = flow.pipe;
 
   return tracked;

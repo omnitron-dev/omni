@@ -1108,3 +1108,84 @@ export const repeat = <In, Out>(targetFlow: Flow<In, Out>, times: number): Flow<
       }),
     },
   );
+
+/**
+ * Creates a Flow that loops until a condition is met.
+ *
+ * @param condition - Condition to check after each iteration
+ * @param body - The Flow to execute in each iteration
+ * @param maxIterations - Maximum iterations to prevent infinite loops
+ * @returns A Flow that loops
+ *
+ * @example
+ * ```typescript
+ * const loop Until100 = loop(
+ *   (x: number) => x >= 100,
+ *   flow((x: number) => x * 2),
+ *   10
+ * );
+ * console.log(loopUntil100(1)); // 128 (1 → 2 → 4 → 8 → 16 → 32 → 64 → 128)
+ * ```
+ *
+ * @category Control
+ * @since 10.0.0
+ */
+export const loop = <T>(
+  condition: Flow<T, boolean>,
+  body: Flow<T, T>,
+  maxIterations = 1000,
+): Flow<T, T> =>
+  flow(
+    async (input: T) => {
+      let result = input;
+      let iterations = 0;
+
+      while (iterations < maxIterations) {
+        const shouldContinue = await condition(result);
+        if (!shouldContinue) {
+          break;
+        }
+        result = await body(result);
+        iterations++;
+      }
+
+      if (iterations >= maxIterations) {
+        throw new Error(`Loop exceeded maximum iterations: ${maxIterations}`);
+      }
+
+      return result;
+    },
+    {
+      name: 'loop',
+      description: `Loops ${body.meta?.name || 'flow'} until condition met`,
+      performance: { pure: false, memoizable: false },
+    },
+  );
+
+/**
+ * Creates a Flow that executes conditionally based on a predicate.
+ *
+ * Alias for `when()` with more explicit naming.
+ *
+ * @param predicate - Condition to check
+ * @param ifTrue - Flow to execute if true
+ * @param ifFalse - Flow to execute if false
+ * @returns A conditional Flow
+ *
+ * @example
+ * ```typescript
+ * const absolute = conditional(
+ *   (x: number) => x >= 0,
+ *   flow(x => x),
+ *   flow(x => -x)
+ * );
+ * ```
+ *
+ * @category Control
+ * @since 10.0.0
+ */
+export const conditional = <In, Out>(
+  predicate: Flow<In, boolean>,
+  ifTrue: Flow<In, Out>,
+  ifFalse: Flow<In, Out>,
+): Flow<In, Out> => when(predicate, ifTrue, ifFalse);

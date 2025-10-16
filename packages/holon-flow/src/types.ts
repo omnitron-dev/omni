@@ -5,6 +5,7 @@
  * - A function that transforms input to output
  * - A composable unit via the pipe method
  * - A container for metadata and effects
+ * - An introspectable and reflective object
  *
  * @template In - The input type
  * @template Out - The output type
@@ -27,6 +28,61 @@ export interface Flow<In = any, Out = any> {
    * Optional metadata about this Flow
    */
   readonly meta?: FlowMeta;
+
+  // Reflection methods (optional, may not be available on all flows)
+
+  /**
+   * Unique identifier for this Flow
+   * Content-based hash ensures reproducibility
+   */
+  readonly id?: string;
+
+  /**
+   * Version of this Flow
+   */
+  readonly version?: string;
+
+  /**
+   * Inspect the internal structure of this Flow
+   * Returns a tree-like representation of the Flow's composition
+   */
+  inspect?: () => any; // FlowStructure type (avoiding circular dependency)
+
+  /**
+   * Get all flows this Flow depends on
+   * Useful for dependency analysis and visualization
+   */
+  dependencies?: () => Flow[];
+
+  /**
+   * Get effect flags for this Flow
+   * Returns bitwise flags indicating side effects
+   */
+  effects?: () => number; // EffectFlags type
+
+  /**
+   * Optimize this Flow for better performance
+   * May apply transformations like memoization, constant folding, etc.
+   */
+  optimize?: () => Flow<In, Out>;
+
+  /**
+   * Transform this Flow using a transformer
+   * Allows programmatic Flow modification
+   */
+  transform?: (transformer: any) => Flow<In, Out>; // Transformer type
+
+  /**
+   * Serialize this Flow to JSON
+   * Useful for network transfer or storage
+   */
+  toJSON?: () => any; // FlowJSON type
+
+  /**
+   * Convert this Flow to a graph representation
+   * Useful for visualization and analysis
+   */
+  toGraph?: () => any; // FlowGraph type
 }
 
 /**

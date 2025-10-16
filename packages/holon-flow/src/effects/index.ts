@@ -108,14 +108,19 @@ export interface Effect<T = any, R = any> {
  */
 export interface EffectFlow<In = any, Out = any> extends Flow<In, Out> {
   /**
-   * Effects used by this Flow
+   * Effects used by this Flow (internal storage)
    */
-  effects: Set<Effect>;
+  _effects: Set<Effect>;
 
   /**
    * Effect flags (combined)
    */
   flags: EffectFlags;
+
+  /**
+   * Get effect flags for this Flow (implements Flow.effects())
+   */
+  effects(): EffectFlags;
 }
 
 /**
@@ -272,13 +277,16 @@ export function effectful<In, Out>(
   // Handle both Effect[] and EffectFlags
   if (typeof effectsOrFlags === 'number') {
     // It's EffectFlags
-    effectFlow.effects = new Set<Effect>();
+    effectFlow._effects = new Set<Effect>();
     effectFlow.flags = effectsOrFlags as EffectFlags;
   } else {
     // It's Effect[]
-    effectFlow.effects = new Set(effectsOrFlags);
+    effectFlow._effects = new Set(effectsOrFlags);
     effectFlow.flags = flags ?? effectsOrFlags.reduce((acc, e) => acc | e.flags, 0 as EffectFlags);
   }
+
+  // Add effects() method
+  effectFlow.effects = () => effectFlow.flags;
 
   return effectFlow;
 }
@@ -341,7 +349,7 @@ export class EffectInterpreter {
    */
   async run<In, Out>(flow: EffectFlow<In, Out>, input: In, _ctx: Context): Promise<Out> {
     // Check if all effects have handlers
-    for (const effect of flow.effects) {
+    for (const effect of flow._effects) {
       if (!this.handlers.has(effect.id)) {
         throw new Error(`No handler for effect: ${String(effect.id)}`);
       }

@@ -16,12 +16,14 @@
 export {
   batch,
   compose,
+  conditional,
   constant,
   debounce,
   fallback,
   filter,
   flow,
   identity,
+  loop,
   map,
   maybe,
   memoize,
@@ -52,6 +54,16 @@ export type {
   Result,
   TypeValidator,
 } from './types.js';
+
+// FlowMachine exports (advanced)
+export {
+  createFlowMachine,
+  composeMachine,
+  identityMachine,
+  constantMachine,
+  type FlowMachine,
+  type FlowMachineOptions,
+} from './machine.js';
 
 // Note: compose can be used as pipe since they have the same functionality
 // Users can import { compose as pipe } if they prefer the pipe naming

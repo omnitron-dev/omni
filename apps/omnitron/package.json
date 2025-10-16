@@ -43,7 +43,6 @@
     "start:web": "vite preview"
   },
   "dependencies": {
-    "@holon/effects": "workspace:*",
     "@holon/flow": "workspace:*",
     "@omnitron-dev/aether": "workspace:*",
     "@omnitron-dev/common": "workspace:*",

@@ -4,11 +4,11 @@
  * Full-featured development server for Aether with HMR, Fast Refresh, and more
  */
 
-import type { DevServer, DevServerConfig, DevMetrics, RenderContext } from './types.js';
-import type { FileWatcher, Middleware } from './types.js';
-import { HMREngine } from './hmr/engine.js';
-import { initFastRefresh } from './hmr/fast-refresh.js';
-import { createDevMiddleware } from './middleware/index.js';
+import type { DevServer, DevServerConfig, DevMetrics, RenderContext } from '../server/types.js';
+import type { FileWatcher, Middleware } from '../server/types.js';
+import { HMREngine } from '../server/hmr/engine.js';
+import { initFastRefresh } from '../server/hmr/fast-refresh.js';
+import { createDevMiddleware } from '../server/middleware/index.js';
 import { renderToString } from '../server/ssr.js';
 import { renderDocument } from '../server/renderer.js';
 

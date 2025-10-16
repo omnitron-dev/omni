@@ -1,10 +1,11 @@
 /**
  * Server Types
  *
- * Type definitions for SSR/SSG/Hydration/Streaming/Edge
+ * Unified type definitions for SSR/SSG/Hydration/Streaming/Edge and Dev Server
  */
 
 import type { RouteDefinition } from '../router/types.js';
+import type { ViteDevServer, Plugin as VitePlugin } from 'vite';
 
 /**
  * Server rendering mode
@@ -591,4 +592,198 @@ export interface ScriptTag {
 export interface StyleTag {
   content: string;
   [key: string]: string | undefined;
+}
+
+// ===== Dev Server Types =====
+
+/**
+ * Dev Server Configuration (extends ServerConfig)
+ */
+export interface DevServerConfig extends ServerConfig {
+  // Dev mode flag
+  dev: true;
+
+  // Dev features
+  hmr?: boolean | HMRConfig;
+  errorOverlay?: boolean | ErrorOverlayConfig;
+  cors?: boolean | CorsConfig;
+  compression?: boolean | CompressionConfig;
+
+  // Proxy
+  proxy?: Record<string, string | ProxyConfig>;
+
+  // Routes directory for file-based routing
+  routesDir?: string;
+
+  // Vite integration
+  vite?: {
+    configFile?: string;
+    plugins?: VitePlugin[];
+  };
+
+  // Dev options
+  clearScreen?: boolean;
+  open?: boolean | string;
+}
+
+/**
+ * Dev Server Instance (extends Server)
+ */
+export interface DevServer extends Server {
+  vite?: ViteDevServer;
+  watcher: FileWatcher;
+  hmr: HMREngine;
+  middleware: MiddlewareStack;
+
+  restart(): Promise<void>;
+  invalidate(path: string): void;
+  getMetrics(): DevMetrics;
+  use(middleware: Middleware): void;
+}
+
+// HMR Types
+export interface HMRConfig {
+  preserveState?: boolean;
+  reloadOnError?: boolean;
+  timeout?: number;
+  boundaries?: string[];
+  onUpdate?: (update: HMRUpdate) => void | Promise<void>;
+  onError?: (error: Error) => void;
+}
+
+export interface HMRUpdate {
+  type: 'update' | 'full-reload' | 'prune' | 'error';
+  path: string;
+  timestamp: number;
+  acceptedPath?: string;
+  explicitImportRequired?: boolean;
+}
+
+export interface HMRPayload {
+  type: 'connected' | 'update' | 'full-reload' | 'prune' | 'error' | 'custom';
+  updates?: HMRUpdate[];
+  error?: ErrorInfo;
+  data?: any;
+}
+
+export interface HMREngine {
+  handleUpdate(file: string): Promise<void>;
+  sendUpdate(update: HMRUpdate): Promise<void>;
+  sendCustom(event: string, data?: any): Promise<void>;
+  addConnection(ws: WebSocket): void;
+  removeConnection(ws: WebSocket): void;
+  getConnections(): Set<WebSocket>;
+}
+
+export interface ModuleNode {
+  id: string;
+  file: string;
+  type: 'component' | 'module' | 'asset';
+  importers: Set<ModuleNode>;
+  importedModules: Set<ModuleNode>;
+  acceptedHmr: boolean;
+  isSelfAccepting: boolean;
+  lastHMRTimestamp: number;
+}
+
+export interface ModuleGraph {
+  idToModuleMap: Map<string, ModuleNode>;
+  fileToModulesMap: Map<string, Set<ModuleNode>>;
+  getModuleById(id: string): ModuleNode | undefined;
+  getModulesByFile(file: string): Set<ModuleNode>;
+  invalidateModule(mod: ModuleNode): void;
+  updateModuleInfo(mod: ModuleNode, imported: Set<string>): void;
+}
+
+// Fast Refresh Types
+export interface ComponentState {
+  signals: Map<string, any>;
+  effects: Set<any>;
+  memos: Map<string, any>;
+}
+
+export interface FastRefreshConfig {
+  enabled?: boolean;
+  preserveLocalState?: boolean;
+  forceReset?: boolean;
+}
+
+// Error Types
+export interface ErrorOverlayConfig {
+  position?: 'top' | 'bottom' | 'center';
+  theme?: 'light' | 'dark' | 'auto';
+  showStack?: boolean;
+  showSource?: boolean;
+  openInEditor?: boolean;
+  editorUrl?: string;
+}
+
+export interface ErrorInfo {
+  type: 'syntax' | 'runtime' | 'ssr' | 'transform';
+  message: string;
+  stack?: string;
+  file?: string;
+  line?: number;
+  column?: number;
+  source?: string;
+  suggestions?: string[];
+  timestamp?: number;
+}
+
+// Middleware Types
+export interface Middleware {
+  name: string;
+  handle: (req: Request, next: () => Promise<Response>) => Response | Promise<Response>;
+}
+
+export interface MiddlewareStack {
+  use(middleware: Middleware): void;
+  handle(req: Request): Promise<Response>;
+}
+
+export interface CorsConfig {
+  origin?: string | string[] | boolean;
+  methods?: string[];
+  allowedHeaders?: string[];
+  exposedHeaders?: string[];
+  credentials?: boolean;
+  maxAge?: number;
+}
+
+export interface CompressionConfig {
+  threshold?: number;
+  level?: number;
+  filter?: (req: Request) => boolean;
+}
+
+export interface ProxyConfig {
+  target: string;
+  changeOrigin?: boolean;
+  rewrite?: (path: string) => string;
+  configure?: (proxy: any, options: ProxyConfig) => void;
+  ws?: boolean;
+}
+
+// File Watcher Types
+export interface FileWatcher {
+  add(path: string | string[]): void;
+  unwatch(path: string | string[]): void;
+  close(): Promise<void>;
+  on(event: 'add' | 'change' | 'unlink', handler: (path: string) => void): void;
+}
+
+// Dev Metrics
+export interface DevMetrics {
+  uptime: number;
+  requests: number;
+  avgResponseTime: number;
+  updates: number;
+  avgUpdateTime: number;
+  fullReloads: number;
+  transforms: number;
+  cacheHits: number;
+  cacheMisses: number;
+  heapUsed: number;
+  heapTotal: number;
+  rss: number;
 }

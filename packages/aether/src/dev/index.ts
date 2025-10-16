@@ -1,6 +1,9 @@
 /**
  * Aether Development Server
  *
+ * Re-exports from unified server module for backward compatibility.
+ * All dev server functionality is now integrated into @omnitron-dev/aether/server
+ *
  * Full-featured development server with:
  * - Hot Module Replacement (HMR)
  * - Fast Refresh for components
@@ -12,55 +15,55 @@
  * - SSR/SSG
  */
 
-// ===== Types =====
+// Re-export everything from unified server module
 export type {
+  // Dev Server Types
   DevServer,
   DevServerConfig,
   DevMetrics,
+  // HMR Types
   HMRConfig,
   HMRUpdate,
   HMRPayload,
-  HMREngine as IHMREngine,
-  FastRefreshConfig,
+  IHMREngine,
+  ModuleNode,
+  ModuleGraph,
+  // Fast Refresh Types
   ComponentState,
+  FastRefreshConfig,
+  // Error Types
   ErrorOverlayConfig,
   ErrorInfo,
+  // Middleware Types
   Middleware,
-  MiddlewareStack as IMiddlewareStack,
+  IMiddlewareStack,
   CorsConfig,
   CompressionConfig,
   ProxyConfig,
   FileWatcher,
-  ModuleNode,
-  ModuleGraph,
-} from './types.js';
+} from '../server/index.js';
 
-// ===== Dev Server =====
-export { createDevServer } from './server.js';
-
-// ===== HMR =====
+// Re-export all dev server functionality
 export {
+  // Dev Server
+  createDevServer,
+  // HMR
   HMREngine,
   HMRClient,
   initHMR,
   getHMRClient,
+  // Fast Refresh
   FastRefresh,
   initFastRefresh,
   getFastRefresh,
   withFastRefresh,
-} from './hmr/index.js';
-
-// ===== Error Handling =====
-export {
+  // Error Handling
   ErrorOverlay,
   initErrorOverlay,
   getErrorOverlay,
   showError,
   hideError,
-} from './error/index.js';
-
-// ===== Middleware =====
-export {
+  // Middleware
   MiddlewareStack,
   createDevMiddleware,
   createLoggerMiddleware,
@@ -68,4 +71,4 @@ export {
   createCompressionMiddleware,
   createStaticMiddleware,
   createHMRMiddleware,
-} from './middleware/index.js';
+} from '../server/index.js';

@@ -8,11 +8,11 @@
 // Re-export everything from devtools
 export * from '../devtools/index.js';
 
-// Also export dev-specific error overlay
+// Also export dev-specific error overlay from unified server
 export {
   ErrorOverlay,
   initErrorOverlay,
   getErrorOverlay,
   showError,
   hideError,
-} from './error/index.js';
+} from '../server/error/index.js';

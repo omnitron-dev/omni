@@ -131,3 +131,73 @@ export {
   createTwitterCardTags,
   createJSONLD,
 } from './meta.js';
+
+// ===== Dev Server Types =====
+export type {
+  // Dev Server
+  DevServer,
+  DevServerConfig,
+  DevMetrics,
+  // HMR
+  HMRConfig,
+  HMRUpdate,
+  HMRPayload,
+  HMREngine as IHMREngine,
+  ModuleNode,
+  ModuleGraph,
+  // Fast Refresh
+  ComponentState,
+  FastRefreshConfig,
+  // Error Handling
+  ErrorOverlayConfig,
+  ErrorInfo,
+  // Middleware
+  Middleware,
+  MiddlewareStack as IMiddlewareStack,
+  CorsConfig,
+  CompressionConfig,
+  ProxyConfig,
+  // File Watcher
+  FileWatcher,
+} from './types.js';
+
+// ===== Dev Server =====
+export { createDevServer } from '../dev/server.js';
+
+// ===== HMR =====
+export {
+  // HMR Engine
+  HMREngine,
+  // HMR Client
+  HMRClient,
+  initHMR,
+  getHMRClient,
+  // Fast Refresh
+  FastRefresh,
+  initFastRefresh,
+  getFastRefresh,
+  withFastRefresh,
+} from './hmr/index.js';
+
+// ===== Error Handling =====
+export {
+  // Error Overlay
+  ErrorOverlay,
+  initErrorOverlay,
+  getErrorOverlay,
+  showError,
+  hideError,
+} from './error/index.js';
+
+// ===== Dev Middleware =====
+export {
+  // Middleware Stack
+  MiddlewareStack,
+  createDevMiddleware,
+  // Individual Middleware
+  createLoggerMiddleware,
+  createCorsMiddleware,
+  createCompressionMiddleware,
+  createStaticMiddleware,
+  createHMRMiddleware,
+} from './middleware/index.js';

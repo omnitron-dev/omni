@@ -163,8 +163,11 @@ export class ExtensionManager {
 
     // Core plugins
 
-    // 1. History plugin (undo/redo)
-    plugins.push(history());
+    // 1. History plugin (undo/redo) - only if HistoryExtension is not present
+    const hasHistoryExtension = this.extensions.has('history');
+    if (!hasHistoryExtension) {
+      plugins.push(history());
+    }
 
     // 2. Keymap plugin (keyboard shortcuts)
     const keymapRules = this.getKeymap();

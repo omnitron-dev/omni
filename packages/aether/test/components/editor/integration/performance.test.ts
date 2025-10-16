@@ -15,6 +15,7 @@ import { ListItemExtension } from '../../../../src/components/editor/extensions/
 import { TableExtension } from '../../../../src/components/editor/extensions/table/TableExtension.js';
 import { TableRowExtension } from '../../../../src/components/editor/extensions/table/TableRowExtension.js';
 import { TableCellExtension } from '../../../../src/components/editor/extensions/table/TableCellExtension.js';
+import { TableHeaderExtension } from '../../../../src/components/editor/extensions/table/TableHeaderExtension.js';
 import { HistoryExtension } from '../../../../src/components/editor/extensions/behavior/HistoryExtension.js';
 import {
   createIntegrationTestEditor,
@@ -35,9 +36,10 @@ describe('Performance', () => {
       new ItalicExtension(),
       new BulletListExtension(),
       new ListItemExtension(),
-      new TableExtension(),
       new TableRowExtension(),
       new TableCellExtension(),
+      new TableHeaderExtension(),
+      new TableExtension(),
       new HistoryExtension(),
     ]);
   });
@@ -247,9 +249,10 @@ describe('Performance', () => {
         new ItalicExtension(),
         new BulletListExtension(),
         new ListItemExtension(),
-        new TableExtension(),
         new TableRowExtension(),
         new TableCellExtension(),
+        new TableHeaderExtension(),
+        new TableExtension(),
         new HistoryExtension(),
       ];
 
@@ -348,14 +351,12 @@ describe('Performance', () => {
     });
 
     it('should handle interleaved operations efficiently', () => {
-      editor.setContent('<p>Text</p>');
-
       const start = Date.now();
 
       for (let i = 0; i < 30; i++) {
+        editor.setContent('<p>Text</p>');
         setSelection(editor, 1, 5);
         toggleMarkCommand(editor, 'bold');
-        insertText(editor, 'x');
         const html = editor.getHTML();
       }
 

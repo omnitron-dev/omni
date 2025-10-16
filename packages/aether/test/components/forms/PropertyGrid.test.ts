@@ -66,7 +66,7 @@ describe('PropertyGrid', () => {
       const { container } = renderComponent(component);
 
       expect(container.textContent).toContain('Age');
-      const input = container.querySelector('input[type="number"]') as HTMLInputElement;
+      const input = container.querySelector('[data-number-input-field]') as HTMLInputElement;
       expect(input).toBeTruthy();
     });
 
@@ -403,7 +403,7 @@ describe('PropertyGrid', () => {
 
       const input = container.querySelector('input[type="text"]') as HTMLInputElement;
       input.value = 'Updated';
-      input.dispatchEvent(new Event('change', { bubbles: true }));
+      input.dispatchEvent(new Event('input', { bubbles: true }));
 
       expect(onChange).toHaveBeenCalledWith('name', 'Updated');
     });
@@ -483,14 +483,11 @@ describe('PropertyGrid', () => {
   describe('Custom properties', () => {
     it('should render custom property renderers', () => {
       const customRender = vi.fn(({ value, onChange }) => {
-        return {
-          type: 'div',
-          props: {
-            'data-testid': 'custom-renderer',
-            children: `Custom: ${value}`,
-            onClick: () => onChange('clicked'),
-          },
-        };
+        const div = document.createElement('div');
+        div.setAttribute('data-testid', 'custom-renderer');
+        div.textContent = `Custom: ${value}`;
+        div.onclick = () => onChange('clicked');
+        return div;
       });
 
       const properties: PropertyDescriptor[] = [

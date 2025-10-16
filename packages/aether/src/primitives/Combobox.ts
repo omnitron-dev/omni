@@ -462,7 +462,7 @@ export const ComboboxItem = defineComponent<ComboboxItemProps>((props) => {
     const item = jsx('div', {
       ...restProps,
       role: 'option',
-      'aria-selected': isSelected,
+      'aria-selected': isSelected ? 'true' : undefined,
       'aria-disabled': disabled ? 'true' : undefined,
       'data-combobox-item': '',
       'data-state': isSelected ? 'checked' : 'unchecked',

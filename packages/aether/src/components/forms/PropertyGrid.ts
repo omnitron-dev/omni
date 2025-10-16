@@ -420,9 +420,8 @@ const StringPropertyRenderer = defineComponent<{
     return jsx(Input, {
       type: 'text',
       value: property.value || '',
-      onChange: (e: Event) => {
-        const target = e.target as HTMLInputElement;
-        ctx.onChange(property.key, target.value);
+      onChange: (value: string) => {
+        ctx.onChange(property.key, value);
       },
       placeholder: property.placeholder,
       disabled: property.disabled,
@@ -765,9 +764,8 @@ export const PropertyGrid = defineComponent<PropertyGridProps>((props) => {
               type: 'search',
               placeholder: 'Search properties...',
               value: searchTerm(),
-              onChange: (e: Event) => {
-                const target = e.target as HTMLInputElement;
-                searchTerm.set(target.value);
+              onChange: (value: string) => {
+                searchTerm.set(value);
               },
               size,
             }),

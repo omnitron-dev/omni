@@ -165,10 +165,10 @@ describe('Command Chains', () => {
       editor.setContent('<p>Content</p>');
 
       editor.focus('start');
-      expect(editor.state.selection.from).toBe(0);
+      expect(editor.state.selection.from).toBe(1); // Position 1 is start of content
 
       editor.focus('end');
-      expect(editor.state.selection.from).toBeGreaterThan(0);
+      expect(editor.state.selection.from).toBeGreaterThan(1);
     });
 
     it('should chain selection expansion and formatting', () => {
@@ -315,7 +315,7 @@ describe('Command Chains', () => {
       editor.focus('start');
       editor.focus('start');
 
-      expect(editor.state.selection.from).toBe(0);
+      expect(editor.state.selection.from).toBe(1); // Position 1 is start of content
     });
   });
 

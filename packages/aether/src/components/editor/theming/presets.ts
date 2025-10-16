@@ -48,13 +48,13 @@ export const defaultTheme: Theme = {
     borderFocus: '#0066cc',
     borderDivider: '#eeeeee',
 
-    success: '#28a745',
+    success: '#1e7e34',
     successBg: '#d4edda',
-    warning: '#ffc107',
+    warning: '#997300',
     warningBg: '#fff3cd',
     error: '#dc3545',
     errorBg: '#f8d7da',
-    info: '#17a2b8',
+    info: '#138496',
     infoBg: '#d1ecf1',
 
     selection: '#0066cc',
@@ -199,13 +199,13 @@ export const minimalTheme: Theme = {
     borderFocus: '#000000',
     borderDivider: '#f5f5f5',
 
-    success: '#00aa00',
+    success: '#008800',
     successBg: '#e8f5e9',
-    warning: '#ff9800',
+    warning: '#b36d00',
     warningBg: '#fff3e0',
     error: '#dd0000',
     errorBg: '#ffebee',
-    info: '#0099cc',
+    info: '#008bb3',
     infoBg: '#e1f5fe',
 
     selection: '#000000',
@@ -352,7 +352,7 @@ export const githubTheme: Theme = {
 
     success: '#1a7f37',
     successBg: '#dafbe1',
-    warning: '#bf8700',
+    warning: '#9a6e00',
     warningBg: '#fff8c5',
     error: '#d1242f',
     errorBg: '#ffebe9',
@@ -633,8 +633,8 @@ export const highContrastTheme: Theme = {
     secondaryActive: '#333333',
 
     surface: '#ffffff',
-    surfaceHover: '#f0f0f0',
-    surfaceActive: '#e0e0e0',
+    surfaceHover: '#f5f5f5',
+    surfaceActive: '#e5e5e5',
     surfaceRaised: '#ffffff',
     surfaceOverlay: 'rgba(255, 255, 255, 1)',
 
@@ -642,19 +642,19 @@ export const highContrastTheme: Theme = {
     backgroundAlt: '#f5f5f5',
 
     text: '#000000',
-    textSecondary: '#000000',
+    textSecondary: '#1a1a1a',
     textTertiary: '#333333',
     textDisabled: '#666666',
     textInverse: '#ffffff',
 
     border: '#000000',
-    borderHover: '#000000',
+    borderHover: '#1a1a1a',
     borderFocus: '#0000ff',
     borderDivider: '#000000',
 
-    success: '#008000',
+    success: '#007000',
     successBg: '#e6ffe6',
-    warning: '#ff8800',
+    warning: '#c26700',
     warningBg: '#fff4e6',
     error: '#cc0000',
     errorBg: '#ffe6e6',

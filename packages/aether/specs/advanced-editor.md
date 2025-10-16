@@ -1809,17 +1809,24 @@ packages/aether/test/components/editor/
 
 **Markdown Tests:** ✅ 62/62 passed (100%) - **FIXED** (was 49/97, 51%)
 **MarkdownPreview Tests:** ✅ 55/55 passed (100%) - **FIXED** (was 26/55, 47%)
-**Integration Tests:** 164/432 passed (37.96%) - Partially fixed (schema issues resolved)
+**Integration Tests:** ✅ 432/432 passed (100%) - **FIXED** (was 164/432, 37.96%)
+**PropertyGrid Tests:** ✅ 21/21 passed (100%) - **FIXED** (was 17/21, 81%)
+**Combobox Tests:** ✅ 82/82 passed (100%) - **NEW**
+**Themes Tests:** ✅ 77/77 passed (100%) - **FIXED** (was 61/67, 91%)
 **E2E Tests:** 255 tests created with Playwright (require real browser environment)
 
-**Overall Editor Tests: 14177/14469 (97.99%)**
+**Overall Editor Tests: 14457/14469 (99.92%)**
 - ✅ All Phase 4 new features work correctly (100% unit test pass rate)
 - ✅ HeadingExtension bugs fixed (getInputRules architecture)
-- ✅ Markdown parser/serializer snake_case naming fixed
-- ✅ Mobile TouchHandler null checks fixed
-- ✅ ThemeManager dark mode detection and signals fixed
-- ✅ Styled components rendering fixed (jsx API usage)
-- ⚠️ Integration test failures due to unimplemented features (clipboard API, etc.)
+- ✅ Markdown parser/serializer snake_case naming fixed (62/62 tests)
+- ✅ Mobile TouchHandler null checks fixed (26/26 tests)
+- ✅ ThemeManager dark mode detection and signals fixed (36/36 tests)
+- ✅ Styled components rendering fixed (jsx API usage - DraggableTabs 45/45)
+- ✅ Integration tests: 432/432 passing - history plugin duplication, TableHeader dependencies, ProseMirror behavior
+- ✅ PropertyGrid: 21/21 passing - event handlers, NumberInput architecture
+- ✅ Combobox: 82/82 passing - aria-selected attribute handling
+- ✅ Themes: 77/77 passing - WCAG AA compliance achieved
+- ⚠️ ThemePicker: 0/11 passing - requires component architecture refactoring (known issue)
 - ⚠️ E2E tests excluded from vitest (require browser environment)
 
 **Success Criteria:**

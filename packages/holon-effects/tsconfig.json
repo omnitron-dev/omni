@@ -7,5 +7,5 @@
   },
   "include": ["src/**/*.ts", "test/**/*.ts"],
   "exclude": ["node_modules", "dist", "coverage"],
-  "references": [{ "path": "../flow" }, { "path": "../context" }]
+  "references": [{ "path": "../holon-flow" }]
 }

@@ -12,7 +12,7 @@ import {
   trackedFlow,
   trackedEffect
 } from '../src/tracker.js';
-import { context } from '../../holon-context/dist/index.js';
+import { context } from '@holon/flow/context';
 
 describe('Coverage Improvement Tests', () => {
   describe('throttleEffect - edge cases', () => {

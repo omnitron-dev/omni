@@ -1,4 +1,4 @@
-import type { Context } from '../../holon-context/dist/index.js';
+import type { Context } from '@holon/flow/context';
 
 /**
  * Type signature for algebraic effects

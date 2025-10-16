@@ -1,4 +1,4 @@
-import { context } from '../../holon-context/dist/index.js';
+import { context } from '@holon/flow/context';
 import { flow } from '@holon/flow';
 import { describe, expect, test, vi } from 'vitest';
 import {

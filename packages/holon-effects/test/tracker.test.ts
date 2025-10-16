@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest';
-import { context } from '../../holon-context/dist/index.js';
+import { context } from '@holon/flow/context';
 import { effect, effectful, EffectFlags } from '../src/index.js';
 import {
   EffectTracker,

@@ -1,4 +1,4 @@
-import type { Context } from '../../holon-context/dist/index.js';
+import type { Context } from '@holon/flow/context';
 import type { Effect, EffectFlow, EffectFlags } from './index.js';
 
 /**
@@ -433,7 +433,7 @@ export function trackedFlow<In, Out>(
   tracker: EffectTracker = globalTracker,
 ): EffectFlow<In, Out> {
   const tracked = (async (input: In) => {
-    const context = await import('../../holon-context/dist/index.js').then(m => m.getCurrentContext());
+    const context = await import('@holon/flow/context').then(m => m.getCurrentContext());
     return tracker.trackFlow(flow, input, context);
   }) as EffectFlow<In, Out>;
 

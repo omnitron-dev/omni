@@ -347,6 +347,69 @@ export const contextModule = createModule<{
 });
 
 /**
+ * Create a module that depends on another base module
+ * Generic helper for building extension modules
+ *
+ * @param name - Module name suffix (will be prefixed with base module namespace)
+ * @param baseDependency - Symbol/name of the base module to depend on
+ * @param factory - Factory function receiving context and base module instance
+ * @param options - Optional metadata (version, description, additional dependencies)
+ *
+ * @example
+ * ```typescript
+ * // Create a database effects module depending on @holon/effects
+ * const dbEffectsModule = createDependentModule(
+ *   'database-effects',
+ *   Symbol.for('holon:flow-effects'),
+ *   (ctx, effects) => ({
+ *     query: effects.io(async (sql) => db.query(sql)),
+ *     transaction: effects.io(async (fn) => db.transaction(fn))
+ *   }),
+ *   { version: '1.0.0', description: 'Database effects' }
+ * );
+ * ```
+ */
+export function createDependentModule<TBase extends object, T extends object>(
+  name: string | symbol,
+  baseDependency: string | symbol,
+  factory: (ctx: Context, baseModule: TBase) => T | Promise<T>,
+  options?: {
+    version?: string;
+    description?: string;
+    dependencies?: Array<string | symbol>;
+  },
+): ModuleDefinition<T> {
+  const definition: ModuleDefinition<T> = {
+    name: typeof name === 'symbol' ? name : Symbol.for(name),
+    version: options?.version ?? '1.0.0',
+    dependencies: [baseDependency, ...(options?.dependencies ?? [])],
+
+    factory: async (ctx: Context) => {
+      // Get base module instance from context
+      const baseInstance = ctx.get<TBase>(baseDependency);
+
+      if (!baseInstance) {
+        const depName = typeof baseDependency === 'symbol'
+          ? baseDependency.description
+          : baseDependency;
+        throw new Error(
+          `Base module '${depName}' not found. ` +
+          `Ensure it is loaded before '${String(name)}'.`
+        );
+      }
+
+      return factory(ctx, baseInstance);
+    },
+  };
+
+  if (options?.description !== undefined) {
+    definition.description = options.description;
+  }
+
+  return definition;
+}
+
+/**
  * Re-export context for convenience
  */
 export { createContext as context };

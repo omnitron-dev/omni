@@ -272,7 +272,7 @@ describe('Effects Module', () => {
       };
 
       await expect(customModule.factory(mockContext)).rejects.toThrow(
-        'Effects module not found'
+        "Base module 'holon:flow-effects' not found"
       );
     });
 

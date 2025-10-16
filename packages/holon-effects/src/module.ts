@@ -3,26 +3,9 @@
  * Provides modular access to effect system
  */
 
-// Local type definitions to avoid circular dependency
-export interface ModuleDefinition<T extends object> {
-  name: string | symbol;
-  version: string;
-  description?: string;
-  author?: string;
-  license?: string;
-  dependencies?: Array<string | symbol>;
-  peerDependencies?: Record<string, string>;
-  optionalDependencies?: Array<string | symbol>;
-  factory: (ctx: any) => T | Promise<T>;
-  onInit?: (ctx: any) => void | Promise<void>;
-  onDestroy?: () => void | Promise<void>;
-  config?: {
-    schema: any;
-    defaults: unknown;
-  };
-}
-
-type Context = any; // Will be provided at runtime
+import type { Context } from '@holon/flow/context';
+import type { ModuleDefinition } from '@holon/flow/module';
+import { createDependentModule } from '@holon/flow/module';
 import type { EffectFlow } from './index.js';
 
 /**
@@ -253,38 +236,37 @@ export const effectsModule: ModuleDefinition<EffectsModule> = {
 
 /**
  * Create an effects module with custom effects
+ * This is a convenience wrapper around createDependentModule specific to effects
+ *
+ * @param name - Module name suffix (will be prefixed with 'holon:effects-')
+ * @param factory - Factory function receiving context and effects API
+ * @param options - Optional metadata
+ *
+ * @example
+ * ```typescript
+ * const dbEffectsModule = createEffectsModule(
+ *   'database',
+ *   (ctx, effects) => ({
+ *     query: effects.io(async (sql) => db.query(sql)),
+ *     transaction: effects.io(async (fn) => db.transaction(fn))
+ *   }),
+ *   { version: '1.0.0', description: 'Database effects' }
+ * );
+ * ```
  */
 export function createEffectsModule<T extends object>(
   name: string,
-  factory: (ctx: Context, effects: EffectsModule['effects']) => T,
+  factory: (ctx: Context, effects: EffectsModule['effects']) => T | Promise<T>,
   options?: {
     version?: string;
     description?: string;
     dependencies?: Array<string | symbol>;
   },
 ): ModuleDefinition<T> {
-  const definition: ModuleDefinition<T> = {
-    name: Symbol.for(`holon:effects-${name}`),
-    version: options?.version ?? '1.0.0',
-    dependencies: [Symbol.for('holon:flow-effects'), ...(options?.dependencies ?? [])],
-
-    factory: async (ctx: Context) => {
-      // Get effects module
-      const effectsInstance = (await ctx.get(
-        Symbol.for('holon:flow-effects'),
-      )) as EffectsModule | undefined;
-
-      if (!effectsInstance) {
-        throw new Error('Effects module not found. Please load @holon/effects first.');
-      }
-
-      return factory(ctx, effectsInstance.effects);
-    },
-  };
-
-  if (options?.description !== undefined) {
-    definition.description = options.description;
-  }
-
-  return definition;
+  return createDependentModule<EffectsModule, T>(
+    Symbol.for(`holon:effects-${name}`),
+    Symbol.for('holon:flow-effects'),
+    (ctx, effectsModule) => factory(ctx, effectsModule.effects),
+    options,
+  );
 }

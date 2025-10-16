@@ -3,6 +3,10 @@
  *
  * Runtime-agnostic HTTP server for SSR/SSG
  * Works on Node.js 22+, Bun 1.2+, Deno 2.0+
+ *
+ * Supports both development and production modes:
+ * - Development: HMR, Fast Refresh, Error Overlay, DevTools
+ * - Production: Optimized SSR/SSG, Static Assets, Caching
  */
 
 import type { Server, ServerConfig, RenderContext } from './types.js';
@@ -11,6 +15,10 @@ import { renderToString, renderDocument } from './renderer.js';
 /**
  * Create HTTP server instance
  *
+ * Automatically detects and uses appropriate mode:
+ * - If config.dev is true or process.env.NODE_ENV === 'development', uses dev server
+ * - Otherwise uses production server
+ *
  * @param config - Server configuration
  * @returns Server instance
  *
@@ -18,6 +26,7 @@ import { renderToString, renderDocument } from './renderer.js';
  * ```typescript
  * import { createServer } from '@omnitron-dev/aether/server';
  *
+ * // Production server
  * const server = createServer({
  *   mode: 'ssr',
  *   routes: [
@@ -27,10 +36,39 @@ import { renderToString, renderDocument } from './renderer.js';
  *   port: 3000
  * });
  *
+ * // Development server with HMR
+ * const devServer = createServer({
+ *   dev: true,
+ *   mode: 'ssr',
+ *   routesDir: './src/pages',
+ *   port: 3000
+ * });
+ *
  * await server.listen();
  * ```
  */
-export function createServer(config: ServerConfig): Server {
+export async function createServer(config: ServerConfig): Promise<Server> {
+  // Check if dev mode requested
+  const isDev =
+    (config as any).dev === true ||
+    process.env.NODE_ENV === 'development' ||
+    process.env.AETHER_DEV === 'true';
+
+  // Delegate to dev server if in development mode
+  if (isDev) {
+    // Dynamic import to keep dev dependencies optional
+    const { createDevServer } = await import('../dev/server.js');
+    return createDevServer(config as any);
+  }
+
+  // Production server implementation
+  return createProductionServer(config);
+}
+
+/**
+ * Create production server
+ */
+function createProductionServer(config: ServerConfig): Server {
   const { port = 3000, host = '0.0.0.0' } = config;
 
   let serverInstance: any = null;

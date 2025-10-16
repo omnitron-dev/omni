@@ -62,6 +62,14 @@
       "types": "./dist/dev/index.d.ts",
       "import": "./dist/dev/index.js"
     },
+    "./dev/devtools": {
+      "types": "./dist/dev/devtools.d.ts",
+      "import": "./dist/dev/devtools.js"
+    },
+    "./cli": {
+      "types": "./dist/cli/index.d.ts",
+      "import": "./dist/cli/index.js"
+    },
     "./netron": {
       "types": "./dist/netron/index.d.ts",
       "import": "./dist/netron/index.js"

@@ -16,6 +16,8 @@ export default defineConfig({
     'primitives/index': 'src/primitives/index.ts',
     'server/index': 'src/server/index.ts',
     'dev/index': 'src/dev/index.ts',
+    'dev/devtools': 'src/dev/devtools.ts',
+    'cli/index': 'src/cli/index.ts',
     'netron/index': 'src/netron/index.ts',
     'store/index': 'src/store/index.ts',
     'data/index': 'src/data/index.ts',

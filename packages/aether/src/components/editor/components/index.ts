@@ -25,3 +25,9 @@ export type {
   StatusbarButton,
   StatusbarCustom,
 } from './Statusbar.js';
+
+export { MarkdownPreview, markdownPreviewStyles } from './MarkdownPreview.js';
+export type { MarkdownPreviewProps } from './MarkdownPreview.js';
+
+export { SearchPanel } from './SearchPanel.js';
+export type { SearchPanelProps } from './SearchPanel.js';

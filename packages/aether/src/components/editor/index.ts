@@ -89,6 +89,7 @@ export {
   LinkEditor,
   BubbleMenu,
   Statusbar,
+  SearchPanel,
   getDefaultToolbarItems,
   getDefaultBubbleMenuItems,
   getDefaultStatusbarItems,
@@ -109,6 +110,7 @@ export type {
   StatusbarText,
   StatusbarButton,
   StatusbarCustom,
+  SearchPanelProps,
 } from './components/index.js';
 
 // Behavior extensions
@@ -123,6 +125,10 @@ export type {
   PlaceholderOptions,
   DropCursorOptions,
 } from './extensions/behavior/index.js';
+
+// Search extension
+export { SearchExtension } from './extensions/search/index.js';
+export type { SearchOptions, SearchResult } from './extensions/search/index.js';
 
 // Table extensions
 export {
@@ -144,3 +150,23 @@ export type { LinkOptions, ImageOptions } from './extensions/media/index.js';
 // Code extensions
 export { CodeBlockExtension, SyntaxHighlightExtension } from './extensions/code/index.js';
 export type { CodeBlockOptions, SyntaxHighlightOptions } from './extensions/code/index.js';
+
+// Markdown extension
+export { MarkdownExtension, parseMarkdown, serializeToMarkdown } from './extensions/markdown/index.js';
+export type { MarkdownOptions } from './extensions/markdown/index.js';
+
+// Markdown preview component
+export { MarkdownPreview, markdownPreviewStyles } from './components/MarkdownPreview.js';
+export type { MarkdownPreviewProps } from './components/MarkdownPreview.js';
+
+// Collaboration extensions
+export {
+  CollaborationExtension,
+  CollaborationCursorExtension,
+} from './extensions/collaboration/index.js';
+export type {
+  CollaborationOptions,
+  CollaborationCursorOptions,
+  User,
+  AwarenessState,
+} from './extensions/collaboration/index.js';

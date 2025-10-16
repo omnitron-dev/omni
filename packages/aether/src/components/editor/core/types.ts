@@ -11,7 +11,6 @@ import type {
   NodeSpec,
   MarkSpec,
   NodeType,
-  MarkType,
 } from 'prosemirror-model';
 import type { EditorState, Transaction, Selection, Plugin, Command } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';

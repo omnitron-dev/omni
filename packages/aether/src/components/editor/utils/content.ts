@@ -86,9 +86,7 @@ export function parseText(text: string, schema: Schema): PMNode {
     return schema.node('doc', null, [schema.node('paragraph')]);
   }
 
-  const paragraphs = lines.map((line) => {
-    return schema.node('paragraph', null, line.length > 0 ? [schema.text(line)] : []);
-  });
+  const paragraphs = lines.map((line) => schema.node('paragraph', null, line.length > 0 ? [schema.text(line)] : []));
 
   return schema.node('doc', null, paragraphs);
 }

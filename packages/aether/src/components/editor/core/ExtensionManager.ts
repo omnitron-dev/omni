@@ -144,7 +144,7 @@ export class ExtensionManager {
    * Aggregate keymaps from all extensions
    */
   private getKeymap(): Record<string, Command> {
-    const keymap: Record<string, Command> = {
+    const keymapBindings: Record<string, Command> = {
       // Default undo/redo bindings
       'Mod-z': undo,
       'Mod-y': redo,
@@ -153,10 +153,10 @@ export class ExtensionManager {
 
     for (const ext of this.extensions.values()) {
       const extKeymap = ext.getKeyboardShortcuts?.() || {};
-      Object.assign(keymap, extKeymap);
+      Object.assign(keymapBindings, extKeymap);
     }
 
-    return keymap;
+    return keymapBindings;
   }
 
   /**

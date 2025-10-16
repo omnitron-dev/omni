@@ -23,3 +23,14 @@ export * from './secrets/index.js';
 export { VariablesLayer, ComputedRegistry, ComputedVariable, Interpolator, detectCircularDependencies } from './variables/index.js';
 export * from './tasks/index.js';
 export * from './targets/index.js';
+
+// Phase 3: Distribution
+export * from './sync/index.js';
+export * from './crdt/index.js';
+
+// Phase 4: Cognitive Layer
+export * from './cognitive/index.js';
+
+// Phase 5: Production Features
+export * from './security/index.js';
+export * from './monitoring/index.js';

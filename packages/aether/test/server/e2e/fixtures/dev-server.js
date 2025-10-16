@@ -34,6 +34,7 @@ const server = await createServer({
   hmr: true,
   errorOverlay: true,
   cors: true,
+  compression: false, // Disable compression to avoid encoding issues in tests
 });
 
 await server.listen();

@@ -6,6 +6,17 @@
 
 import { createServer } from '../../../../dist/server/index.js';
 
+// Error handling
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught exception in runtime test:', error);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled rejection in runtime test:', reason);
+  process.exit(1);
+});
+
 // Detect runtime
 function detectRuntime() {
   if (typeof Bun !== 'undefined') {
@@ -18,6 +29,7 @@ function detectRuntime() {
 }
 
 const runtime = detectRuntime();
+console.log(`Detected runtime: ${runtime}`);
 
 // Parse command line args
 const args = process.argv.slice(2);

@@ -203,9 +203,23 @@ export const ThemePicker = defineComponent<ThemePickerProps>(
       }
     };
 
-    return {
-      render,
-      afterRender: attachEvents,
+    // Return render function that creates DOM and attaches events
+    return () => {
+      const html = render();
+
+      // Create a container element
+      const container = document.createElement('div');
+      container.innerHTML = html;
+      const element = container.firstElementChild as HTMLElement;
+
+      // Attach events using effect (runs after DOM is attached)
+      createEffect(() => {
+        if (element && element.isConnected) {
+          attachEvents(element);
+        }
+      });
+
+      return element;
     };
   }
 );

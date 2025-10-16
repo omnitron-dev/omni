@@ -420,12 +420,14 @@ export class ThemeManager {
       const themeName = localStorage.getItem(this.config.storageKey);
       if (themeName && this.themes.has(themeName)) {
         this.applyTheme(themeName);
-      } else if (this.config.defaultTheme) {
+      } else if (this.config.defaultTheme && this.themes.has(this.config.defaultTheme)) {
+        // Only apply default theme if it's registered
         this.applyTheme(this.config.defaultTheme);
       }
     } catch (error) {
       console.warn('Failed to load persisted theme:', error);
-      if (this.config.defaultTheme) {
+      if (this.config.defaultTheme && this.themes.has(this.config.defaultTheme)) {
+        // Only apply default theme if it's registered
         this.applyTheme(this.config.defaultTheme);
       }
     }

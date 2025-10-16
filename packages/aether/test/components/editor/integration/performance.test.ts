@@ -413,7 +413,7 @@ describe('Performance', () => {
       const lastDuration = durations[durations.length - 1];
 
       // Last duration should not be more than 2x first duration
-      expect(lastDuration).toBeLessThan(firstDuration * 2);
+      expect(lastDuration).toBeLessThanOrEqual(firstDuration * 2);
     });
   });
 

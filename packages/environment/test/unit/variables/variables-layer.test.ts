@@ -88,7 +88,7 @@ describe('VariablesLayer', () => {
 
     expect(exported).toEqual({
       key1: 'value1',
-      key2: 'value2'
+      key2: 'value2',
     });
 
     const layer2 = new VariablesLayer();
@@ -103,7 +103,7 @@ describe('VariablesLayer', () => {
       const variables = {
         a: '${b}',
         b: '${c}',
-        c: '${a}'
+        c: '${a}',
       };
 
       const result = detectCircularDependencies(variables);
@@ -116,7 +116,7 @@ describe('VariablesLayer', () => {
       const variables = {
         a: 'value',
         b: '${a}',
-        c: '${b}'
+        c: '${b}',
       };
 
       const result = detectCircularDependencies(variables);

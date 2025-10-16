@@ -203,9 +203,7 @@ export class Interpolator {
 /**
  * Detect circular dependencies in variable references
  */
-export function detectCircularDependencies(
-  variables: Record<string, any>
-): { circular: boolean; cycles: string[][] } {
+export function detectCircularDependencies(variables: Record<string, any>): { circular: boolean; cycles: string[][] } {
   const graph = new Map<string, Set<string>>();
 
   // Build dependency graph
@@ -255,7 +253,7 @@ export function detectCircularDependencies(
 
   return {
     circular: cycles.length > 0,
-    cycles
+    cycles,
   };
 }
 

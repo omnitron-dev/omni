@@ -34,21 +34,23 @@
   "author": "Omnitron Architecture Team",
   "license": "MIT",
   "dependencies": {
+    "@iarna/toml": "^2.2.5",
     "@omnitron-dev/common": "workspace:*",
     "@xec-sh/core": "workspace:*",
-    "zod": "^3.24.1",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
-    "js-yaml": "^4.1.0",
     "fast-json-patch": "^3.1.1",
+    "js-yaml": "^4.1.0",
+    "jsonpath-plus": "^10.3.0",
     "nanoid": "^5.0.0",
-    "node-cron": "^3.0.3"
+    "node-cron": "^3.0.3",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^3.0.0",
     "typescript": "^5.8.3",
-    "vitest": "^3.0.0",
-    "@vitest/coverage-v8": "^3.0.0"
+    "vitest": "^3.0.0"
   }
 }

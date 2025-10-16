@@ -36,8 +36,35 @@ export interface WatchEvent {
 /**
  * Change callback for specific key changes
  */
-export type ChangeCallback<T = any> = (
-  newValue: T,
-  oldValue: T | undefined,
-  path: string
-) => void | Promise<void>;
+export type ChangeCallback<T = any> = (newValue: T, oldValue: T | undefined, path: string) => void | Promise<void>;
+
+/**
+ * Change event for watch callbacks
+ */
+export interface ChangeEvent {
+  type: 'set' | 'delete';
+  key: string;
+  newValue?: any;
+  oldValue?: any;
+  timestamp: Date;
+}
+
+/**
+ * Lifecycle callback for activation/deactivation hooks
+ */
+export type LifecycleCallback = (env: any) => void | Promise<void>;
+
+/**
+ * Error callback for error handling
+ */
+export type ErrorCallback = (error: Error, context: ErrorContext) => void | Promise<void>;
+
+/**
+ * Error context for error callbacks
+ */
+export interface ErrorContext {
+  operation?: string;
+  key?: string;
+  phase?: 'activate' | 'deactivate' | 'set' | 'delete' | 'validate' | 'save' | 'load';
+  [key: string]: any;
+}

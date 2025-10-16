@@ -173,16 +173,21 @@ export class MetricsCollector {
   /**
    * Get histogram statistics
    */
-  getHistogramStats(name: string, labels?: Record<string, string>): {
-    count: number;
-    sum: number;
-    min: number;
-    max: number;
-    avg: number;
-    p50: number;
-    p95: number;
-    p99: number;
-  } | undefined {
+  getHistogramStats(
+    name: string,
+    labels?: Record<string, string>
+  ):
+    | {
+        count: number;
+        sum: number;
+        min: number;
+        max: number;
+        avg: number;
+        p50: number;
+        p95: number;
+        p99: number;
+      }
+    | undefined {
     const key = this.getKey(name, labels);
     const values = this.histograms.get(key);
 

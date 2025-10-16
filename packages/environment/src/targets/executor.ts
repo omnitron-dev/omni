@@ -14,11 +14,7 @@ export class CommandExecutor {
   /**
    * Execute a command on a target
    */
-  async execute(
-    target: ResolvedTarget,
-    command: string,
-    options: ExecutionOptions = {}
-  ): Promise<ExecutionResult> {
+  async execute(target: ResolvedTarget, command: string, options: ExecutionOptions = {}): Promise<ExecutionResult> {
     const adapter = this.getAdapter(target);
     return adapter.execute(command, options);
   }

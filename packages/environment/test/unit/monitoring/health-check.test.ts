@@ -57,7 +57,7 @@ describe('HealthCheckManager', () => {
       name: 'slow',
       timeout: 10,
       check: async () => {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
         return {
           name: 'slow',
           status: 'healthy',

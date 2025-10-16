@@ -1,10 +1,4 @@
-import {
-  ExecutionOptions,
-  ExecutionResult,
-  ITargetsLayer,
-  ResolvedTarget,
-  TargetConfig
-} from '../types/layers.js';
+import { ExecutionOptions, ExecutionResult, ITargetsLayer, ResolvedTarget, TargetConfig } from '../types/layers.js';
 import { CommandExecutor } from './executor.js';
 
 /**
@@ -33,7 +27,7 @@ export class TargetsLayer implements ITargetsLayer {
     return {
       name,
       type: config.type,
-      config
+      config,
     };
   }
 
@@ -76,7 +70,7 @@ export class TargetsLayer implements ITargetsLayer {
         matches.push({
           name,
           type: config.type,
-          config
+          config,
         });
       }
     }
@@ -94,7 +88,7 @@ export class TargetsLayer implements ITargetsLayer {
       targets.push({
         name,
         type: config.type,
-        config
+        config,
       });
     }
 
@@ -104,11 +98,7 @@ export class TargetsLayer implements ITargetsLayer {
   /**
    * Execute a command on a target
    */
-  async execute(
-    targetName: string,
-    command: string,
-    options: ExecutionOptions = {}
-  ): Promise<ExecutionResult> {
+  async execute(targetName: string, command: string, options: ExecutionOptions = {}): Promise<ExecutionResult> {
     const target = await this.resolve(targetName);
     return this.executor.execute(target, command, options);
   }
@@ -120,7 +110,7 @@ export class TargetsLayer implements ITargetsLayer {
     // Try to detect local target
     if (name === 'local' || name === 'localhost') {
       const config: TargetConfig = {
-        type: 'local'
+        type: 'local',
       };
 
       this.define(name, config);
@@ -128,7 +118,7 @@ export class TargetsLayer implements ITargetsLayer {
       return {
         name,
         type: 'local',
-        config
+        config,
       };
     }
 

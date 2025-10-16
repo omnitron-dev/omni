@@ -129,7 +129,7 @@ describe('NodeRegistry', () => {
       const before = node.lastHeartbeat;
 
       // Wait a bit
-      return new Promise(resolve => setTimeout(resolve, 10)).then(() => {
+      return new Promise((resolve) => setTimeout(resolve, 10)).then(() => {
         const result = registry.heartbeat('node1');
 
         expect(result).toBe(true);

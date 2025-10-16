@@ -12,13 +12,13 @@ const schema = z.object({
   app: z.object({
     name: z.string(),
     version: z.string(),
-    port: z.number().min(1).max(65535)
+    port: z.number().min(1).max(65535),
   }),
   database: z.object({
     host: z.string(),
     port: z.number(),
-    name: z.string()
-  })
+    name: z.string(),
+  }),
 });
 
 async function main() {
@@ -34,14 +34,14 @@ async function main() {
       app: {
         name: 'MyApplication',
         version: '1.0.0',
-        port: 3000
+        port: 3000,
       },
       database: {
         host: 'localhost',
         port: 5432,
-        name: 'myapp_dev'
-      }
-    }
+        name: 'myapp_dev',
+      },
+    },
   });
 
   console.log(`✓ Environment '${env.name}' created`);
@@ -93,7 +93,12 @@ async function main() {
   console.log('8. Exporting configuration...');
   const yaml = env.toYAML();
   console.log('  YAML output:');
-  console.log(yaml.split('\n').map((line) => `    ${line}`).join('\n'));
+  console.log(
+    yaml
+      .split('\n')
+      .map((line) => `    ${line}`)
+      .join('\n')
+  );
 
   console.log('\n=== Example Complete ===');
 }

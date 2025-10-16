@@ -23,12 +23,12 @@ describe('Layers Integration', () => {
   it('should create environment with all layers', () => {
     const secretsProvider = new LocalSecretsProvider({
       storagePath: secretsPath,
-      password: 'test-password'
+      password: 'test-password',
     });
 
     const env = Environment.create({
       name: 'test-env',
-      secretsProvider
+      secretsProvider,
     });
 
     expect(env).toBeDefined();
@@ -40,7 +40,7 @@ describe('Layers Integration', () => {
 
   it('should use variables with tasks', async () => {
     const env = Environment.create({
-      name: 'test-env'
+      name: 'test-env',
     });
 
     // Define variables
@@ -48,7 +48,7 @@ describe('Layers Integration', () => {
 
     // Define task that uses variables
     env.tasks.define('greet', {
-      command: 'echo "${message}"'
+      command: 'echo "${message}"',
     });
 
     // Execute task
@@ -60,17 +60,17 @@ describe('Layers Integration', () => {
 
   it('should use targets with tasks', async () => {
     const env = Environment.create({
-      name: 'test-env'
+      name: 'test-env',
     });
 
     // Define local target
     env.targets.define('local', {
-      type: 'local'
+      type: 'local',
     });
 
     // Define task
     env.tasks.define('list', {
-      command: 'ls -la'
+      command: 'ls -la',
     });
 
     // Execute task on target
@@ -82,22 +82,22 @@ describe('Layers Integration', () => {
 
   it('should chain dependencies', async () => {
     const env = Environment.create({
-      name: 'test-env'
+      name: 'test-env',
     });
 
     // Define tasks with dependencies
     env.tasks.define('init', {
-      command: 'echo "initializing"'
+      command: 'echo "initializing"',
     });
 
     env.tasks.define('build', {
       command: 'echo "building"',
-      dependsOn: ['init']
+      dependsOn: ['init'],
     });
 
     env.tasks.define('test', {
       command: 'echo "testing"',
-      dependsOn: ['build']
+      dependsOn: ['build'],
     });
 
     // Get execution order
@@ -113,7 +113,7 @@ describe('Layers Integration', () => {
 
   it('should use computed variables', () => {
     const env = Environment.create({
-      name: 'test-env'
+      name: 'test-env',
     });
 
     // Define base variables
@@ -131,7 +131,7 @@ describe('Layers Integration', () => {
 
   it('should find targets by pattern', async () => {
     const env = Environment.create({
-      name: 'test-env'
+      name: 'test-env',
     });
 
     // Define multiple targets
@@ -143,7 +143,7 @@ describe('Layers Integration', () => {
     const prodTargets = await env.targets.find('prod-.*');
 
     expect(prodTargets).toHaveLength(2);
-    expect(prodTargets.every(t => t.name.startsWith('prod-'))).toBe(true);
+    expect(prodTargets.every((t) => t.name.startsWith('prod-'))).toBe(true);
   });
 
   it('should integrate config with variables', () => {
@@ -152,9 +152,9 @@ describe('Layers Integration', () => {
       config: {
         app: {
           name: 'MyApp',
-          version: '1.0.0'
-        }
-      }
+          version: '1.0.0',
+        },
+      },
     });
 
     // Copy config to variables
@@ -169,24 +169,24 @@ describe('Layers Integration', () => {
 
   it('should list all tasks with metadata', () => {
     const env = Environment.create({
-      name: 'test-env'
+      name: 'test-env',
     });
 
     env.tasks.define('task1', {
       command: 'echo "1"',
-      description: 'First task'
+      description: 'First task',
     });
 
     env.tasks.define('task2', {
       command: 'echo "2"',
       description: 'Second task',
-      dependsOn: ['task1']
+      dependsOn: ['task1'],
     });
 
     const tasks = env.tasks.list();
 
     expect(tasks).toHaveLength(2);
-    expect(tasks.find(t => t.name === 'task1')?.description).toBe('First task');
-    expect(tasks.find(t => t.name === 'task2')?.dependencies).toContain('task1');
+    expect(tasks.find((t) => t.name === 'task1')?.description).toBe('First task');
+    expect(tasks.find((t) => t.name === 'task2')?.dependencies).toContain('task1');
   });
 });

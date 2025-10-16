@@ -14,7 +14,7 @@ describe('ConflictResolver', () => {
     key: string,
     value: string,
     timestamp: number,
-    clock: Record<string, number>,
+    clock: Record<string, number>
   ): Change => ({
     id: `${nodeId}-1`,
     key,

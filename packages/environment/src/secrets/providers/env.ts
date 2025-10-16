@@ -57,10 +57,7 @@ export class EnvSecretsProvider extends BaseSecretsProvider {
 
     for (const key of Object.keys(process.env)) {
       if (key.startsWith(this.prefix)) {
-        const secretKey = key
-          .substring(this.prefix.length)
-          .toLowerCase()
-          .replace(/_/g, '.');
+        const secretKey = key.substring(this.prefix.length).toLowerCase().replace(/_/g, '.');
         keys.push(secretKey);
       }
     }

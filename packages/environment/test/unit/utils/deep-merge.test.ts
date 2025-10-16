@@ -43,7 +43,7 @@ describe('deepMerge', () => {
     const source = { value: 20 };
 
     const result = deepMerge(target, source, {
-      resolver: (key, left, right) => left + right
+      resolver: (key, left, right) => left + right,
     });
 
     expect(result.value).toBe(30);

@@ -167,18 +167,12 @@ export class NodeRegistry extends EventEmitter {
   /**
    * Find nodes by criteria
    */
-  findNodes(
-    criteria: Partial<NodeMetadata> & { status?: RegisteredNode['status'] },
-  ): RegisteredNode[] {
+  findNodes(criteria: Partial<NodeMetadata> & { status?: RegisteredNode['status'] }): RegisteredNode[] {
     return this.getAllNodes().filter((node) => {
       if (criteria.region && node.region !== criteria.region) return false;
-      if (criteria.datacenter && node.datacenter !== criteria.datacenter)
-        return false;
+      if (criteria.datacenter && node.datacenter !== criteria.datacenter) return false;
       if (criteria.status && node.status !== criteria.status) return false;
-      if (
-        criteria.capabilities &&
-        !criteria.capabilities.every((cap) => node.capabilities?.includes(cap))
-      ) {
+      if (criteria.capabilities && !criteria.capabilities.every((cap) => node.capabilities?.includes(cap))) {
         return false;
       }
       return true;

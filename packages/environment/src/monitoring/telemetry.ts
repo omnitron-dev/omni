@@ -34,11 +34,7 @@ export class Telemetry {
   /**
    * Track an event
    */
-  trackEvent(
-    name: string,
-    properties?: Record<string, unknown>,
-    measurements?: Record<string, number>,
-  ): void {
+  trackEvent(name: string, properties?: Record<string, unknown>, measurements?: Record<string, number>): void {
     if (!this.enabled) return;
 
     const event: TelemetryEvent = {
@@ -78,44 +74,22 @@ export class Telemetry {
   /**
    * Track a metric
    */
-  trackMetric(
-    name: string,
-    value: number,
-    properties?: Record<string, unknown>,
-  ): void {
+  trackMetric(name: string, value: number, properties?: Record<string, unknown>): void {
     this.trackEvent('Metric', properties, { [name]: value });
   }
 
   /**
    * Track a dependency call
    */
-  trackDependency(
-    name: string,
-    duration: number,
-    success: boolean,
-    properties?: Record<string, unknown>,
-  ): void {
-    this.trackEvent(
-      'Dependency',
-      { name, success, ...properties },
-      { duration },
-    );
+  trackDependency(name: string, duration: number, success: boolean, properties?: Record<string, unknown>): void {
+    this.trackEvent('Dependency', { name, success, ...properties }, { duration });
   }
 
   /**
    * Track a request
    */
-  trackRequest(
-    name: string,
-    duration: number,
-    success: boolean,
-    properties?: Record<string, unknown>,
-  ): void {
-    this.trackEvent(
-      'Request',
-      { name, success, ...properties },
-      { duration },
-    );
+  trackRequest(name: string, duration: number, success: boolean, properties?: Record<string, unknown>): void {
+    this.trackEvent('Request', { name, success, ...properties }, { duration });
   }
 
   /**
@@ -136,9 +110,7 @@ export class Telemetry {
    * Get events in time range
    */
   getEventsByTimeRange(startTime: number, endTime: number): TelemetryEvent[] {
-    return this.events.filter(
-      (e) => e.timestamp >= startTime && e.timestamp <= endTime,
-    );
+    return this.events.filter((e) => e.timestamp >= startTime && e.timestamp <= endTime);
   }
 
   /**

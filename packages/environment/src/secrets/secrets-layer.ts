@@ -148,7 +148,7 @@ export class SecretsLayer implements ISecretsLayer {
       key,
       timestamp: new Date(),
       user: 'system', // TODO: Get from context
-      action
+      action,
     };
 
     this.accessLogs.get(key)!.push(log);

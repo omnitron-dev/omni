@@ -84,12 +84,7 @@ describe('MergeAlgorithm', () => {
       const remote = { a: 1, b: 3 };
       const timestamps = { local: 1000, remote: 2000 };
 
-      const result = MergeAlgorithm.mergeWithStrategy(
-        local,
-        remote,
-        'newest-wins',
-        timestamps,
-      );
+      const result = MergeAlgorithm.mergeWithStrategy(local, remote, 'newest-wins', timestamps);
 
       expect(result.merged.b).toBe(3);
       expect(result.conflicts[0].reason).toContain('newer');

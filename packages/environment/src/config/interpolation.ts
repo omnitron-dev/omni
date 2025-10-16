@@ -34,10 +34,7 @@ export function interpolate(template: string, context: InterpolationContext): st
 /**
  * Interpolate variables in an object recursively
  */
-export function interpolateObject(
-  obj: any,
-  context: InterpolationContext
-): any {
+export function interpolateObject(obj: any, context: InterpolationContext): any {
   if (typeof obj === 'string') {
     return interpolate(obj, context);
   }

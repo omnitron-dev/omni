@@ -208,10 +208,7 @@ export class SyncProtocol implements ISyncProtocol {
   /**
    * Register a custom message handler
    */
-  onMessage(
-    type: string,
-    handler: (message: SyncMessage) => Promise<void>,
-  ): void {
+  onMessage(type: string, handler: (message: SyncMessage) => Promise<void>): void {
     this.messageHandlers.set(type, handler);
   }
 

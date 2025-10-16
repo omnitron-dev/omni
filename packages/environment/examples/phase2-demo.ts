@@ -13,7 +13,7 @@ async function main() {
   console.log('1. Creating environment with secrets...');
   const secretsProvider = new LocalSecretsProvider({
     storagePath: path.join(process.cwd(), '.secrets.json'),
-    password: 'demo-password'
+    password: 'demo-password',
   });
 
   await secretsProvider.initialize();
@@ -23,14 +23,14 @@ async function main() {
     config: {
       app: {
         name: 'MyApp',
-        version: '1.0.0'
+        version: '1.0.0',
       },
       database: {
         host: 'localhost',
-        port: 5432
-      }
+        port: 5432,
+      },
     },
-    secretsProvider
+    secretsProvider,
   });
 
   // 2. Work with secrets
@@ -55,15 +55,13 @@ async function main() {
   console.log(`App title: ${env.variables.get('appTitle')}`);
 
   // Variable interpolation
-  const interpolated = env.variables.interpolate(
-    'Running ${appName} in ${environment} mode'
-  );
+  const interpolated = env.variables.interpolate('Running ${appName} in ${environment} mode');
   console.log(`Interpolated: ${interpolated}`);
 
   // 4. Define targets
   console.log('\n4. Defining execution targets...');
   env.targets.define('local', {
-    type: 'local'
+    type: 'local',
   });
 
   console.log('Local target defined ✓');
@@ -73,30 +71,30 @@ async function main() {
 
   env.tasks.define('hello', {
     command: 'echo "Hello from task!"',
-    description: 'Print a greeting'
+    description: 'Print a greeting',
   });
 
   env.tasks.define('info', {
     command: 'echo "App: ${appName}, Version: ${appVersion}"',
-    description: 'Show app info'
+    description: 'Show app info',
   });
 
   env.tasks.define('build', {
     command: 'echo "Building application..."',
     description: 'Build the application',
-    dependsOn: ['info']
+    dependsOn: ['info'],
   });
 
   env.tasks.define('deploy', {
     command: 'echo "Deploying application..."',
     description: 'Deploy the application',
-    dependsOn: ['build']
+    dependsOn: ['build'],
   });
 
   // List all tasks
   const tasks = env.tasks.list();
   console.log(`Defined ${tasks.length} tasks:`);
-  tasks.forEach(task => {
+  tasks.forEach((task) => {
     console.log(`  - ${task.name}: ${task.description}`);
   });
 

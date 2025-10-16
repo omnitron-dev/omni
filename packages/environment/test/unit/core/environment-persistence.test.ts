@@ -21,7 +21,7 @@ describe('Environment Persistence', () => {
       const filePath = path.join(tempDir, 'test.yaml');
       const data = {
         name: 'test',
-        config: { foo: 'bar', nested: { value: 42 } }
+        config: { foo: 'bar', nested: { value: 42 } },
       };
 
       await fs.writeFile(filePath, JSON.stringify(data));
@@ -35,7 +35,7 @@ describe('Environment Persistence', () => {
     it('should save environment to file', async () => {
       const env = Environment.create({
         name: 'test',
-        config: { foo: 'bar' }
+        config: { foo: 'bar' },
       });
 
       const filePath = path.join(tempDir, 'saved.yaml');
@@ -48,7 +48,7 @@ describe('Environment Persistence', () => {
     it('should save and load roundtrip', async () => {
       const env = Environment.create({
         name: 'test',
-        config: { foo: 'bar', nested: { value: 42 } }
+        config: { foo: 'bar', nested: { value: 42 } },
       });
 
       const filePath = path.join(tempDir, 'roundtrip.yaml');
@@ -62,7 +62,7 @@ describe('Environment Persistence', () => {
     it('should throw error when saving without path', async () => {
       const env = Environment.create({
         name: 'test',
-        config: { foo: 'bar' }
+        config: { foo: 'bar' },
       });
 
       await expect(env.save()).rejects.toThrow('No path specified');
@@ -74,7 +74,7 @@ describe('Environment Persistence', () => {
       const storage = new MemoryStorage();
       const env = Environment.create({
         name: 'test',
-        config: { foo: 'bar' }
+        config: { foo: 'bar' },
       });
 
       env.setStorage(storage);
@@ -87,7 +87,7 @@ describe('Environment Persistence', () => {
       const storage = new MemoryStorage();
       await storage.write('test-path', {
         name: 'test',
-        config: { foo: 'bar' }
+        config: { foo: 'bar' },
       });
 
       const env = Environment.create({ name: 'temp', config: {} });

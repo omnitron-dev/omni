@@ -26,10 +26,10 @@ export class LocalAdapter extends BaseTargetAdapter {
         env: {
           ...process.env,
           ...this.config.env,
-          ...options.env
+          ...options.env,
         },
         timeout: options.timeout,
-        shell: options.shell || '/bin/bash'
+        shell: options.shell || '/bin/bash',
       });
 
       return {
@@ -37,7 +37,7 @@ export class LocalAdapter extends BaseTargetAdapter {
         stdout: stdout,
         stderr: stderr,
         exitCode: 0,
-        duration: Date.now() - startTime
+        duration: Date.now() - startTime,
       };
     } catch (error: any) {
       return {
@@ -45,7 +45,7 @@ export class LocalAdapter extends BaseTargetAdapter {
         stdout: error.stdout || '',
         stderr: error.stderr || error.message,
         exitCode: error.code || 1,
-        duration: Date.now() - startTime
+        duration: Date.now() - startTime,
       };
     }
   }

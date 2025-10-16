@@ -114,7 +114,7 @@ describe('LWWMap', () => {
       map1.set('key1', 'value-from-node1');
 
       // Small delay to ensure different timestamp
-      const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+      const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
       return delay(10).then(() => {
         map2.set('key1', 'value-from-node2');

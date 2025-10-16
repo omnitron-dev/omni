@@ -10,12 +10,12 @@ describe('ConfigLayer', () => {
       app: {
         name: 'TestApp',
         version: '1.0.0',
-        port: 3000
+        port: 3000,
       },
       database: {
         host: 'localhost',
-        port: 5432
-      }
+        port: 5432,
+      },
     });
   });
 
@@ -53,8 +53,8 @@ describe('ConfigLayer', () => {
         app: {
           name: 'TestApp',
           version: '1.0.0',
-          port: 3000
-        }
+          port: 3000,
+        },
       });
     });
 
@@ -75,12 +75,12 @@ describe('ConfigLayer', () => {
       const schema = z.object({
         app: z.object({
           name: z.string(),
-          port: z.number()
-        })
+          port: z.number(),
+        }),
       });
 
       const validConfig = new ConfigLayer(schema, {
-        app: { name: 'Test', port: 3000 }
+        app: { name: 'Test', port: 3000 },
       });
 
       const result = await validConfig.validate();
@@ -91,12 +91,12 @@ describe('ConfigLayer', () => {
       const schema = z.object({
         app: z.object({
           name: z.string(),
-          port: z.number()
-        })
+          port: z.number(),
+        }),
       });
 
       const invalidConfig = new ConfigLayer(schema, {
-        app: { name: 'Test', port: 'invalid' }
+        app: { name: 'Test', port: 'invalid' },
       });
 
       const result = await invalidConfig.validate();
@@ -112,15 +112,15 @@ describe('ConfigLayer', () => {
             type: 'object',
             properties: {
               name: { type: 'string' },
-              port: { type: 'number' }
+              port: { type: 'number' },
             },
-            required: ['name', 'port']
-          }
-        }
+            required: ['name', 'port'],
+          },
+        },
       };
 
       const validConfig = new ConfigLayer(schema, {
-        app: { name: 'Test', port: 3000 }
+        app: { name: 'Test', port: 3000 },
       });
 
       const result = await validConfig.validate();
@@ -133,16 +133,16 @@ describe('ConfigLayer', () => {
       const configWithVars = new ConfigLayer(undefined, {
         app: {
           name: '${appName}',
-          url: 'https://${domain}:${port}'
-        }
+          url: 'https://${domain}:${port}',
+        },
       });
 
       await configWithVars.resolve({
         variables: {
           appName: 'TestApp',
           domain: 'example.com',
-          port: '3000'
-        }
+          port: '3000',
+        },
       });
 
       expect(configWithVars.get('app.name')).toBe('TestApp');

@@ -6,15 +6,11 @@ import { TaskConfig, TaskDefinition } from '../types/layers.js';
 export function parseTaskDefinition(name: string, config: TaskConfig): TaskDefinition {
   // Validate config
   if (!config.command && !config.script && !config.steps) {
-    throw new Error(
-      `Task '${name}' must have either 'command', 'script', or 'steps' defined`
-    );
+    throw new Error(`Task '${name}' must have either 'command', 'script', or 'steps' defined`);
   }
 
   if (config.steps && (config.command || config.script)) {
-    throw new Error(
-      `Task '${name}' cannot have both 'steps' and 'command'/'script'`
-    );
+    throw new Error(`Task '${name}' cannot have both 'steps' and 'command'/'script'`);
   }
 
   // Validate dependencies
@@ -32,16 +28,14 @@ export function parseTaskDefinition(name: string, config: TaskConfig): TaskDefin
       }
 
       if (!step.command && !step.task) {
-        throw new Error(
-          `Task '${name}' step '${step.name}' must have either 'command' or 'task'`
-        );
+        throw new Error(`Task '${name}' step '${step.name}' must have either 'command' or 'task'`);
       }
     }
   }
 
   return {
     name,
-    config
+    config,
   };
 }
 

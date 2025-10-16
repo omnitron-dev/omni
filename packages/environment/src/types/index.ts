@@ -9,3 +9,5 @@ export * from './operations.js';
 export * from './schema.js';
 export * from './storage.js';
 export * from './validation.js';
+export * from './distributed.js';
+export * from './cognitive.js';

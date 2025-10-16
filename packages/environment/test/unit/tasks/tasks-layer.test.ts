@@ -8,7 +8,7 @@ describe('TasksLayer', () => {
 
     layer.define('hello', {
       command: 'echo "Hello World"',
-      description: 'Print hello'
+      description: 'Print hello',
     });
 
     const task = layer.get('hello');
@@ -39,7 +39,7 @@ describe('TasksLayer', () => {
     const layer = new TasksLayer();
 
     layer.define('test', {
-      command: 'echo "test output"'
+      command: 'echo "test output"',
     });
 
     const result = await layer.run('test');
@@ -55,7 +55,7 @@ describe('TasksLayer', () => {
     layer.define('dep2', { command: 'echo "dep2"' });
     layer.define('main', {
       command: 'echo "main"',
-      dependsOn: ['dep1', 'dep2']
+      dependsOn: ['dep1', 'dep2'],
     });
 
     const deps = layer.getDependencies('main');
@@ -85,8 +85,8 @@ describe('TasksLayer', () => {
     const list = layer.list();
 
     expect(list).toHaveLength(2);
-    expect(list.some(t => t.name === 'task1')).toBe(true);
-    expect(list.some(t => t.name === 'task2')).toBe(true);
+    expect(list.some((t) => t.name === 'task1')).toBe(true);
+    expect(list.some((t) => t.name === 'task2')).toBe(true);
   });
 
   it('should explain task execution order', () => {
@@ -109,7 +109,7 @@ describe('TasksLayer', () => {
         a: [],
         b: ['a'],
         c: ['a', 'b'],
-        d: ['c']
+        d: ['c'],
       };
 
       const order = resolveDependencies(graph);
@@ -123,7 +123,7 @@ describe('TasksLayer', () => {
       const graph = {
         a: ['b'],
         b: ['c'],
-        c: ['a']
+        c: ['a'],
       };
 
       expect(() => resolveDependencies(graph)).toThrow(/circular dependency/i);

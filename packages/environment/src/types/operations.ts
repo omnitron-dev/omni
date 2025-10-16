@@ -40,5 +40,71 @@ export interface MergeStrategy {
 export const DEFAULT_MERGE_STRATEGY: Required<Omit<MergeStrategy, 'resolver'>> = {
   strategy: 'deep',
   arrays: 'replace',
-  conflicts: 'prefer-right'
+  conflicts: 'prefer-right',
 };
+
+/**
+ * Policy condition operator types
+ */
+export type PolicyOperator =
+  | 'equals'
+  | 'notEquals'
+  | 'in'
+  | 'notIn'
+  | 'greaterThan'
+  | 'lessThan'
+  | 'matches'
+  | 'exists';
+
+/**
+ * Policy condition for attribute-based evaluation
+ */
+export interface PolicyCondition {
+  attribute: string;
+  operator: PolicyOperator;
+  value?: any;
+}
+
+/**
+ * Complex policy conditions with logical operators
+ */
+export interface PolicyConditions {
+  and?: PolicyCondition[];
+  or?: PolicyCondition[];
+  not?: PolicyCondition;
+}
+
+/**
+ * Access control policy for ABAC
+ */
+export interface Policy {
+  effect: 'allow' | 'deny';
+  principal: {
+    roles?: string[];
+    attributes?: Record<string, any>;
+  };
+  resource: {
+    paths: string[];
+    types?: string[];
+    exclude?: string[];
+  };
+  actions: string[];
+  conditions?: PolicyConditions;
+}
+
+/**
+ * Context for policy evaluation
+ */
+export interface PolicyContext {
+  principal: {
+    id: string;
+    [key: string]: any;
+  };
+  resource: {
+    path: string;
+    type?: string;
+    [key: string]: any;
+  };
+  action: string;
+  context?: Record<string, any>;
+}

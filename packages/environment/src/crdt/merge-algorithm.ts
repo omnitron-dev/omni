@@ -24,10 +24,7 @@ export class MergeAlgorithm {
   /**
    * Merge two LWW-Maps
    */
-  static mergeLWWMaps<T>(
-    local: LWWMap<T>,
-    remote: LWWMapState<T>,
-  ): MergeResult<LWWMap<T>> {
+  static mergeLWWMaps<T>(local: LWWMap<T>, remote: LWWMapState<T>): MergeResult<LWWMap<T>> {
     const conflicts: ConflictInfo[] = [];
     const localState = local.getState();
 
@@ -43,8 +40,7 @@ export class MergeAlgorithm {
             key,
             localValue: localEntry.value,
             remoteValue: remoteEntry.value,
-            resolution:
-              remoteEntry.timestamp > localEntry.timestamp ? 'remote' : 'local',
+            resolution: remoteEntry.timestamp > localEntry.timestamp ? 'remote' : 'local',
             reason: 'Concurrent modification resolved by timestamp',
           });
         }
@@ -64,19 +60,11 @@ export class MergeAlgorithm {
   /**
    * Three-way merge for complex objects
    */
-  static threeWayMerge<T extends Record<string, unknown>>(
-    base: T,
-    local: T,
-    remote: T,
-  ): MergeResult<T> {
+  static threeWayMerge<T extends Record<string, unknown>>(base: T, local: T, remote: T): MergeResult<T> {
     const merged: Record<string, unknown> = { ...base };
     const conflicts: ConflictInfo[] = [];
 
-    const allKeys = new Set([
-      ...Object.keys(base),
-      ...Object.keys(local),
-      ...Object.keys(remote),
-    ]);
+    const allKeys = new Set([...Object.keys(base), ...Object.keys(local), ...Object.keys(remote)]);
 
     for (const key of allKeys) {
       const baseValue = base[key];
@@ -128,7 +116,7 @@ export class MergeAlgorithm {
     local: T,
     remote: T,
     strategy: 'local-wins' | 'remote-wins' | 'newest-wins' = 'remote-wins',
-    timestamps?: { local: number; remote: number },
+    timestamps?: { local: number; remote: number }
   ): MergeResult<T> {
     const merged: Record<string, unknown> = {};
     const conflicts: ConflictInfo[] = [];
@@ -209,10 +197,7 @@ export class MergeAlgorithm {
   /**
    * Deep merge objects recursively
    */
-  static deepMerge<T extends Record<string, unknown>>(
-    target: T,
-    source: T,
-  ): T {
+  static deepMerge<T extends Record<string, unknown>>(target: T, source: T): T {
     const result: Record<string, unknown> = { ...target };
 
     for (const key in source) {
@@ -227,10 +212,7 @@ export class MergeAlgorithm {
         !Array.isArray(targetValue) &&
         !Array.isArray(sourceValue)
       ) {
-        result[key] = this.deepMerge(
-          targetValue as Record<string, unknown>,
-          sourceValue as Record<string, unknown>,
-        );
+        result[key] = this.deepMerge(targetValue as Record<string, unknown>, sourceValue as Record<string, unknown>);
       } else {
         result[key] = sourceValue;
       }

@@ -13,11 +13,7 @@ export interface ConflictResolution {
   reason: string;
 }
 
-export type ConflictStrategy =
-  | 'last-write-wins'
-  | 'vector-clock'
-  | 'custom'
-  | 'manual';
+export type ConflictStrategy = 'last-write-wins' | 'vector-clock' | 'custom' | 'manual';
 
 export interface ConflictResolverOptions {
   defaultStrategy?: ConflictStrategy;
@@ -25,9 +21,7 @@ export interface ConflictResolverOptions {
 }
 
 export class ConflictResolver {
-  private readonly options: Required<
-    Omit<ConflictResolverOptions, 'customResolver'>
-  > & {
+  private readonly options: Required<Omit<ConflictResolverOptions, 'customResolver'>> & {
     customResolver?: (local: Change, remote: Change) => Change;
   };
   private resolutions: ConflictResolution[];
@@ -43,11 +37,7 @@ export class ConflictResolver {
   /**
    * Resolve conflict between two changes
    */
-  resolve(
-    local: Change,
-    remote: Change,
-    strategy?: ConflictStrategy,
-  ): ConflictResolution {
+  resolve(local: Change, remote: Change, strategy?: ConflictStrategy): ConflictResolution {
     const resolveStrategy = strategy ?? this.options.defaultStrategy;
 
     let resolution: ConflictResolution;
@@ -180,11 +170,9 @@ export class ConflictResolver {
    */
   resolveMultiple(
     conflicts: Array<{ local: Change; remote: Change }>,
-    strategy?: ConflictStrategy,
+    strategy?: ConflictStrategy
   ): ConflictResolution[] {
-    return conflicts.map((conflict) =>
-      this.resolve(conflict.local, conflict.remote, strategy),
-    );
+    return conflicts.map((conflict) => this.resolve(conflict.local, conflict.remote, strategy));
   }
 
   /**
@@ -246,7 +234,7 @@ export class ConflictResolver {
           keyChanges.slice(i + 1).some((b) => {
             const comparison = VectorClockManager.compare(a.clock, b.clock);
             return comparison === 'concurrent';
-          }),
+          })
         );
 
         if (hasConcurrent) {

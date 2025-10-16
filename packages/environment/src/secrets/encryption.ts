@@ -62,7 +62,7 @@ export function encrypt(data: string, password: string): EncryptedData {
     encrypted,
     iv: iv.toString('base64'),
     authTag: authTag.toString('base64'),
-    salt: salt.toString('base64')
+    salt: salt.toString('base64'),
   };
 }
 
@@ -100,7 +100,10 @@ export function hashPassword(password: string): string {
  * Generate a random password
  */
 export function generatePassword(length: number = 32): string {
-  return crypto.randomBytes(Math.ceil(length / 2)).toString('hex').slice(0, length);
+  return crypto
+    .randomBytes(Math.ceil(length / 2))
+    .toString('hex')
+    .slice(0, length);
 }
 
 /**

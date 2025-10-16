@@ -20,9 +20,7 @@ export function resolveDependencies(graph: DependencyGraph): string[] {
     }
 
     if (visiting.has(node)) {
-      throw new Error(
-        `Circular dependency detected: ${[...path, node].join(' -> ')}`
-      );
+      throw new Error(`Circular dependency detected: ${[...path, node].join(' -> ')}`);
     }
 
     visiting.add(node);
@@ -31,9 +29,7 @@ export function resolveDependencies(graph: DependencyGraph): string[] {
     const deps = graph[node] || [];
     for (const dep of deps) {
       if (!graph[dep]) {
-        throw new Error(
-          `Task '${node}' depends on '${dep}', but '${dep}' is not defined`
-        );
+        throw new Error(`Task '${node}' depends on '${dep}', but '${dep}' is not defined`);
       }
       visit(dep, [...path]);
     }
@@ -56,10 +52,7 @@ export function resolveDependencies(graph: DependencyGraph): string[] {
 /**
  * Get execution order for a list of tasks
  */
-export function getExecutionOrder(
-  tasks: string[],
-  graph: DependencyGraph
-): string[] {
+export function getExecutionOrder(tasks: string[], graph: DependencyGraph): string[] {
   // Build subgraph with only requested tasks and their dependencies
   const subgraph: DependencyGraph = {};
   const required = new Set<string>(tasks);

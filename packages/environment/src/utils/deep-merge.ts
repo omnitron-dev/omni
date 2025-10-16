@@ -3,11 +3,7 @@ import { DEFAULT_MERGE_STRATEGY, MergeStrategy } from '../types/operations.js';
 /**
  * Deep merge two objects
  */
-export function deepMerge(
-  target: any,
-  source: any,
-  strategy: MergeStrategy = {}
-): any {
+export function deepMerge(target: any, source: any, strategy: MergeStrategy = {}): any {
   const opts = { ...DEFAULT_MERGE_STRATEGY, ...strategy };
 
   // Handle primitives

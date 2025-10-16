@@ -65,12 +65,7 @@ export class AuditLogger {
   /**
    * Log a successful action
    */
-  logSuccess(
-    userId: string,
-    action: string,
-    resource: string,
-    metadata?: Record<string, unknown>,
-  ): AuditEvent {
+  logSuccess(userId: string, action: string, resource: string, metadata?: Record<string, unknown>): AuditEvent {
     return this.log({
       userId,
       action,
@@ -88,7 +83,7 @@ export class AuditLogger {
     action: string,
     resource: string,
     reason: string,
-    metadata?: Record<string, unknown>,
+    metadata?: Record<string, unknown>
   ): AuditEvent {
     return this.log({
       userId,
@@ -108,7 +103,7 @@ export class AuditLogger {
     action: string,
     resource: string,
     reason: string,
-    metadata?: Record<string, unknown>,
+    metadata?: Record<string, unknown>
   ): AuditEvent {
     return this.log({
       userId,

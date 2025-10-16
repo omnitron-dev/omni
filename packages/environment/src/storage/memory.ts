@@ -85,7 +85,7 @@ export class MemoryStorage extends BaseStorage {
             this.watchers.delete(path);
           }
         }
-      }
+      },
     };
   }
 
@@ -106,17 +106,14 @@ export class MemoryStorage extends BaseStorage {
   /**
    * Notify watchers of changes
    */
-  private async notifyWatchers(
-    path: string,
-    type: 'created' | 'modified' | 'deleted'
-  ): Promise<void> {
+  private async notifyWatchers(path: string, type: 'created' | 'modified' | 'deleted'): Promise<void> {
     const callbacks = this.watchers.get(path);
     if (!callbacks) return;
 
     const event: WatchEvent = {
       type,
       path,
-      timestamp: new Date()
+      timestamp: new Date(),
     };
 
     await Promise.all(Array.from(callbacks).map((cb) => cb(event)));

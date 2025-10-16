@@ -66,7 +66,7 @@ export class VariablesLayer {
   interpolate(template: string): string {
     const interpolator = new Interpolator({
       variables: this.export(),
-      env: process.env as Record<string, string>
+      env: process.env as Record<string, string>,
     });
 
     return interpolator.interpolate(template);
@@ -79,7 +79,7 @@ export class VariablesLayer {
     const interpolator = new Interpolator({
       variables: this.export(),
       env: process.env as Record<string, string>,
-      secrets: this.secrets ? (key) => this.secrets!.get(key) : undefined
+      secrets: this.secrets ? (key) => this.secrets!.get(key) : undefined,
     });
 
     return interpolator.interpolateAsync(template);
@@ -97,9 +97,7 @@ export class VariablesLayer {
 
     const { circular, cycles } = detectCircularDependencies(variableObj);
     if (circular) {
-      throw new Error(
-        `Circular dependency detected in variables: ${cycles.map((c) => c.join(' -> ')).join(', ')}`
-      );
+      throw new Error(`Circular dependency detected in variables: ${cycles.map((c) => c.join(' -> ')).join(', ')}`);
     }
 
     // Resolve all variables

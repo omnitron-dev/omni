@@ -71,10 +71,7 @@ export class PatternAnalyzer {
         intervals.push(timestamps[i] - timestamps[i - 1]);
       }
 
-      const avgInterval =
-        intervals.length > 0
-          ? intervals.reduce((a, b) => a + b, 0) / intervals.length
-          : 0;
+      const avgInterval = intervals.length > 0 ? intervals.reduce((a, b) => a + b, 0) / intervals.length : 0;
 
       patterns.push({
         key,

@@ -10,11 +10,7 @@ export interface ExecutorContext {
   variables?: Record<string, any>;
   interpolate?: (template: string) => Promise<string>;
   executeTask?: (name: string, params?: Record<string, any>) => Promise<TaskResult>;
-  executeOnTarget?: (
-    target: string,
-    command: string,
-    options?: any
-  ) => Promise<TaskResult>;
+  executeOnTarget?: (target: string, command: string, options?: any) => Promise<TaskResult>;
 }
 
 /**
@@ -30,10 +26,7 @@ export class TaskExecutor {
   /**
    * Execute a task
    */
-  async execute(
-    config: TaskConfig,
-    params?: Record<string, any>
-  ): Promise<TaskResult> {
+  async execute(config: TaskConfig, params?: Record<string, any>): Promise<TaskResult> {
     const startTime = Date.now();
 
     try {
@@ -44,7 +37,7 @@ export class TaskExecutor {
           return {
             success: true,
             output: 'Task skipped due to condition',
-            duration: Date.now() - startTime
+            duration: Date.now() - startTime,
           };
         }
       }
@@ -68,7 +61,7 @@ export class TaskExecutor {
           success: false,
           error: error.message,
           duration,
-          exitCode: 1
+          exitCode: 1,
         };
       }
 
@@ -81,7 +74,7 @@ export class TaskExecutor {
         success: false,
         error: error.message,
         duration,
-        exitCode: 1
+        exitCode: 1,
       };
     }
   }
@@ -89,29 +82,24 @@ export class TaskExecutor {
   /**
    * Execute a single command
    */
-  private async executeCommand(
-    command: string,
-    config: TaskConfig
-  ): Promise<TaskResult> {
+  private async executeCommand(command: string, config: TaskConfig): Promise<TaskResult> {
     const startTime = Date.now();
 
     // Interpolate command
-    const interpolatedCommand = this.context.interpolate
-      ? await this.context.interpolate(command)
-      : command;
+    const interpolatedCommand = this.context.interpolate ? await this.context.interpolate(command) : command;
 
     try {
       const { stdout } = await execAsync(interpolatedCommand, {
         cwd: config.workdir || this.context.workdir,
         env: { ...process.env, ...this.context.env, ...config.env },
-        timeout: config.timeout
+        timeout: config.timeout,
       });
 
       return {
         success: true,
         output: stdout,
         duration: Date.now() - startTime,
-        exitCode: 0
+        exitCode: 0,
       };
     } catch (error: any) {
       return {
@@ -119,7 +107,7 @@ export class TaskExecutor {
         output: error.stdout || '',
         error: error.stderr || error.message,
         exitCode: error.code || 1,
-        duration: Date.now() - startTime
+        duration: Date.now() - startTime,
       };
     }
   }
@@ -127,10 +115,7 @@ export class TaskExecutor {
   /**
    * Execute a script
    */
-  private async executeScript(
-    script: string,
-    config: TaskConfig
-  ): Promise<TaskResult> {
+  private async executeScript(script: string, config: TaskConfig): Promise<TaskResult> {
     // For now, treat script same as command
     // In future, could support inline scripts
     return this.executeCommand(script, config);
@@ -139,10 +124,7 @@ export class TaskExecutor {
   /**
    * Execute multiple steps
    */
-  private async executeSteps(
-    steps: TaskStep[],
-    params?: Record<string, any>
-  ): Promise<TaskResult> {
+  private async executeSteps(steps: TaskStep[], params?: Record<string, any>): Promise<TaskResult> {
     const startTime = Date.now();
     const stepResults: Array<{
       name: string;
@@ -159,7 +141,7 @@ export class TaskExecutor {
           stepResults.push({
             name: step.name,
             success: true,
-            output: 'Skipped due to condition'
+            output: 'Skipped due to condition',
           });
           continue;
         }
@@ -173,21 +155,25 @@ export class TaskExecutor {
           if (step.targets && step.parallel) {
             // Execute on multiple targets in parallel
             const results = await Promise.all(
-              step.targets.map((target) =>
-                this.executeOnTarget(target, step.command!, {})
-              )
+              step.targets.map((target) => this.executeOnTarget(target, step.command!, {}))
             );
 
             // Aggregate results
             const allSucceeded = results.every((r) => r.success);
-            const outputs = results.map((r) => r.output).filter(Boolean).join('\n');
-            const errors = results.map((r) => r.error).filter(Boolean).join('\n');
+            const outputs = results
+              .map((r) => r.output)
+              .filter(Boolean)
+              .join('\n');
+            const errors = results
+              .map((r) => r.error)
+              .filter(Boolean)
+              .join('\n');
 
             result = {
               success: allSucceeded,
               output: outputs,
               error: errors || undefined,
-              duration: Math.max(...results.map((r) => r.duration))
+              duration: Math.max(...results.map((r) => r.duration)),
             };
           } else if (step.target) {
             // Execute on single target
@@ -210,7 +196,7 @@ export class TaskExecutor {
           name: step.name,
           success: result.success,
           output: result.output,
-          error: result.error
+          error: result.error,
         });
 
         // Handle failure
@@ -219,10 +205,7 @@ export class TaskExecutor {
             continue;
           }
 
-          if (
-            typeof step.onFailure === 'object' &&
-            'retry' in step.onFailure
-          ) {
+          if (typeof step.onFailure === 'object' && 'retry' in step.onFailure) {
             // Retry logic
             let retries = step.onFailure.retry;
             while (retries > 0) {
@@ -233,7 +216,7 @@ export class TaskExecutor {
                 stepResults[stepResults.length - 1] = {
                   name: step.name,
                   success: true,
-                  output: retryResult.output
+                  output: retryResult.output,
                 };
                 break;
               }
@@ -253,7 +236,7 @@ export class TaskExecutor {
         stepResults.push({
           name: step.name,
           success: false,
-          error: error.message
+          error: error.message,
         });
 
         if (step.onFailure !== 'continue') {
@@ -263,7 +246,10 @@ export class TaskExecutor {
     }
 
     const allSucceeded = stepResults.every((r) => r.success);
-    const output = stepResults.map((r) => r.output).filter(Boolean).join('\n');
+    const output = stepResults
+      .map((r) => r.output)
+      .filter(Boolean)
+      .join('\n');
     const error = stepResults
       .filter((r) => !r.success)
       .map((r) => r.error)
@@ -274,18 +260,14 @@ export class TaskExecutor {
       output,
       error: error || undefined,
       duration: Date.now() - startTime,
-      steps: stepResults
+      steps: stepResults,
     };
   }
 
   /**
    * Execute command on a target
    */
-  private async executeOnTarget(
-    target: string,
-    command: string,
-    options: any
-  ): Promise<TaskResult> {
+  private async executeOnTarget(target: string, command: string, options: any): Promise<TaskResult> {
     if (!this.context.executeOnTarget) {
       throw new Error('Target execution not supported in this context');
     }

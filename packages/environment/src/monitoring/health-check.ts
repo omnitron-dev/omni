@@ -66,7 +66,7 @@ export class HealthCheckManager {
         const result = await this.runCheck(check);
         results.push(result);
         this.lastResults.set(check.name, result);
-      }),
+      })
     );
 
     // Determine overall status

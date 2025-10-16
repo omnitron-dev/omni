@@ -25,7 +25,7 @@ describe('SecretsLayer', () => {
     it('should set and get secrets', async () => {
       const provider = new LocalSecretsProvider({
         storagePath,
-        password: 'test-password'
+        password: 'test-password',
       });
 
       await provider.initialize();
@@ -40,7 +40,7 @@ describe('SecretsLayer', () => {
     it('should check if secret exists', async () => {
       const provider = new LocalSecretsProvider({
         storagePath,
-        password: 'test-password'
+        password: 'test-password',
       });
 
       await provider.initialize();
@@ -55,7 +55,7 @@ describe('SecretsLayer', () => {
     it('should delete secrets', async () => {
       const provider = new LocalSecretsProvider({
         storagePath,
-        password: 'test-password'
+        password: 'test-password',
       });
 
       await provider.initialize();
@@ -71,16 +71,16 @@ describe('SecretsLayer', () => {
     it('should get and set all secrets', async () => {
       const provider = new LocalSecretsProvider({
         storagePath,
-        password: 'test-password'
+        password: 'test-password',
       });
 
       await provider.initialize();
       const layer = new SecretsLayer(provider);
 
       const secrets = {
-        'secret1': 'value1',
-        'secret2': 'value2',
-        'secret3': 'value3'
+        secret1: 'value1',
+        secret2: 'value2',
+        secret3: 'value3',
       };
 
       await layer.setAll(secrets);
@@ -92,7 +92,7 @@ describe('SecretsLayer', () => {
     it('should interpolate secret references', async () => {
       const provider = new LocalSecretsProvider({
         storagePath,
-        password: 'test-password'
+        password: 'test-password',
       });
 
       await provider.initialize();
@@ -109,7 +109,7 @@ describe('SecretsLayer', () => {
     it('should persist secrets encrypted', async () => {
       const provider = new LocalSecretsProvider({
         storagePath,
-        password: 'test-password'
+        password: 'test-password',
       });
 
       await provider.initialize();
@@ -120,7 +120,7 @@ describe('SecretsLayer', () => {
       // Create new provider to read from disk
       const provider2 = new LocalSecretsProvider({
         storagePath,
-        password: 'test-password'
+        password: 'test-password',
       });
 
       await provider2.initialize();
@@ -164,7 +164,7 @@ describe('SecretsLayer', () => {
     it('should log secret access', async () => {
       const provider = new LocalSecretsProvider({
         storagePath,
-        password: 'test-password'
+        password: 'test-password',
       });
 
       await provider.initialize();
@@ -176,8 +176,8 @@ describe('SecretsLayer', () => {
       const logs = await layer.getAccessLog('logged.secret');
 
       expect(logs.length).toBeGreaterThan(0);
-      expect(logs.some(log => log.action === 'write')).toBe(true);
-      expect(logs.some(log => log.action === 'read')).toBe(true);
+      expect(logs.some((log) => log.action === 'write')).toBe(true);
+      expect(logs.some((log) => log.action === 'read')).toBe(true);
     });
   });
 });

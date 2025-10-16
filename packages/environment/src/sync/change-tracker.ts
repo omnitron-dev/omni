@@ -233,9 +233,7 @@ export class ChangeTracker extends EventEmitter {
     }
 
     // Rebuild history with only latest changes
-    this.changeHistory = Array.from(keyMap.values()).sort(
-      (a, b) => a.timestamp - b.timestamp,
-    );
+    this.changeHistory = Array.from(keyMap.values()).sort((a, b) => a.timestamp - b.timestamp);
 
     this.emit('compressed', {
       before: this.changeHistory.length,

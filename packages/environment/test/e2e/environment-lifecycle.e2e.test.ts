@@ -45,18 +45,20 @@ describe('E2E: Environment Lifecycle', () => {
       app: z.object({
         name: z.string(),
         version: z.string(),
-        port: z.number().min(1).max(65535)
+        port: z.number().min(1).max(65535),
       }),
       database: z.object({
         host: z.string(),
         port: z.number(),
         name: z.string(),
-        ssl: z.boolean().optional()
+        ssl: z.boolean().optional(),
       }),
-      features: z.object({
-        auth: z.boolean(),
-        logging: z.boolean()
-      }).optional()
+      features: z
+        .object({
+          auth: z.boolean(),
+          logging: z.boolean(),
+        })
+        .optional(),
     });
 
     const env = Environment.create({
@@ -67,23 +69,23 @@ describe('E2E: Environment Lifecycle', () => {
         app: {
           name: 'TestApp',
           version: '1.0.0',
-          port: 3000
+          port: 3000,
         },
         database: {
           host: 'localhost',
           port: 5432,
           name: 'testdb',
-          ssl: true
+          ssl: true,
         },
         features: {
           auth: true,
-          logging: true
-        }
+          logging: true,
+        },
       },
       secretsProvider: new LocalSecretsProvider({
         storagePath: path.join(testDir, '.secrets'),
-        password: 'test-password-123'
-      })
+        password: 'test-password-123',
+      }),
     });
 
     // Verify initial state
@@ -135,19 +137,19 @@ describe('E2E: Environment Lifecycle', () => {
     env.tasks.define('build', {
       command: 'npm run build',
       description: 'Build the application',
-      workdir: '/app'
+      workdir: '/app',
     });
 
     env.tasks.define('test', {
       command: 'npm test',
       description: 'Run tests',
-      workdir: '/app'
+      workdir: '/app',
     });
 
     env.tasks.define('deploy', {
       command: 'echo "Deploying ${app.name} v${app.version}"',
       description: 'Deploy application',
-      dependsOn: ['build', 'test']
+      dependsOn: ['build', 'test'],
     });
 
     // Verify tasks are defined
@@ -164,14 +166,14 @@ describe('E2E: Environment Lifecycle', () => {
 
     env.targets.define('local', {
       type: 'local',
-      description: 'Local execution'
+      description: 'Local execution',
     });
 
     env.targets.define('staging', {
       type: 'ssh',
       host: 'staging.example.com',
       port: 22,
-      username: 'deploy'
+      username: 'deploy',
     });
 
     // Verify targets
@@ -203,8 +205,8 @@ describe('E2E: Environment Lifecycle', () => {
       schema,
       secretsProvider: new LocalSecretsProvider({
         storagePath: path.join(testDir, '.secrets'),
-        password: 'test-password-123'
-      })
+        password: 'test-password-123',
+      }),
     });
 
     // Verify loaded environment matches original
@@ -272,7 +274,7 @@ describe('E2E: Environment Lifecycle', () => {
   it('should handle environment cloning', async () => {
     const schema = z.object({
       service: z.string(),
-      port: z.number()
+      port: z.number(),
     });
 
     const original = Environment.create({
@@ -280,8 +282,8 @@ describe('E2E: Environment Lifecycle', () => {
       schema,
       config: {
         service: 'api',
-        port: 3000
-      }
+        port: 3000,
+      },
     });
 
     // Clone environment
@@ -299,15 +301,15 @@ describe('E2E: Environment Lifecycle', () => {
 
   it('should handle validation failures gracefully', async () => {
     const schema = z.object({
-      port: z.number().min(1).max(65535)
+      port: z.number().min(1).max(65535),
     });
 
     const env = Environment.create({
       name: 'invalid',
       schema,
       config: {
-        port: 999999 // Invalid port
-      }
+        port: 999999, // Invalid port
+      },
     });
 
     // Validation should fail
@@ -322,7 +324,7 @@ describe('E2E: Environment Lifecycle', () => {
 
   it('should persist and restore metadata correctly', async () => {
     const schema = z.object({
-      value: z.string()
+      value: z.string(),
     });
 
     const env = Environment.create({
@@ -332,8 +334,8 @@ describe('E2E: Environment Lifecycle', () => {
       metadata: {
         description: 'Test environment',
         tags: ['test', 'e2e'],
-        labels: { team: 'platform', env: 'test' }
-      }
+        labels: { team: 'platform', env: 'test' },
+      },
     });
 
     // Save with metadata
@@ -350,13 +352,13 @@ describe('E2E: Environment Lifecycle', () => {
 
   it('should handle change callbacks', async () => {
     const schema = z.object({
-      counter: z.number()
+      counter: z.number(),
     });
 
     const env = Environment.create({
       name: 'callback-test',
       schema,
-      config: { counter: 0 }
+      config: { counter: 0 },
     });
 
     let callbackCount = 0;

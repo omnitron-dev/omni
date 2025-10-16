@@ -137,7 +137,7 @@ export class LocalSecretsProvider extends BaseSecretsProvider {
 
     const store: SecretsStore = {
       version: '1.0',
-      secrets: encryptedSecrets
+      secrets: encryptedSecrets,
     };
 
     // Write to disk

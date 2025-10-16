@@ -20,13 +20,7 @@ export type Permission =
   | 'target:execute';
 
 export type Action = 'read' | 'write' | 'delete' | 'execute' | 'admin';
-export type Resource =
-  | 'environment'
-  | 'config'
-  | 'secret'
-  | 'variable'
-  | 'task'
-  | 'target';
+export type Resource = 'environment' | 'config' | 'secret' | 'variable' | 'task' | 'target';
 
 export interface PermissionCheck {
   resource: Resource;
@@ -91,9 +85,7 @@ export class PermissionManager {
    */
   assertAction(check: PermissionCheck): void {
     if (!this.can(check)) {
-      throw new PermissionError(
-        `Permission denied: ${check.resource}:${check.action}`,
-      );
+      throw new PermissionError(`Permission denied: ${check.resource}:${check.action}`);
     }
   }
 

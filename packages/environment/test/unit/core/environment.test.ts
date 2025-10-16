@@ -7,7 +7,7 @@ describe('Environment', () => {
     it('should create environment with basic options', () => {
       const env = Environment.create({
         name: 'test',
-        config: { foo: 'bar' }
+        config: { foo: 'bar' },
       });
 
       expect(env.name).toBe('test');
@@ -15,10 +15,7 @@ describe('Environment', () => {
     });
 
     it('should create environment from object', () => {
-      const env = Environment.fromObject(
-        { foo: 'bar', nested: { value: 42 } },
-        { name: 'test' }
-      );
+      const env = Environment.fromObject({ foo: 'bar', nested: { value: 42 } }, { name: 'test' });
 
       expect(env.name).toBe('test');
       expect(env.get('foo')).toBe('bar');
@@ -42,8 +39,8 @@ describe('Environment', () => {
         name: 'test',
         config: {
           app: { name: 'TestApp', port: 3000 },
-          database: { host: 'localhost' }
-        }
+          database: { host: 'localhost' },
+        },
       });
     });
 
@@ -78,12 +75,12 @@ describe('Environment', () => {
     it('should merge two environments', () => {
       const env1 = Environment.create({
         name: 'base',
-        config: { a: 1, b: 2, nested: { x: 10 } }
+        config: { a: 1, b: 2, nested: { x: 10 } },
       });
 
       const env2 = Environment.create({
         name: 'override',
-        config: { b: 3, c: 4, nested: { y: 20 } }
+        config: { b: 3, c: 4, nested: { y: 20 } },
       });
 
       const merged = env1.merge(env2);
@@ -98,12 +95,12 @@ describe('Environment', () => {
     it('should merge with custom strategy', () => {
       const env1 = Environment.create({
         name: 'base',
-        config: { value: 1 }
+        config: { value: 1 },
       });
 
       const env2 = Environment.create({
         name: 'override',
-        config: { value: 2 }
+        config: { value: 2 },
       });
 
       const merged = env1.merge(env2, { conflicts: 'prefer-left' });
@@ -115,12 +112,12 @@ describe('Environment', () => {
     it('should compute diff between environments', () => {
       const env1 = Environment.create({
         name: 'before',
-        config: { a: 1, b: 2, c: 3 }
+        config: { a: 1, b: 2, c: 3 },
       });
 
       const env2 = Environment.create({
         name: 'after',
-        config: { a: 1, b: 5, d: 4 }
+        config: { a: 1, b: 5, d: 4 },
       });
 
       const diff = env1.diff(env2);
@@ -146,12 +143,12 @@ describe('Environment', () => {
     it('should apply diff patch', () => {
       const env1 = Environment.create({
         name: 'base',
-        config: { a: 1, b: 2, c: 3 }
+        config: { a: 1, b: 2, c: 3 },
       });
 
       const env2 = Environment.create({
         name: 'target',
-        config: { a: 1, b: 5, d: 4 }
+        config: { a: 1, b: 5, d: 4 },
       });
 
       const diff = env1.diff(env2);
@@ -168,7 +165,7 @@ describe('Environment', () => {
     it('should clone environment', () => {
       const env = Environment.create({
         name: 'original',
-        config: { foo: 'bar', nested: { value: 42 } }
+        config: { foo: 'bar', nested: { value: 42 } },
       });
 
       const cloned = env.clone();
@@ -182,7 +179,7 @@ describe('Environment', () => {
     it('should create independent clone', () => {
       const env = Environment.create({
         name: 'original',
-        config: { foo: 'bar' }
+        config: { foo: 'bar' },
       });
 
       const cloned = env.clone();
@@ -198,14 +195,14 @@ describe('Environment', () => {
       const schema = z.object({
         app: z.object({
           name: z.string(),
-          port: z.number()
-        })
+          port: z.number(),
+        }),
       });
 
       const env = Environment.create({
         name: 'test',
         schema,
-        config: { app: { name: 'Test', port: 3000 } }
+        config: { app: { name: 'Test', port: 3000 } },
       });
 
       const result = await env.validate();
@@ -214,13 +211,13 @@ describe('Environment', () => {
 
     it('should fail validation with invalid data', async () => {
       const schema = z.object({
-        port: z.number()
+        port: z.number(),
       });
 
       const env = Environment.create({
         name: 'test',
         schema,
-        config: { port: 'invalid' }
+        config: { port: 'invalid' },
       });
 
       const result = await env.validate();
@@ -232,7 +229,7 @@ describe('Environment', () => {
     it('should convert to JSON', () => {
       const env = Environment.create({
         name: 'test',
-        config: { foo: 'bar', nested: { value: 42 } }
+        config: { foo: 'bar', nested: { value: 42 } },
       });
 
       const json = env.toJSON();
@@ -242,7 +239,7 @@ describe('Environment', () => {
     it('should convert to YAML', () => {
       const env = Environment.create({
         name: 'test',
-        config: { foo: 'bar' }
+        config: { foo: 'bar' },
       });
 
       const yaml = env.toYAML();
@@ -252,7 +249,7 @@ describe('Environment', () => {
     it('should convert to object', () => {
       const env = Environment.create({
         name: 'test',
-        config: { foo: 'bar' }
+        config: { foo: 'bar' },
       });
 
       const obj = env.toObject();
@@ -264,7 +261,7 @@ describe('Environment', () => {
     it('should activate environment', async () => {
       const env = Environment.create({
         name: 'test',
-        config: { foo: 'bar' }
+        config: { foo: 'bar' },
       });
 
       await env.activate();
@@ -274,7 +271,7 @@ describe('Environment', () => {
     it('should deactivate environment', async () => {
       const env = Environment.create({
         name: 'test',
-        config: { foo: 'bar' }
+        config: { foo: 'bar' },
       });
 
       await env.activate();
@@ -284,13 +281,13 @@ describe('Environment', () => {
 
     it('should validate before activation', async () => {
       const schema = z.object({
-        required: z.string()
+        required: z.string(),
       });
 
       const env = Environment.create({
         name: 'test',
         schema,
-        config: { wrong: 'value' }
+        config: { wrong: 'value' },
       });
 
       await expect(env.activate()).rejects.toThrow('Validation failed');
@@ -301,7 +298,7 @@ describe('Environment', () => {
     it('should notify on change', () => {
       const env = Environment.create({
         name: 'test',
-        config: { foo: 'bar' }
+        config: { foo: 'bar' },
       });
 
       const changes: any[] = [];
@@ -320,7 +317,7 @@ describe('Environment', () => {
     it('should stop notifying after dispose', () => {
       const env = Environment.create({
         name: 'test',
-        config: { foo: 'bar' }
+        config: { foo: 'bar' },
       });
 
       const changes: any[] = [];

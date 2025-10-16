@@ -20,12 +20,24 @@ export * from './utils/index.js';
 
 // Phase 2: Advanced Layers
 export * from './secrets/index.js';
-export { VariablesLayer, ComputedRegistry, ComputedVariable, Interpolator, detectCircularDependencies } from './variables/index.js';
+export {
+  VariablesLayer,
+  ComputedRegistry,
+  ComputedVariable,
+  Interpolator,
+  detectCircularDependencies,
+} from './variables/index.js';
 export * from './tasks/index.js';
 export * from './targets/index.js';
 
 // Phase 3: Distribution
-export * from './sync/index.js';
+export {
+  SyncProtocol,
+  NodeRegistry,
+  ChangeTracker,
+  ConflictResolver,
+  // ConflictStrategy is exported from types/distributed.ts
+} from './sync/index.js';
 export * from './crdt/index.js';
 
 // Phase 4: Cognitive Layer

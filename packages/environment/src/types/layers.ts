@@ -157,10 +157,6 @@ export interface ITargetsLayer {
   resolve(reference: string): Promise<ResolvedTarget>;
   find(pattern: string): Promise<ResolvedTarget[]>;
   list(): Promise<ResolvedTarget[]>;
-  execute(
-    target: string,
-    command: string,
-    options?: ExecutionOptions
-  ): Promise<ExecutionResult>;
+  execute(target: string, command: string, options?: ExecutionOptions): Promise<ExecutionResult>;
   autoDetect(name: string): Promise<ResolvedTarget | null>;
 }

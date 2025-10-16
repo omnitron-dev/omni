@@ -54,7 +54,7 @@ describe('MemoryStorage', () => {
       await storage.writeMany([
         { path: 'path1', data: { value: 1 } },
         { path: 'path2', data: { value: 2 } },
-        { path: 'path3', data: { value: 3 } }
+        { path: 'path3', data: { value: 3 } },
       ]);
 
       expect(await storage.read('path1')).toEqual({ value: 1 });

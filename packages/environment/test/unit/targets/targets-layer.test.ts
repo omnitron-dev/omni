@@ -6,7 +6,7 @@ describe('TargetsLayer', () => {
     const layer = new TargetsLayer();
 
     layer.define('local', {
-      type: 'local'
+      type: 'local',
     });
 
     const target = layer.get('local');
@@ -39,7 +39,7 @@ describe('TargetsLayer', () => {
     layer.define('production', {
       type: 'ssh',
       host: 'prod.example.com',
-      port: 22
+      port: 22,
     });
 
     const target = await layer.resolve('production');
@@ -58,8 +58,8 @@ describe('TargetsLayer', () => {
     const list = await layer.list();
 
     expect(list).toHaveLength(2);
-    expect(list.some(t => t.name === 'local')).toBe(true);
-    expect(list.some(t => t.name === 'remote')).toBe(true);
+    expect(list.some((t) => t.name === 'local')).toBe(true);
+    expect(list.some((t) => t.name === 'remote')).toBe(true);
   });
 
   it('should find targets by pattern', async () => {
@@ -72,7 +72,7 @@ describe('TargetsLayer', () => {
     const prodTargets = await layer.find('prod-.*');
 
     expect(prodTargets).toHaveLength(2);
-    expect(prodTargets.every(t => t.name.startsWith('prod-'))).toBe(true);
+    expect(prodTargets.every((t) => t.name.startsWith('prod-'))).toBe(true);
   });
 
   it('should execute command on local target', async () => {

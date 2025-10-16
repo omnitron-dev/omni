@@ -14,7 +14,7 @@ describe('Types', () => {
         source: 'memory',
         owner: 'system',
         isEphemeral: false,
-        changeCount: 0
+        changeCount: 0,
       });
     });
 
@@ -22,7 +22,7 @@ describe('Types', () => {
       const metadata = createDefaultMetadata({
         scope: 'global',
         tags: ['test'],
-        owner: 'user'
+        owner: 'user',
       });
 
       expect(metadata.scope).toBe('global');

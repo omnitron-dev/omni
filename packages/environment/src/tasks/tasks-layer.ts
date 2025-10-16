@@ -5,12 +5,9 @@ import {
   TaskConfig,
   TaskDefinition,
   TaskInfo,
-  TaskResult
+  TaskResult,
 } from '../types/layers.js';
-import {
-  DependencyGraph,
-  getExecutionOrder
-} from './dependency-resolver.js';
+import { DependencyGraph, getExecutionOrder } from './dependency-resolver.js';
 import { TaskScheduler } from './scheduler.js';
 import { extractDependencies, parseTaskDefinition } from './task-definition.js';
 import { TaskExecutor } from './task-executor.js';
@@ -80,7 +77,7 @@ export class TasksLayer implements ITasksLayer {
     let lastResult: TaskResult = {
       success: true,
       output: '',
-      duration: 0
+      duration: 0,
     };
 
     for (const taskName of order) {
@@ -93,14 +90,11 @@ export class TasksLayer implements ITasksLayer {
         workdir: taskDef.config.workdir,
         env: taskDef.config.env,
         variables: this.variables?.export(),
-        interpolate: this.variables
-          ? (template) => this.variables!.interpolateAsync(template)
-          : undefined,
+        interpolate: this.variables ? (template) => this.variables!.interpolateAsync(template) : undefined,
         executeTask: (name, params) => this.run(name, params),
         executeOnTarget: this.targets
-          ? (target, command, options) =>
-              this.targets!.execute(target, command, options)
-          : undefined
+          ? (target, command, options) => this.targets!.execute(target, command, options)
+          : undefined,
       });
 
       lastResult = await executor.execute(taskDef.config, params);
@@ -116,11 +110,7 @@ export class TasksLayer implements ITasksLayer {
   /**
    * Run a task on a specific target
    */
-  async runOn(
-    name: string,
-    target: string,
-    _params?: Record<string, any>
-  ): Promise<TaskResult> {
+  async runOn(name: string, target: string, _params?: Record<string, any>): Promise<TaskResult> {
     if (!this.targets) {
       throw new Error('Targets layer not available');
     }
@@ -137,7 +127,7 @@ export class TasksLayer implements ITasksLayer {
 
     return this.targets.execute(target, definition.config.command, {
       workdir: definition.config.workdir,
-      env: definition.config.env
+      env: definition.config.env,
     });
   }
 
@@ -192,7 +182,7 @@ export class TasksLayer implements ITasksLayer {
         name,
         description: definition.config.description,
         dependencies: extractDependencies(definition.config),
-        hasSteps: Boolean(definition.config.steps)
+        hasSteps: Boolean(definition.config.steps),
       });
     }
 

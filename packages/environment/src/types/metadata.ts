@@ -53,9 +53,7 @@ export interface PermissionSet {
 /**
  * Default metadata factory
  */
-export function createDefaultMetadata(
-  overrides?: Partial<EnvironmentMetadata>
-): EnvironmentMetadata {
+export function createDefaultMetadata(overrides?: Partial<EnvironmentMetadata>): EnvironmentMetadata {
   return {
     scope: 'workspace',
     tags: [],
@@ -66,6 +64,6 @@ export function createDefaultMetadata(
     isEphemeral: false,
     changeCount: 0,
     checksum: '',
-    ...overrides
+    ...overrides,
   };
 }

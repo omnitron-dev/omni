@@ -15,11 +15,7 @@ export class TaskScheduler {
   /**
    * Schedule a task with cron expression
    */
-  schedule(
-    name: string,
-    cronExpression: string,
-    handler: () => void | Promise<void>
-  ): void {
+  schedule(name: string, cronExpression: string, handler: () => void | Promise<void>): void {
     // Unschedule if already scheduled
     this.unschedule(name);
 
@@ -40,7 +36,7 @@ export class TaskScheduler {
     this.scheduled.set(name, {
       name,
       cron: cronExpression,
-      task
+      task,
     });
   }
 
@@ -68,7 +64,7 @@ export class TaskScheduler {
   list(): Array<{ name: string; cron: string }> {
     return Array.from(this.scheduled.values()).map((s) => ({
       name: s.name,
-      cron: s.cron
+      cron: s.cron,
     }));
   }
 

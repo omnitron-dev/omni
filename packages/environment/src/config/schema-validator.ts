@@ -41,7 +41,7 @@ export class SchemaValidator {
     const errors: ValidationError[] = result.error.errors.map((err) => ({
       path: err.path.join('.'),
       message: err.message,
-      value: data
+      value: data,
     }));
 
     return { valid: false, errors };
@@ -63,7 +63,7 @@ export class SchemaValidator {
         path: err.instancePath.substring(1).replace(/\//g, '.'),
         message: err.message || 'Validation error',
         value: data,
-        schema: err.schema
+        schema: err.schema,
       })) || [];
 
     return { valid: false, errors };
@@ -73,11 +73,6 @@ export class SchemaValidator {
    * Check if schema is a Zod schema
    */
   private isZodSchema(schema: Schema): schema is z.ZodType<any> {
-    return (
-      schema !== null &&
-      typeof schema === 'object' &&
-      '_def' in schema &&
-      'parse' in schema
-    );
+    return schema !== null && typeof schema === 'object' && '_def' in schema && 'parse' in schema;
   }
 }

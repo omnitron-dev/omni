@@ -1,16 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import {
-  interpolate,
-  interpolateObject,
-  hasVariables,
-  extractVariables
-} from '../../../src/config/interpolation';
+import { interpolate, interpolateObject, hasVariables, extractVariables } from '../../../src/config/interpolation';
 
 describe('Interpolation', () => {
   describe('interpolate', () => {
     it('should interpolate variables', () => {
       const result = interpolate('Hello ${name}!', {
-        variables: { name: 'World' }
+        variables: { name: 'World' },
       });
       expect(result).toBe('Hello World!');
     });
@@ -18,21 +13,21 @@ describe('Interpolation', () => {
     it('should interpolate environment variables', () => {
       const result = interpolate('Path: ${env.HOME}', {
         variables: {},
-        env: { HOME: '/home/user' }
+        env: { HOME: '/home/user' },
       });
       expect(result).toBe('Path: /home/user');
     });
 
     it('should keep original if variable not found', () => {
       const result = interpolate('Hello ${unknown}!', {
-        variables: {}
+        variables: {},
       });
       expect(result).toBe('Hello ${unknown}!');
     });
 
     it('should handle multiple variables', () => {
       const result = interpolate('${greeting} ${name}!', {
-        variables: { greeting: 'Hello', name: 'World' }
+        variables: { greeting: 'Hello', name: 'World' },
       });
       expect(result).toBe('Hello World!');
     });
@@ -43,12 +38,12 @@ describe('Interpolation', () => {
       const obj = {
         message: 'Hello ${name}!',
         nested: {
-          value: '${value}'
-        }
+          value: '${value}',
+        },
       };
 
       const result = interpolateObject(obj, {
-        variables: { name: 'World', value: '42' }
+        variables: { name: 'World', value: '42' },
       });
 
       expect(result.message).toBe('Hello World!');
@@ -57,11 +52,11 @@ describe('Interpolation', () => {
 
     it('should interpolate arrays', () => {
       const obj = {
-        items: ['${item1}', '${item2}']
+        items: ['${item1}', '${item2}'],
       };
 
       const result = interpolateObject(obj, {
-        variables: { item1: 'first', item2: 'second' }
+        variables: { item1: 'first', item2: 'second' },
       });
 
       expect(result.items).toEqual(['first', 'second']);
@@ -71,7 +66,7 @@ describe('Interpolation', () => {
       const obj = {
         number: 42,
         boolean: true,
-        null: null
+        null: null,
       };
 
       const result = interpolateObject(obj, { variables: {} });

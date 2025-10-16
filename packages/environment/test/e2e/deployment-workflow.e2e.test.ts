@@ -45,24 +45,24 @@ describe('E2E: Deployment Workflow', () => {
       app: z.object({
         name: z.string(),
         version: z.string(),
-        environment: z.string()
+        environment: z.string(),
       }),
       server: z.object({
         host: z.string(),
         port: z.number(),
-        workers: z.number()
+        workers: z.number(),
       }),
       database: z.object({
         host: z.string(),
         port: z.number(),
         name: z.string(),
-        poolSize: z.number()
+        poolSize: z.number(),
       }),
       features: z.object({
         metrics: z.boolean(),
         tracing: z.boolean(),
-        debug: z.boolean()
-      })
+        debug: z.boolean(),
+      }),
     });
 
     const baseEnv = Environment.create({
@@ -73,25 +73,25 @@ describe('E2E: Deployment Workflow', () => {
         app: {
           name: 'MyApplication',
           version: '2.1.0',
-          environment: 'development'
+          environment: 'development',
         },
         server: {
           host: '0.0.0.0',
           port: 3000,
-          workers: 2
+          workers: 2,
         },
         database: {
           host: 'localhost',
           port: 5432,
           name: 'myapp',
-          poolSize: 10
+          poolSize: 10,
         },
         features: {
           metrics: false,
           tracing: false,
-          debug: true
-        }
-      }
+          debug: true,
+        },
+      },
     });
 
     await baseEnv.save(baseConfigPath);
@@ -107,25 +107,25 @@ describe('E2E: Deployment Workflow', () => {
         app: {
           name: 'MyApplication',
           version: '2.1.0',
-          environment: 'production'
+          environment: 'production',
         },
         server: {
           host: '0.0.0.0',
           port: 8080,
-          workers: 8
+          workers: 8,
         },
         database: {
           host: 'prod-db.example.com',
           port: 5432,
           name: 'myapp_prod',
-          poolSize: 50
+          poolSize: 50,
         },
         features: {
           metrics: true,
           tracing: true,
-          debug: false
-        }
-      }
+          debug: false,
+        },
+      },
     });
 
     await prodOverrides.save(prodConfigPath);
@@ -153,10 +153,10 @@ describe('E2E: Deployment Workflow', () => {
 
     const secretsProvider = new LocalSecretsProvider({
       storagePath: path.join(testDir, '.secrets'),
-      password: 'test-password-123'
+      password: 'test-password-123',
     });
-    (deployment as any).secrets = await import('../../src/secrets/secrets-layer.js').then((m) =>
-      new m.SecretsLayer(secretsProvider)
+    (deployment as any).secrets = await import('../../src/secrets/secrets-layer.js').then(
+      (m) => new m.SecretsLayer(secretsProvider)
     );
 
     await deployment.secrets!.set('database.password', 'prod-db-password-123');
@@ -183,10 +183,7 @@ describe('E2E: Deployment Workflow', () => {
     deployment.variables.define('DB_NAME', deployment.get('database.name'));
 
     // Template variables
-    deployment.variables.define(
-      'DATABASE_URL',
-      'postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}'
-    );
+    deployment.variables.define('DATABASE_URL', 'postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}');
 
     // Verify interpolation
     const dbUrl = deployment.variables.interpolate(deployment.variables.get('DATABASE_URL'));
@@ -201,43 +198,43 @@ describe('E2E: Deployment Workflow', () => {
 
     deployment.tasks.define('validate-config', {
       command: 'echo "Validating configuration..."',
-      description: 'Validate deployment configuration'
+      description: 'Validate deployment configuration',
     });
 
     deployment.tasks.define('backup-database', {
       command: 'echo "Backing up database ${database.name}..."',
       description: 'Create database backup before deployment',
-      dependsOn: ['validate-config']
+      dependsOn: ['validate-config'],
     });
 
     deployment.tasks.define('build-assets', {
       command: 'echo "Building production assets..."',
       description: 'Build and optimize assets',
-      dependsOn: ['validate-config']
+      dependsOn: ['validate-config'],
     });
 
     deployment.tasks.define('run-migrations', {
       command: 'echo "Running database migrations..."',
       description: 'Apply database migrations',
-      dependsOn: ['backup-database']
+      dependsOn: ['backup-database'],
     });
 
     deployment.tasks.define('deploy-app', {
       command: 'echo "Deploying ${app.name} v${app.version}..."',
       description: 'Deploy application',
-      dependsOn: ['build-assets', 'run-migrations']
+      dependsOn: ['build-assets', 'run-migrations'],
     });
 
     deployment.tasks.define('smoke-test', {
       command: 'echo "Running smoke tests..."',
       description: 'Run post-deployment smoke tests',
-      dependsOn: ['deploy-app']
+      dependsOn: ['deploy-app'],
     });
 
     deployment.tasks.define('notify-team', {
       command: 'echo "Deployment completed! Build: ${BUILD_NUMBER}, Commit: ${GIT_COMMIT}"',
       description: 'Notify team of deployment status',
-      dependsOn: ['smoke-test']
+      dependsOn: ['smoke-test'],
     });
 
     // Verify task dependencies
@@ -255,22 +252,14 @@ describe('E2E: Deployment Workflow', () => {
       'run-migrations',
       'deploy-app',
       'smoke-test',
-      'notify-team'
+      'notify-team',
     ]);
 
     // Verify execution order respects dependencies
-    expect(executionOrder.indexOf('validate-config')).toBeLessThan(
-      executionOrder.indexOf('backup-database')
-    );
-    expect(executionOrder.indexOf('backup-database')).toBeLessThan(
-      executionOrder.indexOf('run-migrations')
-    );
-    expect(executionOrder.indexOf('run-migrations')).toBeLessThan(
-      executionOrder.indexOf('deploy-app')
-    );
-    expect(executionOrder.indexOf('deploy-app')).toBeLessThan(
-      executionOrder.indexOf('smoke-test')
-    );
+    expect(executionOrder.indexOf('validate-config')).toBeLessThan(executionOrder.indexOf('backup-database'));
+    expect(executionOrder.indexOf('backup-database')).toBeLessThan(executionOrder.indexOf('run-migrations'));
+    expect(executionOrder.indexOf('run-migrations')).toBeLessThan(executionOrder.indexOf('deploy-app'));
+    expect(executionOrder.indexOf('deploy-app')).toBeLessThan(executionOrder.indexOf('smoke-test'));
 
     // ============================================================
     // Phase 7: Configure Targets
@@ -278,21 +267,21 @@ describe('E2E: Deployment Workflow', () => {
 
     deployment.targets.define('local', {
       type: 'local',
-      description: 'Local execution for testing'
+      description: 'Local execution for testing',
     });
 
     deployment.targets.define('prod-server-1', {
       type: 'ssh',
       host: 'prod-1.example.com',
       port: 22,
-      username: 'deploy'
+      username: 'deploy',
     });
 
     deployment.targets.define('prod-server-2', {
       type: 'ssh',
       host: 'prod-2.example.com',
       port: 22,
-      username: 'deploy'
+      username: 'deploy',
     });
 
     // ============================================================
@@ -311,7 +300,7 @@ describe('E2E: Deployment Workflow', () => {
       'run-migrations',
       'deploy-app',
       'smoke-test',
-      'notify-team'
+      'notify-team',
     ];
 
     expect(executionOrder.length).toBe(taskNames.length);
@@ -320,12 +309,8 @@ describe('E2E: Deployment Workflow', () => {
     expect(executionOrder).toContain('notify-team');
 
     // Verify order dependencies
-    expect(executionOrder.indexOf('validate-config')).toBeLessThan(
-      executionOrder.indexOf('backup-database')
-    );
-    expect(executionOrder.indexOf('backup-database')).toBeLessThan(
-      executionOrder.indexOf('run-migrations')
-    );
+    expect(executionOrder.indexOf('validate-config')).toBeLessThan(executionOrder.indexOf('backup-database'));
+    expect(executionOrder.indexOf('backup-database')).toBeLessThan(executionOrder.indexOf('run-migrations'));
 
     // ============================================================
     // Phase 9: Validate Deployment Success
@@ -374,8 +359,8 @@ describe('E2E: Deployment Workflow', () => {
     const schema = z.object({
       app: z.object({
         version: z.string(),
-        deployed: z.boolean()
-      })
+        deployed: z.boolean(),
+      }),
     });
 
     // Create deployment environment
@@ -385,9 +370,9 @@ describe('E2E: Deployment Workflow', () => {
       config: {
         app: {
           version: '2.0.0',
-          deployed: false
-        }
-      }
+          deployed: false,
+        },
+      },
     });
 
     // Save initial state
@@ -411,7 +396,7 @@ describe('E2E: Deployment Workflow', () => {
   it('should handle multi-stage deployment pipeline', async () => {
     const schema = z.object({
       stage: z.string(),
-      deployed: z.boolean()
+      deployed: z.boolean(),
     });
 
     // Create environments for each stage
@@ -424,14 +409,14 @@ describe('E2E: Deployment Workflow', () => {
         schema,
         config: {
           stage,
-          deployed: false
-        }
+          deployed: false,
+        },
       });
 
       // Define stage-specific deployment task
       env.tasks.define('deploy', {
         command: `echo "Deploying to ${stage}..."`,
-        description: `Deploy to ${stage} environment`
+        description: `Deploy to ${stage} environment`,
       });
 
       environments.push(env);
@@ -475,7 +460,7 @@ describe('E2E: Deployment Workflow', () => {
   it('should handle deployment with conditional tasks', async () => {
     const schema = z.object({
       skipTests: z.boolean(),
-      runMigrations: z.boolean()
+      runMigrations: z.boolean(),
     });
 
     const env = Environment.create({
@@ -483,23 +468,23 @@ describe('E2E: Deployment Workflow', () => {
       schema,
       config: {
         skipTests: false,
-        runMigrations: true
-      }
+        runMigrations: true,
+      },
     });
 
     env.tasks.define('test', {
       command: 'echo "Running tests..."',
-      description: 'Run test suite'
+      description: 'Run test suite',
     });
 
     env.tasks.define('migrate', {
       command: 'echo "Running migrations..."',
-      description: 'Run database migrations'
+      description: 'Run database migrations',
     });
 
     env.tasks.define('deploy', {
       command: 'echo "Deploying application..."',
-      description: 'Deploy application'
+      description: 'Deploy application',
     });
 
     await env.activate();

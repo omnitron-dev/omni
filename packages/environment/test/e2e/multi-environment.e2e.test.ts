@@ -41,28 +41,28 @@ describe('E2E: Multi-Environment Management', () => {
     const schema = z.object({
       app: z.object({
         name: z.string(),
-        version: z.string()
+        version: z.string(),
       }),
       server: z.object({
         host: z.string(),
         port: z.number(),
-        timeout: z.number()
+        timeout: z.number(),
       }),
       database: z.object({
         host: z.string(),
         port: z.number(),
         name: z.string(),
-        ssl: z.boolean()
+        ssl: z.boolean(),
       }),
       features: z.object({
         logging: z.boolean(),
         metrics: z.boolean(),
-        debug: z.boolean()
+        debug: z.boolean(),
       }),
       limits: z.object({
         maxConnections: z.number(),
-        requestTimeout: z.number()
-      })
+        requestTimeout: z.number(),
+      }),
     });
 
     const baseEnv = Environment.create({
@@ -72,29 +72,29 @@ describe('E2E: Multi-Environment Management', () => {
       config: {
         app: {
           name: 'MultiEnvApp',
-          version: '1.0.0'
+          version: '1.0.0',
         },
         server: {
           host: '0.0.0.0',
           port: 3000,
-          timeout: 30000
+          timeout: 30000,
         },
         database: {
           host: 'localhost',
           port: 5432,
           name: 'myapp',
-          ssl: false
+          ssl: false,
         },
         features: {
           logging: true,
           metrics: false,
-          debug: false
+          debug: false,
         },
         limits: {
           maxConnections: 100,
-          requestTimeout: 5000
-        }
-      }
+          requestTimeout: 5000,
+        },
+      },
     });
 
     const basePath = path.join(testDir, 'base.yaml');
@@ -110,29 +110,29 @@ describe('E2E: Multi-Environment Management', () => {
       config: {
         app: {
           name: 'MultiEnvApp',
-          version: '1.0.0'
+          version: '1.0.0',
         },
         server: {
           host: '0.0.0.0',
           port: 3001,
-          timeout: 30000
+          timeout: 30000,
         },
         database: {
           host: 'localhost',
           port: 5432,
           name: 'myapp_dev',
-          ssl: false
+          ssl: false,
         },
         features: {
           logging: true,
           metrics: true,
-          debug: true
+          debug: true,
         },
         limits: {
           maxConnections: 50,
-          requestTimeout: 10000
-        }
-      }
+          requestTimeout: 10000,
+        },
+      },
     });
 
     const devPath = path.join(testDir, 'development.yaml');
@@ -148,29 +148,29 @@ describe('E2E: Multi-Environment Management', () => {
       config: {
         app: {
           name: 'MultiEnvApp',
-          version: '1.0.0'
+          version: '1.0.0',
         },
         server: {
           host: '0.0.0.0',
           port: 8080,
-          timeout: 30000
+          timeout: 30000,
         },
         database: {
           host: 'staging-db.example.com',
           port: 5432,
           name: 'myapp_staging',
-          ssl: true
+          ssl: true,
         },
         features: {
           logging: true,
           metrics: true,
-          debug: false
+          debug: false,
         },
         limits: {
           maxConnections: 200,
-          requestTimeout: 5000
-        }
-      }
+          requestTimeout: 5000,
+        },
+      },
     });
 
     const stagingPath = path.join(testDir, 'staging.yaml');
@@ -186,29 +186,29 @@ describe('E2E: Multi-Environment Management', () => {
       config: {
         app: {
           name: 'MultiEnvApp',
-          version: '1.0.0'
+          version: '1.0.0',
         },
         server: {
           host: '0.0.0.0',
           port: 8080,
-          timeout: 60000
+          timeout: 60000,
         },
         database: {
           host: 'prod-db.example.com',
           port: 5432,
           name: 'myapp_prod',
-          ssl: true
+          ssl: true,
         },
         features: {
           logging: true,
           metrics: true,
-          debug: false
+          debug: false,
         },
         limits: {
           maxConnections: 500,
-          requestTimeout: 3000
-        }
-      }
+          requestTimeout: 3000,
+        },
+      },
     });
 
     const prodPath = path.join(testDir, 'production.yaml');
@@ -313,35 +313,35 @@ describe('E2E: Multi-Environment Management', () => {
       name: env.name,
       host: env.get('database.host'),
       name: env.get('database.name'),
-      ssl: env.get('database.ssl')
+      ssl: env.get('database.ssl'),
     }));
 
     expect(dbConfigs[0]).toEqual({
       name: 'base',
       host: 'localhost',
       name: 'myapp',
-      ssl: false
+      ssl: false,
     });
 
     expect(dbConfigs[1]).toEqual({
       name: 'development',
       host: 'localhost',
       name: 'myapp_dev',
-      ssl: false
+      ssl: false,
     });
 
     expect(dbConfigs[2]).toEqual({
       name: 'staging',
       host: 'staging-db.example.com',
       name: 'myapp_staging',
-      ssl: true
+      ssl: true,
     });
 
     expect(dbConfigs[3]).toEqual({
       name: 'production',
       host: 'prod-db.example.com',
       name: 'myapp_prod',
-      ssl: true
+      ssl: true,
     });
 
     // ============================================================
@@ -360,9 +360,7 @@ describe('E2E: Multi-Environment Management', () => {
 
       // Verify there are differences
       const hasChanges =
-        Object.keys(diff.modified).length > 0 ||
-        Object.keys(diff.added).length > 0 ||
-        diff.deleted.length > 0;
+        Object.keys(diff.modified).length > 0 || Object.keys(diff.added).length > 0 || diff.deleted.length > 0;
 
       expect(hasChanges).toBe(true);
 
@@ -384,13 +382,13 @@ describe('E2E: Multi-Environment Management', () => {
 
   it('should handle environment cloning and isolation', async () => {
     const schema = z.object({
-      value: z.number()
+      value: z.number(),
     });
 
     const original = Environment.create({
       name: 'original',
       schema,
-      config: { value: 100 }
+      config: { value: 100 },
     });
 
     // Clone multiple times
@@ -414,13 +412,13 @@ describe('E2E: Multi-Environment Management', () => {
   it('should handle complex merge strategies', async () => {
     const schema = z.object({
       arrays: z.object({
-        items: z.array(z.number())
+        items: z.array(z.number()),
       }),
       nested: z.object({
         deep: z.object({
-          value: z.string()
-        })
-      })
+          value: z.string(),
+        }),
+      }),
     });
 
     const env1 = Environment.create({
@@ -428,14 +426,14 @@ describe('E2E: Multi-Environment Management', () => {
       schema,
       config: {
         arrays: {
-          items: [1, 2, 3]
+          items: [1, 2, 3],
         },
         nested: {
           deep: {
-            value: 'original'
-          }
-        }
-      }
+            value: 'original',
+          },
+        },
+      },
     });
 
     const env2 = Environment.create({
@@ -443,14 +441,14 @@ describe('E2E: Multi-Environment Management', () => {
       schema,
       config: {
         arrays: {
-          items: [4, 5, 6]
+          items: [4, 5, 6],
         },
         nested: {
           deep: {
-            value: 'updated'
-          }
-        }
-      }
+            value: 'updated',
+          },
+        },
+      },
     });
 
     // Default merge (replace)
@@ -463,7 +461,7 @@ describe('E2E: Multi-Environment Management', () => {
     const schema = z.object({
       version: z.string(),
       deployed: z.boolean(),
-      promotedFrom: z.string().optional()
+      promotedFrom: z.string().optional(),
     });
 
     // Create development environment
@@ -473,8 +471,8 @@ describe('E2E: Multi-Environment Management', () => {
       config: {
         version: '1.2.3',
         deployed: true,
-        promotedFrom: undefined
-      }
+        promotedFrom: undefined,
+      },
     });
 
     // Promote to staging
@@ -507,7 +505,7 @@ describe('E2E: Multi-Environment Management', () => {
 
   it('should handle environment comparison matrix', async () => {
     const schema = z.object({
-      setting: z.string()
+      setting: z.string(),
     });
 
     // Create multiple environments
@@ -515,7 +513,7 @@ describe('E2E: Multi-Environment Management', () => {
       Environment.create({
         name,
         schema,
-        config: { setting: `${name}-value` }
+        config: { setting: `${name}-value` },
       })
     );
 
@@ -527,9 +525,7 @@ describe('E2E: Multi-Environment Management', () => {
       for (const env2 of envs) {
         const diff = env1.diff(env2);
         const identical =
-          Object.keys(diff.modified).length === 0 &&
-          Object.keys(diff.added).length === 0 &&
-          diff.deleted.length === 0;
+          Object.keys(diff.modified).length === 0 && Object.keys(diff.added).length === 0 && diff.deleted.length === 0;
         matrix[env1.name][env2.name] = identical;
       }
     }
@@ -549,7 +545,7 @@ describe('E2E: Multi-Environment Management', () => {
     const schema = z.object({
       tier1: z.string(),
       tier2: z.string(),
-      tier3: z.string()
+      tier3: z.string(),
     });
 
     // Base configuration
@@ -559,8 +555,8 @@ describe('E2E: Multi-Environment Management', () => {
       config: {
         tier1: 'base-1',
         tier2: 'base-2',
-        tier3: 'base-3'
-      }
+        tier3: 'base-3',
+      },
     });
 
     // First override (tier1)

@@ -99,7 +99,7 @@ export class TimelineController implements ITimelineController {
    * Play timeline
    */
   play(): void {
-    if (this.isPlaying) return;
+    if (this.isPlaying && !this.isPausedState) return;
 
     this.isPlaying = true;
     this.isPausedState = false;
@@ -136,6 +136,11 @@ export class TimelineController implements ITimelineController {
     this.isPausedState = true;
     if (this.startTime) {
       this.pausedTime = performance.now() - this.startTime;
+    }
+    // Cancel the animation frame to stop the loop
+    if (this.animationId !== null) {
+      cancelAnimationFrame(this.animationId);
+      this.animationId = null;
     }
   }
 

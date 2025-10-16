@@ -285,11 +285,13 @@ export const AnimatedSVG = defineComponent<AnimatedSVGProps>((props) => {
   effect(() => {
     const isPaused = resolveValue(props.paused);
     const controller = timelineController();
-    if (controller && isPaused !== undefined) {
+    if (controller && isPaused !== undefined && hasStarted()) {
       if (isPaused) {
         controller.pause();
-      } else if (hasStarted()) {
+        isPlaying.set(false);
+      } else {
         controller.play();
+        isPlaying.set(true);
       }
     }
   });

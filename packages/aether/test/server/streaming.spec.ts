@@ -104,9 +104,9 @@ describe('Streaming SSR', () => {
             // Reject in next tick to allow handler attachment
             setTimeout(() => reject(error), 0);
           });
-          // Attach default handler to prevent unhandled rejection
-          promise.catch(() => {});
-          return promise;
+          // Attach handler IMMEDIATELY to prevent unhandled rejection
+          const safePromise = promise.catch((err) => Promise.reject(err));
+          return safePromise;
         };
 
         mock.mockImplementationOnce(createSafeRejectedPromise);
@@ -387,9 +387,9 @@ describe('Streaming SSR', () => {
             // Reject in next tick to allow handler attachment
             setTimeout(() => reject(error), 0);
           });
-          // Attach default handler to prevent unhandled rejection
-          promise.catch(() => {});
-          return promise;
+          // Attach handler IMMEDIATELY to prevent unhandled rejection
+          const safePromise = promise.catch((err) => Promise.reject(err));
+          return safePromise;
         };
 
         mock.mockImplementationOnce(createSafeRejectedPromise);
@@ -653,9 +653,9 @@ describe('Streaming SSR', () => {
             // Reject in next tick to allow handler attachment
             setTimeout(() => reject(error), 0);
           });
-          // Attach default handler to prevent unhandled rejection
-          promise.catch(() => {});
-          return promise;
+          // Attach handler IMMEDIATELY to prevent unhandled rejection
+          const safePromise = promise.catch((err) => Promise.reject(err));
+          return safePromise;
         };
 
         mock.mockImplementationOnce(createSafeRejectedPromise);

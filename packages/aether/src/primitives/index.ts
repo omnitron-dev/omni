@@ -189,6 +189,17 @@ export {
 // Toggle
 export { Toggle, type ToggleProps } from './Toggle.js';
 
+// Button
+export {
+  Button,
+  type ButtonProps,
+  type ButtonVariant,
+  type ButtonSize,
+  type ButtonElement,
+  type ButtonType,
+  type IconPosition,
+} from './Button.js';
+
 // AlertDialog
 export {
   AlertDialog,

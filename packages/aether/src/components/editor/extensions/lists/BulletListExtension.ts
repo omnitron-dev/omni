@@ -6,7 +6,7 @@
 
 import { wrappingInputRule } from 'prosemirror-inputrules';
 import { wrapInList } from 'prosemirror-schema-list';
-import type { NodeSpec } from 'prosemirror-model';
+import type { NodeSpec, Schema } from 'prosemirror-model';
 import type { Command } from 'prosemirror-state';
 import type { InputRule } from 'prosemirror-inputrules';
 import { Extension } from '../../core/Extension.js';
@@ -75,9 +75,12 @@ export class BulletListExtension extends Extension {
     };
   }
 
-  getInputRules(): InputRule[] {
+  getInputRules(schema: Schema): InputRule[] {
+    const bulletListNode = schema.nodes.bullet_list;
+    if (!bulletListNode) return [];
+
     return [
-      wrappingInputRule(/^\s*([-+*])\s$/, this.editor!.schema.nodes.bullet_list),
+      wrappingInputRule(/^\s*([-+*])\s$/, bulletListNode),
     ];
   }
 

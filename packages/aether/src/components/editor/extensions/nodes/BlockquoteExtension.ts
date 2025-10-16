@@ -6,7 +6,7 @@
 
 import { wrappingInputRule } from 'prosemirror-inputrules';
 import { wrapIn, lift } from 'prosemirror-commands';
-import type { NodeSpec } from 'prosemirror-model';
+import type { NodeSpec, Schema } from 'prosemirror-model';
 import { Extension } from '../../core/Extension.js';
 
 /**
@@ -143,8 +143,8 @@ export class BlockquoteExtension extends Extension<BlockquoteOptions> {
     };
   }
 
-  getInputRules() {
-    const blockquoteType = this.editor!.schema.nodes.blockquote;
+  getInputRules(schema: Schema) {
+    const blockquoteType = schema.nodes.blockquote;
     if (!blockquoteType) return [];
 
     return [

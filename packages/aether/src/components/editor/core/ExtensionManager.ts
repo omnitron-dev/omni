@@ -230,7 +230,8 @@ export class ExtensionManager {
     const rules: InputRule[] = [];
 
     for (const ext of this.extensions.values()) {
-      const extRules = ext.getInputRules?.();
+      // Pass schema to getInputRules() so extensions don't need this.editor yet
+      const extRules = ext.getInputRules?.(this.schema);
       if (extRules && extRules.length > 0) {
         rules.push(...extRules);
       }

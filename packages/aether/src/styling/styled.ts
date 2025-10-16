@@ -13,6 +13,7 @@ import { defineComponent, type Component } from '../core/component/index.js';
 import { computed } from '../core/reactivity/index.js';
 import { injectStyles } from './runtime.js';
 import { cx } from './css.js';
+import { jsx } from '../jsx-runtime.js';
 
 /**
  * CSS property value (primitive types)
@@ -214,11 +215,9 @@ export function styled<P = any, V extends VariantConfig = VariantConfig>(
     // Render component or element
     return () => {
       if (typeof component === 'string') {
-        // HTML element
-        return {
-          type: component,
-          props: cleanProps(),
-        };
+        // HTML element - use jsx() to create proper VNode or DOM element
+        // jsx() expects (type, props, key) where props includes children
+        return jsx(component, cleanProps(), undefined);
       } else {
         // Component
         return (component as any)(cleanProps());

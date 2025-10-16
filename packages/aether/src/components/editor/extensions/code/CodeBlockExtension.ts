@@ -11,7 +11,7 @@
  * Note: This is for code blocks, not inline code (see CodeExtension)
  */
 
-import type { NodeSpec } from 'prosemirror-model';
+import type { NodeSpec, Schema } from 'prosemirror-model';
 import { textblockTypeInputRule } from 'prosemirror-inputrules';
 import type { Command } from 'prosemirror-state';
 import { Extension } from '../../core/Extension.js';
@@ -193,8 +193,10 @@ export class CodeBlockExtension extends Extension<CodeBlockOptions> {
     };
   }
 
-  getInputRules() {
-    const nodeType = (schema: any) => schema.nodes.code_block;
+  getInputRules(schema: Schema) {
+    const nodeType = schema.nodes.code_block;
+    if (!nodeType) return [];
+
     return [
       textblockTypeInputRule(/^```([a-z]*)\s$/, nodeType, (match) => ({
         language: match[1] || this.options.defaultLanguage,

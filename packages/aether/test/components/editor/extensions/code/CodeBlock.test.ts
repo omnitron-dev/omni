@@ -333,13 +333,13 @@ describe('CodeBlockExtension', () => {
 
   describe('Input rules', () => {
     it('should provide input rules', () => {
-      const rules = extension.getInputRules();
+      const rules = extension.getInputRules(schema);
       expect(rules).toBeDefined();
       expect(rules?.length).toBeGreaterThan(0);
     });
 
     it('should have input rule for ``` syntax', () => {
-      const rules = extension.getInputRules();
+      const rules = extension.getInputRules(schema);
       expect(rules).toHaveLength(1);
     });
   });

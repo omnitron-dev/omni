@@ -56,8 +56,8 @@ export interface IExtension<Options = any> {
   // Plugin contribution
   getPlugins?(): Plugin[];
 
-  // Input rules
-  getInputRules?(): InputRule[];
+  // Input rules (schema passed to avoid needing this.editor before initialization)
+  getInputRules?(schema: Schema): InputRule[];
 
   // Keyboard shortcuts
   getKeyboardShortcuts?(): Record<string, Command>;

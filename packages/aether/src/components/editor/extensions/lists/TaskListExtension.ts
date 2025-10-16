@@ -6,7 +6,7 @@
 
 import { wrappingInputRule } from 'prosemirror-inputrules';
 import { wrapInList } from 'prosemirror-schema-list';
-import type { NodeSpec } from 'prosemirror-model';
+import type { NodeSpec, Schema } from 'prosemirror-model';
 import type { Command } from 'prosemirror-state';
 import type { InputRule } from 'prosemirror-inputrules';
 import { Extension } from '../../core/Extension.js';
@@ -75,11 +75,14 @@ export class TaskListExtension extends Extension {
     };
   }
 
-  getInputRules(): InputRule[] {
+  getInputRules(schema: Schema): InputRule[] {
+    const taskListNode = schema.nodes.task_list;
+    if (!taskListNode) return [];
+
     return [
       wrappingInputRule(
         /^\s*\[\s?\]\s$/,
-        this.editor!.schema.nodes.task_list,
+        taskListNode,
         undefined,
         undefined,
       ),

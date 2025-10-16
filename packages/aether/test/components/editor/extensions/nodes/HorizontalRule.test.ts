@@ -176,18 +176,18 @@ describe('HorizontalRuleExtension', () => {
 
   describe('Input rules', () => {
     it('should provide input rules', () => {
-      const rules = extension.getInputRules();
+      const rules = extension.getInputRules(schema);
       expect(rules).toBeDefined();
       expect(rules?.length).toBeGreaterThan(0);
     });
 
     it('should have input rule for --- pattern', () => {
-      const rules = extension.getInputRules();
+      const rules = extension.getInputRules(schema);
       expect(rules).toHaveLength(1);
     });
 
     it('should insert hr on --- input', () => {
-      const rules = extension.getInputRules();
+      const rules = extension.getInputRules(schema);
       const rule = rules?.[0];
       expect(rule).toBeDefined();
 

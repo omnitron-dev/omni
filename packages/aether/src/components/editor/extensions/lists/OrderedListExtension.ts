@@ -6,7 +6,7 @@
 
 import { wrappingInputRule } from 'prosemirror-inputrules';
 import { wrapInList } from 'prosemirror-schema-list';
-import type { NodeSpec } from 'prosemirror-model';
+import type { NodeSpec, Schema } from 'prosemirror-model';
 import type { Command } from 'prosemirror-state';
 import type { InputRule } from 'prosemirror-inputrules';
 import { Extension } from '../../core/Extension.js';
@@ -88,11 +88,14 @@ export class OrderedListExtension extends Extension {
     };
   }
 
-  getInputRules(): InputRule[] {
+  getInputRules(schema: Schema): InputRule[] {
+    const orderedListNode = schema.nodes.ordered_list;
+    if (!orderedListNode) return [];
+
     return [
       wrappingInputRule(
         /^(\d+)\.\s$/,
-        this.editor!.schema.nodes.ordered_list,
+        orderedListNode,
         (match) => ({ order: parseInt(match[1], 10) }),
         (match, node) => node.childCount + node.attrs.order === parseInt(match[1], 10),
       ),

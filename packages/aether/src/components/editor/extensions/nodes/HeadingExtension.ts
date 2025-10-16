@@ -6,7 +6,7 @@
 
 import { textblockTypeInputRule } from 'prosemirror-inputrules';
 import { setBlockType } from 'prosemirror-commands';
-import type { NodeSpec } from 'prosemirror-model';
+import type { NodeSpec, Schema } from 'prosemirror-model';
 import type { Command } from 'prosemirror-state';
 import { Extension } from '../../core/Extension.js';
 
@@ -144,12 +144,15 @@ export class HeadingExtension extends Extension<HeadingOptions> {
     };
   }
 
-  getInputRules() {
+  getInputRules(schema: Schema) {
+    const headingType = schema.nodes.heading;
+    if (!headingType) return [];
+
     return this.options.levels.map((level) => {
       // Match 1-6 hash marks followed by a space
       const regex = new RegExp(`^(#{1,${level}})\\s$`);
 
-      return textblockTypeInputRule(regex, this.editor!.schema.nodes.heading, (match) => {
+      return textblockTypeInputRule(regex, headingType, (match) => {
         // Count the number of hashes to determine the level
         if (!match) return { level: 1 };
 

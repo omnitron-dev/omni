@@ -116,16 +116,18 @@ export abstract class Extension<Options extends ExtensionOptions = any> implemen
    * Get input rules (e.g., markdown shortcuts)
    * Override to add custom input rules
    *
+   * @param schema - The ProseMirror schema (passed to avoid needing this.editor before initialization)
+   *
    * @example
    * ```typescript
-   * getInputRules() {
+   * getInputRules(schema: Schema) {
  *   return [
-   *     markInputRule(/\*\*([^*]+)\*\*$/, this.schema.marks.bold),
+   *     markInputRule(/\*\*([^*]+)\*\*$/, schema.marks.bold),
    *   ];
    * }
    * ```
    */
-  getInputRules?(): InputRule[];
+  getInputRules?(schema: Schema): InputRule[];
 
   /**
    * Get keyboard shortcuts

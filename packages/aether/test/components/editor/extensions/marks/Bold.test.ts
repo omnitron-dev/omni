@@ -145,14 +145,14 @@ describe('BoldExtension', () => {
 
   describe('Input rules', () => {
     it('should provide input rules', () => {
-      const rules = extension.getInputRules();
+      const rules = extension.getInputRules(schema);
       expect(rules).toBeDefined();
       expect(Array.isArray(rules)).toBe(true);
       expect(rules?.length).toBeGreaterThan(0);
     });
 
     it('should match **text** pattern', () => {
-      const rules = extension.getInputRules();
+      const rules = extension.getInputRules(schema);
       const rule = rules?.[0];
       expect(rule).toBeDefined();
 
@@ -163,7 +163,7 @@ describe('BoldExtension', () => {
     });
 
     it('should match __text__ pattern', () => {
-      const rules = extension.getInputRules();
+      const rules = extension.getInputRules(schema);
       const rule = rules?.[0];
       expect(rule).toBeDefined();
 

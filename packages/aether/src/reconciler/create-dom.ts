@@ -310,7 +310,15 @@ function applyProp(element: HTMLElement | SVGElement, key: string, value: any, i
     return;
   }
 
+  // Handle data-* and aria-* attributes with boolean values
+  // Convert to string "true"/"false" for proper getAttribute() behavior
+  if ((key.startsWith('data-') || key.startsWith('aria-')) && typeof resolvedValue === 'boolean') {
+    element.setAttribute(key, String(resolvedValue));
+    return;
+  }
+
   // Handle boolean attributes (checked, disabled, readonly, etc.)
+  // Use HTML standard behavior: present=true, absent=false
   if (typeof resolvedValue === 'boolean') {
     if (resolvedValue) {
       element.setAttribute(key, '');

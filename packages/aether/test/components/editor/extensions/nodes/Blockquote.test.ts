@@ -266,13 +266,13 @@ describe('BlockquoteExtension', () => {
 
   describe('Input rules', () => {
     it('should provide input rules', () => {
-      const rules = extension.getInputRules();
+      const rules = extension.getInputRules(schema);
       expect(rules).toBeDefined();
       expect(rules?.length).toBeGreaterThan(0);
     });
 
     it('should have input rule for > character', () => {
-      const rules = extension.getInputRules();
+      const rules = extension.getInputRules(schema);
       expect(rules).toHaveLength(1);
     });
   });

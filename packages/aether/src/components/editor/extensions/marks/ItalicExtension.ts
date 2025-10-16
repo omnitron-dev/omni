@@ -8,7 +8,7 @@
 import { InputRule } from 'prosemirror-inputrules';
 import { toggleMark } from 'prosemirror-commands';
 import type { Command } from 'prosemirror-state';
-import type { MarkSpec } from 'prosemirror-model';
+import type { MarkSpec, Schema } from 'prosemirror-model';
 import { Extension } from '../../core/Extension.js';
 import type { SchemaContribution } from '../../core/types.js';
 import { markInputRule } from '../../utils/inputRules.js';
@@ -71,10 +71,10 @@ export class ItalicExtension extends Extension {
   /**
    * Get input rules for markdown-style formatting
    */
-  getInputRules(): InputRule[] {
+  getInputRules(schema: Schema): InputRule[] {
     return [
       // Match *text* or _text_ (single asterisk or underscore)
-      markInputRule(/(?:^|\s)(\*|_)([^*_]+)(\1)$/, (schema) => schema.marks.italic),
+      markInputRule(/(?:^|\s)(\*|_)([^*_]+)(\1)$/, (s) => s.marks.italic),
     ];
   }
 }

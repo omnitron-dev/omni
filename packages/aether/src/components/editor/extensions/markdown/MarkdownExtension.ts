@@ -10,7 +10,7 @@
 
 import { InputRule } from 'prosemirror-inputrules';
 import { Plugin, PluginKey } from 'prosemirror-state';
-import { Slice } from 'prosemirror-model';
+import { Slice, Schema } from 'prosemirror-model';
 import type { Command } from 'prosemirror-state';
 import { Extension } from '../../core/Extension.js';
 import { parseMarkdown } from './parser.js';
@@ -119,7 +119,7 @@ export class MarkdownExtension extends Extension<MarkdownOptions> {
   /**
    * Get input rules for markdown shortcuts
    */
-  getInputRules(): InputRule[] {
+  getInputRules(schema: Schema): InputRule[] {
     if (!this.options.convertOnInput) {
       return [];
     }

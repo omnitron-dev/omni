@@ -277,13 +277,13 @@ describe('HeadingExtension', () => {
 
   describe('Input rules', () => {
     it('should provide input rules', () => {
-      const rules = extension.getInputRules();
+      const rules = extension.getInputRules(schema);
       expect(rules).toBeDefined();
       expect(rules?.length).toBeGreaterThan(0);
     });
 
     it('should create input rules for all levels', () => {
-      const rules = extension.getInputRules();
+      const rules = extension.getInputRules(schema);
       // Note: Input rules are created per level, but the implementation
       // may vary. We just check that rules exist.
       expect(rules?.length).toBeGreaterThan(0);
@@ -292,10 +292,8 @@ describe('HeadingExtension', () => {
     it('should create input rules for custom levels only', () => {
       const ext = new HeadingExtension({ levels: [1, 2] });
       const schema2 = buildSchema([ext, new ParagraphExtension()]);
-      const editor = createMockEditor(schema2);
-      ext.setEditor(editor);
 
-      const rules = ext.getInputRules();
+      const rules = ext.getInputRules(schema2);
       expect(rules).toBeDefined();
       expect(rules?.length).toBe(2);
     });

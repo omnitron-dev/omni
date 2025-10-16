@@ -5,7 +5,7 @@
  */
 
 import { InputRule } from 'prosemirror-inputrules';
-import type { NodeSpec } from 'prosemirror-model';
+import type { NodeSpec, Schema } from 'prosemirror-model';
 import { Extension } from '../../core/Extension.js';
 
 /**
@@ -111,8 +111,8 @@ export class HorizontalRuleExtension extends Extension<HorizontalRuleOptions> {
     };
   }
 
-  getInputRules() {
-    const hrType = this.editor!.schema.nodes.horizontal_rule;
+  getInputRules(schema: Schema) {
+    const hrType = schema.nodes.horizontal_rule;
     if (!hrType) return [];
 
     return [

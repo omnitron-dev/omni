@@ -206,25 +206,18 @@ describe('TaskListExtension', () => {
 
   describe('input rules', () => {
     it('should provide input rules', () => {
-      // Need to set editor instance first
-      const mockEditor = {
-        schema: createTestSchema(),
-      } as any;
-      extension.setEditor(mockEditor);
+      const schema = createTestSchema();
 
-      const inputRules = extension.getInputRules();
+      const inputRules = extension.getInputRules(schema);
       expect(inputRules).toBeDefined();
       expect(Array.isArray(inputRules)).toBe(true);
       expect(inputRules?.length).toBeGreaterThan(0);
     });
 
     it('should have input rule for markdown task list syntax', () => {
-      const mockEditor = {
-        schema: createTestSchema(),
-      } as any;
-      extension.setEditor(mockEditor);
+      const schema = createTestSchema();
 
-      const inputRules = extension.getInputRules();
+      const inputRules = extension.getInputRules(schema);
       expect(inputRules).toBeDefined();
       expect(inputRules?.length).toBeGreaterThan(0);
 

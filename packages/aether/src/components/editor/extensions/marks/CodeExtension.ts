@@ -10,7 +10,7 @@
 import { InputRule } from 'prosemirror-inputrules';
 import { toggleMark } from 'prosemirror-commands';
 import type { Command } from 'prosemirror-state';
-import type { MarkSpec } from 'prosemirror-model';
+import type { MarkSpec, Schema } from 'prosemirror-model';
 import { Extension } from '../../core/Extension.js';
 import type { SchemaContribution } from '../../core/types.js';
 import { markInputRule } from '../../utils/inputRules.js';
@@ -81,10 +81,10 @@ export class CodeExtension extends Extension {
   /**
    * Get input rules for markdown-style formatting
    */
-  getInputRules(): InputRule[] {
+  getInputRules(schema: Schema): InputRule[] {
     return [
       // Match `code`
-      markInputRule(/`([^`]+)`$/, (schema) => schema.marks.code),
+      markInputRule(/`([^`]+)`$/, (s) => s.marks.code),
     ];
   }
 }

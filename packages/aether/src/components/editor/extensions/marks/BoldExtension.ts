@@ -8,7 +8,7 @@
 import { InputRule } from 'prosemirror-inputrules';
 import { toggleMark } from 'prosemirror-commands';
 import type { Command } from 'prosemirror-state';
-import type { MarkSpec } from 'prosemirror-model';
+import type { MarkSpec, Schema } from 'prosemirror-model';
 import { Extension } from '../../core/Extension.js';
 import type { SchemaContribution } from '../../core/types.js';
 import { markInputRule } from '../../utils/inputRules.js';
@@ -75,10 +75,10 @@ export class BoldExtension extends Extension {
   /**
    * Get input rules for markdown-style formatting
    */
-  getInputRules(): InputRule[] {
+  getInputRules(schema: Schema): InputRule[] {
     return [
       // Match **text** or __text__
-      markInputRule(/(?:\*\*|__)([^*_]+)(?:\*\*|__)$/, (schema) => schema.marks.bold),
+      markInputRule(/(?:\*\*|__)([^*_]+)(?:\*\*|__)$/, (s) => s.marks.bold),
     ];
   }
 }

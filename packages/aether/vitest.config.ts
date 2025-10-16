@@ -12,7 +12,11 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'happy-dom',
-    include: ['tests/**/*.{test,spec}.{ts,tsx}', 'test/**/*.{test,spec}.{ts,tsx}'],
+    include: [
+      'tests/**/*.{test,spec}.{ts,tsx}',
+      'test/**/*.{test,spec}.{ts,tsx}',
+      'test/server/**/*.spec.ts',
+    ],
     exclude: [
       'benchmarks/**/*.bench.ts',
       'test/e2e/**/*.e2e.test.ts', // E2E tests require real browser environment
@@ -39,10 +43,10 @@ export default defineConfig({
       include: ['src/**/*.ts'],
       exclude: ['src/**/*.d.ts', 'src/**/index.ts', 'src/**/*.spec.ts', 'src/**/*.test.ts'],
       thresholds: {
-        lines: 90,
-        functions: 90,
-        branches: 85,
-        statements: 90,
+        lines: 100,
+        functions: 100,
+        branches: 100,
+        statements: 100,
       },
     },
   },

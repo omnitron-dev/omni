@@ -1,4 +1,4 @@
-import type { Context } from '@holon/flow/context';
+import type { Context } from '../context.js';
 import type { Effect, EffectFlow, EffectFlags } from './index.js';
 
 /**

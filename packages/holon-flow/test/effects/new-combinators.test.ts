@@ -11,7 +11,7 @@ import {
   restrict,
   effectful,
   EffectFlags,
-} from '../src/index.js';
+} from '../../src/effects/index.js';
 
 describe('New Combinators - Simple Tests', () => {
   describe('parallel', () => {

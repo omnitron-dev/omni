@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { effectsModule, createEffectsModule, type EffectsModule } from '../src/module.js';
-import { EffectFlags } from '../src/index.js';
-import { flow } from '@holon/flow';
+import { effectsModule, createEffectsModule, type EffectsModule } from '../../src/effects/module.js';
+import { EffectFlags } from '../../src/effects/index.js';
+import { flow } from '../../src/index.js';
 
 describe('Effects Module', () => {
   describe('effectsModule', () => {

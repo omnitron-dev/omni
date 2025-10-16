@@ -1,6 +1,6 @@
-import type { Context } from '@holon/flow/context';
-import type { Flow } from '@holon/flow';
-import { flow } from '@holon/flow';
+import type { Context } from '../context.js';
+import type { Flow } from '../types.js';
+import { flow } from '../flow.js';
 
 /**
  * Effect flags for tracking side effects

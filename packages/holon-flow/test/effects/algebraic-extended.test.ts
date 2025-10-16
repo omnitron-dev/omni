@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AlgebraicEffects, AlgebraicEffect } from '../src/algebraic.js';
+import { AlgebraicEffects, AlgebraicEffect } from '../../src/effects/algebraic.js';
 
 describe('AlgebraicEffect - Extended Tests', () => {
   describe('AlgebraicEffects.Choice - all method', () => {

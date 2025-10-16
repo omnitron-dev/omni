@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { context } from '@holon/flow/context';
-import { AlgebraicEffect, AlgebraicEffects, scopedEffect, withHandler } from '../src/algebraic.js';
+import { context } from '../../src/context.js';
+import { AlgebraicEffect, AlgebraicEffects, scopedEffect, withHandler } from '../../src/effects/algebraic.js';
 
 describe('AlgebraicEffect', () => {
   describe('Basic algebraic effects', () => {

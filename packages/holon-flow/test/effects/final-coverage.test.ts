@@ -9,8 +9,8 @@ import {
   isPure,
   combineEffects,
   IO,
-} from '../src/index.js';
-import { flow } from '@holon/flow';
+} from '../../src/effects/index.js';
+import { flow } from '../../src/index.js';
 
 describe('Final Coverage Tests', () => {
   describe('Effects.readFile - runtime detection', () => {

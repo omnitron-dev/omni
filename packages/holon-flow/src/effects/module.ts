@@ -3,9 +3,9 @@
  * Provides modular access to effect system
  */
 
-import type { Context } from '@holon/flow/context';
-import type { ModuleDefinition } from '@holon/flow/module';
-import { createDependentModule } from '@holon/flow/module';
+import type { Context } from '../context.js';
+import type { ModuleDefinition } from '../module.js';
+import { createDependentModule } from '../module.js';
 import type { EffectFlow } from './index.js';
 
 /**

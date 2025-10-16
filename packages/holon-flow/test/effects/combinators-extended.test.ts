@@ -12,7 +12,7 @@ import {
   effectful,
   EffectFlags,
   type RetryOptions,
-} from '../src/index.js';
+} from '../../src/effects/index.js';
 
 describe('Extended Combinators', () => {
   describe('parallel', () => {

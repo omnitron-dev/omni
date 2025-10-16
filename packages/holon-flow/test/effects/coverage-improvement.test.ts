@@ -6,13 +6,13 @@ import {
   effectful,
   EffectInterpreter,
   Effects
-} from '../src/index.js';
+} from '../../src/effects/index.js';
 import {
   EffectTracker,
   trackedFlow,
   trackedEffect
-} from '../src/tracker.js';
-import { context } from '@holon/flow/context';
+} from '../../src/effects/tracker.js';
+import { context } from '../../src/context.js';
 
 describe('Coverage Improvement Tests', () => {
   describe('throttleEffect - edge cases', () => {
@@ -155,7 +155,7 @@ describe('Coverage Improvement Tests', () => {
         get: () => ({ flow: (fn: Function) => fn }),
       };
 
-      const module = await (await import('../src/module.js')).effectsModule.factory(mockContext);
+      const module = await (await import('../../src/effects/module.js')).effectsModule.factory(mockContext);
       const { effects } = module;
 
       // Test with plain function (no flags property)
@@ -173,7 +173,7 @@ describe('Coverage Improvement Tests', () => {
         get: () => ({ flow: (fn: Function) => fn }),
       };
 
-      const module = await (await import('../src/module.js')).effectsModule.factory(mockContext);
+      const module = await (await import('../../src/effects/module.js')).effectsModule.factory(mockContext);
       const { effects } = module;
 
       // Test with all possible flags
@@ -222,7 +222,7 @@ describe('Coverage Improvement Tests', () => {
         get: () => ({ flow: (fn: Function) => fn }),
       };
 
-      const module = await (await import('../src/module.js')).effectsModule.factory(mockContext);
+      const module = await (await import('../../src/effects/module.js')).effectsModule.factory(mockContext);
       const { effects } = module;
 
       const plainFlow = (x: number) => x * 2;

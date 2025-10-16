@@ -25,6 +25,26 @@
       "import": "./dist/core.js",
       "default": "./dist/core.js"
     },
+    "./effects": {
+      "types": "./dist/effects/index.d.ts",
+      "import": "./dist/effects/index.js",
+      "default": "./dist/effects/index.js"
+    },
+    "./effects/tracker": {
+      "types": "./dist/effects/tracker.d.ts",
+      "import": "./dist/effects/tracker.js",
+      "default": "./dist/effects/tracker.js"
+    },
+    "./effects/algebraic": {
+      "types": "./dist/effects/algebraic.d.ts",
+      "import": "./dist/effects/algebraic.js",
+      "default": "./dist/effects/algebraic.js"
+    },
+    "./effects/module": {
+      "types": "./dist/effects/module.d.ts",
+      "import": "./dist/effects/module.js",
+      "default": "./dist/effects/module.js"
+    },
     "./package.json": "./package.json"
   },
   "main": "./dist/index.js",

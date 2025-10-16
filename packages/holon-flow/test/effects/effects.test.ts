@@ -1,5 +1,5 @@
-import { context } from '@holon/flow/context';
-import { flow } from '@holon/flow';
+import { context } from '../../src/context.js';
+import { flow } from '../../src/index.js';
 import { describe, expect, test, vi } from 'vitest';
 import {
   combineEffects,
@@ -12,7 +12,7 @@ import {
   IO,
   isPure,
   pure,
-} from '../src/index.js';
+} from '../../src/effects/index.js';
 
 describe('Effects', () => {
   describe('Effect creation', () => {

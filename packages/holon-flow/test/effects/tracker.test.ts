@@ -1,12 +1,12 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest';
-import { context } from '@holon/flow/context';
-import { effect, effectful, EffectFlags } from '../src/index.js';
+import { context } from '../../src/context.js';
+import { effect, effectful, EffectFlags } from '../../src/effects/index.js';
 import {
   EffectTracker,
   globalTracker,
   trackedEffect,
   trackedFlow,
-} from '../src/tracker.js';
+} from '../../src/effects/tracker.js';
 
 describe('EffectTracker', () => {
   let tracker: EffectTracker;

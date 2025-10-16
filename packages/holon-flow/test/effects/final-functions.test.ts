@@ -5,7 +5,7 @@ import {
   Effects,
   EffectFlags,
   IO,
-} from '../src/index.js';
+} from '../../src/effects/index.js';
 
 describe('Final Functions Coverage', () => {
   describe('pure function', () => {

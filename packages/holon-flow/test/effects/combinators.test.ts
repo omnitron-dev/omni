@@ -8,7 +8,7 @@ import {
   parallelLimit,
   raceTimeout,
   throttleEffect,
-} from '../src/index.js';
+} from '../../src/effects/index.js';
 
 describe('Effect Combinators', () => {
   beforeEach(() => {

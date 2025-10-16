@@ -9,6 +9,11 @@ export default defineConfig({
       '@omnitron-dev/aether': path.resolve(__dirname, './src/index.ts'),
     },
   },
+  server: {
+    deps: {
+      inline: ['@omnitron-dev/aether'],
+    },
+  },
   test: {
     globals: true,
     environment: 'happy-dom',

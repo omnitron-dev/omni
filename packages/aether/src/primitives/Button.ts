@@ -23,8 +23,9 @@ import { effect } from '../core/reactivity/effect.js';
 import { createRef } from '../core/component/refs.js';
 import { jsx } from '../jsx-runtime.js';
 import { generateId } from './utils/index.js';
-import { useIcons } from '../svg/icons/IconProvider.js';
-import type { SVGIconProps } from '../svg/components/SVGIcon.js';
+import { Icon } from '../svg/components/Icon.js';
+import type { IconProp, IconPreset, IconSize, IconAnimation } from '../svg/icons/types.js';
+import { resolveIconSize } from '../svg/icons/utils.js';
 
 // ============================================================================
 // Type Definitions
@@ -62,10 +63,17 @@ export type IconPosition = 'left' | 'right';
 export interface ButtonProps {
   // Content
   children?: any;
-  icon?: string;
-  leftIcon?: string;
-  rightIcon?: string;
-  loadingIcon?: string;
+
+  // Icon support - use the new IconProp type (string | IconConfig)
+  icon?: IconProp;              // Main icon (icon-only or with text)
+  leftIcon?: IconProp;          // Left-positioned icon
+  rightIcon?: IconProp;         // Right-positioned icon
+  loadingIcon?: IconProp;       // Loading state icon
+
+  // Icon configuration - default settings applied to all icons
+  iconPreset?: IconPreset;      // Default preset for all icons (stroke, duotone, twotone)
+  iconSize?: IconSize;          // Default size for all icons (xs, sm, md, lg, xl, or number)
+  iconAnimation?: IconAnimation; // Default animation for all icons
 
   // Appearance
   variant?: ButtonVariant;
@@ -118,18 +126,6 @@ export interface ButtonProps {
 }
 
 // ============================================================================
-// Icon Size Mapping
-// ============================================================================
-
-const ICON_SIZE_MAP: Record<ButtonSize, keyof SVGIconProps['size'] | number> = {
-  xs: 14,
-  sm: 16,
-  md: 20,
-  lg: 24,
-  xl: 28,
-};
-
-// ============================================================================
 // Helper Functions
 // ============================================================================
 
@@ -157,16 +153,24 @@ function isSignal<T>(value: any): value is WritableSignal<T> {
  *
  * Versatile button with support for icons, loading states, and polymorphic rendering.
  * Fully accessible with WAI-ARIA support and keyboard navigation.
+ * Integrates with Aether's new minimalist Icon API for powerful icon support.
  *
  * @example Basic button
  * ```tsx
  * <Button onClick={handleClick}>Click me</Button>
  * ```
  *
- * @example Primary button with icon
+ * @example Primary button with simple icon
  * ```tsx
  * <Button variant="primary" leftIcon="check" onClick={save}>
  *   Save Changes
+ * </Button>
+ * ```
+ *
+ * @example Icon with preset and animation
+ * ```tsx
+ * <Button icon={{ name: "heart", preset: "duotone", animation: "pulse" }}>
+ *   Like
  * </Button>
  * ```
  *
@@ -175,16 +179,56 @@ function isSignal<T>(value: any): value is WritableSignal<T> {
  * <Button icon="trash" aria-label="Delete" onClick={handleDelete} />
  * ```
  *
- * @example Loading button
+ * @example Left and right icons
+ * ```tsx
+ * <Button leftIcon="arrow-left" rightIcon="arrow-right">
+ *   Navigate
+ * </Button>
+ * ```
+ *
+ * @example All icons with duotone preset
+ * ```tsx
+ * <Button
+ *   leftIcon="check"
+ *   rightIcon="arrow-right"
+ *   iconPreset="duotone"
+ * >
+ *   Continue
+ * </Button>
+ * ```
+ *
+ * @example Loading button with custom icon
  * ```tsx
  * const isLoading = signal(false);
  *
- * <Button loading={isLoading} onClick={async () => {
- *   isLoading.set(true);
- *   await performAction();
- *   isLoading.set(false);
- * }}>
+ * <Button
+ *   loading={isLoading}
+ *   loadingIcon={{ name: "spinner", animation: "spin" }}
+ *   onClick={async () => {
+ *     isLoading.set(true);
+ *     await performAction();
+ *     isLoading.set(false);
+ *   }}
+ * >
  *   Submit
+ * </Button>
+ * ```
+ *
+ * @example Icon with custom size and color
+ * ```tsx
+ * <Button
+ *   icon={{ name: "star", size: 32, color: "gold" }}
+ *   aria-label="Star"
+ * />
+ * ```
+ *
+ * @example Animated refresh button
+ * ```tsx
+ * <Button
+ *   icon={{ name: "refresh", animation: "spin" }}
+ *   onClick={handleRefresh}
+ * >
+ *   Refresh
  * </Button>
  * ```
  */
@@ -192,12 +236,8 @@ export const Button = defineComponent<ButtonProps>((props) => {
   // Generate unique ID
   const buttonId = props.id || generateId();
 
-  // Get icon registry
-  const iconRegistry = useIcons();
-
   // Internal state
   const initialWidth = signal<number | null>(null);
-  const loadedIcons = signal<Record<string, any>>({});
 
   // Resolve loading and disabled states
   const isLoading = computed(() => resolveValue(props.loading) || false);
@@ -353,15 +393,57 @@ export const Button = defineComponent<ButtonProps>((props) => {
     props.onKeyDown?.(e);
   };
 
-  // Render icon helper
-  const renderIcon = (iconName: string | undefined, position?: 'left' | 'right' | 'loading') => {
-    if (!iconName) return null;
+  /**
+   * Render icon using the new Icon API
+   *
+   * Supports both string and IconConfig for maximum flexibility.
+   * Inherits default settings from iconPreset, iconSize, and iconAnimation props.
+   *
+   * @param iconProp - Icon name (string) or full IconConfig object
+   * @param position - Icon position for data attribute
+   * @returns Icon component wrapped in span with position data attribute
+   *
+   * @example
+   * // Simple string icon
+   * renderIcon('save', 'left')
+   *
+   * // Icon with custom config
+   * renderIcon({ name: 'heart', preset: 'duotone', animation: 'pulse' }, 'right')
+   *
+   * // Loading icon with automatic spin animation
+   * renderIcon('spinner', 'loading') // automatically gets 'spin' animation
+   */
+  const renderIcon = (iconProp: IconProp | undefined, position?: 'left' | 'right' | 'loading') => {
+    if (!iconProp) return null;
 
-    const iconSize = ICON_SIZE_MAP[size()];
+    // Determine icon size based on button size or explicit iconSize prop
+    const defaultSize = props.iconSize || size();
+    const sizeInPixels = resolveIconSize(defaultSize);
+
+    // Determine animation
+    // Loading icons automatically get spin animation unless overridden
+    const defaultAnimation = position === 'loading' ? 'spin' : props.iconAnimation;
+
+    // Build icon configuration
+    // If iconProp is a string, create a simple config
+    // If iconProp is already a config, merge with defaults
+    const iconConfig = typeof iconProp === 'string'
+      ? {
+          name: iconProp,
+          preset: props.iconPreset,
+          size: sizeInPixels,
+          animation: defaultAnimation,
+        }
+      : {
+          preset: props.iconPreset,
+          size: sizeInPixels,
+          animation: defaultAnimation,
+          ...iconProp, // Icon-specific config overrides defaults
+        };
+
+    // Data attribute for position
     const dataPosition = position ? `data-icon-${position}` : 'data-icon';
 
-    // Simple placeholder SVG for now
-    // TODO: Replace with proper SVGIcon component when available
     return jsx('span', {
       [dataPosition]: '',
       className: `button-icon button-icon-${position || 'main'}`,
@@ -369,20 +451,8 @@ export const Button = defineComponent<ButtonProps>((props) => {
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
-        width: `${iconSize}px`,
-        height: `${iconSize}px`,
       },
-      children: jsx('svg', {
-        width: iconSize,
-        height: iconSize,
-        viewBox: '0 0 24 24',
-        fill: 'currentColor',
-        children: jsx('circle', {
-          cx: '12',
-          cy: '12',
-          r: '8',
-        }),
-      }),
+      children: jsx(Icon, iconConfig),
     });
   };
 

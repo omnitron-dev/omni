@@ -218,6 +218,22 @@
       "types": "./dist/components/editor/index.d.ts",
       "import": "./dist/components/editor/index.js"
     },
+    "./svg/icons/presets": {
+      "types": "./dist/svg/icons/presets/index.d.ts",
+      "import": "./dist/svg/icons/presets/index.js"
+    },
+    "./svg/icons/presets/stroke": {
+      "types": "./dist/svg/icons/presets/stroke/index.d.ts",
+      "import": "./dist/svg/icons/presets/stroke/index.js"
+    },
+    "./svg/icons/presets/duotone": {
+      "types": "./dist/svg/icons/presets/duotone/index.d.ts",
+      "import": "./dist/svg/icons/presets/duotone/index.js"
+    },
+    "./svg/icons/presets/twotone": {
+      "types": "./dist/svg/icons/presets/twotone/index.d.ts",
+      "import": "./dist/svg/icons/presets/twotone/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

@@ -13,7 +13,7 @@ describe('HugeIcons Completeness Tests', () => {
    * Extract SVG content from icon file
    */
   function extractSVGContent(content: string): string {
-    const match = content.match(/"content":\s*"((?:[^"\\]|\\\\.)*)"/);
+    const match = content.match(/"content":\s*"((?:[^"\\]|\\["\\\/bfnrt]|\\u[0-9a-fA-F]{4})*)"/);
     if (!match) throw new Error('Could not extract SVG content');
     return match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
   }
@@ -231,7 +231,7 @@ describe('HugeIcons Completeness Tests', () => {
           const content = readFileSync(join(presetDir, file), 'utf-8');
           expect(content).toContain('"content":');
 
-          const contentMatch = content.match(/"content":\s*"((?:[^"\\]|\\\\.)*)"/);
+          const contentMatch = content.match(/"content":\s*"((?:[^"\\]|\\["\\\/bfnrt]|\\u[0-9a-fA-F]{4})*)"/);
           expect(contentMatch).toBeTruthy();
           if (contentMatch) {
             expect(contentMatch[1].length).toBeGreaterThan(0);
@@ -391,7 +391,8 @@ describe('HugeIcons Completeness Tests', () => {
 
           const viewBoxDefMatch = content.match(/"viewBox":\s*"([^"]+)"/);
           const svg = extractSVGContent(content);
-          const viewBoxSvgMatch = svg.match(/viewBox=\\"([^"]+)\\"/);
+          // After extracting, quotes are unescaped, so match with regular quotes
+          const viewBoxSvgMatch = svg.match(/viewBox="([^"]+)"/);
 
           expect(viewBoxDefMatch).toBeTruthy();
           expect(viewBoxSvgMatch).toBeTruthy();
@@ -513,10 +514,18 @@ describe('HugeIcons Completeness Tests', () => {
 
         for (const file of files.slice(0, 20)) {
           const content = readFileSync(join(presetDir, file), 'utf-8');
-          const svg = extractSVGContent(content);
 
-          // SVG content should use escaped quotes consistently
-          expect(svg).not.toContain('"'); // Should not have unescaped quotes
+          // Check that quotes are properly escaped in the raw file content
+          // The content field should have escaped quotes within the JSON string
+          const contentFieldMatch = content.match(/"content":\s*"((?:[^"\\]|\\["\\\/bfnrt]|\\u[0-9a-fA-F]{4})*)"/);
+          expect(contentFieldMatch).toBeTruthy();
+
+          if (contentFieldMatch) {
+            // The raw string should have escaped quotes for SVG attributes
+            const rawSvgContent = contentFieldMatch[1];
+            // Should contain escaped quotes like \" for SVG attributes
+            expect(rawSvgContent).toContain('\\"');
+          }
         }
       }
     });

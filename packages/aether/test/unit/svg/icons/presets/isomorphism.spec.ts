@@ -13,7 +13,7 @@ describe('HugeIcons Isomorphism Tests', () => {
    * Parse SVG content from icon definition
    */
   function extractSVGContent(iconContent: string): string {
-    const match = iconContent.match(/"content":\s*"([^"]+)"/);
+    const match = iconContent.match(/"content":\s*"((?:[^"\\]|\\["\\\/bfnrt]|\\u[0-9a-fA-F]{4})*)"/);
     if (!match) throw new Error('Could not extract SVG content');
     return match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
   }

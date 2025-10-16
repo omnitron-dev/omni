@@ -39,6 +39,11 @@ export default defineConfig({
     'components/overlay/index': 'src/components/overlay/index.ts',
     'components/utility/index': 'src/components/utility/index.ts',
     'components/editor/index': 'src/components/editor/index.ts',
+    // HugeIcons presets
+    'svg/icons/presets/hugeicons/index': 'src/svg/icons/presets/hugeicons/index.ts',
+    'svg/icons/presets/hugeicons/stroke/index': 'src/svg/icons/presets/hugeicons/stroke/index.ts',
+    'svg/icons/presets/hugeicons/duotone/index': 'src/svg/icons/presets/hugeicons/duotone/index.ts',
+    'svg/icons/presets/hugeicons/twotone/index': 'src/svg/icons/presets/hugeicons/twotone/index.ts',
   },
   format: ['esm'],
   dts: false, // Temporarily disabled due to TSX circular dependency with jsx-runtime types

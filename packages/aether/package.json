@@ -58,6 +58,10 @@
       "types": "./dist/server/index.d.ts",
       "import": "./dist/server/index.js"
     },
+    "./dev": {
+      "types": "./dist/dev/index.d.ts",
+      "import": "./dist/dev/index.js"
+    },
     "./netron": {
       "types": "./dist/netron/index.d.ts",
       "import": "./dist/netron/index.js"

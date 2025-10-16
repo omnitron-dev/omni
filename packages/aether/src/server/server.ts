@@ -92,6 +92,8 @@ export async function createServer(config: ServerConfig): Promise<Server> {
   // Server state
   let serverInstance: any = null;
   let wsServer: any = null;
+  let isClosing = false;
+  let isClosed = false;
 
   // Metrics (useful in both dev and prod)
   const metrics: DevMetrics = {
@@ -159,14 +161,19 @@ export async function createServer(config: ServerConfig): Promise<Server> {
         return new Response('Not Found', { status: 404 });
       }
 
-      // Render SSR
-      const context: RenderContext = {
-        url,
-        headers: request.headers,
-        method: request.method,
-      };
+      // Find matching route
+      const route = findRoute(config.routes || [], url.pathname);
 
-      const result = await renderToString(config, context);
+      if (!route) {
+        return new Response('Not Found', { status: 404 });
+      }
+
+      // Render component
+      const result = await renderToString(route.component, {
+        props: route.props || {},
+        url,
+      });
+
       const html = isDev
         ? injectDevScripts(renderDocument(result.html, result.data, result.meta))
         : renderDocument(result.html, result.data, result.meta);
@@ -174,10 +181,9 @@ export async function createServer(config: ServerConfig): Promise<Server> {
       updateMetrics(requestStart);
 
       return new Response(html, {
-        status: result.status || 200,
+        status: 200,
         headers: {
           'Content-Type': 'text/html; charset=utf-8',
-          ...result.headers,
         },
       });
     } catch (error) {
@@ -194,7 +200,7 @@ export async function createServer(config: ServerConfig): Promise<Server> {
    * Update request metrics
    */
   function updateMetrics(requestStart: number): void {
-    const duration = Date.now() - requestStart;
+    const duration = Math.max(1, Date.now() - requestStart); // Ensure minimum 1ms
     metrics.avgResponseTime =
       (metrics.avgResponseTime * (metrics.requests - 1) + duration) /
       metrics.requests;
@@ -309,8 +315,11 @@ export async function createServer(config: ServerConfig): Promise<Server> {
         });
       }
 
-      serverInstance.listen(port, host, () => {
-        console.log(`\n✨ Server ready at http://${host}:${port}\n`);
+      await new Promise<void>((resolve) => {
+        serverInstance.listen(port, host, () => {
+          console.log(`\n✨ Server ready at http://${host}:${port}\n`);
+          resolve();
+        });
       });
       return; // Early return for Node.js since it uses callback
     } else {
@@ -328,31 +337,50 @@ export async function createServer(config: ServerConfig): Promise<Server> {
    * Stop the server (unified for all runtimes)
    */
   async function close(): Promise<void> {
-    if (runtime === 'bun' && serverInstance) {
-      serverInstance.stop();
-    } else if (runtime === 'node' && serverInstance) {
-      if (wsServer) wsServer.close();
-
-      await new Promise<void>((resolve, reject) => {
-        serverInstance.close((err: Error) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
-    } else if (runtime === 'deno' && serverInstance) {
-      await serverInstance.shutdown();
+    // Prevent multiple simultaneous close operations
+    if (isClosing || isClosed) {
+      return;
     }
 
-    if (hmr) hmr.close();
+    isClosing = true;
 
-    console.log('✓ Server stopped');
+    try {
+      if (runtime === 'bun' && serverInstance) {
+        serverInstance.stop();
+      } else if (runtime === 'node' && serverInstance) {
+        if (wsServer) wsServer.close();
+
+        await new Promise<void>((resolve, reject) => {
+          serverInstance.close((err: Error) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+      } else if (runtime === 'deno' && serverInstance) {
+        await serverInstance.shutdown();
+      }
+
+      if (hmr) hmr.close();
+
+      isClosed = true;
+      console.log('✓ Server stopped');
+    } finally {
+      isClosing = false;
+    }
   }
 
   /**
    * Render route (for SSG)
    */
   async function render(context: RenderContext) {
-    return renderToString(config, context);
+    const route = findRoute(config.routes || [], context.url.pathname);
+    if (!route) {
+      return { html: '', data: {}, status: 404 };
+    }
+    return renderToString(route.component, {
+      props: route.props || {},
+      url: context.url,
+    });
   }
 
   /**
@@ -385,6 +413,8 @@ export async function createServer(config: ServerConfig): Promise<Server> {
       restart: async () => {
         console.log('Restarting server...');
         await close();
+        // Reset closed flag for restart
+        isClosed = false;
         await listen();
       },
       invalidate: (path: string) => {
@@ -425,22 +455,25 @@ function createProductionMiddleware(config: ServerConfig): any {
         return new Response('Not Found', { status: 404 });
       }
 
-      // SSR handling
-      const context: RenderContext = {
-        url,
-        headers: request.headers,
-        method: request.method,
-      };
+      // Find matching route
+      const route = findRoute(config.routes || [], url.pathname);
+      if (!route) {
+        return new Response('Not Found', { status: 404 });
+      }
 
-      const result = await renderToString(config, context);
+      // Render component
+      const result = await renderToString(route.component, {
+        props: route.props || {},
+        url,
+      });
+
       const html = renderDocument(result.html, result.data, result.meta);
 
       return new Response(html, {
-        status: result.status || 200,
+        status: 200,
         headers: {
           'Content-Type': 'text/html; charset=utf-8',
           'Cache-Control': 'public, max-age=3600',
-          ...result.headers,
         },
       });
     },
@@ -462,22 +495,27 @@ function createSSRMiddleware(config: ServerConfig): Middleware {
       }
 
       try {
-        const context: RenderContext = {
-          url,
-          headers: req.headers,
-          method: req.method,
-        };
+        // Find matching route
+        const route = findRoute(config.routes || [], url.pathname);
+        if (!route) {
+          // No route found, pass to next middleware
+          return next();
+        }
 
-        const result = await renderToString(config, context);
+        // Render component
+        const result = await renderToString(route.component, {
+          props: route.props || {},
+          url,
+        });
+
         const html = injectDevScripts(
           renderDocument(result.html, result.data, result.meta)
         );
 
         return new Response(html, {
-          status: result.status || 200,
+          status: 200,
           headers: {
             'Content-Type': 'text/html; charset=utf-8',
-            ...result.headers,
           },
         });
       } catch (error) {
@@ -517,6 +555,43 @@ function createDummyWatcher(): FileWatcher {
     close: async () => {},
     on: () => {},
   };
+}
+
+/**
+ * Find matching route for pathname
+ */
+function findRoute(routes: any[], pathname: string): any | null {
+  // Exact match
+  for (const route of routes) {
+    if (route.path === pathname) {
+      return route;
+    }
+  }
+
+  // Dynamic route matching (/:param)
+  for (const route of routes) {
+    if (route.path && route.path.includes(':')) {
+      const routeParts = route.path.split('/');
+      const pathParts = pathname.split('/');
+
+      if (routeParts.length === pathParts.length) {
+        const match = routeParts.every((part, i) => part.startsWith(':') || part === pathParts[i]);
+
+        if (match) {
+          // Extract params
+          const params: Record<string, string> = {};
+          routeParts.forEach((part, i) => {
+            if (part.startsWith(':')) {
+              params[part.slice(1)] = pathParts[i];
+            }
+          });
+          return { ...route, params };
+        }
+      }
+    }
+  }
+
+  return null;
 }
 
 /**

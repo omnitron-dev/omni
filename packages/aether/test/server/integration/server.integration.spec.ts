@@ -5,7 +5,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createServer } from '../../../src/server/server';
 import type { Server, ServerConfig, DevServerConfig } from '../../../src/server/types';
-import fetch from 'node-fetch';
+
+// Use built-in fetch in Node.js 18+
+const fetch = globalThis.fetch;
 
 describe('Server Integration Tests', () => {
   let server: Server;

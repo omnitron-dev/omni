@@ -2,12 +2,16 @@
  * E2E Tests for Unified Server
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { spawn, ChildProcess } from 'child_process';
-import fetch from 'node-fetch';
-import WebSocket from 'ws';
 import path from 'path';
 import { fileURLToPath } from 'url';
+
+// Use built-in fetch in Node.js 18+
+const fetch = globalThis.fetch;
+
+// Mock WebSocket for testing (will install ws if needed for real tests)
+const WebSocket = globalThis.WebSocket || vi.fn() as any;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

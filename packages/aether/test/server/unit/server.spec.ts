@@ -11,7 +11,7 @@ vi.mock('../../../src/server/hmr/engine', () => ({
   HMREngine: vi.fn().mockImplementation(() => ({
     addConnection: vi.fn(),
     removeConnection: vi.fn(),
-    handleUpdate: vi.fn(),
+    handleUpdate: vi.fn().mockResolvedValue(undefined),
     close: vi.fn(),
   })),
 }));

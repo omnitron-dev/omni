@@ -1,7 +1,9 @@
-import { coreModule, flow } from '@holon/flow';
+import { flow } from '@holon/flow';
+import { coreModule } from '@holon/flow/core';
 import { effectsModule, EffectFlags, pure, effectful } from '@holon/effects';
 import { describe, expect, test } from 'vitest';
-import { context, contextModule, withModules } from '../src/index.js';
+import { context } from '../../src/context.js';
+import { contextModule, withModules } from '../../src/module.js';
 
 describe('Module System Integration', () => {
   describe('Core Module (@holon/flow-core)', () => {
@@ -196,7 +198,7 @@ describe('Module System Integration', () => {
 
       // isolate works on the module's initialization context
       // The test should use a different approach - passing ctx directly
-      const isolated = isolate(['id']);
+      const isolated = await isolate(['id']);
       expect(isolated.get('id')).toBeUndefined(); // id is not in the base context
     });
 

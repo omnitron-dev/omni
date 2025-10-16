@@ -5,7 +5,7 @@ import {
   contextModule,
   createModule,
   withModules,
-} from '../src/index.js';
+} from '../../src/module.js';
 
 describe('Module System', () => {
   beforeEach(() => {
@@ -198,7 +198,7 @@ describe('Module System', () => {
       const ctxModule = ctx.getModule<any>(Symbol.for('holon:context'));
 
       if (ctxModule?.context) {
-        const isolated = ctxModule.context.isolate(['a', 'c']);
+        const isolated = await ctxModule.context.isolate(['a', 'c']);
 
         expect(isolated.get('a')).toBe(1);
         expect(isolated.get('b')).toBeUndefined();
@@ -451,7 +451,7 @@ describe('Module System', () => {
 
       const mod = ctx.getModule<any>(Symbol.for('holon:context'));
       if (mod) {
-        const isolated = mod.context.isolate(['keep1', 'keep2']);
+        const isolated = await mod.context.isolate(['keep1', 'keep2']);
         expect(isolated.get('keep1')).toBe('value1');
         expect(isolated.get('keep2')).toBe('value2');
         expect(isolated.get('remove')).toBeUndefined();
@@ -466,7 +466,7 @@ describe('Module System', () => {
 
       const mod = ctx.getModule<any>(Symbol.for('holon:context'));
       if (mod) {
-        const isolated = mod.context.isolate([]);
+        const isolated = await mod.context.isolate([]);
         expect(isolated.keys()).toHaveLength(0);
       }
     });
@@ -479,7 +479,7 @@ describe('Module System', () => {
 
       const mod = ctx.getModule<any>(Symbol.for('holon:context'));
       if (mod) {
-        const isolated = mod.context.isolate(['non-existent', 'also-missing']);
+        const isolated = await mod.context.isolate(['non-existent', 'also-missing']);
         expect(isolated.keys()).toHaveLength(0);
       }
     });

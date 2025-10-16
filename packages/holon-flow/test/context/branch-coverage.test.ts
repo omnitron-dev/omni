@@ -1,14 +1,11 @@
 import { afterEach, describe, expect, test } from 'vitest';
+import { context, contextual, getCurrentContext, withContext } from '../../src/context.js';
 import {
   clearModuleRegistry,
-  context,
   contextModule,
-  contextual,
   createModule,
-  getCurrentContext,
-  withContext,
   withModules,
-} from '../src/index.js';
+} from '../../src/module.js';
 
 describe('Branch Coverage Tests', () => {
   afterEach(async () => {
@@ -121,6 +118,9 @@ describe('Branch Coverage Tests', () => {
 
       const ctx = withModules(context({ base: 'value' }));
       const enhanced = ctx.use(testModule);
+
+      // Wait for module initialization
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       // Access context property through proxy
       expect(enhanced.get('base')).toBe('value');
@@ -240,7 +240,7 @@ describe('Branch Coverage Tests', () => {
       const ctxModule = ctx.getModule<any>(Symbol.for('holon:context'));
 
       if (ctxModule?.context) {
-        const isolated = ctxModule.context.isolate(['a', 'b', 'c']);
+        const isolated = await ctxModule.context.isolate(['a', 'b', 'c']);
         expect(isolated.keys()).toHaveLength(0); // All undefined, nothing copied
       }
     });

@@ -32,7 +32,6 @@
     "clean": "rm -rf dist coverage .turbo"
   },
   "dependencies": {
-    "@holon/context": "workspace:*",
     "@holon/flow": "workspace:*"
   },
   "devDependencies": {

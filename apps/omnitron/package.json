@@ -43,13 +43,12 @@
     "start:web": "vite preview"
   },
   "dependencies": {
-    "@omnitron-dev/titan": "workspace:*",
+    "@holon/effects": "workspace:*",
+    "@holon/flow": "workspace:*",
     "@omnitron-dev/aether": "workspace:*",
     "@omnitron-dev/common": "workspace:*",
     "@omnitron-dev/eventemitter": "workspace:*",
-    "@holon/flow": "workspace:*",
-    "@holon/context": "workspace:*",
-    "@holon/effects": "workspace:*",
+    "@omnitron-dev/titan": "workspace:*",
     "reflect-metadata": "^0.2.2",
     "zod": "^4.1.12"
   },

@@ -1,7 +1,7 @@
 {
   "name": "@holon/flow",
   "version": "0.2.1",
-  "description": "Core Flow abstraction - the heart of Holon",
+  "description": "Universal Flow abstraction with immutable Context and modular architecture",
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -9,6 +9,21 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./context": {
+      "types": "./dist/context.d.ts",
+      "import": "./dist/context.js",
+      "default": "./dist/context.js"
+    },
+    "./module": {
+      "types": "./dist/module.d.ts",
+      "import": "./dist/module.js",
+      "default": "./dist/module.js"
+    },
+    "./core": {
+      "types": "./dist/core.d.ts",
+      "import": "./dist/core.js",
+      "default": "./dist/core.js"
     },
     "./package.json": "./package.json"
   },
@@ -36,11 +51,13 @@
   },
   "keywords": [
     "flow",
+    "context",
     "functional",
     "composition",
     "pipeline",
-    "holon",
-    "quantum"
+    "immutable",
+    "modules",
+    "holon"
   ],
   "author": "Holon Team",
   "license": "MIT",

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { clearModuleRegistry, context, createModule, withModules } from '../src/index.js';
+import { clearModuleRegistry, context, createModule, withModules } from '../../src/module.js';
 
 describe('Final Branch Coverage', () => {
   afterEach(async () => {

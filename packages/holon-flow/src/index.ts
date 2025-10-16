@@ -1,13 +1,17 @@
 /**
- * @holon/flow - Core Flow abstraction
+ * @holon/flow - Minimal Flow Core
  *
  * The heart of Holon: a single, universal abstraction for all computation.
  * Everything is a Flow, and Flows compose to create complex systems.
  *
+ * This is the minimal core export. For additional functionality, use:
+ * - `@holon/flow/context` - Context system for state management
+ * - `@holon/flow/module` - Module system for extensibility
+ * - `@holon/flow/core` - Core module definition with all Flow utilities
+ *
  * @packageDocumentation
  */
 
-// Core Flow function and types
 // Core Flow utilities
 export {
   batch,
@@ -35,6 +39,8 @@ export {
   validate,
   when,
 } from './flow.js';
+
+// Core Flow types
 export type {
   Flow,
   FlowChain,
@@ -49,7 +55,3 @@ export type {
 
 // Note: compose can be used as pipe since they have the same functionality
 // Users can import { compose as pipe } if they prefer the pipe naming
-
-// Module exports for modular architecture
-export { coreModule, createFlowModule } from './module.js';
-export type { CoreModule } from './module.js';

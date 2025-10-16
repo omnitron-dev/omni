@@ -168,9 +168,6 @@ importers:
 
   apps/omnitron:
     dependencies:
-      '@holon/context':
-        specifier: workspace:*
-        version: link:../../packages/holon-context
       '@holon/effects':
         specifier: workspace:*
         version: link:../../packages/holon-effects
@@ -717,9 +714,6 @@ importers:
 
   packages/holon-effects:
     dependencies:
-      '@holon/context':
-        specifier: workspace:*
-        version: link:../holon-context
       '@holon/flow':
         specifier: workspace:*
         version: link:../holon-flow

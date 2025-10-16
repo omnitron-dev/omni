@@ -1,4 +1,4 @@
-import type { Flow } from '@holon/flow';
+import type { Flow } from './types.js';
 
 /**
  * Immutable context for Flow execution
@@ -386,7 +386,3 @@ export const ContextKeys = {
 export function createContextKey(name: string): symbol {
   return Symbol(name);
 }
-
-// Export module system
-export type { JSONSchema, ModularContext, Module, ModuleDefinition } from './module.js';
-export { clearModuleRegistry, contextModule, createModule, withModules } from './module.js';

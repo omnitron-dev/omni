@@ -1,4 +1,4 @@
-import { flow } from '@holon/flow';
+import { flow } from '../../src/flow.js';
 import { describe, expect, test } from 'vitest';
 import {
   ContextKeys,
@@ -8,7 +8,7 @@ import {
   emptyContext,
   getCurrentContext,
   withContext,
-} from '../src/index.js';
+} from '../../src/context.js';
 
 describe('Context', () => {
   describe('Basic operations', () => {

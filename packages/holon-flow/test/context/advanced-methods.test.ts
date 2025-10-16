@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { context } from '../src/index.js';
+import { context } from '../../src/context.js';
 
 describe('Context Advanced Methods', () => {
   describe('delete method', () => {

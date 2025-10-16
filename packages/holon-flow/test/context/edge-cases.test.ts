@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { clearModuleRegistry, context, createModule, withModules } from '../src/index.js';
+import { clearModuleRegistry, context, createModule, withModules } from '../../src/module.js';
 
 describe('Context Edge Cases', () => {
   afterEach(async () => {
@@ -129,7 +129,7 @@ describe('Context Edge Cases', () => {
 
       try {
         // Import fresh module to trigger AsyncLocalStorage check
-        const freshModule = await import('../src/index.js?' + Date.now());
+        const freshModule = await import('../../src/context.js?' + Date.now());
         const ctx = freshModule.context({ test: 'value' });
 
         // Should still work without AsyncLocalStorage

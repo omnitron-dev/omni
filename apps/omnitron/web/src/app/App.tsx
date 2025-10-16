@@ -34,7 +34,7 @@ export const App = defineComponent(() => {
     // Log application startup banner
     console.log(`
 ╔═══════════════════════════════════════════════════════════════╗
-║                         OMNITRON                               ║
+║                         OMNITRON                              ║
 ║              The Meta-System for Fractal Computing            ║
 ╠═══════════════════════════════════════════════════════════════╣
 ║                                                               ║
@@ -67,8 +67,8 @@ export const App = defineComponent(() => {
  * Displayed while the application is initializing
  */
 const LoadingScreen = defineComponent(() => () => (
-    <div class="loading-screen">
-      <div class="loading-spinner" />
-      <p>Initializing Omnitron System...</p>
-    </div>
-  ));
+  <div class="loading-screen">
+    <div class="loading-spinner" />
+    <p>Initializing Omnitron System...</p>
+  </div>
+));

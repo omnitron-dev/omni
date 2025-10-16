@@ -170,3 +170,159 @@ export type {
   User,
   AwarenessState,
 } from './extensions/collaboration/index.js';
+
+// Performance extensions
+export {
+  LazyLoadExtension,
+  VirtualScrollExtension,
+  DebounceExtension,
+  MemoizationExtension,
+} from './performance/index.js';
+export type {
+  ExtensionLoader,
+  ExtensionLoadingState,
+  PreloadStrategy,
+  LazyExtensionConfig,
+  LazyLoadConfig,
+  VirtualScrollConfig,
+  DebounceOperation,
+  OperationDebounceConfig,
+  DebounceConfig,
+  MemoizationConfig,
+} from './performance/index.js';
+
+// Performance utilities
+export {
+  performanceTracker,
+  Timing,
+  AsyncTiming,
+  measureRender,
+  measureRenderAsync,
+  createPerformanceReport,
+} from './utils/performance.js';
+export type {
+  PerformanceMark,
+  PerformanceMeasure,
+  PerformanceBudget,
+  PerformanceMetrics,
+  MemoryUsage,
+  BudgetViolation,
+} from './utils/performance.js';
+
+export {
+  requestIdleCallback,
+  cancelIdleCallback,
+  scheduleIdleTask,
+  RAFScheduler,
+  BatchExecutor,
+  throttle,
+  debounce,
+  IntersectionObserverUtil,
+  waitForVisible,
+  lazyLoad,
+  rafScheduler,
+} from './utils/optimization.js';
+export type { IdleCallbackOptions, IdleDeadline } from './utils/optimization.js';
+
+export { EditorProfiler, editorProfiler, Profile } from './utils/profiler.js';
+export type {
+  ProfileEntry,
+  TransactionProfile,
+  PluginProfile,
+  RenderProfile,
+  MemoryProfile,
+  ProfilerConfig,
+  ProfilerStats,
+} from './utils/profiler.js';
+
+// Lazy imports
+export {
+  loadCollaborationExtensions,
+  loadTableExtensions,
+  loadCodeExtensions,
+  loadMarkdownExtensions,
+  loadSearchExtension,
+  loadMediaExtensions,
+  loadPerformanceExtensions,
+  extensionLoaders,
+  preloadExtensions,
+  preloadMultiple,
+  preloadAll,
+  createExtensionLoader,
+  BUNDLE_BOUNDARIES,
+  BUNDLE_SIZE_BUDGET,
+} from './lazy-imports.js';
+export type { ExtensionGroup } from './lazy-imports.js';
+
+// Theme system
+export {
+  ThemeManager,
+  getThemeManager,
+  resetThemeManager,
+  defaultTheme,
+  minimalTheme,
+  githubTheme,
+  darkTheme,
+  highContrastTheme,
+  allThemes,
+  themeRegistry,
+  getThemeByName,
+  getThemeNames,
+  ThemePicker,
+  themePickerStyles,
+} from './theming/index.js';
+export type {
+  Theme,
+  ThemeMetadata,
+  ThemeColorPalette,
+  ThemeTypography,
+  ThemeSpacing,
+  ThemeBorderRadius,
+  ThemeShadows,
+  ThemeZIndex,
+  ThemeAnimation,
+  ThemeBreakpoints,
+  ThemeConfig,
+  ThemeChangeEvent,
+  ThemeValidationResult,
+  ContrastCheckResult,
+  ThemePreview,
+  CSSCustomProperties,
+  ThemePickerProps,
+} from './theming/index.js';
+
+// Accessibility
+export {
+  AriaLive,
+  createAriaLiveAnnouncer,
+  KeyboardNavigationExtension,
+  FocusManager,
+  createFocusManager,
+} from './accessibility/index.js';
+export type {
+  AriaLiveProps,
+  AriaLivePoliteness,
+  AriaLiveMessage,
+  AriaLiveOptions,
+  KeyboardNavigationOptions,
+  FocusManagerOptions,
+  FocusableElement,
+} from './accessibility/index.js';
+
+// Mobile Support
+export {
+  TouchHandlerExtension,
+  MobileToolbar,
+  getDefaultMobileToolbarItems,
+  mobileToolbarStyles,
+  VirtualKeyboardExtension,
+} from './mobile/index.js';
+export type {
+  TouchHandlerOptions,
+  MobileToolbarProps,
+  MobileToolbarGroup,
+  VirtualKeyboardOptions,
+} from './mobile/index.js';
+
+// Styles
+export { responsiveCss, accessibilityCss } from './styles/index.js';

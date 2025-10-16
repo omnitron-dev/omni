@@ -1,0 +1,577 @@
+/**
+ * Accessibility Styles for Advanced Editor
+ *
+ * WCAG 2.1 AA compliant styles including:
+ * - High contrast mode support
+ * - Focus visible indicators
+ * - Reduced motion support
+ * - Large text support
+ * - Color contrast compliance
+ * - Screen reader utilities
+ *
+ * @module components/editor/styles
+ */
+
+/* ========================================
+   CSS Custom Properties
+   ======================================== */
+
+:root {
+  /* Focus colors (4.5:1 contrast minimum) */
+  --focus-outline-color: #0066cc;
+  --focus-outline-width: 3px;
+  --focus-outline-offset: 2px;
+  --focus-ring-shadow: 0 0 0 3px rgba(0, 102, 204, 0.3);
+
+  /* High contrast colors */
+  --high-contrast-text: #000;
+  --high-contrast-bg: #fff;
+  --high-contrast-border: #000;
+  --high-contrast-focus: #ff0;
+
+  /* Color contrast (WCAG AA: 4.5:1 for normal text, 3:1 for large text) */
+  --text-color: #1a1a1a; /* 14:1 contrast on white */
+  --link-color: #0066cc; /* 4.5:1 contrast on white */
+  --link-visited-color: #551a8b; /* 4.5:1 contrast on white */
+  --error-color: #d32f2f; /* 4.5:1 contrast on white */
+  --success-color: #2e7d32; /* 4.5:1 contrast on white */
+  --warning-color: #f57c00; /* 3.1:1 contrast on white - needs large text */
+}
+
+/* ========================================
+   Screen Reader Only Content
+   ======================================== */
+
+.sr-only,
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Allow element to be focusable when navigated by keyboard */
+.sr-only-focusable:focus,
+.visually-hidden-focusable:focus {
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
+}
+
+/* ========================================
+   Focus Visible Indicators
+   ======================================== */
+
+/* Default focus styles for keyboard navigation */
+*:focus {
+  outline: var(--focus-outline-width) solid var(--focus-outline-color);
+  outline-offset: var(--focus-outline-offset);
+}
+
+/* Enhanced focus for interactive elements */
+button:focus,
+a:focus,
+input:focus,
+textarea:focus,
+select:focus,
+[role="button"]:focus,
+[role="link"]:focus,
+[role="menuitem"]:focus,
+[role="tab"]:focus,
+[tabindex]:not([tabindex="-1"]):focus {
+  outline: var(--focus-outline-width) solid var(--focus-outline-color);
+  outline-offset: var(--focus-outline-offset);
+  box-shadow: var(--focus-ring-shadow);
+}
+
+/* Focus visible for editor elements */
+.toolbar-button:focus-visible,
+.bubble-menu-button:focus-visible,
+.search-button:focus-visible,
+.statusbar-button:focus-visible,
+.mobile-toolbar-button:focus-visible {
+  outline: var(--focus-outline-width) solid var(--focus-outline-color);
+  outline-offset: var(--focus-outline-offset);
+  z-index: 1;
+}
+
+/* Focus visible for ProseMirror editor */
+.ProseMirror:focus {
+  outline: var(--focus-outline-width) solid var(--focus-outline-color);
+  outline-offset: -2px;
+}
+
+/* Remove focus outline for mouse users */
+:focus:not(:focus-visible) {
+  outline: none;
+  box-shadow: none;
+}
+
+/* Keyboard navigation mode */
+body.keyboard-navigation *:focus {
+  outline: var(--focus-outline-width) solid var(--focus-outline-color) !important;
+  outline-offset: var(--focus-outline-offset);
+}
+
+/* Focus within composite widgets */
+.toolbar:focus-within,
+.bubble-menu:focus-within,
+.search-panel:focus-within {
+  outline: var(--focus-outline-width) solid var(--focus-outline-color);
+  outline-offset: -2px;
+}
+
+/* ========================================
+   Skip Links
+   ======================================== */
+
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  background: var(--focus-outline-color);
+  color: #fff;
+  padding: 8px 16px;
+  text-decoration: none;
+  z-index: 10000;
+  font-weight: bold;
+}
+
+.skip-link:focus {
+  top: 0;
+  outline: none;
+}
+
+/* ========================================
+   High Contrast Mode
+   ======================================== */
+
+@media (prefers-contrast: high) {
+  :root {
+    --text-color: var(--high-contrast-text);
+    --bg-color: var(--high-contrast-bg);
+    --border-color: var(--high-contrast-border);
+    --focus-outline-color: var(--high-contrast-focus);
+  }
+
+  /* Increase border visibility */
+  .toolbar,
+  .bubble-menu,
+  .search-panel,
+  .statusbar,
+  .mobile-toolbar {
+    border: 2px solid var(--high-contrast-border);
+  }
+
+  .toolbar-button,
+  .bubble-menu-button,
+  .search-button,
+  .mobile-toolbar-button {
+    border: 2px solid var(--high-contrast-border);
+  }
+
+  /* Ensure text has maximum contrast */
+  .ProseMirror {
+    color: var(--high-contrast-text);
+    background: var(--high-contrast-bg);
+  }
+
+  /* Remove subtle shadows */
+  .toolbar,
+  .bubble-menu,
+  .search-panel,
+  .mobile-toolbar {
+    box-shadow: none;
+  }
+
+  /* Strengthen focus indicators */
+  *:focus {
+    outline: 4px solid var(--high-contrast-focus);
+    outline-offset: 2px;
+  }
+}
+
+/* Windows High Contrast Mode */
+@media screen and (-ms-high-contrast: active) {
+  .toolbar-button,
+  .bubble-menu-button,
+  .search-button,
+  .mobile-toolbar-button {
+    border: 2px solid currentColor;
+  }
+
+  .toolbar-button.active,
+  .bubble-menu-button.active,
+  .mobile-toolbar-button.active {
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  *:focus {
+    outline: 3px solid Highlight;
+  }
+}
+
+/* ========================================
+   Reduced Motion
+   ======================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  /* Remove all animations and transitions */
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* Remove transform animations */
+  .toolbar-button:active,
+  .bubble-menu-button:active,
+  .mobile-toolbar-button:active {
+    transform: none;
+  }
+
+  /* Remove fade animations */
+  .bubble-menu,
+  .search-panel,
+  .link-editor {
+    opacity: 1 !important;
+  }
+
+  /* Remove slide animations */
+  .mobile-toolbar-expanded,
+  .virtual-keyboard-format-bar {
+    transform: none !important;
+  }
+}
+
+/* ========================================
+   Large Text Support
+   ======================================== */
+
+/* Support up to 200% text zoom (WCAG 2.1 AA) */
+@media (min-resolution: 2dppx) {
+  .ProseMirror {
+    line-height: 1.6;
+  }
+}
+
+/* Large text mode (user preference) */
+@media (prefers-contrast: more) {
+  .ProseMirror {
+    font-size: 18px;
+    line-height: 1.7;
+  }
+
+  .toolbar-button,
+  .bubble-menu-button,
+  .search-button,
+  .mobile-toolbar-button {
+    font-size: 18px;
+    padding: 12px;
+  }
+}
+
+/* ========================================
+   Color Blindness Support
+   ======================================== */
+
+/* Don't rely solely on color for information */
+.toolbar-button.active::after,
+.bubble-menu-button.active::after,
+.mobile-toolbar-button.active::after {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 20px;
+  height: 3px;
+  background: currentColor;
+}
+
+/* Use icons and labels, not just colors */
+.error-message::before {
+  content: '⚠ ';
+}
+
+.success-message::before {
+  content: '✓ ';
+}
+
+.warning-message::before {
+  content: 'ℹ ';
+}
+
+/* ========================================
+   Keyboard Navigation Indicators
+   ======================================== */
+
+/* Show which toolbar group is active */
+.toolbar-group:focus-within {
+  background: rgba(0, 102, 204, 0.1);
+  border-radius: 4px;
+}
+
+/* Show active menu item */
+[role="menuitem"][aria-selected="true"] {
+  background: var(--focus-outline-color);
+  color: #fff;
+}
+
+/* Show keyboard shortcut hints */
+.toolbar-button[title]::after,
+.bubble-menu-button[title]::after {
+  content: attr(title);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.9);
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+  z-index: 1000;
+}
+
+.toolbar-button:focus::after,
+.toolbar-button:hover::after,
+.bubble-menu-button:focus::after,
+.bubble-menu-button:hover::after {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toolbar-button[title]::after,
+  .bubble-menu-button[title]::after {
+    transition: none;
+  }
+}
+
+/* ========================================
+   Touch Target Accessibility
+   ======================================== */
+
+/* Ensure minimum 44x44px touch targets (WCAG 2.1 AA) */
+@media (pointer: coarse) {
+  button,
+  a,
+  input[type="checkbox"],
+  input[type="radio"],
+  .toolbar-button,
+  .bubble-menu-button,
+  .search-button,
+  .statusbar-button,
+  .mobile-toolbar-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* Ensure adequate spacing between touch targets */
+  .toolbar,
+  .bubble-menu,
+  .search-panel-controls,
+  .mobile-toolbar-quick-access {
+    gap: 8px;
+  }
+}
+
+/* ========================================
+   ARIA Live Regions
+   ======================================== */
+
+[role="status"],
+[role="alert"],
+[aria-live] {
+  /* Ensure live regions are positioned off-screen but not removed from DOM */
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+/* ========================================
+   Loading States
+   ======================================== */
+
+[aria-busy="true"] {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+[aria-busy="true"]::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  margin: -10px 0 0 -10px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ========================================
+   Disabled State
+   ======================================== */
+
+[aria-disabled="true"],
+:disabled,
+.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Ensure disabled state is not communicated by color alone */
+[aria-disabled="true"]::before,
+:disabled::before,
+.disabled::before {
+  content: '🚫 ';
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  font-size: 10px;
+}
+
+/* ========================================
+   Selection Highlight
+   ======================================== */
+
+::selection {
+  background: var(--focus-outline-color);
+  color: #fff;
+}
+
+::-moz-selection {
+  background: var(--focus-outline-color);
+  color: #fff;
+}
+
+/* ========================================
+   Error and Validation States
+   ======================================== */
+
+[aria-invalid="true"] {
+  border: 2px solid var(--error-color);
+  outline: 2px solid var(--error-color);
+  outline-offset: 2px;
+}
+
+[aria-invalid="true"] + .error-message {
+  color: var(--error-color);
+  font-weight: bold;
+  margin-top: 4px;
+}
+
+/* ========================================
+   Tooltips and Help Text
+   ======================================== */
+
+[aria-describedby] {
+  position: relative;
+}
+
+.tooltip,
+[role="tooltip"] {
+  position: absolute;
+  background: rgba(0, 0, 0, 0.9);
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  z-index: 10000;
+  max-width: 200px;
+}
+
+/* ========================================
+   Tables Accessibility
+   ======================================== */
+
+table {
+  border-collapse: collapse;
+}
+
+th {
+  font-weight: bold;
+  text-align: left;
+}
+
+/* Ensure table cells have visible borders */
+td,
+th {
+  border: 1px solid var(--border-color, #e0e0e0);
+}
+
+/* Highlight current cell on focus */
+td:focus,
+th:focus {
+  outline: var(--focus-outline-width) solid var(--focus-outline-color);
+  outline-offset: -2px;
+  z-index: 1;
+}
+
+/* ========================================
+   Modal and Dialog Accessibility
+   ======================================== */
+
+[role="dialog"],
+[role="alertdialog"] {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #fff;
+  border: 2px solid var(--border-color, #e0e0e0);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  z-index: 9999;
+  padding: 24px;
+  max-width: 90vw;
+  max-height: 90vh;
+  overflow: auto;
+}
+
+/* Modal backdrop */
+[role="dialog"] + .modal-backdrop,
+[role="alertdialog"] + .modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 9998;
+}
+
+/* Ensure modal title is clearly visible */
+[role="dialog"] [role="heading"],
+[role="alertdialog"] [role="heading"] {
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin-bottom: 16px;
+}

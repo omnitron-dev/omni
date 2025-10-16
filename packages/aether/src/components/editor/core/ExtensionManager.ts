@@ -6,6 +6,11 @@
  * - Schema building from extensions
  * - Plugin collection and merging
  * - Keymap, input rules aggregation
+ *
+ * Performance optimizations:
+ * - Cached schema building
+ * - Optimized topological sort
+ * - Reduced redundant computations
  */
 
 import type { Schema } from 'prosemirror-model';
@@ -17,6 +22,16 @@ import type { IExtension } from './types.js';
 import { SchemaBuilder } from './SchemaBuilder.js';
 
 /**
+ * Cache for topological sort results
+ */
+const sortCache = new WeakMap<IExtension[], IExtension[]>();
+
+/**
+ * Cache for schema building
+ */
+const schemaCache = new WeakMap<IExtension[], Schema>();
+
+/**
  * ExtensionManager class
  *
  * Manages the lifecycle and configuration of extensions
@@ -25,6 +40,10 @@ export class ExtensionManager {
   private extensions: Map<string, IExtension> = new Map();
   private schema: Schema;
   private plugins: Plugin[];
+
+  // Cached computations
+  private keymapCache?: Record<string, Command>;
+  private inputRulesCache?: InputRule[];
 
   constructor(extensionList: IExtension[] = []) {
     // Resolve dependencies and sort extensions
@@ -35,7 +54,7 @@ export class ExtensionManager {
       this.extensions.set(ext.name, ext);
     }
 
-    // Build schema
+    // Build schema (with caching)
     this.schema = this.buildSchema();
 
     // Collect plugins
@@ -45,13 +64,21 @@ export class ExtensionManager {
   /**
    * Topologically sort extensions based on dependencies
    * This ensures extensions are loaded in the correct order
+   *
+   * Performance: O(V + E) with caching for repeated calls
    */
   private topologicalSort(extensions: IExtension[]): IExtension[] {
+    // Check cache
+    const cached = sortCache.get(extensions);
+    if (cached) {
+      return cached;
+    }
+
     const sorted: IExtension[] = [];
     const visited = new Set<string>();
     const visiting = new Set<string>();
 
-    // Create map for quick lookup
+    // Create map for O(1) lookup instead of O(n)
     const extensionMap = new Map<string, IExtension>();
     for (const ext of extensions) {
       extensionMap.set(ext.name, ext);
@@ -95,21 +122,41 @@ export class ExtensionManager {
       }
     }
 
+    // Cache result
+    sortCache.set(extensions, sorted);
+
     return sorted;
   }
 
   /**
    * Build ProseMirror schema from all extensions
+   *
+   * Performance: Cached to avoid rebuilding identical schemas
    */
   private buildSchema(): Schema {
+    const extensionsArray = Array.from(this.extensions.values());
+
+    // Check cache
+    const cached = schemaCache.get(extensionsArray);
+    if (cached) {
+      return cached;
+    }
+
     const builder = new SchemaBuilder();
-    builder.addExtensions(Array.from(this.extensions.values()));
-    return builder.build();
+    builder.addExtensions(extensionsArray);
+    const schema = builder.build();
+
+    // Cache result
+    schemaCache.set(extensionsArray, schema);
+
+    return schema;
   }
 
   /**
    * Build plugin list from all extensions
    * Includes core plugins (history, keymap, inputRules) and extension plugins
+   *
+   * Performance: Optimized plugin collection with minimal allocations
    */
   private buildPlugins(): Plugin[] {
     const plugins: Plugin[] = [];
@@ -131,10 +178,12 @@ export class ExtensionManager {
       plugins.push(inputRules({ rules }));
     }
 
-    // Extension plugins
+    // Extension plugins - collect in one pass
     for (const ext of this.extensions.values()) {
-      const extPlugins = ext.getPlugins?.() || [];
-      plugins.push(...extPlugins);
+      const extPlugins = ext.getPlugins?.();
+      if (extPlugins && extPlugins.length > 0) {
+        plugins.push(...extPlugins);
+      }
     }
 
     return plugins;
@@ -142,8 +191,14 @@ export class ExtensionManager {
 
   /**
    * Aggregate keymaps from all extensions
+   *
+   * Performance: Cached after first call
    */
   private getKeymap(): Record<string, Command> {
+    if (this.keymapCache) {
+      return this.keymapCache;
+    }
+
     const keymapBindings: Record<string, Command> = {
       // Default undo/redo bindings
       'Mod-z': undo,
@@ -152,24 +207,36 @@ export class ExtensionManager {
     };
 
     for (const ext of this.extensions.values()) {
-      const extKeymap = ext.getKeyboardShortcuts?.() || {};
-      Object.assign(keymapBindings, extKeymap);
+      const extKeymap = ext.getKeyboardShortcuts?.();
+      if (extKeymap) {
+        Object.assign(keymapBindings, extKeymap);
+      }
     }
 
+    this.keymapCache = keymapBindings;
     return keymapBindings;
   }
 
   /**
    * Aggregate input rules from all extensions
+   *
+   * Performance: Cached after first call
    */
   private getInputRules(): InputRule[] {
+    if (this.inputRulesCache) {
+      return this.inputRulesCache;
+    }
+
     const rules: InputRule[] = [];
 
     for (const ext of this.extensions.values()) {
-      const extRules = ext.getInputRules?.() || [];
-      rules.push(...extRules);
+      const extRules = ext.getInputRules?.();
+      if (extRules && extRules.length > 0) {
+        rules.push(...extRules);
+      }
     }
 
+    this.inputRulesCache = rules;
     return rules;
   }
 

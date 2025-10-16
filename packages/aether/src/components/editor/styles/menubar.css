@@ -1,0 +1,222 @@
+/**
+ * Menu Bar Styles
+ * Styling for the editor menu bar
+ */
+
+/* ===== Menu Bar Container ===== */
+
+.aether-menubar {
+  display: flex;
+  align-items: center;
+  min-height: var(--editor-menubar-height);
+  background-color: var(--editor-menubar-bg);
+  border-bottom: 1px solid var(--editor-menubar-border);
+  padding: 0 var(--editor-spacing-sm);
+  position: relative;
+  z-index: var(--editor-z-sticky);
+}
+
+/* ===== Menu Item ===== */
+
+.aether-menubar__item {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: var(--editor-spacing-sm) var(--editor-spacing-md);
+  color: var(--editor-color-text);
+  font-size: var(--editor-font-size-sm);
+  font-weight: var(--editor-font-weight-medium);
+  cursor: pointer;
+  user-select: none;
+  border-radius: var(--editor-radius-sm);
+  transition: background-color var(--editor-duration-fast) var(--editor-easing-out);
+}
+
+.aether-menubar__item:hover {
+  background-color: var(--editor-color-surface-hover);
+}
+
+.aether-menubar__item.is-active {
+  background-color: var(--editor-color-surface-active);
+}
+
+.aether-menubar__item:focus-visible {
+  outline: 2px solid var(--editor-color-focus);
+  outline-offset: 2px;
+}
+
+/* ===== Submenu ===== */
+
+.aether-menubar__submenu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: var(--editor-spacing-xs);
+  min-width: 220px;
+  background-color: var(--editor-dropdown-bg);
+  border: 1px solid var(--editor-dropdown-border);
+  border-radius: var(--editor-dropdown-radius);
+  box-shadow: var(--editor-dropdown-shadow);
+  padding: var(--editor-spacing-xs);
+  z-index: var(--editor-z-dropdown);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-8px);
+  transition: opacity var(--editor-duration-fast) var(--editor-easing-out),
+              transform var(--editor-duration-fast) var(--editor-easing-out),
+              visibility 0s linear var(--editor-duration-fast);
+}
+
+.aether-menubar__item.is-active .aether-menubar__submenu {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  transition-delay: 0s;
+}
+
+/* Nested submenu */
+.aether-menubar__submenu .aether-menubar__submenu {
+  top: 0;
+  left: 100%;
+  margin-top: 0;
+  margin-left: var(--editor-spacing-xs);
+}
+
+/* ===== Menu Item Content ===== */
+
+.aether-menubar__submenu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--editor-spacing-md);
+  padding: var(--editor-spacing-sm) var(--editor-spacing-md);
+  color: var(--editor-color-text);
+  font-size: var(--editor-font-size-sm);
+  cursor: pointer;
+  border-radius: var(--editor-radius-sm);
+  transition: background-color var(--editor-duration-fast) var(--editor-easing-out);
+  position: relative;
+}
+
+.aether-menubar__submenu-item:hover {
+  background-color: var(--editor-color-surface-hover);
+}
+
+.aether-menubar__submenu-item.is-active {
+  background-color: var(--editor-color-primary);
+  color: var(--editor-color-text-inverse);
+}
+
+.aether-menubar__submenu-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ===== Menu Icon ===== */
+
+.aether-menubar__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  flex-shrink: 0;
+}
+
+.aether-menubar__icon svg {
+  width: 100%;
+  height: 100%;
+  fill: currentColor;
+}
+
+/* ===== Menu Label ===== */
+
+.aether-menubar__label {
+  flex: 1;
+}
+
+/* ===== Keyboard Shortcut ===== */
+
+.aether-menubar__shortcut {
+  margin-left: auto;
+  padding-left: var(--editor-spacing-lg);
+  color: var(--editor-color-text-tertiary);
+  font-size: var(--editor-font-size-xs);
+  font-family: var(--editor-font-family-mono);
+}
+
+.aether-menubar__submenu-item:hover .aether-menubar__shortcut,
+.aether-menubar__submenu-item.is-active .aether-menubar__shortcut {
+  color: inherit;
+}
+
+/* ===== Submenu Arrow ===== */
+
+.aether-menubar__submenu-item.has-submenu::after {
+  content: '';
+  width: 0;
+  height: 0;
+  border-left: 4px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  margin-left: auto;
+  padding-left: var(--editor-spacing-sm);
+}
+
+/* ===== Divider ===== */
+
+.aether-menubar__divider {
+  height: 1px;
+  background-color: var(--editor-color-border-divider);
+  margin: var(--editor-spacing-xs) 0;
+}
+
+/* ===== Checkmark for Active Items ===== */
+
+.aether-menubar__submenu-item.is-checked::before {
+  content: '✓';
+  position: absolute;
+  left: var(--editor-spacing-sm);
+  font-weight: var(--editor-font-weight-bold);
+}
+
+.aether-menubar__submenu-item.is-checked {
+  padding-left: calc(var(--editor-spacing-md) + 1rem);
+}
+
+/* ===== Responsive Design ===== */
+
+@media (max-width: 768px) {
+  .aether-menubar {
+    overflow-x: auto;
+  }
+
+  .aether-menubar__item {
+    flex-shrink: 0;
+  }
+}
+
+/* ===== Accessibility ===== */
+
+.aether-menubar__item[aria-expanded="true"] {
+  background-color: var(--editor-color-surface-active);
+}
+
+.aether-menubar__submenu[aria-hidden="true"] {
+  display: none;
+}
+
+/* ===== High Contrast Mode ===== */
+
+@media (prefers-contrast: high) {
+  .aether-menubar {
+    border-width: 2px;
+  }
+
+  .aether-menubar__submenu {
+    border-width: 2px;
+  }
+
+  .aether-menubar__item:focus-visible {
+    outline-width: 3px;
+  }
+}

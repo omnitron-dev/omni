@@ -162,6 +162,8 @@ export const SearchPanel = defineComponent<SearchPanelProps>((props) => {
 
     return jsx('div', {
       class: `search-panel search-panel-${position} ${props.class || ''}`,
+      role: 'search',
+      'aria-label': 'Find and replace',
       children: [
         // Search input row
         jsx('div', {
@@ -172,6 +174,8 @@ export const SearchPanel = defineComponent<SearchPanelProps>((props) => {
               type: 'text',
               class: 'search-panel-input',
               placeholder: 'Search...',
+              'aria-label': 'Search text',
+              'aria-describedby': 'search-match-count',
               value: searchQuery(),
               onInput: (e: Event) => {
                 const target = e.target as HTMLInputElement;
@@ -186,7 +190,11 @@ export const SearchPanel = defineComponent<SearchPanelProps>((props) => {
 
             // Match counter
             jsx('div', {
+              id: 'search-match-count',
               class: 'search-panel-counter',
+              role: 'status',
+              'aria-live': 'polite',
+              'aria-atomic': 'true',
               children: matches.total > 0 ? `${matches.current} of ${matches.total}` : 'No matches',
             }),
 
@@ -194,6 +202,8 @@ export const SearchPanel = defineComponent<SearchPanelProps>((props) => {
             jsx('button', {
               class: 'search-panel-button',
               title: 'Previous match (Shift+Enter)',
+              'aria-label': 'Previous match',
+              'aria-disabled': matches.total === 0,
               onClick: handleFindPrevious,
               disabled: matches.total === 0,
               children: '↑',
@@ -202,6 +212,8 @@ export const SearchPanel = defineComponent<SearchPanelProps>((props) => {
             jsx('button', {
               class: 'search-panel-button',
               title: 'Next match (Enter)',
+              'aria-label': 'Next match',
+              'aria-disabled': matches.total === 0,
               onClick: handleFindNext,
               disabled: matches.total === 0,
               children: '↓',
@@ -211,6 +223,8 @@ export const SearchPanel = defineComponent<SearchPanelProps>((props) => {
             jsx('button', {
               class: `search-panel-button ${caseSensitive() ? 'active' : ''}`,
               title: 'Case sensitive',
+              'aria-label': 'Case sensitive search',
+              'aria-pressed': caseSensitive,
               onClick: () => {
                 caseSensitive.set(!caseSensitive());
                 handleSearch();
@@ -221,6 +235,8 @@ export const SearchPanel = defineComponent<SearchPanelProps>((props) => {
             jsx('button', {
               class: `search-panel-button ${wholeWord() ? 'active' : ''}`,
               title: 'Whole word',
+              'aria-label': 'Whole word search',
+              'aria-pressed': wholeWord,
               onClick: () => {
                 wholeWord.set(!wholeWord());
                 handleSearch();
@@ -231,6 +247,8 @@ export const SearchPanel = defineComponent<SearchPanelProps>((props) => {
             jsx('button', {
               class: `search-panel-button ${regexEnabled() ? 'active' : ''}`,
               title: 'Regular expression',
+              'aria-label': 'Regular expression search',
+              'aria-pressed': regexEnabled,
               onClick: () => {
                 regexEnabled.set(!regexEnabled());
                 handleSearch();
@@ -242,6 +260,9 @@ export const SearchPanel = defineComponent<SearchPanelProps>((props) => {
             jsx('button', {
               class: `search-panel-button ${showReplace() ? 'active' : ''}`,
               title: 'Toggle replace',
+              'aria-label': 'Toggle replace mode',
+              'aria-pressed': showReplace,
+              'aria-expanded': showReplace,
               onClick: () => showReplace.set(!showReplace()),
               children: '⇄',
             }),
@@ -250,6 +271,7 @@ export const SearchPanel = defineComponent<SearchPanelProps>((props) => {
             jsx('button', {
               class: 'search-panel-button search-panel-close',
               title: 'Close (Escape)',
+              'aria-label': 'Close search panel',
               onClick: handleClose,
               children: '×',
             }),
@@ -266,6 +288,7 @@ export const SearchPanel = defineComponent<SearchPanelProps>((props) => {
                   type: 'text',
                   class: 'search-panel-input',
                   placeholder: 'Replace...',
+                  'aria-label': 'Replace text',
                   value: replaceText(),
                   onInput: (e: Event) => {
                     const target = e.target as HTMLInputElement;
@@ -281,6 +304,8 @@ export const SearchPanel = defineComponent<SearchPanelProps>((props) => {
                 jsx('button', {
                   class: 'search-panel-button',
                   title: 'Replace',
+                  'aria-label': 'Replace current match',
+                  'aria-disabled': matches.total === 0,
                   onClick: handleReplace,
                   disabled: matches.total === 0,
                   children: 'Replace',
@@ -289,6 +314,8 @@ export const SearchPanel = defineComponent<SearchPanelProps>((props) => {
                 jsx('button', {
                   class: 'search-panel-button',
                   title: 'Replace all',
+                  'aria-label': 'Replace all matches',
+                  'aria-disabled': matches.total === 0,
                   onClick: handleReplaceAll,
                   disabled: matches.total === 0,
                   children: 'Replace All',

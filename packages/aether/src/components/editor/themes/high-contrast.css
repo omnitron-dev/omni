@@ -1,0 +1,285 @@
+/**
+ * High Contrast Theme
+ * Maximum accessibility with high contrast ratios
+ */
+
+.theme-high-contrast {
+  /* Primary colors - Pure blue for maximum contrast */
+  --editor-color-primary: #0000ff;
+  --editor-color-primary-hover: #0000cc;
+  --editor-color-primary-active: #000099;
+  --editor-color-primary-disabled: #ccccff;
+
+  /* Secondary colors - Pure black */
+  --editor-color-secondary: #000000;
+  --editor-color-secondary-hover: #1a1a1a;
+  --editor-color-secondary-active: #333333;
+
+  /* Surface colors - Pure white */
+  --editor-color-surface: #ffffff;
+  --editor-color-surface-hover: #f0f0f0;
+  --editor-color-surface-active: #e0e0e0;
+  --editor-color-surface-raised: #ffffff;
+  --editor-color-surface-overlay: rgba(255, 255, 255, 1);
+
+  /* Background colors */
+  --editor-color-background: #ffffff;
+  --editor-color-background-alt: #f5f5f5;
+
+  /* Text colors - Maximum contrast */
+  --editor-color-text: #000000;
+  --editor-color-text-secondary: #000000;
+  --editor-color-text-tertiary: #333333;
+  --editor-color-text-disabled: #666666;
+  --editor-color-text-inverse: #ffffff;
+
+  /* Border colors - Strong borders */
+  --editor-color-border: #000000;
+  --editor-color-border-hover: #000000;
+  --editor-color-border-focus: #0000ff;
+  --editor-color-border-divider: #000000;
+
+  /* Semantic colors - High contrast versions */
+  --editor-color-success: #008000;
+  --editor-color-success-bg: #e6ffe6;
+  --editor-color-warning: #ff8800;
+  --editor-color-warning-bg: #fff4e6;
+  --editor-color-error: #cc0000;
+  --editor-color-error-bg: #ffe6e6;
+  --editor-color-info: #0000ff;
+  --editor-color-info-bg: #e6e6ff;
+
+  /* Selection colors - High visibility */
+  --editor-color-selection: #0000ff;
+  --editor-color-selection-bg: #ffff00;
+
+  /* Highlight colors - Maximum contrast */
+  --editor-color-highlight: #000000;
+  --editor-color-highlight-bg: #ffff00;
+
+  /* Focus colors - Highly visible */
+  --editor-color-focus: #0000ff;
+  --editor-color-focus-ring: rgba(0, 0, 255, 0.5);
+
+  /* Code colors - High contrast */
+  --editor-color-code-background: #f5f5f5;
+  --editor-color-code-border: #000000;
+  --editor-color-code-text: #000000;
+  --editor-color-code-keyword: #0000cc;
+  --editor-color-code-string: #008000;
+  --editor-color-code-comment: #666666;
+  --editor-color-code-number: #cc0000;
+  --editor-color-code-operator: #000000;
+
+  /* Font sizes - Larger for accessibility */
+  --editor-font-size-xs: 0.875rem;
+  --editor-font-size-sm: 1rem;
+  --editor-font-size-base: 1.125rem;
+  --editor-font-size-md: 1.25rem;
+  --editor-font-size-lg: 1.5rem;
+  --editor-font-size-xl: 1.75rem;
+  --editor-font-size-2xl: 2rem;
+  --editor-font-size-3xl: 2.5rem;
+
+  /* Font weights - Bolder for clarity */
+  --editor-font-weight-normal: 400;
+  --editor-font-weight-medium: 600;
+  --editor-font-weight-semibold: 700;
+  --editor-font-weight-bold: 800;
+
+  /* Line heights - More spacious */
+  --editor-line-height-tight: 1.3;
+  --editor-line-height-base: 1.6;
+  --editor-line-height-relaxed: 1.8;
+
+  /* Letter spacing - Better readability */
+  --editor-letter-spacing-tight: 0;
+  --editor-letter-spacing-normal: 0;
+  --editor-letter-spacing-wide: 0.025em;
+
+  /* Spacing - Larger for better touch targets */
+  --editor-spacing-xs: 0.5rem;
+  --editor-spacing-sm: 0.75rem;
+  --editor-spacing-md: 1.25rem;
+  --editor-spacing-lg: 2rem;
+  --editor-spacing-xl: 2.5rem;
+  --editor-spacing-2xl: 3.5rem;
+  --editor-spacing-3xl: 4.5rem;
+  --editor-spacing-4xl: 6.5rem;
+
+  /* Border radius - No rounded corners for clarity */
+  --editor-radius-none: 0;
+  --editor-radius-sm: 0;
+  --editor-radius-base: 0;
+  --editor-radius-md: 0;
+  --editor-radius-lg: 0;
+  --editor-radius-xl: 0;
+  --editor-radius-full: 0;
+
+  /* Shadows - Use borders instead */
+  --editor-shadow-none: none;
+  --editor-shadow-xs: 0 0 0 1px #000000;
+  --editor-shadow-sm: 0 0 0 2px #000000;
+  --editor-shadow-base: 0 0 0 2px #000000;
+  --editor-shadow-md: 0 0 0 3px #000000;
+  --editor-shadow-lg: 0 0 0 3px #000000;
+  --editor-shadow-xl: 0 0 0 4px #000000;
+  --editor-shadow-2xl: 0 0 0 4px #000000;
+  --editor-shadow-inner: inset 0 0 0 1px #000000;
+
+  /* Animation - Disabled for accessibility */
+  --editor-duration-fast: 0ms;
+  --editor-duration-base: 0ms;
+  --editor-duration-slow: 0ms;
+
+  --editor-easing-linear: linear;
+  --editor-easing-in: linear;
+  --editor-easing-out: linear;
+  --editor-easing-in-out: linear;
+  --editor-easing-sharp: linear;
+}
+
+/* Contrast ratios (High Contrast theme):
+ * Text (#000000) on Background (#ffffff): 21:1 (AAA+++)
+ * Primary (#0000ff) on Background (#ffffff): 8.6:1 (AAA)
+ * Success (#008000) on Background: 5.1:1 (AA)
+ * Error (#cc0000) on Background: 5.5:1 (AA)
+ * Selection (#0000ff) on Selection BG (#ffff00): 8.0:1 (AAA)
+ */
+
+/* High contrast specific styling */
+.theme-high-contrast * {
+  /* No animations or transitions */
+  animation: none !important;
+  transition: none !important;
+}
+
+.theme-high-contrast .ProseMirror {
+  /* Stronger focus indicators */
+  caret-color: #000000;
+}
+
+.theme-high-contrast .ProseMirror h1,
+.theme-high-contrast .ProseMirror h2,
+.theme-high-contrast .ProseMirror h3,
+.theme-high-contrast .ProseMirror h4,
+.theme-high-contrast .ProseMirror h5,
+.theme-high-contrast .ProseMirror h6 {
+  font-weight: var(--editor-font-weight-bold);
+  border-bottom: 3px solid #000000;
+  padding-bottom: 0.5em;
+  margin-bottom: 1em;
+}
+
+.theme-high-contrast .ProseMirror a {
+  color: #0000ff;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  font-weight: var(--editor-font-weight-semibold);
+}
+
+.theme-high-contrast .ProseMirror a:hover {
+  background-color: #ffff00;
+  color: #000000;
+}
+
+.theme-high-contrast .ProseMirror code {
+  border: 2px solid #000000;
+  padding: 0.25em 0.5em;
+  font-weight: var(--editor-font-weight-medium);
+}
+
+.theme-high-contrast .ProseMirror pre {
+  border: 2px solid #000000;
+  padding: 1em;
+}
+
+.theme-high-contrast .ProseMirror blockquote {
+  border-left: 4px solid #000000;
+  padding-left: 1em;
+  margin-left: 0;
+  font-weight: var(--editor-font-weight-medium);
+}
+
+.theme-high-contrast .ProseMirror table,
+.theme-high-contrast .ProseMirror th,
+.theme-high-contrast .ProseMirror td {
+  border: 2px solid #000000;
+}
+
+.theme-high-contrast .ProseMirror th {
+  background-color: #e0e0e0;
+  font-weight: var(--editor-font-weight-bold);
+}
+
+.theme-high-contrast .ProseMirror hr {
+  border: none;
+  border-top: 3px solid #000000;
+  margin: 2em 0;
+}
+
+.theme-high-contrast .ProseMirror img {
+  border: 2px solid #000000;
+}
+
+.theme-high-contrast .aether-toolbar,
+.theme-high-contrast .aether-menubar {
+  border-width: 2px;
+  border-color: #000000;
+}
+
+.theme-high-contrast .aether-toolbar-button,
+.theme-high-contrast .aether-menubar__item {
+  border: 2px solid #000000;
+  margin: 2px;
+  font-weight: var(--editor-font-weight-semibold);
+  min-height: 44px; /* WCAG touch target size */
+  min-width: 44px;
+}
+
+.theme-high-contrast .aether-toolbar-button:hover,
+.theme-high-contrast .aether-menubar__item:hover {
+  background-color: #e0e0e0;
+  border-color: #0000ff;
+}
+
+.theme-high-contrast .aether-toolbar-button.is-active,
+.theme-high-contrast .aether-menubar__item.is-active {
+  background-color: #0000ff;
+  color: #ffffff;
+  border-color: #0000ff;
+}
+
+.theme-high-contrast :focus-visible {
+  outline: 4px solid #0000ff;
+  outline-offset: 2px;
+}
+
+/* Ensure all interactive elements have visible borders */
+.theme-high-contrast button,
+.theme-high-contrast input,
+.theme-high-contrast select,
+.theme-high-contrast textarea {
+  border: 2px solid #000000 !important;
+}
+
+.theme-high-contrast button:focus,
+.theme-high-contrast input:focus,
+.theme-high-contrast select:focus,
+.theme-high-contrast textarea:focus {
+  border-color: #0000ff !important;
+  outline: 4px solid #0000ff;
+  outline-offset: 2px;
+}
+
+/* Strong visual feedback for hover states */
+.theme-high-contrast *:hover {
+  outline: 2px solid #0000ff;
+  outline-offset: 1px;
+}
+
+/* Ensure selections are highly visible */
+.theme-high-contrast ::selection {
+  background-color: #ffff00 !important;
+  color: #000000 !important;
+}

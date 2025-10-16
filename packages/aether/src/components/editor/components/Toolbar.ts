@@ -79,6 +79,9 @@ export const Toolbar = defineComponent<ToolbarProps>((props) => {
     return jsx('button', {
       class: buttonClasses,
       title: button.title,
+      'aria-label': button.title,
+      'aria-pressed': isActive,
+      'aria-disabled': isDisabled,
       onClick: handleClick,
       disabled: isDisabled,
       key: `btn-${index}`,
@@ -97,6 +100,8 @@ export const Toolbar = defineComponent<ToolbarProps>((props) => {
 
     return jsx('div', {
       class: 'toolbar-group',
+      role: 'group',
+      'aria-label': `Toolbar group ${index + 1}`,
       key: `grp-${index}`,
       children,
     }) as Node;
@@ -124,11 +129,16 @@ export const Toolbar = defineComponent<ToolbarProps>((props) => {
         jsx('button', {
           class: 'toolbar-dropdown-trigger',
           title: dropdown.title,
+          'aria-label': dropdown.title,
+          'aria-haspopup': 'menu',
+          'aria-expanded': isOpen,
           onClick: handleTriggerClick,
           children: dropdown.icon,
         }),
         jsx('div', {
           class: menuClasses,
+          role: 'menu',
+          'aria-label': dropdown.title,
           children: menuChildren,
         }),
       ],
@@ -145,6 +155,8 @@ export const Toolbar = defineComponent<ToolbarProps>((props) => {
 
     return jsx('div', {
       class: classes.join(' '),
+      role: 'toolbar',
+      'aria-label': 'Editor formatting toolbar',
       children,
     }) as Node;
   };

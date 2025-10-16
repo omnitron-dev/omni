@@ -1,0 +1,165 @@
+/**
+ * Dark Theme
+ * Professional dark theme with proper dark mode colors
+ */
+
+.theme-dark {
+  /* Primary colors - Lighter blue for dark backgrounds */
+  --editor-color-primary: #4da6ff;
+  --editor-color-primary-hover: #66b3ff;
+  --editor-color-primary-active: #80bfff;
+  --editor-color-primary-disabled: #1a4d80;
+
+  /* Secondary colors */
+  --editor-color-secondary: #8899aa;
+  --editor-color-secondary-hover: #99aabb;
+  --editor-color-secondary-active: #aabbcc;
+
+  /* Surface colors - Dark surfaces */
+  --editor-color-surface: #2a2a2a;
+  --editor-color-surface-hover: #333333;
+  --editor-color-surface-active: #3a3a3a;
+  --editor-color-surface-raised: #343434;
+  --editor-color-surface-overlay: rgba(42, 42, 42, 0.95);
+
+  /* Background colors - Darker backgrounds */
+  --editor-color-background: #1a1a1a;
+  --editor-color-background-alt: #242424;
+
+  /* Text colors - Light text on dark background */
+  --editor-color-text: #e0e0e0;
+  --editor-color-text-secondary: #b0b0b0;
+  --editor-color-text-tertiary: #909090;
+  --editor-color-text-disabled: #606060;
+  --editor-color-text-inverse: #1a1a1a;
+
+  /* Border colors - Lighter borders */
+  --editor-color-border: #404040;
+  --editor-color-border-hover: #505050;
+  --editor-color-border-focus: #4da6ff;
+  --editor-color-border-divider: #303030;
+
+  /* Semantic colors - Adjusted for dark theme */
+  --editor-color-success: #4ade80;
+  --editor-color-success-bg: #1a3322;
+  --editor-color-warning: #facc15;
+  --editor-color-warning-bg: #332b1a;
+  --editor-color-error: #f87171;
+  --editor-color-error-bg: #331a1a;
+  --editor-color-info: #60a5fa;
+  --editor-color-info-bg: #1a2633;
+
+  /* Selection colors */
+  --editor-color-selection: #4da6ff;
+  --editor-color-selection-bg: #1a3d5c;
+
+  /* Highlight colors - Darker yellow for dark theme */
+  --editor-color-highlight: #806600;
+  --editor-color-highlight-bg: #332b00;
+
+  /* Focus colors */
+  --editor-color-focus: #4da6ff;
+  --editor-color-focus-ring: rgba(77, 166, 255, 0.3);
+
+  /* Code colors - Dark theme syntax */
+  --editor-color-code-background: #242424;
+  --editor-color-code-border: #404040;
+  --editor-color-code-text: #e0e0e0;
+  --editor-color-code-keyword: #ff6b9d;
+  --editor-color-code-string: #a9dc76;
+  --editor-color-code-comment: #727272;
+  --editor-color-code-number: #ffd866;
+  --editor-color-code-operator: #ff6b9d;
+
+  /* Shadows - Darker shadows for depth */
+  --editor-shadow-none: none;
+  --editor-shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --editor-shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.4), 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --editor-shadow-base: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+  --editor-shadow-md: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+  --editor-shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 10px 10px -5px rgba(0, 0, 0, 0.3);
+  --editor-shadow-xl: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  --editor-shadow-2xl: 0 35px 60px -15px rgba(0, 0, 0, 0.6);
+  --editor-shadow-inner: inset 0 2px 4px 0 rgba(0, 0, 0, 0.3);
+
+  /* Scrollbar colors for dark theme */
+  --editor-scrollbar-thumb: rgba(255, 255, 255, 0.2);
+  --editor-scrollbar-track: transparent;
+}
+
+/* Contrast ratios (Dark theme):
+ * Text (#e0e0e0) on Background (#1a1a1a): 12.63:1 (AAA)
+ * Text Secondary (#b0b0b0) on Background: 7.6:1 (AAA)
+ * Text Tertiary (#909090) on Background: 5.15:1 (AA)
+ * Primary (#4da6ff) on Background: 6.8:1 (AA)
+ * Primary (#4da6ff) on Surface (#2a2a2a): 5.4:1 (AA)
+ */
+
+/* Dark theme specific adjustments */
+.theme-dark .ProseMirror {
+  caret-color: #e0e0e0;
+}
+
+.theme-dark .ProseMirror::selection {
+  background-color: var(--editor-color-selection-bg);
+}
+
+.theme-dark .ProseMirror code {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.theme-dark .ProseMirror pre {
+  background-color: #1e1e1e;
+  border-color: #404040;
+}
+
+.theme-dark .ProseMirror blockquote {
+  border-left-color: #505050;
+  color: #b0b0b0;
+}
+
+.theme-dark .ProseMirror table {
+  border-color: #404040;
+}
+
+.theme-dark .ProseMirror th,
+.theme-dark .ProseMirror td {
+  border-color: #404040;
+}
+
+.theme-dark .ProseMirror th {
+  background-color: #2a2a2a;
+}
+
+.theme-dark .ProseMirror tbody tr:nth-child(even) {
+  background-color: #242424;
+}
+
+.theme-dark .ProseMirror hr {
+  border-top-color: #404040;
+}
+
+.theme-dark .aether-toolbar {
+  background-color: #2a2a2a;
+  border-bottom-color: #404040;
+}
+
+.theme-dark .aether-menubar {
+  background-color: #2a2a2a;
+  border-bottom-color: #404040;
+}
+
+/* Adjust focus indicators for dark theme */
+.theme-dark :focus-visible {
+  outline-color: #4da6ff;
+}
+
+/* Link colors for dark theme */
+.theme-dark .ProseMirror a {
+  color: #4da6ff;
+}
+
+.theme-dark .ProseMirror a:hover {
+  color: #66b3ff;
+}

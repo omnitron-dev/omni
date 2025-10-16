@@ -1,0 +1,543 @@
+/**
+ * Responsive Styles for Advanced Editor
+ *
+ * Mobile-first responsive design with breakpoints for:
+ * - Mobile: < 768px
+ * - Tablet: 768px - 1024px
+ * - Desktop: > 1024px
+ *
+ * @module components/editor/styles
+ */
+
+/* ========================================
+   CSS Custom Properties
+   ======================================== */
+
+:root {
+  /* Breakpoints */
+  --breakpoint-mobile: 768px;
+  --breakpoint-tablet: 1024px;
+  --breakpoint-desktop: 1440px;
+
+  /* Touch target sizes */
+  --touch-target-min: 44px;
+  --touch-target-comfortable: 48px;
+
+  /* Spacing */
+  --spacing-mobile: 8px;
+  --spacing-tablet: 12px;
+  --spacing-desktop: 16px;
+
+  /* Font sizes */
+  --font-size-mobile: 16px;
+  --font-size-tablet: 15px;
+  --font-size-desktop: 14px;
+
+  /* Editor heights */
+  --editor-min-height-mobile: 200px;
+  --editor-min-height-tablet: 300px;
+  --editor-min-height-desktop: 400px;
+}
+
+/* ========================================
+   Base Mobile Styles (< 768px)
+   ======================================== */
+
+@media (max-width: 767px) {
+  /* Editor Container */
+  .editor-container {
+    min-height: var(--editor-min-height-mobile);
+    padding: var(--spacing-mobile);
+  }
+
+  .ProseMirror {
+    font-size: var(--font-size-mobile);
+    padding: var(--spacing-mobile);
+    min-height: 150px;
+  }
+
+  /* Toolbar */
+  .toolbar {
+    display: none; /* Hide desktop toolbar on mobile */
+  }
+
+  /* Mobile-specific toolbar is shown via MobileToolbar component */
+
+  /* Bubble Menu */
+  .bubble-menu {
+    position: fixed;
+    bottom: 60px; /* Above mobile toolbar */
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90vw;
+    max-width: 400px;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px;
+    padding: 8px;
+  }
+
+  .bubble-menu-button {
+    min-width: var(--touch-target-min);
+    min-height: var(--touch-target-min);
+    padding: 8px;
+    font-size: 18px;
+  }
+
+  /* Search Panel */
+  .search-panel {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    max-width: none;
+    border-radius: 0;
+    flex-direction: column;
+    z-index: 2000;
+  }
+
+  .search-input,
+  .replace-input {
+    font-size: var(--font-size-mobile);
+    min-height: var(--touch-target-min);
+    padding: 12px;
+  }
+
+  .search-button {
+    min-width: var(--touch-target-min);
+    min-height: var(--touch-target-min);
+    padding: 12px;
+    font-size: 16px;
+  }
+
+  /* Link Editor */
+  .link-editor {
+    position: fixed;
+    bottom: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90vw;
+    max-width: 400px;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .link-input {
+    width: 100%;
+    font-size: var(--font-size-mobile);
+    min-height: var(--touch-target-min);
+  }
+
+  /* Status Bar */
+  .statusbar {
+    font-size: 12px;
+    padding: 6px var(--spacing-mobile);
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .statusbar-button {
+    min-height: 32px;
+    font-size: 12px;
+  }
+
+  /* Tables */
+  .table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  table {
+    min-width: 100%;
+    font-size: 14px;
+  }
+
+  td,
+  th {
+    min-width: 100px;
+    padding: 8px;
+  }
+
+  /* Code Blocks */
+  pre {
+    font-size: 14px;
+    padding: 12px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Images */
+  img {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* Markdown Preview */
+  .markdown-preview {
+    font-size: var(--font-size-mobile);
+    padding: var(--spacing-mobile);
+  }
+}
+
+/* ========================================
+   Tablet Styles (768px - 1024px)
+   ======================================== */
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  /* Editor Container */
+  .editor-container {
+    min-height: var(--editor-min-height-tablet);
+    padding: var(--spacing-tablet);
+  }
+
+  .ProseMirror {
+    font-size: var(--font-size-tablet);
+    padding: var(--spacing-tablet);
+    min-height: 250px;
+  }
+
+  /* Toolbar */
+  .toolbar {
+    padding: var(--spacing-tablet);
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .toolbar-button {
+    min-width: 40px;
+    min-height: 40px;
+    padding: 8px;
+  }
+
+  /* Bubble Menu */
+  .bubble-menu {
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .bubble-menu-button {
+    min-width: 40px;
+    min-height: 40px;
+  }
+
+  /* Search Panel */
+  .search-panel {
+    max-width: 600px;
+  }
+
+  /* Tables */
+  td,
+  th {
+    min-width: 120px;
+    padding: 10px;
+  }
+
+  /* Status Bar */
+  .statusbar {
+    font-size: 13px;
+    padding: 8px var(--spacing-tablet);
+  }
+}
+
+/* ========================================
+   Desktop Styles (> 1024px)
+   ======================================== */
+
+@media (min-width: 1024px) {
+  /* Editor Container */
+  .editor-container {
+    min-height: var(--editor-min-height-desktop);
+    padding: var(--spacing-desktop);
+  }
+
+  .ProseMirror {
+    font-size: var(--font-size-desktop);
+    padding: var(--spacing-desktop);
+    min-height: 350px;
+  }
+
+  /* Toolbar */
+  .toolbar {
+    padding: var(--spacing-desktop);
+    gap: 12px;
+  }
+
+  .toolbar-button {
+    min-width: 36px;
+    min-height: 36px;
+  }
+
+  /* Hover effects (desktop only) */
+  .toolbar-button:hover:not(:disabled) {
+    background: var(--button-hover-bg, #e8e8e8);
+  }
+
+  .bubble-menu-button:hover:not(:disabled) {
+    background: var(--button-hover-bg, #e8e8e8);
+  }
+
+  /* Tables */
+  td,
+  th {
+    min-width: 150px;
+    padding: 12px;
+  }
+}
+
+/* ========================================
+   Landscape Orientation
+   ======================================== */
+
+@media (max-width: 767px) and (orientation: landscape) {
+  /* Reduce vertical spacing in landscape */
+  .editor-container {
+    padding: 6px var(--spacing-mobile);
+  }
+
+  .ProseMirror {
+    padding: 6px var(--spacing-mobile);
+  }
+
+  .mobile-toolbar {
+    padding: 4px 8px;
+  }
+
+  .mobile-toolbar-button {
+    min-height: 36px;
+  }
+
+  /* Make search panel smaller */
+  .search-panel {
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+
+  /* Reduce bubble menu size */
+  .bubble-menu {
+    bottom: 45px;
+    padding: 6px;
+  }
+}
+
+/* ========================================
+   Safe Area Support (Notched Devices)
+   ======================================== */
+
+@supports (padding: env(safe-area-inset-bottom)) {
+  .mobile-toolbar.position-bottom {
+    padding-bottom: calc(8px + env(safe-area-inset-bottom));
+  }
+
+  .mobile-toolbar.position-top {
+    padding-top: calc(8px + env(safe-area-inset-top));
+  }
+
+  .bubble-menu {
+    bottom: calc(60px + env(safe-area-inset-bottom));
+  }
+
+  .link-editor {
+    bottom: calc(60px + env(safe-area-inset-bottom));
+  }
+
+  .editor-container {
+    padding-left: max(var(--spacing-mobile), env(safe-area-inset-left));
+    padding-right: max(var(--spacing-mobile), env(safe-area-inset-right));
+  }
+}
+
+/* ========================================
+   Touch Device Optimizations
+   ======================================== */
+
+@media (pointer: coarse) {
+  /* Increase tap target sizes */
+  button,
+  .toolbar-button,
+  .bubble-menu-button,
+  .search-button,
+  .statusbar-button {
+    min-width: var(--touch-target-min);
+    min-height: var(--touch-target-min);
+  }
+
+  /* Remove hover effects on touch devices */
+  button:hover,
+  .toolbar-button:hover,
+  .bubble-menu-button:hover {
+    background: inherit;
+  }
+
+  /* Show active state instead */
+  button:active,
+  .toolbar-button:active,
+  .bubble-menu-button:active {
+    transform: scale(0.95);
+    background: var(--button-active-bg, #d0d0d0);
+  }
+
+  /* Improve scrolling */
+  .ProseMirror,
+  .table-wrapper,
+  pre,
+  .search-panel {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Disable text selection on UI elements */
+  .toolbar,
+  .bubble-menu,
+  .statusbar,
+  .search-panel-controls {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
+/* ========================================
+   High Density Displays
+   ======================================== */
+
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  /* Ensure crisp rendering on retina displays */
+  .ProseMirror {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Use slightly smaller fonts on high-DPI mobile */
+  @media (max-width: 767px) {
+    .ProseMirror {
+      font-size: 15px;
+    }
+  }
+}
+
+/* ========================================
+   Print Styles
+   ======================================== */
+
+@media print {
+  /* Hide UI elements */
+  .toolbar,
+  .mobile-toolbar,
+  .bubble-menu,
+  .statusbar,
+  .search-panel,
+  .link-editor {
+    display: none !important;
+  }
+
+  /* Optimize editor for printing */
+  .editor-container {
+    padding: 0;
+    min-height: auto;
+  }
+
+  .ProseMirror {
+    padding: 0;
+    font-size: 12pt;
+    line-height: 1.5;
+  }
+
+  /* Ensure tables fit on page */
+  table {
+    page-break-inside: avoid;
+  }
+
+  /* Ensure images fit on page */
+  img {
+    max-width: 100%;
+    page-break-inside: avoid;
+  }
+
+  /* Ensure code blocks fit on page */
+  pre {
+    page-break-inside: avoid;
+    white-space: pre-wrap;
+  }
+}
+
+/* ========================================
+   Container Queries (Progressive Enhancement)
+   ======================================== */
+
+@container (max-width: 500px) {
+  .toolbar {
+    display: none;
+  }
+
+  .bubble-menu {
+    flex-wrap: wrap;
+    max-width: 90%;
+  }
+}
+
+@container (min-width: 501px) and (max-width: 800px) {
+  .toolbar {
+    flex-wrap: wrap;
+  }
+
+  .toolbar-group {
+    flex-wrap: wrap;
+  }
+}
+
+/* ========================================
+   Utility Classes
+   ======================================== */
+
+.mobile-only {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .mobile-only {
+    display: block;
+  }
+
+  .desktop-only {
+    display: none;
+  }
+}
+
+.tablet-only {
+  display: none;
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .tablet-only {
+    display: block;
+  }
+}
+
+.desktop-only {
+  display: block;
+}
+
+@media (max-width: 1023px) {
+  .desktop-only {
+    display: none;
+  }
+}
+
+/* Touch-friendly utilities */
+.touch-target {
+  min-width: var(--touch-target-min);
+  min-height: var(--touch-target-min);
+  padding: 12px;
+}
+
+.touch-target-comfortable {
+  min-width: var(--touch-target-comfortable);
+  min-height: var(--touch-target-comfortable);
+  padding: 14px;
+}
+
+/* Scrollable container */
+.scrollable {
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}

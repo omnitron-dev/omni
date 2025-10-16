@@ -1,0 +1,22 @@
+/**
+ * UserSwitchIcon
+ * Preset: twotone
+ * Auto-generated from HugeIcons
+ */
+
+import type { IconDefinition } from '../../../IconRegistry.js';
+
+export const UserSwitchIcon: IconDefinition = {
+  "id": "user-switch",
+  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M17 16C15.6193 16 14.5 14.8807 14.5 13.5C14.5 12.1193 15.6193 11 17 11C18.3807 11 19.5 12.1193 19.5 13.5C19.5 14.8807 18.3807 16 17 16ZM17 16C19.4853 16 21.5 18.0147 21.5 20.5M17 16C14.5147 16 12.5 18.0147 12.5 20.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M7 8C5.61929 8 4.5 6.88071 4.5 5.5C4.5 4.11929 5.61929 3 7 3C8.38071 3 9.5 4.11929 9.5 5.5C9.5 6.88071 8.38071 8 7 8ZM7 8C9.48528 8 11.5 10.0147 11.5 12.5M7 8C4.51472 8 2.5 10.0147 2.5 12.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M3.5 14.5C3.5 17.2643 5.73571 19.5 8.5 19.5L8 17.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M18.5 7.5C18.5 4.73571 16.2643 2.5 13.5 2.5L14 4.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
+  "viewBox": "0 0 24 24",
+  "width": 24,
+  "height": 24,
+  "metadata": {
+    "preset": "twotone",
+    "originalName": "UserSwitchIcon",
+    "elementsCount": 4,
+    "hasOpacity": true,
+    "hasFill": false
+  }
+};

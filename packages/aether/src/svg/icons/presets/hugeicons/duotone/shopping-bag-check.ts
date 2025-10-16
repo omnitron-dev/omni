@@ -1,0 +1,22 @@
+/**
+ * ShoppingBagCheckIcon
+ * Preset: duotone
+ * Auto-generated from HugeIcons
+ */
+
+import type { IconDefinition } from '../../../IconRegistry.js';
+
+export const ShoppingBagCheckIcon: IconDefinition = {
+  "id": "shopping-bag-check",
+  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M2.82352 12.5113C3.1739 9.50898 3.68586 7.25784 4.16063 5.65851C4.54994 4.34711 4.74459 3.69141 5.54283 3.0957C6.34107 2.5 7.15697 2.5 8.78876 2.5H14.2113C15.8431 2.5 16.659 2.5 17.4572 3.0957C18.2554 3.69141 18.4501 4.34711 18.8394 5.65851C19.3142 7.25784 19.8261 9.50898 20.1765 12.5113C20.5895 16.0497 20.7959 17.8189 19.6027 19.1594C18.4095 20.5 16.4758 20.5 12.6084 20.5H10.3916C6.52422 20.5 4.59052 20.5 3.39731 19.1594C2.20411 17.8189 2.41058 16.0497 2.82352 12.5113Z\" fill=\"currentColor\" />\n    <path d=\"M20.1765 12.5113C19.8261 9.50898 19.3142 7.25784 18.8394 5.65851C18.4501 4.34711 18.2554 3.69141 17.4572 3.0957C16.659 2.5 15.8431 2.5 14.2113 2.5H8.78876C7.15697 2.5 6.34107 2.5 5.54283 3.0957C4.74459 3.69141 4.54994 4.34711 4.16063 5.65851C3.68586 7.25784 3.1739 9.50898 2.82352 12.5113C2.41058 16.0497 2.20411 17.8189 3.39731 19.1594C4.59052 20.5 6.52422 20.5 10.3916 20.5H11.6084\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M8.5 6.5C8.5 8.15685 9.84315 9.5 11.5 9.5C13.1569 9.5 14.5 8.15685 14.5 6.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M14.5 19.5C14.5 19.5 15.5 19.5 16.5 21.5C16.5 21.5 18.6765 16.5 21.5 15.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
+  "viewBox": "0 0 24 24",
+  "width": 24,
+  "height": 24,
+  "metadata": {
+    "preset": "duotone",
+    "originalName": "ShoppingBagCheckIcon",
+    "elementsCount": 4,
+    "hasOpacity": true,
+    "hasFill": true
+  }
+};

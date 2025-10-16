@@ -1,0 +1,22 @@
+/**
+ * CancelCircleHalfDotIcon
+ * Preset: duotone
+ * Auto-generated from HugeIcons
+ */
+
+import type { IconDefinition } from '../../../IconRegistry.js';
+
+export const CancelCircleHalfDotIcon: IconDefinition = {
+  "id": "cancel-circle-half-dot",
+  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M22 12.0001C22 6.47727 17.5228 2.00012 12 2.00012C6.47715 2.00012 2 6.47727 2 12.0001C2 17.523 6.47715 22.0001 12 22.0001C17.5228 22.0001 22 17.523 22 12.0001Z\" fill=\"currentColor\" />\n    <path d=\"M12 2.00012C17.5228 2.00012 22 6.47727 22 12.0001C22 17.523 17.5228 22.0001 12 22.0001C6.47715 22.0001 2 17.523 2 12.0001M8.909 2.48699C7.9 2.8146 6.96135 3.29828 6.12153 3.90953M3.90943 6.12162C3.29806 6.9616 2.81432 7.90044 2.4867 8.90964\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M14.9994 15.0001L9 9.00012M9.00064 15.0001L15 9.00012\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
+  "viewBox": "0 0 24 24",
+  "width": 24,
+  "height": 24,
+  "metadata": {
+    "preset": "duotone",
+    "originalName": "CancelCircleHalfDotIcon",
+    "elementsCount": 3,
+    "hasOpacity": true,
+    "hasFill": true
+  }
+};

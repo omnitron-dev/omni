@@ -1,0 +1,22 @@
+/**
+ * DeliverySecure01Icon
+ * Preset: duotone
+ * Auto-generated from HugeIcons
+ */
+
+import type { IconDefinition } from '../../../IconRegistry.js';
+
+export const DeliverySecure01Icon: IconDefinition = {
+  "id": "delivery-secure01",
+  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M21.6895 13.8896C21.6895 15.7599 21.6888 17.1663 21.5459 18.252C21.3061 17.7427 20.7896 17.3896 20.1895 17.3896V15.8896C20.1895 14.7851 19.294 13.8896 18.1895 13.8896C17.0849 13.8896 16.1895 14.7851 16.1895 15.8896V17.3896C15.361 17.3896 14.6895 18.0612 14.6895 18.8896V20.3896C14.6895 21.1481 15.2526 21.7725 15.9834 21.873C15.3071 21.8868 14.547 21.8896 13.6895 21.8896H10.6895C6.91822 21.8896 5.0329 21.8893 3.86133 20.7178C2.68976 19.5462 2.68945 17.6609 2.68945 13.8896V7.88965H21.6895V13.8896Z\" fill=\"currentColor\" />\n    <path d=\"M2.68945 7.88965V13.8896C2.68945 17.6609 2.68945 19.5465 3.86103 20.7181C5.0326 21.8896 6.91822 21.8896 10.6895 21.8896H12.1895M21.6895 12.3896V7.88965\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M4.05855 5.70426L2.68945 7.88965H21.6895L20.4373 5.80267C19.5836 4.37986 19.1567 3.66845 18.469 3.27905C17.7812 2.88965 16.9516 2.88965 15.2923 2.88965H9.14316C7.51943 2.88965 6.70757 2.88965 6.02958 3.26495C5.3516 3.64025 4.92058 4.32825 4.05855 5.70426Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M12.1895 7.88965V2.88965\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M10.1895 10.8896H14.1895\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M16.1895 17.3896V15.8896C16.1895 14.7851 17.0849 13.8896 18.1895 13.8896C19.294 13.8896 20.1895 14.7851 20.1895 15.8896V17.3896\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M20.1895 17.3896H16.1895C15.361 17.3896 14.6895 18.0612 14.6895 18.8896V20.3896C14.6895 21.2181 15.361 21.8896 16.1895 21.8896H20.1895C21.0179 21.8896 21.6895 21.2181 21.6895 20.3896V18.8896C21.6895 18.0612 21.0179 17.3896 20.1895 17.3896Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
+  "viewBox": "0 0 24 24",
+  "width": 24,
+  "height": 24,
+  "metadata": {
+    "preset": "duotone",
+    "originalName": "DeliverySecure01Icon",
+    "elementsCount": 7,
+    "hasOpacity": true,
+    "hasFill": true
+  }
+};

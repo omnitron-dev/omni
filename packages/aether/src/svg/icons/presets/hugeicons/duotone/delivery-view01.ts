@@ -1,0 +1,22 @@
+/**
+ * DeliveryView01Icon
+ * Preset: duotone
+ * Auto-generated from HugeIcons
+ */
+
+import type { IconDefinition } from '../../../IconRegistry.js';
+
+export const DeliveryView01Icon: IconDefinition = {
+  "id": "delivery-view01",
+  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M2.5 7.5V13.5C2.5 17.2712 2.5 19.1569 3.67157 20.3284C4.84315 21.5 6.72876 21.5 10.5 21.5M21.5 14.5V7.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M3.86909 5.31461L2.5 7.5H21.5L20.2478 5.41303C19.3941 3.99021 18.9673 3.2788 18.2795 2.8894C17.5918 2.5 16.7621 2.5 15.1029 2.5H8.95371C7.32998 2.5 6.51812 2.5 5.84013 2.8753C5.16215 3.2506 4.73113 3.93861 3.86909 5.31461Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M12 7.5V2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M10 10.5H14\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M21.5 18.5C21.5 18.5 19.458 21.5 16.5 21.5C13.542 21.5 11.5 18.5 11.5 18.5C11.5 18.5 13.5 15.5 16.5 15.5C19.5 15.5 21.5 18.5 21.5 18.5Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M21.5 13.5C21.5 15.5898 21.4982 17.1003 21.2988 18.2314C20.7235 17.4941 18.9449 15.5 16.5 15.5C13.5 15.5 11.5 18.5 11.5 18.5C11.5 18.5 13.3524 21.2184 16.084 21.4775C15.3368 21.4982 14.4824 21.5 13.5 21.5H10.5C6.72876 21.5 4.84345 21.4997 3.67188 20.3281C2.5003 19.1566 2.5 17.2712 2.5 13.5V7.5H21.5V13.5Z\" fill=\"currentColor\" />\n    <path d=\"M16.5 18.5H16.509\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" />\n  </svg>",
+  "viewBox": "0 0 24 24",
+  "width": 24,
+  "height": 24,
+  "metadata": {
+    "preset": "duotone",
+    "originalName": "DeliveryView01Icon",
+    "elementsCount": 7,
+    "hasOpacity": true,
+    "hasFill": true
+  }
+};

@@ -1,0 +1,22 @@
+/**
+ * NotificationSquareIcon
+ * Preset: duotone
+ * Auto-generated from HugeIcons
+ */
+
+import type { IconDefinition } from '../../../IconRegistry.js';
+
+export const NotificationSquareIcon: IconDefinition = {
+  "id": "notification-square",
+  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M12.5 3.5C13.6765 3.5 14.6696 3.49958 15.5146 3.53516C14.8873 4.1677 14.5 5.03872 14.5 6C14.5 7.933 16.067 9.5 18 9.5C18.9613 9.5 19.8313 9.11173 20.4639 8.48438C20.4995 9.32966 20.5 10.323 20.5 11.5V13.5C20.5 17.2712 20.4997 19.1566 19.3281 20.3281C18.1566 21.4997 16.2712 21.5 12.5 21.5H10.5C6.72876 21.5 4.84345 21.4997 3.67188 20.3281C2.5003 19.1566 2.5 17.2712 2.5 13.5V11.5C2.5 7.72877 2.5003 5.84345 3.67188 4.67188C4.84345 3.5003 6.72876 3.5 10.5 3.5H12.5Z\" fill=\"currentColor\" />\n    <path d=\"M11.5 3.5H10.5C6.72876 3.5 4.84315 3.5 3.67157 4.67157C2.5 5.84315 2.5 7.72876 2.5 11.5V13.5C2.5 17.2712 2.5 19.1569 3.67157 20.3284C4.84315 21.5 6.72876 21.5 10.5 21.5L12.5 21.5C16.2712 21.5 18.1569 21.5 19.3284 20.3284C20.5 19.1569 20.5 17.2712 20.5 13.5V12.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M21.5 6C21.5 7.933 19.933 9.5 18 9.5C16.067 9.5 14.5 7.933 14.5 6C14.5 4.067 16.067 2.5 18 2.5C19.933 2.5 21.5 4.067 21.5 6Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M7.5 12.5H11.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M7.5 16.5H15.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
+  "viewBox": "0 0 24 24",
+  "width": 24,
+  "height": 24,
+  "metadata": {
+    "preset": "duotone",
+    "originalName": "NotificationSquareIcon",
+    "elementsCount": 5,
+    "hasOpacity": true,
+    "hasFill": true
+  }
+};

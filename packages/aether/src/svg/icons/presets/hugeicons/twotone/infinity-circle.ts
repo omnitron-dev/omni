@@ -1,0 +1,22 @@
+/**
+ * InfinityCircleIcon
+ * Preset: twotone
+ * Auto-generated from HugeIcons
+ */
+
+import type { IconDefinition } from '../../../IconRegistry.js';
+
+export const InfinityCircleIcon: IconDefinition = {
+  "id": "infinity-circle",
+  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M12 12C12 12 10.3569 14.5 8.7 14.5C7.04315 14.5 6 13.3807 6 12C6 10.6193 7.04315 9.5 8.7 9.5C10.3569 9.5 12 12 12 12ZM12 12C12 12 13.6431 14.5 15.3 14.5C16.9569 14.5 18 13.3807 18 12C18 10.6193 16.9569 9.5 15.3 9.5C13.6431 9.5 12 12 12 12Z\" />\n    <circle cx=\"12\" cy=\"12\" r=\"10\" />\n  </svg>",
+  "viewBox": "0 0 24 24",
+  "width": 24,
+  "height": 24,
+  "metadata": {
+    "preset": "twotone",
+    "originalName": "InfinityCircleIcon",
+    "elementsCount": 2,
+    "hasOpacity": true,
+    "hasFill": false
+  }
+};

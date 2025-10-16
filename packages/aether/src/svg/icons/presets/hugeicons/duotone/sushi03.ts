@@ -1,0 +1,22 @@
+/**
+ * Sushi03Icon
+ * Preset: duotone
+ * Auto-generated from HugeIcons
+ */
+
+import type { IconDefinition } from '../../../IconRegistry.js';
+
+export const Sushi03Icon: IconDefinition = {
+  "id": "sushi03",
+  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M9.5 19C7.01472 19 5 17.9466 5 16.6471V9.5C6.5 11 10.4 13.1 14 9.5V13.5V16.6471C14 17.9466 11.9853 19 9.5 19Z\" fill=\"currentColor\" />\n    <path d=\"M5 9.5C5 10.8807 7.01472 12 9.5 12C11.9853 12 14 10.8807 14 9.5C14 8.11929 11.9853 7 9.5 7C7.01472 7 5 8.11929 5 9.5Z\" />\n    <path d=\"M14 16.6471C14 17.9466 11.9853 19 9.5 19C7.01472 19 5 17.9466 5 16.6471V9.5M14 9.5V13.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M9.5 9.5L9.49102 9.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" />\n    <path d=\"M2 18L22 11\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M2 14L5 12.65M22 5L14 8.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
+  "viewBox": "0 0 24 24",
+  "width": 24,
+  "height": 24,
+  "metadata": {
+    "preset": "duotone",
+    "originalName": "Sushi03Icon",
+    "elementsCount": 6,
+    "hasOpacity": true,
+    "hasFill": true
+  }
+};

@@ -1,0 +1,22 @@
+/**
+ * PlayListRemoveIcon
+ * Preset: duotone
+ * Auto-generated from HugeIcons
+ */
+
+import type { IconDefinition } from '../../../IconRegistry.js';
+
+export const PlayListRemoveIcon: IconDefinition = {
+  "id": "play-list-remove",
+  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M2.09793 7C2 8.18354 2 9.6509 2 11.5C2 15.9783 2 18.2175 3.39124 19.6088C4.78249 21 7.02166 21 11.5 21C15.9783 21 18.2175 21 19.6088 19.6088C21 18.2175 21 15.9783 21 11.5C21 9.6509 21 8.18354 20.9021 7H2.09793Z\" fill=\"currentColor\" />\n    <path d=\"M2 7H21\" stroke-linejoin=\"round\" />\n    <path d=\"M16.5 2L13.5 7\" stroke-linejoin=\"round\" />\n    <path d=\"M9.5 2L6.5 7\" stroke-linejoin=\"round\" />\n    <path d=\"M11.5 21C7.02166 21 4.78249 21 3.39124 19.6088C2 18.2175 2 15.9783 2 11.5C2 7.02166 2 4.78249 3.39124 3.39124C4.78249 2 7.02166 2 11.5 2C15.9783 2 18.2175 2 19.6088 3.39124C21 4.78249 21 7.02166 21 11.5\" stroke-linecap=\"round\" />\n    <path d=\"M15 15L18.5 18.5M18.5 18.5L22 22M18.5 18.5L15 22M18.5 18.5L22 15\" stroke-linecap=\"round\" />\n  </svg>",
+  "viewBox": "0 0 24 24",
+  "width": 24,
+  "height": 24,
+  "metadata": {
+    "preset": "duotone",
+    "originalName": "PlayListRemoveIcon",
+    "elementsCount": 6,
+    "hasOpacity": true,
+    "hasFill": true
+  }
+};

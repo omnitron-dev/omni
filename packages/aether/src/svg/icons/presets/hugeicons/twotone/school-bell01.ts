@@ -1,0 +1,22 @@
+/**
+ * SchoolBell01Icon
+ * Preset: twotone
+ * Auto-generated from HugeIcons
+ */
+
+import type { IconDefinition } from '../../../IconRegistry.js';
+
+export const SchoolBell01Icon: IconDefinition = {
+  "id": "school-bell01",
+  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M18 7.00287C16.807 4.06878 13.9174 1.99902 10.5423 1.99902C6.10066 1.99902 2.5 5.5835 2.5 10.0052C2.5 14.4269 6.10066 18.0113 10.5423 18.0113C12.2197 18.0113 13.7772 17.5001 15.0661 16.6256\" stroke-linecap=\"round\" />\n    <path d=\"M10.5 12.007C11.6046 12.007 12.5 11.1109 12.5 10.0054C12.5 8.90002 11.6046 8.00391 10.5 8.00391C9.39543 8.00391 8.5 8.90002 8.5 10.0054C8.5 11.1109 9.39543 12.007 10.5 12.007Z\" stroke-linecap=\"round\" />\n    <path opacity=\"0.4\" d=\"M21.5 13.0082C21.5 18.1125 17.1065 21.6098 11.4999 21.9822C11.0444 22.0124 10.8167 22.0275 10.6584 21.8792C10.5 21.7309 10.5 21.492 10.5 21.0143V18.012M21.5 12.5078C21.5 13.8896 20.3807 15.0097 19 15.0097C17.6193 15.0097 16.5 13.8896 16.5 12.5078C16.5 11.126 17.6193 10.0059 19 10.0059C20.3807 10.0059 21.5 11.126 21.5 12.5078Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
+  "viewBox": "0 0 24 24",
+  "width": 24,
+  "height": 24,
+  "metadata": {
+    "preset": "twotone",
+    "originalName": "SchoolBell01Icon",
+    "elementsCount": 3,
+    "hasOpacity": true,
+    "hasFill": false
+  }
+};

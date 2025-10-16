@@ -1,0 +1,22 @@
+/**
+ * TextCircleIcon
+ * Preset: twotone
+ * Auto-generated from HugeIcons
+ */
+
+import type { IconDefinition } from '../../../IconRegistry.js';
+
+export const TextCircleIcon: IconDefinition = {
+  "id": "text-circle",
+  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z\" />\n    <path opacity=\"0.4\" d=\"M10.3458 17H11.994M11.994 17H13.6584M11.994 17V7.52106M7.03318 9.24021C6.89548 8.18312 7.17139 7.71628 8.14335 7.45491C10.6339 6.78515 13.336 6.89718 15.8398 7.51532C16.7828 7.74814 17.1048 8.16302 16.971 9.24021\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
+  "viewBox": "0 0 24 24",
+  "width": 24,
+  "height": 24,
+  "metadata": {
+    "preset": "twotone",
+    "originalName": "TextCircleIcon",
+    "elementsCount": 2,
+    "hasOpacity": true,
+    "hasFill": false
+  }
+};

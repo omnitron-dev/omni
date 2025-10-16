@@ -1,0 +1,22 @@
+/**
+ * CurvyLeftRightDirectionIcon
+ * Preset: duotone
+ * Auto-generated from HugeIcons
+ */
+
+import type { IconDefinition } from '../../../IconRegistry.js';
+
+export const CurvyLeftRightDirectionIcon: IconDefinition = {
+  "id": "curvy-left-right-direction",
+  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M2.00012 11H3.95607C6.21193 11 8.04067 12.7909 8.04067 15V17.0845C8.04067 18.1424 8.91642 19 9.99671 19C11.077 19 11.9528 18.1424 11.9528 17.0845V6.96543C11.9528 5.87995 12.8513 5 13.9598 5C15.0682 5 15.9668 5.87995 15.9668 6.96543V9C15.9668 11.2091 17.7955 13 20.0513 13H22.0001M2.00012 11C2.00013 11.527 4.00011 13 4.00011 13M2.00012 11C2.00012 10.473 4.00012 9 4.00012 9M22.0001 13C22.0001 13.527 20.0001 15 20.0001 15M22.0001 13C22.0001 12.473 20.0001 11 20.0001 11\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
+  "viewBox": "0 0 24 24",
+  "width": 24,
+  "height": 24,
+  "metadata": {
+    "preset": "duotone",
+    "originalName": "CurvyLeftRightDirectionIcon",
+    "elementsCount": 1,
+    "hasOpacity": true,
+    "hasFill": false
+  }
+};

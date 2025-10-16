@@ -1,0 +1,22 @@
+/**
+ * Film02Icon
+ * Preset: twotone
+ * Auto-generated from HugeIcons
+ */
+
+import type { IconDefinition } from '../../../IconRegistry.js';
+
+export const Film02Icon: IconDefinition = {
+  "id": "film02",
+  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M12.5 21C8.02166 21 5.78249 21 4.39124 19.6088C3 18.2175 3 15.9783 3 11.5C3 7.02166 3 4.78249 4.39124 3.39124C5.78248 2 8.02166 2 12.5 2C16.9783 2 19.2175 2 20.6088 3.39124C22 4.78248 22 7.02166 22 11.5C22 15.9783 22 18.2175 20.6088 19.6088C19.2175 21 16.9783 21 12.5 21Z\" />\n    <path d=\"M7.5 21L7.5 2\" stroke-linejoin=\"round\" />\n    <path d=\"M17.5 21L17.5 2\" stroke-linejoin=\"round\" />\n    <path d=\"M17.5 11.5L7.5 11.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M7.5 15.5L3.5 15.5M7.5 7.5L3.5 7.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M21.5 15.5L17.5 15.5M21.5 7.5L17.5 7.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
+  "viewBox": "0 0 24 24",
+  "width": 24,
+  "height": 24,
+  "metadata": {
+    "preset": "twotone",
+    "originalName": "Film02Icon",
+    "elementsCount": 6,
+    "hasOpacity": true,
+    "hasFill": false
+  }
+};

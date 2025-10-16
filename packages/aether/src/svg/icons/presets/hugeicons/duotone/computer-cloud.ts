@@ -1,0 +1,23 @@
+/**
+ * ComputerCloudIcon
+ * Preset: duotone
+ * Auto-generated from HugeIcons
+ */
+
+import type { IconDefinition } from '../../../IconRegistry.js';
+
+export const ComputerCloudIcon: IconDefinition = {
+  "id": "computer-cloud",
+  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M14 21H16M14 21C13.1716 21 12.5 20.3284 12.5 19.5V17L12 17M14 21H10M10 21H8M10 21C10.8284 21 11.5 20.3284 11.5 19.5V17L12 17M12 17V21\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M8 3H16C18.8284 3 20.2426 3 21.1213 3.87868C22 4.75736 22 6.17157 22 9V11C22 13.8284 22 15.2426 21.1213 16.1213C20.2426 17 18.8284 17 16 17H8C5.17157 17 3.75736 17 2.87868 16.1213C2 15.2426 2 13.8284 2 11V9C2 6.17157 2 4.75736 2.87868 3.87868C3.75736 3 5.17157 3 8 3ZM12 7C13.1046 7 14 7.89543 14 9H14.5C15.6046 9 16.5 9.89543 16.5 11C16.5 12.1046 15.6046 13 14.5 13H9.5C8.39543 13 7.5 12.1046 7.5 11C7.5 9.89543 8.39543 9 9.5 9H10C10 7.89543 10.8954 7 12 7Z\" fill=\"currentColor\" fill-rule=\"evenodd\" />\n    <path d=\"M16 3H8C5.17157 3 3.75736 3 2.87868 3.87868C2 4.75736 2 6.17157 2 9V11C2 13.8284 2 15.2426 2.87868 16.1213C3.75736 17 5.17157 17 8 17H16C18.8284 17 20.2426 17 21.1213 16.1213C22 15.2426 22 13.8284 22 11V9C22 6.17157 22 4.75736 21.1213 3.87868C20.2426 3 18.8284 3 16 3Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M14 9C14 7.89543 13.1046 7 12 7C10.8954 7 10 7.89543 10 9H9.5C8.39543 9 7.5 9.89543 7.5 11C7.5 12.1046 8.39543 13 9.5 13H14.5C15.6046 13 16.5 12.1046 16.5 11C16.5 9.89543 15.6046 9 14.5 9H14Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
+  "viewBox": "0 0 24 24",
+  "width": 24,
+  "height": 24,
+  "metadata": {
+    "preset": "duotone",
+    "originalName": "ComputerCloudIcon",
+    "elementsCount": 4,
+    "hasOpacity": true,
+    "hasFill": true,
+    "hasFillRule": true
+  }
+};

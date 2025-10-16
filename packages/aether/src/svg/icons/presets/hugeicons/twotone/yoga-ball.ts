@@ -1,0 +1,22 @@
+/**
+ * YogaBallIcon
+ * Preset: twotone
+ * Auto-generated from HugeIcons
+ */
+
+import type { IconDefinition } from '../../../IconRegistry.js';
+
+export const YogaBallIcon: IconDefinition = {
+  "id": "yoga-ball",
+  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12Z\" />\n    <path opacity=\"0.4\" d=\"M18.8546 4.71739C18.0403 9.42192 13.9388 13 9.00152 13C6.34934 13 3.93831 11.9675 2.14844 10.2825M21.8115 10.0501C19.6947 14.7377 14.9791 18 9.50152 18C7.13729 18 4.915 17.3922 2.98236 16.3244M3.65622 6.48834C4.85001 7.43477 6.35976 7.99996 8.00152 7.99996C11.3831 7.99996 14.2046 5.60217 14.8586 2.41406\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
+  "viewBox": "0 0 24 24",
+  "width": 24,
+  "height": 24,
+  "metadata": {
+    "preset": "twotone",
+    "originalName": "YogaBallIcon",
+    "elementsCount": 2,
+    "hasOpacity": true,
+    "hasFill": false
+  }
+};

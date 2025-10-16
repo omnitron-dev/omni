@@ -1,0 +1,22 @@
+/**
+ * RiyalIcon
+ * Preset: twotone
+ * Auto-generated from HugeIcons
+ */
+
+import type { IconDefinition } from '../../../IconRegistry.js';
+
+export const RiyalIcon: IconDefinition = {
+  "id": "riyal",
+  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M22 12C22 17.5227 17.5229 22 12 22C6.47713 22 2 17.5227 2 12C2 6.47713 6.47713 2 12 2C17.5229 2 22 6.47713 22 12Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M18 11V12C18 13.6569 16.6569 15 15 15\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M11 8V12.5C11 13.0523 11.4477 13.5 12 13.5H13C13.5523 13.5 14 13.0523 14 12.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M8.5 8V12.5C8.5 13.0523 8.05228 13.5 7.5 13.5H6.5C5.94772 13.5 5.5 13.0523 5.5 12.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M11 15.49V15.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M13 15.5V15.51\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
+  "viewBox": "0 0 24 24",
+  "width": 24,
+  "height": 24,
+  "metadata": {
+    "preset": "twotone",
+    "originalName": "RiyalIcon",
+    "elementsCount": 6,
+    "hasOpacity": true,
+    "hasFill": false
+  }
+};

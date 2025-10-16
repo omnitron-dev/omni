@@ -1,0 +1,22 @@
+/**
+ * Square01Icon
+ * Preset: duotone
+ * Auto-generated from HugeIcons
+ */
+
+import type { IconDefinition } from '../../../IconRegistry.js';
+
+export const Square01Icon: IconDefinition = {
+  "id": "square01",
+  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M22.0001 8.99985H18.0001L21.2002 6.59981C21.7038 6.22212 22.0001 5.62938 22.0001 4.9999C22.0001 3.89538 21.1046 2.99999 20 3C18.8955 3.00001 17.9999 3.89543 17.9999 4.99998\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M2.71571 7.02474C4.7067 6.91997 5.95595 7.07715 6.73673 8.91069C7.55655 11.111 9.58658 17.2403 10.0941 18.6548C10.6406 20.174 11.3433 21.2218 14.2322 20.9598M14.9999 7.00693C12.4729 6.98491 10.3516 10.675 8.99366 13.1024C8.81313 13.4251 8.64609 13.7255 8.49338 13.9919C8.34215 14.2687 8.17944 14.5668 8.0063 14.8786C6.54066 17.5181 4.32752 21.1331 1.99989 20.9769\" stroke-linecap=\"round\" />\n  </svg>",
+  "viewBox": "0 0 24 24",
+  "width": 24,
+  "height": 24,
+  "metadata": {
+    "preset": "duotone",
+    "originalName": "Square01Icon",
+    "elementsCount": 2,
+    "hasOpacity": true,
+    "hasFill": false
+  }
+};

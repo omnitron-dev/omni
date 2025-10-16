@@ -1,0 +1,22 @@
+/**
+ * ShoppingBasketSecure03Icon
+ * Preset: duotone
+ * Auto-generated from HugeIcons
+ */
+
+import type { IconDefinition } from '../../../IconRegistry.js';
+
+export const ShoppingBasketSecure03Icon: IconDefinition = {
+  "id": "shopping-basket-secure03",
+  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M20.5918 14.2529C20.1064 14.0915 19.5678 14 19 14C18.1664 14 17.3944 14.1939 16.7637 14.5234C16.4544 14.685 16.2993 14.7655 16.1494 15.0195C15.9996 15.2736 16 15.5198 16 16.0117V17.2334C16.0001 18.4388 16.5571 19.3191 17.1904 19.9316C16.5093 19.9987 15.6556 20 14.5508 20H9.7168C7.28938 20 6.07556 19.9999 5.23633 19.2891C4.39709 18.5781 4.19693 17.3808 3.79785 14.9863L2.63379 8H21.6338L20.5918 14.2529Z\" fill=\"currentColor\" />\n    <path d=\"M12 12V16\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M8 12V16\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M22.5 8H1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M18 8L15 3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M6 8L9 3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M13.5 20H9.58276C7.15525 20 5.94149 20 5.10226 19.2891C4.26302 18.5781 4.06348 17.3809 3.6644 14.9864L2.5 8H21.5L21 11\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M21.2363 14.5234C20.6055 14.1938 19.8336 14 19 14C18.1664 14 17.3945 14.1938 16.7637 14.5234C16.4544 14.685 16.2997 14.7658 16.1499 15.0198C16 15.2739 16 15.5199 16 16.0118V17.233C16 19.2222 17.5141 20.3281 18.391 20.8018C18.6356 20.9339 18.7578 21 19 21C19.2422 21 19.3644 20.9339 19.609 20.8018C20.4859 20.3281 22 19.2222 22 17.233L22 16.0119C22 15.5199 22 15.2739 21.8501 15.0198C21.7003 14.7658 21.5456 14.685 21.2363 14.5234Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
+  "viewBox": "0 0 24 24",
+  "width": 24,
+  "height": 24,
+  "metadata": {
+    "preset": "duotone",
+    "originalName": "ShoppingBasketSecure03Icon",
+    "elementsCount": 8,
+    "hasOpacity": true,
+    "hasFill": true
+  }
+};

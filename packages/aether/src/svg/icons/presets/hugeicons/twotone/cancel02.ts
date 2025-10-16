@@ -1,0 +1,22 @@
+/**
+ * Cancel02Icon
+ * Preset: twotone
+ * Auto-generated from HugeIcons
+ */
+
+import type { IconDefinition } from '../../../IconRegistry.js';
+
+export const Cancel02Icon: IconDefinition = {
+  "id": "cancel02",
+  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M12.0004 14.0857L16.4814 18.5665C17.0573 19.1424 17.991 19.1427 18.5672 18.5672C19.144 17.9912 19.1443 17.0566 18.5679 16.4802L14.0868 11.9993L18.5679 7.51845C19.1438 6.94258 19.1441 6.00902 18.5686 5.43278C17.9925 4.85601 17.0579 4.8557 16.4814 5.4321L12.0004 9.91297\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M12.0003 14.0863L7.51859 18.5679C6.94243 19.144 6.00828 19.144 5.43212 18.5679C4.85596 17.9918 4.85596 17.0577 5.43212 16.4816L9.91387 12L5.43212 7.51845C4.85596 6.94232 4.85596 6.00823 5.43212 5.4321C6.00828 4.85597 6.94243 4.85597 7.51859 5.4321L12.0003 9.91365\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
+  "viewBox": "0 0 24 24",
+  "width": 24,
+  "height": 24,
+  "metadata": {
+    "preset": "twotone",
+    "originalName": "Cancel02Icon",
+    "elementsCount": 2,
+    "hasOpacity": true,
+    "hasFill": false
+  }
+};

@@ -1,0 +1,22 @@
+/**
+ * TaskRemove02Icon
+ * Preset: duotone
+ * Auto-generated from HugeIcons
+ */
+
+import type { IconDefinition } from '../../../IconRegistry.js';
+
+export const TaskRemove02Icon: IconDefinition = {
+  "id": "task-remove02",
+  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M14.749 2.00781C16.6093 2.03468 17.6637 2.17147 18.3711 2.87891C19.2498 3.75759 19.25 5.17157 19.25 8V16C19.25 18.8284 19.2498 20.2424 18.3711 21.1211C17.4924 21.9998 16.0784 22 13.25 22H9.25C6.42157 22 5.00759 21.9998 4.12891 21.1211C3.25023 20.2424 3.25 18.8284 3.25 16V8C3.25 5.17157 3.25023 3.75759 4.12891 2.87891C4.83622 2.17159 5.89034 2.03472 7.75 2.00781C7.75 3.41682 7.75092 4.12202 8.18945 4.56055C8.62879 4.99989 9.33579 5 10.75 5H11.75C13.1642 5 13.8712 4.99989 14.3105 4.56055C14.7491 4.12202 14.749 3.41682 14.749 2.00781Z\" fill=\"currentColor\" />\n    <path d=\"M19.25 14V8C19.25 5.17157 19.25 3.75736 18.3713 2.87868C17.4926 2 16.0784 2 13.25 2H9.25C6.42157 2 5.00736 2 4.12868 2.87868C3.25 3.75736 3.25 5.17157 3.25 8V16C3.25 18.8284 3.25 20.2426 4.12868 21.1213C5.00736 22 6.42157 22 9.25 22H13.25\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M14.75 2H7.75C7.75 3.41421 7.75 4.12132 8.18934 4.56066C8.62868 5 9.33579 5 10.75 5H11.75C13.1642 5 13.8713 5 14.3107 4.56066C14.75 4.12132 14.75 3.41421 14.75 2Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M7.25 15H11.25M7.25 11H15.25\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M21.25 17L18.75 19.5M18.75 19.5L16.25 22M18.75 19.5L21.25 22M18.75 19.5L16.25 17\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
+  "viewBox": "0 0 24 24",
+  "width": 24,
+  "height": 24,
+  "metadata": {
+    "preset": "duotone",
+    "originalName": "TaskRemove02Icon",
+    "elementsCount": 5,
+    "hasOpacity": true,
+    "hasFill": true
+  }
+};

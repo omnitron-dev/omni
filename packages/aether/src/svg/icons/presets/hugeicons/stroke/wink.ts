@@ -1,0 +1,22 @@
+/**
+ * WinkIcon
+ * Preset: stroke
+ * Auto-generated from HugeIcons
+ */
+
+import type { IconDefinition } from '../../../IconRegistry.js';
+
+export const WinkIcon: IconDefinition = {
+  "id": "wink",
+  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <circle cx=\"12\" cy=\"12\" r=\"10\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M8 14C8.91212 15.2144 10.3643 16 12 16C13.6357 16 15.0879 15.2144 16 14\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M15 8C15 8 14 9 14 10C14.75 9 16.25 9 17 10\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M8.00897 9H8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" />\n    <path d=\"M13.5 16L14.2348 17.3203C14.644 17.9703 15.5502 18.1929 16.2589 17.8177C16.9676 17.4424 17.2104 16.6113 16.8012 15.9614L16 15\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
+  "viewBox": "0 0 24 24",
+  "width": 24,
+  "height": 24,
+  "metadata": {
+    "preset": "stroke",
+    "originalName": "WinkIcon",
+    "elementsCount": 5,
+    "hasOpacity": false,
+    "hasFill": false
+  }
+};

@@ -1,0 +1,22 @@
+/**
+ * Root01Icon
+ * Preset: duotone
+ * Auto-generated from HugeIcons
+ */
+
+import type { IconDefinition } from '../../../IconRegistry.js';
+
+export const Root01Icon: IconDefinition = {
+  "id": "root01",
+  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M22 5H13.6138C12.3798 5 11.965 5.1398 11.659 6.36394L9.33913 15.6416C8.78948 17.8398 8.51466 18.9389 7.78481 18.9976C7.05496 19.0564 6.55032 18.02 5.54104 15.9472L4.97014 14.7748C4.53541 13.882 4.31804 13.4356 3.87855 13.3147C3.21709 13.1327 2.5084 13.6703 2 14\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M14.4102 11.0084C15.1902 10.9244 16.1435 11.0429 16.4502 11.6444C17.0621 12.8444 18.0702 15.3644 18.4302 16.1444C18.6102 16.4444 18.7902 16.8044 19.5102 16.9844C19.9902 17.0444 20.6137 16.9999 20.6137 16.9999\" stroke-linecap=\"round\" />\n    <path d=\"M21.0102 11.0029C19.5102 11.0029 18.5502 12.6649 17.7102 13.6849C16.6302 15.2449 15.4302 17.1049 13.9902 16.9849\" stroke-linecap=\"round\" />\n  </svg>",
+  "viewBox": "0 0 24 24",
+  "width": 24,
+  "height": 24,
+  "metadata": {
+    "preset": "duotone",
+    "originalName": "Root01Icon",
+    "elementsCount": 3,
+    "hasOpacity": true,
+    "hasFill": false
+  }
+};

@@ -1,0 +1,22 @@
+/**
+ * SlidersHorizontalIcon
+ * Preset: duotone
+ * Auto-generated from HugeIcons
+ */
+
+import type { IconDefinition } from '../../../IconRegistry.js';
+
+export const SlidersHorizontalIcon: IconDefinition = {
+  "id": "sliders-horizontal",
+  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M13.0002 5.00082L20.0002 5.00082\" stroke-linecap=\"round\" />\n    <path opacity=\"0.4\" d=\"M4 5.00122L10 5.00098M10 2.00098V8.00098\" stroke-linecap=\"round\" />\n    <path opacity=\"0.4\" d=\"M16 9V15M16 11.9998L20 12\" stroke-linecap=\"round\" />\n    <path d=\"M4.00018 12.0011L13.0002 12.0008\" stroke-linecap=\"round\" />\n    <path opacity=\"0.4\" d=\"M12 16V22M12 19H20\" stroke-linecap=\"round\" />\n    <path d=\"M4.00018 19.0011L9.00018 19.0008\" stroke-linecap=\"round\" />\n  </svg>",
+  "viewBox": "0 0 24 24",
+  "width": 24,
+  "height": 24,
+  "metadata": {
+    "preset": "duotone",
+    "originalName": "SlidersHorizontalIcon",
+    "elementsCount": 6,
+    "hasOpacity": true,
+    "hasFill": false
+  }
+};

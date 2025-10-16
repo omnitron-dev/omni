@@ -1,0 +1,22 @@
+/**
+ * ShoppingBasketFavorite03Icon
+ * Preset: duotone
+ * Auto-generated from HugeIcons
+ */
+
+import type { IconDefinition } from '../../../IconRegistry.js';
+
+export const ShoppingBasketFavorite03Icon: IconDefinition = {
+  "id": "shopping-basket-favorite03",
+  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M20.4697 14.9863C20.4682 14.9954 20.4664 15.0046 20.4648 15.0137C20.3947 15.0054 20.3232 15 20.25 15C19.725 15 19.2 15.1769 18.5 15.8828C17.8 15.1769 17.275 15 16.75 15C15.737 15 15.0002 15.8206 15 16.833C15 17.9752 16.0882 19.1382 17.0508 19.9443C16.3935 19.9987 15.5814 20 14.5508 20H9.7168C7.28938 20 6.07556 19.9999 5.23633 19.2891C4.39709 18.5781 4.19693 17.3808 3.79785 14.9863L2.63379 8H21.6338L20.4697 14.9863Z\" fill=\"currentColor\" />\n    <path d=\"M12 12V16\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M8 12V16\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M22.5 8H1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M18 8L15 3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M6 8L9 3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M18.5 21C18.5 21 15 18.8824 15 16.8333C15 15.8208 15.7368 15 16.75 15C17.275 15 17.8 15.1765 18.5 15.8824C19.2 15.1765 19.725 15 20.25 15C21.2632 15 22 15.8208 22 16.8333C22 18.8824 18.5 21 18.5 21Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M13 20H9.58276C7.15525 20 5.94149 20 5.10226 19.2891C4.26302 18.5781 4.06348 17.3809 3.6644 14.9864L2.5 8H21.5L20.8333 12\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
+  "viewBox": "0 0 24 24",
+  "width": 24,
+  "height": 24,
+  "metadata": {
+    "preset": "duotone",
+    "originalName": "ShoppingBasketFavorite03Icon",
+    "elementsCount": 8,
+    "hasOpacity": true,
+    "hasFill": true
+  }
+};

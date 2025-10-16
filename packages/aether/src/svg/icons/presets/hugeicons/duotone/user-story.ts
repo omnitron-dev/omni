@@ -1,0 +1,22 @@
+/**
+ * UserStoryIcon
+ * Preset: duotone
+ * Auto-generated from HugeIcons
+ */
+
+import type { IconDefinition } from '../../../IconRegistry.js';
+
+export const UserStoryIcon: IconDefinition = {
+  "id": "user-story",
+  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M12 6C13.6569 6 15 7.34315 15 9C15 10.6569 13.6569 12 12 12C10.3431 12 9 10.6569 9 9C9 7.34315 10.3431 6 12 6Z\" fill=\"currentColor\" />\n    <path d=\"M16.999 16.9C16.9457 14.1847 14.728 12 12 12C9.27199 12 7.05425 14.1847 7.00098 16.9C8.27142 18.1959 10.0418 19 12 19C13.9582 19 15.7286 18.1959 16.999 16.9Z\" fill=\"currentColor\" />\n    <path d=\"M12 2C17.5237 2 22 6.47778 22 12C22 17.5222 17.5237 22 12 22\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M9 21.5C7.81163 21.0953 6.69532 20.5107 5.72302 19.7462M5.72302 4.25385C6.69532 3.50059 7.81163 2.90473 9 2.5M2 10.2461C2.21607 9.08813 2.66019 7.96386 3.29638 6.94078M2 13.7539C2.21607 14.9119 2.66019 16.0361 3.29638 17.0592\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M15 9C15 7.34315 13.6569 6 12 6C10.3431 6 9 7.34315 9 9C9 10.6569 10.3431 12 12 12C13.6569 12 15 10.6569 15 9Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M17 17C17 14.2386 14.7614 12 12 12C9.23858 12 7 14.2386 7 17\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
+  "viewBox": "0 0 24 24",
+  "width": 24,
+  "height": 24,
+  "metadata": {
+    "preset": "duotone",
+    "originalName": "UserStoryIcon",
+    "elementsCount": 6,
+    "hasOpacity": false,
+    "hasFill": true
+  }
+};

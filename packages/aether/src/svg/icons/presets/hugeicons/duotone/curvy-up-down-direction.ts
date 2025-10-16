@@ -1,0 +1,22 @@
+/**
+ * CurvyUpDownDirectionIcon
+ * Preset: duotone
+ * Auto-generated from HugeIcons
+ */
+
+import type { IconDefinition } from '../../../IconRegistry.js';
+
+export const CurvyUpDownDirectionIcon: IconDefinition = {
+  "id": "curvy-up-down-direction",
+  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M11 22V20.044C11 17.7882 12.7909 15.9595 15 15.9595H17.0845C18.1424 15.9595 19 15.0837 19 14.0034C19 12.9231 18.1424 12.0474 17.0845 12.0474H6.96543C5.87995 12.0474 5 11.1488 5 10.0404C5 8.93193 5.87995 8.03337 6.96543 8.03337L9 8.03337C11.2091 8.03337 13 6.20463 13 3.94877V2M11 22C11.527 22 13 20 13 20M11 22C10.473 22 9 20 9 20M13 2C13.527 2 15 3.99998 15 3.99998M13 2C12.473 2 11 4 11 4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
+  "viewBox": "0 0 24 24",
+  "width": 24,
+  "height": 24,
+  "metadata": {
+    "preset": "duotone",
+    "originalName": "CurvyUpDownDirectionIcon",
+    "elementsCount": 1,
+    "hasOpacity": true,
+    "hasFill": false
+  }
+};

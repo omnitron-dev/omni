@@ -1,0 +1,22 @@
+/**
+ * Bug02Icon
+ * Preset: twotone
+ * Auto-generated from HugeIcons
+ */
+
+import type { IconDefinition } from '../../../IconRegistry.js';
+
+export const Bug02Icon: IconDefinition = {
+  "id": "bug02",
+  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M3.012 6.49121C2.89208 7.5505 3.65834 10.0889 5.87687 10.1488\" stroke-linecap=\"round\" />\n    <path d=\"M18.2891 10.0889C19.3683 10.1488 20.9873 8.88961 20.9873 6.49121\" stroke-linecap=\"round\" />\n    <path d=\"M20.0881 20.8817C20.148 19.5026 19.2486 17.368 17.5098 17.3081\" stroke-linecap=\"round\" />\n    <path d=\"M3.90131 20.8818C3.84003 19.4934 4.75934 17.3445 6.53668 17.2842\" stroke-linecap=\"round\" />\n    <path opacity=\"0.4\" d=\"M3.0127 13.6865H5.218\" stroke-linecap=\"round\" />\n    <path opacity=\"0.4\" d=\"M20.9999 13.6866H18.8281\" stroke-linecap=\"round\" />\n    <path opacity=\"0.4\" d=\"M11.9931 13.6864V10.7484M16.4901 2.89355L14.6913 4.69235M7.49609 2.89355L9.2949 4.69235\" stroke-linecap=\"round\" />\n    <path d=\"M6.95605 8.50586C8.57498 9.66909 12.5923 11.348 16.9694 8.57782\" stroke-linecap=\"round\" />\n    <path d=\"M16.8259 7.57043C13.2523 2.59374 8.6953 4.99214 7.07638 7.71433C6.02087 9.48915 4.37817 13.7823 7.4961 18.4592C10.8539 22.5605 14.8112 20.7018 16.4302 18.5432C17.9891 16.6844 19.5241 11.8876 16.8259 7.57043Z\" stroke-linecap=\"round\" />\n  </svg>",
+  "viewBox": "0 0 24 24",
+  "width": 24,
+  "height": 24,
+  "metadata": {
+    "preset": "twotone",
+    "originalName": "Bug02Icon",
+    "elementsCount": 9,
+    "hasOpacity": true,
+    "hasFill": false
+  }
+};

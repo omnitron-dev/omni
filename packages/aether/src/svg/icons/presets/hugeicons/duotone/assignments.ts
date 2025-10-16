@@ -1,0 +1,22 @@
+/**
+ * AssignmentsIcon
+ * Preset: duotone
+ * Auto-generated from HugeIcons
+ */
+
+import type { IconDefinition } from '../../../IconRegistry.js';
+
+export const AssignmentsIcon: IconDefinition = {
+  "id": "assignments",
+  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M4 3H3C2.44772 3 2 3.44772 2 4V7H5V4C5 3.44772 4.55228 3 4 3Z\" fill=\"currentColor\" />\n    <path d=\"M4 3H3C2.44772 3 2 3.44772 2 4V18L3.5 21L5 18V4C5 3.44772 4.55228 3 4 3Z\" stroke-linejoin=\"round\" />\n    <path d=\"M21 12.0013V8.00072C21 5.64336 21 4.46468 20.2678 3.73234C19.5355 3 18.357 3 16 3H13C10.643 3 9.46447 3 8.73223 3.73234C8 4.46468 8 5.64336 8 8.00072V16.0019C8 18.3592 8 19.5379 8.73223 20.2703C9.35264 20.8908 10.2934 20.9855 12 21\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M16 3H13C10.643 3 9.46447 3 8.73223 3.73223C8 4.46447 8 5.64298 8 8V16C8 18.357 8 19.5355 8.73223 20.2678C9.46447 21 10.643 21 13 21H16C18.357 21 19.5355 21 20.2678 20.2678C21 19.5355 21 18.357 21 16V8C21 5.64298 21 4.46447 20.2678 3.73223C19.5355 3 18.357 3 16 3Z\" fill=\"currentColor\" />\n    <path d=\"M12 7H17\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M12 11H17\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M14 19C14 19 15.5 19.5 16.5 21C16.5 21 18 17 22 15\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M2 7H5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
+  "viewBox": "0 0 24 24",
+  "width": 24,
+  "height": 24,
+  "metadata": {
+    "preset": "duotone",
+    "originalName": "AssignmentsIcon",
+    "elementsCount": 8,
+    "hasOpacity": true,
+    "hasFill": true
+  }
+};

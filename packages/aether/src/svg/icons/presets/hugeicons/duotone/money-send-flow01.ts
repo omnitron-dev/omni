@@ -1,0 +1,22 @@
+/**
+ * MoneySendFlow01Icon
+ * Preset: duotone
+ * Auto-generated from HugeIcons
+ */
+
+import type { IconDefinition } from '../../../IconRegistry.js';
+
+export const MoneySendFlow01Icon: IconDefinition = {
+  "id": "money-send-flow01",
+  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M15 10C15 11.6569 13.6569 13 12 13C10.3431 13 9 11.6569 9 10C9 8.34315 10.3431 7 12 7C13.6569 7 15 8.34315 15 10Z\" fill=\"currentColor\" />\n    <path d=\"M18 3C18 5.20914 19.7909 7 22 7C22 5.59987 22 4.8998 21.7275 4.36502C21.4878 3.89462 21.1054 3.51217 20.635 3.27248C20.1002 3 19.4001 3 18 3Z\" fill=\"currentColor\" />\n    <path d=\"M6 3C6 5.20914 4.20914 7 2 7C2 5.59987 2 4.8998 2.27248 4.36502C2.51217 3.89462 2.89462 3.51217 3.36502 3.27248C3.8998 3 4.59987 3 6 3Z\" fill=\"currentColor\" />\n    <path d=\"M18 17C18 14.7909 19.7909 13 22 13C22 14.4001 22 15.1002 21.7275 15.635C21.4878 16.1054 21.1054 16.4878 20.635 16.7275C20.1002 17 19.4001 17 18 17Z\" fill=\"currentColor\" />\n    <path d=\"M6 17C6 14.7909 4.20914 13 2 13C2 14.4001 2 15.1002 2.27248 15.635C2.51217 16.1054 2.89462 16.4878 3.36502 16.7275C3.8998 17 4.59987 17 6 17Z\" fill=\"currentColor\" />\n    <path d=\"M2.01709 7.00221C4.21666 7.00221 5.99977 5.2191 5.99977 3.01953\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M18 3.01953V3.11144C18 5.26025 19.742 7.00221 21.8908 7.00221\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M2.01738 13.019C4.21681 13.0192 6 14.8005 6 17C4.44655 16.9532 3.51998 16.7799 2.87868 16.1386C2.23761 15.4976 2.06425 14.5714 2.01738 13.019ZM2.01738 13.019C2.01728 13.019 2.01747 13.019 2.01738 13.019ZM2.01738 13.019C2 12.4436 2 11.7822 2 11.0173V9C2 6.17157 2 4.75736 2.87868 3.87868C3.75736 3 5.17157 3 8 3H16C18.8284 3 20.2426 3 21.1213 3.87868C22 4.75736 22 6.17157 22 9V11.0173C22 13.8458 22 15.26 21.1213 16.1386C20.48 16.7799 19.5534 16.9549 18 17.0017C18 14.8214 19.769 13.0503 21.9423 13.0194\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M12 17V21\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M15 17V19\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M9 17V19\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M15 10.0039C15 8.34705 13.6569 7.00391 12 7.00391C10.3431 7.00391 9 8.34705 9 10.0039C9 11.6608 10.3431 13.0039 12 13.0039C13.6569 13.0039 15 11.6608 15 10.0039Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
+  "viewBox": "0 0 24 24",
+  "width": 24,
+  "height": 24,
+  "metadata": {
+    "preset": "duotone",
+    "originalName": "MoneySendFlow01Icon",
+    "elementsCount": 12,
+    "hasOpacity": false,
+    "hasFill": true
+  }
+};

@@ -1,0 +1,22 @@
+/**
+ * MoneySend02Icon
+ * Preset: twotone
+ * Auto-generated from HugeIcons
+ */
+
+import type { IconDefinition } from '../../../IconRegistry.js';
+
+export const MoneySend02Icon: IconDefinition = {
+  "id": "money-send02",
+  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M2 11C3.95133 11 5.70483 9.40507 5.92901 7.75417M18.5005 7.5C18.5005 9.53964 20.2655 11.469 22 11.469M22 17C20.1009 17 18.2601 18.3102 18.102 20.0983M6.00049 20.4961C6.00049 18.287 4.20963 16.4961 2.00049 16.4961\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M14.4998 14C14.4998 15.3807 13.3805 16.5 11.9998 16.5C10.619 16.5 9.49976 15.3807 9.49976 14C9.49976 12.6193 10.619 11.5 11.9998 11.5C13.3805 11.5 14.4998 12.6193 14.4998 14Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M8 7.88874C6.88069 7.88344 5.55979 7.75737 3.87798 7.42364C2.92079 7.2337 2 7.94534 2 8.9212V18.9382C2 19.6265 2.47265 20.231 3.1448 20.3793C10.1096 21.9151 11.2491 20.1094 16 20.1094C17.5107 20.1094 18.7361 20.252 19.6762 20.4296C20.7719 20.6365 22 19.7974 22 18.6824V8.90755C22 8.33939 21.6756 7.82502 21.1329 7.65682C20.3228 7.40577 18.9452 7.08669 17 7.00195\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M9.5 5.5C9.5 5.5 11.2998 3 12 3M14.5 5.5C14.5 5.5 12.7002 3 12 3M12 3L12 8.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
+  "viewBox": "0 0 24 24",
+  "width": 24,
+  "height": 24,
+  "metadata": {
+    "preset": "twotone",
+    "originalName": "MoneySend02Icon",
+    "elementsCount": 4,
+    "hasOpacity": true,
+    "hasFill": false
+  }
+};

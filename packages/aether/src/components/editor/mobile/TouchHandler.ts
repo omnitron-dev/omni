@@ -433,7 +433,7 @@ export class TouchHandlerExtension extends Extension {
 
       this.selectionHandles.end.style.left = `${endCoords.right}px`;
       this.selectionHandles.end.style.top = `${endCoords.bottom}px`;
-    } catch (e) {
+    } catch (_e) {
       // Position might be invalid, hide handles
       this.hideSelectionHandles();
     }

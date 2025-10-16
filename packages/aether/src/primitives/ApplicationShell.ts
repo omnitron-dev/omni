@@ -227,12 +227,12 @@ export const ApplicationShell = defineComponent<ApplicationShellProps>((props) =
      
     const {
       layout: _layout,
-      defaultSidebarOpen,
-      defaultPanelOpen,
-      sidebarOpen,
-      panelOpen,
-      onSidebarOpenChange,
-      onPanelOpenChange,
+      defaultSidebarOpen: _defaultSidebarOpen,
+      defaultPanelOpen: _defaultPanelOpen,
+      sidebarOpen: _sidebarOpen,
+      panelOpen: _panelOpen,
+      onSidebarOpenChange: _onSidebarOpenChange,
+      onPanelOpenChange: _onPanelOpenChange,
       children: _children,
       ...restProps
     } = props;

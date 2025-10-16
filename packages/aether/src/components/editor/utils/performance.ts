@@ -381,10 +381,10 @@ export const performanceTracker = new PerformanceTracker();
  * Timing decorator for methods
  */
 export function Timing(budgetMs?: number) {
-  return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
+  return function timingDecorator(target: any, propertyKey: string, descriptor: PropertyDescriptor) {
     const originalMethod = descriptor.value;
 
-    descriptor.value = function (...args: any[]) {
+    descriptor.value = function timedMethod(...args: any[]) {
       const name = `${target.constructor.name}.${propertyKey}`;
 
       if (budgetMs) {
@@ -402,10 +402,10 @@ export function Timing(budgetMs?: number) {
  * Async timing decorator for methods
  */
 export function AsyncTiming(budgetMs?: number) {
-  return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
+  return function asyncTimingDecorator(target: any, propertyKey: string, descriptor: PropertyDescriptor) {
     const originalMethod = descriptor.value;
 
-    descriptor.value = async function (...args: any[]) {
+    descriptor.value = async function asyncTimedMethod(...args: any[]) {
       const name = `${target.constructor.name}.${propertyKey}`;
 
       if (budgetMs) {

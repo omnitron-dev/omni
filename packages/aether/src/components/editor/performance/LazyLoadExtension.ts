@@ -158,6 +158,11 @@ export class LazyLoadExtension extends Extension<LazyLoadConfig> {
         case 'manual':
           // Do nothing, wait for manual trigger
           break;
+
+        default:
+          // Unknown strategy, use idle as fallback
+          this.preloadOnIdle(lazyConfig.name);
+          break;
       }
     }
   }

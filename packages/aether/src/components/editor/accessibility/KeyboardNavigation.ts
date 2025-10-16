@@ -279,6 +279,7 @@ export class KeyboardNavigationExtension extends Extension {
           pos = nodePos;
         }
       }
+      return undefined;
     });
 
     if (found || (direction < 0 && pos !== $from.pos)) {
@@ -312,6 +313,7 @@ export class KeyboardNavigationExtension extends Extension {
           pos = nodePos;
         }
       }
+      return undefined;
     });
 
     if (found || (direction < 0 && pos !== $from.pos)) {

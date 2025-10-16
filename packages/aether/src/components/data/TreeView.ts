@@ -422,6 +422,9 @@ const TreeViewNode = defineComponent<TreeViewNodeProps>((props) => {
           context.toggleExpand(node.id);
         }
         break;
+      default:
+        // Ignore other keys
+        break;
     }
   };
 

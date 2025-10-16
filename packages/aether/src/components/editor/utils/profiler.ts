@@ -539,11 +539,11 @@ export const editorProfiler = new EditorProfiler();
  * Profile decorator for methods
  */
 export function Profile(name?: string) {
-  return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
+  return function profileDecorator(target: any, propertyKey: string, descriptor: PropertyDescriptor) {
     const originalMethod = descriptor.value;
     const profileName = name || `${target.constructor.name}.${propertyKey}`;
 
-    descriptor.value = function (...args: any[]) {
+    descriptor.value = function profiledMethod(...args: any[]) {
       return editorProfiler.profile(profileName, () => originalMethod.apply(this, args));
     };
 

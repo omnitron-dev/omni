@@ -368,9 +368,9 @@ const AddButton = styled('button', {
 });
 
 /**
- * Drag placeholder
+ * Drag placeholder (reserved for future use)
  */
-const DragPlaceholder = styled('div', {
+const _DragPlaceholder = styled('div', {
   base: {
     width: '100px',
     height: '100%',
@@ -400,7 +400,7 @@ export const DraggableTabs = defineComponent<DraggableTabsProps>((props) => {
   });
 
   const touchEnabled = props.touchEnabled !== false;
-  const animationDuration = props.animationDuration || 200;
+  const _animationDuration = props.animationDuration || 200; // Reserved for future animations
   const maxTabs = props.maxTabs || Infinity;
 
   // Update tabs when props change
@@ -447,9 +447,9 @@ export const DraggableTabs = defineComponent<DraggableTabsProps>((props) => {
   };
 
   /**
-   * Get tab index by ID
+   * Get tab index by ID (reserved for future use)
    */
-  const getTabIndex = (tabId: string): number => tabs().findIndex((tab) => tab.id === tabId);
+  const _getTabIndex = (tabId: string): number => tabs().findIndex((tab) => tab.id === tabId);
 
   /**
    * Reorder tabs
@@ -589,7 +589,7 @@ export const DraggableTabs = defineComponent<DraggableTabsProps>((props) => {
     const currentTabs = tabs();
     const currentActiveId = activeTabId();
     const currentDragState = dragState();
-    const { size = 'md', className, children, ...restProps } = props;
+    const { size = 'md', className, children: _children, ...restProps } = props;
 
     // Render tabs
     const tabElements = currentTabs.map((tab, index) => {

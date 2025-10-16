@@ -395,7 +395,7 @@ export class VirtualKeyboardExtension extends Extension {
           });
         }
       }
-    } catch (e) {
+    } catch (_e) {
       // Position might be invalid, ignore
     }
   }
@@ -468,7 +468,7 @@ export class VirtualKeyboardExtension extends Extension {
   private updateFormatBarPosition(): void {
     if (!this.formatBar) return;
 
-    const viewportHeight = window.visualViewport?.height || window.innerHeight;
+    const _viewportHeight = window.visualViewport?.height || window.innerHeight;
     const keyboardHeight = this.keyboardState.height;
 
     this.formatBar.style.bottom = `${keyboardHeight}px`;

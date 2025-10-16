@@ -205,7 +205,7 @@ export class DebounceExtension extends Extension<DebounceConfig> {
     config: OperationDebounceConfig
   ): DebouncedFunction<T> {
     let lastArgs: Parameters<T> | undefined;
-    let result: ReturnType<T> | undefined;
+    let _result: ReturnType<T> | undefined;
 
     const invoke = (): void => {
       if (!lastArgs) return;
@@ -213,7 +213,7 @@ export class DebounceExtension extends Extension<DebounceConfig> {
       const now = Date.now();
       this.lastExecutions.set(key, now);
 
-      result = fn(...lastArgs);
+      _result = fn(...lastArgs);
       lastArgs = undefined;
 
       // Clear timeout

@@ -3,14 +3,7 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
-import {
-  LinearGradient,
-  RadialGradient,
-  Stop,
-  Pattern,
-  Mask,
-  ClipPath
-} from '../../../src/svg/primitives/gradients';
+import { LinearGradient, RadialGradient, Stop, Pattern, Mask, ClipPath } from '../../../src/svg/primitives/gradients';
 import { createSignal } from '../../../src/core/reactivity/signal';
 import { render, cleanup } from '../../test-utils';
 
@@ -380,12 +373,7 @@ describe('SVG Gradient Primitives', () => {
       const { container } = render(() => (
         <svg>
           <defs>
-            <Pattern
-              id="pattern3"
-              width={10}
-              height={10}
-              patternUnits="userSpaceOnUse"
-            >
+            <Pattern id="pattern3" width={10} height={10} patternUnits="userSpaceOnUse">
               <rect width="10" height="10" fill="blue" />
             </Pattern>
           </defs>
@@ -400,12 +388,7 @@ describe('SVG Gradient Primitives', () => {
       const { container } = render(() => (
         <svg>
           <defs>
-            <Pattern
-              id="pattern4"
-              width={10}
-              height={10}
-              patternContentUnits="objectBoundingBox"
-            >
+            <Pattern id="pattern4" width={10} height={10} patternContentUnits="objectBoundingBox">
               <rect width="10" height="10" fill="blue" />
             </Pattern>
           </defs>
@@ -420,12 +403,7 @@ describe('SVG Gradient Primitives', () => {
       const { container } = render(() => (
         <svg>
           <defs>
-            <Pattern
-              id="pattern5"
-              width={10}
-              height={10}
-              patternTransform="rotate(45)"
-            >
+            <Pattern id="pattern5" width={10} height={10} patternTransform="rotate(45)">
               <rect width="10" height="10" fill="blue" />
             </Pattern>
           </defs>

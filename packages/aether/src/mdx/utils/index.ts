@@ -11,20 +11,34 @@ import type {
   ExtractedImage,
   ExtractedLink,
   ValidationResult,
-  TOCEntry
+  TOCEntry,
 } from '../types.js';
 
 /**
  * Sanitize MDX content for security
  */
-export function sanitizeMDX(
-  source: string,
-  options: SanitizeOptions = {}
-): string {
+export function sanitizeMDX(source: string, options: SanitizeOptions = {}): string {
   const {
-    allowedTags: _allowedTags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'a', 'code', 'pre', 'blockquote', 'em', 'strong'],
+    allowedTags: _allowedTags = [
+      'p',
+      'h1',
+      'h2',
+      'h3',
+      'h4',
+      'h5',
+      'h6',
+      'ul',
+      'ol',
+      'li',
+      'a',
+      'code',
+      'pre',
+      'blockquote',
+      'em',
+      'strong',
+    ],
     allowedAttributes: _allowedAttributes = { a: ['href', 'target'], code: ['className'] },
-    allowedProtocols = ['http', 'https', 'mailto']
+    allowedProtocols = ['http', 'https', 'mailto'],
   } = options;
 
   // Basic sanitization - in production use a proper sanitizer
@@ -84,7 +98,7 @@ export function validateMDX(source: string): ValidationResult {
           line,
           column: 0,
           message: `Unclosed JSX tag: <${tag}>`,
-          severity: 'error'
+          severity: 'error',
         });
       }
     }
@@ -104,7 +118,7 @@ export function validateMDX(source: string): ValidationResult {
             line: lineIndex + 1,
             column: i + 1,
             message: 'Unmatched closing brace }',
-            severity: 'error'
+            severity: 'error',
           });
           braceCount = 0; // Reset to continue checking
         }
@@ -117,7 +131,7 @@ export function validateMDX(source: string): ValidationResult {
         line: lines.length,
         column: lastLine ? lastLine.length : 0,
         message: `${braceCount} unclosed brace(s) {`,
-        severity: 'error'
+        severity: 'error',
       });
     }
 
@@ -129,24 +143,26 @@ export function validateMDX(source: string): ValidationResult {
           line: 1,
           column: 1,
           message: 'Unclosed frontmatter block',
-          severity: 'error'
+          severity: 'error',
         });
       }
     }
 
     return {
       valid: errors.length === 0,
-      errors: errors.length > 0 ? errors : undefined
+      errors: errors.length > 0 ? errors : undefined,
     };
   } catch (error) {
     return {
       valid: false,
-      errors: [{
-        line: 0,
-        column: 0,
-        message: `Validation error: ${error}`,
-        severity: 'error'
-      }]
+      errors: [
+        {
+          line: 0,
+          column: 0,
+          message: `Validation error: ${error}`,
+          severity: 'error',
+        },
+      ],
     };
   }
 }
@@ -154,10 +170,7 @@ export function validateMDX(source: string): ValidationResult {
 /**
  * Transform MDX to HTML (simplified)
  */
-export function mdxToHTML(
-  source: string,
-  options: MDXToHTMLOptions = {}
-): string {
+export function mdxToHTML(source: string, options: MDXToHTMLOptions = {}): string {
   let html = source;
 
   // Convert markdown headings
@@ -240,10 +253,7 @@ export function calculateReadingTime(source: string): ReadingTime {
   const plainText = mdxToPlainText(source);
 
   // Count words
-  const words = plainText
-    .split(/\s+/)
-    .filter(word => word.length > 0)
-    .length;
+  const words = plainText.split(/\s+/).filter((word) => word.length > 0).length;
 
   // Calculate time
   const minutes = Math.ceil(words / wordsPerMinute);
@@ -269,7 +279,7 @@ export function extractImages(source: string): ExtractedImage[] {
     images.push({
       src,
       alt: match[1] || undefined,
-      title: match[3] || undefined
+      title: match[3] || undefined,
     });
   }
 
@@ -291,10 +301,7 @@ export function extractImages(source: string): ExtractedImage[] {
   }
 
   // Remove duplicates
-  const uniqueImages = images.filter(
-    (img, index, self) =>
-      index === self.findIndex(i => i.src === img.src)
-  );
+  const uniqueImages = images.filter((img, index, self) => index === self.findIndex((i) => i.src === img.src));
 
   return uniqueImages;
 }
@@ -333,8 +340,7 @@ export function extractLinks(source: string): ExtractedLink[] {
 
   // Remove duplicates
   const uniqueLinks = links.filter(
-    (link, index, self) =>
-      index === self.findIndex(l => l.href === link.href && l.text === link.text)
+    (link, index, self) => index === self.findIndex((l) => l.href === link.href && l.text === link.text)
   );
 
   return uniqueLinks;
@@ -343,9 +349,7 @@ export function extractLinks(source: string): ExtractedLink[] {
 /**
  * Parse frontmatter from MDX content
  */
-export function parseFrontmatter(
-  source: string
-): { data: Record<string, any>; content: string } {
+export function parseFrontmatter(source: string): { data: Record<string, any>; content: string } {
   if (!source.startsWith('---')) {
     return { data: {}, content: source };
   }
@@ -381,7 +385,7 @@ export function parseFrontmatter(
       data[key] = value
         .substring(1, value.length - 1)
         .split(',')
-        .map(s => s.trim());
+        .map((s) => s.trim());
     } else {
       // Remove quotes if present
       data[key] = value.replace(/^["']|["']$/g, '');
@@ -415,7 +419,7 @@ export function extractTOC(source: string): TOCEntry[] {
         level,
         title,
         id,
-        children: []
+        children: [],
       };
 
       // Find parent
@@ -454,11 +458,7 @@ export function generateId(text: string): string {
 /**
  * Highlight text matches in content
  */
-export function highlightMatches(
-  content: string,
-  query: string,
-  className: string = 'highlight'
-): string {
+export function highlightMatches(content: string, query: string, className: string = 'highlight'): string {
   if (!query) return content;
 
   const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -470,11 +470,7 @@ export function highlightMatches(
 /**
  * Truncate MDX content with ellipsis
  */
-export function truncateMDX(
-  source: string,
-  maxLength: number,
-  ellipsis: string = '...'
-): string {
+export function truncateMDX(source: string, maxLength: number, ellipsis: string = '...'): string {
   const plainText = mdxToPlainText(source);
 
   if (plainText.length <= maxLength) {

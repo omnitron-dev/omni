@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const Money01Icon: IconDefinition = {
-  "id": "money01",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M15 12C15 13.6569 13.6569 15 12 15C10.3431 15 9 13.6569 9 12C9 10.3431 10.3431 9 12 9C13.6569 9 15 10.3431 15 12Z\" fill=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M18 5C18 7.20914 19.7909 9 22 9C22 7.59987 22 6.8998 21.7275 6.36502C21.4878 5.89462 21.1054 5.51217 20.635 5.27248C20.1002 5 19.4001 5 18 5Z\" fill=\"currentColor\" />\n    <path d=\"M6 5C6 7.20914 4.20914 9 2 9C2 7.59987 2 6.8998 2.27248 6.36502C2.51217 5.89462 2.89462 5.51217 3.36502 5.27248C3.8998 5 4.59987 5 6 5Z\" fill=\"currentColor\" />\n    <path d=\"M18 19C18 16.7909 19.7909 15 22 15C22 16.4001 22 17.1002 21.7275 17.635C21.4878 18.1054 21.1054 18.4878 20.635 18.7275C20.1002 19 19.4001 19 18 19Z\" fill=\"currentColor\" />\n    <path d=\"M6 19C6 16.7909 4.20914 15 2 15C2 16.4001 2 17.1002 2.27248 17.635C2.51217 18.1054 2.89462 18.4878 3.36502 18.7275C3.8998 19 4.59987 19 6 19Z\" fill=\"currentColor\" />\n    <path d=\"M2.01733 15C4.2169 15 6.00001 16.7831 6.00001 18.9827\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M18 18.9827V18.8908C18 16.742 19.742 15 21.8908 15\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M6.00001 5.01733C6.00001 7.2169 4.2169 9.00001 2.01733 9.00001\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M18 5.01733C18 7.19765 19.769 8.96876 21.9423 8.9996\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M16 5H8C5.17157 5 3.75736 5 2.87868 5.87868C2 6.75736 2 8.17157 2 11V13C2 15.8284 2 17.2426 2.87868 18.1213C3.75736 19 5.17157 19 8 19H16C18.8284 19 20.2426 19 21.1213 18.1213C22 17.2426 22 15.8284 22 13V11C22 8.17157 22 6.75736 21.1213 5.87868C20.2426 5 18.8284 5 16 5Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "duotone",
-    "originalName": "Money01Icon",
-    "elementsCount": 11,
-    "hasOpacity": false,
-    "hasFill": true
-  }
+  id: 'money01',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path d="M15 12C15 13.6569 13.6569 15 12 15C10.3431 15 9 13.6569 9 12C9 10.3431 10.3431 9 12 9C13.6569 9 15 10.3431 15 12Z" fill="currentColor" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M18 5C18 7.20914 19.7909 9 22 9C22 7.59987 22 6.8998 21.7275 6.36502C21.4878 5.89462 21.1054 5.51217 20.635 5.27248C20.1002 5 19.4001 5 18 5Z" fill="currentColor" />\n    <path d="M6 5C6 7.20914 4.20914 9 2 9C2 7.59987 2 6.8998 2.27248 6.36502C2.51217 5.89462 2.89462 5.51217 3.36502 5.27248C3.8998 5 4.59987 5 6 5Z" fill="currentColor" />\n    <path d="M18 19C18 16.7909 19.7909 15 22 15C22 16.4001 22 17.1002 21.7275 17.635C21.4878 18.1054 21.1054 18.4878 20.635 18.7275C20.1002 19 19.4001 19 18 19Z" fill="currentColor" />\n    <path d="M6 19C6 16.7909 4.20914 15 2 15C2 16.4001 2 17.1002 2.27248 17.635C2.51217 18.1054 2.89462 18.4878 3.36502 18.7275C3.8998 19 4.59987 19 6 19Z" fill="currentColor" />\n    <path d="M2.01733 15C4.2169 15 6.00001 16.7831 6.00001 18.9827" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M18 18.9827V18.8908C18 16.742 19.742 15 21.8908 15" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M6.00001 5.01733C6.00001 7.2169 4.2169 9.00001 2.01733 9.00001" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M18 5.01733C18 7.19765 19.769 8.96876 21.9423 8.9996" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M16 5H8C5.17157 5 3.75736 5 2.87868 5.87868C2 6.75736 2 8.17157 2 11V13C2 15.8284 2 17.2426 2.87868 18.1213C3.75736 19 5.17157 19 8 19H16C18.8284 19 20.2426 19 21.1213 18.1213C22 17.2426 22 15.8284 22 13V11C22 8.17157 22 6.75736 21.1213 5.87868C20.2426 5 18.8284 5 16 5Z" stroke-linecap="round" stroke-linejoin="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'duotone',
+    originalName: 'Money01Icon',
+    elementsCount: 11,
+    hasOpacity: false,
+    hasFill: true,
+  },
 };

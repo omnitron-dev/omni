@@ -620,13 +620,7 @@ describe('AnimatedSVG E2E Tests', () => {
       const onComplete = vi.fn();
 
       render(() => (
-        <AnimatedSVG
-          width={200}
-          height={200}
-          animations={[]}
-          trigger="mount"
-          onComplete={onComplete}
-        >
+        <AnimatedSVG width={200} height={200} animations={[]} trigger="mount" onComplete={onComplete}>
           <Circle id="circle" cx={100} cy={100} fill="blue" />
         </AnimatedSVG>
       ));

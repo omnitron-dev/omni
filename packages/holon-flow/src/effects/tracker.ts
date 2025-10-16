@@ -89,11 +89,7 @@ export class EffectTracker {
   /**
    * Track an effect execution
    */
-  track<T, R>(
-    effect: Effect<T, R>,
-    input: T,
-    context?: Context,
-  ): { execute: () => Promise<R>; sample: EffectSample } {
+  track<T, R>(effect: Effect<T, R>, input: T, context?: Context): { execute: () => Promise<R>; sample: EffectSample } {
     const startTime = this.config.enableProfiling ? performance.now() : 0;
     const sample: EffectSample = {
       timestamp: Date.now(),
@@ -145,11 +141,7 @@ export class EffectTracker {
   /**
    * Track a Flow execution
    */
-  async trackFlow<In, Out>(
-    flow: EffectFlow<In, Out>,
-    input: In,
-    _context?: Context,
-  ): Promise<Out> {
+  async trackFlow<In, Out>(flow: EffectFlow<In, Out>, input: In, _context?: Context): Promise<Out> {
     const effects = Array.from(flow._effects);
 
     // Track dependencies between effects
@@ -204,18 +196,9 @@ export class EffectTracker {
    */
   analyze(): EffectAnalysis {
     const hotPaths = this.identifyHotPaths();
-    const totalExecutions = Array.from(this.effects.values()).reduce(
-      (sum, usage) => sum + usage.count,
-      0,
-    );
-    const totalErrors = Array.from(this.effects.values()).reduce(
-      (sum, usage) => sum + usage.errors,
-      0,
-    );
-    const totalTime = Array.from(this.effects.values()).reduce(
-      (sum, usage) => sum + usage.totalTime,
-      0,
-    );
+    const totalExecutions = Array.from(this.effects.values()).reduce((sum, usage) => sum + usage.count, 0);
+    const totalErrors = Array.from(this.effects.values()).reduce((sum, usage) => sum + usage.errors, 0);
+    const totalTime = Array.from(this.effects.values()).reduce((sum, usage) => sum + usage.totalTime, 0);
 
     // Build dependency map
     const dependencies = new Map<symbol, Set<symbol>>();
@@ -265,7 +248,7 @@ export class EffectTracker {
         },
       },
       null,
-      2,
+      2
     );
   }
 
@@ -412,10 +395,7 @@ export const globalTracker = new EffectTracker({
 /**
  * Create a tracked effect
  */
-export function trackedEffect<T, R>(
-  effect: Effect<T, R>,
-  tracker: EffectTracker = globalTracker,
-): Effect<T, R> {
+export function trackedEffect<T, R>(effect: Effect<T, R>, tracker: EffectTracker = globalTracker): Effect<T, R> {
   return {
     ...effect,
     handler: async (value: T, ctx: Context) => {
@@ -430,10 +410,10 @@ export function trackedEffect<T, R>(
  */
 export function trackedFlow<In, Out>(
   flow: EffectFlow<In, Out>,
-  tracker: EffectTracker = globalTracker,
+  tracker: EffectTracker = globalTracker
 ): EffectFlow<In, Out> {
   const tracked = (async (input: In) => {
-    const context = await import('@holon/flow/context').then(m => m.getCurrentContext());
+    const context = await import('@holon/flow/context').then((m) => m.getCurrentContext());
     return tracker.trackFlow(flow, input, context);
   }) as EffectFlow<In, Out>;
 

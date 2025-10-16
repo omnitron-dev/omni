@@ -1,6 +1,6 @@
 /**
  * 04. Environment Variables - Working with Environment Variables
- * 
+ *
  * Demonstrates various ways to work with environment variables.
  * @xec-sh/core allows flexible environment management for each command.
  */
@@ -22,7 +22,7 @@ console.log('Result:', result.stdout.trim());
 const envVars = {
   NODE_ENV: 'production',
   DEBUG: 'true',
-  API_KEY: 'secret-key-123'
+  API_KEY: 'secret-key-123',
 };
 
 // Create a new instance with added variables
@@ -42,9 +42,9 @@ console.log('Custom PATH:', pathResult.stdout.trim());
 
 // 6. Minimal environment
 // You can set only necessary variables
-const minimalEnv = await $`printenv | wc -l`.env({ 
+const minimalEnv = await $`printenv | wc -l`.env({
   PATH: '/usr/bin:/bin',
-  HOME: process.env['HOME'] || '/tmp'
+  HOME: process.env['HOME'] || '/tmp',
 });
 console.log('Number of variables:', minimalEnv.stdout.trim());
 
@@ -69,7 +69,7 @@ const buildResult = await $`
   APP_NAME: appName,
   VERSION: version,
   NODE_ENV: 'production',
-  DEBUG: 'false'
+  DEBUG: 'false',
 });
 
 console.log('Build result:', buildResult.stdout);
@@ -77,8 +77,8 @@ console.log('Build result:', buildResult.stdout);
 // 9. Combining with other configuration methods
 // The env() method can be combined with other methods
 const $configured = $.env({ API_KEY: 'secret-key' })
-  .cd('/tmp')       // Change working directory
-  .timeout(10000);  // Set timeout
+  .cd('/tmp') // Change working directory
+  .timeout(10000); // Set timeout
 
 await $configured`pwd && echo "API_KEY: $API_KEY"`;
 

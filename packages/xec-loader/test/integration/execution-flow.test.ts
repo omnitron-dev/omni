@@ -3,13 +3,7 @@ import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 import { it, expect, describe, afterEach, beforeEach } from 'vitest';
 
-import {
-  CodeEvaluator,
-  ScriptRuntime,
-  ScriptExecutor,
-  GlobalInjector,
-  ExecutionContext,
-} from '../../src/index.js';
+import { CodeEvaluator, ScriptRuntime, ScriptExecutor, GlobalInjector, ExecutionContext } from '../../src/index.js';
 
 describe('Integration: Full Execution Flow', () => {
   let tempDir: string;
@@ -35,12 +29,15 @@ describe('Integration: Full Execution Flow', () => {
 
     it('should execute TypeScript script with transformation', async () => {
       const scriptPath = path.join(tempDir, 'typescript.ts');
-      await fs.writeFile(scriptPath, `
+      await fs.writeFile(
+        scriptPath,
+        `
         const greet = (name: string): string => {
           return \`Hello, \${name}!\`;
         };
         export { greet };
-      `);
+      `
+      );
 
       const executor = new ScriptExecutor();
       const result = await executor.executeScript(scriptPath);
@@ -50,12 +47,15 @@ describe('Integration: Full Execution Flow', () => {
 
     it('should inject custom globals during execution', async () => {
       const scriptPath = path.join(tempDir, 'with-globals.js');
-      await fs.writeFile(scriptPath, `
+      await fs.writeFile(
+        scriptPath,
+        `
         if (typeof customGlobal === 'undefined') {
           throw new Error('customGlobal not found');
         }
         export const value = customGlobal;
-      `);
+      `
+      );
 
       const executor = new ScriptExecutor();
       const result = await executor.executeScript(scriptPath, {
@@ -67,9 +67,12 @@ describe('Integration: Full Execution Flow', () => {
 
     it('should handle script errors gracefully', async () => {
       const scriptPath = path.join(tempDir, 'error.js');
-      await fs.writeFile(scriptPath, `
+      await fs.writeFile(
+        scriptPath,
+        `
         throw new Error('Intentional error');
-      `);
+      `
+      );
 
       const executor = new ScriptExecutor();
       const result = await executor.executeScript(scriptPath);
@@ -167,11 +170,14 @@ describe('Integration: Full Execution Flow', () => {
 
       // Test retry
       let attempts = 0;
-      const result = await runtime.retry(async () => {
-        attempts++;
-        if (attempts < 2) throw new Error('retry');
-        return 'success';
-      }, { retries: 3, delay: 10 });
+      const result = await runtime.retry(
+        async () => {
+          attempts++;
+          if (attempts < 2) throw new Error('retry');
+          return 'success';
+        },
+        { retries: 3, delay: 10 }
+      );
 
       expect(result).toBe('success');
       expect(attempts).toBe(2);
@@ -183,9 +189,12 @@ describe('Integration: Full Execution Flow', () => {
       });
 
       const scriptPath = path.join(tempDir, 'injected.js');
-      await fs.writeFile(scriptPath, `
+      await fs.writeFile(
+        scriptPath,
+        `
         export const value = testVar;
-      `);
+      `
+      );
 
       const result = await injector.execute(async () => {
         const executor = new ScriptExecutor();
@@ -199,12 +208,15 @@ describe('Integration: Full Execution Flow', () => {
   describe('Error Handling Flow', () => {
     it('should propagate errors through execution chain', async () => {
       const scriptPath = path.join(tempDir, 'chain-error.js');
-      await fs.writeFile(scriptPath, `
+      await fs.writeFile(
+        scriptPath,
+        `
         const func = () => {
           throw new Error('Deep error');
         };
         func();
-      `);
+      `
+      );
 
       const executor = new ScriptExecutor();
       const result = await executor.executeScript(scriptPath);
@@ -245,9 +257,12 @@ describe('Integration: Full Execution Flow', () => {
 
       // Step 2: Create a script using that result
       const scriptPath = path.join(tempDir, 'workflow.js');
-      await fs.writeFile(scriptPath, `
+      await fs.writeFile(
+        scriptPath,
+        `
         export const doubled = ${step1} * 2;
-      `);
+      `
+      );
 
       // Step 3: Execute the script
       const executor = new ScriptExecutor();
@@ -260,21 +275,20 @@ describe('Integration: Full Execution Flow', () => {
 
       for (const script of scripts) {
         const scriptPath = path.join(tempDir, script);
-        await fs.writeFile(scriptPath, `
+        await fs.writeFile(
+          scriptPath,
+          `
           export const name = '${script}';
           export const timestamp = Date.now();
-        `);
+        `
+        );
       }
 
       const executor = new ScriptExecutor();
-      const results = await Promise.all(
-        scripts.map(script =>
-          executor.executeScript(path.join(tempDir, script))
-        )
-      );
+      const results = await Promise.all(scripts.map((script) => executor.executeScript(path.join(tempDir, script))));
 
       expect(results).toHaveLength(3);
-      expect(results.every(r => r.success)).toBe(true);
+      expect(results.every((r) => r.success)).toBe(true);
     });
   });
 });

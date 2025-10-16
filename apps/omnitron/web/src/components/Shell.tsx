@@ -43,8 +43,8 @@ export const Shell = defineComponent((props: ShellProps) => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const isActive = (path: string) => location().pathname === path ||
-           (path === '/canvas' && location().pathname === '/');
+  const isActive = (path: string) =>
+    location().pathname === path || (path === '/canvas' && location().pathname === '/');
 
   const navigateTo = (path: string) => {
     navigate(path);
@@ -69,7 +69,9 @@ export const Shell = defineComponent((props: ShellProps) => {
         sidebar.style.display = newState ? 'flex' : 'none';
       }
     } finally {
-      setTimeout(() => { isTogglingRef = false; }, 100);
+      setTimeout(() => {
+        isTogglingRef = false;
+      }, 100);
     }
   };
 
@@ -88,7 +90,9 @@ export const Shell = defineComponent((props: ShellProps) => {
         panel.style.display = newState ? 'flex' : 'none';
       }
     } finally {
-      setTimeout(() => { isTogglingRef = false; }, 100);
+      setTimeout(() => {
+        isTogglingRef = false;
+      }, 100);
     }
   };
 
@@ -129,14 +133,12 @@ export const Shell = defineComponent((props: ShellProps) => {
       {/* Header */}
       <ApplicationShellHeader>
         <div class="shell-header-left">
-          <button
-            class="icon-button"
-            onClick={toggleSidebar}
-            title="Toggle Sidebar (Cmd+B)"
-          >
+          <button class="icon-button" onClick={toggleSidebar} title="Toggle Sidebar (Cmd+B)">
             ☰
           </button>
-          <h1 class="shell-title" onClick={() => navigateTo('/')}>OMNITRON</h1>
+          <h1 class="shell-title" onClick={() => navigateTo('/')}>
+            OMNITRON
+          </h1>
         </div>
         <div class="shell-header-center">
           <nav class="shell-tabs">
@@ -158,22 +160,19 @@ export const Shell = defineComponent((props: ShellProps) => {
             >
               Terminal
             </button>
-            <button
-              class={() => `tab-button ${isActive('/chat') ? 'active' : ''}`}
-              onClick={() => navigateTo('/chat')}
-            >
+            <button class={() => `tab-button ${isActive('/chat') ? 'active' : ''}`} onClick={() => navigateTo('/chat')}>
               AI Chat
             </button>
           </nav>
         </div>
         <div class="shell-header-right">
-          <button class="icon-button" title="Command Palette">⌘K</button>
-          <button class="icon-button" title="Notifications">🔔</button>
-          <button
-            class="icon-button"
-            title="Settings"
-            onClick={() => navigateTo('/settings')}
-          >
+          <button class="icon-button" title="Command Palette">
+            ⌘K
+          </button>
+          <button class="icon-button" title="Notifications">
+            🔔
+          </button>
+          <button class="icon-button" title="Settings" onClick={() => navigateTo('/settings')}>
             ⚙️
           </button>
         </div>
@@ -281,9 +280,7 @@ export const Shell = defineComponent((props: ShellProps) => {
         </ApplicationShellSidebar>
 
         {/* Main */}
-        <ApplicationShellMain>
-          {props.children}
-        </ApplicationShellMain>
+        <ApplicationShellMain>{props.children}</ApplicationShellMain>
       </div>
 
       {/* Panel */}

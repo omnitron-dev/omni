@@ -60,7 +60,7 @@ export class ConfigService {
    * Update configuration
    */
   updateConfig(updates: Partial<AppConfig>) {
-    this.config.update(config => ({ ...config, ...updates }));
+    this.config.update((config) => ({ ...config, ...updates }));
   }
 
   /**
@@ -74,7 +74,7 @@ export class ConfigService {
    * Enable feature
    */
   enableFeature(feature: keyof AppConfig['features']) {
-    this.config.update(config => ({
+    this.config.update((config) => ({
       ...config,
       features: { ...config.features, [feature]: true },
     }));
@@ -84,7 +84,7 @@ export class ConfigService {
    * Disable feature
    */
   disableFeature(feature: keyof AppConfig['features']) {
-    this.config.update(config => ({
+    this.config.update((config) => ({
       ...config,
       features: { ...config.features, [feature]: false },
     }));
@@ -101,7 +101,7 @@ export class ConfigService {
    * Update limit value
    */
   updateLimit(limit: keyof AppConfig['limits'], value: number) {
-    this.config.update(config => ({
+    this.config.update((config) => ({
       ...config,
       limits: { ...config.limits, [limit]: value },
     }));

@@ -11,11 +11,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import {
-  ModuleFederationManager,
-  MockModuleFederationRuntime,
-  testUtils,
-} from '../../src/build/module-federation.js';
+import { ModuleFederationManager, MockModuleFederationRuntime, testUtils } from '../../src/build/module-federation.js';
 import { SharedChunkManager } from '../../src/build/shared-chunks.js';
 import { PersistentCache } from '../../src/build/persistent-cache.js';
 import { ParallelCompiler } from '../../src/build/parallel-compilation.js';
@@ -93,8 +89,8 @@ describe('Build System Integration', () => {
           remote1: 'http://localhost:3001',
         },
         shared: {
-          'aether': { version: '1.0.0', singleton: true },
-          'react': '18.0.0',
+          aether: { version: '1.0.0', singleton: true },
+          react: '18.0.0',
         },
       });
 
@@ -131,8 +127,8 @@ describe('Build System Integration', () => {
       const manager = new ModuleFederationManager({
         name: 'test',
         shared: {
-          'simple': '1.0.0',
-          'complex': {
+          simple: '1.0.0',
+          complex: {
             version: '2.0.0',
             singleton: true,
             eager: true,
@@ -207,7 +203,7 @@ describe('Build System Integration', () => {
       const chunks = chunkManager.generateChunks();
 
       expect(chunks.length).toBeGreaterThan(0);
-      expect(chunks.some(c => c.name === 'vendor')).toBe(true);
+      expect(chunks.some((c) => c.name === 'vendor')).toBe(true);
     });
 
     it('should respect chunk size constraints', () => {
@@ -316,7 +312,7 @@ describe('Build System Integration', () => {
       await shortCache.set('temp.tsx', { code: 'temp' });
 
       // Wait for expiration
-      await new Promise(resolve => setTimeout(resolve, 150));
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
       const result = await shortCache.get('temp.tsx');
       expect(result).toBeNull();
@@ -341,7 +337,7 @@ describe('Build System Integration', () => {
 
       const results = await Promise.all(promises);
 
-      expect(results.every(r => r !== null)).toBe(true);
+      expect(results.every((r) => r !== null)).toBe(true);
     });
   });
 
@@ -370,7 +366,7 @@ describe('Build System Integration', () => {
       const duration = performance.now() - startTime;
 
       expect(results.length).toBe(10);
-      expect(results.every(r => r.code !== undefined)).toBe(true);
+      expect(results.every((r) => r.code !== undefined)).toBe(true);
       // Parallel compilation should be faster than sequential
       expect(duration).toBeLessThan(1000);
     });
@@ -529,7 +525,7 @@ describe('Build System Integration', () => {
       const duration = performance.now() - startTime;
 
       expect(results.length).toBe(100);
-      expect(results.every(r => r.code !== undefined)).toBe(true);
+      expect(results.every((r) => r.code !== undefined)).toBe(true);
       // Should complete in reasonable time even with 100 files
       expect(duration).toBeLessThan(5000); // 5 seconds
 

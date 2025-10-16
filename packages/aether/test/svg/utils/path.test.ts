@@ -617,7 +617,8 @@ describe('SVG Path Utils', () => {
     });
 
     it('should handle paths with all command types', () => {
-      const complexPath = 'M 10 10 L 20 20 H 30 V 40 C 50 50 60 60 70 70 S 80 80 90 90 Q 100 100 110 110 T 120 120 A 10 10 0 0 1 130 130 Z';
+      const complexPath =
+        'M 10 10 L 20 20 H 30 V 40 C 50 50 60 60 70 70 S 80 80 90 90 Q 100 100 110 110 T 120 120 A 10 10 0 0 1 130 130 Z';
       const parsed = parsePath(complexPath);
       expect(parsed.length).toBeGreaterThan(8);
 

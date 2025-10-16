@@ -8,14 +8,14 @@ describe('Disposable', () => {
   describe('isDisposable type guard', () => {
     it('should return true for objects with dispose method', () => {
       const disposable = {
-        dispose: async () => {}
+        dispose: async () => {},
       };
       expect(isDisposable(disposable)).toBe(true);
     });
 
     it('should return false for objects without dispose method', () => {
       const notDisposable = {
-        cleanup: async () => {}
+        cleanup: async () => {},
       };
       expect(isDisposable(notDisposable)).toBe(false);
     });
@@ -36,7 +36,7 @@ describe('Disposable', () => {
 
     it('should return false when dispose is not a function', () => {
       const invalidDisposable = {
-        dispose: 'not a function'
+        dispose: 'not a function',
       };
       expect(isDisposable(invalidDisposable)).toBe(false);
     });
@@ -44,7 +44,7 @@ describe('Disposable', () => {
     it('should handle Symbol-keyed dispose methods', () => {
       const disposeSymbol = Symbol('dispose');
       const objWithSymbol = {
-        [disposeSymbol]: async () => {}
+        [disposeSymbol]: async () => {},
       };
       // Should be false as we check for 'dispose' string key
       expect(isDisposable(objWithSymbol)).toBe(false);
@@ -52,12 +52,12 @@ describe('Disposable', () => {
 
     it('should handle frozen and sealed objects', () => {
       const frozenDisposable = Object.freeze({
-        dispose: async () => {}
+        dispose: async () => {},
       });
       expect(isDisposable(frozenDisposable)).toBe(true);
 
       const sealedDisposable = Object.seal({
-        dispose: async () => {}
+        dispose: async () => {},
       });
       expect(isDisposable(sealedDisposable)).toBe(true);
     });
@@ -77,35 +77,35 @@ describe('Disposable', () => {
     it('should be able to dispose resources', async () => {
       const disposable = new TestDisposable();
       expect(disposable.disposed).toBe(false);
-      
+
       await disposable.dispose();
-      
+
       expect(disposable.disposed).toBe(true);
       expect(disposable.disposeCount).toBe(1);
     });
 
     it('should handle multiple dispose calls', async () => {
       const disposable = new TestDisposable();
-      
+
       await disposable.dispose();
       await disposable.dispose();
-      
+
       expect(disposable.disposeCount).toBe(2);
     });
 
     it('should handle async dispose operations', async () => {
       class AsyncDisposable implements Disposable {
         public disposed = false;
-        
+
         async dispose(): Promise<void> {
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 10));
           this.disposed = true;
         }
       }
 
       const disposable = new AsyncDisposable();
       const disposePromise = disposable.dispose();
-      
+
       expect(disposable.disposed).toBe(false);
       await disposePromise;
       expect(disposable.disposed).toBe(true);
@@ -136,7 +136,7 @@ describe('Disposable', () => {
       }
 
       async disposeAll(): Promise<void> {
-        const promises = Array.from(this.disposables).map(d => d.dispose());
+        const promises = Array.from(this.disposables).map((d) => d.dispose());
         await Promise.all(promises);
         this.disposables.clear();
       }
@@ -201,7 +201,7 @@ describe('Disposable', () => {
 
         async dispose(): Promise<void> {
           this.disposeStarted = true;
-          await new Promise(resolve => setTimeout(resolve, 50));
+          await new Promise((resolve) => setTimeout(resolve, 50));
           this.disposeCompleted = true;
         }
       }
@@ -209,14 +209,14 @@ describe('Disposable', () => {
       const container = new TestContainer();
       const disposables = Array.from({ length: 5 }, (_, i) => new SlowDisposable());
 
-      disposables.forEach(d => container.registerDisposable(d));
+      disposables.forEach((d) => container.registerDisposable(d));
 
       const startTime = Date.now();
       await container.disposeAll();
       const endTime = Date.now();
 
       // All should be disposed
-      disposables.forEach(d => {
+      disposables.forEach((d) => {
         expect(d.disposeCompleted).toBe(true);
       });
 
@@ -252,9 +252,9 @@ describe('Disposable', () => {
     it('should work with ExecutionEngine as Disposable', async () => {
       const { ExecutionEngine } = await import('../../../src/core/execution-engine.js');
       const engine = new ExecutionEngine();
-      
+
       expect(isDisposable(engine)).toBe(true);
-      
+
       // Should be able to dispose without errors
       await expect(engine.dispose()).resolves.toBeUndefined();
     });
@@ -272,9 +272,9 @@ describe('Disposable', () => {
     it('should work with SecurePasswordHandler as Disposable', async () => {
       const { SecurePasswordHandler } = await import('../../../src/adapters/ssh/secure-password.js');
       const handler = new SecurePasswordHandler();
-      
+
       expect(isDisposable(handler)).toBe(true);
-      
+
       // Should be able to dispose without errors
       await expect(handler.dispose()).resolves.toBeUndefined();
     });
@@ -289,10 +289,10 @@ describe('Disposable', () => {
         { dispose: 'dispose' },
         { dispose: [] },
         { dispose: {} },
-        { dispose: true }
+        { dispose: true },
       ];
 
-      invalidCases.forEach(obj => {
+      invalidCases.forEach((obj) => {
         expect(isDisposable(obj)).toBe(false);
       });
     });
@@ -312,7 +312,7 @@ describe('Disposable', () => {
       const objWithGetter = {
         get dispose() {
           return async () => {};
-        }
+        },
       };
 
       expect(isDisposable(objWithGetter)).toBe(true);
@@ -329,7 +329,7 @@ describe('Disposable', () => {
     it('should handle functions with dispose method', () => {
       const fn = () => {};
       fn.dispose = async () => {};
-      
+
       expect(isDisposable(fn)).toBe(true);
     });
   });
@@ -446,7 +446,7 @@ describe('Disposable', () => {
 
         async disposeAll(): Promise<void> {
           const errors: Error[] = [];
-          
+
           for (const [id, resource] of this.resources.entries()) {
             try {
               await resource.dispose();
@@ -454,10 +454,10 @@ describe('Disposable', () => {
               errors.push(new Error(`Failed to dispose resource ${id}: ${error}`));
             }
           }
-          
+
           this.resources.clear();
           this.disposed = true;
-          
+
           if (errors.length > 0) {
             throw new AggregateError(errors, 'Some resources failed to dispose');
           }
@@ -474,14 +474,14 @@ describe('Disposable', () => {
         disposed: false,
         async dispose() {
           this.disposed = true;
-        }
+        },
       }));
-      
-      disposables.forEach(d => pool.registerDisposable(d));
+
+      disposables.forEach((d) => pool.registerDisposable(d));
       expect(pool.size).toBe(3);
-      
+
       await pool.disposeAll();
-      disposables.forEach(d => expect(d.disposed).toBe(true));
+      disposables.forEach((d) => expect(d.disposed).toBe(true));
       expect(pool.size).toBe(0);
     });
 
@@ -517,20 +517,20 @@ describe('Disposable', () => {
         disposed: false,
         async dispose() {
           this.disposed = true;
-        }
+        },
       };
       const weakDisposable = {
         disposed: false,
         async dispose() {
           this.disposed = true;
-        }
+        },
       };
-      
+
       container.addStrong(strongDisposable);
       container.addWeak(weakDisposable);
-      
+
       await container.disposeAll();
-      
+
       expect(strongDisposable.disposed).toBe(true);
       // Weak disposable is not guaranteed to be disposed
     });
@@ -592,12 +592,12 @@ describe('Disposable', () => {
           for (const child of this.children) {
             await child.disposeAll();
           }
-          
+
           // Then dispose own resources
           for (const resource of this.resources) {
             await resource.dispose();
           }
-          
+
           this.children.clear();
           this.resources.clear();
         }
@@ -611,35 +611,35 @@ describe('Disposable', () => {
       const root = new HierarchicalContainer();
       const child1 = new HierarchicalContainer();
       const child2 = new HierarchicalContainer();
-      
+
       const rootResource = {
         disposed: false,
         async dispose() {
           this.disposed = true;
-        }
+        },
       };
       const child1Resource = {
         disposed: false,
         async dispose() {
           this.disposed = true;
-        }
+        },
       };
       const child2Resource = {
         disposed: false,
         async dispose() {
           this.disposed = true;
-        }
+        },
       };
-      
+
       root.registerDisposable(rootResource);
       child1.registerDisposable(child1Resource);
       child2.registerDisposable(child2Resource);
-      
+
       root.addChild(child1);
       root.addChild(child2);
-      
+
       await root.dispose();
-      
+
       expect(rootResource.disposed).toBe(true);
       expect(child1Resource.disposed).toBe(true);
       expect(child2Resource.disposed).toBe(true);
@@ -695,21 +695,21 @@ describe('Disposable', () => {
         disposed: false,
         async dispose() {
           this.disposed = true;
-        }
+        },
       };
       const badResource = {
         async dispose() {
           throw new Error('Disposal failed');
-        }
+        },
       };
 
       container.registerDisposable(goodResource);
       container.registerDisposable(badResource);
 
       await expect(container.disposeAll()).rejects.toThrow('Disposal failed');
-      
+
       const log = container.getLog();
-      expect(log.some(entry => entry.startsWith('Disposed:'))).toBe(true);
+      expect(log.some((entry) => entry.startsWith('Disposed:'))).toBe(true);
       expect(log).toContain('Error during disposal: Error: Disposal failed');
       expect(log).toContain('Rolling back...');
     });

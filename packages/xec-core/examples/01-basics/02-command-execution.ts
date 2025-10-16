@@ -1,6 +1,6 @@
 /**
  * 02. Command Execution - Various Ways to Execute Commands
- * 
+ *
  * Shows various methods for launching commands and processing results
  * in @xec-sh/core. Each command returns a ProcessPromise, which
  * can be used for further configuration.
@@ -48,19 +48,19 @@ try {
 // nothrow() method allows getting result even on error
 const nothrowResult = await $`false`.nothrow();
 console.log('Exit code:', nothrowResult.exitCode); // 1
-console.log('Success:', nothrowResult.ok);        // false
-console.log('Cause:', nothrowResult.cause);       // "exitCode: 1"
+console.log('Success:', nothrowResult.ok); // false
+console.log('Cause:', nothrowResult.cause); // "exitCode: 1"
 
 // 6. Getting full result information
 // ExecutionResult contains all information about command execution
 const fullResult = await $`echo "test" && echo "error" >&2`;
 console.log({
-  stdout: fullResult.stdout,       // Standard output
-  stderr: fullResult.stderr,       // Error output
-  exitCode: fullResult.exitCode,   // Return code
-  success: fullResult.ok,          // true if exitCode === 0
-  cause: fullResult.cause,         // Error cause when not ok
-  command: fullResult.command      // Executed command
+  stdout: fullResult.stdout, // Standard output
+  stderr: fullResult.stderr, // Error output
+  exitCode: fullResult.exitCode, // Return code
+  success: fullResult.ok, // true if exitCode === 0
+  cause: fullResult.cause, // Error cause when not ok
+  command: fullResult.command, // Executed command
 });
 
 // 7. Multi-line commands
@@ -97,8 +97,8 @@ console.log('Result with timeout:', timedResult.stdout);
 
 // Note: All ProcessPromise methods can be combined in chains:
 const complexResult = await $`echo "test"`
-  .timeout(5000)      // Set timeout
+  .timeout(5000) // Set timeout
   .env({ DEBUG: '1' }) // Add environment variable
-  .cwd('/tmp')        // Change working directory
-  .nothrow()          // Don't generate exception on error
-  .quiet();           // Don't output logs
+  .cwd('/tmp') // Change working directory
+  .nothrow() // Don't generate exception on error
+  .quiet(); // Don't output logs

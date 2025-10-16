@@ -6,12 +6,7 @@ import { DockerEphemeralFluentAPI } from '../base.js';
 
 import type { ExecutionResult } from '../../../../types/result.js';
 import type { ProcessPromise, ExecutionEngine } from '../../../../core/execution-engine.js';
-import type {
-  ServiceStatus,
-  ServiceManager,
-  ClusterNodeInfo,
-  RedisServiceConfig
-} from '../types.js';
+import type { ServiceStatus, ServiceManager, ClusterNodeInfo, RedisServiceConfig } from '../types.js';
 
 /**
  * Redis Single Instance Fluent API
@@ -39,7 +34,7 @@ export class RedisFluentAPI extends DockerEphemeralFluentAPI {
       network: config?.network,
       env: config?.env || {},
       config: config?.config || {},
-      autoStart: config?.autoStart ?? false
+      autoStart: config?.autoStart ?? false,
     };
 
     // Apply configuration to base
@@ -90,14 +85,12 @@ export class RedisFluentAPI extends DockerEphemeralFluentAPI {
     this.addLabel('managed-by', 'xec');
 
     // Health check
-    const healthCmd = this.redisConfig.password
-      ? `redis-cli -a ${this.redisConfig.password} ping`
-      : 'redis-cli ping';
+    const healthCmd = this.redisConfig.password ? `redis-cli -a ${this.redisConfig.password} ping` : 'redis-cli ping';
     this.healthcheck(healthCmd, {
       interval: '5s',
       timeout: '3s',
       retries: 5,
-      startPeriod: '10s'
+      startPeriod: '10s',
     });
   }
 
@@ -177,7 +170,7 @@ export class RedisFluentAPI extends DockerEphemeralFluentAPI {
         // Continue waiting
       }
 
-      await new Promise(resolve => setTimeout(resolve, interval));
+      await new Promise((resolve) => setTimeout(resolve, interval));
     }
 
     throw new Error(`Redis failed to become ready within ${timeout}ms`);
@@ -187,9 +180,7 @@ export class RedisFluentAPI extends DockerEphemeralFluentAPI {
    * Ping Redis
    */
   async ping(): Promise<ExecutionResult> {
-    const pingCommand = this.redisConfig.password
-      ? `redis-cli -a ${this.redisConfig.password} ping`
-      : 'redis-cli ping';
+    const pingCommand = this.redisConfig.password ? `redis-cli -a ${this.redisConfig.password} ping` : 'redis-cli ping';
 
     // Use the ServiceManager interface exec method which accepts string
     return await this.exec(pingCommand);
@@ -287,7 +278,7 @@ export class RedisFluentAPI extends DockerEphemeralFluentAPI {
     }
 
     await this.save();
-    await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for save to complete
+    await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait for save to complete
 
     // Copy dump file
     const dumpFile = `${this.redisConfig.dataPath}/dump.rdb`;
@@ -334,7 +325,7 @@ export class RedisFluentAPI extends DockerEphemeralFluentAPI {
       port: this.redisConfig.port,
       password: this.redisConfig.password || null,
       database: 0,
-      connectionString: this.getConnectionString()
+      connectionString: this.getConnectionString(),
     };
   }
 
@@ -356,7 +347,7 @@ export class RedisFluentAPI extends DockerEphemeralFluentAPI {
     this.redisConfig.config = {
       ...this.redisConfig.config,
       'repl-diskless-sync': 'yes',
-      'repl-diskless-sync-delay': '5'
+      'repl-diskless-sync-delay': '5',
     };
     this.applyConfiguration();
     return this;
@@ -368,7 +359,7 @@ export class RedisFluentAPI extends DockerEphemeralFluentAPI {
   asSlave(masterHost: string, masterPort: number): RedisFluentAPI {
     this.redisConfig.config = {
       ...this.redisConfig.config,
-      'slaveof': `${masterHost} ${masterPort}`
+      slaveof: `${masterHost} ${masterPort}`,
     };
 
     if (this.redisConfig.password) {
@@ -385,11 +376,11 @@ export class RedisFluentAPI extends DockerEphemeralFluentAPI {
   asSentinel(masterName: string, masterHost: string, masterPort: number, quorum = 2): RedisFluentAPI {
     this.redisConfig.config = {
       ...this.redisConfig.config,
-      'sentinel': 'yes',
+      sentinel: 'yes',
       'sentinel monitor': `${masterName} ${masterHost} ${masterPort} ${quorum}`,
       'sentinel down-after-milliseconds': `${masterName} 5000`,
       'sentinel parallel-syncs': `${masterName} 1`,
-      'sentinel failover-timeout': `${masterName} 10000`
+      'sentinel failover-timeout': `${masterName} 10000`,
     };
 
     if (this.redisConfig.password) {
@@ -435,7 +426,7 @@ export class RedisClusterFluentAPI implements ServiceManager {
       nodeTimeout: config?.cluster?.nodeTimeout ?? 5000,
       persistent: config?.persistent ?? false,
       dataPath: config?.dataPath,
-      password: config?.password
+      password: config?.password,
     };
 
     // Validate cluster config
@@ -472,8 +463,8 @@ export class RedisClusterFluentAPI implements ServiceManager {
         password: this.clusterConfig.password,
         cluster: {
           enabled: true,
-          nodeTimeout: this.clusterConfig.nodeTimeout
-        }
+          nodeTimeout: this.clusterConfig.nodeTimeout,
+        },
       };
 
       if (this.clusterConfig.persistent && this.clusterConfig.dataPath) {
@@ -488,7 +479,7 @@ export class RedisClusterFluentAPI implements ServiceManager {
         'cluster-enabled': 'yes',
         'cluster-config-file': 'nodes.conf',
         'cluster-node-timeout': String(this.clusterConfig.nodeTimeout),
-        'appendonly': 'yes'
+        appendonly: 'yes',
       };
 
       this.nodes.push(node);
@@ -517,9 +508,7 @@ export class RedisClusterFluentAPI implements ServiceManager {
     await this.waitForNodes();
 
     // Get node addresses using container names
-    const nodeAddresses = this.nodes.map(node =>
-      `${node['redisConfig'].name}:6379`
-    );
+    const nodeAddresses = this.nodes.map((node) => `${node['redisConfig'].name}:6379`);
 
     // Build cluster create command
     const firstNode = this.nodes[0];
@@ -529,10 +518,12 @@ export class RedisClusterFluentAPI implements ServiceManager {
 
     const createCmd = [
       'redis-cli',
-      '--cluster', 'create',
+      '--cluster',
+      'create',
       ...nodeAddresses,
-      '--cluster-replicas', String(this.clusterConfig.replicas),
-      '--cluster-yes'
+      '--cluster-replicas',
+      String(this.clusterConfig.replicas),
+      '--cluster-yes',
     ];
 
     if (this.clusterConfig.password) {
@@ -563,7 +554,7 @@ export class RedisClusterFluentAPI implements ServiceManager {
             break;
           }
         } catch {
-          await new Promise(resolve => setTimeout(resolve, delay));
+          await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
 
@@ -591,7 +582,7 @@ export class RedisClusterFluentAPI implements ServiceManager {
     await this.createNodes();
 
     // Start all nodes in parallel
-    const startPromises = this.nodes.map(node => node.start());
+    const startPromises = this.nodes.map((node) => node.start());
     await Promise.all(startPromises);
 
     console.log(`[xec-core] Started ${this.nodes.length} Redis nodes`);
@@ -615,7 +606,7 @@ export class RedisClusterFluentAPI implements ServiceManager {
     console.log('[xec-core] Stopping Redis cluster...');
 
     // Stop all nodes in parallel
-    const stopPromises = this.nodes.map(node => node.stop().catch(() => {}));
+    const stopPromises = this.nodes.map((node) => node.stop().catch(() => {}));
     await Promise.all(stopPromises);
 
     this.running = false;
@@ -637,7 +628,7 @@ export class RedisClusterFluentAPI implements ServiceManager {
     console.log('[xec-core] Removing Redis cluster...');
 
     // Remove all nodes
-    const removePromises = this.nodes.map(node => node.remove().catch(() => {}));
+    const removePromises = this.nodes.map((node) => node.remove().catch(() => {}));
     await Promise.all(removePromises);
 
     // Remove network
@@ -666,18 +657,16 @@ export class RedisClusterFluentAPI implements ServiceManager {
    * Get cluster status
    */
   async status(): Promise<ServiceStatus> {
-    const nodeStatuses = await Promise.all(
-      this.nodes.map(node => node.status())
-    );
+    const nodeStatuses = await Promise.all(this.nodes.map((node) => node.status()));
 
-    const allRunning = nodeStatuses.every(s => s.running);
-    const containers = nodeStatuses.flatMap(s => s.containers);
+    const allRunning = nodeStatuses.every((s) => s.running);
+    const containers = nodeStatuses.flatMap((s) => s.containers);
 
     return {
       running: this.running && allRunning,
       healthy: allRunning,
       containers,
-      endpoints: this.getEndpoints()
+      endpoints: this.getEndpoints(),
     };
   }
 
@@ -737,7 +726,7 @@ export class RedisClusterFluentAPI implements ServiceManager {
         // Continue waiting
       }
 
-      await new Promise(resolve => setTimeout(resolve, interval));
+      await new Promise((resolve) => setTimeout(resolve, interval));
     }
 
     throw new Error(`Redis cluster failed to become ready within ${timeout}ms`);
@@ -758,7 +747,7 @@ export class RedisClusterFluentAPI implements ServiceManager {
     const result = await this.exec('CLUSTER NODES');
     const lines = result.stdout.trim().split('\n');
 
-    return lines.map(line => {
+    return lines.map((line) => {
       const parts = line.split(' ');
       const [id, address, flags, master, ping, pong, epoch, status] = parts;
       const [host, ports] = address ? address.split(':') : ['', ''];
@@ -772,7 +761,7 @@ export class RedisClusterFluentAPI implements ServiceManager {
         host: host || 'localhost',
         port: parseInt(port || '6379'),
         master: master === '-' ? undefined : master,
-        replicas: []
+        replicas: [],
       };
     });
   }
@@ -788,7 +777,7 @@ export class RedisClusterFluentAPI implements ServiceManager {
    * Get endpoints
    */
   getEndpoints(): string[] {
-    return this.nodes.map(node => {
+    return this.nodes.map((node) => {
       const port = node['redisConfig'].port;
       return `localhost:${port}`;
     });
@@ -807,8 +796,8 @@ export class RedisClusterFluentAPI implements ServiceManager {
       password: this.clusterConfig.password,
       cluster: {
         enabled: true,
-        nodeTimeout: this.clusterConfig.nodeTimeout
-      }
+        nodeTimeout: this.clusterConfig.nodeTimeout,
+      },
     };
 
     if (this.clusterConfig.persistent && this.clusterConfig.dataPath) {
@@ -829,7 +818,9 @@ export class RedisClusterFluentAPI implements ServiceManager {
     if (role === 'master') {
       await firstNode.cli(`--cluster add-node ${newNodeAddr} ${masterAddr}`);
     } else if (replicateFrom) {
-      await firstNode.cli(`--cluster add-node ${newNodeAddr} ${masterAddr} --cluster-slave --cluster-master-id ${replicateFrom}`);
+      await firstNode.cli(
+        `--cluster add-node ${newNodeAddr} ${masterAddr} --cluster-slave --cluster-master-id ${replicateFrom}`
+      );
     }
 
     this.nodes.push(node);
@@ -846,9 +837,10 @@ export class RedisClusterFluentAPI implements ServiceManager {
     await firstNode.cli(`--cluster del-node ${firstNode['redisConfig'].name}:6379 ${nodeId}`);
 
     // Find and remove the node from our list
-    const nodeIndex = this.nodes.findIndex(n => 
-      // You'd need to track node IDs properly for this
-       false // Placeholder
+    const nodeIndex = this.nodes.findIndex(
+      (n) =>
+        // You'd need to track node IDs properly for this
+        false // Placeholder
     );
 
     if (nodeIndex >= 0) {

@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { signal } from '../../../../src/core/index.js';
-import { BubbleMenu, getDefaultBubbleMenuItems, type BubbleMenuItem } from '../../../../src/components/editor/components/BubbleMenu.js';
+import {
+  BubbleMenu,
+  getDefaultBubbleMenuItems,
+  type BubbleMenuItem,
+} from '../../../../src/components/editor/components/BubbleMenu.js';
 import type { EditorInstance } from '../../../../src/components/editor/core/types.js';
 import { Schema } from 'prosemirror-model';
 
@@ -77,9 +81,9 @@ describe('BubbleMenu', () => {
 
     it('should include Bold button', () => {
       const items = getDefaultBubbleMenuItems();
-      const boldItem = items.find(
-        (item) => item.type === 'button' && item.command === 'bold',
-      ) as BubbleMenuItem & { type: 'button' };
+      const boldItem = items.find((item) => item.type === 'button' && item.command === 'bold') as BubbleMenuItem & {
+        type: 'button';
+      };
       expect(boldItem).toBeDefined();
       expect(boldItem.icon).toBe('B');
       expect(boldItem.title).toBe('Bold');
@@ -87,9 +91,9 @@ describe('BubbleMenu', () => {
 
     it('should include Italic button', () => {
       const items = getDefaultBubbleMenuItems();
-      const italicItem = items.find(
-        (item) => item.type === 'button' && item.command === 'italic',
-      ) as BubbleMenuItem & { type: 'button' };
+      const italicItem = items.find((item) => item.type === 'button' && item.command === 'italic') as BubbleMenuItem & {
+        type: 'button';
+      };
       expect(italicItem).toBeDefined();
       expect(italicItem.icon).toBe('I');
       expect(italicItem.title).toBe('Italic');
@@ -98,7 +102,7 @@ describe('BubbleMenu', () => {
     it('should include Underline button', () => {
       const items = getDefaultBubbleMenuItems();
       const underlineItem = items.find(
-        (item) => item.type === 'button' && item.command === 'underline',
+        (item) => item.type === 'button' && item.command === 'underline'
       ) as BubbleMenuItem & { type: 'button' };
       expect(underlineItem).toBeDefined();
       expect(underlineItem.icon).toBe('U');
@@ -107,9 +111,9 @@ describe('BubbleMenu', () => {
 
     it('should include Link button', () => {
       const items = getDefaultBubbleMenuItems();
-      const linkItem = items.find(
-        (item) => item.type === 'button' && item.command === 'setLink',
-      ) as BubbleMenuItem & { type: 'button' };
+      const linkItem = items.find((item) => item.type === 'button' && item.command === 'setLink') as BubbleMenuItem & {
+        type: 'button';
+      };
       expect(linkItem).toBeDefined();
       expect(linkItem.icon).toBe('🔗');
       expect(linkItem.title).toBe('Link');

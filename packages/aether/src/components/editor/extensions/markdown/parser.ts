@@ -121,22 +121,26 @@ function convertList(node: any, schema: Schema): PMNode | null {
 
   if (!listType || !schema.nodes.list_item) return null;
 
-  const items = node.children.map((child: any) => {
-    // Child should be a list item
-    const content = child.children.map((grandChild: any) => convertNode(grandChild, schema)).filter(Boolean) as PMNode[];
+  const items = node.children
+    .map((child: any) => {
+      // Child should be a list item
+      const content = child.children
+        .map((grandChild: any) => convertNode(grandChild, schema))
+        .filter(Boolean) as PMNode[];
 
-    // Ensure at least one paragraph if content is empty
-    if (content.length === 0 && schema.nodes.paragraph) {
-      content.push(schema.nodes.paragraph.create());
-    }
+      // Ensure at least one paragraph if content is empty
+      if (content.length === 0 && schema.nodes.paragraph) {
+        content.push(schema.nodes.paragraph.create());
+      }
 
-    // Handle task list items
-    if (child.checked !== null && child.checked !== undefined && schema.nodes.task_item) {
-      return schema.nodes.task_item.create({ checked: child.checked }, content);
-    }
+      // Handle task list items
+      if (child.checked !== null && child.checked !== undefined && schema.nodes.task_item) {
+        return schema.nodes.task_item.create({ checked: child.checked }, content);
+      }
 
-    return schema.nodes.list_item.create(null, content);
-  }).filter(Boolean) as PMNode[];
+      return schema.nodes.list_item.create(null, content);
+    })
+    .filter(Boolean) as PMNode[];
 
   return listType.create(ordered ? { order: node.start || 1 } : null, items);
 }
@@ -178,11 +182,13 @@ function convertTable(node: any, schema: Schema): PMNode | null {
 function convertTableRow(node: any, schema: Schema): PMNode | null {
   if (!schema.nodes.table_row) return null;
 
-  const cells = node.children.map((child: any, index: number) => {
-    // First row is header
-    const isHeader = node.position?.start.line === node.position?.end.line;
-    return convertTableCell(child, schema, isHeader);
-  }).filter(Boolean) as PMNode[];
+  const cells = node.children
+    .map((child: any, index: number) => {
+      // First row is header
+      const isHeader = node.position?.start.line === node.position?.end.line;
+      return convertTableCell(child, schema, isHeader);
+    })
+    .filter(Boolean) as PMNode[];
 
   return schema.nodes.table_row.create(null, cells);
 }
@@ -279,7 +285,7 @@ function convertInlineContent(nodes: PhrasingContent[], schema: Schema): PMNode[
               src: node.url,
               alt: node.alt || null,
               title: node.title || null,
-            }),
+            })
           );
         }
         break;

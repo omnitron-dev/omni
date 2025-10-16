@@ -7,17 +7,18 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const SchoolBell01Icon: IconDefinition = {
-  "id": "school-bell01",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M2.5 10C2.5 14.4183 6.1104 18 10.564 18C12.246 18 13.8077 17.4892 15.1001 16.6153C16.0359 15.8996 16.7346 15.105 17.2469 14.2823C16.7859 13.8288 16.5 13.1978 16.5 12.5C16.5 11.2919 17.3569 10.2839 18.4961 10.0508C18.5324 8.8038 18.3083 7.71412 18.0419 7C16.8456 4.06817 13.9483 2 10.564 2C6.1104 2 2.5 5.58172 2.5 10ZM12.5 10C12.5 11.1046 11.6046 12 10.5 12C9.39543 12 8.5 11.1046 8.5 10C8.5 8.89543 9.39543 8 10.5 8C11.6046 8 12.5 8.89543 12.5 10Z\" fill=\"currentColor\" fill-rule=\"evenodd\" />\n    <path d=\"M18 7C16.807 4.06817 13.9174 2 10.5423 2C6.10066 2 2.5 5.58172 2.5 10C2.5 14.4183 6.10066 18 10.5423 18C12.2197 18 13.7772 17.4892 15.0661 16.6153\" stroke-linecap=\"round\" />\n    <path d=\"M21.5 13C21.5 18.1004 17.1065 21.595 11.4999 21.9671C11.0444 21.9973 10.8167 22.0124 10.6584 21.8642C10.5 21.716 10.5 21.4773 10.5 21V18\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <circle cx=\"19\" cy=\"12.5\" r=\"2.5\" />\n    <circle cx=\"10.5\" cy=\"10\" r=\"2\" stroke-linecap=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "duotone",
-    "originalName": "SchoolBell01Icon",
-    "elementsCount": 5,
-    "hasOpacity": true,
-    "hasFill": true,
-    "hasFillRule": true
-  }
+  id: 'school-bell01',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path opacity="0.4" d="M2.5 10C2.5 14.4183 6.1104 18 10.564 18C12.246 18 13.8077 17.4892 15.1001 16.6153C16.0359 15.8996 16.7346 15.105 17.2469 14.2823C16.7859 13.8288 16.5 13.1978 16.5 12.5C16.5 11.2919 17.3569 10.2839 18.4961 10.0508C18.5324 8.8038 18.3083 7.71412 18.0419 7C16.8456 4.06817 13.9483 2 10.564 2C6.1104 2 2.5 5.58172 2.5 10ZM12.5 10C12.5 11.1046 11.6046 12 10.5 12C9.39543 12 8.5 11.1046 8.5 10C8.5 8.89543 9.39543 8 10.5 8C11.6046 8 12.5 8.89543 12.5 10Z" fill="currentColor" fill-rule="evenodd" />\n    <path d="M18 7C16.807 4.06817 13.9174 2 10.5423 2C6.10066 2 2.5 5.58172 2.5 10C2.5 14.4183 6.10066 18 10.5423 18C12.2197 18 13.7772 17.4892 15.0661 16.6153" stroke-linecap="round" />\n    <path d="M21.5 13C21.5 18.1004 17.1065 21.595 11.4999 21.9671C11.0444 21.9973 10.8167 22.0124 10.6584 21.8642C10.5 21.716 10.5 21.4773 10.5 21V18" stroke-linecap="round" stroke-linejoin="round" />\n    <circle cx="19" cy="12.5" r="2.5" />\n    <circle cx="10.5" cy="10" r="2" stroke-linecap="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'duotone',
+    originalName: 'SchoolBell01Icon',
+    elementsCount: 5,
+    hasOpacity: true,
+    hasFill: true,
+    hasFillRule: true,
+  },
 };

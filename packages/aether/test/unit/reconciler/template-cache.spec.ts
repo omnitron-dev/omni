@@ -5,11 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  TemplateCache,
-  generateCacheKey,
-  templateCache,
-} from '../../../src/reconciler/template-cache.js';
+import { TemplateCache, generateCacheKey, templateCache } from '../../../src/reconciler/template-cache.js';
 import { createElementVNode, createTextVNode } from '../../../src/reconciler/vnode.js';
 
 describe('TemplateCache', () => {

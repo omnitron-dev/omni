@@ -245,32 +245,32 @@ describe('Markdown Parser', () => {
     it('should parse bold text', () => {
       const doc = parseMarkdown('**bold**', schema);
       const textNode = doc.firstChild?.firstChild;
-      expect(textNode?.marks.some(m => m.type.name === 'bold')).toBe(true);
+      expect(textNode?.marks.some((m) => m.type.name === 'bold')).toBe(true);
     });
 
     it('should parse italic text', () => {
       const doc = parseMarkdown('*italic*', schema);
       const textNode = doc.firstChild?.firstChild;
-      expect(textNode?.marks.some(m => m.type.name === 'italic')).toBe(true);
+      expect(textNode?.marks.some((m) => m.type.name === 'italic')).toBe(true);
     });
 
     it('should parse inline code', () => {
       const doc = parseMarkdown('`code`', schema);
       const textNode = doc.firstChild?.firstChild;
-      expect(textNode?.marks.some(m => m.type.name === 'code')).toBe(true);
+      expect(textNode?.marks.some((m) => m.type.name === 'code')).toBe(true);
     });
 
     it('should parse strikethrough (GFM)', () => {
       const doc = parseMarkdown('~~strike~~', schema);
       const textNode = doc.firstChild?.firstChild;
-      expect(textNode?.marks.some(m => m.type.name === 'strike')).toBe(true);
+      expect(textNode?.marks.some((m) => m.type.name === 'strike')).toBe(true);
     });
 
     it('should parse combined formatting', () => {
       const doc = parseMarkdown('***bold italic***', schema);
       const textNode = doc.firstChild?.firstChild;
-      expect(textNode?.marks.some(m => m.type.name === 'bold')).toBe(true);
-      expect(textNode?.marks.some(m => m.type.name === 'italic')).toBe(true);
+      expect(textNode?.marks.some((m) => m.type.name === 'bold')).toBe(true);
+      expect(textNode?.marks.some((m) => m.type.name === 'italic')).toBe(true);
     });
   });
 
@@ -356,7 +356,7 @@ describe('Markdown Parser', () => {
       const markdown = '[text](http://example.com)';
       const doc = parseMarkdown(markdown, schema);
       const textNode = doc.firstChild?.firstChild;
-      const linkMark = textNode?.marks.find(m => m.type.name === 'link');
+      const linkMark = textNode?.marks.find((m) => m.type.name === 'link');
       expect(linkMark).toBeDefined();
       expect(linkMark?.attrs.href).toBe('http://example.com');
     });
@@ -365,7 +365,7 @@ describe('Markdown Parser', () => {
       const markdown = '[text](http://example.com "title")';
       const doc = parseMarkdown(markdown, schema);
       const textNode = doc.firstChild?.firstChild;
-      const linkMark = textNode?.marks.find(m => m.type.name === 'link');
+      const linkMark = textNode?.marks.find((m) => m.type.name === 'link');
       expect(linkMark?.attrs.title).toBe('title');
     });
   });
@@ -432,9 +432,7 @@ describe('Markdown Serializer', () => {
     });
 
     it('should serialize paragraph', () => {
-      const doc = schema.node('doc', null, [
-        schema.node('paragraph', null, [schema.text('Hello world')]),
-      ]);
+      const doc = schema.node('doc', null, [schema.node('paragraph', null, [schema.text('Hello world')])]);
       const markdown = serializeToMarkdown(doc);
       expect(markdown).toBe('Hello world');
     });
@@ -453,9 +451,7 @@ describe('Markdown Serializer', () => {
   describe('Inline formatting', () => {
     it('should serialize bold text', () => {
       const doc = schema.node('doc', null, [
-        schema.node('paragraph', null, [
-          schema.text('bold', [schema.marks.bold.create()]),
-        ]),
+        schema.node('paragraph', null, [schema.text('bold', [schema.marks.bold.create()])]),
       ]);
       const markdown = serializeToMarkdown(doc);
       expect(markdown).toBe('**bold**');
@@ -463,9 +459,7 @@ describe('Markdown Serializer', () => {
 
     it('should serialize italic text', () => {
       const doc = schema.node('doc', null, [
-        schema.node('paragraph', null, [
-          schema.text('italic', [schema.marks.italic.create()]),
-        ]),
+        schema.node('paragraph', null, [schema.text('italic', [schema.marks.italic.create()])]),
       ]);
       const markdown = serializeToMarkdown(doc);
       expect(markdown).toBe('*italic*');
@@ -473,9 +467,7 @@ describe('Markdown Serializer', () => {
 
     it('should serialize inline code', () => {
       const doc = schema.node('doc', null, [
-        schema.node('paragraph', null, [
-          schema.text('code', [schema.marks.code.create()]),
-        ]),
+        schema.node('paragraph', null, [schema.text('code', [schema.marks.code.create()])]),
       ]);
       const markdown = serializeToMarkdown(doc);
       expect(markdown).toBe('`code`');
@@ -483,9 +475,7 @@ describe('Markdown Serializer', () => {
 
     it('should serialize strikethrough', () => {
       const doc = schema.node('doc', null, [
-        schema.node('paragraph', null, [
-          schema.text('strike', [schema.marks.strike.create()]),
-        ]),
+        schema.node('paragraph', null, [schema.text('strike', [schema.marks.strike.create()])]),
       ]);
       const markdown = serializeToMarkdown(doc);
       expect(markdown).toBe('~~strike~~');
@@ -494,25 +484,19 @@ describe('Markdown Serializer', () => {
 
   describe('Headings', () => {
     it('should serialize h1', () => {
-      const doc = schema.node('doc', null, [
-        schema.node('heading', { level: 1 }, [schema.text('Title')]),
-      ]);
+      const doc = schema.node('doc', null, [schema.node('heading', { level: 1 }, [schema.text('Title')])]);
       const markdown = serializeToMarkdown(doc);
       expect(markdown).toBe('# Title');
     });
 
     it('should serialize h2', () => {
-      const doc = schema.node('doc', null, [
-        schema.node('heading', { level: 2 }, [schema.text('Title')]),
-      ]);
+      const doc = schema.node('doc', null, [schema.node('heading', { level: 2 }, [schema.text('Title')])]);
       const markdown = serializeToMarkdown(doc);
       expect(markdown).toBe('## Title');
     });
 
     it('should serialize h6', () => {
-      const doc = schema.node('doc', null, [
-        schema.node('heading', { level: 6 }, [schema.text('Title')]),
-      ]);
+      const doc = schema.node('doc', null, [schema.node('heading', { level: 6 }, [schema.text('Title')])]);
       const markdown = serializeToMarkdown(doc);
       expect(markdown).toBe('###### Title');
     });
@@ -522,9 +506,7 @@ describe('Markdown Serializer', () => {
     it('should serialize bullet list', () => {
       const doc = schema.node('doc', null, [
         schema.node('bullet_list', null, [
-          schema.node('list_item', null, [
-            schema.node('paragraph', null, [schema.text('Item')]),
-          ]),
+          schema.node('list_item', null, [schema.node('paragraph', null, [schema.text('Item')])]),
         ]),
       ]);
       const markdown = serializeToMarkdown(doc);
@@ -534,9 +516,7 @@ describe('Markdown Serializer', () => {
     it('should serialize ordered list', () => {
       const doc = schema.node('doc', null, [
         schema.node('ordered_list', null, [
-          schema.node('list_item', null, [
-            schema.node('paragraph', null, [schema.text('Item')]),
-          ]),
+          schema.node('list_item', null, [schema.node('paragraph', null, [schema.text('Item')])]),
         ]),
       ]);
       const markdown = serializeToMarkdown(doc);
@@ -547,9 +527,7 @@ describe('Markdown Serializer', () => {
   describe('Blockquotes', () => {
     it('should serialize blockquote', () => {
       const doc = schema.node('doc', null, [
-        schema.node('blockquote', null, [
-          schema.node('paragraph', null, [schema.text('Quote')]),
-        ]),
+        schema.node('blockquote', null, [schema.node('paragraph', null, [schema.text('Quote')])]),
       ]);
       const markdown = serializeToMarkdown(doc);
       expect(markdown).toContain('> Quote');
@@ -558,9 +536,7 @@ describe('Markdown Serializer', () => {
 
   describe('Code blocks', () => {
     it('should serialize code block', () => {
-      const doc = schema.node('doc', null, [
-        schema.node('code_block', null, [schema.text('code')]),
-      ]);
+      const doc = schema.node('doc', null, [schema.node('code_block', null, [schema.text('code')])]);
       const markdown = serializeToMarkdown(doc);
       expect(markdown).toContain('```');
       expect(markdown).toContain('code');
@@ -590,9 +566,7 @@ describe('Markdown Serializer', () => {
     it('should serialize link with title', () => {
       const doc = schema.node('doc', null, [
         schema.node('paragraph', null, [
-          schema.text('link', [
-            schema.marks.link.create({ href: 'http://example.com', title: 'Title' }),
-          ]),
+          schema.text('link', [schema.marks.link.create({ href: 'http://example.com', title: 'Title' })]),
         ]),
       ]);
       const markdown = serializeToMarkdown(doc);
@@ -602,9 +576,7 @@ describe('Markdown Serializer', () => {
 
   describe('Horizontal rule', () => {
     it('should serialize horizontal rule', () => {
-      const doc = schema.node('doc', null, [
-        schema.nodes.horizontal_rule.create(),
-      ]);
+      const doc = schema.node('doc', null, [schema.nodes.horizontal_rule.create()]);
       const markdown = serializeToMarkdown(doc);
       expect(markdown).toBe('---');
     });

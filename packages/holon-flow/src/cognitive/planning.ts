@@ -127,11 +127,7 @@ export class GoalPlanner {
   /**
    * Replan if current plan fails
    */
-  async replan(
-    context: PlanningContext,
-    failedAction: Action,
-    currentState: Record<string, any>,
-  ): Promise<Plan> {
+  async replan(context: PlanningContext, failedAction: Action, currentState: Record<string, any>): Promise<Plan> {
     // Update initial state to current state
     const newContext = {
       ...context,
@@ -165,7 +161,7 @@ export class GoalPlanner {
     initialState: Record<string, any>,
     goal: Goal,
     actions: Action[],
-    heuristic?: (state: Record<string, any>, goal: Goal) => number,
+    heuristic?: (state: Record<string, any>, goal: Goal) => number
   ): PlanningNode | null {
     const openSet: PlanningNode[] = [
       {

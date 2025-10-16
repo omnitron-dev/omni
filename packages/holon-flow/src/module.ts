@@ -93,9 +93,7 @@ export interface ModularContext extends Context {
 /**
  * Create a module definition
  */
-export function createModule<T extends object>(
-  definition: ModuleDefinition<T>,
-): ModuleDefinition<T> {
+export function createModule<T extends object>(definition: ModuleDefinition<T>): ModuleDefinition<T> {
   return definition;
 }
 
@@ -246,7 +244,7 @@ export function withModules(ctx: Context): ModularContext {
     initPromises.set(module.name, instancePromise);
 
     // Wait for initialization synchronously if possible
-    instancePromise.catch(() => {}); // Prevent unhandled rejection
+    instancePromise.catch(() => { }); // Prevent unhandled rejection
 
     // Create proxy that provides both context and module methods
     const proxy = new Proxy({} as ModularContext & T, {
@@ -271,7 +269,7 @@ export function withModules(ctx: Context): ModularContext {
         // Module not yet loaded - this shouldn't happen in normal usage
         // as the module should be awaited before use
         throw new Error(
-          `Module ${String(module.name)} not yet initialized. Await the module before accessing its properties.`,
+          `Module ${String(module.name)} not yet initialized. Await the module before accessing its properties.`
         );
       },
     });
@@ -339,8 +337,8 @@ export const contextModule = createModule<{
           }
         }
         // Use dynamic import to avoid circular dependency
-        const { context: createContext } = await import('./context.js');
-        return createContext(values);
+        const { context: createContext_ } = await import('./context.js');
+        return createContext_(values);
       },
     },
   }),
@@ -377,7 +375,7 @@ export function createDependentModule<TBase extends object, T extends object>(
     version?: string;
     description?: string;
     dependencies?: Array<string | symbol>;
-  },
+  }
 ): ModuleDefinition<T> {
   const definition: ModuleDefinition<T> = {
     name: typeof name === 'symbol' ? name : Symbol.for(name),
@@ -389,13 +387,8 @@ export function createDependentModule<TBase extends object, T extends object>(
       const baseInstance = ctx.get<TBase>(baseDependency);
 
       if (!baseInstance) {
-        const depName = typeof baseDependency === 'symbol'
-          ? baseDependency.description
-          : baseDependency;
-        throw new Error(
-          `Base module '${depName}' not found. ` +
-          `Ensure it is loaded before '${String(name)}'.`
-        );
+        const depName = typeof baseDependency === 'symbol' ? baseDependency.description : baseDependency;
+        throw new Error(`Base module '${depName}' not found. ` + `Ensure it is loaded before '${String(name)}'.`);
       }
 
       return factory(ctx, baseInstance);

@@ -1,6 +1,10 @@
 import { it, expect, describe } from 'vitest';
 
-import { transformImports, ImportTransformer, createImportTransformer } from '../../../src/transform/import-transformer.js';
+import {
+  transformImports,
+  ImportTransformer,
+  createImportTransformer,
+} from '../../../src/transform/import-transformer.js';
 
 describe('ImportTransformer', () => {
   describe('createImportTransformer', () => {
@@ -44,7 +48,7 @@ describe('ImportTransformer', () => {
     });
 
     it('should preserve quote style', () => {
-      const doubleQuotes = "import fs from \"/node/fs@latest\";";
+      const doubleQuotes = 'import fs from "/node/fs@latest";';
       const singleQuotes = "import fs from '/node/fs@latest';";
 
       expect(transformer.transform(doubleQuotes)).toContain('"node:fs"');
@@ -249,9 +253,7 @@ describe('ImportTransformer', () => {
 
     it('should clear custom rules', () => {
       const transformer = new ImportTransformer({
-        customRules: [
-          { pattern: /old/g, replacement: 'new' },
-        ],
+        customRules: [{ pattern: /old/g, replacement: 'new' }],
       });
 
       transformer.clearRules();

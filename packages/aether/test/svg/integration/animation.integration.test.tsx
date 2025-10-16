@@ -12,11 +12,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SVGIcon } from '../../../src/svg/components/SVGIcon.js';
 import { signal } from '../../../src/index.js';
-import type {
-  AnimationConfig,
-  TimelineConfig,
-  AnimationController,
-} from '../../../src/svg/animations/types.js';
+import type { AnimationConfig, TimelineConfig, AnimationController } from '../../../src/svg/animations/types.js';
 
 describe('Animation Integration', () => {
   beforeEach(() => {
@@ -271,7 +267,7 @@ describe('Animation Integration', () => {
     });
 
     it('should support custom easing functions', () => {
-      const easeInOut = (t: number): number => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+      const easeInOut = (t: number): number => (t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t);
 
       expect(easeInOut(0)).toBe(0);
       expect(easeInOut(0.5)).toBeCloseTo(0.5);
@@ -286,12 +282,7 @@ describe('Animation Integration', () => {
         velocity: 0,
       };
 
-      const calculateSpring = (
-        current: number,
-        target: number,
-        velocity: number,
-        config: typeof springConfig
-      ) => {
+      const calculateSpring = (current: number, target: number, velocity: number, config: typeof springConfig) => {
         const delta = target - current;
         const springForce = delta * config.stiffness;
         const dampingForce = velocity * config.damping;
@@ -324,9 +315,7 @@ describe('Animation Integration', () => {
       // Simulate timeline progression
       const progressTimeline = (time: number) => {
         currentTime = time;
-        return timeline.animations.filter(
-          (anim, i) => currentTime >= i * 500 && currentTime < (i + 1) * 500
-        );
+        return timeline.animations.filter((anim, i) => currentTime >= i * 500 && currentTime < (i + 1) * 500);
       };
 
       const activeAt500 = progressTimeline(500);
@@ -448,7 +437,7 @@ describe('Animation Integration', () => {
         observe: vi.fn(),
         disconnect: vi.fn(),
         callback: (entries: any[]) => {
-          entries.forEach(entry => {
+          entries.forEach((entry) => {
             if (entry.isIntersecting) {
               isVisible.set(true);
             }
@@ -559,7 +548,7 @@ describe('Animation Integration', () => {
 
       const startTime = performance.now();
       // Simulate animation setup
-      animations.forEach(anim => {
+      animations.forEach((anim) => {
         const { type, duration, delay } = anim;
       });
       const endTime = performance.now();
@@ -574,7 +563,7 @@ describe('Animation Integration', () => {
       const optimizedUpdate = (progress: number) => {
         // Only update when progress changes significantly
         const threshold = 0.01;
-        if (Math.abs(progress - (updateCount * threshold)) >= threshold) {
+        if (Math.abs(progress - updateCount * threshold) >= threshold) {
           updateCount++;
         }
       };
@@ -590,9 +579,10 @@ describe('Animation Integration', () => {
     });
 
     it('should use requestAnimationFrame for smooth animations', () => {
-      const rafSpy = vi.spyOn(global, 'requestAnimationFrame').mockImplementation(() =>
-        // Don't execute the callback to avoid infinite recursion
-        1
+      const rafSpy = vi.spyOn(global, 'requestAnimationFrame').mockImplementation(
+        () =>
+          // Don't execute the callback to avoid infinite recursion
+          1
       );
 
       const animate = () => {
@@ -700,9 +690,15 @@ describe('Animation Integration', () => {
     it('should support animation play/pause/stop', () => {
       let isPlaying = false;
 
-      const play = () => { isPlaying = true; };
-      const pause = () => { isPlaying = false; };
-      const stop = () => { isPlaying = false; };
+      const play = () => {
+        isPlaying = true;
+      };
+      const pause = () => {
+        isPlaying = false;
+      };
+      const stop = () => {
+        isPlaying = false;
+      };
 
       play();
       expect(isPlaying).toBe(true);
@@ -778,7 +774,7 @@ describe('Animation Integration', () => {
       ];
 
       const timeline: TimelineConfig = {
-        animations: icons.map(icon => ({
+        animations: icons.map((icon) => ({
           type: 'fade',
           duration: 300,
           delay: icon.delay,

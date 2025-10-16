@@ -7,11 +7,7 @@
 
 import type { Plugin, ViteDevServer } from 'vite';
 import { compileMDX } from '../compiler/index.js';
-import type {
-  CompileMDXOptions,
-  MDXModule,
-  CompileTimeOptimizations
-} from '../types.js';
+import type { CompileMDXOptions, MDXModule, CompileTimeOptimizations } from '../types.js';
 
 /**
  * Vite plugin configuration for Aether MDX
@@ -83,14 +79,7 @@ const compilationCache = new Map<string, { code: string; timestamp: number }>();
  * Create Aether MDX Vite plugin
  */
 export function aetherMDX(options: AetherMDXPluginOptions = {}): Plugin {
-  const {
-    extensions = DEFAULT_EXTENSIONS,
-    include,
-    exclude,
-    hmr = true,
-    optimize = {},
-    ...compilerOptions
-  } = options;
+  const { extensions = DEFAULT_EXTENSIONS, include, exclude, hmr = true, optimize = {}, ...compilerOptions } = options;
 
   let server: ViteDevServer | undefined;
   let isDev = false;
@@ -104,7 +93,7 @@ export function aetherMDX(options: AetherMDXPluginOptions = {}): Plugin {
     if (!cleanId) return false;
 
     // Check extensions
-    const hasValidExtension = extensions.some(ext => cleanId.endsWith(ext));
+    const hasValidExtension = extensions.some((ext) => cleanId.endsWith(ext));
     if (!hasValidExtension) return false;
 
     // Check exclude
@@ -135,16 +124,12 @@ export function aetherMDX(options: AetherMDXPluginOptions = {}): Plugin {
   /**
    * Compile MDX file
    */
-  const compileMDXFile = async (
-    id: string,
-    code: string,
-    isDevelopment: boolean
-  ): Promise<string> => {
+  const compileMDXFile = async (id: string, code: string, isDevelopment: boolean): Promise<string> => {
     try {
       // Check cache in development
       if (isDevelopment && compilationCache.has(id)) {
         const cached = compilationCache.get(id)!;
-        const stats = await import('fs').then(fs => fs.promises.stat(id));
+        const stats = await import('fs').then((fs) => fs.promises.stat(id));
         if (cached.timestamp >= stats.mtimeMs) {
           return cached.code;
         }
@@ -158,8 +143,8 @@ export function aetherMDX(options: AetherMDXPluginOptions = {}): Plugin {
           precompile: optimize.precompile ?? true,
           minify: optimize.minify ?? !isDevelopment,
           treeshake: optimize.treeshake ?? true,
-          ...optimize
-        }
+          ...optimize,
+        },
       });
 
       // Generate module code
@@ -178,10 +163,10 @@ export function aetherMDX(options: AetherMDXPluginOptions = {}): Plugin {
 
       // Cache result
       if (isDevelopment) {
-        const stats = await import('fs').then(fs => fs.promises.stat(id));
+        const stats = await import('fs').then((fs) => fs.promises.stat(id));
         compilationCache.set(id, {
           code: output,
-          timestamp: stats.mtimeMs
+          timestamp: stats.mtimeMs,
         });
       }
 
@@ -214,9 +199,9 @@ export function aetherMDX(options: AetherMDXPluginOptions = {}): Plugin {
               type: 'js-update',
               path: module.url,
               acceptedPath: module.url,
-              timestamp: Date.now()
-            }
-          ]
+              timestamp: Date.now(),
+            },
+          ],
         });
       }
     }
@@ -258,7 +243,7 @@ export function aetherMDX(options: AetherMDXPluginOptions = {}): Plugin {
 
         return {
           code: compiled,
-          map: null // TODO: Add source maps support
+          map: null, // TODO: Add source maps support
         };
       } catch (error) {
         this.error(error instanceof Error ? error : new Error(String(error)));
@@ -294,7 +279,7 @@ export function aetherMDX(options: AetherMDXPluginOptions = {}): Plugin {
       if (!isDev) {
         compilationCache.clear();
       }
-    }
+    },
   };
 }
 
@@ -309,8 +294,4 @@ export function mdx(options?: AetherMDXPluginOptions): Plugin {
 export default aetherMDX;
 
 // Re-export types from ../types.js (AetherMDXPluginOptions is already exported above)
-export type {
-  CompileMDXOptions,
-  SyntaxHighlightOptions,
-  CompileTimeOptimizations
-} from '../types.js';
+export type { CompileMDXOptions, SyntaxHighlightOptions, CompileTimeOptimizations } from '../types.js';

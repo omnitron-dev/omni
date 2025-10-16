@@ -10,7 +10,7 @@ import {
   compileMDXSync,
   MDXCompiler,
   TransformPipeline,
-  ReactiveContentTransform
+  ReactiveContentTransform,
 } from '../../src/mdx/compiler/index.js';
 import { signal, computed } from '../../src/core/reactivity/index.js';
 import type { AetherMDXPlugin, MDXNode } from '../../src/mdx/types.js';
@@ -65,7 +65,7 @@ Regular text follows.
       const compiler = new MDXCompiler({
         jsx: true,
         frontmatter: true,
-        scope: { value: 42 }
+        scope: { value: 42 },
       });
 
       const module = await compiler.compile(source);
@@ -117,7 +117,7 @@ const code = "highlighted";
       const module = await compileMDX(source, {
         gfm: true,
         frontmatter: true,
-        highlight: { lineNumbers: true }
+        highlight: { lineNumbers: true },
       });
 
       expect(module.frontmatter?.title).toBe('Complex Document');
@@ -146,7 +146,7 @@ const code = "highlighted";
 
       const mockButton = vi.fn();
       const module = await compileMDX(source, {
-        components: { Button: mockButton as any }
+        components: { Button: mockButton as any },
       });
 
       // Component is provided in context
@@ -224,7 +224,7 @@ views: 1000
         title: 'My Post',
         date: '2024-01-15',
         published: true,
-        views: 1000
+        views: 1000,
       });
     });
 
@@ -284,12 +284,12 @@ Count is {count}
 
       const module = await compileMDX(source, {
         frontmatter: true,
-        mode: 'reactive'
+        mode: 'reactive',
       });
 
       expect(module.frontmatter).toEqual({
         title: 'Dynamic Title',
-        count: 42
+        count: 42,
       });
       expect(module.code).toContain('frontmatter');
     });
@@ -322,12 +322,12 @@ Count is {count}
       expect(module.toc![0]).toEqual({
         level: 1,
         title: 'Main Title',
-        id: 'main-title'
+        id: 'main-title',
       });
       expect(module.toc![1]).toEqual({
         level: 2,
         title: 'Section One',
-        id: 'section-one'
+        id: 'section-one',
       });
     });
 
@@ -401,7 +401,7 @@ Count is {count}
       const source = '# Test Heading\n\nContent';
 
       const module = await compileMDX(source, {
-        remarkPlugins: [remarkPlugin]
+        remarkPlugins: [remarkPlugin],
       });
 
       expect(module.code).toBeDefined();
@@ -414,20 +414,17 @@ Count is {count}
           if (node.type === 'element' && node.tagName === 'div') {
             return {
               ...node,
-              attributes: [
-                ...(node.attributes || []),
-                { type: 'mdxJsxAttribute', name: 'data-test', value: 'true' }
-              ]
+              attributes: [...(node.attributes || []), { type: 'mdxJsxAttribute', name: 'data-test', value: 'true' }],
             };
           }
           return node;
-        }
+        },
       };
 
       const source = '<div>Content</div>';
 
       const module = await compileMDX(source, {
-        aetherPlugins: [testPlugin]
+        aetherPlugins: [testPlugin],
       });
 
       expect(module.code).toBeDefined();
@@ -441,7 +438,7 @@ Count is {count}
             return { ...node, value: (node.value || '') + '-1' };
           }
           return node;
-        }
+        },
       };
 
       const plugin2: AetherMDXPlugin = {
@@ -451,13 +448,13 @@ Count is {count}
             return { ...node, value: (node.value || '') + '-2' };
           }
           return node;
-        }
+        },
       };
 
       const source = 'Text';
 
       const module = await compileMDX(source, {
-        aetherPlugins: [plugin1, plugin2]
+        aetherPlugins: [plugin1, plugin2],
       });
 
       expect(module.code).toBeDefined();
@@ -472,13 +469,13 @@ Count is {count}
             return null;
           }
           return node;
-        }
+        },
       };
 
       const source = '# Title\n\n---\n\nContent';
 
       const module = await compileMDX(source, {
-        aetherPlugins: [removePlugin]
+        aetherPlugins: [removePlugin],
       });
 
       expect(module.code).toBeDefined();
@@ -489,12 +486,12 @@ Count is {count}
 
       const plugin1: AetherMDXPlugin = {
         name: 'test-1',
-        transformAether: async (node) => node
+        transformAether: async (node) => node,
       };
 
       const plugin2: AetherMDXPlugin = {
         name: 'test-2',
-        transformAether: async (node) => node
+        transformAether: async (node) => node,
       };
 
       pipeline.useAether(plugin1);
@@ -525,7 +522,7 @@ Current count: {count()}
 
       const module = await compileMDX(source, {
         mode: 'reactive',
-        scope: { count: signal(0) }
+        scope: { count: signal(0) },
       });
 
       expect(module.code).toContain('signal');
@@ -537,7 +534,7 @@ Current count: {count()}
 
       const node: MDXNode = {
         type: 'mdxFlowExpression',
-        value: 'count()'
+        value: 'count()',
       };
 
       const result = await transform.transformAether(node);
@@ -551,7 +548,7 @@ Current count: {count()}
 
       const module = await compileMDX(source, {
         mode: 'reactive',
-        scope: { text: signal('') }
+        scope: { text: signal('') },
       });
 
       expect(module.code).toBeDefined();
@@ -568,7 +565,7 @@ Double: {computed(() => count() * 2)()}
       `.trim();
 
       const module = await compileMDX(source, {
-        mode: 'reactive'
+        mode: 'reactive',
       });
 
       expect(module.code).toContain('signal');
@@ -584,7 +581,7 @@ Double: {computed(() => count() * 2)()}
       `.trim();
 
       const module = await compileMDX(source, {
-        mode: 'reactive'
+        mode: 'reactive',
       });
 
       expect(module.code).toContain('batch');
@@ -604,7 +601,7 @@ console.log(greeting);
       `.trim();
 
       const module = await compileMDX(source, {
-        highlight: { languages: ['javascript'] }
+        highlight: { languages: ['javascript'] },
       });
 
       expect(module.code).toBeDefined();
@@ -654,8 +651,8 @@ print("Python")
 
       const module = await compileMDX(source, {
         highlight: {
-          languages: ['javascript', 'typescript', 'python']
-        }
+          languages: ['javascript', 'typescript', 'python'],
+        },
       });
 
       expect(module.code).toBeDefined();
@@ -672,7 +669,7 @@ print("Python")
       const source = '<button>Click</button>';
 
       const module = await compileMDX(source, {
-        components: { button: CustomButton as any }
+        components: { button: CustomButton as any },
       });
 
       expect(module.code).toBeDefined();
@@ -688,8 +685,8 @@ print("Python")
       const module = await compileMDX(source, {
         components: {
           h1: CustomH1 as any,
-          p: CustomP as any
-        }
+          p: CustomP as any,
+        },
       });
 
       expect(module.code).toBeDefined();
@@ -701,7 +698,7 @@ print("Python")
       const source = '[Link](https://example.com)';
 
       const module = await compileMDX(source, {
-        components: { a: CustomLink as any }
+        components: { a: CustomLink as any },
       });
 
       expect(module.code).toBeDefined();
@@ -715,7 +712,7 @@ print("Python")
 
       const module = await compileMDX(source, {
         components: { Button: componentButton as any },
-        scope: { Button: scopeButton as any }
+        scope: { Button: scopeButton as any },
       });
 
       expect(module.usedComponents).toContain('Button');
@@ -730,7 +727,7 @@ print("Python")
       const source = 'Value: {value}';
 
       const module = await compileMDX(source, {
-        scope: { value: 42 }
+        scope: { value: 42 },
       });
 
       expect(module.code).toContain('value');
@@ -740,7 +737,7 @@ print("Python")
       const source = 'Result: {calculate(5)}';
 
       const module = await compileMDX(source, {
-        scope: { calculate: (x: number) => x * 2 }
+        scope: { calculate: (x: number) => x * 2 },
       });
 
       expect(module.code).toContain('calculate');
@@ -753,7 +750,7 @@ print("Python")
 
       const module = await compileMDX(source, {
         mode: 'reactive',
-        scope: { count }
+        scope: { count },
       });
 
       expect(module.code).toContain('count()');
@@ -767,7 +764,7 @@ print("Python")
 
       const module = await compileMDX(source, {
         mode: 'reactive',
-        scope: { doubled }
+        scope: { doubled },
       });
 
       expect(module.code).toContain('doubled()');
@@ -779,7 +776,7 @@ print("Python")
       const source = '<CustomComponent />';
 
       const module = await compileMDX(source, {
-        scope: { CustomComponent: CustomComponent as any }
+        scope: { CustomComponent: CustomComponent as any },
       });
 
       expect(module.usedComponents).toContain('CustomComponent');
@@ -797,7 +794,7 @@ Count: {count}
 
       const module = await compileMDX(source, {
         frontmatter: true,
-        scope: { count: 10 }
+        scope: { count: 10 },
       });
 
       expect(module.frontmatter).toEqual({ title: 'From Frontmatter' });
@@ -839,14 +836,16 @@ Count: {count}
         name: 'error-plugin',
         transformAether: async () => {
           throw new Error('Plugin error');
-        }
+        },
       };
 
       const source = '# Title';
 
-      await expect(compileMDX(source, {
-        aetherPlugins: [errorPlugin]
-      })).rejects.toThrow('Plugin error');
+      await expect(
+        compileMDX(source, {
+          aetherPlugins: [errorPlugin],
+        })
+      ).rejects.toThrow('Plugin error');
     });
 
     test('should handle transformer errors', async () => {
@@ -947,7 +946,7 @@ title: Complex Doc
         frontmatter: true,
         gfm: true,
         mode: 'reactive',
-        scope: { dynamicValue: signal('Dynamic!') }
+        scope: { dynamicValue: signal('Dynamic!') },
       });
 
       expect(module.frontmatter).toEqual({ title: 'Complex Doc' });
@@ -1010,7 +1009,7 @@ const code: string = "TypeScript";
       const module = await compileMDX(source, {
         gfm: true,
         mode: 'reactive',
-        scope: { reactiveExpression: () => 'Dynamic' }
+        scope: { reactiveExpression: () => 'Dynamic' },
       });
 
       expect(module.code).toBeDefined();
@@ -1022,7 +1021,7 @@ const code: string = "TypeScript";
     test('should support multiple compilation options together', async () => {
       const customPlugin: AetherMDXPlugin = {
         name: 'custom',
-        transformAether: async (node) => node
+        transformAether: async (node) => node,
       };
 
       const source = `
@@ -1047,7 +1046,7 @@ console.log("test");
         highlight: { lineNumbers: true },
         aetherPlugins: [customPlugin],
         components: { Component: vi.fn() as any },
-        scope: { signal }
+        scope: { signal },
       });
 
       expect(module.frontmatter).toEqual({ title: 'Full Test' });
@@ -1058,7 +1057,9 @@ console.log("test");
     });
 
     test('should maintain performance with large documents', async () => {
-      const sections = Array.from({ length: 50 }, (_, i) => `
+      const sections = Array.from(
+        { length: 50 },
+        (_, i) => `
 ## Section ${i + 1}
 
 This is section ${i + 1} with some content.
@@ -1068,7 +1069,8 @@ const value${i} = ${i};
 \`\`\`
 
 <Component id="${i}" />
-      `).join('\n\n');
+      `
+      ).join('\n\n');
 
       const source = `# Large Document\n\n${sections}`;
 
@@ -1092,7 +1094,7 @@ const value${i} = ${i};
 
       const mockButton = vi.fn();
       const module = await compileMDX(source, {
-        components: { Button: mockButton as any }
+        components: { Button: mockButton as any },
       });
 
       expect(module.usedComponents).toContain('Button');
@@ -1106,18 +1108,12 @@ const value${i} = ${i};
     });
 
     test('should support dynamic compilation', async () => {
-      const sources = [
-        '# Version 1',
-        '# Version 2',
-        '# Version 3'
-      ];
+      const sources = ['# Version 1', '# Version 2', '# Version 3'];
 
-      const modules = await Promise.all(
-        sources.map(source => compileMDX(source))
-      );
+      const modules = await Promise.all(sources.map((source) => compileMDX(source)));
 
       expect(modules).toHaveLength(3);
-      modules.forEach(module => {
+      modules.forEach((module) => {
         expect(module.code).toBeDefined();
       });
     });

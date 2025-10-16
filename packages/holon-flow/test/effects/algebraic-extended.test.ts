@@ -79,14 +79,11 @@ describe('AlgebraicEffect - Extended Tests', () => {
     it('should modify state using function', () => {
       const state = new AlgebraicEffects.State<{ count: number }>('counter');
 
-      const [result, finalState] = state.run(
-        { count: 0 },
-        () => {
-          state.modify((s) => ({ count: s.count + 5 }));
-          state.modify((s) => ({ count: s.count * 2 }));
-          return state.getValue();
-        }
-      );
+      const [result, finalState] = state.run({ count: 0 }, () => {
+        state.modify((s) => ({ count: s.count + 5 }));
+        state.modify((s) => ({ count: s.count * 2 }));
+        return state.getValue();
+      });
 
       expect(result).toEqual({ count: 10 });
       expect(finalState).toEqual({ count: 10 });
@@ -255,11 +252,9 @@ describe('AlgebraicEffect - Extended Tests', () => {
       const effect1 = new AlgebraicEffect<number, number>('e1');
       const effect2 = new AlgebraicEffect<string, string>('e2');
 
-      const handler1 = (comp: () => string) =>
-        effect1.handle((n, resume) => resume(n * 2), comp);
+      const handler1 = (comp: () => string) => effect1.handle((n, resume) => resume(n * 2), comp);
 
-      const handler2 = (comp: () => string) =>
-        effect2.handle((s, resume) => resume(s.toUpperCase()), comp);
+      const handler2 = (comp: () => string) => effect2.handle((s, resume) => resume(s.toUpperCase()), comp);
 
       const composed = AlgebraicEffect.compose(handler1, handler2);
 

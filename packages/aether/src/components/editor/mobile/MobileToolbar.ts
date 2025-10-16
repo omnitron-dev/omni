@@ -77,7 +77,7 @@ export const MobileToolbar = defineComponent<MobileToolbarProps>((props) => {
         label: 'Text',
         icon: 'T',
         items: items.filter((item) =>
-          item.type === 'button' ? ['bold', 'italic', 'underline'].includes(item.command) : false,
+          item.type === 'button' ? ['bold', 'italic', 'underline'].includes(item.command) : false
         ),
       },
       {
@@ -85,7 +85,7 @@ export const MobileToolbar = defineComponent<MobileToolbarProps>((props) => {
         label: 'Paragraph',
         icon: 'P',
         items: items.filter((item) =>
-          item.type === 'button' ? ['heading', 'bulletList', 'orderedList'].includes(item.command) : false,
+          item.type === 'button' ? ['heading', 'bulletList', 'orderedList'].includes(item.command) : false
         ),
       },
       {
@@ -93,14 +93,16 @@ export const MobileToolbar = defineComponent<MobileToolbarProps>((props) => {
         label: 'Insert',
         icon: '+',
         items: items.filter((item) =>
-          item.type === 'button' ? ['link', 'image', 'table', 'codeBlock'].includes(item.command) : false,
+          item.type === 'button' ? ['link', 'image', 'table', 'codeBlock'].includes(item.command) : false
         ),
       },
       {
         id: 'actions',
         label: 'Actions',
         icon: '⋯',
-        items: items.filter((item) => (item.type === 'button' ? ['undo', 'redo', 'search'].includes(item.command) : false)),
+        items: items.filter((item) =>
+          item.type === 'button' ? ['undo', 'redo', 'search'].includes(item.command) : false
+        ),
       },
     ];
   });
@@ -278,7 +280,7 @@ export const MobileToolbar = defineComponent<MobileToolbarProps>((props) => {
       jsx('div', {
         class: 'mobile-toolbar-main',
         children: [renderQuickAccess(), props.collapsible ? renderCollapseButton() : null],
-      }) as Node,
+      }) as Node
     );
 
     // Expanded toolbar (shown when toggled)

@@ -21,7 +21,7 @@ import type { MarkType } from 'prosemirror-model';
 export function markInputRule(
   pattern: RegExp,
   markType: MarkType | ((schema: any) => MarkType),
-  getAttrs?: (match: RegExpMatchArray) => Record<string, any> | null,
+  getAttrs?: (match: RegExpMatchArray) => Record<string, any> | null
 ): InputRule {
   return new InputRule(pattern, (state, match, start, end) => {
     const attrs = getAttrs ? getAttrs(match) : null;

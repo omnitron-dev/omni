@@ -460,9 +460,7 @@ export function createPerformanceReport(metrics: PerformanceMetrics): string {
 
   // FPS
   if (metrics.fps.length > 0) {
-    const avgFps = Math.round(
-      metrics.fps.reduce((acc, s) => acc + s.fps, 0) / metrics.fps.length
-    );
+    const avgFps = Math.round(metrics.fps.reduce((acc, s) => acc + s.fps, 0) / metrics.fps.length);
     const minFps = Math.min(...metrics.fps.map((s) => s.fps));
     const maxFps = Math.max(...metrics.fps.map((s) => s.fps));
 

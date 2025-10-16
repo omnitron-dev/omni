@@ -18,9 +18,7 @@ import { createApp, type Application } from '../../src/core/application.js';
 import { createCompiler } from '../../src/compiler/compiler.js';
 import { signal, computed } from '../../src/core/reactivity/index.js';
 import { PerformanceMonitor } from '../../src/monitoring/performance.js';
-import type {
-  ModuleDefinition,
-} from '../../src/di/types.js';
+import type { ModuleDefinition } from '../../src/di/types.js';
 
 describe('Module System Integration', () => {
   describe('Full Module Compilation Pipeline', () => {
@@ -120,9 +118,7 @@ describe('Module System Integration', () => {
       const compiled = await compiler.compile(moduleSource, 'UserRoutes.ts');
 
       expect(compiled.code).toBeDefined();
-      expect(compiled.code.includes('defineModule') || compiled.code.includes('routes')).toBe(
-        true
-      );
+      expect(compiled.code.includes('defineModule') || compiled.code.includes('routes')).toBe(true);
 
       // Verify metadata extraction
       expect(compiled.analysis).toBeDefined();
@@ -226,9 +222,7 @@ describe('Module System Integration', () => {
       expect(compiledFeature.code).toBeDefined();
 
       // Should handle imports
-      expect(compiledFeature.code.includes('import') || compiledFeature.code.includes('require')).toBe(
-        true
-      );
+      expect(compiledFeature.code.includes('import') || compiledFeature.code.includes('require')).toBe(true);
     });
 
     it('should tree-shake unused module exports', async () => {
@@ -529,7 +523,8 @@ describe('Module System Integration', () => {
 
     it('should support dynamic module configuration', async () => {
       const ConfigurableModule = {
-        forRoot: (config: { apiUrl: string }) => defineModule({
+        forRoot: (config: { apiUrl: string }) =>
+          defineModule({
             id: 'configurable',
             providers: [
               {

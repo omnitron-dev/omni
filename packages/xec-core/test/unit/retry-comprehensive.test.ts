@@ -43,17 +43,19 @@ describe('Comprehensive Retry Functionality Tests', () => {
               command: cmd.command,
               exitCode: 1,
               stdout: '',
-              stderr: 'Connection refused'
+              stderr: 'Connection refused',
             });
           }
           return createResult({
             command: cmd.command,
             exitCode: 0,
             stdout: 'Success!',
-            stderr: ''
+            stderr: '',
           });
         },
-        async isAvailable() { return true; }
+        async isAvailable() {
+          return true;
+        },
       };
 
       (engine as any).registerAdapter('local', mockAdapter);
@@ -63,8 +65,8 @@ describe('Comprehensive Retry Functionality Tests', () => {
         adapter: 'local',
         retry: {
           maxRetries: 2,
-          initialDelay: 10
-        }
+          initialDelay: 10,
+        },
       });
 
       expect(attempts).toBe(3);
@@ -84,24 +86,26 @@ describe('Comprehensive Retry Functionality Tests', () => {
               command: cmd.command,
               exitCode: 1,
               stdout: '',
-              stderr: 'Connection timeout'
+              stderr: 'Connection timeout',
             });
           } else if (attempts === 2) {
             return createResult({
               command: cmd.command,
               exitCode: 1,
               stdout: '',
-              stderr: 'Permission denied'
+              stderr: 'Permission denied',
             });
           }
           return createResult({
             command: cmd.command,
             exitCode: 0,
             stdout: 'Never reached',
-            stderr: ''
+            stderr: '',
           });
         },
-        async isAvailable() { return true; }
+        async isAvailable() {
+          return true;
+        },
       };
 
       (engine as any).registerAdapter('local', mockAdapter);
@@ -112,12 +116,11 @@ describe('Comprehensive Retry Functionality Tests', () => {
         retry: {
           maxRetries: 3,
           initialDelay: 10,
-          isRetryable: (result: any) => 
+          isRetryable: (result: any) =>
             // Only retry on timeout errors
-             result.stderr.includes('timeout')
-          
+            result.stderr.includes('timeout'),
         },
-        nothrow: true
+        nothrow: true,
       });
 
       // Should stop after second attempt because "Permission denied" is not retryable
@@ -136,17 +139,19 @@ describe('Comprehensive Retry Functionality Tests', () => {
               command: cmd.command,
               exitCode: 1,
               stdout: 'HTTP 503 Service Unavailable',
-              stderr: ''
+              stderr: '',
             });
           }
           return createResult({
             command: cmd.command,
             exitCode: 0,
             stdout: 'HTTP 200 OK',
-            stderr: ''
+            stderr: '',
           });
         },
-        async isAvailable() { return true; }
+        async isAvailable() {
+          return true;
+        },
       };
 
       (engine as any).registerAdapter('local', mockAdapter);
@@ -157,11 +162,10 @@ describe('Comprehensive Retry Functionality Tests', () => {
         retry: {
           maxRetries: 2,
           initialDelay: 10,
-          isRetryable: (result: any) => 
+          isRetryable: (result: any) =>
             // Retry on 503 errors
-             result.stdout.includes('503') || result.stderr.includes('503')
-          
-        }
+            result.stdout.includes('503') || result.stderr.includes('503'),
+        },
       });
 
       expect(attempts).toBe(2);
@@ -180,10 +184,12 @@ describe('Comprehensive Retry Functionality Tests', () => {
             command: cmd.command,
             exitCode: attempts,
             stdout: `Attempt ${attempts}`,
-            stderr: 'Always fails'
+            stderr: 'Always fails',
           });
         },
-        async isAvailable() { return true; }
+        async isAvailable() {
+          return true;
+        },
       };
 
       (engine as any).registerAdapter('local', mockAdapter);
@@ -193,9 +199,9 @@ describe('Comprehensive Retry Functionality Tests', () => {
         adapter: 'local',
         retry: {
           maxRetries: 2,
-          initialDelay: 10
+          initialDelay: 10,
         },
-        nothrow: true
+        nothrow: true,
       });
 
       expect(attempts).toBe(3); // 1 initial + 2 retries
@@ -217,17 +223,19 @@ describe('Comprehensive Retry Functionality Tests', () => {
               command: cmd.command,
               exitCode: 1,
               stdout: '',
-              stderr: `Error attempt ${attempts}`
+              stderr: `Error attempt ${attempts}`,
             });
           }
           return createResult({
             command: cmd.command,
             exitCode: 0,
             stdout: 'Success',
-            stderr: ''
+            stderr: '',
           });
         },
-        async isAvailable() { return true; }
+        async isAvailable() {
+          return true;
+        },
       };
 
       (engine as any).registerAdapter('local', mockAdapter);
@@ -242,8 +250,8 @@ describe('Comprehensive Retry Functionality Tests', () => {
           jitter: false,
           onRetry: (attempt, result, delay) => {
             retryCallbacks.push({ attempt, result, delay });
-          }
-        }
+          },
+        },
       });
 
       expect(retryCallbacks).toHaveLength(2);
@@ -261,10 +269,9 @@ describe('Comprehensive Retry Functionality Tests', () => {
       const $retry = $.retry({
         maxRetries: 2,
         initialDelay: 10,
-        isRetryable: (result: any) => 
+        isRetryable: (result: any) =>
           // Only retry on network errors
-           result.stderr.includes('network') || result.stderr.includes('connection')
-        
+          result.stderr.includes('network') || result.stderr.includes('connection'),
       });
 
       expect($retry).toBeDefined();
@@ -282,30 +289,32 @@ describe('Comprehensive Retry Functionality Tests', () => {
               command: cmd.command,
               exitCode: 1,
               stdout: '',
-              stderr: 'network unreachable'
+              stderr: 'network unreachable',
             });
           }
           return createResult({
             command: cmd.command,
             exitCode: 0,
             stdout: 'Connected',
-            stderr: ''
+            stderr: '',
           });
         },
-        async isAvailable() { return true; }
+        async isAvailable() {
+          return true;
+        },
       };
 
       const $reliable = $.retry({
         maxRetries: 3,
         initialDelay: 10,
-        isRetryable: (result: any) => result.stderr.includes('network')
+        isRetryable: (result: any) => result.stderr.includes('network'),
       });
 
       ($reliable as any).registerAdapter('local', mockAdapter);
 
       const result = await $reliable.execute({
         command: 'ping server',
-        adapter: 'local'
+        adapter: 'local',
       });
 
       expect(attempts).toBe(2);
@@ -325,17 +334,19 @@ describe('Comprehensive Retry Functionality Tests', () => {
               command: cmd.command,
               exitCode: 137, // SIGKILL, often OOM
               stdout: '',
-              stderr: 'Killed'
+              stderr: 'Killed',
             });
           }
           return createResult({
             command: cmd.command,
             exitCode: 0,
             stdout: 'Memory available',
-            stderr: ''
+            stderr: '',
           });
         },
-        async isAvailable() { return true; }
+        async isAvailable() {
+          return true;
+        },
       };
 
       (engine as any).registerAdapter('local', mockAdapter);
@@ -346,11 +357,10 @@ describe('Comprehensive Retry Functionality Tests', () => {
         retry: {
           maxRetries: 2,
           initialDelay: 5000, // Wait longer for memory to free up
-          isRetryable: (result: any) => 
+          isRetryable: (result: any) =>
             // Exit code 137 = SIGKILL (often OOM)
-             result.exitCode === 137 || result.stderr.toLowerCase().includes('out of memory')
-          
-        }
+            result.exitCode === 137 || result.stderr.toLowerCase().includes('out of memory'),
+        },
       });
 
       expect(attempts).toBe(2);
@@ -365,17 +375,19 @@ describe('Comprehensive Retry Functionality Tests', () => {
           const responses = [
             { stdout: '< HTTP/1.1 503 Service Unavailable', stderr: '', exitCode: 22 },
             { stdout: '< HTTP/1.1 429 Too Many Requests', stderr: '', exitCode: 22 },
-            { stdout: '< HTTP/1.1 200 OK\n{"data": "success"}', stderr: '', exitCode: 0 }
+            { stdout: '< HTTP/1.1 200 OK\n{"data": "success"}', stderr: '', exitCode: 0 },
           ];
           const response = responses[Math.min(attempts - 1, responses.length - 1)]!;
           return createResult({
             command: cmd.command,
             exitCode: response.exitCode,
             stdout: response.stdout,
-            stderr: response.stderr
+            stderr: response.stderr,
           });
         },
-        async isAvailable() { return true; }
+        async isAvailable() {
+          return true;
+        },
       };
 
       (engine as any).registerAdapter('local', mockAdapter);
@@ -397,8 +409,8 @@ describe('Comprehensive Retry Functionality Tests', () => {
             }
             // Also retry on curl exit code 22 (HTTP error)
             return result.exitCode === 22;
-          }
-        }
+          },
+        },
       });
 
       expect(attempts).toBe(3);
@@ -417,10 +429,12 @@ describe('Comprehensive Retry Functionality Tests', () => {
             command: cmd.command,
             exitCode: attempts,
             stdout: `Stdout ${attempts}`,
-            stderr: `Stderr ${attempts}`
+            stderr: `Stderr ${attempts}`,
           });
         },
-        async isAvailable() { return true; }
+        async isAvailable() {
+          return true;
+        },
       };
 
       (engine as any).registerAdapter('local', mockAdapter);
@@ -431,19 +445,19 @@ describe('Comprehensive Retry Functionality Tests', () => {
           adapter: 'local',
           retry: {
             maxRetries: 2,
-            initialDelay: 10
-          }
+            initialDelay: 10,
+          },
         });
         fail('Should have thrown RetryError');
       } catch (error) {
         expect(error).toBeInstanceOf(RetryError);
         const retryError = error as RetryError;
-        
+
         expect(retryError.attempts).toBe(3);
         expect(retryError.results).toHaveLength(3);
         expect(retryError.lastResult.exitCode).toBe(3);
         expect(retryError.lastResult.stderr).toBe('Stderr 3');
-        
+
         // Check all results are included
         expect(retryError.results[0]?.stdout).toBe('Stdout 1');
         expect(retryError.results[1]?.stdout).toBe('Stdout 2');
@@ -462,10 +476,12 @@ describe('Comprehensive Retry Functionality Tests', () => {
             command: cmd.command,
             exitCode: 1,
             stdout: '',
-            stderr: 'Error'
+            stderr: 'Error',
           });
         },
-        async isAvailable() { return true; }
+        async isAvailable() {
+          return true;
+        },
       };
 
       (engine as any).registerAdapter('local', mockAdapter);
@@ -474,9 +490,9 @@ describe('Comprehensive Retry Functionality Tests', () => {
         command: 'test',
         adapter: 'local',
         retry: {
-          maxRetries: 0
+          maxRetries: 0,
         },
-        nothrow: true
+        nothrow: true,
       });
 
       expect(attempts).toBe(1); // No retries
@@ -494,10 +510,12 @@ describe('Comprehensive Retry Functionality Tests', () => {
             command: cmd.command,
             exitCode: 0,
             stdout: 'Immediate success',
-            stderr: ''
+            stderr: '',
           });
         },
-        async isAvailable() { return true; }
+        async isAvailable() {
+          return true;
+        },
       };
 
       (engine as any).registerAdapter('local', mockAdapter);
@@ -507,8 +525,8 @@ describe('Comprehensive Retry Functionality Tests', () => {
         adapter: 'local',
         retry: {
           maxRetries: 5,
-          onRetry
-        }
+          onRetry,
+        },
       });
 
       expect(attempts).toBe(1);

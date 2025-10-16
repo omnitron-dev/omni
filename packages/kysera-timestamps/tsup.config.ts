@@ -1,4 +1,4 @@
-import { defineConfig } from 'tsup'
+import { defineConfig } from 'tsup';
 
 export default defineConfig({
   entry: ['src/index.ts'],
@@ -11,5 +11,5 @@ export default defineConfig({
   treeshake: true,
   target: 'esnext',
   platform: 'neutral',
-  tsconfig: './tsconfig.build.json'
-})
+  tsconfig: './tsconfig.build.json',
+});

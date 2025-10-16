@@ -9,14 +9,8 @@ import { DIContainer, getRootInjector } from '../di/container.js';
 import { ModuleManager } from '../modules/manager.js';
 import { createModuleAwareRouter, RouterLifecycleManager } from '../router/module-integration.js';
 import type { ModuleAwareRouter } from '../router/module-integration.js';
-import {
-  ModuleScopedStoreManager,
-  StoreLifecycleManager,
-} from '../store/module-integration.js';
-import {
-  ModuleIslandManager,
-  IslandLifecycleManager,
-} from '../islands/module-integration.js';
+import { ModuleScopedStoreManager, StoreLifecycleManager } from '../store/module-integration.js';
+import { ModuleIslandManager, IslandLifecycleManager } from '../islands/module-integration.js';
 import type { RouterConfig } from '../router/types.js';
 
 /**
@@ -207,8 +201,7 @@ class AetherApplication implements Application {
     if (loaded.definition.imports) {
       for (const childModule of loaded.definition.imports) {
         // Resolve module definition
-        const childDef =
-          'definition' in childModule ? childModule : await (childModule as any)();
+        const childDef = 'definition' in childModule ? childModule : await (childModule as any)();
 
         await this.loadModuleHierarchy(childDef);
       }
@@ -323,9 +316,7 @@ class AetherApplication implements Application {
       });
 
       window.addEventListener('unhandledrejection', (event) => {
-        this.handleError(
-          event.reason instanceof Error ? event.reason : new Error(String(event.reason))
-        );
+        this.handleError(event.reason instanceof Error ? event.reason : new Error(String(event.reason)));
       });
     }
   }
@@ -395,16 +386,12 @@ export function createApp(config: ApplicationConfig): Application {
  * await unmount();
  * ```
  */
-export async function mount(
-  app: Application,
-  selector: string | HTMLElement
-): Promise<() => Promise<void>> {
+export async function mount(app: Application, selector: string | HTMLElement): Promise<() => Promise<void>> {
   // Bootstrap application
   await app.bootstrap();
 
   // Get root element
-  const rootElement =
-    typeof selector === 'string' ? document.querySelector(selector) : selector;
+  const rootElement = typeof selector === 'string' ? document.querySelector(selector) : selector;
 
   if (!rootElement) {
     throw new Error(`Cannot find element: ${selector}`);

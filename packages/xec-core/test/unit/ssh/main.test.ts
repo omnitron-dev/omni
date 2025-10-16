@@ -22,7 +22,7 @@ function getFixturePath(fixturePath: string): string {
 function createSSHTest(
   title: string,
   callback: (port: number, client: NodeSSH, server: Server) => Promise<void>,
-  skip = false,
+  skip = false
 ): void {
   const testFunc = skip ? it.skip : it;
   testFunc(title, async () => {
@@ -129,7 +129,7 @@ describe('SSH Node Tests', () => {
       const joinedData = data.join('');
       expect(joinedData).toMatch(/ls \//);
     },
-    true,
+    true
   );
 
   createSSHTest('creates directories with sftp properly', async (port, client) => {
@@ -190,7 +190,9 @@ describe('SSH Node Tests', () => {
 
   createSSHTest('returns both streams if asked to', async (port, client) => {
     await connectWithPassword(port, client);
-    const result = await client.exec('node', ['-e', 'console.log("STDOUT"); console.error("STDERR")'], { stream: 'both' });
+    const result = await client.exec('node', ['-e', 'console.log("STDOUT"); console.error("STDERR")'], {
+      stream: 'both',
+    });
     invariant(typeof result === 'object' && result);
     expect(result.stdout).toBe('STDOUT');
     // STDERR tests are flaky on CI
@@ -201,7 +203,9 @@ describe('SSH Node Tests', () => {
 
   createSSHTest('writes to stdin properly', async (port, client) => {
     await connectWithPassword(port, client);
-    const result = await client.exec('node', ['-e', 'process.stdin.pipe(process.stdout)'], { stdin: 'Twinkle!\nStars!' });
+    const result = await client.exec('node', ['-e', 'process.stdin.pipe(process.stdout)'], {
+      stdin: 'Twinkle!\nStars!',
+    });
     expect(result).toBe('Twinkle!\nStars!');
   });
 
@@ -492,60 +496,63 @@ describe('SSH Node Tests', () => {
     });
   });
 
-  createSSHTest('forwards an inbound TCP/IP connection to client with automatically assigned port', async (port, client, server) => {
-    const IP = '127.0.0.1';
-    const PORT = 1212;
-    const REMOTE_IP = '127.0.0.2';
-    const REMOTE_PORT = 2424;
+  createSSHTest(
+    'forwards an inbound TCP/IP connection to client with automatically assigned port',
+    async (port, client, server) => {
+      const IP = '127.0.0.1';
+      const PORT = 1212;
+      const REMOTE_IP = '127.0.0.2';
+      const REMOTE_PORT = 2424;
 
-    await new Promise((resolve) => {
-      server.on('connection', async (connection) => {
-        connection.once('ready', async () => {
-          // Wait for a connection.
-          const { port: forwardPort, dispose } = await client.forwardIn(IP, 0, (details) => {
-            expect(details.destIP).toBe(IP);
-            expect(details.destPort).toBe(PORT);
-            expect(details.srcIP).toBe(REMOTE_IP);
-            expect(details.srcPort).toBe(REMOTE_PORT);
+      await new Promise((resolve) => {
+        server.on('connection', async (connection) => {
+          connection.once('ready', async () => {
+            // Wait for a connection.
+            const { port: forwardPort, dispose } = await client.forwardIn(IP, 0, (details) => {
+              expect(details.destIP).toBe(IP);
+              expect(details.destPort).toBe(PORT);
+              expect(details.srcIP).toBe(REMOTE_IP);
+              expect(details.srcPort).toBe(REMOTE_PORT);
 
-            // Expect to get an unforward request on server.
-            connection.once('request', (accept, reject, name, info) => {
-              expect(name).toBe('cancel-tcpip-forward');
-              expect(info.bindAddr).toBe(IP);
-              expect(info.bindPort).toBe(PORT);
-              accept?.();
-              resolve(undefined);
+              // Expect to get an unforward request on server.
+              connection.once('request', (accept, reject, name, info) => {
+                expect(name).toBe('cancel-tcpip-forward');
+                expect(info.bindAddr).toBe(IP);
+                expect(info.bindPort).toBe(PORT);
+                accept?.();
+                resolve(undefined);
+              });
+
+              setTimeout(() => dispose(), 100);
             });
 
-            setTimeout(() => dispose(), 100);
+            expect(dispose).toBeTruthy();
+            expect(forwardPort).toBe(PORT);
           });
 
-          expect(dispose).toBeTruthy();
-          expect(forwardPort).toBe(PORT);
-        });
+          // Expect to get a request on server.
+          connection.once('request', (accept, reject, name, info) => {
+            expect(name).toBe('tcpip-forward');
+            expect(info.bindAddr).toBe(IP);
 
-        // Expect to get a request on server.
-        connection.once('request', (accept, reject, name, info) => {
-          expect(name).toBe('tcpip-forward');
-          expect(info.bindAddr).toBe(IP);
+            // Port equal to 0 -> server chooses the port dynamically.
+            expect(info.bindPort).toBe(0);
+            accept?.(PORT);
 
-          // Port equal to 0 -> server chooses the port dynamically.
-          expect(info.bindPort).toBe(0);
-          accept?.(PORT);
-
-          // Simulate a connection
-          connection.forwardOut(info.bindAddr, PORT, REMOTE_IP, REMOTE_PORT, () => {
-            // Nothing more to be done here.
+            // Simulate a connection
+            connection.forwardOut(info.bindAddr, PORT, REMOTE_IP, REMOTE_PORT, () => {
+              // Nothing more to be done here.
+            });
           });
         });
+        connectWithPassword(port, client);
       });
-      connectWithPassword(port, client);
-    });
-  });
+    }
+  );
 
   createSSHTest('has a working noTrim option', async (port, client) => {
     await connectWithPassword(port, client);
-    const resultWithTrim = await client.exec('echo', ["\nhello\n\n\n\n"], { stream: 'stdout' });
+    const resultWithTrim = await client.exec('echo', ['\nhello\n\n\n\n'], { stream: 'stdout' });
     expect(resultWithTrim).toBe('hello');
 
     const resultWithoutTrim = await client.exec('echo', ['\n\n\nhi\n\n\n'], { stream: 'stdout', noTrim: true });

@@ -33,7 +33,7 @@ describe('Templates', () => {
 
     it('should use default values', async () => {
       const template = $.templates.create('echo {{greeting}} {{name}}', {
-        defaults: { greeting: 'Hello' }
+        defaults: { greeting: 'Hello' },
       });
       mock.mockSuccess('sh -c "echo Hello World"', 'Hello World');
 
@@ -47,17 +47,17 @@ describe('Templates', () => {
           if (!params['file'].endsWith('.tmp')) {
             throw new Error('Only .tmp files can be deleted');
           }
-        }
+        },
       });
 
-      await expect(
-        template.execute($mock, { file: 'important.txt' })
-      ).rejects.toThrow('Only .tmp files can be deleted');
+      await expect(template.execute($mock, { file: 'important.txt' })).rejects.toThrow(
+        'Only .tmp files can be deleted'
+      );
     });
 
     it('should transform results', async () => {
       const template = $.templates.create('cat {{file}}', {
-        transform: (result) => JSON.parse(result.stdout)
+        transform: (result) => JSON.parse(result.stdout),
       });
       mock.mockSuccess('sh -c "cat data.json"', '{"value": 42}');
 
@@ -69,7 +69,7 @@ describe('Templates', () => {
   describe('templates.register and templates.get', () => {
     it('should register and retrieve templates', async () => {
       $.templates.register('deploy', 'echo "Deploying {{app}} to {{env}}"', {
-        defaults: { env: 'staging' }
+        defaults: { env: 'staging' },
       });
 
       const template = $.templates.get('deploy');
@@ -117,27 +117,21 @@ describe('Templates', () => {
 
   describe('complex template scenarios', () => {
     it('should handle multiple parameters', async () => {
-      const template = $.templates.create(
-        'docker build -t {{registry}}/{{image}}:{{tag}} {{context}}',
-        {
-          defaults: {
-            registry: 'docker.io',
-            tag: 'latest',
-            context: '.'
-          }
-        }
-      );
+      const template = $.templates.create('docker build -t {{registry}}/{{image}}:{{tag}} {{context}}', {
+        defaults: {
+          registry: 'docker.io',
+          tag: 'latest',
+          context: '.',
+        },
+      });
 
-      mock.mockSuccess(
-        'sh -c "docker build -t myregistry/myapp:v1.0 ./app"',
-        'Successfully built'
-      );
+      mock.mockSuccess('sh -c "docker build -t myregistry/myapp:v1.0 ./app"', 'Successfully built');
 
       const result = await template.execute($mock, {
         registry: 'myregistry',
         image: 'myapp',
         tag: 'v1.0',
-        context: './app'
+        context: './app',
       });
 
       expect(result.stdout).toBe('Successfully built');

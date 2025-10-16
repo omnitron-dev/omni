@@ -47,20 +47,20 @@ export class ConnectionPoolMetricsCollector {
   }
 
   getMetrics(poolSize: number, connections: Map<string, PooledConnectionMetrics>): ConnectionPoolMetrics {
-    const activeConnections = Array.from(connections.values()).filter(c => c.isAlive).length;
+    const activeConnections = Array.from(connections.values()).filter((c) => c.isAlive).length;
     const idleConnections = poolSize - activeConnections;
-    
+
     const now = Date.now();
     let totalIdleTime = 0;
     let totalUseCount = 0;
-    
+
     for (const conn of connections.values()) {
       if (conn.isAlive) {
         totalIdleTime += now - conn.lastUsed.getTime();
         totalUseCount += conn.useCount;
       }
     }
-    
+
     const averageIdleTime = activeConnections > 0 ? totalIdleTime / activeConnections : 0;
     const averageUseCount = activeConnections > 0 ? totalUseCount / activeConnections : 0;
 
@@ -74,7 +74,7 @@ export class ConnectionPoolMetricsCollector {
       reuseCount: this.reuseCount,
       averageIdleTime,
       averageUseCount,
-      lastCleanup: this.lastCleanup
+      lastCleanup: this.lastCleanup,
     };
   }
 

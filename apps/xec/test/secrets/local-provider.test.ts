@@ -15,9 +15,9 @@ describe('LocalSecretProvider', () => {
     // Create a unique test directory
     testDir = path.join(os.tmpdir(), `xec-test-secrets-${Date.now()}`);
     await fs.mkdir(testDir, { recursive: true });
-    
+
     provider = new LocalSecretProvider({
-      storageDir: testDir
+      storageDir: testDir,
     });
   });
 
@@ -32,7 +32,7 @@ describe('LocalSecretProvider', () => {
     it('should create storage directory if it does not exist', async () => {
       const customDir = path.join(testDir, 'custom-secrets');
       const customProvider = new LocalSecretProvider({
-        storageDir: customDir
+        storageDir: customDir,
       });
 
       expect(existsSync(customDir)).toBe(false);
@@ -47,10 +47,10 @@ describe('LocalSecretProvider', () => {
 
     it('should create index file on initialization', async () => {
       await provider.initialize();
-      
+
       const indexPath = path.join(testDir, '.index.json');
       expect(existsSync(indexPath)).toBe(true);
-      
+
       const content = await fs.readFile(indexPath, 'utf8');
       expect(JSON.parse(content)).toEqual({});
     });
@@ -59,13 +59,13 @@ describe('LocalSecretProvider', () => {
       // Make directory read-only to cause error
       const readOnlyDir = path.join(testDir, 'readonly');
       await fs.mkdir(readOnlyDir, { mode: 0o500 });
-      
+
       const errorProvider = new LocalSecretProvider({
-        storageDir: path.join(readOnlyDir, 'secrets')
+        storageDir: path.join(readOnlyDir, 'secrets'),
       });
 
       await expect(errorProvider.initialize()).rejects.toThrow();
-      
+
       // Clean up
       await fs.chmod(readOnlyDir, 0o700);
     });
@@ -73,7 +73,7 @@ describe('LocalSecretProvider', () => {
     it('should be idempotent', async () => {
       await provider.initialize();
       await provider.initialize(); // Should not throw
-      
+
       expect(existsSync(testDir)).toBe(true);
     });
   });
@@ -86,27 +86,27 @@ describe('LocalSecretProvider', () => {
     it('should set and get a secret', async () => {
       const key = 'test-key';
       const value = 'test-value';
-      
+
       await provider.set(key, value);
       const retrieved = await provider.get(key);
-      
+
       expect(retrieved).toBe(value);
     });
 
     it('should encrypt secrets on disk', async () => {
       const key = 'sensitive-key';
       const value = 'sensitive-value';
-      
+
       await provider.set(key, value);
-      
+
       // Read the raw file
       const files = await fs.readdir(testDir);
-      const secretFile = files.find(f => f.endsWith('.secret'));
+      const secretFile = files.find((f) => f.endsWith('.secret'));
       expect(secretFile).toBeDefined();
-      
+
       const rawContent = await fs.readFile(path.join(testDir, secretFile!), 'utf8');
       const data = JSON.parse(rawContent);
-      
+
       // Check encrypted data structure
       expect(data).toHaveProperty('version');
       expect(data).toHaveProperty('encrypted');
@@ -114,7 +114,7 @@ describe('LocalSecretProvider', () => {
       expect(data).toHaveProperty('authTag');
       expect(data).toHaveProperty('salt');
       expect(data).toHaveProperty('algorithm', 'aes-256-gcm');
-      
+
       // Ensure value is not in plaintext
       expect(rawContent).not.toContain(value);
     });
@@ -122,20 +122,20 @@ describe('LocalSecretProvider', () => {
     it('should handle unicode values', async () => {
       const key = 'unicode-key';
       const value = 'Hello 世界! 🔐 Ñoño';
-      
+
       await provider.set(key, value);
       const retrieved = await provider.get(key);
-      
+
       expect(retrieved).toBe(value);
     });
 
     it('should handle large values', async () => {
       const key = 'large-key';
       const value = 'x'.repeat(10000); // 10KB of data
-      
+
       await provider.set(key, value);
       const retrieved = await provider.get(key);
-      
+
       expect(retrieved).toBe(value);
     });
 
@@ -146,10 +146,10 @@ describe('LocalSecretProvider', () => {
 
     it('should overwrite existing secrets', async () => {
       const key = 'overwrite-key';
-      
+
       await provider.set(key, 'value1');
       await provider.set(key, 'value2');
-      
+
       const retrieved = await provider.get(key);
       expect(retrieved).toBe('value2');
     });
@@ -157,10 +157,10 @@ describe('LocalSecretProvider', () => {
     it('should update metadata on set', async () => {
       const key = 'metadata-key';
       await provider.set(key, 'value');
-      
+
       const indexPath = path.join(testDir, '.index.json');
       const index = JSON.parse(await fs.readFile(indexPath, 'utf8'));
-      
+
       expect(index[key]).toHaveProperty('hashedKey');
       expect(index[key]).toHaveProperty('createdAt');
       expect(index[key]).toHaveProperty('updatedAt');
@@ -176,11 +176,11 @@ describe('LocalSecretProvider', () => {
     it('should delete an existing secret', async () => {
       const key = 'delete-me';
       await provider.set(key, 'value');
-      
+
       expect(await provider.has(key)).toBe(true);
       await provider.delete(key);
       expect(await provider.has(key)).toBe(false);
-      
+
       const retrieved = await provider.get(key);
       expect(retrieved).toBeNull();
     });
@@ -189,10 +189,10 @@ describe('LocalSecretProvider', () => {
       const key = 'indexed-key';
       await provider.set(key, 'value');
       await provider.delete(key);
-      
+
       const indexPath = path.join(testDir, '.index.json');
       const index = JSON.parse(await fs.readFile(indexPath, 'utf8'));
-      
+
       expect(index).not.toHaveProperty(key);
     });
 
@@ -209,11 +209,11 @@ describe('LocalSecretProvider', () => {
 
     it('should list all secret keys', async () => {
       const keys = ['key1', 'key2', 'key3'];
-      
+
       for (const key of keys) {
         await provider.set(key, `value-${key}`);
       }
-      
+
       const list = await provider.list();
       expect(list.sort()).toEqual(keys.sort());
     });
@@ -226,10 +226,10 @@ describe('LocalSecretProvider', () => {
     it('should update list after operations', async () => {
       await provider.set('key1', 'value1');
       expect(await provider.list()).toEqual(['key1']);
-      
+
       await provider.set('key2', 'value2');
       expect((await provider.list()).sort()).toEqual(['key1', 'key2']);
-      
+
       await provider.delete('key1');
       expect(await provider.list()).toEqual(['key2']);
     });
@@ -242,7 +242,7 @@ describe('LocalSecretProvider', () => {
 
     it('should check if secret exists', async () => {
       await provider.set('exists', 'value');
-      
+
       expect(await provider.has('exists')).toBe(true);
       expect(await provider.has('not-exists')).toBe(false);
     });
@@ -252,34 +252,34 @@ describe('LocalSecretProvider', () => {
     it('should encrypt/decrypt with passphrase', async () => {
       const passphraseProvider = new LocalSecretProvider({
         storageDir: path.join(testDir, 'passphrase'),
-        passphrase: 'my-passphrase'
+        passphrase: 'my-passphrase',
       });
-      
+
       await passphraseProvider.initialize();
-      
+
       const key = 'passphrase-key';
       const value = 'passphrase-value';
-      
+
       await passphraseProvider.set(key, value);
       const retrieved = await passphraseProvider.get(key);
-      
+
       expect(retrieved).toBe(value);
     });
 
     it('should fail to decrypt with wrong passphrase', async () => {
       const provider1 = new LocalSecretProvider({
         storageDir: path.join(testDir, 'passphrase2'),
-        passphrase: 'correct-passphrase'
+        passphrase: 'correct-passphrase',
       });
-      
+
       await provider1.initialize();
       await provider1.set('key', 'value');
-      
+
       const provider2 = new LocalSecretProvider({
         storageDir: path.join(testDir, 'passphrase2'),
-        passphrase: 'wrong-passphrase'
+        passphrase: 'wrong-passphrase',
       });
-      
+
       await provider2.initialize();
       await expect(provider2.get('key')).rejects.toThrow();
     });
@@ -290,34 +290,34 @@ describe('LocalSecretProvider', () => {
       const dir = path.join(testDir, 'change-passphrase');
       const provider1 = new LocalSecretProvider({
         storageDir: dir,
-        passphrase: 'old-pass'
+        passphrase: 'old-pass',
       });
-      
+
       await provider1.initialize();
-      
+
       // Set some secrets
       await provider1.set('key1', 'value1');
       await provider1.set('key2', 'value2');
-      
+
       // Change passphrase
       await provider1.changePassphrase('old-pass', 'new-pass');
-      
+
       // Try to read with new passphrase
       const provider2 = new LocalSecretProvider({
         storageDir: dir,
-        passphrase: 'new-pass'
+        passphrase: 'new-pass',
       });
-      
+
       await provider2.initialize();
       expect(await provider2.get('key1')).toBe('value1');
       expect(await provider2.get('key2')).toBe('value2');
-      
+
       // Old passphrase should no longer work
       const provider3 = new LocalSecretProvider({
         storageDir: dir,
-        passphrase: 'old-pass'
+        passphrase: 'old-pass',
       });
-      
+
       await provider3.initialize();
       await expect(provider3.get('key1')).rejects.toThrow();
     });
@@ -332,13 +332,13 @@ describe('LocalSecretProvider', () => {
       const secrets = {
         key1: 'value1',
         key2: 'value2',
-        key3: 'value3'
+        key3: 'value3',
       };
-      
+
       for (const [key, value] of Object.entries(secrets)) {
         await provider.set(key, value);
       }
-      
+
       const exported = await provider.export();
       expect(exported).toEqual(secrets);
     });
@@ -346,11 +346,11 @@ describe('LocalSecretProvider', () => {
     it('should import secrets', async () => {
       const secrets = {
         imported1: 'value1',
-        imported2: 'value2'
+        imported2: 'value2',
       };
-      
+
       await provider.import(secrets);
-      
+
       for (const [key, value] of Object.entries(secrets)) {
         expect(await provider.get(key)).toBe(value);
       }
@@ -359,7 +359,7 @@ describe('LocalSecretProvider', () => {
     it('should handle empty export/import', async () => {
       const exported = await provider.export();
       expect(exported).toEqual({});
-      
+
       await provider.import({});
       expect(await provider.list()).toEqual([]);
     });
@@ -373,7 +373,7 @@ describe('LocalSecretProvider', () => {
     it('should throw SecretError with proper code', async () => {
       // Make storage directory read-only
       await fs.chmod(testDir, 0o500);
-      
+
       try {
         await provider.set('fail-key', 'value');
       } catch (error) {
@@ -389,18 +389,18 @@ describe('LocalSecretProvider', () => {
     it('should handle storage access errors during initialization', async () => {
       const inaccessibleDir = path.join(testDir, 'inaccessible');
       await fs.mkdir(inaccessibleDir, { mode: 0o000 });
-      
+
       const errorProvider = new LocalSecretProvider({
-        storageDir: inaccessibleDir
+        storageDir: inaccessibleDir,
       });
-      
+
       try {
         await errorProvider.initialize();
       } catch (error) {
         // It might throw different errors based on platform
         expect(error).toBeDefined();
       }
-      
+
       // Clean up
       await fs.chmod(inaccessibleDir, 0o700);
     });
@@ -409,7 +409,7 @@ describe('LocalSecretProvider', () => {
       // Create a corrupted index file
       const indexPath = path.join(testDir, '.index.json');
       await fs.writeFile(indexPath, '{invalid json', { mode: 0o600 });
-      
+
       await expect(provider.list()).rejects.toThrow(SecretError);
     });
 
@@ -417,7 +417,7 @@ describe('LocalSecretProvider', () => {
       // Remove the index file to trigger ENOENT
       const indexPath = path.join(testDir, '.index.json');
       await fs.unlink(indexPath);
-      
+
       // Should return empty list
       const list = await provider.list();
       expect(list).toEqual([]);
@@ -437,11 +437,11 @@ describe('LocalSecretProvider', () => {
 
     it('should create secret files with restricted permissions', async () => {
       await provider.set('secure-key', 'secure-value');
-      
+
       const files = await fs.readdir(testDir);
-      const secretFile = files.find(f => f.endsWith('.secret'));
+      const secretFile = files.find((f) => f.endsWith('.secret'));
       expect(secretFile).toBeDefined();
-      
+
       const stats = await fs.stat(path.join(testDir, secretFile!));
       // Check that only owner can read/write (0o600)
       expect(stats.mode & 0o777).toBe(0o600);
@@ -458,12 +458,12 @@ describe('LocalSecretProvider', () => {
     it('should handle concurrent access to same secret', async () => {
       await provider.initialize();
       const key = 'concurrent-key';
-      
+
       // Write sequentially to avoid race conditions with index updates
       for (let i = 0; i < 5; i++) {
         await provider.set(key, `value-${i}`);
       }
-      
+
       // The last write should win
       const value = await provider.get(key);
       expect(value).toBe('value-4');
@@ -471,15 +471,15 @@ describe('LocalSecretProvider', () => {
 
     it('should handle real file corruption scenarios', async () => {
       await provider.set('corrupt-key', 'original-value');
-      
+
       // Corrupt the secret file
       const files = await fs.readdir(testDir);
-      const secretFile = files.find(f => f.endsWith('.secret'));
+      const secretFile = files.find((f) => f.endsWith('.secret'));
       const secretPath = path.join(testDir, secretFile!);
-      
+
       // Write invalid JSON
       await fs.writeFile(secretPath, 'not json at all', { mode: 0o600 });
-      
+
       // Should throw when trying to read
       await expect(provider.get('corrupt-key')).rejects.toThrow();
     });
@@ -488,7 +488,7 @@ describe('LocalSecretProvider', () => {
       // This test simulates what happens when disk is full
       // We'll create a very large value that might fail on systems with quotas
       const hugeValue = 'x'.repeat(1000000); // 1MB
-      
+
       try {
         await provider.set('huge-key', hugeValue);
         const retrieved = await provider.get('huge-key');
@@ -503,12 +503,12 @@ describe('LocalSecretProvider', () => {
       // Set secrets with one provider
       await provider.set('persist-key1', 'value1');
       await provider.set('persist-key2', 'value2');
-      
+
       // Create new provider instance
       const newProvider = new LocalSecretProvider({
-        storageDir: testDir
+        storageDir: testDir,
       });
-      
+
       // Should be able to read secrets immediately
       expect(await newProvider.get('persist-key1')).toBe('value1');
       expect(await newProvider.get('persist-key2')).toBe('value2');
@@ -523,50 +523,50 @@ describe('LocalSecretProvider', () => {
         'key:with:colons',
         'key|with|pipes',
         'key.with.dots',
-        'key-with-émojis-🔐'
+        'key-with-émojis-🔐',
       ];
-      
+
       for (const key of specialKeys) {
         const value = `Special value for ${key} with émojis 🎉`;
         await provider.set(key, value);
         expect(await provider.get(key)).toBe(value);
       }
-      
+
       expect(await provider.list()).toHaveLength(specialKeys.length);
     });
 
     it('should handle provider with custom passphrase', async () => {
       const customDir = path.join(testDir, 'custom-passphrase');
       const passphrase = 'my-s3cr3t-p@ssw0rd!';
-      
+
       const provider1 = new LocalSecretProvider({
         storageDir: customDir,
-        passphrase
+        passphrase,
       });
-      
+
       await provider1.set('protected-key', 'protected-value');
-      
+
       // Same passphrase should work
       const provider2 = new LocalSecretProvider({
         storageDir: customDir,
-        passphrase
+        passphrase,
       });
-      
+
       expect(await provider2.get('protected-key')).toBe('protected-value');
-      
+
       // Wrong passphrase should fail
       const provider3 = new LocalSecretProvider({
         storageDir: customDir,
-        passphrase: 'wrong-passphrase'
+        passphrase: 'wrong-passphrase',
       });
-      
+
       await expect(provider3.get('protected-key')).rejects.toThrow();
-      
+
       // No passphrase should also fail
       const provider4 = new LocalSecretProvider({
-        storageDir: customDir
+        storageDir: customDir,
       });
-      
+
       await expect(provider4.get('protected-key')).rejects.toThrow();
     });
   });

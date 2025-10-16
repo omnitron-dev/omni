@@ -18,13 +18,7 @@ export { BubbleMenu, getDefaultBubbleMenuItems } from './BubbleMenu.js';
 export type { BubbleMenuProps, BubbleMenuItem } from './BubbleMenu.js';
 
 export { Statusbar, getDefaultStatusbarItems } from './Statusbar.js';
-export type {
-  StatusbarProps,
-  StatusbarItem,
-  StatusbarText,
-  StatusbarButton,
-  StatusbarCustom,
-} from './Statusbar.js';
+export type { StatusbarProps, StatusbarItem, StatusbarText, StatusbarButton, StatusbarCustom } from './Statusbar.js';
 
 export { MarkdownPreview, markdownPreviewStyles } from './MarkdownPreview.js';
 export type { MarkdownPreviewProps } from './MarkdownPreview.js';

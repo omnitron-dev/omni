@@ -65,14 +65,14 @@ export interface ButtonProps {
   children?: any;
 
   // Icon support - use the new IconProp type (string | IconConfig)
-  icon?: IconProp;              // Main icon (icon-only or with text)
-  leftIcon?: IconProp;          // Left-positioned icon
-  rightIcon?: IconProp;         // Right-positioned icon
-  loadingIcon?: IconProp;       // Loading state icon
+  icon?: IconProp; // Main icon (icon-only or with text)
+  leftIcon?: IconProp; // Left-positioned icon
+  rightIcon?: IconProp; // Right-positioned icon
+  loadingIcon?: IconProp; // Loading state icon
 
   // Icon configuration - default settings applied to all icons
-  iconPreset?: IconPreset;      // Default preset for all icons (stroke, duotone, twotone)
-  iconSize?: IconSize;          // Default size for all icons (xs, sm, md, lg, xl, or number)
+  iconPreset?: IconPreset; // Default preset for all icons (stroke, duotone, twotone)
+  iconSize?: IconSize; // Default size for all icons (xs, sm, md, lg, xl, or number)
   iconAnimation?: IconAnimation; // Default animation for all icons
 
   // Appearance
@@ -257,10 +257,9 @@ export const Button = defineComponent<ButtonProps>((props) => {
   if (process.env.NODE_ENV !== 'production') {
     effect(() => {
       if (isIconOnly() && !props['aria-label'] && !props['aria-labelledby']) {
-        console.warn(
-          '[Button] Icon-only buttons require an aria-label or aria-labelledby for accessibility.',
-          { id: buttonId }
-        );
+        console.warn('[Button] Icon-only buttons require an aria-label or aria-labelledby for accessibility.', {
+          id: buttonId,
+        });
       }
     });
   }
@@ -427,19 +426,20 @@ export const Button = defineComponent<ButtonProps>((props) => {
     // Build icon configuration
     // If iconProp is a string, create a simple config
     // If iconProp is already a config, merge with defaults
-    const iconConfig = typeof iconProp === 'string'
-      ? {
-          name: iconProp,
-          preset: props.iconPreset,
-          size: sizeInPixels,
-          animation: defaultAnimation,
-        }
-      : {
-          preset: props.iconPreset,
-          size: sizeInPixels,
-          animation: defaultAnimation,
-          ...iconProp, // Icon-specific config overrides defaults
-        };
+    const iconConfig =
+      typeof iconProp === 'string'
+        ? {
+            name: iconProp,
+            preset: props.iconPreset,
+            size: sizeInPixels,
+            animation: defaultAnimation,
+          }
+        : {
+            preset: props.iconPreset,
+            size: sizeInPixels,
+            animation: defaultAnimation,
+            ...iconProp, // Icon-specific config overrides defaults
+          };
 
     // Data attribute for position
     const dataPosition = position ? `data-icon-${position}` : 'data-icon';
@@ -545,9 +545,7 @@ export const Button = defineComponent<ButtonProps>((props) => {
     const elementProps = buildElementProps();
 
     // Determine which icon to show
-    const displayIcon = loading
-      ? props.loadingIcon || 'loader'
-      : props.icon;
+    const displayIcon = loading ? props.loadingIcon || 'loader' : props.icon;
 
     const displayLeftIcon = loading ? null : props.leftIcon;
     const displayRightIcon = loading ? null : props.rightIcon;

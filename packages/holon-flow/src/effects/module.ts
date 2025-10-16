@@ -32,7 +32,7 @@ export interface EffectsModule {
     // Effect restriction
     restrict: (
       f: any,
-      allowed: any, // EffectFlags
+      allowed: any // EffectFlags
     ) => any;
 
     // Common effects
@@ -102,121 +102,109 @@ export const effectsModule: ModuleDefinition<EffectsModule> = {
       throttleEffect,
     } = await import('./index.js');
 
-    const {
-      AlgebraicEffect,
-      AlgebraicEffects,
-      scopedEffect,
-      withHandler,
-    } = await import('./algebraic.js');
+    const { AlgebraicEffect, AlgebraicEffects, scopedEffect, withHandler } = await import('./algebraic.js');
 
-    const {
-      EffectTracker,
-      globalTracker,
-      trackedEffect,
-      trackedFlow,
-    } = await import('./tracker.js');
+    const { EffectTracker, globalTracker, trackedEffect, trackedFlow } = await import('./tracker.js');
 
     return {
-    effects: {
-      // Effect creation
-      pure,
-      effectful,
-      effect,
+      effects: {
+        // Effect creation
+        pure,
+        effectful,
+        effect,
 
-      // Effect analysis
-      isPure,
-      hasEffect,
-      combineEffects,
-      analyze: (f) => {
-        const isFlowPure = isPure(f);
-        const flags = (f as any).flags ?? EffectFlags.None;
-        const async = (flags & EffectFlags.Async) !== 0;
+        // Effect analysis
+        isPure,
+        hasEffect,
+        combineEffects,
+        analyze: (f) => {
+          const isFlowPure = isPure(f);
+          const flags = (f as any).flags ?? EffectFlags.None;
+          const async = (flags & EffectFlags.Async) !== 0;
 
-        const sideEffects: string[] = [];
-        if (flags & EffectFlags.IO) sideEffects.push('io');
-        if (flags & EffectFlags.Read) sideEffects.push('read');
-        if (flags & EffectFlags.Write) sideEffects.push('write');
-        if (flags & EffectFlags.Network) sideEffects.push('network');
-        if (flags & EffectFlags.Random) sideEffects.push('random');
-        if (flags & EffectFlags.Time) sideEffects.push('time');
-        if (flags & EffectFlags.Throw) sideEffects.push('throw');
-        if (flags & EffectFlags.Process) sideEffects.push('process');
-        if (flags & EffectFlags.Memory) sideEffects.push('memory');
-        if (flags & EffectFlags.State) sideEffects.push('state');
-        if (flags & EffectFlags.Unsafe) sideEffects.push('unsafe');
-        if (flags & EffectFlags.Database) sideEffects.push('database');
-        if (flags & EffectFlags.Cache) sideEffects.push('cache');
-        if (flags & EffectFlags.Queue) sideEffects.push('queue');
-        if (flags & EffectFlags.Stream) sideEffects.push('stream');
+          const sideEffects: string[] = [];
+          if (flags & EffectFlags.IO) sideEffects.push('io');
+          if (flags & EffectFlags.Read) sideEffects.push('read');
+          if (flags & EffectFlags.Write) sideEffects.push('write');
+          if (flags & EffectFlags.Network) sideEffects.push('network');
+          if (flags & EffectFlags.Random) sideEffects.push('random');
+          if (flags & EffectFlags.Time) sideEffects.push('time');
+          if (flags & EffectFlags.Throw) sideEffects.push('throw');
+          if (flags & EffectFlags.Process) sideEffects.push('process');
+          if (flags & EffectFlags.Memory) sideEffects.push('memory');
+          if (flags & EffectFlags.State) sideEffects.push('state');
+          if (flags & EffectFlags.Unsafe) sideEffects.push('unsafe');
+          if (flags & EffectFlags.Database) sideEffects.push('database');
+          if (flags & EffectFlags.Cache) sideEffects.push('cache');
+          if (flags & EffectFlags.Queue) sideEffects.push('queue');
+          if (flags & EffectFlags.Stream) sideEffects.push('stream');
 
-        return {
-          pure: isFlowPure,
-          effects: flags,
-          sideEffects,
-          async,
-        };
+          return {
+            pure: isFlowPure,
+            effects: flags,
+            sideEffects,
+            async,
+          };
+        },
+
+        // Effect restriction
+        restrict: (f, allowed) => {
+          const flags = (f as any).flags ?? EffectFlags.None;
+          if ((flags & ~allowed) !== 0) {
+            throw new Error(`Flow has disallowed effects. Has: ${flags}, Allowed: ${allowed}`);
+          }
+          return f;
+        },
+
+        // Common effect creators
+        io: (fn) => {
+          const ioFlow = effectful(fn, EffectFlags.IO);
+          return ioFlow;
+        },
+
+        network: (fn) => {
+          const networkFlow = effectful(fn, EffectFlags.Network | EffectFlags.Async);
+          return networkFlow;
+        },
+
+        random: (fn) => {
+          const randomFlow = effectful(fn, EffectFlags.Random);
+          return randomFlow;
+        },
+
+        time: (fn) => {
+          const timeFlow = effectful(fn, EffectFlags.Time);
+          return timeFlow;
+        },
+
+        // Effect combinators
+        parallelLimit,
+        raceTimeout,
+        batch,
+        debounceEffect,
+        throttleEffect,
+
+        // Algebraic effects
+        AlgebraicEffect,
+        AlgebraicEffects,
+        withHandler,
+        scopedEffect,
+
+        // Effect tracking
+        EffectTracker,
+        globalTracker,
+        trackedEffect,
+        trackedFlow,
+
+        // Effect registry
+        Effects,
+        EffectFlags,
+        EffectCategory: 'io' as any,
+
+        // IO monad
+        IO,
       },
-
-      // Effect restriction
-      restrict: (f, allowed) => {
-        const flags = (f as any).flags ?? EffectFlags.None;
-        if ((flags & ~allowed) !== 0) {
-          throw new Error(
-            `Flow has disallowed effects. Has: ${flags}, Allowed: ${allowed}`,
-          );
-        }
-        return f;
-      },
-
-      // Common effect creators
-      io: (fn) => {
-        const ioFlow = effectful(fn, EffectFlags.IO);
-        return ioFlow;
-      },
-
-      network: (fn) => {
-        const networkFlow = effectful(fn, EffectFlags.Network | EffectFlags.Async);
-        return networkFlow;
-      },
-
-      random: (fn) => {
-        const randomFlow = effectful(fn, EffectFlags.Random);
-        return randomFlow;
-      },
-
-      time: (fn) => {
-        const timeFlow = effectful(fn, EffectFlags.Time);
-        return timeFlow;
-      },
-
-      // Effect combinators
-      parallelLimit,
-      raceTimeout,
-      batch,
-      debounceEffect,
-      throttleEffect,
-
-      // Algebraic effects
-      AlgebraicEffect,
-      AlgebraicEffects,
-      withHandler,
-      scopedEffect,
-
-      // Effect tracking
-      EffectTracker,
-      globalTracker,
-      trackedEffect,
-      trackedFlow,
-
-      // Effect registry
-      Effects,
-      EffectFlags,
-      EffectCategory: 'io' as any,
-
-      // IO monad
-      IO,
-    },
-  };
+    };
   },
 
   config: {
@@ -261,12 +249,12 @@ export function createEffectsModule<T extends object>(
     version?: string;
     description?: string;
     dependencies?: Array<string | symbol>;
-  },
+  }
 ): ModuleDefinition<T> {
   return createDependentModule<EffectsModule, T>(
     Symbol.for(`holon:effects-${name}`),
     Symbol.for('holon:flow-effects'),
     (ctx, effectsModule) => factory(ctx, effectsModule.effects),
-    options,
+    options
   );
 }

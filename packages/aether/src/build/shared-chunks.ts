@@ -1517,7 +1517,7 @@ export class SharedChunkManager {
 
     for (const [moduleName, { dependencies }] of this.modules) {
       // Filter out common deps that are in vendor chunk
-      const uniqueDeps = dependencies.filter(d => !commonDeps.has(d));
+      const uniqueDeps = dependencies.filter((d) => !commonDeps.has(d));
       const depsKey = uniqueDeps.sort().join(',');
 
       if (!dependencyGroups.has(depsKey)) {

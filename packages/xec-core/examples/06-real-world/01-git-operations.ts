@@ -1,8 +1,8 @@
 /**
  * 01. Git Operations - Работа с Git
- * 
+ *
  * Показывает реальные сценарии работы с Git.
- * 
+ *
  * ВАЖНО: В @xec-sh/core нет встроенных интерактивных утилит.
  * Для интерактивного ввода используются стандартные средства Node.js.
  */
@@ -25,7 +25,7 @@ async function checkGitStatus() {
   const [branch, status, lastCommit] = await Promise.all([
     $`git branch --show-current`,
     $`git status --short`,
-    $`git log --oneline -1`
+    $`git log --oneline -1`,
   ]);
 
   console.log(`Ветка: ${branch.stdout.trim()}`);
@@ -53,27 +53,25 @@ async function simpleCommit(commitType: string, commitMessage: string) {
   const files = status.stdout
     .trim()
     .split('\n')
-    .map(line => ({
+    .map((line) => ({
       status: line.substring(0, 2).trim(),
-      file: line.substring(3)
+      file: line.substring(3),
     }));
 
   // Показываем изменения
   console.log('\nИзменённые файлы:');
   files.forEach(({ status, file }) => {
     const statusMap: { [key: string]: string } = {
-      'M': 'Модифицирован',
-      'A': 'Добавлен',
-      'D': 'Удалён',
-      '??': 'Новый'
+      M: 'Модифицирован',
+      A: 'Добавлен',
+      D: 'Удалён',
+      '??': 'Новый',
     };
     console.log(`  [${statusMap[status] || status}] ${file}`);
   });
 
   // Добавляем все изменённые файлы (кроме новых)
-  const filesToAdd = files
-    .filter(f => f.status !== '??')
-    .map(f => f.file);
+  const filesToAdd = files.filter((f) => f.status !== '??').map((f) => f.file);
 
   if (filesToAdd.length > 0) {
     await $`git add ${filesToAdd}`;
@@ -120,7 +118,6 @@ async function gitDeploy(branch: string = 'main', autoStash: boolean = true) {
     // Показываем информацию о версии
     const version = await $`git describe --tags --always`;
     console.log(`\nРазвёрнута версия: ${version.stdout.trim()}`);
-
   } catch (error) {
     console.error('❌ Ошибка развёртывания');
     throw error;
@@ -147,8 +144,8 @@ async function cloneMultipleRepos(repos: { name: string; url: string }[]) {
   );
 
   // Отчёт
-  const successful = results.filter(r => r.status === 'success').length;
-  const failed = results.filter(r => r.status === 'failed').length;
+  const successful = results.filter((r) => r.status === 'success').length;
+  const failed = results.filter((r) => r.status === 'failed').length;
 
   console.log(`\nРезультат: успешно ${successful}, ошибок ${failed}`);
 }
@@ -240,7 +237,7 @@ async function branchManagement(autoDelete: boolean = false) {
   if (merged.ok && merged.stdout.trim()) {
     console.log('\nСлитые ветки:');
     const mergedBranches = merged.stdout.trim().split('\n');
-    mergedBranches.forEach(branch => console.log(`  - ${branch.trim()}`));
+    mergedBranches.forEach((branch) => console.log(`  - ${branch.trim()}`));
 
     if (autoDelete) {
       console.log('\nУдаление слитых веток...');
@@ -338,5 +335,5 @@ export {
   gitBisectHelper,
   branchManagement,
   analyzeGitHistory,
-  cloneMultipleRepos
+  cloneMultipleRepos,
 };

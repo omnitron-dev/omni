@@ -98,14 +98,14 @@ export class DockerAdapter extends BaseAdapter {
         AttachStdout: true,
         AttachStderr: true,
         Tty: false,
-        ...config.defaultExecOptions
+        ...config.defaultExecOptions,
       },
       autoCreate: {
         enabled: false,
         image: 'alpine:latest',
         autoRemove: true,
-        ...config.autoCreate
-      }
+        ...config.autoCreate,
+      },
     };
   }
 
@@ -115,7 +115,7 @@ export class DockerAdapter extends BaseAdapter {
       '/usr/local/bin/docker',
       '/usr/bin/docker',
       '/opt/homebrew/bin/docker',
-      'docker' // fallback to PATH
+      'docker', // fallback to PATH
     ];
 
     for (const path of paths) {
@@ -171,7 +171,7 @@ export class DockerAdapter extends BaseAdapter {
         this.emitAdapterEvent('docker:run', {
           image: dockerOptions.image,
           container: dockerOptions.container,
-          command: this.buildCommandString(mergedCommand)
+          command: this.buildCommandString(mergedCommand),
         });
 
         const runArgs = this.buildDockerRunArgs(dockerOptions, mergedCommand);
@@ -182,19 +182,19 @@ export class DockerAdapter extends BaseAdapter {
         this.validateContainerName(dockerOptions.container);
 
         // Check if we need to create a temporary container
-        if (this.dockerConfig.autoCreate?.enabled && !await this.containerExists(containerName)) {
+        if (this.dockerConfig.autoCreate?.enabled && !(await this.containerExists(containerName))) {
           containerName = await this.createTempContainer();
 
           // Emit docker:run event for container creation
           this.emitAdapterEvent('docker:run', {
             image: this.dockerConfig.autoCreate.image,
             container: containerName,
-            command: 'sh'
+            command: 'sh',
           });
         }
 
         // Check for container existence before executing
-        if (!await this.containerExists(containerName)) {
+        if (!(await this.containerExists(containerName))) {
           const endTime = Date.now();
           const errorMessage = `Container '${containerName}' not found`;
 
@@ -218,7 +218,7 @@ export class DockerAdapter extends BaseAdapter {
         // Emit docker:exec event
         this.emitAdapterEvent('docker:exec', {
           container: containerName,
-          command: this.buildCommandString(mergedCommand)
+          command: this.buildCommandString(mergedCommand),
         });
 
         // Build docker exec command
@@ -293,16 +293,21 @@ export class DockerAdapter extends BaseAdapter {
     }
 
     // Check for path traversal attempts
-    if (containerName.includes('..') ||
-      containerName.startsWith('/') ||
-      containerName.match(/^[A-Za-z]:\\/)) { // Windows absolute path
+    if (containerName.includes('..') || containerName.startsWith('/') || containerName.match(/^[A-Za-z]:\\/)) {
+      // Windows absolute path
       throw new DockerError(containerName, 'validate', new Error('Container name contains invalid path characters'));
     }
 
     // Docker container names must match [a-zA-Z0-9][a-zA-Z0-9_.-]*
     const validNamePattern = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/;
     if (!validNamePattern.test(containerName)) {
-      throw new DockerError(containerName, 'validate', new Error('Container name must start with alphanumeric and contain only alphanumeric, underscore, period, or hyphen'));
+      throw new DockerError(
+        containerName,
+        'validate',
+        new Error(
+          'Container name must start with alphanumeric and contain only alphanumeric, underscore, period, or hyphen'
+        )
+      );
     }
   }
 
@@ -316,7 +321,10 @@ export class DockerAdapter extends BaseAdapter {
   /**
    * Get optimal TTY settings based on environment and command
    */
-  private getTTYSettings(dockerOptions: DockerAdapterOptions, command: Command): { interactive: boolean; tty: boolean } {
+  private getTTYSettings(
+    dockerOptions: DockerAdapterOptions,
+    command: Command
+  ): { interactive: boolean; tty: boolean } {
     const envSupportsTTY = this.supportsTTY();
     const requestedTTY = dockerOptions.tty ?? this.dockerConfig.defaultExecOptions?.Tty ?? false;
     const hasStdin = !!command.stdin;
@@ -328,7 +336,7 @@ export class DockerAdapter extends BaseAdapter {
 
     return {
       interactive: hasStdin || (requestedTTY && envSupportsTTY),
-      tty: requestedTTY && envSupportsTTY
+      tty: requestedTTY && envSupportsTTY,
     };
   }
 
@@ -345,8 +353,9 @@ export class DockerAdapter extends BaseAdapter {
     const containerName = `temp-ush-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const createArgs = [
       'create',
-      '--name', containerName,
-      '-it' // Interactive + TTY for better command support
+      '--name',
+      containerName,
+      '-it', // Interactive + TTY for better command support
     ];
 
     if (this.dockerConfig.autoCreate?.volumes) {
@@ -388,11 +397,7 @@ export class DockerAdapter extends BaseAdapter {
     return options.image ? 'run' : 'exec';
   }
 
-  private buildDockerExecArgs(
-    container: string,
-    dockerOptions: DockerAdapterOptions,
-    command: Command
-  ): string[] {
+  private buildDockerExecArgs(container: string, dockerOptions: DockerAdapterOptions, command: Command): string[] {
     const args = ['exec'];
 
     // Get optimal TTY settings
@@ -457,10 +462,7 @@ export class DockerAdapter extends BaseAdapter {
     return args;
   }
 
-  private buildDockerRunArgs(
-    dockerOptions: DockerAdapterOptions,
-    command: Command
-  ): string[] {
+  private buildDockerRunArgs(dockerOptions: DockerAdapterOptions, command: Command): string[] {
     const args = ['run'];
 
     // Remove container after execution
@@ -539,18 +541,16 @@ export class DockerAdapter extends BaseAdapter {
 
     const stdoutHandler = new StreamHandler({
       encoding: this.config.encoding,
-      maxBuffer: this.config.maxBuffer
+      maxBuffer: this.config.maxBuffer,
     });
 
     const stderrHandler = new StreamHandler({
       encoding: this.config.encoding,
-      maxBuffer: this.config.maxBuffer
+      maxBuffer: this.config.maxBuffer,
     });
 
     // For compose commands, we might need to pass environment variables
-    const env = args[0] === 'compose' && command.env
-      ? { ...process.env, ...command.env }
-      : process.env;
+    const env = args[0] === 'compose' && command.env ? { ...process.env, ...command.env } : process.env;
 
     // Check if we're running with TTY
     const hasTTY = args.includes('-t');
@@ -565,7 +565,7 @@ export class DockerAdapter extends BaseAdapter {
       cwd: command.cwd || process.cwd(), // Use command's cwd if provided
       windowsHide: true,
       // Always pipe stdout and stderr to capture output, only inherit stdin for TTY
-      stdio: useInheritStdin ? ['inherit', 'pipe', 'pipe'] : ['pipe', 'pipe', 'pipe']
+      stdio: useInheritStdin ? ['inherit', 'pipe', 'pipe'] : ['pipe', 'pipe', 'pipe'],
     });
 
     // Handle stdin only if not in inherit mode
@@ -583,14 +583,14 @@ export class DockerAdapter extends BaseAdapter {
       const stdoutTransform = stdoutHandler.createTransform();
       child.stdout.pipe(stdoutTransform);
       // Consume the transform stream to prevent backpressure
-      stdoutTransform.on('data', () => { });
+      stdoutTransform.on('data', () => {});
     }
 
     if (child.stderr) {
       const stderrTransform = stderrHandler.createTransform();
       child.stderr.pipe(stderrTransform);
       // Consume the transform stream to prevent backpressure
-      stderrTransform.on('data', () => { });
+      stderrTransform.on('data', () => {});
     }
 
     // Wait for completion
@@ -629,7 +629,7 @@ export class DockerAdapter extends BaseAdapter {
           stdout: stdoutHandler.getContent(),
           stderr: stderrHandler.getContent(),
           exitCode: code ?? 0,
-          signal
+          signal,
         };
 
         resolve(result);
@@ -671,7 +671,11 @@ export class DockerAdapter extends BaseAdapter {
     const commandForThrowCheck = context?.originalCommand ?? command;
     if (this.shouldThrowOnNonZeroExit(commandForThrowCheck, exitCode)) {
       const container = context?.container || 'unknown';
-      throw new DockerError(container, 'execute', new Error(`Command failed with exit code ${exitCode}: ${sanitizeCommandForError(command)}`));
+      throw new DockerError(
+        container,
+        'execute',
+        new Error(`Command failed with exit code ${exitCode}: ${sanitizeCommandForError(command)}`)
+      );
     }
 
     return result;
@@ -685,7 +689,7 @@ export class DockerAdapter extends BaseAdapter {
           // Emit temp cleanup event
           this.emitAdapterEvent('temp:cleanup', {
             path: container,
-            type: 'directory'
+            type: 'directory',
           });
 
           await this.executeDockerCommand(['rm', '-f', container], {});
@@ -900,7 +904,7 @@ export class DockerAdapter extends BaseAdapter {
 
     // Execute the command with cwd set to the context directory
     const result = await this.executeDockerCommand(args, {
-      cwd: options.context || process.cwd()
+      cwd: options.context || process.cwd(),
     });
 
     if (result.exitCode !== 0) {
@@ -1012,11 +1016,7 @@ export class DockerAdapter extends BaseAdapter {
   /**
    * Stream container logs
    */
-  async streamLogs(
-    container: string,
-    onData: (data: string) => void,
-    options: DockerLogsOptions = {}
-  ): Promise<void> {
+  async streamLogs(container: string, onData: (data: string) => void, options: DockerLogsOptions = {}): Promise<void> {
     const args = ['logs'];
 
     // Only add -f flag if follow is explicitly true
@@ -1064,7 +1064,7 @@ export class DockerAdapter extends BaseAdapter {
           // Keep the last incomplete line in the buffer
           buffer = lines.pop() || '';
           // Send complete lines
-          lines.forEach(line => {
+          lines.forEach((line) => {
             if (line && !resolved) {
               safeOnData(line + '\n');
             }
@@ -1122,7 +1122,8 @@ export class DockerAdapter extends BaseAdapter {
             if (buffer) {
               safeOnData(buffer);
             }
-            if (code === 0 || code === 143) { // 143 is SIGTERM which is normal when stopping container
+            if (code === 0 || code === 143) {
+              // 143 is SIGTERM which is normal when stopping container
               resolve();
             } else {
               reject(new DockerError(container, 'logs', new Error('Log streaming failed')));
@@ -1170,13 +1171,7 @@ export class DockerAdapter extends BaseAdapter {
    * Get container stats
    */
   async getStats(container: string): Promise<any> {
-    const result = await this.executeDockerCommand([
-      'stats',
-      '--no-stream',
-      '--format',
-      'json',
-      container
-    ], {});
+    const result = await this.executeDockerCommand(['stats', '--no-stream', '--format', 'json', container], {});
 
     if (result.exitCode !== 0) {
       throw new DockerError(container, 'stats', new Error(result.stderr));
@@ -1247,12 +1242,7 @@ export class DockerAdapter extends BaseAdapter {
    * List Docker networks
    */
   async listNetworks(): Promise<string[]> {
-    const result = await this.executeDockerCommand([
-      'network',
-      'ls',
-      '--format',
-      '{{.Name}}'
-    ], {});
+    const result = await this.executeDockerCommand(['network', 'ls', '--format', '{{.Name}}'], {});
 
     if (result.exitCode !== 0) {
       throw new DockerError('', 'network ls', new Error(result.stderr));
@@ -1308,12 +1298,7 @@ export class DockerAdapter extends BaseAdapter {
    * List Docker volumes
    */
   async listVolumes(): Promise<string[]> {
-    const result = await this.executeDockerCommand([
-      'volume',
-      'ls',
-      '--format',
-      '{{.Name}}'
-    ], {});
+    const result = await this.executeDockerCommand(['volume', 'ls', '--format', '{{.Name}}'], {});
 
     if (result.exitCode !== 0) {
       throw new DockerError('', 'volume ls', new Error(result.stderr));
@@ -1399,7 +1384,7 @@ export class DockerAdapter extends BaseAdapter {
       }
 
       // Wait a bit before checking again
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
 
     throw new DockerError(container, 'health', new Error('Timeout waiting for container to be healthy'));
@@ -1421,7 +1406,7 @@ export class DockerAdapter extends BaseAdapter {
     const result = await this.execute({
       command: cmd,
       args,
-      adapterOptions: { type: 'docker', container }
+      adapterOptions: { type: 'docker', container },
     });
 
     if (result.exitCode !== 0) {

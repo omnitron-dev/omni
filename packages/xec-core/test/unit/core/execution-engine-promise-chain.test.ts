@@ -9,7 +9,7 @@ describe('ExecutionEngine - Promise Chain Handling', () => {
   function createTestSetup() {
     const engine = new ExecutionEngine({
       defaultTimeout: 5000,
-      throwOnNonZeroExit: true
+      throwOnNonZeroExit: true,
     });
     const mockAdapter = new MockAdapter();
     mockAdapter.mockDefault({ stdout: '', stderr: '', exitCode: 0 });
@@ -30,7 +30,7 @@ describe('ExecutionEngine - Promise Chain Handling', () => {
       global.gc();
     }
     // Return a promise to ensure Jest waits
-    return new Promise(resolve => setTimeout(resolve, 0));
+    return new Promise((resolve) => setTimeout(resolve, 0));
   });
 
   // This second beforeEach was redundant and causing issues by clearing mocks after setup
@@ -87,13 +87,13 @@ describe('ExecutionEngine - Promise Chain Handling', () => {
       mockAdapter.mockSuccess(/sh -c "echo multi-text"/, 'multi output\n');
 
       const promise = $mock`echo multi-text`;
-      
+
       // Call .text() multiple times
       const text1Promise = promise.text();
       const text2Promise = promise.text();
-      
+
       const [text1, text2] = await Promise.all([text1Promise, text2Promise]);
-      
+
       expect(text1).toBe('multi output');
       expect(text2).toBe('multi output');
     });
@@ -120,10 +120,10 @@ describe('ExecutionEngine - Promise Chain Handling', () => {
       const { mockAdapter, $mock } = createTestSetup();
       // Use regex to match echo with JSON content
       mockAdapter.mockSuccess(/sh -c "echo json-success"/, '{"key": "value"}\n');
-      
+
       const promise = $mock`echo json-success`;
       const json = await promise.json();
-      
+
       expect(json).toEqual({ key: 'value' });
     });
 
@@ -132,7 +132,7 @@ describe('ExecutionEngine - Promise Chain Handling', () => {
       mockAdapter.mockSuccess(/sh -c "echo invalid"/, 'not json\n');
 
       const promise = $mock`echo invalid`;
-      
+
       // Should reject with parse error, not unhandled rejection
       await expect(promise.json()).rejects.toThrow('Failed to parse JSON');
     });
@@ -162,13 +162,13 @@ describe('ExecutionEngine - Promise Chain Handling', () => {
       mockAdapter.mockSuccess(/sh -c "echo json-multi"/, '{"count": 42}\n');
 
       const promise = $mock`echo json-multi`;
-      
+
       // Call .json() multiple times
       const json1Promise = promise.json();
       const json2Promise = promise.json();
-      
+
       const [json1, json2] = await Promise.all([json1Promise, json2Promise]);
-      
+
       expect(json1).toEqual({ count: 42 });
       expect(json2).toEqual({ count: 42 });
     });
@@ -178,11 +178,11 @@ describe('ExecutionEngine - Promise Chain Handling', () => {
       mockAdapter.mockSuccess(/sh -c "echo bad"/, 'invalid { json\n');
 
       const promise = $mock`echo bad`;
-      
+
       // Create multiple .json() promises
       const json1Promise = promise.json();
       const json2Promise = promise.json();
-      
+
       // Both should reject with parse error
       await expect(json1Promise).rejects.toThrow('Failed to parse JSON');
       await expect(json2Promise).rejects.toThrow('Failed to parse JSON');
@@ -245,14 +245,14 @@ describe('ExecutionEngine - Promise Chain Handling', () => {
       mockAdapter.mockSuccess(/sh -c "echo data"/, '{"valid": "json"}\n');
 
       const promise = $mock`echo data`;
-      
+
       // Call both methods
       const textPromise = promise.text();
       const jsonPromise = promise.json();
-      
+
       const text = await textPromise;
       const json = await jsonPromise;
-      
+
       expect(text).toBe('{"valid": "json"}');
       expect(json).toEqual({ valid: 'json' });
     });
@@ -271,7 +271,7 @@ describe('ExecutionEngine - Promise Chain Handling', () => {
         caught = true;
         expect(error).toBeInstanceOf(CommandError);
       }
-      
+
       expect(caught).toBe(true);
     });
 
@@ -287,7 +287,7 @@ describe('ExecutionEngine - Promise Chain Handling', () => {
         caught = true;
         expect(error).toBeInstanceOf(CommandError);
       }
-      
+
       expect(caught).toBe(true);
     });
 
@@ -304,7 +304,7 @@ describe('ExecutionEngine - Promise Chain Handling', () => {
         expect(error).toBeInstanceOf(Error);
         expect((error as Error).message).toContain('Failed to parse JSON');
       }
-      
+
       expect(caught).toBe(true);
     });
   });
@@ -316,15 +316,15 @@ describe('ExecutionEngine - Promise Chain Handling', () => {
       mockAdapter.mockSuccess(/sh -c "git --version"/, 'git version 2.40.0\n');
       mockAdapter.mockFailure(/sh -c "go version"/, 'go: command not found', 127);
       mockAdapter.mockSuccess(/sh -c "node --version"/, 'v20.11.0\n');
-      
+
       const tools = [
         { name: 'git', cmd: 'git --version' },
         { name: 'go', cmd: 'go version' },
-        { name: 'node', cmd: 'node --version' }
+        { name: 'node', cmd: 'node --version' },
       ];
-      
+
       const results: Record<string, string | null> = {};
-      
+
       for (const tool of tools) {
         try {
           // Using template literals with mock adapter
@@ -334,7 +334,7 @@ describe('ExecutionEngine - Promise Chain Handling', () => {
           results[tool.name] = null;
         }
       }
-      
+
       expect(results['git']).toBe('git version 2.40.0');
       expect(results['go']).toBeNull();
       expect(results['node']).toBe('v20.11.0');
@@ -346,15 +346,15 @@ describe('ExecutionEngine - Promise Chain Handling', () => {
       mockAdapter.mockSuccess(/npm --version/, '10.2.4\n');
       mockAdapter.mockFailure(/cargo --version/, 'cargo: command not found', 127);
       mockAdapter.mockSuccess(/python --version/, 'Python 3.11.0\n');
-      
+
       const checks = [
         $mock`npm --version`.text().catch(() => null),
         $mock`cargo --version`.text().catch(() => null),
-        $mock`python --version`.text().catch(() => null)
+        $mock`python --version`.text().catch(() => null),
       ];
-      
+
       const results = await Promise.all(checks);
-      
+
       expect(results[0]).toBe('10.2.4');
       expect(results[1]).toBeNull();
       expect(results[2]).toBe('Python 3.11.0');

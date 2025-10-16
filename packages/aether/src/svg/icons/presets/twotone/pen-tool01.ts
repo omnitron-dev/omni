@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const PenTool01Icon: IconDefinition = {
-  "id": "pen-tool01",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M6.5 20.439L7.90613 15.166C8.19164 14.0954 8.33439 13.56 8.73856 13.2495C9.14274 12.939 9.69677 12.939 10.8048 12.939H13.1952C14.3032 12.939 14.8573 12.939 15.2614 13.2495C15.6656 13.56 15.8084 14.0954 16.0939 15.166L17.5 20.439M9.5 12.939L11.0769 9.29992C11.4701 8.39262 11.6667 7.93896 12 7.93896C12.3333 7.93896 12.5299 8.39262 12.9231 9.29992L14.5 12.939\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "twotone",
-    "originalName": "PenTool01Icon",
-    "elementsCount": 2,
-    "hasOpacity": true,
-    "hasFill": false
-  }
+  id: 'pen-tool01',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke-linecap="round" stroke-linejoin="round" />\n    <path opacity="0.4" d="M6.5 20.439L7.90613 15.166C8.19164 14.0954 8.33439 13.56 8.73856 13.2495C9.14274 12.939 9.69677 12.939 10.8048 12.939H13.1952C14.3032 12.939 14.8573 12.939 15.2614 13.2495C15.6656 13.56 15.8084 14.0954 16.0939 15.166L17.5 20.439M9.5 12.939L11.0769 9.29992C11.4701 8.39262 11.6667 7.93896 12 7.93896C12.3333 7.93896 12.5299 8.39262 12.9231 9.29992L14.5 12.939" stroke-linecap="round" stroke-linejoin="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'twotone',
+    originalName: 'PenTool01Icon',
+    elementsCount: 2,
+    hasOpacity: true,
+    hasFill: false,
+  },
 };

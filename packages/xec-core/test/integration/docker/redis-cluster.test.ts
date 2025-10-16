@@ -39,7 +39,7 @@ describe('Docker Redis Cluster', () => {
     cluster = engine.docker().redisCluster({
       masters: 3,
       replicas: 1,
-      containerPrefix: 'test-redis-cluster'
+      containerPrefix: 'test-redis-cluster',
     });
 
     // Start the cluster
@@ -90,9 +90,9 @@ describe('Docker Redis Cluster', () => {
       containerPrefix: 'test-redis-custom',
       basePort: 8001,
       redisConfig: {
-        'maxmemory': '100mb',
-        'maxmemory-policy': 'allkeys-lru'
-      }
+        maxmemory: '100mb',
+        'maxmemory-policy': 'allkeys-lru',
+      },
     });
 
     await cluster.start();
@@ -120,7 +120,7 @@ describe('Docker Redis Cluster', () => {
       masters: 3,
       replicas: 0,
       basePort: 9001,
-      containerPrefix: 'test-redis-conn'
+      containerPrefix: 'test-redis-conn',
     });
 
     await cluster.start();
@@ -135,14 +135,14 @@ describe('Docker Redis Cluster', () => {
     expect(() => {
       engine.docker().redisCluster({
         masters: 2, // Less than minimum
-        replicas: 0
+        replicas: 0,
       });
     }).toThrow('Redis cluster requires at least 3 master nodes');
 
     expect(() => {
       engine.docker().redisCluster({
         masters: 1,
-        replicas: 1 // Total nodes = 2, less than minimum
+        replicas: 1, // Total nodes = 2, less than minimum
       });
     }).toThrow('Redis cluster requires at least 3 master nodes');
   });

@@ -474,7 +474,7 @@ export class DockerBuildFluentAPI implements FluentAPIBuilder<DockerBuildConfig>
     const scanners = [
       { cmd: `docker scout cves ${image}`, name: 'Docker Scout' },
       { cmd: `trivy image ${image}`, name: 'Trivy' },
-      { cmd: `docker scan ${image}`, name: 'Docker Scan' }
+      { cmd: `docker scan ${image}`, name: 'Docker Scan' },
     ];
 
     for (const scanner of scanners) {
@@ -495,7 +495,8 @@ export class DockerBuildFluentAPI implements FluentAPIBuilder<DockerBuildConfig>
       throw new Error('[xec-core] Image tag required for inspection');
     }
 
-    const result = await this.engine.run`docker image inspect ${this.config.tag} --format '{{.Size}},{{len .RootFS.Layers}}'`;
+    const result = await this.engine
+      .run`docker image inspect ${this.config.tag} --format '{{.Size}},{{len .RootFS.Layers}}'`;
     const [sizeBytes, layerCount] = result.stdout.trim().split(',');
 
     // Convert size to human-readable format

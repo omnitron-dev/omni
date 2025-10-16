@@ -30,7 +30,7 @@ describe('Retry with Different Adapters', () => {
   describe('MockAdapter with retry', () => {
     test('should retry with MockAdapter', async () => {
       let attempts = 0;
-      
+
       // Create custom mock adapter that tracks attempts
       const mockAdapter = {
         async execute(cmd: any) {
@@ -41,7 +41,7 @@ describe('Retry with Different Adapters', () => {
               exitCode: 1,
               stdout: '',
               stderr: 'Service temporarily unavailable',
-              adapter: 'mock'
+              adapter: 'mock',
             });
           }
           return createResult({
@@ -49,10 +49,12 @@ describe('Retry with Different Adapters', () => {
             exitCode: 0,
             stdout: 'Service is up!',
             stderr: '',
-            adapter: 'mock'
+            adapter: 'mock',
           });
         },
-        async isAvailable() { return true; }
+        async isAvailable() {
+          return true;
+        },
       };
 
       const engine = new ExecutionEngine();
@@ -64,8 +66,8 @@ describe('Retry with Different Adapters', () => {
         retry: {
           maxRetries: 3,
           initialDelay: 10,
-          isRetryable: (result) => result.stderr.includes('temporarily unavailable')
-        }
+          isRetryable: (result) => result.stderr.includes('temporarily unavailable'),
+        },
       });
 
       expect(attempts).toBe(3);
@@ -75,7 +77,7 @@ describe('Retry with Different Adapters', () => {
 
     test('should respect MockAdapter error configuration', async () => {
       const mockAdapter = new MockAdapter();
-      
+
       // Configure to always fail with specific error
       mockAdapter.mockFailure(/.*/, 'Mock network error', 1);
 
@@ -87,9 +89,9 @@ describe('Retry with Different Adapters', () => {
         adapter: 'mock',
         retry: {
           maxRetries: 2,
-          initialDelay: 10
+          initialDelay: 10,
         },
-        nothrow: true
+        nothrow: true,
       });
 
       // MockAdapter should have thrown, but nothrow catches it
@@ -106,23 +108,25 @@ describe('Retry with Different Adapters', () => {
           const sshErrors = [
             { stderr: 'ssh: connect to host server.com port 22: Connection refused', exitCode: 255 },
             { stderr: 'ssh: connect to host server.com port 22: Connection timed out', exitCode: 255 },
-            { stderr: '', stdout: 'Connected successfully', exitCode: 0 }
+            { stderr: '', stdout: 'Connected successfully', exitCode: 0 },
           ];
-          
+
           const attemptIndex = Math.min(this.attempts || 0, sshErrors.length - 1);
           this.attempts = (this.attempts || 0) + 1;
-          
+
           const error = sshErrors[attemptIndex]!;
           return createResult({
             command: cmd.command,
             exitCode: error.exitCode,
             stdout: error.stdout || '',
             stderr: error.stderr || '',
-            adapter: 'ssh'
+            adapter: 'ssh',
           });
         },
-        async isAvailable() { return true; },
-        attempts: 0
+        async isAvailable() {
+          return true;
+        },
+        attempts: 0,
       };
 
       const engine = new ExecutionEngine();
@@ -141,14 +145,13 @@ describe('Retry with Different Adapters', () => {
               'connection timed out',
               'connection reset by peer',
               'no route to host',
-              'host key verification failed' // Might want to retry with different key
+              'host key verification failed', // Might want to retry with different key
             ];
-            
+
             const stderr = result.stderr.toLowerCase();
-            return result.exitCode === 255 && 
-                   sshRetryableErrors.some(error => stderr.includes(error));
-          }
-        }
+            return result.exitCode === 255 && sshRetryableErrors.some((error) => stderr.includes(error));
+          },
+        },
       });
 
       expect(result.exitCode).toBe(0);
@@ -164,23 +167,25 @@ describe('Retry with Different Adapters', () => {
           const dockerErrors = [
             { stderr: 'docker: Error response from daemon: conflict: container name already in use', exitCode: 125 },
             { stderr: 'docker: Cannot connect to the Docker daemon. Is the docker daemon running?', exitCode: 1 },
-            { stderr: '', stdout: 'Container started successfully', exitCode: 0 }
+            { stderr: '', stdout: 'Container started successfully', exitCode: 0 },
           ];
-          
+
           const attemptIndex = Math.min(this.attempts || 0, dockerErrors.length - 1);
           this.attempts = (this.attempts || 0) + 1;
-          
+
           const error = dockerErrors[attemptIndex]!;
           return createResult({
             command: cmd.command,
             exitCode: error.exitCode,
             stdout: error.stdout || '',
             stderr: error.stderr || '',
-            adapter: 'docker'
+            adapter: 'docker',
           });
         },
-        async isAvailable() { return true; },
-        attempts: 0
+        async isAvailable() {
+          return true;
+        },
+        attempts: 0,
       };
 
       const engine = new ExecutionEngine();
@@ -195,26 +200,26 @@ describe('Retry with Different Adapters', () => {
           isRetryable: (result) => {
             // Docker-specific retry logic
             const stderr = result.stderr.toLowerCase();
-            
+
             // Don't retry on image not found
             if (stderr.includes('image not found') || stderr.includes('no such image')) {
               return false;
             }
-            
+
             // Retry on daemon connection issues
             if (stderr.includes('cannot connect to the docker daemon')) {
               return true;
             }
-            
+
             // Retry on container name conflicts (maybe cleanup and retry)
             if (stderr.includes('container name already in use')) {
               return true;
             }
-            
+
             // Retry on exit code 125 (docker daemon error)
             return result.exitCode === 125;
-          }
-        }
+          },
+        },
       });
 
       expect(result.exitCode).toBe(0);
@@ -236,10 +241,12 @@ describe('Retry with Different Adapters', () => {
             exitCode: 1,
             stdout: '',
             stderr: 'Primary adapter failed',
-            adapter: 'primary'
+            adapter: 'primary',
           });
         },
-        async isAvailable() { return true; }
+        async isAvailable() {
+          return true;
+        },
       };
 
       const fallbackAdapter = {
@@ -250,10 +257,12 @@ describe('Retry with Different Adapters', () => {
             exitCode: 0,
             stdout: 'Fallback succeeded',
             stderr: '',
-            adapter: 'fallback'
+            adapter: 'fallback',
           });
         },
-        async isAvailable() { return true; }
+        async isAvailable() {
+          return true;
+        },
       };
 
       const engine = new ExecutionEngine();
@@ -266,9 +275,9 @@ describe('Retry with Different Adapters', () => {
         adapter: 'local',
         retry: {
           maxRetries: 2,
-          initialDelay: 10
+          initialDelay: 10,
         },
-        nothrow: true
+        nothrow: true,
       });
 
       expect(primaryAttempts).toBe(3); // 1 initial + 2 retries
@@ -277,7 +286,7 @@ describe('Retry with Different Adapters', () => {
       // Now try with fallback
       const result2 = await engine.execute({
         command: 'test-command',
-        adapter: 'mock'
+        adapter: 'mock',
       });
 
       expect(fallbackUsed).toBe(true);
@@ -297,22 +306,24 @@ describe('Retry with Different Adapters', () => {
               command: cmd.command,
               exitCode: 1,
               stdout: '',
-              stderr: 'Temporary failure'
+              stderr: 'Temporary failure',
             });
           }
           return createResult({
             command: cmd.command,
             exitCode: 0,
             stdout: 'Hello, World!',
-            stderr: ''
+            stderr: '',
           });
         },
-        async isAvailable() { return true; }
+        async isAvailable() {
+          return true;
+        },
       };
 
       const $reliable = $.retry({
         maxRetries: 2,
-        initialDelay: 10
+        initialDelay: 10,
       });
 
       ($reliable as any).registerAdapter('local', mockAdapter);
@@ -341,10 +352,12 @@ describe('Retry with Different Adapters', () => {
             command: cmd.command,
             exitCode: 1,
             stdout: '',
-            stderr: 'Error'
+            stderr: 'Error',
           });
         },
-        async isAvailable() { return true; }
+        async isAvailable() {
+          return true;
+        },
       };
 
       const engine = new ExecutionEngine();
@@ -357,9 +370,9 @@ describe('Retry with Different Adapters', () => {
           maxRetries: 2,
           initialDelay: 50,
           backoffMultiplier: 2,
-          jitter: false // Disable jitter for predictable timing
+          jitter: false, // Disable jitter for predictable timing
         },
-        nothrow: true
+        nothrow: true,
       });
 
       // Should have 3 attempts (initial + 2 retries)

@@ -17,7 +17,7 @@ export interface EventConfig {
   // Event control
   enableEvents?: boolean;
   maxEventListeners?: number;
-  
+
   // Event subscriptions
   events?: {
     onExecute?: (event: any) => void;
@@ -71,46 +71,46 @@ export interface ExecutionEngineConfig extends EventConfig {
   // Global settings
   defaultAdapter?: string;
   throwOnNonZeroExit?: boolean;
-  
+
   // Environment
   env?: Record<string, string>;
   defaultEnv?: Record<string, string>;
-  
+
   // Working directory
   cwd?: string;
   defaultCwd?: string;
-  
+
   // Shell configuration
   shell?: string | boolean;
   defaultShell?: string | boolean;
-  
+
   // Timeouts
   timeout?: number;
   defaultTimeout?: number;
-  
+
   // Stream configuration
   encoding?: BufferEncoding;
   verbose?: boolean;
   quiet?: boolean;
-  
+
   // Retry configuration
   retry?: {
     retries?: number;
     delay?: number;
     factor?: number;
   };
-  
+
   // Resource limits
   maxBuffer?: number;
-  
+
   // Runtime detection
   runtime?: string;
-  
+
   // Adapter configurations
   adapters?: {
-    ssh?: any;     // SSHAdapterConfig
-    docker?: any;  // DockerAdapterConfig
+    ssh?: any; // SSHAdapterConfig
+    docker?: any; // DockerAdapterConfig
     kubernetes?: any; // KubernetesAdapterConfig
-    local?: any;   // LocalAdapterConfig
+    local?: any; // LocalAdapterConfig
   };
 }

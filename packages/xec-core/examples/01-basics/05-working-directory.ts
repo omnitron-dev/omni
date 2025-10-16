@@ -1,6 +1,6 @@
 /**
  * 05. Working Directory - Working Directory Management
- * 
+ *
  * Demonstrates various ways to manage working directories.
  * @xec-sh/core allows setting the working directory for each
  * command independently, without affecting the current Node.js process.
@@ -58,9 +58,7 @@ console.log('Directory after within:', afterWithin.stdout.trim());
 
 // 7. Combining cd with other methods
 // Configuration methods can be chained
-const $complex = $.cd('/tmp')
-  .env({ WORKING_DIR: '/tmp' })
-  .timeout(5000);
+const $complex = $.cd('/tmp').env({ WORKING_DIR: '/tmp' }).timeout(5000);
 
 await $complex`echo "Working in: $WORKING_DIR" && pwd`;
 

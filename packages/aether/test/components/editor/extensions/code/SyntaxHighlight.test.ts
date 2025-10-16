@@ -186,9 +186,7 @@ describe('SyntaxHighlightExtension', () => {
     });
 
     it('should handle code blocks without parser', () => {
-      const doc = schema.node('doc', null, [
-        schema.node('code_block', { language: 'unknown' }, [schema.text('code')]),
-      ]);
+      const doc = schema.node('doc', null, [schema.node('code_block', { language: 'unknown' }, [schema.text('code')])]);
 
       const plugins = extension.getPlugins();
       expect(() => {
@@ -252,9 +250,7 @@ describe('SyntaxHighlightExtension', () => {
       expect(() => {
         EditorState.create({
           schema,
-          doc: schema.node('doc', null, [
-            schema.node('code_block', { language: 'javascript' }, [schema.text('code')]),
-          ]),
+          doc: schema.node('doc', null, [schema.node('code_block', { language: 'javascript' }, [schema.text('code')])]),
           plugins,
         });
       }).not.toThrow();
@@ -322,9 +318,7 @@ describe('SyntaxHighlightExtension', () => {
 
     it('should map decorations on transaction', () => {
       const plugins = extension.getPlugins();
-      const doc = schema.node('doc', null, [
-        schema.node('code_block', null, [schema.text('original')]),
-      ]);
+      const doc = schema.node('doc', null, [schema.node('code_block', null, [schema.text('original')])]);
 
       const state = EditorState.create({
         schema,
@@ -375,9 +369,7 @@ describe('SyntaxHighlightExtension', () => {
 
     it('should handle code blocks with special characters', () => {
       const plugins = extension.getPlugins();
-      const doc = schema.node('doc', null, [
-        schema.node('code_block', null, [schema.text('<>&"\'\n\t')]),
-      ]);
+      const doc = schema.node('doc', null, [schema.node('code_block', null, [schema.text('<>&"\'\n\t')])]);
 
       expect(() => {
         EditorState.create({
@@ -404,9 +396,7 @@ describe('SyntaxHighlightExtension', () => {
 
     it('should handle Unicode in code blocks', () => {
       const plugins = extension.getPlugins();
-      const doc = schema.node('doc', null, [
-        schema.node('code_block', null, [schema.text('const emoji = "🎉";')]),
-      ]);
+      const doc = schema.node('doc', null, [schema.node('code_block', null, [schema.text('const emoji = "🎉";')])]);
 
       expect(() => {
         EditorState.create({

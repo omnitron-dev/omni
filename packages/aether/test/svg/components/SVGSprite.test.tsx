@@ -69,7 +69,7 @@ describe('SVGSprite', () => {
     });
 
     // Wait for effect to run
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(global.fetch).toHaveBeenCalledWith('http://example.com/sprite.svg');
   });
@@ -86,7 +86,7 @@ describe('SVGSprite', () => {
     SVGSprite({ icons, onLoad });
 
     // Wait for effect
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(onLoad).toHaveBeenCalled();
   });
@@ -103,7 +103,7 @@ describe('SVGSprite', () => {
     });
 
     // Wait for effect and async fetch to complete
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(onError).toHaveBeenCalled();
   });
@@ -176,10 +176,10 @@ describe('SVGSprite', () => {
     const url = 'http://example.com/sprite-cache-test.svg';
 
     SVGSprite({ url, cache: true });
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
     SVGSprite({ url, cache: true });
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
     // Should only fetch once due to caching
     expect(global.fetch).toHaveBeenCalledTimes(1);
@@ -196,10 +196,10 @@ describe('SVGSprite', () => {
     const url = 'http://example.com/sprite.svg';
 
     SVGSprite({ url, cache: false });
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     SVGSprite({ url, cache: false });
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     // Should fetch twice
     expect(global.fetch).toHaveBeenCalledTimes(2);
@@ -228,7 +228,7 @@ describe('SVGSprite', () => {
     });
 
     // Wait for async error to complete
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     // After error, component still returns a node (empty text node from null render)
     expect(result).toBeDefined();

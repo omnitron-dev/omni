@@ -24,21 +24,21 @@ describe('VariableInterpolator', () => {
         nested: {
           key: 'value',
           deep: {
-            item: 'deepValue'
-          }
+            item: 'deepValue',
+          },
         },
         port: 3000,
-        isEnabled: true
+        isEnabled: true,
       },
       env: {
         USER: 'testuser',
-        HOME: '/home/testuser'
+        HOME: '/home/testuser',
       },
       params: {
         environment: 'production',
-        count: 5
+        count: 5,
       },
-      profile: 'test'
+      profile: 'test',
     };
   });
 
@@ -150,10 +150,7 @@ describe('VariableInterpolator', () => {
         expect(fileContent.trim()).toBe('test content from interpolator');
 
         // Use command substitution to read the file
-        const readResult = await interpolator.interpolateAsync(
-          `\${cmd:cat ${tempFile}}`,
-          context
-        );
+        const readResult = await interpolator.interpolateAsync(`\${cmd:cat ${tempFile}}`, context);
         expect(readResult.trim()).toBe('test content from interpolator');
       } finally {
         // Clean up
@@ -166,10 +163,7 @@ describe('VariableInterpolator', () => {
     });
 
     it('should handle commands with pipes and redirects', async () => {
-      const result = await interpolator.interpolateAsync(
-        '${cmd:echo "line1\\nline2\\nline3" | grep line2}',
-        context
-      );
+      const result = await interpolator.interpolateAsync('${cmd:echo "line1\\nline2\\nline3" | grep line2}', context);
       expect(result.trim()).toBe('line2');
     });
 
@@ -243,8 +237,9 @@ describe('VariableInterpolator', () => {
       }
       context.vars!.asyncStart = current;
 
-      await expect(interpolator.interpolateAsync('${vars.asyncStart}', context))
-        .rejects.toThrow('Maximum variable interpolation depth');
+      await expect(interpolator.interpolateAsync('${vars.asyncStart}', context)).rejects.toThrow(
+        'Maximum variable interpolation depth'
+      );
     });
 
     it('should handle secrets', () => {
@@ -268,7 +263,7 @@ describe('VariableInterpolator', () => {
         const result = interpolator.interpolate('${secret:missing_secret}', context);
         expect(result).toBe('[secret:missing_secret]');
         expect(warnMessages.length).toBeGreaterThan(0);
-        expect(warnMessages[0]).toContain('Secret \'missing_secret\' not available in synchronous context');
+        expect(warnMessages[0]).toContain("Secret 'missing_secret' not available in synchronous context");
       } finally {
         console.warn = originalWarn;
       }
@@ -299,12 +294,10 @@ describe('VariableInterpolator', () => {
 
     it('should handle different default value syntaxes', () => {
       // With spaces
-      expect(interpolator.interpolate('${vars.missing : default with spaces}', context))
-        .toBe(' default with spaces');
+      expect(interpolator.interpolate('${vars.missing : default with spaces}', context)).toBe(' default with spaces');
 
       // With special characters
-      expect(interpolator.interpolate('${vars.missing:default-value_123}', context))
-        .toBe('default-value_123');
+      expect(interpolator.interpolate('${vars.missing:default-value_123}', context)).toBe('default-value_123');
 
       // Empty default
       expect(interpolator.interpolate('${vars.missing:}', context)).toBe('');
@@ -366,40 +359,38 @@ describe('VariableInterpolator', () => {
       expect(variables[0]).toEqual({
         type: 'vars',
         path: 'name',
-        raw: '${vars.name}'
+        raw: '${vars.name}',
       });
 
       expect(variables[1]).toEqual({
         type: 'vars',
         path: 'version',
-        raw: '${vars.version}'
+        raw: '${vars.version}',
       });
 
       expect(variables[2]).toEqual({
         type: 'env',
         path: 'NODE_ENV',
         defaultValue: 'development',
-        raw: '${env.NODE_ENV:development}'
+        raw: '${env.NODE_ENV:development}',
       });
     });
 
     it('should parse command and secret references', () => {
-      const variables = interpolator.parseVariables(
-        'Hash: ${cmd:git rev-parse HEAD} Key: ${secret:api_key}'
-      );
+      const variables = interpolator.parseVariables('Hash: ${cmd:git rev-parse HEAD} Key: ${secret:api_key}');
 
       expect(variables).toHaveLength(2);
 
       expect(variables[0]).toEqual({
         type: 'cmd',
         path: 'git rev-parse HEAD',
-        raw: '${cmd:git rev-parse HEAD}'
+        raw: '${cmd:git rev-parse HEAD}',
       });
 
       expect(variables[1]).toEqual({
         type: 'secret',
         path: 'api_key',
-        raw: '${secret:api_key}'
+        raw: '${secret:api_key}',
       });
     });
   });
@@ -412,23 +403,23 @@ describe('VariableInterpolator', () => {
           appName: 'myapp',
           version: '1.0.0',
           fullName: '${vars.appName}-${vars.version}',
-          user: '${env.USER}'
+          user: '${env.USER}',
         },
         tasks: {
           build: 'docker build -t ${vars.fullName} .',
           deploy: {
             command: 'kubectl apply -f ${vars.appName}.yaml',
-            description: 'Deploy ${vars.appName} to cluster'
-          }
+            description: 'Deploy ${vars.appName} to cluster',
+          },
         },
         targets: {
           hosts: {
             'app-server': {
               host: '${vars.appName}.example.com',
-              user: '${env.USER:deploy}'
-            }
-          }
-        }
+              user: '${env.USER:deploy}',
+            },
+          },
+        },
       };
 
       const resolved = await interpolator.resolveConfig(config, context);
@@ -452,9 +443,9 @@ describe('VariableInterpolator', () => {
           remove: '$unset',
           nested: {
             keep: 'nested',
-            remove: '$unset'
-          }
-        }
+            remove: '$unset',
+          },
+        },
       };
 
       const resolved = await interpolator.resolveConfig(config, context);
@@ -472,8 +463,8 @@ describe('VariableInterpolator', () => {
           base: 'myapp',
           version: '1.0.0',
           tag: '${vars.base}:${vars.version}',
-          image: 'registry.io/${vars.tag}'
-        }
+          image: 'registry.io/${vars.tag}',
+        },
       };
 
       const resolved = await interpolator.resolveConfig(config, context);
@@ -486,20 +477,20 @@ describe('VariableInterpolator', () => {
       const config: Configuration = {
         version: '2.0',
         vars: {
-          env: 'prod'
+          env: 'prod',
         },
         tasks: {
           test: {
             command: 'npm test',
             env: {
               NODE_ENV: '${vars.env}',
-              FLAGS: ['--verbose', '--env=${vars.env}']
-            }
-          }
-        }
+              FLAGS: ['--verbose', '--env=${vars.env}'],
+            },
+          },
+        },
       };
 
-      const resolved = await interpolator.resolveConfig(config, context) as any;
+      const resolved = (await interpolator.resolveConfig(config, context)) as any;
 
       expect(resolved.tasks.test.env.NODE_ENV).toBe('prod');
       expect(resolved.tasks.test.env.FLAGS).toEqual(['--verbose', '--env=prod']);
@@ -528,8 +519,8 @@ describe('VariableInterpolator', () => {
         nullValue: null,
         undefinedValue: undefined,
         vars: {
-          test: '${vars.value}'
-        }
+          test: '${vars.value}',
+        },
       };
 
       const resolved = await interpolator.resolveConfig(config, context);

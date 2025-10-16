@@ -27,8 +27,9 @@ describe('Final Coverage Tests', () => {
         configurable: true,
       });
 
-      await expect(Effects.readFile.handler('test.txt', {} as any))
-        .rejects.toThrow('File system not available in this runtime');
+      await expect(Effects.readFile.handler('test.txt', {} as any)).rejects.toThrow(
+        'File system not available in this runtime'
+      );
 
       // Restore
       (globalThis as any).Deno = originalDeno;
@@ -54,8 +55,9 @@ describe('Final Coverage Tests', () => {
         configurable: true,
       });
 
-      await expect(Effects.writeFile.handler(['test.txt', 'content'], {} as any))
-        .rejects.toThrow('File system not available in this runtime');
+      await expect(Effects.writeFile.handler(['test.txt', 'content'], {} as any)).rejects.toThrow(
+        'File system not available in this runtime'
+      );
 
       // Restore
       (globalThis as any).Deno = originalDeno;
@@ -86,7 +88,7 @@ describe('Final Coverage Tests', () => {
       expect(result1).toBe(2);
 
       // Wait a bit to ensure we're past the throttle period
-      await new Promise(r => setTimeout(r, 15));
+      await new Promise((r) => setTimeout(r, 15));
 
       // Second call should fail
       await expect(throttled(2)).rejects.toThrow('Error on call 2');
@@ -96,7 +98,7 @@ describe('Final Coverage Tests', () => {
       let callCount = 0;
       const effect = effectful(async (x: number) => {
         callCount++;
-        await new Promise(r => setTimeout(r, 5));
+        await new Promise((r) => setTimeout(r, 5));
         return x * callCount;
       }, EffectFlags.Async);
 
@@ -112,7 +114,7 @@ describe('Final Coverage Tests', () => {
       expect(result1).toBe(1); // 1 * 1
 
       // Wait for throttle to clear
-      await new Promise(r => setTimeout(r, 25));
+      await new Promise((r) => setTimeout(r, 25));
 
       // The last value (3) is used for pending calls
       const result3 = await promise3;
@@ -123,9 +125,9 @@ describe('Final Coverage Tests', () => {
   describe('IO monad coverage', () => {
     it('should map over IO values', async () => {
       const io = IO.of(5)
-        .map(x => x * 2)
-        .map(x => x + 1)
-        .map(x => x.toString());
+        .map((x) => x * 2)
+        .map((x) => x + 1)
+        .map((x) => x.toString());
 
       const result = await io.run();
       expect(result).toBe('11');
@@ -133,8 +135,8 @@ describe('Final Coverage Tests', () => {
 
     it('should flatMap IO computations', async () => {
       const io = IO.of(5)
-        .flatMap(x => IO.of(x * 2))
-        .flatMap(x => IO.of(x + 1));
+        .flatMap((x) => IO.of(x * 2))
+        .flatMap((x) => IO.of(x + 1));
 
       const result = await io.run();
       expect(result).toBe(11);
@@ -142,7 +144,7 @@ describe('Final Coverage Tests', () => {
 
     it('should handle async IO computations', async () => {
       const io = IO.async(async () => {
-        await new Promise(r => setTimeout(r, 10));
+        await new Promise((r) => setTimeout(r, 10));
         return 'async result';
       });
 
@@ -152,8 +154,8 @@ describe('Final Coverage Tests', () => {
 
     it('should chain multiple async operations', async () => {
       const io = IO.async(async () => 5)
-        .flatMap(x => IO.async(async () => x * 2))
-        .map(x => x + 1);
+        .flatMap((x) => IO.async(async () => x * 2))
+        .map((x) => x + 1);
 
       const result = await io.run();
       expect(result).toBe(11);
@@ -230,9 +232,12 @@ describe('Final Coverage Tests', () => {
         handler: async () => 'mock file content',
       });
 
-      const readFlow = effectful(async () => {
-        return 'mock file content';
-      }, EffectFlags.Read | EffectFlags.IO | EffectFlags.Async);
+      const readFlow = effectful(
+        async () => {
+          return 'mock file content';
+        },
+        EffectFlags.Read | EffectFlags.IO | EffectFlags.Async
+      );
 
       const result = await interpreter.run(readFlow, null, {} as any);
       expect(result).toBe('mock file content');
@@ -316,8 +321,7 @@ describe('Final Coverage Tests', () => {
       const flow = effectful(() => 'test', EffectFlags.IO);
       flow.effects = new Set([missingEffect]);
 
-      await expect(interpreter.run(flow, 'input', {} as any))
-        .rejects.toThrow('No handler for effect');
+      await expect(interpreter.run(flow, 'input', {} as any)).rejects.toThrow('No handler for effect');
     });
   });
 });

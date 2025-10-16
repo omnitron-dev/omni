@@ -131,9 +131,8 @@ export const ThemePicker = defineComponent<ThemePickerProps>(
      * Render the component
      */
     const render = () => {
-      const currentThemeName = availableThemes.find(
-        t => t.metadata.name === selectedTheme.value
-      )?.metadata.displayName || 'Select Theme';
+      const currentThemeName =
+        availableThemes.find((t) => t.metadata.name === selectedTheme.value)?.metadata.displayName || 'Select Theme';
 
       return `
         <div class="theme-picker">
@@ -148,13 +147,17 @@ export const ThemePicker = defineComponent<ThemePickerProps>(
             </svg>
           </button>
 
-          ${isOpen.value ? `
+          ${
+            isOpen.value
+              ? `
             <div class="theme-picker__dropdown" role="menu">
               <div class="theme-picker__grid">
                 ${themePreviews.map(renderThemePreview).join('')}
               </div>
             </div>
-          ` : ''}
+          `
+              : ''
+          }
         </div>
       `;
     };
@@ -169,7 +172,7 @@ export const ThemePicker = defineComponent<ThemePickerProps>(
 
       // Theme items
       const themeItems = element.querySelectorAll('.theme-picker__item');
-      themeItems.forEach(item => {
+      themeItems.forEach((item) => {
         const themeId = item.getAttribute('data-theme-id');
         if (!themeId) return;
 

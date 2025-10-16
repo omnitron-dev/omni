@@ -7,10 +7,10 @@ import type { DebuggerConfig, Breakpoint, DebugState } from '../types.js';
 import { EventEmitter } from 'eventemitter3';
 
 export interface DebuggerEvents {
-  'breakpoint': (breakpoint: Breakpoint, state: DebugState) => void;
-  'step': (location: string, state: DebugState) => void;
-  'completed': (result: unknown) => void;
-  'error': (error: Error) => void;
+  breakpoint: (breakpoint: Breakpoint, state: DebugState) => void;
+  step: (location: string, state: DebugState) => void;
+  completed: (result: unknown) => void;
+  error: (error: Error) => void;
 }
 
 /**
@@ -182,10 +182,7 @@ export class Debugger extends EventEmitter<DebuggerEvents> {
 /**
  * Create a debugger for a flow
  */
-export function createDebugger(
-  flow: Flow<unknown, unknown>,
-  config?: DebuggerConfig
-): Debugger {
+export function createDebugger(flow: Flow<unknown, unknown>, config?: DebuggerConfig): Debugger {
   return new Debugger(flow, config);
 }
 

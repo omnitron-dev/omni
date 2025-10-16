@@ -12,7 +12,7 @@ describe('ProcessOutput', () => {
         signal: null,
         duration: 1000,
         command: 'echo test',
-        cwd: '/home/user'
+        cwd: '/home/user',
       });
 
       expect(output.stdout).toBe('output text');
@@ -28,7 +28,7 @@ describe('ProcessOutput', () => {
       const output = new ProcessOutput({
         stdout: Buffer.from('buffer output'),
         stderr: Buffer.from('buffer error'),
-        exitCode: 0
+        exitCode: 0,
       });
 
       expect(output.stdout).toBe('buffer output');
@@ -39,7 +39,7 @@ describe('ProcessOutput', () => {
       const output = new ProcessOutput({
         stdout: 'out',
         stderr: 'err',
-        exitCode: 0
+        exitCode: 0,
       });
 
       expect(output.stdall).toBe('outerr');
@@ -50,7 +50,7 @@ describe('ProcessOutput', () => {
         stdout: 'out',
         stderr: 'err',
         stdall: 'custom',
-        exitCode: 0
+        exitCode: 0,
       });
 
       expect(output.stdall).toBe('custom');
@@ -62,7 +62,7 @@ describe('ProcessOutput', () => {
       const output = new ProcessOutput({
         stdout: 'success',
         stderr: '',
-        exitCode: 0
+        exitCode: 0,
       });
 
       expect(output.ok).toBe(true);
@@ -72,7 +72,7 @@ describe('ProcessOutput', () => {
       const output = new ProcessOutput({
         stdout: '',
         stderr: 'error',
-        exitCode: 1
+        exitCode: 1,
       });
 
       expect(output.ok).toBe(false);
@@ -83,7 +83,7 @@ describe('ProcessOutput', () => {
         stdout: '',
         stderr: '',
         exitCode: 0,
-        signal: 'SIGTERM'
+        signal: 'SIGTERM',
       });
 
       expect(output.ok).toBe(false);
@@ -95,7 +95,7 @@ describe('ProcessOutput', () => {
       const output = new ProcessOutput({
         stdout: '  result with spaces  \n',
         stderr: '',
-        exitCode: 0
+        exitCode: 0,
       });
 
       expect(output.toString()).toBe('result with spaces');
@@ -105,7 +105,7 @@ describe('ProcessOutput', () => {
       const output = new ProcessOutput({
         stdout: '  value  \n',
         stderr: '',
-        exitCode: 0
+        exitCode: 0,
       });
 
       expect(output.valueOf()).toBe('value');
@@ -115,7 +115,7 @@ describe('ProcessOutput', () => {
       const output = new ProcessOutput({
         stdout: '  text output  \n',
         stderr: '',
-        exitCode: 0
+        exitCode: 0,
       });
 
       expect(output.text()).toBe('text output');
@@ -127,7 +127,7 @@ describe('ProcessOutput', () => {
       const output = new ProcessOutput({
         stdout: '{"key": "value", "num": 42}',
         stderr: '',
-        exitCode: 0
+        exitCode: 0,
       });
 
       const json = output.json();
@@ -138,7 +138,7 @@ describe('ProcessOutput', () => {
       const output = new ProcessOutput({
         stdout: 'not json',
         stderr: '',
-        exitCode: 0
+        exitCode: 0,
       });
 
       expect(() => output.json()).toThrow('Failed to parse JSON');
@@ -148,7 +148,7 @@ describe('ProcessOutput', () => {
       const output = new ProcessOutput({
         stdout: '',
         stderr: '',
-        exitCode: 0
+        exitCode: 0,
       });
 
       expect(() => output.json()).toThrow('Empty stdout');
@@ -160,7 +160,7 @@ describe('ProcessOutput', () => {
       const output = new ProcessOutput({
         stdout: 'line1\nline2\nline3\n',
         stderr: '',
-        exitCode: 0
+        exitCode: 0,
       });
 
       expect(output.lines()).toEqual(['line1', 'line2', 'line3']);
@@ -170,7 +170,7 @@ describe('ProcessOutput', () => {
       const output = new ProcessOutput({
         stdout: 'line1\n\nline2\n\n',
         stderr: '',
-        exitCode: 0
+        exitCode: 0,
       });
 
       expect(output.lines()).toEqual(['line1', 'line2']);
@@ -180,7 +180,7 @@ describe('ProcessOutput', () => {
       const output = new ProcessOutput({
         stdout: 'part1,part2,part3',
         stderr: '',
-        exitCode: 0
+        exitCode: 0,
       });
 
       expect(output.lines(',')).toEqual(['part1', 'part2', 'part3']);
@@ -192,7 +192,7 @@ describe('ProcessOutput', () => {
       const output = new ProcessOutput({
         stdout: 'buffer content',
         stderr: '',
-        exitCode: 0
+        exitCode: 0,
       });
 
       const buf = output.buffer();
@@ -206,7 +206,7 @@ describe('ProcessOutput', () => {
       const output = new ProcessOutput({
         stdout: 'line1\nline2\nline3',
         stderr: '',
-        exitCode: 0
+        exitCode: 0,
       });
 
       const lines: string[] = [];
@@ -221,7 +221,7 @@ describe('ProcessOutput', () => {
       const output = new ProcessOutput({
         stdout: 'async1\nasync2',
         stderr: '',
-        exitCode: 0
+        exitCode: 0,
       });
 
       const lines: string[] = [];
@@ -239,7 +239,7 @@ describe('ProcessOutput', () => {
         stdout: '',
         stderr: 'command failed',
         exitCode: 127,
-        command: 'unknown-cmd'
+        command: 'unknown-cmd',
       });
 
       expect(output.message).toContain('Command failed: unknown-cmd');
@@ -253,7 +253,7 @@ describe('ProcessOutput', () => {
         stdout: '',
         stderr: '',
         exitCode: null,
-        signal: 'SIGKILL'
+        signal: 'SIGKILL',
       });
 
       expect(output.message).toContain('Signal: SIGKILL');
@@ -264,7 +264,7 @@ describe('ProcessOutput', () => {
         stdout: '',
         stderr: '',
         exitCode: 1,
-        cwd: '/project/dir'
+        cwd: '/project/dir',
       });
 
       expect(output.message).toContain('Working directory: /project/dir');
@@ -274,7 +274,7 @@ describe('ProcessOutput', () => {
       const output = new ProcessOutput({
         stdout: 'success',
         stderr: '',
-        exitCode: 0
+        exitCode: 0,
       });
 
       expect(output.message).toBe('');
@@ -287,7 +287,7 @@ describe('ProcessOutput', () => {
         stdout: 'from result',
         stderr: '',
         exitCode: 0,
-        duration: 500
+        duration: 500,
       });
 
       expect(output.stdout).toBe('from result');
@@ -296,7 +296,7 @@ describe('ProcessOutput', () => {
 
     it('should create successful output', () => {
       const output = ProcessOutput.success('success output');
-      
+
       expect(output.stdout).toBe('success output');
       expect(output.stderr).toBe('');
       expect(output.exitCode).toBe(0);
@@ -305,7 +305,7 @@ describe('ProcessOutput', () => {
 
     it('should create successful output with default empty stdout', () => {
       const output = ProcessOutput.success();
-      
+
       expect(output.stdout).toBe('');
       expect(output.ok).toBe(true);
     });
@@ -316,7 +316,7 @@ describe('ProcessOutput', () => {
       const output = new ProcessOutput({
         stdout: 'blob content',
         stderr: '',
-        exitCode: 0
+        exitCode: 0,
       });
 
       // Check if Blob is available (Node.js 18+)

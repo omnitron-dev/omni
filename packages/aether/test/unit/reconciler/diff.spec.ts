@@ -6,13 +6,7 @@
  */
 
 import { describe, test, expect } from 'vitest';
-import {
-  diff,
-  diffProps,
-  diffChildren,
-  PatchType,
-  shallowEqual,
-} from '../../../src/reconciler/diff.js';
+import { diff, diffProps, diffChildren, PatchType, shallowEqual } from '../../../src/reconciler/diff.js';
 import { diffChildrenWithKeys, diffChildrenByIndex, detectListPattern } from '../../../src/reconciler/diff-children.js';
 import {
   createElementVNode,

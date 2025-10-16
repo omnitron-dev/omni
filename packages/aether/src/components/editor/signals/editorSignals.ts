@@ -54,20 +54,23 @@ export function createEditorSignals(initialDoc: PMNode, initialSelection: Select
  *
  * Called by EditorBridge on every transaction
  */
-export function updateEditorSignals(signals: EditorSignals, updates: {
-  doc?: PMNode;
-  selection?: Selection;
-  isFocused?: boolean;
-  isEditable?: boolean;
-  isEmpty?: boolean;
-  wordCount?: number;
-  charCount?: number;
-  canUndo?: boolean;
-  canRedo?: boolean;
-  activeMarks?: Mark[];
-  currentNodeType?: NodeType | null;
-  selectedText?: string;
-}): void {
+export function updateEditorSignals(
+  signals: EditorSignals,
+  updates: {
+    doc?: PMNode;
+    selection?: Selection;
+    isFocused?: boolean;
+    isEditable?: boolean;
+    isEmpty?: boolean;
+    wordCount?: number;
+    charCount?: number;
+    canUndo?: boolean;
+    canRedo?: boolean;
+    activeMarks?: Mark[];
+    currentNodeType?: NodeType | null;
+    selectedText?: string;
+  }
+): void {
   if (updates.doc !== undefined) {
     (signals.doc as WritableSignal<PMNode>).set(updates.doc);
   }

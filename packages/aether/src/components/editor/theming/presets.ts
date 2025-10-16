@@ -316,7 +316,7 @@ export const githubTheme: Theme = {
     displayName: 'GitHub',
     author: 'Aether',
     version: '1.0.0',
-    description: 'GitHub-inspired theme matching GitHub\'s editor style',
+    description: "GitHub-inspired theme matching GitHub's editor style",
     isDark: false,
     isHighContrast: false,
   },
@@ -763,20 +763,12 @@ export const highContrastTheme: Theme = {
 /**
  * All available themes
  */
-export const allThemes: Theme[] = [
-  defaultTheme,
-  minimalTheme,
-  githubTheme,
-  darkTheme,
-  highContrastTheme,
-];
+export const allThemes: Theme[] = [defaultTheme, minimalTheme, githubTheme, darkTheme, highContrastTheme];
 
 /**
  * Theme registry for quick lookup
  */
-export const themeRegistry = new Map<string, Theme>(
-  allThemes.map(theme => [theme.metadata.name, theme])
-);
+export const themeRegistry = new Map<string, Theme>(allThemes.map((theme) => [theme.metadata.name, theme]));
 
 /**
  * Get theme by name

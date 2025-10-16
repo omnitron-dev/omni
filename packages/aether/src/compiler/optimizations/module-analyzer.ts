@@ -446,11 +446,17 @@ export class ModuleAnalyzer {
 
     // Determine provider type
     let type: ProviderMetadata['type'] = 'value';
-    if (obj.properties.some((p) => ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === 'useClass')) {
+    if (
+      obj.properties.some((p) => ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === 'useClass')
+    ) {
       type = 'class';
-    } else if (obj.properties.some((p) => ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === 'useFactory')) {
+    } else if (
+      obj.properties.some((p) => ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === 'useFactory')
+    ) {
       type = 'factory';
-    } else if (obj.properties.some((p) => ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === 'useExisting')) {
+    } else if (
+      obj.properties.some((p) => ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === 'useExisting')
+    ) {
       type = 'existing';
     }
 
@@ -545,7 +551,10 @@ export class ModuleAnalyzer {
       (prop) => ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === 'component'
     );
 
-    const isLazy = componentProp && ts.isPropertyAssignment(componentProp) && (ts.isArrowFunction(componentProp.initializer) || ts.isFunctionExpression(componentProp.initializer));
+    const isLazy =
+      componentProp &&
+      ts.isPropertyAssignment(componentProp) &&
+      (ts.isArrowFunction(componentProp.initializer) || ts.isFunctionExpression(componentProp.initializer));
 
     return {
       path,
@@ -640,7 +649,11 @@ export class ModuleAnalyzer {
       (prop) => ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === 'providers'
     );
 
-    if (providersProp && ts.isPropertyAssignment(providersProp) && ts.isArrayLiteralExpression(providersProp.initializer)) {
+    if (
+      providersProp &&
+      ts.isPropertyAssignment(providersProp) &&
+      ts.isArrayLiteralExpression(providersProp.initializer)
+    ) {
       for (const element of providersProp.initializer.elements) {
         if (ts.isIdentifier(element)) {
           providers.push(element.text);
@@ -692,9 +705,7 @@ export class ModuleAnalyzer {
       );
 
       if (prop && ts.isPropertyAssignment(prop) && ts.isArrayLiteralExpression(prop.initializer)) {
-        return prop.initializer.elements
-          .filter(ts.isStringLiteral)
-          .map((e) => e.text);
+        return prop.initializer.elements.filter(ts.isStringLiteral).map((e) => e.text);
       }
 
       return [];
@@ -873,7 +884,7 @@ export class ModuleAnalyzer {
       // Merge opportunity: Small modules with single usage
       // Look up by variable name (e.g., 'SmallModule') instead of module ID
       const moduleName = moduleIdToName.get(module.id);
-      const usages = moduleName ? (this.usages.get(moduleName) || []) : [];
+      const usages = moduleName ? this.usages.get(moduleName) || [] : [];
       if (usages.length === 1 && module.estimatedSize < 10000 && !module.optimization?.splitChunk) {
         opportunities.push({
           type: 'merge',

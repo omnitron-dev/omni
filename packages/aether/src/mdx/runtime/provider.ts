@@ -13,13 +13,7 @@ import { jsx } from '../../jsx-runtime.js';
 import { Box } from '../../primitives/Box.js';
 import { Code } from '../../primitives/Code.js';
 
-import type {
-  MDXContextValue,
-  MDXProviderProps,
-  MDXComponents,
-  Signal,
-  Component
-} from '../types.js';
+import type { MDXContextValue, MDXProviderProps, MDXComponents, Signal, Component } from '../types.js';
 
 /**
  * Default MDX components
@@ -71,7 +65,7 @@ const DEFAULT_COMPONENTS: MDXComponents = {
 const MDXContext = createContext<MDXContextValue>({
   components: DEFAULT_COMPONENTS,
   scope: {},
-  reactiveScope: {}
+  reactiveScope: {},
 });
 
 /**
@@ -84,7 +78,7 @@ export function useMDXContext(): MDXContextValue {
     return {
       components: DEFAULT_COMPONENTS,
       scope: {},
-      reactiveScope: {}
+      reactiveScope: {},
     };
   }
   return context;
@@ -118,7 +112,7 @@ export const MDXProvider = defineComponent<MDXProviderProps>((props) => {
   // Merge components
   const components = {
     ...DEFAULT_COMPONENTS,
-    ...props.components
+    ...props.components,
   };
 
   // Create context value
@@ -127,7 +121,7 @@ export const MDXProvider = defineComponent<MDXProviderProps>((props) => {
     scope: props.scope || {},
     reactiveScope,
     onError: props.onError,
-    onNavigate: props.onNavigate
+    onNavigate: props.onNavigate,
   };
 
   // Provide context
@@ -170,7 +164,7 @@ export function withMDXProvider<P extends Record<string, any> = {}>(
       scope: mdxProps?.scope || {},
       reactiveScope: {},
       onError: mdxProps?.onError,
-      onNavigate: mdxProps?.onNavigate
+      onNavigate: mdxProps?.onNavigate,
     });
 
     // Render component

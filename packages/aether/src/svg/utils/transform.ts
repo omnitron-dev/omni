@@ -54,7 +54,12 @@ export function parseTransform(transformString: string): Transform[] {
     const type = match[1] as Transform['type'];
     const valuesStr = match[2];
     // Handle empty values string
-    const values = valuesStr ? valuesStr.split(/[,\s]+/).map(Number).filter((n) => !isNaN(n)) : [];
+    const values = valuesStr
+      ? valuesStr
+          .split(/[,\s]+/)
+          .map(Number)
+          .filter((n) => !isNaN(n))
+      : [];
 
     transforms.push({ type, values });
   }

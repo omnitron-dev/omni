@@ -54,7 +54,7 @@ describe('Performance Targets E2E Tests', () => {
       let effectCount = 0;
 
       effect(() => {
-        signals.forEach(s => s());
+        signals.forEach((s) => s());
         effectCount++;
       });
 
@@ -90,15 +90,13 @@ describe('Performance Targets E2E Tests', () => {
 
     it('should handle wide dependency graphs efficiently', () => {
       const base = signal(1);
-      const derived = Array.from({ length: 1000 }, (_, i) =>
-        computed(() => base() * (i + 1))
-      );
+      const derived = Array.from({ length: 1000 }, (_, i) => computed(() => base() * (i + 1)));
 
       const startTime = performance.now();
 
       base.set(2);
 
-      derived.forEach(d => d());
+      derived.forEach((d) => d());
 
       const duration = performance.now() - startTime;
 
@@ -343,7 +341,7 @@ describe('Performance Targets E2E Tests', () => {
       let effectRuns = 0;
 
       effect(() => {
-        signals.forEach(s => s());
+        signals.forEach((s) => s());
         effectRuns++;
       });
 
@@ -426,7 +424,7 @@ describe('Performance Targets E2E Tests', () => {
       for (let i = 0; i < 100; i++) {
         sig.set(i);
         updates.push(Date.now());
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
       }
 
       const totalTime = Date.now() - startTime;
@@ -588,7 +586,7 @@ describe('Performance Targets E2E Tests', () => {
       const startTime = performance.now();
 
       rows.set(
-        rows().map(row => ({
+        rows().map((row) => ({
           ...row,
           value: row.value * 1.1,
         }))
@@ -628,7 +626,7 @@ describe('Performance Targets E2E Tests', () => {
 
       state.set({
         ...state(),
-        users: state().users.map(u => ({ ...u, active: true })),
+        users: state().users.map((u) => ({ ...u, active: true })),
       });
 
       const duration = performance.now() - startTime;
@@ -660,7 +658,7 @@ describe('Performance Targets E2E Tests', () => {
       let effectRuns = 0;
 
       effect(() => {
-        signals.forEach(s => s());
+        signals.forEach((s) => s());
         effectRuns++;
       });
 

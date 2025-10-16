@@ -8,7 +8,7 @@ import {
   getIconRegistry,
   resetIconRegistry,
   type IconSource,
-  type IconSet
+  type IconSet,
 } from '../../../src/svg/icons/IconRegistry';
 
 describe('IconRegistry', () => {
@@ -27,7 +27,7 @@ describe('IconRegistry', () => {
     it('should register and retrieve icon set', async () => {
       const icons: IconSet = {
         home: 'M10 20 L30 5 L50 20 V45 H10 Z',
-        star: 'M10 0 L12 8 L20 8 L14 12 L16 20 L10 15 L4 20 L6 12 L0 8 L8 8 Z'
+        star: 'M10 0 L12 8 L20 8 L14 12 L16 20 L10 15 L4 20 L6 12 L0 8 L8 8 Z',
       };
 
       registry.registerSet('test', icons);
@@ -43,7 +43,7 @@ describe('IconRegistry', () => {
 
     it('should register icon set with prefix', async () => {
       const icons: IconSet = {
-        home: 'M10 20 L30 5 L50 20 V45 H10 Z'
+        home: 'M10 20 L30 5 L50 20 V45 H10 Z',
       };
 
       registry.registerSet('test', icons, 'fa');
@@ -59,8 +59,8 @@ describe('IconRegistry', () => {
           path: 'M10 10 L20 20 Z',
           viewBox: '0 0 24 24',
           width: 24,
-          height: 24
-        }
+          height: 24,
+        },
       };
 
       registry.registerSet('test', icons);
@@ -75,13 +75,13 @@ describe('IconRegistry', () => {
 
     it('should register inline icon source', () => {
       const icons: IconSet = {
-        home: 'M10 20 L30 5 L50 20 V45 H10 Z'
+        home: 'M10 20 L30 5 L50 20 V45 H10 Z',
       };
 
       const source: IconSource = {
         name: 'test-icons',
         type: 'inline',
-        source: icons
+        source: icons,
       };
 
       registry.register(source);
@@ -91,14 +91,14 @@ describe('IconRegistry', () => {
 
     it('should register inline icon source with prefix', () => {
       const icons: IconSet = {
-        home: 'M10 20 L30 5 L50 20 V45 H10 Z'
+        home: 'M10 20 L30 5 L50 20 V45 H10 Z',
       };
 
       const source: IconSource = {
         name: 'test-icons',
         type: 'inline',
         source: icons,
-        prefix: 'fa'
+        prefix: 'fa',
       };
 
       registry.register(source);
@@ -111,7 +111,7 @@ describe('IconRegistry', () => {
     beforeEach(() => {
       registry.registerSet('test', {
         home: 'M10 20 L30 5 L50 20 V45 H10 Z',
-        star: 'M10 0 L12 8 L20 8 L14 12 L16 20 L10 15 L4 20 L6 12 L0 8 L8 8 Z'
+        star: 'M10 0 L12 8 L20 8 L14 12 L16 20 L10 15 L4 20 L6 12 L0 8 L8 8 Z',
       });
     });
 
@@ -137,20 +137,20 @@ describe('IconRegistry', () => {
       const source: IconSource = {
         name: 'async-icons',
         type: 'url',
-        source: 'https://example.com/icons.svg'
+        source: 'https://example.com/icons.svg',
       };
 
       registry.register(source);
 
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
-        text: async () => '<svg viewBox="0 0 24 24"><path d="M10 10"/></svg>'
+        text: async () => '<svg viewBox="0 0 24 24"><path d="M10 10"/></svg>',
       });
 
       const [icon1, icon2, icon3] = await Promise.all([
         registry.get('test-icon'),
         registry.get('test-icon'),
-        registry.get('test-icon')
+        registry.get('test-icon'),
       ]);
 
       expect(icon1).toBeTruthy();
@@ -165,14 +165,14 @@ describe('IconRegistry', () => {
       const source: IconSource = {
         name: 'remote-icons',
         type: 'url',
-        source: 'https://example.com/icon.svg'
+        source: 'https://example.com/icon.svg',
       };
 
       registry.register(source);
 
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
-        text: async () => '<svg viewBox="0 0 24 24"><path d="M10 10 L20 20 Z"/></svg>'
+        text: async () => '<svg viewBox="0 0 24 24"><path d="M10 10 L20 20 Z"/></svg>',
       });
 
       const icon = await registry.get('remote-icon');
@@ -187,13 +187,13 @@ describe('IconRegistry', () => {
       const source: IconSource = {
         name: 'remote-icons',
         type: 'url',
-        source: 'https://example.com/icons.svg'
+        source: 'https://example.com/icons.svg',
       };
 
       registry.register(source);
 
       global.fetch = vi.fn().mockResolvedValue({
-        ok: false
+        ok: false,
       });
 
       const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -208,7 +208,7 @@ describe('IconRegistry', () => {
       const source: IconSource = {
         name: 'remote-icons',
         type: 'url',
-        source: 'https://example.com/icons.svg'
+        source: 'https://example.com/icons.svg',
       };
 
       registry.register(source);
@@ -237,14 +237,14 @@ describe('IconRegistry', () => {
       const source: IconSource = {
         name: 'sprite-icons',
         type: 'sprite',
-        source: 'https://example.com/sprite.svg'
+        source: 'https://example.com/sprite.svg',
       };
 
       registry.register(source);
 
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
-        text: async () => spriteContent
+        text: async () => spriteContent,
       });
 
       const icon = await registry.get('sprite-icon');
@@ -266,14 +266,14 @@ describe('IconRegistry', () => {
       const source: IconSource = {
         name: 'sprite-icons',
         type: 'sprite',
-        source: 'https://example.com/sprite.svg'
+        source: 'https://example.com/sprite.svg',
       };
 
       registry.register(source);
 
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
-        text: async () => spriteContent
+        text: async () => spriteContent,
       });
 
       const icon = await registry.get('missing-symbol');
@@ -284,7 +284,7 @@ describe('IconRegistry', () => {
   describe('Transformers', () => {
     beforeEach(() => {
       registry.registerSet('test', {
-        home: 'M10 20 L30 5 L50 20 V45 H10 Z'
+        home: 'M10 20 L30 5 L50 20 V45 H10 Z',
       });
     });
 
@@ -293,8 +293,8 @@ describe('IconRegistry', () => {
         name: 'colorizer',
         transform: (icon) => ({
           ...icon,
-          metadata: { ...icon.metadata, color: 'red' }
-        })
+          metadata: { ...icon.metadata, color: 'red' },
+        }),
       });
 
       const icon = await registry.get('home');
@@ -306,16 +306,16 @@ describe('IconRegistry', () => {
         name: 'transformer1',
         transform: (icon) => ({
           ...icon,
-          metadata: { ...icon.metadata, step1: true }
-        })
+          metadata: { ...icon.metadata, step1: true },
+        }),
       });
 
       registry.addTransformer({
         name: 'transformer2',
         transform: (icon) => ({
           ...icon,
-          metadata: { ...icon.metadata, step2: true }
-        })
+          metadata: { ...icon.metadata, step2: true },
+        }),
       });
 
       const icon = await registry.get('home');
@@ -328,8 +328,8 @@ describe('IconRegistry', () => {
         name: 'test-transformer',
         transform: (icon) => ({
           ...icon,
-          metadata: { ...icon.metadata, transformed: true }
-        })
+          metadata: { ...icon.metadata, transformed: true },
+        }),
       });
 
       let icon = await registry.get('home');
@@ -340,7 +340,7 @@ describe('IconRegistry', () => {
       // Clear the icon to force re-retrieval
       registry.clear();
       registry.registerSet('test', {
-        home: 'M10 20 L30 5 L50 20 V45 H10 Z'
+        home: 'M10 20 L30 5 L50 20 V45 H10 Z',
       });
 
       icon = await registry.get('home');
@@ -352,8 +352,8 @@ describe('IconRegistry', () => {
         name: 'transformer1',
         transform: (icon) => ({
           ...icon,
-          metadata: { ...icon.metadata, test: true }
-        })
+          metadata: { ...icon.metadata, test: true },
+        }),
       });
 
       registry.removeTransformer('nonexistent');
@@ -368,7 +368,8 @@ describe('IconRegistry', () => {
       registry.registerSet('test', {
         home: 'M10 20 L30 5 L50 20 V45 H10 Z',
         star: 'M10 0 L12 8 L20 8 L14 12 L16 20 L10 15 L4 20 L6 12 L0 8 L8 8 Z',
-        settings: 'M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94L14.4 2.81a.488.488 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z'
+        settings:
+          'M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94L14.4 2.81a.488.488 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z',
       });
     });
 
@@ -381,9 +382,7 @@ describe('IconRegistry', () => {
     });
 
     it('should handle preloading non-existent icons gracefully', async () => {
-      await expect(
-        registry.preload(['home', 'nonexistent', 'star'])
-      ).resolves.not.toThrow();
+      await expect(registry.preload(['home', 'nonexistent', 'star'])).resolves.not.toThrow();
 
       expect(registry.has('home')).toBe(true);
       expect(registry.has('star')).toBe(true);
@@ -395,7 +394,7 @@ describe('IconRegistry', () => {
     beforeEach(() => {
       registry.registerSet('test', {
         home: 'M10 20 L30 5 L50 20 V45 H10 Z',
-        star: 'M10 0 L12 8 L20 8 L14 12 L16 20 L10 15 L4 20 L6 12 L0 8 L8 8 Z'
+        star: 'M10 0 L12 8 L20 8 L14 12 L16 20 L10 15 L4 20 L6 12 L0 8 L8 8 Z',
       });
     });
 
@@ -429,12 +428,12 @@ describe('IconRegistry', () => {
     it('should return correct statistics', () => {
       registry.registerSet('test', {
         home: 'M10 20 L30 5 L50 20 V45 H10 Z',
-        star: 'M10 0 L12 8 L20 8 L14 12 L16 20 L10 15 L4 20 L6 12 L0 8 L8 8 Z'
+        star: 'M10 0 L12 8 L20 8 L14 12 L16 20 L10 15 L4 20 L6 12 L0 8 L8 8 Z',
       });
 
       registry.addTransformer({
         name: 'test-transformer',
-        transform: (icon) => icon
+        transform: (icon) => icon,
       });
 
       const stats = registry.getStats();
@@ -448,7 +447,7 @@ describe('IconRegistry', () => {
       expect(stats.totalIcons).toBe(0);
 
       registry.registerSet('test', {
-        home: 'M10 20 L30 5 L50 20 V45 H10 Z'
+        home: 'M10 20 L30 5 L50 20 V45 H10 Z',
       });
 
       stats = registry.getStats();
@@ -467,7 +466,7 @@ describe('IconRegistry', () => {
     it('should maintain state across calls', () => {
       const registry1 = getIconRegistry();
       registry1.registerSet('test', {
-        home: 'M10 20 L30 5 L50 20 V45 H10 Z'
+        home: 'M10 20 L30 5 L50 20 V45 H10 Z',
       });
 
       const registry2 = getIconRegistry();
@@ -477,7 +476,7 @@ describe('IconRegistry', () => {
     it('should reset global registry', () => {
       const registry = getIconRegistry();
       registry.registerSet('test', {
-        home: 'M10 20 L30 5 L50 20 V45 H10 Z'
+        home: 'M10 20 L30 5 L50 20 V45 H10 Z',
       });
 
       resetIconRegistry();
@@ -496,8 +495,8 @@ describe('IconRegistry', () => {
     it('should handle icon with only content', async () => {
       const icons: IconSet = {
         custom: {
-          content: '<svg><circle cx="10" cy="10" r="5"/></svg>'
-        }
+          content: '<svg><circle cx="10" cy="10" r="5"/></svg>',
+        },
       };
 
       registry.registerSet('test', icons);
@@ -514,9 +513,9 @@ describe('IconRegistry', () => {
           metadata: {
             author: 'Test',
             license: 'MIT',
-            tags: ['icon', 'test']
-          }
-        }
+            tags: ['icon', 'test'],
+          },
+        },
       };
 
       registry.registerSet('test', icons);
@@ -530,8 +529,8 @@ describe('IconRegistry', () => {
     it('should handle icon names with special characters', async () => {
       registry.registerSet('test', {
         'icon-name': 'M10 10 L20 20 Z',
-        'icon_name': 'M30 30 L40 40 Z',
-        'icon.name': 'M50 50 L60 60 Z'
+        icon_name: 'M30 30 L40 40 Z',
+        'icon.name': 'M50 50 L60 60 Z',
       });
 
       expect(registry.has('icon-name')).toBe(true);
@@ -542,7 +541,7 @@ describe('IconRegistry', () => {
     it('should handle very long icon names', async () => {
       const longName = 'a'.repeat(1000);
       registry.registerSet('test', {
-        [longName]: 'M10 10 L20 20 Z'
+        [longName]: 'M10 10 L20 20 Z',
       });
 
       const icon = await registry.get(longName);
@@ -552,7 +551,7 @@ describe('IconRegistry', () => {
     it('should handle unicode icon names', async () => {
       registry.registerSet('test', {
         '🏠': 'M10 20 L30 5 L50 20 V45 H10 Z',
-        '⭐': 'M10 0 L12 8 L20 8 L14 12 L16 20 L10 15 L4 20 L6 12 L0 8 L8 8 Z'
+        '⭐': 'M10 0 L12 8 L20 8 L14 12 L16 20 L10 15 L4 20 L6 12 L0 8 L8 8 Z',
       });
 
       expect(registry.has('🏠')).toBe(true);
@@ -584,14 +583,14 @@ describe('IconRegistry', () => {
       const source: IconSource = {
         name: 'malformed',
         type: 'url',
-        source: 'https://example.com/bad.svg'
+        source: 'https://example.com/bad.svg',
       };
 
       registry.register(source);
 
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
-        text: async () => 'not valid svg at all'
+        text: async () => 'not valid svg at all',
       });
 
       const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -603,11 +602,11 @@ describe('IconRegistry', () => {
 
     it('should handle duplicate icon registration (should overwrite)', async () => {
       registry.registerSet('test', {
-        duplicate: 'M0 0 L10 10'
+        duplicate: 'M0 0 L10 10',
       });
 
       registry.registerSet('test2', {
-        duplicate: 'M0 0 L20 20'
+        duplicate: 'M0 0 L20 20',
       });
 
       const icon = await registry.get('duplicate');
@@ -618,8 +617,8 @@ describe('IconRegistry', () => {
       const icons: IconSet = {
         nullPath: {
           path: null as any,
-          viewBox: '0 0 24 24'
-        }
+          viewBox: '0 0 24 24',
+        },
       };
 
       registry.registerSet('test', icons);
@@ -632,8 +631,8 @@ describe('IconRegistry', () => {
         nanDims: {
           path: 'M0 0 L10 10',
           width: NaN,
-          height: NaN
-        }
+          height: NaN,
+        },
       };
 
       registry.registerSet('test', icons);
@@ -646,8 +645,8 @@ describe('IconRegistry', () => {
         infDims: {
           path: 'M0 0 L10 10',
           width: Infinity,
-          height: -Infinity
-        }
+          height: -Infinity,
+        },
       };
 
       registry.registerSet('test', icons);
@@ -660,8 +659,8 @@ describe('IconRegistry', () => {
         negative: {
           path: 'M0 0 L10 10',
           width: -100,
-          height: -200
-        }
+          height: -200,
+        },
       };
 
       registry.registerSet('test', icons);
@@ -675,8 +674,8 @@ describe('IconRegistry', () => {
         zeroDims: {
           path: 'M0 0 L10 10',
           width: 0,
-          height: 0
-        }
+          height: 0,
+        },
       };
 
       registry.registerSet('test', icons);
@@ -689,8 +688,8 @@ describe('IconRegistry', () => {
       const icons: IconSet = {
         badViewBox: {
           path: 'M0 0',
-          viewBox: 'not a valid viewbox'
-        }
+          viewBox: 'not a valid viewbox',
+        },
       };
 
       registry.registerSet('test', icons);
@@ -700,14 +699,14 @@ describe('IconRegistry', () => {
 
     it('should handle transformer that throws error', async () => {
       registry.registerSet('test', {
-        home: 'M10 20 L30 5 L50 20 V45 H10 Z'
+        home: 'M10 20 L30 5 L50 20 V45 H10 Z',
       });
 
       registry.addTransformer({
         name: 'error-transformer',
         transform: () => {
           throw new Error('Transformer error');
-        }
+        },
       });
 
       const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -720,12 +719,12 @@ describe('IconRegistry', () => {
 
     it('should handle transformer that returns null', async () => {
       registry.registerSet('test', {
-        home: 'M10 20 L30 5 L50 20 V45 H10 Z'
+        home: 'M10 20 L30 5 L50 20 V45 H10 Z',
       });
 
       registry.addTransformer({
         name: 'null-transformer',
-        transform: () => null as any
+        transform: () => null as any,
       });
 
       const icon = await registry.get('home');
@@ -734,12 +733,12 @@ describe('IconRegistry', () => {
 
     it('should handle transformer that modifies to invalid type', async () => {
       registry.registerSet('test', {
-        home: 'M10 20 L30 5 L50 20 V45 H10 Z'
+        home: 'M10 20 L30 5 L50 20 V45 H10 Z',
       });
 
       registry.addTransformer({
         name: 'bad-transformer',
-        transform: () => 'not an icon' as any
+        transform: () => 'not an icon' as any,
       });
 
       const icon = await registry.get('home');
@@ -749,7 +748,7 @@ describe('IconRegistry', () => {
     it('should handle very large number of icons', () => {
       const largeSet: IconSet = {};
       for (let i = 0; i < 10000; i++) {
-        largeSet[`icon-${i}`] = `M${i} ${i} L${i+10} ${i+10}`;
+        largeSet[`icon-${i}`] = `M${i} ${i} L${i + 10} ${i + 10}`;
       }
 
       registry.registerSet('large', largeSet);
@@ -758,13 +757,15 @@ describe('IconRegistry', () => {
 
     it('should handle rapid successive gets for same icon', async () => {
       registry.registerSet('test', {
-        rapid: 'M0 0 L10 10'
+        rapid: 'M0 0 L10 10',
       });
 
-      const promises = Array(100).fill(0).map(() => registry.get('rapid'));
+      const promises = Array(100)
+        .fill(0)
+        .map(() => registry.get('rapid'));
       const results = await Promise.all(promises);
 
-      results.forEach(result => {
+      results.forEach((result) => {
         expect(result).toBeTruthy();
         expect(result?.path).toBe('M0 0 L10 10');
       });
@@ -777,8 +778,8 @@ describe('IconRegistry', () => {
       const icons: IconSet = {
         circular: {
           path: 'M0 0',
-          metadata
-        }
+          metadata,
+        },
       };
 
       registry.registerSet('test', icons);
@@ -788,7 +789,7 @@ describe('IconRegistry', () => {
 
     it('should handle empty string as icon path', async () => {
       const icons: IconSet = {
-        emptyPath: ''
+        emptyPath: '',
       };
 
       registry.registerSet('test', icons);
@@ -798,7 +799,7 @@ describe('IconRegistry', () => {
 
     it('should handle whitespace-only path string', async () => {
       const icons: IconSet = {
-        whitespace: '    \n\t   '
+        whitespace: '    \n\t   ',
       };
 
       registry.registerSet('test', icons);
@@ -810,15 +811,16 @@ describe('IconRegistry', () => {
       const source: IconSource = {
         name: 'timeout-test',
         type: 'url',
-        source: 'https://example.com/slow.svg'
+        source: 'https://example.com/slow.svg',
       };
 
       registry.register(source);
 
-      global.fetch = vi.fn().mockImplementation(() =>
-        new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Timeout')), 0);
-        })
+      global.fetch = vi.fn().mockImplementation(
+        () =>
+          new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Timeout')), 0);
+          })
       );
 
       const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -834,14 +836,14 @@ describe('IconRegistry', () => {
       const source: IconSource = {
         name: 'broken-sprite',
         type: 'sprite',
-        source: 'https://example.com/broken.svg'
+        source: 'https://example.com/broken.svg',
       };
 
       registry.register(source);
 
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
-        text: async () => spriteContent
+        text: async () => spriteContent,
       });
 
       const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -858,9 +860,7 @@ describe('IconRegistry', () => {
     it('should handle preload with null values', async () => {
       registry.registerSet('test', { valid: 'M0 0' });
 
-      await expect(
-        registry.preload([null as any, 'valid', undefined as any])
-      ).resolves.not.toThrow();
+      await expect(registry.preload([null as any, 'valid', undefined as any])).resolves.not.toThrow();
     });
 
     it('should handle multiple clears in succession', () => {
@@ -891,9 +891,11 @@ describe('IconRegistry', () => {
     });
 
     it('should handle concurrent registrations', () => {
-      const sets = Array(100).fill(0).map((_, i) => ({
-        [`icon-${i}`]: `M${i} ${i}`
-      }));
+      const sets = Array(100)
+        .fill(0)
+        .map((_, i) => ({
+          [`icon-${i}`]: `M${i} ${i}`,
+        }));
 
       sets.forEach((set, i) => {
         registry.registerSet(`set-${i}`, set);
@@ -909,7 +911,7 @@ describe('IconRegistry', () => {
         name: 'lazy-icons',
         type: 'url',
         source: 'https://example.com/icons.svg',
-        lazy: true
+        lazy: true,
       };
 
       expect(() => registry.register(source)).not.toThrow();
@@ -920,9 +922,9 @@ describe('IconRegistry', () => {
         name: 'lazy-icons',
         type: 'inline',
         source: {
-          home: 'M10 20 L30 5 L50 20 V45 H10 Z'
+          home: 'M10 20 L30 5 L50 20 V45 H10 Z',
         },
-        lazy: true
+        lazy: true,
       };
 
       registry.register(source);

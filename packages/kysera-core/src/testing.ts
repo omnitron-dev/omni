@@ -1,5 +1,5 @@
-import type { Kysely, Transaction } from 'kysely'
-import { sql } from 'kysely'
+import type { Kysely, Transaction } from 'kysely';
+import { sql } from 'kysely';
 
 /**
  * Testing utilities for Kysera ORM
@@ -13,15 +13,15 @@ import { sql } from 'kysely'
  */
 class RollbackError extends Error {
   constructor() {
-    super('ROLLBACK')
-    this.name = 'RollbackError'
+    super('ROLLBACK');
+    this.name = 'RollbackError';
   }
 }
 
 /**
  * Database cleanup strategies
  */
-export type CleanupStrategy = 'truncate' | 'transaction' | 'delete'
+export type CleanupStrategy = 'truncate' | 'transaction' | 'delete';
 
 /**
  * Test in a transaction that automatically rolls back
@@ -53,14 +53,14 @@ export async function testInTransaction<DB, T>(
 ): Promise<void> {
   try {
     await db.transaction().execute(async (trx) => {
-      await fn(trx)
+      await fn(trx);
       // Throw special error to trigger rollback
-      throw new RollbackError()
-    })
+      throw new RollbackError();
+    });
   } catch (error) {
     // Ignore RollbackError (expected), rethrow everything else
     if (!(error instanceof RollbackError)) {
-      throw error
+      throw error;
     }
   }
 }
@@ -97,25 +97,25 @@ export async function testWithSavepoints<DB, T>(
   try {
     await db.transaction().execute(async (trx) => {
       // Create initial savepoint
-      await sql`SAVEPOINT test_sp`.execute(trx)
+      await sql`SAVEPOINT test_sp`.execute(trx);
 
       try {
-        await fn(trx)
+        await fn(trx);
       } finally {
         // Always rollback to savepoint before rolling back transaction
         try {
-          await sql`ROLLBACK TO SAVEPOINT test_sp`.execute(trx)
+          await sql`ROLLBACK TO SAVEPOINT test_sp`.execute(trx);
         } catch {
           // Savepoint might not exist if transaction already failed
         }
       }
 
       // Trigger transaction rollback
-      throw new RollbackError()
-    })
+      throw new RollbackError();
+    });
   } catch (error) {
     if (!(error instanceof RollbackError)) {
-      throw error
+      throw error;
     }
   }
 }
@@ -144,48 +144,46 @@ export async function cleanDatabase<DB>(
 ): Promise<void> {
   if (strategy === 'transaction') {
     // No-op - testInTransaction handles cleanup
-    return
+    return;
   }
 
   if (!tables || tables.length === 0) {
-    throw new Error(
-      'cleanDatabase requires tables parameter when using "delete" or "truncate" strategy'
-    )
+    throw new Error('cleanDatabase requires tables parameter when using "delete" or "truncate" strategy');
   }
 
   if (strategy === 'delete') {
     // Delete in reverse FK order (most dependent first)
     for (const table of tables) {
-      await db.deleteFrom(table as any).execute()
+      await db.deleteFrom(table as any).execute();
     }
   } else if (strategy === 'truncate') {
     // TRUNCATE is database-specific
-    const dialect = (db as any).getExecutor().adapter.dialect
+    const dialect = (db as any).getExecutor().adapter.dialect;
 
     if (dialect.constructor.name.includes('Postgres')) {
       // PostgreSQL: Disable FK checks temporarily
-      await (db as any).raw('SET session_replication_role = replica').execute()
+      await (db as any).raw('SET session_replication_role = replica').execute();
 
       for (const table of tables) {
-        await (db as any).raw(`TRUNCATE TABLE "${table}" CASCADE`).execute()
+        await (db as any).raw(`TRUNCATE TABLE "${table}" CASCADE`).execute();
       }
 
-      await (db as any).raw('SET session_replication_role = DEFAULT').execute()
+      await (db as any).raw('SET session_replication_role = DEFAULT').execute();
     } else if (dialect.constructor.name.includes('Mysql')) {
       // MySQL: Disable FK checks
-      await (db as any).raw('SET FOREIGN_KEY_CHECKS = 0').execute()
+      await (db as any).raw('SET FOREIGN_KEY_CHECKS = 0').execute();
 
       for (const table of tables) {
-        await (db as any).raw(`TRUNCATE TABLE \`${table}\``).execute()
+        await (db as any).raw(`TRUNCATE TABLE \`${table}\``).execute();
       }
 
-      await (db as any).raw('SET FOREIGN_KEY_CHECKS = 1').execute()
+      await (db as any).raw('SET FOREIGN_KEY_CHECKS = 1').execute();
     } else {
       // SQLite: No TRUNCATE, use DELETE
       for (const table of tables) {
-        await db.deleteFrom(table as any).execute()
+        await db.deleteFrom(table as any).execute();
         // Reset sequences
-        await (db as any).raw(`DELETE FROM sqlite_sequence WHERE name='${table}'`).execute()
+        await (db as any).raw(`DELETE FROM sqlite_sequence WHERE name='${table}'`).execute();
       }
     }
   }
@@ -210,26 +208,24 @@ export async function cleanDatabase<DB>(
  * @param defaults - Default values (can be values or functions)
  * @returns Factory function that creates test data
  */
-export function createFactory<T extends Record<string, any>>(
-  defaults: {
-    [K in keyof T]: T[K] | (() => T[K])
-  }
-): (overrides?: Partial<T>) => T {
+export function createFactory<T extends Record<string, any>>(defaults: {
+  [K in keyof T]: T[K] | (() => T[K]);
+}): (overrides?: Partial<T>) => T {
   return (overrides = {}) => {
-    const result = {} as T
+    const result = {} as T;
 
     // Apply defaults
     for (const [key, value] of Object.entries(defaults)) {
-      result[key as keyof T] = typeof value === 'function' ? (value as () => any)() : value
+      result[key as keyof T] = typeof value === 'function' ? (value as () => any)() : value;
     }
 
     // Apply overrides
     for (const [key, value] of Object.entries(overrides)) {
-      result[key as keyof T] = value as T[keyof T]
+      result[key as keyof T] = value as T[keyof T];
     }
 
-    return result
-  }
+    return result;
+  };
 }
 
 /**
@@ -249,28 +245,24 @@ export function createFactory<T extends Record<string, any>>(
 export async function waitFor(
   condition: () => Promise<boolean> | boolean,
   options: {
-    timeout?: number
-    interval?: number
-    timeoutMessage?: string
+    timeout?: number;
+    interval?: number;
+    timeoutMessage?: string;
   } = {}
 ): Promise<void> {
-  const {
-    timeout = 5000,
-    interval = 100,
-    timeoutMessage = 'Condition not met within timeout'
-  } = options
+  const { timeout = 5000, interval = 100, timeoutMessage = 'Condition not met within timeout' } = options;
 
-  const startTime = Date.now()
+  const startTime = Date.now();
 
   while (Date.now() - startTime < timeout) {
-    const result = await condition()
+    const result = await condition();
     if (result) {
-      return
+      return;
     }
-    await new Promise(resolve => setTimeout(resolve, interval))
+    await new Promise((resolve) => setTimeout(resolve, interval));
   }
 
-  throw new Error(timeoutMessage)
+  throw new Error(timeoutMessage);
 }
 
 /**
@@ -289,21 +281,14 @@ export async function waitFor(
  * @param db - Kysely database instance
  * @param fn - Seeding function
  */
-export async function seedDatabase<DB>(
-  db: Kysely<DB>,
-  fn: (trx: Transaction<DB>) => Promise<void>
-): Promise<void> {
-  await db.transaction().execute(fn)
+export async function seedDatabase<DB>(db: Kysely<DB>, fn: (trx: Transaction<DB>) => Promise<void>): Promise<void> {
+  await db.transaction().execute(fn);
 }
 
 /**
  * Isolation level for transactions
  */
-export type IsolationLevel =
-  | 'read uncommitted'
-  | 'read committed'
-  | 'repeatable read'
-  | 'serializable'
+export type IsolationLevel = 'read uncommitted' | 'read committed' | 'repeatable read' | 'serializable';
 
 /**
  * Test with specific transaction isolation level
@@ -327,17 +312,15 @@ export async function testWithIsolation<DB, T>(
   try {
     await db.transaction().execute(async (trx) => {
       // Set isolation level
-      await (trx as any)
-        .raw(`SET TRANSACTION ISOLATION LEVEL ${isolationLevel.toUpperCase()}`)
-        .execute()
+      await (trx as any).raw(`SET TRANSACTION ISOLATION LEVEL ${isolationLevel.toUpperCase()}`).execute();
 
-      await fn(trx)
+      await fn(trx);
 
-      throw new RollbackError()
-    })
+      throw new RollbackError();
+    });
   } catch (error) {
     if (!(error instanceof RollbackError)) {
-      throw error
+      throw error;
     }
   }
 }
@@ -359,14 +342,11 @@ export async function testWithIsolation<DB, T>(
  * @param table - Table name
  * @returns Array of all rows in the table
  */
-export async function snapshotTable<DB>(
-  db: Kysely<DB>,
-  table: string
-): Promise<any[]> {
+export async function snapshotTable<DB>(db: Kysely<DB>, table: string): Promise<any[]> {
   return db
     .selectFrom(table as any)
     .selectAll()
-    .execute()
+    .execute();
 }
 
 /**
@@ -382,14 +362,11 @@ export async function snapshotTable<DB>(
  * @param table - Table name
  * @returns Number of rows
  */
-export async function countRows<DB>(
-  db: Kysely<DB>,
-  table: string
-): Promise<number> {
+export async function countRows<DB>(db: Kysely<DB>, table: string): Promise<number> {
   const result = await (db as any)
     .selectFrom(table)
     .select((eb: any) => eb.fn.countAll().as('count'))
-    .executeTakeFirst()
+    .executeTakeFirst();
 
-  return result ? Number(result.count) : 0
+  return result ? Number(result.count) : 0;
 }

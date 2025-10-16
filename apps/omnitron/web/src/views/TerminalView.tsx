@@ -13,18 +13,24 @@ export default defineComponent(() => {
 
   onMount(() => {
     // Add welcome message
-    addOutput('', `Omnitron Terminal v1.0.0
+    addOutput(
+      '',
+      `Omnitron Terminal v1.0.0
 Type 'help' for available commands
-`);
+`
+    );
   });
 
   const addOutput = (command: string, output: string) => {
-    commandHistory.update(history => [...history, {
-      id: Date.now().toString(),
-      command,
-      output,
-      timestamp: new Date()
-    }]);
+    commandHistory.update((history) => [
+      ...history,
+      {
+        id: Date.now().toString(),
+        command,
+        output,
+        timestamp: new Date(),
+      },
+    ]);
   };
 
   const executeCommand = (command: string) => {
@@ -126,10 +132,15 @@ Type 'help' for available commands`;
       <div class="view-header">
         <h2>Terminal</h2>
         <div class="terminal-actions">
-          <button class="tool-button" onClick={() => {
-            commandHistory.set([]);
-            addOutput('', 'Terminal cleared');
-          }}>Clear</button>
+          <button
+            class="tool-button"
+            onClick={() => {
+              commandHistory.set([]);
+              addOutput('', 'Terminal cleared');
+            }}
+          >
+            Clear
+          </button>
           <button class="tool-button">Split</button>
           <button class="tool-button">+</button>
         </div>

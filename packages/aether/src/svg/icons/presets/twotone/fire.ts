@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const FireIcon: IconDefinition = {
-  "id": "fire",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M13.8561 22C26.0783 19 19.2338 7 10.9227 2C9.9453 5.5 8.47838 6.5 5.54497 10C1.66121 14.6339 3.5895 20 8.96719 22\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M13.8564 22C16.5003 19 19.0003 14.5 12.8786 10C13.6608 12.4 12.8151 14.5 12.0003 15.5C11.5003 13 9.47811 12.5 8.50034 12C9.00034 14 8.00034 15 7.50034 16C6.04991 18.9008 8.15274 21 8.96752 22\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "twotone",
-    "originalName": "FireIcon",
-    "elementsCount": 2,
-    "hasOpacity": true,
-    "hasFill": false
-  }
+  id: 'fire',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path d="M13.8561 22C26.0783 19 19.2338 7 10.9227 2C9.9453 5.5 8.47838 6.5 5.54497 10C1.66121 14.6339 3.5895 20 8.96719 22" stroke-linecap="round" stroke-linejoin="round" />\n    <path opacity="0.4" d="M13.8564 22C16.5003 19 19.0003 14.5 12.8786 10C13.6608 12.4 12.8151 14.5 12.0003 15.5C11.5003 13 9.47811 12.5 8.50034 12C9.00034 14 8.00034 15 7.50034 16C6.04991 18.9008 8.15274 21 8.96752 22" stroke-linecap="round" stroke-linejoin="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'twotone',
+    originalName: 'FireIcon',
+    elementsCount: 2,
+    hasOpacity: true,
+    hasFill: false,
+  },
 };

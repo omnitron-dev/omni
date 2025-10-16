@@ -18,14 +18,7 @@ import { jsx } from '@omnitron-dev/aether/jsx-runtime';
 // Types
 // ============================================================================
 
-export type ButtonVariant =
-  | 'primary'
-  | 'secondary'
-  | 'success'
-  | 'warning'
-  | 'danger'
-  | 'ghost'
-  | 'link';
+export type ButtonVariant = 'primary' | 'secondary' | 'success' | 'warning' | 'danger' | 'ghost' | 'link';
 
 export type ButtonSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 

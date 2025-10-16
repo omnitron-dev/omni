@@ -11,7 +11,11 @@ import {
   createTableState,
 } from '../src/components/table/table-state.js';
 
-import type { SortColumn, TableColumn, InteractiveTableOptions } from '../src/components/table/types.js';
+import type {
+  SortColumn,
+  TableColumn,
+  InteractiveTableOptions,
+} from '../src/components/table/types.js';
 
 function createTestData() {
   return [
@@ -23,7 +27,9 @@ function createTestData() {
   ];
 }
 
-function createTestOptions(overrides?: Partial<InteractiveTableOptions<any>>): InteractiveTableOptions<any> {
+function createTestOptions(
+  overrides?: Partial<InteractiveTableOptions<any>>
+): InteractiveTableOptions<any> {
   const columns: TableColumn<any>[] = [
     { key: 'id', header: 'ID', sortable: true },
     { key: 'name', header: 'Name', sortable: true },

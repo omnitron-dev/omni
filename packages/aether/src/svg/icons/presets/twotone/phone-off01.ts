@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const PhoneOff01Icon: IconDefinition = {
-  "id": "phone-off01",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M2 2L22 22\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M18.5 14.5V7.00794C18.5 4.65091 18.5 3.4724 17.7678 2.74017C17.0355 2.00793 15.857 2.00793 13.5 2.00793H10.494C8.4102 2.00793 7.24752 2.00793 6.5 2.51392M14 2.50012L13.5 3.00012H10.494L10 2.50012\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M5.5 6V17C5.5 19.357 5.5 20.5355 6.23223 21.2678C6.96447 22 8.14298 22 10.5 22H15C15.9306 22 16.396 22 16.7725 21.8776C17.5336 21.6303 18.1303 21.0336 18.3776 20.2725C18.5 19.896 18.5 19.4306 18.5 18.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "twotone",
-    "originalName": "PhoneOff01Icon",
-    "elementsCount": 3,
-    "hasOpacity": true,
-    "hasFill": false
-  }
+  id: 'phone-off01',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path d="M2 2L22 22" stroke-linecap="round" stroke-linejoin="round" />\n    <path opacity="0.4" d="M18.5 14.5V7.00794C18.5 4.65091 18.5 3.4724 17.7678 2.74017C17.0355 2.00793 15.857 2.00793 13.5 2.00793H10.494C8.4102 2.00793 7.24752 2.00793 6.5 2.51392M14 2.50012L13.5 3.00012H10.494L10 2.50012" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M5.5 6V17C5.5 19.357 5.5 20.5355 6.23223 21.2678C6.96447 22 8.14298 22 10.5 22H15C15.9306 22 16.396 22 16.7725 21.8776C17.5336 21.6303 18.1303 21.0336 18.3776 20.2725C18.5 19.896 18.5 19.4306 18.5 18.5" stroke-linecap="round" stroke-linejoin="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'twotone',
+    originalName: 'PhoneOff01Icon',
+    elementsCount: 3,
+    hasOpacity: true,
+    hasFill: false,
+  },
 };

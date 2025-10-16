@@ -300,11 +300,7 @@ export class MemoizationExtension extends Extension<MemoizationConfig> {
   /**
    * Memoize a function
    */
-  memoize<T extends (...args: any[]) => any>(
-    cacheName: string,
-    fn: T,
-    keyGenerator?: KeyGenerator<Parameters<T>>
-  ): T {
+  memoize<T extends (...args: any[]) => any>(cacheName: string, fn: T, keyGenerator?: KeyGenerator<Parameters<T>>): T {
     if (!this.config.enabled) {
       return fn;
     }

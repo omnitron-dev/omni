@@ -20,7 +20,7 @@ import type {
   TargetsConfig,
   ValidationError,
   VariableContext,
-  ConfigManagerOptions
+  ConfigManagerOptions,
 } from './types.js';
 
 /**
@@ -30,28 +30,28 @@ const DEFAULT_CONFIG: Partial<Configuration> = {
   version: '1.0',
   targets: {
     local: {
-      type: 'local'
-    }
+      type: 'local',
+    },
   },
   commands: {
     in: {
-      defaultTimeout: '30s'
+      defaultTimeout: '30s',
     },
     on: {
-      parallel: false
+      parallel: false,
     },
     copy: {
       compress: true,
-      progress: true
+      progress: true,
     },
     forward: {
-      dynamic: true
+      dynamic: true,
     },
     watch: {
       interval: 2,
-      clear: true
-    }
-  }
+      clear: true,
+    },
+  },
 };
 
 /**
@@ -100,7 +100,7 @@ export class ConfigurationManager {
     if (this.merged.secrets) {
       await this.updateSecretProvider({
         type: this.merged.secrets.provider,
-        config: this.merged.secrets.config
+        config: this.merged.secrets.config,
       });
     }
 
@@ -189,7 +189,7 @@ export class ConfigurationManager {
       vars: this.merged?.vars || {},
       env: this.getEnvironmentVariables(),
       profile: this.getCurrentProfile(),
-      ...context
+      ...context,
     };
 
     return this.interpolator.interpolate(value, fullContext);
@@ -267,12 +267,12 @@ export class ConfigurationManager {
     const yamlContent = jsYaml.dump(this.merged, {
       indent: 2,
       lineWidth: 120,
-      sortKeys: false
+      sortKeys: false,
     });
 
     // Write file
     await fs.writeFile(targetPath, yamlContent, 'utf-8');
-    
+
     // Log where config was saved for debugging
     if (process.env['XEC_DEBUG']) {
       console.log(`[ConfigManager] Configuration saved to: ${targetPath}`);
@@ -290,7 +290,6 @@ export class ConfigurationManager {
 
   // Private methods
 
-
   /**
    * Find the monorepo or project root by looking for common root indicators
    * Priority:
@@ -306,7 +305,7 @@ export class ConfigurationManager {
     let monorepoRoot: string | null = null;
     let gitRoot: string | null = null;
     let firstConfigDir: string | null = null;
-    
+
     // Traverse up to find all relevant roots
     while (currentDir !== path.dirname(currentDir)) {
       // Check for .xec directory with actual config file
@@ -347,7 +346,7 @@ export class ConfigurationManager {
     if (gitRoot) {
       return gitRoot;
     }
-    
+
     return null;
   }
 
@@ -355,8 +354,7 @@ export class ConfigurationManager {
    * Check if a directory has an xec configuration file
    */
   private hasXecConfig(dir: string): boolean {
-    return existsSync(path.join(dir, '.xec', 'config.yaml')) ||
-           existsSync(path.join(dir, '.xec', 'config.yml'));
+    return existsSync(path.join(dir, '.xec', 'config.yaml')) || existsSync(path.join(dir, '.xec', 'config.yml'));
   }
 
   /**
@@ -368,15 +366,17 @@ export class ConfigurationManager {
       path.join(searchRoot, '.xec', 'config.yaml'),
       path.join(searchRoot, '.xec', 'config.yml'),
       // Also check current directory if different from searchRoot
-      ...(searchRoot !== this.options.projectRoot ? [
-        path.join(this.options.projectRoot!, '.xec', 'config.yaml'),
-        path.join(this.options.projectRoot!, '.xec', 'config.yml'),
-      ] : []),
+      ...(searchRoot !== this.options.projectRoot
+        ? [
+            path.join(this.options.projectRoot!, '.xec', 'config.yaml'),
+            path.join(this.options.projectRoot!, '.xec', 'config.yml'),
+          ]
+        : []),
       // Legacy locations
       path.join(searchRoot, 'xec.yaml'),
       path.join(searchRoot, 'xec.yml'),
       path.join(this.options.projectRoot!, 'xec.yaml'),
-      path.join(this.options.projectRoot!, 'xec.yml')
+      path.join(this.options.projectRoot!, 'xec.yml'),
     ];
 
     // Remove duplicates while preserving order
@@ -387,15 +387,13 @@ export class ConfigurationManager {
    * Build profile search paths
    */
   private buildProfileSearchPaths(searchRoot: string, profileName: string): string[] {
-    const paths = [
-      path.join(searchRoot, '.xec', 'profiles', `${profileName}.yaml`),
-    ];
-    
+    const paths = [path.join(searchRoot, '.xec', 'profiles', `${profileName}.yaml`)];
+
     // Also check current directory if different from searchRoot
     if (searchRoot !== this.options.projectRoot) {
       paths.push(path.join(this.options.projectRoot!, '.xec', 'profiles', `${profileName}.yaml`));
     }
-    
+
     return paths;
   }
 
@@ -425,20 +423,20 @@ export class ConfigurationManager {
       type: 'builtin',
       name: 'defaults',
       priority: 0,
-      config: DEFAULT_CONFIG
+      config: DEFAULT_CONFIG,
     });
   }
 
   private async loadGlobalConfig(): Promise<void> {
     const globalPath = path.join(this.options.globalHomeDir!, 'config.yaml');
     const config = await this.tryLoadConfigFile(globalPath);
-    
+
     if (config) {
       this.sources.push({
         type: 'global',
         path: globalPath,
         priority: 10,
-        config
+        config,
       });
     }
   }
@@ -474,7 +472,7 @@ export class ConfigurationManager {
           type: 'project',
           path: location,
           priority: 20,
-          config
+          config,
         });
 
         // Log where config was found (useful for debugging in monorepos)
@@ -496,10 +494,7 @@ export class ConfigurationManager {
     for (const [key, value] of Object.entries(process.env)) {
       if (key.startsWith(prefix) && key !== `${prefix}PROFILE`) {
         // Convert XEC_VARS_APP_NAME to vars.app_name
-        const p = key
-          .substring(prefix.length)
-          .toLowerCase()
-          .replace(/_/g, '.');
+        const p = key.substring(prefix.length).toLowerCase().replace(/_/g, '.');
 
         this.setByPath(envConfig, p, value);
       }
@@ -514,7 +509,7 @@ export class ConfigurationManager {
           type: 'env',
           path: configPath,
           priority: 30,
-          config
+          config,
         });
       }
     }
@@ -524,7 +519,7 @@ export class ConfigurationManager {
         type: 'env',
         name: 'environment',
         priority: 35,
-        config: envConfig
+        config: envConfig,
       });
     }
   }
@@ -542,7 +537,7 @@ export class ConfigurationManager {
       // Convert profile config to full config structure
       const config: Partial<Configuration> = {
         vars: resolvedProfile.vars,
-        targets: resolvedProfile.targets
+        targets: resolvedProfile.targets,
       };
 
       if (resolvedProfile.env) {
@@ -553,7 +548,7 @@ export class ConfigurationManager {
         type: 'profile',
         name: profileName,
         priority: 40,
-        config
+        config,
       });
     }
   }
@@ -595,7 +590,7 @@ export class ConfigurationManager {
           try {
             const content = await fs.readFile(profilePath, 'utf-8');
             profileConfig = jsYaml.load(content) as ProfileConfig;
-            break;  // Use first found
+            break; // Use first found
           } catch (error: any) {
             if (error.code !== 'ENOENT') {
               console.warn(`Failed to load profile ${currentName} from ${profilePath}: ${error.message}`);
@@ -663,7 +658,7 @@ export class ConfigurationManager {
     const context: VariableContext = {
       vars: config.vars || {},
       env: this.getEnvironmentVariables(),
-      profile: this.getCurrentProfile()
+      profile: this.getCurrentProfile(),
     };
 
     // Don't resolve task commands - they may contain params that are only available at runtime
@@ -745,7 +740,10 @@ export class ConfigurationManager {
  * Configuration validation error
  */
 export class ConfigValidationError extends Error {
-  constructor(message: string, public errors: ValidationError[]) {
+  constructor(
+    message: string,
+    public errors: ValidationError[]
+  ) {
     super(message);
     this.name = 'ConfigValidationError';
   }

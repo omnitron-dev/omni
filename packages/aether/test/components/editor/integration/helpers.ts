@@ -45,11 +45,7 @@ export function createIntegrationTestEditor(extensions: IExtension[]): EditorIns
 /**
  * Simulate a keyboard press event
  */
-export function simulateKeyPress(
-  editor: EditorInstance,
-  key: string,
-  modifiers: string[] = []
-): boolean {
+export function simulateKeyPress(editor: EditorInstance, key: string, modifiers: string[] = []): boolean {
   const event = new KeyboardEvent('keydown', {
     key,
     ctrlKey: modifiers.includes('Ctrl'),
@@ -128,11 +124,7 @@ export function assertMarkdown(editor: EditorInstance, expected: string): void {
  */
 export function setSelection(editor: EditorInstance, from: number, to?: number): void {
   const tr = editor.state.tr.setSelection(
-    editor.state.selection.constructor.create(
-      editor.state.doc,
-      from,
-      to ?? from
-    ) as any
+    editor.state.selection.constructor.create(editor.state.doc, from, to ?? from) as any
   );
   editor.view.dispatch(tr);
 }
@@ -209,11 +201,7 @@ export function toggleMarkCommand(editor: EditorInstance, markName: string): boo
 /**
  * Create a test file object
  */
-export function createTestFile(
-  name: string,
-  content: string,
-  type: string = 'text/plain'
-): File {
+export function createTestFile(name: string, content: string, type: string = 'text/plain'): File {
   const blob = new Blob([content], { type });
   return new File([blob], name, { type });
 }
@@ -221,11 +209,7 @@ export function createTestFile(
 /**
  * Wait for a condition to be true
  */
-export async function waitFor(
-  condition: () => boolean,
-  timeout = 1000,
-  interval = 10
-): Promise<void> {
+export async function waitFor(condition: () => boolean, timeout = 1000, interval = 10): Promise<void> {
   const startTime = Date.now();
 
   return new Promise((resolve, reject) => {

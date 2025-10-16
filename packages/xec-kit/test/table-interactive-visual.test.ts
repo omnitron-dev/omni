@@ -23,7 +23,9 @@ function createTestData() {
   ];
 }
 
-function createTestOptions(overrides?: Partial<InteractiveTableOptions<any>>): InteractiveTableOptions<any> {
+function createTestOptions(
+  overrides?: Partial<InteractiveTableOptions<any>>
+): InteractiveTableOptions<any> {
   return {
     data: createTestData(),
     columns: [

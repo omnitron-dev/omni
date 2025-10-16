@@ -145,11 +145,7 @@ export const ProgressiveSVG = defineComponent<ProgressiveSVGProps>((props) => {
     // Not yet enhanced: render basic SVG
     if (!isEnhanced()) {
       return (
-        <SVG
-          {...svgProps}
-          data-progressive-svg="true"
-          data-enhance-on={enhanceOn}
-        >
+        <SVG {...svgProps} data-progressive-svg="true" data-enhance-on={enhanceOn}>
           {props.children}
         </SVG>
       );
@@ -172,11 +168,7 @@ export const ProgressiveSVG = defineComponent<ProgressiveSVGProps>((props) => {
       enhancedProps['data-interactive'] = 'true';
     }
 
-    return (
-      <SVG {...enhancedProps}>
-        {props.children}
-      </SVG>
-    );
+    return <SVG {...enhancedProps}>{props.children}</SVG>;
   };
 });
 
@@ -196,10 +188,7 @@ function scheduleIdleEnhancement(callback: () => void, timeout: number): void {
 /**
  * Schedule enhancement when element becomes visible
  */
-function scheduleVisibleEnhancement(
-  callback: () => void,
-  options?: IntersectionObserverInit
-): void {
+function scheduleVisibleEnhancement(callback: () => void, options?: IntersectionObserverInit): void {
   // We need to get reference to the element
   // This is a simplified implementation
   effect(() => {
@@ -209,8 +198,8 @@ function scheduleVisibleEnhancement(
     }
 
     const observer = new IntersectionObserver(
-      entries => {
-        entries.forEach(entry => {
+      (entries) => {
+        entries.forEach((entry) => {
           if (entry.isIntersecting) {
             callback();
             observer.disconnect();
@@ -236,10 +225,7 @@ function scheduleVisibleEnhancement(
 /**
  * Schedule enhancement on user interaction
  */
-function scheduleInteractionEnhancement(
-  callback: () => void,
-  events: string[]
-): void {
+function scheduleInteractionEnhancement(callback: () => void, events: string[]): void {
   effect(() => {
     let executed = false;
 
@@ -258,12 +244,10 @@ function scheduleInteractionEnhancement(
     }
 
     // Add listeners
-    events.forEach(event =>
-      target.addEventListener(event, handler, { once: true, passive: true })
-    );
+    events.forEach((event) => target.addEventListener(event, handler, { once: true, passive: true }));
 
     onCleanup(() => {
-      events.forEach(event => target.removeEventListener(event, handler));
+      events.forEach((event) => target.removeEventListener(event, handler));
     });
   });
 }
@@ -275,11 +259,11 @@ export const NoScriptSVG = defineComponent<{
   fallback: any;
   children?: any;
 }>((props) => () => (
-    <>
-      {props.children}
-      <noscript>{props.fallback}</noscript>
-    </>
-  ));
+  <>
+    {props.children}
+    <noscript>{props.fallback}</noscript>
+  </>
+));
 
 /**
  * SSR-friendly SVG component that handles hydration

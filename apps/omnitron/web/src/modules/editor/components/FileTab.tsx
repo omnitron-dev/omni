@@ -29,20 +29,13 @@ export const FileTab = defineComponent<FileTabProps>((props) => {
   };
 
   return () => (
-    <div
-      class={() => `file-tab ${props.isActive ? 'active' : ''}`}
-      onClick={handleClick}
-    >
+    <div class={() => `file-tab ${props.isActive ? 'active' : ''}`} onClick={handleClick}>
       <span class="file-icon">📄</span>
       <span class="file-name">{props.file.name}</span>
       <Show when={() => props.file.isDirty}>
         <span class="dirty-indicator">●</span>
       </Show>
-      <button
-        class="close-tab"
-        onClick={handleClose}
-        title="Close file"
-      >
+      <button class="close-tab" onClick={handleClose} title="Close file">
         ×
       </button>
     </div>

@@ -1,6 +1,6 @@
 /**
  * Configuration API
- * 
+ *
  * Provides programmatic access to xec configuration management.
  * Supports loading, querying, modifying, and saving configurations.
  */
@@ -29,7 +29,7 @@ export class ConfigAPI {
     }
 
     await this.manager.load();
-    
+
     // Mark as loaded before applying overrides to avoid circular dependency
     this.loaded = true;
 
@@ -50,7 +50,7 @@ export class ConfigAPI {
     this.ensureLoaded();
     const parts = path.split('.');
     let current: any = this.manager.getConfig();
-    
+
     for (const part of parts) {
       if (current && typeof current === 'object' && part in current) {
         current = current[part];
@@ -58,7 +58,7 @@ export class ConfigAPI {
         return undefined;
       }
     }
-    
+
     return current as T;
   }
 
@@ -72,7 +72,7 @@ export class ConfigAPI {
     const parts = path.split('.');
     const config = this.manager.getConfig();
     let current: any = config;
-    
+
     // Navigate to parent
     for (let i = 0; i < parts.length - 1; i++) {
       const part = parts[i];
@@ -82,7 +82,7 @@ export class ConfigAPI {
       }
       current = current[part];
     }
-    
+
     // Set the value
     const lastPart = parts[parts.length - 1];
     if (lastPart) {
@@ -99,7 +99,7 @@ export class ConfigAPI {
     const parts = path.split('.');
     const config = this.manager.getConfig();
     let current: any = config;
-    
+
     // Navigate to parent
     for (let i = 0; i < parts.length - 1; i++) {
       const part = parts[i];
@@ -108,7 +108,7 @@ export class ConfigAPI {
       }
       current = current[part];
     }
-    
+
     // Delete the value
     const lastPart = parts[parts.length - 1];
     if (lastPart) {
@@ -168,7 +168,7 @@ export class ConfigAPI {
   interpolate(template: string, context: InterpolationContext = {}): string {
     this.ensureLoaded();
     const config = this.manager.getConfig();
-    
+
     // Convert process.env to Record<string, string>
     const env: Record<string, string> = {};
     for (const [key, value] of Object.entries(process.env)) {
@@ -176,11 +176,11 @@ export class ConfigAPI {
         env[key] = value;
       }
     }
-    
+
     const fullContext = {
       vars: config.vars || {},
       env,
-      ...context
+      ...context,
     };
     return this.interpolator.interpolate(template, fullContext);
   }
@@ -216,7 +216,7 @@ export class ConfigAPI {
   async validate(): Promise<string[]> {
     this.ensureLoaded();
     const errors = await this.manager.validate();
-    return errors.map(err => `${err.path}: ${err.message}`);
+    return errors.map((err) => `${err.path}: ${err.message}`);
   }
 
   /**
@@ -227,7 +227,7 @@ export class ConfigAPI {
     // Create new manager to pick up current working directory
     this.manager = new ConfigurationManager({
       ...this.options,
-      projectRoot: process.cwd()
+      projectRoot: process.cwd(),
     });
     await this.load();
   }

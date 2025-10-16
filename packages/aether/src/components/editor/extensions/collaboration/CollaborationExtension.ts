@@ -7,13 +7,7 @@
 
 import type { Plugin } from 'prosemirror-state';
 import * as Y from 'yjs';
-import {
-  ySyncPlugin,
-  yCursorPlugin,
-  yUndoPlugin,
-  undo,
-  redo,
-} from 'y-prosemirror';
+import { ySyncPlugin, yCursorPlugin, yUndoPlugin, undo, redo } from 'y-prosemirror';
 import { WebsocketProvider } from 'y-websocket';
 import { Extension } from '../../core/Extension.js';
 import type { User } from './types.js';
@@ -100,11 +94,7 @@ export class CollaborationExtension extends Extension<CollaborationOptions> {
 
     // Set up provider if specified
     if (this.options.provider === 'websocket' && this.options.providerUrl && this.options.room) {
-      this.provider = new WebsocketProvider(
-        this.options.providerUrl,
-        this.options.room,
-        this.ydoc,
-      );
+      this.provider = new WebsocketProvider(this.options.providerUrl, this.options.room, this.ydoc);
 
       this.awareness = this.provider.awareness;
 
@@ -143,7 +133,7 @@ export class CollaborationExtension extends Extension<CollaborationOptions> {
     plugins.push(
       ySyncPlugin(this.yXmlFragment, {
         debounceWait: this.options.debounceMs,
-      }),
+      })
     );
 
     // Y.js cursor plugin - shows other users' cursors (handled by CollaborationCursorExtension)
@@ -155,7 +145,7 @@ export class CollaborationExtension extends Extension<CollaborationOptions> {
           cursorBuilder: () => null as any,
           // Return null here, selection rendering handled by CollaborationCursorExtension
           selectionBuilder: () => null as any,
-        }),
+        })
       );
     }
 

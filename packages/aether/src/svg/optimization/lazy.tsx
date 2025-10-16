@@ -338,10 +338,7 @@ export interface UseLazyLoadReturn {
  * });
  * ```
  */
-export function useLazyLoad(
-  ref: WritableSignal<Element | null>,
-  config?: LazyLoadConfig
-): UseLazyLoadReturn {
+export function useLazyLoad(ref: WritableSignal<Element | null>, config?: LazyLoadConfig): UseLazyLoadReturn {
   const isLoaded = signal(false);
   const isVisible = signal(false);
   const error = signal<Error | null>(null);

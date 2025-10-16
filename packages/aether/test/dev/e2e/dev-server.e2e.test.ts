@@ -36,9 +36,7 @@ class MockDevServer {
     this.port = config.port || 3000;
     this.hmr = new HMREngine(typeof config.hmr === 'object' ? config.hmr : {});
     this.middleware = createDevMiddleware(config);
-    this.fastRefresh = new FastRefresh(
-      typeof config.hmr === 'object' ? config.hmr : {}
-    );
+    this.fastRefresh = new FastRefresh(typeof config.hmr === 'object' ? config.hmr : {});
   }
 
   async start(): Promise<void> {
@@ -225,9 +223,7 @@ describe('Dev Server E2E', () => {
             })
         );
 
-      const responses = await Promise.all(
-        requests.map((req) => server.handleRequest(req))
-      );
+      const responses = await Promise.all(requests.map((req) => server.handleRequest(req)));
 
       expect(responses).toHaveLength(10);
       responses.forEach((response) => {
@@ -269,9 +265,7 @@ describe('Dev Server E2E', () => {
         };
       });
 
-      expect(ws.send).toHaveBeenCalledWith(
-        JSON.stringify({ type: 'connected' })
-      );
+      expect(ws.send).toHaveBeenCalledWith(JSON.stringify({ type: 'connected' }));
     });
 
     it('should receive HMR updates via WebSocket', async () => {
@@ -321,9 +315,7 @@ describe('Dev Server E2E', () => {
 
       // All should receive connected message
       [ws1, ws2, ws3].forEach((ws) => {
-        expect(ws.send).toHaveBeenCalledWith(
-          JSON.stringify({ type: 'connected' })
-        );
+        expect(ws.send).toHaveBeenCalledWith(JSON.stringify({ type: 'connected' }));
       });
     });
 
@@ -633,9 +625,7 @@ describe('Dev Server E2E', () => {
 
       // All connections should be open
       connections.forEach((ws) => {
-        expect(ws.send).toHaveBeenCalledWith(
-          JSON.stringify({ type: 'connected' })
-        );
+        expect(ws.send).toHaveBeenCalledWith(JSON.stringify({ type: 'connected' }));
       });
     });
 

@@ -293,7 +293,7 @@ describe('Testing Library Integration', () => {
       const results = computed(() => {
         const q = query().toLowerCase();
         const allItems = ['Apple', 'Banana', 'Orange', 'Grape'];
-        return allItems.filter(item => item.toLowerCase().includes(q));
+        return allItems.filter((item) => item.toLowerCase().includes(q));
       });
 
       const { container } = render(() => {
@@ -305,7 +305,7 @@ describe('Testing Library Integration', () => {
         input.oninput = (e) => query.set((e.target as HTMLInputElement).value);
 
         const resultsList = document.createElement('ul');
-        results().forEach(item => {
+        results().forEach((item) => {
           const li = document.createElement('li');
           li.textContent = item;
           resultsList.appendChild(li);
@@ -352,7 +352,7 @@ describe('Testing Library Integration', () => {
         };
 
         const list = document.createElement('ul');
-        todos().forEach(todo => {
+        todos().forEach((todo) => {
           const li = document.createElement('li');
           li.textContent = todo;
           list.appendChild(li);
@@ -444,7 +444,7 @@ describe('Testing Library Integration', () => {
         const div = document.createElement('div');
         const list = document.createElement('ul');
 
-        items().forEach(item => {
+        items().forEach((item) => {
           const li = document.createElement('li');
           li.textContent = item;
           list.appendChild(li);
@@ -463,14 +463,16 @@ describe('Testing Library Integration', () => {
     it('should cleanup large component trees', () => {
       const items = Array.from({ length: 50 }, (_, i) => i);
 
-      const results = items.map(i => render(() => {
+      const results = items.map((i) =>
+        render(() => {
           const div = document.createElement('div');
           div.textContent = `Component ${i}`;
           return div as any;
-        }));
+        })
+      );
 
       // All should be mounted
-      results.forEach(r => {
+      results.forEach((r) => {
         expect(document.body.contains(r.container)).toBe(true);
       });
 
@@ -478,7 +480,7 @@ describe('Testing Library Integration', () => {
       cleanup();
 
       // All should be removed
-      results.forEach(r => {
+      results.forEach((r) => {
         expect(document.body.contains(r.container)).toBe(false);
       });
     });

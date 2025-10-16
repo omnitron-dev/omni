@@ -62,19 +62,16 @@ describe('Copy Command', () => {
 
       const config = {
         version: '2.0',
-        targets: {}
+        targets: {},
       };
 
-      await fs.writeFile(
-        configPath,
-        yaml.dump(config)
-      );
+      await fs.writeFile(configPath, yaml.dump(config));
 
       // Execute copy
       await executeCommand([
         `local:${sourceFile}`,
         `local:${destFile}`,
-        { quiet: true, configPath: path.join(projectDir, '.xec', 'config.yaml') }
+        { quiet: true, configPath: path.join(projectDir, '.xec', 'config.yaml') },
       ]);
 
       // Verify file was copied
@@ -90,19 +87,16 @@ describe('Copy Command', () => {
 
       const config = {
         version: '2.0',
-        targets: {}
+        targets: {},
       };
 
-      await fs.writeFile(
-        configPath,
-        yaml.dump(config)
-      );
+      await fs.writeFile(configPath, yaml.dump(config));
 
       // Execute copy with wildcard
       await executeCommand([
         `local:${sourceDir}/*.txt`,
         `local:${destDir}/`,
-        { quiet: true, configPath: path.join(projectDir, '.xec', 'config.yaml') }
+        { quiet: true, configPath: path.join(projectDir, '.xec', 'config.yaml') },
       ]);
 
       // Verify only .txt files were copied
@@ -127,19 +121,16 @@ describe('Copy Command', () => {
 
       const config = {
         version: '2.0',
-        targets: {}
+        targets: {},
       };
 
-      await fs.writeFile(
-        configPath,
-        yaml.dump(config)
-      );
+      await fs.writeFile(configPath, yaml.dump(config));
 
       // Execute recursive copy
       await executeCommand([
         `local:${sourceDir}`,
         `local:${destDir}`,
-        { recursive: true, quiet: true, configPath: path.join(projectDir, '.xec', 'config.yaml') }
+        { recursive: true, quiet: true, configPath: path.join(projectDir, '.xec', 'config.yaml') },
       ]);
 
       // Verify directory structure was copied
@@ -163,19 +154,16 @@ describe('Copy Command', () => {
 
       const config = {
         version: '2.0',
-        targets: {}
+        targets: {},
       };
 
-      await fs.writeFile(
-        configPath,
-        yaml.dump(config)
-      );
+      await fs.writeFile(configPath, yaml.dump(config));
 
       // Copy with preserve option
       await executeCommand([
         `local:${sourceFile}`,
         `local:${destFile}`,
-        { preserve: true, quiet: true, configPath: path.join(projectDir, '.xec', 'config.yaml') }
+        { preserve: true, quiet: true, configPath: path.join(projectDir, '.xec', 'config.yaml') },
       ]);
 
       // Verify file was copied
@@ -189,160 +177,143 @@ describe('Copy Command', () => {
   });
 
   // SSH copy tests using real containers
-  describeSSH('SSH Host Copy', () => {
-    it('should copy file to SSH host', async () => {
-      const container = 'ubuntu-apt';
-      const sshConfig = getSSHConfig(container);
+  describeSSH(
+    'SSH Host Copy',
+    () => {
+      it('should copy file to SSH host', async () => {
+        const container = 'ubuntu-apt';
+        const sshConfig = getSSHConfig(container);
 
-      const config = {
-        version: '2.0',
-        targets: {
-          hosts: {
-            test: {
-              host: sshConfig.host,
-              port: sshConfig.port,
-              user: sshConfig.username,
-              password: sshConfig.password
-            }
-          }
-        }
-      };
+        const config = {
+          version: '2.0',
+          targets: {
+            hosts: {
+              test: {
+                host: sshConfig.host,
+                port: sshConfig.port,
+                user: sshConfig.username,
+                password: sshConfig.password,
+              },
+            },
+          },
+        };
 
-      await fs.writeFile(
-        configPath,
-        yaml.dump(config)
-      );
+        await fs.writeFile(configPath, yaml.dump(config));
 
-      // Create test file
-      const sourceFile = path.join(sourceDir, 'ssh-test.txt');
-      await fs.writeFile(sourceFile, 'SSH copy test content');
+        // Create test file
+        const sourceFile = path.join(sourceDir, 'ssh-test.txt');
+        await fs.writeFile(sourceFile, 'SSH copy test content');
 
-      // Copy to SSH host
-      await executeCommand([
-        `local:${sourceFile}`,
-        'hosts.test:/tmp/ssh-test.txt',
-        { quiet: true }
-      ]);
+        // Copy to SSH host
+        await executeCommand([`local:${sourceFile}`, 'hosts.test:/tmp/ssh-test.txt', { quiet: true }]);
 
-      // Verify file exists on SSH host
-      const sshEngine = $.ssh({
-        host: sshConfig.host,
-        port: sshConfig.port,
-        username: sshConfig.username,
-        password: sshConfig.password
+        // Verify file exists on SSH host
+        const sshEngine = $.ssh({
+          host: sshConfig.host,
+          port: sshConfig.port,
+          username: sshConfig.username,
+          password: sshConfig.password,
+        });
+
+        const result = await sshEngine`cat /tmp/ssh-test.txt`;
+        expect(result.stdout).toBe('SSH copy test content');
+
+        // Cleanup
+        await sshEngine`rm -f /tmp/ssh-test.txt`;
       });
 
-      const result = await sshEngine`cat /tmp/ssh-test.txt`;
-      expect(result.stdout).toBe('SSH copy test content');
+      it('should copy file from SSH host', async () => {
+        const container = 'ubuntu-apt';
+        const sshConfig = getSSHConfig(container);
 
-      // Cleanup
-      await sshEngine`rm -f /tmp/ssh-test.txt`;
-    });
+        const config = {
+          version: '2.0',
+          targets: {
+            hosts: {
+              test: {
+                host: sshConfig.host,
+                port: sshConfig.port,
+                user: sshConfig.username,
+                password: sshConfig.password,
+              },
+            },
+          },
+        };
 
-    it('should copy file from SSH host', async () => {
-      const container = 'ubuntu-apt';
-      const sshConfig = getSSHConfig(container);
+        await fs.writeFile(configPath, yaml.dump(config));
 
-      const config = {
-        version: '2.0',
-        targets: {
-          hosts: {
-            test: {
-              host: sshConfig.host,
-              port: sshConfig.port,
-              user: sshConfig.username,
-              password: sshConfig.password
-            }
-          }
-        }
-      };
+        // Create file on SSH host
+        const sshEngine = $.ssh({
+          host: sshConfig.host,
+          port: sshConfig.port,
+          username: sshConfig.username,
+          password: sshConfig.password,
+        });
 
-      await fs.writeFile(
-        configPath,
-        yaml.dump(config)
-      );
+        await sshEngine`echo "SSH source content" > /tmp/ssh-source.txt`;
 
-      // Create file on SSH host
-      const sshEngine = $.ssh({
-        host: sshConfig.host,
-        port: sshConfig.port,
-        username: sshConfig.username,
-        password: sshConfig.password
+        // Copy from SSH host
+        const destFile = path.join(destDir, 'from-ssh.txt');
+        await executeCommand(['hosts.test:/tmp/ssh-source.txt', `local:${destFile}`, { quiet: true }]);
+
+        // Verify file was copied
+        const content = await fs.readFile(destFile, 'utf-8');
+        expect(content.trim()).toBe('SSH source content');
+
+        // Cleanup
+        await sshEngine`rm -f /tmp/ssh-source.txt`;
       });
 
-      await sshEngine`echo "SSH source content" > /tmp/ssh-source.txt`;
+      it('should copy directory recursively to SSH host', async () => {
+        const container = 'ubuntu-apt';
+        const sshConfig = getSSHConfig(container);
 
-      // Copy from SSH host
-      const destFile = path.join(destDir, 'from-ssh.txt');
-      await executeCommand([
-        'hosts.test:/tmp/ssh-source.txt',
-        `local:${destFile}`,
-        { quiet: true }
-      ]);
+        const config = {
+          version: '2.0',
+          targets: {
+            hosts: {
+              test: {
+                host: sshConfig.host,
+                port: sshConfig.port,
+                user: sshConfig.username,
+                password: sshConfig.password,
+              },
+            },
+          },
+        };
 
-      // Verify file was copied
-      const content = await fs.readFile(destFile, 'utf-8');
-      expect(content.trim()).toBe('SSH source content');
+        await fs.writeFile(configPath, yaml.dump(config));
 
-      // Cleanup
-      await sshEngine`rm -f /tmp/ssh-source.txt`;
-    });
+        // Create directory structure
+        const testDir = path.join(sourceDir, 'ssh-dir');
+        const subDir = path.join(testDir, 'subdir');
+        await fs.mkdir(subDir, { recursive: true });
+        await fs.writeFile(path.join(testDir, 'file1.txt'), 'File 1');
+        await fs.writeFile(path.join(subDir, 'file2.txt'), 'File 2');
 
-    it('should copy directory recursively to SSH host', async () => {
-      const container = 'ubuntu-apt';
-      const sshConfig = getSSHConfig(container);
+        // Copy directory to SSH host
+        await executeCommand([`local:${testDir}`, 'hosts.test:/tmp/ssh-dir', { recursive: true, quiet: true }]);
 
-      const config = {
-        version: '2.0',
-        targets: {
-          hosts: {
-            test: {
-              host: sshConfig.host,
-              port: sshConfig.port,
-              user: sshConfig.username,
-              password: sshConfig.password
-            }
-          }
-        }
-      };
+        // Verify on SSH host
+        const sshEngine = $.ssh({
+          host: sshConfig.host,
+          port: sshConfig.port,
+          username: sshConfig.username,
+          password: sshConfig.password,
+        });
 
-      await fs.writeFile(
-        configPath,
-        yaml.dump(config)
-      );
+        const file1 = await sshEngine`cat /tmp/ssh-dir/file1.txt`;
+        expect(file1.stdout.trim()).toBe('File 1');
 
-      // Create directory structure
-      const testDir = path.join(sourceDir, 'ssh-dir');
-      const subDir = path.join(testDir, 'subdir');
-      await fs.mkdir(subDir, { recursive: true });
-      await fs.writeFile(path.join(testDir, 'file1.txt'), 'File 1');
-      await fs.writeFile(path.join(subDir, 'file2.txt'), 'File 2');
+        const file2 = await sshEngine`cat /tmp/ssh-dir/subdir/file2.txt`;
+        expect(file2.stdout.trim()).toBe('File 2');
 
-      // Copy directory to SSH host
-      await executeCommand([
-        `local:${testDir}`,
-        'hosts.test:/tmp/ssh-dir',
-        { recursive: true, quiet: true }
-      ]);
-
-      // Verify on SSH host
-      const sshEngine = $.ssh({
-        host: sshConfig.host,
-        port: sshConfig.port,
-        username: sshConfig.username,
-        password: sshConfig.password
+        // Cleanup
+        await sshEngine`rm -rf /tmp/ssh-dir`;
       });
-
-      const file1 = await sshEngine`cat /tmp/ssh-dir/file1.txt`;
-      expect(file1.stdout.trim()).toBe('File 1');
-
-      const file2 = await sshEngine`cat /tmp/ssh-dir/subdir/file2.txt`;
-      expect(file2.stdout.trim()).toBe('File 2');
-
-      // Cleanup
-      await sshEngine`rm -rf /tmp/ssh-dir`;
-    });
-  }, { containers: ['ubuntu-apt'] });
+    },
+    { containers: ['ubuntu-apt'] }
+  );
 
   describe('Docker Container Copy', () => {
     let dockerManager: DockerContainerManager;
@@ -354,7 +325,9 @@ describe('Copy Command', () => {
 
       // Start a test container
       if (dockerManager.isDockerAvailable()) {
-        const result = await $.local({ cwd: os.homedir() })`docker run -d --name ${testContainerName} alpine:latest sleep 3600`;
+        const result = await $.local({
+          cwd: os.homedir(),
+        })`docker run -d --name ${testContainerName} alpine:latest sleep 3600`;
         if (result.exitCode !== 0) {
           throw new Error('Failed to start test container');
         }
@@ -379,27 +352,20 @@ describe('Copy Command', () => {
         targets: {
           containers: {
             test: {
-              container: testContainerName
-            }
-          }
-        }
+              container: testContainerName,
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        configPath,
-        yaml.dump(config)
-      );
+      await fs.writeFile(configPath, yaml.dump(config));
 
       // Create test file
       const sourceFile = path.join(sourceDir, 'docker-test.txt');
       await fs.writeFile(sourceFile, 'Docker copy test');
 
       // Copy to container
-      await executeCommand([
-        `local:${sourceFile}`,
-        'containers.test:/tmp/docker-test.txt',
-        { quiet: true }
-      ]);
+      await executeCommand([`local:${sourceFile}`, 'containers.test:/tmp/docker-test.txt', { quiet: true }]);
 
       // Verify in container
       const result = await $.local({ cwd: os.homedir() })`docker exec ${testContainerName} cat /tmp/docker-test.txt`;
@@ -417,27 +383,22 @@ describe('Copy Command', () => {
         targets: {
           containers: {
             test: {
-              container: testContainerName
-            }
-          }
-        }
+              container: testContainerName,
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        configPath,
-        yaml.dump(config)
-      );
+      await fs.writeFile(configPath, yaml.dump(config));
 
       // Create file in container
-      await $.local({ cwd: os.homedir() })`docker exec ${testContainerName} sh -c 'echo "From Docker" > /tmp/docker-source.txt'`;
+      await $.local({
+        cwd: os.homedir(),
+      })`docker exec ${testContainerName} sh -c 'echo "From Docker" > /tmp/docker-source.txt'`;
 
       // Copy from container
       const destFile = path.join(destDir, 'from-docker.txt');
-      await executeCommand([
-        'containers.test:/tmp/docker-source.txt',
-        `local:${destFile}`,
-        { quiet: true }
-      ]);
+      await executeCommand(['containers.test:/tmp/docker-source.txt', `local:${destFile}`, { quiet: true }]);
 
       // Verify file was copied
       const content = await fs.readFile(destFile, 'utf-8');
@@ -449,69 +410,47 @@ describe('Copy Command', () => {
     it('should error when copying directory without recursive flag', async () => {
       const config = {
         version: '2.0',
-        targets: {}
+        targets: {},
       };
 
-      await fs.writeFile(
-        configPath,
-        yaml.dump(config)
-      );
+      await fs.writeFile(configPath, yaml.dump(config));
 
-      await expect(
-        executeCommand([
-          `local:${sourceDir}`,
-          `local:${destDir}`,
-          { quiet: true }
-        ])
-      ).rejects.toThrow('is a directory (use --recursive to copy directories)');
+      await expect(executeCommand([`local:${sourceDir}`, `local:${destDir}`, { quiet: true }])).rejects.toThrow(
+        'is a directory (use --recursive to copy directories)'
+      );
     });
 
     it('should handle non-existent source files', async () => {
       const config = {
         version: '2.0',
-        targets: {}
+        targets: {},
       };
 
-      await fs.writeFile(
-        configPath,
-        yaml.dump(config)
-      );
+      await fs.writeFile(configPath, yaml.dump(config));
 
       await expect(
-        executeCommand([
-          'local:/non/existent/file.txt',
-          `local:${destDir}/file.txt`,
-          { quiet: true }
-        ])
+        executeCommand(['local:/non/existent/file.txt', `local:${destDir}/file.txt`, { quiet: true }])
       ).rejects.toThrow();
     });
 
     it('should validate source and destination are provided', async () => {
       const config = {
         version: '2.0',
-        targets: {}
+        targets: {},
       };
 
-      await fs.writeFile(
-        configPath,
-        yaml.dump(config)
-      );
+      await fs.writeFile(configPath, yaml.dump(config));
 
-      await expect(
-        executeCommand([{ quiet: true }])
-      ).rejects.toThrow('Both source and destination are required');
+      await expect(executeCommand([{ quiet: true }])).rejects.toThrow('Both source and destination are required');
     });
 
     it('should handle permission errors gracefully', async () => {
       const config = {
         version: '2.0',
-        targets: {}
+        targets: {},
       };
 
-      await fs.writeFile(
-        configPath,
-        yaml.dump(config)
-      );
+      await fs.writeFile(configPath, yaml.dump(config));
 
       // Create a file
       const sourceFile = path.join(sourceDir, 'test.txt');
@@ -522,11 +461,7 @@ describe('Copy Command', () => {
       await fs.mkdir(noWriteDir, { mode: 0o555 });
 
       await expect(
-        executeCommand([
-          `local:${sourceFile}`,
-          `local:${noWriteDir}/test.txt`,
-          { quiet: true }
-        ])
+        executeCommand([`local:${sourceFile}`, `local:${noWriteDir}/test.txt`, { quiet: true }])
       ).rejects.toThrow();
 
       // Cleanup - restore permissions
@@ -540,16 +475,13 @@ describe('Copy Command', () => {
         version: '2.0',
         defaults: {
           copy: {
-            preserve: true
-          }
+            preserve: true,
+          },
         },
-        targets: {}
+        targets: {},
       };
 
-      await fs.writeFile(
-        configPath,
-        yaml.dump(config)
-      );
+      await fs.writeFile(configPath, yaml.dump(config));
 
       // Create a test file
       const sourceFile = path.join(sourceDir, 'defaults-test.txt');
@@ -560,11 +492,7 @@ describe('Copy Command', () => {
       const originalStats = await fs.stat(sourceFile);
 
       // Copy without explicitly setting preserve
-      await executeCommand([
-        `local:${sourceFile}`,
-        `local:${destFile}`,
-        { quiet: true }
-      ]);
+      await executeCommand([`local:${sourceFile}`, `local:${destFile}`, { quiet: true }]);
 
       // Verify file was copied
       const content = await fs.readFile(destFile, 'utf-8');
@@ -580,13 +508,10 @@ describe('Copy Command', () => {
     it('should not copy files in dry run mode', async () => {
       const config = {
         version: '2.0',
-        targets: {}
+        targets: {},
       };
 
-      await fs.writeFile(
-        configPath,
-        yaml.dump(config)
-      );
+      await fs.writeFile(configPath, yaml.dump(config));
 
       // Create source file
       const sourceFile = path.join(sourceDir, 'test.txt');
@@ -602,11 +527,7 @@ describe('Copy Command', () => {
       };
 
       try {
-        await executeCommand([
-          `local:${sourceFile}`,
-          `local:${destFile}`,
-          { dryRun: true }
-        ]);
+        await executeCommand([`local:${sourceFile}`, `local:${destFile}`, { dryRun: true }]);
 
         // File should not be copied
         await expect(fs.access(destFile)).rejects.toThrow();
@@ -626,21 +547,15 @@ describe('Copy Command', () => {
     it('should copy multiple files in parallel', async () => {
       const config = {
         version: '2.0',
-        targets: {}
+        targets: {},
       };
 
-      await fs.writeFile(
-        configPath,
-        yaml.dump(config)
-      );
+      await fs.writeFile(configPath, yaml.dump(config));
 
       // Create multiple source files
       const fileCount = 10;
       for (let i = 1; i <= fileCount; i++) {
-        await fs.writeFile(
-          path.join(sourceDir, `file${i}.txt`),
-          `Content ${i}`
-        );
+        await fs.writeFile(path.join(sourceDir, `file${i}.txt`), `Content ${i}`);
       }
 
       const startTime = Date.now();
@@ -648,7 +563,7 @@ describe('Copy Command', () => {
       await executeCommand([
         `local:${sourceDir}/*.txt`,
         `local:${destDir}/`,
-        { parallel: true, maxConcurrent: '5', quiet: true }
+        { parallel: true, maxConcurrent: '5', quiet: true },
       ]);
 
       const duration = Date.now() - startTime;
@@ -672,13 +587,10 @@ describe('Copy Command', () => {
     it('should support glob patterns in source', async () => {
       const config = {
         version: '2.0',
-        targets: {}
+        targets: {},
       };
 
-      await fs.writeFile(
-        configPath,
-        yaml.dump(config)
-      );
+      await fs.writeFile(configPath, yaml.dump(config));
 
       // Create files with different extensions
       await fs.writeFile(path.join(sourceDir, 'doc1.md'), '# Doc 1');
@@ -687,11 +599,7 @@ describe('Copy Command', () => {
       await fs.writeFile(path.join(sourceDir, 'data.json'), '{"test": true}');
 
       // Copy only markdown files
-      await executeCommand([
-        `local:${sourceDir}/*.md`,
-        `local:${destDir}/`,
-        { quiet: true }
-      ]);
+      await executeCommand([`local:${sourceDir}/*.md`, `local:${destDir}/`, { quiet: true }]);
 
       // Verify only .md files were copied
       const files = await fs.readdir(destDir);
@@ -701,24 +609,17 @@ describe('Copy Command', () => {
     it('should support {name} substitution in destination', async () => {
       const config = {
         version: '2.0',
-        targets: {}
+        targets: {},
       };
 
-      await fs.writeFile(
-        configPath,
-        yaml.dump(config)
-      );
+      await fs.writeFile(configPath, yaml.dump(config));
 
       // Create source files
       await fs.writeFile(path.join(sourceDir, 'test.txt'), 'test content');
       await fs.writeFile(path.join(sourceDir, 'data.json'), '{"data": true}');
 
       // Copy with name substitution
-      await executeCommand([
-        `local:${sourceDir}/*`,
-        `local:${destDir}/{name}-backup`,
-        { quiet: true }
-      ]);
+      await executeCommand([`local:${sourceDir}/*`, `local:${destDir}/{name}-backup`, { quiet: true }]);
 
       // Verify files were renamed
       const files = await fs.readdir(destDir);
@@ -734,13 +635,10 @@ describe('Copy Command', () => {
     it('should handle Windows-style paths correctly', async () => {
       const config = {
         version: '2.0',
-        targets: {}
+        targets: {},
       };
 
-      await fs.writeFile(
-        configPath,
-        yaml.dump(config)
-      );
+      await fs.writeFile(configPath, yaml.dump(config));
 
       // Create source file
       const sourceFile = path.join(sourceDir, 'windows-test.txt');
@@ -750,11 +648,7 @@ describe('Copy Command', () => {
       const windowsPath = 'C:\\temp\\test.txt';
 
       // Execute copy - should recognize this as local path
-      await executeCommand([
-        `local:${sourceFile}`,
-        `local:${path.join(destDir, 'windows-test.txt')}`,
-        { quiet: true }
-      ]);
+      await executeCommand([`local:${sourceFile}`, `local:${path.join(destDir, 'windows-test.txt')}`, { quiet: true }]);
 
       // Verify file was copied
       const content = await fs.readFile(path.join(destDir, 'windows-test.txt'), 'utf-8');
@@ -764,24 +658,17 @@ describe('Copy Command', () => {
     it('should handle paths without target prefix as local', async () => {
       const config = {
         version: '2.0',
-        targets: {}
+        targets: {},
       };
 
-      await fs.writeFile(
-        configPath,
-        yaml.dump(config)
-      );
+      await fs.writeFile(configPath, yaml.dump(config));
 
       // Create source file
       const sourceFile = path.join(sourceDir, 'no-prefix.txt');
       await fs.writeFile(sourceFile, 'No prefix test');
 
       // Execute copy without prefix
-      await executeCommand([
-        sourceFile,
-        path.join(destDir, 'no-prefix.txt'),
-        { quiet: true }
-      ]);
+      await executeCommand([sourceFile, path.join(destDir, 'no-prefix.txt'), { quiet: true }]);
 
       // Verify file was copied
       const content = await fs.readFile(path.join(destDir, 'no-prefix.txt'), 'utf-8');
@@ -793,13 +680,10 @@ describe('Copy Command', () => {
     it('should overwrite existing files when force is true', async () => {
       const config = {
         version: '2.0',
-        targets: {}
+        targets: {},
       };
 
-      await fs.writeFile(
-        configPath,
-        yaml.dump(config)
-      );
+      await fs.writeFile(configPath, yaml.dump(config));
 
       // Create source and existing destination files
       const sourceFile = path.join(sourceDir, 'force-test.txt');
@@ -809,11 +693,7 @@ describe('Copy Command', () => {
       await fs.writeFile(destFile, 'Old content');
 
       // Copy with force
-      await executeCommand([
-        `local:${sourceFile}`,
-        `local:${destFile}`,
-        { force: true, quiet: true }
-      ]);
+      await executeCommand([`local:${sourceFile}`, `local:${destFile}`, { force: true, quiet: true }]);
 
       // Verify file was overwritten
       const content = await fs.readFile(destFile, 'utf-8');
@@ -829,22 +709,19 @@ describe('Copy Command', () => {
           hosts: {
             'web-1': { host: 'web1.example.com', user: 'deploy' },
             'web-2': { host: 'web2.example.com', user: 'deploy' },
-            'db-1': { host: 'db1.example.com', user: 'admin' }
-          }
-        }
+            'db-1': { host: 'db1.example.com', user: 'admin' },
+          },
+        },
       };
 
-      await fs.writeFile(
-        configPath,
-        yaml.dump(config)
-      );
+      await fs.writeFile(configPath, yaml.dump(config));
 
       // Test pattern resolution
       const targetResolver = command['targetResolver'];
       if (targetResolver) {
         const targets = await targetResolver.find('hosts.web-*');
         expect(targets).toHaveLength(2);
-        expect(targets.map(t => t.name).sort()).toEqual(['web-1', 'web-2']);
+        expect(targets.map((t) => t.name).sort()).toEqual(['web-1', 'web-2']);
       }
     });
   });
@@ -853,24 +730,17 @@ describe('Copy Command', () => {
     it('should handle empty source directory', async () => {
       const config = {
         version: '2.0',
-        targets: {}
+        targets: {},
       };
 
-      await fs.writeFile(
-        configPath,
-        yaml.dump(config)
-      );
+      await fs.writeFile(configPath, yaml.dump(config));
 
       // Create empty directory
       const emptyDir = path.join(sourceDir, 'empty');
       await fs.mkdir(emptyDir, { recursive: true });
 
       // Try to copy empty directory
-      await executeCommand([
-        `local:${emptyDir}`,
-        `local:${destDir}/empty`,
-        { recursive: true, quiet: true }
-      ]);
+      await executeCommand([`local:${emptyDir}`, `local:${destDir}/empty`, { recursive: true, quiet: true }]);
 
       // Verify directory was created
       const stats = await fs.stat(path.join(destDir, 'empty'));
@@ -880,13 +750,10 @@ describe('Copy Command', () => {
     it('should handle very long file paths', async () => {
       const config = {
         version: '2.0',
-        targets: {}
+        targets: {},
       };
 
-      await fs.writeFile(
-        configPath,
-        yaml.dump(config)
-      );
+      await fs.writeFile(configPath, yaml.dump(config));
 
       // Create deeply nested directory structure
       let deepPath = sourceDir;
@@ -899,11 +766,7 @@ describe('Copy Command', () => {
       await fs.writeFile(sourceFile, 'Deep file content');
 
       // Copy file from deep path
-      await executeCommand([
-        `local:${sourceFile}`,
-        `local:${destDir}/deep-file.txt`,
-        { quiet: true }
-      ]);
+      await executeCommand([`local:${sourceFile}`, `local:${destDir}/deep-file.txt`, { quiet: true }]);
 
       // Verify file was copied
       const content = await fs.readFile(path.join(destDir, 'deep-file.txt'), 'utf-8');
@@ -913,24 +776,17 @@ describe('Copy Command', () => {
     it('should handle concurrent modifications during copy', async () => {
       const config = {
         version: '2.0',
-        targets: {}
+        targets: {},
       };
 
-      await fs.writeFile(
-        configPath,
-        yaml.dump(config)
-      );
+      await fs.writeFile(configPath, yaml.dump(config));
 
       // Create source file
       const sourceFile = path.join(sourceDir, 'concurrent.txt');
       await fs.writeFile(sourceFile, 'Initial content');
 
       // Start copy operation
-      const copyPromise = executeCommand([
-        `local:${sourceFile}`,
-        `local:${destDir}/concurrent.txt`,
-        { quiet: true }
-      ]);
+      const copyPromise = executeCommand([`local:${sourceFile}`, `local:${destDir}/concurrent.txt`, { quiet: true }]);
 
       // File will be copied with initial content
       await copyPromise;

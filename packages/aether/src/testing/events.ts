@@ -29,7 +29,7 @@ export const fireEvent = Object.assign(
         if ('value' in targetOptions && element instanceof HTMLInputElement) {
           element.value = targetOptions.value;
         }
-        if ('checked' in targetOptions && (element instanceof HTMLInputElement)) {
+        if ('checked' in targetOptions && element instanceof HTMLInputElement) {
           element.checked = targetOptions.checked;
         }
       }

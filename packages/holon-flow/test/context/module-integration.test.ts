@@ -229,7 +229,7 @@ describe('Module System Integration', () => {
       const ctx4 = context({ a: 10 });
       const merged2 = merge(ctx1, ctx4);
       expect(merged2.get('a')).toBe(10); // ctx4's 'a' overrides ctx1's 'a'
-      expect(merged2.get('b')).toBe(2);  // ctx1's 'b' is preserved
+      expect(merged2.get('b')).toBe(2); // ctx1's 'b' is preserved
     });
   });
 
@@ -238,10 +238,7 @@ describe('Module System Integration', () => {
       const ctx = withModules(context());
 
       // Load all modules
-      const modularCtx = ctx
-        .use(coreModule)
-        .use(effectsModule)
-        .use(contextModule);
+      const modularCtx = ctx.use(coreModule).use(effectsModule).use(contextModule);
 
       await new Promise((resolve) => setTimeout(resolve, 10));
 

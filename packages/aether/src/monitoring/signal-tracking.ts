@@ -148,7 +148,8 @@ export class SignalTracker {
   trackSignalCreation(name?: string | number, initialValue?: any): string {
     if (!this.enabled) return '';
 
-    const signalId = typeof name === 'string' ? name : (name !== undefined ? `signal-${name}` : `signal-${this.signalIdCounter++}`);
+    const signalId =
+      typeof name === 'string' ? name : name !== undefined ? `signal-${name}` : `signal-${this.signalIdCounter++}`;
 
     this.dependencies.set(signalId, {
       signalId,

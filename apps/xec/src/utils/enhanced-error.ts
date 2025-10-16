@@ -13,12 +13,7 @@ export class EnhancedExecutionError extends ExecutionError {
   public readonly relatedErrors?: string[];
   public readonly systemInfo?: any;
 
-  constructor(
-    message: string,
-    code: string,
-    context: ErrorContext = {},
-    suggestions: ErrorSuggestion[] = []
-  ) {
+  constructor(message: string, code: string, context: ErrorContext = {}, suggestions: ErrorSuggestion[] = []) {
     super(message, code, { context, suggestions });
     this.name = 'EnhancedExecutionError';
     this.context = context;
@@ -28,7 +23,7 @@ export class EnhancedExecutionError extends ExecutionError {
     this.systemInfo = {
       platform: process.platform,
       arch: process.arch,
-      nodeVersion: process.version
+      nodeVersion: process.version,
     };
   }
 
@@ -115,22 +110,12 @@ export class EnhancedCommandError extends EnhancedExecutionError {
       command,
       adapter,
       duration,
-      timestamp: new Date()
+      timestamp: new Date(),
     };
 
-    const suggestions = generateCommandErrorSuggestions(
-      command,
-      exitCode,
-      stderr,
-      adapter
-    );
+    const suggestions = generateCommandErrorSuggestions(command, exitCode, stderr, adapter);
 
-    super(
-      `Command failed with exit code ${exitCode}: ${command}`,
-      'COMMAND_FAILED',
-      context,
-      suggestions
-    );
+    super(`Command failed with exit code ${exitCode}: ${command}`, 'COMMAND_FAILED', context, suggestions);
 
     this.name = 'EnhancedCommandError';
   }
@@ -149,15 +134,10 @@ export class EnhancedConnectionError extends EnhancedExecutionError {
     const context: ErrorContext = {
       host,
       adapter,
-      timestamp: new Date()
+      timestamp: new Date(),
     };
 
-    const suggestions = generateConnectionErrorSuggestions(
-      host,
-      originalError,
-      port,
-      adapter
-    );
+    const suggestions = generateConnectionErrorSuggestions(host, originalError, port, adapter);
 
     super(
       `Failed to connect to ${host}${port ? ':' + port : ''}: ${originalError.message}`,
@@ -183,21 +163,12 @@ export class EnhancedTimeoutError extends EnhancedExecutionError {
       command,
       adapter,
       duration: timeout,
-      timestamp: new Date()
+      timestamp: new Date(),
     };
 
-    const suggestions = generateTimeoutErrorSuggestions(
-      command,
-      timeout,
-      adapter
-    );
+    const suggestions = generateTimeoutErrorSuggestions(command, timeout, adapter);
 
-    super(
-      `Command timed out after ${timeout}ms: ${command}`,
-      'TIMEOUT',
-      context,
-      suggestions
-    );
+    super(`Command timed out after ${timeout}ms: ${command}`, 'TIMEOUT', context, suggestions);
 
     this.name = 'EnhancedTimeoutError';
   }
@@ -220,32 +191,32 @@ function generateCommandErrorSuggestions(
     case 1:
       suggestions.push({
         message: 'General error - check command syntax and arguments',
-        documentation: 'https://www.gnu.org/software/bash/manual/html_node/Exit-Status.html'
+        documentation: 'https://www.gnu.org/software/bash/manual/html_node/Exit-Status.html',
       });
       break;
     case 2:
       suggestions.push({
         message: 'Misuse of shell command - check syntax',
-        command: `man ${command.split(' ')[0]}`
+        command: `man ${command.split(' ')[0]}`,
       });
       break;
     case 126:
       suggestions.push({
         message: 'Command cannot execute - check permissions',
-        command: `ls -la ${command.split(' ')[0]}`
+        command: `ls -la ${command.split(' ')[0]}`,
       });
       break;
     case 127: {
       suggestions.push({
         message: 'Command not found - check if installed',
-        command: `which ${command.split(' ')[0]}`
+        command: `which ${command.split(' ')[0]}`,
       });
       // Also add install suggestion for 127 exit code
       const cmdName = command.split(' ')[0];
       if (cmdName) {
         suggestions.push({
           message: `Command '${cmdName}' not found - install it first`,
-          command: getInstallCommand(cmdName)
+          command: getInstallCommand(cmdName),
         });
       }
       break;
@@ -253,7 +224,7 @@ function generateCommandErrorSuggestions(
     case 128:
       suggestions.push({
         message: 'Invalid argument to exit',
-        documentation: 'https://tldp.org/LDP/abs/html/exitcodes.html'
+        documentation: 'https://tldp.org/LDP/abs/html/exitcodes.html',
       });
       break;
   }
@@ -262,17 +233,17 @@ function generateCommandErrorSuggestions(
   if (adapter === 'ssh') {
     suggestions.push({
       message: 'Check SSH connection and remote environment',
-      command: 'ssh -v <host> "which <command>"'
+      command: 'ssh -v <host> "which <command>"',
     });
   } else if (adapter === 'docker') {
     suggestions.push({
       message: 'Check if command exists in container',
-      command: 'docker exec <container> which <command>'
+      command: 'docker exec <container> which <command>',
     });
   } else if (adapter === 'kubernetes') {
     suggestions.push({
       message: 'Check if command exists in pod',
-      command: 'kubectl exec <pod> -- which <command>'
+      command: 'kubectl exec <pod> -- which <command>',
     });
   }
 
@@ -280,14 +251,14 @@ function generateCommandErrorSuggestions(
   if (stderr.includes('Permission denied')) {
     suggestions.push({
       message: 'Permission denied - check file permissions or run with appropriate privileges',
-      command: adapter === 'local' ? 'sudo <command>' : undefined
+      command: adapter === 'local' ? 'sudo <command>' : undefined,
     });
   }
 
   if (stderr.includes('No such file or directory')) {
     suggestions.push({
       message: 'File or directory not found - check paths',
-      command: 'ls -la <path>'
+      command: 'ls -la <path>',
     });
   }
 
@@ -295,7 +266,7 @@ function generateCommandErrorSuggestions(
     const cmdName = command.split(' ')[0];
     suggestions.push({
       message: `Command '${cmdName}' not found - install it first`,
-      command: getInstallCommand(cmdName!)
+      command: getInstallCommand(cmdName!),
     });
   }
 
@@ -317,30 +288,30 @@ function generateConnectionErrorSuggestions(
   // Add a general connection suggestion first
   suggestions.push({
     message: 'Check network connectivity and host availability',
-    command: `ping ${host}`
+    command: `ping ${host}`,
   });
 
   if (errorMsg.includes('enotfound') || errorMsg.includes('getaddrinfo')) {
     suggestions.push({
       message: 'Host not found - check hostname or DNS',
-      command: `nslookup ${host}`
+      command: `nslookup ${host}`,
     });
     suggestions.push({
       message: 'Try using IP address instead of hostname',
-      command: `ping ${host}`
+      command: `ping ${host}`,
     });
   }
 
   if (errorMsg.includes('econnrefused')) {
     suggestions.push({
       message: `Connection refused - check if service is running on port ${port || 'default'}`,
-      command: port ? `nc -zv ${host} ${port}` : `ping ${host}`
+      command: port ? `nc -zv ${host} ${port}` : `ping ${host}`,
     });
 
     if (adapter === 'ssh') {
       suggestions.push({
         message: 'Check if SSH service is running',
-        command: `ssh -v ${host}`
+        command: `ssh -v ${host}`,
       });
     }
   }
@@ -348,24 +319,24 @@ function generateConnectionErrorSuggestions(
   if (errorMsg.includes('etimedout') || errorMsg.includes('timeout')) {
     suggestions.push({
       message: 'Connection timeout - check network connectivity',
-      command: `ping -c 4 ${host}`
+      command: `ping -c 4 ${host}`,
     });
     suggestions.push({
       message: 'Check firewall rules',
-      documentation: 'https://xec.sh/docs/projects/cli/troubleshooting'
+      documentation: 'https://xec.sh/docs/projects/cli/troubleshooting',
     });
   }
 
   if (errorMsg.includes('authentication') || errorMsg.includes('permission')) {
     suggestions.push({
       message: 'Authentication failed - check credentials',
-      documentation: 'https://xec.sh/docs/projects/cli/troubleshooting'
+      documentation: 'https://xec.sh/docs/projects/cli/troubleshooting',
     });
 
     if (adapter === 'ssh') {
       suggestions.push({
         message: 'Check SSH key permissions',
-        command: 'chmod 600 ~/.ssh/id_rsa'
+        command: 'chmod 600 ~/.ssh/id_rsa',
       });
     }
   }
@@ -376,44 +347,38 @@ function generateConnectionErrorSuggestions(
 /**
  * Generate suggestions for timeout errors
  */
-function generateTimeoutErrorSuggestions(
-  command: string,
-  timeout: number,
-  adapter: string
-): ErrorSuggestion[] {
+function generateTimeoutErrorSuggestions(command: string, timeout: number, adapter: string): ErrorSuggestion[] {
   const suggestions: ErrorSuggestion[] = [];
 
   suggestions.push({
     message: `Increase timeout (current: ${timeout}ms)`,
-    command: `xec --timeout ${timeout * 2}ms "${command}"`
+    command: `xec --timeout ${timeout * 2}ms "${command}"`,
   });
 
   if (command.includes('install') || command.includes('download')) {
     suggestions.push({
       message: 'Long-running installation/download detected - consider running in background',
-      command: `nohup ${command} &`
+      command: `nohup ${command} &`,
     });
   }
 
   if (adapter === 'ssh') {
     suggestions.push({
       message: 'Check SSH connection stability',
-      command: 'xec config set ssh.keepaliveInterval 30'
+      command: 'xec config set ssh.keepaliveInterval 30',
     });
   }
 
   if (adapter === 'docker' || adapter === 'kubernetes') {
     suggestions.push({
       message: 'Check container/pod resources',
-      command: adapter === 'docker'
-        ? 'docker stats <container>'
-        : 'kubectl top pod <pod>'
+      command: adapter === 'docker' ? 'docker stats <container>' : 'kubectl top pod <pod>',
     });
   }
 
   suggestions.push({
-    message: 'Run command directly to see why it\'s slow',
-    documentation: 'https://xec.sh/docs/projects/cli/troubleshooting'
+    message: "Run command directly to see why it's slow",
+    documentation: 'https://xec.sh/docs/projects/cli/troubleshooting',
   });
 
   return suggestions;
@@ -438,7 +403,7 @@ function getInstallCommand(command: string): string {
     jq: 'brew install jq || apt-get install jq',
     aws: 'brew install awscli || pip install awscli',
     gcloud: 'brew install google-cloud-sdk',
-    az: 'brew install azure-cli'
+    az: 'brew install azure-cli',
   };
 
   return commonCommands[command] || `Check package manager for '${command}'`;
@@ -447,10 +412,7 @@ function getInstallCommand(command: string): string {
 /**
  * Create enhanced error from standard error
  */
-export function enhanceError(
-  error: Error,
-  context?: ErrorContext
-): EnhancedExecutionError {
+export function enhanceError(error: Error, context?: ErrorContext): EnhancedExecutionError {
   // If it's already enhanced, just add context
   if (error instanceof EnhancedExecutionError) {
     if (context) {
@@ -475,31 +437,19 @@ export function enhanceError(
 
   if (error.name === 'ConnectionError') {
     const connError = error as any;
-    return new EnhancedConnectionError(
-      connError.host,
-      connError.originalError,
-      connError.port,
-      context?.adapter
-    );
+    return new EnhancedConnectionError(connError.host, connError.originalError, connError.port, context?.adapter);
   }
 
   if (error.name === 'TimeoutError') {
     const timeoutError = error as any;
-    return new EnhancedTimeoutError(
-      timeoutError.command,
-      timeoutError.timeout,
-      context?.adapter
-    );
+    return new EnhancedTimeoutError(timeoutError.command, timeoutError.timeout, context?.adapter);
   }
 
   // Generic enhancement
-  return new EnhancedExecutionError(
-    error.message,
-    'UNKNOWN_ERROR',
-    context || {},
-    [{
+  return new EnhancedExecutionError(error.message, 'UNKNOWN_ERROR', context || {}, [
+    {
       message: 'An unexpected error occurred',
-      documentation: 'https://xec.sh/docs/projects/cli/troubleshooting'
-    }]
-  );
+      documentation: 'https://xec.sh/docs/projects/cli/troubleshooting',
+    },
+  ]);
 }

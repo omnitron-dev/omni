@@ -3,11 +3,7 @@
  */
 
 import type { Flow } from '@holon/flow';
-import type {
-  MeshNodeConfig,
-  ServiceRegistration,
-  RouteTarget,
-} from '../types.js';
+import type { MeshNodeConfig, ServiceRegistration, RouteTarget } from '../types.js';
 import { EventEmitter } from 'eventemitter3';
 import { Router } from './router.js';
 import { Discovery } from './discovery.js';
@@ -16,8 +12,8 @@ export interface MeshNodeEvents {
   'service:registered': (name: string) => void;
   'service:unregistered': (name: string) => void;
   'health:check': (health: HealthStatus) => void;
-  'started': () => void;
-  'stopped': () => void;
+  started: () => void;
+  stopped: () => void;
 }
 
 export interface HealthStatus {
@@ -63,11 +59,7 @@ export class MeshNode extends EventEmitter<MeshNodeEvents> {
   /**
    * Register a flow as a service
    */
-  async register<In, Out>(
-    name: string,
-    flow: Flow<In, Out>,
-    metadata?: Record<string, unknown>
-  ): Promise<void> {
+  async register<In, Out>(name: string, flow: Flow<In, Out>, metadata?: Record<string, unknown>): Promise<void> {
     const registration: ServiceRegistration = {
       name,
       flowId: this.getFlowId(flow as Flow<unknown, unknown>),

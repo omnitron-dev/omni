@@ -59,14 +59,14 @@ export default defineComponent(() => {
       // Detect language from extension
       const ext = fileName.split('.').pop()?.toLowerCase();
       const languageMap: Record<string, string> = {
-        'ts': 'typescript',
-        'tsx': 'tsx',
-        'js': 'javascript',
-        'jsx': 'jsx',
-        'css': 'css',
-        'html': 'html',
-        'json': 'json',
-        'md': 'markdown',
+        ts: 'typescript',
+        tsx: 'tsx',
+        js: 'javascript',
+        jsx: 'jsx',
+        css: 'css',
+        html: 'html',
+        json: 'json',
+        md: 'markdown',
       };
       const language = languageMap[ext || ''] || 'plaintext';
 
@@ -92,7 +92,7 @@ export default defineComponent(() => {
   };
 
   const toggleSidebar = () => {
-    sidebarVisible.update(v => !v);
+    sidebarVisible.update((v) => !v);
   };
 
   return () => {
@@ -105,7 +105,7 @@ export default defineComponent(() => {
           <h2>Code Editor</h2>
           <div class="editor-actions">
             <button class="button" onClick={toggleSidebar} title="Toggle Sidebar">
-              {() => sidebarVisible() ? '◀' : '▶'} Files
+              {() => (sidebarVisible() ? '◀' : '▶')} Files
             </button>
             <button class="primary-button" onClick={() => createNewFile()}>
               + New File
@@ -194,10 +194,18 @@ export default defineComponent(() => {
                           }}
                         </span>
                         <div class="editor-tools">
-                          <button class="tool-button" title="Format Document">⚡</button>
-                          <button class="tool-button" title="Find">🔍</button>
-                          <button class="tool-button" title="Replace">🔄</button>
-                          <button class="tool-button" title="Settings">⚙️</button>
+                          <button class="tool-button" title="Format Document">
+                            ⚡
+                          </button>
+                          <button class="tool-button" title="Find">
+                            🔍
+                          </button>
+                          <button class="tool-button" title="Replace">
+                            🔄
+                          </button>
+                          <button class="tool-button" title="Settings">
+                            ⚙️
+                          </button>
                         </div>
                       </div>
                       <div class="editor-content">

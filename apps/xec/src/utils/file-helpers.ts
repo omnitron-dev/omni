@@ -17,7 +17,6 @@ export interface FileSelectOptions {
  * File selection utilities with enhanced file browser
  */
 export class FileHelpers {
-
   /**
    * Select files using kit's file picker
    */
@@ -56,7 +55,7 @@ export class FileHelpers {
     }
 
     // Prepare file options
-    const fileOptions = files.map(file => ({
+    const fileOptions = files.map((file) => ({
       value: file.path,
       label: `${file.type === 'directory' ? '📁' : '📄'} ${file.name}`,
       hint: file.type === 'directory' ? prism.blue('dir') : prism.gray(file.ext),
@@ -98,7 +97,7 @@ export class FileHelpers {
       }
 
       // Filter out navigation options
-      return selections.filter(s => s !== '..' && s !== '__create_new__');
+      return selections.filter((s) => s !== '..' && s !== '__create_new__');
     } else {
       const selected = await select({
         message: options.title || 'Select file',
@@ -167,9 +166,9 @@ export class FileHelpers {
 
       // Apply filters if provided
       if (options.filters && options.filters.length > 0 && entry.isFile()) {
-        const matchesFilter = options.filters.some(filter => {
+        const matchesFilter = options.filters.some((filter) => {
           if (filter.extensions.includes('*')) return true;
-          return filter.extensions.some(e => ext === `.${e}`);
+          return filter.extensions.some((e) => ext === `.${e}`);
         });
 
         if (!matchesFilter) continue;
@@ -354,11 +353,13 @@ export class FileHelpers {
   /**
    * Select a directory
    */
-  static async selectDirectory(options: {
-    title?: string;
-    startPath?: string;
-    allowCreate?: boolean;
-  } = {}): Promise<string | null> {
+  static async selectDirectory(
+    options: {
+      title?: string;
+      startPath?: string;
+      allowCreate?: boolean;
+    } = {}
+  ): Promise<string | null> {
     // Fallback: filePicker not available in packages/kit
     const dirPath = await text({
       message: options.title || 'Enter directory path',
@@ -380,8 +381,8 @@ export class FileHelpers {
     // Get subdirectories
     const entries = await fs.readdir(startPath, { withFileTypes: true });
     const dirs = entries
-      .filter(e => e.isDirectory() && !e.name.startsWith('.'))
-      .map(e => ({
+      .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+      .map((e) => ({
         value: path.join(startPath, e.name),
         label: `📁 ${e.name}`,
       }));
@@ -470,11 +471,14 @@ export class FileHelpers {
   /**
    * Find files matching pattern
    */
-  static async findFiles(pattern: string, options: {
-    cwd?: string;
-    ignore?: string[];
-    absolute?: boolean;
-  } = {}): Promise<string[]> {
+  static async findFiles(
+    pattern: string,
+    options: {
+      cwd?: string;
+      ignore?: string[];
+      absolute?: boolean;
+    } = {}
+  ): Promise<string[]> {
     return glob(pattern, {
       cwd: options.cwd || process.cwd(),
       ignore: options.ignore || ['**/node_modules/**', '**/.git/**'],

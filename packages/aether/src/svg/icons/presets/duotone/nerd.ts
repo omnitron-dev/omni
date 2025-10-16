@@ -7,17 +7,18 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const NerdIcon: IconDefinition = {
-  "id": "nerd",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12ZM10 9C10 10.1046 9.10457 11 8 11C6.89543 11 6 10.1046 6 9C6 7.89543 6.89543 7 8 7C9.10457 7 10 7.89543 10 9ZM16 11C17.1046 11 18 10.1046 18 9C18 7.89543 17.1046 7 16 7C14.8954 7 14 7.89543 14 9C14 10.1046 14.8954 11 16 11Z\" fill=\"currentColor\" fill-rule=\"evenodd\" />\n    <path d=\"M8 15C8.91212 16.2144 10.3643 17 12 17C13.6357 17 15.0879 16.2144 16 15\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M10 9C10 10.1046 9.10457 11 8 11C6.89543 11 6 10.1046 6 9C6 7.89543 6.89543 7 8 7C9.10457 7 10 7.89543 10 9ZM10 9C10.5602 8.43978 11.1643 8 12 8C12.8357 8 13.4398 8.43978 14 9M21 8H17.7324M6.26756 8H3M14 9C14 10.1046 14.8954 11 16 11C17.1046 11 18 10.1046 18 9C18 7.89543 17.1046 7 16 7C14.8954 7 14 7.89543 14 9Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <circle cx=\"12\" cy=\"12\" r=\"10\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "duotone",
-    "originalName": "NerdIcon",
-    "elementsCount": 4,
-    "hasOpacity": true,
-    "hasFill": true,
-    "hasFillRule": true
-  }
+  id: 'nerd',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path opacity="0.4" d="M22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12ZM10 9C10 10.1046 9.10457 11 8 11C6.89543 11 6 10.1046 6 9C6 7.89543 6.89543 7 8 7C9.10457 7 10 7.89543 10 9ZM16 11C17.1046 11 18 10.1046 18 9C18 7.89543 17.1046 7 16 7C14.8954 7 14 7.89543 14 9C14 10.1046 14.8954 11 16 11Z" fill="currentColor" fill-rule="evenodd" />\n    <path d="M8 15C8.91212 16.2144 10.3643 17 12 17C13.6357 17 15.0879 16.2144 16 15" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M10 9C10 10.1046 9.10457 11 8 11C6.89543 11 6 10.1046 6 9C6 7.89543 6.89543 7 8 7C9.10457 7 10 7.89543 10 9ZM10 9C10.5602 8.43978 11.1643 8 12 8C12.8357 8 13.4398 8.43978 14 9M21 8H17.7324M6.26756 8H3M14 9C14 10.1046 14.8954 11 16 11C17.1046 11 18 10.1046 18 9C18 7.89543 17.1046 7 16 7C14.8954 7 14 7.89543 14 9Z" stroke-linecap="round" stroke-linejoin="round" />\n    <circle cx="12" cy="12" r="10" stroke-linecap="round" stroke-linejoin="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'duotone',
+    originalName: 'NerdIcon',
+    elementsCount: 4,
+    hasOpacity: true,
+    hasFill: true,
+    hasFillRule: true,
+  },
 };

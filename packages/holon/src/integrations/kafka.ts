@@ -31,10 +31,7 @@ export class KafkaClient {
     console.log(`Would produce to ${topic}:`, message);
   }
 
-  async consume(
-    topic: string,
-    handler: (message: unknown) => Promise<void>
-  ): Promise<void> {
+  async consume(topic: string, handler: (message: unknown) => Promise<void>): Promise<void> {
     console.log(`Would consume from ${topic}`);
   }
 }

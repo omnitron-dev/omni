@@ -45,11 +45,11 @@ export const AppModule = defineModule({
    * Feature modules are lazy-loaded when their routes are accessed
    */
   imports: [
-    CanvasModule,      // Flow programming canvas
-    EditorModule,      // Code editor
-    TerminalModule,    // Terminal emulator
-    ChatModule,        // AI chat assistant
-    SettingsModule,    // Application settings
+    CanvasModule, // Flow programming canvas
+    EditorModule, // Code editor
+    TerminalModule, // Terminal emulator
+    ChatModule, // AI chat assistant
+    SettingsModule, // Application settings
   ],
 
   /**
@@ -89,7 +89,7 @@ export const AppModule = defineModule({
    */
   optimization: {
     lazyBoundary: false, // Root module is not lazy
-    splitChunk: false,   // Root module doesn't need chunking
+    splitChunk: false, // Root module doesn't need chunking
   },
 });
 

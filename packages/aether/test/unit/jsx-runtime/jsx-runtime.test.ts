@@ -314,7 +314,9 @@ describe('JSX Runtime', () => {
 
   describe('Component rendering', () => {
     it('should render component', () => {
-      const MyComponent = defineComponent<{ name: string }>((props) => () => jsx('div', { children: `Hello ${props.name}` }));
+      const MyComponent = defineComponent<{ name: string }>(
+        (props) => () => jsx('div', { children: `Hello ${props.name}` })
+      );
 
       const result = jsx(MyComponent, { name: 'World' }) as HTMLDivElement;
 
@@ -323,7 +325,9 @@ describe('JSX Runtime', () => {
     });
 
     it('should pass props to component', () => {
-      const MyComponent = defineComponent<{ count: number }>((props) => () => jsx('span', { children: `Count: ${props.count}` }));
+      const MyComponent = defineComponent<{ count: number }>(
+        (props) => () => jsx('span', { children: `Count: ${props.count}` })
+      );
 
       const result = jsx(MyComponent, { count: 42 }) as HTMLSpanElement;
 
@@ -331,7 +335,9 @@ describe('JSX Runtime', () => {
     });
 
     it('should pass children to component', () => {
-      const Container = defineComponent<{ children: any }>((props) => () => jsx('div', { className: 'container', children: props.children }));
+      const Container = defineComponent<{ children: any }>(
+        (props) => () => jsx('div', { className: 'container', children: props.children })
+      );
 
       const result = jsx(Container, {
         children: jsx('p', { children: 'Content' }),

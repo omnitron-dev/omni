@@ -184,7 +184,7 @@ export class OnCommand extends ConfigAwareCommand {
               host: hostId,
               user: mergedOptions.user || process.env['USER'] || 'root',
             },
-            source: 'detected'
+            source: 'detected',
           });
         }
       }
@@ -192,17 +192,19 @@ export class OnCommand extends ConfigAwareCommand {
     // Check if it's a direct SSH spec (user@host)
     else if (hostPattern.includes('@') && !hostPattern.includes('.')) {
       const [user, host] = hostPattern.split('@');
-      targets = [{
-        id: `ssh:${hostPattern}`,
-        type: 'ssh',
-        name: host,
-        config: {
+      targets = [
+        {
+          id: `ssh:${hostPattern}`,
           type: 'ssh',
-          host,
-          user,
+          name: host,
+          config: {
+            type: 'ssh',
+            host,
+            user,
+          },
+          source: 'detected',
         },
-        source: 'detected'
-      }];
+      ];
     } else {
       // Single host resolution
       const targetSpec = hostPattern.startsWith('hosts.') ? hostPattern : `hosts.${hostPattern}`;
@@ -211,24 +213,26 @@ export class OnCommand extends ConfigAwareCommand {
         targets = [target];
       } catch {
         // If not found in config, treat as direct host
-        targets = [{
-          id: `ssh:${hostPattern}`,
-          type: 'ssh',
-          name: hostPattern,
-          config: {
+        targets = [
+          {
+            id: `ssh:${hostPattern}`,
             type: 'ssh',
-            host: hostPattern,
-            user: mergedOptions.user || process.env['USER'] || 'root',
+            name: hostPattern,
+            config: {
+              type: 'ssh',
+              host: hostPattern,
+              user: mergedOptions.user || process.env['USER'] || 'root',
+            },
+            source: 'detected',
           },
-          source: 'detected'
-        }];
+        ];
       }
     }
 
     // Validate all targets are SSH
-    const nonSshTargets = targets.filter(t => t.type !== 'ssh');
+    const nonSshTargets = targets.filter((t) => t.type !== 'ssh');
     if (nonSshTargets.length > 0) {
-      throw new Error(`'on' command only supports SSH hosts. Found: ${nonSshTargets.map(t => t.type).join(', ')}`);
+      throw new Error(`'on' command only supports SSH hosts. Found: ${nonSshTargets.map((t) => t.type).join(', ')}`);
     }
 
     // Handle different execution modes
@@ -256,11 +260,7 @@ export class OnCommand extends ConfigAwareCommand {
     }
   }
 
-  private async executeCommand(
-    targets: ResolvedTarget[],
-    cmd: string,
-    options: OnOptions
-  ): Promise<void> {
+  private async executeCommand(targets: ResolvedTarget[], cmd: string, options: OnOptions): Promise<void> {
     if (options.dryRun) {
       for (const target of targets) {
         this.log(`[DRY RUN] Would execute on ${this.formatTargetDisplay(target)}: ${prism.yellow(cmd)}`, 'info');
@@ -277,11 +277,7 @@ export class OnCommand extends ConfigAwareCommand {
     }
   }
 
-  private async executeSingle(
-    target: ResolvedTarget,
-    cmd: string,
-    options: OnOptions
-  ): Promise<void> {
+  private async executeSingle(target: ResolvedTarget, cmd: string, options: OnOptions): Promise<void> {
     const targetDisplay = this.formatTargetDisplay(target);
 
     if (!options.quiet) {
@@ -340,11 +336,7 @@ export class OnCommand extends ConfigAwareCommand {
     }
   }
 
-  private async executeParallel(
-    targets: ResolvedTarget[],
-    cmd: string,
-    options: OnOptions
-  ): Promise<void> {
+  private async executeParallel(targets: ResolvedTarget[], cmd: string, options: OnOptions): Promise<void> {
     const maxConcurrent = parseInt(String(options.maxConcurrent || '10'), 10);
     this.log(`Executing on ${targets.length} hosts in parallel (max ${maxConcurrent} concurrent)...`, 'info');
 
@@ -384,7 +376,7 @@ export class OnCommand extends ConfigAwareCommand {
 
     // Process queue
     while (queue.length > 0 || activeCount > 0) {
-      await Promise.race(promises.filter(p => p));
+      await Promise.race(promises.filter((p) => p));
 
       if (queue.length > 0 && activeCount < maxConcurrent) {
         promises.push(executeNext());
@@ -395,8 +387,8 @@ export class OnCommand extends ConfigAwareCommand {
     await Promise.all(promises);
 
     // Display results
-    const successful = results.filter(r => r.success);
-    const failed = results.filter(r => !r.success);
+    const successful = results.filter((r) => r.success);
+    const failed = results.filter((r) => !r.success);
 
     if (successful.length > 0) {
       this.log(`${prism.green('✓')} Succeeded on ${successful.length} hosts:`, 'success');
@@ -415,11 +407,7 @@ export class OnCommand extends ConfigAwareCommand {
     }
   }
 
-  private async executeTask(
-    targets: ResolvedTarget[],
-    taskName: string,
-    options: OnOptions
-  ): Promise<void> {
+  private async executeTask(targets: ResolvedTarget[], taskName: string, options: OnOptions): Promise<void> {
     if (!this.taskManager) {
       throw new Error('Task manager not initialized');
     }
@@ -431,9 +419,13 @@ export class OnCommand extends ConfigAwareCommand {
         this.log(`Running task '${taskName}' on ${targetDisplay}...`, 'info');
       }
 
-      const result = await this.taskManager!.run(taskName, {}, {
-        target: target.id
-      });
+      const result = await this.taskManager!.run(
+        taskName,
+        {},
+        {
+          target: target.id,
+        }
+      );
 
       if (result.success) {
         if (!options.quiet) {
@@ -445,14 +437,14 @@ export class OnCommand extends ConfigAwareCommand {
     };
 
     if (options.parallel && targets.length > 1) {
-      const promises = targets.map(target =>
+      const promises = targets.map((target) =>
         executeTaskOnTarget(target)
-          .then(() => ({ target, success: true } as const))
-          .catch(error => ({ target, error, success: false } as const))
+          .then(() => ({ target, success: true }) as const)
+          .catch((error) => ({ target, error, success: false }) as const)
       );
 
       const results = await Promise.all(promises);
-      const errors = results.filter(r => 'error' in r);
+      const errors = results.filter((r) => 'error' in r);
 
       if (errors.length > 0) {
         for (const { target, error } of errors as any[]) {
@@ -468,16 +460,12 @@ export class OnCommand extends ConfigAwareCommand {
     }
   }
 
-  private async executeScript(
-    targets: ResolvedTarget[],
-    scriptPath: string,
-    options: OnOptions
-  ): Promise<void> {
+  private async executeScript(targets: ResolvedTarget[], scriptPath: string, options: OnOptions): Promise<void> {
     const scriptLoader = new ScriptLoader({
       verbose: options.verbose || process.env['XEC_DEBUG'] === 'true',
       quiet: options.quiet,
       cache: true,
-      preferredCDN: 'esm.sh'
+      preferredCDN: 'esm.sh',
     });
 
     const executeScriptOnTarget = async (target: ResolvedTarget) => {
@@ -495,10 +483,10 @@ export class OnCommand extends ConfigAwareCommand {
           args: process.argv.slice(3),
           argv: [process.argv[0] || 'node', scriptPath, ...process.argv.slice(3)],
           __filename: path.resolve(scriptPath),
-          __dirname: path.dirname(path.resolve(scriptPath))
+          __dirname: path.dirname(path.resolve(scriptPath)),
         },
         verbose: options.verbose,
-        quiet: options.quiet
+        quiet: options.quiet,
       };
 
       const result = await scriptLoader.executeScript(scriptPath, execOptions);
@@ -513,14 +501,14 @@ export class OnCommand extends ConfigAwareCommand {
     };
 
     if (options.parallel && targets.length > 1) {
-      const promises = targets.map(target =>
+      const promises = targets.map((target) =>
         executeScriptOnTarget(target)
-          .then(() => ({ target, success: true } as const))
-          .catch(error => ({ target, error, success: false } as const))
+          .then(() => ({ target, success: true }) as const)
+          .catch((error) => ({ target, error, success: false }) as const)
       );
 
       const results = await Promise.all(promises);
-      const errors = results.filter(r => 'error' in r);
+      const errors = results.filter((r) => 'error' in r);
 
       if (errors.length > 0) {
         for (const { target, error } of errors as any[]) {
@@ -536,10 +524,7 @@ export class OnCommand extends ConfigAwareCommand {
     }
   }
 
-  private async startRepl(
-    target: ResolvedTarget,
-    options: OnOptions
-  ): Promise<void> {
+  private async startRepl(target: ResolvedTarget, options: OnOptions): Promise<void> {
     const targetDisplay = this.formatTargetDisplay(target);
     this.log(`Starting REPL with $target configured for ${targetDisplay}...`, 'info');
 
@@ -547,7 +532,7 @@ export class OnCommand extends ConfigAwareCommand {
       verbose: options.verbose || process.env['XEC_DEBUG'] === 'true',
       quiet: options.quiet,
       cache: true,
-      preferredCDN: 'esm.sh'
+      preferredCDN: 'esm.sh',
     });
 
     const engine = await this.createTargetEngine(target);
@@ -556,7 +541,7 @@ export class OnCommand extends ConfigAwareCommand {
       target,
       targetEngine: engine,
       verbose: options.verbose,
-      quiet: options.quiet
+      quiet: options.quiet,
     };
 
     await scriptLoader.startRepl(execOptions);
@@ -587,7 +572,7 @@ export class OnCommand extends ConfigAwareCommand {
           hostPattern = hosts[0]?.id || '';
         } else {
           // Create a pattern that matches multiple hosts
-          const hostIds = hosts.map(h => h.id).filter(Boolean);
+          const hostIds = hosts.map((h) => h.id).filter(Boolean);
           hostPattern = hostIds.join(','); // We'll handle this in the main execution logic
         }
       } else {
@@ -674,10 +659,7 @@ export class OnCommand extends ConfigAwareCommand {
 
       // Configure execution options
       if (Array.isArray(hosts) && hosts.length > 1 && executionType.value !== 'repl') {
-        const useParallel = await InteractiveHelpers.confirmAction(
-          'Execute on hosts in parallel?',
-          true
-        );
+        const useParallel = await InteractiveHelpers.confirmAction('Execute on hosts in parallel?', true);
         if (useParallel) {
           interactiveOptions.parallel = true;
 
@@ -713,10 +695,7 @@ export class OnCommand extends ConfigAwareCommand {
             }
           }
 
-          const useFailFast = await InteractiveHelpers.confirmAction(
-            'Stop on first failure?',
-            false
-          );
+          const useFailFast = await InteractiveHelpers.confirmAction('Stop on first failure?', false);
           if (useFailFast) {
             interactiveOptions.failFast = true;
           }
@@ -724,10 +703,7 @@ export class OnCommand extends ConfigAwareCommand {
       }
 
       // Configure timeout
-      const useTimeout = await InteractiveHelpers.confirmAction(
-        'Set command timeout?',
-        false
-      );
+      const useTimeout = await InteractiveHelpers.confirmAction('Set command timeout?', false);
 
       if (useTimeout) {
         const timeout = await InteractiveHelpers.selectFromList(
@@ -767,10 +743,7 @@ export class OnCommand extends ConfigAwareCommand {
       }
 
       // Configure environment variables
-      const useEnvVars = await InteractiveHelpers.confirmAction(
-        'Set environment variables?',
-        false
-      );
+      const useEnvVars = await InteractiveHelpers.confirmAction('Set environment variables?', false);
 
       if (useEnvVars) {
         const envVars: string[] = [];
@@ -794,10 +767,7 @@ export class OnCommand extends ConfigAwareCommand {
             envVars.push(envVar);
           }
 
-          addingVars = await InteractiveHelpers.confirmAction(
-            'Add another environment variable?',
-            false
-          );
+          addingVars = await InteractiveHelpers.confirmAction('Add another environment variable?', false);
         }
 
         if (envVars.length > 0) {
@@ -806,10 +776,7 @@ export class OnCommand extends ConfigAwareCommand {
       }
 
       // Configure working directory
-      const useCwd = await InteractiveHelpers.confirmAction(
-        'Set working directory on remote hosts?',
-        false
-      );
+      const useCwd = await InteractiveHelpers.confirmAction('Set working directory on remote hosts?', false);
 
       if (useCwd) {
         const cwd = await InteractiveHelpers.inputText('Enter working directory:', {
@@ -827,10 +794,7 @@ export class OnCommand extends ConfigAwareCommand {
       }
 
       // Configure SSH user override
-      const useCustomUser = await InteractiveHelpers.confirmAction(
-        'Override SSH user for execution?',
-        false
-      );
+      const useCustomUser = await InteractiveHelpers.confirmAction('Override SSH user for execution?', false);
 
       if (useCustomUser) {
         const user = await InteractiveHelpers.inputText('Enter SSH user:', {

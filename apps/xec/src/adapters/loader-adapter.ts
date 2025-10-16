@@ -8,14 +8,7 @@ import type { Command } from 'commander';
 import * as path from 'path';
 import { $ } from '@xec-sh/core';
 import { log, prism } from '@xec-sh/kit';
-import {
-  REPLServer,
-  ModuleLoader,
-  CodeEvaluator,
-  ScriptRuntime,
-  ScriptExecutor,
-  GlobalInjector,
-} from '@xec-sh/loader';
+import { REPLServer, ModuleLoader, CodeEvaluator, ScriptRuntime, ScriptExecutor, GlobalInjector } from '@xec-sh/loader';
 
 import type { ResolvedTarget } from '../config/types.js';
 
@@ -86,10 +79,7 @@ export class ScriptLoader {
   /**
    * Execute a script file with optional target context
    */
-  async executeScript(
-    scriptPath: string,
-    options: ExecutionOptions = {}
-  ): Promise<ScriptExecutionResult> {
+  async executeScript(scriptPath: string, options: ExecutionOptions = {}): Promise<ScriptExecutionResult> {
     try {
       // Handle watch mode
       if (options.watch) {
@@ -109,10 +99,7 @@ export class ScriptLoader {
   /**
    * Internal script execution with context injection
    */
-  private async executeScriptInternal(
-    scriptPath: string,
-    options: ExecutionOptions
-  ): Promise<ScriptExecutionResult> {
+  private async executeScriptInternal(scriptPath: string, options: ExecutionOptions): Promise<ScriptExecutionResult> {
     // Prepare script context
     const context: ScriptContext = options.context || {
       args: [],
@@ -160,10 +147,7 @@ export class ScriptLoader {
   /**
    * Execute script with file watching
    */
-  private async executeWithWatch(
-    scriptPath: string,
-    options: ExecutionOptions
-  ): Promise<ScriptExecutionResult> {
+  private async executeWithWatch(scriptPath: string, options: ExecutionOptions): Promise<ScriptExecutionResult> {
     const { watch } = await import('chokidar');
 
     const runAndLog = async () => {
@@ -202,10 +186,7 @@ export class ScriptLoader {
   /**
    * Evaluate code string with optional target context
    */
-  async evaluateCode(
-    code: string,
-    options: ExecutionOptions = {}
-  ): Promise<ScriptExecutionResult> {
+  async evaluateCode(code: string, options: ExecutionOptions = {}): Promise<ScriptExecutionResult> {
     try {
       // Initialize global module context
       await this.initializeGlobalModuleContext();
@@ -249,17 +230,13 @@ export class ScriptLoader {
     await this.initializeGlobalModuleContext();
 
     // Display runtime info
-    const title = options.target
-      ? `Xec Interactive Shell (${options.target.name})`
-      : 'Xec Interactive Shell';
+    const title = options.target ? `Xec Interactive Shell (${options.target.name})` : 'Xec Interactive Shell';
 
     log.info(prism.bold(title));
     log.info(prism.dim('Type .help for commands'));
 
     // Create REPL prompt
-    const prompt = options.target
-      ? prism.cyan(`xec:${options.target.name}> `)
-      : prism.cyan('xec> ');
+    const prompt = options.target ? prism.cyan(`xec:${options.target.name}> `) : prism.cyan('xec> ');
 
     // Import utilities
     const scriptRuntime = new ScriptRuntime();
@@ -343,7 +320,7 @@ export class ScriptLoader {
           loader: filePath.endsWith('.tsx') ? 'tsx' : 'ts',
           format: 'esm',
           target: 'node20',
-          platform: 'node'
+          platform: 'node',
         });
 
         // IMPORTANT: Remove conflicting declarations from transformed code
@@ -392,7 +369,13 @@ const Import = globalThis.Import;
 
           if (process.env['XEC_DEBUG']) {
             console.log(`[loadDynamicCommand] Importing URL: ${fileUrl}`);
-            console.log(`[loadDynamicCommand] File exists:`, await fs.promises.access(tmpFile).then(() => true).catch(() => false));
+            console.log(
+              `[loadDynamicCommand] File exists:`,
+              await fs.promises
+                .access(tmpFile)
+                .then(() => true)
+                .catch(() => false)
+            );
           }
 
           moduleExports = await import(fileUrl);

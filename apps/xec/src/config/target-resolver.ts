@@ -16,7 +16,7 @@ import type {
   Configuration,
   ResolvedTarget,
   TargetReference,
-  ContainerConfig
+  ContainerConfig,
 } from './types.js';
 
 /**
@@ -96,21 +96,21 @@ export class TargetResolver {
 
     for (const expandedPattern of patterns) {
       if (parsed.type === 'hosts' || parsed.type === 'auto') {
-        targets.push(...await this.findHosts(expandedPattern));
+        targets.push(...(await this.findHosts(expandedPattern)));
       }
 
       if (parsed.type === 'containers' || parsed.type === 'auto') {
-        targets.push(...await this.findContainers(expandedPattern));
+        targets.push(...(await this.findContainers(expandedPattern)));
       }
 
       if (parsed.type === 'pods' || parsed.type === 'auto') {
-        targets.push(...await this.findPods(expandedPattern));
+        targets.push(...(await this.findPods(expandedPattern)));
       }
     }
 
     // Remove duplicates
     const seen = new Set<string>();
-    return targets.filter(target => {
+    return targets.filter((target) => {
       if (seen.has(target.id)) {
         return false;
       }
@@ -136,7 +136,7 @@ export class TargetResolver {
           type: 'ssh',
           name,
           config: this.applyDefaults({ ...config, type: 'ssh' } as HostConfig),
-          source: 'configured'
+          source: 'configured',
         });
       }
     }
@@ -149,7 +149,7 @@ export class TargetResolver {
           type: 'docker',
           name,
           config: this.applyDefaults({ ...config, type: 'docker' } as ContainerConfig),
-          source: 'configured'
+          source: 'configured',
         });
       }
     }
@@ -162,7 +162,7 @@ export class TargetResolver {
           type: 'kubernetes',
           name,
           config: this.applyDefaults({ ...config, type: 'kubernetes' } as PodConfig),
-          source: 'configured'
+          source: 'configured',
         });
       }
     }
@@ -181,7 +181,7 @@ export class TargetResolver {
       type: config.type,
       name: config.name,
       config,
-      source: 'created'
+      source: 'created',
     };
 
     // Cache it
@@ -247,7 +247,7 @@ export class TargetResolver {
       type: targetType,
       name: ref.name,
       config: this.applyDefaults(fullConfig),
-      source: 'configured'
+      source: 'configured',
     };
   }
 
@@ -257,9 +257,9 @@ export class TargetResolver {
       type: 'local',
       config: this.applyDefaults({
         type: 'local',
-        ...this.config.targets?.local
+        ...this.config.targets?.local,
       }),
-      source: 'configured'
+      source: 'configured',
     };
   }
 
@@ -274,7 +274,7 @@ export class TargetResolver {
             type: 'ssh',
             name,
             config: this.applyDefaults({ ...config, type: 'ssh' } as HostConfig),
-            source: 'configured'
+            source: 'configured',
           });
         }
       }
@@ -295,7 +295,7 @@ export class TargetResolver {
             type: 'docker',
             name,
             config: this.applyDefaults({ ...config, type: 'docker' } as ContainerConfig),
-            source: 'configured'
+            source: 'configured',
           });
         }
       }
@@ -321,7 +321,7 @@ export class TargetResolver {
             type: 'kubernetes',
             name,
             config: this.applyDefaults({ ...config, type: 'kubernetes' } as PodConfig),
-            source: 'configured'
+            source: 'configured',
           });
         }
       }
@@ -339,9 +339,9 @@ export class TargetResolver {
         name: reference,
         config: this.applyDefaults({
           type: 'docker',
-          container: reference
+          container: reference,
         }),
-        source: 'detected'
+        source: 'detected',
       };
     }
 
@@ -355,9 +355,9 @@ export class TargetResolver {
         config: this.applyDefaults({
           type: 'kubernetes',
           pod: reference,
-          namespace
+          namespace,
         }),
-        source: 'detected'
+        source: 'detected',
       };
     }
 
@@ -369,7 +369,7 @@ export class TargetResolver {
         type: 'ssh',
         name: reference,
         config: this.applyDefaults(sshHost),
-        source: 'detected'
+        source: 'detected',
       };
     }
 
@@ -391,9 +391,9 @@ export class TargetResolver {
         config: this.applyDefaults({
           type: 'ssh',
           host,
-          user
+          user,
         }),
-        source: 'detected'
+        source: 'detected',
       };
     }
 
@@ -406,7 +406,10 @@ export class TargetResolver {
       if (!result.ok) {
         return false;
       }
-      const containers = result.stdout.trim().split('\n').filter(line => line);
+      const containers = result.stdout
+        .trim()
+        .split('\n')
+        .filter((line) => line);
       return containers.includes(name);
     } catch {
       return false;
@@ -453,10 +456,10 @@ export class TargetResolver {
           const value = valueParts.join(' ');
 
           const keyMap: Record<string, string> = {
-            'HostName': 'host',
-            'User': 'user',
-            'Port': 'port',
-            'IdentityFile': 'privateKey'
+            HostName: 'host',
+            User: 'user',
+            Port: 'port',
+            IdentityFile: 'privateKey',
           };
 
           if (key) {
@@ -472,7 +475,7 @@ export class TargetResolver {
         return {
           type: 'ssh',
           host: hosts[name].host || name,
-          ...hosts[name]
+          ...hosts[name],
         };
       }
     } catch {
@@ -504,7 +507,10 @@ export class TargetResolver {
       if (!result.ok) {
         return targets;
       }
-      const lines = result.stdout.trim().split('\n').filter(line => line);
+      const lines = result.stdout
+        .trim()
+        .split('\n')
+        .filter((line) => line);
 
       for (const line of lines) {
         const service = JSON.parse(line);
@@ -515,9 +521,9 @@ export class TargetResolver {
             name: service.Service,
             config: this.applyDefaults({
               type: 'docker',
-              container: service.Name
+              container: service.Name,
             }),
-            source: 'detected'
+            source: 'detected',
           });
         }
       }
@@ -621,7 +627,7 @@ export class TargetResolver {
         // Concatenate execFlags arrays
         final = {
           ...final,
-          execFlags: [...(defaults.kubernetes.execFlags || []), ...(k8sTarget.execFlags || [])]
+          execFlags: [...(defaults.kubernetes.execFlags || []), ...(k8sTarget.execFlags || [])],
         };
       }
     }

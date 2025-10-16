@@ -11,7 +11,7 @@ export interface WorkerEvents {
   'task:received': (taskId: string) => void;
   'task:completed': (taskId: string) => void;
   'task:failed': (taskId: string, error: Error) => void;
-  'heartbeat': (status: WorkerStatus) => void;
+  heartbeat: (status: WorkerStatus) => void;
 }
 
 /**

@@ -171,27 +171,10 @@ export class ModuleExecutor {
     define.amd = true;
 
     // Execute with UMD context
-    const func = new Function(
-      'exports',
-      'module',
-      'define',
-      'global',
-      'globalThis',
-      'window',
-      'self',
-      content
-    );
+    const func = new Function('exports', 'module', 'define', 'global', 'globalThis', 'window', 'self', content);
 
     const globalObj = globalThis;
-    func(
-      moduleExports,
-      moduleObj,
-      define,
-      globalObj,
-      globalObj,
-      globalObj,
-      globalObj
-    );
+    func(moduleExports, moduleObj, define, globalObj, globalObj, globalObj, globalObj);
 
     const result = moduleObj.exports;
 

@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const HangingClockIcon: IconDefinition = {
-  "id": "hanging-clock",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M17.5 6V11\" stroke-linecap=\"round\" stroke-linejoin=\"bevel\" />\n    <path d=\"M2 8H14.1716M20 8H14.1716M2 6V20.1038M2 21V20.1038M14.1716 8H14C7.37258 8 2 13.3726 2 20V20.1038\" stroke-linecap=\"round\" stroke-linejoin=\"bevel\" />\n    <path d=\"M18.5 16.5L17.5 16V14\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <circle opacity=\"0.4\" cx=\"17.5\" cy=\"4.5\" r=\"1.5\" fill=\"currentColor\" />\n    <circle opacity=\"0.4\" cx=\"17.5\" cy=\"15.5\" r=\"4.5\" fill=\"currentColor\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "duotone",
-    "originalName": "HangingClockIcon",
-    "elementsCount": 7,
-    "hasOpacity": true,
-    "hasFill": true
-  }
+  id: 'hanging-clock',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path d="M17.5 6V11" stroke-linecap="round" stroke-linejoin="bevel" />\n    <path d="M2 8H14.1716M20 8H14.1716M2 6V20.1038M2 21V20.1038M14.1716 8H14C7.37258 8 2 13.3726 2 20V20.1038" stroke-linecap="round" stroke-linejoin="bevel" />\n    <path d="M18.5 16.5L17.5 16V14" stroke-linecap="round" stroke-linejoin="round" />\n    <circle opacity="0.4" cx="17.5" cy="4.5" r="1.5" fill="currentColor" />\n    <circle opacity="0.4" cx="17.5" cy="15.5" r="4.5" fill="currentColor" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'duotone',
+    originalName: 'HangingClockIcon',
+    elementsCount: 7,
+    hasOpacity: true,
+    hasFill: true,
+  },
 };

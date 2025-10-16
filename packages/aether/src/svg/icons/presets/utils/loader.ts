@@ -91,10 +91,7 @@ export async function loadIconPreset(preset: IconPreset): Promise<IconSet> {
  * console.log(userIcon); // { id: 'user', content: '...', ... }
  * ```
  */
-export async function loadIcon(
-  preset: IconPreset,
-  name: string
-): Promise<IconDefinition> {
+export async function loadIcon(preset: IconPreset, name: string): Promise<IconDefinition> {
   try {
     // Convert kebab-case to PascalCase with Icon suffix
     const pascalName = kebabToPascalCase(name) + 'Icon';
@@ -146,10 +143,7 @@ export async function loadIcon(
  * const userIcon = icons.get('user');
  * ```
  */
-export async function preloadIcons(
-  preset: IconPreset,
-  names: string[]
-): Promise<Map<string, IconDefinition>> {
+export async function preloadIcons(preset: IconPreset, names: string[]): Promise<Map<string, IconDefinition>> {
   const results = await Promise.allSettled(
     names.map(async (name) => {
       const icon = await loadIcon(preset, name);

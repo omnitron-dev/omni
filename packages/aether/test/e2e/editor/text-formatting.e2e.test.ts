@@ -266,9 +266,7 @@ test.describe('Text Formatting', () => {
     expect(html).toContain('World');
   });
 
-  test('should extend formatting when typing inside formatted text', async ({
-    page,
-  }) => {
+  test('should extend formatting when typing inside formatted text', async ({ page }) => {
     await typeText(page, 'Hello');
     await selectText(page, 0, 5);
     await pressShortcut(page, 'Mod+b');
@@ -297,9 +295,7 @@ test.describe('Text Formatting', () => {
     expect(html).toMatch(/<(strong|b)>Bold<\/(strong|b)>/);
   });
 
-  test('should show toolbar button as active when format is applied', async ({
-    page,
-  }) => {
+  test('should show toolbar button as active when format is applied', async ({ page }) => {
     await typeText(page, 'Hello');
     await selectText(page, 0, 5);
     await clickToolbarButton(page, 'bold');
@@ -308,9 +304,7 @@ test.describe('Text Formatting', () => {
     expect(isActive).toBe(true);
   });
 
-  test('should deactivate toolbar button when format is removed', async ({
-    page,
-  }) => {
+  test('should deactivate toolbar button when format is removed', async ({ page }) => {
     await typeText(page, 'Hello');
     await selectText(page, 0, 5);
     await clickToolbarButton(page, 'bold');

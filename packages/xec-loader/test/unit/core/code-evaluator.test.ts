@@ -27,7 +27,7 @@ describe('CodeEvaluator', () => {
     it('should evaluate code with custom globals', async () => {
       const code = `globalThis.__evalResult = globalThis.customVar * 2;`;
       const result = await evaluator.evaluateCode(code, {
-        customGlobals: { customVar: 21 }
+        customGlobals: { customVar: 21 },
       });
 
       expect(result.success).toBe(true);
@@ -79,7 +79,7 @@ describe('CodeEvaluator', () => {
     it('should have access to custom globals', async () => {
       const code = `return globalThis.myValue * 3;`;
       const result = await evaluator.eval<number>(code, {
-        customGlobals: { myValue: 7 }
+        customGlobals: { myValue: 7 },
       });
 
       expect(result).toBe(21);

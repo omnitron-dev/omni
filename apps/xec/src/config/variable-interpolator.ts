@@ -73,7 +73,7 @@ export class VariableInterpolator {
     if (config.vars) {
       config.vars = await this.resolveObject(config.vars, {
         ...context,
-        vars: config.vars
+        vars: config.vars,
       });
 
       // Update context with resolved vars
@@ -112,7 +112,7 @@ export class VariableInterpolator {
         if (ref) {
           references.push({
             ...ref,
-            raw: match[0]
+            raw: match[0],
           });
         }
       }
@@ -123,12 +123,7 @@ export class VariableInterpolator {
 
   // Private methods
 
-  private interpolateWithDepth(
-    value: string,
-    context: VariableContext,
-    resolving: Set<string>,
-    depth: number
-  ): string {
+  private interpolateWithDepth(value: string, context: VariableContext, resolving: Set<string>, depth: number): string {
     if (depth > VariableInterpolator.MAX_DEPTH) {
       throw new Error(`Maximum variable interpolation depth (${VariableInterpolator.MAX_DEPTH}) exceeded`);
     }
@@ -228,7 +223,7 @@ export class VariableInterpolator {
         return {
           type: prefix as VariableType,
           path: reference.substring(colonIndex + 1),
-          defaultValue: undefined
+          defaultValue: undefined,
         };
       } else {
         // Otherwise, it's a default value
@@ -267,7 +262,7 @@ export class VariableInterpolator {
     return {
       type,
       path: actualPath,
-      defaultValue
+      defaultValue,
     };
   }
 
@@ -290,7 +285,9 @@ export class VariableInterpolator {
 
       case 'cmd':
         // Command execution not supported in synchronous interpolation
-        console.warn(`Command substitution '${parsed.path}' not supported in synchronous context. Use interpolateAsync() instead.`);
+        console.warn(
+          `Command substitution '${parsed.path}' not supported in synchronous context. Use interpolateAsync() instead.`
+        );
         value = `[cmd:${parsed.path}]`;
         break;
 
@@ -360,7 +357,7 @@ export class VariableInterpolator {
     }
 
     if (Array.isArray(obj)) {
-      return Promise.all(obj.map(item => this.resolveObject(item, context)));
+      return Promise.all(obj.map((item) => this.resolveObject(item, context)));
     }
 
     if (typeof obj === 'object') {
@@ -394,7 +391,9 @@ export class VariableInterpolator {
 
       // Check if command failed
       if (!result.ok) {
-        console.warn(`Command substitution failed for '${command}': ${result.stderr || `Exit code ${result.exitCode}`}`);
+        console.warn(
+          `Command substitution failed for '${command}': ${result.stderr || `Exit code ${result.exitCode}`}`
+        );
         return '';
       }
 
@@ -439,7 +438,9 @@ export class VariableInterpolator {
           return value;
         }
       } catch (error) {
-        console.warn(`Failed to retrieve secret '${key}' from secret manager: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        console.warn(
+          `Failed to retrieve secret '${key}' from secret manager: ${error instanceof Error ? error.message : 'Unknown error'}`
+        );
       }
     }
 

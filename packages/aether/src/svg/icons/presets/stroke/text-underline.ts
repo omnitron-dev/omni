@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const TextUnderlineIcon: IconDefinition = {
-  "id": "text-underline",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M5.5 3V11.5C5.5 15.0899 8.41015 18 12 18C15.5899 18 18.5 15.0899 18.5 11.5V3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M3 21H21\" stroke-linecap=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "stroke",
-    "originalName": "TextUnderlineIcon",
-    "elementsCount": 2,
-    "hasOpacity": false,
-    "hasFill": false
-  }
+  id: 'text-underline',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path d="M5.5 3V11.5C5.5 15.0899 8.41015 18 12 18C15.5899 18 18.5 15.0899 18.5 11.5V3" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M3 21H21" stroke-linecap="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'stroke',
+    originalName: 'TextUnderlineIcon',
+    elementsCount: 2,
+    hasOpacity: false,
+    hasFill: false,
+  },
 };

@@ -22,16 +22,11 @@ export {
 
   // Pipeline and transforms
   TransformPipeline,
-  ReactiveContentTransform
+  ReactiveContentTransform,
 } from './compiler/index.js';
 
 // Import for re-use in default export
-import {
-  compileMDX,
-  compileMDXSync,
-  evaluateMDX,
-  renderMDX
-} from './compiler/index.js';
+import { compileMDX, compileMDXSync, evaluateMDX, renderMDX } from './compiler/index.js';
 
 // ============================================================================
 // Runtime exports
@@ -46,27 +41,29 @@ export {
 
   // Error handlers
   defaultMDXErrorHandler,
-  defaultMDXNavigateHandler
+  defaultMDXNavigateHandler,
 } from './runtime/provider.js';
 
 // Import for re-use in default export
-import {
-  MDXProvider,
-  useMDXContext
-} from './runtime/provider.js';
+import { MDXProvider, useMDXContext } from './runtime/provider.js';
 
 export {
   // MDX Components object
   MDXComponents as MDXComponentsDefault,
   // Individual components
-  H1, H2, H3, H4, H5, H6,
+  H1,
+  H2,
+  H3,
+  H4,
+  H5,
+  H6,
   MDXCodeBlock,
   MDXLink,
   MDXImage,
   MDXTable,
   MDXBlockquote,
   MDXAlert,
-  MDXDetails
+  MDXDetails,
 } from './runtime/components.js';
 
 // ============================================================================
@@ -86,7 +83,7 @@ export {
   useCopyToClipboard,
   useReadingTime,
   useMDXTheme,
-  useLazyMDX
+  useLazyMDX,
 } from './hooks/index.js';
 
 // ============================================================================
@@ -111,16 +108,11 @@ export {
   // Helpers
   generateId,
   highlightMatches,
-  truncateMDX
+  truncateMDX,
 } from './utils/index.js';
 
 // Import for re-use in default export
-import {
-  sanitizeMDX,
-  validateMDX,
-  mdxToHTML,
-  mdxToPlainText
-} from './utils/index.js';
+import { sanitizeMDX, validateMDX, mdxToHTML, mdxToPlainText } from './utils/index.js';
 
 // ============================================================================
 // Type exports
@@ -168,7 +160,7 @@ export type {
   MDXNavigationResult,
 
   // Runtime options
-  MDXRuntimeOptions
+  MDXRuntimeOptions,
 } from './types.js';
 
 // ============================================================================
@@ -217,7 +209,7 @@ const AetherMDX = {
   sanitize: sanitizeMDX,
   validate: validateMDX,
   toHTML: mdxToHTML,
-  toText: mdxToPlainText
+  toText: mdxToPlainText,
 };
 
 export default AetherMDX;

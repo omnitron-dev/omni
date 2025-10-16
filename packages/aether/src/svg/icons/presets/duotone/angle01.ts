@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const Angle01Icon: IconDefinition = {
-  "id": "angle01",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M3.05177 19.382C3.31387 19.9993 4.36707 19.9993 6.47347 19.9993H9C9.97435 19.9993 10.4615 19.9993 10.7618 19.6158C11.0621 19.2324 10.9621 18.8276 10.7622 18.0181C10.3238 16.2425 9.31156 14.7872 8 13.9993L7.80177 13.875L5.02384 16.5851C3.53439 18.0381 2.78966 18.7646 3.05177 19.382Z\" fill=\"currentColor\" />\n    <path d=\"M21 20H6.47347C4.36707 20 3.31387 20 3.05177 19.3827C2.78966 18.7654 3.53439 18.0388 5.02384 16.5858L17.9249 4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M11 20C11 17.3517 9.77371 15.0655 8 14\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "duotone",
-    "originalName": "Angle01Icon",
-    "elementsCount": 3,
-    "hasOpacity": true,
-    "hasFill": true
-  }
+  id: 'angle01',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path opacity="0.4" d="M3.05177 19.382C3.31387 19.9993 4.36707 19.9993 6.47347 19.9993H9C9.97435 19.9993 10.4615 19.9993 10.7618 19.6158C11.0621 19.2324 10.9621 18.8276 10.7622 18.0181C10.3238 16.2425 9.31156 14.7872 8 13.9993L7.80177 13.875L5.02384 16.5851C3.53439 18.0381 2.78966 18.7646 3.05177 19.382Z" fill="currentColor" />\n    <path d="M21 20H6.47347C4.36707 20 3.31387 20 3.05177 19.3827C2.78966 18.7654 3.53439 18.0388 5.02384 16.5858L17.9249 4" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M11 20C11 17.3517 9.77371 15.0655 8 14" stroke-linecap="round" stroke-linejoin="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'duotone',
+    originalName: 'Angle01Icon',
+    elementsCount: 3,
+    hasOpacity: true,
+    hasFill: true,
+  },
 };

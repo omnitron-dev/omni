@@ -56,12 +56,9 @@ export class ListItemExtension extends Extension {
 
   getCommands() {
     return {
-      sinkListItem: () => (state, dispatch) =>
-        sinkListItem(state.schema.nodes.list_item)(state, dispatch),
-      liftListItem: () => (state, dispatch) =>
-        liftListItem(state.schema.nodes.list_item)(state, dispatch),
-      splitListItem: () => (state, dispatch) =>
-        splitListItem(state.schema.nodes.list_item)(state, dispatch),
+      sinkListItem: () => (state, dispatch) => sinkListItem(state.schema.nodes.list_item)(state, dispatch),
+      liftListItem: () => (state, dispatch) => liftListItem(state.schema.nodes.list_item)(state, dispatch),
+      splitListItem: () => (state, dispatch) => splitListItem(state.schema.nodes.list_item)(state, dispatch),
     };
   }
 }

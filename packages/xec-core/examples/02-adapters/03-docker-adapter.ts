@@ -1,6 +1,6 @@
 /**
  * 03. Docker Adapter - Executing Commands in Docker Containers
- * 
+ *
  * Demonstrates the use of Docker adapter for working with containers
  */
 
@@ -13,9 +13,9 @@ await $docker`echo "Hello from Docker!"`;
 await $docker`cat /etc/os-release`;
 
 // 2. Execution with user specification
-const $asUser = $.docker({ 
+const $asUser = $.docker({
   container: 'my-running-container',
-  user: 'www-data' 
+  user: 'www-data',
 });
 await $asUser`whoami`; // www-data
 await $asUser`id`;
@@ -23,7 +23,7 @@ await $asUser`id`;
 // 3. Container with working directory
 const $withWorkdir = $.docker({
   container: 'node-app',
-  workdir: '/app'
+  workdir: '/app',
 });
 
 await $withWorkdir`pwd`; // /app
@@ -33,7 +33,7 @@ await $withWorkdir`npm install`;
 // 4. Container with TTY
 const $interactive = $.docker({
   container: 'my-app',
-  tty: true
+  tty: true,
 });
 
 // TTY allows using colors and interactive applications
@@ -43,7 +43,7 @@ await $interactive`top -b -n 1`;
 // 5. Combining Docker with other methods
 const $dockerConfigured = $.docker({
   container: 'my-app',
-  workdir: '/app'
+  workdir: '/app',
 })
   .env({ NODE_ENV: 'production' })
   .timeout(30000);
@@ -72,9 +72,9 @@ if (healthCheck.ok) {
 }
 
 // 8. Cleaning logs in container
-const $logger = $.docker({ 
+const $logger = $.docker({
   container: 'logger-app',
-  workdir: '/var/log/app'
+  workdir: '/var/log/app',
 });
 
 await $logger`find . -name "*.log" -mtime +7 -delete`;
@@ -98,23 +98,18 @@ await $`docker rm -f test-db`;
 
 // 11. CI/CD pipeline example
 // Building and testing in Docker
-const $build = $.docker({ 
+const $build = $.docker({
   container: 'build-env',
-  workdir: '/workspace'
+  workdir: '/workspace',
 });
 
 // CI steps
-const steps = [
-  'Installing dependencies',
-  'Linting',
-  'Tests',
-  'Build'
-];
+const steps = ['Installing dependencies', 'Linting', 'Tests', 'Build'];
 
 for (const step of steps) {
   console.log(`\n=== ${step} ===`);
-  
-  switch(step) {
+
+  switch (step) {
     case 'Installing dependencies':
       await $build`npm ci`;
       break;

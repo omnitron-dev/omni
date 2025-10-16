@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const ArrowShrink02Icon: IconDefinition = {
-  "id": "arrow-shrink02",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M13.2867 6.49967C13.2729 7.34394 12.6856 10.1388 13.2773 10.733C13.8689 11.3271 16.6672 10.7525 17.5112 10.7424M13.5028 10.5057L21.0015 3.02588\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.5\" d=\"M6.51653 13.2984C7.36057 13.2895 10.1597 12.719 10.7505 13.3141C11.3413 13.9091 10.7499 16.7031 10.7348 17.5474M2.99805 21.024L10.5187 13.5451\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "duotone",
-    "originalName": "ArrowShrink02Icon",
-    "elementsCount": 2,
-    "hasOpacity": true,
-    "hasFill": false
-  }
+  id: 'arrow-shrink02',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path d="M13.2867 6.49967C13.2729 7.34394 12.6856 10.1388 13.2773 10.733C13.8689 11.3271 16.6672 10.7525 17.5112 10.7424M13.5028 10.5057L21.0015 3.02588" stroke-linecap="round" stroke-linejoin="round" />\n    <path opacity="0.5" d="M6.51653 13.2984C7.36057 13.2895 10.1597 12.719 10.7505 13.3141C11.3413 13.9091 10.7499 16.7031 10.7348 17.5474M2.99805 21.024L10.5187 13.5451" stroke-linecap="round" stroke-linejoin="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'duotone',
+    originalName: 'ArrowShrink02Icon',
+    elementsCount: 2,
+    hasOpacity: true,
+    hasFill: false,
+  },
 };

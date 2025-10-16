@@ -10,21 +10,12 @@ import { batch } from '../../core/reactivity/batch.js';
 import { useMDXContext } from '../runtime/provider.js';
 import { compileMDXSync } from '../compiler/index.js';
 
-import type {
-  Signal,
-  MDXComponent,
-  CompileMDXOptions,
-  TOCEntry,
-  MDXNavigationResult
-} from '../types.js';
+import type { Signal, MDXComponent, CompileMDXOptions, TOCEntry, MDXNavigationResult } from '../types.js';
 
 /**
  * Hook for dynamic MDX compilation
  */
-export function useMDXCompiler(
-  source: Signal<string>,
-  options?: CompileMDXOptions
-): Signal<MDXComponent | null> {
+export function useMDXCompiler(source: Signal<string>, options?: CompileMDXOptions): Signal<MDXComponent | null> {
   const compiled = signal<MDXComponent | null>(null);
   const error = signal<Error | null>(null);
 
@@ -82,7 +73,7 @@ export function useMDXNavigation(toc?: TOCEntry[]): MDXNavigationResult {
 
     const observer = new IntersectionObserver(
       (entries) => {
-        const visibleEntries = entries.filter(entry => entry.isIntersecting);
+        const visibleEntries = entries.filter((entry) => entry.isIntersecting);
         if (visibleEntries.length > 0) {
           // Get the topmost visible section
           const topEntry = visibleEntries.reduce((prev, current) =>
@@ -93,7 +84,7 @@ export function useMDXNavigation(toc?: TOCEntry[]): MDXNavigationResult {
       },
       {
         rootMargin: '-20% 0px -70% 0px',
-        threshold: [0, 0.25, 0.5, 0.75, 1]
+        threshold: [0, 0.25, 0.5, 0.75, 1],
       }
     );
 
@@ -121,7 +112,7 @@ export function useMDXNavigation(toc?: TOCEntry[]): MDXNavigationResult {
     if (element) {
       element.scrollIntoView({
         behavior: 'smooth',
-        block: 'start'
+        block: 'start',
       });
 
       // Update URL hash
@@ -135,17 +126,14 @@ export function useMDXNavigation(toc?: TOCEntry[]): MDXNavigationResult {
   return {
     toc: toc || [],
     activeSection,
-    scrollToSection
+    scrollToSection,
   };
 }
 
 /**
  * Hook for syntax highlighting
  */
-export function useSyntaxHighlight(
-  code: string,
-  language?: string
-): Signal<string> {
+export function useSyntaxHighlight(code: string, language?: string): Signal<string> {
   const highlighted = signal(code);
 
   effect(() => {
@@ -160,11 +148,16 @@ export function useSyntaxHighlight(
 /**
  * Hook for MDX search functionality
  */
-export function useMDXSearch(content: string, query: Signal<string>): Signal<Array<{
-  text: string;
-  position: number;
-  context: string;
-}>> {
+export function useMDXSearch(
+  content: string,
+  query: Signal<string>
+): Signal<
+  Array<{
+    text: string;
+    position: number;
+    context: string;
+  }>
+> {
   return computed(() => {
     const searchQuery = query().toLowerCase();
     if (!searchQuery) return [];
@@ -190,13 +183,13 @@ export function useMDXSearch(content: string, query: Signal<string>): Signal<Arr
 
       if (index !== -1) {
         // Get context (previous and next line)
-        const prevLine = i > 0 ? (lines[i - 1] || '') : '';
-        const nextLine = i < lines.length - 1 ? (lines[i + 1] || '') : '';
+        const prevLine = i > 0 ? lines[i - 1] || '' : '';
+        const nextLine = i < lines.length - 1 ? lines[i + 1] || '' : '';
 
         results.push({
           text: line,
           position: position + index,
-          context: `${prevLine}\n${line}\n${nextLine}`.trim()
+          context: `${prevLine}\n${line}\n${nextLine}`.trim(),
         });
       }
 
@@ -261,7 +254,7 @@ export function useReadingTime(content: string): {
     .replace(/\{[^}]*\}/g, '') // Remove JSX expressions
     .trim();
 
-  const words = plainText.split(/\s+/).filter(word => word.length > 0).length;
+  const words = plainText.split(/\s+/).filter((word) => word.length > 0).length;
   const minutes = Math.ceil(words / wordsPerMinute);
   const time = minutes * 60 * 1000; // in milliseconds, based on rounded minutes
 

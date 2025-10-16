@@ -13,13 +13,7 @@ import { ParagraphExtension } from '../../../../src/components/editor/extensions
 import { BulletListExtension } from '../../../../src/components/editor/extensions/lists/BulletListExtension.js';
 import { ListItemExtension } from '../../../../src/components/editor/extensions/lists/ListItemExtension.js';
 import { HistoryExtension } from '../../../../src/components/editor/extensions/behavior/HistoryExtension.js';
-import {
-  createIntegrationTestEditor,
-  cleanupEditor,
-  setSelection,
-  toggleMarkCommand,
-  insertText,
-} from './helpers.js';
+import { createIntegrationTestEditor, cleanupEditor, setSelection, toggleMarkCommand, insertText } from './helpers.js';
 
 describe('State Management', () => {
   let editor: EditorInstance;

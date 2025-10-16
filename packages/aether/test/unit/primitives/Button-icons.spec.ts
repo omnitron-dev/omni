@@ -97,12 +97,8 @@ describe('Button Component - Icon Integration', () => {
 
       // Verify order: left icon should come before content
       const children = Array.from(button?.childNodes || []);
-      const leftIconIndex = children.findIndex((node) =>
-        (node as Element).hasAttribute?.('data-icon-left')
-      );
-      const contentIndex = children.findIndex((node) =>
-        (node as Element).hasAttribute?.('data-button-content')
-      );
+      const leftIconIndex = children.findIndex((node) => (node as Element).hasAttribute?.('data-icon-left'));
+      const contentIndex = children.findIndex((node) => (node as Element).hasAttribute?.('data-button-content'));
 
       expect(leftIconIndex).toBeLessThan(contentIndex);
       expect(button?.getAttribute('data-with-icon')).toBe('');

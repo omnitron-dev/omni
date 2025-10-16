@@ -6,13 +6,13 @@ export * from './k8s/kind-cluster-manager';
 // SSH test helpers
 export * from './helpers/ssh-test-helpers';
 
-export { 
+export {
   docker,
   execInContainer,
   getContainerInfo,
   getContainerLogs,
   type ContainerInfo,
-  cleanupTestContainers
+  cleanupTestContainers,
 } from './docker/utils';
 
 // SSH connection configuration
@@ -33,7 +33,7 @@ export const SSH_TEST_CONFIGS: SSHConnectionConfig[] = [
     username: 'user',
     password: 'password',
     packageManager: 'apt',
-    testPackage: 'curl'
+    testPackage: 'curl',
   },
   {
     host: 'localhost',
@@ -41,7 +41,7 @@ export const SSH_TEST_CONFIGS: SSHConnectionConfig[] = [
     username: 'user',
     password: 'password',
     packageManager: 'yum',
-    testPackage: 'wget'
+    testPackage: 'wget',
   },
   {
     host: 'localhost',
@@ -49,7 +49,7 @@ export const SSH_TEST_CONFIGS: SSHConnectionConfig[] = [
     username: 'user',
     password: 'password',
     packageManager: 'dnf',
-    testPackage: 'nano'
+    testPackage: 'nano',
   },
   {
     host: 'localhost',
@@ -57,7 +57,7 @@ export const SSH_TEST_CONFIGS: SSHConnectionConfig[] = [
     username: 'user',
     password: 'password',
     packageManager: 'apk',
-    testPackage: 'vim'
+    testPackage: 'vim',
   },
   {
     host: 'localhost',
@@ -65,7 +65,7 @@ export const SSH_TEST_CONFIGS: SSHConnectionConfig[] = [
     username: 'user',
     password: 'password',
     packageManager: 'pacman',
-    testPackage: 'htop'
+    testPackage: 'htop',
   },
   {
     host: 'localhost',
@@ -73,7 +73,7 @@ export const SSH_TEST_CONFIGS: SSHConnectionConfig[] = [
     username: 'user',
     password: 'password',
     packageManager: 'brew',
-    testPackage: 'jq'
+    testPackage: 'jq',
   },
   {
     host: 'localhost',
@@ -81,8 +81,8 @@ export const SSH_TEST_CONFIGS: SSHConnectionConfig[] = [
     username: 'user',
     password: 'password',
     packageManager: 'snap',
-    testPackage: 'hello'
-  }
+    testPackage: 'hello',
+  },
 ];
 
 // Helper to get SSH config by container name
@@ -94,9 +94,9 @@ export function getSSHConfigByName(containerName: string): SSHConnectionConfig |
     'alpine-apk': 2204,
     'manjaro-pacman': 2205,
     'ubuntu-brew': 2206,
-    'ubuntu-snap': 2207
+    'ubuntu-snap': 2207,
   };
 
   const port = containerMap[containerName];
-  return SSH_TEST_CONFIGS.find(config => config.port === port);
+  return SSH_TEST_CONFIGS.find((config) => config.port === port);
 }

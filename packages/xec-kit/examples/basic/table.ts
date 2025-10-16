@@ -42,7 +42,8 @@ table({
       header: 'Status',
       width: 10,
       format: (v: string) => (v === 'active' ? '✓ Active' : '✗ Inactive'),
-      style: (text: string, value: any) => (value === 'active' ? prism.green(text) : prism.red(text)),
+      style: (text: string, value: any) =>
+        value === 'active' ? prism.green(text) : prism.red(text),
     },
   ],
   borders: 'single',

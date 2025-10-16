@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const DeliveryTracking01Icon: IconDefinition = {
-  "id": "delivery-tracking01",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M2.5 7.5V13.5C2.5 17.2712 2.5 19.1569 3.67157 20.3284C4.84315 21.5 6.72876 21.5 10.5 21.5H14M21.5 11V7.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M3.86909 5.31461L2.5 7.5H21.5L20.2478 5.41303C19.3941 3.99021 18.9673 3.2788 18.2795 2.8894C17.5918 2.5 16.7621 2.5 15.1029 2.5H8.95371C7.32998 2.5 6.51812 2.5 5.84013 2.8753C5.16215 3.2506 4.73113 3.93861 3.86909 5.31461Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M12 7.5V2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M10 10.5H14\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M18 13C16.067 13 14.5 14.5376 14.5 16.4343C14.5 17.5188 14.9375 18.3621 15.8125 19.1153C16.4292 19.6462 17.5514 20.7852 18 21.5C18.4713 20.7994 19.5708 19.6462 20.1875 19.1153C21.0625 18.3621 21.5 17.5188 21.5 16.4343C21.5 14.5376 19.933 13 18 13Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M21.4785 16.0635C21.4987 15.3212 21.5 14.4734 21.5 13.5V7.5H2.5V13.5C2.5 17.2712 2.5003 19.1566 3.67188 20.3281C4.84345 21.4997 6.72876 21.5 10.5 21.5H13.5C15.3905 21.5 16.8071 21.4992 17.8975 21.3516C17.3993 20.636 16.3876 19.6103 15.8125 19.1152C14.9376 18.3621 14.5001 17.519 14.5 16.4346C14.5 14.5379 16.067 13 18 13C19.8053 13 21.29 14.3412 21.4785 16.0635Z\" fill=\"currentColor\" />\n    <path d=\"M18 16.5H18.009\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "duotone",
-    "originalName": "DeliveryTracking01Icon",
-    "elementsCount": 7,
-    "hasOpacity": true,
-    "hasFill": true
-  }
+  id: 'delivery-tracking01',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path d="M2.5 7.5V13.5C2.5 17.2712 2.5 19.1569 3.67157 20.3284C4.84315 21.5 6.72876 21.5 10.5 21.5H14M21.5 11V7.5" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M3.86909 5.31461L2.5 7.5H21.5L20.2478 5.41303C19.3941 3.99021 18.9673 3.2788 18.2795 2.8894C17.5918 2.5 16.7621 2.5 15.1029 2.5H8.95371C7.32998 2.5 6.51812 2.5 5.84013 2.8753C5.16215 3.2506 4.73113 3.93861 3.86909 5.31461Z" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M12 7.5V2.5" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M10 10.5H14" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M18 13C16.067 13 14.5 14.5376 14.5 16.4343C14.5 17.5188 14.9375 18.3621 15.8125 19.1153C16.4292 19.6462 17.5514 20.7852 18 21.5C18.4713 20.7994 19.5708 19.6462 20.1875 19.1153C21.0625 18.3621 21.5 17.5188 21.5 16.4343C21.5 14.5376 19.933 13 18 13Z" stroke-linecap="round" stroke-linejoin="round" />\n    <path opacity="0.4" d="M21.4785 16.0635C21.4987 15.3212 21.5 14.4734 21.5 13.5V7.5H2.5V13.5C2.5 17.2712 2.5003 19.1566 3.67188 20.3281C4.84345 21.4997 6.72876 21.5 10.5 21.5H13.5C15.3905 21.5 16.8071 21.4992 17.8975 21.3516C17.3993 20.636 16.3876 19.6103 15.8125 19.1152C14.9376 18.3621 14.5001 17.519 14.5 16.4346C14.5 14.5379 16.067 13 18 13C19.8053 13 21.29 14.3412 21.4785 16.0635Z" fill="currentColor" />\n    <path d="M18 16.5H18.009" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'duotone',
+    originalName: 'DeliveryTracking01Icon',
+    elementsCount: 7,
+    hasOpacity: true,
+    hasFill: true,
+  },
 };

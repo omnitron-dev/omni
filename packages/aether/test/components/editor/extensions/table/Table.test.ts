@@ -104,11 +104,7 @@ describe('TableExtension', () => {
       const toDOM = schema?.nodes?.table?.toDOM;
       if (toDOM && typeof toDOM === 'function') {
         const result = toDOM({} as any);
-        expect(result).toEqual([
-          'table',
-          { class: 'custom-table', 'data-test': 'true' },
-          ['tbody', 0],
-        ]);
+        expect(result).toEqual(['table', { class: 'custom-table', 'data-test': 'true' }, ['tbody', 0]]);
       }
     });
   });

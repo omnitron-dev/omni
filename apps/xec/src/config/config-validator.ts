@@ -9,7 +9,7 @@ import type {
   TaskParameter,
   TargetsConfig,
   TaskDefinition,
-  ValidationError
+  ValidationError,
 } from './types.js';
 
 /**
@@ -335,12 +335,13 @@ export class ConfigValidator {
   private validateTargetReference(ref: string, path: string): void {
     // Basic validation of target reference format
     const validPrefixes = ['hosts.', 'containers.', 'pods.', 'local'];
-    const hasValidPrefix = validPrefixes.some(prefix =>
-      ref === 'local' || ref.startsWith(prefix)
-    );
+    const hasValidPrefix = validPrefixes.some((prefix) => ref === 'local' || ref.startsWith(prefix));
 
     if (!hasValidPrefix) {
-      this.addWarning(path, `Target reference '${ref}' may not be valid. Expected format: hosts.name, containers.name, pods.name, or local`);
+      this.addWarning(
+        path,
+        `Target reference '${ref}' may not be valid. Expected format: hosts.name, containers.name, pods.name, or local`
+      );
     }
   }
 
@@ -398,7 +399,10 @@ export class ConfigValidator {
 
     const validProviders = ['local', 'vault', '1password', 'aws-secrets', 'env', 'dotenv'];
     if (!validProviders.includes(secrets.provider)) {
-      this.addError('secrets.provider', `Invalid provider: ${secrets.provider}. Valid options: ${validProviders.join(', ')}`);
+      this.addError(
+        'secrets.provider',
+        `Invalid provider: ${secrets.provider}. Valid options: ${validProviders.join(', ')}`
+      );
     }
   }
 
@@ -438,7 +442,7 @@ export class ConfigValidator {
       path,
       message,
       value,
-      rule: 'error'
+      rule: 'error',
     });
   }
 
@@ -447,7 +451,7 @@ export class ConfigValidator {
       path,
       message,
       value,
-      rule: 'warning'
+      rule: 'warning',
     });
   }
 }

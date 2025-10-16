@@ -20,12 +20,7 @@ export async function executePipe(
   options: PipeOptions = {},
   ...templateArgs: any[]
 ): Promise<any> {
-  const {
-    throwOnError = true,
-    encoding = 'utf8',
-    lineByLine = true,
-    lineSeparator = '\n'
-  } = options;
+  const { throwOnError = true, encoding = 'utf8', lineByLine = true, lineSeparator = '\n' } = options;
 
   // Wait for source result
   const sourceResult = await source;
@@ -43,7 +38,7 @@ export async function executePipe(
     return engine.execute({
       command,
       stdin: sourceResult.stdout,
-      shell: true
+      shell: true,
     });
   }
 
@@ -52,7 +47,7 @@ export async function executePipe(
     return engine.execute({
       command: target,
       stdin: sourceResult.stdout,
-      shell: true
+      shell: true,
     });
   }
 
@@ -60,7 +55,7 @@ export async function executePipe(
   if (isCommand(target)) {
     return engine.execute({
       ...target,
-      stdin: sourceResult.stdout
+      stdin: sourceResult.stdout,
     });
   }
 
@@ -71,7 +66,7 @@ export async function executePipe(
       if (typeof targetCmd === 'object' && targetCmd.command) {
         return engine.execute({
           ...targetCmd,
-          stdin: sourceResult.stdout
+          stdin: sourceResult.stdout,
         });
       }
       throw new Error('Invalid ProcessPromise target');
@@ -101,9 +96,10 @@ export async function executePipe(
       const testResult = await (target as any)(sourceResult);
       if (testResult && (typeof testResult === 'string' || isCommand(testResult))) {
         // It's a conditional function that returned a command
-        const nextCommand = typeof testResult === 'string'
-          ? { command: testResult, shell: true, stdin: sourceResult.stdout }
-          : { ...testResult, stdin: sourceResult.stdout };
+        const nextCommand =
+          typeof testResult === 'string'
+            ? { command: testResult, shell: true, stdin: sourceResult.stdout }
+            : { ...testResult, stdin: sourceResult.stdout };
 
         return engine.execute(nextCommand);
       }
@@ -134,27 +130,21 @@ function interpolateTemplate(strings: TemplateStringsArray, ...values: any[]): s
  * Check if object is a Command
  */
 function isCommand(obj: any): obj is Command {
-  return obj && typeof obj === 'object' &&
-    (typeof obj.command === 'string' || Array.isArray(obj.args));
+  return obj && typeof obj === 'object' && (typeof obj.command === 'string' || Array.isArray(obj.args));
 }
 
 /**
  * Check if object is a ProcessPromise
  */
 function isProcessPromise(obj: any): obj is ProcessPromise {
-  return obj && typeof obj.then === 'function' &&
-    typeof obj.pipe === 'function' &&
-    typeof obj.nothrow === 'function';
+  return obj && typeof obj.then === 'function' && typeof obj.pipe === 'function' && typeof obj.nothrow === 'function';
 }
 
 /**
  * Check if object is a Writable stream
  */
 function isWritableStream(obj: any): obj is Writable {
-  return obj &&
-    typeof obj.write === 'function' &&
-    typeof obj.end === 'function' &&
-    typeof obj.on === 'function';
+  return obj && typeof obj.write === 'function' && typeof obj.end === 'function' && typeof obj.on === 'function';
 }
 
 /**
@@ -175,24 +165,21 @@ async function pipeToTransform(
       write(chunk, _, callback) {
         chunks.push(chunk);
         callback();
-      }
+      },
     })
   );
 
   const output = Buffer.concat(chunks).toString(encoding);
   return {
     ...result,
-    stdout: output
+    stdout: output,
   };
 }
 
 /**
  * Pipe to a Writable stream
  */
-async function pipeToWritable(
-  result: ExecutionResult,
-  writable: Writable
-): Promise<ExecutionResult> {
+async function pipeToWritable(result: ExecutionResult, writable: Writable): Promise<ExecutionResult> {
   const input = Readable.from(result.stdout);
   await pipelineAsync(input, writable);
   return result;
@@ -228,7 +215,7 @@ export const pipeUtils = {
     return new Transform({
       transform(chunk, encoding, callback) {
         callback(null, chunk.toString().toUpperCase());
-      }
+      },
     });
   },
 
@@ -244,7 +231,7 @@ export const pipeUtils = {
         const filtered = lines.filter((line: string) => line && regex.test(line));
         const result = filtered.length > 0 ? filtered.join('\n') + '\n' : '';
         callback(null, result);
-      }
+      },
     });
   },
 
@@ -257,7 +244,7 @@ export const pipeUtils = {
         const text = chunk.toString();
         const result = text.replace(search, replacement);
         callback(null, result);
-      }
+      },
     });
   },
 
@@ -273,7 +260,7 @@ export const pipeUtils = {
         }
         // Pass through
         callback(null, chunk);
-      }
+      },
     });
-  }
+  },
 };

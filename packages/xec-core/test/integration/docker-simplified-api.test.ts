@@ -4,7 +4,10 @@ import { $ } from '../../src/index.js';
 import { withTempDir } from '../../src/utils/temp.js';
 
 // Skip these tests if Docker is not available
-const hasDocker = await $`which docker`.quiet().then(r => r.ok).catch(() => false);
+const hasDocker = await $`which docker`
+  .quiet()
+  .then((r) => r.ok)
+  .catch(() => false);
 
 const describeIfDocker = hasDocker ? describe : describe.skip;
 
@@ -24,7 +27,7 @@ describeIfDocker('Docker Simplified API Integration Tests', () => {
   describe('Simplified API', () => {
     test('should run ephemeral container with image option', async () => {
       const result = await $.docker({
-        image: 'alpine:latest'
+        image: 'alpine:latest',
       })`echo "Hello from ephemeral"`;
 
       expect(result.ok).toBe(true);
@@ -38,7 +41,7 @@ describeIfDocker('Docker Simplified API Integration Tests', () => {
 
         const result = await $.docker({
           image: 'alpine:latest',
-          volumes: [`${tempDir.path}:/data`]
+          volumes: [`${tempDir.path}:/data`],
         })`cat /data/test.txt`;
 
         expect(result.ok).toBe(true);
@@ -54,7 +57,7 @@ describeIfDocker('Docker Simplified API Integration Tests', () => {
       try {
         const result = await $.docker({
           container: containerName,
-          workdir: '/tmp'
+          workdir: '/tmp',
         })`pwd`;
 
         expect(result.ok).toBe(true);
@@ -69,8 +72,8 @@ describeIfDocker('Docker Simplified API Integration Tests', () => {
         image: 'alpine:latest',
         env: {
           MY_VAR: 'test-value',
-          ANOTHER: 'another-value'
-        }
+          ANOTHER: 'another-value',
+        },
       })`echo "MY_VAR=$MY_VAR ANOTHER=$ANOTHER"`;
 
       expect(result.ok).toBe(true);
@@ -80,7 +83,7 @@ describeIfDocker('Docker Simplified API Integration Tests', () => {
     test('should set working directory', async () => {
       const result = await $.docker({
         image: 'alpine:latest',
-        workdir: '/usr/local'
+        workdir: '/usr/local',
       })`pwd`;
 
       expect(result.ok).toBe(true);
@@ -90,7 +93,7 @@ describeIfDocker('Docker Simplified API Integration Tests', () => {
     test('should run as specific user', async () => {
       const result = await $.docker({
         image: 'alpine:latest',
-        user: 'nobody'
+        user: 'nobody',
       })`id -un`;
 
       expect(result.ok).toBe(true);
@@ -100,9 +103,7 @@ describeIfDocker('Docker Simplified API Integration Tests', () => {
 
   describe('Fluent API', () => {
     test('should run ephemeral container with fluent API', async () => {
-      const result = await $.docker()
-        .ephemeral('alpine:latest')
-        .run`echo "Hello from fluent API"`;
+      const result = await $.docker().ephemeral('alpine:latest').run`echo "Hello from fluent API"`;
 
       expect(result.ok).toBe(true);
       expect(result.stdout.trim()).toBe('Hello from fluent API');
@@ -115,8 +116,7 @@ describeIfDocker('Docker Simplified API Integration Tests', () => {
           .volumes([`${tempDir.path}:/data`])
           .workdir('/data')
           .user('nobody')
-          .env({ TEST: 'value' })
-          .run`echo "$TEST" > test.txt && cat test.txt && pwd && id -un`;
+          .env({ TEST: 'value' }).run`echo "$TEST" > test.txt && cat test.txt && pwd && id -un`;
 
         expect(result.ok).toBe(true);
         const lines = result.stdout.trim().split('\n');
@@ -131,10 +131,7 @@ describeIfDocker('Docker Simplified API Integration Tests', () => {
       await $`docker run -d --name ${containerName} -w /app alpine:latest sleep 300`;
 
       try {
-        const result = await $.docker()
-          .container(containerName)
-          .workdir('/tmp')
-          .exec`pwd`;
+        const result = await $.docker().container(containerName).workdir('/tmp').exec`pwd`;
 
         expect(result.ok).toBe(true);
         expect(result.stdout.trim()).toBe('/tmp');
@@ -144,9 +141,7 @@ describeIfDocker('Docker Simplified API Integration Tests', () => {
     });
 
     test('exec should work as alias for run', async () => {
-      const result = await $.docker()
-        .ephemeral('alpine:latest')
-        .exec`echo "Using exec method"`;
+      const result = await $.docker().ephemeral('alpine:latest').exec`echo "Using exec method"`;
 
       expect(result.ok).toBe(true);
       expect(result.stdout.trim()).toBe('Using exec method');
@@ -165,7 +160,7 @@ describeIfDocker('Docker Simplified API Integration Tests', () => {
 
       // Should have at least our containers
       expect(names.length).toBeGreaterThanOrEqual(2);
-      
+
       // Names should be unique
       const uniqueNames = new Set(names);
       expect(uniqueNames.size).toBe(names.length);
@@ -178,7 +173,7 @@ describeIfDocker('Docker Simplified API Integration Tests', () => {
   describe('Error handling', () => {
     test('should handle command failures in ephemeral containers', async () => {
       const result = await $.docker({
-        image: 'alpine:latest'
+        image: 'alpine:latest',
       })`exit 1`.nothrow();
 
       expect(result.ok).toBe(false);
@@ -187,7 +182,7 @@ describeIfDocker('Docker Simplified API Integration Tests', () => {
 
     test('should handle missing container error', async () => {
       const result = await $.docker({
-        container: 'non-existent-container'
+        container: 'non-existent-container',
       })`echo test`.nothrow();
 
       expect(result.ok).toBe(false);
@@ -197,10 +192,7 @@ describeIfDocker('Docker Simplified API Integration Tests', () => {
 
   describe('Advanced features', () => {
     test('should support privileged mode for ephemeral containers', async () => {
-      const result = await $.docker()
-        .ephemeral('alpine:latest')
-        .privileged()
-        .run`ls /dev | head -5`;
+      const result = await $.docker().ephemeral('alpine:latest').privileged().run`ls /dev | head -5`;
 
       expect(result.ok).toBe(true);
       expect(result.stdout.split('\n').length).toBeGreaterThan(3);
@@ -212,9 +204,7 @@ describeIfDocker('Docker Simplified API Integration Tests', () => {
       await $`docker network create ${networkName}`;
 
       try {
-        const result = await $.docker()
-          .ephemeral('alpine:latest')
-          .network(networkName)
+        const result = await $.docker().ephemeral('alpine:latest').network(networkName)
           .run`ip addr show | grep -E "inet.*scope global" || echo "No global IPs"`;
 
         expect(result.ok).toBe(true);

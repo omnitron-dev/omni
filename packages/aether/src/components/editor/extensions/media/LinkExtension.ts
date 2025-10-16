@@ -128,25 +128,23 @@ export class LinkExtension extends Extension<LinkOptions> {
       /**
        * Set a link on the current selection
        */
-      setLink:
-        (href: string, options?: { title?: string }) =>
-        (state, dispatch) => {
-          if (!this.options.validate?.(href)) {
-            return false;
-          }
+      setLink: (href: string, options?: { title?: string }) => (state, dispatch) => {
+        if (!this.options.validate?.(href)) {
+          return false;
+        }
 
-          const { selection } = state;
-          const { from, to } = selection;
-          const mark = state.schema.marks.link.create({
-            href,
-            title: options?.title,
-          });
+        const { selection } = state;
+        const { from, to } = selection;
+        const mark = state.schema.marks.link.create({
+          href,
+          title: options?.title,
+        });
 
-          if (dispatch) {
-            dispatch(state.tr.addMark(from, to, mark));
-          }
-          return true;
-        },
+        if (dispatch) {
+          dispatch(state.tr.addMark(from, to, mark));
+        }
+        return true;
+      },
 
       /**
        * Toggle link on/off for current selection
@@ -217,7 +215,7 @@ export class LinkExtension extends Extension<LinkOptions> {
               return false;
             },
           },
-        }),
+        })
       );
     }
 

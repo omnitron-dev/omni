@@ -16,13 +16,7 @@
  * - Press Ctrl+C twice or .exit to quit
  */
 
-import {
-  REPLServer,
-  REPLCommands,
-  ScriptRuntime,
-  GlobalInjector,
-  createBuiltinCommands,
-} from '../src/index.js';
+import { REPLServer, REPLCommands, ScriptRuntime, GlobalInjector, createBuiltinCommands } from '../src/index.js';
 
 async function main() {
   console.log('=== @xec-sh/loader REPL Examples ===\n');

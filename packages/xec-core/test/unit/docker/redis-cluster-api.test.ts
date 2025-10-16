@@ -18,7 +18,7 @@ describe('Docker Redis Cluster API', () => {
     expect(() => {
       new DockerRedisClusterAPI(engine, {
         masters: 2, // Less than minimum
-        replicas: 0
+        replicas: 0,
       });
     }).toThrow('Redis cluster requires at least 3 master nodes');
   });
@@ -27,7 +27,7 @@ describe('Docker Redis Cluster API', () => {
     expect(() => {
       new DockerRedisClusterAPI(engine, {
         masters: 1,
-        replicas: 1 // Total = 2, less than minimum
+        replicas: 1, // Total = 2, less than minimum
       });
     }).toThrow('Redis cluster requires at least 3 master nodes');
   });
@@ -35,7 +35,7 @@ describe('Docker Redis Cluster API', () => {
   test('should accept valid configuration', async () => {
     const cluster = new DockerRedisClusterAPI(engine, {
       masters: 3,
-      replicas: 1
+      replicas: 1,
     });
 
     expect(cluster).toBeDefined();
@@ -59,7 +59,7 @@ describe('Docker Redis Cluster API', () => {
       masters: 3,
       replicas: 0,
       basePort: 9000,
-      containerPrefix: 'test-redis'
+      containerPrefix: 'test-redis',
     });
 
     // Initially no containers until started
@@ -75,7 +75,7 @@ describe('Docker Redis Cluster API', () => {
       network: 'custom-net',
       nodeTimeout: 10000,
       persistent: true,
-      dataPath: '/custom/path'
+      dataPath: '/custom/path',
     });
 
     expect(cluster).toBeDefined();
@@ -88,7 +88,7 @@ describe('Docker Redis Cluster API', () => {
   test('should throw when cluster is not running', async () => {
     const cluster = new DockerRedisClusterAPI(engine, {
       masters: 3,
-      replicas: 0
+      replicas: 0,
     });
 
     await expect(cluster.exec('GET key')).rejects.toThrow('Redis cluster is not running');
@@ -99,7 +99,7 @@ describe('Docker Redis Cluster API', () => {
   test('should handle stop when not running', async () => {
     const cluster = new DockerRedisClusterAPI(engine, {
       masters: 3,
-      replicas: 0
+      replicas: 0,
     });
 
     // Should not throw

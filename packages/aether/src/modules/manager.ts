@@ -121,9 +121,7 @@ export class ModuleManager {
     const cycles = this.graph.findCircularDependencies();
     const cyclicModule = cycles.find((cycle) => cycle.includes(moduleId));
     if (cyclicModule) {
-      throw new Error(
-        `Circular dependency detected: ${cyclicModule.join(' -> ')} -> ${cyclicModule[0]}`
-      );
+      throw new Error(`Circular dependency detected: ${cyclicModule.join(' -> ')} -> ${cyclicModule[0]}`);
     }
 
     // Start loading
@@ -293,11 +291,7 @@ export class ModuleManager {
   /**
    * Register stores from module
    */
-  private async registerStores(
-    stores: StoreFactory[],
-    container: Container,
-    moduleId: string
-  ): Promise<void> {
+  private async registerStores(stores: StoreFactory[], container: Container, moduleId: string): Promise<void> {
     if (!this.storeManager) return;
 
     for (const factory of stores) {
@@ -321,11 +315,7 @@ export class ModuleManager {
   /**
    * Register routes from module
    */
-  private registerRoutes(
-    routes: RouteDefinition[],
-    container: Container,
-    moduleId: string
-  ): void {
+  private registerRoutes(routes: RouteDefinition[], container: Container, moduleId: string): void {
     if (!this.router) return;
 
     // Enhance routes with module container
@@ -355,8 +345,7 @@ export class ModuleManager {
   private wrapLoader(loader: any, container: Container): any {
     return (context: any) =>
       // Add container to loader context
-       loader({ ...context, container })
-    ;
+      loader({ ...context, container });
   }
 
   /**
@@ -365,18 +354,13 @@ export class ModuleManager {
   private wrapAction(action: any, container: Container): any {
     return (context: any) =>
       // Add container to action context
-       action({ ...context, container })
-    ;
+      action({ ...context, container });
   }
 
   /**
    * Register islands from module
    */
-  private registerIslands(
-    islands: IslandDefinition[],
-    container: Container,
-    moduleId: string
-  ): void {
+  private registerIslands(islands: IslandDefinition[], container: Container, moduleId: string): void {
     // Register islands for hydration
     if (typeof window !== 'undefined') {
       (window as any).__AETHER_ISLANDS__ = (window as any).__AETHER_ISLANDS__ || [];

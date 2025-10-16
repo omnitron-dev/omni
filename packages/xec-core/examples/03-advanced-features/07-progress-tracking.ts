@@ -1,8 +1,8 @@
 /**
  * 07. Progress Tracking - Отслеживание прогресса
- * 
+ *
  * Показывает различные способы отображения прогресса выполнения команд.
- * 
+ *
  * ВАЖНО: В @xec-sh/core нет встроенных утилит для прогресс-баров.
  * Для отображения прогресса используются стандартные методы Node.js
  * и вывод информации в консоль.
@@ -38,15 +38,16 @@ console.log('\nВыполнение параллельных задач:');
 const taskStatus = {
   download: 0,
   process: 0,
-  upload: 0
+  upload: 0,
 };
 
 // Функция для обновления статуса
 const updateStatus = () => {
-  process.stdout.write('\r' + 
-    `Download: ${taskStatus.download}% | ` +
-    `Process: ${taskStatus.process}% | ` +
-    `Upload: ${taskStatus.upload}%`
+  process.stdout.write(
+    '\r' +
+      `Download: ${taskStatus.download}% | ` +
+      `Process: ${taskStatus.process}% | ` +
+      `Upload: ${taskStatus.upload}%`
   );
 };
 
@@ -72,10 +73,10 @@ const tasks = [
       taskStatus.upload = i;
       updateStatus();
     }
-  }
+  },
 ];
 
-await Promise.all(tasks.map(task => task()));
+await Promise.all(tasks.map((task) => task()));
 console.log('\nВсе задачи завершены!');
 
 // 4. Анимация ожидания для неопределённых задач
@@ -115,32 +116,31 @@ class DetailedProgress {
   private startTime: number;
   private processed = 0;
   private errors = 0;
-  
+
   constructor(private total: number) {
     this.startTime = Date.now();
   }
-  
+
   update(success: boolean) {
     this.processed++;
     if (!success) this.errors++;
-    
+
     const elapsed = (Date.now() - this.startTime) / 1000;
     const rate = this.processed / elapsed;
     const eta = (this.total - this.processed) / rate;
-    
+
     process.stdout.write(
       `\rОбработано: ${this.processed}/${this.total} | ` +
-      `Ошибок: ${this.errors} | ` +
-      `Скорость: ${rate.toFixed(1)}/сек | ` +
-      `Осталось: ${eta.toFixed(0)}с`
+        `Ошибок: ${this.errors} | ` +
+        `Скорость: ${rate.toFixed(1)}/сек | ` +
+        `Осталось: ${eta.toFixed(0)}с`
     );
   }
-  
+
   finish() {
     const totalTime = (Date.now() - this.startTime) / 1000;
     console.log(
-      `\nЗавершено! Обработано: ${this.processed}, ` +
-      `Ошибок: ${this.errors}, Время: ${totalTime.toFixed(1)}с`
+      `\nЗавершено! Обработано: ${this.processed}, ` + `Ошибок: ${this.errors}, Время: ${totalTime.toFixed(1)}с`
     );
   }
 }
@@ -201,7 +201,7 @@ const stages = [
   { name: 'Установка зависимостей', weight: 30 },
   { name: 'Сборка', weight: 40 },
   { name: 'Тестирование', weight: 15 },
-  { name: 'Развёртывание', weight: 5 }
+  { name: 'Развёртывание', weight: 5 },
 ];
 
 const totalWeight = stages.reduce((sum, stage) => sum + stage.weight, 0);
@@ -217,13 +217,13 @@ const showStageProgress = (currentWeight: number) => {
 
 for (const stage of stages) {
   console.log(`\n\nЭтап: ${stage.name}`);
-  
+
   // Симуляция работы этапа
   for (let i = 0; i < stage.weight; i++) {
     await $`sleep 0.05`;
     showStageProgress(completedWeight + i + 1);
   }
-  
+
   completedWeight += stage.weight;
   console.log(`\n✓ ${stage.name} завершён`);
 }
@@ -232,17 +232,20 @@ console.log('\n\nРазвёртывание завершено!');
 
 // 9. Проверка системы с индикаторами
 const systemChecks = [
-  { name: 'Проверка доступности API', cmd: $`curl -s -o /dev/null -w "%{http_code}" https://api.example.com/health || echo "000"` },
+  {
+    name: 'Проверка доступности API',
+    cmd: $`curl -s -o /dev/null -w "%{http_code}" https://api.example.com/health || echo "000"`,
+  },
   { name: 'Проверка базы данных', cmd: $`echo "SELECT 1"` },
   { name: 'Проверка кэша', cmd: $`echo "PING"` },
-  { name: 'Проверка файловой системы', cmd: $`df -h | grep -v "100%" | head -1` }
+  { name: 'Проверка файловой системы', cmd: $`df -h | grep -v "100%" | head -1` },
 ];
 
 console.log('\nПроверка системы:\n');
 
 for (const check of systemChecks) {
   process.stdout.write(`⠋ ${check.name}...`);
-  
+
   try {
     const result = await check.cmd.nothrow();
     if (result.ok) {
@@ -262,7 +265,7 @@ const logProgress = (message: string, progress: number, total: number) => {
   const percentage = Math.round((progress / total) * 100);
   const filled = Math.round((progress / total) * 20);
   const bar = '█'.repeat(filled) + '░'.repeat(20 - filled);
-  
+
   console.log(`[${new Date().toISOString()}] ${message}: [${bar}] ${percentage}%`);
 };
 
@@ -284,21 +287,21 @@ const userConfirm = 'y'; // В реальном приложении нужно 
 
 if (userConfirm === 'y') {
   console.log('Выполнение операции...');
-  
+
   // Прогресс с временем выполнения
   const startTime = Date.now();
-  
+
   for (let i = 0; i <= 100; i++) {
     await $`sleep 0.03`;
-    
+
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     const percentage = i;
     const filled = Math.floor(i / 3.33);
     const bar = '█'.repeat(filled) + '░'.repeat(30 - filled);
-    
+
     process.stdout.write(`\r[${bar}] ${percentage}% | ${elapsed}s`);
   }
-  
+
   const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
   console.log(`\nОперация завершена за ${totalTime}s!`);
 } else {

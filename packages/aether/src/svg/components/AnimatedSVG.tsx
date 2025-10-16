@@ -136,7 +136,8 @@ export const AnimatedSVG = defineComponent<AnimatedSVGProps>((props) => {
     });
 
     // Add animations from timeline or animations prop
-    const animations = props.timeline?.animations ||
+    const animations =
+      props.timeline?.animations ||
       (props.animations ? (Array.isArray(props.animations) ? props.animations : [props.animations]) : []);
 
     animations.forEach((anim) => {
@@ -333,7 +334,8 @@ export const AnimatedSVG = defineComponent<AnimatedSVGProps>((props) => {
     timelineController.set(null);
   });
 
-  return () => SVG({
+  return () =>
+    SVG({
       ...props,
       ref: (el: SVGSVGElement | null) => {
         if (el) svgRef.set(el);

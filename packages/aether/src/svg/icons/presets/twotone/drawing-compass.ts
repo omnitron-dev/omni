@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const DrawingCompassIcon: IconDefinition = {
-  "id": "drawing-compass",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M10 10L5 22M14 10L19 22\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M12 4L12 2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <circle cx=\"12\" cy=\"7\" r=\"3\" />\n    <path opacity=\"0.4\" d=\"M3 13C4.99073 16.0242 8.27968 18 12 18C15.7203 18 19.0093 16.0242 21 13M12 17V19\" stroke-linecap=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "twotone",
-    "originalName": "DrawingCompassIcon",
-    "elementsCount": 4,
-    "hasOpacity": true,
-    "hasFill": false
-  }
+  id: 'drawing-compass',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path d="M10 10L5 22M14 10L19 22" stroke-linecap="round" stroke-linejoin="round" />\n    <path opacity="0.4" d="M12 4L12 2" stroke-linecap="round" stroke-linejoin="round" />\n    <circle cx="12" cy="7" r="3" />\n    <path opacity="0.4" d="M3 13C4.99073 16.0242 8.27968 18 12 18C15.7203 18 19.0093 16.0242 21 13M12 17V19" stroke-linecap="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'twotone',
+    originalName: 'DrawingCompassIcon',
+    elementsCount: 4,
+    hasOpacity: true,
+    hasFill: false,
+  },
 };

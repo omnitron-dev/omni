@@ -6,7 +6,6 @@ import { SSHAdapter } from '../../../src/adapters/ssh/index.js';
 import { SecurePasswordHandler } from '../../src/adapters/ssh/secure-password.js';
 
 describeSSH('SSH Secure Password Integration Tests', () => {
-
   describe('Secure Askpass Method', () => {
     testEachPackageManager('should execute sudo commands with secure-askpass method', async (container) => {
       const sshConfig = getSSHConfig(container.name);
@@ -14,17 +13,17 @@ describeSSH('SSH Secure Password Integration Tests', () => {
         sudo: {
           enabled: true,
           password: sshConfig.password, // Use same password for sudo
-          method: 'secure-askpass'
-        }
+          method: 'secure-askpass',
+        },
       });
 
       try {
         const result = await ssh.execute({
-          command: 'whoami',  // Let adapter wrap with sudo
+          command: 'whoami', // Let adapter wrap with sudo
           adapterOptions: {
             type: 'ssh' as const,
-            ...sshConfig
-          }
+            ...sshConfig,
+          },
         });
 
         expect(result.exitCode).toBe(0);
@@ -40,8 +39,8 @@ describeSSH('SSH Secure Password Integration Tests', () => {
         sudo: {
           enabled: true,
           password: sshConfig.password,
-          method: 'secure-askpass'
-        }
+          method: 'secure-askpass',
+        },
       });
 
       try {
@@ -49,8 +48,8 @@ describeSSH('SSH Secure Password Integration Tests', () => {
           command: 'echo "Test $USER with special chars: $HOME"',
           adapterOptions: {
             type: 'ssh' as const,
-            ...sshConfig
-          }
+            ...sshConfig,
+          },
         });
 
         expect(result.exitCode).toBe(0);
@@ -70,8 +69,8 @@ describeSSH('SSH Secure Password Integration Tests', () => {
           enabled: true,
           password: sshConfig.password,
           method: 'secure-askpass',
-          secureHandler: customHandler
-        }
+          secureHandler: customHandler,
+        },
       });
 
       try {
@@ -79,8 +78,8 @@ describeSSH('SSH Secure Password Integration Tests', () => {
           command: 'ls -la /root',
           adapterOptions: {
             type: 'ssh' as const,
-            ...sshConfig
-          }
+            ...sshConfig,
+          },
         });
 
         expect(result.exitCode).toBe(0);
@@ -97,8 +96,8 @@ describeSSH('SSH Secure Password Integration Tests', () => {
         sudo: {
           enabled: true,
           password: sshConfig.password,
-          method: 'secure-askpass'
-        }
+          method: 'secure-askpass',
+        },
       });
 
       try {
@@ -106,19 +105,19 @@ describeSSH('SSH Secure Password Integration Tests', () => {
         const results = await Promise.all([
           ssh.execute({
             command: 'id',
-            adapterOptions: { type: 'ssh' as const, ...sshConfig }
+            adapterOptions: { type: 'ssh' as const, ...sshConfig },
           }),
           ssh.execute({
             command: 'pwd',
-            adapterOptions: { type: 'ssh' as const, ...sshConfig }
+            adapterOptions: { type: 'ssh' as const, ...sshConfig },
           }),
           ssh.execute({
             command: 'hostname',
-            adapterOptions: { type: 'ssh' as const, ...sshConfig }
-          })
+            adapterOptions: { type: 'ssh' as const, ...sshConfig },
+          }),
         ]);
 
-        results.forEach(result => {
+        results.forEach((result) => {
           expect(result.exitCode).toBe(0);
           expect(result.stdout).toBeTruthy();
         });
@@ -136,8 +135,8 @@ describeSSH('SSH Secure Password Integration Tests', () => {
         sudo: {
           enabled: true,
           password: sshConfig.password,
-          method: 'secure-askpass'
-        }
+          method: 'secure-askpass',
+        },
       });
       const $ssh = $.ssh(sshConfig);
 
@@ -149,11 +148,11 @@ describeSSH('SSH Secure Password Integration Tests', () => {
         // Execute command with secure-askpass
         await ssh.execute({
           command: 'echo test',
-          adapterOptions: { type: 'ssh' as const, ...sshConfig }
+          adapterOptions: { type: 'ssh' as const, ...sshConfig },
         });
 
         // Wait for cleanup
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise((resolve) => setTimeout(resolve, 2000));
 
         // Count askpass scripts after
         const afterResult = await $ssh`ls -la /tmp | grep askpass- | wc -l`.nothrow();
@@ -174,14 +173,14 @@ describeSSH('SSH Secure Password Integration Tests', () => {
         sudo: {
           enabled: true,
           password: sshConfig.password,
-          method: 'stdin'
-        }
+          method: 'stdin',
+        },
       });
 
       try {
         const result = await ssh.execute({
           command: 'whoami',
-          adapterOptions: { type: 'ssh' as const, ...sshConfig }
+          adapterOptions: { type: 'ssh' as const, ...sshConfig },
         });
 
         expect(result.exitCode).toBe(0);
@@ -199,14 +198,14 @@ describeSSH('SSH Secure Password Integration Tests', () => {
         sudo: {
           enabled: true,
           password: sshConfig.password,
-          method: 'echo'
-        }
+          method: 'echo',
+        },
       });
 
       try {
         const result = await ssh.execute({
           command: 'whoami',
-          adapterOptions: { type: 'ssh' as const, ...sshConfig }
+          adapterOptions: { type: 'ssh' as const, ...sshConfig },
         });
 
         expect(result.exitCode).toBe(0);
@@ -230,15 +229,15 @@ describeSSH('SSH Secure Password Integration Tests', () => {
         sudo: {
           enabled: true,
           password: 'wrongpassword',
-          method: 'secure-askpass'
-        }
+          method: 'secure-askpass',
+        },
       });
 
       try {
         const result = await ssh.execute({
           command: 'whoami',
           nothrow: true,
-          adapterOptions: { type: 'ssh' as const, ...sshConfig }
+          adapterOptions: { type: 'ssh' as const, ...sshConfig },
         });
 
         expect(result.exitCode).not.toBe(0);
@@ -252,14 +251,14 @@ describeSSH('SSH Secure Password Integration Tests', () => {
       const sshConfig = getSSHConfig(container.name);
       const ssh = new SSHAdapter({
         sudo: {
-          enabled: false  // Sudo should be disabled for this test
-        }
+          enabled: false, // Sudo should be disabled for this test
+        },
       });
 
       try {
         const result = await ssh.execute({
           command: 'whoami',
-          adapterOptions: { type: 'ssh' as const, ...sshConfig }
+          adapterOptions: { type: 'ssh' as const, ...sshConfig },
         });
 
         expect(result.exitCode).toBe(0);
@@ -279,15 +278,15 @@ describeSSH('SSH Secure Password Integration Tests', () => {
         sudo: {
           enabled: true,
           password: sshConfig.password,
-          method: 'secure-askpass'
-        }
+          method: 'secure-askpass',
+        },
       });
 
       try {
         // Test basic sudo command
         const idResult = await ssh.execute({
           command: 'id -u',
-          adapterOptions: { type: 'ssh' as const, ...sshConfig }
+          adapterOptions: { type: 'ssh' as const, ...sshConfig },
         });
 
         expect(idResult.exitCode).toBe(0);
@@ -296,7 +295,7 @@ describeSSH('SSH Secure Password Integration Tests', () => {
         // Test more complex sudo command
         const lsResult = await ssh.execute({
           command: 'ls -la /root/.ssh',
-          adapterOptions: { type: 'ssh' as const, ...sshConfig }
+          adapterOptions: { type: 'ssh' as const, ...sshConfig },
         });
 
         expect(lsResult.exitCode).toBe(0);
@@ -305,7 +304,7 @@ describeSSH('SSH Secure Password Integration Tests', () => {
         // Verify we're running as root
         const whoamiResult = await ssh.execute({
           command: 'whoami',
-          adapterOptions: { type: 'ssh' as const, ...sshConfig }
+          adapterOptions: { type: 'ssh' as const, ...sshConfig },
         });
 
         expect(whoamiResult.exitCode).toBe(0);
@@ -315,48 +314,51 @@ describeSSH('SSH Secure Password Integration Tests', () => {
       }
     });
 
-    testEachPackageManager('should combine $ helper for regular commands with SSHAdapter for sudo', async (container) => {
-      const sshConfig = getSSHConfig(container.name);
+    testEachPackageManager(
+      'should combine $ helper for regular commands with SSHAdapter for sudo',
+      async (container) => {
+        const sshConfig = getSSHConfig(container.name);
 
-      // Use $ helper for regular SSH commands
-      const $ssh = $.ssh(sshConfig);
+        // Use $ helper for regular SSH commands
+        const $ssh = $.ssh(sshConfig);
 
-      // Use SSHAdapter for sudo commands
-      const sshWithSudo = new SSHAdapter({
-        sudo: {
-          enabled: true,
-          password: sshConfig.password,
-          method: 'secure-askpass'
-        }
-      });
-
-      try {
-        // Regular command with $ helper
-        const regularResult = await $ssh`whoami`;
-        expect(regularResult.stdout.trim()).toBe(sshConfig.username);
-
-        // Sudo command with SSHAdapter
-        const sudoResult = await sshWithSudo.execute({
-          command: 'whoami',
-          adapterOptions: { type: 'ssh' as const, ...sshConfig }
+        // Use SSHAdapter for sudo commands
+        const sshWithSudo = new SSHAdapter({
+          sudo: {
+            enabled: true,
+            password: sshConfig.password,
+            method: 'secure-askpass',
+          },
         });
-        expect(sudoResult.stdout.trim()).toBe('root');
 
-        // Verify both can coexist
-        const [regular2, sudo2] = await Promise.all([
-          $ssh`echo "Regular user: $(whoami)"`,
-          sshWithSudo.execute({
-            command: 'echo "Sudo user: $(whoami)"',
-            adapterOptions: { type: 'ssh' as const, ...sshConfig }
-          })
-        ]);
+        try {
+          // Regular command with $ helper
+          const regularResult = await $ssh`whoami`;
+          expect(regularResult.stdout.trim()).toBe(sshConfig.username);
 
-        expect(regular2.stdout).toContain(`Regular user: ${sshConfig.username}`);
-        expect(sudo2.stdout).toContain('Sudo user: root');
-      } finally {
-        await sshWithSudo.dispose();
+          // Sudo command with SSHAdapter
+          const sudoResult = await sshWithSudo.execute({
+            command: 'whoami',
+            adapterOptions: { type: 'ssh' as const, ...sshConfig },
+          });
+          expect(sudoResult.stdout.trim()).toBe('root');
+
+          // Verify both can coexist
+          const [regular2, sudo2] = await Promise.all([
+            $ssh`echo "Regular user: $(whoami)"`,
+            sshWithSudo.execute({
+              command: 'echo "Sudo user: $(whoami)"',
+              adapterOptions: { type: 'ssh' as const, ...sshConfig },
+            }),
+          ]);
+
+          expect(regular2.stdout).toContain(`Regular user: ${sshConfig.username}`);
+          expect(sudo2.stdout).toContain('Sudo user: root');
+        } finally {
+          await sshWithSudo.dispose();
+        }
       }
-    });
+    );
   });
 
   describe('Password security features', () => {

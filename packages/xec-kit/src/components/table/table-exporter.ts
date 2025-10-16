@@ -83,9 +83,7 @@ export function exportToCSV<T>(
 
   // Add headers
   if (includeHeaders) {
-    const headers = exportColumns
-      .map((col) => escapeCSV(col.header, quoteStrings))
-      .join(delimiter);
+    const headers = exportColumns.map((col) => escapeCSV(col.header, quoteStrings)).join(delimiter);
     lines.push(headers);
   }
 
@@ -202,7 +200,11 @@ export function exportToText<T>(
   });
 
   // Helper to pad text
-  const pad = (text: string, width: number, align: 'left' | 'right' | 'center' = 'left'): string => {
+  const pad = (
+    text: string,
+    width: number,
+    align: 'left' | 'right' | 'center' = 'left'
+  ): string => {
     if (text.length >= width) return text;
     const padding = width - text.length;
 
@@ -221,9 +223,7 @@ export function exportToText<T>(
   const separator = exportColumns.map((_, i) => '─'.repeat(widths[i]!)).join('─┼─');
 
   // Header
-  const header = exportColumns
-    .map((col, i) => pad(col.header, widths[i]!, col.align))
-    .join(' │ ');
+  const header = exportColumns.map((col, i) => pad(col.header, widths[i]!, col.align)).join(' │ ');
   lines.push(header);
   lines.push(separator);
 
@@ -324,12 +324,13 @@ export function exportToHTML<T>(
     throw new Error('No columns to export');
   }
 
-  const escapeHTML = (str: string): string => str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+  const escapeHTML = (str: string): string =>
+    str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
 
   const lines: string[] = [];
   lines.push('<table>');

@@ -105,19 +105,25 @@ export const taskLog = (opts: TaskLogOptions) => {
   const printBuffer = (buffer: BufferEntry, messageSpacing?: number, full?: boolean): void => {
     const messages = full ? `${buffer.full}\n${buffer.value}` : buffer.value;
     if (buffer.header !== undefined && buffer.header !== '') {
-      log.message(buffer.header.split('\n').map(line => prism.bold(line)), {
+      log.message(
+        buffer.header.split('\n').map((line) => prism.bold(line)),
+        {
+          output,
+          secondarySymbol,
+          symbol: secondarySymbol,
+          spacing: 0,
+        }
+      );
+    }
+    log.message(
+      messages.split('\n').map((line) => prism.dim(line)),
+      {
         output,
         secondarySymbol,
         symbol: secondarySymbol,
-        spacing: 0,
-      });
-    }
-    log.message(messages.split('\n').map(line => prism.dim(line)), {
-      output,
-      secondarySymbol,
-      symbol: secondarySymbol,
-      spacing: messageSpacing ?? spacing,
-    });
+        spacing: messageSpacing ?? spacing,
+      }
+    );
   };
   const renderBuffer = (): void => {
     for (const buffer of buffers) {

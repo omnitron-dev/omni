@@ -36,19 +36,17 @@ describe('renderHook', () => {
 
   describe('hook props updates', () => {
     it('should accept initial props', () => {
-      const { result } = renderHook(
-        (props: { value: number }) => ({ doubled: props.value * 2 }),
-        { initialProps: { value: 5 } }
-      );
+      const { result } = renderHook((props: { value: number }) => ({ doubled: props.value * 2 }), {
+        initialProps: { value: 5 },
+      });
 
       expect(result.current.doubled).toBe(10);
     });
 
     it('should rerender with new props', () => {
-      const { result, rerender } = renderHook(
-        (props: { value: number }) => ({ doubled: props.value * 2 }),
-        { initialProps: { value: 5 } }
-      );
+      const { result, rerender } = renderHook((props: { value: number }) => ({ doubled: props.value * 2 }), {
+        initialProps: { value: 5 },
+      });
 
       expect(result.current.doubled).toBe(10);
 
@@ -58,10 +56,9 @@ describe('renderHook', () => {
     });
 
     it('should handle undefined props on rerender', () => {
-      const { result, rerender } = renderHook(
-        (props: { value?: number }) => ({ value: props.value || 0 }),
-        { initialProps: { value: 5 } }
-      );
+      const { result, rerender } = renderHook((props: { value?: number }) => ({ value: props.value || 0 }), {
+        initialProps: { value: 5 },
+      });
 
       expect(result.current.value).toBe(5);
 
@@ -114,7 +111,7 @@ describe('renderHook', () => {
       const { result } = renderHook(() => {
         const count = signal(0);
         const loadData = async () => {
-          await new Promise(resolve => setTimeout(resolve, 50));
+          await new Promise((resolve) => setTimeout(resolve, 50));
           count.set(5);
         };
         return { count: count(), loadData };
@@ -190,10 +187,7 @@ describe('renderHook', () => {
     it('should wrap hook with custom component', () => {
       const wrapper = ({ children }: { children: any }) => children;
 
-      const { result } = renderHook(
-        () => ({ value: 'wrapped' }),
-        { wrapper }
-      );
+      const { result } = renderHook(() => ({ value: 'wrapped' }), { wrapper });
 
       expect(result.current.value).toBe('wrapped');
     });

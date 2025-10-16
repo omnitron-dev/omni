@@ -11,13 +11,13 @@ async function runXecCommand(args: string[]): Promise<{ stdout: string; stderr: 
     return {
       stdout: result.stdout,
       stderr: result.stderr,
-      exitCode: result.exitCode
+      exitCode: result.exitCode,
     };
   } catch (error: any) {
     return {
       stdout: error.stdout || '',
       stderr: error.stderr || '',
-      exitCode: error.exitCode ?? 1
+      exitCode: error.exitCode ?? 1,
     };
   }
 }
@@ -32,7 +32,7 @@ async function cleanupTestContainers(prefix: string) {
     const containers = result.stdout.trim().split('\n').filter(Boolean);
 
     for (const container of containers) {
-      await $`docker rm -f ${container}`.catch(() => { });
+      await $`docker rm -f ${container}`.catch(() => {});
     }
   } catch {
     // Ignore errors
@@ -57,11 +57,14 @@ describeDocker('Docker Command', () => {
     it('should run a simple container', async () => {
       const containerName = `${TEST_PREFIX}run-${Date.now()}`;
       const result = await runXecCommand([
-        'docker', 'run',
-        '--name', containerName,
+        'docker',
+        'run',
+        '--name',
+        containerName,
         '--rm',
         'alpine:latest',
-        'echo', 'Hello from Alpine'
+        'echo',
+        'Hello from Alpine',
       ]);
 
       expect(result.exitCode).toBe(0);
@@ -71,11 +74,14 @@ describeDocker('Docker Command', () => {
     it('should run container with port mapping', async () => {
       const containerName = `${TEST_PREFIX}port-${Date.now()}`;
       const result = await runXecCommand([
-        'docker', 'run',
-        '--name', containerName,
-        '-p', '8888:80',
+        'docker',
+        'run',
+        '--name',
+        containerName,
+        '-p',
+        '8888:80',
         '-d',
-        'nginx:alpine'
+        'nginx:alpine',
       ]);
 
       expect(result.exitCode).toBe(0);
@@ -89,13 +95,19 @@ describeDocker('Docker Command', () => {
     it('should run container with environment variables', async () => {
       const containerName = `${TEST_PREFIX}env-${Date.now()}`;
       const result = await runXecCommand([
-        'docker', 'run',
-        '--name', containerName,
+        'docker',
+        'run',
+        '--name',
+        containerName,
         '--rm',
-        '-e', 'TEST_VAR=test_value',
-        '-e', 'ANOTHER_VAR=another_value',
+        '-e',
+        'TEST_VAR=test_value',
+        '-e',
+        'ANOTHER_VAR=another_value',
         'alpine:latest',
-        'sh', '-c', 'echo $TEST_VAR $ANOTHER_VAR'
+        'sh',
+        '-c',
+        'echo $TEST_VAR $ANOTHER_VAR',
       ]);
 
       expect(result.exitCode).toBe(0);
@@ -109,12 +121,16 @@ describeDocker('Docker Command', () => {
 
       const containerName = `${TEST_PREFIX}volume-${Date.now()}`;
       const result = await runXecCommand([
-        'docker', 'run',
-        '--name', containerName,
+        'docker',
+        'run',
+        '--name',
+        containerName,
         '--rm',
-        '-v', `${tmpDir}:/data`,
+        '-v',
+        `${tmpDir}:/data`,
         'alpine:latest',
-        'cat', '/data/test.txt'
+        'cat',
+        '/data/test.txt',
       ]);
 
       expect(result.exitCode).toBe(0);
@@ -125,11 +141,7 @@ describeDocker('Docker Command', () => {
     });
 
     it('should handle run command errors', async () => {
-      const result = await runXecCommand([
-        'docker', 'run',
-        'non-existent-image:latest',
-        'echo', 'test'
-      ]);
+      const result = await runXecCommand(['docker', 'run', 'non-existent-image:latest', 'echo', 'test']);
 
       expect(result.exitCode).not.toBe(0);
     });
@@ -145,38 +157,25 @@ describeDocker('Docker Command', () => {
     });
 
     afterAll(async () => {
-      await $`docker rm -f ${testContainerName}`.catch(() => { });
+      await $`docker rm -f ${testContainerName}`.catch(() => {});
     });
 
     it('should execute command in running container', async () => {
-      const result = await runXecCommand([
-        'docker', 'exec',
-        testContainerName,
-        'echo', 'Hello from exec'
-      ]);
+      const result = await runXecCommand(['docker', 'exec', testContainerName, 'echo', 'Hello from exec']);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Hello from exec');
     });
 
     it('should execute command with working directory', async () => {
-      const result = await runXecCommand([
-        'docker', 'exec',
-        '-w', '/tmp',
-        testContainerName,
-        'pwd'
-      ]);
+      const result = await runXecCommand(['docker', 'exec', '-w', '/tmp', testContainerName, 'pwd']);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('/tmp');
     });
 
     it('should handle exec command errors', async () => {
-      const result = await runXecCommand([
-        'docker', 'exec',
-        'non-existent-container',
-        'echo', 'test'
-      ]);
+      const result = await runXecCommand(['docker', 'exec', 'non-existent-container', 'echo', 'test']);
 
       expect(result.exitCode).not.toBe(0);
     });
@@ -190,9 +189,7 @@ describeDocker('Docker Command', () => {
       await $`docker run -d --name ${containerName} alpine:latest sleep 300`;
 
       // Stop it
-      const result = await runXecCommand([
-        'docker', 'stop', containerName
-      ]);
+      const result = await runXecCommand(['docker', 'stop', containerName]);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain(containerName);
@@ -208,11 +205,7 @@ describeDocker('Docker Command', () => {
       await $`docker run -d --name ${containerName} alpine:latest sleep 300`;
 
       // Stop it with timeout
-      const result = await runXecCommand([
-        'docker', 'stop',
-        '-t', '5',
-        containerName
-      ]);
+      const result = await runXecCommand(['docker', 'stop', '-t', '5', containerName]);
 
       expect(result.exitCode).toBe(0);
 
@@ -229,9 +222,7 @@ describeDocker('Docker Command', () => {
       await $`docker create --name ${containerName} alpine:latest`;
 
       // Remove it
-      const result = await runXecCommand([
-        'docker', 'rm', containerName
-      ]);
+      const result = await runXecCommand(['docker', 'rm', containerName]);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain(containerName);
@@ -244,9 +235,7 @@ describeDocker('Docker Command', () => {
       await $`docker run -d --name ${containerName} alpine:latest sleep 300`;
 
       // Force remove it
-      const result = await runXecCommand([
-        'docker', 'rm', '-f', containerName
-      ]);
+      const result = await runXecCommand(['docker', 'rm', '-f', containerName]);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain(containerName);
@@ -261,12 +250,10 @@ describeDocker('Docker Command', () => {
       await $`docker run -d --name ${containerName} alpine:latest sh -c "echo 'Log line 1' && echo 'Log line 2' && sleep 300"`;
 
       // Wait a bit for logs
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
       // Get logs
-      const result = await runXecCommand([
-        'docker', 'logs', containerName
-      ]);
+      const result = await runXecCommand(['docker', 'logs', containerName]);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('Log line 1');
@@ -283,11 +270,7 @@ describeDocker('Docker Command', () => {
       await $`docker run -d --name ${containerName} alpine:latest sh -c "for i in 1 2 3; do echo Line-\$i; sleep 0.5; done"`;
 
       // Get logs with follow (but timeout quickly)
-      const result = await runXecCommand([
-        'docker', 'logs',
-        '--tail', '10',
-        containerName
-      ]);
+      const result = await runXecCommand(['docker', 'logs', '--tail', '10', containerName]);
 
       expect(result.exitCode).toBe(0);
 
@@ -342,10 +325,7 @@ describeDocker('Docker Command', () => {
     });
 
     it('should filter images', async () => {
-      const result = await runXecCommand([
-        'docker', 'images',
-        '--filter', 'reference=alpine'
-      ]);
+      const result = await runXecCommand(['docker', 'images', '--filter', 'reference=alpine']);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('alpine');
@@ -355,20 +335,14 @@ describeDocker('Docker Command', () => {
   describe('docker pull', () => {
     it('should pull an image', async () => {
       // Pull a small image
-      const result = await runXecCommand([
-        'docker', 'pull', 'alpine:3.18'
-      ]);
+      const result = await runXecCommand(['docker', 'pull', 'alpine:3.18']);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout.toLowerCase()).toMatch(/pull|download|complete|exist/);
     });
 
     it('should pull with platform specified', async () => {
-      const result = await runXecCommand([
-        'docker', 'pull',
-        '--platform', 'linux/amd64',
-        'alpine:3.18'
-      ]);
+      const result = await runXecCommand(['docker', 'pull', '--platform', 'linux/amd64', 'alpine:3.18']);
 
       expect(result.exitCode).toBe(0);
     });
@@ -380,19 +354,17 @@ describeDocker('Docker Command', () => {
       const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'xec-docker-build-'));
       const dockerfilePath = path.join(tmpDir, 'Dockerfile');
 
-      await fs.writeFile(dockerfilePath, `
+      await fs.writeFile(
+        dockerfilePath,
+        `
 FROM alpine:latest
 RUN echo "Building test image"
 CMD ["echo", "Hello from built image"]
-`);
+`
+      );
 
       const imageName = `${TEST_PREFIX}build-${Date.now()}`;
-      const result = await runXecCommand([
-        'docker', 'build',
-        '-t', imageName,
-        '-f', dockerfilePath,
-        tmpDir
-      ]);
+      const result = await runXecCommand(['docker', 'build', '-t', imageName, '-f', dockerfilePath, tmpDir]);
 
       expect(result.exitCode).toBe(0);
 
@@ -409,18 +381,24 @@ CMD ["echo", "Hello from built image"]
       const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'xec-docker-buildarg-'));
       const dockerfilePath = path.join(tmpDir, 'Dockerfile');
 
-      await fs.writeFile(dockerfilePath, `
+      await fs.writeFile(
+        dockerfilePath,
+        `
 FROM alpine:latest
 ARG TEST_ARG=default
 RUN echo "Build arg: \${TEST_ARG}"
-`);
+`
+      );
 
       const imageName = `${TEST_PREFIX}buildarg-${Date.now()}`;
       const result = await runXecCommand([
-        'docker', 'build',
-        '-t', imageName,
-        '--build-arg', 'TEST_ARG=custom_value',
-        tmpDir
+        'docker',
+        'build',
+        '-t',
+        imageName,
+        '--build-arg',
+        'TEST_ARG=custom_value',
+        tmpDir,
       ]);
 
       expect(result.exitCode).toBe(0);
@@ -436,11 +414,7 @@ RUN echo "Build arg: \${TEST_ARG}"
     describe('redis service', () => {
       it('should start redis service', async () => {
         const containerName = `${TEST_PREFIX}redis-${Date.now()}`;
-        const result = await runXecCommand([
-          'docker', 'redis',
-          '--name', containerName,
-          '--port', '16379'
-        ]);
+        const result = await runXecCommand(['docker', 'redis', '--name', containerName, '--port', '16379']);
 
         expect(result.exitCode).toBe(0);
         expect(result.stdout).toContain('Redis started');
@@ -458,12 +432,18 @@ RUN echo "Build arg: \${TEST_ARG}"
       it('should start postgres service', async () => {
         const containerName = `${TEST_PREFIX}postgres-${Date.now()}`;
         const result = await runXecCommand([
-          'docker', 'postgres',
-          '--name', containerName,
-          '--port', '15432',
-          '--database', 'testdb',
-          '--user', 'testuser',
-          '--password', 'testpass'
+          'docker',
+          'postgres',
+          '--name',
+          containerName,
+          '--port',
+          '15432',
+          '--database',
+          'testdb',
+          '--user',
+          'testuser',
+          '--password',
+          'testpass',
         ]);
 
         expect(result.exitCode).toBe(0);
@@ -478,11 +458,16 @@ RUN echo "Build arg: \${TEST_ARG}"
       it('should start mysql service', async () => {
         const containerName = `${TEST_PREFIX}mysql-${Date.now()}`;
         const result = await runXecCommand([
-          'docker', 'mysql',
-          '--name', containerName,
-          '--port', '13306',
-          '--database', 'testdb',
-          '--root-password', 'rootpass'
+          'docker',
+          'mysql',
+          '--name',
+          containerName,
+          '--port',
+          '13306',
+          '--database',
+          'testdb',
+          '--root-password',
+          'rootpass',
         ]);
 
         expect(result.exitCode).toBe(0);
@@ -496,11 +481,7 @@ RUN echo "Build arg: \${TEST_ARG}"
     describe('mongodb service', () => {
       it('should start mongodb service', async () => {
         const containerName = `${TEST_PREFIX}mongodb-${Date.now()}`;
-        const result = await runXecCommand([
-          'docker', 'mongodb',
-          '--name', containerName,
-          '--port', '17017'
-        ]);
+        const result = await runXecCommand(['docker', 'mongodb', '--name', containerName, '--port', '17017']);
 
         expect(result.exitCode).toBe(0);
         expect(result.stdout).toContain('MongoDB started');
@@ -515,22 +496,18 @@ RUN echo "Build arg: \${TEST_ARG}"
     const networkName = `${TEST_PREFIX}network-${Date.now()}`;
 
     afterAll(async () => {
-      await $`docker network rm ${networkName}`.catch(() => { });
+      await $`docker network rm ${networkName}`.catch(() => {});
     });
 
     it('should create a network', async () => {
-      const result = await runXecCommand([
-        'docker', 'network', 'create', networkName
-      ]);
+      const result = await runXecCommand(['docker', 'network', 'create', networkName]);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain(networkName);
     });
 
     it('should list networks', async () => {
-      const result = await runXecCommand([
-        'docker', 'network', 'ls'
-      ]);
+      const result = await runXecCommand(['docker', 'network', 'ls']);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('bridge');
@@ -538,9 +515,7 @@ RUN echo "Build arg: \${TEST_ARG}"
     });
 
     it('should inspect a network', async () => {
-      const result = await runXecCommand([
-        'docker', 'network', 'inspect', 'bridge'
-      ]);
+      const result = await runXecCommand(['docker', 'network', 'inspect', 'bridge']);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('"Name": "bridge"');
@@ -551,31 +526,25 @@ RUN echo "Build arg: \${TEST_ARG}"
     const volumeName = `${TEST_PREFIX}volume-${Date.now()}`;
 
     afterAll(async () => {
-      await $`docker volume rm ${volumeName}`.catch(() => { });
+      await $`docker volume rm ${volumeName}`.catch(() => {});
     });
 
     it('should create a volume', async () => {
-      const result = await runXecCommand([
-        'docker', 'volume', 'create', volumeName
-      ]);
+      const result = await runXecCommand(['docker', 'volume', 'create', volumeName]);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain(volumeName);
     });
 
     it('should list volumes', async () => {
-      const result = await runXecCommand([
-        'docker', 'volume', 'ls'
-      ]);
+      const result = await runXecCommand(['docker', 'volume', 'ls']);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain(volumeName);
     });
 
     it('should inspect a volume', async () => {
-      const result = await runXecCommand([
-        'docker', 'volume', 'inspect', volumeName
-      ]);
+      const result = await runXecCommand(['docker', 'volume', 'inspect', volumeName]);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain(`"Name": "${volumeName}"`);
@@ -587,19 +556,18 @@ RUN echo "Build arg: \${TEST_ARG}"
       const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'xec-compose-'));
       const composePath = path.join(tmpDir, 'docker-compose.yml');
 
-      await fs.writeFile(composePath, `
+      await fs.writeFile(
+        composePath,
+        `
 version: '3.8'
 services:
   test:
     image: alpine:latest
     command: echo "Compose test"
-`);
+`
+      );
 
-      const result = await runXecCommand([
-        'docker', 'compose',
-        '-f', composePath,
-        'up', '--abort-on-container-exit'
-      ]);
+      const result = await runXecCommand(['docker', 'compose', '-f', composePath, 'up', '--abort-on-container-exit']);
 
       expect(result.exitCode).toBe(0);
 
@@ -615,9 +583,7 @@ services:
       await $`docker create --name ${containerName} alpine:latest`;
 
       // Prune
-      const result = await runXecCommand([
-        'docker', 'prune', 'containers', '-f'
-      ]);
+      const result = await runXecCommand(['docker', 'prune', 'containers', '-f']);
 
       expect(result.exitCode).toBe(0);
 
@@ -663,10 +629,7 @@ describeDocker('Docker Fluent API Integration', () => {
     const containerName = `${TEST_PREFIX}ephemeral-${Date.now()}`;
 
     const docker = $.docker();
-    const result = await docker
-      .ephemeral('alpine:latest')
-      .name(containerName)
-      .exec`echo "Fluent API test"`;
+    const result = await docker.ephemeral('alpine:latest').name(containerName).exec`echo "Fluent API test"`;
 
     expect(result.stdout).toContain('Fluent API test');
     expect(result.exitCode).toBe(0);
@@ -680,10 +643,7 @@ describeDocker('Docker Fluent API Integration', () => {
     const containerName = `${TEST_PREFIX}port-fluent-${Date.now()}`;
 
     const docker = $.docker();
-    const container = docker
-      .ephemeral('nginx:alpine')
-      .name(containerName)
-      .port(8889, 80);
+    const container = docker.ephemeral('nginx:alpine').name(containerName).port(8889, 80);
 
     const info = await container.start();
     expect(info).toHaveProperty('id');
@@ -700,7 +660,7 @@ describeDocker('Docker Fluent API Integration', () => {
     const redis = docker.redis({
       name: containerName,
       port: 16380,
-      persistent: false
+      persistent: false,
     });
 
     const info = await redis.start();
@@ -719,18 +679,18 @@ describeDocker('Docker Fluent API Integration', () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'xec-fluent-build-'));
     const dockerfilePath = path.join(tmpDir, 'Dockerfile');
 
-    await fs.writeFile(dockerfilePath, `
+    await fs.writeFile(
+      dockerfilePath,
+      `
 FROM alpine:latest
 RUN echo "Fluent build test"
-`);
+`
+    );
 
     const imageName = `${TEST_PREFIX}fluent-build:latest`;
 
     const docker = $.docker();
-    const builder = docker
-      .build(tmpDir)
-      .tag(imageName)
-      .dockerfile(dockerfilePath);
+    const builder = docker.build(tmpDir).tag(imageName).dockerfile(dockerfilePath);
 
     const result = await builder.run();
     expect(result.exitCode).toBe(0);
@@ -744,10 +704,7 @@ RUN echo "Fluent build test"
     const containerName = `${TEST_PREFIX}lifecycle-${Date.now()}`;
 
     const docker = $.docker();
-    const container = docker
-      .container('alpine:latest')
-      .name(containerName)
-      .command('sleep 300');
+    const container = docker.container('alpine:latest').name(containerName).command('sleep 300');
 
     // Start container
     const info = await container.start();
@@ -776,11 +733,7 @@ RUN echo "Fluent build test"
 // Test error handling
 describeDocker('Docker Command Error Handling', () => {
   it('should handle invalid image names', async () => {
-    const result = await runXecCommand([
-      'docker', 'run',
-      'invalid/image/name:!@#$%',
-      'echo', 'test'
-    ]);
+    const result = await runXecCommand(['docker', 'run', 'invalid/image/name:!@#$%', 'echo', 'test']);
 
     expect(result.exitCode).not.toBe(0);
   });
@@ -792,9 +745,7 @@ describeDocker('Docker Command Error Handling', () => {
   });
 
   it('should handle non-existent containers', async () => {
-    const result = await runXecCommand([
-      'docker', 'stop', 'non-existent-container-xyz'
-    ]);
+    const result = await runXecCommand(['docker', 'stop', 'non-existent-container-xyz']);
 
     expect(result.exitCode).not.toBe(0);
   });
@@ -804,16 +755,15 @@ describeDocker('Docker Command Error Handling', () => {
     const dockerfilePath = path.join(tmpDir, 'Dockerfile');
 
     // Invalid Dockerfile
-    await fs.writeFile(dockerfilePath, `
+    await fs.writeFile(
+      dockerfilePath,
+      `
 FROM non-existent-base-image:latest
 RUN invalid-command
-`);
+`
+    );
 
-    const result = await runXecCommand([
-      'docker', 'build',
-      '-t', 'test-fail',
-      tmpDir
-    ]);
+    const result = await runXecCommand(['docker', 'build', '-t', 'test-fail', tmpDir]);
 
     expect(result.exitCode).not.toBe(0);
 

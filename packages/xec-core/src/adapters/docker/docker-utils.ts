@@ -24,18 +24,20 @@ export function findDockerPath(): string {
   const isWindows = platform() === 'win32';
 
   // Common Docker installation paths
-  const commonPaths = isWindows ? [
-    'C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe',
-    'C:\\Program Files\\Docker\\docker.exe',
-    'C:\\ProgramData\\DockerDesktop\\version-bin\\docker.exe'
-  ] : [
-    '/usr/local/bin/docker',
-    '/usr/bin/docker',
-    '/opt/homebrew/bin/docker',
-    '/opt/local/bin/docker',
-    '/usr/local/opt/docker/bin/docker',
-    '/Applications/Docker.app/Contents/Resources/bin/docker'
-  ];
+  const commonPaths = isWindows
+    ? [
+        'C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe',
+        'C:\\Program Files\\Docker\\docker.exe',
+        'C:\\ProgramData\\DockerDesktop\\version-bin\\docker.exe',
+      ]
+    : [
+        '/usr/local/bin/docker',
+        '/usr/bin/docker',
+        '/opt/homebrew/bin/docker',
+        '/opt/local/bin/docker',
+        '/usr/local/opt/docker/bin/docker',
+        '/Applications/Docker.app/Contents/Resources/bin/docker',
+      ];
 
   // Check common paths first
   for (const path of commonPaths) {
@@ -50,7 +52,7 @@ export function findDockerPath(): string {
     const findCommand = isWindows ? 'where' : 'which';
     const result = execSync(`${findCommand} docker`, {
       encoding: 'utf-8',
-      stdio: ['ignore', 'pipe', 'ignore']
+      stdio: ['ignore', 'pipe', 'ignore'],
     }).trim();
 
     const dockerPath = result.split('\n')[0];

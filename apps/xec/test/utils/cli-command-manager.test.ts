@@ -11,7 +11,7 @@ import {
   registerCliCommands,
   getCliCommandManager,
   buildCommandRegistry,
-  discoverAndLoadCommands
+  discoverAndLoadCommands,
 } from '../../src/utils/cli-command-manager.js';
 
 // Mock @xec-sh/core
@@ -21,8 +21,8 @@ jest.mock('@xec-sh/core', () => ({
   CommandRegistry: jest.fn().mockImplementation(() => ({
     register: jest.fn(),
     getAllCommands: jest.fn(() => []),
-    getCommand: jest.fn()
-  }))
+    getCommand: jest.fn(),
+  })),
 }));
 
 const __filename = fileURLToPath(import.meta.url);
@@ -46,11 +46,11 @@ describe('CliCommandManager', () => {
         if (module === '@xec-sh/kit') {
           return Promise.resolve({
             log: { info: jest.fn(), error: jest.fn(), warn: jest.fn(), success: jest.fn() },
-            spinner: jest.fn(() => ({ start: jest.fn(), stop: jest.fn() }))
+            spinner: jest.fn(() => ({ start: jest.fn(), stop: jest.fn() })),
           });
         }
         return Promise.reject(new Error(`Module not found: ${module}`));
-      })
+      }),
     };
   });
 
@@ -87,11 +87,11 @@ describe('CliCommandManager', () => {
   describe('discoverAndLoad', () => {
     it('should discover and load commands', async () => {
       manager.addCommandDirectory(fixturesDir);
-      
+
       const commands = await manager.discoverAndLoad(program);
-      
+
       expect(commands.length).toBeGreaterThan(0);
-      expect(commands.some(cmd => cmd.type === 'dynamic')).toBe(true);
+      expect(commands.some((cmd) => cmd.type === 'dynamic')).toBe(true);
     });
 
     it('should load JavaScript commands from fixtures', async () => {
@@ -100,7 +100,7 @@ describe('CliCommandManager', () => {
       await manager.discoverAndLoad(program);
 
       const commands = manager.getCommands();
-      const commandNames = commands.map(cmd => cmd.name);
+      const commandNames = commands.map((cmd) => cmd.name);
 
       expect(commandNames).toContain('simple');
       expect(commandNames).toContain('default-export');
@@ -112,7 +112,7 @@ describe('CliCommandManager', () => {
       await manager.discoverAndLoad(program);
 
       const commands = manager.getCommands();
-      const commandNames = commands.map(cmd => cmd.name);
+      const commandNames = commands.map((cmd) => cmd.name);
 
       expect(commandNames).toContain('typescript');
       expect(commandNames).toContain('with-imports');
@@ -124,7 +124,7 @@ describe('CliCommandManager', () => {
       await manager.discoverAndLoad(program);
 
       const commands = manager.getCommands();
-      const commandNames = commands.map(cmd => cmd.name);
+      const commandNames = commands.map((cmd) => cmd.name);
 
       expect(commandNames).toContain('subdir:nested');
     });
@@ -135,10 +135,10 @@ describe('CliCommandManager', () => {
       await manager.discoverAndLoad(program);
 
       const failedCommands = manager.getFailedCommands();
-      const failedNames = failedCommands.map(cmd => cmd.name);
+      const failedNames = failedCommands.map((cmd) => cmd.name);
 
       expect(failedNames).toContain('invalid');
-      expect(failedCommands.find(cmd => cmd.name === 'invalid')?.error).toContain('must export');
+      expect(failedCommands.find((cmd) => cmd.name === 'invalid')?.error).toContain('must export');
     });
 
     it('should skip hidden files and test files', async () => {
@@ -155,7 +155,7 @@ describe('CliCommandManager', () => {
       await manager.discoverAndLoad(program);
 
       const commands = manager.getCommands();
-      const commandNames = commands.map(cmd => cmd.name);
+      const commandNames = commands.map((cmd) => cmd.name);
 
       expect(commandNames).not.toContain('.hidden');
       expect(commandNames).not.toContain('command.test');
@@ -169,48 +169,39 @@ describe('CliCommandManager', () => {
   describe('findCommand', () => {
     beforeEach(() => {
       // Add test commands
-      program
-        .command('deploy')
-        .description('Deploy application')
-        .alias('d');
-      
-      program
-        .command('test')
-        .description('Run tests')
-        .alias('t')
-        .alias('check');
-      
-      program
-        .command('Config')
-        .description('Manage configuration');
+      program.command('deploy').description('Deploy application').alias('d');
+
+      program.command('test').description('Run tests').alias('t').alias('check');
+
+      program.command('Config').description('Manage configuration');
     });
-    
+
     it('should find command by exact name', () => {
       const command = manager.findCommand(program, 'deploy');
       expect(command).toBeDefined();
       expect(command?.name()).toBe('deploy');
     });
-    
+
     it('should find command by alias', () => {
       const command = manager.findCommand(program, 'd');
       expect(command).toBeDefined();
       expect(command?.name()).toBe('deploy');
-      
+
       const testCommand = manager.findCommand(program, 'check');
       expect(testCommand).toBeDefined();
       expect(testCommand?.name()).toBe('test');
     });
-    
+
     it('should find command case-insensitively', () => {
       const command = manager.findCommand(program, 'DEPLOY');
       expect(command).toBeDefined();
       expect(command?.name()).toBe('deploy');
-      
+
       const configCommand = manager.findCommand(program, 'config');
       expect(configCommand).toBeDefined();
       expect(configCommand?.name()).toBe('Config');
     });
-    
+
     it('should return null for non-existent command', () => {
       const command = manager.findCommand(program, 'nonexistent');
       expect(command).toBeNull();
@@ -231,7 +222,7 @@ describe('CliCommandManager', () => {
       manager.addCommandDirectory(newDir);
 
       const dirs = manager.getCommandDirectories();
-      const count = dirs.filter(d => d === newDir).length;
+      const count = dirs.filter((d) => d === newDir).length;
       expect(count).toBe(1);
     });
   });
@@ -244,14 +235,14 @@ describe('CliCommandManager', () => {
 
       const allCommands = manager.getCommands();
       expect(allCommands.length).toBeGreaterThan(0);
-      expect(allCommands.every(cmd => cmd.name && cmd.path)).toBe(true);
+      expect(allCommands.every((cmd) => cmd.name && cmd.path)).toBe(true);
     });
 
     it('should filter built-in commands', async () => {
       await manager.discoverAndLoad(program);
 
       const builtIn = manager.getBuiltInCommands();
-      expect(builtIn.every(cmd => cmd.type === 'built-in')).toBe(true);
+      expect(builtIn.every((cmd) => cmd.type === 'built-in')).toBe(true);
     });
 
     it('should filter dynamic commands', async () => {
@@ -259,14 +250,14 @@ describe('CliCommandManager', () => {
       await manager.discoverAndLoad(program);
 
       const dynamic = manager.getDynamicCommands();
-      expect(dynamic.every(cmd => cmd.type === 'dynamic')).toBe(true);
+      expect(dynamic.every((cmd) => cmd.type === 'dynamic')).toBe(true);
     });
 
     it('should filter loaded commands', async () => {
       await manager.discoverAndLoad(program);
 
       const loaded = manager.getLoadedCommands();
-      expect(loaded.every(cmd => cmd.loaded)).toBe(true);
+      expect(loaded.every((cmd) => cmd.loaded)).toBe(true);
     });
 
     it('should filter failed commands', async () => {
@@ -274,7 +265,7 @@ describe('CliCommandManager', () => {
       await manager.discoverAndLoad(program);
 
       const failed = manager.getFailedCommands();
-      expect(failed.every(cmd => !cmd.loaded && cmd.error)).toBe(true);
+      expect(failed.every((cmd) => !cmd.loaded && cmd.error)).toBe(true);
     });
   });
 
@@ -339,7 +330,7 @@ describe('CliCommandManager', () => {
     describe('loadDynamicCommands', () => {
       it('should load dynamic commands and return names', async () => {
         const testProgram = new Command('test');
-        
+
         // Spy on console to check if summary is reported
         const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
         const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
@@ -358,11 +349,8 @@ describe('CliCommandManager', () => {
     describe('buildCommandRegistry', () => {
       it('should build registry from program', () => {
         const testProgram = new Command('test');
-        testProgram
-          .command('test')
-          .description('Test command')
-          .alias('t');
-        
+        testProgram.command('test').description('Test command').alias('t');
+
         const registry = buildCommandRegistry(testProgram);
 
         expect(registry).toBeDefined();
@@ -372,11 +360,8 @@ describe('CliCommandManager', () => {
     describe('registerCliCommands', () => {
       it('should register CLI commands', () => {
         const testProgram = new Command('test');
-        testProgram
-          .command('on <host> <command>')
-          .description('Execute command on remote host via SSH')
-          .alias('ssh');
-        
+        testProgram.command('on <host> <command>').description('Execute command on remote host via SSH').alias('ssh');
+
         const registry = registerCliCommands(testProgram);
 
         expect(registry).toBeDefined();
@@ -386,11 +371,8 @@ describe('CliCommandManager', () => {
     describe('findCommand', () => {
       it('should find command by name or alias', () => {
         const testProgram = new Command('test');
-        testProgram
-          .command('deploy')
-          .description('Deploy application')
-          .alias('d');
-        
+        testProgram.command('deploy').description('Deploy application').alias('d');
+
         const command = findCommand(testProgram, 'd');
         expect(command).toBeDefined();
         expect(command?.name()).toBe('deploy');
@@ -406,32 +388,19 @@ describe('CliCommandManager', () => {
   describe('integration', () => {
     it('should work with complex command structure', async () => {
       // Create a complex command structure
-      const cacheCmd = program
-        .command('cache')
-        .description('Cache management');
-      
-      cacheCmd
-        .command('clear')
-        .description('Clear cache')
-        .alias('clean');
-      
-      cacheCmd
-        .command('show')
-        .description('Show cache stats');
-      
-      const moduleCmd = program
-        .command('module')
-        .description('Module management')
-        .alias('mod');
-      
-      moduleCmd
-        .command('install')
-        .description('Install module')
-        .alias('i');
-      
+      const cacheCmd = program.command('cache').description('Cache management');
+
+      cacheCmd.command('clear').description('Clear cache').alias('clean');
+
+      cacheCmd.command('show').description('Show cache stats');
+
+      const moduleCmd = program.command('module').description('Module management').alias('mod');
+
+      moduleCmd.command('install').description('Install module').alias('i');
+
       // Discover and load
       await manager.discoverAndLoad(program);
-      
+
       // Verify findCommand works
       expect(manager.findCommand(program, 'cache')).toBeDefined();
       expect(manager.findCommand(program, 'mod')).toBeDefined();
@@ -440,17 +409,15 @@ describe('CliCommandManager', () => {
 
     it('should merge built-in and dynamic commands', async () => {
       manager.addCommandDirectory(fixturesDir);
-      
+
       // Add a built-in command to program
-      program
-        .command('built-in')
-        .description('Built-in command');
-      
+      program.command('built-in').description('Built-in command');
+
       await manager.discoverAndLoad(program);
-      
+
       const builtIn = manager.getBuiltInCommands();
       const dynamic = manager.getDynamicCommands();
-      
+
       expect(builtIn.length).toBeGreaterThanOrEqual(0);
       expect(dynamic.length).toBeGreaterThan(0);
     });

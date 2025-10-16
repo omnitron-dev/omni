@@ -179,7 +179,7 @@ export class MarkdownExtension extends Extension<MarkdownOptions> {
     if (this.options.gfm) {
       patterns.push(
         /~~.*~~/m, // Strikethrough
-        /^- \[[ x]\]/m, // Task lists
+        /^- \[[ x]\]/m // Task lists
       );
     }
 

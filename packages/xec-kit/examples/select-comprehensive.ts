@@ -14,8 +14,7 @@
  * - Different styling states
  */
 
-import { note , intro, outro, select, cancel, isCancel, prism as color } from '../src/index.js';
-
+import { note, intro, outro, select, cancel, isCancel, prism as color } from '../src/index.js';
 
 // Custom type for complex value demonstration
 interface User {

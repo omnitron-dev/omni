@@ -4,14 +4,7 @@
  * Hot Module Replacement engine for Aether dev server
  */
 
-import type {
-  HMRConfig,
-  HMRUpdate,
-  HMRPayload,
-  HMREngine as IHMREngine,
-  ModuleGraph,
-  ModuleNode,
-} from '../types.js';
+import type { HMRConfig, HMRUpdate, HMRPayload, HMREngine as IHMREngine, ModuleGraph, ModuleNode } from '../types.js';
 
 /**
  * Module Graph Implementation
@@ -47,8 +40,7 @@ class ModuleGraphImpl implements ModuleGraph {
 
     // Add new imports
     for (const id of imported) {
-      const importedMod =
-        this.idToModuleMap.get(id) || this.createModule(id, 'module');
+      const importedMod = this.idToModuleMap.get(id) || this.createModule(id, 'module');
       mod.importedModules.add(importedMod);
       importedMod.importers.add(mod);
     }
@@ -212,9 +204,7 @@ export class HMREngine implements IHMREngine {
       }
 
       const duration = Date.now() - startTime;
-      console.log(
-        `[HMR] Updated ${file} in ${duration}ms (affected: ${affected.size})`
-      );
+      console.log(`[HMR] Updated ${file} in ${duration}ms (affected: ${affected.size})`);
     } catch (error) {
       console.error('[HMR] Update error:', error);
 
@@ -350,12 +340,7 @@ export class HMREngine implements IHMREngine {
   /**
    * Register module in graph
    */
-  registerModule(
-    id: string,
-    file: string,
-    type: ModuleNode['type'],
-    imports: Set<string>
-  ): void {
+  registerModule(id: string, file: string, type: ModuleNode['type'], imports: Set<string>): void {
     let mod = this.moduleGraph.getModuleById(id);
 
     if (!mod) {

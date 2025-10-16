@@ -1,25 +1,28 @@
 #!/usr/bin/env tsx
 /**
  * Docker Run Mode Helper Example
- * 
+ *
  * This example shows a helper function for easier use of Docker run mode
  */
 
 import { $ } from '../../src/index.js';
 
 // Helper function for Docker run mode - now using simplified API
-function dockerRun(image: string, options?: {
-  volumes?: string[];
-  workdir?: string;
-  user?: string;
-  env?: Record<string, string>;
-}) {
+function dockerRun(
+  image: string,
+  options?: {
+    volumes?: string[];
+    workdir?: string;
+    user?: string;
+    env?: Record<string, string>;
+  }
+) {
   return $.docker({
     image,
     volumes: options?.volumes,
     workdir: options?.workdir,
     user: options?.user,
-    env: options?.env
+    env: options?.env,
   });
 }
 
@@ -35,7 +38,7 @@ async function main() {
   console.log('\n2️⃣ With volume mount:');
   const result2 = await dockerRun('alpine:latest', {
     volumes: [`${process.cwd()}:/data:ro`],
-    workdir: '/data'
+    workdir: '/data',
   })`ls -la | head -5`;
   console.log(result2.stdout);
 
@@ -58,7 +61,7 @@ console.log('Hello from containerized Node.js!');
 
   // Example 5: Using tools not installed locally
   console.log('\n5️⃣ Using containerized tools:');
-  
+
   // Pandoc example (markdown to HTML converter)
   const markdown = '# Hello\n\nThis is **bold** text.';
   const result5 = await dockerRun('pandoc/core')`echo ${markdown} | pandoc -f markdown -t html`;
@@ -78,18 +81,18 @@ console.log('Hello from containerized Node.js!');
 const containerTools = {
   // Run jq for JSON processing
   jq: (query: string) => $.docker().ephemeral('stedolan/jq').run`echo ${query}`,
-  
+
   // Run Python scripts
   python: (script: string) => $.docker().ephemeral('python:3-alpine').run`python -c ${script}`,
-  
+
   // Run Node.js scripts
   node: (script: string) => $.docker().ephemeral('node:alpine').run`node -e ${script}`,
-  
+
   // Run shell scripts in Alpine
   alpine: () => $.docker({ image: 'alpine:latest' }),
-  
+
   // Run Ubuntu commands
-  ubuntu: () => $.docker({ image: 'ubuntu:latest' })
+  ubuntu: () => $.docker({ image: 'ubuntu:latest' }),
 };
 
 // Example usage of containerTools

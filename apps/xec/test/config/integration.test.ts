@@ -9,7 +9,6 @@ import { it, jest, expect, describe, afterEach, beforeEach } from '@jest/globals
 
 import { TargetResolver, ConfigurationManager } from '../../src/config/index.js';
 
-
 describe('Configuration System Integration', () => {
   let tempDir: string;
   let manager: ConfigurationManager;
@@ -143,7 +142,7 @@ commands:
       // Initialize manager
       manager = new ConfigurationManager({
         projectRoot: tempDir,
-        profile: 'dev'
+        profile: 'dev',
       });
 
       // Load configuration
@@ -171,26 +170,26 @@ commands:
       expect(webTarget.config).toMatchObject({
         type: 'ssh',
         host: 'dev.example.com',
-        user: 'deploy'
+        user: 'deploy',
       });
 
       const containerTarget = await resolver.resolve('containers.app');
       expect(containerTarget.config).toMatchObject({
         type: 'docker',
-        image: 'myregistry.io/my-awesome-project:dev:latest'
+        image: 'myregistry.io/my-awesome-project:dev:latest',
       });
 
       // Test wildcard pattern matching
       const webTargets = await resolver.find('hosts.web-*');
       expect(webTargets).toHaveLength(2);
-      expect(webTargets.map(t => t.name)).toContain('web-1');
-      expect(webTargets.map(t => t.name)).toContain('web-2');
+      expect(webTargets.map((t) => t.name)).toContain('web-1');
+      expect(webTargets.map((t) => t.name)).toContain('web-2');
 
       // Test task access
       expect(loaded.tasks?.lint).toBe('npm run lint');
       expect(loaded.tasks?.logs).toMatchObject({
         description: 'Show application logs',
-        target: 'hosts.web-1'
+        target: 'hosts.web-1',
       });
 
       // Test command defaults
@@ -308,7 +307,7 @@ vars:
       expect(loaded.vars?.deploy).toEqual({
         path: '/opt/myapp',
         image: 'registry.io/myapp:1.0.0',
-        config: '/opt/myapp/config'
+        config: '/opt/myapp/config',
       });
 
       // Test command substitution
@@ -321,7 +320,7 @@ vars:
       expect(loaded.vars?.urls).toEqual({
         base: 'https://myapp.example.com',
         api: 'https://myapp.example.com/api/v1',
-        admin: 'https://myapp.example.com/admin'
+        admin: 'https://myapp.example.com/admin',
       });
     });
   });
@@ -355,10 +354,10 @@ tasks:
 
       manager = new ConfigurationManager({
         projectRoot: tempDir,
-        strict: false // Don't throw, just warn
+        strict: false, // Don't throw, just warn
       });
 
-      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => { });
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
       const loaded = await manager.load();
 
@@ -367,16 +366,16 @@ tasks:
 
       // Should have logged warnings
       expect(warnSpy).toHaveBeenCalled();
-      const warnings = warnSpy.mock.calls.map(call => call[0]);
+      const warnings = warnSpy.mock.calls.map((call) => call[0]);
 
       // Debug output to see actual warnings
       // console.log('Actual warnings:', warnings);
 
       // Check for warnings with more flexible matching
       // expect(warnings.some(w => w.includes('Version') && (w.includes('0.9') || w.includes('not supported')))).toBe(true);
-      expect(warnings.some(w => w.includes("Variable name 'env' is reserved"))).toBe(true);
-      expect(warnings.some(w => w.includes('Circular reference detected'))).toBe(true);
-      expect(warnings.some(w => w.includes('Host is required for SSH target'))).toBe(true);
+      expect(warnings.some((w) => w.includes("Variable name 'env' is reserved"))).toBe(true);
+      expect(warnings.some((w) => w.includes('Circular reference detected'))).toBe(true);
+      expect(warnings.some((w) => w.includes('Host is required for SSH target'))).toBe(true);
 
       warnSpy.mockRestore();
     });
@@ -397,7 +396,8 @@ targets:
       const resolver = new TargetResolver(loaded);
 
       // Mock isDockerContainer method to simulate running containers
-      const isDockerContainerSpy = jest.spyOn(resolver as any, 'isDockerContainer')
+      const isDockerContainerSpy = jest
+        .spyOn(resolver as any, 'isDockerContainer')
         .mockImplementation(async (name: string) => {
           const runningContainers = ['configured-app', 'detected-container', 'redis-cache'];
           return runningContainers.includes(name);
@@ -414,7 +414,7 @@ targets:
 
       // Should find both with pattern
       const allContainers = await resolver.find('*app*');
-      expect(allContainers.some(t => t.id === 'containers.configured-app')).toBe(true);
+      expect(allContainers.some((t) => t.id === 'containers.configured-app')).toBe(true);
 
       // Restore spy
       isDockerContainerSpy.mockRestore();

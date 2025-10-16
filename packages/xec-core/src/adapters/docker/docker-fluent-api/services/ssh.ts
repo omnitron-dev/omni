@@ -46,7 +46,7 @@ export class SSHFluentAPI extends DockerEphemeralFluentAPI {
       password: 'password',
       persistent: false,
       autoStart: false,
-      ...config
+      ...config,
     } as SSHServiceConfig;
 
     // Map distro to Docker image
@@ -57,7 +57,7 @@ export class SSHFluentAPI extends DockerEphemeralFluentAPI {
       fedora: 'fedora:latest',
       centos: 'centos:7',
       rocky: 'rockylinux:latest',
-      alma: 'almalinux:latest'
+      alma: 'almalinux:latest',
     };
 
     const image = imageMap[finalConfig.distro!] || finalConfig.distro!;
@@ -90,7 +90,7 @@ export class SSHFluentAPI extends DockerEphemeralFluentAPI {
       fedora: 'fedora:latest',
       centos: 'centos:7',
       rocky: 'rockylinux:latest',
-      alma: 'almalinux:latest'
+      alma: 'almalinux:latest',
     };
 
     const image = imageMap[distro] || distro;
@@ -185,7 +185,7 @@ export class SSHFluentAPI extends DockerEphemeralFluentAPI {
       host: 'localhost',
       port: this.sshConfig.port,
       username: this.sshConfig.user,
-      password: this.sshConfig.password
+      password: this.sshConfig.password,
     };
   }
 
@@ -201,32 +201,32 @@ export class SSHFluentAPI extends DockerEphemeralFluentAPI {
     const pkgManagers: Record<string, { update: string; install: string }> = {
       ubuntu: {
         update: 'apt-get update',
-        install: 'apt-get install -y'
+        install: 'apt-get install -y',
       },
       debian: {
         update: 'apt-get update',
-        install: 'apt-get install -y'
+        install: 'apt-get install -y',
       },
       alpine: {
         update: 'apk update',
-        install: 'apk add --no-cache'
+        install: 'apk add --no-cache',
       },
       fedora: {
         update: 'dnf check-update || true',
-        install: 'dnf install -y'
+        install: 'dnf install -y',
       },
       centos: {
         update: 'yum check-update || true',
-        install: 'yum install -y'
+        install: 'yum install -y',
       },
       rocky: {
         update: 'dnf check-update || true',
-        install: 'dnf install -y'
+        install: 'dnf install -y',
       },
       alma: {
         update: 'dnf check-update || true',
-        install: 'dnf install -y'
-      }
+        install: 'dnf install -y',
+      },
     };
 
     const pkgCmd = pkgManagers[distro] || pkgManagers['ubuntu'];
@@ -281,7 +281,9 @@ export class SSHFluentAPI extends DockerEphemeralFluentAPI {
     // Configure sudo if requested
     if (this.sshConfig.sudo?.enabled) {
       if (isAlpine) {
-        commands.push(`echo "${user} ALL=(ALL) ${this.sshConfig.sudo.requirePassword ? '' : 'NOPASSWD:'}ALL" > /etc/sudoers.d/${user}`);
+        commands.push(
+          `echo "${user} ALL=(ALL) ${this.sshConfig.sudo.requirePassword ? '' : 'NOPASSWD:'}ALL" > /etc/sudoers.d/${user}`
+        );
       } else {
         commands.push(`usermod -aG sudo ${user} 2>/dev/null || usermod -aG wheel ${user}`);
         if (!this.sshConfig.sudo.requirePassword) {
@@ -322,7 +324,8 @@ export class SSHFluentAPI extends DockerEphemeralFluentAPI {
     for (const pubKeyPath of this.pubKeys) {
       const containerName = this.config.name;
       await this.engine.run`docker cp ${pubKeyPath} ${containerName}:/tmp/pubkey`;
-      await this.engine.run`docker exec ${containerName} sh -c "cat /tmp/pubkey >> /home/${this.sshConfig.user}/.ssh/authorized_keys && rm /tmp/pubkey"`;
+      await this.engine
+        .run`docker exec ${containerName} sh -c "cat /tmp/pubkey >> /home/${this.sshConfig.user}/.ssh/authorized_keys && rm /tmp/pubkey"`;
     }
 
     // Wait for SSH to be ready
@@ -338,7 +341,8 @@ export class SSHFluentAPI extends DockerEphemeralFluentAPI {
     for (let i = 0; i < maxRetries; i++) {
       try {
         // Check if SSH port is listening
-        const result = await this.engine.run`docker exec ${containerName} sh -c "netstat -tln | grep :22 || ss -tln | grep :22"`;
+        const result = await this.engine
+          .run`docker exec ${containerName} sh -c "netstat -tln | grep :22 || ss -tln | grep :22"`;
         if (result.stdout.includes(':22')) {
           // SSH is ready
           console.log(`SSH container ready: ${this.getConnectionString()}`);
@@ -349,10 +353,10 @@ export class SSHFluentAPI extends DockerEphemeralFluentAPI {
       }
 
       // Wait before next attempt
-      await new Promise(resolve => setTimeout(resolve, delayMs));
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
 
-    throw new Error(`SSH service did not become ready within ${maxRetries * delayMs / 1000} seconds`);
+    throw new Error(`SSH service did not become ready within ${(maxRetries * delayMs) / 1000} seconds`);
   }
 
   /**
@@ -362,7 +366,8 @@ export class SSHFluentAPI extends DockerEphemeralFluentAPI {
     const { host, port, username, password } = this.getConnectionConfig();
 
     // Use sshpass for password authentication (requires sshpass to be installed)
-    return this.engine.run`sshpass -p ${password} ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p ${port} ${username}@${host} ${command}`;
+    return this.engine
+      .run`sshpass -p ${password} ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p ${port} ${username}@${host} ${command}`;
   }
 
   /**
@@ -371,7 +376,8 @@ export class SSHFluentAPI extends DockerEphemeralFluentAPI {
   scpTo(localPath: string, remotePath: string): ProcessPromise {
     const { host, port, username, password } = this.getConnectionConfig();
 
-    return this.engine.run`sshpass -p ${password} scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P ${port} ${localPath} ${username}@${host}:${remotePath}`;
+    return this.engine
+      .run`sshpass -p ${password} scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P ${port} ${localPath} ${username}@${host}:${remotePath}`;
   }
 
   /**
@@ -380,7 +386,8 @@ export class SSHFluentAPI extends DockerEphemeralFluentAPI {
   scpFrom(remotePath: string, localPath: string): ProcessPromise {
     const { host, port, username, password } = this.getConnectionConfig();
 
-    return this.engine.run`sshpass -p ${password} scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P ${port} ${username}@${host}:${remotePath} ${localPath}`;
+    return this.engine
+      .run`sshpass -p ${password} scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P ${port} ${username}@${host}:${remotePath} ${localPath}`;
   }
 
   /**
@@ -415,7 +422,7 @@ export class SSHFluentAPI extends DockerEphemeralFluentAPI {
         started: data.State?.StartedAt ? new Date(data.State.StartedAt) : undefined,
         ip: data.NetworkSettings?.IPAddress,
         volumes: data.Mounts?.map((m: any) => `${m.Source}:${m.Destination}`) || [],
-        labels: data.Config?.Labels || {}
+        labels: data.Config?.Labels || {},
       };
     } catch {
       return null;

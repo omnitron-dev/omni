@@ -286,7 +286,12 @@ export class VNodePool {
    */
   private trackAcquire(): void {
     if (this.config.enableStats) {
-      if (this.elementPool.length > 0 || this.textPool.length > 0 || this.fragmentPool.length > 0 || this.componentPool.length > 0) {
+      if (
+        this.elementPool.length > 0 ||
+        this.textPool.length > 0 ||
+        this.fragmentPool.length > 0 ||
+        this.componentPool.length > 0
+      ) {
         this.stats.reused++;
       }
     }
@@ -296,7 +301,8 @@ export class VNodePool {
    * Update pool statistics
    */
   private updatePoolStats(): void {
-    const totalSize = this.elementPool.length + this.textPool.length + this.fragmentPool.length + this.componentPool.length;
+    const totalSize =
+      this.elementPool.length + this.textPool.length + this.fragmentPool.length + this.componentPool.length;
 
     this.stats.avgPoolSize = (this.stats.avgPoolSize * (this.stats.released - 1) + totalSize) / this.stats.released;
 
@@ -309,7 +315,8 @@ export class VNodePool {
    * Check for memory pressure
    */
   private isMemoryPressure(): boolean {
-    const totalSize = this.elementPool.length + this.textPool.length + this.fragmentPool.length + this.componentPool.length;
+    const totalSize =
+      this.elementPool.length + this.textPool.length + this.fragmentPool.length + this.componentPool.length;
 
     return totalSize / this.config.maxSize > this.config.pressureThreshold;
   }
@@ -349,7 +356,8 @@ export class VNodePool {
    * Get statistics
    */
   getStats() {
-    const totalSize = this.elementPool.length + this.textPool.length + this.fragmentPool.length + this.componentPool.length;
+    const totalSize =
+      this.elementPool.length + this.textPool.length + this.fragmentPool.length + this.componentPool.length;
 
     return {
       ...this.stats,

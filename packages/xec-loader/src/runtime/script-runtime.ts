@@ -78,22 +78,14 @@ export class ScriptRuntime {
    * Sleep for specified milliseconds
    */
   sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**
    * Retry a function with exponential backoff
    */
-  async retry<T>(
-    fn: () => Promise<T>,
-    options: RetryOptions = {}
-  ): Promise<T> {
-    const {
-      retries = 3,
-      delay = 1000,
-      backoff = 2,
-      onRetry = () => { },
-    } = options;
+  async retry<T>(fn: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
+    const { retries = 3, delay = 1000, backoff = 2, onRetry = () => {} } = options;
 
     let lastError: Error;
 
@@ -116,10 +108,7 @@ export class ScriptRuntime {
   /**
    * Execute function within a specific context (cwd/env)
    */
-  async within<T>(
-    options: WithinOptions,
-    fn: () => Promise<T>
-  ): Promise<T> {
+  async within<T>(options: WithinOptions, fn: () => Promise<T>): Promise<T> {
     const originalCwd = this.currentDir;
     const originalEnv = { ...process.env };
 

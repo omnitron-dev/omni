@@ -6,7 +6,6 @@
  * @module error-tracking/error-analytics
  */
 
-
 export interface ErrorPattern {
   fingerprint: string;
   count: number;

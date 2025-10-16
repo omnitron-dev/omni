@@ -8,7 +8,6 @@ import { $ } from '../../src/index.js';
 import { SSHAdapter } from '../../../src/adapters/ssh/index';
 
 describeSSH('SSH Authentication Tests', () => {
-
   describe('Password Authentication', () => {
     testEachPackageManager('should authenticate with correct password', async (container) => {
       const ssh = new SSHAdapter();
@@ -19,8 +18,8 @@ describeSSH('SSH Authentication Tests', () => {
           command: 'whoami',
           adapterOptions: {
             type: 'ssh' as const,
-            ...sshConfig
-          }
+            ...sshConfig,
+          },
         });
         expect(result.exitCode).toBe(0);
         expect(result.stdout.trim()).toBe(sshConfig.username);
@@ -33,14 +32,16 @@ describeSSH('SSH Authentication Tests', () => {
       const ssh = new SSHAdapter();
       const sshConfig = getSSHConfig(container.name);
 
-      await expect(ssh.execute({
-        command: 'whoami',
-        adapterOptions: {
-          type: 'ssh',
-          ...sshConfig,
-          password: 'wrongpassword'
-        }
-      })).rejects.toThrow(/authentication|password|failed|Connection/i);
+      await expect(
+        ssh.execute({
+          command: 'whoami',
+          adapterOptions: {
+            type: 'ssh',
+            ...sshConfig,
+            password: 'wrongpassword',
+          },
+        })
+      ).rejects.toThrow(/authentication|password|failed|Connection/i);
 
       await ssh.dispose();
     });
@@ -49,14 +50,16 @@ describeSSH('SSH Authentication Tests', () => {
       const ssh = new SSHAdapter();
       const sshConfig = getSSHConfig(container.name);
 
-      await expect(ssh.execute({
-        command: 'whoami',
-        adapterOptions: {
-          type: 'ssh',
-          ...sshConfig,
-          username: 'nonexistentuser'
-        }
-      })).rejects.toThrow(/authentication|failed|Connection/i);
+      await expect(
+        ssh.execute({
+          command: 'whoami',
+          adapterOptions: {
+            type: 'ssh',
+            ...sshConfig,
+            username: 'nonexistentuser',
+          },
+        })
+      ).rejects.toThrow(/authentication|failed|Connection/i);
 
       await ssh.dispose();
     });
@@ -88,8 +91,8 @@ describeSSH('SSH Authentication Tests', () => {
           nothrow: true,
           adapterOptions: {
             type: 'ssh' as const,
-            ...sshConfig
-          }
+            ...sshConfig,
+          },
         });
         const authorizedKeysBackup = backupResult.stdout;
 
@@ -98,8 +101,8 @@ describeSSH('SSH Authentication Tests', () => {
           command: 'mkdir -p ~/.ssh && chmod 700 ~/.ssh',
           adapterOptions: {
             type: 'ssh' as const,
-            ...sshConfig
-          }
+            ...sshConfig,
+          },
         });
 
         // Add our public key
@@ -107,8 +110,8 @@ describeSSH('SSH Authentication Tests', () => {
           command: `echo "${publicKey}" >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys`,
           adapterOptions: {
             type: 'ssh' as const,
-            ...sshConfig
-          }
+            ...sshConfig,
+          },
         });
 
         // Test authentication with private key
@@ -120,8 +123,8 @@ describeSSH('SSH Authentication Tests', () => {
             host: sshConfig.host,
             port: sshConfig.port,
             username: sshConfig.username,
-            privateKey: privateKeyContent
-          }
+            privateKey: privateKeyContent,
+          },
         });
         expect(result.exitCode).toBe(0);
         expect(result.stdout.trim()).toBe(sshConfig.username);
@@ -132,16 +135,16 @@ describeSSH('SSH Authentication Tests', () => {
             command: `echo "${authorizedKeysBackup}" > ~/.ssh/authorized_keys`,
             adapterOptions: {
               type: 'ssh' as const,
-              ...sshConfig
-            }
+              ...sshConfig,
+            },
           });
         } else {
           await ssh.execute({
             command: 'rm -f ~/.ssh/authorized_keys',
             adapterOptions: {
               type: 'ssh' as const,
-              ...sshConfig
-            }
+              ...sshConfig,
+            },
           });
         }
       } finally {
@@ -173,16 +176,16 @@ describeSSH('SSH Authentication Tests', () => {
           command: 'mkdir -p ~/.ssh && chmod 700 ~/.ssh',
           adapterOptions: {
             type: 'ssh' as const,
-            ...sshConfig
-          }
+            ...sshConfig,
+          },
         });
 
         await ssh.execute({
           command: `echo "${publicKey}" >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys`,
           adapterOptions: {
             type: 'ssh' as const,
-            ...sshConfig
-          }
+            ...sshConfig,
+          },
         });
 
         // Test authentication with private key as Buffer
@@ -193,8 +196,8 @@ describeSSH('SSH Authentication Tests', () => {
             host: sshConfig.host,
             port: sshConfig.port,
             username: sshConfig.username,
-            privateKey: Buffer.from(privateKeyContent)
-          }
+            privateKey: Buffer.from(privateKeyContent),
+          },
         });
         expect(result.exitCode).toBe(0);
         expect(result.stdout.trim()).toBe(sshConfig.username);
@@ -204,8 +207,8 @@ describeSSH('SSH Authentication Tests', () => {
           command: 'rm -f ~/.ssh/authorized_keys',
           adapterOptions: {
             type: 'ssh' as const,
-            ...sshConfig
-          }
+            ...sshConfig,
+          },
         });
       } finally {
         await ssh.dispose();
@@ -217,16 +220,18 @@ describeSSH('SSH Authentication Tests', () => {
       const ssh = new SSHAdapter();
       const sshConfig = getSSHConfig(container.name);
 
-      await expect(ssh.execute({
-        command: 'whoami',
-        adapterOptions: {
-          type: 'ssh',
-          host: sshConfig.host,
-          port: sshConfig.port,
-          username: sshConfig.username,
-          privateKey: Buffer.from('invalid-key-content')
-        }
-      })).rejects.toThrow();
+      await expect(
+        ssh.execute({
+          command: 'whoami',
+          adapterOptions: {
+            type: 'ssh',
+            host: sshConfig.host,
+            port: sshConfig.port,
+            username: sshConfig.username,
+            privateKey: Buffer.from('invalid-key-content'),
+          },
+        })
+      ).rejects.toThrow();
 
       await ssh.dispose();
     });
@@ -253,8 +258,8 @@ describeSSH('SSH Authentication Tests', () => {
             username: sshConfig.username,
             privateKey: encryptedKeyContent,
             passphrase,
-            password: sshConfig.password // Fallback to password auth
-          }
+            password: sshConfig.password, // Fallback to password auth
+          },
         });
         expect(result.exitCode).toBe(0);
         expect(result.stdout.trim()).toBe(sshConfig.username);
@@ -272,22 +277,24 @@ describeSSH('SSH Authentication Tests', () => {
       const ssh = new SSHAdapter({
         defaultConnectOptions: {
           readyTimeout: 2000, // SSH2 library timeout option
-          timeout: 2000
-        }
+          timeout: 2000,
+        },
       });
 
       const start = Date.now();
-      await expect(ssh.execute({
-        command: 'whoami',
-        timeout: 2000, // Command execution timeout
-        adapterOptions: {
-          type: 'ssh',
-          host: '192.0.2.1', // Non-routable IP
-          port: 22,
-          username: 'test',
-          password: 'test'
-        }
-      })).rejects.toThrow(/timeout|timed out|Connection|ETIMEDOUT|ECONNREFUSED/i);
+      await expect(
+        ssh.execute({
+          command: 'whoami',
+          timeout: 2000, // Command execution timeout
+          adapterOptions: {
+            type: 'ssh',
+            host: '192.0.2.1', // Non-routable IP
+            port: 22,
+            username: 'test',
+            password: 'test',
+          },
+        })
+      ).rejects.toThrow(/timeout|timed out|Connection|ETIMEDOUT|ECONNREFUSED/i);
 
       const duration = Date.now() - start;
       // Connection should timeout within reasonable time
@@ -308,8 +315,8 @@ describeSSH('SSH Authentication Tests', () => {
           timeout: 5000,
           adapterOptions: {
             type: 'ssh' as const,
-            ...sshConfig
-          }
+            ...sshConfig,
+          },
         });
         expect(result.exitCode).toBe(0);
         expect(result.stdout.trim()).toBe('ready');
@@ -328,8 +335,8 @@ describeSSH('SSH Authentication Tests', () => {
           command: 'cat /etc/os-release | grep ^ID=',
           adapterOptions: {
             type: 'ssh' as const,
-            ...alpineConfig
-          }
+            ...alpineConfig,
+          },
         });
         expect(result.exitCode).toBe(0);
         expect(result.stdout).toContain('alpine');
@@ -355,8 +362,8 @@ describeSSH('SSH Authentication Tests', () => {
             ...sshConfig,
             // Both auth methods provided - SSH client will try them in order
             privateKey: undefined, // No key, so it will use password
-            password: sshConfig.password
-          }
+            password: sshConfig.password,
+          },
         });
         expect(result.exitCode).toBe(0);
         expect(result.stdout.trim()).toBe(sshConfig.username);
@@ -383,8 +390,8 @@ describeSSH('SSH Authentication Tests', () => {
           command: 'whoami',
           adapterOptions: {
             type: 'ssh' as const,
-            ...sshConfig // SSH agent not supported in adapterOptions
-          }
+            ...sshConfig, // SSH agent not supported in adapterOptions
+          },
         });
         expect(result.exitCode).toBe(0);
       } finally {
@@ -403,8 +410,8 @@ describeSSH('SSH Authentication Tests', () => {
           command: 'echo "authenticated"',
           adapterOptions: {
             type: 'ssh' as const,
-            ...sshConfig
-          }
+            ...sshConfig,
+          },
         });
         expect(result.exitCode).toBe(0);
         expect(result.stdout.trim()).toBe('authenticated');
@@ -429,8 +436,8 @@ describeSSH('SSH Authentication Tests', () => {
           command: 'echo verified',
           adapterOptions: {
             type: 'ssh' as const,
-            ...sshConfig
-          }
+            ...sshConfig,
+          },
         });
         expect(result.exitCode).toBe(0);
       } finally {
@@ -447,8 +454,8 @@ describeSSH('SSH Authentication Tests', () => {
         sudo: {
           enabled: true,
           password: sshConfig.password,
-          method: 'echo' // Less secure but works for testing
-        }
+          method: 'echo', // Less secure but works for testing
+        },
       });
 
       try {
@@ -458,8 +465,8 @@ describeSSH('SSH Authentication Tests', () => {
           command: 'whoami', // Don't include sudo - adapter will add it
           adapterOptions: {
             type: 'ssh' as const,
-            ...sshConfig
-          }
+            ...sshConfig,
+          },
         });
         expect(result.exitCode).toBe(0);
         expect(result.stdout.trim()).toBe('root');
@@ -479,8 +486,8 @@ describeSSH('SSH Authentication Tests', () => {
           nothrow: true,
           adapterOptions: {
             type: 'ssh' as const,
-            ...sshConfig
-          }
+            ...sshConfig,
+          },
         });
 
         if (result.exitCode === 0) {
@@ -489,8 +496,8 @@ describeSSH('SSH Authentication Tests', () => {
             command: 'sudo whoami',
             adapterOptions: {
               type: 'ssh' as const,
-              ...sshConfig
-            }
+              ...sshConfig,
+            },
           });
           expect(whoamiResult.stdout.trim()).toBe('root');
         } else {
@@ -522,8 +529,8 @@ describeSSH('SSH Authentication Tests', () => {
             adapterOptions: {
               type: 'ssh' as const,
               ...sshConfig,
-              password
-            }
+              password,
+            },
           });
 
           // Should only succeed with correct password
@@ -534,7 +541,9 @@ describeSSH('SSH Authentication Tests', () => {
         } catch (error) {
           // Expected for wrong passwords
           if (password !== sshConfig.password) {
-            expect(error instanceof Error ? error.message : String(error)).toMatch(/authentication|password|failed|Connection/i);
+            expect(error instanceof Error ? error.message : String(error)).toMatch(
+              /authentication|password|failed|Connection/i
+            );
           } else {
             throw error;
           }
@@ -581,8 +590,8 @@ describeSSH('SSH Authentication Tests', () => {
           command: 'export TEST_SESSION_VAR="persistent value"',
           adapterOptions: {
             type: 'ssh' as const,
-            ...sshConfig
-          }
+            ...sshConfig,
+          },
         });
 
         // It should be available in the next command on the same connection
@@ -590,8 +599,8 @@ describeSSH('SSH Authentication Tests', () => {
           command: 'echo $TEST_SESSION_VAR',
           adapterOptions: {
             type: 'ssh' as const,
-            ...sshConfig
-          }
+            ...sshConfig,
+          },
         });
 
         // Note: Each command runs in a new shell, so env vars don't persist
@@ -608,8 +617,8 @@ describeSSH('SSH Authentication Tests', () => {
           enabled: true,
           maxConnections: 10,
           idleTimeout: 300000,
-          keepAlive: true
-        }
+          keepAlive: true,
+        },
       });
       const sshConfig = getSSHConfig(container.name);
 
@@ -620,8 +629,8 @@ describeSSH('SSH Authentication Tests', () => {
             command: `echo "Command ${i}"`,
             adapterOptions: {
               type: 'ssh' as const,
-              ...sshConfig
-            }
+              ...sshConfig,
+            },
           });
           expect(result.exitCode).toBe(0);
           expect(result.stdout.trim()).toBe(`Command ${i}`);

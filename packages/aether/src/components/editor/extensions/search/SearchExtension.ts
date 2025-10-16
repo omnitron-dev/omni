@@ -102,7 +102,7 @@ export class SearchExtension extends Extension<SearchOptions> {
               decorations.push(
                 Decoration.inline(result.from, result.to, {
                   class: isCurrent ? 'search-result search-result-current' : 'search-result',
-                }),
+                })
               );
             });
 

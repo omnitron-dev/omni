@@ -1,6 +1,6 @@
 import { BaseAdapter } from '../../src/adapters/base-adapter.js';
 import { ExecutionResult, ExecutionResultImpl } from '../../src/core/result.js';
-import { Command , SSHAdapterOptions, DockerAdapterOptions } from '../../src/types/command.js';
+import { Command, SSHAdapterOptions, DockerAdapterOptions } from '../../src/types/command.js';
 
 export function createMockCommand(overrides: Partial<Command> = {}): Command {
   return {
@@ -10,7 +10,7 @@ export function createMockCommand(overrides: Partial<Command> = {}): Command {
     env: { TEST: 'true' },
     timeout: 5000,
     shell: true,
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -26,9 +26,9 @@ export function createMockExecutionResult(overrides: Partial<ExecutionResult> = 
     finishedAt: new Date(Date.now() + 100),
     adapter: 'mock',
     host: undefined,
-    container: undefined
+    container: undefined,
   };
-  
+
   return new ExecutionResultImpl(
     overrides.stdout ?? defaults.stdout,
     overrides.stderr ?? defaults.stderr,
@@ -50,7 +50,7 @@ export function createMockSSHOptions(overrides: Partial<SSHAdapterOptions> = {})
     host: 'test.example.com',
     username: 'testuser',
     port: 22,
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -59,7 +59,7 @@ export function createMockDockerOptions(overrides: Partial<DockerAdapterOptions>
     type: 'docker',
     container: 'test-container',
     workdir: '/app',
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -68,34 +68,34 @@ export class MockAdapter extends BaseAdapter {
   public executeCalls: Command[] = [];
   public executeResults: ExecutionResult[] = [];
   private nextResult: ExecutionResult | Error | null = null;
-  
+
   async isAvailable(): Promise<boolean> {
     return true;
   }
-  
+
   async execute(command: Command): Promise<ExecutionResult> {
     this.executeCalls.push(command);
-    
+
     if (this.nextResult instanceof Error) {
       throw this.nextResult;
     }
-    
+
     const result = this.nextResult || createMockExecutionResult({ command: this.buildCommandString(command) });
     this.executeResults.push(result);
-    
+
     return result;
   }
-  
+
   mockNextResult(result: ExecutionResult | Error): void {
     this.nextResult = result;
   }
-  
+
   reset(): void {
     this.executeCalls = [];
     this.executeResults = [];
     this.nextResult = null;
   }
-  
+
   async dispose(): Promise<void> {
     this.reset();
   }
@@ -105,7 +105,7 @@ export function createErrorResult(message: string, code: number = 1): ExecutionR
   return createMockExecutionResult({
     stdout: '',
     stderr: message,
-    exitCode: code
+    exitCode: code,
   });
 }
 
@@ -115,6 +115,6 @@ export function createTimeoutResult(command: string, timeout: number): Execution
     stdout: '',
     stderr: `Command timed out after ${timeout}ms`,
     exitCode: 124, // Common timeout exit code
-    signal: 'SIGTERM'
+    signal: 'SIGTERM',
   });
 }

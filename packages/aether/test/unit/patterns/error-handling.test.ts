@@ -35,8 +35,8 @@ describe('Error Handling Patterns', () => {
       const errorSpy = vi.fn();
 
       const BrokenRender = defineComponent(() => () => {
-          throw new Error('Render error');
-        });
+        throw new Error('Render error');
+      });
 
       ErrorBoundary({
         onError: errorSpy,
@@ -91,11 +91,13 @@ describe('Error Handling Patterns', () => {
         throw new Error('Inner error');
       });
 
-      const InnerBoundary = defineComponent(() => () =>
+      const InnerBoundary = defineComponent(
+        () => () =>
           ErrorBoundary({
             onError: innerErrorSpy,
             children: () => ErrorComponent({}),
-          }));
+          })
+      );
 
       ErrorBoundary({
         onError: outerErrorSpy,
@@ -115,9 +117,11 @@ describe('Error Handling Patterns', () => {
         throw new Error('Test error');
       });
 
-      const Wrapper = defineComponent(() => 
-        // This component doesn't have error handler
-         () => ErrorComponent({})
+      const Wrapper = defineComponent(
+        () =>
+          // This component doesn't have error handler
+          () =>
+            ErrorComponent({})
       );
 
       ErrorBoundary({
@@ -137,17 +141,21 @@ describe('Error Handling Patterns', () => {
         throw new Error('Deep error');
       });
 
-      const Level3 = defineComponent(() => () =>
+      const Level3 = defineComponent(
+        () => () =>
           ErrorBoundary({
             onError: level3Spy,
             children: () => ErrorComponent({}),
-          }));
+          })
+      );
 
-      const Level2 = defineComponent(() => () =>
+      const Level2 = defineComponent(
+        () => () =>
           ErrorBoundary({
             onError: level2Spy,
             children: () => Level3({}),
-          }));
+          })
+      );
 
       ErrorBoundary({
         onError: level1Spy,
@@ -173,15 +181,15 @@ describe('Error Handling Patterns', () => {
       });
 
       const App = defineComponent(() => () => [
-          ErrorBoundary({
-            onError: leftSpy,
-            children: () => LeftError({}),
-          }),
-          ErrorBoundary({
-            onError: rightSpy,
-            children: () => RightError({}),
-          }),
-        ]);
+        ErrorBoundary({
+          onError: leftSpy,
+          children: () => LeftError({}),
+        }),
+        ErrorBoundary({
+          onError: rightSpy,
+          children: () => RightError({}),
+        }),
+      ]);
 
       App({});
 

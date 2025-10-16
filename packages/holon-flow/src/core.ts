@@ -159,7 +159,7 @@ export function createFlowModule<T extends object>(
     version?: string;
     description?: string;
     dependencies?: Array<string | symbol>;
-  },
+  }
 ): ModuleDefinition<T> {
   const definition: ModuleDefinition<T> = {
     name: Symbol.for(`holon:flow-${name}`),

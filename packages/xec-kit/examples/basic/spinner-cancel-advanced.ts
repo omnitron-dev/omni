@@ -82,7 +82,10 @@ async function main() {
       } catch (error) {
         // Handle errors but continue if not cancelled
         if (!processSpinner.isCancelled) {
-          p.note(`Error processing ${language}: ${error instanceof Error ? error.message : String(error)}`, 'Error');
+          p.note(
+            `Error processing ${language}: ${error instanceof Error ? error.message : String(error)}`,
+            'Error'
+          );
         }
       }
     }
@@ -135,7 +138,9 @@ async function main() {
           }
         } catch (error) {
           if (!finalSpinner.isCancelled) {
-            finalSpinner.stop(`Error during ${action}: ${error instanceof Error ? error.message : String(error)}`);
+            finalSpinner.stop(
+              `Error during ${action}: ${error instanceof Error ? error.message : String(error)}`
+            );
           }
         }
       }

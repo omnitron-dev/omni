@@ -475,7 +475,10 @@ export function longestIncreasingSubsequence(arr: number[]): number[] {
 /**
  * Calculate minimum moves using LIS
  */
-export function calculateMoves(oldPositions: Map<any, number>, newPositions: Map<any, number>): Array<{ key: any; from: number; to: number }> {
+export function calculateMoves(
+  oldPositions: Map<any, number>,
+  newPositions: Map<any, number>
+): Array<{ key: any; from: number; to: number }> {
   const moves: Array<{ key: any; from: number; to: number }> = [];
 
   // Build array of old positions in new order

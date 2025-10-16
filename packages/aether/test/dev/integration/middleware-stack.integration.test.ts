@@ -10,10 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import {
-  MiddlewareStack,
-  createDevMiddleware,
-} from '../../../src/dev/middleware/index.js';
+import { MiddlewareStack, createDevMiddleware } from '../../../src/dev/middleware/index.js';
 import type { Middleware, DevServerConfig } from '../../../src/dev/types.js';
 
 describe('Middleware Stack Integration', () => {
@@ -71,13 +68,7 @@ describe('Middleware Stack Integration', () => {
       expect(response.status).toBe(200);
       expect(await response.text()).toBe('Success');
       expect(response.headers.get('X-Authenticated')).toBe('true');
-      expect(executionOrder).toEqual([
-        'logger-start',
-        'auth-start',
-        'handler',
-        'auth-end',
-        'logger-end',
-      ]);
+      expect(executionOrder).toEqual(['logger-start', 'auth-start', 'handler', 'auth-end', 'logger-end']);
     });
 
     it('should handle short-circuit responses', async () => {
@@ -334,9 +325,10 @@ describe('Middleware Stack Integration', () => {
       // Add handler
       stack.use({
         name: 'handler',
-        handle: async () => new Response(JSON.stringify({ data: 'test' }), {
-          headers: { 'Content-Type': 'application/json' },
-        }),
+        handle: async () =>
+          new Response(JSON.stringify({ data: 'test' }), {
+            headers: { 'Content-Type': 'application/json' },
+          }),
       });
 
       // Preflight request
@@ -415,10 +407,7 @@ describe('Middleware Stack Integration', () => {
           const response = await next();
           const acceptEncoding = req.headers.get('Accept-Encoding') || '';
 
-          if (
-            acceptEncoding.includes('gzip') &&
-            typeof CompressionStream !== 'undefined'
-          ) {
+          if (acceptEncoding.includes('gzip') && typeof CompressionStream !== 'undefined') {
             const stream = response.body?.pipeThrough(new CompressionStream('gzip'));
 
             const headers = new Headers(response.headers);
@@ -600,13 +589,7 @@ describe('Middleware Stack Integration', () => {
 
       const stack = createDevMiddleware(config);
 
-      expect(stack.getNames()).toEqual([
-        'logger',
-        'cors',
-        'compression',
-        'static',
-        'hmr',
-      ]);
+      expect(stack.getNames()).toEqual(['logger', 'cors', 'compression', 'static', 'hmr']);
 
       // Test request flow through stack
       const req = new Request('http://localhost/test');
@@ -645,9 +628,7 @@ describe('Middleware Stack Integration', () => {
       const req = new Request('http://localhost/test');
       await stack.handle(req);
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('GET /test')
-      );
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('GET /test'));
 
       consoleSpy.mockRestore();
     });

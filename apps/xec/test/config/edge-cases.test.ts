@@ -15,7 +15,7 @@ import {
   TargetResolver,
   ConfigValidator,
   ConfigurationManager,
-  VariableInterpolator
+  VariableInterpolator,
 } from '../../src/config/index.js';
 
 describe('Configuration System Edge Cases', () => {
@@ -33,7 +33,7 @@ describe('Configuration System Edge Cases', () => {
   describe('ConfigurationManager Edge Cases', () => {
     it('should handle missing config files gracefully', async () => {
       const manager = new ConfigurationManager({
-        projectRoot: tempDir
+        projectRoot: tempDir,
       });
 
       // Should load with defaults even without config files
@@ -55,7 +55,7 @@ tasks:
 
       const manager = new ConfigurationManager({
         projectRoot: tempDir,
-        strict: true
+        strict: true,
       });
 
       await expect(manager.load()).rejects.toThrow();
@@ -78,15 +78,15 @@ profiles:
       const manager = new ConfigurationManager({
         projectRoot: tempDir,
         profile: 'a',
-        strict: false
+        strict: false,
       });
 
-      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => { });
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
       await manager.load();
 
-      const warnings = warnSpy.mock.calls.map(call => call[0]);
-      expect(warnings.some(w => w.includes('Circular profile inheritance'))).toBe(true);
+      const warnings = warnSpy.mock.calls.map((call) => call[0]);
+      expect(warnings.some((w) => w.includes('Circular profile inheritance'))).toBe(true);
 
       warnSpy.mockRestore();
     });
@@ -107,7 +107,7 @@ tasks:
 
       const manager = new ConfigurationManager({
         projectRoot: tempDir,
-        envPrefix: 'XEC_'
+        envPrefix: 'XEC_',
       });
 
       const loaded = await manager.load();
@@ -139,27 +139,25 @@ tasks:
           i: '${vars.j}',
           j: '${vars.k}',
           k: '${vars.l}',
-          l: 'final'
-        }
+          l: 'final',
+        },
       };
 
       // Should stop at max depth
-      expect(() => interpolator.interpolate('${vars.a}', context))
-        .toThrow('Maximum variable interpolation depth (10) exceeded');
+      expect(() => interpolator.interpolate('${vars.a}', context)).toThrow(
+        'Maximum variable interpolation depth (10) exceeded'
+      );
     });
 
     it('should handle command substitution errors', async () => {
       const interpolator = new VariableInterpolator();
 
       const context = {
-        vars: {}
+        vars: {},
       };
 
       // Command that doesn't exist
-      const result = await interpolator.interpolateAsync(
-        '${cmd:this-command-does-not-exist-99999}',
-        context
-      );
+      const result = await interpolator.interpolateAsync('${cmd:this-command-does-not-exist-99999}', context);
 
       // Should return empty string on error
       expect(result).toBe('');
@@ -169,17 +167,17 @@ tasks:
       const interpolator = new VariableInterpolator();
 
       const context = {
-        vars: { test: 'value' }
+        vars: { test: 'value' },
       };
 
       // Various malformed references
       const cases = [
-        '${vars.}',         // Empty path
-        '${vars..test}',    // Double dot
-        '${vars.test.}',    // Trailing dot
-        '${:command}',      // Missing type
-        '${vars}',          // Missing path
-        '${vars.test:}',    // Empty default
+        '${vars.}', // Empty path
+        '${vars..test}', // Double dot
+        '${vars.test.}', // Trailing dot
+        '${:command}', // Missing type
+        '${vars}', // Missing path
+        '${vars.test:}', // Empty default
       ];
 
       for (const testCase of cases) {
@@ -194,7 +192,7 @@ tasks:
     it('should handle auto-detection failures gracefully', async () => {
       const config = {
         version: '1.0',
-        targets: {}
+        targets: {},
       };
 
       const resolver = new TargetResolver(config);
@@ -205,8 +203,7 @@ tasks:
       jest.spyOn(resolver as any, 'getSSHHost').mockResolvedValue(undefined);
 
       // Should throw error for unknown target that doesn't look like a hostname
-      await expect(resolver.resolve('unknown-target'))
-        .rejects.toThrow("Target 'unknown-target' not found");
+      await expect(resolver.resolve('unknown-target')).rejects.toThrow("Target 'unknown-target' not found");
 
       // Should default to SSH for hostname-like targets
       const target = await resolver.resolve('unknown.example.com');
@@ -221,10 +218,10 @@ tasks:
           hosts: {
             'valid-host': {
               host: 'example.com',
-              user: 'test'
-            }
-          }
-        }
+              user: 'test',
+            },
+          },
+        },
       };
 
       const resolver = new TargetResolver(config);
@@ -241,8 +238,7 @@ tasks:
       expect(invalidTarget.source).toBe('detected');
 
       // Non-existent target
-      await expect(resolver.resolve('hosts.nonexistent'))
-        .rejects.toThrow(/Target 'nonexistent' not found/);
+      await expect(resolver.resolve('hosts.nonexistent')).rejects.toThrow(/Target 'nonexistent' not found/);
     });
 
     it('should handle pattern matching edge cases', async () => {
@@ -254,9 +250,9 @@ tasks:
             'test-2': { host: 'test2.com', user: 'test' },
             'prod-1': { host: 'prod1.com', user: 'test' },
             'special!char': { host: 'special.com', user: 'test' },
-            'with.dot': { host: 'withdot.com', user: 'test' }
-          }
-        }
+            'with.dot': { host: 'withdot.com', user: 'test' },
+          },
+        },
       };
 
       const resolver = new TargetResolver(config);
@@ -283,16 +279,16 @@ tasks:
         version: '1.0',
         tasks: {
           'script-task': {
-            script: path.join(tempDir, 'nonexistent.js')
-          }
-        }
+            script: path.join(tempDir, 'nonexistent.js'),
+          },
+        },
       };
 
       const interpolator = new VariableInterpolator();
       const resolver = new TargetResolver(config);
       const executor = new TaskExecutor({
         interpolator,
-        targetResolver: resolver
+        targetResolver: resolver,
       });
 
       const result = await executor.execute('script-task', config.tasks['script-task'], {});
@@ -311,28 +307,24 @@ tasks:
               { name: 'Success 1', command: 'echo "OK 1"' },
               { name: 'Failure', command: 'exit 1' },
               { name: 'Success 2', command: 'echo "OK 2"' },
-              { name: 'Success 3', command: 'echo "OK 3"' }
-            ]
-          }
-        }
+              { name: 'Success 3', command: 'echo "OK 3"' },
+            ],
+          },
+        },
       };
 
       const interpolator = new VariableInterpolator();
       const resolver = new TargetResolver(config);
       const executor = new TaskExecutor({
         interpolator,
-        targetResolver: resolver
+        targetResolver: resolver,
       });
 
-      const result = await executor.execute(
-        'parallel-task',
-        config.tasks['parallel-task'],
-        {}
-      );
+      const result = await executor.execute('parallel-task', config.tasks['parallel-task'], {});
 
       expect(result.success).toBe(false);
       // With failFast, some steps might not execute
-      expect(result.steps?.filter(s => s.success).length).toBeGreaterThanOrEqual(1);
+      expect(result.steps?.filter((s) => s.success).length).toBeGreaterThanOrEqual(1);
     });
 
     it('should handle timeout errors', async () => {
@@ -341,9 +333,9 @@ tasks:
         tasks: {
           'timeout-task': {
             command: 'sleep 5',
-            timeout: 100  // 100ms timeout
-          }
-        }
+            timeout: 100, // 100ms timeout
+          },
+        },
       };
 
       const interpolator = new VariableInterpolator();
@@ -351,7 +343,7 @@ tasks:
       const executor = new TaskExecutor({
         interpolator,
         targetResolver: resolver,
-        defaultTimeout: 50000
+        defaultTimeout: 50000,
       });
 
       const result = await executor.execute('timeout-task', config.tasks['timeout-task'], {});
@@ -371,19 +363,19 @@ tasks:
                 command: 'exit 1',
                 onFailure: {
                   retry: 2,
-                  delay: '100ms'
-                }
-              }
-            ]
-          }
-        }
+                  delay: '100ms',
+                },
+              },
+            ],
+          },
+        },
       };
 
       const interpolator = new VariableInterpolator();
       const resolver = new TargetResolver(config);
       const executor = new TaskExecutor({
         interpolator,
-        targetResolver: resolver
+        targetResolver: resolver,
       });
 
       const startTime = Date.now();
@@ -404,16 +396,14 @@ tasks:
         version: '1.0',
         tasks: {
           'test-task': {
-            params: [
-              { name: 'test', type: 'invalid' as any }
-            ],
-            command: 'echo ${params.test}'
-          }
-        }
+            params: [{ name: 'test', type: 'invalid' as any }],
+            command: 'echo ${params.test}',
+          },
+        },
       };
 
       const errors = await validator.validate(config);
-      expect(errors.some(e => e.message.includes('Invalid parameter type'))).toBe(true);
+      expect(errors.some((e) => e.message.includes('Invalid parameter type'))).toBe(true);
     });
 
     it('should handle missing required parameters', () => {
@@ -422,9 +412,9 @@ tasks:
       const task = {
         params: [
           { name: 'required', required: true },
-          { name: 'optional', required: false, default: 'default' }
+          { name: 'optional', required: false, default: 'default' },
         ],
-        command: 'echo ${params.required}'
+        command: 'echo ${params.required}',
       };
 
       const errors = parser.validateParams(task, {});
@@ -439,15 +429,15 @@ tasks:
         params: [
           { name: 'num', type: 'number' as const },
           { name: 'bool', type: 'boolean' as const },
-          { name: 'arr', type: 'array' as const }
+          { name: 'arr', type: 'array' as const },
         ],
-        command: 'echo test'
+        command: 'echo test',
       };
 
       const params = parser.parseParams(task, {
         num: '42',
         bool: 'true',
-        arr: 'item1,item2,item3'
+        arr: 'item1,item2,item3',
       });
 
       expect(params.num).toBe(42);
@@ -463,7 +453,7 @@ tasks:
       // Create a large context
       const largeContext = {
         vars: {} as any,
-        env: process.env as any
+        env: process.env as any,
       };
 
       // Add 1000 variables
@@ -505,7 +495,7 @@ tasks:
       await fs.writeFile(path.join(tempDir, '.xec', 'config.yaml'), config);
 
       const manager = new ConfigurationManager({
-        projectRoot: tempDir
+        projectRoot: tempDir,
       });
 
       const taskManager = new TaskManager({ configManager: manager });
@@ -513,15 +503,11 @@ tasks:
 
       // Execute tasks concurrently
       const startTime = Date.now();
-      const results = await Promise.all([
-        taskManager.run('task1'),
-        taskManager.run('task2'),
-        taskManager.run('task3')
-      ]);
+      const results = await Promise.all([taskManager.run('task1'), taskManager.run('task2'), taskManager.run('task3')]);
       const duration = Date.now() - startTime;
 
       // All should succeed
-      expect(results.every(r => r.success)).toBe(true);
+      expect(results.every((r) => r.success)).toBe(true);
 
       // Should run in parallel (faster than sequential)
       expect(duration).toBeLessThan(300); // Would be 300ms+ if sequential

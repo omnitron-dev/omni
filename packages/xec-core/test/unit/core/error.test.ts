@@ -6,17 +6,13 @@ import {
   TimeoutError,
   AdapterError,
   ExecutionError,
-  ConnectionError
+  ConnectionError,
 } from '../../../src/core/error.js';
 
 describe('Error classes', () => {
   describe('ExecutionError', () => {
     it('should create with message, code and details', () => {
-      const error = new ExecutionError(
-        'Test error message',
-        'TEST_ERROR',
-        { foo: 'bar', count: 42 }
-      );
+      const error = new ExecutionError('Test error message', 'TEST_ERROR', { foo: 'bar', count: 42 });
 
       expect(error.message).toBe('Test error message');
       expect(error.code).toBe('TEST_ERROR');
@@ -29,14 +25,7 @@ describe('Error classes', () => {
 
   describe('CommandError', () => {
     it('should create with all command details', () => {
-      const error = new CommandError(
-        'echo "failed"',
-        127,
-        'SIGTERM',
-        'output text',
-        'error text',
-        1500
-      );
+      const error = new CommandError('echo "failed"', 127, 'SIGTERM', 'output text', 'error text', 1500);
 
       expect(error.message).toBe('Command failed with exit code 127: echo "failed"');
       expect(error.code).toBe('COMMAND_FAILED');
@@ -143,10 +132,10 @@ describe('Error classes', () => {
         new ConnectionError('host', new Error()),
         new TimeoutError('cmd', 1000),
         new DockerError('container', 'run', new Error()),
-        new AdapterError('local', 'execute')
+        new AdapterError('local', 'execute'),
       ];
 
-      errors.forEach(error => {
+      errors.forEach((error) => {
         expect(error).toBeInstanceOf(Error);
         expect(error.stack).toBeDefined();
       });

@@ -10,8 +10,8 @@ export const PRIVATE_KEY_PPK_PATH = join(__dirname, 'fixtures', 'id_rsa.ppk');
 
 export function wait(delay: number): Promise<void> {
   return new Promise(function (resolve) {
-    setTimeout(resolve, delay)
-  })
+    setTimeout(resolve, delay);
+  });
 }
 
 export async function exists(filePath: string): Promise<boolean> {

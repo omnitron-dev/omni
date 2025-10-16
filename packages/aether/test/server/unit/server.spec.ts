@@ -244,7 +244,7 @@ describe('Server Metrics', () => {
 
 describe('Development Features', () => {
   it('should initialize HMR in dev mode', async () => {
-    const HMREngine = await import('../../../src/server/hmr/engine').then(m => m.HMREngine);
+    const HMREngine = await import('../../../src/server/hmr/engine').then((m) => m.HMREngine);
 
     const config: DevServerConfig = {
       dev: true,

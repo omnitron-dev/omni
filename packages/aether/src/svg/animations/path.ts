@@ -27,10 +27,7 @@ export function getPathLength(path: string | SVGPathElement): number {
 /**
  * Get point at a specific length along the path
  */
-export function getPointAtLength(
-  path: string | SVGPathElement,
-  length: number
-): { x: number; y: number } {
+export function getPointAtLength(path: string | SVGPathElement, length: number): { x: number; y: number } {
   if (typeof path === 'string') {
     if (typeof document === 'undefined') return { x: 0, y: 0 };
     const tempPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -127,9 +124,7 @@ export function animatePathDraw(
     const progress = Math.min(elapsed / duration, 1);
     const easedProgress = easing(progress);
 
-    const offset = reverse
-      ? easedProgress * length
-      : length - easedProgress * length;
+    const offset = reverse ? easedProgress * length : length - easedProgress * length;
 
     element.style.strokeDashoffset = `${offset}`;
     options.onUpdate?.(easedProgress);
@@ -278,9 +273,7 @@ function parsePath(pathString: string): PathCommand[] {
   while ((match = commandRegex.exec(pathString)) !== null) {
     const type = match[1];
     const paramsString = match[2]?.trim() || '';
-    const params = paramsString
-      ? paramsString.split(/[\s,]+/).map(Number)
-      : [];
+    const params = paramsString ? paramsString.split(/[\s,]+/).map(Number) : [];
 
     if (type) {
       commands.push({ type, params });
@@ -301,10 +294,7 @@ function pathCommandsToString(commands: PathCommand[]): string {
   return commands.map(pathCommandToString).join('');
 }
 
-function normalizePaths(
-  from: PathCommand[],
-  to: PathCommand[]
-): [PathCommand[], PathCommand[]] {
+function normalizePaths(from: PathCommand[], to: PathCommand[]): [PathCommand[], PathCommand[]] {
   // Simple normalization: pad shorter path with last command
   const maxLength = Math.max(from.length, to.length);
   const normalizedFrom = [...from];
@@ -328,11 +318,7 @@ function normalizePaths(
   return [normalizedFrom, normalizedTo];
 }
 
-function interpolateCommand(
-  from: PathCommand,
-  to: PathCommand,
-  progress: number
-): PathCommand {
+function interpolateCommand(from: PathCommand, to: PathCommand, progress: number): PathCommand {
   // Interpolate parameters
   const params = from.params.map((fromParam, i) => {
     const toParam = to.params[i] ?? fromParam;
@@ -366,12 +352,7 @@ function normalizeEasing(easing: EasingFunction): (t: number) => number {
 /**
  * Create cubic bezier easing function
  */
-function cubicBezier(
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number
-): (t: number) => number {
+function cubicBezier(x1: number, y1: number, x2: number, y2: number): (t: number) => number {
   return (progress: number) => {
     // Simplified cubic bezier calculation
     const cx = 3 * x1;

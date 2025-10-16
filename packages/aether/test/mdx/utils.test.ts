@@ -15,7 +15,7 @@ import {
   extractTOC,
   generateId,
   highlightMatches,
-  truncateMDX
+  truncateMDX,
 } from '../../src/mdx/utils/index.js';
 
 describe('MDX Utilities', () => {
@@ -176,7 +176,7 @@ describe('MDX Utilities', () => {
       expect(images[0]).toEqual({
         src: 'image.png',
         alt: 'Alt text',
-        title: 'Title'
+        title: 'Title',
       });
     });
 
@@ -188,7 +188,7 @@ describe('MDX Utilities', () => {
       expect(images[0]).toEqual({
         src: 'photo.jpg',
         alt: 'Photo',
-        title: undefined
+        title: undefined,
       });
     });
 
@@ -209,12 +209,12 @@ describe('MDX Utilities', () => {
       expect(links[0]).toEqual({
         href: 'https://example.com',
         text: 'External',
-        external: true
+        external: true,
       });
       expect(links[1]).toEqual({
         href: '/page',
         text: 'Internal',
-        external: false
+        external: false,
       });
     });
 
@@ -226,7 +226,7 @@ describe('MDX Utilities', () => {
       expect(links[0]).toEqual({
         href: 'https://test.com',
         text: 'Test',
-        external: true
+        external: true,
       });
     });
   });
@@ -240,7 +240,7 @@ describe('MDX Utilities', () => {
         title: 'Test Post',
         author: 'John',
         published: true,
-        views: 100
+        views: 100,
       });
       expect(content).toBe('# Content');
     });

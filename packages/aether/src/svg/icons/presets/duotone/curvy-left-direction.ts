@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const CurvyLeftDirectionIcon: IconDefinition = {
-  "id": "curvy-left-direction",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M22 11H20.044C17.7882 11 15.9595 12.7909 15.9595 15V17.0845C15.9595 18.1424 15.0837 19 14.0034 19C12.9231 19 12.0474 18.1424 12.0474 17.0845V6.96543C12.0474 5.87995 11.1488 5 10.0404 5C8.93193 5 8.03337 5.87995 8.03337 6.96543V9C8.03337 11.2091 6.20463 13 3.94877 13H2M2 13C2 13.527 3.99998 15 3.99998 15M2 13C2 12.473 4 11 4 11\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "duotone",
-    "originalName": "CurvyLeftDirectionIcon",
-    "elementsCount": 1,
-    "hasOpacity": true,
-    "hasFill": false
-  }
+  id: 'curvy-left-direction',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path opacity="0.4" d="M22 11H20.044C17.7882 11 15.9595 12.7909 15.9595 15V17.0845C15.9595 18.1424 15.0837 19 14.0034 19C12.9231 19 12.0474 18.1424 12.0474 17.0845V6.96543C12.0474 5.87995 11.1488 5 10.0404 5C8.93193 5 8.03337 5.87995 8.03337 6.96543V9C8.03337 11.2091 6.20463 13 3.94877 13H2M2 13C2 13.527 3.99998 15 3.99998 15M2 13C2 12.473 4 11 4 11" stroke-linecap="round" stroke-linejoin="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'duotone',
+    originalName: 'CurvyLeftDirectionIcon',
+    elementsCount: 1,
+    hasOpacity: true,
+    hasFill: false,
+  },
 };

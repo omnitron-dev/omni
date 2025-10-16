@@ -721,9 +721,7 @@ describe('ModuleAnalyzer', () => {
       const sourceFile = createSourceFile(code);
       const result = analyzeModules(sourceFile);
 
-      const mergeOpp = result.opportunities.find(
-        (opp) => opp.type === 'merge' && opp.moduleId === 'small'
-      );
+      const mergeOpp = result.opportunities.find((opp) => opp.type === 'merge' && opp.moduleId === 'small');
       expect(mergeOpp).toBeDefined();
       expect(mergeOpp?.impact).toBe('low');
     });

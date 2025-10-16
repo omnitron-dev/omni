@@ -49,15 +49,10 @@ export const DEFAULT_ICON_CONFIG: Partial<IconConfig> = {
  * // => { name: 'user', preset: 'duotone', animation: 'hover', size: 'md', ... }
  * ```
  */
-export function normalizeIcon(
-  icon: IconProp | undefined,
-  defaults?: Partial<IconConfig>
-): IconConfig | null {
+export function normalizeIcon(icon: IconProp | undefined, defaults?: Partial<IconConfig>): IconConfig | null {
   if (!icon) return null;
 
-  const config: IconConfig = typeof icon === 'string'
-    ? { name: icon }
-    : { ...icon };
+  const config: IconConfig = typeof icon === 'string' ? { name: icon } : { ...icon };
 
   // Merge with defaults
   return {
@@ -234,9 +229,7 @@ export function buildIconStyles(config: IconConfig): Record<string, any> {
 
   // Color
   if (config.color) {
-    const color = typeof config.color === 'function'
-      ? (config.color as Signal<string>)()
-      : config.color;
+    const color = typeof config.color === 'function' ? (config.color as Signal<string>)() : config.color;
     styles.color = color;
   }
 
@@ -244,9 +237,7 @@ export function buildIconStyles(config: IconConfig): Record<string, any> {
   const transforms: string[] = [];
 
   if (config.rotate !== undefined) {
-    const rotate = typeof config.rotate === 'function'
-      ? (config.rotate as Signal<number>)()
-      : config.rotate;
+    const rotate = typeof config.rotate === 'function' ? (config.rotate as Signal<number>)() : config.rotate;
     transforms.push(`rotate(${rotate}deg)`);
   }
 
@@ -400,9 +391,7 @@ export function validateIconConfig(config: IconConfig): {
   }
 
   if (config.rotate !== undefined) {
-    const rotate = typeof config.rotate === 'function'
-      ? (config.rotate as Signal<number>)()
-      : config.rotate;
+    const rotate = typeof config.rotate === 'function' ? (config.rotate as Signal<number>)() : config.rotate;
 
     if (typeof rotate !== 'number' || rotate < 0 || rotate >= 360) {
       errors.push('Rotation must be between 0 and 359 degrees');
@@ -434,10 +423,13 @@ export function validateIconConfig(config: IconConfig): {
  * ```
  */
 export function mergeIconConfigs(...configs: Array<Partial<IconConfig>>): Partial<IconConfig> {
-  return configs.reduce((merged, config) => ({
-    ...merged,
-    ...config,
-  }), {});
+  return configs.reduce(
+    (merged, config) => ({
+      ...merged,
+      ...config,
+    }),
+    {}
+  );
 }
 
 /**
@@ -478,13 +470,8 @@ export function isIconConfig(value: any): value is IconConfig {
  * // => { name: 'user', preset: 'stroke', animation: 'none', size: 'lg', ... }
  * ```
  */
-export function createIconConfig(
-  nameOrConfig: string | IconConfig,
-  options?: Partial<IconConfig>
-): IconConfig {
-  const base = typeof nameOrConfig === 'string'
-    ? { name: nameOrConfig }
-    : nameOrConfig;
+export function createIconConfig(nameOrConfig: string | IconConfig, options?: Partial<IconConfig>): IconConfig {
+  const base = typeof nameOrConfig === 'string' ? { name: nameOrConfig } : nameOrConfig;
 
   return {
     ...DEFAULT_ICON_CONFIG,

@@ -26,7 +26,7 @@ describe('ConfigurationManager', () => {
     manager = new ConfigurationManager({
       projectRoot: tempDir,
       globalConfigDir: path.join(tempDir, 'global'),
-      cache: false
+      cache: false,
     });
   });
 
@@ -50,15 +50,15 @@ describe('ConfigurationManager', () => {
         name: 'test-project',
         vars: {
           appName: 'myapp',
-          version: '1.0.0'
+          version: '1.0.0',
         },
         tasks: {
           test: 'npm test',
           build: {
             command: 'npm run build',
-            description: 'Build the project'
-          }
-        }
+            description: 'Build the project',
+          },
+        },
       };
 
       await fs.writeFile(
@@ -82,7 +82,7 @@ tasks:
       expect(config.tasks?.test).toBe('npm test');
       expect(config.tasks?.build).toEqual({
         command: 'npm run build',
-        description: 'Build the project'
+        description: 'Build the project',
       });
     });
 
@@ -146,7 +146,7 @@ profiles:
       // Load with production profile
       manager = new ConfigurationManager({
         projectRoot: tempDir,
-        profile: 'production'
+        profile: 'production',
       });
 
       const config = await manager.load();
@@ -250,7 +250,7 @@ vars:
 
     it('should interpolate with custom context', () => {
       const result = manager.interpolate('Hello ${params.name}!', {
-        params: { name: 'World' }
+        params: { name: 'World' },
       });
       expect(result).toBe('Hello World!');
     });
@@ -299,7 +299,7 @@ profiles:
     it('should handle profile inheritance', async () => {
       manager = new ConfigurationManager({
         projectRoot: tempDir,
-        profile: 'staging'
+        profile: 'staging',
       });
 
       await manager.load();
@@ -332,13 +332,13 @@ profiles:
         path.join(tempDir, '.xec', 'config.yaml'),
         `version: "0.9"
 vars:
-  env: invalid`  // Reserved name
+  env: invalid` // Reserved name
       );
 
       // In strict mode, should throw
       manager = new ConfigurationManager({
         projectRoot: tempDir,
-        strict: true
+        strict: true,
       });
 
       await expect(manager.load()).rejects.toThrow('Configuration validation failed');
@@ -352,7 +352,7 @@ vars:
   env: test  # This conflicts with reserved name`
       );
 
-      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => { });
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
       await manager.load();
 
@@ -377,7 +377,7 @@ profiles:
 
       manager = new ConfigurationManager({
         projectRoot: tempDir,
-        profile: 'clean'
+        profile: 'clean',
       });
 
       await manager.load();
@@ -400,7 +400,7 @@ profiles:
 
       manager = new ConfigurationManager({
         projectRoot: tempDir,
-        profile: 'extended'
+        profile: 'extended',
       });
 
       await manager.load();
@@ -432,7 +432,7 @@ vars:
       const workspaceManager = new ConfigurationManager({
         projectRoot: workspaceDir,
         globalConfigDir: path.join(tempDir, 'global'),
-        cache: false
+        cache: false,
       });
 
       const config = await workspaceManager.load();
@@ -446,7 +446,7 @@ vars:
       const gitRoot = tempDir;
       const xecRoot = path.join(gitRoot, 'subproject');
       const workDir = path.join(xecRoot, 'src', 'components');
-      
+
       await fs.mkdir(workDir, { recursive: true });
       await fs.mkdir(path.join(gitRoot, '.git'), { recursive: true });
       await fs.mkdir(path.join(xecRoot, '.xec'), { recursive: true });
@@ -474,7 +474,7 @@ vars:
       const manager = new ConfigurationManager({
         projectRoot: workDir,
         globalConfigDir: path.join(tempDir, 'global'),
-        cache: false
+        cache: false,
       });
 
       const config = await manager.load();
@@ -494,7 +494,7 @@ vars:
         path.join(monorepoRoot, 'package.json'),
         JSON.stringify({
           name: 'my-monorepo',
-          workspaces: ['apps/*', 'packages/*']
+          workspaces: ['apps/*', 'packages/*'],
         })
       );
 
@@ -511,7 +511,7 @@ vars:
       const manager = new ConfigurationManager({
         projectRoot: workspaceDir,
         globalConfigDir: path.join(tempDir, 'global'),
-        cache: false
+        cache: false,
       });
 
       const config = await manager.load();
@@ -538,7 +538,7 @@ vars:
       const manager = new ConfigurationManager({
         projectRoot: isolatedDir,
         globalConfigDir: path.join(tempDir, 'global'),
-        cache: false
+        cache: false,
       });
 
       const config = await manager.load();
@@ -576,7 +576,7 @@ vars:
         projectRoot: workspaceDir,
         profile: 'production',
         globalConfigDir: path.join(tempDir, 'global'),
-        cache: false
+        cache: false,
       });
 
       const config = await manager.load();
@@ -595,11 +595,11 @@ vars:
       const manager = new ConfigurationManager({
         projectRoot: workspaceDir,
         globalConfigDir: path.join(tempDir, 'global'),
-        cache: false
+        cache: false,
       });
 
       const projectRoot = await manager.getProjectRoot();
-      
+
       expect(projectRoot).toBe(monorepoRoot);
     });
 
@@ -608,28 +608,25 @@ vars:
       const workspaceDir = path.join(monorepoRoot, 'apps', 'backend');
       await fs.mkdir(workspaceDir, { recursive: true });
       await fs.mkdir(path.join(monorepoRoot, '.git'), { recursive: true });
-      
+
       // Initialize manager from workspace
       const manager = new ConfigurationManager({
         projectRoot: workspaceDir,
         globalConfigDir: path.join(tempDir, 'global'),
-        cache: false
+        cache: false,
       });
 
       // Load default config
       await manager.load();
-      
+
       // Modify config
       manager.set('name', 'saved-to-root');
-      
+
       // Save without specifying path
       await manager.save();
 
       // Check that config was saved to monorepo root
-      const savedContent = await fs.readFile(
-        path.join(monorepoRoot, '.xec', 'config.yaml'),
-        'utf-8'
-      );
+      const savedContent = await fs.readFile(path.join(monorepoRoot, '.xec', 'config.yaml'), 'utf-8');
 
       expect(savedContent).toContain('name: saved-to-root');
     });

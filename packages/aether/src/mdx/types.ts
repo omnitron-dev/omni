@@ -175,14 +175,7 @@ export interface MDXComponentProps {
 /**
  * MDX Content type
  */
-export type MDXContent =
-  | string
-  | number
-  | boolean
-  | null
-  | undefined
-  | MDXElement
-  | MDXContent[];
+export type MDXContent = string | number | boolean | null | undefined | MDXElement | MDXContent[];
 
 /**
  * MDX Element

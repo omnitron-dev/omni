@@ -17,13 +17,7 @@ import { TableRowExtension } from '../../../../src/components/editor/extensions/
 import { TableCellExtension } from '../../../../src/components/editor/extensions/table/TableCellExtension.js';
 import { TableHeaderExtension } from '../../../../src/components/editor/extensions/table/TableHeaderExtension.js';
 import { HistoryExtension } from '../../../../src/components/editor/extensions/behavior/HistoryExtension.js';
-import {
-  createIntegrationTestEditor,
-  cleanupEditor,
-  setSelection,
-  toggleMarkCommand,
-  insertText,
-} from './helpers.js';
+import { createIntegrationTestEditor, cleanupEditor, setSelection, toggleMarkCommand, insertText } from './helpers.js';
 
 describe('Performance', () => {
   let editor: EditorInstance;

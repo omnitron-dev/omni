@@ -24,7 +24,7 @@ async function main() {
     distro: 'alpine',
     port: 2323,
     user: 'admin',
-    password: 'secret123'
+    password: 'secret123',
   });
   console.log(`   Connection: ${ssh2.getConnectionString()}`);
   console.log(`   Config:`, ssh2.getConnectionConfig());
@@ -46,7 +46,7 @@ async function main() {
   // Example 4: Different distributions
   console.log('\n4. Supported distributions:');
   const distros = ['ubuntu', 'alpine', 'debian', 'fedora', 'centos', 'rocky', 'alma'];
-  distros.forEach(distro => {
+  distros.forEach((distro) => {
     const ssh = new SSHFluentAPI(engine, { distro, port: 2500 + distros.indexOf(distro) });
     console.log(`   - ${distro.padEnd(8)} : ${ssh.getConnectionString()}`);
   });

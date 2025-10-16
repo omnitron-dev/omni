@@ -37,7 +37,15 @@ export interface RectProps extends Omit<JSX.SVGAttributes, 'x' | 'y' | 'width' |
 }
 
 export const Rect = defineComponent<RectProps>((props) => () => (
-  <rect {...props} x={props.x as any} y={props.y as any} width={props.width as any} height={props.height as any} rx={props.rx as any} ry={props.ry as any} />
+  <rect
+    {...props}
+    x={props.x as any}
+    y={props.y as any}
+    width={props.width as any}
+    height={props.height as any}
+    rx={props.rx as any}
+    ry={props.ry as any}
+  />
 ));
 
 /**
@@ -123,7 +131,14 @@ export interface UseProps extends Omit<JSX.SVGAttributes, 'x' | 'y' | 'width' | 
 }
 
 export const Use = defineComponent<UseProps>((props) => () => (
-  <use {...props} href={props.href as any} x={props.x as any} y={props.y as any} width={props.width as any} height={props.height as any} />
+  <use
+    {...props}
+    href={props.href as any}
+    x={props.x as any}
+    y={props.y as any}
+    width={props.width as any}
+    height={props.height as any}
+  />
 ));
 
 /**
@@ -137,7 +152,12 @@ export interface SymbolProps extends Omit<JSX.SVGAttributes, 'viewBox' | 'preser
 }
 
 export const Symbol = defineComponent<SymbolProps>((props) => () => (
-  <symbol {...props} id={props.id} viewBox={props.viewBox as any} preserveAspectRatio={props.preserveAspectRatio as any}>
+  <symbol
+    {...props}
+    id={props.id}
+    viewBox={props.viewBox as any}
+    preserveAspectRatio={props.preserveAspectRatio as any}
+  >
     {props.children}
   </symbol>
 ));

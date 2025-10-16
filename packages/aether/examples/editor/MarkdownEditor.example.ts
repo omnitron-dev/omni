@@ -70,10 +70,7 @@ import {
 import { CodeBlockExtension } from '../../src/components/editor/extensions/code/index.js';
 
 // Import behavior extensions
-import {
-  HistoryExtension,
-  PlaceholderExtension,
-} from '../../src/components/editor/extensions/behavior/index.js';
+import { HistoryExtension, PlaceholderExtension } from '../../src/components/editor/extensions/behavior/index.js';
 
 // Import markdown extension
 import {
@@ -654,8 +651,7 @@ function setupSyncScroll(editorPane: HTMLElement, previewPane: HTMLElement): voi
     isScrolling = true;
 
     // Calculate scroll percentage
-    const scrollPercentage =
-      editorPane.scrollTop / (editorPane.scrollHeight - editorPane.clientHeight);
+    const scrollPercentage = editorPane.scrollTop / (editorPane.scrollHeight - editorPane.clientHeight);
 
     // Apply to preview
     previewPane.scrollTop = scrollPercentage * (previewPane.scrollHeight - previewPane.clientHeight);
@@ -670,8 +666,7 @@ function setupSyncScroll(editorPane: HTMLElement, previewPane: HTMLElement): voi
     isScrolling = true;
 
     // Calculate scroll percentage
-    const scrollPercentage =
-      previewPane.scrollTop / (previewPane.scrollHeight - previewPane.clientHeight);
+    const scrollPercentage = previewPane.scrollTop / (previewPane.scrollHeight - previewPane.clientHeight);
 
     // Apply to editor
     editorPane.scrollTop = scrollPercentage * (editorPane.scrollHeight - editorPane.clientHeight);

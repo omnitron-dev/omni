@@ -388,11 +388,7 @@ export function isKeyboardFocusable(element: SVGElement): boolean {
   const tabIndex = element.getAttribute('tabindex');
   const focusable = element.getAttribute('focusable');
 
-  return (
-    (tabIndex !== null && tabIndex !== '-1') ||
-    focusable === 'true' ||
-    element.tagName.toLowerCase() === 'a'
-  );
+  return (tabIndex !== null && tabIndex !== '-1') || focusable === 'true' || element.tagName.toLowerCase() === 'a';
 }
 
 /**

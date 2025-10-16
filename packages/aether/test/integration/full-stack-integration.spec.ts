@@ -89,7 +89,7 @@ describe('Full-Stack Integration', () => {
       const compiled = await parallelCompiler.compileMany(sourceFiles);
 
       expect(compiled.length).toBe(3);
-      compiled.forEach(result => {
+      compiled.forEach((result) => {
         expect(result.code).toBeDefined();
         expect(result.code.length).toBeGreaterThan(0);
       });
@@ -100,7 +100,7 @@ describe('Full-Stack Integration', () => {
         minChunks: 2,
       });
 
-      compiled.forEach(result => {
+      compiled.forEach((result) => {
         chunkManager.addModule(result.path || 'unknown', ['@omnitron-dev/aether']);
       });
 
@@ -235,15 +235,15 @@ describe('Full-Stack Integration', () => {
 
         switch (f) {
           case 'active':
-            return all.filter(t => !t.done);
+            return all.filter((t) => !t.done);
           case 'completed':
-            return all.filter(t => t.done);
+            return all.filter((t) => t.done);
           default:
             return all;
         }
       });
 
-      const activeCount = computed(() => todos().filter(t => !t.done).length);
+      const activeCount = computed(() => todos().filter((t) => !t.done).length);
 
       memoryProfiler.trackComponent('TodoApp', 4096);
 
@@ -263,7 +263,7 @@ describe('Full-Stack Integration', () => {
 
         // Filters
         const filters = document.createElement('div');
-        ['all', 'active', 'completed'].forEach(f => {
+        ['all', 'active', 'completed'].forEach((f) => {
           const btn = document.createElement('button');
           btn.textContent = f;
           btn.onclick = () => filter.set(f as any);
@@ -274,7 +274,7 @@ describe('Full-Stack Integration', () => {
 
         // Todo list
         const list = document.createElement('ul');
-        filtered().forEach(todo => {
+        filtered().forEach((todo) => {
           const item = document.createElement('li');
 
           const checkbox = document.createElement('input');
@@ -282,11 +282,7 @@ describe('Full-Stack Integration', () => {
           checkbox.checked = todo.done;
           checkbox.onchange = () => {
             batch(() => {
-              todos.set(
-                todos().map(t =>
-                  t.id === todo.id ? { ...t, done: !t.done } : t
-                )
-              );
+              todos.set(todos().map((t) => (t.id === todo.id ? { ...t, done: !t.done } : t)));
             });
           };
 
@@ -310,9 +306,7 @@ describe('Full-Stack Integration', () => {
       expect(container.querySelectorAll('li').length).toBe(3);
 
       // Test filtering
-      const activeBtn = Array.from(container.querySelectorAll('button')).find(
-        b => b.textContent === 'active'
-      )!;
+      const activeBtn = Array.from(container.querySelectorAll('button')).find((b) => b.textContent === 'active')!;
       fireEvent.click(activeBtn);
 
       await waitFor(() => {
@@ -330,7 +324,7 @@ describe('Full-Stack Integration', () => {
       perfMonitor.mark('complex-app-end');
       perfMonitor.measure('complex-app', 'complex-app-start', 'complex-app-end');
 
-      const measure = perfMonitor.getMeasures().find(m => m.name === 'complex-app');
+      const measure = perfMonitor.getMeasures().find((m) => m.name === 'complex-app');
       expect(measure).toBeDefined();
       // More realistic expectation for complex app with DOM operations
       expect(measure!.duration).toBeLessThan(3000);
@@ -367,7 +361,7 @@ describe('Full-Stack Integration', () => {
         });
 
         const root = document.createElement('div');
-        elements.forEach(el => root.appendChild(el));
+        elements.forEach((el) => root.appendChild(el));
         return root as any;
       });
 
@@ -403,7 +397,7 @@ describe('Full-Stack Integration', () => {
       monitor.mark('load-test-start');
 
       const data = signal(Array.from({ length: 1000 }, (_, i) => i));
-      const filtered = computed(() => data().filter(x => x % 2 === 0));
+      const filtered = computed(() => data().filter((x) => x % 2 === 0));
       const sum = computed(() => filtered().reduce((a, b) => a + b, 0));
 
       // Multiple updates
@@ -418,7 +412,7 @@ describe('Full-Stack Integration', () => {
       monitor.mark('load-test-end');
       monitor.measure('load-test', 'load-test-start', 'load-test-end');
 
-      const measure = monitor.getMeasures().find(m => m.name === 'load-test');
+      const measure = monitor.getMeasures().find((m) => m.name === 'load-test');
       expect(measure).toBeDefined();
       expect(measure!.duration).toBeLessThan(500);
       expect(result).toBeGreaterThan(0);
@@ -555,20 +549,14 @@ describe('Full-Stack Integration', () => {
         const prods = products();
         const cat = category();
 
-        return cat === 'all'
-          ? prods
-          : prods.filter(p => p.category === cat);
+        return cat === 'all' ? prods : prods.filter((p) => p.category === cat);
       });
 
       const sorted = computed(() => {
         const prods = [...filtered()];
         const sort = sortBy();
 
-        return prods.sort((a, b) =>
-          sort === 'name'
-            ? a.name.localeCompare(b.name)
-            : a.price - b.price
-        );
+        return prods.sort((a, b) => (sort === 'name' ? a.name.localeCompare(b.name) : a.price - b.price));
       });
 
       const { container } = render(() => {
@@ -578,21 +566,20 @@ describe('Full-Stack Integration', () => {
         const controls = document.createElement('div');
 
         const catSelect = document.createElement('select');
-        ['all', 'Electronics', 'Furniture'].forEach(cat => {
+        ['all', 'Electronics', 'Furniture'].forEach((cat) => {
           const option = document.createElement('option');
           option.value = cat;
           option.textContent = cat;
           catSelect.appendChild(option);
         });
-        catSelect.onchange = (e) =>
-          category.set((e.target as HTMLSelectElement).value);
+        catSelect.onchange = (e) => category.set((e.target as HTMLSelectElement).value);
 
         controls.appendChild(catSelect);
         app.appendChild(controls);
 
         // Product list
         const list = document.createElement('div');
-        sorted().forEach(product => {
+        sorted().forEach((product) => {
           const item = document.createElement('div');
           item.textContent = `${product.name} - $${product.price}`;
           list.appendChild(item);
@@ -604,15 +591,15 @@ describe('Full-Stack Integration', () => {
 
       // Check that we have product items (actual structure is more nested)
       // The container has the app div, which has controls and product list divs
-      const productItems = Array.from(container.querySelectorAll('div')).filter(
-        div => div.textContent?.includes('$')
+      const productItems = Array.from(container.querySelectorAll('div')).filter((div) =>
+        div.textContent?.includes('$')
       );
       expect(productItems.length).toBeGreaterThanOrEqual(4);
 
       perfMonitor.mark('ecommerce-end');
       perfMonitor.measure('ecommerce', 'ecommerce-start', 'ecommerce-end');
 
-      const measure = perfMonitor.getMeasures().find(m => m.name === 'ecommerce');
+      const measure = perfMonitor.getMeasures().find((m) => m.name === 'ecommerce');
       expect(measure).toBeDefined();
 
       perfMonitor.dispose();
@@ -631,18 +618,13 @@ describe('Full-Stack Integration', () => {
       const users = signal<string[]>(['Alice', 'Bob']);
       const typing = signal<string[]>([]);
 
-      const sortedMessages = computed(() =>
-        [...messages()].sort((a, b) => a.timestamp - b.timestamp)
-      );
+      const sortedMessages = computed(() => [...messages()].sort((a, b) => a.timestamp - b.timestamp));
 
       // Simulate real-time messages
       let messageId = 1;
       const addMessage = (user: string, text: string) => {
         batch(() => {
-          messages.set([
-            ...messages(),
-            { id: messageId++, user, text, timestamp: Date.now() },
-          ]);
+          messages.set([...messages(), { id: messageId++, user, text, timestamp: Date.now() }]);
         });
       };
 
@@ -651,7 +633,7 @@ describe('Full-Stack Integration', () => {
 
         // Messages
         const messageList = document.createElement('div');
-        sortedMessages().forEach(msg => {
+        sortedMessages().forEach((msg) => {
           const item = document.createElement('div');
           item.textContent = `${msg.user}: ${msg.text}`;
           messageList.appendChild(item);
@@ -684,13 +666,13 @@ describe('Full-Stack Integration', () => {
         id: i,
         name: `Metric ${i}`,
         value: signal(Math.random() * 100),
-        trend: computed(() => Math.random() > 0.5 ? 'up' : 'down'),
+        trend: computed(() => (Math.random() > 0.5 ? 'up' : 'down')),
       }));
 
       const { container } = render(() => {
         const dashboard = document.createElement('div');
 
-        metrics.forEach(metric => {
+        metrics.forEach((metric) => {
           const card = document.createElement('div');
           card.className = 'metric-card';
 
@@ -716,7 +698,7 @@ describe('Full-Stack Integration', () => {
 
       // Simulate updates
       batch(() => {
-        metrics.forEach(m => {
+        metrics.forEach((m) => {
           m.value.set(Math.random() * 100);
         });
       });

@@ -32,7 +32,7 @@ export class MockProcess extends EventEmitter {
           this.push(options.stdout);
           this.push(null);
         }
-      }
+      },
     });
 
     // Create stderr stream
@@ -42,14 +42,14 @@ export class MockProcess extends EventEmitter {
           this.push(options.stderr);
           this.push(null);
         }
-      }
+      },
     });
 
     // Create stdin stream
     this.stdin = new Writable({
       write(chunk, encoding, callback) {
         callback();
-      }
+      },
     });
 
     // Schedule exit
@@ -81,8 +81,12 @@ export class MockProcess extends EventEmitter {
     return true;
   }
 
-  ref(): this { return this; }
-  unref(): this { return this; }
+  ref(): this {
+    return this;
+  }
+  unref(): this {
+    return this;
+  }
 }
 
 export function createMockProcess(options: MockProcessOptions = {}): MockProcess {
@@ -95,7 +99,10 @@ export function mockSpawnImplementation(expectedCommands: Map<string, MockProces
 
     // Find matching command
     for (const [pattern, processOptions] of expectedCommands) {
-      if (pattern === fullCommand || (pattern.includes('*') && new RegExp(pattern.replace('*', '.*')).test(fullCommand))) {
+      if (
+        pattern === fullCommand ||
+        (pattern.includes('*') && new RegExp(pattern.replace('*', '.*')).test(fullCommand))
+      ) {
         return createMockProcess(processOptions);
       }
     }
@@ -121,7 +128,7 @@ export async function setupTestEnvironment(): Promise<TestEnvironment> {
     tempDir,
     cleanup: async () => {
       await rm(tempDir, { recursive: true, force: true });
-    }
+    },
   };
 }
 
@@ -129,7 +136,7 @@ export function createStreamPair(): { readable: Readable; writable: Writable } {
   const passThrough = new PassThrough();
   return {
     readable: passThrough,
-    writable: passThrough
+    writable: passThrough,
   };
 }
 

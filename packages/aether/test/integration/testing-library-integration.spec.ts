@@ -264,21 +264,24 @@ describe('Testing Library Integration', () => {
         loading.set(false);
       }, 50);
 
-      await waitFor(() => {
-        rerender(() => {
-          const div = document.createElement('div');
+      await waitFor(
+        () => {
+          rerender(() => {
+            const div = document.createElement('div');
 
-          if (loading()) {
-            div.textContent = 'Loading...';
-          } else {
-            div.textContent = `Data: ${data()}`;
-          }
+            if (loading()) {
+              div.textContent = 'Loading...';
+            } else {
+              div.textContent = `Data: ${data()}`;
+            }
 
-          return div as any;
-        });
+            return div as any;
+          });
 
-        return !loading();
-      }, { timeout: 200 });
+          return !loading();
+        },
+        { timeout: 200 }
+      );
 
       expect(container.textContent).toContain('Loaded Data');
     });
@@ -307,23 +310,26 @@ describe('Testing Library Integration', () => {
         loading.set(false);
       }, 50);
 
-      await waitFor(() => {
-        rerender(() => {
-          const div = document.createElement('div');
+      await waitFor(
+        () => {
+          rerender(() => {
+            const div = document.createElement('div');
 
-          if (error()) {
-            div.textContent = `Error: ${error()!.message}`;
-          } else if (loading()) {
-            div.textContent = 'Loading...';
-          } else {
-            div.textContent = 'Success';
-          }
+            if (error()) {
+              div.textContent = `Error: ${error()!.message}`;
+            } else if (loading()) {
+              div.textContent = 'Loading...';
+            } else {
+              div.textContent = 'Success';
+            }
 
-          return div as any;
-        });
+            return div as any;
+          });
 
-        return error() !== null;
-      }, { timeout: 200 });
+          return error() !== null;
+        },
+        { timeout: 200 }
+      );
 
       expect(container.textContent).toContain('Failed to load');
     });
@@ -340,27 +346,30 @@ describe('Testing Library Integration', () => {
 
       // Simulate 3 concurrent async operations
       const operations = [
-        new Promise(resolve => setTimeout(() => resolve(1), 50)),
-        new Promise(resolve => setTimeout(() => resolve(2), 75)),
-        new Promise(resolve => setTimeout(() => resolve(3), 100)),
+        new Promise((resolve) => setTimeout(() => resolve(1), 50)),
+        new Promise((resolve) => setTimeout(() => resolve(2), 75)),
+        new Promise((resolve) => setTimeout(() => resolve(3), 100)),
       ];
 
-      operations.forEach(op => {
-        op.then(result => {
+      operations.forEach((op) => {
+        op.then((result) => {
           results.set([...results(), result as number]);
           loading.set(loading() - 1);
         });
       });
 
-      await waitFor(() => {
-        rerender(() => {
-          const div = document.createElement('div');
-          div.textContent = `Loading: ${loading()}, Results: ${results().length}`;
-          return div as any;
-        });
+      await waitFor(
+        () => {
+          rerender(() => {
+            const div = document.createElement('div');
+            div.textContent = `Loading: ${loading()}, Results: ${results().length}`;
+            return div as any;
+          });
 
-        return loading() === 0;
-      }, { timeout: 300 });
+          return loading() === 0;
+        },
+        { timeout: 300 }
+      );
 
       expect(results().length).toBe(3);
       expect(loading()).toBe(0);
@@ -378,7 +387,7 @@ describe('Testing Library Integration', () => {
         const div = document.createElement('div');
         const list = document.createElement('ul');
 
-        todos().forEach(todo => {
+        todos().forEach((todo) => {
           const item = document.createElement('li');
           item.textContent = `${todo.text} ${todo.done ? '✓' : ''}`;
           item.dataset.id = String(todo.id);
@@ -386,7 +395,7 @@ describe('Testing Library Integration', () => {
           const deleteBtn = document.createElement('button');
           deleteBtn.textContent = 'Delete';
           deleteBtn.onclick = () => {
-            todos.set(todos().filter(t => t.id !== todo.id));
+            todos.set(todos().filter((t) => t.id !== todo.id));
           };
 
           item.appendChild(deleteBtn);
@@ -461,7 +470,7 @@ describe('Testing Library Integration', () => {
 
       const filtered = computed(() => {
         const f = filter().toLowerCase();
-        return f ? items().filter(item => item.toLowerCase().includes(f)) : items();
+        return f ? items().filter((item) => item.toLowerCase().includes(f)) : items();
       });
 
       const { container, rerender } = render(() => {
@@ -472,7 +481,7 @@ describe('Testing Library Integration', () => {
         input.oninput = (e) => filter.set((e.target as HTMLInputElement).value);
 
         const list = document.createElement('ul');
-        filtered().forEach(item => {
+        filtered().forEach((item) => {
           const li = document.createElement('li');
           li.textContent = item;
           list.appendChild(li);
@@ -496,7 +505,7 @@ describe('Testing Library Integration', () => {
           input.value = filter();
 
           const list = document.createElement('ul');
-          filtered().forEach(item => {
+          filtered().forEach((item) => {
             const li = document.createElement('li');
             li.textContent = item;
             list.appendChild(li);
@@ -679,7 +688,7 @@ describe('Testing Library Integration', () => {
 
       cleanup();
 
-      results.forEach(result => {
+      results.forEach((result) => {
         expect(result.container.textContent).toBe('');
       });
     });

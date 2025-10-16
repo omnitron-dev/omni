@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const BrushIcon: IconDefinition = {
-  "id": "brush",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M11.1848 9.78893L14.1615 12.7441M9.86948 16.6099C11.1636 15.5765 12.9639 13.9334 14.4097 12.4981C18.7937 8.14571 21.6812 3.95586 20.8591 3.13976C20.0371 2.32366 15.8168 5.19034 11.4329 9.54266C9.98709 10.9781 8.33193 12.7652 7.29102 14.0501\" stroke-linecap=\"round\" />\n    <path d=\"M3.50602 16.6952C3.26382 19.5808 3.71144 18.3494 3.00195 20.8552C4.50548 21.253 7.91025 20.8601 9.05807 19.279C10.2403 17.8758 10.0958 16.36 9.20499 15.2051C8.62551 14.5773 7.35813 13.5303 5.51554 14.2814C3.89454 14.9421 3.63501 16.268 3.50602 16.6952Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "twotone",
-    "originalName": "BrushIcon",
-    "elementsCount": 2,
-    "hasOpacity": true,
-    "hasFill": false
-  }
+  id: 'brush',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path opacity="0.4" d="M11.1848 9.78893L14.1615 12.7441M9.86948 16.6099C11.1636 15.5765 12.9639 13.9334 14.4097 12.4981C18.7937 8.14571 21.6812 3.95586 20.8591 3.13976C20.0371 2.32366 15.8168 5.19034 11.4329 9.54266C9.98709 10.9781 8.33193 12.7652 7.29102 14.0501" stroke-linecap="round" />\n    <path d="M3.50602 16.6952C3.26382 19.5808 3.71144 18.3494 3.00195 20.8552C4.50548 21.253 7.91025 20.8601 9.05807 19.279C10.2403 17.8758 10.0958 16.36 9.20499 15.2051C8.62551 14.5773 7.35813 13.5303 5.51554 14.2814C3.89454 14.9421 3.63501 16.268 3.50602 16.6952Z" stroke-linecap="round" stroke-linejoin="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'twotone',
+    originalName: 'BrushIcon',
+    elementsCount: 2,
+    hasOpacity: true,
+    hasFill: false,
+  },
 };

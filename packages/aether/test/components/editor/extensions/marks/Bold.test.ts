@@ -96,9 +96,7 @@ describe('BoldExtension', () => {
 
     it('should serialize to <strong> tag', () => {
       const doc = schema.node('doc', null, [
-        schema.node('paragraph', null, [
-          schema.text('bold text', [schema.marks.bold.create()]),
-        ]),
+        schema.node('paragraph', null, [schema.text('bold text', [schema.marks.bold.create()])]),
       ]);
 
       const serializer = DOMSerializer.fromSchema(schema);
@@ -120,9 +118,7 @@ describe('BoldExtension', () => {
     });
 
     it('should toggle bold mark with Mod-b', () => {
-      const doc = schema.node('doc', null, [
-        schema.node('paragraph', null, [schema.text('test')]),
-      ]);
+      const doc = schema.node('doc', null, [schema.node('paragraph', null, [schema.text('test')])]);
 
       const state = EditorState.create({
         schema,

@@ -5,11 +5,7 @@
 
 import { ExecutionContext } from './execution-context.js';
 
-import type {
-  ScriptContext,
-  ExecutionResult,
-  EvaluationOptions,
-} from '../types/index.js';
+import type { ScriptContext, ExecutionResult, EvaluationOptions } from '../types/index.js';
 
 /**
  * CodeEvaluator evaluates inline code strings
@@ -18,10 +14,7 @@ export class CodeEvaluator {
   /**
    * Evaluate code string
    */
-  async evaluateCode(
-    code: string,
-    options: EvaluationOptions = {}
-  ): Promise<ExecutionResult> {
+  async evaluateCode(code: string, options: EvaluationOptions = {}): Promise<ExecutionResult> {
     try {
       // Prepare context
       const context: ScriptContext = options.context || {
@@ -66,10 +59,7 @@ export class CodeEvaluator {
   /**
    * Evaluate code and return result value
    */
-  async eval<T = any>(
-    code: string,
-    options: EvaluationOptions = {}
-  ): Promise<T> {
+  async eval<T = any>(code: string, options: EvaluationOptions = {}): Promise<T> {
     // Wrap code to return value as a function
     const wrappedCode = `
       export default async function __eval() {

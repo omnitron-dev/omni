@@ -21,10 +21,11 @@ export default defineComponent(() => {
 
   onMount(() => {
     // Add welcome message
-    messages.set([{
-      id: '1',
-      role: 'assistant',
-      content: `👋 Hello! I'm your AI assistant for Omnitron.
+    messages.set([
+      {
+        id: '1',
+        role: 'assistant',
+        content: `👋 Hello! I'm your AI assistant for Omnitron.
 
 I can help you with:
 • Writing and debugging code
@@ -34,8 +35,9 @@ I can help you with:
 • Architecture decisions
 
 How can I assist you today?`,
-      timestamp: new Date()
-    }]);
+        timestamp: new Date(),
+      },
+    ]);
   });
 
   const sendMessage = async () => {
@@ -47,10 +49,10 @@ How can I assist you today?`,
       id: Date.now().toString(),
       role: 'user',
       content: message,
-      timestamp: new Date()
+      timestamp: new Date(),
     };
 
-    messages.update(msgs => [...msgs, userMessage]);
+    messages.update((msgs) => [...msgs, userMessage]);
     inputMessage.set('');
     isTyping.set(true);
 
@@ -59,7 +61,7 @@ How can I assist you today?`,
       const responses = [
         "I understand you're working with flows. Let me help you create an efficient data pipeline.",
         "Here's a code snippet that might help:\n\n```typescript\nconst processData = async (input: any) => {\n  // Processing logic here\n  return transformed;\n}\n```",
-        "Based on your requirements, I recommend using a reactive pattern with Aether signals for optimal performance.",
+        'Based on your requirements, I recommend using a reactive pattern with Aether signals for optimal performance.',
         "That's an interesting approach! Have you considered using the built-in module system for better organization?",
         "I can help you optimize that. The key is to leverage Aether's fine-grained reactivity system.",
       ];
@@ -68,10 +70,10 @@ How can I assist you today?`,
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: responses[Math.floor(Math.random() * responses.length)],
-        timestamp: new Date()
+        timestamp: new Date(),
       };
 
-      messages.update(msgs => [...msgs, assistantMessage]);
+      messages.update((msgs) => [...msgs, assistantMessage]);
       isTyping.set(false);
     }, 1500);
   };
@@ -84,12 +86,14 @@ How can I assist you today?`,
   };
 
   const clearChat = () => {
-    messages.set([{
-      id: Date.now().toString(),
-      role: 'assistant',
-      content: 'Chat cleared. How can I help you?',
-      timestamp: new Date()
-    }]);
+    messages.set([
+      {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: 'Chat cleared. How can I help you?',
+        timestamp: new Date(),
+      },
+    ]);
   };
 
   return () => (
@@ -107,7 +111,9 @@ How can I assist you today?`,
             <option value="claude">Claude 3</option>
             <option value="llama">Llama 2</option>
           </select>
-          <button class="tool-button" onClick={clearChat}>Clear</button>
+          <button class="tool-button" onClick={clearChat}>
+            Clear
+          </button>
           <button class="tool-button">Export</button>
         </div>
       </div>
@@ -119,12 +125,8 @@ How can I assist you today?`,
               {(message) => (
                 <div class={`message message-${message().role}`}>
                   <div class="message-header">
-                    <span class="message-role">
-                      {message().role === 'user' ? '👤 You' : '🤖 Assistant'}
-                    </span>
-                    <span class="message-time">
-                      {message().timestamp.toLocaleTimeString()}
-                    </span>
+                    <span class="message-role">{message().role === 'user' ? '👤 You' : '🤖 Assistant'}</span>
+                    <span class="message-time">{message().timestamp.toLocaleTimeString()}</span>
                   </div>
                   <div class="message-content">
                     <pre>{message().content}</pre>
@@ -154,14 +156,16 @@ How can I assist you today?`,
                 rows={3}
               />
               <div class="chat-input-actions">
-                <button class="tool-button" title="Attach file">📎</button>
-                <button class="tool-button" title="Code block">{'</>'}</button>
-                <button class="tool-button" title="Settings">⚙️</button>
-                <button
-                  class="send-button"
-                  onClick={sendMessage}
-                  disabled={() => !inputMessage().trim() || isTyping()}
-                >
+                <button class="tool-button" title="Attach file">
+                  📎
+                </button>
+                <button class="tool-button" title="Code block">
+                  {'</>'}
+                </button>
+                <button class="tool-button" title="Settings">
+                  ⚙️
+                </button>
+                <button class="send-button" onClick={sendMessage} disabled={() => !inputMessage().trim() || isTyping()}>
                   {isTyping() ? '⏳' : '📤'} Send
                 </button>
               </div>

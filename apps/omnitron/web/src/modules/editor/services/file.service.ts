@@ -54,14 +54,14 @@ export class FileService {
   getActiveFile(): EditorFile | null {
     const id = this.activeFileId();
     if (!id) return null;
-    return this.files().find(f => f.id === id) ?? null;
+    return this.files().find((f) => f.id === id) ?? null;
   }
 
   /**
    * Get file by ID
    */
   getFile(id: string): EditorFile | undefined {
-    return this.files().find(f => f.id === id);
+    return this.files().find((f) => f.id === id);
   }
 
   /**
@@ -90,7 +90,7 @@ export class FileService {
 
     // Create root folders first
     const folders = new Set<string>();
-    this.files().forEach(file => {
+    this.files().forEach((file) => {
       const parts = file.path.split('/');
       for (let i = 1; i < parts.length; i++) {
         const folderPath = parts.slice(0, i).join('/');
@@ -99,30 +99,32 @@ export class FileService {
     });
 
     // Create folder nodes
-    Array.from(folders).sort().forEach(folderPath => {
-      const parts = folderPath.split('/').filter(Boolean);
-      const folderName = parts[parts.length - 1];
-      const parentPath = parts.slice(0, -1).join('/');
+    Array.from(folders)
+      .sort()
+      .forEach((folderPath) => {
+        const parts = folderPath.split('/').filter(Boolean);
+        const folderName = parts[parts.length - 1];
+        const parentPath = parts.slice(0, -1).join('/');
 
-      const folderNode: FileNode = {
-        id: `folder-${folderPath}`,
-        name: folderName,
-        type: 'folder',
-        path: folderPath,
-        children: [],
-      };
+        const folderNode: FileNode = {
+          id: `folder-${folderPath}`,
+          name: folderName,
+          type: 'folder',
+          path: folderPath,
+          children: [],
+        };
 
-      pathMap.set(folderPath, folderNode);
+        pathMap.set(folderPath, folderNode);
 
-      if (parentPath && pathMap.has(parentPath)) {
-        pathMap.get(parentPath)!.children!.push(folderNode);
-      } else {
-        tree.push(folderNode);
-      }
-    });
+        if (parentPath && pathMap.has(parentPath)) {
+          pathMap.get(parentPath)!.children!.push(folderNode);
+        } else {
+          tree.push(folderNode);
+        }
+      });
 
     // Add file nodes
-    this.files().forEach(file => {
+    this.files().forEach((file) => {
       const parts = file.path.split('/').filter(Boolean);
       const parentPath = parts.slice(0, -1).join('/');
 
@@ -167,7 +169,7 @@ export class FileService {
       isDirty: false,
     };
 
-    this.files.update(files => [...files, newFile]);
+    this.files.update((files) => [...files, newFile]);
     this.updateFileTree();
     this.setActiveFile(newFile.id);
 
@@ -194,13 +196,7 @@ export class FileService {
       pathParts[pathParts.length - 1] = newName;
       const newPath = pathParts.join('/');
 
-      this.files.update(files =>
-        files.map(f =>
-          f.id === id
-            ? { ...f, name: newName, path: newPath }
-            : f
-        )
-      );
+      this.files.update((files) => files.map((f) => (f.id === id ? { ...f, name: newName, path: newPath } : f)));
       this.updateFileTree();
       console.log(`[FileService] Renamed file: ${file.name} → ${newName}`);
     }
@@ -210,13 +206,7 @@ export class FileService {
    * Update file content
    */
   updateFileContent(id: string, content: string): void {
-    this.files.update(files =>
-      files.map(f =>
-        f.id === id
-          ? { ...f, content, isDirty: true }
-          : f
-      )
-    );
+    this.files.update((files) => files.map((f) => (f.id === id ? { ...f, content, isDirty: true } : f)));
   }
 
   /**
@@ -225,13 +215,7 @@ export class FileService {
   saveFile(id: string): void {
     const file = this.getFile(id);
     if (file) {
-      this.files.update(files =>
-        files.map(f =>
-          f.id === id
-            ? { ...f, isDirty: false }
-            : f
-        )
-      );
+      this.files.update((files) => files.map((f) => (f.id === id ? { ...f, isDirty: false } : f)));
       console.log(`[FileService] Saved file: ${file.name}`);
     }
   }
@@ -242,7 +226,7 @@ export class FileService {
   deleteFile(id: string): void {
     const file = this.getFile(id);
     if (file) {
-      this.files.update(files => files.filter(f => f.id !== id));
+      this.files.update((files) => files.filter((f) => f.id !== id));
       this.updateFileTree();
 
       // If deleted file was active, select another file
@@ -277,7 +261,8 @@ export class FileService {
         name: 'App.tsx',
         language: 'tsx',
         path: '/src/components/App.tsx',
-        content: 'import { defineComponent } from "@omnitron-dev/aether";\n\nexport const App = defineComponent(() => {\n  return () => <div>App</div>;\n});',
+        content:
+          'import { defineComponent } from "@omnitron-dev/aether";\n\nexport const App = defineComponent(() => {\n  return () => <div>App</div>;\n});',
         isDirty: false,
       },
       {
@@ -285,7 +270,8 @@ export class FileService {
         name: 'Button.tsx',
         language: 'tsx',
         path: '/src/components/Button.tsx',
-        content: 'import { defineComponent } from "@omnitron-dev/aether";\n\nexport const Button = defineComponent(() => {\n  return () => <button>Click me</button>;\n});',
+        content:
+          'import { defineComponent } from "@omnitron-dev/aether";\n\nexport const Button = defineComponent(() => {\n  return () => <button>Click me</button>;\n});',
         isDirty: false,
       },
       {
@@ -320,7 +306,7 @@ export class FileService {
    * Check if any files have unsaved changes
    */
   hasUnsavedChanges(): boolean {
-    return this.files().some(f => f.isDirty);
+    return this.files().some((f) => f.isDirty);
   }
 
   /**

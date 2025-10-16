@@ -27,8 +27,8 @@ describe('SSHAdapter - Comprehensive Unit Tests', () => {
           enabled: false,
           maxConnections: 5,
           idleTimeout: 120000,
-          keepAlive: false
-        }
+          keepAlive: false,
+        },
       });
       expect(customAdapter).toBeInstanceOf(SSHAdapter);
     });
@@ -38,8 +38,8 @@ describe('SSHAdapter - Comprehensive Unit Tests', () => {
         multiplexing: {
           enabled: true,
           controlPath: '/tmp/ssh-%r@%h:%p',
-          controlPersist: 300
-        }
+          controlPersist: 300,
+        },
       });
       expect(customAdapter).toBeInstanceOf(SSHAdapter);
     });
@@ -50,8 +50,8 @@ describe('SSHAdapter - Comprehensive Unit Tests', () => {
           enabled: true,
           password: 'test-password',
           prompt: '[sudo] password for %p:',
-          method: 'stdin'
-        }
+          method: 'stdin',
+        },
       });
       expect(customAdapter).toBeInstanceOf(SSHAdapter);
     });
@@ -60,8 +60,8 @@ describe('SSHAdapter - Comprehensive Unit Tests', () => {
       const customAdapter = new SSHAdapter({
         sftp: {
           enabled: false,
-          concurrency: 10
-        }
+          concurrency: 10,
+        },
       });
       expect(customAdapter).toBeInstanceOf(SSHAdapter);
     });
@@ -77,18 +77,22 @@ describe('SSHAdapter - Comprehensive Unit Tests', () => {
 
   describe('Error Handling', () => {
     it('should throw AdapterError when SSH options are missing', async () => {
-      await expect(adapter.execute({
-        command: 'ls'
-      })).rejects.toThrow('SSH connection options not provided');
+      await expect(
+        adapter.execute({
+          command: 'ls',
+        })
+      ).rejects.toThrow('SSH connection options not provided');
     });
 
     it('should throw AdapterError for invalid adapter options type', async () => {
-      await expect(adapter.execute({
-        command: 'ls',
-        adapterOptions: {
-          type: 'local' as any // Invalid type for SSH adapter
-        }
-      })).rejects.toThrow('SSH connection options not provided');
+      await expect(
+        adapter.execute({
+          command: 'ls',
+          adapterOptions: {
+            type: 'local' as any, // Invalid type for SSH adapter
+          },
+        })
+      ).rejects.toThrow('SSH connection options not provided');
     });
 
     // Connection tests require mocking - moved to integration tests
@@ -101,21 +105,21 @@ describe('SSHAdapter - Comprehensive Unit Tests', () => {
   describe('Connection Management', () => {
     it('should create adapter with connection pool disabled', () => {
       adapter = new SSHAdapter({
-        connectionPool: { enabled: false, maxConnections: 1, idleTimeout: 60000, keepAlive: false }
+        connectionPool: { enabled: false, maxConnections: 1, idleTimeout: 60000, keepAlive: false },
       });
       expect(adapter).toBeInstanceOf(SSHAdapter);
     });
 
     it('should create adapter with connection pool enabled', () => {
       adapter = new SSHAdapter({
-        connectionPool: { enabled: true, maxConnections: 5, idleTimeout: 60000, keepAlive: true }
+        connectionPool: { enabled: true, maxConnections: 5, idleTimeout: 60000, keepAlive: true },
       });
       expect(adapter).toBeInstanceOf(SSHAdapter);
     });
 
     it('should dispose without errors', async () => {
       adapter = new SSHAdapter({
-        connectionPool: { enabled: true, maxConnections: 5, idleTimeout: 60000, keepAlive: true }
+        connectionPool: { enabled: true, maxConnections: 5, idleTimeout: 60000, keepAlive: true },
       });
       await adapter.dispose();
       // Should not throw
@@ -128,15 +132,15 @@ describe('SSHAdapter - Comprehensive Unit Tests', () => {
         sudo: {
           enabled: true,
           password: 'test-password',
-          method: 'stdin'
-        }
+          method: 'stdin',
+        },
       });
       expect(adapter).toBeInstanceOf(SSHAdapter);
     });
 
     it('should create adapter with sudo enabled using askpass method', () => {
       adapter = new SSHAdapter({
-        sudo: { enabled: true, password: 'test-password', method: 'askpass' }
+        sudo: { enabled: true, password: 'test-password', method: 'askpass' },
       });
       expect(adapter).toBeInstanceOf(SSHAdapter);
     });
@@ -146,15 +150,15 @@ describe('SSHAdapter - Comprehensive Unit Tests', () => {
         sudo: {
           enabled: true,
           password: 'test-password',
-          method: 'echo'
-        }
+          method: 'echo',
+        },
       });
       expect(adapter).toBeInstanceOf(SSHAdapter);
     });
 
     it('should create adapter with sudo disabled', () => {
       adapter = new SSHAdapter({
-        sudo: { enabled: false }
+        sudo: { enabled: false },
       });
       expect(adapter).toBeInstanceOf(SSHAdapter);
     });
@@ -163,43 +167,45 @@ describe('SSHAdapter - Comprehensive Unit Tests', () => {
   describe('SFTP Operations', () => {
     it('should throw error when SFTP is disabled for upload', async () => {
       adapter = new SSHAdapter({
-        sftp: { enabled: false, concurrency: 5 }
+        sftp: { enabled: false, concurrency: 5 },
       });
 
-      await expect(adapter.uploadFile(
-        '/local/path/file.txt',
-        '/remote/path/file.txt',
-        { type: 'ssh', host: 'test-host', username: 'test' }
-      )).rejects.toThrow('SFTP is disabled');
+      await expect(
+        adapter.uploadFile('/local/path/file.txt', '/remote/path/file.txt', {
+          type: 'ssh',
+          host: 'test-host',
+          username: 'test',
+        })
+      ).rejects.toThrow('SFTP is disabled');
     });
 
     it('should throw error when SFTP is disabled for download', async () => {
       adapter = new SSHAdapter({
-        sftp: { enabled: false, concurrency: 5 }
+        sftp: { enabled: false, concurrency: 5 },
       });
 
-      await expect(adapter.downloadFile(
-        '/remote/path/file.txt',
-        '/local/path/file.txt',
-        { type: 'ssh', host: 'test-host', username: 'test' }
-      )).rejects.toThrow('SFTP is disabled');
+      await expect(
+        adapter.downloadFile('/remote/path/file.txt', '/local/path/file.txt', {
+          type: 'ssh',
+          host: 'test-host',
+          username: 'test',
+        })
+      ).rejects.toThrow('SFTP is disabled');
     });
 
     it('should throw error when SFTP is disabled for directory upload', async () => {
       adapter = new SSHAdapter({
-        sftp: { enabled: false, concurrency: 5 }
+        sftp: { enabled: false, concurrency: 5 },
       });
 
-      await expect(adapter.uploadDirectory(
-        '/local/dir',
-        '/remote/dir',
-        { type: 'ssh', host: 'test-host', username: 'test' }
-      )).rejects.toThrow('SFTP is disabled');
+      await expect(
+        adapter.uploadDirectory('/local/dir', '/remote/dir', { type: 'ssh', host: 'test-host', username: 'test' })
+      ).rejects.toThrow('SFTP is disabled');
     });
 
     it('should create adapter with SFTP enabled', () => {
       adapter = new SSHAdapter({
-        sftp: { enabled: true, concurrency: 5 }
+        sftp: { enabled: true, concurrency: 5 },
       });
       expect(adapter).toBeInstanceOf(SSHAdapter);
     });
@@ -208,10 +214,10 @@ describe('SSHAdapter - Comprehensive Unit Tests', () => {
       const adapters = [
         new SSHAdapter({ sftp: { enabled: true, concurrency: 1 } }),
         new SSHAdapter({ sftp: { enabled: true, concurrency: 10 } }),
-        new SSHAdapter({ sftp: { enabled: false, concurrency: 0 } })
+        new SSHAdapter({ sftp: { enabled: false, concurrency: 0 } }),
       ];
-      
-      adapters.forEach(a => {
+
+      adapters.forEach((a) => {
         expect(a).toBeInstanceOf(SSHAdapter);
       });
     });
@@ -240,7 +246,7 @@ describe('SSHAdapter - Comprehensive Unit Tests', () => {
 
     it('should create adapter with different encoding options', () => {
       adapter = new SSHAdapter({
-        encoding: 'utf8'
+        encoding: 'utf8',
       });
       expect(adapter).toBeInstanceOf(SSHAdapter);
     });
@@ -249,7 +255,7 @@ describe('SSHAdapter - Comprehensive Unit Tests', () => {
   describe('Connection Key Generation', () => {
     it('should create adapter with connection pooling for reuse', () => {
       adapter = new SSHAdapter({
-        connectionPool: { enabled: true, maxConnections: 5, idleTimeout: 60000, keepAlive: true }
+        connectionPool: { enabled: true, maxConnections: 5, idleTimeout: 60000, keepAlive: true },
       });
       expect(adapter).toBeInstanceOf(SSHAdapter);
     });
@@ -260,5 +266,4 @@ describe('SSHAdapter - Comprehensive Unit Tests', () => {
       expect(adapter).toBeInstanceOf(SSHAdapter);
     });
   });
-
 });

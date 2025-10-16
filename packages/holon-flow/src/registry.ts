@@ -215,11 +215,7 @@ export class FlowRegistry {
   /**
    * Search flows by metadata
    */
-  search(criteria: {
-    name?: string;
-    tag?: string;
-    effects?: number;
-  }): RegisteredFlow[] {
+  search(criteria: { name?: string; tag?: string; effects?: number }): RegisteredFlow[] {
     const results: RegisteredFlow[] = [];
 
     for (const flow of this.flows.values()) {

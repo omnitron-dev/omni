@@ -218,10 +218,7 @@ export interface BasicEditorInstance {
  * });
  * ```
  */
-export function createBasicEditor(
-  container: HTMLElement,
-  options: BasicEditorOptions = {}
-): BasicEditorInstance {
+export function createBasicEditor(container: HTMLElement, options: BasicEditorOptions = {}): BasicEditorInstance {
   // Destructure options with defaults
   const {
     content = '',
@@ -379,11 +376,7 @@ export function createBasicEditor(
  * @param editorClass - The CSS class for the editor element
  * @param placeholder - The placeholder text
  */
-function applyBasicStyles(
-  container: HTMLElement,
-  editorClass: string,
-  placeholder: string
-): void {
+function applyBasicStyles(container: HTMLElement, editorClass: string, placeholder: string): void {
   // Create a <style> element to inject CSS
   const styleId = 'basic-editor-styles';
 

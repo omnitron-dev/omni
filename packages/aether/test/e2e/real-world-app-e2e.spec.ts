@@ -50,31 +50,25 @@ describe('Real-World Application E2E Tests', () => {
       };
 
       const toggleTodo = (id: number) => {
-        todos.set(
-          todos().map(todo =>
-            todo.id === id ? { ...todo, completed: !todo.completed } : todo
-          )
-        );
+        todos.set(todos().map((todo) => (todo.id === id ? { ...todo, completed: !todo.completed } : todo)));
       };
 
       const deleteTodo = (id: number) => {
-        todos.set(todos().filter(t => t.id !== id));
+        todos.set(todos().filter((t) => t.id !== id));
       };
 
       const filteredTodos = computed(() => {
         let result = todos();
 
         if (filter() === 'active') {
-          result = result.filter(t => !t.completed);
+          result = result.filter((t) => !t.completed);
         } else if (filter() === 'completed') {
-          result = result.filter(t => t.completed);
+          result = result.filter((t) => t.completed);
         }
 
         if (sortBy() === 'priority') {
           const priorityOrder = { high: 0, medium: 1, low: 2 };
-          result = [...result].sort(
-            (a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]
-          );
+          result = [...result].sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
         }
 
         return result;
@@ -113,16 +107,16 @@ describe('Real-World Application E2E Tests', () => {
 
       const completeAll = () => {
         batch(() => {
-          todos.set(todos().map(todo => ({ ...todo, completed: true })));
+          todos.set(todos().map((todo) => ({ ...todo, completed: true })));
         });
       };
 
       const deleteCompleted = () => {
-        todos.set(todos().filter(t => !t.completed));
+        todos.set(todos().filter((t) => !t.completed));
       };
 
       completeAll();
-      expect(todos().every(t => t.completed)).toBe(true);
+      expect(todos().every((t) => t.completed)).toBe(true);
 
       deleteCompleted();
       expect(todos().length).toBe(0);
@@ -181,7 +175,7 @@ describe('Real-World Application E2E Tests', () => {
 
       for (let i = 0; i < 5; i++) {
         updateMetrics();
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
       }
 
       expect(history().length).toBeGreaterThan(4);
@@ -197,7 +191,7 @@ describe('Real-World Application E2E Tests', () => {
       );
 
       const stats = computed(() => {
-        const values = dataPoints().map(d => d.value);
+        const values = dataPoints().map((d) => d.value);
         return {
           min: Math.min(...values),
           max: Math.max(...values),
@@ -226,7 +220,7 @@ describe('Real-World Application E2E Tests', () => {
       };
 
       const dismissNotification = (id: number) => {
-        notifications.set(notifications().filter(n => n.id !== id));
+        notifications.set(notifications().filter((n) => n.id !== id));
       };
 
       addNotification('New user signed up', 'info');
@@ -264,17 +258,15 @@ describe('Real-World Application E2E Tests', () => {
         const currentFilters = filters();
 
         if (currentFilters.category !== 'all') {
-          result = result.filter(p => p.category === currentFilters.category);
+          result = result.filter((p) => p.category === currentFilters.category);
         }
 
         result = result.filter(
-          p =>
-            p.price >= currentFilters.priceRange.min &&
-            p.price <= currentFilters.priceRange.max
+          (p) => p.price >= currentFilters.priceRange.min && p.price <= currentFilters.priceRange.max
         );
 
         if (currentFilters.inStockOnly) {
-          result = result.filter(p => p.inStock);
+          result = result.filter((p) => p.inStock);
         }
 
         return result;
@@ -300,29 +292,23 @@ describe('Real-World Application E2E Tests', () => {
       const cart = signal<Array<{ id: number; quantity: number; price: number }>>([]);
 
       const addToCart = (id: number, price: number, quantity = 1) => {
-        const existing = cart().find(item => item.id === id);
+        const existing = cart().find((item) => item.id === id);
         if (existing) {
-          cart.set(
-            cart().map(item =>
-              item.id === id ? { ...item, quantity: item.quantity + quantity } : item
-            )
-          );
+          cart.set(cart().map((item) => (item.id === id ? { ...item, quantity: item.quantity + quantity } : item)));
         } else {
           cart.set([...cart(), { id, quantity, price }]);
         }
       };
 
       const removeFromCart = (id: number) => {
-        cart.set(cart().filter(item => item.id !== id));
+        cart.set(cart().filter((item) => item.id !== id));
       };
 
       const updateQuantity = (id: number, quantity: number) => {
         if (quantity <= 0) {
           removeFromCart(id);
         } else {
-          cart.set(
-            cart().map(item => (item.id === id ? { ...item, quantity } : item))
-          );
+          cart.set(cart().map((item) => (item.id === id ? { ...item, quantity } : item)));
         }
       };
 
@@ -371,7 +357,7 @@ describe('Real-World Application E2E Tests', () => {
       };
 
       const confirmOrder = async () => {
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
         checkoutState.set({ ...checkoutState(), confirmed: true, step: 'complete' });
       };
 
@@ -402,7 +388,7 @@ describe('Real-World Application E2E Tests', () => {
         if (loading() || !hasMore()) return;
 
         loading.set(true);
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
 
         const newPosts = Array.from({ length: 20 }, (_, i) => ({
           id: page() * 20 + i,
@@ -438,7 +424,7 @@ describe('Real-World Application E2E Tests', () => {
 
       const likePost = (id: number) => {
         posts.set(
-          posts().map(post =>
+          posts().map((post) =>
             post.id === id
               ? {
                   ...post,
@@ -452,14 +438,11 @@ describe('Real-World Application E2E Tests', () => {
 
       const addComment = (postId: number, text: string) => {
         posts.set(
-          posts().map(post =>
+          posts().map((post) =>
             post.id === postId
               ? {
                   ...post,
-                  comments: [
-                    ...post.comments,
-                    { id: Date.now(), text, timestamp: Date.now() },
-                  ],
+                  comments: [...post.comments, { id: Date.now(), text, timestamp: Date.now() }],
                 }
               : post
           )
@@ -601,16 +584,16 @@ describe('Real-World Application E2E Tests', () => {
       const fields = signal<Array<{ id: number; value: string }>>([{ id: 1, value: '' }]);
 
       const addField = () => {
-        const maxId = Math.max(...fields().map(f => f.id), 0);
+        const maxId = Math.max(...fields().map((f) => f.id), 0);
         fields.set([...fields(), { id: maxId + 1, value: '' }]);
       };
 
       const removeField = (id: number) => {
-        fields.set(fields().filter(f => f.id !== id));
+        fields.set(fields().filter((f) => f.id !== id));
       };
 
       const updateField = (id: number, value: string) => {
-        fields.set(fields().map(f => (f.id === id ? { ...f, value } : f)));
+        fields.set(fields().map((f) => (f.id === id ? { ...f, value } : f)));
       };
 
       expect(fields().length).toBe(1);
@@ -641,7 +624,7 @@ describe('Real-World Application E2E Tests', () => {
         const data = rawData();
         const byCategory: Record<string, number[]> = { A: [], B: [], C: [] };
 
-        data.forEach(item => {
+        data.forEach((item) => {
           byCategory[item.category].push(item.value);
         });
 
@@ -671,11 +654,9 @@ describe('Real-World Application E2E Tests', () => {
       const valueRange = signal({ min: 0, max: 100 });
 
       const filteredData = computed(() => {
-        return data().filter(item => {
-          const dateInRange =
-            item.date >= dateRange().start && item.date <= dateRange().end;
-          const valueInRange =
-            item.value >= valueRange().min && item.value <= valueRange().max;
+        return data().filter((item) => {
+          const dateInRange = item.date >= dateRange().start && item.date <= dateRange().end;
+          const valueInRange = item.value >= valueRange().min && item.value <= valueRange().max;
           return dateInRange && valueInRange;
         });
       });
@@ -684,7 +665,7 @@ describe('Real-World Application E2E Tests', () => {
 
       valueRange.set({ min: 50, max: 100 });
       expect(filteredData().length).toBeLessThan(1000);
-      expect(filteredData().every(item => item.value >= 50)).toBe(true);
+      expect(filteredData().every((item) => item.value >= 50)).toBe(true);
     });
 
     it('should calculate statistical measures', () => {
@@ -695,8 +676,7 @@ describe('Real-World Application E2E Tests', () => {
         const sorted = [...data].sort((a, b) => a - b);
         const sum = data.reduce((a, b) => a + b, 0);
         const mean = sum / data.length;
-        const variance =
-          data.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / data.length;
+        const variance = data.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / data.length;
 
         return {
           mean,
@@ -721,7 +701,7 @@ describe('Real-World Application E2E Tests', () => {
       const orders = signal<any[]>([]);
 
       const login = async (username: string, password: string) => {
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
         user.set({ loggedIn: true, id: 1 });
       };
 
@@ -730,11 +710,8 @@ describe('Real-World Application E2E Tests', () => {
       };
 
       const checkout = async () => {
-        await new Promise(resolve => setTimeout(resolve, 50));
-        orders.set([
-          ...orders(),
-          { id: orders().length + 1, items: [...cart()], timestamp: Date.now() },
-        ]);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        orders.set([...orders(), { id: orders().length + 1, items: [...cart()], timestamp: Date.now() }]);
         cart.set([]);
       };
 

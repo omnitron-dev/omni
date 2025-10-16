@@ -6,21 +6,10 @@
  */
 
 import type { Flow, FlowMeta } from './types.js';
-import type {
-  FlowId,
-  FlowMetadata,
-  FlowStructure,
-  FlowJSON,
-  FlowGraph,
-  Transformer,
-} from './reflection.js';
+import type { FlowId, FlowMetadata, FlowStructure, FlowJSON, FlowGraph, Transformer } from './reflection.js';
 import { flow as basicFlow } from './flow.js';
 import { registerFlow, globalFlowRegistry } from './registry.js';
-import {
-  extractSourceLocation,
-  calculateComplexity,
-  createFlowId,
-} from './reflection.js';
+import { extractSourceLocation, calculateComplexity, createFlowId } from './reflection.js';
 import { EffectFlags } from './effects/index.js';
 
 /**
@@ -136,13 +125,11 @@ export interface FlowMachineOptions<In, Out> {
  */
 export function createFlowMachine<In, Out>(
   fnOrOptions: ((input: In) => Out | Promise<Out>) | FlowMachineOptions<In, Out>,
-  meta?: FlowMeta,
+  meta?: FlowMeta
 ): FlowMachine<In, Out> {
   // Normalize arguments
   const options: FlowMachineOptions<In, Out> =
-    typeof fnOrOptions === 'function'
-      ? { fn: fnOrOptions, meta }
-      : fnOrOptions;
+    typeof fnOrOptions === 'function' ? { fn: fnOrOptions, meta } : fnOrOptions;
 
   const { fn, meta: flowMeta, effects: effectFlags, compiledMetadata } = options;
 
@@ -235,11 +222,11 @@ export function createFlowMachine<In, Out>(
       dep.inspect
         ? dep.inspect()
         : {
-          id: createFlowId(dep.toString()),
-          type: 'simple',
-          components: [],
-          metadata: dep.meta || {},
-        },
+            id: createFlowId(dep.toString()),
+            type: 'simple',
+            components: [],
+            metadata: dep.meta || {},
+          }
     ),
     metadata,
   });
@@ -419,20 +406,13 @@ export function createFlowMachine<In, Out>(
  * Compose multiple Flows into a FlowMachine pipeline
  */
 export function composeMachine<A, B>(f1: Flow<A, B>): FlowMachine<A, B>;
-export function composeMachine<A, B, C>(
-  f1: Flow<A, B>,
-  f2: Flow<B, C>,
-): FlowMachine<A, C>;
-export function composeMachine<A, B, C, D>(
-  f1: Flow<A, B>,
-  f2: Flow<B, C>,
-  f3: Flow<C, D>,
-): FlowMachine<A, D>;
+export function composeMachine<A, B, C>(f1: Flow<A, B>, f2: Flow<B, C>): FlowMachine<A, C>;
+export function composeMachine<A, B, C, D>(f1: Flow<A, B>, f2: Flow<B, C>, f3: Flow<C, D>): FlowMachine<A, D>;
 export function composeMachine<A, B, C, D, E>(
   f1: Flow<A, B>,
   f2: Flow<B, C>,
   f3: Flow<C, D>,
-  f4: Flow<D, E>,
+  f4: Flow<D, E>
 ): FlowMachine<A, E>;
 export function composeMachine(...flows: Flow[]): FlowMachine {
   if (flows.length === 0) {

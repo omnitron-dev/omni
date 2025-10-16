@@ -5,11 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  calculatePosition,
-  applyPosition,
-  calculateArrowPosition,
-} from '../../../../src/primitives/utils/position.js';
+import { calculatePosition, applyPosition, calculateArrowPosition } from '../../../../src/primitives/utils/position.js';
 
 describe('Positioning Utilities', () => {
   let anchor: HTMLElement;

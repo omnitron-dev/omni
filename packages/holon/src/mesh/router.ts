@@ -6,7 +6,7 @@ import type { RouterConfig, RouteTarget, CircuitBreakerConfig } from '../types.j
 import { EventEmitter } from 'eventemitter3';
 
 export interface RouterEvents {
-  'route': (target: RouteTarget) => void;
+  route: (target: RouteTarget) => void;
   'circuit:open': (targetId: string) => void;
   'circuit:close': (targetId: string) => void;
 }
@@ -99,10 +99,7 @@ export class Router extends EventEmitter<RouterEvents> {
   /**
    * Execute request on target with circuit breaker
    */
-  async execute<T>(
-    targetId: string,
-    fn: () => Promise<T>
-  ): Promise<T> {
+  async execute<T>(targetId: string, fn: () => Promise<T>): Promise<T> {
     const breaker = this.circuitBreakers.get(targetId);
     if (!breaker) {
       throw new Error(`No circuit breaker for target: ${targetId}`);
@@ -134,9 +131,7 @@ export class Router extends EventEmitter<RouterEvents> {
    * Least-loaded selection
    */
   private leastLoadedSelect(targets: RouteTarget[]): RouteTarget {
-    return targets.reduce((min, target) =>
-      target.load < min.load ? target : min
-    );
+    return targets.reduce((min, target) => (target.load < min.load ? target : min));
   }
 
   /**

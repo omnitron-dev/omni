@@ -24,7 +24,7 @@ export enum PluginPhase {
   /** Aether transformation phase */
   AETHER = 'aether',
   /** Cleanup phase */
-  CLEANUP = 'cleanup'
+  CLEANUP = 'cleanup',
 }
 
 /**

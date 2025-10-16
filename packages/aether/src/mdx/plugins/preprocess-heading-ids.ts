@@ -21,9 +21,11 @@ export function preprocessHeadingIds(content: string): string {
   // Pattern: heading markers + text + {#id}
   const headingPattern = /^(#{1,6}\s+.+?)\s+\{#([a-zA-Z0-9-_]+)\}\s*$/gm;
 
-  return content.replace(headingPattern, (match, headingText, id) =>
-    // Convert to JSX comment to avoid MDX expression parsing
-    // Use {/* */} syntax which is valid in MDX
-    `${headingText} {/* mdx-heading-id: ${id} */}`
+  return content.replace(
+    headingPattern,
+    (match, headingText, id) =>
+      // Convert to JSX comment to avoid MDX expression parsing
+      // Use {/* */} syntax which is valid in MDX
+      `${headingText} {/* mdx-heading-id: ${id} */}`
   );
 }

@@ -52,7 +52,7 @@ describe('StreamHandler Memory Management', () => {
       const onError = jest.fn();
       const handler = new StreamHandler({
         maxBuffer: 10, // Very small buffer
-        onError
+        onError,
       });
 
       const transform = handler.createTransform();
@@ -267,7 +267,7 @@ describe('StreamHandler Memory Management', () => {
       const transform = handler.createTransform();
 
       // Write partial UTF-8 sequence
-      const partialUtf8 = Buffer.from([0xE2, 0x82]); // Partial Euro sign
+      const partialUtf8 = Buffer.from([0xe2, 0x82]); // Partial Euro sign
       transform.write(partialUtf8);
 
       // Reset should clear decoder state
@@ -297,7 +297,7 @@ describe('StreamHandler Memory Management', () => {
       const onError = jest.fn();
       const handler = new StreamHandler({
         maxBuffer: 10,
-        onError
+        onError,
       });
 
       const transform = handler.createTransform();
@@ -330,7 +330,7 @@ describe('StreamHandler Memory Management', () => {
       transform.write(Buffer.from('test'));
 
       // Give time for any async operations
-      return new Promise(resolve => setTimeout(resolve, 10)).then(() => {
+      return new Promise((resolve) => setTimeout(resolve, 10)).then(() => {
         expect(onData).not.toHaveBeenCalled();
       });
     });
@@ -355,12 +355,12 @@ describe('StreamHandler Memory Management', () => {
 
         // If backpressure, wait for drain
         if (!canContinue) {
-          await new Promise(resolve => transform.once('drain', resolve));
+          await new Promise((resolve) => transform.once('drain', resolve));
         }
       }
 
       // Give transform a chance to process final chunks
-      await new Promise(resolve => setImmediate(resolve));
+      await new Promise((resolve) => setImmediate(resolve));
 
       const buffer = handler.getBuffer();
       expect(buffer.length).toBe(chunkSize * numChunks);

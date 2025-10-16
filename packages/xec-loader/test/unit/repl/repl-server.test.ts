@@ -230,9 +230,12 @@ describe('REPLServer', () => {
       const nodeServer = server.start();
 
       server.registerCommand('test', 'Test command', vi.fn());
-      expect(nodeServer.defineCommand).toHaveBeenCalledWith('test', expect.objectContaining({
-        help: 'Test command',
-      }));
+      expect(nodeServer.defineCommand).toHaveBeenCalledWith(
+        'test',
+        expect.objectContaining({
+          help: 'Test command',
+        })
+      );
     });
 
     it('should unregister command', () => {

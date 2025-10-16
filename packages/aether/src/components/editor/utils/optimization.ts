@@ -27,10 +27,7 @@ export interface IdleDeadline {
 /**
  * Request idle callback (with fallback)
  */
-export function requestIdleCallback(
-  callback: (deadline: IdleDeadline) => void,
-  options?: IdleCallbackOptions
-): number {
+export function requestIdleCallback(callback: (deadline: IdleDeadline) => void, options?: IdleCallbackOptions): number {
   if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
     return window.requestIdleCallback(callback, options);
   }
@@ -59,10 +56,7 @@ export function cancelIdleCallback(id: number): void {
 /**
  * Schedule task during idle time
  */
-export function scheduleIdleTask<T>(
-  task: () => T,
-  options?: IdleCallbackOptions
-): Promise<T> {
+export function scheduleIdleTask<T>(task: () => T, options?: IdleCallbackOptions): Promise<T> {
   return new Promise((resolve) => {
     requestIdleCallback(() => {
       resolve(task());
@@ -439,10 +433,7 @@ export class IntersectionObserverUtil {
 /**
  * Wait for element to be visible
  */
-export function waitForVisible(
-  element: Element,
-  options?: IntersectionObserverInit
-): Promise<void> {
+export function waitForVisible(element: Element, options?: IntersectionObserverInit): Promise<void> {
   return new Promise((resolve) => {
     const observer = new IntersectionObserverUtil(options);
     observer.observe(element, (entries) => {
@@ -478,9 +469,7 @@ export function lazyLoad<T>(
       if (options.timeout) {
         promise = Promise.race([
           promise,
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('Lazy load timeout')), options.timeout)
-          ),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Lazy load timeout')), options.timeout)),
         ]);
       }
     }

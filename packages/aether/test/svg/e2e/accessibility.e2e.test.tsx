@@ -27,9 +27,7 @@ describe('SVG Accessibility E2E Tests', () => {
 
   describe('ARIA Attributes', () => {
     it('should have proper role for interactive icons', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" role="img" aria-label="Settings icon" />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" role="img" aria-label="Settings icon" />);
 
       const svg = container.querySelector('svg');
       expect(svg?.getAttribute('role')).toBe('img');
@@ -69,18 +67,14 @@ describe('SVG Accessibility E2E Tests', () => {
     });
 
     it('should include title element for tooltips', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" title="Settings" />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" title="Settings" />);
 
       const svg = container.querySelector('svg');
       expect(svg?.getAttribute('title')).toBe('Settings');
     });
 
     it('should include desc element for descriptions', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" desc="Opens the settings menu" />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" desc="Opens the settings menu" />);
 
       const svg = container.querySelector('svg');
       expect(svg?.getAttribute('desc')).toBe('Opens the settings menu');
@@ -88,12 +82,7 @@ describe('SVG Accessibility E2E Tests', () => {
 
     it('should combine title and aria-label appropriately', () => {
       const { container } = render(() => (
-        <SVGIcon
-          path="M10 10 L20 20 Z"
-          title="Settings Icon"
-          aria-label="Open settings"
-          role="img"
-        />
+        <SVGIcon path="M10 10 L20 20 Z" title="Settings Icon" aria-label="Open settings" role="img" />
       ));
 
       const svg = container.querySelector('svg');
@@ -107,12 +96,7 @@ describe('SVG Accessibility E2E Tests', () => {
     it('should be focusable when interactive', () => {
       const onClick = vi.fn();
       const { container } = render(() => (
-        <SVGIcon
-          path="M10 10 L20 20 Z"
-          onClick={onClick}
-          role="button"
-          aria-label="Toggle menu"
-        />
+        <SVGIcon path="M10 10 L20 20 Z" onClick={onClick} role="button" aria-label="Toggle menu" />
       ));
 
       const svg = container.querySelector('svg');
@@ -126,12 +110,7 @@ describe('SVG Accessibility E2E Tests', () => {
     it('should respond to Enter key on focusable icons', () => {
       const onClick = vi.fn();
       const { container } = render(() => (
-        <SVGIcon
-          path="M10 10 L20 20 Z"
-          onClick={onClick}
-          role="button"
-          aria-label="Submit"
-        />
+        <SVGIcon path="M10 10 L20 20 Z" onClick={onClick} role="button" aria-label="Submit" />
       ));
 
       const svg = container.querySelector('svg');
@@ -147,12 +126,7 @@ describe('SVG Accessibility E2E Tests', () => {
     it('should respond to Space key on focusable icons', () => {
       const onClick = vi.fn();
       const { container } = render(() => (
-        <SVGIcon
-          path="M10 10 L20 20 Z"
-          onClick={onClick}
-          role="button"
-          aria-label="Play"
-        />
+        <SVGIcon path="M10 10 L20 20 Z" onClick={onClick} role="button" aria-label="Play" />
       ));
 
       const svg = container.querySelector('svg');
@@ -165,9 +139,7 @@ describe('SVG Accessibility E2E Tests', () => {
     });
 
     it('should maintain focus visible state', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" role="button" aria-label="Focus test" />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" role="button" aria-label="Focus test" />);
 
       const svg = container.querySelector('svg');
 
@@ -181,9 +153,7 @@ describe('SVG Accessibility E2E Tests', () => {
 
   describe('Screen Reader Support', () => {
     it('should provide text alternative for non-decorative icons', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" aria-label="Home page" role="img" />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" aria-label="Home page" role="img" />);
 
       const svg = container.querySelector('svg');
       expect(svg?.getAttribute('aria-label')).toBe('Home page');
@@ -191,9 +161,7 @@ describe('SVG Accessibility E2E Tests', () => {
     });
 
     it('should hide decorative icons from screen readers', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" decorative />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" decorative />);
 
       const svg = container.querySelector('svg');
       expect(svg?.getAttribute('aria-hidden')).toBe('true');
@@ -202,11 +170,7 @@ describe('SVG Accessibility E2E Tests', () => {
     it('should announce state changes', () => {
       // Test with initial inactive state
       const { container: container1 } = render(() => (
-        <SVGIcon
-          path="M10 10 L20 20 Z"
-          aria-label="Status: inactive"
-          role="img"
-        />
+        <SVGIcon path="M10 10 L20 20 Z" aria-label="Status: inactive" role="img" />
       ));
 
       const svg1 = container1.querySelector('svg');
@@ -214,11 +178,7 @@ describe('SVG Accessibility E2E Tests', () => {
 
       // Test with active state
       const { container: container2 } = render(() => (
-        <SVGIcon
-          path="M10 10 L20 20 Z"
-          aria-label="Status: active"
-          role="img"
-        />
+        <SVGIcon path="M10 10 L20 20 Z" aria-label="Status: active" role="img" />
       ));
 
       const svg2 = container2.querySelector('svg');
@@ -252,12 +212,7 @@ describe('SVG Accessibility E2E Tests', () => {
     it('should announce loading states', () => {
       // Test loading state
       const { container: container1 } = render(() => (
-        <SVGIcon
-          path="M10 10 L20 20 Z"
-          spin
-          aria-label="Loading..."
-          role="img"
-        />
+        <SVGIcon path="M10 10 L20 20 Z" spin aria-label="Loading..." role="img" />
       ));
 
       const svg1 = container1.querySelector('svg');
@@ -265,11 +220,7 @@ describe('SVG Accessibility E2E Tests', () => {
 
       // Test complete state
       const { container: container2 } = render(() => (
-        <SVGIcon
-          path="M10 10 L20 20 Z"
-          aria-label="Complete"
-          role="img"
-        />
+        <SVGIcon path="M10 10 L20 20 Z" aria-label="Complete" role="img" />
       ));
 
       const svg2 = container2.querySelector('svg');
@@ -298,12 +249,7 @@ describe('SVG Accessibility E2E Tests', () => {
       const [showModal, setShowModal] = createSignal(false);
       const { container } = render(() => (
         <div>
-          <SVGIcon
-            path="M10 10 L20 20 Z"
-            onClick={() => setShowModal(true)}
-            role="button"
-            aria-label="Open modal"
-          />
+          <SVGIcon path="M10 10 L20 20 Z" onClick={() => setShowModal(true)} role="button" aria-label="Open modal" />
           {showModal() && (
             <div role="dialog" aria-label="Modal">
               <SVGIcon
@@ -372,9 +318,7 @@ describe('SVG Accessibility E2E Tests', () => {
     });
 
     it('should mark informational icons appropriately', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" role="img" aria-label="Information" />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" role="img" aria-label="Information" />);
 
       const svg = container.querySelector('svg');
       expect(svg?.getAttribute('role')).toBe('img');
@@ -387,11 +331,7 @@ describe('SVG Accessibility E2E Tests', () => {
       // Test initial state
       const { container: container1 } = render(() => (
         <div aria-live="polite" aria-atomic="true">
-          <SVGIcon
-            path="M10 10 L20 20 Z"
-            aria-label="0 notifications"
-            role="img"
-          />
+          <SVGIcon path="M10 10 L20 20 Z" aria-label="0 notifications" role="img" />
         </div>
       ));
 
@@ -403,11 +343,7 @@ describe('SVG Accessibility E2E Tests', () => {
       // Test updated state
       const { container: container2 } = render(() => (
         <div aria-live="polite" aria-atomic="true">
-          <SVGIcon
-            path="M10 10 L20 20 Z"
-            aria-label="5 notifications"
-            role="img"
-          />
+          <SVGIcon path="M10 10 L20 20 Z" aria-label="5 notifications" role="img" />
         </div>
       ));
 
@@ -439,12 +375,7 @@ describe('SVG Accessibility E2E Tests', () => {
   describe('High Contrast Mode', () => {
     it('should maintain visibility in high contrast', () => {
       const { container } = render(() => (
-        <SVGIcon
-          path="M10 10 L20 20 Z"
-          stroke="currentColor"
-          fill="none"
-          aria-label="Outline icon"
-        />
+        <SVGIcon path="M10 10 L20 20 Z" stroke="currentColor" fill="none" aria-label="Outline icon" />
       ));
 
       const path = container.querySelector('path');
@@ -464,9 +395,7 @@ describe('SVG Accessibility E2E Tests', () => {
   describe('Reduced Motion', () => {
     it('should respect prefers-reduced-motion for animations', () => {
       // Note: Actual implementation would check media query
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" spin aria-label="Loading" />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" spin aria-label="Loading" />);
 
       const svg = container.querySelector('svg');
       expect(svg?.style.animation).toContain('aether-spin');
@@ -475,25 +404,14 @@ describe('SVG Accessibility E2E Tests', () => {
     it('should provide alternative to animations', () => {
       // Test loading state with animation
       const { container: container1 } = render(() => (
-        <SVGIcon
-          path="M10 10 L20 20 Z"
-          spin
-          aria-label="Loading..."
-          role="img"
-        />
+        <SVGIcon path="M10 10 L20 20 Z" spin aria-label="Loading..." role="img" />
       ));
 
       const svg1 = container1.querySelector('svg');
       expect(svg1?.getAttribute('aria-label')).toBe('Loading...');
 
       // Test loaded state without animation
-      const { container: container2 } = render(() => (
-        <SVGIcon
-          path="M10 10 L20 20 Z"
-          aria-label="Loaded"
-          role="img"
-        />
-      ));
+      const { container: container2 } = render(() => <SVGIcon path="M10 10 L20 20 Z" aria-label="Loaded" role="img" />);
 
       const svg2 = container2.querySelector('svg');
       expect(svg2?.getAttribute('aria-label')).toBe('Loaded');
@@ -551,12 +469,7 @@ describe('SVG Accessibility E2E Tests', () => {
       // Test inactive state
       const { container: container1 } = render(() => (
         <button>
-          <SVGIcon
-            path="M10 10 L20 20 Z"
-            color="gray"
-            aria-label="Inactive"
-            role="img"
-          />
+          <SVGIcon path="M10 10 L20 20 Z" color="gray" aria-label="Inactive" role="img" />
           Toggle
         </button>
       ));
@@ -567,12 +480,7 @@ describe('SVG Accessibility E2E Tests', () => {
       // Test active state
       const { container: container2 } = render(() => (
         <button>
-          <SVGIcon
-            path="M10 10 L20 20 Z"
-            color="green"
-            aria-label="Active"
-            role="img"
-          />
+          <SVGIcon path="M10 10 L20 20 Z" color="green" aria-label="Active" role="img" />
           Toggle
         </button>
       ));

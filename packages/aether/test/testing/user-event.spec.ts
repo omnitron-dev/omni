@@ -144,10 +144,7 @@ describe('userEvent', () => {
       input.multiple = true;
       document.body.appendChild(input);
 
-      const files = [
-        new File(['a'], 'a.txt'),
-        new File(['b'], 'b.txt'),
-      ];
+      const files = [new File(['a'], 'a.txt'), new File(['b'], 'b.txt')];
 
       await userEvent.upload(input, files);
 

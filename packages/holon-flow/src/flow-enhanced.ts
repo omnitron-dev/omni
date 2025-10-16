@@ -4,7 +4,16 @@
  */
 
 import type { Flow, FlowMeta, FlowOptions } from './types.js';
-import type { FlowId, FlowMetadata, FlowStructure, FlowJSON, FlowGraph, FlowNode, FlowEdge, Transformer } from './reflection.js';
+import type {
+  FlowId,
+  FlowMetadata,
+  FlowStructure,
+  FlowJSON,
+  FlowGraph,
+  FlowNode,
+  FlowEdge,
+  Transformer,
+} from './reflection.js';
 import { flow as basicFlow } from './flow.js';
 import { registerFlow, globalFlowRegistry } from './registry.js';
 import { extractSourceLocation, calculateComplexity, createFlowId } from './reflection.js';
@@ -30,12 +39,12 @@ export interface EnhancedFlow<In = any, Out = any> extends Flow<In, Out> {
  */
 export function flowEnhanced<In, Out>(
   fnOrOptions: ((input: In) => Out | Promise<Out>) | FlowOptions<In, Out>,
-  meta?: FlowMeta,
+  meta?: FlowMeta
 ): EnhancedFlow<In, Out> {
   // Use basic flow() for core functionality
-  const baseFlow = (typeof fnOrOptions === 'function'
-    ? basicFlow(fnOrOptions, meta)
-    : basicFlow(fnOrOptions)) as EnhancedFlow<In, Out>;
+  const baseFlow = (
+    typeof fnOrOptions === 'function' ? basicFlow(fnOrOptions, meta) : basicFlow(fnOrOptions)
+  ) as EnhancedFlow<In, Out>;
 
   // Extract function and metadata
   const fn = typeof fnOrOptions === 'function' ? fnOrOptions : fnOrOptions.fn;
@@ -100,26 +109,24 @@ export function flowEnhanced<In, Out>(
   });
 
   // Implement inspect()
-  baseFlow.inspect = (): FlowStructure => {
-    return {
-      id: flowId,
-      type: 'simple',
-      components: flowDependencies.map(dep =>
-        dep.inspect ? dep.inspect() : {
+  baseFlow.inspect = (): FlowStructure => ({
+    id: flowId,
+    type: 'simple',
+    components: flowDependencies.map((dep) =>
+      dep.inspect
+        ? dep.inspect()
+        : {
           id: createFlowId(dep.toString()),
           type: 'simple',
           components: [],
           metadata: dep.meta || {},
         }
-      ),
-      metadata: internalMetadata,
-    };
-  };
+    ),
+    metadata: internalMetadata,
+  });
 
   // Implement dependencies()
-  baseFlow.dependencies = (): Flow[] => {
-    return [...flowDependencies];
-  };
+  baseFlow.dependencies = (): Flow[] => [...flowDependencies];
 
   // Implement effects()
   baseFlow.effects = (): EffectFlags => {
@@ -149,7 +156,7 @@ export function flowEnhanced<In, Out>(
           }
           const result = fn(input);
           if (result instanceof Promise) {
-            return result.then(value => {
+            return result.then((value) => {
               cache.set(key, value);
               return value;
             });
@@ -181,24 +188,22 @@ export function flowEnhanced<In, Out>(
   };
 
   // Implement toJSON()
-  baseFlow.toJSON = (): FlowJSON => {
-    return {
-      id: flowId,
-      version,
-      type: 'simple',
-      metadata: {
-        name: internalMetadata.name,
-        description: internalMetadata.description,
-        tags: internalMetadata.tags,
-        effects: internalMetadata.effects,
-      },
-      dependencies: flowDependencies.map(dep => {
-        if (dep.id) return dep.id as FlowId;
-        return createFlowId(dep.toString());
-      }),
-      logic: source,
-    };
-  };
+  baseFlow.toJSON = (): FlowJSON => ({
+    id: flowId,
+    version,
+    type: 'simple',
+    metadata: {
+      name: internalMetadata.name,
+      description: internalMetadata.description,
+      tags: internalMetadata.tags,
+      effects: internalMetadata.effects,
+    },
+    dependencies: flowDependencies.map((dep) => {
+      if (dep.id) return dep.id as FlowId;
+      return createFlowId(dep.toString());
+    }),
+    logic: source,
+  });
 
   // Implement toGraph()
   baseFlow.toGraph = (): FlowGraph => {
@@ -261,14 +266,11 @@ export function flowEnhanced<In, Out>(
     }
 
     // Return enhanced composed flow
-    return flowEnhanced(
-      (input: In) => composed(input),
-      {
-        name: `${flowMeta?.name || 'flow'} → ${next.meta?.name || 'flow'}`,
-        description: `Composition of ${flowMeta?.name || 'flow'} and ${next.meta?.name || 'flow'}`,
-        version,
-      }
-    );
+    return flowEnhanced((input: In) => composed(input), {
+      name: `${flowMeta?.name || 'flow'} → ${next.meta?.name || 'flow'}`,
+      description: `Composition of ${flowMeta?.name || 'flow'} and ${next.meta?.name || 'flow'}`,
+      version,
+    });
   };
 
   return baseFlow;
@@ -279,16 +281,12 @@ export function flowEnhanced<In, Out>(
  */
 export function composeEnhanced<A, B>(f1: Flow<A, B>): EnhancedFlow<A, B>;
 export function composeEnhanced<A, B, C>(f1: Flow<A, B>, f2: Flow<B, C>): EnhancedFlow<A, C>;
-export function composeEnhanced<A, B, C, D>(
-  f1: Flow<A, B>,
-  f2: Flow<B, C>,
-  f3: Flow<C, D>,
-): EnhancedFlow<A, D>;
+export function composeEnhanced<A, B, C, D>(f1: Flow<A, B>, f2: Flow<B, C>, f3: Flow<C, D>): EnhancedFlow<A, D>;
 export function composeEnhanced<A, B, C, D, E>(
   f1: Flow<A, B>,
   f2: Flow<B, C>,
   f3: Flow<C, D>,
-  f4: Flow<D, E>,
+  f4: Flow<D, E>
 ): EnhancedFlow<A, E>;
 export function composeEnhanced(...flows: Flow[]): EnhancedFlow {
   if (flows.length === 0) {

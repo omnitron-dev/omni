@@ -8,10 +8,7 @@ import { getScriptLoader, type ExecutionOptions } from '../adapters/loader-adapt
 /**
  * Execute a script file
  */
-export async function executeScript(
-  scriptPath: string,
-  options: ExecutionOptions = {}
-): Promise<void> {
+export async function executeScript(scriptPath: string, options: ExecutionOptions = {}): Promise<void> {
   const loader = getScriptLoader();
   const result = await loader.executeScript(scriptPath, options);
 
@@ -23,10 +20,7 @@ export async function executeScript(
 /**
  * Evaluate code string
  */
-export async function evaluateCode(
-  code: string,
-  options: ExecutionOptions = {}
-): Promise<void> {
+export async function evaluateCode(code: string, options: ExecutionOptions = {}): Promise<void> {
   const loader = getScriptLoader();
   const result = await loader.evaluateCode(code, options);
 

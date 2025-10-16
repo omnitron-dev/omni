@@ -1,13 +1,13 @@
 /**
  * @xec-sh/cli - Xec Command Line Interface
- * 
+ *
  * ✨ Simplified Import Experience
- * 
+ *
  * Just use:
  * ```typescript
  * import '@xec-sh/cli';
  * ```
- * 
+ *
  * This single import provides:
  * - All @xec-sh/core functionality ($ and all types)
  * - All CLI utilities (echo, spinner, etc.)
@@ -84,10 +84,4 @@ export type { Xec } from './globals.js';
 // ========================================
 // RE-EXPORT CLI-SPECIFIC TYPES
 // ========================================
-export type {
-  TargetType,
-  TargetConfig,
-  Configuration,
-  CommandConfig,
-  ResolvedTarget,
-} from './config/types.js';
+export type { TargetType, TargetConfig, Configuration, CommandConfig, ResolvedTarget } from './config/types.js';

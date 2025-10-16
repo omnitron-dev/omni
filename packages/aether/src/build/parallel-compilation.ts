@@ -750,9 +750,11 @@ parentPort.on('message', (task) => {
   /**
    * Compile many files (alias for compile)
    */
-  async compileMany(files: Array<{ path: string; content: string }>): Promise<Array<{ code: string; path?: string; cached?: boolean }>> {
+  async compileMany(
+    files: Array<{ path: string; content: string }>
+  ): Promise<Array<{ code: string; path?: string; cached?: boolean }>> {
     // Convert content to source for internal API
-    const filesWithSource = files.map(f => ({ path: f.path, source: f.content }));
+    const filesWithSource = files.map((f) => ({ path: f.path, source: f.content }));
 
     // For test environments, always use single-threaded compilation
     // but check cache for each file
@@ -818,7 +820,7 @@ parentPort.on('message', (task) => {
     }
 
     // Convert results to expected format
-    return results.map(r => ({
+    return results.map((r) => ({
       code: r.output,
       path: r.filePath,
       cached: r.cached,

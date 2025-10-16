@@ -9,11 +9,7 @@ import * as yaml from 'js-yaml';
 import * as fs from 'fs/promises';
 import { it, jest, expect, describe, afterEach, beforeEach } from '@jest/globals';
 
-import {
-  TaskManager,
-  TargetResolver,
-  ConfigurationManager
-} from '../../src/config/index.js';
+import { TaskManager, TargetResolver, ConfigurationManager } from '../../src/config/index.js';
 
 describe('Phase 1 and Phase 2 Feature Verification', () => {
   let tempDir: string;
@@ -35,37 +31,34 @@ describe('Phase 1 and Phase 2 Feature Verification', () => {
         description: 'Test project description',
         vars: {
           key: 'value',
-          nested: { key: 'nested-value' }
+          nested: { key: 'nested-value' },
         },
         targets: {
           hosts: {
             'test-host': {
               host: 'example.com',
-              user: 'deploy'
-            }
-          }
+              user: 'deploy',
+            },
+          },
         },
         profiles: {
           dev: {
-            vars: { env: 'development' }
-          }
+            vars: { env: 'development' },
+          },
         },
         tasks: {
           simple: 'echo "simple"',
           complex: {
             command: 'echo "complex"',
-            description: 'Complex task'
-          }
+            description: 'Complex task',
+          },
         },
         commands: {
-          in: { defaultTimeout: '60s' }
-        }
+          in: { defaultTimeout: '60s' },
+        },
       };
 
-      await fs.writeFile(
-        path.join(tempDir, '.xec', 'config.yaml'),
-        yaml.dump(configContent)
-      );
+      await fs.writeFile(path.join(tempDir, '.xec', 'config.yaml'), yaml.dump(configContent));
 
       const manager = new ConfigurationManager({ projectRoot: tempDir });
       const loaded = await manager.load();
@@ -88,17 +81,14 @@ describe('Phase 1 and Phase 2 Feature Verification', () => {
           greet: {
             params: [
               { name: 'name', default: 'World' },
-              { name: 'times', type: 'number', default: 1 }
+              { name: 'times', type: 'number', default: 1 },
             ],
-            command: 'for i in $(seq 1 ${params.times}); do echo "Hello ${params.name}"; done'
-          }
-        }
+            command: 'for i in $(seq 1 ${params.times}); do echo "Hello ${params.name}"; done',
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(tempDir, '.xec', 'config.yaml'),
-        yaml.dump(configContent)
-      );
+      await fs.writeFile(path.join(tempDir, '.xec', 'config.yaml'), yaml.dump(configContent));
 
       const manager = new ConfigurationManager({ projectRoot: tempDir });
       const loaded = await manager.load();
@@ -128,16 +118,13 @@ describe('Phase 1 and Phase 2 Feature Verification', () => {
             steps: [
               { name: 'Step 1', command: 'echo "Step 1 output"' },
               { name: 'Failing step', command: 'exit 1', onFailure: 'continue' },
-              { name: 'Step 3', command: 'echo "Step 3 output"' }
-            ]
-          }
-        }
+              { name: 'Step 3', command: 'echo "Step 3 output"' },
+            ],
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(tempDir, '.xec', 'config.yaml'),
-        yaml.dump(configContent)
-      );
+      await fs.writeFile(path.join(tempDir, '.xec', 'config.yaml'), yaml.dump(configContent));
 
       const manager = new ConfigurationManager({ projectRoot: tempDir });
       const loaded = await manager.load();
@@ -167,41 +154,38 @@ describe('Phase 1 and Phase 2 Feature Verification', () => {
             shell: '/bin/bash',
             ssh: {
               port: 2222,
-              keepAlive: true
+              keepAlive: true,
             },
             docker: {
               tty: true,
-              workdir: '/app'
-            }
+              workdir: '/app',
+            },
           },
           hosts: {
             server1: {
               host: 'server1.com',
-              user: 'deploy'
+              user: 'deploy',
             },
             server2: {
               host: 'server2.com',
               user: 'admin',
               port: 22,
-              timeout: 10000
-            }
+              timeout: 10000,
+            },
           },
           containers: {
             app: {
-              image: 'node:18'
+              image: 'node:18',
             },
             db: {
               image: 'postgres:15',
-              tty: false
-            }
-          }
-        }
+              tty: false,
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(tempDir, '.xec', 'config.yaml'),
-        yaml.dump(configContent)
-      );
+      await fs.writeFile(path.join(tempDir, '.xec', 'config.yaml'), yaml.dump(configContent));
 
       const manager = new ConfigurationManager({ projectRoot: tempDir });
       const loaded = await manager.load();
@@ -239,15 +223,12 @@ describe('Phase 1 and Phase 2 Feature Verification', () => {
             'web-prod-2': { host: 'web2.prod.com', user: 'deploy' },
             'web-staging-1': { host: 'web1.staging.com', user: 'deploy' },
             'api-prod-1': { host: 'api1.prod.com', user: 'deploy' },
-            'api-prod-2': { host: 'api2.prod.com', user: 'deploy' }
-          }
-        }
+            'api-prod-2': { host: 'api2.prod.com', user: 'deploy' },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(tempDir, '.xec', 'config.yaml'),
-        yaml.dump(configContent)
-      );
+      await fs.writeFile(path.join(tempDir, '.xec', 'config.yaml'), yaml.dump(configContent));
 
       const manager = new ConfigurationManager({ projectRoot: tempDir });
       const loaded = await manager.load();
@@ -285,16 +266,13 @@ describe('Phase 1 and Phase 2 Feature Verification', () => {
           nested: {
             key: '${vars.simple}',
             deep: {
-              value: '${vars.nested.key}'
-            }
-          }
-        }
+              value: '${vars.nested.key}',
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(tempDir, '.xec', 'config.yaml'),
-        yaml.dump(configContent)
-      );
+      await fs.writeFile(path.join(tempDir, '.xec', 'config.yaml'), yaml.dump(configContent));
 
       const manager = new ConfigurationManager({ projectRoot: tempDir });
       const loaded = await manager.load();
@@ -317,26 +295,23 @@ describe('Phase 1 and Phase 2 Feature Verification', () => {
         version: '2.0',
         vars: {
           a: '${vars.b}',
-          b: '${vars.a}'
-        }
+          b: '${vars.a}',
+        },
       };
 
-      await fs.writeFile(
-        path.join(tempDir, '.xec', 'config.yaml'),
-        yaml.dump(configContent)
-      );
+      await fs.writeFile(path.join(tempDir, '.xec', 'config.yaml'), yaml.dump(configContent));
 
       const manager = new ConfigurationManager({
         projectRoot: tempDir,
-        strict: false
+        strict: false,
       });
 
-      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => { });
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
       await manager.load();
 
-      const warnings = warnSpy.mock.calls.map(call => call[0]);
-      expect(warnings.some(w => w.includes('Circular variable reference'))).toBe(true);
+      const warnings = warnSpy.mock.calls.map((call) => call[0]);
+      expect(warnings.some((w) => w.includes('Circular variable reference'))).toBe(true);
 
       warnSpy.mockRestore();
     });
@@ -348,41 +323,38 @@ describe('Phase 1 and Phase 2 Feature Verification', () => {
         version: '2.0',
         vars: {
           baseVar: 'base',
-          overrideVar: 'base'
+          overrideVar: 'base',
         },
         profiles: {
           base: {
             vars: {
               profileVar: 'from base',
-              baseOnly: 'base value'
-            }
+              baseOnly: 'base value',
+            },
           },
           dev: {
             extends: 'base',
             vars: {
               profileVar: 'from dev',
-              devOnly: 'dev value'
-            }
+              devOnly: 'dev value',
+            },
           },
           staging: {
             extends: 'dev',
             vars: {
               overrideVar: 'staging',
-              stagingOnly: 'staging value'
-            }
-          }
-        }
+              stagingOnly: 'staging value',
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(tempDir, '.xec', 'config.yaml'),
-        yaml.dump(configContent)
-      );
+      await fs.writeFile(path.join(tempDir, '.xec', 'config.yaml'), yaml.dump(configContent));
 
       // Test base profile
       let manager = new ConfigurationManager({
         projectRoot: tempDir,
-        profile: 'base'
+        profile: 'base',
       });
       let loaded = await manager.load();
 
@@ -394,7 +366,7 @@ describe('Phase 1 and Phase 2 Feature Verification', () => {
       // Test dev profile (extends base)
       manager = new ConfigurationManager({
         projectRoot: tempDir,
-        profile: 'dev'
+        profile: 'dev',
       });
       loaded = await manager.load();
 
@@ -405,7 +377,7 @@ describe('Phase 1 and Phase 2 Feature Verification', () => {
       // Test staging profile (extends dev, which extends base)
       manager = new ConfigurationManager({
         projectRoot: tempDir,
-        profile: 'staging'
+        profile: 'staging',
       });
       loaded = await manager.load();
 
@@ -421,26 +393,23 @@ describe('Phase 1 and Phase 2 Feature Verification', () => {
         version: '2.0',
         vars: {
           debug: true,
-          logLevel: 'debug'
+          logLevel: 'debug',
         },
         profiles: {
           prod: {
             vars: {
               debug: '$unset',
-              logLevel: 'error'
-            }
-          }
-        }
+              logLevel: 'error',
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(tempDir, '.xec', 'config.yaml'),
-        yaml.dump(configContent)
-      );
+      await fs.writeFile(path.join(tempDir, '.xec', 'config.yaml'), yaml.dump(configContent));
 
       const manager = new ConfigurationManager({
         projectRoot: tempDir,
-        profile: 'prod'
+        profile: 'prod',
       });
       const loaded = await manager.load();
 
@@ -459,16 +428,16 @@ describe('Phase 1 and Phase 2 Feature Verification', () => {
         version: '2.0',
         vars: {
           globalVar: 'global',
-          sharedVar: 'from global'
+          sharedVar: 'from global',
         },
         targets: {
           hosts: {
             'global-host': {
               host: 'global.com',
-              user: 'admin'
-            }
-          }
-        }
+              user: 'admin',
+            },
+          },
+        },
       };
 
       // Project config
@@ -476,31 +445,25 @@ describe('Phase 1 and Phase 2 Feature Verification', () => {
         version: '2.0',
         vars: {
           projectVar: 'project',
-          sharedVar: 'from project'
+          sharedVar: 'from project',
         },
         targets: {
           hosts: {
             'project-host': {
               host: 'project.com',
-              user: 'deploy'
-            }
-          }
-        }
+              user: 'deploy',
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(globalDir, 'config.yaml'),
-        yaml.dump(globalConfig)
-      );
+      await fs.writeFile(path.join(globalDir, 'config.yaml'), yaml.dump(globalConfig));
 
-      await fs.writeFile(
-        path.join(tempDir, '.xec', 'config.yaml'),
-        yaml.dump(projectConfig)
-      );
+      await fs.writeFile(path.join(tempDir, '.xec', 'config.yaml'), yaml.dump(projectConfig));
 
       const manager = new ConfigurationManager({
         projectRoot: tempDir,
-        globalConfigDir: globalDir
+        globalConfigDir: globalDir,
       });
       const loaded = await manager.load();
 
@@ -523,25 +486,22 @@ describe('Phase 1 and Phase 2 Feature Verification', () => {
         version: '2.0',
         vars: {
           testFile,
-          content: 'Hello from Xec'
+          content: 'Hello from Xec',
         },
         tasks: {
           writeFile: {
-            command: 'echo "${vars.content}" > "${vars.testFile}"'
+            command: 'echo "${vars.content}" > "${vars.testFile}"',
           },
           readFile: {
-            command: 'cat "${vars.testFile}"'
+            command: 'cat "${vars.testFile}"',
           },
           listFiles: {
-            command: 'ls -la "${vars.testFile}"'
-          }
-        }
+            command: 'ls -la "${vars.testFile}"',
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(tempDir, '.xec', 'config.yaml'),
-        yaml.dump(configContent)
-      );
+      await fs.writeFile(path.join(tempDir, '.xec', 'config.yaml'), yaml.dump(configContent));
 
       const manager = new ConfigurationManager({ projectRoot: tempDir });
       const loaded = await manager.load();
@@ -554,7 +514,10 @@ describe('Phase 1 and Phase 2 Feature Verification', () => {
       expect(writeResult.success).toBe(true);
 
       // Verify file exists
-      const exists = await fs.access(testFile).then(() => true).catch(() => false);
+      const exists = await fs
+        .access(testFile)
+        .then(() => true)
+        .catch(() => false);
       expect(exists).toBe(true);
 
       // Read file

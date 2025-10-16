@@ -353,10 +353,12 @@ describe('HistoryExtension', () => {
 
       // Should be able to undo twice (depth = 2)
       let undoCount = 0;
-      while (undo(state, (tr) => {
-        state = state.apply(tr);
-        undoCount++;
-      })) {
+      while (
+        undo(state, (tr) => {
+          state = state.apply(tr);
+          undoCount++;
+        })
+      ) {
         // Keep undoing
       }
 

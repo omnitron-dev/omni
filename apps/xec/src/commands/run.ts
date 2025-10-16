@@ -31,57 +31,57 @@ export class RunCommand extends BaseCommand {
       options: [
         {
           flags: '-e, --eval <code>',
-          description: 'Evaluate code'
+          description: 'Evaluate code',
         },
         {
           flags: '--repl',
-          description: 'Start interactive REPL'
+          description: 'Start interactive REPL',
         },
         {
           flags: '--typescript',
-          description: 'Enable TypeScript support'
+          description: 'Enable TypeScript support',
         },
         {
           flags: '--watch',
-          description: 'Watch for file changes'
+          description: 'Watch for file changes',
         },
         {
           flags: '--runtime <runtime>',
-          description: 'Specify runtime: auto, node, bun, deno (default: auto)'
+          description: 'Specify runtime: auto, node, bun, deno (default: auto)',
         },
         {
           flags: '--no-universal',
-          description: 'Disable universal loader (legacy mode)'
-        }
+          description: 'Disable universal loader (legacy mode)',
+        },
       ],
       examples: [
         {
           command: 'xec run script.js',
-          description: 'Run a JavaScript file'
+          description: 'Run a JavaScript file',
         },
         {
           command: 'xec run script.ts',
-          description: 'Run a TypeScript file'
+          description: 'Run a TypeScript file',
         },
         {
           command: 'xec run build',
-          description: 'Run a task named "build"'
+          description: 'Run a task named "build"',
         },
         {
           command: 'xec run -e "console.log(\'Hello\')"',
-          description: 'Evaluate inline code'
+          description: 'Evaluate inline code',
         },
         {
           command: 'xec run --repl',
-          description: 'Start interactive REPL'
-        }
-      ]
+          description: 'Start interactive REPL',
+        },
+      ],
     });
 
     this.scriptLoader = new ScriptLoader({
       verbose: process.env['XEC_DEBUG'] === 'true',
       cache: true,
-      preferredCDN: 'esm.sh'
+      preferredCDN: 'esm.sh',
     });
   }
 
@@ -163,9 +163,9 @@ export class RunCommand extends BaseCommand {
       target: {
         type: 'local',
         name: 'local',
-        config: {}
+        config: {},
       } as any,
-      targetEngine: $
+      targetEngine: $,
     };
 
     // Execute the script
@@ -187,7 +187,6 @@ export class RunCommand extends BaseCommand {
     }
   }
 
-
   /**
    * Evaluate code using unified loader
    */
@@ -207,9 +206,9 @@ export class RunCommand extends BaseCommand {
       target: {
         type: 'local',
         name: 'local',
-        config: {}
+        config: {},
       } as any,
-      targetEngine: $
+      targetEngine: $,
     };
 
     // Evaluate the code
@@ -233,9 +232,9 @@ export class RunCommand extends BaseCommand {
       target: {
         type: 'local',
         name: 'local',
-        config: {}
+        config: {},
       } as any,
-      targetEngine: $
+      targetEngine: $,
     };
 
     // Start REPL
@@ -262,7 +261,7 @@ export class RunCommand extends BaseCommand {
     await taskManager.load();
 
     // Check if task exists
-    if (!await taskManager.exists(taskName)) {
+    if (!(await taskManager.exists(taskName))) {
       // Try as script file if task doesn't exist
       try {
         await fs.access(taskName);
@@ -331,7 +330,6 @@ export class RunCommand extends BaseCommand {
     if (!this.options.quiet) {
       log.success(`Task '${taskName}' completed successfully`);
     }
-
   }
 }
 

@@ -127,13 +127,15 @@ export class ReasoningEngine {
    * Get last reasoning chain
    */
   getLastChain(): ReasoningChain {
-    return this.lastChain || {
-      steps: [],
-      conclusion: 'No reasoning performed yet',
-      confidence: 0,
-      assumptions: [],
-      alternatives: [],
-    };
+    return (
+      this.lastChain || {
+        steps: [],
+        conclusion: 'No reasoning performed yet',
+        confidence: 0,
+        assumptions: [],
+        alternatives: [],
+      }
+    );
   }
 
   /**
@@ -322,7 +324,7 @@ export function deductiveReasoning(premises: string[], rules: InferenceRule[]): 
  */
 export function abductiveReasoning(
   observations: string[],
-  hypotheses: Array<{ hypothesis: string; explains: string[]; probability: number }>,
+  hypotheses: Array<{ hypothesis: string; explains: string[]; probability: number }>
 ): string {
   // Find hypothesis that best explains observations
   let bestHypothesis = '';
@@ -349,7 +351,7 @@ export function abductiveReasoning(
  */
 export function analogicalReasoning(
   source: { domain: string; properties: string[] },
-  target: { domain: string; properties: string[] },
+  target: { domain: string; properties: string[] }
 ): string[] {
   const inferences: string[] = [];
 

@@ -42,13 +42,10 @@ class TestAdapter extends BaseAdapter {
   }
 
   // Test output with masking by creating a result
-  public testMaskedOutput(
-    stdout: string,
-    stderr: string
-  ): { stdout: string; stderr: string } {
+  public testMaskedOutput(stdout: string, stderr: string): { stdout: string; stderr: string } {
     return {
       stdout: this.maskSensitiveData(stdout),
-      stderr: this.maskSensitiveData(stderr)
+      stderr: this.maskSensitiveData(stderr),
     };
   }
 }
@@ -60,8 +57,8 @@ describe('BaseAdapter Data Masking', () => {
     adapter = new TestAdapter({
       sensitiveDataMasking: {
         enabled: true,
-        replacement: '***REDACTED***'
-      }
+        replacement: '***REDACTED***',
+      },
     });
   });
 
@@ -70,24 +67,24 @@ describe('BaseAdapter Data Masking', () => {
       const testCases = [
         {
           input: 'API_KEY=sk_test_4eC39HqLyjWDarjtT1zdp7dc',
-          expected: 'API_KEY=***REDACTED***'
+          expected: 'API_KEY=***REDACTED***',
         },
         {
           input: 'OPENAI_API_KEY=sk-proj-abcdef123456',
-          expected: 'OPENAI_API_KEY=***REDACTED***'
+          expected: 'OPENAI_API_KEY=***REDACTED***',
         },
         {
           input: 'export API_KEY="my-secret-key-123"',
-          expected: 'export API_KEY=***REDACTED***'
+          expected: 'export API_KEY=***REDACTED***',
         },
         {
           input: 'apiKey: "abc123def456"',
-          expected: 'apiKey: ***REDACTED***'
+          expected: 'apiKey: ***REDACTED***',
         },
         {
           input: '--api-key=secret123',
-          expected: '--api-key=***REDACTED***'
-        }
+          expected: '--api-key=***REDACTED***',
+        },
       ];
 
       testCases.forEach(({ input, expected }) => {
@@ -110,16 +107,16 @@ describe('BaseAdapter Data Masking', () => {
       const testCases = [
         {
           input: 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-          expected: 'Authorization: Bearer ***REDACTED***'
+          expected: 'Authorization: Bearer ***REDACTED***',
         },
         {
           input: 'Bearer abcdef123456789',
-          expected: 'Bearer ***REDACTED***'
+          expected: 'Bearer ***REDACTED***',
         },
         {
           input: 'BEARER TOKEN1234567890',
-          expected: 'BEARER ***REDACTED***'
-        }
+          expected: 'BEARER ***REDACTED***',
+        },
       ];
 
       testCases.forEach(({ input, expected }) => {
@@ -134,24 +131,24 @@ describe('BaseAdapter Data Masking', () => {
       const testCases = [
         {
           input: 'password: mysecretpassword',
-          expected: 'password: ***REDACTED***'
+          expected: 'password: ***REDACTED***',
         },
         {
           input: 'Password=SuperSecret123!',
-          expected: 'Password=***REDACTED***'
+          expected: 'Password=***REDACTED***',
         },
         {
           input: '--password "my password with spaces"',
-          expected: '--password ***REDACTED***'
+          expected: '--password ***REDACTED***',
         },
         {
           input: 'DB_PASSWORD: ${SECRET_PASS}',
-          expected: 'DB_PASSWORD: ***REDACTED***'
+          expected: 'DB_PASSWORD: ***REDACTED***',
         },
         {
           input: 'pwd=admin123',
-          expected: 'pwd=***REDACTED***'
-        }
+          expected: 'pwd=***REDACTED***',
+        },
       ];
 
       testCases.forEach(({ input, expected }) => {
@@ -166,20 +163,20 @@ describe('BaseAdapter Data Masking', () => {
       const testCases = [
         {
           input: 'token=ghp_1234567890abcdef',
-          expected: 'token=***REDACTED***'
+          expected: 'token=***REDACTED***',
         },
         {
           input: 'ACCESS_TOKEN: "abc-123-def-456"',
-          expected: 'ACCESS_TOKEN: ***REDACTED***'
+          expected: 'ACCESS_TOKEN: ***REDACTED***',
         },
         {
           input: 'auth-token=xoxb-123456789',
-          expected: 'auth-token=***REDACTED***'
+          expected: 'auth-token=***REDACTED***',
         },
         {
           input: 'github_token: ghs_16C7e42F292c69',
-          expected: 'github_token: ***REDACTED***'
-        }
+          expected: 'github_token: ***REDACTED***',
+        },
       ];
 
       testCases.forEach(({ input, expected }) => {
@@ -194,16 +191,16 @@ describe('BaseAdapter Data Masking', () => {
       const testCases = [
         {
           input: 'secret: my-super-secret',
-          expected: 'secret: ***REDACTED***'
+          expected: 'secret: ***REDACTED***',
         },
         {
           input: 'CLIENT_SECRET=1234567890abcdef',
-          expected: 'CLIENT_SECRET=***REDACTED***'
+          expected: 'CLIENT_SECRET=***REDACTED***',
         },
         {
           input: '--client-secret "confidential"',
-          expected: '--client-secret ***REDACTED***'
-        }
+          expected: '--client-secret ***REDACTED***',
+        },
       ];
 
       testCases.forEach(({ input, expected }) => {
@@ -215,12 +212,16 @@ describe('BaseAdapter Data Masking', () => {
 
   describe('Complex masking scenarios', () => {
     it('should mask multiple sensitive values in JSON', () => {
-      const input = JSON.stringify({
-        api_key: 'sk_test_123',
-        password: 'secret123',
-        token: 'bearer_abc',
-        data: 'non-sensitive'
-      }, null, 2);
+      const input = JSON.stringify(
+        {
+          api_key: 'sk_test_123',
+          password: 'secret123',
+          token: 'bearer_abc',
+          data: 'non-sensitive',
+        },
+        null,
+        2
+      );
 
       const masked = adapter.testMaskSensitiveData(input);
 
@@ -292,14 +293,9 @@ export NODE_ENV=production
     });
 
     it('should handle case variations', () => {
-      const testCases = [
-        'PASSWORD: secret',
-        'Password: secret',
-        'password: secret',
-        'PaSsWoRd: secret'
-      ];
+      const testCases = ['PASSWORD: secret', 'Password: secret', 'password: secret', 'PaSsWoRd: secret'];
 
-      testCases.forEach(input => {
+      testCases.forEach((input) => {
         const masked = adapter.testMaskSensitiveData(input);
         expect(masked).toMatch(/\*\*\*REDACTED\*\*\*/);
       });

@@ -61,7 +61,7 @@ export function render(component: Component | (() => JSX.Element)) {
           container.appendChild(element);
         }
       }
-    }
+    },
   };
 }
 
@@ -76,7 +76,7 @@ export function cleanup() {
  * Wait for next tick
  */
 export function nextTick(): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, 0));
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 /**
@@ -93,7 +93,7 @@ function createDOMElement(jsx: any): Element | null {
   // Handle arrays
   if (Array.isArray(jsx)) {
     const fragment = document.createDocumentFragment();
-    jsx.forEach(child => {
+    jsx.forEach((child) => {
       const element = createDOMElement(child);
       if (element) {
         fragment.appendChild(element);
@@ -123,16 +123,32 @@ function createDOMElement(jsx: any): Element | null {
     }
 
     // Handle HTML/SVG elements
-    const isSVG = type === 'svg' || type === 'path' || type === 'circle' || type === 'rect' ||
-                  type === 'line' || type === 'polygon' || type === 'polyline' || type === 'ellipse' ||
-                  type === 'g' || type === 'text' || type === 'tspan' || type === 'textPath' ||
-                  type === 'defs' || type === 'symbol' || type === 'use' || type === 'linearGradient' ||
-                  type === 'radialGradient' || type === 'stop' || type === 'pattern' || type === 'mask' ||
-                  type === 'clipPath' || type === 'title' || type === 'desc';
+    const isSVG =
+      type === 'svg' ||
+      type === 'path' ||
+      type === 'circle' ||
+      type === 'rect' ||
+      type === 'line' ||
+      type === 'polygon' ||
+      type === 'polyline' ||
+      type === 'ellipse' ||
+      type === 'g' ||
+      type === 'text' ||
+      type === 'tspan' ||
+      type === 'textPath' ||
+      type === 'defs' ||
+      type === 'symbol' ||
+      type === 'use' ||
+      type === 'linearGradient' ||
+      type === 'radialGradient' ||
+      type === 'stop' ||
+      type === 'pattern' ||
+      type === 'mask' ||
+      type === 'clipPath' ||
+      type === 'title' ||
+      type === 'desc';
 
-    const element = isSVG
-      ? document.createElementNS('http://www.w3.org/2000/svg', type)
-      : document.createElement(type);
+    const element = isSVG ? document.createElementNS('http://www.w3.org/2000/svg', type) : document.createElement(type);
 
     // Set attributes
     for (const [key, value] of Object.entries(props)) {
@@ -243,7 +259,7 @@ export async function waitForAnimation(duration: number, vi?: any): Promise<void
     await vi.advanceTimersByTimeAsync(duration);
   } else {
     // Fallback to real timers
-    await new Promise(resolve => setTimeout(resolve, duration));
+    await new Promise((resolve) => setTimeout(resolve, duration));
   }
 }
 
@@ -252,7 +268,7 @@ export async function waitForAnimation(duration: number, vi?: any): Promise<void
  * Useful when you need to ensure all promise callbacks have executed
  */
 export async function flushMicrotasks(): Promise<void> {
-  return new Promise(resolve => queueMicrotask(resolve));
+  return new Promise((resolve) => queueMicrotask(resolve));
 }
 
 /**
@@ -283,6 +299,6 @@ export async function advanceTimersWithAnimation(duration: number, vi: any): Pro
   const chunks = Math.ceil(duration / chunkSize);
 
   for (let i = 0; i < chunks; i++) {
-    await vi.advanceTimersByTimeAsync(Math.min(chunkSize, duration - (i * chunkSize)));
+    await vi.advanceTimersByTimeAsync(Math.min(chunkSize, duration - i * chunkSize));
   }
 }

@@ -17,11 +17,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'happy-dom',
-    include: [
-      'tests/**/*.{test,spec}.{ts,tsx}',
-      'test/**/*.{test,spec}.{ts,tsx}',
-      'test/server/**/*.spec.ts',
-    ],
+    include: ['tests/**/*.{test,spec}.{ts,tsx}', 'test/**/*.{test,spec}.{ts,tsx}', 'test/server/**/*.spec.ts'],
     exclude: [
       'benchmarks/**/*.bench.ts',
       'test/e2e/**/*.e2e.test.ts', // E2E tests require real browser environment

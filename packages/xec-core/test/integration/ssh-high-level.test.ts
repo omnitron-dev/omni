@@ -48,13 +48,13 @@ describeSSH('SSH High-Level Integration Tests', () => {
         `;
 
         // 5. Wait a bit and check if running
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise((resolve) => setTimeout(resolve, 2000));
 
         const pidResult = await $ssh`test -f ${appDir}/app.pid && cat ${appDir}/app.pid || echo "0"`;
         const pid = pidResult.stdout.trim();
 
         // Skip rest of test if we couldn't start the process
-        if (pid === "0" || !pid.match(/^\d+$/)) {
+        if (pid === '0' || !pid.match(/^\d+$/)) {
           console.log(`Skipping process check for ${container.name} - could not start background process`);
           // Clean up
           await $ssh`rm -rf ${appDir}`;
@@ -65,13 +65,14 @@ describeSSH('SSH High-Level Integration Tests', () => {
 
         // 6. Check if process is running (might have already exited)
         const psResult = await $ssh`ps -p ${pid} -o comm= 2>/dev/null || echo "not found"`.nothrow();
-        if (psResult.stdout.trim() !== "not found") {
+        if (psResult.stdout.trim() !== 'not found') {
           expect(psResult.stdout).toContain('sh'); // Either app.sh or sh
         }
 
         // 7. Check logs (might not exist if process didn't run long enough)
-        const logsResult = await $ssh`test -f ${appDir}/logs/app.log && head -5 ${appDir}/logs/app.log || echo "No logs"`.nothrow();
-        if (logsResult.stdout.trim() !== "No logs") {
+        const logsResult =
+          await $ssh`test -f ${appDir}/logs/app.log && head -5 ${appDir}/logs/app.log || echo "No logs"`.nothrow();
+        if (logsResult.stdout.trim() !== 'No logs') {
           expect(logsResult.stdout).toContain(`${appName} is running`);
         }
 
@@ -131,12 +132,14 @@ describeSSH('SSH High-Level Integration Tests', () => {
         await $ssh`mkdir -p ${testDir}`;
 
         // Run multiple operations concurrently
-        const operations = Array(10).fill(null).map((_, i) => $ssh`echo "Task ${i} completed at $(date +%s.%N)" > ${testDir}/task-${i}.txt`);
+        const operations = Array(10)
+          .fill(null)
+          .map((_, i) => $ssh`echo "Task ${i} completed at $(date +%s.%N)" > ${testDir}/task-${i}.txt`);
 
         const results = await Promise.all(operations);
 
         // All should succeed
-        results.forEach(result => {
+        results.forEach((result) => {
           expect(result.exitCode).toBe(0);
         });
 
@@ -154,13 +157,18 @@ describeSSH('SSH High-Level Integration Tests', () => {
         const timestamps = timestampsResult.stdout
           .trim()
           .split('\n')
-          .filter(line => line && line.match(/^[0-9]+\.[0-9]+$/))
+          .filter((line) => line && line.match(/^[0-9]+\.[0-9]+$/))
           .map(parseFloat);
 
         if (timestamps.length >= 2) {
           const firstTimestamp = timestamps[0];
           const lastTimestamp = timestamps[timestamps.length - 1];
-          if (firstTimestamp !== undefined && lastTimestamp !== undefined && !isNaN(firstTimestamp) && !isNaN(lastTimestamp)) {
+          if (
+            firstTimestamp !== undefined &&
+            lastTimestamp !== undefined &&
+            !isNaN(firstTimestamp) &&
+            !isNaN(lastTimestamp)
+          ) {
             const duration = lastTimestamp - firstTimestamp;
             // Should complete within 3 seconds (not sequential which would take 10+ seconds)
             expect(duration).toBeLessThan(3);
@@ -266,7 +274,7 @@ describeSSH('SSH High-Level Integration Tests', () => {
         const searchResult = await ssh.execute({
           command: `${pmCommand} ${searchCommand} ${searchPackage} 2>/dev/null | head -5`,
           nothrow: true,
-          adapterOptions: { type: 'ssh' as const, ...sshConfig }
+          adapterOptions: { type: 'ssh' as const, ...sshConfig },
         });
 
         expect(searchResult.exitCode).toBe(0);
@@ -287,7 +295,7 @@ describeSSH('SSH High-Level Integration Tests', () => {
       const $sshEnv = $ssh.env({
         MY_VAR: 'test-value',
         MY_NUMBER: '42',
-        MY_PATH: '/custom/path'
+        MY_PATH: '/custom/path',
       });
 
       const envResult = await $sshEnv`echo "$MY_VAR $MY_NUMBER $MY_PATH"`;
@@ -299,9 +307,7 @@ describeSSH('SSH High-Level Integration Tests', () => {
       expect(pwdResult.stdout.trim()).toBe('/tmp');
 
       // Test combined environment and directory
-      const $sshCombined = $ssh
-        .cd('/var')
-        .env({ TEST_DIR: 'log' });
+      const $sshCombined = $ssh.cd('/var').env({ TEST_DIR: 'log' });
 
       const combinedResult = await $sshCombined`ls -d $TEST_DIR 2>/dev/null || echo "Not found"`;
       if (combinedResult.stdout.trim() !== 'Not found') {
@@ -335,7 +341,7 @@ describeSSH('SSH High-Level Integration Tests', () => {
 
       try {
         // Create file on source
-        const testContent = "Simple transfer test data";
+        const testContent = 'Simple transfer test data';
         await $source`echo ${testContent} > /tmp/${fileName}`;
 
         // Read and transfer

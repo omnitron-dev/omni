@@ -1,12 +1,12 @@
 /**
  * 09. SSH Connection Pooling - Efficient SSH Connection Management
- * 
+ *
  * Demonstrates the enhanced SSH connection pooling features including:
  * - Connection reuse for better performance
  * - Keep-alive mechanisms
  * - Connection metrics and monitoring
  * - Automatic reconnection
- * 
+ *
  * Note: This example requires SSH access to a remote server.
  * Update the connection details before running.
  */
@@ -17,7 +17,7 @@ import { $ } from '@xec-sh/core';
 const sshConfig = {
   host: 'example.com',
   username: 'user',
-  privateKey: '/path/to/your/key'
+  privateKey: '/path/to/your/key',
 };
 
 console.log('=== SSH Connection Pool Example ===\n');
@@ -26,7 +26,7 @@ console.log('=== SSH Connection Pool Example ===\n');
 if (sshConfig.host === 'example.com') {
   console.log('⚠️  Please update the SSH configuration with your server details.');
   console.log('   This example demonstrates connection pooling features.\n');
-  
+
   // Show conceptual examples even without real SSH connection
   console.log('Connection Pool Features:');
   console.log('1. Connection reuse - subsequent commands use the same connection');
@@ -60,8 +60,8 @@ const customPoolConfig = {
     keepAliveInterval: 30000, // 30 seconds
     autoReconnect: true,
     maxReconnectAttempts: 3,
-    reconnectDelay: 1000 // 1 second
-  }
+    reconnectDelay: 1000, // 1 second
+  },
 };
 
 // Create engine with custom pool settings
@@ -69,18 +69,10 @@ const sshEngine = $.ssh(customPoolConfig);
 
 // 3. Multiple commands sharing the same connection
 console.log('\n2. Multiple commands with connection reuse:');
-const commands = [
-  'hostname',
-  'uptime',
-  'date',
-  'pwd',
-  'whoami'
-];
+const commands = ['hostname', 'uptime', 'date', 'pwd', 'whoami'];
 
 console.time('Execute 5 commands');
-const results = await Promise.all(
-  commands.map(cmd => sshEngine`${cmd}`)
-);
+const results = await Promise.all(commands.map((cmd) => sshEngine`${cmd}`));
 console.timeEnd('Execute 5 commands');
 
 results.forEach((result, i) => {
@@ -97,7 +89,7 @@ $.on('ssh:pool-metrics', (event) => {
     idle: event.metrics.idleConnections,
     total: event.metrics.totalConnections,
     created: event.metrics.connectionsCreated,
-    reused: event.metrics.reuseCount
+    reused: event.metrics.reuseCount,
   });
 });
 
@@ -113,7 +105,7 @@ await sshEngine`echo "Command 1"`;
 
 // Wait a bit (connection stays alive due to keep-alive)
 console.log('Waiting 5 seconds...');
-await new Promise(resolve => setTimeout(resolve, 5000));
+await new Promise((resolve) => setTimeout(resolve, 5000));
 
 // Connection should still be alive
 console.time('Command after wait (still connected)');
@@ -144,9 +136,9 @@ $.on('ssh:pool-cleanup', (event) => {
 console.log('\n6. Parallel operations with connection pooling:');
 
 // All these commands will efficiently share connections from the pool
-const parallelCommands = Array(10).fill(null).map((_, i) => 
-  sshEngine`echo "Parallel command ${i}" && sleep 0.5`
-);
+const parallelCommands = Array(10)
+  .fill(null)
+  .map((_, i) => sshEngine`echo "Parallel command ${i}" && sleep 0.5`);
 
 console.time('10 parallel SSH commands');
 const parallelResults = await Promise.all(parallelCommands);
@@ -161,7 +153,7 @@ console.log('\n7. Connection pooling with multiple hosts:');
 const hosts = [
   { host: 'server1.example.com', username: 'user', privateKey: '/path/to/key' },
   { host: 'server2.example.com', username: 'user', privateKey: '/path/to/key' },
-  { host: 'server3.example.com', username: 'user', privateKey: '/path/to/key' }
+  { host: 'server3.example.com', username: 'user', privateKey: '/path/to/key' },
 ];
 
 // Note: This is a conceptual example
@@ -179,7 +171,7 @@ try {
     sleep 60 &&
     echo "Operation completed"
   `.timeout(70000); // 70 second timeout
-  
+
   console.log('Long operation completed successfully');
 } catch (error) {
   console.log('Operation failed, but connection will auto-reconnect for next command');

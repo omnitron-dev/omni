@@ -6,12 +6,7 @@
 
 import { defineComponent, signal, effect, onCleanup } from '../../index.js';
 import type { IconDefinition } from '../icons/IconRegistry.js';
-import {
-  generateSprite,
-  loadSprite,
-  parseSpriteManifest,
-  type SpriteGeneratorConfig,
-} from '../optimization/sprite.js';
+import { generateSprite, loadSprite, parseSpriteManifest, type SpriteGeneratorConfig } from '../optimization/sprite.js';
 
 export interface SVGSpriteProps {
   // Sprite configuration
@@ -65,7 +60,7 @@ export const SVGSprite = defineComponent<SVGSpriteProps>((props) => {
         // Generate from icons
         else if (props.icons && props.icons.length > 0) {
           const config: SpriteGeneratorConfig = {
-            icons: props.icons.map(icon => ({
+            icons: props.icons.map((icon) => ({
               id: icon.id || '',
               content: icon.content || icon.path || '',
               viewBox: icon.viewBox,
@@ -191,22 +186,22 @@ export interface SpriteIconProps {
 }
 
 export const SpriteIcon = defineComponent<SpriteIconProps>((props) => () => {
-    const size = props.size || 24;
-    const href = `#${props.iconId}`;
+  const size = props.size || 24;
+  const href = `#${props.iconId}`;
 
-    const svgProps: any = {
-      width: size,
-      height: size,
-      className: props.className,
-      style: props.style,
-      role: props.role || 'img',
-      'aria-label': props['aria-label'],
-    };
+  const svgProps: any = {
+    width: size,
+    height: size,
+    className: props.className,
+    style: props.style,
+    role: props.role || 'img',
+    'aria-label': props['aria-label'],
+  };
 
-    return (
-      <svg {...svgProps}>
-        {props.title && <title>{props.title}</title>}
-        <use href={href} fill={props.color || 'currentColor'} />
-      </svg>
-    );
-  });
+  return (
+    <svg {...svgProps}>
+      {props.title && <title>{props.title}</title>}
+      <use href={href} fill={props.color || 'currentColor'} />
+    </svg>
+  );
+});

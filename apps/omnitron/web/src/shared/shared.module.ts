@@ -18,11 +18,7 @@
 export { Button, type ButtonProps, type ButtonVariant, type ButtonSize } from './components/Button';
 export { Icon, type IconProps, type IconSize, type IconColor } from './components/Icon';
 export { Loading, type LoadingProps, type LoadingVariant, type LoadingSize } from './components/Loading';
-export {
-  ErrorBoundary,
-  type ErrorBoundaryProps,
-  type ErrorInfo,
-} from './components/ErrorBoundary';
+export { ErrorBoundary, type ErrorBoundaryProps, type ErrorInfo } from './components/ErrorBoundary';
 
 // ============================================================================
 // Utilities - Formatting

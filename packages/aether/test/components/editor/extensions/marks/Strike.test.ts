@@ -108,9 +108,7 @@ describe('StrikeExtension', () => {
 
     it('should serialize to <s> tag', () => {
       const doc = schema.node('doc', null, [
-        schema.node('paragraph', null, [
-          schema.text('strikethrough text', [schema.marks.strike.create()]),
-        ]),
+        schema.node('paragraph', null, [schema.text('strikethrough text', [schema.marks.strike.create()])]),
       ]);
 
       const serializer = DOMSerializer.fromSchema(schema);
@@ -132,9 +130,7 @@ describe('StrikeExtension', () => {
     });
 
     it('should toggle strike mark with Mod-Shift-x', () => {
-      const doc = schema.node('doc', null, [
-        schema.node('paragraph', null, [schema.text('test')]),
-      ]);
+      const doc = schema.node('doc', null, [schema.node('paragraph', null, [schema.text('test')])]);
 
       const state = EditorState.create({
         schema,

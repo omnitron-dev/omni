@@ -11,10 +11,10 @@ describe('Timeout execution test', () => {
     // Reset configuration to defaults
     configure({
       throwOnNonZeroExit: true,
-      defaultTimeout: 30000
+      defaultTimeout: 30000,
     });
     // Add a small delay to ensure all processes are cleaned up
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
   });
 
   afterEach(async () => {
@@ -22,7 +22,7 @@ describe('Timeout execution test', () => {
     await dispose();
     globalCache.clear();
     // Add a small delay to ensure all processes are cleaned up
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
   });
   describe('Basic timeout functionality', () => {
     it('should execute command with timeout successfully', async () => {

@@ -1,6 +1,6 @@
 /**
  * 04. Error Handling - Error Handling
- * 
+ *
  * Demonstrates various ways to handle errors
  */
 
@@ -64,13 +64,7 @@ try {
 }
 
 // 6. Multiple error handling
-const commands = [
-  $`echo "Success 1"`,
-  $`exit 1`,
-  $`echo "Success 2"`,
-  $`false`,
-  $`echo "Success 3"`
-];
+const commands = [$`echo "Success 1"`, $`exit 1`, $`echo "Success 2"`, $`false`, $`echo "Success 3"`];
 
 const commandResults = await Promise.allSettled(commands);
 commandResults.forEach((result, i) => {
@@ -192,7 +186,7 @@ async function runWithLogging(command: string) {
       exitCode: error.exitCode || null,
       stderr: error.stderr || '',
       duration: Date.now() - startTime,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
 
     errorLog.push(errorInfo);

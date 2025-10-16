@@ -18,12 +18,7 @@ import { OrderedListExtension } from '../../../../src/components/editor/extensio
 import { ListItemExtension } from '../../../../src/components/editor/extensions/lists/ListItemExtension.js';
 import { CodeBlockExtension } from '../../../../src/components/editor/extensions/code/CodeBlockExtension.js';
 import { HistoryExtension } from '../../../../src/components/editor/extensions/behavior/HistoryExtension.js';
-import {
-  createIntegrationTestEditor,
-  cleanupEditor,
-  setSelection,
-  simulateKeyPress,
-} from './helpers.js';
+import { createIntegrationTestEditor, cleanupEditor, setSelection, simulateKeyPress } from './helpers.js';
 
 describe('Keyboard Shortcuts', () => {
   let editor: EditorInstance;

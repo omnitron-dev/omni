@@ -383,7 +383,12 @@ async function main() {
 
       // Database selection if database feature is selected
       database: ({ results }) => {
-        if (!results.features || !Array.isArray(results.features) || !results.features.includes('db')) return;
+        if (
+          !results.features ||
+          !Array.isArray(results.features) ||
+          !results.features.includes('db')
+        )
+          return;
 
         return select({
           message: 'Choose a database',
@@ -552,14 +557,21 @@ async function main() {
 
     // Priority based on allocations
     priority: ({ results }) => {
-      if (!results.allocations || !Array.isArray(results.allocations) || results.allocations.length === 0) return;
+      if (
+        !results.allocations ||
+        !Array.isArray(results.allocations) ||
+        results.allocations.length === 0
+      )
+        return;
 
       return select({
         message: 'Which allocation has the highest priority?',
-        options: (Array.isArray(results.allocations) ? results.allocations : []).map((alloc: any) => ({
-          value: alloc,
-          label: alloc.charAt(0).toUpperCase() + alloc.slice(1),
-        })),
+        options: (Array.isArray(results.allocations) ? results.allocations : []).map(
+          (alloc: any) => ({
+            value: alloc,
+            label: alloc.charAt(0).toUpperCase() + alloc.slice(1),
+          })
+        ),
       });
     },
 

@@ -4,13 +4,7 @@
  * Spring-based and easing-based animation system for SVG elements
  */
 
-import type {
-  JSAnimationConfig,
-  AnimationController,
-  EasingFunction,
-  MorphOptions,
-  DrawOptions,
-} from './types.js';
+import type { JSAnimationConfig, AnimationController, EasingFunction, MorphOptions, DrawOptions } from './types.js';
 import { interpolatePath, animatePathDraw } from './path.js';
 
 /**
@@ -427,12 +421,7 @@ function normalizeEasing(easing: EasingFunction): (t: number) => number {
 /**
  * Create cubic bezier easing function
  */
-function cubicBezier(
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number
-): (t: number) => number {
+function cubicBezier(x1: number, y1: number, x2: number, y2: number): (t: number) => number {
   return (progress: number) => {
     const cx = 3 * x1;
     const bx = 3 * (x2 - x1) - cx;
@@ -458,20 +447,14 @@ export const easings = {
   easeInOut: (t: number) => (t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t),
   easeInCubic: (t: number) => t * t * t,
   easeOutCubic: (t: number) => --t * t * t + 1,
-  easeInOutCubic: (t: number) =>
-    t < 0.5 ? 4 * t * t * t : (t - 1) * (2 * t - 2) * (2 * t - 2) + 1,
+  easeInOutCubic: (t: number) => (t < 0.5 ? 4 * t * t * t : (t - 1) * (2 * t - 2) * (2 * t - 2) + 1),
   easeInQuart: (t: number) => t * t * t * t,
   easeOutQuart: (t: number) => 1 - --t * t * t * t,
-  easeInOutQuart: (t: number) =>
-    t < 0.5 ? 8 * t * t * t * t : 1 - 8 * --t * t * t * t,
+  easeInOutQuart: (t: number) => (t < 0.5 ? 8 * t * t * t * t : 1 - 8 * --t * t * t * t),
   easeInQuint: (t: number) => t * t * t * t * t,
   easeOutQuint: (t: number) => 1 + --t * t * t * t * t,
-  easeInOutQuint: (t: number) =>
-    t < 0.5 ? 16 * t * t * t * t * t : 1 + 16 * --t * t * t * t * t,
-  elastic: (t: number) =>
-    t === 0 || t === 1
-      ? t
-      : -Math.pow(2, 10 * (t - 1)) * Math.sin((t - 1.1) * 5 * Math.PI),
+  easeInOutQuint: (t: number) => (t < 0.5 ? 16 * t * t * t * t * t : 1 + 16 * --t * t * t * t * t),
+  elastic: (t: number) => (t === 0 || t === 1 ? t : -Math.pow(2, 10 * (t - 1)) * Math.sin((t - 1.1) * 5 * Math.PI)),
   bounce: (t: number) => {
     if (t < 1 / 2.75) {
       return 7.5625 * t * t;

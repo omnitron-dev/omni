@@ -598,9 +598,7 @@ function initializeToolbar(container: HTMLElement, editor: EditorInstance): void
     },
     // Table
     {
-      buttons: [
-        { command: 'insertTable', label: '⊞', title: 'Insert Table' },
-      ],
+      buttons: [{ command: 'insertTable', label: '⊞', title: 'Insert Table' }],
     },
     // History
     {
@@ -640,11 +638,7 @@ function initializeToolbar(container: HTMLElement, editor: EditorInstance): void
 /**
  * Create a toolbar button
  */
-function createButton(
-  container: HTMLElement,
-  config: ToolbarButtonConfig,
-  editor: EditorInstance
-): HTMLButtonElement {
+function createButton(container: HTMLElement, config: ToolbarButtonConfig, editor: EditorInstance): HTMLButtonElement {
   const button = document.createElement('button');
   button.className = 'toolbar-btn';
   button.textContent = config.label;
@@ -670,11 +664,7 @@ function createButton(
 /**
  * Create a toolbar dropdown
  */
-function createDropdown(
-  container: HTMLElement,
-  config: ToolbarDropdownConfig,
-  editor: EditorInstance
-): void {
+function createDropdown(container: HTMLElement, config: ToolbarDropdownConfig, editor: EditorInstance): void {
   const dropdown = document.createElement('div');
   dropdown.className = 'toolbar-dropdown';
 
@@ -850,11 +840,7 @@ function initializeBubbleMenu(container: HTMLElement, editor: EditorInstance): v
 /**
  * Initialize search panel
  */
-function initializeSearchPanel(
-  container: HTMLElement,
-  editor: EditorInstance,
-  visible: WritableSignal<boolean>
-): void {
+function initializeSearchPanel(container: HTMLElement, editor: EditorInstance, visible: WritableSignal<boolean>): void {
   const searchPanel = document.createElement('div');
   searchPanel.className = 'search-panel';
   searchPanel.style.display = 'none';

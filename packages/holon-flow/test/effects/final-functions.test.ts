@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  pure,
-  effect,
-  Effects,
-  EffectFlags,
-  IO,
-} from '../../src/effects/index.js';
+import { pure, effect, Effects, EffectFlags, IO } from '../../src/effects/index.js';
 
 describe('Final Functions Coverage', () => {
   describe('pure function', () => {
@@ -26,11 +20,7 @@ describe('Final Functions Coverage', () => {
 
   describe('effect function factory', () => {
     it('should create named effects', () => {
-      const customEffect = effect(
-        'custom',
-        EffectFlags.IO,
-        (input: string) => `Processed: ${input}`
-      );
+      const customEffect = effect('custom', EffectFlags.IO, (input: string) => `Processed: ${input}`);
 
       expect(customEffect.id).toBeDefined();
       expect(customEffect.flags).toBe(EffectFlags.IO);
@@ -39,11 +29,7 @@ describe('Final Functions Coverage', () => {
     });
 
     it('should create effects with categories', () => {
-      const dbEffect = effect(
-        'database',
-        EffectFlags.Database,
-        async () => ({ data: 'from db' })
-      );
+      const dbEffect = effect('database', EffectFlags.Database, async () => ({ data: 'from db' }));
 
       expect(dbEffect.flags).toBe(EffectFlags.Database);
     });
@@ -68,7 +54,9 @@ describe('Final Functions Coverage', () => {
       // Test log functionality (it just logs to console)
       const originalLog = console.log;
       let logged = '';
-      console.log = (msg: string) => { logged = msg; };
+      console.log = (msg: string) => {
+        logged = msg;
+      };
 
       Effects.log.handler('test message', {} as any);
       expect(logged).toBe('test message');
@@ -89,8 +77,7 @@ describe('Final Functions Coverage', () => {
       expect(Effects.throw).toBeDefined();
       expect(Effects.throw.flags).toBe(EffectFlags.Throw);
 
-      expect(() => Effects.throw.handler('Test error', {} as any))
-        .toThrow('Test error');
+      expect(() => Effects.throw.handler('Test error', {} as any)).toThrow('Test error');
     });
   });
 
@@ -106,9 +93,9 @@ describe('Final Functions Coverage', () => {
 
     it('should chain IO operations with flatMap', async () => {
       const io = IO.of(10)
-        .flatMap(x => IO.of(x * 2))
-        .flatMap(x => IO.of(x + 5))
-        .map(x => x.toString());
+        .flatMap((x) => IO.of(x * 2))
+        .flatMap((x) => IO.of(x + 5))
+        .map((x) => x.toString());
 
       const result = await io.run();
       expect(result).toBe('25');
@@ -116,8 +103,8 @@ describe('Final Functions Coverage', () => {
 
     it('should handle nested async IO', async () => {
       const io = IO.async(async () => 5)
-        .flatMap(x => IO.async(async () => x * 2))
-        .flatMap(x => IO.of(x + 1));
+        .flatMap((x) => IO.async(async () => x * 2))
+        .flatMap((x) => IO.of(x + 1));
 
       const result = await io.run();
       expect(result).toBe(11);

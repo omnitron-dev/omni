@@ -373,7 +373,8 @@ export class PerformanceMonitor {
     return {
       dnsLookup: navigation.domainLookupEnd - navigation.domainLookupStart,
       tcpConnection: navigation.connectEnd - navigation.connectStart,
-      tlsNegotiation: navigation.secureConnectionStart > 0 ? navigation.connectEnd - navigation.secureConnectionStart : 0,
+      tlsNegotiation:
+        navigation.secureConnectionStart > 0 ? navigation.connectEnd - navigation.secureConnectionStart : 0,
       ttfb: navigation.responseStart - navigation.requestStart,
       domContentLoaded: navigation.domContentLoadedEventEnd - navigation.domContentLoadedEventStart,
       domComplete: navigation.domComplete - navigation.domContentLoadedEventEnd,

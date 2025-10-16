@@ -60,17 +60,14 @@ export interface Environment {
 }
 
 export class TransferEngine {
-  constructor(private engine: ExecutionEngine | CallableExecutionEngine) { }
+  constructor(private engine: ExecutionEngine | CallableExecutionEngine) {}
 
-  private emitEvent<K extends keyof UshEventMap>(
-    event: K,
-    data: Omit<UshEventMap[K], 'timestamp' | 'adapter'>
-  ): void {
+  private emitEvent<K extends keyof UshEventMap>(event: K, data: Omit<UshEventMap[K], 'timestamp' | 'adapter'>): void {
     if ('emit' in this.engine && typeof this.engine.emit === 'function') {
       (this.engine as TypedEventEmitter<UshEventMap>).emit(event, {
         ...data,
         timestamp: new Date(),
-        adapter: 'local'
+        adapter: 'local',
       } as UshEventMap[K]);
     }
   }
@@ -84,7 +81,7 @@ export class TransferEngine {
     this.emitEvent('transfer:start', {
       source: sourceEnv.raw,
       destination: destEnv.raw,
-      direction: sourceEnv.type === 'local' ? 'upload' : 'download'
+      direction: sourceEnv.type === 'local' ? 'upload' : 'download',
     });
 
     try {
@@ -92,7 +89,7 @@ export class TransferEngine {
       const finalResult = {
         ...result,
         success: true,
-        duration: Date.now() - startTime
+        duration: Date.now() - startTime,
       };
 
       // Emit transfer:complete event
@@ -101,7 +98,7 @@ export class TransferEngine {
         destination: destEnv.raw,
         direction: sourceEnv.type === 'local' ? 'upload' : 'download',
         bytesTransferred: finalResult.bytesTransferred,
-        duration: finalResult.duration
+        duration: finalResult.duration,
       });
 
       return finalResult;
@@ -113,7 +110,7 @@ export class TransferEngine {
         source: sourceEnv.raw,
         destination: destEnv.raw,
         direction: sourceEnv.type === 'local' ? 'upload' : 'download',
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
 
       return {
@@ -121,7 +118,7 @@ export class TransferEngine {
         filesTransferred: 0,
         bytesTransferred: 0,
         errors: [error as Error],
-        duration
+        duration,
       };
     }
   }
@@ -135,7 +132,7 @@ export class TransferEngine {
     this.emitEvent('transfer:start', {
       source: sourceEnv.raw,
       destination: destEnv.raw,
-      direction: sourceEnv.type === 'local' ? 'upload' : 'download'
+      direction: sourceEnv.type === 'local' ? 'upload' : 'download',
     });
 
     try {
@@ -143,7 +140,7 @@ export class TransferEngine {
       const finalResult = {
         ...result,
         success: true,
-        duration: Date.now() - startTime
+        duration: Date.now() - startTime,
       };
 
       // Emit transfer:complete event
@@ -152,7 +149,7 @@ export class TransferEngine {
         destination: destEnv.raw,
         direction: sourceEnv.type === 'local' ? 'upload' : 'download',
         bytesTransferred: finalResult.bytesTransferred,
-        duration: finalResult.duration
+        duration: finalResult.duration,
       });
 
       return finalResult;
@@ -164,7 +161,7 @@ export class TransferEngine {
         source: sourceEnv.raw,
         destination: destEnv.raw,
         direction: sourceEnv.type === 'local' ? 'upload' : 'download',
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
 
       return {
@@ -172,7 +169,7 @@ export class TransferEngine {
         filesTransferred: 0,
         bytesTransferred: 0,
         errors: [error as Error],
-        duration
+        duration,
       };
     }
   }
@@ -191,7 +188,7 @@ export class TransferEngine {
         user: sshMatch[1],
         host: sshMatch[2],
         path: sshMatch[3] || '/',
-        raw: path
+        raw: path,
       };
     }
 
@@ -202,7 +199,7 @@ export class TransferEngine {
         type: 'docker',
         container: dockerMatch[1],
         path: dockerMatch[2] || '/',
-        raw: path
+        raw: path,
       };
     }
 
@@ -210,7 +207,7 @@ export class TransferEngine {
     return {
       type: 'local',
       path: isAbsolute(path) ? path : join(process.cwd(), path),
-      raw: path
+      raw: path,
     };
   }
 
@@ -279,7 +276,7 @@ export class TransferEngine {
     // Get SSH execution context
     const $ssh = (this.engine as any).ssh({
       host: dest.host!,
-      username: dest.user || 'root'
+      username: dest.user || 'root',
     });
 
     if (options.recursive) {
@@ -329,7 +326,7 @@ export class TransferEngine {
     // Get SSH execution context
     const $ssh = (this.engine as any).ssh({
       host: source.host!,
-      username: source.user || 'root'
+      username: source.user || 'root',
     });
 
     if (options.recursive) {
@@ -337,10 +334,10 @@ export class TransferEngine {
       // For now, we'll need to implement this using the ssh context
       const remotePath = source.path;
       const localPath = dest.path;
-      
+
       // Create local directory
       await this.engine.execute({ command: `mkdir -p ${escapeArg(localPath)}`, shell: true });
-      
+
       // Use tar over SSH for directory transfer
       await $ssh`tar -cf - -C ${dirname(remotePath)} ${relative(dirname(remotePath), remotePath)} | tar -xf - -C ${localPath}`;
     } else {
@@ -368,12 +365,13 @@ export class TransferEngine {
       // Same host, use remote cp/mv
       const $ssh = (this.engine as any).ssh({
         host: source.host!,
-        username: source.user || 'root'
+        username: source.user || 'root',
       });
 
-      const command = operation === 'copy'
-        ? `cp ${this.buildCpFlags(options)} ${escapeArg(source.path)} ${escapeArg(dest.path)}`
-        : `mv ${options.overwrite ? '-f' : '-n'} ${escapeArg(source.path)} ${escapeArg(dest.path)}`;
+      const command =
+        operation === 'copy'
+          ? `cp ${this.buildCpFlags(options)} ${escapeArg(source.path)} ${escapeArg(dest.path)}`
+          : `mv ${options.overwrite ? '-f' : '-n'} ${escapeArg(source.path)} ${escapeArg(dest.path)}`;
 
       await $ssh`${command}`;
     } else {
@@ -393,7 +391,7 @@ export class TransferEngine {
       if (operation === 'move') {
         const $sshSource = (this.engine as any).ssh({
           host: source.host!,
-          username: source.user || 'root'
+          username: source.user || 'root',
         });
         await $sshSource`rm -rf ${source.path}`;
       }
@@ -402,7 +400,7 @@ export class TransferEngine {
     return {
       filesTransferred: 1,
       bytesTransferred: 0,
-      errors: []
+      errors: [],
     };
   }
 
@@ -424,7 +422,7 @@ export class TransferEngine {
     if (operation === 'move') {
       const $ssh = (this.engine as any).ssh({
         host: source.host!,
-        username: source.user || 'root'
+        username: source.user || 'root',
       });
       await $ssh`rm -rf ${source.path}`;
     }
@@ -432,7 +430,7 @@ export class TransferEngine {
     return {
       filesTransferred: 1,
       bytesTransferred: 0,
-      errors: []
+      errors: [],
     };
   }
 
@@ -452,14 +450,14 @@ export class TransferEngine {
     if (operation === 'move') {
       await this.engine.execute({
         command: `docker exec ${source.container} rm -rf ${escapeArg(source.path)}`,
-        shell: true
+        shell: true,
       });
     }
 
     return {
       filesTransferred: 1,
       bytesTransferred: 0,
-      errors: []
+      errors: [],
     };
   }
 
@@ -481,14 +479,14 @@ export class TransferEngine {
     if (operation === 'move') {
       await this.engine.execute({
         command: `docker exec ${source.container} rm -rf ${escapeArg(source.path)}`,
-        shell: true
+        shell: true,
       });
     }
 
     return {
       filesTransferred: 1,
       bytesTransferred: 0,
-      errors: []
+      errors: [],
     };
   }
 
@@ -500,9 +498,10 @@ export class TransferEngine {
   ): Promise<Omit<TransferResult, 'success' | 'duration'>> {
     if (source.container === dest.container) {
       // Same container, use exec
-      const command = operation === 'copy'
-        ? `docker exec ${source.container} cp ${this.buildCpFlags(options)} ${escapeArg(source.path)} ${escapeArg(dest.path)}`
-        : `docker exec ${source.container} mv ${options.overwrite ? '-f' : '-n'} ${escapeArg(source.path)} ${escapeArg(dest.path)}`;
+      const command =
+        operation === 'copy'
+          ? `docker exec ${source.container} cp ${this.buildCpFlags(options)} ${escapeArg(source.path)} ${escapeArg(dest.path)}`
+          : `docker exec ${source.container} mv ${options.overwrite ? '-f' : '-n'} ${escapeArg(source.path)} ${escapeArg(dest.path)}`;
 
       await this.engine.execute({ command, shell: true });
     } else {
@@ -518,7 +517,7 @@ export class TransferEngine {
       if (operation === 'move') {
         await this.engine.execute({
           command: `docker exec ${source.container} rm -rf ${escapeArg(source.path)}`,
-          shell: true
+          shell: true,
         });
       }
     }
@@ -526,7 +525,7 @@ export class TransferEngine {
     return {
       filesTransferred: 1,
       bytesTransferred: 0,
-      errors: []
+      errors: [],
     };
   }
 
@@ -575,7 +574,7 @@ export class TransferEngine {
         return {
           filesTransferred: 1,
           bytesTransferred: stats.size,
-          errors: []
+          errors: [],
         };
       } else if (stats.isDirectory() && options.recursive) {
         // For directories, we'd need to recursively count files
@@ -583,7 +582,7 @@ export class TransferEngine {
         return {
           filesTransferred: 1,
           bytesTransferred: 0,
-          errors: []
+          errors: [],
         };
       }
     } catch {
@@ -593,7 +592,7 @@ export class TransferEngine {
     return {
       filesTransferred: 1,
       bytesTransferred: 0,
-      errors: []
+      errors: [],
     };
   }
 }

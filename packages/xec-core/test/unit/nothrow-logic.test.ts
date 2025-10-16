@@ -18,7 +18,7 @@ describe('nothrow() and throwOnNonZeroExit logic', () => {
 
     beforeEach(() => {
       engine = new ExecutionEngine({
-        throwOnNonZeroExit: true
+        throwOnNonZeroExit: true,
       });
       mockAdapter.clearMocks();
       engine.registerAdapter('mock', mockAdapter);
@@ -29,12 +29,12 @@ describe('nothrow() and throwOnNonZeroExit logic', () => {
       mockAdapter.mockDefault({
         stdout: 'error output',
         stderr: 'error message',
-        exitCode: 1
+        exitCode: 1,
       });
 
       const command = engine.createProcessPromise({
         command: 'exit 1',
-        adapter: 'mock'
+        adapter: 'mock',
       });
 
       await expect(command).rejects.toThrow(CommandError);
@@ -45,13 +45,15 @@ describe('nothrow() and throwOnNonZeroExit logic', () => {
       mockAdapter.mockDefault({
         stdout: 'error output',
         stderr: 'error message',
-        exitCode: 1
+        exitCode: 1,
       });
 
-      const command = engine.createProcessPromise({
-        command: 'exit 1',
-        adapter: 'mock'
-      }).nothrow();
+      const command = engine
+        .createProcessPromise({
+          command: 'exit 1',
+          adapter: 'mock',
+        })
+        .nothrow();
 
       const result = await command;
 
@@ -65,13 +67,15 @@ describe('nothrow() and throwOnNonZeroExit logic', () => {
       mockAdapter.mockDefault({
         stdout: 'success output',
         stderr: '',
-        exitCode: 0
+        exitCode: 0,
       });
 
-      const command = engine.createProcessPromise({
-        command: 'echo test',
-        adapter: 'mock'
-      }).nothrow();
+      const command = engine
+        .createProcessPromise({
+          command: 'echo test',
+          adapter: 'mock',
+        })
+        .nothrow();
 
       const result = await command;
 
@@ -86,7 +90,7 @@ describe('nothrow() and throwOnNonZeroExit logic', () => {
 
     beforeEach(() => {
       engine = new ExecutionEngine({
-        throwOnNonZeroExit: false
+        throwOnNonZeroExit: false,
       });
       mockAdapter.clearMocks();
       mockAdapter = new MockAdapter({ throwOnNonZeroExit: false });
@@ -98,12 +102,12 @@ describe('nothrow() and throwOnNonZeroExit logic', () => {
       mockAdapter.mockDefault({
         stdout: 'error output',
         stderr: 'error message',
-        exitCode: 1
+        exitCode: 1,
       });
 
       const command = engine.createProcessPromise({
         command: 'exit 1',
-        adapter: 'mock'
+        adapter: 'mock',
       });
 
       const result = await command;
@@ -118,13 +122,15 @@ describe('nothrow() and throwOnNonZeroExit logic', () => {
       mockAdapter.mockDefault({
         stdout: 'error output',
         stderr: 'error message',
-        exitCode: 1
+        exitCode: 1,
       });
 
-      const command = engine.createProcessPromise({
-        command: 'exit 1',
-        adapter: 'mock'
-      }).nothrow();
+      const command = engine
+        .createProcessPromise({
+          command: 'exit 1',
+          adapter: 'mock',
+        })
+        .nothrow();
 
       const result = await command;
 
@@ -138,13 +144,15 @@ describe('nothrow() and throwOnNonZeroExit logic', () => {
       mockAdapter.mockDefault({
         stdout: 'success output',
         stderr: '',
-        exitCode: 0
+        exitCode: 0,
       });
 
-      const command = engine.createProcessPromise({
-        command: 'echo test',
-        adapter: 'mock'
-      }).nothrow();
+      const command = engine
+        .createProcessPromise({
+          command: 'echo test',
+          adapter: 'mock',
+        })
+        .nothrow();
 
       const result = await command;
 
@@ -159,7 +167,7 @@ describe('nothrow() and throwOnNonZeroExit logic', () => {
 
     beforeEach(() => {
       engine = new ExecutionEngine({
-        throwOnNonZeroExit: true
+        throwOnNonZeroExit: true,
       });
       mockAdapter.clearMocks();
       engine.registerAdapter('mock', mockAdapter);
@@ -173,13 +181,16 @@ describe('nothrow() and throwOnNonZeroExit logic', () => {
       mockAdapter.mockDefault({
         stdout: 'error output',
         stderr: 'error message',
-        exitCode: 1
+        exitCode: 1,
       });
 
-      const command = engine.createProcessPromise({
-        command: 'exit 1',
-        adapter: 'mock'
-      }).nothrow().timeout(5000); // Use nothrow().timeout() instead
+      const command = engine
+        .createProcessPromise({
+          command: 'exit 1',
+          adapter: 'mock',
+        })
+        .nothrow()
+        .timeout(5000); // Use nothrow().timeout() instead
 
       const result = await command;
 
@@ -193,13 +204,16 @@ describe('nothrow() and throwOnNonZeroExit logic', () => {
       mockAdapter.mockDefault({
         stdout: 'error output',
         stderr: 'error message',
-        exitCode: 1
+        exitCode: 1,
       });
 
-      const command = engine.createProcessPromise({
-        command: 'exit 1',
-        adapter: 'mock'
-      }).nothrow().timeout(5000);
+      const command = engine
+        .createProcessPromise({
+          command: 'exit 1',
+          adapter: 'mock',
+        })
+        .nothrow()
+        .timeout(5000);
 
       const result = await command;
 
@@ -216,13 +230,16 @@ describe('nothrow() and throwOnNonZeroExit logic', () => {
       mockAdapter.mockDefault({
         stdout: 'error output',
         stderr: 'error message',
-        exitCode: 1
+        exitCode: 1,
       });
 
-      const command = engine.createProcessPromise({
-        command: 'exit 1',
-        adapter: 'mock'
-      }).nothrow().quiet(); // Use nothrow().quiet() instead
+      const command = engine
+        .createProcessPromise({
+          command: 'exit 1',
+          adapter: 'mock',
+        })
+        .nothrow()
+        .quiet(); // Use nothrow().quiet() instead
 
       const result = await command;
 
@@ -237,7 +254,7 @@ describe('nothrow() and throwOnNonZeroExit logic', () => {
 
     beforeEach(() => {
       engine = new ExecutionEngine({
-        throwOnNonZeroExit: true
+        throwOnNonZeroExit: true,
       });
       mockAdapter.clearMocks();
       engine.registerAdapter('mock', mockAdapter);
@@ -248,13 +265,17 @@ describe('nothrow() and throwOnNonZeroExit logic', () => {
       mockAdapter.mockDefault({
         stdout: 'error output',
         stderr: 'error message',
-        exitCode: 1
+        exitCode: 1,
       });
 
-      const command = engine.createProcessPromise({
-        command: 'exit 1',
-        adapter: 'mock'
-      }).nothrow().nothrow().nothrow();
+      const command = engine
+        .createProcessPromise({
+          command: 'exit 1',
+          adapter: 'mock',
+        })
+        .nothrow()
+        .nothrow()
+        .nothrow();
 
       const result = await command;
 
@@ -268,13 +289,13 @@ describe('nothrow() and throwOnNonZeroExit logic', () => {
       mockAdapter.mockDefault({
         stdout: 'error output',
         stderr: 'error message',
-        exitCode: 1
+        exitCode: 1,
       });
 
       const command = engine.createProcessPromise({
         command: 'exit 1',
         adapter: 'mock',
-        nothrow: true
+        nothrow: true,
       });
 
       const result = await command;
@@ -289,14 +310,16 @@ describe('nothrow() and throwOnNonZeroExit logic', () => {
       mockAdapter.mockDefault({
         stdout: 'error output',
         stderr: 'error message',
-        exitCode: 1
+        exitCode: 1,
       });
 
-      const command = engine.createProcessPromise({
-        command: 'exit 1',
-        adapter: 'mock',
-        nothrow: true
-      }).nothrow();
+      const command = engine
+        .createProcessPromise({
+          command: 'exit 1',
+          adapter: 'mock',
+          nothrow: true,
+        })
+        .nothrow();
 
       const result = await command;
 
@@ -311,16 +334,18 @@ describe('nothrow() and throwOnNonZeroExit logic', () => {
 
     beforeEach(() => {
       engine = new ExecutionEngine({
-        throwOnNonZeroExit: true
+        throwOnNonZeroExit: true,
       });
     });
 
     it('should handle real command with nothrow()', async () => {
       // Use a command that definitely fails with stderr output
-      const command = engine.createProcessPromise({
-        command: 'echo "Command failed with exit code 1" >&2 && exit 1',
-        adapter: 'local'
-      }).nothrow();
+      const command = engine
+        .createProcessPromise({
+          command: 'echo "Command failed with exit code 1" >&2 && exit 1',
+          adapter: 'local',
+        })
+        .nothrow();
 
       const result = await command;
 
@@ -332,7 +357,7 @@ describe('nothrow() and throwOnNonZeroExit logic', () => {
       // Use a command that definitely fails
       const command = engine.createProcessPromise({
         command: 'exit 1',
-        adapter: 'local'
+        adapter: 'local',
       });
 
       await expect(command).rejects.toThrow();

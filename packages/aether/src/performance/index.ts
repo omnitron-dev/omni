@@ -55,12 +55,7 @@ export {
 } from '../core/component/lazy-loader.js';
 
 // VNode Pool
-export {
-  VNodePool,
-  globalVNodePool,
-  pooled as pooledVNode,
-  type VNodePoolConfig,
-} from '../reconciler/vnode-pool.js';
+export { VNodePool, globalVNodePool, pooled as pooledVNode, type VNodePoolConfig } from '../reconciler/vnode-pool.js';
 
 // Optimized Diff
 export {
@@ -134,15 +129,9 @@ export const performance = {
 
     return {
       summary: {
-        totalReused:
-          stats.subscriptionPool.reused +
-          stats.vnodePool.reused +
-          stats.componentPool.reused,
+        totalReused: stats.subscriptionPool.reused + stats.vnodePool.reused + stats.componentPool.reused,
         totalCached: stats.requestCache.hits,
-        totalOptimized:
-          stats.batchManager.deduped +
-          stats.differ.fastPaths +
-          stats.requestCache.deduped,
+        totalOptimized: stats.batchManager.deduped + stats.differ.fastPaths + stats.requestCache.deduped,
       },
       details: stats,
       recommendations: this.generateRecommendations(stats),
@@ -164,30 +153,22 @@ export const performance = {
 
     // VNode pool
     if (stats.vnodePool.reuseRate < 0.5) {
-      recommendations.push(
-        'Low VNode reuse rate. Consider using keys for list items or increasing pool size.'
-      );
+      recommendations.push('Low VNode reuse rate. Consider using keys for list items or increasing pool size.');
     }
 
     // Batch manager
     if (stats.batchManager.dedupRate < 0.3) {
-      recommendations.push(
-        'Low deduplication rate. Consider wrapping more updates in batch() calls.'
-      );
+      recommendations.push('Low deduplication rate. Consider wrapping more updates in batch() calls.');
     }
 
     // Request cache
     if (stats.requestCache.hitRate < 0.5) {
-      recommendations.push(
-        'Low cache hit rate. Consider increasing TTL or cache size.'
-      );
+      recommendations.push('Low cache hit rate. Consider increasing TTL or cache size.');
     }
 
     // Differ
     if (stats.differ.fastPathRate < 0.3) {
-      recommendations.push(
-        'Low fast path usage. Consider using memoization or stable references.'
-      );
+      recommendations.push('Low fast path usage. Consider using memoization or stable references.');
     }
 
     if (recommendations.length === 0) {

@@ -96,9 +96,7 @@ describe('ItalicExtension', () => {
 
     it('should serialize to <em> tag', () => {
       const doc = schema.node('doc', null, [
-        schema.node('paragraph', null, [
-          schema.text('italic text', [schema.marks.italic.create()]),
-        ]),
+        schema.node('paragraph', null, [schema.text('italic text', [schema.marks.italic.create()])]),
       ]);
 
       const serializer = DOMSerializer.fromSchema(schema);
@@ -120,9 +118,7 @@ describe('ItalicExtension', () => {
     });
 
     it('should toggle italic mark with Mod-i', () => {
-      const doc = schema.node('doc', null, [
-        schema.node('paragraph', null, [schema.text('test')]),
-      ]);
+      const doc = schema.node('doc', null, [schema.node('paragraph', null, [schema.text('test')])]);
 
       const state = EditorState.create({
         schema,

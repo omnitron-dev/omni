@@ -31,12 +31,33 @@ interface Product {
 }
 
 const products: Product[] = [
-  { id: 1, name: 'Laptop Pro', category: 'Electronics', price: 1299.99, stock: 45, available: true },
-  { id: 2, name: 'Wireless Mouse', category: 'Accessories', price: 29.99, stock: 150, available: true },
+  {
+    id: 1,
+    name: 'Laptop Pro',
+    category: 'Electronics',
+    price: 1299.99,
+    stock: 45,
+    available: true,
+  },
+  {
+    id: 2,
+    name: 'Wireless Mouse',
+    category: 'Accessories',
+    price: 29.99,
+    stock: 150,
+    available: true,
+  },
   { id: 3, name: 'USB-C Cable', category: 'Accessories', price: 12.99, stock: 0, available: false },
   { id: 4, name: '4K Monitor', category: 'Electronics', price: 499.99, stock: 23, available: true },
-  { id: 5, name: 'Keyboard RGB', category: 'Accessories', price: 89.99, stock: 67, available: true },
-  { id: 6, name: 'Desk Lamp', category: 'Office', price: 45.50, stock: 12, available: true },
+  {
+    id: 5,
+    name: 'Keyboard RGB',
+    category: 'Accessories',
+    price: 89.99,
+    stock: 67,
+    available: true,
+  },
+  { id: 6, name: 'Desk Lamp', category: 'Office', price: 45.5, stock: 12, available: true },
 ];
 
 const columns: TableColumn<Product>[] = [
@@ -176,7 +197,7 @@ async function main() {
     id: i + 1,
     name: `Product ${i + 1}`,
     category: ['Electronics', 'Accessories', 'Office'][i % 3]!,
-    price: 10 + (i * 7) % 990,
+    price: 10 + ((i * 7) % 990),
     stock: i % 100,
     available: i % 3 === 0,
   }));

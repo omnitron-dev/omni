@@ -7,24 +7,24 @@ import type { Command } from '../../src/types/command.js';
 // Create a test adapter to access protected methods
 class TestAdapter extends BaseAdapter {
   adapterName = 'test' as const;
-  
+
   async execute(command: Command) {
     return this.createResultSync('', '', 0, undefined, 'test command', Date.now(), Date.now());
   }
-  
+
   async isAvailable() {
     return true;
   }
-  
+
   async dispose() {
     // No-op for testing
   }
-  
+
   // Expose protected method for testing
   public testMaskSensitiveData(text: string): string {
     return this.maskSensitiveData(text);
   }
-  
+
   // Add optimized version for comparison
   public testMaskSensitiveDataOptimized(text: string): string {
     if (!this.config.sensitiveDataMasking.enabled || !text) {
@@ -32,12 +32,12 @@ class TestAdapter extends BaseAdapter {
     }
 
     // Pre-compile all patterns into a single regex with alternation
-    const sources = this.config.sensitiveDataMasking.patterns.map(p => `(${p.source})`);
+    const sources = this.config.sensitiveDataMasking.patterns.map((p) => `(${p.source})`);
     const combinedPattern = new RegExp(sources.join('|'), 'gi');
-    
+
     return text.replace(combinedPattern, (match, ...args) => {
       const replacement = this.config.sensitiveDataMasking.replacement;
-      
+
       // Special case for SSH keys - replace entire key
       if (match.includes('BEGIN') && match.includes('PRIVATE KEY')) {
         return replacement;
@@ -51,7 +51,7 @@ class TestAdapter extends BaseAdapter {
       // Find which pattern matched by checking non-undefined groups
       let patternIndex = -1;
       let patternGroups: any[] = [];
-      
+
       for (let i = 0; i < this.config.sensitiveDataMasking.patterns.length; i++) {
         const startIdx = i + 1; // First group starts at index 1
         if (args[startIdx - 1] !== undefined) {
@@ -68,7 +68,7 @@ class TestAdapter extends BaseAdapter {
       const groups = patternGroups.slice(0, -2);
 
       // If no capture groups, replace the whole match
-      if (groups.length === 0 || groups.every(g => g === undefined)) {
+      if (groups.length === 0 || groups.every((g) => g === undefined)) {
         return replacement;
       }
 
@@ -78,7 +78,13 @@ class TestAdapter extends BaseAdapter {
       }
 
       // Authorization headers with Bearer/Basic (4 groups)
-      if (groups.length === 4 && groups[0]?.includes('Authorization') && groups[1] && groups[2] !== undefined && groups[3]) {
+      if (
+        groups.length === 4 &&
+        groups[0]?.includes('Authorization') &&
+        groups[1] &&
+        groups[2] !== undefined &&
+        groups[3]
+      ) {
         return groups[0] + groups[1] + ' ' + replacement;
       }
 
@@ -86,7 +92,7 @@ class TestAdapter extends BaseAdapter {
       if (groups.length === 6) {
         const key = groups[0];
         const separator = groups[1];
-        
+
         if (key.startsWith('--')) {
           return key + ' ' + replacement;
         }
@@ -133,13 +139,13 @@ class TestAdapter extends BaseAdapter {
 describe('Sensitive Data Masking Performance', () => {
   let adapter: TestAdapter;
   let testData: string;
-  
+
   beforeAll(() => {
     adapter = new TestAdapter();
-    
+
     // Generate test data with various sensitive patterns
     const lines: string[] = [];
-    
+
     // Add 1000 lines with different types of sensitive data
     for (let i = 0; i < 1000; i++) {
       if (i % 10 === 0) {
@@ -164,50 +170,50 @@ describe('Sensitive Data Masking Performance', () => {
         lines.push(`{"secret": "confidential-data-${i}", "public": "visible"}`);
       }
     }
-    
+
     testData = lines.join('\n');
   });
-  
+
   it('should mask sensitive data correctly', () => {
     const maskedOriginal = adapter.testMaskSensitiveData(testData);
     const maskedOptimized = adapter.testMaskSensitiveDataOptimized(testData);
-    
+
     // Both should produce the same result
     expect(maskedOptimized).toBe(maskedOriginal);
-    
+
     // Verify some patterns were masked
     expect(maskedOriginal).toContain('[REDACTED]');
     expect(maskedOriginal).not.toContain('sk-1234567890abcdef');
     expect(maskedOriginal).not.toContain('MySecretPass');
     expect(maskedOriginal).not.toContain('wJalrXUtnFEMI');
   });
-  
+
   it('should show performance improvement with optimized version', () => {
     const iterations = 10;
-    
+
     // Measure original implementation
     const startOriginal = performance.now();
     for (let i = 0; i < iterations; i++) {
       adapter.testMaskSensitiveData(testData);
     }
     const timeOriginal = performance.now() - startOriginal;
-    
+
     // Measure optimized implementation
     const startOptimized = performance.now();
     for (let i = 0; i < iterations; i++) {
       adapter.testMaskSensitiveDataOptimized(testData);
     }
     const timeOptimized = performance.now() - startOptimized;
-    
+
     console.log(`Original: ${timeOriginal.toFixed(2)}ms for ${iterations} iterations`);
     console.log(`Optimized: ${timeOptimized.toFixed(2)}ms for ${iterations} iterations`);
-    console.log(`Improvement: ${((timeOriginal - timeOptimized) / timeOriginal * 100).toFixed(1)}%`);
+    console.log(`Improvement: ${(((timeOriginal - timeOptimized) / timeOriginal) * 100).toFixed(1)}%`);
     console.log(`Speed-up: ${(timeOriginal / timeOptimized).toFixed(1)}x`);
-    
+
     // Optimized should be at least 2x faster
     expect(timeOptimized).toBeLessThan(timeOriginal / 2);
   });
-  
+
   it('should handle edge cases correctly', () => {
     const edgeCases = [
       '',
@@ -216,9 +222,9 @@ describe('Sensitive Data Masking Performance', () => {
       'token:',
       '{"api_key":}',
       'Authorization: Bearer',
-      '-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA...\n-----END RSA PRIVATE KEY-----'
+      '-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA...\n-----END RSA PRIVATE KEY-----',
     ];
-    
+
     for (const testCase of edgeCases) {
       const maskedOriginal = adapter.testMaskSensitiveData(testCase);
       const maskedOptimized = adapter.testMaskSensitiveDataOptimized(testCase);

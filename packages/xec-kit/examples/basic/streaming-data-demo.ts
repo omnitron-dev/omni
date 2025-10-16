@@ -35,7 +35,11 @@ const columns: TableColumn<LogEntry>[] = [
     header: 'Level',
     width: 8,
     format: (value) => {
-      const colors: Record<string, string> = { info: '\x1b[36m', warn: '\x1b[33m', error: '\x1b[31m' };
+      const colors: Record<string, string> = {
+        info: '\x1b[36m',
+        warn: '\x1b[33m',
+        error: '\x1b[31m',
+      };
       return `${colors[value as string] || ''}${value}\x1b[0m`;
     },
   },
@@ -102,7 +106,7 @@ async function* generateLogs(count: number): AsyncGenerator<LogEntry> {
 function displayProgress(progress: StreamProgress) {
   const { loaded, total, percentage } = progress;
   const barLength = 30;
-  const filled = Math.floor((percentage ?? 0) / 100 * barLength);
+  const filled = Math.floor(((percentage ?? 0) / 100) * barLength);
   const bar = '█'.repeat(filled) + '░'.repeat(barLength - filled);
 
   const pct = percentage?.toFixed(1) ?? '?';
@@ -264,7 +268,7 @@ async function demo5() {
   // Show interactive table
   const selected = await interactiveTable({
     data: logs,
-    columns: columns.map(col => ({ ...col, width: col.key === 'message' ? 30 : col.width })),
+    columns: columns.map((col) => ({ ...col, width: col.key === 'message' ? 30 : col.width })),
     selectable: 'multiple',
     sortable: true,
     filterable: true,

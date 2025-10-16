@@ -155,7 +155,7 @@ describe('SVG Transform Utils', () => {
       const matrix = transformToMatrix({ type: 'skewX', values: [30] });
       expect(matrix[0]).toBe(1);
       expect(matrix[1]).toBe(0);
-      expect(matrix[2]).toBeCloseTo(Math.tan(30 * Math.PI / 180), 10);
+      expect(matrix[2]).toBeCloseTo(Math.tan((30 * Math.PI) / 180), 10);
       expect(matrix[3]).toBe(1);
       expect(matrix[4]).toBe(0);
       expect(matrix[5]).toBe(0);
@@ -164,7 +164,7 @@ describe('SVG Transform Utils', () => {
     it('should convert skewY to matrix', () => {
       const matrix = transformToMatrix({ type: 'skewY', values: [30] });
       expect(matrix[0]).toBe(1);
-      expect(matrix[1]).toBeCloseTo(Math.tan(30 * Math.PI / 180), 10);
+      expect(matrix[1]).toBeCloseTo(Math.tan((30 * Math.PI) / 180), 10);
       expect(matrix[2]).toBe(0);
       expect(matrix[3]).toBe(1);
       expect(matrix[4]).toBe(0);
@@ -737,10 +737,7 @@ describe('SVG Transform Utils', () => {
     });
 
     it('should handle compose then apply workflow', () => {
-      const transforms: Transform[] = [
-        createTransform.translate(10, 10),
-        createTransform.scale(2),
-      ];
+      const transforms: Transform[] = [createTransform.translate(10, 10), createTransform.scale(2)];
       const matrix = composeTransforms(transforms);
       const point = applyTransform(matrix, { x: 5, y: 5 });
       expect(point).toEqual({ x: 20, y: 20 });
@@ -839,7 +836,7 @@ describe('SVG Transform Utils', () => {
       }
 
       const start = performance.now();
-      const transformed = points.map(p => applyTransform(matrix, p));
+      const transformed = points.map((p) => applyTransform(matrix, p));
       const duration = performance.now() - start;
 
       expect(transformed).toHaveLength(10000);

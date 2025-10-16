@@ -40,7 +40,7 @@ export function parseTimeout(timeout: string | number): number {
 export function formatDuration(ms: number): string {
   const isNegative = ms < 0;
   const absMs = Math.abs(ms);
-  
+
   if (absMs < 1000) {
     return `${ms}ms`;
   }
@@ -52,22 +52,20 @@ export function formatDuration(ms: number): string {
 
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
-  
+
   if (minutes < 60) {
-    const result = remainingSeconds > 0 
-      ? `${minutes}m ${remainingSeconds}s`
-      : `${minutes}m`;
+    const result = remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
     return isNegative ? `-${result}` : result;
   }
 
   const hours = Math.floor(minutes / 60);
   const remainingMinutes = minutes % 60;
-  
+
   if (remainingMinutes > 0) {
     const result = `${hours}h ${remainingMinutes}m`;
     return isNegative ? `-${result}` : result;
   }
-  
+
   return isNegative ? `-${hours}h` : `${hours}h`;
 }
 
@@ -124,10 +122,7 @@ export function parseInterval(interval: string): {
  * @param from - Base time (defaults to now)
  * @returns Next run time
  */
-export function getNextRunTime(
-  interval: ReturnType<typeof parseInterval>,
-  from: Date = new Date()
-): Date {
+export function getNextRunTime(interval: ReturnType<typeof parseInterval>, from: Date = new Date()): Date {
   if (interval.type === 'interval') {
     return new Date(from.getTime() + (interval.value as number));
   }
@@ -144,7 +139,7 @@ export function getNextRunTime(
  */
 export async function sleep(duration: string | number): Promise<void> {
   const ms = typeof duration === 'string' ? parseTimeout(duration) : duration;
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -158,7 +153,7 @@ export function createTimeoutPromise(
   message: string = 'Operation timed out'
 ): Promise<never> {
   const ms = typeof duration === 'string' ? parseTimeout(duration) : duration;
-  
+
   return new Promise((_, reject) => {
     setTimeout(() => {
       reject(new Error(message));
@@ -198,13 +193,7 @@ export async function retryWithBackoff<T>(
     timeout?: string | number;
   } = {}
 ): Promise<T> {
-  const {
-    maxRetries = 3,
-    initialDelay = '1s',
-    maxDelay = '30s',
-    factor = 2,
-    timeout,
-  } = options;
+  const { maxRetries = 3, initialDelay = '1s', maxDelay = '30s', factor = 2, timeout } = options;
 
   const initialDelayMs = typeof initialDelay === 'string' ? parseTimeout(initialDelay) : initialDelay;
   const maxDelayMs = typeof maxDelay === 'string' ? parseTimeout(maxDelay) : maxDelay;
@@ -221,7 +210,7 @@ export async function retryWithBackoff<T>(
       }
     } catch (error) {
       lastError = error as Error;
-      
+
       if (attempt < maxRetries) {
         await sleep(delay);
         delay = Math.min(delay * factor, maxDelayMs);

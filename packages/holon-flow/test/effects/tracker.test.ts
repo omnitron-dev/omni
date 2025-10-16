@@ -1,12 +1,7 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { context } from '../../src/context.js';
 import { effect, effectful, EffectFlags } from '../../src/effects/index.js';
-import {
-  EffectTracker,
-  globalTracker,
-  trackedEffect,
-  trackedFlow,
-} from '../../src/effects/tracker.js';
+import { EffectTracker, globalTracker, trackedEffect, trackedFlow } from '../../src/effects/tracker.js';
 
 describe('EffectTracker', () => {
   let tracker: EffectTracker;
@@ -234,7 +229,7 @@ describe('EffectTracker', () => {
     it('should identify hot paths', async () => {
       // Create effects with different usage patterns
       const hotEffect = effect('hot', EffectFlags.IO, async () => {
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
         return 'hot';
       });
 
@@ -262,7 +257,7 @@ describe('EffectTracker', () => {
     it('should calculate statistics correctly', async () => {
       const testEffect = effect('stats', EffectFlags.Pure, async (x: number) => {
         // Variable execution time
-        await new Promise(resolve => setTimeout(resolve, x * 10));
+        await new Promise((resolve) => setTimeout(resolve, x * 10));
         return x;
       });
 
@@ -342,9 +337,7 @@ describe('EffectTracker', () => {
   describe('trackedFlow utility', () => {
     it('should create tracked version of flow', async () => {
       const originalFlow = effectful((x: number) => x + 10, EffectFlags.Pure);
-      originalFlow.effects = new Set([
-        effect('flow-effect', EffectFlags.Pure, () => {}),
-      ]);
+      originalFlow.effects = new Set([effect('flow-effect', EffectFlags.Pure, () => {})]);
 
       const tracked = trackedFlow(originalFlow, tracker);
 

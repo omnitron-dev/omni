@@ -338,7 +338,7 @@ describe('Global State Management', () => {
       expect(runs.length).toBe(10);
 
       // Cleanup
-      disposables.forEach(d => d.dispose());
+      disposables.forEach((d) => d.dispose());
     });
 
     it('should handle rapid owner context changes', () => {

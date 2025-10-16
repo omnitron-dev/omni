@@ -3,11 +3,7 @@ import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 import { it, expect, describe, afterEach, beforeEach } from 'vitest';
 
-import {
-  MemoryCache,
-  HybridCache,
-  FileSystemCache,
-} from '../../../src/module/module-cache.js';
+import { MemoryCache, HybridCache, FileSystemCache } from '../../../src/module/module-cache.js';
 
 describe('MemoryCache', () => {
   let cache: MemoryCache<string>;
@@ -52,7 +48,7 @@ describe('MemoryCache', () => {
     expect(await cache.get('key1')).toBe('value1');
 
     // Wait for TTL to expire
-    await new Promise(resolve => setTimeout(resolve, 1100));
+    await new Promise((resolve) => setTimeout(resolve, 1100));
     expect(await cache.get('key1')).toBeNull();
   });
 
@@ -128,7 +124,7 @@ describe('FileSystemCache', () => {
     expect(await cache.get('key1')).toBe('value1');
 
     // Wait for TTL to expire
-    await new Promise(resolve => setTimeout(resolve, 1100));
+    await new Promise((resolve) => setTimeout(resolve, 1100));
     expect(await cache.get('key1')).toBeNull();
   });
 
@@ -155,10 +151,7 @@ describe('HybridCache', () => {
 
   beforeEach(async () => {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'xec-loader-test-'));
-    cache = new HybridCache(
-      { maxSize: 3, ttl: 10 },
-      { cacheDir: tempDir, ttl: 10 }
-    );
+    cache = new HybridCache({ maxSize: 3, ttl: 10 }, { cacheDir: tempDir, ttl: 10 });
   });
 
   afterEach(async () => {
@@ -189,10 +182,7 @@ describe('HybridCache', () => {
     await cache.set('key1', 'value1');
 
     // Create new hybrid cache (fresh memory)
-    const newCache = new HybridCache(
-      { maxSize: 3, ttl: 10 },
-      { cacheDir: tempDir, ttl: 10 }
-    );
+    const newCache = new HybridCache({ maxSize: 3, ttl: 10 }, { cacheDir: tempDir, ttl: 10 });
 
     // Should get from disk and promote to memory
     const value = await newCache.get('key1');

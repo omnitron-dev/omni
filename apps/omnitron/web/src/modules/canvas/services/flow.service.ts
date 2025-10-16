@@ -99,8 +99,8 @@ export class FlowService {
                 modified: new Date(),
               },
             }
-          : f,
-      ),
+          : f
+      )
     );
 
     await this.saveFlows();
@@ -145,8 +145,8 @@ export class FlowService {
               nodes: [...f.nodes, node],
               metadata: { ...f.metadata, modified: new Date() },
             }
-          : f,
-      ),
+          : f
+      )
     );
     await this.saveFlows();
   }
@@ -163,8 +163,8 @@ export class FlowService {
               nodes: f.nodes.map((n) => (n.id === nodeId ? { ...n, ...updates } : n)),
               metadata: { ...f.metadata, modified: new Date() },
             }
-          : f,
-      ),
+          : f
+      )
     );
     await this.saveFlows();
   }
@@ -179,13 +179,11 @@ export class FlowService {
           ? {
               ...f,
               nodes: f.nodes.filter((n) => n.id !== nodeId),
-              connections: f.connections.filter(
-                (c) => c.from.nodeId !== nodeId && c.to.nodeId !== nodeId,
-              ),
+              connections: f.connections.filter((c) => c.from.nodeId !== nodeId && c.to.nodeId !== nodeId),
               metadata: { ...f.metadata, modified: new Date() },
             }
-          : f,
-      ),
+          : f
+      )
     );
     await this.saveFlows();
   }
@@ -202,8 +200,8 @@ export class FlowService {
               connections: [...f.connections, connection],
               metadata: { ...f.metadata, modified: new Date() },
             }
-          : f,
-      ),
+          : f
+      )
     );
     await this.saveFlows();
   }
@@ -220,8 +218,8 @@ export class FlowService {
               connections: f.connections.filter((c) => c.id !== connectionId),
               metadata: { ...f.metadata, modified: new Date() },
             }
-          : f,
-      ),
+          : f
+      )
     );
     await this.saveFlows();
   }

@@ -14,10 +14,10 @@ import {
 
 // Mock SVG path element methods that don't exist in happy-dom
 beforeAll(() => {
-  SVGPathElement.prototype.getTotalLength = function() {
+  SVGPathElement.prototype.getTotalLength = function () {
     return 100; // Mock length
   };
-  SVGPathElement.prototype.getPointAtLength = function(distance: number) {
+  SVGPathElement.prototype.getPointAtLength = function (distance: number) {
     return { x: distance, y: distance } as DOMPoint; // Mock point
   };
 });

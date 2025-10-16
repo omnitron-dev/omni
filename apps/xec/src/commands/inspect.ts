@@ -49,62 +49,63 @@ export class InspectCommand extends BaseCommand {
       options: [
         {
           flags: '-f, --filter <pattern>',
-          description: 'Filter results by pattern'
+          description: 'Filter results by pattern',
         },
         {
           flags: '--format <format>',
           description: 'Output format (table, json, yaml, tree)',
-          defaultValue: 'table'
+          defaultValue: 'table',
         },
         {
           flags: '-r, --resolve',
-          description: 'Resolve and show interpolated values'
+          description: 'Resolve and show interpolated values',
         },
         {
           flags: '--validate',
-          description: 'Validate configuration and connectivity'
+          description: 'Validate configuration and connectivity',
         },
         {
           flags: '-e, --explain',
-          description: 'Show execution plan and details'
+          description: 'Show execution plan and details',
         },
         {
           flags: '-p, --profile <name>',
-          description: 'Use specific profile'
+          description: 'Use specific profile',
         },
       ],
       examples: [
         {
           command: 'xec inspect',
-          description: 'Interactive mode to browse all resources'
+          description: 'Interactive mode to browse all resources',
         },
         {
           command: 'xec inspect tasks',
-          description: 'List all available tasks'
+          description: 'List all available tasks',
         },
         {
           command: 'xec inspect targets',
-          description: 'List all configured targets'
+          description: 'List all configured targets',
         },
         {
           command: 'xec i system',
-          description: 'Display system information'
+          description: 'Display system information',
         },
         {
           command: 'xec inspect tasks deploy --explain',
-          description: 'Show execution plan for deploy task'
-        }
-      ]
+          description: 'Show execution plan for deploy task',
+        },
+      ],
     });
   }
 
   public async execute(args: any[]): Promise<void> {
     // Check if the last arg is a Command object (Commander.js pattern)
     const lastArg = args[args.length - 1];
-    const isCommand = lastArg && typeof lastArg === 'object' && lastArg.constructor && lastArg.constructor.name === 'Command';
+    const isCommand =
+      lastArg && typeof lastArg === 'object' && lastArg.constructor && lastArg.constructor.name === 'Command';
 
     // The actual options should be the second-to-last argument if the last is a Command
-    const optionsArg = isCommand ? args[args.length - 2] as InspectOptions : lastArg as InspectOptions;
+    const optionsArg = isCommand ? (args[args.length - 2] as InspectOptions) : (lastArg as InspectOptions);
     const positionalArgs = isCommand ? args.slice(0, -2) : args.slice(0, -1);
 
     const [type, name] = positionalArgs;
@@ -184,31 +185,31 @@ class ProjectInspector {
     const inspectType = type || 'all';
 
     if (inspectType === 'all' || inspectType === 'tasks') {
-      results.push(...await this.inspectTasks(name));
+      results.push(...(await this.inspectTasks(name)));
     }
 
     if (inspectType === 'all' || inspectType === 'targets') {
-      results.push(...await this.inspectTargets(name));
+      results.push(...(await this.inspectTargets(name)));
     }
 
     if (inspectType === 'all' || inspectType === 'vars') {
-      results.push(...await this.inspectVariables(name));
+      results.push(...(await this.inspectVariables(name)));
     }
 
     if (inspectType === 'all' || inspectType === 'scripts') {
-      results.push(...await this.inspectScripts(name));
+      results.push(...(await this.inspectScripts(name)));
     }
 
     if (inspectType === 'all' || inspectType === 'commands') {
-      results.push(...await this.inspectCommands(name));
+      results.push(...(await this.inspectCommands(name)));
     }
 
     if (inspectType === 'all' || inspectType === 'system') {
-      results.push(...await this.inspectSystem(name));
+      results.push(...(await this.inspectSystem(name)));
     }
 
     if (inspectType === 'cache') {
-      results.push(...await this.inspectCache(name));
+      results.push(...(await this.inspectCache(name)));
     }
 
     // Apply filter if specified
@@ -358,7 +359,7 @@ class ProjectInspector {
     const scriptsDir = path.join(process.cwd(), '.xec', 'scripts');
     const results: InspectionResult[] = [];
 
-    if (!await fs.pathExists(scriptsDir)) {
+    if (!(await fs.pathExists(scriptsDir))) {
       return results;
     }
 
@@ -370,7 +371,7 @@ class ProjectInspector {
     });
 
     for (const file of files) {
-      if (!['.js', '.ts', '.mjs'].some(ext => file.endsWith(ext))) continue;
+      if (!['.js', '.ts', '.mjs'].some((ext) => file.endsWith(ext))) continue;
 
       const fullPath = path.join(scriptsDir, file);
       const result: InspectionResult = {
@@ -429,7 +430,6 @@ class ProjectInspector {
 
     return results;
   }
-
 
   private async inspectCache(action?: string): Promise<InspectionResult[]> {
     const results: InspectionResult[] = [];
@@ -509,9 +509,7 @@ class ProjectInspector {
       }
 
       try {
-        runtimeData.node.path = (await (process.platform === 'win32'
-          ? $`where node`
-          : $`which node`).lines())[0];
+        runtimeData.node.path = (await (process.platform === 'win32' ? $`where node` : $`which node`).lines())[0];
       } catch {
         runtimeData.node.path = 'not found';
       }
@@ -551,8 +549,8 @@ class ProjectInspector {
           try {
             const result = await $`sw_vers`;
             const lines = result.lines();
-            lines.forEach(line => {
-              const [key, value] = line.split(':').map(s => s.trim());
+            lines.forEach((line) => {
+              const [key, value] = line.split(':').map((s) => s.trim());
               if (key === 'ProductName') osData.productName = value;
               if (key === 'ProductVersion') osData.productVersion = value;
               if (key === 'BuildVersion') osData.buildVersion = value;
@@ -564,7 +562,7 @@ class ProjectInspector {
           try {
             const osRelease = await fs.readFile('/etc/os-release', 'utf-8');
             const lines = osRelease.split('\n');
-            lines.forEach(line => {
+            lines.forEach((line) => {
               const [key, value] = line.split('=');
               if (key === 'PRETTY_NAME') osData.distro = value?.replace(/"/g, '');
               if (key === 'VERSION_ID') osData.distroVersion = value?.replace(/"/g, '');
@@ -576,7 +574,7 @@ class ProjectInspector {
           try {
             const result = await $`wmic os get Caption,Version /value`;
             const lines = result.lines();
-            lines.forEach(line => {
+            lines.forEach((line) => {
               const [key, value] = line.split('=');
               if (key === 'Caption') osData.caption = value?.trim();
               if (key === 'Version') osData.winVersion = value?.trim();
@@ -603,7 +601,7 @@ class ProjectInspector {
       const memoryInfo = await this.getMemoryInfo();
 
       const hardwareData: any = {
-        cpus: os.cpus().map(cpu => ({
+        cpus: os.cpus().map((cpu) => ({
           model: cpu.model,
           speed: cpu.speed,
         })),
@@ -659,8 +657,8 @@ class ProjectInspector {
         const netInfo = nets[name];
         if (netInfo) {
           networkData.interfaces[name] = netInfo
-            .filter(net => !net.internal)
-            .map(net => ({
+            .filter((net) => !net.internal)
+            .map((net) => ({
               address: net.address,
               family: net.family,
               mac: net.mac,
@@ -770,7 +768,7 @@ class ProjectInspector {
             scripts: Object.keys(pkg.scripts || {}),
           };
         }
-      } catch { }
+      } catch {}
 
       results.push({
         type: 'system',
@@ -793,7 +791,7 @@ class ProjectInspector {
       return;
     }
 
-    const choices = results.map(r => ({
+    const choices = results.map((r) => ({
       value: r,
       label: this.formatItemLabel(r),
     }));
@@ -826,14 +824,22 @@ class ProjectInspector {
 
   private async getInspectionResults(type: InspectType): Promise<InspectionResult[]> {
     switch (type) {
-      case 'tasks': return this.inspectTasks();
-      case 'targets': return this.inspectTargets();
-      case 'vars': return this.inspectVariables();
-      case 'scripts': return this.inspectScripts();
-      case 'commands': return this.inspectCommands();
-      case 'system': return this.inspectSystem();
-      case 'cache': return this.inspectCache();
-      default: return [];
+      case 'tasks':
+        return this.inspectTasks();
+      case 'targets':
+        return this.inspectTargets();
+      case 'vars':
+        return this.inspectVariables();
+      case 'scripts':
+        return this.inspectScripts();
+      case 'commands':
+        return this.inspectCommands();
+      case 'system':
+        return this.inspectSystem();
+      case 'cache':
+        return this.inspectCache();
+      default:
+        return [];
     }
   }
 
@@ -902,8 +908,8 @@ class ProjectInspector {
         joinBody: `─`,
         joinLeft: `├`,
         joinRight: `┤`,
-        joinJoin: `┼`
-      }
+        joinJoin: `┼`,
+      },
     };
 
     console.log(table(data, config));
@@ -1009,32 +1015,33 @@ class ProjectInspector {
         }
         break;
 
-      case 'hardware':
-        {
-          console.log(prism.bold('CPUs:'));
-          const cpusByModel = data.cpus.reduce((acc: any, cpu: any) => {
-            if (!acc[cpu.model]) acc[cpu.model] = 0;
-            acc[cpu.model]++;
-            return acc;
-          }, {});
+      case 'hardware': {
+        console.log(prism.bold('CPUs:'));
+        const cpusByModel = data.cpus.reduce((acc: any, cpu: any) => {
+          if (!acc[cpu.model]) acc[cpu.model] = 0;
+          acc[cpu.model]++;
+          return acc;
+        }, {});
 
-          for (const [model, count] of Object.entries(cpusByModel)) {
-            console.log(`  ${prism.cyan(count + 'x')} ${model}`);
-          }
-
-          console.log(prism.bold('\nMemory:'));
-          console.log(`  ${prism.cyan('Total:')} ${this.formatFileSize(data.memory.total)}`);
-          console.log(`  ${prism.cyan('Available:')} ${this.formatFileSize(data.memory.available)} (${data.memory.availablePercent}%)`);
-          console.log(`  ${prism.cyan('Used:')} ${this.formatFileSize(data.memory.used)} (${data.memory.usagePercent}%)`);
-          if (data.memory.wired) {
-            console.log(`  ${prism.cyan('Wired:')} ${this.formatFileSize(data.memory.wired)}`);
-            console.log(`  ${prism.cyan('Active:')} ${this.formatFileSize(data.memory.active)}`);
-            console.log(`  ${prism.cyan('Inactive:')} ${this.formatFileSize(data.memory.inactive)}`);
-            console.log(`  ${prism.cyan('Compressed:')} ${this.formatFileSize(data.memory.compressed)}`);
-          }
-          console.log(`  ${prism.cyan('Endianness:')} ${data.endianness}`);
-          break;
+        for (const [model, count] of Object.entries(cpusByModel)) {
+          console.log(`  ${prism.cyan(count + 'x')} ${model}`);
         }
+
+        console.log(prism.bold('\nMemory:'));
+        console.log(`  ${prism.cyan('Total:')} ${this.formatFileSize(data.memory.total)}`);
+        console.log(
+          `  ${prism.cyan('Available:')} ${this.formatFileSize(data.memory.available)} (${data.memory.availablePercent}%)`
+        );
+        console.log(`  ${prism.cyan('Used:')} ${this.formatFileSize(data.memory.used)} (${data.memory.usagePercent}%)`);
+        if (data.memory.wired) {
+          console.log(`  ${prism.cyan('Wired:')} ${this.formatFileSize(data.memory.wired)}`);
+          console.log(`  ${prism.cyan('Active:')} ${this.formatFileSize(data.memory.active)}`);
+          console.log(`  ${prism.cyan('Inactive:')} ${this.formatFileSize(data.memory.inactive)}`);
+          console.log(`  ${prism.cyan('Compressed:')} ${this.formatFileSize(data.memory.compressed)}`);
+        }
+        console.log(`  ${prism.cyan('Endianness:')} ${data.endianness}`);
+        break;
+      }
 
       case 'environment':
         console.log(prism.bold('User:'));
@@ -1065,7 +1072,7 @@ class ProjectInspector {
         for (const [name, interfaces] of Object.entries(data.interfaces)) {
           if ((interfaces as any[]).length > 0) {
             console.log(prism.bold(`${name}:`));
-            (interfaces as any[]).forEach(iface => {
+            (interfaces as any[]).forEach((iface) => {
               console.log(`  ${prism.cyan(iface.family)}: ${iface.address}`);
               if (iface.mac !== '00:00:00:00:00:00') {
                 console.log(`  ${prism.cyan('MAC')}: ${iface.mac}`);
@@ -1164,8 +1171,12 @@ class ProjectInspector {
     for (const line of explanation) {
       if (line === '') {
         console.log();
-      } else if (line.startsWith('Task:') || line.startsWith('Parameters:') ||
-        line.startsWith('Execution plan:') || line.startsWith('Target')) {
+      } else if (
+        line.startsWith('Task:') ||
+        line.startsWith('Parameters:') ||
+        line.startsWith('Execution plan:') ||
+        line.startsWith('Target')
+      ) {
         console.log(prism.bold.cyan(line));
       } else if (line.match(/^\s*\d+\./)) {
         console.log(prism.green(line));
@@ -1204,7 +1215,9 @@ class ProjectInspector {
           await this.variableInterpolator.interpolateAsync(String(variable.data), {});
         } catch (error) {
           varErrors++;
-          console.log(`  ${prism.red('✗')} ${variable.name} - ${error instanceof Error ? error.message : String(error)}`);
+          console.log(
+            `  ${prism.red('✗')} ${variable.name} - ${error instanceof Error ? error.message : String(error)}`
+          );
         }
       }
     }
@@ -1236,10 +1249,7 @@ class ProjectInspector {
     if (!this.options.filter) return results;
 
     const pattern = new RegExp(this.options.filter, 'i');
-    return results.filter(r =>
-      pattern.test(r.name) ||
-      pattern.test(JSON.stringify(r.data))
-    );
+    return results.filter((r) => pattern.test(r.name) || pattern.test(JSON.stringify(r.data)));
   }
 
   private hasInterpolation(value: any): boolean {
@@ -1263,12 +1273,12 @@ class ProjectInspector {
       // Basic validation - in real implementation would test connectivity
       return {
         valid: true,
-        message: `Type: ${target.type}, configured correctly`
+        message: `Type: ${target.type}, configured correctly`,
       };
     } catch (error: any) {
       return {
         valid: false,
-        message: error.message
+        message: error.message,
       };
     }
   }
@@ -1314,8 +1324,6 @@ class ProjectInspector {
     return null;
   }
 
-
-
   private getTableHeaders(type: string): string[] {
     switch (type) {
       case 'tasks':
@@ -1340,11 +1348,7 @@ class ProjectInspector {
   private formatTableRow(result: InspectionResult, tableType?: string): string[] {
     // For 'all' type, use consistent 3-column format
     if (tableType === 'all') {
-      return [
-        result.type,
-        prism.cyan(result.name),
-        this.formatValue(result.data, 50),
-      ];
+      return [result.type, prism.cyan(result.name), this.formatValue(result.data, 50)];
     }
 
     switch (result.type) {
@@ -1357,18 +1361,10 @@ class ProjectInspector {
         ];
 
       case 'target':
-        return [
-          prism.cyan(result.name),
-          result.data?.type || 'unknown',
-          this.formatTargetDetails(result.data),
-        ];
+        return [prism.cyan(result.name), result.data?.type || 'unknown', this.formatTargetDetails(result.data)];
 
       case 'variable':
-        return [
-          prism.cyan(result.name),
-          this.formatValue(result.data, 50),
-          result.metadata?.['type'] || 'unknown',
-        ];
+        return [prism.cyan(result.name), this.formatValue(result.data, 50), result.metadata?.['type'] || 'unknown'];
 
       case 'script':
         return [
@@ -1391,11 +1387,7 @@ class ProjectInspector {
         return this.formatCacheTableRow(result);
 
       default:
-        return [
-          result.type,
-          prism.cyan(result.name),
-          this.formatValue(result.data, 50),
-        ];
+        return [result.type, prism.cyan(result.name), this.formatValue(result.data, 50)];
     }
   }
 
@@ -1404,25 +1396,13 @@ class ProjectInspector {
 
     switch (result.name) {
       case 'stats':
-        return [
-          prism.cyan('Statistics'),
-          'Module Cache',
-          `${data.fileEntries} files (${data.formattedSize})`,
-        ];
+        return [prism.cyan('Statistics'), 'Module Cache', `${data.fileEntries} files (${data.formattedSize})`];
 
       case 'clear':
-        return [
-          prism.cyan('Operation'),
-          'Clear Cache',
-          data.message,
-        ];
+        return [prism.cyan('Operation'), 'Clear Cache', data.message];
 
       default:
-        return [
-          prism.cyan('Cache'),
-          result.name,
-          this.formatValue(data, 50),
-        ];
+        return [prism.cyan('Cache'), result.name, this.formatValue(data, 50)];
     }
   }
 
@@ -1432,21 +1412,12 @@ class ProjectInspector {
 
     switch (result.name) {
       case 'version':
-        return [
-          prism.cyan('Version'),
-          'Xec CLI',
-          `${data.xec.cli} (core: ${data.xec.core})`,
-        ];
+        return [prism.cyan('Version'), 'Xec CLI', `${data.xec.cli} (core: ${data.xec.core})`];
 
-      case 'os':
-        {
-          const osDesc = data.productName || data.distro || data.caption || data.type;
-          return [
-            prism.cyan('OS'),
-            osDesc,
-            `${data.arch} - ${data.release}`,
-          ];
-        }
+      case 'os': {
+        const osDesc = data.productName || data.distro || data.caption || data.type;
+        return [prism.cyan('OS'), osDesc, `${data.arch} - ${data.release}`];
+      }
 
       case 'hardware':
         return [
@@ -1456,51 +1427,36 @@ class ProjectInspector {
         ];
 
       case 'environment':
+        return [prism.cyan('Environment'), data.user.username, `Shell: ${path.basename(data.shell)}`];
+
+      case 'network': {
+        const ifaceCount = Object.keys(data.interfaces).length;
+        return [prism.cyan('Network'), `${ifaceCount} interfaces`, Object.keys(data.interfaces).join(', ')];
+      }
+
+      case 'tools': {
+        const installedCount = Object.values(data.installed).filter((v) => v).length;
         return [
-          prism.cyan('Environment'),
-          data.user.username,
-          `Shell: ${path.basename(data.shell)}`,
+          prism.cyan('Dev Tools'),
+          `${installedCount} installed`,
+          Object.entries(data.installed)
+            .filter(([, installed]) => installed)
+            .map(([tool]) => tool)
+            .join(', '),
         ];
+      }
 
-      case 'network':
-        {
-          const ifaceCount = Object.keys(data.interfaces).length;
-          return [
-            prism.cyan('Network'),
-            `${ifaceCount} interfaces`,
-            Object.keys(data.interfaces).join(', '),
-          ];
-        }
-
-      case 'tools':
-        {
-          const installedCount = Object.values(data.installed).filter(v => v).length;
-          return [
-            prism.cyan('Dev Tools'),
-            `${installedCount} installed`,
-            Object.entries(data.installed)
-              .filter(([, installed]) => installed)
-              .map(([tool]) => tool)
-              .join(', '),
-          ];
-        }
-
-      case 'project':
-        {
-          const configCount = Object.values(data.configFiles).filter(v => v).length;
-          return [
-            prism.cyan('Project'),
-            data.package?.name || path.basename(data.workingDirectory),
-            `${configCount} config files`,
-          ];
-        }
+      case 'project': {
+        const configCount = Object.values(data.configFiles).filter((v) => v).length;
+        return [
+          prism.cyan('Project'),
+          data.package?.name || path.basename(data.workingDirectory),
+          `${configCount} config files`,
+        ];
+      }
 
       default:
-        return [
-          prism.cyan(category),
-          result.name,
-          this.formatValue(data, 50),
-        ];
+        return [prism.cyan(category), result.name, this.formatValue(data, 50)];
     }
   }
 
@@ -1606,13 +1562,15 @@ class ProjectInspector {
         }
 
         // Calculate available memory (free + inactive + purgeable + file-backed)
-        const available = (stats['pages_free'] || 0) +
+        const available =
+          (stats['pages_free'] || 0) +
           (stats['pages_inactive'] || 0) +
           (stats['pages_purgeable'] || 0) +
           (stats['file_backed_pages'] || 0);
 
         // Calculate used memory (wired + active + compressed)
-        const used = (stats['pages_wired_down'] || 0) +
+        const used =
+          (stats['pages_wired_down'] || 0) +
           (stats['pages_active'] || 0) +
           (stats['pages_occupied_by_compressor'] || 0);
 
@@ -1625,8 +1583,8 @@ class ProjectInspector {
           active: stats['pages_active'] || 0,
           inactive: stats['pages_inactive'] || 0,
           compressed: stats['pages_occupied_by_compressor'] || 0,
-          usagePercent: (used / total * 100).toFixed(2),
-          availablePercent: (available / total * 100).toFixed(2),
+          usagePercent: ((used / total) * 100).toFixed(2),
+          availablePercent: ((available / total) * 100).toFixed(2),
         };
       } catch (error) {
         // Fallback to Node.js values if vm_stat fails - silently ignore in tests
@@ -1640,8 +1598,8 @@ class ProjectInspector {
       free,
       available: free,
       used,
-      usagePercent: (used / total * 100).toFixed(2),
-      availablePercent: (free / total * 100).toFixed(2),
+      usagePercent: ((used / total) * 100).toFixed(2),
+      availablePercent: ((free / total) * 100).toFixed(2),
     };
   }
 
@@ -1673,12 +1631,15 @@ class ProjectInspector {
   }
 
   private groupByType(results: InspectionResult[]): Record<string, InspectionResult[]> {
-    return results.reduce((acc, result) => {
-      const key = `${result.type}s`;
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(result);
-      return acc;
-    }, {} as Record<string, InspectionResult[]>);
+    return results.reduce(
+      (acc, result) => {
+        const key = `${result.type}s`;
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(result);
+        return acc;
+      },
+      {} as Record<string, InspectionResult[]>
+    );
   }
 
   private printYaml(obj: any, indent: number = 0): void {
@@ -1695,7 +1656,7 @@ class ProjectInspector {
     }
 
     if (Array.isArray(obj)) {
-      obj.forEach(item => {
+      obj.forEach((item) => {
         console.log(`${spaces}-`);
         this.printYaml(item, indent + 2);
       });

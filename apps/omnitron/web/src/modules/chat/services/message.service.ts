@@ -23,9 +23,7 @@ export class MessageService {
     });
 
     // Get AI response
-    const response = await this.aiService.generateResponse(
-      this.chatService.getMessages(conversationId)
-    );
+    const response = await this.aiService.generateResponse(this.chatService.getMessages(conversationId));
 
     // Add assistant message
     this.chatService.addMessage(conversationId, {

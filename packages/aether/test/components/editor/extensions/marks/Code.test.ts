@@ -91,9 +91,7 @@ describe('CodeExtension', () => {
 
     it('should serialize to <code> tag', () => {
       const doc = schema.node('doc', null, [
-        schema.node('paragraph', null, [
-          schema.text('inline code', [schema.marks.code.create()]),
-        ]),
+        schema.node('paragraph', null, [schema.text('inline code', [schema.marks.code.create()])]),
       ]);
 
       const serializer = DOMSerializer.fromSchema(schema);
@@ -115,9 +113,7 @@ describe('CodeExtension', () => {
     });
 
     it('should toggle code mark with Mod-e', () => {
-      const doc = schema.node('doc', null, [
-        schema.node('paragraph', null, [schema.text('test')]),
-      ]);
+      const doc = schema.node('doc', null, [schema.node('paragraph', null, [schema.text('test')])]);
 
       const state = EditorState.create({
         schema,

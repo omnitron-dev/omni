@@ -63,7 +63,9 @@ describe('table-exporter', () => {
     });
 
     it('should escape values with special characters', () => {
-      const data = [{ id: 1, name: 'O\'Brien, "Special"', email: 'test@test.com', role: 'Dev', active: true }];
+      const data = [
+        { id: 1, name: 'O\'Brien, "Special"', email: 'test@test.com', role: 'Dev', active: true },
+      ];
 
       const csv = exportToCSV(data, testColumns);
 
@@ -110,7 +112,9 @@ describe('table-exporter', () => {
     });
 
     it('should not quote values in TSV', () => {
-      const data = [{ id: 1, name: 'Test Name', email: 'test@test.com', role: 'Dev', active: true }];
+      const data = [
+        { id: 1, name: 'Test Name', email: 'test@test.com', role: 'Dev', active: true },
+      ];
       const tsv = exportToTSV(data, testColumns);
 
       expect(tsv).not.toContain('"Test Name"');
@@ -226,7 +230,9 @@ describe('table-exporter', () => {
     });
 
     it('should escape pipe characters', () => {
-      const data = [{ id: 1, name: 'Test|Name', email: 'test@test.com', role: 'Dev', active: true }];
+      const data = [
+        { id: 1, name: 'Test|Name', email: 'test@test.com', role: 'Dev', active: true },
+      ];
       const md = exportToMarkdown(data, testColumns);
 
       expect(md).toContain('Test\\|Name');
@@ -255,7 +261,15 @@ describe('table-exporter', () => {
     });
 
     it('should escape HTML special characters', () => {
-      const data = [{ id: 1, name: '<script>alert("xss")</script>', email: 'test@test.com', role: 'Dev', active: true }];
+      const data = [
+        {
+          id: 1,
+          name: '<script>alert("xss")</script>',
+          email: 'test@test.com',
+          role: 'Dev',
+          active: true,
+        },
+      ];
       const html = exportToHTML(data, testColumns);
 
       expect(html).not.toContain('<script>');

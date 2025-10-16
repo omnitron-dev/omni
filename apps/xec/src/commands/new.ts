@@ -106,7 +106,7 @@ try {
 }
 
 log.success('✅ Script completed successfully!');
-`
+`,
     },
     advanced: {
       js: `#!/usr/bin/env xec
@@ -385,8 +385,8 @@ async function cleanup(): Promise<void> {
     await fs.remove(file);
   }
 }
-`
-    }
+`,
+    },
   },
 
   command: {
@@ -464,7 +464,7 @@ export function command(program: Command): void {
       }
     });
 }
-`
+`,
     },
     advanced: {
       js: `/**
@@ -863,8 +863,8 @@ async function deleteItem(id: string): Promise<void> {
   const { $ } = await import('@xec-sh/core');
   await $\`echo "Deleting item with ID: \${id}"\`;
 }
-`
-    }
+`,
+    },
   },
 
   task: {
@@ -964,7 +964,7 @@ async function deleteItem(id: string): Promise<void> {
     emit: deployment:completed
   onError:
     emit: deployment:failed
-`
+`,
   },
 
   profile: {
@@ -1021,7 +1021,7 @@ async function deleteItem(id: string): Promise<void> {
       web:
         namespace: {name}
         selector: app=web,env={name}
-`
+`,
   },
 
   extension: {
@@ -1173,12 +1173,12 @@ scripts:
 docs:
   readme: README.md
   examples: examples/
-`
-  }
+`,
+  },
 };
 
 async function getArtifactType(): Promise<ArtifactType> {
-  const type = await select({
+  const type = (await select({
     message: 'What would you like to create?',
     options: [
       { value: 'project', label: '📁 Project - Initialize a new Xec project' },
@@ -1187,8 +1187,8 @@ async function getArtifactType(): Promise<ArtifactType> {
       { value: 'task', label: '🔧 Task - Define a reusable task' },
       { value: 'profile', label: '🌍 Profile - Environment configuration' },
       { value: 'extension', label: '🧩 Extension - Create an Xec extension' },
-    ]
-  }) as ArtifactType;
+    ],
+  })) as ArtifactType;
 
   if (InteractiveHelpers.isCancelled(type)) {
     throw new Error('cancelled');
@@ -1267,7 +1267,7 @@ async function createProject(name: string, options: NewOptions) {
 
       const shouldContinue = await confirm({
         message: 'Xec is already initialized in this directory. Reinitialize?',
-        initialValue: false
+        initialValue: false,
       });
 
       if (InteractiveHelpers.isCancelled(shouldContinue) || !shouldContinue) {
@@ -1291,7 +1291,7 @@ async function createProject(name: string, options: NewOptions) {
 
         const shouldContinue = await confirm({
           message: `Directory ${name} is not empty. Continue?`,
-          initialValue: false
+          initialValue: false,
         });
 
         if (InteractiveHelpers.isCancelled(shouldContinue) || !shouldContinue) {
@@ -1311,14 +1311,14 @@ async function createProject(name: string, options: NewOptions) {
       } else {
         const result = await text({
           message: 'Project description:',
-          defaultValue: 'An Xec automation project'
+          defaultValue: 'An Xec automation project',
         });
 
         if (InteractiveHelpers.isCancelled(result)) {
           throw new Error('cancelled');
         }
 
-        projectDescription = result as string || 'An Xec automation project';
+        projectDescription = (result as string) || 'An Xec automation project';
       }
     }
   }
@@ -1336,7 +1336,7 @@ async function createProject(name: string, options: NewOptions) {
   const config = {
     ...defaultConfig,
     name: projectName,
-    description: projectDescription || 'An Xec automation project'
+    description: projectDescription || 'An Xec automation project',
   };
 
   // For minimal projects, keep only essential fields
@@ -1349,14 +1349,14 @@ async function createProject(name: string, options: NewOptions) {
         local: config.targets?.local || { type: 'local' },
         hosts: {},
         containers: {},
-        pods: {}
+        pods: {},
       },
       tasks: {
         hello: {
           description: 'Example task',
-          command: 'echo "Hello from Xec!"'
-        }
-      }
+          command: 'echo "Hello from Xec!"',
+        },
+      },
     };
     // Sort and save minimal config
     const sortedConfig = sortConfigKeys(minimalConfig);
@@ -1368,14 +1368,14 @@ async function createProject(name: string, options: NewOptions) {
     config.vars = {
       app_name: config.name,
       deploy_path: `/opt/apps/${config.name}`,
-      log_level: 'info'
+      log_level: 'info',
     };
 
     // Add example tasks
     config.tasks = {
       hello: {
         description: 'Say hello',
-        command: `echo "Hello from ${config.name}!"`
+        command: `echo "Hello from ${config.name}!"`,
       },
       deploy: {
         description: 'Deploy application',
@@ -1383,18 +1383,18 @@ async function createProject(name: string, options: NewOptions) {
           {
             name: 'version',
             required: true,
-            description: 'Version to deploy'
-          }
+            description: 'Version to deploy',
+          },
         ],
         steps: [
           {
             name: 'Build application',
-            command: 'npm run build'
+            command: 'npm run build',
           },
           {
             name: 'Run tests',
             command: 'npm test',
-            onFailure: 'abort'
+            onFailure: 'abort',
           },
           {
             name: 'Deploy to servers',
@@ -1403,37 +1403,37 @@ async function createProject(name: string, options: NewOptions) {
 git pull origin \${params.version}
 npm install --production
 npm run migrate
-pm2 reload app`
-          }
-        ]
+pm2 reload app`,
+          },
+        ],
       },
       backup: {
         description: 'Backup database and files',
         schedule: '0 2 * * *',
         target: 'hosts.production',
         command: `pg_dump myapp > /backup/db-$(date +%Y%m%d).sql
-tar -czf /backup/files-$(date +%Y%m%d).tar.gz /app/uploads`
-      }
+tar -czf /backup/files-$(date +%Y%m%d).tar.gz /app/uploads`,
+      },
     };
 
     // Add profiles
     (config as any).profiles = {
       development: {
         vars: {
-          log_level: 'debug'
+          log_level: 'debug',
         },
         env: {
-          NODE_ENV: 'development'
-        }
+          NODE_ENV: 'development',
+        },
       },
       production: {
         vars: {
-          log_level: 'error'
+          log_level: 'error',
         },
         env: {
-          NODE_ENV: 'production'
-        }
-      }
+          NODE_ENV: 'production',
+        },
+      },
     };
 
     // Add example comments in the hosts section
@@ -1442,13 +1442,13 @@ tar -czf /backup/files-$(date +%Y%m%d).tar.gz /app/uploads`
       '# staging': {
         '#   host': 'staging.example.com',
         '#   user': 'deploy',
-        '#   privateKey': '~/.ssh/id_rsa'
+        '#   privateKey': '~/.ssh/id_rsa',
       },
       '# production': {
         '#   host': 'prod.example.com',
         '#   user': 'deploy',
-        '#   privateKey': '~/.ssh/id_rsa'
-      }
+        '#   privateKey': '~/.ssh/id_rsa',
+      },
     };
 
     if (!config.targets) config.targets = {};
@@ -1456,16 +1456,16 @@ tar -czf /backup/files-$(date +%Y%m%d).tar.gz /app/uploads`
       '# app': {
         '#   image': 'node:18',
         '#   volumes': ['./:/app'],
-        '#   workdir': '/app'
-      }
+        '#   workdir': '/app',
+      },
     };
 
     if (!config.targets) config.targets = {};
     config.targets.pods = {
       '# web': {
         '#   namespace': 'default',
-        '#   selector': 'app=web'
-      }
+        '#   selector': 'app=web',
+      },
     };
 
     // Sort and save config
@@ -1638,8 +1638,8 @@ For more information, see [Xec Documentation](https://xec.sh/docs).
       description: projectDescription || '',
       type: 'module',
       devDependencies: {
-        'commander': '^14.0.0'
-      }
+        commander: '^14.0.0',
+      },
     };
 
     await fs.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n');
@@ -1655,7 +1655,7 @@ For more information, see [Xec Documentation](https://xec.sh/docs).
     if (!(process.env['CI'] || process.env['XEC_NO_INTERACTIVE'])) {
       const result = await confirm({
         message: 'Initialize git repository?',
-        initialValue: true
+        initialValue: true,
       });
 
       if (InteractiveHelpers.isCancelled(result)) {
@@ -1674,7 +1674,6 @@ For more information, see [Xec Documentation](https://xec.sh/docs).
       s.stop('Git repository initialized');
     }
   }
-
 
   outro(prism.green('✅ Xec project initialized successfully!'));
 
@@ -1720,7 +1719,7 @@ async function createScript(name: string, options: NewOptions) {
 
     const shouldOverwrite = await confirm({
       message: `Script ${fileName} already exists. Overwrite?`,
-      initialValue: false
+      initialValue: false,
     });
 
     if (InteractiveHelpers.isCancelled(shouldOverwrite) || !shouldOverwrite) {
@@ -1739,14 +1738,14 @@ async function createScript(name: string, options: NewOptions) {
     } else {
       const result = await text({
         message: 'Script description:',
-        defaultValue: `Custom script ${name}`
+        defaultValue: `Custom script ${name}`,
       });
 
       if (InteractiveHelpers.isCancelled(result)) {
         throw new Error('cancelled');
       }
 
-      scriptDescription = result as string || `Custom script ${name}`;
+      scriptDescription = (result as string) || `Custom script ${name}`;
     }
   }
 
@@ -1802,7 +1801,7 @@ async function createCommand(name: string, options: NewOptions) {
 
     const shouldOverwrite = await confirm({
       message: `Command ${fileName} already exists. Overwrite?`,
-      initialValue: false
+      initialValue: false,
     });
 
     if (InteractiveHelpers.isCancelled(shouldOverwrite) || !shouldOverwrite) {
@@ -1821,14 +1820,14 @@ async function createCommand(name: string, options: NewOptions) {
     } else {
       const result = await text({
         message: 'Command description:',
-        defaultValue: `Custom command ${name}`
+        defaultValue: `Custom command ${name}`,
       });
 
       if (InteractiveHelpers.isCancelled(result)) {
         throw new Error('cancelled');
       }
 
-      commandDescription = result as string || `Custom command ${name}`;
+      commandDescription = (result as string) || `Custom command ${name}`;
     }
   }
 
@@ -1882,14 +1881,14 @@ async function createTask(name: string, options: NewOptions) {
     } else {
       const result = await text({
         message: 'Task description:',
-        defaultValue: `Task ${name}`
+        defaultValue: `Task ${name}`,
       });
 
       if (InteractiveHelpers.isCancelled(result)) {
         throw new Error('cancelled');
       }
 
-      taskDescription = result as string || `Task ${name}`;
+      taskDescription = (result as string) || `Task ${name}`;
     }
   }
 
@@ -1907,22 +1906,20 @@ async function createTask(name: string, options: NewOptions) {
       options: [
         { value: 'simple', label: 'Simple - Single command' },
         { value: 'standard', label: 'Standard - With parameters' },
-        { value: 'advanced', label: 'Advanced - Multi-step with hooks' }
-      ]
+        { value: 'advanced', label: 'Advanced - Multi-step with hooks' },
+      ],
     });
 
     if (InteractiveHelpers.isCancelled(result)) {
       throw new Error('cancelled');
     }
 
-    complexity = result as string || 'simple';
+    complexity = (result as string) || 'simple';
   }
 
   // Get template
   const template = TEMPLATES.task[complexity as keyof typeof TEMPLATES.task];
-  const taskYaml = template
-    .replace(/{name}/g, name)
-    .replace(/{description}/g, String(taskDescription || ''));
+  const taskYaml = template.replace(/{name}/g, name).replace(/{description}/g, String(taskDescription || ''));
 
   // Parse the task YAML
   const taskConfig = yaml.load(taskYaml) as any;
@@ -1967,14 +1964,14 @@ async function createProfile(name: string, options: NewOptions) {
     } else {
       const result = await text({
         message: 'Profile description:',
-        defaultValue: `${name} environment profile`
+        defaultValue: `${name} environment profile`,
       });
 
       if (InteractiveHelpers.isCancelled(result)) {
         throw new Error('cancelled');
       }
 
-      profileDescription = result as string || `${name} environment profile`;
+      profileDescription = (result as string) || `${name} environment profile`;
     }
   }
 
@@ -1982,9 +1979,7 @@ async function createProfile(name: string, options: NewOptions) {
   const templateKey = options.advanced ? 'advanced' : 'basic';
   const template = TEMPLATES.profile[templateKey];
 
-  const profileYaml = template
-    .replace(/{name}/g, name)
-    .replace(/{description}/g, String(profileDescription || ''));
+  const profileYaml = template.replace(/{name}/g, name).replace(/{description}/g, String(profileDescription || ''));
 
   // Parse the profile YAML
   const profileConfig = yaml.load(profileYaml) as any;
@@ -2020,7 +2015,7 @@ async function createExtension(name: string, options: NewOptions) {
 
     const shouldContinue = await confirm({
       message: `Directory ${name} already exists. Continue?`,
-      initialValue: false
+      initialValue: false,
     });
 
     if (InteractiveHelpers.isCancelled(shouldContinue) || !shouldContinue) {
@@ -2039,14 +2034,14 @@ async function createExtension(name: string, options: NewOptions) {
     } else {
       const result = await text({
         message: 'Extension description:',
-        defaultValue: `Xec extension ${name}`
+        defaultValue: `Xec extension ${name}`,
       });
 
       if (InteractiveHelpers.isCancelled(result)) {
         throw new Error('cancelled');
       }
 
-      extensionDescription = result as string || `Xec extension ${name}`;
+      extensionDescription = (result as string) || `Xec extension ${name}`;
     }
   }
 
@@ -2057,9 +2052,7 @@ async function createExtension(name: string, options: NewOptions) {
   const templateKey = options.advanced ? 'advanced' : 'basic';
   const template = TEMPLATES.extension[templateKey];
 
-  const extensionYaml = template
-    .replace(/{name}/g, name)
-    .replace(/{description}/g, String(extensionDescription || ''));
+  const extensionYaml = template.replace(/{name}/g, name).replace(/{description}/g, String(extensionDescription || ''));
 
   // Create extension structure
   await fs.ensureDir(targetDir);
@@ -2172,17 +2165,21 @@ See \`extension.yaml\` for configuration options.
   // Create package.json for npm distribution
   await fs.writeFile(
     path.join(targetDir, 'package.json'),
-    JSON.stringify({
-      name: `xec-ext-${name}`,
-      version: '1.0.0',
-      description: extensionDescription,
-      main: 'extension.yaml',
-      keywords: ['xec', 'extension', name],
-      files: ['extension.yaml', 'scripts', 'examples', 'README.md'],
-      engines: {
-        xec: '>=0.7.0'
-      }
-    }, null, 2)
+    JSON.stringify(
+      {
+        name: `xec-ext-${name}`,
+        version: '1.0.0',
+        description: extensionDescription,
+        main: 'extension.yaml',
+        keywords: ['xec', 'extension', name],
+        files: ['extension.yaml', 'scripts', 'examples', 'README.md'],
+        engines: {
+          xec: '>=0.7.0',
+        },
+      },
+      null,
+      2
+    )
   );
 
   s.stop('Extension structure created');
@@ -2209,67 +2206,67 @@ export class NewCommand extends BaseCommand {
       options: [
         {
           flags: '-d, --desc <desc>',
-          description: 'Description for the artifact'
+          description: 'Description for the artifact',
         },
         {
           flags: '-f, --force',
-          description: 'Overwrite existing files'
+          description: 'Overwrite existing files',
         },
         {
           flags: '-m, --minimal',
-          description: 'Create minimal structure (projects only)'
+          description: 'Create minimal structure (projects only)',
         },
         {
           flags: '--skip-git',
-          description: 'Skip git initialization (projects only)'
+          description: 'Skip git initialization (projects only)',
         },
         {
           flags: '--advanced',
-          description: 'Use advanced template with more features'
+          description: 'Use advanced template with more features',
         },
         {
           flags: '--js',
-          description: 'Create JavaScript instead of TypeScript (scripts/commands only)'
+          description: 'Create JavaScript instead of TypeScript (scripts/commands only)',
         },
         {
           flags: '--from <template>',
-          description: 'Create from a template or example'
+          description: 'Create from a template or example',
         },
         {
           flags: '-p, --profile <name>',
-          description: 'Apply profile after creation'
+          description: 'Apply profile after creation',
         },
         {
           flags: '-i, --interactive',
-          description: 'Enable interactive mode (default for this command)'
-        }
+          description: 'Enable interactive mode (default for this command)',
+        },
       ],
       examples: [
         {
           command: 'xec new',
-          description: 'Interactive mode - detects existing projects automatically'
+          description: 'Interactive mode - detects existing projects automatically',
         },
         {
           command: 'xec new project',
-          description: 'Initialize Xec in current directory'
+          description: 'Initialize Xec in current directory',
         },
         {
           command: 'xec new project my-app',
-          description: 'Create a new Xec project in my-app directory'
+          description: 'Create a new Xec project in my-app directory',
         },
         {
           command: 'xec new script deploy',
-          description: 'Create a new script'
+          description: 'Create a new script',
         },
         {
           command: 'xec new command mycmd --advanced',
-          description: 'Create an advanced command'
+          description: 'Create an advanced command',
         },
         {
           command: 'xec new task build --description "Build the application"',
-          description: 'Create a new task with description'
-        }
-      ]
+          description: 'Create a new task with description',
+        },
+      ],
     });
   }
 
@@ -2308,7 +2305,7 @@ export class NewCommand extends BaseCommand {
 
         const shouldInit = await confirm({
           message: 'Initialize Xec in this project?',
-          initialValue: true
+          initialValue: true,
         });
 
         if (InteractiveHelpers.isCancelled(shouldInit) || !shouldInit) {
@@ -2345,11 +2342,11 @@ export class NewCommand extends BaseCommand {
           artifactName = '.'; // Use current directory
         } else {
           // Ask for project name if creating new directory
-          artifactName = await text({
+          artifactName = (await text({
             message: 'Project name:',
             defaultValue: 'my-xec-project',
-            validate: (value) => validateName(value || '', artifactType)
-          }) as string;
+            validate: (value) => validateName(value || '', artifactType),
+          })) as string;
 
           if (InteractiveHelpers.isCancelled(artifactName)) {
             throw new Error('cancelled');
@@ -2357,11 +2354,11 @@ export class NewCommand extends BaseCommand {
         }
       } else if (!artifactName) {
         const defaultName = `my-${artifactType}`;
-        artifactName = await text({
+        artifactName = (await text({
           message: `${artifactType.charAt(0).toUpperCase() + artifactType.slice(1)} name:`,
           defaultValue: defaultName,
-          validate: (value) => validateName(value || '', artifactType)
-        }) as string;
+          validate: (value) => validateName(value || '', artifactType),
+        })) as string;
 
         if (InteractiveHelpers.isCancelled(artifactName)) {
           throw new Error('cancelled');
@@ -2397,7 +2394,6 @@ export class NewCommand extends BaseCommand {
           await createExtension(artifactName, options || {});
           break;
       }
-
     } catch (error) {
       if (error instanceof Error && error.message.includes('cancelled')) {
         // User cancelled, exit gracefully

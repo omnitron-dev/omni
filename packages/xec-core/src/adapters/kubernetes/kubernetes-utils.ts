@@ -29,18 +29,20 @@ export function findKubectlPath(): string {
   const isWindows = platform() === 'win32';
 
   // Common kubectl installation paths
-  const commonPaths = isWindows ? [
-    'C:\\Program Files\\Docker\\Docker\\resources\\bin\\kubectl.exe',
-    'C:\\Program Files\\kubectl\\kubectl.exe',
-    'C:\\ProgramData\\kubectl\\kubectl.exe'
-  ] : [
-    '/usr/local/bin/kubectl',
-    '/usr/bin/kubectl',
-    '/opt/homebrew/bin/kubectl',
-    '/opt/local/bin/kubectl',
-    '/usr/local/opt/kubernetes-cli/bin/kubectl',
-    '/Applications/Docker.app/Contents/Resources/bin/kubectl'
-  ];
+  const commonPaths = isWindows
+    ? [
+        'C:\\Program Files\\Docker\\Docker\\resources\\bin\\kubectl.exe',
+        'C:\\Program Files\\kubectl\\kubectl.exe',
+        'C:\\ProgramData\\kubectl\\kubectl.exe',
+      ]
+    : [
+        '/usr/local/bin/kubectl',
+        '/usr/bin/kubectl',
+        '/opt/homebrew/bin/kubectl',
+        '/opt/local/bin/kubectl',
+        '/usr/local/opt/kubernetes-cli/bin/kubectl',
+        '/Applications/Docker.app/Contents/Resources/bin/kubectl',
+      ];
 
   // Check common paths first
   for (const path of commonPaths) {
@@ -55,7 +57,7 @@ export function findKubectlPath(): string {
     const findCommand = isWindows ? 'where' : 'which';
     const result = execSync(`${findCommand} kubectl`, {
       encoding: 'utf-8',
-      stdio: ['ignore', 'pipe', 'ignore']
+      stdio: ['ignore', 'pipe', 'ignore'],
     }).trim();
 
     const kubectlPath = result.split('\n')[0];
@@ -85,17 +87,15 @@ export function findKindPath(): string {
   const isWindows = platform() === 'win32';
 
   // Common kind installation paths
-  const commonPaths = isWindows ? [
-    'C:\\Program Files\\kind\\kind.exe',
-    'C:\\ProgramData\\kind\\kind.exe',
-    'C:\\tools\\kind\\kind.exe'
-  ] : [
-    '/opt/homebrew/bin/kind',
-    '/usr/local/bin/kind',
-    '/usr/bin/kind',
-    '/opt/local/bin/kind',
-    '/usr/local/opt/kind/bin/kind'
-  ];
+  const commonPaths = isWindows
+    ? ['C:\\Program Files\\kind\\kind.exe', 'C:\\ProgramData\\kind\\kind.exe', 'C:\\tools\\kind\\kind.exe']
+    : [
+        '/opt/homebrew/bin/kind',
+        '/usr/local/bin/kind',
+        '/usr/bin/kind',
+        '/opt/local/bin/kind',
+        '/usr/local/opt/kind/bin/kind',
+      ];
 
   // Check common paths first
   for (const path of commonPaths) {
@@ -110,7 +110,7 @@ export function findKindPath(): string {
     const findCommand = isWindows ? 'where' : 'which';
     const result = execSync(`${findCommand} kind`, {
       encoding: 'utf-8',
-      stdio: ['ignore', 'pipe', 'ignore']
+      stdio: ['ignore', 'pipe', 'ignore'],
     }).trim();
 
     const kindPath = result.split('\n')[0];
@@ -145,7 +145,7 @@ export function isKubectlAvailable(): boolean {
     if (kubectlPath === 'kubectl') {
       // Try to execute kubectl version to verify it's available
       execSync('kubectl version --client --short', {
-        stdio: ['ignore', 'ignore', 'ignore']
+        stdio: ['ignore', 'ignore', 'ignore'],
       });
       return true;
     }
@@ -165,7 +165,7 @@ export function isKindAvailable(): boolean {
     if (kindPath === 'kind') {
       // Try to execute kind version to verify it's available
       execSync('kind version', {
-        stdio: ['ignore', 'ignore', 'ignore']
+        stdio: ['ignore', 'ignore', 'ignore'],
       });
       return true;
     }

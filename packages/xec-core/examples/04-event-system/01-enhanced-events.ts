@@ -1,6 +1,6 @@
 /**
  * Enhanced Event System Examples
- * 
+ *
  * Demonstrates the flexible event system with filtering and wildcard support
  */
 
@@ -85,10 +85,12 @@ $.on('retry:failed', (event) => {
 });
 
 // Trigger retry events with a command that might fail
-await $`test -f /tmp/random-${Date.now()}.txt`.retry({
-  maxRetries: 3,
-  initialDelay: 100
-}).nothrow();
+await $`test -f /tmp/random-${Date.now()}.txt`
+  .retry({
+    maxRetries: 3,
+    initialDelay: 100,
+  })
+  .nothrow();
 
 // 6. Cache events
 console.log('\n=== Cache Events ===\n');
@@ -109,7 +111,7 @@ $.on('cache:set', (event) => {
 const cacheOptions = { key: 'date-command', ttl: 5000 };
 await $`date`.cache(cacheOptions); // Cache miss + set
 await $`date`.cache(cacheOptions); // Cache hit
-await new Promise(resolve => setTimeout(resolve, 6000));
+await new Promise((resolve) => setTimeout(resolve, 6000));
 await $`date`.cache(cacheOptions); // Cache miss (expired)
 
 // 7. Tunnel events
@@ -128,19 +130,27 @@ $.onFiltered('ssh:tunnel-*', { adapter: 'ssh' }, (event) => {
 console.log('\n=== Complex Event Filtering ===\n');
 
 // Filter by multiple criteria
-$.onFiltered('command:complete', { 
-  adapter: 'ssh',
-  exitCode: 0
-}, (event) => {
-  console.log(`Successful SSH command: ${event.command}`);
-});
+$.onFiltered(
+  'command:complete',
+  {
+    adapter: 'ssh',
+    exitCode: 0,
+  },
+  (event) => {
+    console.log(`Successful SSH command: ${event.command}`);
+  }
+);
 
 // Custom filter properties
-$.onFiltered('connection:open', {
-  host: 'production.example.com'
-}, (event) => {
-  console.log(`Connected to production server!`);
-});
+$.onFiltered(
+  'connection:open',
+  {
+    host: 'production.example.com',
+  },
+  (event) => {
+    console.log(`Connected to production server!`);
+  }
+);
 
 // 9. Event statistics
 console.log('\n=== Event Statistics ===\n');

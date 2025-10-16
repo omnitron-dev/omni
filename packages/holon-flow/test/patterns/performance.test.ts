@@ -87,7 +87,7 @@ describe('C.5 Performance Patterns', () => {
       const memoizeWithLRU = <In, Out>(
         targetFlow: Flow<In, Out>,
         maxSize: number,
-        keyFn: (input: In) => string = JSON.stringify,
+        keyFn: (input: In) => string = JSON.stringify
       ): Flow<In, Out> => {
         const cache = new LRUCache<string, Out>(maxSize);
 
@@ -144,13 +144,7 @@ describe('C.5 Performance Patterns', () => {
       const batchedFlow = batch(batchProcessor, { size: 3, delay: 100 });
 
       // Send individual requests
-      const promises = [
-        batchedFlow(1),
-        batchedFlow(2),
-        batchedFlow(3),
-        batchedFlow(4),
-        batchedFlow(5),
-      ];
+      const promises = [batchedFlow(1), batchedFlow(2), batchedFlow(3), batchedFlow(4), batchedFlow(5)];
 
       const results = await Promise.all(promises);
       expect(results).toEqual([2, 4, 6, 8, 10]);
@@ -194,7 +188,7 @@ describe('C.5 Performance Patterns', () => {
         constructor(
           private processor: Flow<In[], Out[]>,
           initialBatchSize = 10,
-          private maxDelay = 100,
+          private maxDelay = 100
         ) {
           this.batchSize = initialBatchSize;
         }
@@ -229,7 +223,7 @@ describe('C.5 Performance Patterns', () => {
             this.successRate = this.successRate * 0.9 + 0.1; // Exponential moving average
             this.batchSize = Math.min(
               this.maxBatchSize,
-              Math.max(this.minBatchSize, Math.floor(this.batchSize * (1 + this.successRate * 0.1))),
+              Math.max(this.minBatchSize, Math.floor(this.batchSize * (1 + this.successRate * 0.1)))
             );
 
             batch.forEach((item, i) => item.resolve(results[i]!));
@@ -309,7 +303,11 @@ describe('C.5 Performance Patterns', () => {
       }
 
       // Should have 3 complete chunks
-      expect(chunks).toEqual([[1, 2, 3], [4, 5, 6], [7, 8, 9]]);
+      expect(chunks).toEqual([
+        [1, 2, 3],
+        [4, 5, 6],
+        [7, 8, 9],
+      ]);
 
       // Flush remaining
       await stream.flush();
@@ -357,7 +355,7 @@ describe('C.5 Performance Patterns', () => {
         constructor(
           private processor: Flow<T, void>,
           highWaterMark = 10,
-          lowWaterMark = 5,
+          lowWaterMark = 5
         ) {
           this.highWaterMark = highWaterMark;
           this.lowWaterMark = lowWaterMark;
@@ -485,7 +483,7 @@ describe('C.5 Performance Patterns', () => {
 
         constructor(
           private computation: () => T | Promise<T>,
-          private isRoot = false,
+          private isRoot = false
         ) {}
 
         get = flow(async (): Promise<T> => {

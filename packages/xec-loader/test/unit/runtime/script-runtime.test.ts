@@ -96,9 +96,7 @@ describe('ScriptRuntime', () => {
         throw new Error('Always fails');
       };
 
-      await expect(
-        runtime.retry(fn, { retries: 2, delay: 10 })
-      ).rejects.toThrow('Always fails');
+      await expect(runtime.retry(fn, { retries: 2, delay: 10 })).rejects.toThrow('Always fails');
     });
 
     it('should call onRetry callback', async () => {

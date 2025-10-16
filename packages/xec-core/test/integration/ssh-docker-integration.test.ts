@@ -129,7 +129,7 @@ describeSSH('SSH Docker Integration Tests', () => {
         host: 'localhost',
         port: 9999, // Invalid port
         username: 'user',
-        password: 'password'
+        password: 'password',
       });
 
       // Set a short timeout to make the test fail faster
@@ -154,7 +154,7 @@ describeSSH('SSH Docker Integration Tests', () => {
         expect(checkResult.stdout.trim()).toBe('exists');
       } finally {
         // Cleanup
-        await $ssh`rm -rf ${testDir}`.catch(() => { });
+        await $ssh`rm -rf ${testDir}`.catch(() => {});
       }
     });
 
@@ -184,7 +184,7 @@ describeSSH('SSH Docker Integration Tests', () => {
       } finally {
         // Cleanup
         await $`rm -f ${localTestFile}`.nothrow();
-        await $ssh`rm -rf ${testDir}`.catch(() => { });
+        await $ssh`rm -rf ${testDir}`.catch(() => {});
       }
     });
 
@@ -210,7 +210,7 @@ describeSSH('SSH Docker Integration Tests', () => {
       } finally {
         // Cleanup
         await $`rm -f ${localDownloadPath}`.nothrow();
-        await $ssh`rm -rf ${testDir}`.catch(() => { });
+        await $ssh`rm -rf ${testDir}`.catch(() => {});
       }
     });
 
@@ -230,7 +230,7 @@ describeSSH('SSH Docker Integration Tests', () => {
         expect(result.stdout).toMatch(/-rw-r--r--/);
       } finally {
         // Cleanup
-        await $ssh`rm -rf ${testDir}`.catch(() => { });
+        await $ssh`rm -rf ${testDir}`.catch(() => {});
       }
     });
   });
@@ -304,7 +304,7 @@ describeSSH('SSH Docker Integration Tests', () => {
 
       const $retry = $ssh.retry({
         maxRetries: 3,
-        initialDelay: 100
+        initialDelay: 100,
       });
 
       // Create a command that fails first time, succeeds second time
@@ -329,7 +329,7 @@ describeSSH('SSH Docker Integration Tests', () => {
 
       const $retry = $ssh.retry({
         maxRetries: 2,
-        initialDelay: 50
+        initialDelay: 50,
       });
 
       const result = await $retry`exit 1`.nothrow();
@@ -384,7 +384,7 @@ describeSSH('SSH Docker Integration Tests', () => {
         $ssh`sleep 1 && echo "task2"`,
         $ssh`sleep 1 && echo "task3"`,
         $ssh`sleep 1 && echo "task4"`,
-        $ssh`sleep 1 && echo "task5"`
+        $ssh`sleep 1 && echo "task5"`,
       ];
 
       const start = Date.now();
@@ -402,13 +402,9 @@ describeSSH('SSH Docker Integration Tests', () => {
 
     it('should handle parallel connections to different containers', async () => {
       const containers = getAvailableContainers().slice(0, 3);
-      const connections = containers.map(container =>
-        $.ssh(getSSHConfig(container.name))
-      );
+      const connections = containers.map((container) => $.ssh(getSSHConfig(container.name)));
 
-      const promises = connections.map(($ssh, index) =>
-        $ssh`echo "Hello from container ${index}"`
-      );
+      const promises = connections.map(($ssh, index) => $ssh`echo "Hello from container ${index}"`);
 
       const results = await Promise.all(promises);
 
@@ -435,7 +431,7 @@ describeSSH('SSH Docker Integration Tests', () => {
       expect(result1.stdout.trim()).toBe('first');
 
       // Wait 5 seconds
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      await new Promise((resolve) => setTimeout(resolve, 5000));
 
       const result2 = await $ssh`echo "second"`;
       expect(result2.stdout.trim()).toBe('second');
@@ -453,7 +449,7 @@ describeSSH('SSH Docker Integration Tests', () => {
         'text with `backticks`',
         'text with special chars: !@#$%^&*()',
         'text with newline\ncharacter',
-        'text with tab\tcharacter'
+        'text with tab\tcharacter',
       ];
 
       for (const str of testStrings) {
@@ -497,14 +493,12 @@ describeSSH('SSH Docker Integration Tests', () => {
     });
 
     it('should handle connection limits', async () => {
-      const connections = Array(10).fill(null).map(() =>
-        $.ssh(getSSHConfig('ubuntu-apt'))
-      );
+      const connections = Array(10)
+        .fill(null)
+        .map(() => $.ssh(getSSHConfig('ubuntu-apt')));
 
       // Execute commands on all connections
-      const promises = connections.map(($ssh, index) =>
-        $ssh`echo "connection ${index}"`
-      );
+      const promises = connections.map(($ssh, index) => $ssh`echo "connection ${index}"`);
 
       const results = await Promise.all(promises);
 

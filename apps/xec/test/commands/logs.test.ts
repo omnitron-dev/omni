@@ -4,11 +4,7 @@ import { $ } from '@xec-sh/core';
 import { Command } from 'commander';
 import { it, jest, expect, describe, afterAll, beforeAll, beforeEach } from '@jest/globals';
 import { rmSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, appendFileSync } from 'fs';
-import {
-  SSH_TEST_CONFIGS,
-  KindClusterManager,
-  DockerContainerManager,
-} from '@xec-sh/testing';
+import { SSH_TEST_CONFIGS, KindClusterManager, DockerContainerManager } from '@xec-sh/testing';
 
 import logsCommand from '../../src/commands/logs.js';
 
@@ -55,11 +51,11 @@ tasks: {}
 
     // Capture console output
     console.log = (...args: any[]) => {
-      capturedOutput.push(args.map(a => String(a)).join(' '));
+      capturedOutput.push(args.map((a) => String(a)).join(' '));
       originalLog.apply(console, args);
     };
     console.error = (...args: any[]) => {
-      capturedErrors.push(args.map(a => String(a)).join(' '));
+      capturedErrors.push(args.map((a) => String(a)).join(' '));
       originalError.apply(console, args);
     };
   }, 300000); // 5 minute timeout for setup
@@ -76,7 +72,7 @@ tasks: {}
     if (testContainer) {
       try {
         await $`docker rm -f ${testContainer}`.nothrow();
-      } catch { }
+      } catch {}
     }
 
     // Clean up kind cluster
@@ -190,7 +186,7 @@ targets:
         testContainer = containerName;
 
         // Wait for container to generate some logs
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        await new Promise((resolve) => setTimeout(resolve, 3000));
 
         // Create config file with Docker target
         const config = `
@@ -272,13 +268,14 @@ targets:
 
       await dockerProgram.parseAsync(['node', 'xec', 'logs', 'containers.test', '--tail', '3']);
 
-      const outputLines = capturedOutput.filter(line =>
-        line.includes('Heartbeat') ||
-        line.includes('INFO') ||
-        line.includes('ERROR') ||
-        line.includes('DEBUG') ||
-        line.includes('WARN') ||
-        line.includes('Starting')
+      const outputLines = capturedOutput.filter(
+        (line) =>
+          line.includes('Heartbeat') ||
+          line.includes('INFO') ||
+          line.includes('ERROR') ||
+          line.includes('DEBUG') ||
+          line.includes('WARN') ||
+          line.includes('Starting')
       );
       // Should have at most 3 log lines (excluding metadata)
       expect(outputLines.length).toBeLessThanOrEqual(3);
@@ -291,16 +288,24 @@ targets:
       }
 
       // Start following logs in background
-      const logPromise = dockerProgram.parseAsync(['node', 'xec', 'logs', 'containers.test', '--follow', '--tail', '5']);
+      const logPromise = dockerProgram.parseAsync([
+        'node',
+        'xec',
+        'logs',
+        'containers.test',
+        '--follow',
+        '--tail',
+        '5',
+      ]);
 
       // Wait for initial logs to be captured
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       // The follow command runs asynchronously, we need to wait for it to start streaming
       // Let's check if we're getting output periodically
       let checkCount = 0;
       while (capturedOutput.length < 5 && checkCount < 5) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
         checkCount++;
       }
 
@@ -321,15 +326,16 @@ targets:
       expect(capturedOutput.length).toBeGreaterThan(2);
 
       // Check if we have any content that looks like logs
-      const hasLogContent = capturedOutput.some(line =>
-        line.includes('Starting application') ||
-        line.includes('INFO') ||
-        line.includes('ERROR') ||
-        line.includes('DEBUG') ||
-        line.includes('WARN') ||
-        line.includes('Heartbeat') ||
-        line.includes('GMT') ||  // Timestamps from heartbeat
-        line.includes('UTC')     // Alternative timestamp format
+      const hasLogContent = capturedOutput.some(
+        (line) =>
+          line.includes('Starting application') ||
+          line.includes('INFO') ||
+          line.includes('ERROR') ||
+          line.includes('DEBUG') ||
+          line.includes('WARN') ||
+          line.includes('Heartbeat') ||
+          line.includes('GMT') || // Timestamps from heartbeat
+          line.includes('UTC') // Alternative timestamp format
       );
 
       // We should have captured some log-like content
@@ -339,7 +345,7 @@ targets:
       process.emit('SIGINT' as any);
 
       // Wait for graceful shutdown
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
       // The promise should complete without throwing
       await expect(logPromise).resolves.not.toThrow();
@@ -354,7 +360,7 @@ targets:
       await dockerProgram.parseAsync(['node', 'xec', 'logs', 'containers.test', '--json', '--tail', '1']);
 
       // Find JSON output
-      const jsonLines = capturedOutput.filter(line => {
+      const jsonLines = capturedOutput.filter((line) => {
         try {
           JSON.parse(line);
           return true;
@@ -477,7 +483,6 @@ targets:
     });
 
     beforeAll(async () => {
-
       // Skip if kubectl is not available
       try {
         await $`kubectl version --client`.quiet();
@@ -493,9 +498,11 @@ targets:
       // Deploy test pods with custom logging
       // First, delete any existing test-pod to ensure fresh logs
       try {
-        await $`kubectl delete pod test-pod -n default --ignore-not-found=true`.env({ KUBECONFIG: kindManager.getKubeConfigPath() });
+        await $`kubectl delete pod test-pod -n default --ignore-not-found=true`.env({
+          KUBECONFIG: kindManager.getKubeConfigPath(),
+        });
         // Wait for deletion to complete
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise((resolve) => setTimeout(resolve, 2000));
       } catch (e) {
         // Ignore errors, pod might not exist
       }
@@ -527,13 +534,13 @@ spec:
       await kindManager.waitForPod('test-pod', 'default');
 
       // Wait a bit more for initial logs to be available
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       // Deploy multi-container pod
       await kindManager.createMultiContainerPod('multi-pod', 'default');
 
       // Wait a bit for logs to be generated
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise((resolve) => setTimeout(resolve, 3000));
 
       // Create config file with k8s targets
       const config = `
@@ -693,9 +700,7 @@ targets:
       process.chdir(tempTestDir);
 
       try {
-        await expect(
-          errorProgram.parseAsync(['node', 'xec', 'logs', 'pods.missing'])
-        ).rejects.toThrow();
+        await expect(errorProgram.parseAsync(['node', 'xec', 'logs', 'pods.missing'])).rejects.toThrow();
 
         const errors = capturedErrors.join(' ');
         expect(errors).toContain('non-existent-pod');
@@ -747,7 +752,7 @@ targets:
         host: sshConfig.host,
         port: sshConfig.port,
         username: sshConfig.username,
-        password: sshConfig.password
+        password: sshConfig.password,
       })`mkdir -p ${sshTestDir}`;
 
       // Create log file with test content
@@ -755,7 +760,7 @@ targets:
         host: sshConfig.host,
         port: sshConfig.port,
         username: sshConfig.username,
-        password: sshConfig.password
+        password: sshConfig.password,
       })`cat > ${sshLogFile} << 'EOF'
 2024-01-01 10:00:00 INFO Starting application
 2024-01-01 10:00:01 DEBUG Loading configuration
@@ -772,7 +777,7 @@ EOF`;
         host: sshConfig.host,
         port: sshConfig.port,
         username: sshConfig.username,
-        password: sshConfig.password
+        password: sshConfig.password,
       })`cat > ${fakeSyslogPath} << 'EOF'
 Jan  1 10:00:00 test-host kernel: Linux version 5.15.0
 Jan  1 10:00:01 test-host systemd[1]: Started System Logging Service
@@ -806,9 +811,9 @@ targets:
             host: sshConfig.host,
             port: sshConfig.port,
             username: sshConfig.username,
-            password: sshConfig.password
+            password: sshConfig.password,
           })`rm -rf ${sshTestDir}`.nothrow();
-        } catch { }
+        } catch {}
       }
 
       // Stop container
@@ -816,7 +821,7 @@ targets:
     });
 
     beforeEach(() => {
-      // Reset to SSH config before each test  
+      // Reset to SSH config before each test
       if (!dockerManager.shouldSkipSSHTests() && sshTestDir) {
         const sshConfig = SSH_TEST_CONFIGS[0];
         const config = `
@@ -868,7 +873,18 @@ targets:
         return;
       }
 
-      await program.parseAsync(['node', 'xec', 'logs', 'hosts.test-ssh', sshLogFile, '--grep', 'ERROR', '--context', '1', '--no-color']);
+      await program.parseAsync([
+        'node',
+        'xec',
+        'logs',
+        'hosts.test-ssh',
+        sshLogFile,
+        '--grep',
+        'ERROR',
+        '--context',
+        '1',
+        '--no-color',
+      ]);
 
       const output = capturedOutput.join('\n');
       expect(output).toContain('ERROR Database connection failed');
@@ -899,14 +915,17 @@ targets:
     beforeEach(() => {
       // Create local log file
       localLogFile = join(testDir, 'local.log');
-      writeFileSync(localLogFile, `
+      writeFileSync(
+        localLogFile,
+        `
 2024-01-01 12:00:00 [INFO] Application started
 2024-01-01 12:00:01 [DEBUG] Configuration loaded
 2024-01-01 12:00:02 [ERROR] Failed to bind to port 8080
 2024-01-01 12:00:03 [WARN] Trying alternate port 8081
 2024-01-01 12:00:04 [INFO] Server listening on port 8081
 2024-01-01 12:00:05 [INFO] Ready to accept connections
-`.trim());
+`.trim()
+      );
 
       // Create config with local target
       const config = `
@@ -936,7 +955,16 @@ targets:
     });
 
     it('should filter with grep pattern', async () => {
-      await program.parseAsync(['node', 'xec', 'logs', 'local', localLogFile, '--grep', '\\[ERROR\\]|\\[WARN\\]', '--no-color']);
+      await program.parseAsync([
+        'node',
+        'xec',
+        'logs',
+        'local',
+        localLogFile,
+        '--grep',
+        '\\[ERROR\\]|\\[WARN\\]',
+        '--no-color',
+      ]);
 
       const output = capturedOutput.join('\n');
       expect(output).toContain('[ERROR] Failed to bind to port 8080');
@@ -954,14 +982,14 @@ targets:
       const followProcess = $`tail -f -n 100 ${followFile} > ${outputFile} 2>&1`.nothrow();
 
       // Wait for tail to start
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
       // Append new content to the file
       appendFileSync(followFile, 'New line 3\n');
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 200));
 
       appendFileSync(followFile, 'New line 4\n');
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 200));
 
       // Kill the tail process
       try {
@@ -971,7 +999,7 @@ targets:
       }
 
       // Wait for process to finish
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
       // Check the output file
       const output = readFileSync(outputFile, 'utf-8');
@@ -1049,7 +1077,7 @@ targets:
         container2 = containerName2;
 
         // Wait for containers to generate logs
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise((resolve) => setTimeout(resolve, 2000));
 
         // Create config with multiple targets
         const config = `
@@ -1100,7 +1128,16 @@ targets:
         return;
       }
 
-      await multiProgram.parseAsync(['node', 'xec', 'logs', 'containers.app-*', '--parallel', '--prefix', '--tail', '1']);
+      await multiProgram.parseAsync([
+        'node',
+        'xec',
+        'logs',
+        'containers.app-*',
+        '--parallel',
+        '--prefix',
+        '--tail',
+        '1',
+      ]);
 
       const output = capturedOutput.join('\n');
       // The prefix format includes target name and type
@@ -1210,12 +1247,15 @@ commands:
     it('should execute log analysis task', async () => {
       // Create test log first
       const logFile = join(testDir, 'task.log');
-      writeFileSync(logFile, `INFO: Application started
+      writeFileSync(
+        logFile,
+        `INFO: Application started
 ERROR: Database connection failed
 WARN: Retrying connection
 ERROR: Still failing
 INFO: Finally connected
-`);
+`
+      );
 
       // Create a result file for task output
       const resultFile = join(testDir, 'task-result.txt');
@@ -1267,9 +1307,9 @@ targets:
 `;
       writeFileSync(configFile, config);
 
-      await expect(
-        program.parseAsync(['node', 'xec', 'logs', 'containers.missing'])
-      ).rejects.toThrow('process.exit called with code');
+      await expect(program.parseAsync(['node', 'xec', 'logs', 'containers.missing'])).rejects.toThrow(
+        'process.exit called with code'
+      );
     });
 
     it('should handle unsupported target type', async () => {
@@ -1290,9 +1330,9 @@ targets:
       capturedErrors = [];
 
       // Try to access a target that doesn't exist in any namespace
-      await expect(
-        program.parseAsync(['node', 'xec', 'logs', 'containers.nonexistent'])
-      ).rejects.toThrow('process.exit called with code');
+      await expect(program.parseAsync(['node', 'xec', 'logs', 'containers.nonexistent'])).rejects.toThrow(
+        'process.exit called with code'
+      );
 
       const errors = capturedErrors.join(' ').toLowerCase();
       // Should fail with an error (target not found or unknown error)
@@ -1314,9 +1354,7 @@ targets:
       writeFileSync(configFile, config);
 
       // When no target is provided, the command should fail
-      await expect(
-        program.parseAsync(['node', 'xec', 'logs'])
-      ).rejects.toThrow();
+      await expect(program.parseAsync(['node', 'xec', 'logs'])).rejects.toThrow();
 
       // Check that an error message was captured
       const allOutput = [...capturedErrors, ...capturedOutput].join(' ');
@@ -1351,14 +1389,17 @@ targets:
     beforeEach(() => {
       // Create test log with various log levels
       const logFile = join(testDir, 'colors.log');
-      writeFileSync(logFile, `
+      writeFileSync(
+        logFile,
+        `
 ERROR: Critical failure
 WARN: Performance degradation  
 INFO: System operational
 DEBUG: Detailed trace information
 SUCCESS: Operation completed
 FATAL: System crash
-`);
+`
+      );
 
       const config = `
 name: test-project
@@ -1500,24 +1541,27 @@ targets:
       writeFileSync(configFile, config);
 
       const logFile = join(testDir, 'timestamped.log');
-      writeFileSync(logFile, `
+      writeFileSync(
+        logFile,
+        `
 2024-01-01T10:00:00Z INFO: Already has ISO timestamp
 2024/01/01 10:00:01 INFO: Common log format
 [2024-01-01 10:00:02] INFO: Bracketed format
 Jan 1 10:00:03 INFO: Syslog format
 INFO: No timestamp
-`);
+`
+      );
 
       await program.parseAsync(['node', 'xec', 'logs', 'local', logFile, '--timestamps']);
 
       const output = capturedOutput.join('\n');
       // Lines with timestamps should not get double timestamps
       const lines = output.split('\n');
-      const isoLine = lines.find(l => l.includes('Already has ISO timestamp'));
+      const isoLine = lines.find((l) => l.includes('Already has ISO timestamp'));
       expect(isoLine).not.toMatch(/\d{4}-\d{2}-\d{2}T.*\d{4}-\d{2}-\d{2}T/); // No double timestamps
 
       // Line without timestamp should get one
-      const noTimestampLine = lines.find(l => l.includes('No timestamp'));
+      const noTimestampLine = lines.find((l) => l.includes('No timestamp'));
       expect(noTimestampLine).toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
     });
 
@@ -1532,9 +1576,7 @@ targets:
 `;
       writeFileSync(configFile, config);
 
-      await expect(
-        program.parseAsync(['node', 'xec', 'logs', 'containers.nonexistent*'])
-      ).rejects.toThrow();
+      await expect(program.parseAsync(['node', 'xec', 'logs', 'containers.nonexistent*'])).rejects.toThrow();
     });
 
     it('should format target display with details', async () => {
@@ -1605,9 +1647,7 @@ targets:
       const logFile = join(testDir, 'valid.log');
       writeFileSync(logFile, 'Test\n');
 
-      await expect(
-        program.parseAsync(['node', 'xec', 'logs', 'local', logFile])
-      ).resolves.not.toThrow();
+      await expect(program.parseAsync(['node', 'xec', 'logs', 'local', logFile])).resolves.not.toThrow();
     });
 
     it('should handle multi-line log entries', async () => {
@@ -1620,7 +1660,9 @@ targets:
       writeFileSync(configFile, config);
 
       const logFile = join(testDir, 'multiline.log');
-      writeFileSync(logFile, `Single line log
+      writeFileSync(
+        logFile,
+        `Single line log
 Multi-line log entry
   continuation line 1
   continuation line 2
@@ -1628,7 +1670,8 @@ Another single line
 Exception: Error at
   at function1() line 10
   at function2() line 20
-Final line`);
+Final line`
+      );
 
       await program.parseAsync(['node', 'xec', 'logs', 'local', logFile]);
 
@@ -1669,9 +1712,7 @@ targets:
 
       const logFile = join(testDir, 'nonexistent.log');
 
-      await expect(
-        program.parseAsync(['node', 'xec', 'logs', 'local', logFile])
-      ).rejects.toThrow();
+      await expect(program.parseAsync(['node', 'xec', 'logs', 'local', logFile])).rejects.toThrow();
 
       const errors = capturedErrors.join(' ');
       expect(errors).toContain('nonexistent.log');

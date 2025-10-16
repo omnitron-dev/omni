@@ -5,13 +5,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import {
-  waitForEditor,
-  typeText,
-  pressShortcut,
-  getEditor,
-  checkA11y,
-} from './helpers';
+import { waitForEditor, typeText, pressShortcut, getEditor, checkA11y } from './helpers';
 
 test.describe('Accessibility', () => {
   test.beforeEach(async ({ page }) => {
@@ -87,11 +81,7 @@ test.describe('Accessibility', () => {
 
     const hasOutline = await button.evaluate((el) => {
       const styles = window.getComputedStyle(el);
-      return (
-        styles.outline !== 'none' ||
-        styles.outlineWidth !== '0px' ||
-        styles.border !== 'none'
-      );
+      return styles.outline !== 'none' || styles.outlineWidth !== '0px' || styles.border !== 'none';
     });
 
     expect(hasOutline).toBe(true);

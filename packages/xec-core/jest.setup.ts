@@ -10,8 +10,8 @@ jest.setTimeout(30000);
 configure({
   adapters: {
     ssh: {},
-    docker: {}
-  }
+    docker: {},
+  },
 });
 
 // Setup Docker containers for SSH tests
@@ -21,17 +21,19 @@ configure({
 // Store whether we should manage containers globally
 const shouldManageContainersGlobally = () => {
   // Check if we're running SSH tests without the new helper
-  const testFiles = process.argv.filter(arg => arg.endsWith('.test.ts'));
-  const isRunningOldSSHTests = testFiles.some(file =>
-    // Only manage containers for tests that don't use describeSSH helper
-    (file.includes('ssh') && file.includes('test.ts')) &&
-    !file.includes('ssh-docker-integration.test.ts') && // Uses describeSSH
-    !file.includes('package-managers.test.ts') && // Uses describeSSH
-    !file.includes('ssh-authentication.test.ts') && // Uses describeSSH
-    !file.includes('ssh-file-transfer.test.ts') && // Uses describeSSH
-    !file.includes('ssh-performance.test.ts') && // Uses describeSSH
-    !file.includes('ssh-complex-scenarios.test.ts') && // Uses describeSSH
-    !file.includes('ssh-high-level.test.ts') // Uses describeSSH
+  const testFiles = process.argv.filter((arg) => arg.endsWith('.test.ts'));
+  const isRunningOldSSHTests = testFiles.some(
+    (file) =>
+      // Only manage containers for tests that don't use describeSSH helper
+      file.includes('ssh') &&
+      file.includes('test.ts') &&
+      !file.includes('ssh-docker-integration.test.ts') && // Uses describeSSH
+      !file.includes('package-managers.test.ts') && // Uses describeSSH
+      !file.includes('ssh-authentication.test.ts') && // Uses describeSSH
+      !file.includes('ssh-file-transfer.test.ts') && // Uses describeSSH
+      !file.includes('ssh-performance.test.ts') && // Uses describeSSH
+      !file.includes('ssh-complex-scenarios.test.ts') && // Uses describeSSH
+      !file.includes('ssh-high-level.test.ts') // Uses describeSSH
   );
 
   return isRunningOldSSHTests && !dockerManager.shouldSkipSSHTests();
@@ -57,6 +59,6 @@ if (shouldManageContainersGlobally()) {
     }
 
     // Give a small delay for cleanup
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }, 60000); // 1 minute timeout for cleanup
 }

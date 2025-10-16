@@ -17,11 +17,7 @@ function getContentWidth(content: string): number {
 /**
  * Get the maximum content width for a column across all rows
  */
-function getColumnContentWidth<T>(
-  data: T[],
-  column: TableColumn<T>,
-  maxSampleSize = 100
-): number {
+function getColumnContentWidth<T>(data: T[], column: TableColumn<T>, maxSampleSize = 100): number {
   // Sample data to avoid performance issues with large datasets
   const sample = data.length > maxSampleSize ? data.slice(0, maxSampleSize) : data;
 
@@ -58,7 +54,7 @@ export function calculateColumnWidths<T>(
   const hasBorders = true; // Will be determined by caller
 
   // Calculate border overhead
-  const borderOverhead = hasBorders ? (columns.length + 1) + columns.length * 2 : columns.length - 1; // separators + padding
+  const borderOverhead = hasBorders ? columns.length + 1 + columns.length * 2 : columns.length - 1; // separators + padding
 
   // Determine available width
   let availableWidth: number;

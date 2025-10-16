@@ -223,9 +223,7 @@ describe('TypeScriptTransformer', () => {
   describe('error handling', () => {
     it('should throw on syntax errors', async () => {
       const invalidCode = 'const x: = 42;'; // Invalid syntax
-      await expect(
-        transformer.transform(invalidCode, 'test.ts')
-      ).rejects.toThrow();
+      await expect(transformer.transform(invalidCode, 'test.ts')).rejects.toThrow();
     });
 
     it('should handle complex TypeScript features', async () => {

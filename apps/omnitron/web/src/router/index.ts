@@ -31,7 +31,7 @@ export const router = createRouter({
       meta: {
         title: 'Flow Canvas - Omnitron',
         requiresAuth: false,
-      }
+      },
     },
     {
       path: '/canvas',
@@ -39,7 +39,7 @@ export const router = createRouter({
       meta: {
         title: 'Flow Canvas - Omnitron',
         requiresAuth: false,
-      }
+      },
     },
     {
       path: '/editor',
@@ -47,7 +47,7 @@ export const router = createRouter({
       meta: {
         title: 'Code Editor - Omnitron',
         requiresAuth: false,
-      }
+      },
     },
     {
       path: '/terminal',
@@ -55,7 +55,7 @@ export const router = createRouter({
       meta: {
         title: 'Terminal - Omnitron',
         requiresAuth: false,
-      }
+      },
     },
     {
       path: '/chat',
@@ -63,7 +63,7 @@ export const router = createRouter({
       meta: {
         title: 'AI Chat - Omnitron',
         requiresAuth: false,
-      }
+      },
     },
     {
       path: '/settings',
@@ -71,15 +71,15 @@ export const router = createRouter({
       meta: {
         title: 'Settings - Omnitron',
         requiresAuth: false,
-      }
+      },
     },
     {
       path: '*',
       component: NotFoundView,
       meta: {
         title: '404 - Not Found',
-      }
-    }
+      },
+    },
   ],
 
   // Router configuration

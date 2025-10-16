@@ -37,10 +37,7 @@ export function required(message = 'This field is required'): Validator {
 /**
  * Validate minimum length
  */
-export function minLength(
-  min: number,
-  message?: string,
-): Validator<string | any[]> {
+export function minLength(min: number, message?: string): Validator<string | any[]> {
   return (value: string | any[]): ValidationResult => {
     if (!value || value.length < min) {
       return {
@@ -55,10 +52,7 @@ export function minLength(
 /**
  * Validate maximum length
  */
-export function maxLength(
-  max: number,
-  message?: string,
-): Validator<string | any[]> {
+export function maxLength(max: number, message?: string): Validator<string | any[]> {
   return (value: string | any[]): ValidationResult => {
     if (value && value.length > max) {
       return {
@@ -73,10 +67,7 @@ export function maxLength(
 /**
  * Validate exact length
  */
-export function exactLength(
-  length: number,
-  message?: string,
-): Validator<string | any[]> {
+export function exactLength(length: number, message?: string): Validator<string | any[]> {
   return (value: string | any[]): ValidationResult => {
     if (value && value.length !== length) {
       return {
@@ -125,11 +116,7 @@ export function max(maximum: number, message?: string): Validator<number> {
 /**
  * Validate value is within range
  */
-export function range(
-  minimum: number,
-  maximum: number,
-  message?: string,
-): Validator<number> {
+export function range(minimum: number, maximum: number, message?: string): Validator<number> {
   return (value: number): ValidationResult => {
     if (value < minimum || value > maximum) {
       return {
@@ -211,9 +198,7 @@ export function pattern(regex: RegExp, message = 'Invalid format'): Validator<st
 /**
  * Validate alphanumeric string
  */
-export function isAlphanumeric(
-  message = 'Value must be alphanumeric',
-): Validator<string> {
+export function isAlphanumeric(message = 'Value must be alphanumeric'): Validator<string> {
   const alphanumericRegex = /^[a-zA-Z0-9]+$/;
   return (value: string): ValidationResult => {
     if (!alphanumericRegex.test(value)) {
@@ -226,9 +211,7 @@ export function isAlphanumeric(
 /**
  * Validate phone number (basic)
  */
-export function isPhoneNumber(
-  message = 'Invalid phone number',
-): Validator<string> {
+export function isPhoneNumber(message = 'Invalid phone number'): Validator<string> {
   const phoneRegex = /^[\d\s\-\+\(\)]+$/;
   return (value: string): ValidationResult => {
     if (!phoneRegex.test(value) || value.replace(/\D/g, '').length < 10) {
@@ -258,10 +241,7 @@ export function isAlpha(message = 'Value must contain only letters'): Validator<
 /**
  * Validate value matches another value
  */
-export function matches<T>(
-  otherValue: T,
-  message = 'Values do not match',
-): Validator<T> {
+export function matches<T>(otherValue: T, message = 'Values do not match'): Validator<T> {
   return (value: T): ValidationResult => {
     if (value !== otherValue) {
       return { valid: false, error: message };
@@ -273,10 +253,7 @@ export function matches<T>(
 /**
  * Validate value is one of allowed values
  */
-export function oneOf<T>(
-  allowedValues: T[],
-  message = 'Invalid value',
-): Validator<T> {
+export function oneOf<T>(allowedValues: T[], message = 'Invalid value'): Validator<T> {
   return (value: T): ValidationResult => {
     if (!allowedValues.includes(value)) {
       return { valid: false, error: message };
@@ -316,10 +293,7 @@ export function isFutureDate(message = 'Date must be in the future'): Validator<
 /**
  * Validate date is after another date
  */
-export function isAfter(
-  compareDate: Date,
-  message = 'Date must be after comparison date',
-): Validator<Date> {
+export function isAfter(compareDate: Date, message = 'Date must be after comparison date'): Validator<Date> {
   return (value: Date): ValidationResult => {
     if (value.getTime() <= compareDate.getTime()) {
       return { valid: false, error: message };
@@ -331,10 +305,7 @@ export function isAfter(
 /**
  * Validate date is before another date
  */
-export function isBefore(
-  compareDate: Date,
-  message = 'Date must be before comparison date',
-): Validator<Date> {
+export function isBefore(compareDate: Date, message = 'Date must be before comparison date'): Validator<Date> {
   return (value: Date): ValidationResult => {
     if (value.getTime() >= compareDate.getTime()) {
       return { valid: false, error: message };
@@ -405,10 +376,7 @@ export function not(validator: Validator, message?: string): Validator {
 /**
  * Conditional validator
  */
-export function when(
-  condition: (value: any) => boolean,
-  validator: Validator,
-): Validator {
+export function when(condition: (value: any) => boolean, validator: Validator): Validator {
   return (value: any): ValidationResult => {
     if (condition(value)) {
       return validator(value);

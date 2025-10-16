@@ -11,12 +11,5 @@ export * from './reactivity/index.js';
 export * from './component/index.js';
 
 // Application bootstrap
-export {
-  createApp,
-  mount,
-  quickStart,
-  createTestApp,
-  getApp,
-  setApp,
-} from './application.js';
+export { createApp, mount, quickStart, createTestApp, getApp, setApp } from './application.js';
 export type { Application, ApplicationConfig } from './application.js';

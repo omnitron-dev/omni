@@ -83,10 +83,7 @@ class ImmutableContext implements Context {
   private readonly parent?: ImmutableContext;
   private frozen = false;
 
-  constructor(
-    initial?: Record<string | symbol, any> | Map<string | symbol, any>,
-    parent?: ImmutableContext,
-  ) {
+  constructor(initial?: Record<string | symbol, any> | Map<string | symbol, any>, parent?: ImmutableContext) {
     if (parent !== undefined) {
       this.parent = parent;
     }
@@ -339,9 +336,7 @@ export async function withContext<T>(ctx: Context, fn: () => T | Promise<T>): Pr
 /**
  * Context-aware Flow wrapper
  */
-export function contextual<In, Out>(
-  fn: (input: In, ctx: Context) => Out | Promise<Out>,
-): Flow<In, Out> {
+export function contextual<In, Out>(fn: (input: In, ctx: Context) => Out | Promise<Out>): Flow<In, Out> {
   const flow = (async (input: In) => {
     const ctx = (await getCurrentContext()) ?? emptyContext;
     return fn(input, ctx);

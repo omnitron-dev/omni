@@ -50,11 +50,7 @@ export async function getEditorText(page: Page): Promise<string> {
 /**
  * Select text by typing selection commands
  */
-export async function selectText(
-  page: Page,
-  from: number,
-  to: number,
-): Promise<void> {
+export async function selectText(page: Page, from: number, to: number): Promise<void> {
   const editor = getEditor(page);
   await editor.click();
 
@@ -83,25 +79,16 @@ export async function selectAll(page: Page): Promise<void> {
 /**
  * Press a keyboard shortcut (Mod is Cmd on Mac, Ctrl on others)
  */
-export async function pressShortcut(
-  page: Page,
-  shortcut: string,
-): Promise<void> {
+export async function pressShortcut(page: Page, shortcut: string): Promise<void> {
   const isMac = process.platform === 'darwin';
-  const normalizedShortcut = shortcut.replace(
-    'Mod',
-    isMac ? 'Meta' : 'Control',
-  );
+  const normalizedShortcut = shortcut.replace('Mod', isMac ? 'Meta' : 'Control');
   await page.keyboard.press(normalizedShortcut);
 }
 
 /**
  * Click a toolbar button by its data-command attribute
  */
-export async function clickToolbarButton(
-  page: Page,
-  command: string,
-): Promise<void> {
+export async function clickToolbarButton(page: Page, command: string): Promise<void> {
   const button = page.locator(`[data-command="${command}"]`);
   await button.click();
 }
@@ -109,10 +96,7 @@ export async function clickToolbarButton(
 /**
  * Check if a toolbar button is active
  */
-export async function isToolbarButtonActive(
-  page: Page,
-  command: string,
-): Promise<boolean> {
+export async function isToolbarButtonActive(page: Page, command: string): Promise<boolean> {
   const button = page.locator(`[data-command="${command}"]`);
   const className = await button.getAttribute('class');
   return className?.includes('active') || false;
@@ -148,7 +132,7 @@ export async function deleteText(page: Page, count: number): Promise<void> {
 export async function moveCursor(
   page: Page,
   direction: 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'ArrowDown',
-  count: number = 1,
+  count: number = 1
 ): Promise<void> {
   for (let i = 0; i < count; i++) {
     await page.keyboard.press(direction);
@@ -194,26 +178,17 @@ export async function paste(page: Page): Promise<void> {
 /**
  * Paste text from clipboard (set clipboard first)
  */
-export async function pasteFromClipboard(
-  page: Page,
-  text: string,
-): Promise<void> {
-  await page.evaluate(
-    async (text) => {
-      await navigator.clipboard.writeText(text);
-    },
-    text,
-  );
+export async function pasteFromClipboard(page: Page, text: string): Promise<void> {
+  await page.evaluate(async (text) => {
+    await navigator.clipboard.writeText(text);
+  }, text);
   await paste(page);
 }
 
 /**
  * Check if element contains specific HTML
  */
-export async function expectHTML(
-  page: Page,
-  expectedHTML: string,
-): Promise<void> {
+export async function expectHTML(page: Page, expectedHTML: string): Promise<void> {
   const html = await getEditorHTML(page);
   expect(html).toContain(expectedHTML);
 }
@@ -221,10 +196,7 @@ export async function expectHTML(
 /**
  * Check if element contains specific text
  */
-export async function expectText(
-  page: Page,
-  expectedText: string,
-): Promise<void> {
+export async function expectText(page: Page, expectedText: string): Promise<void> {
   const text = await getEditorText(page);
   expect(text).toContain(expectedText);
 }
@@ -286,18 +258,14 @@ export async function isEditorFocused(page: Page): Promise<boolean> {
 /**
  * Wait for specific HTML to appear in editor
  */
-export async function waitForHTML(
-  page: Page,
-  expectedHTML: string,
-  timeout: number = 3000,
-): Promise<void> {
+export async function waitForHTML(page: Page, expectedHTML: string, timeout: number = 3000): Promise<void> {
   await page.waitForFunction(
     (html) => {
       const editor = document.querySelector('.ProseMirror');
       return editor?.innerHTML.includes(html);
     },
     expectedHTML,
-    { timeout },
+    { timeout }
   );
 }
 
@@ -314,11 +282,7 @@ export async function getParagraphs(page: Page): Promise<string[]> {
 /**
  * Click at specific coordinates in editor
  */
-export async function clickAt(
-  page: Page,
-  x: number,
-  y: number,
-): Promise<void> {
+export async function clickAt(page: Page, x: number, y: number): Promise<void> {
   const editor = getEditor(page);
   const box = await editor.boundingBox();
   if (!box) throw new Error('Editor not found');
@@ -345,11 +309,7 @@ export async function tripleClick(page: Page): Promise<void> {
 /**
  * Drag and drop file into editor
  */
-export async function dropFile(
-  page: Page,
-  filePath: string,
-  mimeType: string,
-): Promise<void> {
+export async function dropFile(page: Page, filePath: string, mimeType: string): Promise<void> {
   const editor = getEditor(page);
   const box = await editor.boundingBox();
   if (!box) throw new Error('Editor not found');
@@ -369,7 +329,7 @@ export async function dropFile(
       dt.items.add(file);
       return dt;
     },
-    { buffer, mimeType },
+    { buffer, mimeType }
   );
 
   await editor.dispatchEvent('drop', { dataTransfer });
@@ -378,10 +338,7 @@ export async function dropFile(
 /**
  * Take screenshot of editor
  */
-export async function screenshotEditor(
-  page: Page,
-  path?: string,
-): Promise<Buffer> {
+export async function screenshotEditor(page: Page, path?: string): Promise<Buffer> {
   const editor = getEditor(page);
   return await editor.screenshot({ path });
 }
@@ -402,22 +359,14 @@ export async function checkA11y(page: Page, selector: string): Promise<void> {
 /**
  * Wait for specific element to be visible
  */
-export async function waitForVisible(
-  page: Page,
-  selector: string,
-  timeout: number = 3000,
-): Promise<void> {
+export async function waitForVisible(page: Page, selector: string, timeout: number = 3000): Promise<void> {
   await page.waitForSelector(selector, { state: 'visible', timeout });
 }
 
 /**
  * Wait for specific element to be hidden
  */
-export async function waitForHidden(
-  page: Page,
-  selector: string,
-  timeout: number = 3000,
-): Promise<void> {
+export async function waitForHidden(page: Page, selector: string, timeout: number = 3000): Promise<void> {
   await page.waitForSelector(selector, { state: 'hidden', timeout });
 }
 
@@ -445,10 +394,7 @@ export async function pressEscape(page: Page): Promise<void> {
 /**
  * Measure typing latency
  */
-export async function measureTypingLatency(
-  page: Page,
-  text: string,
-): Promise<number> {
+export async function measureTypingLatency(page: Page, text: string): Promise<number> {
   const editor = getEditor(page);
   await editor.click();
 
@@ -467,9 +413,7 @@ export async function getPerformanceMetrics(page: Page): Promise<{
   duration: number;
 }> {
   return await page.evaluate(() => {
-    const memory = (performance as any).memory
-      ? (performance as any).memory.usedJSHeapSize
-      : 0;
+    const memory = (performance as any).memory ? (performance as any).memory.usedJSHeapSize : 0;
     const duration = performance.now();
     return { memory, duration };
   });

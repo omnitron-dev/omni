@@ -47,12 +47,7 @@ function renderHeader<T>(layout: TableLayout<T>, options: TableOptions<T>): stri
 
   // Format header cells
   const headerCells = columns.map((columnLayout) =>
-    formatHeader(
-      columnLayout.column,
-      columnLayout.width,
-      options.alignment,
-      headerStyle
-    )
+    formatHeader(columnLayout.column, columnLayout.width, options.alignment, headerStyle)
   );
 
   // Render top border
@@ -93,11 +88,7 @@ function renderHeader<T>(layout: TableLayout<T>, options: TableOptions<T>): stri
 /**
  * Render table body (data rows)
  */
-function renderBody<T>(
-  data: T[],
-  layout: TableLayout<T>,
-  options: TableOptions<T>
-): string | null {
+function renderBody<T>(data: T[], layout: TableLayout<T>, options: TableOptions<T>): string | null {
   if (data.length === 0) {
     return null;
   }
@@ -106,7 +97,8 @@ function renderBody<T>(
   const lines: string[] = [];
 
   // Determine if we should use alternating colors
-  const useAlternateColors = options.alternateRows && isTTY(options.output ?? process.stdout) && !isCI();
+  const useAlternateColors =
+    options.alternateRows && isTTY(options.output ?? process.stdout) && !isCI();
 
   for (let rowIndex = 0; rowIndex < data.length; rowIndex++) {
     const row = data[rowIndex]!;
@@ -168,9 +160,7 @@ function renderFooter<T>(
       lines.push(options.footer);
     } else if (typeof options.footer === 'object' && options.footer.text) {
       const footerText =
-        typeof options.footer.text === 'function'
-          ? options.footer.text(data)
-          : options.footer.text;
+        typeof options.footer.text === 'function' ? options.footer.text(data) : options.footer.text;
       lines.push(footerText);
     }
   }
@@ -191,7 +181,10 @@ export function renderTable<T>(data: T[], options: TableOptions<T>): string {
     // Create "no data" row with proper borders
     // Calculate total content width (sum of column widths + separators between columns)
     const separatorWidth = layout.hasBorders && layout.borders.left ? 3 : 1; // ' | ' or ' '
-    const totalContentWidth = layout.columns.reduce((sum, col, idx) => sum + col.width + (idx < layout.columns.length - 1 ? separatorWidth : 0), 0);
+    const totalContentWidth = layout.columns.reduce(
+      (sum, col, idx) => sum + col.width + (idx < layout.columns.length - 1 ? separatorWidth : 0),
+      0
+    );
 
     const message = '(no data)';
     const padding = Math.max(0, totalContentWidth - message.length);

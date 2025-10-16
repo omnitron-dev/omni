@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const City02Icon: IconDefinition = {
-  "id": "city02",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M2 22H22\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M14 4H10C8.34533 4 8 4.34533 8 6V22H16V6C16 4.34533 15.6547 4 14 4Z\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M8 13H6C4.34533 13 4 13.3453 4 15V22H8V13Z\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M18 13H16V22H20V15C20 13.3453 19.6547 13 18 13Z\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M12 4L12 2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M12 22L12 18\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M11 15H13M11 11.5H13M11 8L13 8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "twotone",
-    "originalName": "City02Icon",
-    "elementsCount": 7,
-    "hasOpacity": true,
-    "hasFill": false
-  }
+  id: 'city02',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path d="M2 22H22" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M14 4H10C8.34533 4 8 4.34533 8 6V22H16V6C16 4.34533 15.6547 4 14 4Z" stroke-linejoin="round" />\n    <path opacity="0.4" d="M8 13H6C4.34533 13 4 13.3453 4 15V22H8V13Z" stroke-linejoin="round" />\n    <path opacity="0.4" d="M18 13H16V22H20V15C20 13.3453 19.6547 13 18 13Z" stroke-linejoin="round" />\n    <path opacity="0.4" d="M12 4L12 2" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M12 22L12 18" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M11 15H13M11 11.5H13M11 8L13 8" stroke-linecap="round" stroke-linejoin="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'twotone',
+    originalName: 'City02Icon',
+    elementsCount: 7,
+    hasOpacity: true,
+    hasFill: false,
+  },
 };

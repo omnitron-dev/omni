@@ -328,12 +328,7 @@ describe('User Interactions E2E Tests', () => {
     it('should handle Enter key press', () => {
       const onActivate = vi.fn();
       const { container } = render(() => (
-        <SVGIcon
-          path="M10 10 L20 20 Z"
-          onClick={onActivate}
-          role="button"
-          aria-label="Enter key test"
-        />
+        <SVGIcon path="M10 10 L20 20 Z" onClick={onActivate} role="button" aria-label="Enter key test" />
       ));
 
       const svg = container.querySelector('svg');
@@ -349,12 +344,7 @@ describe('User Interactions E2E Tests', () => {
     it('should handle Space key press', () => {
       const onActivate = vi.fn();
       const { container } = render(() => (
-        <SVGIcon
-          path="M10 10 L20 20 Z"
-          onClick={onActivate}
-          role="button"
-          aria-label="Space key test"
-        />
+        <SVGIcon path="M10 10 L20 20 Z" onClick={onActivate} role="button" aria-label="Space key test" />
       ));
 
       const svg = container.querySelector('svg');
@@ -372,12 +362,7 @@ describe('User Interactions E2E Tests', () => {
       const { container } = render(() => (
         <div>
           {expanded() && (
-            <SVGIcon
-              path="M10 10 L20 20 Z"
-              onClick={() => setExpanded(false)}
-              role="button"
-              aria-label="Close"
-            />
+            <SVGIcon path="M10 10 L20 20 Z" onClick={() => setExpanded(false)} role="button" aria-label="Close" />
           )}
         </div>
       ));
@@ -404,9 +389,7 @@ describe('User Interactions E2E Tests', () => {
 
       // Simulate arrow navigation
       const firstIcon = icons[0];
-      firstIcon?.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })
-      );
+      firstIcon?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
     });
 
     it('should handle Tab key for focus management', () => {
@@ -429,9 +412,7 @@ describe('User Interactions E2E Tests', () => {
   describe('Touch Events', () => {
     it('should handle touch tap', () => {
       const onTap = vi.fn();
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" onClick={onTap} aria-label="Touch tap" />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" onClick={onTap} aria-label="Touch tap" />);
 
       const svg = container.querySelector('svg');
 
@@ -462,9 +443,7 @@ describe('User Interactions E2E Tests', () => {
     });
 
     it('should handle swipe gestures', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" aria-label="Swipe test" />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" aria-label="Swipe test" />);
 
       const svg = container.querySelector('svg');
 
@@ -481,11 +460,7 @@ describe('User Interactions E2E Tests', () => {
     it('should handle drag start', () => {
       const onDragStart = vi.fn();
       const { container } = render(() => (
-        <SVGIcon
-          path="M10 10 L20 20 Z"
-          onClick={onDragStart}
-          aria-label="Draggable icon"
-        />
+        <SVGIcon path="M10 10 L20 20 Z" onClick={onDragStart} aria-label="Draggable icon" />
       ));
 
       const svg = container.querySelector('svg');
@@ -513,9 +488,7 @@ describe('User Interactions E2E Tests', () => {
 
   describe('Focus Events', () => {
     it('should handle focus', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" role="button" aria-label="Focusable" />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" role="button" aria-label="Focusable" />);
 
       const svg = container.querySelector('svg');
       svg?.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
@@ -524,9 +497,7 @@ describe('User Interactions E2E Tests', () => {
     });
 
     it('should handle blur', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" role="button" aria-label="Blurable" />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" role="button" aria-label="Blurable" />);
 
       const svg = container.querySelector('svg');
 
@@ -675,12 +646,7 @@ describe('User Interactions E2E Tests', () => {
       // Test 1: Render with handler enabled
       const onClick = vi.fn();
       const { container: container1 } = render(() => (
-        <SVGIcon
-          path="M10 10 L20 20 Z"
-          onClick={onClick}
-          style={{ opacity: 1 }}
-          aria-label="Handler enabled"
-        />
+        <SVGIcon path="M10 10 L20 20 Z" onClick={onClick} style={{ opacity: 1 }} aria-label="Handler enabled" />
       ));
 
       const svg1 = container1.querySelector('svg');
@@ -689,12 +655,7 @@ describe('User Interactions E2E Tests', () => {
 
       // Test 2: Render without handler
       const { container: container2 } = render(() => (
-        <SVGIcon
-          path="M10 10 L20 20 Z"
-          onClick={undefined}
-          style={{ opacity: 0.5 }}
-          aria-label="Handler disabled"
-        />
+        <SVGIcon path="M10 10 L20 20 Z" onClick={undefined} style={{ opacity: 0.5 }} aria-label="Handler disabled" />
       ));
 
       const svg2 = container2.querySelector('svg');
@@ -766,12 +727,7 @@ describe('User Interactions E2E Tests', () => {
       const { container } = render(() => (
         <div>
           {handlers.map((handler, i) => (
-            <SVGIcon
-              key={i}
-              path="M10 10 L20 20 Z"
-              onClick={handler}
-              aria-label={`Icon ${i}`}
-            />
+            <SVGIcon key={i} path="M10 10 L20 20 Z" onClick={handler} aria-label={`Icon ${i}`} />
           ))}
         </div>
       ));

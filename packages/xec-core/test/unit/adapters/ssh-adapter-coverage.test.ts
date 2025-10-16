@@ -15,50 +15,54 @@ describe('SSHAdapter - Coverage Enhancement Tests', () => {
   describe('Command Building and Validation', () => {
     it('should validate SSH connection options structure', async () => {
       adapter = new SSHAdapter();
-      
+
       // Missing required host
-      await expect(adapter.execute({
-        command: 'echo test',
-        adapterOptions: {
-          type: 'ssh',
-          username: 'test'
-          // Missing host
-        } as any
-      })).rejects.toThrow();
-      
+      await expect(
+        adapter.execute({
+          command: 'echo test',
+          adapterOptions: {
+            type: 'ssh',
+            username: 'test',
+            // Missing host
+          } as any,
+        })
+      ).rejects.toThrow();
+
       // Missing required username
-      await expect(adapter.execute({
-        command: 'echo test',
-        adapterOptions: {
-          type: 'ssh',
-          host: 'test-host'
-          // Missing username
-        } as any
-      })).rejects.toThrow();
+      await expect(
+        adapter.execute({
+          command: 'echo test',
+          adapterOptions: {
+            type: 'ssh',
+            host: 'test-host',
+            // Missing username
+          } as any,
+        })
+      ).rejects.toThrow();
     });
 
     it('should handle various SSH authentication option combinations', () => {
       adapter = new SSHAdapter();
-      
+
       const validAuthConfigs = [
         // Password auth
         { type: 'ssh' as const, host: 'host1', username: 'user', password: 'pass' },
-        
+
         // Private key auth
         { type: 'ssh' as const, host: 'host2', username: 'user', privateKey: 'key-content' },
-        
+
         // Private key with passphrase
         { type: 'ssh' as const, host: 'host3', username: 'user', privateKey: 'key', passphrase: 'phrase' },
-        
+
         // Custom port
         { type: 'ssh' as const, host: 'host4', username: 'user', password: 'pass', port: 2222 },
-        
+
         // Minimal config
-        { type: 'ssh' as const, host: 'host5', username: 'user' }
+        { type: 'ssh' as const, host: 'host5', username: 'user' },
       ];
-      
+
       // These should all be valid structures
-      validAuthConfigs.forEach(config => {
+      validAuthConfigs.forEach((config) => {
         expect(config.type).toBe('ssh');
         expect(config.host).toBeTruthy();
         expect(config.username).toBeTruthy();
@@ -69,15 +73,15 @@ describe('SSHAdapter - Coverage Enhancement Tests', () => {
   describe('Internal Helper Methods', () => {
     it('should test connection key generation logic', () => {
       adapter = new SSHAdapter();
-      
+
       // Test the internal getConnectionKey method behavior
       const testCases = [
         { host: 'host1', username: 'user1', port: 22, expected: 'user1@host1:22' },
         { host: 'host2', username: 'user2', port: 2222, expected: 'user2@host2:2222' },
         { host: 'host3', username: 'user3', expected: 'user3@host3:22' }, // Default port
       ];
-      
-      testCases.forEach(testCase => {
+
+      testCases.forEach((testCase) => {
         // This tests the conceptual connection key format
         const key = `${testCase.username}@${testCase.host}:${testCase.port || 22}`;
         expect(key).toBe(testCase.expected);
@@ -86,7 +90,7 @@ describe('SSHAdapter - Coverage Enhancement Tests', () => {
 
     it('should handle stdin conversion edge cases', () => {
       adapter = new SSHAdapter();
-      
+
       // Test various stdin input types that convertStdin handles
       const stdinTestCases = [
         { input: undefined, expected: undefined },
@@ -95,8 +99,8 @@ describe('SSHAdapter - Coverage Enhancement Tests', () => {
         { input: 'string input', expected: 'string input' },
         { input: Buffer.from('buffer input'), expected: 'buffer input' },
       ];
-      
-      stdinTestCases.forEach(testCase => {
+
+      stdinTestCases.forEach((testCase) => {
         if (testCase.input === undefined) {
           expect(testCase.input).toBe(testCase.expected);
         } else if (testCase.input === null) {
@@ -120,8 +124,8 @@ describe('SSHAdapter - Coverage Enhancement Tests', () => {
         { enabled: true, password: 'secret', method: 'askpass' as const, shouldWrap: true },
         { enabled: true, password: 'secret', method: 'echo' as const, shouldWrap: true },
       ];
-      
-      sudoConfigs.forEach(config => {
+
+      sudoConfigs.forEach((config) => {
         const adapter = new SSHAdapter({ sudo: config });
         expect(adapter).toBeInstanceOf(SSHAdapter);
       });
@@ -135,12 +139,10 @@ describe('SSHAdapter - Coverage Enhancement Tests', () => {
         { original: 'ls -la', withSudo: 'sudo ls -la' },
         { original: 'echo "test"', withSudo: 'sudo echo "test"' },
       ];
-      
-      commandPatterns.forEach(pattern => {
+
+      commandPatterns.forEach((pattern) => {
         // Test that commands can be properly prefixed
-        const result = pattern.original.startsWith('sudo ') ? 
-          pattern.original : 
-          `sudo ${pattern.original}`;
+        const result = pattern.original.startsWith('sudo ') ? pattern.original : `sudo ${pattern.original}`;
         expect(result).toBe(pattern.withSudo);
       });
     });
@@ -155,8 +157,8 @@ describe('SSHAdapter - Coverage Enhancement Tests', () => {
         { enabled: true, maxConnections: 10, idleTimeout: 300000, keepAlive: true },
         { enabled: false, maxConnections: 0, idleTimeout: 0, keepAlive: false },
       ];
-      
-      poolConfigs.forEach(config => {
+
+      poolConfigs.forEach((config) => {
         const adapter = new SSHAdapter({ connectionPool: config });
         expect(adapter).toBeInstanceOf(SSHAdapter);
       });
@@ -166,14 +168,18 @@ describe('SSHAdapter - Coverage Enhancement Tests', () => {
       // Test connection key matching logic
       const connections = [
         { key: 'user1@host1:22', matches: ['user1@host1:22'], notMatches: ['user2@host1:22', 'user1@host2:22'] },
-        { key: 'admin@server:2222', matches: ['admin@server:2222'], notMatches: ['admin@server:22', 'user@server:2222'] },
+        {
+          key: 'admin@server:2222',
+          matches: ['admin@server:2222'],
+          notMatches: ['admin@server:22', 'user@server:2222'],
+        },
       ];
-      
-      connections.forEach(conn => {
-        conn.matches.forEach(match => {
+
+      connections.forEach((conn) => {
+        conn.matches.forEach((match) => {
           expect(match).toBe(conn.key);
         });
-        conn.notMatches.forEach(noMatch => {
+        conn.notMatches.forEach((noMatch) => {
           expect(noMatch).not.toBe(conn.key);
         });
       });
@@ -183,7 +189,7 @@ describe('SSHAdapter - Coverage Enhancement Tests', () => {
   describe('Error Handling and Recovery', () => {
     it('should handle various error types appropriately', () => {
       adapter = new SSHAdapter();
-      
+
       // Test error type classification
       const errorTypes = [
         { error: new Error('Network error'), shouldBeConnectionError: true },
@@ -192,8 +198,8 @@ describe('SSHAdapter - Coverage Enhancement Tests', () => {
         { error: new ConnectionError('host1', new Error('Failed')), shouldPreserve: true },
         { error: 'String error', shouldBeAdapterError: true },
       ];
-      
-      errorTypes.forEach(errorType => {
+
+      errorTypes.forEach((errorType) => {
         if (errorType.shouldBeConnectionError) {
           expect(errorType.error).toBeInstanceOf(Error);
         } else if (errorType.shouldPreserve) {
@@ -212,8 +218,8 @@ describe('SSHAdapter - Coverage Enhancement Tests', () => {
         { type: 'connection_refused', retryable: true },
         { type: 'host_unreachable', retryable: false },
       ];
-      
-      failureScenarios.forEach(scenario => {
+
+      failureScenarios.forEach((scenario) => {
         expect(typeof scenario.retryable).toBe('boolean');
       });
     });
@@ -228,8 +234,8 @@ describe('SSHAdapter - Coverage Enhancement Tests', () => {
         { stdout: 'pipe', stderr: 'inherit' },
         { stdout: 'ignore', stderr: 'ignore' },
       ];
-      
-      streamConfigs.forEach(config => {
+
+      streamConfigs.forEach((config) => {
         expect(['pipe', 'inherit', 'ignore'].includes(config.stdout as string)).toBe(true);
         expect(['pipe', 'inherit', 'ignore'].includes(config.stderr as string)).toBe(true);
       });
@@ -241,11 +247,11 @@ describe('SSHAdapter - Coverage Enhancement Tests', () => {
         { encoding: 'ascii', maxBuffer: 512 * 1024 },
         { encoding: 'binary', maxBuffer: 2 * 1024 * 1024 },
       ];
-      
-      bufferConfigs.forEach(config => {
+
+      bufferConfigs.forEach((config) => {
         const adapter = new SSHAdapter({
           encoding: config.encoding as BufferEncoding,
-          maxBuffer: config.maxBuffer
+          maxBuffer: config.maxBuffer,
         });
         expect(adapter).toBeInstanceOf(SSHAdapter);
       });
@@ -256,19 +262,19 @@ describe('SSHAdapter - Coverage Enhancement Tests', () => {
     it('should test environment variable merging', () => {
       // Test environment variable combination patterns
       const envTests = [
-        { 
+        {
           defaults: { PATH: '/usr/bin', HOME: '/home/user' },
           command: { CUSTOM: 'value', PATH: '/custom/bin' },
-          expected: { PATH: '/custom/bin', HOME: '/home/user', CUSTOM: 'value' }
+          expected: { PATH: '/custom/bin', HOME: '/home/user', CUSTOM: 'value' },
         },
         {
           defaults: {},
           command: { VAR1: 'value1', VAR2: 'value2' },
-          expected: { VAR1: 'value1', VAR2: 'value2' }
-        }
+          expected: { VAR1: 'value1', VAR2: 'value2' },
+        },
       ];
-      
-      envTests.forEach(test => {
+
+      envTests.forEach((test) => {
         const merged = { ...test.defaults, ...test.command };
         expect(merged).toEqual(test.expected);
       });
@@ -282,8 +288,8 @@ describe('SSHAdapter - Coverage Enhancement Tests', () => {
         { input: '~/user/home', valid: true },
         { input: '', valid: false },
       ];
-      
-      pathTests.forEach(test => {
+
+      pathTests.forEach((test) => {
         if (test.valid) {
           expect(test.input.length).toBeGreaterThan(0);
         } else {
@@ -301,8 +307,8 @@ describe('SSHAdapter - Coverage Enhancement Tests', () => {
         { base: 'ls', args: ['-la', '/tmp'], expected: 'ls -la /tmp' },
         { base: 'find', args: ['.', '-name', '"*.txt"'], expected: 'find . -name "*.txt"' },
       ];
-      
-      commandTests.forEach(test => {
+
+      commandTests.forEach((test) => {
         const constructed = [test.base, ...test.args].join(' ');
         expect(constructed).toBe(test.expected);
       });
@@ -315,8 +321,8 @@ describe('SSHAdapter - Coverage Enhancement Tests', () => {
         { timeout: 0, expectTimeout: false }, // No timeout
         { timeout: undefined, expectTimeout: false }, // Default timeout
       ];
-      
-      timeoutTests.forEach(test => {
+
+      timeoutTests.forEach((test) => {
         if (test.timeout && test.timeout < 5000) {
           expect(test.expectTimeout).toBe(true);
         } else {
@@ -334,8 +340,8 @@ describe('SSHAdapter - Coverage Enhancement Tests', () => {
         { local: '', remote: '/tmp/file.txt', valid: false },
         { local: '/local/file.txt', remote: '', valid: false },
       ];
-      
-      pathTests.forEach(test => {
+
+      pathTests.forEach((test) => {
         const isValid = test.local.length > 0 && test.remote.length > 0;
         expect(isValid).toBe(test.valid);
       });
@@ -343,10 +349,10 @@ describe('SSHAdapter - Coverage Enhancement Tests', () => {
 
     it('should test SFTP concurrency configuration', () => {
       const concurrencyTests = [1, 3, 5, 10, 0];
-      
-      concurrencyTests.forEach(concurrency => {
+
+      concurrencyTests.forEach((concurrency) => {
         const adapter = new SSHAdapter({
-          sftp: { enabled: true, concurrency }
+          sftp: { enabled: true, concurrency },
         });
         expect(adapter).toBeInstanceOf(SSHAdapter);
       });
@@ -362,10 +368,10 @@ describe('SSHAdapter - Coverage Enhancement Tests', () => {
         { encoding: 'utf8' as BufferEncoding },
         { throwOnNonZeroExit: true },
         { maxBuffer: 1024 * 1024 },
-        {} // Empty config
+        {}, // Empty config
       ];
-      
-      configs.forEach(config => {
+
+      configs.forEach((config) => {
         const adapter = new SSHAdapter(config);
         expect(adapter).toBeInstanceOf(SSHAdapter);
       });
@@ -378,8 +384,8 @@ describe('SSHAdapter - Coverage Enhancement Tests', () => {
         { hasPassword: true, hasPrivateKey: true, expected: 'key' }, // Key takes precedence
         { hasPassword: false, hasPrivateKey: false, expected: 'none' },
       ];
-      
-      authMethods.forEach(method => {
+
+      authMethods.forEach((method) => {
         let detectedMethod = 'none';
         if (method.hasPrivateKey) {
           detectedMethod = 'key';
@@ -398,15 +404,15 @@ describe('SSHAdapter - Coverage Enhancement Tests', () => {
         { poolEnabled: true, shouldHaveInterval: true },
         { poolEnabled: false, shouldHaveInterval: false },
       ];
-      
-      cleanupConfigs.forEach(config => {
+
+      cleanupConfigs.forEach((config) => {
         const adapter = new SSHAdapter({
-          connectionPool: { 
+          connectionPool: {
             enabled: config.poolEnabled,
             maxConnections: 5,
             idleTimeout: 60000,
-            keepAlive: true
-          }
+            keepAlive: true,
+          },
         });
         expect(adapter).toBeInstanceOf(SSHAdapter);
       });
@@ -419,8 +425,8 @@ describe('SSHAdapter - Coverage Enhancement Tests', () => {
         { connections: 1, shouldDisposeAny: true },
         { connections: 5, shouldDisposeAny: true },
       ];
-      
-      disposalScenarios.forEach(scenario => {
+
+      disposalScenarios.forEach((scenario) => {
         const shouldDispose = scenario.connections > 0;
         expect(shouldDispose).toBe(scenario.shouldDisposeAny);
       });

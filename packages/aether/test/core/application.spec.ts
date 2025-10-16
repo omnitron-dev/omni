@@ -10,14 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import {
-  createApp,
-  mount,
-  quickStart,
-  createTestApp,
-  setApp,
-  getApp,
-} from '../../src/core/application.js';
+import { createApp, mount, quickStart, createTestApp, setApp, getApp } from '../../src/core/application.js';
 import type { Module } from '../../src/di/types.js';
 
 // Mock dependencies
@@ -430,10 +423,7 @@ describe('Application', () => {
       createApp({ rootModule });
 
       expect(global.window.addEventListener).toHaveBeenCalledWith('error', expect.any(Function));
-      expect(global.window.addEventListener).toHaveBeenCalledWith(
-        'unhandledrejection',
-        expect.any(Function)
-      );
+      expect(global.window.addEventListener).toHaveBeenCalledWith('unhandledrejection', expect.any(Function));
     });
 
     it('should call custom error handler', () => {

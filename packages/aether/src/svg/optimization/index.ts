@@ -11,21 +11,14 @@
  */
 
 // Cache system
-export {
-  SVGCache,
-  type SVGCacheConfig,
-  type CacheStats,
-} from './cache.js';
+export { SVGCache, type SVGCacheConfig, type CacheStats } from './cache.js';
 
 // Import for local use
 import { SVGCache } from './cache.js';
 import { optimizeSVG, type SVGOptimizerConfig } from './compress.js';
 
 // Compression and optimization
-export {
-  compressSVG,
-  decompressSVG,
-} from './compress.js';
+export { compressSVG, decompressSVG } from './compress.js';
 
 // Re-export for backward compatibility
 export { compressSVG as optimizeSVGToData } from './compress.js';
@@ -34,13 +27,7 @@ export { compressSVG as optimizeSVGToData } from './compress.js';
 export { optimizeSVG, type SVGOptimizerConfig } from './compress.js';
 
 // Lazy loading
-export {
-  LazySVG,
-  useLazyLoad,
-  type LazyLoadConfig,
-  type LazySVGProps,
-  type UseLazyLoadReturn,
-} from './lazy.js'; // .tsx compiles to .js
+export { LazySVG, useLazyLoad, type LazyLoadConfig, type LazySVGProps, type UseLazyLoadReturn } from './lazy.js'; // .tsx compiles to .js
 
 // Sprite generation
 export {
@@ -180,10 +167,7 @@ export function createSVGDataURL(svg: string, optimize: boolean = true): string 
  * });
  * ```
  */
-export async function batchOptimizeSVGs(
-  svgs: string[],
-  config?: SVGOptimizerConfig
-): Promise<string[]> {
+export async function batchOptimizeSVGs(svgs: string[], config?: SVGOptimizerConfig): Promise<string[]> {
   // Process in chunks to avoid blocking
   const CHUNK_SIZE = 10;
   const results: string[] = [];

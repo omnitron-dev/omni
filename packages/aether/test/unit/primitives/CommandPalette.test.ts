@@ -38,7 +38,7 @@ describe('CommandPalette', () => {
 
     // Mock focus/blur methods
     Object.defineProperty(HTMLElement.prototype, 'focus', {
-      value (this: HTMLElement) {
+      value(this: HTMLElement) {
         _activeElement = this;
         this.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       },
@@ -47,7 +47,7 @@ describe('CommandPalette', () => {
     });
 
     Object.defineProperty(HTMLElement.prototype, 'blur', {
-      value (this: HTMLElement) {
+      value(this: HTMLElement) {
         _activeElement = document.body;
         this.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
       },
@@ -57,7 +57,7 @@ describe('CommandPalette', () => {
 
     // Mock scrollIntoView
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
-      value () {
+      value() {
         // No-op for tests
       },
       writable: true,
@@ -67,7 +67,7 @@ describe('CommandPalette', () => {
 
   afterEach(() => {
     // Clean up all components created during the test
-    cleanupFunctions.forEach(cleanup => cleanup());
+    cleanupFunctions.forEach((cleanup) => cleanup());
     cleanupFunctions = [];
   });
 

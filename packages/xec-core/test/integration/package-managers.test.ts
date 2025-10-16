@@ -1,10 +1,5 @@
 import { it, jest, expect } from '@jest/globals';
-import {
-  describeSSH,
-  getSSHConfig,
-  testPackageManagers,
-  testEachPackageManager
-} from '@xec-sh/testing';
+import { describeSSH, getSSHConfig, testPackageManagers, testEachPackageManager } from '@xec-sh/testing';
 
 import { $ } from '../../src/index.js';
 
@@ -36,7 +31,8 @@ describeSSH('Package Manager Integration Tests', () => {
           break;
         case 'brew':
           // Homebrew might be in a non-standard location
-          result = await $ssh`/home/linuxbrew/.linuxbrew/bin/brew --version 2>/dev/null || brew --version 2>/dev/null || echo "Homebrew not installed"`.nothrow();
+          result =
+            await $ssh`/home/linuxbrew/.linuxbrew/bin/brew --version 2>/dev/null || brew --version 2>/dev/null || echo "Homebrew not installed"`.nothrow();
           break;
         case 'snap':
           result = await $ssh`snap --version`;
@@ -57,44 +53,41 @@ describeSSH('Package Manager Integration Tests', () => {
   });
 
   describe('Package List Operations', () => {
-    testPackageManagers(['apt', 'yum', 'dnf', 'apk', 'pacman'],
-      'should list installed packages',
-      async (container) => {
-        const config = getSSHConfig(container.name);
-        const $ssh = $.ssh(config);
+    testPackageManagers(['apt', 'yum', 'dnf', 'apk', 'pacman'], 'should list installed packages', async (container) => {
+      const config = getSSHConfig(container.name);
+      const $ssh = $.ssh(config);
 
-        let result;
-        switch (container.packageManager) {
-          case 'apt':
-            result = await $ssh`dpkg -l | head -20`;
-            break;
-          case 'yum':
-            result = await $ssh`yum list installed | head -20`;
-            break;
-          case 'dnf':
-            result = await $ssh`dnf list installed 2>/dev/null | head -20 || rpm -qa | head -20`;
-            break;
-          case 'apk':
-            result = await $ssh`apk list -I | head -20`;
-            break;
-          case 'pacman':
-            result = await $ssh`pacman -Q | head -20`;
-            break;
-          default:
-            throw new Error(`Unknown package manager: ${container.packageManager}`);
-        }
-
-        expect(result.exitCode).toBe(0);
-        // DNF might return empty list in minimal containers
-        if (container.packageManager === 'dnf' && !result.stdout.trim()) {
-          console.log('DNF returned empty package list, checking with rpm');
-          expect(result).toBeDefined();
-        } else {
-          expect(result.stdout).toBeTruthy();
-          expect(result.stdout.split('\n').length).toBeGreaterThan(5);
-        }
+      let result;
+      switch (container.packageManager) {
+        case 'apt':
+          result = await $ssh`dpkg -l | head -20`;
+          break;
+        case 'yum':
+          result = await $ssh`yum list installed | head -20`;
+          break;
+        case 'dnf':
+          result = await $ssh`dnf list installed 2>/dev/null | head -20 || rpm -qa | head -20`;
+          break;
+        case 'apk':
+          result = await $ssh`apk list -I | head -20`;
+          break;
+        case 'pacman':
+          result = await $ssh`pacman -Q | head -20`;
+          break;
+        default:
+          throw new Error(`Unknown package manager: ${container.packageManager}`);
       }
-    );
+
+      expect(result.exitCode).toBe(0);
+      // DNF might return empty list in minimal containers
+      if (container.packageManager === 'dnf' && !result.stdout.trim()) {
+        console.log('DNF returned empty package list, checking with rpm');
+        expect(result).toBeDefined();
+      } else {
+        expect(result.stdout).toBeTruthy();
+        expect(result.stdout.split('\n').length).toBeGreaterThan(5);
+      }
+    });
   });
 
   describe('Package Search Operations', () => {
@@ -136,40 +129,37 @@ describeSSH('Package Manager Integration Tests', () => {
   });
 
   describe('Package Info Operations', () => {
-    testPackageManagers(['apt', 'yum', 'dnf', 'apk', 'pacman'],
-      'should get package information',
-      async (container) => {
-        const config = getSSHConfig(container.name);
-        const $ssh = $.ssh(config);
+    testPackageManagers(['apt', 'yum', 'dnf', 'apk', 'pacman'], 'should get package information', async (container) => {
+      const config = getSSHConfig(container.name);
+      const $ssh = $.ssh(config);
 
-        const pkg = 'bash';
-        let result;
+      const pkg = 'bash';
+      let result;
 
-        // Use a package that's likely installed in each distro
-        switch (container.packageManager) {
-          case 'apt':
-            result = await $ssh`dpkg -s ${pkg}`;
-            break;
-          case 'yum':
-            result = await $ssh`yum info ${pkg}`;
-            break;
-          case 'dnf':
-            result = await $ssh`dnf info ${pkg}`;
-            break;
-          case 'apk':
-            result = await $ssh`apk info ${pkg}`;
-            break;
-          case 'pacman':
-            result = await $ssh`pacman -Qi ${pkg}`;
-            break;
-          default:
-            throw new Error(`Unknown package manager: ${container.packageManager}`);
-        }
-
-        expect(result.exitCode).toBe(0);
-        expect(result.stdout).toContain(pkg);
+      // Use a package that's likely installed in each distro
+      switch (container.packageManager) {
+        case 'apt':
+          result = await $ssh`dpkg -s ${pkg}`;
+          break;
+        case 'yum':
+          result = await $ssh`yum info ${pkg}`;
+          break;
+        case 'dnf':
+          result = await $ssh`dnf info ${pkg}`;
+          break;
+        case 'apk':
+          result = await $ssh`apk info ${pkg}`;
+          break;
+        case 'pacman':
+          result = await $ssh`pacman -Qi ${pkg}`;
+          break;
+        default:
+          throw new Error(`Unknown package manager: ${container.packageManager}`);
       }
-    );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain(pkg);
+    });
   });
 
   describe('Update Operations', () => {
@@ -209,7 +199,8 @@ describeSSH('Package Manager Integration Tests', () => {
   });
 
   describe('Package Installation Simulation', () => {
-    testPackageManagers(['apt', 'yum', 'dnf', 'apk', 'pacman'],
+    testPackageManagers(
+      ['apt', 'yum', 'dnf', 'apk', 'pacman'],
       'should show what would be installed (dry run)',
       async (container) => {
         const config = getSSHConfig(container.name);
@@ -244,61 +235,55 @@ describeSSH('Package Manager Integration Tests', () => {
   });
 
   describe('Repository Management', () => {
-    testPackageManagers(['apt', 'yum', 'dnf'],
-      'should list configured repositories',
-      async (container) => {
-        const config = getSSHConfig(container.name);
-        const $ssh = $.ssh(config);
+    testPackageManagers(['apt', 'yum', 'dnf'], 'should list configured repositories', async (container) => {
+      const config = getSSHConfig(container.name);
+      const $ssh = $.ssh(config);
 
-        let result;
-        switch (container.packageManager) {
-          case 'apt':
-            result = await $ssh`apt-cache policy | head -20`;
-            break;
-          case 'yum':
-            result = await $ssh`yum repolist`;
-            break;
-          case 'dnf':
-            result = await $ssh`dnf repolist`;
-            break;
-          default:
-            throw new Error(`Unknown package manager: ${container.packageManager}`);
-        }
-
-        expect(result.exitCode).toBe(0);
-        expect(result.stdout).toBeTruthy();
+      let result;
+      switch (container.packageManager) {
+        case 'apt':
+          result = await $ssh`apt-cache policy | head -20`;
+          break;
+        case 'yum':
+          result = await $ssh`yum repolist`;
+          break;
+        case 'dnf':
+          result = await $ssh`dnf repolist`;
+          break;
+        default:
+          throw new Error(`Unknown package manager: ${container.packageManager}`);
       }
-    );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toBeTruthy();
+    });
   });
 
   describe('Cache Operations', () => {
-    testPackageManagers(['apt', 'yum', 'dnf', 'apk'],
-      'should check cache statistics',
-      async (container) => {
-        const config = getSSHConfig(container.name);
-        const $ssh = $.ssh(config);
+    testPackageManagers(['apt', 'yum', 'dnf', 'apk'], 'should check cache statistics', async (container) => {
+      const config = getSSHConfig(container.name);
+      const $ssh = $.ssh(config);
 
-        let result;
-        switch (container.packageManager) {
-          case 'apt':
-            result = await $ssh`apt-cache stats`.nothrow();
-            break;
-          case 'yum':
-            result = await $ssh`yum makecache info 2>/dev/null || echo "Cache info not available"`.nothrow();
-            break;
-          case 'dnf':
-            result = await $ssh`dnf makecache timer 2>&1 | head -5`.nothrow();
-            break;
-          case 'apk':
-            result = await $ssh`apk info -v 2>&1 | head -5 || echo "APK cache info not available"`.nothrow();
-            break;
-          default:
-            throw new Error(`Unknown package manager: ${container.packageManager}`);
-        }
-
-        expect(result.stdout.length).toBeGreaterThan(0);
+      let result;
+      switch (container.packageManager) {
+        case 'apt':
+          result = await $ssh`apt-cache stats`.nothrow();
+          break;
+        case 'yum':
+          result = await $ssh`yum makecache info 2>/dev/null || echo "Cache info not available"`.nothrow();
+          break;
+        case 'dnf':
+          result = await $ssh`dnf makecache timer 2>&1 | head -5`.nothrow();
+          break;
+        case 'apk':
+          result = await $ssh`apk info -v 2>&1 | head -5 || echo "APK cache info not available"`.nothrow();
+          break;
+        default:
+          throw new Error(`Unknown package manager: ${container.packageManager}`);
       }
-    );
+
+      expect(result.stdout.length).toBeGreaterThan(0);
+    });
   });
 
   describe('Special Package Managers', () => {

@@ -5,11 +5,7 @@
 import { DockerEphemeralFluentAPI } from '../base.js';
 
 import type { ExecutionEngine } from '../../../../core/execution-engine.js';
-import type {
-  ServiceManager,
-  KafkaServiceConfig,
-  RabbitMQServiceConfig
-} from '../types.js';
+import type { ServiceManager, KafkaServiceConfig, RabbitMQServiceConfig } from '../types.js';
 
 /**
  * Apache Kafka Service Fluent API
@@ -38,7 +34,7 @@ export class KafkaFluentAPI extends DockerEphemeralFluentAPI implements ServiceM
       dataPath: config?.dataPath,
       network: config?.network || 'xec-kafka-network',
       env: config?.env || {},
-      config: config?.config || {}
+      config: config?.config || {},
     };
 
     this.applyConfiguration();
@@ -77,7 +73,7 @@ export class KafkaFluentAPI extends DockerEphemeralFluentAPI implements ServiceM
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: '0',
       KAFKA_JMX_PORT: '9101',
       KAFKA_JMX_HOSTNAME: 'localhost',
-      ...this.kafkaConfig.env
+      ...this.kafkaConfig.env,
     });
 
     // Additional Kafka configuration
@@ -90,19 +86,16 @@ export class KafkaFluentAPI extends DockerEphemeralFluentAPI implements ServiceM
     // Labels
     this.labels({
       service: 'kafka',
-      'managed-by': 'xec'
+      'managed-by': 'xec',
     });
 
     // Health check
-    this.healthcheck(
-      'kafka-topics --bootstrap-server localhost:9092 --list',
-      {
-        interval: '10s',
-        timeout: '10s',
-        retries: 5,
-        startPeriod: '40s'
-      }
-    );
+    this.healthcheck('kafka-topics --bootstrap-server localhost:9092 --list', {
+      interval: '10s',
+      timeout: '10s',
+      retries: 5,
+      startPeriod: '40s',
+    });
   }
 
   /**
@@ -113,7 +106,7 @@ export class KafkaFluentAPI extends DockerEphemeralFluentAPI implements ServiceM
     await this.startZookeeper();
 
     // Wait for Zookeeper
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    await new Promise((resolve) => setTimeout(resolve, 5000));
 
     // Start Kafka
     await this.start();
@@ -130,7 +123,7 @@ export class KafkaFluentAPI extends DockerEphemeralFluentAPI implements ServiceM
       .port(2181, 2181)
       .env({
         ZOOKEEPER_CLIENT_PORT: '2181',
-        ZOOKEEPER_TICK_TIME: '2000'
+        ZOOKEEPER_TICK_TIME: '2000',
       });
 
     if (this.kafkaConfig.network) {
@@ -199,7 +192,10 @@ export class KafkaFluentAPI extends DockerEphemeralFluentAPI implements ServiceM
    */
   async listTopics(): Promise<string[]> {
     const result = await this.exec`kafka-topics --bootstrap-server localhost:9092 --list`;
-    return result.stdout.trim().split('\n').filter(t => t);
+    return result.stdout
+      .trim()
+      .split('\n')
+      .filter((t) => t);
   }
 
   /**
@@ -251,7 +247,10 @@ export class KafkaFluentAPI extends DockerEphemeralFluentAPI implements ServiceM
     }
 
     const result = await this.exec`${cmd}`;
-    return result.stdout.trim().split('\n').filter(m => m);
+    return result.stdout
+      .trim()
+      .split('\n')
+      .filter((m) => m);
   }
 
   /**
@@ -259,7 +258,10 @@ export class KafkaFluentAPI extends DockerEphemeralFluentAPI implements ServiceM
    */
   async listConsumerGroups(): Promise<string[]> {
     const result = await this.exec`kafka-consumer-groups --bootstrap-server localhost:9092 --list`;
-    return result.stdout.trim().split('\n').filter(g => g);
+    return result.stdout
+      .trim()
+      .split('\n')
+      .filter((g) => g);
   }
 
   /**
@@ -281,7 +283,8 @@ export class KafkaFluentAPI extends DockerEphemeralFluentAPI implements ServiceM
       offsetArg = `--to-${offset}`;
     }
 
-    await this.exec`kafka-consumer-groups --bootstrap-server localhost:9092 --group ${group} --topic ${topic} --reset-offsets ${offsetArg} --execute`;
+    await this
+      .exec`kafka-consumer-groups --bootstrap-server localhost:9092 --group ${group} --topic ${topic} --reset-offsets ${offsetArg} --execute`;
   }
 
   getConnectionString(): string {
@@ -294,7 +297,7 @@ export class KafkaFluentAPI extends DockerEphemeralFluentAPI implements ServiceM
       zookeeper: this.kafkaConfig.zookeeper,
       brokerId: this.kafkaConfig.brokerId,
       listeners: this.kafkaConfig.listeners,
-      advertisedListeners: this.kafkaConfig.advertisedListeners
+      advertisedListeners: this.kafkaConfig.advertisedListeners,
     };
   }
 }
@@ -324,7 +327,7 @@ export class RabbitMQFluentAPI extends DockerEphemeralFluentAPI implements Servi
       dataPath: config?.dataPath,
       network: config?.network,
       env: config?.env || {},
-      config: config?.config || {}
+      config: config?.config || {},
     };
 
     this.applyConfiguration();
@@ -361,7 +364,7 @@ export class RabbitMQFluentAPI extends DockerEphemeralFluentAPI implements Servi
       RABBITMQ_DEFAULT_USER: this.rabbitConfig.user!,
       RABBITMQ_DEFAULT_PASS: this.rabbitConfig.password!,
       RABBITMQ_DEFAULT_VHOST: this.rabbitConfig.vhost!,
-      ...this.rabbitConfig.env
+      ...this.rabbitConfig.env,
     });
 
     // Clustering configuration
@@ -384,19 +387,16 @@ export class RabbitMQFluentAPI extends DockerEphemeralFluentAPI implements Servi
     // Labels
     this.labels({
       service: 'rabbitmq',
-      'managed-by': 'xec'
+      'managed-by': 'xec',
     });
 
     // Health check
-    this.healthcheck(
-      'rabbitmq-diagnostics -q ping',
-      {
-        interval: '10s',
-        timeout: '5s',
-        retries: 5,
-        startPeriod: '30s'
-      }
-    );
+    this.healthcheck('rabbitmq-diagnostics -q ping', {
+      interval: '10s',
+      timeout: '5s',
+      retries: 5,
+      startPeriod: '30s',
+    });
   }
 
   /**
@@ -411,7 +411,11 @@ export class RabbitMQFluentAPI extends DockerEphemeralFluentAPI implements Servi
     }
 
     // Enable management plugin by default if management is true
-    if (this.rabbitConfig.management && this.rabbitConfig.plugins && !this.rabbitConfig.plugins.includes('rabbitmq_management')) {
+    if (
+      this.rabbitConfig.management &&
+      this.rabbitConfig.plugins &&
+      !this.rabbitConfig.plugins.includes('rabbitmq_management')
+    ) {
       await this.enablePlugin('rabbitmq_management');
     }
   }
@@ -456,7 +460,10 @@ export class RabbitMQFluentAPI extends DockerEphemeralFluentAPI implements Servi
    */
   async listVHosts(): Promise<string[]> {
     const result = await this.exec`rabbitmqctl list_vhosts --quiet`;
-    return result.stdout.trim().split('\n').filter(v => v);
+    return result.stdout
+      .trim()
+      .split('\n')
+      .filter((v) => v);
   }
 
   /**
@@ -495,7 +502,8 @@ export class RabbitMQFluentAPI extends DockerEphemeralFluentAPI implements Servi
   ): Promise<void> {
     const durableFlag = durable ? 'true' : 'false';
     const autoDeleteFlag = autoDelete ? 'true' : 'false';
-    await this.exec`rabbitmqadmin -V ${vhost} declare exchange name=${name} type=${type} durable=${durableFlag} auto_delete=${autoDeleteFlag}`;
+    await this
+      .exec`rabbitmqadmin -V ${vhost} declare exchange name=${name} type=${type} durable=${durableFlag} auto_delete=${autoDeleteFlag}`;
   }
 
   /**
@@ -523,7 +531,8 @@ export class RabbitMQFluentAPI extends DockerEphemeralFluentAPI implements Servi
    * Bind queue to exchange
    */
   async bindQueue(queue: string, exchange: string, routingKey = '', vhost = '/'): Promise<void> {
-    await this.exec`rabbitmqadmin -V ${vhost} declare binding source=${exchange} destination=${queue} routing_key=${routingKey}`;
+    await this
+      .exec`rabbitmqadmin -V ${vhost} declare binding source=${exchange} destination=${queue} routing_key=${routingKey}`;
   }
 
   /**
@@ -550,7 +559,8 @@ export class RabbitMQFluentAPI extends DockerEphemeralFluentAPI implements Servi
    */
   async getMessages(queue: string, count = 1, vhost = '/', ack = true): Promise<any[]> {
     const ackMode = ack ? 'ack' : 'nack';
-    const result = await this.exec`rabbitmqadmin -V ${vhost} get queue=${queue} count=${count} ackmode=${ackMode} -f json`;
+    const result = await this
+      .exec`rabbitmqadmin -V ${vhost} get queue=${queue} count=${count} ackmode=${ackMode} -f json`;
 
     try {
       return JSON.parse(result.stdout);
@@ -577,7 +587,10 @@ export class RabbitMQFluentAPI extends DockerEphemeralFluentAPI implements Servi
    */
   async listQueues(vhost = '/'): Promise<string[]> {
     const result = await this.exec`rabbitmqctl list_queues -p ${vhost} name --quiet`;
-    return result.stdout.trim().split('\n').filter(q => q);
+    return result.stdout
+      .trim()
+      .split('\n')
+      .filter((q) => q);
   }
 
   /**
@@ -585,7 +598,10 @@ export class RabbitMQFluentAPI extends DockerEphemeralFluentAPI implements Servi
    */
   async listExchanges(vhost = '/'): Promise<string[]> {
     const result = await this.exec`rabbitmqctl list_exchanges -p ${vhost} name --quiet`;
-    return result.stdout.trim().split('\n').filter(e => e && !e.startsWith('amq.'));
+    return result.stdout
+      .trim()
+      .split('\n')
+      .filter((e) => e && !e.startsWith('amq.'));
   }
 
   /**
@@ -628,7 +644,7 @@ export class RabbitMQFluentAPI extends DockerEphemeralFluentAPI implements Servi
       password: this.rabbitConfig.password,
       vhost: this.rabbitConfig.vhost,
       managementUrl: this.rabbitConfig.management ? `http://localhost:15672` : null,
-      connectionString: this.getConnectionString()
+      connectionString: this.getConnectionString(),
     };
   }
 

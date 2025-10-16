@@ -109,13 +109,7 @@ describe('MiddlewareStack', () => {
       const req = new Request('http://localhost/test');
       await stack.handle(req);
 
-      expect(order).toEqual([
-        'first-before',
-        'second-before',
-        'third',
-        'second-after',
-        'first-after',
-      ]);
+      expect(order).toEqual(['first-before', 'second-before', 'third', 'second-after', 'first-after']);
     });
 
     it('should return 404 when no middleware handles request', async () => {
@@ -259,9 +253,7 @@ describe('Logger Middleware', () => {
 
     await middleware.handle(req, next);
 
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('GET /test 200')
-    );
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('GET /test 200'));
   });
 
   it('should log request duration', async () => {
@@ -274,9 +266,7 @@ describe('Logger Middleware', () => {
 
     await middleware.handle(req, next);
 
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringMatching(/GET \/test 200 \d+ms/)
-    );
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringMatching(/GET \/test 200 \d+ms/));
   });
 
   it('should log errors', async () => {
@@ -289,10 +279,7 @@ describe('Logger Middleware', () => {
 
     await expect(middleware.handle(req, next)).rejects.toThrow('Request error');
 
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('GET /test ERROR'),
-      expect.any(Error)
-    );
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('GET /test ERROR'), expect.any(Error));
 
     errorSpy.mockRestore();
   });
@@ -306,9 +293,7 @@ describe('Logger Middleware', () => {
 
       await middleware.handle(req, next);
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining(`${method} /test`)
-      );
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining(`${method} /test`));
     }
   });
 });
@@ -417,10 +402,11 @@ describe('Compression Middleware', () => {
     });
 
     const smallBody = 'small';
-    const next = vi.fn(async () =>
-      new Response(smallBody, {
-        headers: { 'Content-Length': smallBody.length.toString() },
-      })
+    const next = vi.fn(
+      async () =>
+        new Response(smallBody, {
+          headers: { 'Content-Length': smallBody.length.toString() },
+        })
     );
 
     const response = await middleware.handle(req, next);
@@ -434,10 +420,11 @@ describe('Compression Middleware', () => {
       headers: { 'Accept-Encoding': 'gzip' },
     });
 
-    const next = vi.fn(async () =>
-      new Response('compressed', {
-        headers: { 'Content-Encoding': 'br' },
-      })
+    const next = vi.fn(
+      async () =>
+        new Response('compressed', {
+          headers: { 'Content-Encoding': 'br' },
+        })
     );
 
     const response = await middleware.handle(req, next);

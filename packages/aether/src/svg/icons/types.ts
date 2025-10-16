@@ -15,13 +15,13 @@ export type IconPreset = 'stroke' | 'duotone' | 'twotone';
  * Icon animation types
  */
 export type IconAnimation =
-  | 'hover'      // Animate on mouse hover
-  | 'click'      // Animate on click
-  | 'loading'    // Continuous loading animation
-  | 'spin'       // Continuous spinning
-  | 'pulse'      // Pulsing scale animation
-  | 'bounce'     // Bouncing animation
-  | 'none';      // No animation
+  | 'hover' // Animate on mouse hover
+  | 'click' // Animate on click
+  | 'loading' // Continuous loading animation
+  | 'spin' // Continuous spinning
+  | 'pulse' // Pulsing scale animation
+  | 'bounce' // Bouncing animation
+  | 'none'; // No animation
 
 /**
  * Icon position in component

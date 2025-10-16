@@ -446,11 +446,7 @@ describe('Advanced Flow Features', () => {
     });
 
     test('should handle edge cases in parallel', async () => {
-      const flows = [
-        flow((x: number) => x + 1),
-        flow((x: number) => x * 2),
-        flow((x: number) => x - 1),
-      ];
+      const flows = [flow((x: number) => x + 1), flow((x: number) => x * 2), flow((x: number) => x - 1)];
 
       const all = parallel(flows);
       const results = await all(5);
@@ -488,7 +484,7 @@ describe('Advanced Flow Features', () => {
       const pipeline = compose(
         retry(unreliable, 5, 0),
         tap(() => {}),
-        validate((x: string) => x === 'success', 'Invalid result'),
+        validate((x: string) => x === 'success', 'Invalid result')
       );
 
       await expect(pipeline(undefined)).resolves.toBe('success');
@@ -501,8 +497,8 @@ describe('Advanced Flow Features', () => {
         filter(flow((n: number) => n < 20)),
         reduce(
           flow(([sum, n]: [number, number]) => sum + n),
-          0,
-        ),
+          0
+        )
       );
 
       const result = await pipeline([-1, 2, 5, 8, 10]);
@@ -518,7 +514,7 @@ describe('Advanced Flow Features', () => {
       const pipeline = compose(
         maybe(safeDivide),
         maybe(flow((x: number) => x * 2)),
-        maybe(flow((x: number) => Math.round(x))),
+        maybe(flow((x: number) => Math.round(x)))
       );
 
       expect(await pipeline([10, 3])).toBeCloseTo(7);

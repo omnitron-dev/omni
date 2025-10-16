@@ -1,8 +1,8 @@
 /**
  * 01. Temporary Files - Работа с временными файлами
- * 
+ *
  * Показывает использование утилит для работы с временными файлами.
- * 
+ *
  * ВАЖНО: В @xec-sh/core доступны только функции withTempDir и withTempFile.
  * Низкоуровневый API (TempFile, TempDir) не экспортируется.
  */
@@ -17,15 +17,15 @@ import { $, withTempDir, withTempFile } from '@xec-sh/core';
 const result = await withTempDir(async (tmpDir) => {
   // tmpDir - это объект TempDir с свойством path
   console.log('Временная директория:', tmpDir.path);
-  
+
   // Создаём файлы
   await $`touch ${tmpDir.path}/file1.txt ${tmpDir.path}/file2.txt`;
   await $`echo "test data" > ${tmpDir.path}/data.txt`;
-  
+
   // Проверяем содержимое
   const files = await $`ls ${tmpDir.path}`;
   console.log('Файлы:', files.stdout);
-  
+
   // Возвращаем результат
   return files.stdout.trim().split('\n').length;
 });
@@ -38,11 +38,11 @@ console.log(`Создано файлов: ${result}`);
 const content = await withTempFile(async (tmpFile) => {
   // tmpFile - это объект TempFile с свойством path
   console.log('Временный файл:', tmpFile.path);
-  
+
   // Записываем данные через методы объекта
   await tmpFile.write('Hello, temp file!\n');
   await tmpFile.append('More data\n');
-  
+
   // Читаем содержимое через метод объекта
   const data = await tmpFile.read();
   return data;
@@ -67,19 +67,22 @@ console.log('Директория очищена');
 
 // 4. Временные файлы с расширениями через withTempFile
 // Для создания файлов с определёнными расширениями используем опции
-const scriptContent = await withTempFile(async (tmpFile) => {
-  console.log('Временный скрипт:', tmpFile.path);
-  
-  // Записываем скрипт
-  await tmpFile.write('#!/bin/bash\necho "Temp script executed"');
-  
-  // Делаем исполняемым
-  await $`chmod +x ${tmpFile.path}`;
-  
-  // Выполняем
-  const result = await $`${tmpFile.path}`;
-  return result.stdout;
-}, { suffix: '.sh' });
+const scriptContent = await withTempFile(
+  async (tmpFile) => {
+    console.log('Временный скрипт:', tmpFile.path);
+
+    // Записываем скрипт
+    await tmpFile.write('#!/bin/bash\necho "Temp script executed"');
+
+    // Делаем исполняемым
+    await $`chmod +x ${tmpFile.path}`;
+
+    // Выполняем
+    const result = await $`${tmpFile.path}`;
+    return result.stdout;
+  },
+  { suffix: '.sh' }
+);
 
 console.log('Результат скрипта:', scriptContent);
 
@@ -88,13 +91,13 @@ async function processWithTempFiles(data: any[]) {
   return withTempDir(async (tmpDir) => {
     // Сохраняем данные во временные файлы
     const files = [];
-    
+
     for (let i = 0; i < data.length; i++) {
       const file = path.join(tmpDir.path, `data-${i}.json`);
       await fs.writeFile(file, JSON.stringify(data[i]));
       files.push(file);
     }
-    
+
     // Обрабатываем все файлы
     const results = [];
     for (const file of files) {
@@ -109,16 +112,12 @@ async function processWithTempFiles(data: any[]) {
         results.push(obj.value * 2);
       }
     }
-    
+
     return results;
   });
 }
 
-const inputData = [
-  { value: 10 },
-  { value: 20 },
-  { value: 30 }
-];
+const inputData = [{ value: 10 }, { value: 20 }, { value: 30 }];
 
 const processed = await processWithTempFiles(inputData);
 console.log('Обработанные данные:', processed);
@@ -127,12 +126,12 @@ console.log('Обработанные данные:', processed);
 const buildResult = await withTempDir(async (buildDir) => {
   // Используем $.cd() для смены рабочей директории
   const $tmp = $.cd(buildDir.path);
-  
+
   try {
     // Создаём проект
     await $tmp`npm init -y`;
     await $tmp`echo "console.log('Hello from temp build');" > index.js`;
-    
+
     // Запускаем
     const output = await $tmp`node index.js`;
     return output.stdout;
@@ -149,14 +148,14 @@ async function processSecretData(secret: string) {
   return withTempFile(async (tmpFile) => {
     // Записываем секрет через метод write объекта
     await tmpFile.write(secret);
-    
+
     // Устанавливаем права доступа
     await $`chmod 600 ${tmpFile.path}`;
-    
+
     // Проверяем права
     const stats = await $`ls -l ${tmpFile.path}`;
     console.log('Права файла:', stats.stdout.trim());
-    
+
     // Вычисляем хэш
     const hash = await $`sha256sum ${tmpFile.path} | cut -d' ' -f1`;
     return hash.stdout.trim();
@@ -171,7 +170,7 @@ console.log('Hash секрета:', secretHash);
 const tasks = ['task1', 'task2', 'task3'];
 
 const taskResults = await Promise.all(
-  tasks.map(task => 
+  tasks.map((task) =>
     withTempFile(async (tmpFile) => {
       await tmpFile.write(`Processing ${task}`);
       await $`sleep 0.5`;
@@ -190,13 +189,13 @@ const socketPath = path.join(os.tmpdir(), `ipc-${Date.now()}.sock`);
 try {
   // Процесс 1: сервер (запускаем в фоне)
   const server = $`nc -lU ${socketPath}`.nothrow();
-  
+
   // Даём серверу время запуститься
   await $`sleep 1`;
-  
+
   // Процесс 2: клиент
   await $`echo "Hello from client" | nc -U ${socketPath}`.nothrow();
-  
+
   // Ждём завершения сервера
   await server;
 } catch (error) {
@@ -212,7 +211,7 @@ async function safeProcess() {
     await withTempDir(async (tmpDir) => {
       // Работаем с файлами
       await $`touch ${tmpDir.path}/important.data`;
-      
+
       // Симулируем ошибку
       throw new Error('Что-то пошло не так');
     });

@@ -23,10 +23,13 @@ async function main() {
   // Create a temporary script
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'loader-example-'));
   const scriptPath = path.join(tmpDir, 'hello.js');
-  await fs.writeFile(scriptPath, `
+  await fs.writeFile(
+    scriptPath,
+    `
     console.log('Hello from script!');
     export const message = 'Script executed successfully';
-  `);
+  `
+  );
 
   const result1 = await executor.executeScript(scriptPath);
   console.log(`   Success: ${result1.success}`);
@@ -35,14 +38,17 @@ async function main() {
   // Example 2: Execute a TypeScript script
   console.log('2. Executing a TypeScript script:');
   const tsScriptPath = path.join(tmpDir, 'hello.ts');
-  await fs.writeFile(tsScriptPath, `
+  await fs.writeFile(
+    tsScriptPath,
+    `
     const greet = (name: string): string => {
       return \`Hello, \${name}!\`;
     };
 
     console.log(greet('TypeScript'));
     export { greet };
-  `);
+  `
+  );
 
   const result2 = await executor.executeScript(tsScriptPath);
   console.log(`   Success: ${result2.success}`);
@@ -84,11 +90,14 @@ async function main() {
   });
 
   const scriptWithGlobals = path.join(tmpDir, 'with-globals.js');
-  await fs.writeFile(scriptWithGlobals, `
+  await fs.writeFile(
+    scriptWithGlobals,
+    `
     console.log('   API_KEY:', API_KEY);
     console.log('   API_URL:', API_URL);
     export const configured = true;
-  `);
+  `
+  );
 
   await context.execute(async () => {
     await executor.executeScript(scriptWithGlobals);
@@ -101,9 +110,12 @@ async function main() {
   // Example 7: Handle execution errors gracefully
   console.log('7. Handling execution errors:');
   const errorScript = path.join(tmpDir, 'error.js');
-  await fs.writeFile(errorScript, `
+  await fs.writeFile(
+    errorScript,
+    `
     throw new Error('Intentional error');
-  `);
+  `
+  );
 
   const result7 = await executor.executeScript(errorScript);
   console.log(`   Success: ${result7.success}`);

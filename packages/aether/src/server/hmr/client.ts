@@ -163,9 +163,7 @@ export class HMRClient {
     try {
       // Import the updated module
       const modulePath = this.resolveModulePath(acceptedPath || path);
-      const newModule = await import(
-        /* @vite-ignore */ `${modulePath}?t=${timestamp}`
-      );
+      const newModule = await import(/* @vite-ignore */ `${modulePath}?t=${timestamp}`);
 
       // Check if module accepts HMR
       if (typeof (import.meta as any).hot?.accept === 'function') {
@@ -240,9 +238,7 @@ export class HMRClient {
     const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
     this.reconnectAttempts++;
 
-    console.log(
-      `[HMR] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`
-    );
+    console.log(`[HMR] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
 
     this.reconnectTimer = setTimeout(() => {
       this.connect(url);
@@ -260,10 +256,7 @@ export class HMRClient {
 
     // Handle relative paths
     if (path.startsWith('.')) {
-      const base = import.meta.url.substring(
-        0,
-        import.meta.url.lastIndexOf('/')
-      );
+      const base = import.meta.url.substring(0, import.meta.url.lastIndexOf('/'));
       return `${base}/${path}`;
     }
 

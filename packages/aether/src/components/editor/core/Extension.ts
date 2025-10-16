@@ -6,13 +6,7 @@
 
 import type { Plugin, Command } from 'prosemirror-state';
 import type { InputRule } from 'prosemirror-inputrules';
-import type {
-  IExtension,
-  ExtensionType,
-  ExtensionOptions,
-  SchemaContribution,
-  EditorInstance,
-} from './types.js';
+import type { IExtension, ExtensionType, ExtensionOptions, SchemaContribution, EditorInstance } from './types.js';
 
 /**
  * Abstract base class for editor extensions
@@ -121,7 +115,7 @@ export abstract class Extension<Options extends ExtensionOptions = any> implemen
    * @example
    * ```typescript
    * getInputRules(schema: Schema) {
- *   return [
+   *   return [
    *     markInputRule(/\*\*([^*]+)\*\*$/, schema.marks.bold),
    *   ];
    * }

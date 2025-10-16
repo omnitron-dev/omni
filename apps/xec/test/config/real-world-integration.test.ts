@@ -9,11 +9,7 @@ import * as yaml from 'js-yaml';
 import * as fs from 'fs/promises';
 import { it, jest, expect, describe, afterEach, beforeEach } from '@jest/globals';
 
-import {
-  TaskManager,
-  TargetResolver,
-  ConfigurationManager
-} from '../../src/config/index.js';
+import { TaskManager, TargetResolver, ConfigurationManager } from '../../src/config/index.js';
 
 describe('Real-World Configuration Integration Tests', () => {
   let tempDir: string;
@@ -48,7 +44,7 @@ tasks:
 
       const manager = new ConfigurationManager({
         projectRoot: projectDir,
-        strict: true
+        strict: true,
       });
 
       await expect(manager.load()).rejects.toThrow(/tab characters must not be used in indentation/);
@@ -57,21 +53,21 @@ tasks:
     it('should execute real commands and capture output', async () => {
       // Use command substitution to create a temp file
       const configData = {
-        version: "2.0",
+        version: '2.0',
         vars: {
-          test_file: "${cmd:mktemp}"
+          test_file: '${cmd:mktemp}',
         },
         tasks: {
-          "create-file": {
-            command: 'echo "Hello from task" > ${vars.test_file}'
+          'create-file': {
+            command: 'echo "Hello from task" > ${vars.test_file}',
           },
-          "read-file": {
-            command: "cat ${vars.test_file}"
+          'read-file': {
+            command: 'cat ${vars.test_file}',
           },
           cleanup: {
-            command: "rm -f ${vars.test_file}"
-          }
-        }
+            command: 'rm -f ${vars.test_file}',
+          },
+        },
       };
 
       await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(configData));
@@ -90,7 +86,8 @@ tasks:
       expect(createResult.success).toBe(true);
 
       // Verify file was created
-      const fileExists = await fs.access(loaded.vars.test_file as string)
+      const fileExists = await fs
+        .access(loaded.vars.test_file as string)
         .then(() => true)
         .catch(() => false);
       expect(fileExists).toBe(true);
@@ -110,30 +107,30 @@ tasks:
     it('should handle multi-step pipelines with real file operations', async () => {
       const testFile = path.join(projectDir, 'test-output.txt');
       const configData = {
-        version: "2.0",
+        version: '2.0',
         vars: {
           output_file: testFile,
-          project_dir: projectDir
+          project_dir: projectDir,
         },
         tasks: {
           pipeline: {
-            description: "Multi-step pipeline test",
+            description: 'Multi-step pipeline test',
             steps: [
               {
-                name: "Write step 1",
-                command: 'echo "Step 1" > ${vars.output_file}'
+                name: 'Write step 1',
+                command: 'echo "Step 1" > ${vars.output_file}',
               },
               {
-                name: "Append step 2",
-                command: 'echo "Step 2" >> ${vars.output_file}'
+                name: 'Append step 2',
+                command: 'echo "Step 2" >> ${vars.output_file}',
               },
               {
-                name: "Verify content",
-                command: 'cat ${vars.output_file} | grep -c "Step"'
-              }
-            ]
-          }
-        }
+                name: 'Verify content',
+                command: 'cat ${vars.output_file} | grep -c "Step"',
+              },
+            ],
+          },
+        },
       };
 
       await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(configData));
@@ -170,27 +167,27 @@ tasks:
 
     it('should handle task parameters with real command execution', async () => {
       const configData = {
-        version: "2.0",
+        version: '2.0',
         tasks: {
-          "echo-params": {
+          'echo-params': {
             params: [
-              { name: "message", default: "default message" },
-              { name: "count", type: "number", default: 1 }
+              { name: 'message', default: 'default message' },
+              { name: 'count', type: 'number', default: 1 },
             ],
-            command: 'echo "${params.message}"'
+            command: 'echo "${params.message}"',
           },
-          "echo-multiple": {
+          'echo-multiple': {
             params: [
-              { name: "message", default: "default message" },
-              { name: "count", type: "number", default: 1 }
+              { name: 'message', default: 'default message' },
+              { name: 'count', type: 'number', default: 1 },
             ],
             steps: [
-              { name: "echo1", command: 'echo "${params.message}"' },
-              { name: "echo2", command: 'echo "${params.message}"' },
-              { name: "echo3", command: 'echo "${params.message}"' }
-            ]
-          }
-        }
+              { name: 'echo1', command: 'echo "${params.message}"' },
+              { name: 'echo2', command: 'echo "${params.message}"' },
+              { name: 'echo3', command: 'echo "${params.message}"' },
+            ],
+          },
+        },
       };
 
       await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(configData));
@@ -208,22 +205,30 @@ tasks:
       expect(output1.trim()).toBe('default message');
 
       // Test with custom params - using simple echo
-      const result2 = await taskManager.run('echo-params', {
-        message: 'custom',
-        count: 3
-      }, { cwd: projectDir });
+      const result2 = await taskManager.run(
+        'echo-params',
+        {
+          message: 'custom',
+          count: 3,
+        },
+        { cwd: projectDir }
+      );
       expect(result2.success).toBe(true);
       const output2 = result2.output || result2.steps?.[0]?.output || '';
       expect(output2.trim()).toBe('custom');
 
       // Test with multiple steps
-      const result3 = await taskManager.run('echo-multiple', {
-        message: 'test',
-        count: 3
-      }, { cwd: projectDir });
+      const result3 = await taskManager.run(
+        'echo-multiple',
+        {
+          message: 'test',
+          count: 3,
+        },
+        { cwd: projectDir }
+      );
       expect(result3.success).toBe(true);
       expect(result3.steps).toHaveLength(3);
-      expect(result3.steps?.every(s => s.output?.trim() === 'test')).toBe(true);
+      expect(result3.steps?.every((s) => s.output?.trim() === 'test')).toBe(true);
     });
   });
 
@@ -232,36 +237,36 @@ tasks:
       it('should merge global and project configurations', async () => {
         // Create global config
         const globalConfig = {
-          version: "2.0",
+          version: '2.0',
           vars: {
-            global_var: "from global",
-            shared_var: "global value"
+            global_var: 'from global',
+            shared_var: 'global value',
           },
           targets: {
             hosts: {
-              "global-server": {
-                host: "global.example.com",
-                user: "admin"
-              }
-            }
-          }
+              'global-server': {
+                host: 'global.example.com',
+                user: 'admin',
+              },
+            },
+          },
         };
 
         // Create project config
         const projectConfig = {
-          version: "2.0",
+          version: '2.0',
           vars: {
-            project_var: "from project",
-            shared_var: "project value"  // Should override global
+            project_var: 'from project',
+            shared_var: 'project value', // Should override global
           },
           targets: {
             hosts: {
-              "project-server": {
-                host: "project.example.com",
-                user: "deploy"
-              }
-            }
-          }
+              'project-server': {
+                host: 'project.example.com',
+                user: 'deploy',
+              },
+            },
+          },
         };
 
         await fs.writeFile(path.join(globalDir, 'config.yaml'), yaml.dump(globalConfig));
@@ -269,7 +274,7 @@ tasks:
 
         const manager = new ConfigurationManager({
           projectRoot: projectDir,
-          globalConfigDir: globalDir
+          globalConfigDir: globalDir,
         });
 
         const loaded = await manager.load();
@@ -286,46 +291,47 @@ tasks:
 
       it('should handle profile extends with real file writes', async () => {
         const configData = {
-          version: "2.0",
+          version: '2.0',
           vars: {
-            log_file: "${env.PWD}/app.log"
+            log_file: '${env.PWD}/app.log',
           },
           profiles: {
             base: {
               vars: {
-                log_level: "info",
-                debug: "false"
-              }
+                log_level: 'info',
+                debug: 'false',
+              },
             },
             dev: {
-              extends: "base",
+              extends: 'base',
               vars: {
-                log_level: "debug",
-                debug: "true",
-                dev_only: "true"
-              }
+                log_level: 'debug',
+                debug: 'true',
+                dev_only: 'true',
+              },
             },
             staging: {
-              extends: "dev",
+              extends: 'dev',
               vars: {
-                log_level: "warn",
-                staging_url: "https://staging.example.com"
-              }
+                log_level: 'warn',
+                staging_url: 'https://staging.example.com',
+              },
             },
             prod: {
-              extends: "base",
+              extends: 'base',
               vars: {
-                log_level: "error",
-                debug: "$unset",  // Remove debug variable
-                prod_mode: "true"
-              }
-            }
+                log_level: 'error',
+                debug: '$unset', // Remove debug variable
+                prod_mode: 'true',
+              },
+            },
           },
           tasks: {
-            "write-config": {
-              command: 'echo "LOG_LEVEL=${vars.log_level}" > config.env && echo "DEBUG=${vars.debug:false}" >> config.env'
-            }
-          }
+            'write-config': {
+              command:
+                'echo "LOG_LEVEL=${vars.log_level}" > config.env && echo "DEBUG=${vars.debug:false}" >> config.env',
+            },
+          },
         };
 
         await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(configData));
@@ -336,7 +342,7 @@ tasks:
         for (const profile of profiles) {
           const manager = new ConfigurationManager({
             projectRoot: projectDir,
-            profile
+            profile,
           });
 
           const loaded = await manager.load();
@@ -346,10 +352,7 @@ tasks:
           // Execute with project directory as working directory
           await taskManager.run('write-config', {}, { cwd: projectDir });
 
-          const configContent = await fs.readFile(
-            path.join(projectDir, 'config.env'),
-            'utf-8'
-          );
+          const configContent = await fs.readFile(path.join(projectDir, 'config.env'), 'utf-8');
 
           switch (profile) {
             case 'base':
@@ -359,7 +362,7 @@ tasks:
             case 'dev':
               expect(configContent).toContain('LOG_LEVEL=debug');
               expect(configContent).toContain('DEBUG=true');
-              expect(loaded.vars?.dev_only).toBe("true");
+              expect(loaded.vars?.dev_only).toBe('true');
               break;
             case 'staging':
               expect(configContent).toContain('LOG_LEVEL=warn');
@@ -370,7 +373,7 @@ tasks:
               expect(configContent).toContain('LOG_LEVEL=error');
               expect(configContent).toContain('DEBUG=false'); // $unset + default
               expect(loaded.vars?.debug).toBeUndefined();
-              expect(loaded.vars?.prod_mode).toBe("true");
+              expect(loaded.vars?.prod_mode).toBe('true');
               break;
           }
         }
@@ -380,50 +383,50 @@ tasks:
     describe('Target System and Defaults', () => {
       it('should apply target defaults correctly', async () => {
         const configData = {
-          version: "2.0",
+          version: '2.0',
           targets: {
             defaults: {
               timeout: 5000,
-              shell: "/bin/bash",
-              encoding: "utf8",
+              shell: '/bin/bash',
+              encoding: 'utf8',
 
               ssh: {
                 port: 2222,
                 keepAlive: true,
-                keepAliveInterval: 30000
+                keepAliveInterval: 30000,
               },
 
               docker: {
                 tty: true,
-                workdir: "/app",
-                autoRemove: true
-              }
+                workdir: '/app',
+                autoRemove: true,
+              },
             },
             hosts: {
               server1: {
-                host: "server1.example.com",
-                user: "deploy"
+                host: 'server1.example.com',
+                user: 'deploy',
                 // Should inherit port 2222 from defaults
               },
               server2: {
-                host: "server2.example.com",
-                user: "admin",
-                port: 22,  // Override default
-                timeout: 10000  // Override common default
-              }
+                host: 'server2.example.com',
+                user: 'admin',
+                port: 22, // Override default
+                timeout: 10000, // Override common default
+              },
             },
             containers: {
               app: {
-                image: "node:18"
+                image: 'node:18',
                 // Should inherit tty: true, workdir: /app
               },
               db: {
-                image: "postgres:15",
-                tty: false,  // Override default
-                workdir: "/data"  // Override default
-              }
-            }
-          }
+                image: 'postgres:15',
+                tty: false, // Override default
+                workdir: '/data', // Override default
+              },
+            },
+          },
         };
 
         await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(configData));
@@ -438,10 +441,10 @@ tasks:
           type: 'ssh',
           host: 'server1.example.com',
           user: 'deploy',
-          port: 2222,  // From defaults
-          keepAlive: true,  // From defaults
-          timeout: 5000,  // From common defaults
-          shell: '/bin/bash'  // From common defaults
+          port: 2222, // From defaults
+          keepAlive: true, // From defaults
+          timeout: 5000, // From common defaults
+          shell: '/bin/bash', // From common defaults
         });
 
         const server2 = await resolver.resolve('hosts.server2');
@@ -449,9 +452,9 @@ tasks:
           type: 'ssh',
           host: 'server2.example.com',
           user: 'admin',
-          port: 22,  // Override
-          timeout: 10000,  // Override
-          keepAlive: true  // Still from defaults
+          port: 22, // Override
+          timeout: 10000, // Override
+          keepAlive: true, // Still from defaults
         });
 
         // Test Docker defaults
@@ -459,67 +462,67 @@ tasks:
         expect(appContainer.config).toMatchObject({
           type: 'docker',
           image: 'node:18',
-          tty: true,  // From defaults
-          workdir: '/app',  // From defaults
-          autoRemove: true,  // From defaults
-          timeout: 5000  // From common defaults
+          tty: true, // From defaults
+          workdir: '/app', // From defaults
+          autoRemove: true, // From defaults
+          timeout: 5000, // From common defaults
         });
 
         const dbContainer = await resolver.resolve('containers.db');
         expect(dbContainer.config).toMatchObject({
           type: 'docker',
           image: 'postgres:15',
-          tty: false,  // Override
-          workdir: '/data',  // Override
-          autoRemove: true  // Still from defaults
+          tty: false, // Override
+          workdir: '/data', // Override
+          autoRemove: true, // Still from defaults
         });
       });
 
       it('should handle wildcard target patterns with real matching', async () => {
         const configData = {
-          version: "2.0",
+          version: '2.0',
           targets: {
             hosts: {
-              "web-prod-1": {
-                host: "web1.prod.example.com",
-                user: "deploy"
+              'web-prod-1': {
+                host: 'web1.prod.example.com',
+                user: 'deploy',
               },
-              "web-prod-2": {
-                host: "web2.prod.example.com",
-                user: "deploy"
+              'web-prod-2': {
+                host: 'web2.prod.example.com',
+                user: 'deploy',
               },
-              "web-staging-1": {
-                host: "web1.staging.example.com",
-                user: "deploy"
+              'web-staging-1': {
+                host: 'web1.staging.example.com',
+                user: 'deploy',
               },
-              "api-prod-1": {
-                host: "api1.prod.example.com",
-                user: "deploy"
+              'api-prod-1': {
+                host: 'api1.prod.example.com',
+                user: 'deploy',
               },
-              "api-prod-2": {
-                host: "api2.prod.example.com",
-                user: "deploy"
+              'api-prod-2': {
+                host: 'api2.prod.example.com',
+                user: 'deploy',
               },
-              "db-master": {
-                host: "db.example.com",
-                user: "postgres"
-              }
-            }
+              'db-master': {
+                host: 'db.example.com',
+                user: 'postgres',
+              },
+            },
           },
           tasks: {
-            "list-web-servers": {
+            'list-web-servers': {
               command: 'echo "Found web servers: ${targets}"',
-              targets: "web-*"
+              targets: 'web-*',
             },
-            "list-prod-servers": {
+            'list-prod-servers': {
               command: 'echo "Found prod servers: ${targets}"',
-              targets: "*-prod-*"
+              targets: '*-prod-*',
             },
-            "list-numbered-servers": {
+            'list-numbered-servers': {
               command: 'echo "Found numbered servers: ${targets}"',
-              targets: "*-1"
-            }
-          }
+              targets: '*-1',
+            },
+          },
         };
 
         await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(configData));
@@ -530,26 +533,13 @@ tasks:
 
         // Test different patterns
         const webServers = await resolver.find('hosts.web-*');
-        expect(webServers.map(t => t.name).sort()).toEqual([
-          'web-prod-1',
-          'web-prod-2',
-          'web-staging-1'
-        ]);
+        expect(webServers.map((t) => t.name).sort()).toEqual(['web-prod-1', 'web-prod-2', 'web-staging-1']);
 
         const prodServers = await resolver.find('hosts.*-prod-*');
-        expect(prodServers.map(t => t.name).sort()).toEqual([
-          'api-prod-1',
-          'api-prod-2',
-          'web-prod-1',
-          'web-prod-2'
-        ]);
+        expect(prodServers.map((t) => t.name).sort()).toEqual(['api-prod-1', 'api-prod-2', 'web-prod-1', 'web-prod-2']);
 
         const numberedServers = await resolver.find('hosts.*-1');
-        expect(numberedServers.map(t => t.name).sort()).toEqual([
-          'api-prod-1',
-          'web-prod-1',
-          'web-staging-1'
-        ]);
+        expect(numberedServers.map((t) => t.name).sort()).toEqual(['api-prod-1', 'web-prod-1', 'web-staging-1']);
 
         // Test brace expansion
         const selectedServers = await resolver.find('hosts.{web,api}-prod-*');
@@ -564,44 +554,45 @@ tasks:
     describe('Variable Interpolation', () => {
       it('should handle complex nested interpolation with real commands', async () => {
         const configData = {
-          version: "2.0",
+          version: '2.0',
           vars: {
             // Basic values
-            app_name: "myapp",
-            env: "dev",
+            app_name: 'myapp',
+            env: 'dev',
 
             // Command substitution
-            user: "${cmd:whoami}",
-            hostname: "${cmd:hostname}",
-            timestamp: "${cmd:date +%s}",
+            user: '${cmd:whoami}',
+            hostname: '${cmd:hostname}',
+            timestamp: '${cmd:date +%s}',
 
             // Nested references
-            app_dir: "/opt/${vars.app_name}",
-            log_dir: "${vars.app_dir}/logs",
-            config_file: "${vars.app_dir}/config/${vars.env}.json",
+            app_dir: '/opt/${vars.app_name}',
+            log_dir: '${vars.app_dir}/logs',
+            config_file: '${vars.app_dir}/config/${vars.env}.json',
 
             // Environment with defaults
-            home: "${env.HOME}",
-            custom_var: "${env.CUSTOM_VAR:default_value}",
-            port: "${env.PORT:3000}",
+            home: '${env.HOME}',
+            custom_var: '${env.CUSTOM_VAR:default_value}',
+            port: '${env.PORT:3000}',
 
             // Complex nested object
             server: {
-              host: "${vars.hostname}",
-              user: "${vars.user}",
+              host: '${vars.hostname}',
+              user: '${vars.user}',
               paths: {
-                app: "${vars.app_dir}",
-                logs: "${vars.log_dir}",
-                config: "${vars.config_file}"
+                app: '${vars.app_dir}',
+                logs: '${vars.log_dir}',
+                config: '${vars.config_file}',
               },
-              url: "http://${vars.server.host}:${vars.port}"
-            }
+              url: 'http://${vars.server.host}:${vars.port}',
+            },
           },
           tasks: {
-            "show-vars": {
-              command: 'echo "App: ${vars.app_name}" && echo "User: ${vars.user}@${vars.hostname}" && echo "Config: ${vars.config_file}" && echo "URL: ${vars.server.url}"'
-            }
-          }
+            'show-vars': {
+              command:
+                'echo "App: ${vars.app_name}" && echo "User: ${vars.user}@${vars.hostname}" && echo "Config: ${vars.config_file}" && echo "URL: ${vars.server.url}"',
+            },
+          },
         };
 
         await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(configData));
@@ -629,8 +620,8 @@ tasks:
           paths: {
             app: '/opt/myapp',
             logs: '/opt/myapp/logs',
-            config: '/opt/myapp/config/dev.json'
-          }
+            config: '/opt/myapp/config/dev.json',
+          },
         });
         expect(loaded.vars?.server.url).toMatch(/^http:\/\/.*:3000$/);
 
@@ -647,31 +638,31 @@ tasks:
 
       it('should detect and handle circular references', async () => {
         const configData = {
-          version: "2.0",
+          version: '2.0',
           vars: {
             // Direct circular reference
-            a: "${vars.a}",
+            a: '${vars.a}',
 
             // Indirect circular reference
-            b: "${vars.c}",
-            c: "${vars.b}"
-          }
+            b: '${vars.c}',
+            c: '${vars.b}',
+          },
         };
 
         await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(configData));
 
         const manager = new ConfigurationManager({
           projectRoot: projectDir,
-          strict: false  // Don't throw, just warn
+          strict: false, // Don't throw, just warn
         });
 
-        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => { });
+        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
         const loaded = await manager.load();
 
         // Should have warned about circular references
-        const warnings = warnSpy.mock.calls.map(call => call[0]);
-        expect(warnings.some(w => w.includes('Circular variable reference'))).toBe(true);
+        const warnings = warnSpy.mock.calls.map((call) => call[0]);
+        expect(warnings.some((w) => w.includes('Circular variable reference'))).toBe(true);
 
         // Circular references should remain unresolved
         expect(loaded.vars?.a).toBe('${vars.a}');
@@ -683,17 +674,17 @@ tasks:
 
       it('should handle valid nested references', async () => {
         const configData = {
-          version: "2.0",
+          version: '2.0',
           vars: {
             counter: 1,
-            next: "${vars.counter}",
+            next: '${vars.counter}',
 
             // Valid nested reference
             valid: {
-              key: "value",
-              ref: "${vars.valid.key}"
-            }
-          }
+              key: 'value',
+              ref: '${vars.valid.key}',
+            },
+          },
         };
 
         await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(configData));
@@ -708,7 +699,7 @@ tasks:
 
       it('should handle special characters and escaping', async () => {
         const configData = {
-          version: "2.0",
+          version: '2.0',
           vars: {
             // Special characters in values
             world: 'World',
@@ -719,13 +710,13 @@ tasks:
             path: '/path/with/${vars.subdir}/file',
 
             // Command with special chars
-            listing: "${cmd:ls -la | head -5}"
+            listing: '${cmd:ls -la | head -5}',
           },
           tasks: {
-            "echo-special": {
-              command: 'echo "${vars.special}" && echo "${vars.escaped}" && echo "${vars.regex}"'
-            }
-          }
+            'echo-special': {
+              command: 'echo "${vars.special}" && echo "${vars.escaped}" && echo "${vars.regex}"',
+            },
+          },
         };
 
         await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(configData));
@@ -748,25 +739,25 @@ tasks:
     describe('Error Handling and Edge Cases', () => {
       it('should handle missing files gracefully', async () => {
         const configData = {
-          version: "2.0",
+          version: '2.0',
           tasks: {
-            "read-missing": {
-              command: "cat /this/file/does/not/exist/at/all.txt"
+            'read-missing': {
+              command: 'cat /this/file/does/not/exist/at/all.txt',
             },
-            "read-missing-continue": {
+            'read-missing-continue': {
               steps: [
                 {
-                  name: "Try to read",
-                  command: "cat /missing/file.txt",
-                  onFailure: "continue"
+                  name: 'Try to read',
+                  command: 'cat /missing/file.txt',
+                  onFailure: 'continue',
                 },
                 {
-                  name: "Recovery step",
-                  command: 'echo "Recovered from error"'
-                }
-              ]
-            }
-          }
+                  name: 'Recovery step',
+                  command: 'echo "Recovered from error"',
+                },
+              ],
+            },
+          },
         };
 
         await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(configData));
@@ -795,25 +786,26 @@ tasks:
         delete process.env.UNDEFINED_VAR;
 
         const configData = {
-          version: "2.0",
+          version: '2.0',
           vars: {
             // Existing env var
-            test: "${env.TEST_VAR}",
+            test: '${env.TEST_VAR}',
 
             // Empty env var (should use empty string, not default)
-            empty: "${env.EMPTY_VAR:default}",
+            empty: '${env.EMPTY_VAR:default}',
 
             // Undefined env var (should use default)
-            undefined: "${env.UNDEFINED_VAR:default}",
+            undefined: '${env.UNDEFINED_VAR:default}',
 
             // Nested env var reference
-            nested: "${env.TEST_VAR:fallback}"
+            nested: '${env.TEST_VAR:fallback}',
           },
           tasks: {
-            "show-env": {
-              command: 'echo "TEST=${vars.test}" && echo "EMPTY=${vars.empty}" && echo "UNDEFINED=${vars.undefined}" && echo "NESTED=${vars.nested}"'
-            }
-          }
+            'show-env': {
+              command:
+                'echo "TEST=${vars.test}" && echo "EMPTY=${vars.empty}" && echo "UNDEFINED=${vars.undefined}" && echo "NESTED=${vars.nested}"',
+            },
+          },
         };
 
         await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(configData));
@@ -822,7 +814,7 @@ tasks:
         const loaded = await manager.load();
 
         expect(loaded.vars?.test).toBe('test_value');
-        expect(loaded.vars?.empty).toBe('');  // Empty string, not default
+        expect(loaded.vars?.empty).toBe(''); // Empty string, not default
         expect(loaded.vars?.undefined).toBe('default');
         expect(loaded.vars?.nested).toBe('test_value');
 
@@ -836,7 +828,7 @@ tasks:
         const dirs = {
           src: path.join(projectDir, 'src'),
           dist: path.join(projectDir, 'dist'),
-          config: path.join(projectDir, 'config')
+          config: path.join(projectDir, 'config'),
         };
 
         for (const dir of Object.values(dirs)) {
@@ -844,34 +836,35 @@ tasks:
         }
 
         const configData = {
-          version: "2.0",
+          version: '2.0',
           vars: {
-            src_dir: "./src",
-            dist_dir: "./dist",
-            config_dir: "./config"
+            src_dir: './src',
+            dist_dir: './dist',
+            config_dir: './config',
           },
           tasks: {
             build: {
               steps: [
                 {
-                  name: "Create source files",
-                  command: 'echo "export const VERSION = \'1.0.0\';" > ${vars.src_dir}/version.ts && echo "console.log(\'App\');" > ${vars.src_dir}/index.ts'
+                  name: 'Create source files',
+                  command:
+                    'echo "export const VERSION = \'1.0.0\';" > ${vars.src_dir}/version.ts && echo "console.log(\'App\');" > ${vars.src_dir}/index.ts',
                 },
                 {
-                  name: "Copy to dist",
-                  command: "cp -r ${vars.src_dir}/* ${vars.dist_dir}/"
+                  name: 'Copy to dist',
+                  command: 'cp -r ${vars.src_dir}/* ${vars.dist_dir}/',
                 },
                 {
-                  name: "Create config",
-                  command: 'echo \'{"version": "1.0.0"}\' > ${vars.config_dir}/app.json'
+                  name: 'Create config',
+                  command: 'echo \'{"version": "1.0.0"}\' > ${vars.config_dir}/app.json',
                 },
                 {
-                  name: "Verify structure",
-                  command: 'find . -type f -name "*.ts" -o -name "*.json" | sort'
-                }
-              ]
-            }
-          }
+                  name: 'Verify structure',
+                  command: 'find . -type f -name "*.ts" -o -name "*.json" | sort',
+                },
+              ],
+            },
+          },
         };
 
         await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(configData));
@@ -920,8 +913,8 @@ tasks:
           description: `Description for task ${i}`,
           params: [
             { name: 'param1', default: `default-${i}` },
-            { name: 'param2', type: 'number', default: i }
-          ]
+            { name: 'param2', type: 'number', default: i },
+          ],
         };
 
         vars[`var_${i}`] = `value_${i}`;
@@ -936,13 +929,10 @@ tasks:
       const config = {
         version: '2.0',
         vars,
-        tasks
+        tasks,
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       const start = Date.now();
       const manager = new ConfigurationManager({ projectRoot: projectDir });
@@ -962,18 +952,18 @@ tasks:
 
     it('should handle deeply nested variable interpolation', async () => {
       const configData = {
-        version: "2.0",
+        version: '2.0',
         vars: {
-          level1: "1",
-          level2: "2-${vars.level1}",
-          level3: "3-${vars.level2}",
-          level4: "4-${vars.level3}",
-          level5: "5-${vars.level4}",
-          level6: "6-${vars.level5}",
-          level7: "7-${vars.level6}",
-          level8: "8-${vars.level7}",
-          level9: "9-${vars.level8}",
-          level10: "10-${vars.level9}",
+          level1: '1',
+          level2: '2-${vars.level1}',
+          level3: '3-${vars.level2}',
+          level4: '4-${vars.level3}',
+          level5: '5-${vars.level4}',
+          level6: '6-${vars.level5}',
+          level7: '7-${vars.level6}',
+          level8: '8-${vars.level7}',
+          level9: '9-${vars.level8}',
+          level10: '10-${vars.level9}',
 
           // Complex nested structure
           deep: {
@@ -986,18 +976,18 @@ tasks:
                         g: {
                           h: {
                             i: {
-                              j: "${vars.level10}"
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
+                              j: '${vars.level10}',
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
       };
 
       await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(configData));

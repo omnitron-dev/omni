@@ -112,11 +112,7 @@ describe('Raw function', () => {
   it('should handle nested arrays by flattening', () => {
     const flags = ['-a', '-l', '-h'];
     const paths = ['/tmp', '/var'];
-    const result = interpolateRaw(
-      createTemplateStringsArray(['ls ', ' ', '']),
-      flags,
-      paths
-    );
+    const result = interpolateRaw(createTemplateStringsArray(['ls ', ' ', '']), flags, paths);
     expect(result).toBe('ls -a -l -h /tmp /var');
   });
 

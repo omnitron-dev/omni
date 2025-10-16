@@ -6,32 +6,32 @@ import { $, dispose, configure, ExecutionEngine, createCallableEngine } from '..
 describe('Simplified API', () => {
   // Store original config to restore after each test
   let originalConfig: any;
-  
+
   beforeEach(async () => {
     // Clean up before each test
     await dispose();
     // Clear the global cache to prevent command interference
     globalCache.clear();
     // Add a small delay to ensure all processes are cleaned up
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
     // Reset to default configuration
-    configure({ 
-      throwOnNonZeroExit: true, 
+    configure({
+      throwOnNonZeroExit: true,
       defaultTimeout: 30000,
       encoding: 'utf8',
-      maxBuffer: 10 * 1024 * 1024
+      maxBuffer: 10 * 1024 * 1024,
     });
     // Store current config
     originalConfig = $.config.get();
   });
-  
+
   afterEach(async () => {
     // Clean up any remaining resources
     await dispose();
     // Clear the global cache
     globalCache.clear();
     // Add a small delay to ensure all processes are cleaned up
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
   });
   describe('$ function', () => {
     test('should execute commands with template literals', async () => {
@@ -50,21 +50,21 @@ describe('Simplified API', () => {
       // KNOWN ISSUE: This test passes when run in isolation but fails when run with other tests.
       // The functionality has been verified to work correctly (see integration tests).
       // This appears to be a Jest-specific test isolation issue with async error handling.
-      // throwOnNonZeroExit is already true from beforeEach  
+      // throwOnNonZeroExit is already true from beforeEach
       const config = $.config.get();
       expect(config.throwOnNonZeroExit).toBe(true);
-      
+
       // Test with nothrow to verify behavior without throwing
       const result = await $`exit 42`.nothrow();
       expect(result.exitCode).toBe(42);
       expect(result.ok).toBe(false);
-      
+
       // Create isolated engine instance to test throwing behavior
       // (Known Jest issue: global $ instance can have isolation problems)
       const engine = new ExecutionEngine({ throwOnNonZeroExit: true });
       const local$ = createCallableEngine(engine);
       const { CommandError } = await import('../../../src/index.js');
-      
+
       let error: any;
       try {
         await local$`exit 42`;
@@ -90,7 +90,7 @@ describe('Simplified API', () => {
       const engine = new ExecutionEngine();
       const local$ = createCallableEngine(engine);
       const { AdapterError } = await import('../../../src/index.js');
-      
+
       let error: any;
       try {
         await local$.timeout(50)`sh -c "while true; do echo waiting; sleep 0.1; done"`;
@@ -115,7 +115,7 @@ describe('Simplified API', () => {
     test('should update default configuration', async () => {
       // Configure to not throw on non-zero exit
       configure({ throwOnNonZeroExit: false });
-      
+
       const result = await $`exit 1`;
       expect(result.exitCode).toBe(1);
     });
@@ -126,7 +126,7 @@ describe('Simplified API', () => {
       const engine = new ExecutionEngine({ defaultTimeout: 50 });
       const local$ = createCallableEngine(engine);
       const { AdapterError } = await import('../../../src/index.js');
-      
+
       let error: any;
       try {
         await local$`sh -c "while true; do echo waiting; sleep 0.1; done"`;
@@ -165,13 +165,8 @@ describe('Simplified API', () => {
 
   describe('exported types and utilities', () => {
     test('should export essential utilities', async () => {
-      const { 
-        withTempFile, 
-        withTempDir, 
-        parallel,
-        pipeUtils
-      } = await import('../../../src/index.js');
-      
+      const { withTempFile, withTempDir, parallel, pipeUtils } = await import('../../../src/index.js');
+
       expect(typeof withTempFile).toBe('function');
       expect(typeof withTempDir).toBe('function');
       expect(typeof parallel).toBe('function');
@@ -183,16 +178,16 @@ describe('Simplified API', () => {
     });
 
     test('should export core errors', async () => {
-      const { 
-        CommandError, 
-        TimeoutError, 
+      const {
+        CommandError,
+        TimeoutError,
         ConnectionError,
         AdapterError,
         ExecutionError,
         DockerError,
-        KubernetesError
+        KubernetesError,
       } = await import('../../../src/index.js');
-      
+
       expect(CommandError).toBeDefined();
       expect(TimeoutError).toBeDefined();
       expect(ConnectionError).toBeDefined();
@@ -203,13 +198,9 @@ describe('Simplified API', () => {
     });
 
     test('should export adapters for advanced users', async () => {
-      const {
-        ExecutionEngine,
-        LocalAdapter,
-        SSHAdapter,
-        DockerAdapter,
-        KubernetesAdapter
-      } = await import('../../../src/index.js');
+      const { ExecutionEngine, LocalAdapter, SSHAdapter, DockerAdapter, KubernetesAdapter } = await import(
+        '../../../src/index.js'
+      );
 
       expect(ExecutionEngine).toBeDefined();
       expect(LocalAdapter).toBeDefined();
@@ -219,24 +210,16 @@ describe('Simplified API', () => {
     });
 
     test('should export advanced types', async () => {
-      const {
-        DockerContainer,
-        SecurePasswordHandler,
-        SSHKeyValidator
-      } = await import('../../../src/index.js');
-      
+      const { DockerContainer, SecurePasswordHandler, SSHKeyValidator } = await import('../../../src/index.js');
+
       expect(DockerContainer).toBeDefined();
       expect(SecurePasswordHandler).toBeDefined();
       expect(SSHKeyValidator).toBeDefined();
     });
 
     test('should export helper functions', async () => {
-      const {
-        within,
-        withinSync,
-        isDisposable
-      } = await import('../../../src/index.js');
-      
+      const { within, withinSync, isDisposable } = await import('../../../src/index.js');
+
       expect(typeof within).toBe('function');
       expect(typeof withinSync).toBe('function');
       expect(typeof isDisposable).toBe('function');
@@ -246,20 +229,21 @@ describe('Simplified API', () => {
   describe('additional API methods', () => {
     test('should support raw method', async () => {
       // raw() should preserve literal strings without shell escaping
-      const value = "test_value";
+      const value = 'test_value';
       const result = await $.raw`echo ${value}`;
       // raw should output the value as-is
-      expect(result.stdout.trim()).toBe("test_value");
+      expect(result.stdout.trim()).toBe('test_value');
     });
 
     test('should support retry method', async () => {
       // Configure to not throw so we can use nothrow() for retry logic
       const retryEngine = $.retry({ maxRetries: 2, initialDelay: 10 });
-      
+
       // Create a command that fails once then succeeds
       const testFile = `/tmp/retry-test-${Date.now()}`;
-      const result = await retryEngine`sh -c "if [ ! -f ${testFile} ]; then touch ${testFile} && exit 1; else echo success && rm ${testFile}; fi"`.nothrow();
-      
+      const result =
+        await retryEngine`sh -c "if [ ! -f ${testFile} ]; then touch ${testFile} && exit 1; else echo success && rm ${testFile}; fi"`.nothrow();
+
       expect(result.stdout.trim()).toBe('success');
       expect(result.exitCode).toBe(0);
     });
@@ -272,10 +256,10 @@ describe('Simplified API', () => {
     });
 
     test('should support defaults method', async () => {
-      const customEngine = $.defaults({ 
-        defaultEnv: { MY_CUSTOM_VAR: 'my_custom_value' }
+      const customEngine = $.defaults({
+        defaultEnv: { MY_CUSTOM_VAR: 'my_custom_value' },
       });
-      
+
       const result = await customEngine`sh -c "echo $MY_CUSTOM_VAR"`;
       expect(result.stdout.trim()).toBe('my_custom_value');
       expect(result.exitCode).toBe(0);
@@ -297,7 +281,7 @@ describe('Simplified API', () => {
       // ProcessPromise has a pipe method
       const firstCommand = $`echo "hello world"`;
       expect(typeof firstCommand.pipe).toBe('function');
-      
+
       // Test actual piping
       const pipedResult = await $`echo "hello world"`.pipe`grep world`;
       expect(pipedResult.stdout.trim()).toBe('hello world');
@@ -311,7 +295,7 @@ describe('Simplified API', () => {
       expect(initialConfig).toBeDefined();
       expect(initialConfig.throwOnNonZeroExit).toBe(true);
       expect(initialConfig.defaultTimeout).toBe(30000);
-      
+
       // Set new config
       $.config.set({ defaultTimeout: 60000 });
       const updatedConfig = $.config.get();
@@ -331,7 +315,7 @@ describe('Simplified API', () => {
       const engine = new ExecutionEngine({ throwOnNonZeroExit: true });
       const local$ = createCallableEngine(engine);
       const { CommandError } = await import('../../../src/index.js');
-      
+
       let error: any;
       try {
         await local$`exit 123`;
@@ -349,7 +333,7 @@ describe('Simplified API', () => {
       const engine = new ExecutionEngine();
       const local$ = createCallableEngine(engine);
       const { TimeoutError, AdapterError } = await import('../../../src/index.js');
-      
+
       let error: any;
       try {
         await local$.timeout(50)`sh -c "while true; do echo waiting; sleep 0.1; done"`;
@@ -368,7 +352,7 @@ describe('Simplified API', () => {
       // Create isolated instance to avoid Jest issues
       const engine = new ExecutionEngine({ throwOnNonZeroExit: true });
       const local$ = createCallableEngine(engine);
-      
+
       let caught = false;
       let caughtError: any;
       try {
@@ -397,20 +381,16 @@ describe('Simplified API', () => {
     });
 
     test('should support multiple environment variables', async () => {
-      const result = await $.env({ 
+      const result = await $.env({
         VAR1: 'value1',
-        VAR2: 'value2' 
+        VAR2: 'value2',
       })`sh -c "echo $VAR1 $VAR2"`;
       expect(result.stdout.trim()).toBe('value1 value2');
     });
 
     test('should chain multiple operations', async () => {
-      const result = await $
-        .env({ CHAIN_TEST: 'chained' })
-        .timeout(5000)
-        .cd('/tmp')
-        `sh -c "pwd && echo $CHAIN_TEST"`;
-      
+      const result = await $.env({ CHAIN_TEST: 'chained' }).timeout(5000).cd('/tmp')`sh -c "pwd && echo $CHAIN_TEST"`;
+
       const lines = result.stdout.trim().split('\n');
       expect(['/tmp', '/private/tmp']).toContain(lines[0]);
       expect(lines[1]).toBe('chained');
@@ -418,20 +398,20 @@ describe('Simplified API', () => {
 
     test('should support within for temporary context', async () => {
       const { within } = await import('../../../src/index.js');
-      
+
       let innerEnv = '';
       let outerEnv = '';
-      
+
       // Test that within changes environment context
       await within({ defaultEnv: { WITHIN_TEST: 'inside' } }, async () => {
         const result = await $`sh -c "echo $WITHIN_TEST"`;
         innerEnv = result.stdout.trim();
       });
-      
+
       // Outside of within, env var should not exist
       const outerResult = await $`sh -c "echo $WITHIN_TEST"`;
       outerEnv = outerResult.stdout.trim();
-      
+
       expect(innerEnv).toBe('inside');
       expect(outerEnv).toBe('');
     });
@@ -441,12 +421,12 @@ describe('Simplified API', () => {
     test('should lazily initialize engine', async () => {
       // Clean up current engine first
       await dispose();
-      
+
       // Import fresh $ to test lazy initialization
       jest.resetModules();
       const freshModule = await import('../../../src/index.js');
       const fresh$ = freshModule.$;
-      
+
       // First access should initialize
       const result = await fresh$`echo "initialized"`;
       expect(result.stdout.trim()).toBe('initialized');

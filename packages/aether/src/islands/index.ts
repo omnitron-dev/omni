@@ -148,7 +148,4 @@ export {
   resetModuleIslandManager,
   useIslandHydration,
 } from './module-integration.js';
-export type {
-  ModuleIslandDefinition,
-  IslandHydrationContext,
-} from './module-integration.js';
+export type { ModuleIslandDefinition, IslandHydrationContext } from './module-integration.js';

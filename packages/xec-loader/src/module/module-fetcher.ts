@@ -27,11 +27,7 @@ export class ModuleFetcher {
    * Fetch module from URL with caching and retry logic
    */
   async fetch(url: string, options: FetchOptions = {}): Promise<FetchedModule> {
-    const {
-      timeout = 30000,
-      retries = 3,
-      headers = {},
-    } = options;
+    const { timeout = 30000, retries = 3, headers = {} } = options;
 
     // Check cache first
     const cached = await this.cache.get(url);
@@ -101,11 +97,7 @@ export class ModuleFetcher {
     throw new Error(`Failed to fetch module after ${retries + 1} attempts: ${lastError?.message}`);
   }
 
-  private async fetchWithTimeout(
-    url: string,
-    timeout: number,
-    headers: Record<string, string>
-  ): Promise<Response> {
+  private async fetchWithTimeout(url: string, timeout: number, headers: Record<string, string>): Promise<Response> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
@@ -192,7 +184,10 @@ export class ModuleFetcher {
    */
   private detectRedirectWithImports(content: string, baseURL: string): { target: string | null; imports: string[] } {
     // Remove comments
-    const cleaned = content.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, '').trim();
+    const cleaned = content
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/.*/g, '')
+      .trim();
 
     // Extract import statements
     const importRegex = /import\s+["'][^"']+["'];?/g;
@@ -209,26 +204,20 @@ export class ModuleFetcher {
    */
   private transformContent(content: string, baseURL: string): string {
     // Transform /node/module@version paths to node:module (from statements)
-    content = content.replace(
-      /from\s+["']\/node\/([^@"']+?)(?:\.mjs)?(?:@[^"']+)?["']/g,
-      (match, moduleName) => {
-        const quote = match.includes('"') ? '"' : "'";
-        // Remove .mjs extension if present in module name
-        const cleanModuleName = moduleName.replace(/\.mjs$/, '');
-        return `from ${quote}node:${cleanModuleName}${quote}`;
-      }
-    );
+    content = content.replace(/from\s+["']\/node\/([^@"']+?)(?:\.mjs)?(?:@[^"']+)?["']/g, (match, moduleName) => {
+      const quote = match.includes('"') ? '"' : "'";
+      // Remove .mjs extension if present in module name
+      const cleanModuleName = moduleName.replace(/\.mjs$/, '');
+      return `from ${quote}node:${cleanModuleName}${quote}`;
+    });
 
     // Transform /node/module@version paths to node:module (import statements without from)
-    content = content.replace(
-      /import\s+["']\/node\/([^@"']+?)(?:\.mjs)?(?:@[^"']+)?["']/g,
-      (match, moduleName) => {
-        const quote = match.includes('"') ? '"' : "'";
-        // Remove .mjs extension if present in module name
-        const cleanModuleName = moduleName.replace(/\.mjs$/, '');
-        return `import ${quote}node:${cleanModuleName}${quote}`;
-      }
-    );
+    content = content.replace(/import\s+["']\/node\/([^@"']+?)(?:\.mjs)?(?:@[^"']+)?["']/g, (match, moduleName) => {
+      const quote = match.includes('"') ? '"' : "'";
+      // Remove .mjs extension if present in module name
+      const cleanModuleName = moduleName.replace(/\.mjs$/, '');
+      return `import ${quote}node:${cleanModuleName}${quote}`;
+    });
 
     // Transform relative esm.sh paths
     if (baseURL.includes('esm.sh')) {
@@ -258,6 +247,6 @@ export class ModuleFetcher {
   }
 
   private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

@@ -11,7 +11,7 @@ describe('Mutex', () => {
       const task1 = async () => {
         const release = await mutex.acquire();
         results.push(1);
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
         results.push(2);
         release();
       };
@@ -19,7 +19,7 @@ describe('Mutex', () => {
       const task2 = async () => {
         const release = await mutex.acquire();
         results.push(3);
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
         results.push(4);
         release();
       };
@@ -37,16 +37,11 @@ describe('Mutex', () => {
       const createTask = (id: number) => async () => {
         const release = await mutex.acquire();
         results.push(id);
-        await new Promise(resolve => setTimeout(resolve, 5));
+        await new Promise((resolve) => setTimeout(resolve, 5));
         release();
       };
 
-      await Promise.all([
-        createTask(1)(),
-        createTask(2)(),
-        createTask(3)(),
-        createTask(4)()
-      ]);
+      await Promise.all([createTask(1)(), createTask(2)(), createTask(3)(), createTask(4)()]);
 
       expect(results).toEqual([1, 2, 3, 4]);
     });
@@ -57,17 +52,19 @@ describe('Mutex', () => {
       const mutex = new Mutex();
       const results: number[] = [];
 
-      const task1 = () => mutex.withLock(async () => {
-        results.push(1);
-        await new Promise(resolve => setTimeout(resolve, 10));
-        results.push(2);
-      });
+      const task1 = () =>
+        mutex.withLock(async () => {
+          results.push(1);
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          results.push(2);
+        });
 
-      const task2 = () => mutex.withLock(async () => {
-        results.push(3);
-        await new Promise(resolve => setTimeout(resolve, 10));
-        results.push(4);
-      });
+      const task2 = () =>
+        mutex.withLock(async () => {
+          results.push(3);
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          results.push(4);
+        });
 
       await Promise.all([task1(), task2()]);
 
@@ -78,13 +75,15 @@ describe('Mutex', () => {
       const mutex = new Mutex();
       let secondTaskExecuted = false;
 
-      const task1 = () => mutex.withLock(async () => {
-        throw new Error('Task 1 failed');
-      });
+      const task1 = () =>
+        mutex.withLock(async () => {
+          throw new Error('Task 1 failed');
+        });
 
-      const task2 = () => mutex.withLock(async () => {
-        secondTaskExecuted = true;
-      });
+      const task2 = () =>
+        mutex.withLock(async () => {
+          secondTaskExecuted = true;
+        });
 
       // First task should fail
       await expect(task1()).rejects.toThrow('Task 1 failed');
@@ -101,7 +100,7 @@ describe('Mutex', () => {
       expect(result).toBe(42);
 
       const asyncResult = await mutex.withLock(async () => {
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
         return 'hello';
       });
       expect(asyncResult).toBe('hello');
@@ -113,13 +112,18 @@ describe('Mutex', () => {
       const mutex = new Mutex();
       let counter = 0;
 
-      const increment = () => mutex.withLock(async () => {
-        const current = counter;
-        await new Promise(resolve => setTimeout(resolve, Math.random() * 10));
-        counter = current + 1;
-      });
+      const increment = () =>
+        mutex.withLock(async () => {
+          const current = counter;
+          await new Promise((resolve) => setTimeout(resolve, Math.random() * 10));
+          counter = current + 1;
+        });
 
-      await Promise.all(Array(10).fill(0).map(() => increment()));
+      await Promise.all(
+        Array(10)
+          .fill(0)
+          .map(() => increment())
+      );
 
       expect(counter).toBe(10);
     });
@@ -129,11 +133,15 @@ describe('Mutex', () => {
 
       const increment = async () => {
         const current = counter;
-        await new Promise(resolve => setTimeout(resolve, Math.random() * 10));
+        await new Promise((resolve) => setTimeout(resolve, Math.random() * 10));
         counter = current + 1;
       };
 
-      await Promise.all(Array(10).fill(0).map(() => increment()));
+      await Promise.all(
+        Array(10)
+          .fill(0)
+          .map(() => increment())
+      );
 
       // Without mutex, we'll likely have race conditions causing lost updates
       // Counter will likely be less than 10
@@ -151,7 +159,7 @@ describe('KeyedMutex', () => {
       const task1 = async () => {
         const release = await mutex.acquire('key1');
         results.push('key1-start');
-        await new Promise(resolve => setTimeout(resolve, 20));
+        await new Promise((resolve) => setTimeout(resolve, 20));
         results.push('key1-end');
         release();
       };
@@ -159,7 +167,7 @@ describe('KeyedMutex', () => {
       const task2 = async () => {
         const release = await mutex.acquire('key2');
         results.push('key2-start');
-        await new Promise(resolve => setTimeout(resolve, 20));
+        await new Promise((resolve) => setTimeout(resolve, 20));
         results.push('key2-end');
         release();
       };
@@ -178,7 +186,7 @@ describe('KeyedMutex', () => {
       const task1 = async () => {
         const release = await mutex.acquire('key1');
         results.push('task1-start');
-        await new Promise(resolve => setTimeout(resolve, 20));
+        await new Promise((resolve) => setTimeout(resolve, 20));
         results.push('task1-end');
         release();
       };
@@ -186,7 +194,7 @@ describe('KeyedMutex', () => {
       const task2 = async () => {
         const release = await mutex.acquire('key1');
         results.push('task2-start');
-        await new Promise(resolve => setTimeout(resolve, 20));
+        await new Promise((resolve) => setTimeout(resolve, 20));
         results.push('task2-end');
         release();
       };
@@ -203,20 +211,23 @@ describe('KeyedMutex', () => {
       const mutex = new KeyedMutex<string>();
       const results: string[] = [];
 
-      const task1 = () => mutex.withLock('key1', async () => {
-        results.push('task1');
-        await new Promise(resolve => setTimeout(resolve, 10));
-      });
+      const task1 = () =>
+        mutex.withLock('key1', async () => {
+          results.push('task1');
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        });
 
-      const task2 = () => mutex.withLock('key2', async () => {
-        results.push('task2');
-        await new Promise(resolve => setTimeout(resolve, 10));
-      });
+      const task2 = () =>
+        mutex.withLock('key2', async () => {
+          results.push('task2');
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        });
 
-      const task3 = () => mutex.withLock('key1', async () => {
-        results.push('task3');
-        await new Promise(resolve => setTimeout(resolve, 10));
-      });
+      const task3 = () =>
+        mutex.withLock('key1', async () => {
+          results.push('task3');
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        });
 
       await Promise.all([task1(), task2(), task3()]);
 
@@ -230,9 +241,10 @@ describe('KeyedMutex', () => {
     it('should handle errors properly', async () => {
       const mutex = new KeyedMutex<string>();
 
-      const failingTask = () => mutex.withLock('key1', async () => {
-        throw new Error('Task failed');
-      });
+      const failingTask = () =>
+        mutex.withLock('key1', async () => {
+          throw new Error('Task failed');
+        });
 
       const successTask = () => mutex.withLock('key1', async () => 'success');
 
@@ -253,7 +265,7 @@ describe('KeyedMutex', () => {
 
       // Should be able to immediately acquire key1 again
       let acquired = false;
-      mutex.acquire('key1').then(release => {
+      mutex.acquire('key1').then((release) => {
         acquired = true;
         release();
       });
@@ -272,8 +284,8 @@ describe('KeyedMutex', () => {
       mutex.clear();
 
       // All keys should be immediately acquirable after clear
-      const promises = ['key1', 'key2', 'key3'].map(key =>
-        mutex.acquire(key).then(release => {
+      const promises = ['key1', 'key2', 'key3'].map((key) =>
+        mutex.acquire(key).then((release) => {
           release();
           return key;
         })
@@ -292,7 +304,7 @@ describe('KeyedMutex', () => {
 
       const operation = (key: number, value: number) =>
         mutex.withLock(key, async () => {
-          await new Promise(resolve => setTimeout(resolve, Math.random() * 10));
+          await new Promise((resolve) => setTimeout(resolve, Math.random() * 10));
           sharedResource[key] = (sharedResource[key] || 0) + value;
           results.push({ key, value: sharedResource[key] });
         });
@@ -303,17 +315,17 @@ describe('KeyedMutex', () => {
         operation(1, 15),
         operation(3, 30),
         operation(2, 25),
-        operation(1, 5)
+        operation(1, 5),
       ]);
 
       // Check that operations on same key were serialized
-      const key1Results = results.filter(r => r.key === 1).map(r => r.value);
+      const key1Results = results.filter((r) => r.key === 1).map((r) => r.value);
       expect(key1Results).toEqual([10, 25, 30]); // 10, then +15=25, then +5=30
 
-      const key2Results = results.filter(r => r.key === 2).map(r => r.value);
+      const key2Results = results.filter((r) => r.key === 2).map((r) => r.value);
       expect(key2Results).toEqual([20, 45]); // 20, then +25=45
 
-      const key3Results = results.filter(r => r.key === 3).map(r => r.value);
+      const key3Results = results.filter((r) => r.key === 3).map((r) => r.value);
       expect(key3Results).toEqual([30]); // just 30
     });
   });

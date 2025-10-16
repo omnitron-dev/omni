@@ -213,7 +213,7 @@ describe('Error Recovery E2E Tests', () => {
             if (attempt === maxRetries) {
               error.set((e as Error).message);
             }
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
           }
         }
 
@@ -238,7 +238,7 @@ describe('Error Recovery E2E Tests', () => {
         }
 
         try {
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 10));
           const data = { fresh: true, value: 'network data' };
           networkData.set(data);
           cachedData.set(data);
@@ -284,7 +284,7 @@ describe('Error Recovery E2E Tests', () => {
           setTimeout(() => reject(new Error('Timeout')), timeout);
         });
 
-        const fetchPromise = new Promise(resolve => {
+        const fetchPromise = new Promise((resolve) => {
           setTimeout(() => resolve({ data: 'success' }), 100);
         });
 
@@ -452,11 +452,7 @@ describe('Error Recovery E2E Tests', () => {
 
       const validateState = () => {
         const current = state();
-        return (
-          Array.isArray(current.users) &&
-          Array.isArray(current.posts) &&
-          typeof current.valid === 'boolean'
-        );
+        return Array.isArray(current.users) && Array.isArray(current.posts) && typeof current.valid === 'boolean';
       };
 
       const corruptState = () => {
@@ -545,10 +541,10 @@ describe('Error Recovery E2E Tests', () => {
           error.set((e as Error).message);
           retrying.set(true);
 
-          await new Promise(resolve => setTimeout(resolve, 20));
+          await new Promise((resolve) => setTimeout(resolve, 20));
 
           try {
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
             error.set(null);
           } finally {
             retrying.set(false);
@@ -568,9 +564,9 @@ describe('Error Recovery E2E Tests', () => {
       const getUserFriendlyError = (error: Error) => {
         const errorMap: Record<string, string> = {
           'Network error': 'Unable to connect. Please check your internet connection.',
-          'Timeout': 'Request took too long. Please try again.',
+          Timeout: 'Request took too long. Please try again.',
           'Not found': 'The requested resource was not found.',
-          'Unauthorized': 'Please log in to continue.',
+          Unauthorized: 'Please log in to continue.',
         };
 
         return errorMap[error.message] || 'An unexpected error occurred. Please try again.';

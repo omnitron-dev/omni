@@ -55,7 +55,7 @@ describe('sanitizeCommandForError', () => {
         { cmd: 'chmod 755 /some/file', expected: 'chmod [arguments hidden]' },
         { cmd: 'chown user:group /file', expected: 'chown [arguments hidden]' },
         { cmd: 'find / -name secret', expected: 'find [arguments hidden]' },
-        { cmd: 'grep password /etc/passwd', expected: 'grep [arguments hidden]' }
+        { cmd: 'grep password /etc/passwd', expected: 'grep [arguments hidden]' },
       ];
 
       for (const { cmd, expected } of sensitiveCommands) {
@@ -88,7 +88,7 @@ describe('sanitizeCommandForError', () => {
     it('should not sanitize when NODE_ENV is test', () => {
       process.env['NODE_ENV'] = 'test';
       process.env['XEC_SANITIZE_COMMANDS'] = 'true';
-      
+
       const command = 'cat /secret/file';
       expect(sanitizeCommandForError(command)).toBe(command);
     });
@@ -97,7 +97,7 @@ describe('sanitizeCommandForError', () => {
       delete process.env['NODE_ENV'];
       process.env['JEST_WORKER_ID'] = '1';
       process.env['XEC_SANITIZE_COMMANDS'] = 'true';
-      
+
       const command = 'rm -rf /important/path';
       expect(sanitizeCommandForError(command)).toBe(command);
     });

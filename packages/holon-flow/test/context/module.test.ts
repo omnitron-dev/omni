@@ -1,11 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import {
-  clearModuleRegistry,
-  context,
-  contextModule,
-  createModule,
-  withModules,
-} from '../../src/module.js';
+import { clearModuleRegistry, context, contextModule, createModule, withModules } from '../../src/module.js';
 
 describe('Module System', () => {
   beforeEach(() => {
@@ -443,7 +437,7 @@ describe('Module System', () => {
           keep1: 'value1',
           keep2: 'value2',
           remove: 'should not be present',
-        }),
+        })
       );
       ctx.use(contextModule);
 

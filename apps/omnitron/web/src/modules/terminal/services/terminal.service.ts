@@ -43,7 +43,7 @@ export class TerminalService {
    * Add output to history
    */
   addOutput(command: string, output: string) {
-    this.commandHistory.update(history => [
+    this.commandHistory.update((history) => [
       ...history,
       {
         id: Date.now().toString(),

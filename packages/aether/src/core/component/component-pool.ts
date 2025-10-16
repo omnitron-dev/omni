@@ -117,7 +117,8 @@ export class ComponentPool {
       // Old API: acquire(factory) or acquire(factory, props)
       factory = componentIdOrFactory;
       // Generate a stable ID from the function
-      componentId = (factory as any).__poolId || ((factory as any).__poolId = `comp-${Math.random().toString(36).slice(2, 11)}`);
+      componentId =
+        (factory as any).__poolId || ((factory as any).__poolId = `comp-${Math.random().toString(36).slice(2, 11)}`);
       actualProps = factoryOrProps as P | undefined;
     } else {
       // New API: acquire(componentId, factory, props)

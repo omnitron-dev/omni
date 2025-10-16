@@ -21,11 +21,9 @@ function getLuminance(color: string): number {
   const rgb = parseColor(color);
   if (!rgb) return 0;
 
-  const [r, g, b] = rgb.map(channel => {
+  const [r, g, b] = rgb.map((channel) => {
     const normalized = channel / 255;
-    return normalized <= 0.03928
-      ? normalized / 12.92
-      : Math.pow((normalized + 0.055) / 1.055, 2.4);
+    return normalized <= 0.03928 ? normalized / 12.92 : Math.pow((normalized + 0.055) / 1.055, 2.4);
   });
 
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
@@ -52,11 +50,7 @@ function parseColor(color: string): [number, number, number] | null {
 
   const rgbMatch = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
   if (rgbMatch) {
-    return [
-      parseInt(rgbMatch[1], 10),
-      parseInt(rgbMatch[2], 10),
-      parseInt(rgbMatch[3], 10),
-    ];
+    return [parseInt(rgbMatch[1], 10), parseInt(rgbMatch[2], 10), parseInt(rgbMatch[3], 10)];
   }
 
   return null;
@@ -126,138 +120,90 @@ describe('Theme Presets', () => {
   describe('WCAG AA Contrast Requirements', () => {
     describe('Default Theme', () => {
       it('should meet AA contrast for body text', () => {
-        const contrast = calculateContrast(
-          defaultTheme.colors.text,
-          defaultTheme.colors.background
-        );
+        const contrast = calculateContrast(defaultTheme.colors.text, defaultTheme.colors.background);
         expect(contrast).toBeGreaterThanOrEqual(4.5);
       });
 
       it('should meet AA contrast for text on surface', () => {
-        const contrast = calculateContrast(
-          defaultTheme.colors.text,
-          defaultTheme.colors.surface
-        );
+        const contrast = calculateContrast(defaultTheme.colors.text, defaultTheme.colors.surface);
         expect(contrast).toBeGreaterThanOrEqual(4.5);
       });
 
       it('should meet AA contrast for primary color', () => {
-        const contrast = calculateContrast(
-          defaultTheme.colors.primary,
-          defaultTheme.colors.surface
-        );
+        const contrast = calculateContrast(defaultTheme.colors.primary, defaultTheme.colors.surface);
         expect(contrast).toBeGreaterThanOrEqual(4.5);
       });
 
       it('should meet AA contrast for links', () => {
-        const contrast = calculateContrast(
-          defaultTheme.colors.primary,
-          defaultTheme.colors.background
-        );
+        const contrast = calculateContrast(defaultTheme.colors.primary, defaultTheme.colors.background);
         expect(contrast).toBeGreaterThanOrEqual(4.5);
       });
     });
 
     describe('Minimal Theme', () => {
       it('should meet AAA contrast for body text', () => {
-        const contrast = calculateContrast(
-          minimalTheme.colors.text,
-          minimalTheme.colors.background
-        );
+        const contrast = calculateContrast(minimalTheme.colors.text, minimalTheme.colors.background);
         expect(contrast).toBeGreaterThanOrEqual(7);
       });
 
       it('should meet AA contrast for secondary text', () => {
-        const contrast = calculateContrast(
-          minimalTheme.colors.textSecondary,
-          minimalTheme.colors.background
-        );
+        const contrast = calculateContrast(minimalTheme.colors.textSecondary, minimalTheme.colors.background);
         expect(contrast).toBeGreaterThanOrEqual(4.5);
       });
     });
 
     describe('GitHub Theme', () => {
       it('should meet AA contrast for body text', () => {
-        const contrast = calculateContrast(
-          githubTheme.colors.text,
-          githubTheme.colors.background
-        );
+        const contrast = calculateContrast(githubTheme.colors.text, githubTheme.colors.background);
         expect(contrast).toBeGreaterThanOrEqual(4.5);
       });
 
       it('should meet AA contrast for secondary text', () => {
-        const contrast = calculateContrast(
-          githubTheme.colors.textSecondary,
-          githubTheme.colors.background
-        );
+        const contrast = calculateContrast(githubTheme.colors.textSecondary, githubTheme.colors.background);
         expect(contrast).toBeGreaterThanOrEqual(4.5);
       });
 
       it('should meet AA contrast for primary color', () => {
-        const contrast = calculateContrast(
-          githubTheme.colors.primary,
-          githubTheme.colors.background
-        );
+        const contrast = calculateContrast(githubTheme.colors.primary, githubTheme.colors.background);
         expect(contrast).toBeGreaterThanOrEqual(4.5);
       });
     });
 
     describe('Dark Theme', () => {
       it('should meet AA contrast for body text', () => {
-        const contrast = calculateContrast(
-          darkTheme.colors.text,
-          darkTheme.colors.background
-        );
+        const contrast = calculateContrast(darkTheme.colors.text, darkTheme.colors.background);
         expect(contrast).toBeGreaterThanOrEqual(4.5);
       });
 
       it('should meet AA contrast for text on surface', () => {
-        const contrast = calculateContrast(
-          darkTheme.colors.text,
-          darkTheme.colors.surface
-        );
+        const contrast = calculateContrast(darkTheme.colors.text, darkTheme.colors.surface);
         expect(contrast).toBeGreaterThanOrEqual(4.5);
       });
 
       it('should meet AA contrast for primary color', () => {
-        const contrast = calculateContrast(
-          darkTheme.colors.primary,
-          darkTheme.colors.surface
-        );
+        const contrast = calculateContrast(darkTheme.colors.primary, darkTheme.colors.surface);
         expect(contrast).toBeGreaterThanOrEqual(4.5);
       });
 
       it('should meet AA contrast for secondary text', () => {
-        const contrast = calculateContrast(
-          darkTheme.colors.textSecondary,
-          darkTheme.colors.background
-        );
+        const contrast = calculateContrast(darkTheme.colors.textSecondary, darkTheme.colors.background);
         expect(contrast).toBeGreaterThanOrEqual(4.5);
       });
     });
 
     describe('High Contrast Theme', () => {
       it('should meet AAA contrast for all text', () => {
-        const contrast = calculateContrast(
-          highContrastTheme.colors.text,
-          highContrastTheme.colors.background
-        );
+        const contrast = calculateContrast(highContrastTheme.colors.text, highContrastTheme.colors.background);
         expect(contrast).toBeGreaterThanOrEqual(7);
       });
 
       it('should meet AAA contrast for primary color', () => {
-        const contrast = calculateContrast(
-          highContrastTheme.colors.primary,
-          highContrastTheme.colors.background
-        );
+        const contrast = calculateContrast(highContrastTheme.colors.primary, highContrastTheme.colors.background);
         expect(contrast).toBeGreaterThanOrEqual(7);
       });
 
       it('should meet high contrast for selection', () => {
-        const contrast = calculateContrast(
-          highContrastTheme.colors.selection,
-          highContrastTheme.colors.selectionBg
-        );
+        const contrast = calculateContrast(highContrastTheme.colors.selection, highContrastTheme.colors.selectionBg);
         expect(contrast).toBeGreaterThanOrEqual(7);
       });
     });
@@ -301,10 +247,7 @@ describe('Theme Presets', () => {
     });
 
     it.each(allThemes)('$metadata.name code text should be readable', (theme) => {
-      const contrast = calculateContrast(
-        theme.colors.codeText,
-        theme.colors.codeBackground
-      );
+      const contrast = calculateContrast(theme.colors.codeText, theme.colors.codeBackground);
       expect(contrast).toBeGreaterThanOrEqual(4.5);
     });
   });
@@ -364,7 +307,7 @@ describe('Theme Presets', () => {
 
   describe('Theme Metadata', () => {
     it('should have unique theme names', () => {
-      const names = allThemes.map(t => t.metadata.name);
+      const names = allThemes.map((t) => t.metadata.name);
       const uniqueNames = new Set(names);
       expect(uniqueNames.size).toBe(names.length);
     });

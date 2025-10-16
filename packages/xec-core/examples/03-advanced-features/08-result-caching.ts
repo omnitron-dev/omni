@@ -1,9 +1,9 @@
 /**
  * 08. Result Caching - Cache Command Results for Performance
- * 
+ *
  * Demonstrates how to cache command execution results to avoid
  * running expensive operations multiple times.
- * 
+ *
  * Caching is useful for:
  * - Expensive operations (API calls, heavy computations)
  * - Idempotent commands (commands that produce the same result)
@@ -34,27 +34,27 @@ console.log('\n2. Custom cache key:');
 const apiKey = 'test-api-key';
 const apiResult1 = await $`echo "Fetching data for key: ${apiKey}"`.cache({
   key: 'api-data-fetch',
-  ttl: 5000 // 5 seconds
+  ttl: 5000, // 5 seconds
 });
 
 // Different command but same cache key
 const apiResult2 = await $`echo "Getting data for: ${apiKey}"`.cache({
-  key: 'api-data-fetch'
+  key: 'api-data-fetch',
 });
 console.log('Different commands, same cache:', apiResult1.stdout === apiResult2.stdout);
 
 // 3. Cache with TTL (Time To Live)
 console.log('\n3. Cache with custom TTL:');
 const shortLived = await $`echo "Short-lived data: $(date +%s)"`.cache({
-  ttl: 2000 // 2 seconds
+  ttl: 2000, // 2 seconds
 });
 console.log('Cached value:', shortLived.stdout.trim());
 
 // Wait for cache to expire
-await new Promise(resolve => setTimeout(resolve, 2500));
+await new Promise((resolve) => setTimeout(resolve, 2500));
 
 const afterExpiry = await $`echo "Short-lived data: $(date +%s)"`.cache({
-  ttl: 2000
+  ttl: 2000,
 });
 console.log('New value after expiry:', afterExpiry.stdout.trim());
 console.log('Values are different:', shortLived.stdout !== afterExpiry.stdout);
@@ -65,20 +65,20 @@ console.log('\n4. Cache invalidation:');
 // Cache a "read" operation
 const readResult = await $`echo "Database records: 100"`.cache({
   key: 'db-count',
-  ttl: 60000
+  ttl: 60000,
 });
 console.log('Initial read:', readResult.stdout.trim());
 
 // "Write" operation that invalidates related caches
 await $`echo "INSERT INTO table..."`.cache({
   key: 'db-write',
-  invalidateOn: ['db-count', 'db-*'] // Invalidate related caches
+  invalidateOn: ['db-count', 'db-*'], // Invalidate related caches
 });
 
 // Next read will execute again (cache was invalidated)
 const readAfterWrite = await $`echo "Database records: 101"`.cache({
   key: 'db-count',
-  ttl: 60000
+  ttl: 60000,
 });
 console.log('Read after write:', readAfterWrite.stdout.trim());
 
@@ -89,7 +89,7 @@ console.log('\n5. Caching expensive operations:');
 async function expensiveOperation(param: string) {
   return $`echo "Computing result for ${param}..." && sleep 1 && echo "Result: ${Math.random()}"`.cache({
     key: `expensive-${param}`,
-    ttl: 30000 // 30 seconds
+    ttl: 30000, // 30 seconds
   });
 }
 
@@ -106,21 +106,21 @@ console.log('Cached results match:', expensive1.stdout === expensive2.stdout);
 // 6. Caching in parallel operations
 console.log('\n6. Caching in parallel operations:');
 
-const parallelTasks = Array(5).fill(null).map((_, i) =>
-  $`echo "Task ${i}: $(date +%s%N)" && sleep 0.5`.cache({
-    key: `parallel-task-${i % 2}`, // Only 2 unique keys
-    ttl: 5000
-  })
-);
+const parallelTasks = Array(5)
+  .fill(null)
+  .map((_, i) =>
+    $`echo "Task ${i}: $(date +%s%N)" && sleep 0.5`.cache({
+      key: `parallel-task-${i % 2}`, // Only 2 unique keys
+      ttl: 5000,
+    })
+  );
 
 const parallelResults = await Promise.all(parallelTasks);
-console.log('Tasks 0,2,4 have same result:', 
-  parallelResults[0].stdout === parallelResults[2].stdout &&
-  parallelResults[2].stdout === parallelResults[4].stdout
+console.log(
+  'Tasks 0,2,4 have same result:',
+  parallelResults[0].stdout === parallelResults[2].stdout && parallelResults[2].stdout === parallelResults[4].stdout
 );
-console.log('Tasks 1,3 have same result:', 
-  parallelResults[1].stdout === parallelResults[3].stdout
-);
+console.log('Tasks 1,3 have same result:', parallelResults[1].stdout === parallelResults[3].stdout);
 
 // 7. Environment-specific caching
 console.log('\n7. Environment-specific caching:');
@@ -155,7 +155,7 @@ console.log('\n9. Cache warming:');
 const warmupTasks = [
   $`echo "System info loaded"`.cache({ key: 'system-info', ttl: 300000 }),
   $`echo "Config loaded"`.cache({ key: 'app-config', ttl: 300000 }),
-  $`echo "Dependencies checked"`.cache({ key: 'deps-check', ttl: 300000 })
+  $`echo "Dependencies checked"`.cache({ key: 'deps-check', ttl: 300000 }),
 ];
 
 await Promise.all(warmupTasks);
@@ -174,7 +174,7 @@ console.log('\n10. Conditional caching:');
 // Only cache if certain conditions are met
 async function conditionalCache(useCache: boolean) {
   const command = $`echo "Data: $(date +%s)" && sleep 0.5`;
-  
+
   if (useCache) {
     return command.cache({ ttl: 10000 });
   }
@@ -193,20 +193,20 @@ console.log('\n11. Common caching patterns:');
 // Pattern 1: Version checks (cache for longer)
 const versionCheck = await $`echo "Node version: v18.0.0"`.cache({
   key: 'node-version',
-  ttl: 3600000 // 1 hour
+  ttl: 3600000, // 1 hour
 });
 
 // Pattern 2: Dynamic data (cache for shorter)
 const dynamicData = await $`echo "User count: ${Math.floor(Math.random() * 1000)}"`.cache({
   key: 'user-count',
-  ttl: 5000 // 5 seconds
+  ttl: 5000, // 5 seconds
 });
 
 // Pattern 3: Development vs Production
 const isDev = process.env.NODE_ENV === 'development';
 const buildResult = await $`echo "Building project..."`.cache({
   key: 'project-build',
-  ttl: isDev ? 60000 : 0 // Cache in dev, no cache in prod
+  ttl: isDev ? 60000 : 0, // Cache in dev, no cache in prod
 });
 
 console.log('Caching patterns applied');

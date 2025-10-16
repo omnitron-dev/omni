@@ -5,13 +5,12 @@ import { ExecutionResultImpl } from '../../../src/core/result.js';
 import { ExecutionEngine } from '../../../src/core/execution-engine.js';
 import { pipeUtils, executePipe } from '../../../src/core/pipe-implementation.js';
 
-
 describe('Pipe Implementation', () => {
   let engine: ExecutionEngine;
 
   beforeEach(() => {
     engine = new ExecutionEngine({
-      throwOnNonZeroExit: false
+      throwOnNonZeroExit: false,
     });
   });
 
@@ -29,11 +28,7 @@ describe('Pipe Implementation', () => {
         'local'
       );
 
-      const result = await executePipe(
-        Promise.resolve(sourceResult),
-        'cat',
-        engine
-      );
+      const result = await executePipe(Promise.resolve(sourceResult), 'cat', engine);
 
       expect(result.stdout).toBe('hello world\n');
       expect(result.exitCode).toBe(0);
@@ -52,11 +47,7 @@ describe('Pipe Implementation', () => {
         'local'
       );
 
-      const result = await executePipe(
-        Promise.resolve(sourceResult),
-        { command: 'cat', shell: true },
-        engine
-      );
+      const result = await executePipe(Promise.resolve(sourceResult), { command: 'cat', shell: true }, engine);
 
       expect(result.stdout).toBe('test data');
       expect(result.exitCode).toBe(0);
@@ -76,12 +67,8 @@ describe('Pipe Implementation', () => {
       );
 
       const template = Object.assign(['tr a-z A-Z'], { raw: ['tr a-z A-Z'] }) as TemplateStringsArray;
-      
-      const result = await executePipe(
-        Promise.resolve(sourceResult),
-        template,
-        engine
-      );
+
+      const result = await executePipe(Promise.resolve(sourceResult), template, engine);
 
       expect(result.stdout.trim()).toBe('HELLO WORLD');
       expect(result.exitCode).toBe(0);
@@ -103,14 +90,10 @@ describe('Pipe Implementation', () => {
       const upperCaseTransform = new Transform({
         transform(chunk, encoding, callback) {
           callback(null, chunk.toString().toUpperCase());
-        }
+        },
       });
 
-      const result = await executePipe(
-        Promise.resolve(sourceResult),
-        upperCaseTransform,
-        engine
-      );
+      const result = await executePipe(Promise.resolve(sourceResult), upperCaseTransform, engine);
 
       expect(result.stdout).toBe('HELLO WORLD');
       expect(result.exitCode).toBe(0);
@@ -134,14 +117,10 @@ describe('Pipe Implementation', () => {
         write(chunk, encoding, callback) {
           writtenData += chunk.toString();
           callback();
-        }
+        },
       });
 
-      const result = await executePipe(
-        Promise.resolve(sourceResult),
-        writableStream,
-        engine
-      );
+      const result = await executePipe(Promise.resolve(sourceResult), writableStream, engine);
 
       expect(writtenData).toBe('test data');
       expect(result).toEqual(sourceResult);
@@ -165,12 +144,7 @@ describe('Pipe Implementation', () => {
         processedLines.push(line);
       };
 
-      const result = await executePipe(
-        Promise.resolve(sourceResult),
-        lineProcessor,
-        engine,
-        { lineByLine: true }
-      );
+      const result = await executePipe(Promise.resolve(sourceResult), lineProcessor, engine, { lineByLine: true });
 
       expect(processedLines).toEqual(['line1', 'line2', 'line3']);
       expect(result).toEqual(sourceResult);
@@ -194,12 +168,10 @@ describe('Pipe Implementation', () => {
         processedItems.push(item);
       };
 
-      const result = await executePipe(
-        Promise.resolve(sourceResult),
-        itemProcessor,
-        engine,
-        { lineByLine: true, lineSeparator: ';' }
-      );
+      const result = await executePipe(Promise.resolve(sourceResult), itemProcessor, engine, {
+        lineByLine: true,
+        lineSeparator: ';',
+      });
 
       expect(processedItems).toEqual(['item1', 'item2', 'item3']);
     });
@@ -217,14 +189,9 @@ describe('Pipe Implementation', () => {
         'local'
       );
 
-      await expect(
-        executePipe(
-          Promise.resolve(sourceResult),
-          'cat',
-          engine,
-          { throwOnError: true }
-        )
-      ).rejects.toThrow('Previous command failed with exit code 1');
+      await expect(executePipe(Promise.resolve(sourceResult), 'cat', engine, { throwOnError: true })).rejects.toThrow(
+        'Previous command failed with exit code 1'
+      );
     });
 
     test('should not throw on error when throwOnError is false', async () => {
@@ -240,12 +207,9 @@ describe('Pipe Implementation', () => {
         'local'
       );
 
-      const result = await executePipe(
-        Promise.resolve(sourceResult),
-        'echo "recovered"',
-        engine,
-        { throwOnError: false }
-      );
+      const result = await executePipe(Promise.resolve(sourceResult), 'echo "recovered"', engine, {
+        throwOnError: false,
+      });
 
       expect(result.stdout.trim()).toBe('recovered');
       expect(result.exitCode).toBe(0);
@@ -267,11 +231,7 @@ describe('Pipe Implementation', () => {
         'local'
       );
 
-      const result = await executePipe(
-        Promise.resolve(sourceResult),
-        transform,
-        engine
-      );
+      const result = await executePipe(Promise.resolve(sourceResult), transform, engine);
 
       expect(result.stdout).toBe('HELLO WORLD');
     });
@@ -290,11 +250,7 @@ describe('Pipe Implementation', () => {
         'local'
       );
 
-      const result = await executePipe(
-        Promise.resolve(sourceResult),
-        transform,
-        engine
-      );
+      const result = await executePipe(Promise.resolve(sourceResult), transform, engine);
 
       expect(result.stdout.trim()).toBe('hello world\nworld peace');
     });
@@ -313,11 +269,7 @@ describe('Pipe Implementation', () => {
         'local'
       );
 
-      const result = await executePipe(
-        Promise.resolve(sourceResult),
-        transform,
-        engine
-      );
+      const result = await executePipe(Promise.resolve(sourceResult), transform, engine);
 
       expect(result.stdout.trim()).toBe('world peace');
     });
@@ -336,11 +288,7 @@ describe('Pipe Implementation', () => {
         'local'
       );
 
-      const result = await executePipe(
-        Promise.resolve(sourceResult),
-        transform,
-        engine
-      );
+      const result = await executePipe(Promise.resolve(sourceResult), transform, engine);
 
       expect(result.stdout).toBe('hello universe');
     });
@@ -359,11 +307,7 @@ describe('Pipe Implementation', () => {
         'local'
       );
 
-      const result = await executePipe(
-        Promise.resolve(sourceResult),
-        transform,
-        engine
-      );
+      const result = await executePipe(Promise.resolve(sourceResult), transform, engine);
 
       expect(result.stdout).toBe('hello REPLACED and REPLACED things');
     });
@@ -374,13 +318,13 @@ describe('Pipe Implementation', () => {
         write(chunk, encoding, callback) {
           outputs.push(`dest1: ${chunk.toString()}`);
           callback();
-        }
+        },
       });
       const dest2 = new Writable({
         write(chunk, encoding, callback) {
           outputs.push(`dest2: ${chunk.toString()}`);
           callback();
-        }
+        },
       });
 
       const transform = pipeUtils.tee(dest1, dest2);
@@ -396,11 +340,7 @@ describe('Pipe Implementation', () => {
         'local'
       );
 
-      const result = await executePipe(
-        Promise.resolve(sourceResult),
-        transform,
-        engine
-      );
+      const result = await executePipe(Promise.resolve(sourceResult), transform, engine);
 
       expect(result.stdout).toBe('test data');
       expect(outputs).toContain('dest1: test data');
@@ -424,27 +364,19 @@ describe('Pipe Implementation', () => {
       );
 
       // Test piping the result through transforms
-      const upperResult = await executePipe(
-        Promise.resolve(sourceResult),
-        pipeUtils.toUpperCase(),
-        engine
-      );
-      
+      const upperResult = await executePipe(Promise.resolve(sourceResult), pipeUtils.toUpperCase(), engine);
+
       expect(upperResult.stdout).toBe('TEST DATA');
-      
+
       // Now pipe that result through replace
-      const finalResult = await executePipe(
-        Promise.resolve(upperResult),
-        pipeUtils.replace('DATA', 'OUTPUT'),
-        engine
-      );
-      
+      const finalResult = await executePipe(Promise.resolve(upperResult), pipeUtils.replace('DATA', 'OUTPUT'), engine);
+
       expect(finalResult.stdout).toBe('TEST OUTPUT');
     });
 
     test('should pipe to Transform stream', async () => {
       const promise = engine.run`echo "hello world"`;
-      
+
       const result = await promise.pipe(pipeUtils.toUpperCase());
 
       expect(result.stdout.trim()).toBe('HELLO WORLD');
@@ -452,22 +384,21 @@ describe('Pipe Implementation', () => {
 
     test('should pipe to function', async () => {
       const promise = engine.run`printf "line1\nline2\nline3"`;
-      
-      const lines: string[] = [];
-      await promise.pipe((line: string) => {
-        lines.push(`processed: ${line}`);
-      }, { lineByLine: true });
 
-      expect(lines).toEqual([
-        'processed: line1',
-        'processed: line2', 
-        'processed: line3'
-      ]);
+      const lines: string[] = [];
+      await promise.pipe(
+        (line: string) => {
+          lines.push(`processed: ${line}`);
+        },
+        { lineByLine: true }
+      );
+
+      expect(lines).toEqual(['processed: line1', 'processed: line2', 'processed: line3']);
     });
 
     test('should handle pipe errors with nothrow', async () => {
       const promise = engine.run`exit 1`.nothrow();
-      
+
       const result = await promise.pipe`echo "recovered"`;
 
       expect(result.stdout.trim()).toBe('recovered');
@@ -487,17 +418,13 @@ describe('Pipe Implementation', () => {
         new Date(),
         'local'
       );
-      
+
       // First apply grep filter
-      const grepResult = await executePipe(
-        Promise.resolve(sourceResult),
-        pipeUtils.grep('apple'),
-        engine
-      );
-      
+      const grepResult = await executePipe(Promise.resolve(sourceResult), pipeUtils.grep('apple'), engine);
+
       // Verify grep worked
       expect(grepResult.stdout.trim()).toBe('apple\napple');
-      
+
       // Now process the lines
       const lines: string[] = [];
       await executePipe(

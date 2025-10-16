@@ -17,7 +17,11 @@ import {
   handleFilterBackspace,
 } from '../src/components/table/table-filter.js';
 
-import type { TableState, TableColumn, InteractiveTableOptions } from '../src/components/table/types.js';
+import type {
+  TableState,
+  TableColumn,
+  InteractiveTableOptions,
+} from '../src/components/table/types.js';
 
 function createTestData() {
   return [
@@ -509,16 +513,8 @@ describe('table-filter', () => {
 
     it('should handle Unicode characters', () => {
       const state: TableState<any> = {
-        data: [
-          { name: 'Ñoño' },
-          { name: 'José' },
-          { name: '日本語' },
-        ],
-        originalData: [
-          { name: 'Ñoño' },
-          { name: 'José' },
-          { name: '日本語' },
-        ],
+        data: [{ name: 'Ñoño' }, { name: 'José' }, { name: '日本語' }],
+        originalData: [{ name: 'Ñoño' }, { name: 'José' }, { name: '日本語' }],
         selected: new Set(),
         focusedRow: 0,
         focusedColumn: 0,

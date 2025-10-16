@@ -260,7 +260,7 @@ describe('ThemeManager', () => {
 
       const result = themeManager.validateTheme(lowContrastTheme);
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => e.includes('contrast'))).toBe(true);
+      expect(result.errors.some((e) => e.includes('contrast'))).toBe(true);
     });
   });
 

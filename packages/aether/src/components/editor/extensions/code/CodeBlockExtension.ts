@@ -83,9 +83,7 @@ export class CodeBlockExtension extends Extension<CodeBlockOptions> {
 
                 const codeElement = node.querySelector('code');
                 const className = codeElement?.getAttribute('class') || '';
-                const languageMatch = className.match(
-                  new RegExp(`${this.options.languageClassPrefix}([\\w-]+)`),
-                );
+                const languageMatch = className.match(new RegExp(`${this.options.languageClassPrefix}([\\w-]+)`));
 
                 return {
                   language: languageMatch ? languageMatch[1] : this.options.defaultLanguage,
@@ -104,9 +102,7 @@ export class CodeBlockExtension extends Extension<CodeBlockOptions> {
                 }
 
                 const className = node.getAttribute('class') || '';
-                const languageMatch = className.match(
-                  new RegExp(`${this.options.languageClassPrefix}([\\w-]+)`),
-                );
+                const languageMatch = className.match(new RegExp(`${this.options.languageClassPrefix}([\\w-]+)`));
 
                 return {
                   language: languageMatch ? languageMatch[1] : this.options.defaultLanguage,
@@ -120,9 +116,7 @@ export class CodeBlockExtension extends Extension<CodeBlockOptions> {
             [
               'code',
               {
-                class: node.attrs.language
-                  ? `${this.options.languageClassPrefix}${node.attrs.language}`
-                  : null,
+                class: node.attrs.language ? `${this.options.languageClassPrefix}${node.attrs.language}` : null,
               },
               0,
             ],
@@ -146,14 +140,7 @@ export class CodeBlockExtension extends Extension<CodeBlockOptions> {
           }
 
           if (dispatch) {
-            dispatch(
-              state.tr.setBlockType(
-                range.start,
-                range.end,
-                schema.nodes.code_block,
-                attrs || {},
-              ),
-            );
+            dispatch(state.tr.setBlockType(range.start, range.end, schema.nodes.code_block, attrs || {}));
           }
 
           return true;

@@ -74,7 +74,9 @@ export interface REPLServerOptions {
  */
 export class REPLServer {
   private server?: NodeREPLServer;
-  private readonly options: Required<Omit<REPLServerOptions, 'context' | 'commands' | 'replOptions' | 'welcomeMessage' | 'title'>> & {
+  private readonly options: Required<
+    Omit<REPLServerOptions, 'context' | 'commands' | 'replOptions' | 'welcomeMessage' | 'title'>
+  > & {
     context: Record<string, any>;
     commands?: REPLCommands;
     replOptions?: repl.ReplOptions;

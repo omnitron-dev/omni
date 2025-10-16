@@ -11,7 +11,7 @@ import {
   enableFeature,
   type Features,
   disableFeature,
-  isFeatureEnabled
+  isFeatureEnabled,
 } from '../../src/config/features.js';
 
 describe('Feature Flags', () => {
@@ -23,14 +23,14 @@ describe('Feature Flags', () => {
     originalEnv = { ...process.env };
 
     // Clear all XEC feature environment variables
-    Object.keys(process.env).forEach(key => {
+    Object.keys(process.env).forEach((key) => {
       if (key.startsWith('XEC_')) {
         delete process.env[key];
       }
     });
 
     // Reset all features to their defaults
-    Object.keys(features).forEach(key => {
+    Object.keys(features).forEach((key) => {
       features[key as keyof Features] = false;
     });
   });
@@ -112,10 +112,10 @@ describe('Feature Flags', () => {
         'useKitTaskRunner',
         'useKitLiveOutput',
         'useKitCommandPalette',
-        'debugKit'
+        'debugKit',
       ];
 
-      allFeatures.forEach(feature => {
+      allFeatures.forEach((feature) => {
         expect(isFeatureEnabled(feature)).toBe(false);
         enableFeature(feature);
         expect(isFeatureEnabled(feature)).toBe(true);

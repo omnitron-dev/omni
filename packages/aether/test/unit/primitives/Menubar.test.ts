@@ -32,7 +32,7 @@ describe('Menubar', () => {
 
     // Mock focus/blur methods
     Object.defineProperty(HTMLElement.prototype, 'focus', {
-      value (this: HTMLElement) {
+      value(this: HTMLElement) {
         _activeElement = this;
         this.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       },
@@ -41,7 +41,7 @@ describe('Menubar', () => {
     });
 
     Object.defineProperty(HTMLElement.prototype, 'blur', {
-      value (this: HTMLElement) {
+      value(this: HTMLElement) {
         _activeElement = document.body;
         this.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
       },

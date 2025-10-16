@@ -2,8 +2,8 @@
  * Configuration utilities
  */
 
-import path from "path";
-import { homedir } from "os";
+import path from 'path';
+import { homedir } from 'os';
 
 /**
  * Deep merge objects
@@ -236,16 +236,16 @@ export function parseTargetReference(ref: string): {
     const prefix = parts[0] || '';
     const name = parts[1] || '';
     const typeMap: Record<string, 'hosts' | 'containers' | 'pods'> = {
-      'ssh': 'hosts',
-      'docker': 'containers',
-      'pod': 'pods',
-      'kubernetes': 'pods'
+      ssh: 'hosts',
+      docker: 'containers',
+      pod: 'pods',
+      kubernetes: 'pods',
     };
 
     return {
       type: typeMap[prefix] || 'auto',
       name,
-      isWildcard: !!name && (name.includes('*') || name.includes('?'))
+      isWildcard: !!name && (name.includes('*') || name.includes('?')),
     };
   }
 
@@ -259,7 +259,7 @@ export function parseTargetReference(ref: string): {
       return {
         type: type as 'hosts' | 'containers' | 'pods',
         name,
-        isWildcard: !!name && (name.includes('*') || name.includes('?'))
+        isWildcard: !!name && (name.includes('*') || name.includes('?')),
       };
     }
   }
@@ -268,7 +268,7 @@ export function parseTargetReference(ref: string): {
   return {
     type: 'auto',
     name: ref,
-    isWildcard: ref.includes('*') || ref.includes('?')
+    isWildcard: ref.includes('*') || ref.includes('?'),
   };
 }
 
@@ -278,7 +278,8 @@ export function parseTargetReference(ref: string): {
 export function matchPattern(pattern: string, str: string): boolean {
   // Convert wildcard pattern to regex
   const regexPattern = pattern
-    .split('*').map(part => part.split('?').map(escapeRegex).join('.'))
+    .split('*')
+    .map((part) => part.split('?').map(escapeRegex).join('.'))
     .join('.*');
 
   const regex = new RegExp(`^${regexPattern}$`);
@@ -327,7 +328,7 @@ export function expandBraces(pattern: string): string[] {
   }
 
   // Recursively expand nested braces
-  return expanded.flatMap(item => expandBraces(item));
+  return expanded.flatMap((item) => expandBraces(item));
 }
 
 /**

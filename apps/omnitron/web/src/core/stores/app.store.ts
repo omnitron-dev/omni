@@ -215,10 +215,7 @@ export const useAppStore = defineStore('app', () => {
   /**
    * Add notification
    */
-  const addNotification = (
-    type: 'info' | 'success' | 'warning' | 'error',
-    message: string,
-  ): string => {
+  const addNotification = (type: 'info' | 'success' | 'warning' | 'error', message: string): string => {
     const id = crypto.randomUUID();
     const notification = {
       id,

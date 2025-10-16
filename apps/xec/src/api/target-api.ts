@@ -1,6 +1,6 @@
 /**
  * Target API
- * 
+ *
  * Provides programmatic access to xec target management.
  * Supports listing, resolving, and executing commands on targets.
  */
@@ -12,18 +12,8 @@ import { TargetResolver } from '../config/target-resolver.js';
 import { createTargetEngine } from '../utils/direct-execution.js';
 import { ConfigurationManager } from '../config/configuration-manager.js';
 
-import type {
-  PodConfig,
-  HostConfig,
-  ContainerConfig
-} from '../config/types.js';
-import type { 
-  Target, 
-  CopyOptions, 
-  PortForward, 
-  ForwardOptions,
-  ExecutionResult 
-} from './types.js';
+import type { PodConfig, HostConfig, ContainerConfig } from '../config/types.js';
+import type { Target, CopyOptions, PortForward, ForwardOptions, ExecutionResult } from './types.js';
 
 export class TargetAPI {
   private configManager: ConfigurationManager;
@@ -62,7 +52,7 @@ export class TargetAPI {
           type: 'ssh',
           name,
           config: { ...hostConfig, type: 'ssh' } as HostConfig,
-          source: 'configured'
+          source: 'configured',
         });
       }
     }
@@ -76,7 +66,7 @@ export class TargetAPI {
           type: 'docker',
           name,
           config: { ...containerConfig, type: 'docker' } as ContainerConfig,
-          source: 'configured'
+          source: 'configured',
         });
       }
     }
@@ -90,7 +80,7 @@ export class TargetAPI {
           type: 'kubernetes',
           name,
           config: { ...podConfig, type: 'kubernetes' } as PodConfig,
-          source: 'configured'
+          source: 'configured',
         });
       }
     }
@@ -104,7 +94,7 @@ export class TargetAPI {
    */
   async get(ref: string): Promise<Target | undefined> {
     await this.initialize();
-    
+
     try {
       return await this.resolver!.resolve(ref);
     } catch {
@@ -118,7 +108,7 @@ export class TargetAPI {
    */
   async find(pattern: string): Promise<Target[]> {
     await this.initialize();
-    
+
     // Handle different pattern types
     if (pattern.includes('*') || pattern.includes(',')) {
       return this.resolver!.find(pattern);
@@ -135,25 +125,21 @@ export class TargetAPI {
    * @param command - Command to execute
    * @param options - Execution options
    */
-  async exec(
-    ref: string, 
-    command: string, 
-    options: Record<string, any> = {}
-  ): Promise<ExecutionResult> {
+  async exec(ref: string, command: string, options: Record<string, any> = {}): Promise<ExecutionResult> {
     await this.initialize();
-    
+
     // Resolve target
     const target = await this.resolver!.resolve(ref);
-    
+
     // Create execution engine for target
     const engine = await createTargetEngine(target, options);
-    
+
     // Execute command
     const result = await engine`${command}`;
-    
+
     return {
       ...result,
-      target
+      target,
     };
   }
 
@@ -163,26 +149,22 @@ export class TargetAPI {
    * @param destination - Destination path (can include target prefix)
    * @param options - Copy options
    */
-  async copy(
-    source: string, 
-    destination: string, 
-    options: CopyOptions = {}
-  ): Promise<void> {
+  async copy(source: string, destination: string, options: CopyOptions = {}): Promise<void> {
     await this.initialize();
-    
+
     // Parse source and destination
     const { target: sourceTarget, path: sourcePath } = this.parseTargetPath(source);
     const { target: destTarget, path: destPath } = this.parseTargetPath(destination);
-    
+
     // Both can't be remote
     if (sourceTarget && destTarget) {
       throw new Error('Cannot copy between two remote targets directly');
     }
-    
+
     // Determine direction and target
     const isUpload = !sourceTarget && Boolean(destTarget);
     const target = sourceTarget || destTarget;
-    
+
     if (!target) {
       // Local to local copy
       if (options.recursive) {
@@ -194,10 +176,10 @@ export class TargetAPI {
       }
       return;
     }
-    
+
     // Resolve target
     const resolvedTarget = await this.resolver!.resolve(target);
-    
+
     // Perform copy based on target type
     switch (resolvedTarget.type) {
       case 'ssh':
@@ -220,39 +202,35 @@ export class TargetAPI {
    * @param localPort - Local port (optional, auto-assigned if not provided)
    * @param options - Forward options
    */
-  async forward(
-    target: string, 
-    localPort?: number,
-    options: ForwardOptions = {}
-  ): Promise<PortForward> {
+  async forward(target: string, localPort?: number, options: ForwardOptions = {}): Promise<PortForward> {
     await this.initialize();
-    
+
     // Parse target and remote port
     const match = target.match(/^(.+):(\d+)$/);
     if (!match) {
       throw new Error('Target must include port (e.g., hosts.web:8080)');
     }
-    
+
     const targetRef = match[1];
     const remotePortStr = match[2];
     if (!targetRef || !remotePortStr) {
       throw new Error('Invalid target format');
     }
     const remotePort = parseInt(remotePortStr, 10);
-    
+
     // Resolve target
     const resolvedTarget = await this.resolver!.resolve(targetRef);
-    
+
     // Auto-assign local port if not provided
     if (!localPort && options.dynamic) {
       localPort = await this.findAvailablePort();
     } else if (!localPort) {
       localPort = remotePort; // Default to same port
     }
-    
+
     // Create forward based on target type
     let forwardProcess: any;
-    
+
     switch (resolvedTarget.type) {
       case 'ssh':
         forwardProcess = await this.forwardSSH(resolvedTarget, localPort, remotePort);
@@ -263,7 +241,7 @@ export class TargetAPI {
       default:
         throw new Error(`Port forwarding not supported for target type: ${resolvedTarget.type}`);
     }
-    
+
     // Create forward object
     const forward: PortForward = {
       localPort,
@@ -274,12 +252,12 @@ export class TargetAPI {
           forwardProcess.kill();
         }
         this.activeForwards.delete(`${targetRef}:${remotePort}`);
-      }
+      },
     };
-    
+
     // Track active forward
     this.activeForwards.set(`${targetRef}:${remotePort}`, forward);
-    
+
     return forward;
   }
 
@@ -289,22 +267,22 @@ export class TargetAPI {
    */
   async create(definition: Partial<Target> & { type: string; name: string }): Promise<Target> {
     await this.initialize();
-    
+
     // Create appropriate config based on type
     const config: any = definition.config || {};
     config.type = definition.type;
-    
+
     const target: Target = {
       id: `dynamic.${definition.name}`,
       type: definition.type as any,
       name: definition.name,
       config,
-      source: 'created'
+      source: 'created',
     };
-    
+
     // Validate target can be created
     const engine = await createTargetEngine(target);
-    
+
     return target;
   }
 
@@ -314,9 +292,9 @@ export class TargetAPI {
    */
   async test(ref: string): Promise<boolean> {
     try {
-      const result = await this.exec(ref, 'echo "test"', { 
+      const result = await this.exec(ref, 'echo "test"', {
         timeout: 5000,
-        throwOnNonZeroExit: false 
+        throwOnNonZeroExit: false,
       });
       return result.ok;
     } catch {
@@ -336,7 +314,7 @@ export class TargetAPI {
    */
   async closeAllForwards(): Promise<void> {
     const forwards = Array.from(this.activeForwards.values());
-    await Promise.all(forwards.map(f => f.close()));
+    await Promise.all(forwards.map((f) => f.close()));
   }
 
   // Private helper methods
@@ -350,38 +328,40 @@ export class TargetAPI {
   }
 
   private async copySSH(
-    target: Target, 
-    source: string, 
-    dest: string, 
+    target: Target,
+    source: string,
+    dest: string,
     isUpload: boolean,
     options: CopyOptions
   ): Promise<void> {
     const config = target.config as HostConfig;
     const { host, user, port = 22, privateKey } = config;
     const sshDest = `${user}@${host}:`;
-    
+
     const scpArgs = [
       port !== 22 ? `-P ${port}` : null,
       privateKey ? `-i ${privateKey}` : null,
       options.recursive === true ? '-r' : null,
       options.compress === true ? '-C' : null,
       isUpload ? source : `${sshDest}${source}`,
-      isUpload ? `${sshDest}${dest}` : dest
-    ].filter((arg): arg is string => arg !== null).join(' ');
-    
+      isUpload ? `${sshDest}${dest}` : dest,
+    ]
+      .filter((arg): arg is string => arg !== null)
+      .join(' ');
+
     await $`scp ${scpArgs}`;
   }
 
   private async copyDocker(
-    target: Target, 
-    source: string, 
-    dest: string, 
+    target: Target,
+    source: string,
+    dest: string,
     isUpload: boolean,
     options: CopyOptions
   ): Promise<void> {
     const config = target.config as ContainerConfig;
     const container = config.container || target.name;
-    
+
     if (isUpload) {
       await $`docker cp ${source} ${container}:${dest}`;
     } else {
@@ -390,16 +370,16 @@ export class TargetAPI {
   }
 
   private async copyKubernetes(
-    target: Target, 
-    source: string, 
-    dest: string, 
+    target: Target,
+    source: string,
+    dest: string,
     isUpload: boolean,
     options: CopyOptions
   ): Promise<void> {
     const config = target.config as PodConfig;
     const { namespace = 'default', pod, container } = config;
     const containerFlag = container ? `-c ${container}` : '';
-    
+
     if (isUpload) {
       await $`kubectl cp ${source} ${namespace}/${pod}:${dest} ${containerFlag}`;
     } else {
@@ -407,33 +387,28 @@ export class TargetAPI {
     }
   }
 
-  private async forwardSSH(
-    target: Target, 
-    localPort: number, 
-    remotePort: number
-  ): Promise<any> {
+  private async forwardSSH(target: Target, localPort: number, remotePort: number): Promise<any> {
     const config = target.config as HostConfig;
     const { host, user, port = 22, privateKey } = config;
-    
+
     const sshArgs = [
       '-N',
-      '-L', `${localPort}:localhost:${remotePort}`,
+      '-L',
+      `${localPort}:localhost:${remotePort}`,
       port !== 22 ? `-p ${port}` : null,
       privateKey ? `-i ${privateKey}` : null,
-      `${user}@${host}`
-    ].filter((arg): arg is string => arg !== null).join(' ');
-    
+      `${user}@${host}`,
+    ]
+      .filter((arg): arg is string => arg !== null)
+      .join(' ');
+
     return $`ssh ${sshArgs}`.nothrow();
   }
 
-  private async forwardKubernetes(
-    target: Target, 
-    localPort: number, 
-    remotePort: number
-  ): Promise<any> {
+  private async forwardKubernetes(target: Target, localPort: number, remotePort: number): Promise<any> {
     const config = target.config as PodConfig;
     const { namespace = 'default', pod } = config;
-    
+
     return $`kubectl port-forward -n ${namespace} ${pod} ${localPort}:${remotePort}`.nothrow();
   }
 

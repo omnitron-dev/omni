@@ -63,7 +63,7 @@ describe('SVG Path Utils - Edge Cases', () => {
       const result = parsePath('M NaN NaN L Infinity -Infinity');
       expect(result).toHaveLength(2);
       // parseFloat('NaN') returns NaN, parseFloat('Infinity') returns Infinity
-      expect(result[0]?.values.every(v => isNaN(v))).toBe(true);
+      expect(result[0]?.values.every((v) => isNaN(v))).toBe(true);
     });
 
     it('should handle path with negative coordinates', () => {

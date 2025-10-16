@@ -155,20 +155,14 @@ export class Engine extends EventEmitter<EngineEvents> {
     options: ExecutionOptions = {}
   ): Promise<ExecutionResult<Out>[]> {
     return Promise.all(
-      flows.map(({ flow, input, options: itemOptions }) =>
-        this.execute(flow, input, { ...options, ...itemOptions })
-      )
+      flows.map(({ flow, input, options: itemOptions }) => this.execute(flow, input, { ...options, ...itemOptions }))
     );
   }
 
   /**
    * Execute flow with retry logic
    */
-  private async executeWithRetry<In, Out>(
-    flow: Flow<In, Out>,
-    input: In,
-    options: ExecutionOptions
-  ): Promise<Out> {
+  private async executeWithRetry<In, Out>(flow: Flow<In, Out>, input: In, options: ExecutionOptions): Promise<Out> {
     const retryConfig = options.retry ?? {
       maxRetries: this.config.errorRecovery.maxRetries ?? 3,
       delay: this.config.errorRecovery.initialDelay ?? 100,
@@ -223,11 +217,7 @@ export class Engine extends EventEmitter<EngineEvents> {
   /**
    * Execute flow with timeout
    */
-  private executeWithTimeout<In, Out>(
-    flow: Flow<In, Out>,
-    input: In,
-    timeout: number
-  ): Promise<Out> {
+  private executeWithTimeout<In, Out>(flow: Flow<In, Out>, input: In, timeout: number): Promise<Out> {
     return Promise.race([
       flow(input),
       this.sleep(timeout).then(() => {

@@ -137,7 +137,10 @@ class MarkdownSerializerState {
 /**
  * Node serializers
  */
-const serializers: Record<string, (state: MarkdownSerializerState, node: PMNode, parent: PMNode, index: number) => void> = {
+const serializers: Record<
+  string,
+  (state: MarkdownSerializerState, node: PMNode, parent: PMNode, index: number) => void
+> = {
   paragraph(state, node) {
     state.renderInline(node);
     state.closeBlock(node);

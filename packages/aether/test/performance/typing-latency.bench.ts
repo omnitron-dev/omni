@@ -65,9 +65,13 @@ async function runTypingBenchmarks(): Promise<BenchmarkResult[]> {
     });
     const view = createMockEditorView(state);
 
-    const result = await benchmark('Empty document typing', () => {
-      typeCharacter(view, 'a');
-    }, { samples: 200, warmup: 20 });
+    const result = await benchmark(
+      'Empty document typing',
+      () => {
+        typeCharacter(view, 'a');
+      },
+      { samples: 200, warmup: 20 }
+    );
 
     console.log(formatBenchmarkResult(result));
     assertBenchmarkBudget(result, TYPING_BUDGET);
@@ -89,9 +93,13 @@ async function runTypingBenchmarks(): Promise<BenchmarkResult[]> {
     const tr = state.tr.setSelection(EditorState.create({ doc, schema }).selection);
     view.dispatch(tr);
 
-    const result = await benchmark('Small document (1KB) typing', () => {
-      typeCharacter(view, 'a');
-    }, { samples: 200, warmup: 20 });
+    const result = await benchmark(
+      'Small document (1KB) typing',
+      () => {
+        typeCharacter(view, 'a');
+      },
+      { samples: 200, warmup: 20 }
+    );
 
     console.log(formatBenchmarkResult(result));
     assertBenchmarkBudget(result, TYPING_BUDGET);
@@ -108,9 +116,13 @@ async function runTypingBenchmarks(): Promise<BenchmarkResult[]> {
     const state = EditorState.create({ doc, schema });
     const view = createMockEditorView(state);
 
-    const result = await benchmark('Medium document (10KB) typing', () => {
-      typeCharacter(view, 'a');
-    }, { samples: 150, warmup: 15 });
+    const result = await benchmark(
+      'Medium document (10KB) typing',
+      () => {
+        typeCharacter(view, 'a');
+      },
+      { samples: 150, warmup: 15 }
+    );
 
     console.log(formatBenchmarkResult(result));
     assertBenchmarkBudget(result, TYPING_BUDGET);
@@ -127,9 +139,13 @@ async function runTypingBenchmarks(): Promise<BenchmarkResult[]> {
     const state = EditorState.create({ doc, schema });
     const view = createMockEditorView(state);
 
-    const result = await benchmark('Large document (50KB) typing', () => {
-      typeCharacter(view, 'a');
-    }, { samples: 100, warmup: 10 });
+    const result = await benchmark(
+      'Large document (50KB) typing',
+      () => {
+        typeCharacter(view, 'a');
+      },
+      { samples: 100, warmup: 10 }
+    );
 
     console.log(formatBenchmarkResult(result));
     // Relaxed budget for large documents
@@ -152,9 +168,13 @@ async function runTypingBenchmarks(): Promise<BenchmarkResult[]> {
     const boldMark = schema.marks.bold.create();
     view.dispatch(view.state.tr.addStoredMark(boldMark));
 
-    const result = await benchmark('Typing with bold mark', () => {
-      typeCharacter(view, 'a');
-    }, { samples: 200, warmup: 20 });
+    const result = await benchmark(
+      'Typing with bold mark',
+      () => {
+        typeCharacter(view, 'a');
+      },
+      { samples: 200, warmup: 20 }
+    );
 
     console.log(formatBenchmarkResult(result));
     assertBenchmarkBudget(result, TYPING_BUDGET);
@@ -173,15 +193,19 @@ async function runTypingBenchmarks(): Promise<BenchmarkResult[]> {
     const view = createMockEditorView(state);
 
     const text = 'Hello, World!';
-    const result = await benchmark('Rapid typing (full sentence)', () => {
-      for (const char of text) {
-        typeCharacter(view, char);
-      }
-    }, { samples: 50, warmup: 5 });
+    const result = await benchmark(
+      'Rapid typing (full sentence)',
+      () => {
+        for (const char of text) {
+          typeCharacter(view, char);
+        }
+      },
+      { samples: 50, warmup: 5 }
+    );
 
     console.log(formatBenchmarkResult(result));
     // Average per character should be under budget
-    const perCharBudget = (TYPING_BUDGET * text.length) * 1.2;
+    const perCharBudget = TYPING_BUDGET * text.length * 1.2;
     assertBenchmarkBudget(result, perCharBudget);
     results.push(result);
 

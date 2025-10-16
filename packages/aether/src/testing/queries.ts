@@ -16,14 +16,12 @@ export function createQueries(container: HTMLElement) {
     const elements = Array.from(container.querySelectorAll('*'));
     // Find the most specific element (deepest in tree) that matches
     // Filter out elements that have child elements with the same text (to get leaf nodes)
-    const element = elements.find(el => {
+    const element = elements.find((el) => {
       if (!matchText(text, el.textContent || '', el)) return false;
 
       // Check if any child also has the same text (means this is a parent wrapper)
       const children = Array.from(el.children);
-      const hasChildWithSameText = children.some(child =>
-        matchText(text, child.textContent || '', child)
-      );
+      const hasChildWithSameText = children.some((child) => matchText(text, child.textContent || '', child));
 
       // Prefer elements without children that also match (leaf nodes)
       return !hasChildWithSameText;
@@ -67,7 +65,7 @@ export function createQueries(container: HTMLElement) {
 
   const getByLabelText = (text: Matcher): HTMLElement => {
     const labels = Array.from(container.querySelectorAll('label'));
-    const label = labels.find(l => matchText(text, l.textContent || '', l));
+    const label = labels.find((l) => matchText(text, l.textContent || '', l));
     if (!label) throw new Error(`Unable to find label with text: ${text}`);
     const forId = label.getAttribute('for');
     if (forId) {
@@ -90,17 +88,27 @@ export function createQueries(container: HTMLElement) {
     getByLabelText,
     getByTestId,
     queryByText: (text: Matcher) => {
-      try { return getByText(text); } catch { return null; }
+      try {
+        return getByText(text);
+      } catch {
+        return null;
+      }
     },
     queryByRole: (role: string) => {
-      try { return getByRole(role); } catch { return null; }
+      try {
+        return getByRole(role);
+      } catch {
+        return null;
+      }
     },
-    findByText: async (text: Matcher) => new Promise<HTMLElement>((resolve, reject) => {
+    findByText: async (text: Matcher) =>
+      new Promise<HTMLElement>((resolve, reject) => {
         const element = getByText(text);
         if (element) resolve(element);
         else reject(new Error(`Unable to find element with text: ${text}`));
       }),
-    findByRole: async (role: string) => new Promise<HTMLElement>((resolve, reject) => {
+    findByRole: async (role: string) =>
+      new Promise<HTMLElement>((resolve, reject) => {
         const element = getByRole(role);
         if (element) resolve(element);
         else reject(new Error(`Unable to find element with role: ${role}`));

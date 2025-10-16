@@ -19,7 +19,7 @@ export function escapeCommand(cmd: string, args: (string | number | boolean)[] =
     return cmd;
   }
 
-  const escapedArgs = args.map(arg => escapeArg(arg));
+  const escapedArgs = args.map((arg) => escapeArg(arg));
   return `${cmd} ${escapedArgs.join(' ')}`;
 }
 
@@ -29,7 +29,8 @@ export function escapeUnix(args: string[]): string {
     let escaped = arg;
     if (/[^A-Za-z0-9_/:=-]/.test(escaped)) {
       escaped = "'" + escaped.replace(/'/g, "'\\''") + "'";
-      escaped = escaped.replace(/^(?:'')+/g, '') // unduplicate single-quote at the beginning
+      escaped = escaped
+        .replace(/^(?:'')+/g, '') // unduplicate single-quote at the beginning
         .replace(/\\'''/g, "\\'"); // remove non-escaped single-quote if there are enclosed between 2 escaped
     }
     ret.push(escaped);
@@ -87,7 +88,7 @@ export function interpolateRaw(strings: TemplateStringsArray, ...values: any[]):
         // Skip null/undefined values
       } else if (Array.isArray(value)) {
         // Join array elements with space, no escaping
-        result += value.map(v => valueToString(v)).join(' ');
+        result += value.map((v) => valueToString(v)).join(' ');
       } else {
         // Convert value to string with proper serialization, no escaping
         result += valueToString(value);
@@ -98,7 +99,11 @@ export function interpolateRaw(strings: TemplateStringsArray, ...values: any[]):
   return result;
 }
 
-export function interpolateWithQuote(strings: TemplateStringsArray, quoteFn?: typeof quote | undefined, ...values: any[]): string {
+export function interpolateWithQuote(
+  strings: TemplateStringsArray,
+  quoteFn?: typeof quote | undefined,
+  ...values: any[]
+): string {
   let result = '';
 
   for (let i = 0; i < strings.length; i++) {
@@ -112,10 +117,12 @@ export function interpolateWithQuote(strings: TemplateStringsArray, quoteFn?: ty
       } else if (Array.isArray(value)) {
         // Join array elements with space
         // If quoteFn is provided, use it for quoting, otherwise use escapeArg
-        result += value.map(v => {
-          const str = valueToString(v);
-          return quoteFn ? quoteFn(str) : escapeArg(str);
-        }).join(' ');
+        result += value
+          .map((v) => {
+            const str = valueToString(v);
+            return quoteFn ? quoteFn(str) : escapeArg(str);
+          })
+          .join(' ');
       } else {
         // Convert value to string with proper serialization
         const str = valueToString(value);

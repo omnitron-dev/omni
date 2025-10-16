@@ -13,7 +13,7 @@ export class SecretsCommand extends ConfigAwareCommand {
     super({
       name: 'secrets',
       description: 'Manage secrets securely',
-      aliases: ['secret', 's']
+      aliases: ['secret', 's'],
     });
   }
 
@@ -25,12 +25,11 @@ export class SecretsCommand extends ConfigAwareCommand {
    * Create command with subcommands
    */
   override create(): Command {
-    const cmd = new Command(this.config.name)
-      .description(this.config.description);
+    const cmd = new Command(this.config.name).description(this.config.description);
 
     // Add aliases
     if (this.config.aliases) {
-      this.config.aliases.forEach(alias => cmd.alias(alias));
+      this.config.aliases.forEach((alias) => cmd.alias(alias));
     }
 
     // Set up action for when no subcommand is provided
@@ -224,7 +223,7 @@ export class SecretsCommand extends ConfigAwareCommand {
           return 'Secret key must start with a letter and contain only letters, numbers, hyphens, dots, and underscores';
         }
         return undefined;
-      }
+      },
     });
 
     if (isCancel(key)) return;
@@ -246,7 +245,7 @@ export class SecretsCommand extends ConfigAwareCommand {
 
     const key = await select({
       message: 'Select secret to retrieve:',
-      options: keys.sort().map(k => ({ value: k, label: k })),
+      options: keys.sort().map((k) => ({ value: k, label: k })),
     });
 
     if (isCancel(key)) return;
@@ -268,7 +267,7 @@ export class SecretsCommand extends ConfigAwareCommand {
 
     const key = await select({
       message: 'Select secret to delete:',
-      options: keys.sort().map(k => ({ value: k, label: k })),
+      options: keys.sort().map((k) => ({ value: k, label: k })),
     });
 
     if (isCancel(key)) return;
@@ -290,7 +289,7 @@ export class SecretsCommand extends ConfigAwareCommand {
           return 'Secret key must start with a letter and contain only letters, numbers, hyphens, dots, and underscores';
         }
         return undefined;
-      }
+      },
     });
 
     if (isCancel(key)) return;
@@ -305,7 +304,7 @@ export class SecretsCommand extends ConfigAwareCommand {
           return 'Length must be a number between 1 and 256';
         }
         return undefined;
-      }
+      },
     });
 
     if (isCancel(lengthInput)) return;
@@ -364,7 +363,7 @@ export class SecretsCommand extends ConfigAwareCommand {
             return 'File path cannot be empty';
           }
           return undefined;
-        }
+        },
       });
 
       if (isCancel(filePath)) return;
@@ -410,7 +409,7 @@ export class SecretsCommand extends ConfigAwareCommand {
             return 'Secret value cannot be empty';
           }
           return undefined;
-        }
+        },
       });
 
       if (isCancel(input)) {
@@ -487,7 +486,7 @@ export class SecretsCommand extends ConfigAwareCommand {
 
     if (!options.force) {
       const confirmResult = await confirm({
-        message: `Are you sure you want to delete secret '${key}'?`
+        message: `Are you sure you want to delete secret '${key}'?`,
       });
 
       if (isCancel(confirmResult) || !confirmResult) {
@@ -519,9 +518,9 @@ export class SecretsCommand extends ConfigAwareCommand {
     }
 
     // Check if secret already exists
-    if (await manager.has(key) && !options.force) {
+    if ((await manager.has(key)) && !options.force) {
       const confirmResult = await confirm({
-        message: `Secret '${key}' already exists. Overwrite?`
+        message: `Secret '${key}' already exists. Overwrite?`,
       });
 
       if (isCancel(confirmResult) || !confirmResult) {
@@ -554,7 +553,7 @@ export class SecretsCommand extends ConfigAwareCommand {
 
     if (!options.force) {
       const confirmResult = await confirm({
-        message: prism.yellow('WARNING: This will output all secrets in plain text. Continue?')
+        message: prism.yellow('WARNING: This will output all secrets in plain text. Continue?'),
       });
 
       if (isCancel(confirmResult) || !confirmResult) {
@@ -608,7 +607,7 @@ export class SecretsCommand extends ConfigAwareCommand {
       content = await new Promise<string>((resolve) => {
         let data = '';
         process.stdin.setEncoding('utf-8');
-        process.stdin.on('data', (chunk) => data += chunk);
+        process.stdin.on('data', (chunk) => (data += chunk));
         process.stdin.on('end', () => resolve(data));
       });
     }

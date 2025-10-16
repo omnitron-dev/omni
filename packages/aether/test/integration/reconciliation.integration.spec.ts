@@ -37,7 +37,8 @@ describe('Reconciliation Engine - Full System Integration', () => {
       const count = signal(0);
 
       // Create counter component VNode
-      const createCounterVNode = (): VNode => createElementVNode('div', { class: 'counter' }, [
+      const createCounterVNode = (): VNode =>
+        createElementVNode('div', { class: 'counter' }, [
           createElementVNode('h1', null, [createTextVNode('Count: '), createTextVNode(String(count()))]),
           createElementVNode('input', {
             type: 'text',
@@ -141,7 +142,8 @@ describe('Reconciliation Engine - Full System Integration', () => {
         { id: '2', text: 'Walk dog', done: true },
       ]);
 
-      const createListVNode = (): VNode => createElementVNode(
+      const createListVNode = (): VNode =>
+        createElementVNode(
           'ul',
           null,
           todos().map((todo) => createElementVNode('li', null, [createTextVNode(todo.text)], todo.id))
@@ -172,7 +174,8 @@ describe('Reconciliation Engine - Full System Integration', () => {
         { id: '3', text: 'Read book', done: false },
       ]);
 
-      const createListVNode = (): VNode => createElementVNode(
+      const createListVNode = (): VNode =>
+        createElementVNode(
           'ul',
           null,
           todos().map((todo) => createElementVNode('li', null, [createTextVNode(todo.text)], todo.id))
@@ -204,7 +207,8 @@ describe('Reconciliation Engine - Full System Integration', () => {
         { id: '3', text: 'Third', done: false },
       ]);
 
-      const createListVNode = (): VNode => createElementVNode(
+      const createListVNode = (): VNode =>
+        createElementVNode(
           'ul',
           null,
           todos().map((todo) => createElementVNode('li', null, [createTextVNode(todo.text)], todo.id))
@@ -240,7 +244,8 @@ describe('Reconciliation Engine - Full System Integration', () => {
         { id: '4', text: 'D', done: false },
       ]);
 
-      const createListVNode = (): VNode => createElementVNode(
+      const createListVNode = (): VNode =>
+        createElementVNode(
           'ul',
           null,
           todos().map((todo) => createElementVNode('li', null, [createTextVNode(todo.text)], todo.id))
@@ -276,7 +281,8 @@ describe('Reconciliation Engine - Full System Integration', () => {
         { id: '2', text: 'Walk dog', done: true },
       ]);
 
-      const createListVNode = (): VNode => createElementVNode(
+      const createListVNode = (): VNode =>
+        createElementVNode(
           'ul',
           null,
           todos().map((todo) =>
@@ -321,7 +327,8 @@ describe('Reconciliation Engine - Full System Integration', () => {
         email: 'john@example.com',
       });
 
-      const createFormVNode = (): VNode => createElementVNode('form', null, [
+      const createFormVNode = (): VNode =>
+        createElementVNode('form', null, [
           createElementVNode('label', null, [createTextVNode('Name:')]),
           createElementVNode('input', {
             id: 'name',
@@ -373,7 +380,8 @@ describe('Reconciliation Engine - Full System Integration', () => {
     test('preserves checkbox state', () => {
       const accepted = signal(false);
 
-      const createFormVNode = (): VNode => createElementVNode('form', null, [
+      const createFormVNode = (): VNode =>
+        createElementVNode('form', null, [
           createElementVNode('input', {
             id: 'terms',
             type: 'checkbox',
@@ -405,7 +413,8 @@ describe('Reconciliation Engine - Full System Integration', () => {
     test('preserves textarea content', () => {
       const content = signal('Initial content');
 
-      const createFormVNode = (): VNode => createElementVNode('form', null, [
+      const createFormVNode = (): VNode =>
+        createElementVNode('form', null, [
           createElementVNode('textarea', {
             id: 'content',
             value: content(),
@@ -439,7 +448,8 @@ describe('Reconciliation Engine - Full System Integration', () => {
     test('Show component toggles content visibility', () => {
       const visible = signal(false);
 
-      const createVNode = (): VNode => createElementVNode('div', null, [
+      const createVNode = (): VNode =>
+        createElementVNode('div', null, [
           createTextVNode('Before'),
           ...(visible() ? [createElementVNode('p', { id: 'content' }, [createTextVNode('Visible')])] : []),
           createTextVNode('After'),
@@ -477,7 +487,8 @@ describe('Reconciliation Engine - Full System Integration', () => {
     test('For component renders list items', () => {
       const items = signal(['A', 'B', 'C']);
 
-      const createVNode = (): VNode => createElementVNode(
+      const createVNode = (): VNode =>
+        createElementVNode(
           'ul',
           null,
           items().map((item, index) => createElementVNode('li', null, [createTextVNode(item)], String(index)))
@@ -509,7 +520,8 @@ describe('Reconciliation Engine - Full System Integration', () => {
       const showOuter = signal(true);
       const showInner = signal(false);
 
-      const createVNode = (): VNode => createElementVNode('div', null, [
+      const createVNode = (): VNode =>
+        createElementVNode('div', null, [
           createTextVNode('Root'),
           ...(showOuter()
             ? [
@@ -556,7 +568,8 @@ describe('Reconciliation Engine - Full System Integration', () => {
       const parentData = signal('Parent Value');
       const childData = signal('Child Value');
 
-      const createVNode = (): VNode => createElementVNode('div', { id: 'parent' }, [
+      const createVNode = (): VNode =>
+        createElementVNode('div', { id: 'parent' }, [
           createElementVNode('h1', null, [createTextVNode(parentData())]),
           createElementVNode('div', { id: 'child' }, [
             createElementVNode('p', null, [createTextVNode(childData())]),
@@ -586,7 +599,8 @@ describe('Reconciliation Engine - Full System Integration', () => {
       const leftData = signal('Left');
       const rightData = signal('Right');
 
-      const createVNode = (): VNode => createElementVNode('div', null, [
+      const createVNode = (): VNode =>
+        createElementVNode('div', null, [
           createElementVNode('div', { id: 'left' }, [createTextVNode(leftData())]),
           createElementVNode('div', { id: 'right' }, [createTextVNode(rightData())]),
         ]);
@@ -618,7 +632,8 @@ describe('Reconciliation Engine - Full System Integration', () => {
       const level2 = signal('L2');
       const level3 = signal('L3');
 
-      const createVNode = (): VNode => createElementVNode('div', { id: 'level1' }, [
+      const createVNode = (): VNode =>
+        createElementVNode('div', { id: 'level1' }, [
           createTextVNode(level1()),
           createElementVNode('div', { id: 'level2' }, [
             createTextVNode(level2()),

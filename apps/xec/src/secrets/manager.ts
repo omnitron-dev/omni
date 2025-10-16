@@ -57,11 +57,7 @@ export class SecretManager {
   async getRequired(key: string): Promise<string> {
     const value = await this.get(key);
     if (value === null) {
-      throw new SecretError(
-        `Required secret '${key}' not found`,
-        'SECRET_NOT_FOUND',
-        key
-      );
+      throw new SecretError(`Required secret '${key}' not found`, 'SECRET_NOT_FOUND', key);
     }
     return value;
   }
@@ -129,18 +125,14 @@ export class SecretManager {
    * Batch set multiple secrets
    */
   async setMany(secrets: Record<string, string>): Promise<void> {
-    await Promise.all(
-      Object.entries(secrets).map(([key, value]) =>
-        this.set(key, value)
-      )
-    );
+    await Promise.all(Object.entries(secrets).map(([key, value]) => this.set(key, value)));
   }
 
   /**
    * Batch delete multiple secrets
    */
   async deleteMany(keys: string[]): Promise<void> {
-    await Promise.all(keys.map(key => this.delete(key)));
+    await Promise.all(keys.map((key) => this.delete(key)));
   }
 
   /**
@@ -185,16 +177,10 @@ export class SecretManager {
       case 'vault':
       case 'aws-secrets':
       case '1password':
-        throw new SecretError(
-          `Provider '${this.config.type}' not yet implemented`,
-          'PROVIDER_NOT_IMPLEMENTED'
-        );
+        throw new SecretError(`Provider '${this.config.type}' not yet implemented`, 'PROVIDER_NOT_IMPLEMENTED');
 
       default:
-        throw new SecretError(
-          `Unknown secret provider type: ${this.config.type}`,
-          'INVALID_PROVIDER_TYPE'
-        );
+        throw new SecretError(`Unknown secret provider type: ${this.config.type}`, 'INVALID_PROVIDER_TYPE');
     }
   }
 
@@ -203,10 +189,7 @@ export class SecretManager {
    */
   private validateKey(key: string): void {
     if (!key || typeof key !== 'string') {
-      throw new SecretError(
-        'Secret key must be a non-empty string',
-        'INVALID_KEY'
-      );
+      throw new SecretError('Secret key must be a non-empty string', 'INVALID_KEY');
     }
 
     // Key should be alphanumeric with underscores, dashes, and dots
@@ -220,11 +203,7 @@ export class SecretManager {
 
     // Key length limits
     if (key.length > 256) {
-      throw new SecretError(
-        'Secret key must be 256 characters or less',
-        'KEY_TOO_LONG',
-        key
-      );
+      throw new SecretError('Secret key must be 256 characters or less', 'KEY_TOO_LONG', key);
     }
   }
 
@@ -233,25 +212,16 @@ export class SecretManager {
    */
   private validateValue(value: string): void {
     if (typeof value !== 'string') {
-      throw new SecretError(
-        'Secret value must be a string',
-        'INVALID_VALUE'
-      );
+      throw new SecretError('Secret value must be a string', 'INVALID_VALUE');
     }
 
     if (value.length === 0) {
-      throw new SecretError(
-        'Secret value cannot be empty',
-        'EMPTY_VALUE'
-      );
+      throw new SecretError('Secret value cannot be empty', 'EMPTY_VALUE');
     }
 
     // Value size limit (64KB for testing)
     if (value.length > 64 * 1024) {
-      throw new SecretError(
-        'Secret value must be 64KB or less',
-        'VALUE_TOO_LARGE'
-      );
+      throw new SecretError('Secret value must be 64KB or less', 'VALUE_TOO_LARGE');
     }
   }
 }

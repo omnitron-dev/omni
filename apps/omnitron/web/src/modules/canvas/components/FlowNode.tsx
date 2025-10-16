@@ -80,41 +80,41 @@ export const FlowNode = defineComponent<FlowNodeProps>((props) => {
           <div class="flow-node-type">{label}</div>
         </div>
         <div class="flow-node-body">
-        {/* Input ports */}
-        {props.node.inputs.length > 0 && (
-          <div class="flow-node-ports flow-node-inputs">
-            {props.node.inputs.map((port) => (
-              <div key={port.id} class="flow-node-port" title={port.name}>
-                <div class="flow-node-port-dot input" />
-                <span class="flow-node-port-label">{port.name}</span>
-              </div>
-            ))}
-          </div>
-        )}
+          {/* Input ports */}
+          {props.node.inputs.length > 0 && (
+            <div class="flow-node-ports flow-node-inputs">
+              {props.node.inputs.map((port) => (
+                <div key={port.id} class="flow-node-port" title={port.name}>
+                  <div class="flow-node-port-dot input" />
+                  <span class="flow-node-port-label">{port.name}</span>
+                </div>
+              ))}
+            </div>
+          )}
 
-        {/* Node data display */}
-        {Object.keys(props.node.data).length > 0 && (
-          <div class="flow-node-data">
-            {Object.entries(props.node.data).map(([key, value]) => (
-              <div key={key} class="flow-node-data-item">
-                <span class="flow-node-data-key">{key}:</span>
-                <span class="flow-node-data-value">{String(value)}</span>
-              </div>
-            ))}
-          </div>
-        )}
+          {/* Node data display */}
+          {Object.keys(props.node.data).length > 0 && (
+            <div class="flow-node-data">
+              {Object.entries(props.node.data).map(([key, value]) => (
+                <div key={key} class="flow-node-data-item">
+                  <span class="flow-node-data-key">{key}:</span>
+                  <span class="flow-node-data-value">{String(value)}</span>
+                </div>
+              ))}
+            </div>
+          )}
 
-        {/* Output ports */}
-        {props.node.outputs.length > 0 && (
-          <div class="flow-node-ports flow-node-outputs">
-            {props.node.outputs.map((port) => (
-              <div key={port.id} class="flow-node-port" title={port.name}>
-                <span class="flow-node-port-label">{port.name}</span>
-                <div class="flow-node-port-dot output" />
-              </div>
-            ))}
-          </div>
-        )}
+          {/* Output ports */}
+          {props.node.outputs.length > 0 && (
+            <div class="flow-node-ports flow-node-outputs">
+              {props.node.outputs.map((port) => (
+                <div key={port.id} class="flow-node-port" title={port.name}>
+                  <span class="flow-node-port-label">{port.name}</span>
+                  <div class="flow-node-port-dot output" />
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     );

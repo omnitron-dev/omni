@@ -28,7 +28,15 @@ interface Employee {
  * Generate large dataset efficiently
  */
 function generateEmployees(count: number): Employee[] {
-  const roles = ['Developer', 'Designer', 'Manager', 'QA Engineer', 'DevOps', 'Product Manager', 'Data Analyst'];
+  const roles = [
+    'Developer',
+    'Designer',
+    'Manager',
+    'QA Engineer',
+    'DevOps',
+    'Product Manager',
+    'Data Analyst',
+  ];
   const departments = ['Engineering', 'Design', 'Product', 'QA', 'Operations', 'Analytics', 'HR'];
   const statuses = ['Active', 'On Leave', 'Remote'];
 
@@ -45,7 +53,7 @@ function generateEmployees(count: number): Employee[] {
       department: departments[i % departments.length]!,
       salary: 50000 + ((i * 3571) % 150000), // Pseudo-random
       status: statuses[i % statuses.length]!,
-      startDate: new Date(2020 + (i % 5), (i % 12), (i % 28) + 1).toISOString().split('T')[0]!,
+      startDate: new Date(2020 + (i % 5), i % 12, (i % 28) + 1).toISOString().split('T')[0]!,
       performance: ((i * 7) % 5) + 1,
     });
   }
@@ -97,7 +105,9 @@ async function main() {
   const DATASET_SIZE = 10000;
   const employees = generateEmployees(DATASET_SIZE);
 
-  console.log(`Memory usage: ~${(JSON.stringify(employees).length / (1024 * 1024)).toFixed(2)}MB\n`);
+  console.log(
+    `Memory usage: ~${(JSON.stringify(employees).length / (1024 * 1024)).toFixed(2)}MB\n`
+  );
 
   console.log('Features:');
   console.log('  • Virtualization: Only visible rows are rendered');

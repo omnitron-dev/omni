@@ -55,11 +55,11 @@ describe('Docker ephemeral container name conflicts', () => {
         adapter: 'docker',
         adapterOptions: {
           type: 'docker',
-          container: 'ephemeral',  // Special value that prevents --name flag
+          container: 'ephemeral', // Special value that prevents --name flag
           runMode: 'run',
           image: testImage,
-          autoRemove: true
-        }
+          autoRemove: true,
+        },
       })`echo "Run ${i}"`.nothrow();
 
       results.push(promise);
@@ -89,8 +89,8 @@ describe('Docker ephemeral container name conflicts', () => {
           container: 'test-ephemeral-seq',
           runMode: 'run',
           image: testImage,
-          autoRemove: true
-        }
+          autoRemove: true,
+        },
       })`echo "Sequential run ${i}"`;
 
       expect(result.ok).toBe(true);
@@ -112,8 +112,8 @@ describe('Docker ephemeral container name conflicts', () => {
         container: customName,
         runMode: 'run',
         image: testImage,
-        autoRemove: true
-      }
+        autoRemove: true,
+      },
     })`echo "Custom container works"`;
 
     expect(result.ok).toBe(true);
@@ -144,8 +144,8 @@ describe('Docker ephemeral container name conflicts', () => {
           runMode: 'run',
           image: mkp224oImage,
           volumes: [`${tempDir.path}:/work`],
-          autoRemove: true
-        }
+          autoRemove: true,
+        },
       })`-n 1 -d /work -q placeholder`.nothrow();
 
       // mkp224o might not generate address with "test" filter quickly

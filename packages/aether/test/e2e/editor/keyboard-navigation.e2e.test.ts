@@ -5,15 +5,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import {
-  waitForEditor,
-  typeText,
-  pressShortcut,
-  pressTab,
-  pressEscape,
-  focusEditor,
-  getEditor,
-} from './helpers';
+import { waitForEditor, typeText, pressShortcut, pressTab, pressEscape, focusEditor, getEditor } from './helpers';
 
 test.describe('Keyboard Navigation', () => {
   test.beforeEach(async ({ page }) => {

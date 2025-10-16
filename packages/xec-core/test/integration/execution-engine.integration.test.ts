@@ -12,7 +12,7 @@ describe('Unified Execution Engine - Integration Tests', () => {
       const localCallable$ = createCallableEngine(engine);
       const promise = localCallable$`exit 1`;
       const result = await promise.nothrow();
-      
+
       expect(result.exitCode).toBe(1);
       expect(result.ok).toBe(false);
     });
@@ -21,7 +21,7 @@ describe('Unified Execution Engine - Integration Tests', () => {
       const engine = new ExecutionEngine();
       const $ = createCallableEngine(engine);
       const result = await $`echo "Hello, World!"`;
-      
+
       expect(result.stdout.trim()).toBe('Hello, World!');
       expect(result.exitCode).toBe(0);
       expect(result.adapter).toBe('local');
@@ -32,21 +32,21 @@ describe('Unified Execution Engine - Integration Tests', () => {
       const $ = createCallableEngine(engine);
       const filename = 'test file.txt';
       const result = await $`echo ${filename}`;
-      
+
       expect(result.stdout.trim()).toBe('test file.txt');
     });
 
     it('should handle command failure', async () => {
       const engine = new ExecutionEngine({ throwOnNonZeroExit: true });
       const $ = createCallableEngine(engine);
-      
+
       let error: Error | null = null;
       try {
         await $`exit 1`;
       } catch (e) {
         error = e as Error;
       }
-      
+
       expect(error).toBeInstanceOf(CommandError);
       expect(error?.message).toContain('exit code 1');
     });
@@ -59,7 +59,7 @@ describe('Unified Execution Engine - Integration Tests', () => {
       const engine = new ExecutionEngine({ throwOnNonZeroExit: false });
       const local$ = createCallableEngine(engine);
       const result = await local$`exit 1`;
-      
+
       expect(result.exitCode).toBe(1);
       expect(result.ok).toBe(false);
     });
@@ -69,11 +69,8 @@ describe('Unified Execution Engine - Integration Tests', () => {
     it('should support method chaining', async () => {
       const engine = new ExecutionEngine();
       const $ = createCallableEngine(engine);
-      const custom$ = $
-        .env({ CUSTOM_VAR: 'test' })
-        .timeout(5000)
-        .shell('bash');
-        
+      const custom$ = $.env({ CUSTOM_VAR: 'test' }).timeout(5000).shell('bash');
+
       const result = await custom$.run`echo $CUSTOM_VAR`;
       expect(result.stdout.trim()).toBe('test');
     });
@@ -83,7 +80,7 @@ describe('Unified Execution Engine - Integration Tests', () => {
       const $ = createCallableEngine(engine);
       const tmp$ = $.cd('/tmp');
       const result = await tmp$.run`pwd`;
-      
+
       // On macOS, /tmp is a symlink to /private/tmp
       const expected = result.stdout.trim();
       expect(['/tmp', '/private/tmp']).toContain(expected);
@@ -104,10 +101,10 @@ describe('Unified Execution Engine - Integration Tests', () => {
 
     it('should use mock responses', async () => {
       mockAdapter.mockSuccess('sh -c "ls -la"', 'file1.txt\nfile2.txt');
-      
+
       const mockEngine = $.with({ adapter: 'mock' as any });
       const result = await mockEngine.run`ls -la`;
-      
+
       expect(result.stdout).toBe('file1.txt\nfile2.txt');
       expect(result.exitCode).toBe(0);
       mockAdapter.assertCommandExecuted('sh -c "ls -la"');
@@ -115,23 +112,23 @@ describe('Unified Execution Engine - Integration Tests', () => {
 
     it('should track executed commands', async () => {
       mockAdapter.mockDefault({ stdout: 'ok', exitCode: 0 });
-      
+
       const mockEngine = $.with({ adapter: 'mock' as any });
       await mockEngine.run`npm install`;
       await mockEngine.run`npm test`;
       await mockEngine.run`npm build`;
-      
+
       const commands = mockAdapter.getExecutedCommands();
       expect(commands).toEqual(['sh -c "npm install"', 'sh -c "npm test"', 'sh -c "npm build"']);
     });
 
     it('should support regex patterns', async () => {
       mockAdapter.mockCommand(/^sh -c "git/, { stdout: 'git output', exitCode: 0 });
-      
+
       const mockEngine = $.with({ adapter: 'mock' as any });
       const result1 = await mockEngine.run`git status`;
       const result2 = await mockEngine.run`git pull`;
-      
+
       expect(result1.stdout).toBe('git output');
       expect(result2.stdout).toBe('git output');
     });
@@ -141,13 +138,13 @@ describe('Unified Execution Engine - Integration Tests', () => {
     it('should auto-detect adapter from options', async () => {
       const engine = new ExecutionEngine();
       const $ = createCallableEngine(engine);
-      
+
       // Mock the SSH adapter behavior
       const sshEngine = $.ssh({
         host: 'example.com',
-        username: 'test'
+        username: 'test',
       });
-      
+
       // This would actually try to connect, so we can't test it without mocking
       // Just verify the configuration is set correctly
       expect(sshEngine).toBeDefined();
@@ -158,25 +155,25 @@ describe('Unified Execution Engine - Integration Tests', () => {
     it('should check command availability', async () => {
       const engine = new ExecutionEngine();
       const $ = createCallableEngine(engine);
-      
+
       // 'echo' should be available on all platforms
       const isAvailable = await engine.isCommandAvailable('echo');
       expect(isAvailable).toBe(true);
-      
+
       // Test with a command that's very unlikely to exist
       const randomCmd = 'cmd-that-does-not-exist-' + Math.random().toString(36);
       const path = await engine.which(randomCmd);
-      
+
       // If which returns empty string, it means command not found
       expect(path).toBeFalsy(); // Should be null or empty string
-      
+
       const notAvailable = await engine.isCommandAvailable(randomCmd);
       expect(notAvailable).toBe(false);
     });
 
     it('should find command path with which()', async () => {
       const engine = new ExecutionEngine();
-      
+
       const echoPath = await engine.which('echo');
       expect(echoPath).toBeTruthy();
       expect(echoPath).toContain('echo');
@@ -223,7 +220,7 @@ describe('Unified Execution Engine - Integration Tests', () => {
       const $noshell = $.shell(false);
       const result = await $noshell.execute({
         command: 'echo',
-        args: ['no shell interpolation: $HOME']
+        args: ['no shell interpolation: $HOME'],
       });
       expect(result.stdout.trim()).toBe('no shell interpolation: $HOME');
     });
@@ -255,7 +252,7 @@ describe('Unified Execution Engine - Integration Tests', () => {
       const $ = createCallableEngine(engine);
       const result = await $.execute({
         command: 'echo "error" >&2; exit 0',
-        shell: true
+        shell: true,
       });
       expect(result.stderr.trim()).toBe('error');
       expect(result.exitCode).toBe(0);
@@ -277,7 +274,7 @@ describe('Unified Execution Engine - Integration Tests', () => {
       const engine = new ExecutionEngine();
       const $ = createCallableEngine(engine);
       let attempts = 0;
-      
+
       // Test with a command that might not exist
       const $retry = $.retry({
         maxRetries: 2,
@@ -285,7 +282,7 @@ describe('Unified Execution Engine - Integration Tests', () => {
         onRetry: (attempt: number) => {
           attempts = attempt;
         },
-        initialDelay: 10
+        initialDelay: 10,
       });
 
       // Use a command that exists on all platforms
@@ -299,9 +296,8 @@ describe('Unified Execution Engine - Integration Tests', () => {
   describe('Within context integration', () => {
     it('should execute with local context', async () => {
       const engine = new ExecutionEngine();
-      const result = await within(
-        { env: { TEST_VAR: 'test-value' } },
-        async () => engine.execute({ command: 'echo $TEST_VAR', shell: true })
+      const result = await within({ env: { TEST_VAR: 'test-value' } }, async () =>
+        engine.execute({ command: 'echo $TEST_VAR', shell: true })
       );
 
       expect(result.stdout.trim()).toBe('test-value');
@@ -313,11 +309,7 @@ describe('Unified Execution Engine - Integration Tests', () => {
       const engine = new ExecutionEngine();
       const $ = createCallableEngine(engine);
       const start = Date.now();
-      const results = await Promise.all([
-        $`sleep 0.1 && echo "1"`,
-        $`sleep 0.1 && echo "2"`,
-        $`sleep 0.1 && echo "3"`
-      ]);
+      const results = await Promise.all([$`sleep 0.1 && echo "1"`, $`sleep 0.1 && echo "2"`, $`sleep 0.1 && echo "3"`]);
       const duration = Date.now() - start;
 
       expect(results[0].stdout.trim()).toBe('1');
@@ -337,10 +329,13 @@ describe('Unified Execution Engine - Integration Tests', () => {
       const $ciEngine = createCallableEngine(engine);
 
       // Setup mocks for CI pipeline
-      mockAdapter.mockSuccess('sh -c "npm test -- --json"', JSON.stringify({
-        numFailedTests: 0,
-        numPassedTests: 10
-      }));
+      mockAdapter.mockSuccess(
+        'sh -c "npm test -- --json"',
+        JSON.stringify({
+          numFailedTests: 0,
+          numPassedTests: 10,
+        })
+      );
       mockAdapter.mockSuccess('sh -c "git describe --tags --always"', 'v1.2.3');
       mockAdapter.mockSuccess(/^sh -c "docker build/, '');
       mockAdapter.mockSuccess(/^sh -c "docker run/, 'container-id');
@@ -349,7 +344,7 @@ describe('Unified Execution Engine - Integration Tests', () => {
 
       const $ci = $ciEngine.with({
         env: { NODE_ENV: 'test', CI: 'true' },
-        adapter: 'mock' as any
+        adapter: 'mock' as any,
       });
 
       // Tests
@@ -416,14 +411,14 @@ describe('Unified Execution Engine - Integration Tests', () => {
       // Test script to ensure process exits cleanly without hanging
       const engine = new ExecutionEngine();
       const $ = createCallableEngine(engine);
-      
+
       const a1 = $`echo foo`;
       const a2 = new Promise((resolve) => setTimeout(resolve, 20, ['bar', 'baz']));
 
       const result = await $`echo ${a1} ${a2}`;
       expect(result.stdout.trim()).toBe('foo bar baz');
       expect(result.exitCode).toBe(0);
-      
+
       // If this test completes without timeout, the fix is working
     });
   });

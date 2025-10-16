@@ -139,13 +139,7 @@ export function interactiveTable<T = any>(
 }
 
 // Export caching utilities (Phase 4)
-export {
-  Cache,
-  memoize,
-  TableCache,
-  getGlobalTableCache,
-  resetGlobalTableCache,
-} from './cache.js';
+export { Cache, memoize, TableCache, getGlobalTableCache, resetGlobalTableCache } from './cache.js';
 // Export table utilities (Phase 3)
 export {
   exportToCSV,

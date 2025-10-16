@@ -79,7 +79,7 @@ describe('TaskExecutor', () => {
 
     it('should handle command failure', async () => {
       const task: TaskDefinition = {
-        command: 'false',  // This command always fails
+        command: 'false', // This command always fails
       };
 
       const result = await executor.execute('fail', task);
@@ -104,7 +104,7 @@ describe('TaskExecutor', () => {
 
       expect(result.success).toBe(true);
       expect(result.steps).toHaveLength(3);
-      expect(result.steps?.every(s => s.success)).toBe(true);
+      expect(result.steps?.every((s) => s.success)).toBe(true);
 
       // Verify the order
       const content = await fs.readFile(outputFile, 'utf-8');
@@ -142,10 +142,18 @@ describe('TaskExecutor', () => {
         parallel: true,
         maxConcurrent: 2,
         steps: [
-          { command: `node -e "console.log(Date.now()); setTimeout(() => console.log(Date.now()), 100)" > ${path.join(testDir, 'c1.txt')}` },
-          { command: `node -e "console.log(Date.now()); setTimeout(() => console.log(Date.now()), 100)" > ${path.join(testDir, 'c2.txt')}` },
-          { command: `node -e "console.log(Date.now()); setTimeout(() => console.log(Date.now()), 100)" > ${path.join(testDir, 'c3.txt')}` },
-          { command: `node -e "console.log(Date.now()); setTimeout(() => console.log(Date.now()), 100)" > ${path.join(testDir, 'c4.txt')}` },
+          {
+            command: `node -e "console.log(Date.now()); setTimeout(() => console.log(Date.now()), 100)" > ${path.join(testDir, 'c1.txt')}`,
+          },
+          {
+            command: `node -e "console.log(Date.now()); setTimeout(() => console.log(Date.now()), 100)" > ${path.join(testDir, 'c2.txt')}`,
+          },
+          {
+            command: `node -e "console.log(Date.now()); setTimeout(() => console.log(Date.now()), 100)" > ${path.join(testDir, 'c3.txt')}`,
+          },
+          {
+            command: `node -e "console.log(Date.now()); setTimeout(() => console.log(Date.now()), 100)" > ${path.join(testDir, 'c4.txt')}`,
+          },
         ],
       };
 
@@ -178,7 +186,7 @@ describe('TaskExecutor', () => {
         failFast: true,
         steps: [
           { name: 'Step 1', command: `echo "1" > ${path.join(testDir, 'ff1.txt')}` },
-          { name: 'Step 2', command: 'false' },  // This will fail
+          { name: 'Step 2', command: 'false' }, // This will fail
           { name: 'Step 3', command: `echo "3" > ${path.join(testDir, 'ff3.txt')}` },
         ],
       };
@@ -227,13 +235,15 @@ describe('TaskExecutor', () => {
 
       // Track retry events
       const retryEvents: any[] = [];
-      executor.on('step:retry', event => {
+      executor.on('step:retry', (event) => {
         retryEvents.push(event);
       });
 
       // Create a script that fails on first attempt
       const scriptPath = path.join(testDir, 'retry-script.js');
-      await fs.writeFile(scriptPath, `
+      await fs.writeFile(
+        scriptPath,
+        `
         import { readFileSync, writeFileSync } from 'fs';
         const attemptFile = '${attemptFile}';
         const successFile = '${successFile}';
@@ -257,7 +267,8 @@ describe('TaskExecutor', () => {
         
         // Succeed on retry
         writeFileSync(successFile, 'Success after retry');
-      `);
+      `
+      );
 
       const task: TaskDefinition = {
         steps: [
@@ -279,7 +290,10 @@ describe('TaskExecutor', () => {
       expect(attempts).toBe('2'); // Initial + 1 retry
 
       // Check if success file was created
-      const successExists = await fs.access(successFile).then(() => true).catch(() => false);
+      const successExists = await fs
+        .access(successFile)
+        .then(() => true)
+        .catch(() => false);
       expect(successExists).toBe(true);
 
       if (successExists) {
@@ -298,7 +312,7 @@ describe('TaskExecutor', () => {
           { name: 'Step 1', command: `echo "1" > ${path.join(testDir, 'cont1.txt')}` },
           {
             name: 'Step 2',
-            command: 'false',  // This will fail
+            command: 'false', // This will fail
             onFailure: 'continue',
           },
           { name: 'Step 3', command: `echo "3" > ${path.join(testDir, 'cont3.txt')}` },
@@ -342,8 +356,8 @@ describe('TaskExecutor', () => {
     it('should emit task lifecycle events', async () => {
       const events: any[] = [];
 
-      executor.on('task:start', event => events.push({ type: 'start', ...event }));
-      executor.on('task:complete', event => events.push({ type: 'complete', ...event }));
+      executor.on('task:start', (event) => events.push({ type: 'start', ...event }));
+      executor.on('task:complete', (event) => events.push({ type: 'complete', ...event }));
 
       const task: TaskDefinition = {
         command: `echo "test" > ${path.join(testDir, 'events.txt')}`,
@@ -360,7 +374,7 @@ describe('TaskExecutor', () => {
 
     it('should emit error events', async () => {
       const events: any[] = [];
-      executor.on('task:error', event => events.push(event));
+      executor.on('task:error', (event) => events.push(event));
 
       const task: TaskDefinition = {
         command: 'command-that-does-not-exist-12345',
@@ -425,10 +439,13 @@ describe('TaskExecutor', () => {
   describe('script execution', () => {
     it('should execute script tasks', async () => {
       const scriptPath = path.join(testDir, 'script.js');
-      await fs.writeFile(scriptPath, `
+      await fs.writeFile(
+        scriptPath,
+        `
         import { writeFileSync } from 'fs';
         writeFileSync('${path.join(testDir, 'script-output.txt')}', 'Script executed');
-      `);
+      `
+      );
 
       const task: TaskDefinition = {
         script: scriptPath,
@@ -443,10 +460,13 @@ describe('TaskExecutor', () => {
 
     it('should execute step scripts', async () => {
       const scriptPath = path.join(testDir, 'step-script.js');
-      await fs.writeFile(scriptPath, `
+      await fs.writeFile(
+        scriptPath,
+        `
         import { writeFileSync } from 'fs';
         writeFileSync('${path.join(testDir, 'step-script-output.txt')}', 'Step script executed');
-      `);
+      `
+      );
 
       const task: TaskDefinition = {
         steps: [
@@ -524,10 +544,10 @@ describe('TaskExecutor', () => {
   describe('error propagation', () => {
     it('should handle task-level onError', async () => {
       const events: any[] = [];
-      executor.on('event', event => events.push(event));
+      executor.on('event', (event) => events.push(event));
 
       const task: TaskDefinition = {
-        command: 'false',  // Command that fails
+        command: 'false', // Command that fails
         onError: {
           emit: 'task-failed',
         },
@@ -580,13 +600,15 @@ describe('TaskExecutor', () => {
   describe('step retry mechanism', () => {
     it('should emit retry events', async () => {
       const retryEvents: any[] = [];
-      executor.on('step:retry', event => retryEvents.push(event));
+      executor.on('step:retry', (event) => retryEvents.push(event));
 
       const attemptFile = path.join(testDir, 'retry-attempts.txt');
 
       // Create a script that fails on first attempt
       const scriptPath = path.join(testDir, 'retry-event-script.js');
-      await fs.writeFile(scriptPath, `
+      await fs.writeFile(
+        scriptPath,
+        `
         import { readFileSync, writeFileSync } from 'fs';
         const attemptFile = '${attemptFile}';
         
@@ -604,7 +626,8 @@ describe('TaskExecutor', () => {
         if (attempts === 1) {
           process.exit(1);
         }
-      `);
+      `
+      );
 
       const task: TaskDefinition = {
         steps: [

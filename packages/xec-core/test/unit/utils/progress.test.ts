@@ -7,8 +7,8 @@ describe('ProgressReporter', () => {
   let consoleErrorSpy: jest.SpiedFunction<typeof console.error>;
 
   beforeEach(() => {
-    consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => { });
-    consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
+    consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+    consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     jest.useFakeTimers();
   });
 
@@ -30,7 +30,7 @@ describe('ProgressReporter', () => {
         onProgress,
         updateInterval: 1000,
         reportLines: true,
-        prefix: 'Test'
+        prefix: 'Test',
       });
       expect(reporter).toBeDefined();
     });
@@ -39,7 +39,7 @@ describe('ProgressReporter', () => {
       const onProgress = jest.fn();
       const reporter = new ProgressReporter({
         enabled: false,
-        onProgress
+        onProgress,
       });
 
       reporter.start('Starting');
@@ -59,7 +59,7 @@ describe('ProgressReporter', () => {
 
       expect(onProgress).toHaveBeenCalledWith({
         type: 'start',
-        message: 'Starting task'
+        message: 'Starting task',
       });
     });
 
@@ -76,7 +76,7 @@ describe('ProgressReporter', () => {
           message: 'Processing',
           current: 30,
           total: 100,
-          percentage: 30
+          percentage: 30,
         })
       );
     });
@@ -94,8 +94,8 @@ describe('ProgressReporter', () => {
           message: 'Task completed',
           data: {
             linesProcessed: 0,
-            bytesProcessed: 0
-          }
+            bytesProcessed: 0,
+          },
         })
       );
     });
@@ -111,7 +111,7 @@ describe('ProgressReporter', () => {
         type: 'error',
         message: 'Custom error message',
         duration: 0,
-        data: { error }
+        data: { error },
       });
     });
   });
@@ -121,7 +121,7 @@ describe('ProgressReporter', () => {
       const onProgress = jest.fn();
       const reporter = new ProgressReporter({
         onProgress,
-        reportLines: true
+        reportLines: true,
       });
 
       reporter.start();
@@ -133,7 +133,7 @@ describe('ProgressReporter', () => {
       expect(onProgress).toHaveBeenCalledWith(
         expect.objectContaining({
           type: 'progress',
-          message: 'Processed 3 lines'
+          message: 'Processed 3 lines',
         })
       );
     });
@@ -146,13 +146,11 @@ describe('ProgressReporter', () => {
       reporter.reportOutput(Buffer.from('Hello World'));
       reporter.complete();
 
-      const completeCall = onProgress.mock.calls.find(
-        call => (call[0] as any).type === 'complete'
-      );
+      const completeCall = onProgress.mock.calls.find((call) => (call[0] as any).type === 'complete');
 
       expect((completeCall?.[0] as any)?.data).toEqual({
         linesProcessed: 0,
-        bytesProcessed: 11
+        bytesProcessed: 11,
       });
     });
 
@@ -160,7 +158,7 @@ describe('ProgressReporter', () => {
       const onProgress = jest.fn();
       const reporter = new ProgressReporter({
         onProgress,
-        reportLines: true
+        reportLines: true,
       });
 
       reporter.start();
@@ -172,7 +170,7 @@ describe('ProgressReporter', () => {
       expect(onProgress).toHaveBeenCalledWith(
         expect.objectContaining({
           type: 'progress',
-          message: 'Processed 2 lines'
+          message: 'Processed 2 lines',
         })
       );
     });
@@ -183,14 +181,14 @@ describe('ProgressReporter', () => {
       const onProgress = jest.fn();
       const reporter = new ProgressReporter({
         onProgress,
-        prefix: 'MyTask'
+        prefix: 'MyTask',
       });
 
       reporter.start('Starting');
 
       expect(onProgress).toHaveBeenCalledWith({
         type: 'start',
-        message: 'MyTask: Starting'
+        message: 'MyTask: Starting',
       });
     });
   });
@@ -209,9 +207,7 @@ describe('ProgressReporter', () => {
 
       reporter.progress('Processing', 50, 100);
 
-      expect(consoleLogSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[██████████          ] 50.0% Processing')
-      );
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('[██████████          ] 50.0% Processing'));
     });
 
     test('should log progress without percentage', () => {
@@ -228,9 +224,7 @@ describe('ProgressReporter', () => {
       reporter.start();
       reporter.complete('Done');
 
-      expect(consoleLogSpy).toHaveBeenCalledWith(
-        expect.stringContaining('✅ Done')
-      );
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('✅ Done'));
     });
 
     test('should log error event', () => {
@@ -283,7 +277,7 @@ describe('ProgressReporter', () => {
     test('should create reporter instance', () => {
       const reporter = createProgressReporter({
         enabled: true,
-        prefix: 'Test'
+        prefix: 'Test',
       });
 
       expect(reporter).toBeInstanceOf(ProgressReporter);
@@ -302,7 +296,7 @@ describe('ProgressReporter', () => {
           type: 'progress',
           message: 'Processing',
           current: 0,
-          total: 0
+          total: 0,
         })
       );
     });
@@ -315,15 +309,13 @@ describe('ProgressReporter', () => {
       reporter.progress('Processing', 50, 100);
 
       // When duration is 0, rate and eta should not be set
-      const progressCall = onProgress.mock.calls.find(
-        call => (call[0] as any).type === 'progress'
-      )?.[0] as any;
+      const progressCall = onProgress.mock.calls.find((call) => (call[0] as any).type === 'progress')?.[0] as any;
 
       expect(progressCall).toMatchObject({
         type: 'progress',
         current: 50,
         total: 100,
-        percentage: 50
+        percentage: 50,
       });
 
       // Rate and ETA should only be set when duration > 0

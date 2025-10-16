@@ -9126,7 +9126,7 @@ export const HUGEICONS_STROKE_ICONS = [
   'ZoomSquareIcon',
   'ZoomIcon',
   'ZshIcon',
-  'ZzzIcon'
+  'ZzzIcon',
 ] as const;
 
 /**
@@ -9136,5 +9136,5 @@ export const HUGEICONS_STROKE_METADATA = {
   preset: 'stroke',
   count: 4559,
   license: 'CC BY 4.0',
-  source: 'https://hugeicons.com'
+  source: 'https://hugeicons.com',
 } as const;

@@ -8,7 +8,8 @@ import { defineComponent, signal, effect } from '../../index.js';
 import type { Signal } from '../../index.js';
 import type { JSX } from '../../core/component/types.js';
 
-export interface SVGProps extends Omit<JSX.SVGAttributes, 'width' | 'height' | 'viewBox' | 'style' | 'className' | 'preserveAspectRatio'> {
+export interface SVGProps
+  extends Omit<JSX.SVGAttributes, 'width' | 'height' | 'viewBox' | 'style' | 'className' | 'preserveAspectRatio'> {
   // Viewport
   width?: string | number | Signal<string | number>;
   height?: string | number | Signal<string | number>;
@@ -39,7 +40,7 @@ export interface SVGProps extends Omit<JSX.SVGAttributes, 'width' | 'height' | '
  * SVG base component with reactive attribute support
  */
 export const SVG = defineComponent<SVGProps>((props) => {
-  const resolveValue = <T,>(value: T | Signal<T>): T => typeof value === 'function' ? (value as Signal<T>)() : value;
+  const resolveValue = <T,>(value: T | Signal<T>): T => (typeof value === 'function' ? (value as Signal<T>)() : value);
 
   const getNumericValue = (value: string | number | Signal<string | number> | undefined): string | undefined => {
     if (value === undefined) return undefined;
@@ -53,7 +54,23 @@ export const SVG = defineComponent<SVGProps>((props) => {
   // Process props to handle camelCase to kebab-case conversion
   const processProps = (inputProps: any) => {
     const processed: any = {};
-    const specialProps = ['children', 'lazy', 'placeholder', 'title', 'desc', 'width', 'height', 'viewBox', 'className', 'style', 'preserveAspectRatio', 'role', 'aria-label', 'aria-labelledby', 'aria-describedby'];
+    const specialProps = [
+      'children',
+      'lazy',
+      'placeholder',
+      'title',
+      'desc',
+      'width',
+      'height',
+      'viewBox',
+      'className',
+      'style',
+      'preserveAspectRatio',
+      'role',
+      'aria-label',
+      'aria-labelledby',
+      'aria-describedby',
+    ];
 
     for (const key in inputProps) {
       if (Object.prototype.hasOwnProperty.call(inputProps, key)) {

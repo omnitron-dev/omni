@@ -22,11 +22,7 @@ export function isBrowser(): boolean {
  * Check if DOM manipulation is possible
  */
 export function canUseDOM(): boolean {
-  return !!(
-    typeof window !== 'undefined' &&
-    window.document &&
-    window.document.createElement
-  );
+  return !!(typeof window !== 'undefined' && window.document && window.document.createElement);
 }
 
 /**
@@ -41,7 +37,7 @@ export function extractCriticalCSS(svgString: string): string {
   }
 
   const allStyles = styleMatches
-    .map(match => {
+    .map((match) => {
       const content = match.replace(/<\/?style[^>]*>/gi, '');
       return content.trim();
     })
@@ -57,7 +53,7 @@ export function extractCriticalCSS(svgString: string): string {
  */
 export function injectPreloadLinks(spriteUrls: string[]): string {
   return spriteUrls
-    .map(url => `<link rel="preload" as="image" type="image/svg+xml" href="${escapeHtml(url)}" />`)
+    .map((url) => `<link rel="preload" as="image" type="image/svg+xml" href="${escapeHtml(url)}" />`)
     .join('\n');
 }
 
@@ -80,7 +76,7 @@ export function escapeHtml(text: string): string {
     "'": '&#39;',
   };
 
-  return text.replace(/[&<>"']/g, char => htmlEscapes[char] || char);
+  return text.replace(/[&<>"']/g, (char) => htmlEscapes[char] || char);
 }
 
 /**
@@ -108,13 +104,15 @@ export function extractAttributes(svgString: string): Record<string, string> {
  * Minify SVG string by removing unnecessary whitespace and comments
  */
 export function minifySVG(svgString: string): string {
-  return svgString
-    // Remove comments
-    .replace(/<!--[\s\S]*?-->/g, '')
-    // Remove extra whitespace between tags
-    .replace(/>\s+</g, '><')
-    // Remove whitespace at start/end
-    .trim();
+  return (
+    svgString
+      // Remove comments
+      .replace(/<!--[\s\S]*?-->/g, '')
+      // Remove extra whitespace between tags
+      .replace(/>\s+</g, '><')
+      // Remove whitespace at start/end
+      .trim()
+  );
 }
 
 /**
@@ -136,8 +134,8 @@ export function serializeStyles(styles: Record<string, any>): string {
 export function parseStyles(cssString: string): Record<string, string> {
   const styles: Record<string, string> = {};
 
-  cssString.split(';').forEach(rule => {
-    const [key, value] = rule.split(':').map(s => s.trim());
+  cssString.split(';').forEach((rule) => {
+    const [key, value] = rule.split(':').map((s) => s.trim());
     if (key && value) {
       const camelKey = key.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
       styles[camelKey] = value;
@@ -157,11 +155,7 @@ export function isValidSVG(svgString: string): boolean {
 /**
  * Wrap SVG in container with hydration marker
  */
-export function wrapWithHydrationMarker(
-  svgString: string,
-  componentName: string,
-  propsJson: string
-): string {
+export function wrapWithHydrationMarker(svgString: string, componentName: string, propsJson: string): string {
   const marker = `data-aether-hydrate="${componentName}" data-aether-props="${escapeHtml(propsJson)}"`;
 
   // If it's a complete SVG element, add marker to svg tag
@@ -252,9 +246,7 @@ export function isCriticalPath(): boolean {
  * SSR-safe IntersectionObserver mock
  * Returns a no-op observer that immediately triggers callback
  */
-export function createSSRIntersectionObserver(
-  callback: IntersectionObserverCallback
-): IntersectionObserver | null {
+export function createSSRIntersectionObserver(callback: IntersectionObserverCallback): IntersectionObserver | null {
   if (!isServer()) {
     return null; // Use native on client
   }
@@ -277,7 +269,7 @@ export function createSSRIntersectionObserver(
  * SSR-safe requestAnimationFrame mock
  * Returns a no-op function that immediately executes callback
  */
-export function createSSRRequestAnimationFrame(): ((callback: FrameRequestCallback) => number) {
+export function createSSRRequestAnimationFrame(): (callback: FrameRequestCallback) => number {
   if (!isServer()) {
     return requestAnimationFrame; // Use native on client
   }
@@ -292,17 +284,17 @@ export function createSSRRequestAnimationFrame(): ((callback: FrameRequestCallba
 /**
  * SSR-safe requestIdleCallback mock
  */
-export function createSSRRequestIdleCallback(): ((
+export function createSSRRequestIdleCallback(): (
   callback: IdleRequestCallback,
   options?: IdleRequestOptions
-) => number) {
+) => number {
   if (!isServer()) {
     return 'requestIdleCallback' in window
       ? window.requestIdleCallback.bind(window)
-      : ((cb: IdleRequestCallback) => {
+      : (cb: IdleRequestCallback) => {
           const id = setTimeout(() => cb({ didTimeout: false, timeRemaining: () => 0 } as IdleDeadline), 0);
           return id as unknown as number;
-        });
+        };
   }
 
   // On server, execute immediately

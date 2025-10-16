@@ -31,10 +31,10 @@ export function customizeHelp(program: Command, dynamicCommandNames: string[]): 
       }
 
       // Options
-      const options = cmd.options.filter(opt => !opt.hidden);
+      const options = cmd.options.filter((opt) => !opt.hidden);
       if (options.length > 0) {
         output += prism.bold('Options:') + '\n';
-        options.forEach(opt => {
+        options.forEach((opt) => {
           const flags = opt.flags.padEnd(40);
           output += `${indent}${flags}${opt.description || ''}\n`;
         });
@@ -45,8 +45,9 @@ export function customizeHelp(program: Command, dynamicCommandNames: string[]): 
       const builtInCommands: Command[] = [];
       const dynamicCommands: Command[] = [];
 
-      cmd.commands.forEach(subcmd => {
-        if (subcmd.name() !== 'help') { // Skip help command itself
+      cmd.commands.forEach((subcmd) => {
+        if (subcmd.name() !== 'help') {
+          // Skip help command itself
           if (dynamicSet.has(subcmd.name())) {
             dynamicCommands.push(subcmd);
           } else {
@@ -58,7 +59,7 @@ export function customizeHelp(program: Command, dynamicCommandNames: string[]): 
       // Display built-in commands
       if (builtInCommands.length > 0) {
         output += prism.bold('Built-in Commands:') + '\n';
-        builtInCommands.forEach(subcmd => {
+        builtInCommands.forEach((subcmd) => {
           const name = subcmd.name();
           const aliases = subcmd.aliases().length > 0 ? `|${subcmd.aliases().join('|')}` : '';
           const nameStr = `${name}${aliases}`.padEnd(40);
@@ -71,7 +72,7 @@ export function customizeHelp(program: Command, dynamicCommandNames: string[]): 
       // Display dynamic commands
       if (dynamicCommands.length > 0) {
         output += prism.bold('Dynamic Commands:') + '\n';
-        dynamicCommands.forEach(subcmd => {
+        dynamicCommands.forEach((subcmd) => {
           const name = subcmd.name();
           const aliases = subcmd.aliases().length > 0 ? `|${subcmd.aliases().join('|')}` : '';
           const nameStr = `${name}${aliases}`.padEnd(40);
@@ -94,6 +95,6 @@ export function customizeHelp(program: Command, dynamicCommandNames: string[]): 
       output += `${indent}Documentation: https://xec.sh\n`;
 
       return output;
-    }
+    },
   });
 }

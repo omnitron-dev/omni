@@ -26,28 +26,28 @@ describe('KubernetesAdapter - Unit Tests (No Cluster)', () => {
 
     it('should create adapter with custom namespace', () => {
       adapter = new KubernetesAdapter({
-        namespace: 'production'
+        namespace: 'production',
       });
       expect(adapter).toBeInstanceOf(KubernetesAdapter);
     });
 
     it('should create adapter with custom context', () => {
       adapter = new KubernetesAdapter({
-        context: 'my-cluster-context'
+        context: 'my-cluster-context',
       });
       expect(adapter).toBeInstanceOf(KubernetesAdapter);
     });
 
     it('should create adapter with custom kubectl path', () => {
       adapter = new KubernetesAdapter({
-        kubectlPath: '/custom/path/kubectl'
+        kubectlPath: '/custom/path/kubectl',
       });
       expect(adapter).toBeInstanceOf(KubernetesAdapter);
     });
 
     it('should create adapter with custom kubeconfig', () => {
       adapter = new KubernetesAdapter({
-        kubeconfig: '/path/to/kubeconfig'
+        kubeconfig: '/path/to/kubeconfig',
       });
       expect(adapter).toBeInstanceOf(KubernetesAdapter);
     });
@@ -60,7 +60,7 @@ describe('KubernetesAdapter - Unit Tests (No Cluster)', () => {
         kubeconfig: '/home/user/.kube/config',
         defaultTimeout: 30000,
         maxBuffer: 1024 * 1024,
-        encoding: 'utf8'
+        encoding: 'utf8',
       });
       expect(adapter).toBeInstanceOf(KubernetesAdapter);
     });
@@ -69,40 +69,46 @@ describe('KubernetesAdapter - Unit Tests (No Cluster)', () => {
   describe('Error Handling', () => {
     it('should throw KubernetesError when pod is not specified', async () => {
       adapter = new KubernetesAdapter();
-      await expect(adapter.execute({
-        command: 'ls',
-        adapterOptions: {
-          type: 'kubernetes',
-          pod: undefined as any
-          // Missing pod
-        }
-      })).rejects.toThrow('Pod name or selector is required');
+      await expect(
+        adapter.execute({
+          command: 'ls',
+          adapterOptions: {
+            type: 'kubernetes',
+            pod: undefined as any,
+            // Missing pod
+          },
+        })
+      ).rejects.toThrow('Pod name or selector is required');
     });
 
     it('should throw AdapterError for invalid adapter type', async () => {
       adapter = new KubernetesAdapter();
-      await expect(adapter.execute({
-        command: 'ls',
-        adapterOptions: {
-          type: 'docker' as any // Wrong type
-        }
-      })).rejects.toThrow('Pod name or selector is required');
+      await expect(
+        adapter.execute({
+          command: 'ls',
+          adapterOptions: {
+            type: 'docker' as any, // Wrong type
+          },
+        })
+      ).rejects.toThrow('Pod name or selector is required');
     });
 
     it('should throw error when adapter options are missing', async () => {
       adapter = new KubernetesAdapter();
-      await expect(adapter.execute({
-        command: 'ls'
-        // Missing adapterOptions
-      })).rejects.toThrow('Pod name or selector is required');
+      await expect(
+        adapter.execute({
+          command: 'ls',
+          // Missing adapterOptions
+        })
+      ).rejects.toThrow('Pod name or selector is required');
     });
   });
 
   describe('Configuration Validation', () => {
     it('should accept various namespace values', () => {
       const namespaces = ['default', 'kube-system', 'production', 'my-namespace-123'];
-      
-      namespaces.forEach(ns => {
+
+      namespaces.forEach((ns) => {
         const testAdapter = new KubernetesAdapter({ namespace: ns });
         expect(testAdapter).toBeInstanceOf(KubernetesAdapter);
       });
@@ -110,8 +116,8 @@ describe('KubernetesAdapter - Unit Tests (No Cluster)', () => {
 
     it('should accept various context values', () => {
       const contexts = ['minikube', 'docker-desktop', 'gke_project_zone_cluster', 'eks-cluster'];
-      
-      contexts.forEach(ctx => {
+
+      contexts.forEach((ctx) => {
         const testAdapter = new KubernetesAdapter({ context: ctx });
         expect(testAdapter).toBeInstanceOf(KubernetesAdapter);
       });
@@ -135,26 +141,26 @@ describe('KubernetesAdapter - Unit Tests (No Cluster)', () => {
   describe('Command Building', () => {
     it('should require pod name in adapter options', async () => {
       adapter = new KubernetesAdapter();
-      
+
       const validOptions = {
         type: 'kubernetes' as const,
         pod: 'my-pod',
-        namespace: 'default'
+        namespace: 'default',
       };
-      
+
       const invalidOptions = {
         type: 'kubernetes' as const,
         namespace: 'default',
-        pod: undefined as any
+        pod: undefined as any,
         // Missing pod
       };
-      
+
       // Valid options should be accepted
       expect(() => {
         const opts = validOptions;
         if (!opts.pod) throw new Error('Pod name is required');
       }).not.toThrow();
-      
+
       // Invalid options should throw
       expect(() => {
         const opts = invalidOptions as any;
@@ -164,14 +170,14 @@ describe('KubernetesAdapter - Unit Tests (No Cluster)', () => {
 
     it('should support container selection', () => {
       adapter = new KubernetesAdapter();
-      
+
       const optionsWithContainer = {
         type: 'kubernetes' as const,
         pod: 'multi-container-pod',
         container: 'nginx',
-        namespace: 'default'
+        namespace: 'default',
       };
-      
+
       expect(optionsWithContainer.container).toBe('nginx');
     });
   });
@@ -179,15 +185,15 @@ describe('KubernetesAdapter - Unit Tests (No Cluster)', () => {
   describe('Timeout Configuration', () => {
     it('should respect default timeout configuration', () => {
       adapter = new KubernetesAdapter({
-        defaultTimeout: 60000
+        defaultTimeout: 60000,
       });
       expect(adapter).toBeInstanceOf(KubernetesAdapter);
     });
 
     it('should accept various timeout values', () => {
       const timeouts = [1000, 5000, 30000, 120000];
-      
-      timeouts.forEach(timeout => {
+
+      timeouts.forEach((timeout) => {
         const testAdapter = new KubernetesAdapter({ defaultTimeout: timeout });
         expect(testAdapter).toBeInstanceOf(KubernetesAdapter);
       });
@@ -213,7 +219,7 @@ describe('KubernetesAdapter - Unit Tests (No Cluster)', () => {
         defaultTimeout: 30000,
         maxBuffer: 1024 * 1024 * 10,
         encoding: 'utf8',
-        throwOnNonZeroExit: false
+        throwOnNonZeroExit: false,
       });
       expect(adapter).toBeInstanceOf(KubernetesAdapter);
     });
@@ -223,7 +229,7 @@ describe('KubernetesAdapter - Unit Tests (No Cluster)', () => {
         namespace: 'production',
         context: 'prod-cluster',
         defaultTimeout: 45000,
-        throwOnNonZeroExit: true
+        throwOnNonZeroExit: true,
       });
       expect(adapter).toBeInstanceOf(KubernetesAdapter);
     });
@@ -232,22 +238,22 @@ describe('KubernetesAdapter - Unit Tests (No Cluster)', () => {
   describe('Edge Cases', () => {
     it('should handle special characters in namespace', () => {
       adapter = new KubernetesAdapter({
-        namespace: 'my-namespace-with-dashes'
+        namespace: 'my-namespace-with-dashes',
       });
       expect(adapter).toBeInstanceOf(KubernetesAdapter);
     });
 
     it('should handle special characters in pod names', async () => {
       adapter = new KubernetesAdapter();
-      
+
       const podNames = ['my-pod', 'pod-123', 'app-deployment-abc123-xyz'];
-      
-      podNames.forEach(podName => {
+
+      podNames.forEach((podName) => {
         expect(() => {
           const opts = {
             type: 'kubernetes' as const,
             pod: podName,
-            namespace: 'default'
+            namespace: 'default',
           };
           if (!opts.pod) throw new Error('Pod name is required');
         }).not.toThrow();
@@ -256,7 +262,7 @@ describe('KubernetesAdapter - Unit Tests (No Cluster)', () => {
 
     it('should handle long namespace names', () => {
       adapter = new KubernetesAdapter({
-        namespace: 'very-long-namespace-name-that-is-still-valid'
+        namespace: 'very-long-namespace-name-that-is-still-valid',
       });
       expect(adapter).toBeInstanceOf(KubernetesAdapter);
     });
@@ -265,7 +271,7 @@ describe('KubernetesAdapter - Unit Tests (No Cluster)', () => {
   describe('Adapter Options Validation', () => {
     it('should validate adapter options structure', async () => {
       adapter = new KubernetesAdapter();
-      
+
       // Test various invalid structures
       const invalidOptions = [
         null,
@@ -274,27 +280,29 @@ describe('KubernetesAdapter - Unit Tests (No Cluster)', () => {
         { type: 'ssh' },
         { type: 'docker' },
         { pod: 'my-pod' }, // Missing type
-        { type: 'kubernetes' } // Missing pod
+        { type: 'kubernetes' }, // Missing pod
       ];
-      
+
       for (const opts of invalidOptions) {
-        await expect(adapter.execute({
-          command: 'ls',
-          adapterOptions: opts as any
-        })).rejects.toThrow();
+        await expect(
+          adapter.execute({
+            command: 'ls',
+            adapterOptions: opts as any,
+          })
+        ).rejects.toThrow();
       }
     });
 
     it('should accept valid adapter options', () => {
       adapter = new KubernetesAdapter();
-      
+
       const validOptions = {
         type: 'kubernetes' as const,
         pod: 'my-pod',
         namespace: 'default',
-        container: 'main'
+        container: 'main',
       };
-      
+
       // Should not throw when validating structure
       expect(() => {
         if (validOptions.type !== 'kubernetes') throw new Error('Invalid type');

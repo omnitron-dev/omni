@@ -5,8 +5,7 @@
  * Simple examples showing common use cases for the select prompt
  */
 
-import { note , intro, outro, select, isCancel, prism as color } from '../src/index.js';
-
+import { note, intro, outro, select, isCancel, prism as color } from '../src/index.js';
 
 async function main() {
   console.clear();

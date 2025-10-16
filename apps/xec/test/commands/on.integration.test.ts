@@ -19,7 +19,7 @@ class TestableOnCommand extends OnCommand {
     // Call parent to initialize configuration properly
     await super.initializeConfig({
       ...options,
-      configPath: options.configPath || path.join(process.cwd(), '.xec', 'config.yaml')
+      configPath: options.configPath || path.join(process.cwd(), '.xec', 'config.yaml'),
     });
   }
 }
@@ -36,7 +36,7 @@ describe('On Command - Real SSH Integration', () => {
     verbose: false,
     dryRun: false,
     configPath: path.join(projectDir, '.xec', 'config.yaml'),
-    ...overrides
+    ...overrides,
   });
 
   beforeAll(async () => {
@@ -92,34 +92,23 @@ describe('On Command - Real SSH Integration', () => {
               host: 'localhost',
               port: 2201,
               user: 'user',
-              password: 'password'
-            }
-          }
-        }
+              password: 'password',
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Create a test file to verify command execution
       const testFile = path.join(tempDir, 'test-output.txt');
 
       // Execute command that writes to a file
       // Pass arguments in the format expected by execute method
-      await command.execute([
-        'hosts.test-server',
-        'echo "Hello from SSH" > /tmp/test-output.txt',
-        createOptions()
-      ]);
+      await command.execute(['hosts.test-server', 'echo "Hello from SSH" > /tmp/test-output.txt', createOptions()]);
 
       // Verify the command was executed by reading the file
-      await command.execute([
-        'hosts.test-server',
-        'cat /tmp/test-output.txt',
-        createOptions()
-      ]);
+      await command.execute(['hosts.test-server', 'cat /tmp/test-output.txt', createOptions()]);
     });
 
     it('should execute commands with environment variables', async () => {
@@ -131,30 +120,23 @@ describe('On Command - Real SSH Integration', () => {
               host: 'localhost',
               port: 2201,
               user: 'user',
-              password: 'password'
-            }
-          }
-        }
+              password: 'password',
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Execute command with environment variable
       await command.execute([
         'hosts.test-server',
         'echo "$TEST_VAR" > /tmp/env-test.txt',
-        createOptions({ env: ['TEST_VAR=HelloWorld'] })
+        createOptions({ env: ['TEST_VAR=HelloWorld'] }),
       ]);
 
       // Verify the environment variable was set
-      await command.execute([
-        'hosts.test-server',
-        'cat /tmp/env-test.txt',
-        createOptions()
-      ]);
+      await command.execute(['hosts.test-server', 'cat /tmp/env-test.txt', createOptions()]);
     });
 
     it('should handle command failures properly', async () => {
@@ -166,25 +148,16 @@ describe('On Command - Real SSH Integration', () => {
               host: 'localhost',
               port: 2201,
               user: 'user',
-              password: 'password'
-            }
-          }
-        }
+              password: 'password',
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Execute a command that should fail
-      await expect(
-        command.execute([
-          'hosts.test-server',
-          'exit 1',
-          createOptions({ quiet: true })
-        ])
-      ).rejects.toThrow();
+      await expect(command.execute(['hosts.test-server', 'exit 1', createOptions({ quiet: true })])).rejects.toThrow();
     });
 
     it('should execute commands in specific directory', async () => {
@@ -196,36 +169,21 @@ describe('On Command - Real SSH Integration', () => {
               host: 'localhost',
               port: 2201,
               user: 'user',
-              password: 'password'
-            }
-          }
-        }
+              password: 'password',
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Create a directory and execute command in it
-      await command.execute([
-        'hosts.test-server',
-        'mkdir -p /tmp/test-dir',
-        createOptions()
-      ]);
+      await command.execute(['hosts.test-server', 'mkdir -p /tmp/test-dir', createOptions()]);
 
-      await command.execute([
-        'hosts.test-server',
-        'pwd > pwd-output.txt',
-        createOptions({ cwd: '/tmp/test-dir' })
-      ]);
+      await command.execute(['hosts.test-server', 'pwd > pwd-output.txt', createOptions({ cwd: '/tmp/test-dir' })]);
 
       // Verify the command was executed in the correct directory
-      await command.execute([
-        'hosts.test-server',
-        'cat /tmp/test-dir/pwd-output.txt',
-        createOptions()
-      ]);
+      await command.execute(['hosts.test-server', 'cat /tmp/test-dir/pwd-output.txt', createOptions()]);
     });
 
     it('should handle timeout correctly', async () => {
@@ -237,24 +195,17 @@ describe('On Command - Real SSH Integration', () => {
               host: 'localhost',
               port: 2201,
               user: 'user',
-              password: 'password'
-            }
-          }
-        }
+              password: 'password',
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Execute a command that takes too long
       await expect(
-        command.execute([
-          'hosts.test-server',
-          'sleep 10',
-          createOptions({ timeout: '1s', quiet: true })
-        ])
+        command.execute(['hosts.test-server', 'sleep 10', createOptions({ timeout: '1s', quiet: true })])
       ).rejects.toThrow();
     });
   });
@@ -269,47 +220,28 @@ describe('On Command - Real SSH Integration', () => {
               host: 'localhost',
               port: 2201,
               user: 'user',
-              password: 'password'
-            }
-          }
-        }
+              password: 'password',
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       const testContent = 'This is a test file created via SSH';
       const fileName = `/tmp/test-${Date.now()}.txt`;
 
       // Create file on remote host
-      await command.execute([
-        'hosts.test-server',
-        `echo "${testContent}" > ${fileName}`,
-        createOptions()
-      ]);
+      await command.execute(['hosts.test-server', `echo "${testContent}" > ${fileName}`, createOptions()]);
 
       // Verify file exists
-      await command.execute([
-        'hosts.test-server',
-        `test -f ${fileName} && echo "File exists"`,
-        createOptions()
-      ]);
+      await command.execute(['hosts.test-server', `test -f ${fileName} && echo "File exists"`, createOptions()]);
 
       // Read file content
-      await command.execute([
-        'hosts.test-server',
-        `cat ${fileName}`,
-        createOptions()
-      ]);
+      await command.execute(['hosts.test-server', `cat ${fileName}`, createOptions()]);
 
       // Clean up
-      await command.execute([
-        'hosts.test-server',
-        `rm ${fileName}`,
-        createOptions()
-      ]);
+      await command.execute(['hosts.test-server', `rm ${fileName}`, createOptions()]);
     });
 
     it('should handle multiple files and directories', async () => {
@@ -321,46 +253,31 @@ describe('On Command - Real SSH Integration', () => {
               host: 'localhost',
               port: 2201,
               user: 'user',
-              password: 'password'
-            }
-          }
-        }
+              password: 'password',
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       const testDir = `/tmp/test-dir-${Date.now()}`;
 
       // Create directory structure
-      await command.execute([
-        'hosts.test-server',
-        `mkdir -p ${testDir}/subdir`,
-        createOptions()
-      ]);
+      await command.execute(['hosts.test-server', `mkdir -p ${testDir}/subdir`, createOptions()]);
 
       // Create multiple files
       await command.execute([
         'hosts.test-server',
         `touch ${testDir}/file1.txt ${testDir}/file2.txt ${testDir}/subdir/file3.txt`,
-        createOptions()
+        createOptions(),
       ]);
 
       // List files
-      await command.execute([
-        'hosts.test-server',
-        `ls -la ${testDir}`,
-        createOptions()
-      ]);
+      await command.execute(['hosts.test-server', `ls -la ${testDir}`, createOptions()]);
 
       // Clean up
-      await command.execute([
-        'hosts.test-server',
-        `rm -rf ${testDir}`,
-        createOptions()
-      ]);
+      await command.execute(['hosts.test-server', `rm -rf ${testDir}`, createOptions()]);
     });
   });
 
@@ -374,16 +291,13 @@ describe('On Command - Real SSH Integration', () => {
               host: 'localhost',
               port: 2201,
               user: 'user',
-              password: 'password'
-            }
-          }
-        }
+              password: 'password',
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Create a local script
       const scriptPath = path.join(projectDir, 'test-script.sh');
@@ -397,26 +311,14 @@ echo "Script finished"
       await fs.writeFile(scriptPath, scriptContent);
       await fs.chmod(scriptPath, 0o755);
 
-      // Execute script on remote host  
-      await command.execute([
-        'hosts.test-server',
-        scriptPath,
-        createOptions()
-      ]);
+      // Execute script on remote host
+      await command.execute(['hosts.test-server', scriptPath, createOptions()]);
 
       // Verify script execution
-      await command.execute([
-        'hosts.test-server',
-        'cat /tmp/script-test.txt',
-        createOptions()
-      ]);
+      await command.execute(['hosts.test-server', 'cat /tmp/script-test.txt', createOptions()]);
 
       // Clean up
-      await command.execute([
-        'hosts.test-server',
-        'rm /tmp/script-test.txt',
-        createOptions()
-      ]);
+      await command.execute(['hosts.test-server', 'rm /tmp/script-test.txt', createOptions()]);
     });
   });
 
@@ -449,26 +351,23 @@ echo "Script finished"
         version: '2.0',
         targets: {
           hosts: {
-            'server1': {
+            server1: {
               host: 'localhost',
               port: 2201,
               user: 'user',
-              password: 'password'
+              password: 'password',
             },
-            'server2': {
+            server2: {
               host: 'localhost',
               port: 2202,
               user: 'user',
-              password: 'password'
-            }
-          }
-        }
+              password: 'password',
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       const timestamp = Date.now();
 
@@ -476,29 +375,17 @@ echo "Script finished"
       await command.execute([
         'hosts.*',
         `echo "Test from host at ${timestamp}" > /tmp/multi-host-test.txt`,
-        createOptions()
+        createOptions(),
       ]);
 
       // Verify on first host
-      await command.execute([
-        'hosts.server1',
-        'cat /tmp/multi-host-test.txt',
-        createOptions()
-      ]);
+      await command.execute(['hosts.server1', 'cat /tmp/multi-host-test.txt', createOptions()]);
 
       // Verify on second host
-      await command.execute([
-        'hosts.server2',
-        'cat /tmp/multi-host-test.txt',
-        createOptions()
-      ]);
+      await command.execute(['hosts.server2', 'cat /tmp/multi-host-test.txt', createOptions()]);
 
       // Clean up on both hosts
-      await command.execute([
-        'hosts.*',
-        'rm /tmp/multi-host-test.txt',
-        createOptions()
-      ]);
+      await command.execute(['hosts.*', 'rm /tmp/multi-host-test.txt', createOptions()]);
     });
 
     it('should handle parallel execution', async () => {
@@ -511,35 +398,28 @@ echo "Script finished"
         version: '2.0',
         targets: {
           hosts: {
-            'server1': {
+            server1: {
               host: 'localhost',
               port: 2201,
               user: 'user',
-              password: 'password'
+              password: 'password',
             },
-            'server2': {
+            server2: {
               host: 'localhost',
               port: 2202,
               user: 'user',
-              password: 'password'
-            }
-          }
-        }
+              password: 'password',
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       const startTime = Date.now();
 
       // Execute slow command on both hosts in parallel
-      await command.execute([
-        'hosts.*',
-        'sleep 2 && echo "Done"',
-        createOptions({ parallel: true })
-      ]);
+      await command.execute(['hosts.*', 'sleep 2 && echo "Done"', createOptions({ parallel: true })]);
 
       const duration = Date.now() - startTime;
 
@@ -558,9 +438,9 @@ echo "Script finished"
               host: 'localhost',
               port: 2201,
               user: 'user',
-              password: 'password'
-            }
-          }
+              password: 'password',
+            },
+          },
         },
         tasks: {
           'test-task': {
@@ -569,36 +449,26 @@ echo "Script finished"
               { command: 'mkdir -p /tmp/task-test' },
               { command: 'echo "Step 1" > /tmp/task-test/step1.txt' },
               { command: 'echo "Step 2" > /tmp/task-test/step2.txt' },
-              { command: 'ls -la /tmp/task-test' }
-            ]
-          }
-        }
+              { command: 'ls -la /tmp/task-test' },
+            ],
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Execute task
-      await command.execute([
-        'hosts.test-server',
-        createOptions({ task: 'test-task' })
-      ]);
+      await command.execute(['hosts.test-server', createOptions({ task: 'test-task' })]);
 
       // Verify task execution
       await command.execute([
         'hosts.test-server',
         'cat /tmp/task-test/step1.txt /tmp/task-test/step2.txt',
-        createOptions()
+        createOptions(),
       ]);
 
       // Clean up
-      await command.execute([
-        'hosts.test-server',
-        'rm -rf /tmp/task-test',
-        createOptions()
-      ]);
+      await command.execute(['hosts.test-server', 'rm -rf /tmp/task-test', createOptions()]);
     });
   });
 
@@ -612,37 +482,30 @@ echo "Script finished"
               host: 'localhost',
               port: 2201,
               user: 'user',
-              password: 'password'
-            }
-          }
-        }
+              password: 'password',
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Execute complex command chain
       await command.execute([
         'hosts.test-server',
         'cd /tmp && mkdir -p complex-test && cd complex-test && echo "test" > file.txt && cat file.txt',
-        createOptions()
+        createOptions(),
       ]);
 
       // Verify
       await command.execute([
         'hosts.test-server',
         'test -f /tmp/complex-test/file.txt && echo "Success"',
-        createOptions()
+        createOptions(),
       ]);
 
       // Clean up
-      await command.execute([
-        'hosts.test-server',
-        'rm -rf /tmp/complex-test',
-        createOptions()
-      ]);
+      await command.execute(['hosts.test-server', 'rm -rf /tmp/complex-test', createOptions()]);
     });
 
     it('should handle pipes and redirections', async () => {
@@ -654,51 +517,32 @@ echo "Script finished"
               host: 'localhost',
               port: 2201,
               user: 'user',
-              password: 'password'
-            }
-          }
-        }
+              password: 'password',
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Test pipes
       await command.execute([
         'hosts.test-server',
         'echo -e "line1\\nline2\\nline3" | grep line2 > /tmp/pipe-test.txt',
-        createOptions()
+        createOptions(),
       ]);
 
       // Verify pipe result
-      await command.execute([
-        'hosts.test-server',
-        'cat /tmp/pipe-test.txt',
-        createOptions()
-      ]);
+      await command.execute(['hosts.test-server', 'cat /tmp/pipe-test.txt', createOptions()]);
 
       // Test append redirection
-      await command.execute([
-        'hosts.test-server',
-        'echo "appended" >> /tmp/pipe-test.txt',
-        createOptions()
-      ]);
+      await command.execute(['hosts.test-server', 'echo "appended" >> /tmp/pipe-test.txt', createOptions()]);
 
       // Verify append
-      await command.execute([
-        'hosts.test-server',
-        'cat /tmp/pipe-test.txt',
-        createOptions()
-      ]);
+      await command.execute(['hosts.test-server', 'cat /tmp/pipe-test.txt', createOptions()]);
 
       // Clean up
-      await command.execute([
-        'hosts.test-server',
-        'rm /tmp/pipe-test.txt',
-        createOptions()
-      ]);
+      await command.execute(['hosts.test-server', 'rm /tmp/pipe-test.txt', createOptions()]);
     });
 
     it('should handle background processes', async () => {
@@ -710,43 +554,32 @@ echo "Script finished"
               host: 'localhost',
               port: 2201,
               user: 'user',
-              password: 'password'
-            }
-          }
-        }
+              password: 'password',
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Start a background process
       await command.execute([
         'hosts.test-server',
         'nohup sleep 5 > /tmp/bg-test.log 2>&1 & echo $! > /tmp/bg-test.pid',
-        createOptions()
+        createOptions(),
       ]);
 
       // Check if process is running
       await command.execute([
         'hosts.test-server',
         'ps -p $(cat /tmp/bg-test.pid) || echo "Process not found"',
-        createOptions()
+        createOptions(),
       ]);
 
       // Clean up
-      await command.execute([
-        'hosts.test-server',
-        'kill $(cat /tmp/bg-test.pid) 2>/dev/null || true',
-        createOptions()
-      ]);
+      await command.execute(['hosts.test-server', 'kill $(cat /tmp/bg-test.pid) 2>/dev/null || true', createOptions()]);
 
-      await command.execute([
-        'hosts.test-server',
-        'rm -f /tmp/bg-test.log /tmp/bg-test.pid',
-        createOptions()
-      ]);
+      await command.execute(['hosts.test-server', 'rm -f /tmp/bg-test.log /tmp/bg-test.pid', createOptions()]);
     });
   });
 
@@ -760,24 +593,17 @@ echo "Script finished"
               host: 'localhost',
               port: 9999, // Invalid port
               user: 'user',
-              password: 'password'
-            }
-          }
-        }
+              password: 'password',
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Should fail to connect
       await expect(
-        command.execute([
-          'hosts.invalid-server',
-          'echo "test"',
-          createOptions({ quiet: true, timeout: '5s' })
-        ])
+        command.execute(['hosts.invalid-server', 'echo "test"', createOptions({ quiet: true, timeout: '5s' })])
       ).rejects.toThrow();
     });
 
@@ -790,24 +616,17 @@ echo "Script finished"
               host: 'localhost',
               port: 2201,
               user: 'user',
-              password: 'password'
-            }
-          }
-        }
+              password: 'password',
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Try to write to a protected directory
       await expect(
-        command.execute([
-          'hosts.test-server',
-          'echo "test" > /root/test.txt',
-          createOptions({ quiet: true })
-        ])
+        command.execute(['hosts.test-server', 'echo "test" > /root/test.txt', createOptions({ quiet: true })])
       ).rejects.toThrow();
     });
   });

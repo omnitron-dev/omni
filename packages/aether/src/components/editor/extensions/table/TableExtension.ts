@@ -51,37 +51,39 @@ export class TableExtension extends Extension<TableOptions> {
 
   getCommands() {
     return {
-      insertTable: (rows: number = 3, cols: number = 3) => (state, dispatch) => {
-        const { schema, tr, selection } = state;
-        const { $from } = selection;
+      insertTable:
+        (rows: number = 3, cols: number = 3) =>
+        (state, dispatch) => {
+          const { schema, tr, selection } = state;
+          const { $from } = selection;
 
-        const tableType = schema.nodes.table;
-        const rowType = schema.nodes.table_row;
-        const cellType = schema.nodes.table_cell;
+          const tableType = schema.nodes.table;
+          const rowType = schema.nodes.table_row;
+          const cellType = schema.nodes.table_cell;
 
-        if (!tableType || !rowType || !cellType) {
-          return false;
-        }
+          if (!tableType || !rowType || !cellType) {
+            return false;
+          }
 
-        const cells = [];
-        for (let i = 0; i < cols; i++) {
-          cells.push(cellType.createAndFill());
-        }
+          const cells = [];
+          for (let i = 0; i < cols; i++) {
+            cells.push(cellType.createAndFill());
+          }
 
-        const rowNodes = [];
-        for (let i = 0; i < rows; i++) {
-          rowNodes.push(rowType.create(null, cells));
-        }
+          const rowNodes = [];
+          for (let i = 0; i < rows; i++) {
+            rowNodes.push(rowType.create(null, cells));
+          }
 
-        const table = tableType.create(null, rowNodes);
+          const table = tableType.create(null, rowNodes);
 
-        if (dispatch) {
-          const pos = $from.after();
-          dispatch(tr.insert(pos, table));
-        }
+          if (dispatch) {
+            const pos = $from.after();
+            dispatch(tr.insert(pos, table));
+          }
 
-        return true;
-      },
+          return true;
+        },
 
       deleteTable: () => (state, dispatch) => deleteTable(state, dispatch),
 
@@ -105,7 +107,7 @@ export class TableExtension extends Extension<TableOptions> {
 
   getKeyboardShortcuts() {
     return {
-      'Tab': goToNextCell(1),
+      Tab: goToNextCell(1),
       'Shift-Tab': goToNextCell(-1),
     };
   }

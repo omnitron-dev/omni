@@ -20,13 +20,13 @@ export class ProcessContext {
     modifications: {} as Partial<Command>,
     cacheOptions: null as CacheOptions | null,
     abortController: null as AbortController | null,
-    isQuiet: false
+    isQuiet: false,
   };
 
   constructor(
     public readonly engine: any, // ExecutionEngine type
     protected readonly commandResolver: () => Promise<Partial<Command>> | Partial<Command>
-  ) { }
+  ) {}
 
   /**
    * Execute with async flow and early returns
@@ -121,7 +121,7 @@ export class ProcessContext {
       modifications: { ...this.state.modifications },
       cacheOptions: this.state.cacheOptions,
       abortController: this.state.abortController,
-      isQuiet: this.state.isQuiet
+      isQuiet: this.state.isQuiet,
     };
     // Apply changes to the new state
     changes(newContext.state);
@@ -129,46 +129,64 @@ export class ProcessContext {
   }
 
   withSignal = (signal: AbortSignal): ProcessPromise =>
-    this.mutate(s => { s.modifications.signal = signal; });
+    this.mutate((s) => {
+      s.modifications.signal = signal;
+    });
 
   withTimeout = (ms: number, timeoutSignal?: string): ProcessPromise =>
-    this.mutate(s => {
+    this.mutate((s) => {
       s.modifications.timeout = ms;
       if (timeoutSignal) s.modifications.timeoutSignal = timeoutSignal;
     });
 
   withQuiet = (): ProcessPromise =>
-    this.mutate(s => { s.isQuiet = true; });
+    this.mutate((s) => {
+      s.isQuiet = true;
+    });
 
   withNothrow = (): ProcessPromise =>
-    this.mutate(s => { s.modifications.nothrow = true; });
+    this.mutate((s) => {
+      s.modifications.nothrow = true;
+    });
 
   withInteractive = (): ProcessPromise =>
-    this.mutate(s => {
+    this.mutate((s) => {
       Object.assign(s.modifications, {
         stdout: 'inherit',
         stderr: 'inherit',
-        stdin: process.stdin
+        stdin: process.stdin,
       });
     });
 
   withCwd = (dir: string): ProcessPromise =>
-    this.mutate(s => { s.modifications.cwd = dir; });
+    this.mutate((s) => {
+      s.modifications.cwd = dir;
+    });
 
   withEnv = (env: Record<string, string>): ProcessPromise =>
-    this.mutate(s => { s.modifications.env = { ...s.modifications.env, ...env }; });
+    this.mutate((s) => {
+      s.modifications.env = { ...s.modifications.env, ...env };
+    });
 
   withShell = (shell: string | boolean): ProcessPromise =>
-    this.mutate(s => { s.modifications.shell = shell; });
+    this.mutate((s) => {
+      s.modifications.shell = shell;
+    });
 
   withStdout = (stream: StreamOption): ProcessPromise =>
-    this.mutate(s => { s.modifications.stdout = stream; });
+    this.mutate((s) => {
+      s.modifications.stdout = stream;
+    });
 
   withStderr = (stream: StreamOption): ProcessPromise =>
-    this.mutate(s => { s.modifications.stderr = stream; });
+    this.mutate((s) => {
+      s.modifications.stderr = stream;
+    });
 
   withCache = (options?: CacheOptions): ProcessPromise =>
-    this.mutate(s => { s.cacheOptions = options || {}; });
+    this.mutate((s) => {
+      s.cacheOptions = options || {};
+    });
 
   /**
    * Pipe with inline parsing
@@ -177,12 +195,19 @@ export class ProcessContext {
     const [optionsOrFirstValue, ...restArgs] = args;
 
     // Fast path for common case - no options
-    if (!optionsOrFirstValue || (
-      Array.isArray(target) && 'raw' in target &&
-      (typeof optionsOrFirstValue !== 'object' || optionsOrFirstValue === null ||
-        !('throwOnError' in optionsOrFirstValue || 'encoding' in optionsOrFirstValue ||
-          'lineByLine' in optionsOrFirstValue || 'lineSeparator' in optionsOrFirstValue))
-    )) {
+    if (
+      !optionsOrFirstValue ||
+      (Array.isArray(target) &&
+        'raw' in target &&
+        (typeof optionsOrFirstValue !== 'object' ||
+          optionsOrFirstValue === null ||
+          !(
+            'throwOnError' in optionsOrFirstValue ||
+            'encoding' in optionsOrFirstValue ||
+            'lineByLine' in optionsOrFirstValue ||
+            'lineSeparator' in optionsOrFirstValue
+          )))
+    ) {
       return this.engine.createProcessPromiseWithContext(
         new PipedProcessContext(
           this.engine,
@@ -206,7 +231,7 @@ export class ProcessContext {
         this.state.modifications.nothrow
       )
     );
-  }
+  };
 
   /**
    * Kill with direct access
@@ -218,7 +243,7 @@ export class ProcessContext {
     } else if (modifications.signal && typeof modifications.signal.dispatchEvent === 'function') {
       modifications.signal.dispatchEvent(new Event('abort'));
     }
-  }
+  };
 
   // ===== Private helpers =====
 
@@ -227,29 +252,16 @@ export class ProcessContext {
     const globalNothrow = this.engine._config?.throwOnNonZeroExit === false;
 
     // Single object spread for better performance
-    return Object.assign(
-      {},
-      this.engine.currentConfig,
-      commandParts,
-      modifications,
-      {
-        nothrow: modifications.nothrow ??
-          commandParts.nothrow ??
-          (globalNothrow || undefined),
-        // Mark this command as coming from ProcessPromise
-        __fromProcessPromise: true
-      }
-    ) as Command;
+    return Object.assign({}, this.engine.currentConfig, commandParts, modifications, {
+      nothrow: modifications.nothrow ?? commandParts.nothrow ?? (globalNothrow || undefined),
+      // Mark this command as coming from ProcessPromise
+      __fromProcessPromise: true,
+    }) as Command;
   }
 
   private getCacheKey(command: Command): string {
     const { cacheOptions } = this.state;
-    return cacheOptions?.key ||
-      globalCache.generateKey(
-        command.command || '',
-        command.cwd,
-        command.env
-      );
+    return cacheOptions?.key || globalCache.generateKey(command.command || '', command.cwd, command.env);
   }
 }
 
@@ -287,7 +299,7 @@ export class ProcessPromiseBuilder {
   private readonly parseJson = this._parseJson.bind(this);
   private readonly parseLines = this._parseLines.bind(this);
 
-  constructor(private readonly engine: any) { }
+  constructor(private readonly engine: any) {}
 
   /**
    * Create any type of process promise with unified logic
@@ -295,9 +307,7 @@ export class ProcessPromiseBuilder {
   createProcessPromise(
     commandOrResolver: Command | (() => Promise<Partial<Command>> | Partial<Command>)
   ): ProcessPromise {
-    const resolver = typeof commandOrResolver === 'function'
-      ? commandOrResolver
-      : () => commandOrResolver;
+    const resolver = typeof commandOrResolver === 'function' ? commandOrResolver : () => commandOrResolver;
 
     const context = new ProcessContext(this.engine, resolver);
     return this.createProcessPromiseWithContext(context);
@@ -330,15 +340,17 @@ export class ProcessPromiseBuilder {
 
         if (isDirectAwait) {
           // For direct await, check if we should throw
-          return executionPromise!.then(result => {
-            if (result.exitCode !== 0 && !context.state.modifications.nothrow) {
-              const globalNothrow = context.engine._config?.throwOnNonZeroExit === false;
-              if (!globalNothrow) {
-                result.throwIfFailed();
+          return executionPromise!
+            .then((result) => {
+              if (result.exitCode !== 0 && !context.state.modifications.nothrow) {
+                const globalNothrow = context.engine._config?.throwOnNonZeroExit === false;
+                if (!globalNothrow) {
+                  result.throwIfFailed();
+                }
               }
-            }
-            return result;
-          }).then(onfulfilled, onrejected);
+              return result;
+            })
+            .then(onfulfilled, onrejected);
         } else {
           // For transform methods, don't throw automatically
           return executionPromise!.then(onfulfilled, onrejected);
@@ -358,13 +370,13 @@ export class ProcessPromiseBuilder {
             throw reason;
           }
         );
-      }
+      },
     } as any;
 
     // Add properties for type compatibility and tracking
     Object.assign(lazyPromise, {
       __isXecPromise: true,
-      engine: context.engine
+      engine: context.engine,
     });
 
     // Attach methods in single pass
@@ -457,13 +469,13 @@ export class ProcessPromiseBuilder {
         // Mark this as a transform handler
         (handler as any).__isTransformHandler = true;
         return promise.then(handler);
-      }
+      },
     });
 
     // Single property definition for lazy evaluation
     Object.defineProperty(promise, 'exitCode', {
-      get: () => promise.then(r => r.exitCode),
-      configurable: true
+      get: () => promise.then((r) => r.exitCode),
+      configurable: true,
     });
   }
 

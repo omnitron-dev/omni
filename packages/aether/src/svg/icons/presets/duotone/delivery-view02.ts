@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const DeliveryView02Icon: IconDefinition = {
-  "id": "delivery-view02",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M10.5 21.5C6.72876 21.5 4.84315 21.5 3.67157 20.3284C2.5 19.1569 2.5 17.2712 2.5 13.5V6.5H21.5V14.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M2.5 6.5L3.1 5.7C4.27771 4.12972 4.86656 3.34458 5.71115 2.92229C6.55573 2.5 7.53715 2.5 9.5 2.5H14.5C16.4628 2.5 17.4443 2.5 18.2889 2.92229C19.1334 3.34458 19.7223 4.12972 20.9 5.7L21.5 6.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M21.5 18.5C21.5 18.5 19.458 21.5 16.5 21.5C13.542 21.5 11.5 18.5 11.5 18.5C11.5 18.5 13.5 15.5 16.5 15.5C19.5 15.5 21.5 18.5 21.5 18.5Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M21.5 13.5C21.5 15.5898 21.4982 17.1003 21.2988 18.2314C20.7235 17.4941 18.9449 15.5 16.5 15.5C13.5 15.5 11.5 18.5 11.5 18.5C11.5 18.5 13.3524 21.2184 16.084 21.4775C15.3368 21.4982 14.4824 21.5 13.5 21.5H10.5C6.72876 21.5 4.84345 21.4997 3.67188 20.3281C2.5003 19.1566 2.5 17.2712 2.5 13.5V6.5H21.5V13.5Z\" fill=\"currentColor\" />\n    <path d=\"M16.5 18.5H16.509\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "duotone",
-    "originalName": "DeliveryView02Icon",
-    "elementsCount": 5,
-    "hasOpacity": true,
-    "hasFill": true
-  }
+  id: 'delivery-view02',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path d="M10.5 21.5C6.72876 21.5 4.84315 21.5 3.67157 20.3284C2.5 19.1569 2.5 17.2712 2.5 13.5V6.5H21.5V14.5" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M2.5 6.5L3.1 5.7C4.27771 4.12972 4.86656 3.34458 5.71115 2.92229C6.55573 2.5 7.53715 2.5 9.5 2.5H14.5C16.4628 2.5 17.4443 2.5 18.2889 2.92229C19.1334 3.34458 19.7223 4.12972 20.9 5.7L21.5 6.5" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M21.5 18.5C21.5 18.5 19.458 21.5 16.5 21.5C13.542 21.5 11.5 18.5 11.5 18.5C11.5 18.5 13.5 15.5 16.5 15.5C19.5 15.5 21.5 18.5 21.5 18.5Z" stroke-linecap="round" stroke-linejoin="round" />\n    <path opacity="0.4" d="M21.5 13.5C21.5 15.5898 21.4982 17.1003 21.2988 18.2314C20.7235 17.4941 18.9449 15.5 16.5 15.5C13.5 15.5 11.5 18.5 11.5 18.5C11.5 18.5 13.3524 21.2184 16.084 21.4775C15.3368 21.4982 14.4824 21.5 13.5 21.5H10.5C6.72876 21.5 4.84345 21.4997 3.67188 20.3281C2.5003 19.1566 2.5 17.2712 2.5 13.5V6.5H21.5V13.5Z" fill="currentColor" />\n    <path d="M16.5 18.5H16.509" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'duotone',
+    originalName: 'DeliveryView02Icon',
+    elementsCount: 5,
+    hasOpacity: true,
+    hasFill: true,
+  },
 };

@@ -111,14 +111,10 @@ export function createAccessibleSVG(
   // Create accessibility elements
   const accessibilityElements: JSX.Element[] = [];
   if (title) {
-    accessibilityElements.push(
-      <title id={titleId}>{title}</title>
-    );
+    accessibilityElements.push(<title id={titleId}>{title}</title>);
   }
   if (desc) {
-    accessibilityElements.push(
-      <desc id={descId}>{desc}</desc>
-    );
+    accessibilityElements.push(<desc id={descId}>{desc}</desc>);
   }
 
   const svgProps: any = {
@@ -139,10 +135,7 @@ export function createAccessibleSVG(
 /**
  * Make an existing SVG element accessible by adding ARIA attributes
  */
-export function makeAccessible(
-  svg: SVGElement,
-  options: AccessibilityOptions
-): void {
+export function makeAccessible(svg: SVGElement, options: AccessibilityOptions): void {
   const {
     title,
     desc,
@@ -264,10 +257,7 @@ export function resolveValue<T>(value: T | Signal<T>): T {
 /**
  * Apply accessible SVG props to an element's attributes
  */
-export function applyAccessibleProps(
-  element: SVGElement,
-  props: AccessibleSVGProps
-): void {
+export function applyAccessibleProps(element: SVGElement, props: AccessibleSVGProps): void {
   makeAccessible(element, props);
 }
 

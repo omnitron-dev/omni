@@ -1,6 +1,6 @@
 /**
  * 01. Local Adapter - Local Command Execution
- * 
+ *
  * Demonstrates the use of the local adapter (default)
  */
 
@@ -46,10 +46,7 @@ try {
 }
 
 // 8. Combining with other settings
-const $configured = $.local()
-  .cd('/tmp')
-  .env({ MY_VAR: 'test' })
-  .timeout(5000);
+const $configured = $.local().cd('/tmp').env({ MY_VAR: 'test' }).timeout(5000);
 
 await $configured`echo "Working in: $(pwd) with MY_VAR=$MY_VAR"`;
 
@@ -67,11 +64,7 @@ try {
 
 // 10. Sequential execution of multiple commands
 // Promise.all for parallel execution
-const results = await Promise.all([
-  $.local()`echo "Task 1"`,
-  $.local()`echo "Task 2"`,
-  $.local()`echo "Task 3"`
-]);
+const results = await Promise.all([$.local()`echo "Task 1"`, $.local()`echo "Task 2"`, $.local()`echo "Task 3"`]);
 
 results.forEach((r, i) => {
   console.log(`Task ${i + 1}:`, r.stdout.trim());

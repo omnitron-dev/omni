@@ -251,9 +251,15 @@ describe('Performance Optimizations', () => {
     });
 
     it('should handle keyed children efficiently', () => {
-      const oldChildren = [createElementVNode('div', null, undefined, '1'), createElementVNode('div', null, undefined, '2')];
+      const oldChildren = [
+        createElementVNode('div', null, undefined, '1'),
+        createElementVNode('div', null, undefined, '2'),
+      ];
 
-      const newChildren = [createElementVNode('div', null, undefined, '2'), createElementVNode('div', null, undefined, '1')];
+      const newChildren = [
+        createElementVNode('div', null, undefined, '2'),
+        createElementVNode('div', null, undefined, '1'),
+      ];
 
       const oldVNode = createElementVNode('div', null, oldChildren);
       const newVNode = createElementVNode('div', null, newChildren);

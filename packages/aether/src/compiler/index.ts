@@ -85,9 +85,9 @@ export async function compile(
           if (result && typeof result === 'object' && 'code' in result) {
             currentCode = result.code;
             if (result.warnings) {
-              context.warnings.push(...result.warnings.map((w) =>
-                typeof w === 'string' ? { message: w, level: 'warning' as const } : w
-              ));
+              context.warnings.push(
+                ...result.warnings.map((w) => (typeof w === 'string' ? { message: w, level: 'warning' as const } : w))
+              );
             }
           } else if (typeof result === 'string') {
             currentCode = result;
@@ -136,9 +136,9 @@ export async function compile(
           if (result && typeof result === 'object' && 'code' in result) {
             finalCode = result.code;
             if (result.warnings) {
-              context.warnings.push(...result.warnings.map((w) =>
-                typeof w === 'string' ? { message: w, level: 'warning' as const } : w
-              ));
+              context.warnings.push(
+                ...result.warnings.map((w) => (typeof w === 'string' ? { message: w, level: 'warning' as const } : w))
+              );
             }
           } else if (typeof result === 'string') {
             finalCode = result;

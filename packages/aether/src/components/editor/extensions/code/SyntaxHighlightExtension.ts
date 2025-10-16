@@ -100,7 +100,7 @@ export class SyntaxHighlightExtension extends Extension<SyntaxHighlightOptions> 
         decorations.push(
           Decoration.inline(pos + 1 + from, pos + 1 + to, {
             class: classes,
-          }),
+          })
         );
       });
     });

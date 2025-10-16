@@ -28,18 +28,18 @@ export function createInteractiveSession(command: string, options: InteractiveOp
   const parts = command.split(' ');
   const cmd = parts[0];
   const args = parts.slice(1);
-  
+
   if (!cmd) {
     throw new Error('Command cannot be empty');
   }
-  
+
   const spawnOptions: SpawnOptions = {
     cwd: options.cwd,
     env: { ...process.env, ...options.env },
     shell: options.shell,
-    stdio: ['pipe', 'pipe', 'pipe'] as const
+    stdio: ['pipe', 'pipe', 'pipe'] as const,
   };
-  
+
   const childProcess = spawn(cmd, args, spawnOptions);
 
   let outputBuffer = '';
@@ -48,30 +48,28 @@ export function createInteractiveSession(command: string, options: InteractiveOp
   const errorListeners: ((error: Error) => void)[] = [];
   const dataListeners: ((data: string) => void)[] = [];
   let expectResolvers: Array<{
-    pattern: string | RegExp | (string | RegExp)[],
-    resolve: (value: string) => void,
-    reject: (error: Error) => void,
-    timeout?: NodeJS.Timeout
+    pattern: string | RegExp | (string | RegExp)[];
+    resolve: (value: string) => void;
+    reject: (error: Error) => void;
+    timeout?: NodeJS.Timeout;
   }> = [];
 
   // Handle stdout data
   childProcess.stdout?.on('data', (data: Buffer) => {
     const str = data.toString(options.encoding || 'utf8');
     outputBuffer += str;
-    
+
     // Notify data listeners
-    dataListeners.forEach(listener => listener(str));
-    
+    dataListeners.forEach((listener) => listener(str));
+
     // Check expect patterns
     const toRemove: typeof expectResolvers = [];
-    expectResolvers.forEach(resolver => {
+    expectResolvers.forEach((resolver) => {
       const patterns = Array.isArray(resolver.pattern) ? resolver.pattern : [resolver.pattern];
-      
+
       for (const pattern of patterns) {
-        const isMatch = typeof pattern === 'string' 
-          ? outputBuffer.includes(pattern)
-          : pattern.test(outputBuffer);
-          
+        const isMatch = typeof pattern === 'string' ? outputBuffer.includes(pattern) : pattern.test(outputBuffer);
+
         if (isMatch) {
           if (resolver.timeout) clearTimeout(resolver.timeout);
           resolver.resolve(outputBuffer);
@@ -81,9 +79,9 @@ export function createInteractiveSession(command: string, options: InteractiveOp
         }
       }
     });
-    
+
     // Remove resolved expecters
-    toRemove.forEach(r => {
+    toRemove.forEach((r) => {
       const index = expectResolvers.indexOf(r);
       if (index > -1) expectResolvers.splice(index, 1);
     });
@@ -92,21 +90,21 @@ export function createInteractiveSession(command: string, options: InteractiveOp
   // Handle stderr data
   childProcess.stderr?.on('data', (data: Buffer) => {
     const str = data.toString(options.encoding || 'utf8');
-    stderrListeners.forEach(listener => listener(str));
-    dataListeners.forEach(listener => listener(str));
+    stderrListeners.forEach((listener) => listener(str));
+    dataListeners.forEach((listener) => listener(str));
   });
 
   // Handle process exit
   childProcess.on('exit', (code: number | null) => {
-    exitListeners.forEach(listener => listener(code));
+    exitListeners.forEach((listener) => listener(code));
   });
 
   // Handle process error
   childProcess.on('error', (error: Error) => {
-    errorListeners.forEach(listener => listener(error));
-    
+    errorListeners.forEach((listener) => listener(error));
+
     // Reject all pending expects
-    expectResolvers.forEach(resolver => {
+    expectResolvers.forEach((resolver) => {
       if (resolver.timeout) clearTimeout(resolver.timeout);
       resolver.reject(error);
     });
@@ -130,26 +128,24 @@ export function createInteractiveSession(command: string, options: InteractiveOp
 
     async expect(pattern: string | RegExp | (string | RegExp)[], opts: ExpectOptions = {}): Promise<string> {
       const timeout = opts.timeout ?? options.timeout ?? 5000;
-      
+
       return new Promise((resolve, reject) => {
-        const resolver = { pattern, resolve, reject } as typeof expectResolvers[0];
-        
+        const resolver = { pattern, resolve, reject } as (typeof expectResolvers)[0];
+
         // Set timeout
         resolver.timeout = setTimeout(() => {
           const index = expectResolvers.indexOf(resolver);
           if (index > -1) expectResolvers.splice(index, 1);
           reject(new Error(`Timeout waiting for pattern: ${pattern}`));
         }, timeout);
-        
+
         expectResolvers.push(resolver);
-        
+
         // Check if pattern already matches
         const patterns = Array.isArray(pattern) ? pattern : [pattern];
         for (const p of patterns) {
-          const isMatch = typeof p === 'string' 
-            ? outputBuffer.includes(p)
-            : p.test(outputBuffer);
-            
+          const isMatch = typeof p === 'string' ? outputBuffer.includes(p) : p.test(outputBuffer);
+
           if (isMatch) {
             clearTimeout(resolver.timeout);
             const result = outputBuffer;
@@ -167,7 +163,7 @@ export function createInteractiveSession(command: string, options: InteractiveOp
 
     async close(force = false): Promise<void> {
       childProcess.kill(force ? 'SIGKILL' : 'SIGTERM');
-      
+
       // Clean up listeners
       childProcess.removeAllListeners();
       if (childProcess.stdout) childProcess.stdout.removeAllListeners();
@@ -189,7 +185,7 @@ export function createInteractiveSession(command: string, options: InteractiveOp
 
     onData(callback: (data: string) => void): void {
       dataListeners.push(callback);
-    }
+    },
   };
 
   return session;

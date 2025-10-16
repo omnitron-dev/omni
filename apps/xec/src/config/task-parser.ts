@@ -3,13 +3,7 @@
  * Parses and validates task definitions from configuration
  */
 
-import {
-  TaskStep,
-  TaskConfig,
-  TaskParameter,
-  TaskDefinition,
-  ValidationError,
-} from './types.js';
+import { TaskStep, TaskConfig, TaskParameter, TaskDefinition, ValidationError } from './types.js';
 
 export class TaskParser {
   private errors: ValidationError[] = [];
@@ -354,7 +348,7 @@ export class TaskParser {
 
     // Then, parse provided parameters
     for (const [name, value] of Object.entries(providedParams)) {
-      const param = task.params.find(p => p.name === name);
+      const param = task.params.find((p) => p.name === name);
 
       if (!param || !param.type) {
         parsed[name] = value;
@@ -381,7 +375,7 @@ export class TaskParser {
 
         case 'array':
           if (typeof value === 'string') {
-            parsed[name] = value.split(',').map(v => v.trim());
+            parsed[name] = value.split(',').map((v) => v.trim());
           } else if (Array.isArray(value)) {
             parsed[name] = value;
           } else {
@@ -402,7 +396,10 @@ export class TaskParser {
  * Task parse error with validation details
  */
 export class TaskParseError extends Error {
-  constructor(message: string, public errors: ValidationError[]) {
+  constructor(
+    message: string,
+    public errors: ValidationError[]
+  ) {
     super(message);
     this.name = 'TaskParseError';
   }

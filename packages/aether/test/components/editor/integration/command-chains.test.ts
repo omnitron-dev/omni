@@ -16,13 +16,7 @@ import { BlockquoteExtension } from '../../../../src/components/editor/extension
 import { BulletListExtension } from '../../../../src/components/editor/extensions/lists/BulletListExtension.js';
 import { OrderedListExtension } from '../../../../src/components/editor/extensions/lists/OrderedListExtension.js';
 import { ListItemExtension } from '../../../../src/components/editor/extensions/lists/ListItemExtension.js';
-import {
-  createIntegrationTestEditor,
-  cleanupEditor,
-  setSelection,
-  toggleMarkCommand,
-  insertText,
-} from './helpers.js';
+import { createIntegrationTestEditor, cleanupEditor, setSelection, toggleMarkCommand, insertText } from './helpers.js';
 
 describe('Command Chains', () => {
   let editor: EditorInstance;

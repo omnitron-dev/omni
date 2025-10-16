@@ -8,7 +8,7 @@ import {
   compileMDXSync,
   AetherMDXParser,
   MDXToVNodeTransformer,
-  AetherComponentGenerator
+  AetherComponentGenerator,
 } from '../../src/mdx/compiler/index.js';
 
 describe('MDX Compiler', () => {
@@ -50,7 +50,7 @@ describe('MDX Compiler', () => {
 
       expect(frontmatter).toEqual({
         title: 'Test',
-        author: 'John'
+        author: 'John',
       });
     });
 
@@ -63,7 +63,7 @@ describe('MDX Compiler', () => {
       expect(toc[0]).toEqual({
         level: 1,
         title: 'H1',
-        id: 'h1'
+        id: 'h1',
       });
       expect(toc[1].level).toBe(2);
       expect(toc[2].level).toBe(3);
@@ -89,7 +89,7 @@ describe('MDX Compiler', () => {
     test('should transform text node to VNode', async () => {
       const mdxNode = {
         type: 'text' as const,
-        value: 'Hello World'
+        value: 'Hello World',
       };
 
       const vnode = await transformer.transform(mdxNode);
@@ -102,9 +102,7 @@ describe('MDX Compiler', () => {
       const mdxNode = {
         type: 'element' as const,
         tagName: 'div',
-        children: [
-          { type: 'text' as const, value: 'Content' }
-        ]
+        children: [{ type: 'text' as const, value: 'Content' }],
       };
 
       const vnode = await transformer.transform(mdxNode);
@@ -124,10 +122,10 @@ describe('MDX Compiler', () => {
             name: 'onClick',
             value: {
               type: 'expression',
-              value: '() => count.update(n => n + 1)'
-            }
-          }
-        ]
+              value: '() => count.update(n => n + 1)',
+            },
+          },
+        ],
       };
 
       const vnode = await transformer.transform(mdxNode);
@@ -150,10 +148,8 @@ describe('MDX Compiler', () => {
         {
           type: 'element' as any,
           tag: 'div',
-          children: [
-            { type: 'text' as any, text: 'Hello' }
-          ]
-        }
+          children: [{ type: 'text' as any, text: 'Hello' }],
+        },
       ];
 
       const code = generator.generate(vnodes, {});
@@ -170,13 +166,13 @@ describe('MDX Compiler', () => {
           text: '',
           data: {
             isReactive: true,
-            expression: 'count()'
-          }
-        }
+            expression: 'count()',
+          },
+        },
       ];
 
       const code = generator.generate(vnodes, {
-        hasReactiveContent: true
+        hasReactiveContent: true,
       });
 
       expect(code).toContain('import { signal, computed, effect }');
@@ -222,7 +218,7 @@ describe('MDX Compiler', () => {
       const source = '# Test\n\n$$x = y$$';
       const module = await compileMDX(source, {
         math: true,
-        gfm: true
+        gfm: true,
       });
 
       expect(module).toBeDefined();
@@ -234,7 +230,7 @@ describe('MDX Compiler', () => {
 
       expect(module.frontmatter).toEqual({
         title: 'My Post',
-        date: '2024-01-01'
+        date: '2024-01-01',
       });
     });
   });

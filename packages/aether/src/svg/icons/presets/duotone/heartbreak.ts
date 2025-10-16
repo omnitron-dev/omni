@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const HeartbreakIcon: IconDefinition = {
-  "id": "heartbreak",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M13.5893 19.9677C16.4106 17.858 22 13.0348 22 8.69444C22 5.82563 19.8947 3.5 17 3.5C15.5002 3.5 14.0004 3.99987 12.0008 5.99922L14 9L11.5 11.9994L13.5 13.9994L10.4107 19.9677C11.36 20.6776 12.6399 20.6776 13.5893 19.9677Z\" fill=\"currentColor\" />\n    <path d=\"M10.4107 19.9677C7.58942 17.858 2 13.0348 2 8.69444C2 5.82563 4.10526 3.5 7 3.5C8.5 3.5 10 4 12 6C14 4 15.5 3.5 17 3.5C19.8947 3.5 22 5.82563 22 8.69444C22 13.0348 16.4106 17.858 13.5893 19.9677C12.6399 20.6776 11.3601 20.6776 10.4107 19.9677Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M12 5.99866L14 9.00061L11.5 12L13.5 14L12.5 16.0006\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "duotone",
-    "originalName": "HeartbreakIcon",
-    "elementsCount": 3,
-    "hasOpacity": true,
-    "hasFill": true
-  }
+  id: 'heartbreak',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path opacity="0.4" d="M13.5893 19.9677C16.4106 17.858 22 13.0348 22 8.69444C22 5.82563 19.8947 3.5 17 3.5C15.5002 3.5 14.0004 3.99987 12.0008 5.99922L14 9L11.5 11.9994L13.5 13.9994L10.4107 19.9677C11.36 20.6776 12.6399 20.6776 13.5893 19.9677Z" fill="currentColor" />\n    <path d="M10.4107 19.9677C7.58942 17.858 2 13.0348 2 8.69444C2 5.82563 4.10526 3.5 7 3.5C8.5 3.5 10 4 12 6C14 4 15.5 3.5 17 3.5C19.8947 3.5 22 5.82563 22 8.69444C22 13.0348 16.4106 17.858 13.5893 19.9677C12.6399 20.6776 11.3601 20.6776 10.4107 19.9677Z" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M12 5.99866L14 9.00061L11.5 12L13.5 14L12.5 16.0006" stroke-linecap="round" stroke-linejoin="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'duotone',
+    originalName: 'HeartbreakIcon',
+    elementsCount: 3,
+    hasOpacity: true,
+    hasFill: true,
+  },
 };

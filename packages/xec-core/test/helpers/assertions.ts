@@ -6,7 +6,7 @@ import { ExecutionResult } from '../../src/core/result.js';
 export function expectSuccessResult(result: ExecutionResult, expectedStdout?: string | RegExp) {
   expect(result.exitCode).toBe(0);
   expect(result.stderr).toBe('');
-  
+
   if (expectedStdout instanceof RegExp) {
     expect(result.stdout).toMatch(expectedStdout);
   } else if (expectedStdout !== undefined) {
@@ -14,9 +14,13 @@ export function expectSuccessResult(result: ExecutionResult, expectedStdout?: st
   }
 }
 
-export function expectFailureResult(result: ExecutionResult, expectedExitCode: number = 1, expectedStderr?: string | RegExp) {
+export function expectFailureResult(
+  result: ExecutionResult,
+  expectedExitCode: number = 1,
+  expectedStderr?: string | RegExp
+) {
   expect(result.exitCode).toBe(expectedExitCode);
-  
+
   if (expectedStderr instanceof RegExp) {
     expect(result.stderr).toMatch(expectedStderr);
   } else if (expectedStderr !== undefined) {
@@ -35,11 +39,11 @@ export function expectCommandToMatch(command: Command, expected: Partial<Command
 export function expectTimeoutError(error: any, commandName?: string, timeout?: number) {
   expect(error.name).toBe('TimeoutError');
   expect(error.code).toBe('TIMEOUT');
-  
+
   if (commandName) {
     expect(error.command).toBe(commandName);
   }
-  
+
   if (timeout) {
     expect(error.timeout).toBe(timeout);
   }
@@ -48,7 +52,7 @@ export function expectTimeoutError(error: any, commandName?: string, timeout?: n
 export function expectConnectionError(error: any, host?: string) {
   expect(error.name).toBe('ConnectionError');
   expect(error.code).toBe('CONNECTION_FAILED');
-  
+
   if (host) {
     expect(error.host).toBe(host);
   }
@@ -57,7 +61,7 @@ export function expectConnectionError(error: any, host?: string) {
 export function expectCommandError(error: any, exitCode?: number) {
   expect(error.name).toBe('CommandError');
   expect(error.code).toBe('COMMAND_FAILED');
-  
+
   if (exitCode !== undefined) {
     expect(error.exitCode).toBe(exitCode);
   }
@@ -66,26 +70,30 @@ export function expectCommandError(error: any, exitCode?: number) {
 export function expectStreamContent(stream: NodeJS.ReadableStream, expected: string | RegExp): Promise<void> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    
+
     stream.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
     stream.on('end', () => {
       const content = Buffer.concat(chunks).toString();
-      
+
       if (expected instanceof RegExp) {
         expect(content).toMatch(expected);
       } else {
         expect(content).toBe(expected);
       }
-      
+
       resolve();
     });
     stream.on('error', reject);
   });
 }
 
-export async function expectAsyncError<T>(promise: Promise<T>, errorType: new (...args: any[]) => Error, message?: string | RegExp) {
+export async function expectAsyncError<T>(
+  promise: Promise<T>,
+  errorType: new (...args: any[]) => Error,
+  message?: string | RegExp
+) {
   await expect(promise).rejects.toThrow(errorType);
-  
+
   if (message) {
     try {
       await promise;

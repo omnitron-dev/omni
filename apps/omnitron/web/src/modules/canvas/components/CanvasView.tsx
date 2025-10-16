@@ -36,7 +36,7 @@ export default defineComponent(() => {
       name: `New Flow ${flows().length + 1}`,
       nodes: 0,
     };
-    flows.update(f => [...f, newFlow]);
+    flows.update((f) => [...f, newFlow]);
   };
 
   const selectFlow = (id: string) => {
@@ -131,10 +131,13 @@ export default defineComponent(() => {
                   <div class="canvas-area">
                     <div class="flow-canvas">
                       {/* Canvas will be rendered here */}
-                      <p>Flow Editor for: {() => {
-                        const flow = flows().find(f => f.id === selectedFlow());
-                        return flow?.name || 'Unknown';
-                      }}</p>
+                      <p>
+                        Flow Editor for:{' '}
+                        {() => {
+                          const flow = flows().find((f) => f.id === selectedFlow());
+                          return flow?.name || 'Unknown';
+                        }}
+                      </p>
                     </div>
                   </div>
                 </div>

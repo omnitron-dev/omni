@@ -47,19 +47,16 @@ export interface RemoteModuleConfig {
  * });
  * ```
  */
-export function lazy(
-  load: () => Promise<{ default: Module } | Module>,
-  preload?: PreloadStrategy
-): LazyModule {
+export function lazy(load: () => Promise<{ default: Module } | Module>, preload?: PreloadStrategy): LazyModule {
   let loadPromise: Promise<Module> | null = null;
 
   const lazyModule: LazyModule = {
     type: 'lazy',
     load: async () => {
       if (!loadPromise) {
-        loadPromise = load().then((loaded) => 
+        loadPromise = load().then((loaded) =>
           // Handle default export
-           'default' in loaded ? loaded.default : loaded
+          'default' in loaded ? loaded.default : loaded
         );
       }
       return loadPromise;
@@ -169,9 +166,7 @@ async function loadRemoteScript(url: string, timeout: number): Promise<void> {
  * });
  * ```
  */
-export function dynamic(
-  factory: () => ModuleDefinition | Promise<ModuleDefinition>
-): DynamicModule {
+export function dynamic(factory: () => ModuleDefinition | Promise<ModuleDefinition>): DynamicModule {
   return {
     type: 'dynamic',
     factory,
@@ -194,9 +189,7 @@ export function dynamic(
  * }
  * ```
  */
-export function useModule<T extends ModuleContext = ModuleContext>(
-  moduleId?: string
-): T {
+export function useModule<T extends ModuleContext = ModuleContext>(moduleId?: string): T {
   const app = getApp();
   if (!app) {
     throw new Error('No application context. Ensure app is bootstrapped.');

@@ -19,13 +19,16 @@ self.addEventListener('install', (event) => {
   console.log('[SW] Installing Service Worker');
 
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      console.log('[SW] Caching static assets');
-      return cache.addAll(STATIC_CACHE_URLS);
-    }).then(() => {
-      // Force the waiting service worker to become active
-      return self.skipWaiting();
-    })
+    caches
+      .open(CACHE_NAME)
+      .then((cache) => {
+        console.log('[SW] Caching static assets');
+        return cache.addAll(STATIC_CACHE_URLS);
+      })
+      .then(() => {
+        // Force the waiting service worker to become active
+        return self.skipWaiting();
+      })
   );
 });
 
@@ -34,22 +37,25 @@ self.addEventListener('activate', (event) => {
   console.log('[SW] Activating Service Worker');
 
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames
-          .filter((cacheName) => {
-            // Delete old cache versions
-            return cacheName.startsWith('omnitron-') && cacheName !== CACHE_NAME;
-          })
-          .map((cacheName) => {
-            console.log('[SW] Deleting old cache:', cacheName);
-            return caches.delete(cacheName);
-          })
-      );
-    }).then(() => {
-      // Take control of all clients immediately
-      return self.clients.claim();
-    })
+    caches
+      .keys()
+      .then((cacheNames) => {
+        return Promise.all(
+          cacheNames
+            .filter((cacheName) => {
+              // Delete old cache versions
+              return cacheName.startsWith('omnitron-') && cacheName !== CACHE_NAME;
+            })
+            .map((cacheName) => {
+              console.log('[SW] Deleting old cache:', cacheName);
+              return caches.delete(cacheName);
+            })
+        );
+      })
+      .then(() => {
+        // Take control of all clients immediately
+        return self.clients.claim();
+      })
   );
 });
 
@@ -64,7 +70,11 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Skip chrome-extension, moz-extension, and other browser extension URLs
-  if (url.protocol === 'chrome-extension:' || url.protocol === 'moz-extension:' || url.protocol === 'safari-web-extension:') {
+  if (
+    url.protocol === 'chrome-extension:' ||
+    url.protocol === 'moz-extension:' ||
+    url.protocol === 'safari-web-extension:'
+  ) {
     return;
   }
 
@@ -153,25 +163,23 @@ self.addEventListener('push', (event) => {
     vibrate: [100, 50, 100],
     data: {
       dateOfArrival: Date.now(),
-      primaryKey: 1
+      primaryKey: 1,
     },
     actions: [
       {
         action: 'explore',
         title: 'Open Omnitron',
-        icon: '/icons/checkmark.png'
+        icon: '/icons/checkmark.png',
       },
       {
         action: 'close',
         title: 'Close',
-        icon: '/icons/xmark.png'
-      }
-    ]
+        icon: '/icons/xmark.png',
+      },
+    ],
   };
 
-  event.waitUntil(
-    self.registration.showNotification('Omnitron', options)
-  );
+  event.waitUntil(self.registration.showNotification('Omnitron', options));
 });
 
 // Notification click handler
@@ -182,9 +190,7 @@ self.addEventListener('notificationclick', (event) => {
 
   if (event.action === 'explore' || !event.action) {
     // Open or focus the app
-    event.waitUntil(
-      clients.openWindow('/')
-    );
+    event.waitUntil(clients.openWindow('/'));
   }
 });
 
@@ -212,13 +218,14 @@ self.addEventListener('message', (event) => {
 
   if (event.data.type === 'CLEAR_CACHE') {
     event.waitUntil(
-      caches.keys().then((cacheNames) => {
-        return Promise.all(
-          cacheNames.map((cacheName) => caches.delete(cacheName))
-        );
-      }).then(() => {
-        event.ports[0].postMessage({ success: true });
-      })
+      caches
+        .keys()
+        .then((cacheNames) => {
+          return Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName)));
+        })
+        .then(() => {
+          event.ports[0].postMessage({ success: true });
+        })
     );
   }
 });

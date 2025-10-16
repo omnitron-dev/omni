@@ -10,11 +10,7 @@
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 
-import {
-  ScriptRuntime,
-  GlobalInjector,
-  ScriptExecutor,
-} from '../src/index.js';
+import { ScriptRuntime, GlobalInjector, ScriptExecutor } from '../src/index.js';
 
 async function main() {
   console.log('=== @xec-sh/loader Custom Runtime Examples ===\n');
@@ -136,13 +132,16 @@ async function main() {
   await fs.mkdir(scriptDir, { recursive: true });
   const scriptPath = path.join(scriptDir, 'with-runtime.js');
 
-  await fs.writeFile(scriptPath, `
+  await fs.writeFile(
+    scriptPath,
+    `
     console.log('   Script using runtime utilities:');
     console.log('   - Current dir:', $runtime.pwd());
     console.log('   - Temp file:', $runtime.tmpfile('script-', '.log'));
     console.log('   - Quote test:', $runtime.quote('test value'));
     export const complete = true;
-  `);
+  `
+  );
 
   const runtimeInjector = new GlobalInjector({
     globals: { $runtime: runtime },

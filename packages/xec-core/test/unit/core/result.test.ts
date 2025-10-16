@@ -38,17 +38,7 @@ describe('ExecutionResult', () => {
     });
 
     it('should work with minimal properties', () => {
-      const result = new ExecutionResultImpl(
-        'output',
-        '',
-        0,
-        undefined,
-        'ls',
-        100,
-        new Date(),
-        new Date(),
-        'local'
-      );
+      const result = new ExecutionResultImpl('output', '', 0, undefined, 'ls', 100, new Date(), new Date(), 'local');
 
       expect(result.stdout).toBe('output');
       expect(result.stderr).toBe('');
@@ -61,7 +51,6 @@ describe('ExecutionResult', () => {
       expect(result.container).toBeUndefined();
     });
   });
-
 
   describe('toMetadata()', () => {
     it('should serialize all properties', () => {
@@ -95,14 +84,14 @@ describe('ExecutionResult', () => {
         finishedAt: '2024-01-01T00:00:01.000Z',
         adapter: 'ssh',
         host: 'server.com',
-        container: undefined
+        container: undefined,
       });
     });
 
     it('should be JSON.stringify compatible', () => {
       const result = createMockExecutionResult({
         stdout: 'test output',
-        exitCode: 0
+        exitCode: 0,
       });
 
       const jsonString = JSON.stringify(result);
@@ -118,7 +107,7 @@ describe('ExecutionResult', () => {
     it('should not throw for exit code 0', () => {
       const result = createMockExecutionResult({
         exitCode: 0,
-        stdout: 'success'
+        stdout: 'success',
       });
 
       expect(() => result.throwIfFailed()).not.toThrow();
@@ -130,7 +119,7 @@ describe('ExecutionResult', () => {
         exitCode: 1,
         stderr: 'Command failed',
         stdout: '',
-        duration: 500
+        duration: 500,
       });
 
       expect(() => result.throwIfFailed()).toThrow(CommandError);
@@ -151,7 +140,7 @@ describe('ExecutionResult', () => {
         command: 'killed-command',
         exitCode: null as any,
         signal: 'SIGKILL',
-        stderr: 'Killed'
+        stderr: 'Killed',
       });
 
       try {
@@ -165,7 +154,7 @@ describe('ExecutionResult', () => {
       const result = createMockExecutionResult({
         exitCode: 0,
         signal: 'SIGTERM',
-        stdout: 'Process terminated gracefully'
+        stdout: 'Process terminated gracefully',
       });
 
       expect(() => result.throwIfFailed()).not.toThrow();
@@ -177,7 +166,7 @@ describe('ExecutionResult', () => {
         exitCode: 127,
         stdout: 'Some output before failure',
         stderr: 'Command not found',
-        duration: 1500
+        duration: 1500,
       });
 
       try {
@@ -211,7 +200,7 @@ describe('ExecutionResult', () => {
         stdout: 'custom output',
         exitCode: 42,
         adapter: 'ssh',
-        host: 'remote.server'
+        host: 'remote.server',
       });
 
       expect(result.stdout).toBe('custom output');
@@ -231,7 +220,7 @@ describe('ExecutionResult', () => {
         command: 'test',
         adapter: 'local',
         host: 'server',
-        container: 'container'
+        container: 'container',
       });
 
       // This test ensures the interface is correctly defined
@@ -263,7 +252,7 @@ describe('ExecutionResult', () => {
   describe('ok property', () => {
     it('should be true for exit code 0', () => {
       const result = createMockExecutionResult({
-        exitCode: 0
+        exitCode: 0,
       });
 
       expect(result.ok).toBe(true);
@@ -271,7 +260,7 @@ describe('ExecutionResult', () => {
 
     it('should be false for non-zero exit code', () => {
       const result = createMockExecutionResult({
-        exitCode: 1
+        exitCode: 1,
       });
 
       expect(result.ok).toBe(false);
@@ -279,7 +268,7 @@ describe('ExecutionResult', () => {
 
     it('should be false for negative exit code', () => {
       const result = createMockExecutionResult({
-        exitCode: -1
+        exitCode: -1,
       });
 
       expect(result.ok).toBe(false);
@@ -287,7 +276,7 @@ describe('ExecutionResult', () => {
 
     it('should be false for large exit code', () => {
       const result = createMockExecutionResult({
-        exitCode: 255
+        exitCode: 255,
       });
 
       expect(result.ok).toBe(false);
@@ -297,7 +286,7 @@ describe('ExecutionResult', () => {
   describe('cause property', () => {
     it('should be undefined for successful execution', () => {
       const result = createMockExecutionResult({
-        exitCode: 0
+        exitCode: 0,
       });
 
       expect(result.cause).toBeUndefined();
@@ -305,7 +294,7 @@ describe('ExecutionResult', () => {
 
     it('should contain exit code for failed execution', () => {
       const result = createMockExecutionResult({
-        exitCode: 1
+        exitCode: 1,
       });
 
       expect(result.cause).toBe('exitCode: 1');
@@ -314,7 +303,7 @@ describe('ExecutionResult', () => {
     it('should contain signal when present and failed', () => {
       const result = createMockExecutionResult({
         exitCode: 143,
-        signal: 'SIGTERM'
+        signal: 'SIGTERM',
       });
 
       expect(result.cause).toBe('signal: SIGTERM');
@@ -323,7 +312,7 @@ describe('ExecutionResult', () => {
     it('should prefer signal over exitCode in cause', () => {
       const result = createMockExecutionResult({
         exitCode: 130,
-        signal: 'SIGINT'
+        signal: 'SIGINT',
       });
 
       expect(result.cause).toBe('signal: SIGINT');
@@ -339,7 +328,7 @@ describe('ExecutionResult', () => {
   describe('text()', () => {
     it('should return trimmed stdout', () => {
       const result = createMockExecutionResult({
-        stdout: '  hello world  \n'
+        stdout: '  hello world  \n',
       });
 
       expect(result.text()).toBe('hello world');
@@ -347,7 +336,7 @@ describe('ExecutionResult', () => {
 
     it('should handle empty stdout', () => {
       const result = createMockExecutionResult({
-        stdout: ''
+        stdout: '',
       });
 
       expect(result.text()).toBe('');
@@ -355,7 +344,7 @@ describe('ExecutionResult', () => {
 
     it('should handle multiline stdout', () => {
       const result = createMockExecutionResult({
-        stdout: 'line1\nline2\nline3\n'
+        stdout: 'line1\nline2\nline3\n',
       });
 
       expect(result.text()).toBe('line1\nline2\nline3');
@@ -363,7 +352,7 @@ describe('ExecutionResult', () => {
 
     it('should handle stdout with only whitespace', () => {
       const result = createMockExecutionResult({
-        stdout: '   \n\t\n   '
+        stdout: '   \n\t\n   ',
       });
 
       expect(result.text()).toBe('');
@@ -371,7 +360,7 @@ describe('ExecutionResult', () => {
 
     it('should handle stdout with leading/trailing whitespace and content', () => {
       const result = createMockExecutionResult({
-        stdout: '\n\n   content with spaces   \n\n'
+        stdout: '\n\n   content with spaces   \n\n',
       });
 
       expect(result.text()).toBe('content with spaces');
@@ -379,7 +368,7 @@ describe('ExecutionResult', () => {
 
     it('should trim mixed whitespace correctly', () => {
       const result = createMockExecutionResult({
-        stdout: '\t  \n  data  \n  \t'
+        stdout: '\t  \n  data  \n  \t',
       });
 
       expect(result.text()).toBe('data');
@@ -389,17 +378,17 @@ describe('ExecutionResult', () => {
   describe('json<T>()', () => {
     it('should parse valid JSON object', () => {
       const result = createMockExecutionResult({
-        stdout: '{"name": "test", "value": 42}'
+        stdout: '{"name": "test", "value": 42}',
       });
 
-      const data = result.json<{name: string, value: number}>();
+      const data = result.json<{ name: string; value: number }>();
       expect(data.name).toBe('test');
       expect(data.value).toBe(42);
     });
 
     it('should parse valid JSON array', () => {
       const result = createMockExecutionResult({
-        stdout: '[1, 2, 3, "test"]'
+        stdout: '[1, 2, 3, "test"]',
       });
 
       const data = result.json<(number | string)[]>();
@@ -408,7 +397,7 @@ describe('ExecutionResult', () => {
 
     it('should parse null', () => {
       const result = createMockExecutionResult({
-        stdout: 'null'
+        stdout: 'null',
       });
 
       expect(result.json()).toBeNull();
@@ -416,7 +405,7 @@ describe('ExecutionResult', () => {
 
     it('should parse boolean', () => {
       const result = createMockExecutionResult({
-        stdout: 'true'
+        stdout: 'true',
       });
 
       expect(result.json<boolean>()).toBe(true);
@@ -424,7 +413,7 @@ describe('ExecutionResult', () => {
 
     it('should parse number', () => {
       const result = createMockExecutionResult({
-        stdout: '123.45'
+        stdout: '123.45',
       });
 
       expect(result.json<number>()).toBe(123.45);
@@ -432,7 +421,7 @@ describe('ExecutionResult', () => {
 
     it('should parse string', () => {
       const result = createMockExecutionResult({
-        stdout: '"hello world"'
+        stdout: '"hello world"',
       });
 
       expect(result.json<string>()).toBe('hello world');
@@ -440,15 +429,15 @@ describe('ExecutionResult', () => {
 
     it('should handle JSON with whitespace', () => {
       const result = createMockExecutionResult({
-        stdout: '\n\n  {"test": true}  \n\n'
+        stdout: '\n\n  {"test": true}  \n\n',
       });
 
-      expect(result.json<{test: boolean}>()).toEqual({test: true});
+      expect(result.json<{ test: boolean }>()).toEqual({ test: true });
     });
 
     it('should throw error for invalid JSON', () => {
       const result = createMockExecutionResult({
-        stdout: 'invalid json'
+        stdout: 'invalid json',
       });
 
       expect(() => result.json()).toThrow('Failed to parse JSON');
@@ -456,7 +445,7 @@ describe('ExecutionResult', () => {
 
     it('should throw error with output context for invalid JSON', () => {
       const result = createMockExecutionResult({
-        stdout: 'not json at all'
+        stdout: 'not json at all',
       });
 
       try {
@@ -470,7 +459,7 @@ describe('ExecutionResult', () => {
 
     it('should throw error for incomplete JSON', () => {
       const result = createMockExecutionResult({
-        stdout: '{"incomplete":'
+        stdout: '{"incomplete":',
       });
 
       expect(() => result.json()).toThrow('Failed to parse JSON');
@@ -478,7 +467,7 @@ describe('ExecutionResult', () => {
 
     it('should handle empty string as invalid JSON', () => {
       const result = createMockExecutionResult({
-        stdout: ''
+        stdout: '',
       });
 
       expect(() => result.json()).toThrow('Failed to parse JSON');
@@ -492,11 +481,11 @@ describe('ExecutionResult', () => {
             age: 30,
             preferences: {
               theme: 'dark',
-              notifications: true
-            }
+              notifications: true,
+            },
           },
-          items: [1, 2, 3]
-        })
+          items: [1, 2, 3],
+        }),
       });
 
       const data = result.json<{
@@ -522,7 +511,7 @@ describe('ExecutionResult', () => {
   describe('lines()', () => {
     it('should split stdout by newlines', () => {
       const result = createMockExecutionResult({
-        stdout: 'line1\nline2\nline3'
+        stdout: 'line1\nline2\nline3',
       });
 
       expect(result.lines()).toEqual(['line1', 'line2', 'line3']);
@@ -530,7 +519,7 @@ describe('ExecutionResult', () => {
 
     it('should filter out empty lines', () => {
       const result = createMockExecutionResult({
-        stdout: 'line1\n\nline2\n\n\nline3\n'
+        stdout: 'line1\n\nline2\n\n\nline3\n',
       });
 
       expect(result.lines()).toEqual(['line1', 'line2', 'line3']);
@@ -538,7 +527,7 @@ describe('ExecutionResult', () => {
 
     it('should handle single line without newline', () => {
       const result = createMockExecutionResult({
-        stdout: 'single line'
+        stdout: 'single line',
       });
 
       expect(result.lines()).toEqual(['single line']);
@@ -546,7 +535,7 @@ describe('ExecutionResult', () => {
 
     it('should handle single line with trailing newline', () => {
       const result = createMockExecutionResult({
-        stdout: 'single line\n'
+        stdout: 'single line\n',
       });
 
       expect(result.lines()).toEqual(['single line']);
@@ -554,7 +543,7 @@ describe('ExecutionResult', () => {
 
     it('should handle empty stdout', () => {
       const result = createMockExecutionResult({
-        stdout: ''
+        stdout: '',
       });
 
       expect(result.lines()).toEqual([]);
@@ -562,7 +551,7 @@ describe('ExecutionResult', () => {
 
     it('should handle stdout with only newlines', () => {
       const result = createMockExecutionResult({
-        stdout: '\n\n\n'
+        stdout: '\n\n\n',
       });
 
       expect(result.lines()).toEqual([]);
@@ -570,7 +559,7 @@ describe('ExecutionResult', () => {
 
     it('should handle lines with whitespace', () => {
       const result = createMockExecutionResult({
-        stdout: '  line1  \n\n  line2  \n  line3  '
+        stdout: '  line1  \n\n  line2  \n  line3  ',
       });
 
       expect(result.lines()).toEqual(['  line1  ', '  line2  ', '  line3  ']);
@@ -578,7 +567,7 @@ describe('ExecutionResult', () => {
 
     it('should handle mixed line endings', () => {
       const result = createMockExecutionResult({
-        stdout: 'line1\nline2\nline3\nline4'
+        stdout: 'line1\nline2\nline3\nline4',
       });
 
       expect(result.lines()).toEqual(['line1', 'line2', 'line3', 'line4']);
@@ -586,21 +575,21 @@ describe('ExecutionResult', () => {
 
     it('should handle lines with special characters', () => {
       const result = createMockExecutionResult({
-        stdout: 'line with "quotes"\nline with \'apostrophes\'\nline with \ttabs\nline with spaces'
+        stdout: 'line with "quotes"\nline with \'apostrophes\'\nline with \ttabs\nline with spaces',
       });
 
       expect(result.lines()).toEqual([
         'line with "quotes"',
-        'line with \'apostrophes\'',
+        "line with 'apostrophes'",
         'line with \ttabs',
-        'line with spaces'
+        'line with spaces',
       ]);
     });
 
     it('should handle very long output', () => {
-      const longLines = Array.from({length: 1000}, (_, i) => `line${i}`);
+      const longLines = Array.from({ length: 1000 }, (_, i) => `line${i}`);
       const result = createMockExecutionResult({
-        stdout: longLines.join('\n')
+        stdout: longLines.join('\n'),
       });
 
       expect(result.lines()).toEqual(longLines);
@@ -611,7 +600,7 @@ describe('ExecutionResult', () => {
   describe('buffer()', () => {
     it('should convert stdout to Buffer', () => {
       const result = createMockExecutionResult({
-        stdout: 'hello world'
+        stdout: 'hello world',
       });
 
       const buffer = result.buffer();
@@ -621,7 +610,7 @@ describe('ExecutionResult', () => {
 
     it('should handle empty stdout', () => {
       const result = createMockExecutionResult({
-        stdout: ''
+        stdout: '',
       });
 
       const buffer = result.buffer();
@@ -632,7 +621,7 @@ describe('ExecutionResult', () => {
 
     it('should handle binary-like data', () => {
       const result = createMockExecutionResult({
-        stdout: 'binary data \x00\x01\x02'
+        stdout: 'binary data \x00\x01\x02',
       });
 
       const buffer = result.buffer();
@@ -642,7 +631,7 @@ describe('ExecutionResult', () => {
 
     it('should handle UTF-8 characters', () => {
       const result = createMockExecutionResult({
-        stdout: 'Hello 世界 🌍'
+        stdout: 'Hello 世界 🌍',
       });
 
       const buffer = result.buffer();
@@ -652,7 +641,7 @@ describe('ExecutionResult', () => {
 
     it('should handle multiline content', () => {
       const result = createMockExecutionResult({
-        stdout: 'line1\nline2\nline3'
+        stdout: 'line1\nline2\nline3',
       });
 
       const buffer = result.buffer();
@@ -663,7 +652,7 @@ describe('ExecutionResult', () => {
     it('should handle large content', () => {
       const largeContent = 'x'.repeat(10000);
       const result = createMockExecutionResult({
-        stdout: largeContent
+        stdout: largeContent,
       });
 
       const buffer = result.buffer();
@@ -675,7 +664,7 @@ describe('ExecutionResult', () => {
     it('should preserve exact byte content', () => {
       const content = 'test\r\n\t spaces  ';
       const result = createMockExecutionResult({
-        stdout: content
+        stdout: content,
       });
 
       const buffer = result.buffer();
@@ -686,7 +675,7 @@ describe('ExecutionResult', () => {
     it('should handle special characters and control codes', () => {
       const content = 'test\x1b[31mred\x1b[0m\x07\x08';
       const result = createMockExecutionResult({
-        stdout: content
+        stdout: content,
       });
 
       const buffer = result.buffer();
@@ -706,19 +695,18 @@ describe('ExecutionResult', () => {
 
     it('should work together in a chain-like pattern', () => {
       const result = createMockExecutionResult({
-        stdout: '{"items": ["a", "b", "c"]}\n'  
+        stdout: '{"items": ["a", "b", "c"]}\n',
       });
 
       // Test chaining behavior (though not actual method chaining)
       const text = result.text();
       expect(text).toBe('{"items": ["a", "b", "c"]}');
 
-      const data = result.json<{items: string[]}>();
+      const data = result.json<{ items: string[] }>();
       expect(data.items).toEqual(['a', 'b', 'c']);
 
       const buffer = result.buffer();
       expect(buffer.toString().trim()).toBe('{"items": ["a", "b", "c"]}');
     });
-
   });
 });

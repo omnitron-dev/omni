@@ -32,12 +32,7 @@ export { loadIconPreset, loadIcon, preloadIcons } from './utils/loader.js';
 export { searchIcons, getMatchingIconNames, searchByMetadata } from './utils/search.js';
 
 // Export types
-export type {
-  IconPreset,
-  IconPresetMetadata,
-  IconSearchOptions,
-  IconSearchResult,
-} from './utils/types.js';
+export type { IconPreset, IconPresetMetadata, IconSearchOptions, IconSearchResult } from './utils/types.js';
 
 // Export preset metadata
 export { HUGEICONS_STROKE_METADATA } from './stroke/index.js';

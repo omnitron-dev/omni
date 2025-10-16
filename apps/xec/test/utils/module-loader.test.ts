@@ -14,7 +14,7 @@ describe('ModuleLoader - Simplified API', () => {
     loader = new ModuleLoader({
       cacheDir,
       verbose: false,
-      cache: false
+      cache: false,
     });
     await loader.init();
   });

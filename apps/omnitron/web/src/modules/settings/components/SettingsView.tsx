@@ -61,13 +61,9 @@ export default defineComponent(() => {
           <div class="settings-container">
             <div class="settings-sidebar">
               <For each={() => settingGroups}>
-                {group => (
+                {(group) => (
                   <div
-                    class={() =>
-                      `settings-group-item ${
-                        settingsStore.activeGroup() === group().id ? 'active' : ''
-                      }`
-                    }
+                    class={() => `settings-group-item ${settingsStore.activeGroup() === group().id ? 'active' : ''}`}
                     onClick={() => settingsStore.setActiveGroup(group().id)}
                   >
                     <span class="group-icon">{group().icon}</span>
@@ -79,14 +75,11 @@ export default defineComponent(() => {
 
             <div class="settings-content">
               <For each={() => settingGroups}>
-                {group => (
+                {(group) => (
                   <div
                     class="settings-group"
                     style={{
-                      display:
-                        settingsStore.activeGroup() === group().id
-                          ? 'block'
-                          : 'none',
+                      display: settingsStore.activeGroup() === group().id ? 'block' : 'none',
                     }}
                   >
                     <h3>
@@ -94,15 +87,11 @@ export default defineComponent(() => {
                     </h3>
                     <div class="settings-list">
                       <For each={() => group().settings}>
-                        {setting => (
+                        {(setting) => (
                           <div class="setting-item">
                             <div class="setting-header">
                               <label class="setting-label">{setting().label}</label>
-                              {setting().description && (
-                                <p class="setting-description">
-                                  {setting().description}
-                                </p>
-                              )}
+                              {setting().description && <p class="setting-description">{setting().description}</p>}
                             </div>
                             <div class="setting-control">
                               {setting().type === 'boolean' && (
@@ -110,13 +99,7 @@ export default defineComponent(() => {
                                   <input
                                     type="checkbox"
                                     checked={setting().value}
-                                    onChange={e =>
-                                      updateSetting(
-                                        group().id,
-                                        setting().id,
-                                        e.currentTarget.checked
-                                      )
-                                    }
+                                    onChange={(e) => updateSetting(group().id, setting().id, e.currentTarget.checked)}
                                   />
                                   <span class="slider"></span>
                                 </label>
@@ -124,20 +107,10 @@ export default defineComponent(() => {
                               {setting().type === 'select' && (
                                 <select
                                   value={setting().value}
-                                  onChange={e =>
-                                    updateSetting(
-                                      group().id,
-                                      setting().id,
-                                      e.currentTarget.value
-                                    )
-                                  }
+                                  onChange={(e) => updateSetting(group().id, setting().id, e.currentTarget.value)}
                                 >
                                   <For each={() => setting().options || []}>
-                                    {option => (
-                                      <option value={option().value}>
-                                        {option().label}
-                                      </option>
-                                    )}
+                                    {(option) => <option value={option().value}>{option().label}</option>}
                                   </For>
                                 </select>
                               )}
@@ -145,25 +118,15 @@ export default defineComponent(() => {
                                 <input
                                   type="text"
                                   value={setting().value}
-                                  onChange={e =>
-                                    updateSetting(
-                                      group().id,
-                                      setting().id,
-                                      e.currentTarget.value
-                                    )
-                                  }
+                                  onChange={(e) => updateSetting(group().id, setting().id, e.currentTarget.value)}
                                 />
                               )}
                               {setting().type === 'number' && (
                                 <input
                                   type="number"
                                   value={setting().value}
-                                  onChange={e =>
-                                    updateSetting(
-                                      group().id,
-                                      setting().id,
-                                      Number(e.currentTarget.value)
-                                    )
+                                  onChange={(e) =>
+                                    updateSetting(group().id, setting().id, Number(e.currentTarget.value))
                                   }
                                 />
                               )}
@@ -171,13 +134,7 @@ export default defineComponent(() => {
                                 <input
                                   type="color"
                                   value={setting().value}
-                                  onChange={e =>
-                                    updateSetting(
-                                      group().id,
-                                      setting().id,
-                                      e.currentTarget.value
-                                    )
-                                  }
+                                  onChange={(e) => updateSetting(group().id, setting().id, e.currentTarget.value)}
                                 />
                               )}
                             </div>

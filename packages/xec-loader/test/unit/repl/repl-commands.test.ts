@@ -149,12 +149,18 @@ describe('REPLCommands', () => {
       commands.applyTo(mockServer);
 
       expect(mockServer.defineCommand).toHaveBeenCalledTimes(2);
-      expect(mockServer.defineCommand).toHaveBeenCalledWith('cmd1', expect.objectContaining({
-        help: 'Command 1',
-      }));
-      expect(mockServer.defineCommand).toHaveBeenCalledWith('cmd2', expect.objectContaining({
-        help: 'Command 2',
-      }));
+      expect(mockServer.defineCommand).toHaveBeenCalledWith(
+        'cmd1',
+        expect.objectContaining({
+          help: 'Command 1',
+        })
+      );
+      expect(mockServer.defineCommand).toHaveBeenCalledWith(
+        'cmd2',
+        expect.objectContaining({
+          help: 'Command 2',
+        })
+      );
     });
   });
 

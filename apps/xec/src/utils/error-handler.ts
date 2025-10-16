@@ -116,10 +116,12 @@ export function handleError(error: any, options: CommandOptions): void {
  * Check if error is critical (should be shown even in quiet mode)
  */
 function isCriticalError(error: any): boolean {
-  return error instanceof ValidationError ||
+  return (
+    error instanceof ValidationError ||
     error instanceof ConfigurationError ||
     error.code === 'MODULE_NOT_FOUND' ||
-    error.code === 'PERMISSION_DENIED';
+    error.code === 'PERMISSION_DENIED'
+  );
 }
 
 /**
@@ -180,7 +182,7 @@ function enhanceErrorWithContext(error: any, options: CommandOptions): EnhancedE
   // Build context from CLI options and environment
   const context: ErrorContext = {
     cwd: process.cwd(),
-    timestamp: new Date()
+    timestamp: new Date(),
     // Note: adapter, host, container, env would come from specific command options
     // For now, we just use the base context
   };
@@ -207,7 +209,7 @@ function formatEnhancedErrorAsJSON(error: EnhancedExecutionError): any {
     context: error.context,
     suggestions: error.suggestions,
     systemInfo: error.systemInfo,
-    type: error.name
+    type: error.name,
   };
 }
 
@@ -222,7 +224,7 @@ function displayEnhancedError(error: EnhancedExecutionError, options: CommandOpt
   const lines = formatted.split('\n');
   const logger = log;
 
-  lines.forEach(line => {
+  lines.forEach((line) => {
     if (!line) return; // Skip empty lines
 
     if (line.startsWith('Error:')) {
@@ -407,11 +409,7 @@ export function withErrorHandling<T extends any[], R>(
 /**
  * Create context-aware error
  */
-export function createContextError(
-  message: string,
-  context: string,
-  suggestion?: string
-): XecError {
+export function createContextError(message: string, context: string, suggestion?: string): XecError {
   return new XecError(message, 'CONTEXT_ERROR', {
     field: context,
     suggestion,
@@ -422,68 +420,55 @@ export function createContextError(
  * Create user-friendly error messages
  */
 export const errorMessages = {
-  fileNotFound: (path: string) => new FileSystemError(
-    `File not found: ${path}`,
-    path,
-    'Check that the file path is correct and the file exists'
-  ),
+  fileNotFound: (path: string) =>
+    new FileSystemError(`File not found: ${path}`, path, 'Check that the file path is correct and the file exists'),
 
-  directoryNotFound: (path: string) => new FileSystemError(
-    `Directory not found: ${path}`,
-    path,
-    'Check that the directory path is correct and the directory exists'
-  ),
+  directoryNotFound: (path: string) =>
+    new FileSystemError(
+      `Directory not found: ${path}`,
+      path,
+      'Check that the directory path is correct and the directory exists'
+    ),
 
-  moduleNotFound: (name: string) => new ModuleError(
-    `Module not found: ${name}`,
-    name,
-    'Check that the module is installed and the name is correct'
-  ),
+  moduleNotFound: (name: string) =>
+    new ModuleError(`Module not found: ${name}`, name, 'Check that the module is installed and the name is correct'),
 
-  taskNotFound: (name: string) => new TaskError(
-    `Task not found: ${name}`,
-    name,
-    'Check that the task exists and is loaded from the correct module'
-  ),
+  taskNotFound: (name: string) =>
+    new TaskError(`Task not found: ${name}`, name, 'Check that the task exists and is loaded from the correct module'),
 
-  recipeNotFound: (name: string) => new RecipeError(
-    `Recipe not found: ${name}`,
-    name,
-    'Check that the recipe file exists and is in the correct location'
-  ),
+  recipeNotFound: (name: string) =>
+    new RecipeError(
+      `Recipe not found: ${name}`,
+      name,
+      'Check that the recipe file exists and is in the correct location'
+    ),
 
-  configurationInvalid: (field: string, reason: string) => new ConfigurationError(
-    `Invalid configuration for ${field}: ${reason}`,
-    field,
-    'Check the configuration file format and required fields'
-  ),
+  configurationInvalid: (field: string, reason: string) =>
+    new ConfigurationError(
+      `Invalid configuration for ${field}: ${reason}`,
+      field,
+      'Check the configuration file format and required fields'
+    ),
 
-  networkTimeout: (url: string) => new NetworkError(
-    `Network timeout: ${url}`,
-    url,
-    'Check network connectivity and try again with a longer timeout'
-  ),
+  networkTimeout: (url: string) =>
+    new NetworkError(`Network timeout: ${url}`, url, 'Check network connectivity and try again with a longer timeout'),
 
-  permissionDenied: (path: string) => new FileSystemError(
-    `Permission denied: ${path}`,
-    path,
-    'Check file permissions or run with appropriate privileges'
-  ),
+  permissionDenied: (path: string) =>
+    new FileSystemError(
+      `Permission denied: ${path}`,
+      path,
+      'Check file permissions or run with appropriate privileges'
+    ),
 
-  operationFailed: (operation: string, reason: string) => new XecError(
-    `Operation failed: ${operation} - ${reason}`,
-    'OPERATION_FAILED',
-    { suggestion: 'Check the error details and try again' }
-  ),
+  operationFailed: (operation: string, reason: string) =>
+    new XecError(`Operation failed: ${operation} - ${reason}`, 'OPERATION_FAILED', {
+      suggestion: 'Check the error details and try again',
+    }),
 
-  resourceNotFound: (resource: string) => new XecError(
-    `Resource not found: ${resource}`,
-    'RESOURCE_NOT_FOUND',
-    { suggestion: 'Check that the resource exists and is accessible' }
-  ),
+  resourceNotFound: (resource: string) =>
+    new XecError(`Resource not found: ${resource}`, 'RESOURCE_NOT_FOUND', {
+      suggestion: 'Check that the resource exists and is accessible',
+    }),
 
-  invalidInput: (field: string, reason: string) => new ValidationError(
-    `Invalid input for ${field}: ${reason}`,
-    field
-  ),
+  invalidInput: (field: string, reason: string) => new ValidationError(`Invalid input for ${field}: ${reason}`, field),
 };

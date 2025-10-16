@@ -9,7 +9,7 @@ import {
   isDefaultValue,
   ROOT_KEY_ORDER,
   getDefaultConfig,
-  mergeWithDefaults
+  mergeWithDefaults,
 } from '../../src/config/defaults.js';
 
 describe('Configuration Defaults', () => {
@@ -31,16 +31,16 @@ describe('Configuration Defaults', () => {
         port: 22,
         keepAlive: true,
         keepAliveInterval: 30000,
-        timeout: 60000
+        timeout: 60000,
       });
       expect(defaults.targets?.defaults?.docker).toMatchObject({
         workdir: '/app',
         tty: true,
-        interactive: true
+        interactive: true,
       });
       expect(defaults.targets?.defaults?.kubernetes).toMatchObject({
         namespace: 'default',
-        context: undefined
+        context: undefined,
       });
     });
 
@@ -50,25 +50,25 @@ describe('Configuration Defaults', () => {
       expect(defaults.commands?.exec).toMatchObject({
         shell: '/bin/sh',
         tty: true,
-        interactive: true
+        interactive: true,
       });
       expect(defaults.commands?.logs).toMatchObject({
         tail: '50',
         timestamps: false,
         follow: false,
         prefix: false,
-        color: true
+        color: true,
       });
       expect(defaults.commands?.cp).toMatchObject({
         recursive: true,
         preserveMode: true,
         preserveTimestamps: false,
-        followSymlinks: false
+        followSymlinks: false,
       });
       expect(defaults.commands?.sync).toMatchObject({
         delete: false,
         exclude: [],
-        dryRun: false
+        dryRun: false,
       });
     });
 
@@ -77,7 +77,7 @@ describe('Configuration Defaults', () => {
 
       expect(defaults.secrets).toMatchObject({
         provider: 'env',
-        path: undefined
+        path: undefined,
       });
     });
 
@@ -96,7 +96,7 @@ describe('Configuration Defaults', () => {
         version: '2.0',
         vars: { env: 'prod' },
         name: 'project',
-        description: 'desc'
+        description: 'desc',
       };
 
       const sorted = sortConfigKeys(unsorted);
@@ -110,7 +110,7 @@ describe('Configuration Defaults', () => {
         customKey: 'custom',
         version: '2.0',
         name: 'project',
-        anotherCustom: 'value'
+        anotherCustom: 'value',
       };
 
       const sorted = sortConfigKeys(config);
@@ -137,9 +137,11 @@ describe('Configuration Defaults', () => {
     it('should maintain the correct order for all ROOT_KEY_ORDER keys', () => {
       const config: any = {};
       // Add keys in reverse order
-      ROOT_KEY_ORDER.slice().reverse().forEach(key => {
-        config[key] = `value_${key}`;
-      });
+      ROOT_KEY_ORDER.slice()
+        .reverse()
+        .forEach((key) => {
+          config[key] = `value_${key}`;
+        });
 
       const sorted = sortConfigKeys(config);
       const keys = Object.keys(sorted);
@@ -152,7 +154,7 @@ describe('Configuration Defaults', () => {
     it('should merge configuration with defaults', () => {
       const config = {
         version: '2.0',
-        name: 'custom-project'
+        name: 'custom-project',
       };
 
       const merged = mergeWithDefaults(config);
@@ -167,10 +169,10 @@ describe('Configuration Defaults', () => {
         targets: {
           defaults: {
             ssh: {
-              port: 2222
-            }
-          }
-        }
+              port: 2222,
+            },
+          },
+        },
       };
 
       const merged = mergeWithDefaults(config);
@@ -184,9 +186,9 @@ describe('Configuration Defaults', () => {
       const config = {
         commands: {
           sync: {
-            exclude: ['node_modules', '.git']
-          }
-        }
+            exclude: ['node_modules', '.git'],
+          },
+        },
       };
 
       const merged = mergeWithDefaults(config);
@@ -198,9 +200,9 @@ describe('Configuration Defaults', () => {
     it('should add custom keys not in defaults', () => {
       const config = {
         customSection: {
-          customValue: 'test'
+          customValue: 'test',
         },
-        version: '2.0'
+        version: '2.0',
       };
 
       const merged = mergeWithDefaults(config);
@@ -213,7 +215,7 @@ describe('Configuration Defaults', () => {
       const config = {
         version: null,
         name: undefined,
-        description: 'Custom description'
+        description: 'Custom description',
       };
 
       const merged = mergeWithDefaults(config);
@@ -226,11 +228,11 @@ describe('Configuration Defaults', () => {
     it('should work with custom defaults', () => {
       const customDefaults = {
         version: '3.0',
-        customDefault: 'value'
+        customDefault: 'value',
       };
 
       const config = {
-        name: 'project'
+        name: 'project',
       };
 
       const merged = mergeWithDefaults(config, customDefaults);
@@ -287,9 +289,9 @@ describe('Configuration Defaults', () => {
       const customDefaults = {
         custom: {
           nested: {
-            value: 'test'
-          }
-        }
+            value: 'test',
+          },
+        },
       };
 
       expect(isDefaultValue('custom.nested.value', 'test', customDefaults)).toBe(true);
@@ -303,7 +305,7 @@ describe('Configuration Defaults', () => {
         port: 22,
         keepAlive: true,
         keepAliveInterval: 30000,
-        timeout: 60000
+        timeout: 60000,
       };
 
       expect(isDefaultValue('targets.defaults.ssh', sshDefaults, defaults)).toBe(true);

@@ -87,9 +87,7 @@ describe('Content Serialization', () => {
     });
 
     it('should serialize tables to HTML', () => {
-      editor.setContent(
-        '<table><tr><th><p>Header</p></th></tr><tr><td><p>Cell</p></td></tr></table>'
-      );
+      editor.setContent('<table><tr><th><p>Header</p></th></tr><tr><td><p>Cell</p></td></tr></table>');
 
       const html = editor.getHTML();
       expect(html).toContain('<table>');
@@ -207,8 +205,7 @@ describe('Content Serialization', () => {
     });
 
     it('should roundtrip complex document', () => {
-      const original =
-        '<h1>Title</h1><p>Paragraph</p><ul><li><p>Item</p></li></ul>';
+      const original = '<h1>Title</h1><p>Paragraph</p><ul><li><p>Item</p></li></ul>';
       editor.setContent(original, 'html');
 
       const result = editor.getHTML();

@@ -48,9 +48,7 @@ describe('custom matchers', () => {
         return div as any;
       });
 
-      expect(() =>
-        expect(container.firstElementChild as HTMLElement).toHaveTextContent('Goodbye')
-      ).toThrow();
+      expect(() => expect(container.firstElementChild as HTMLElement).toHaveTextContent('Goodbye')).toThrow();
     });
   });
 
@@ -81,9 +79,7 @@ describe('custom matchers', () => {
         return div as any;
       });
 
-      expect(() =>
-        expect(container.firstElementChild as HTMLElement).toHaveAttribute('missing')
-      ).toThrow();
+      expect(() => expect(container.firstElementChild as HTMLElement).toHaveAttribute('missing')).toThrow();
     });
   });
 
@@ -104,9 +100,7 @@ describe('custom matchers', () => {
         return div as any;
       });
 
-      expect(() =>
-        expect(container.firstElementChild as HTMLElement).toHaveClass('missing')
-      ).toThrow();
+      expect(() => expect(container.firstElementChild as HTMLElement).toHaveClass('missing')).toThrow();
     });
   });
 
@@ -141,9 +135,7 @@ describe('custom matchers', () => {
         return button as any;
       });
 
-      expect(() =>
-        expect(container.firstElementChild as HTMLInputElement).toBeDisabled()
-      ).toThrow();
+      expect(() => expect(container.firstElementChild as HTMLInputElement).toBeDisabled()).toThrow();
     });
   });
 
@@ -216,9 +208,7 @@ describe('custom matchers', () => {
         return div as any;
       });
 
-      expect(() =>
-        expect(container.firstElementChild as HTMLElement).toHaveTextContent('text')
-      ).toThrow();
+      expect(() => expect(container.firstElementChild as HTMLElement).toHaveTextContent('text')).toThrow();
     });
 
     it('should handle null values', () => {

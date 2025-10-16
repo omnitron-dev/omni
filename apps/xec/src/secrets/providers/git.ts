@@ -7,17 +7,8 @@ import { promisify } from 'node:util';
 import { execSync } from 'node:child_process';
 
 import { getCachedMachineId } from '../machine-id.js';
-import {
-  encode,
-  decode,
-  encrypt,
-  decrypt
-} from '../crypto.js';
-import {
-  SecretError,
-  SecretProvider,
-  SecretProviderConfig
-} from '../types.js';
+import { encode, decode, encrypt, decrypt } from '../crypto.js';
+import { SecretError, SecretProvider, SecretProviderConfig } from '../types.js';
 
 const gzipAsync = promisify(zlib.gzip);
 const gunzipAsync = promisify(zlib.gunzip);
@@ -26,27 +17,27 @@ const gunzipAsync = promisify(zlib.gunzip);
  * Git-based secrets configuration
  */
 interface GitSecretConfig {
-  repoPath?: string;           // Default: current git root
-  secretsPath?: string;        // Default: .xec/secrets
-  environment?: string;        // Default: 'development'
-  autoCommit?: boolean;        // Default: true
-  commitMessage?: string;      // Template for commit messages
-  keyAlgorithm?: 'rsa' | 'ed25519';  // Default: 'rsa'
-  keySize?: 2048 | 4096;      // Default: 4096
-  compression?: boolean;       // Default: true for large secrets
-  auditLog?: boolean;          // Default: true - Enable audit logging
+  repoPath?: string; // Default: current git root
+  secretsPath?: string; // Default: .xec/secrets
+  environment?: string; // Default: 'development'
+  autoCommit?: boolean; // Default: true
+  commitMessage?: string; // Template for commit messages
+  keyAlgorithm?: 'rsa' | 'ed25519'; // Default: 'rsa'
+  keySize?: 2048 | 4096; // Default: 4096
+  compression?: boolean; // Default: true for large secrets
+  auditLog?: boolean; // Default: true - Enable audit logging
 }
 
 /**
  * Team member key information
  */
 interface TeamKeyInfo {
-  userId: string;              // Git user email or identifier
-  publicKey: string;           // RSA public key (PEM format)
+  userId: string; // Git user email or identifier
+  publicKey: string; // RSA public key (PEM format)
   addedAt: Date;
   addedBy: string;
   permissions: 'read' | 'read-write' | 'admin';
-  encryptedMasterKey: string;  // Base64 encoded
+  encryptedMasterKey: string; // Base64 encoded
 }
 
 /**
@@ -71,19 +62,19 @@ interface EncryptedGitSecret {
   environment: string;
   secrets: {
     [key: string]: {
-      value: string;             // Base64 encrypted value
-      iv: string;                // Base64 initialization vector
-      authTag: string;           // Base64 auth tag
+      value: string; // Base64 encrypted value
+      iv: string; // Base64 initialization vector
+      authTag: string; // Base64 auth tag
       metadata: {
         addedAt: Date;
-        addedBy: string;         // Git user identity
+        addedBy: string; // Git user identity
         updatedAt: Date;
         updatedBy: string;
         description?: string;
       };
     };
   };
-  checksum: string;              // SHA-256 of entire payload
+  checksum: string; // SHA-256 of entire payload
 }
 
 /**
@@ -92,11 +83,11 @@ interface EncryptedGitSecret {
 interface MasterKey {
   version: number;
   algorithm: 'aes-256-gcm';
-  key: Buffer;           // 32 bytes
-  salt: Buffer;          // 32 bytes
+  key: Buffer; // 32 bytes
+  salt: Buffer; // 32 bytes
   createdAt: Date;
   rotatedAt?: Date;
-  createdBy: string;     // Git user identity
+  createdBy: string; // Git user identity
 }
 
 /**
@@ -223,7 +214,7 @@ export class GitSecretProvider implements SecretProvider {
       this.secretsCache.set(cacheKey, {
         value,
         timestamp: Date.now(),
-        ttl: this.cacheTTL
+        ttl: this.cacheTTL,
       });
 
       // 6. Log audit event (Phase 2)
@@ -265,7 +256,7 @@ export class GitSecretProvider implements SecretProvider {
       encrypted.metadata = {
         ...encrypted.metadata,
         updatedAt: new Date(),
-        updatedBy: gitUser
+        updatedBy: gitUser,
       };
 
       if (!data.secrets[key]) {
@@ -403,10 +394,7 @@ export class GitSecretProvider implements SecretProvider {
     try {
       execSync('git status', { cwd: this.repoPath, encoding: 'utf8' });
     } catch (error) {
-      throw new SecretError(
-        'Not in a git repository or git is not available',
-        'NOT_GIT_REPO'
-      );
+      throw new SecretError('Not in a git repository or git is not available', 'NOT_GIT_REPO');
     }
   }
 
@@ -431,7 +419,7 @@ export class GitSecretProvider implements SecretProvider {
         '',
         '# Decrypted files',
         '*.decrypted',
-        '*.plain'
+        '*.plain',
       ].join('\n');
 
       await fs.writeFile(gitignorePath, gitignoreContent, { mode: 0o644 });
@@ -443,7 +431,7 @@ export class GitSecretProvider implements SecretProvider {
       const config = {
         type: 'git',
         version: 1,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
       };
 
       await fs.writeFile(configPath, JSON.stringify(config, null, 2), { mode: 0o644 });
@@ -482,17 +470,22 @@ export class GitSecretProvider implements SecretProvider {
       key,
       salt,
       createdAt: new Date(),
-      createdBy: await this.getGitUser()
+      createdBy: await this.getGitUser(),
     };
 
     // Get machine ID for encrypting the master key
     const machineId = await getCachedMachineId();
 
     // Encrypt master key with machine ID
-    const { encrypted, salt: encSalt, iv, authTag } = await encrypt(
+    const {
+      encrypted,
+      salt: encSalt,
+      iv,
+      authTag,
+    } = await encrypt(
       JSON.stringify({
         key: key.toString('base64'),
-        salt: salt.toString('base64')
+        salt: salt.toString('base64'),
       }),
       machineId
     );
@@ -506,16 +499,12 @@ export class GitSecretProvider implements SecretProvider {
       authTag: encode(authTag),
       metadata: {
         createdAt: masterKey.createdAt,
-        createdBy: masterKey.createdBy
-      }
+        createdBy: masterKey.createdBy,
+      },
     };
 
     const masterKeyPath = path.join(this.keyPath, 'master.key');
-    await fs.writeFile(
-      masterKeyPath,
-      JSON.stringify(encryptedMasterKey, null, 2),
-      { mode: 0o600 }
-    );
+    await fs.writeFile(masterKeyPath, JSON.stringify(encryptedMasterKey, null, 2), { mode: 0o600 });
 
     this.encryptionKey = key;
   }
@@ -576,10 +565,7 @@ export class GitSecretProvider implements SecretProvider {
     try {
       await fs.access(this.secretsPath, fs.constants.R_OK | fs.constants.W_OK);
     } catch (error) {
-      throw new SecretError(
-        `Cannot access secret storage directory: ${this.secretsPath}`,
-        'ACCESS_DENIED'
-      );
+      throw new SecretError(`Cannot access secret storage directory: ${this.secretsPath}`, 'ACCESS_DENIED');
     }
   }
 
@@ -614,7 +600,7 @@ export class GitSecretProvider implements SecretProvider {
       format: 'git-encrypted',
       environment: this.environment,
       secrets: {},
-      checksum: ''
+      checksum: '',
     };
 
     // Calculate checksum
@@ -629,11 +615,7 @@ export class GitSecretProvider implements SecretProvider {
 
     const secretsFilePath = path.join(this.secretsPath, 'data', `${this.environment}.enc`);
 
-    await fs.writeFile(
-      secretsFilePath,
-      JSON.stringify(data, null, 2),
-      { mode: 0o600 }
-    );
+    await fs.writeFile(secretsFilePath, JSON.stringify(data, null, 2), { mode: 0o600 });
   }
 
   private async loadEnvironmentSecrets(): Promise<void> {
@@ -654,10 +636,7 @@ export class GitSecretProvider implements SecretProvider {
     const iv = crypto.randomBytes(16);
     const cipher = crypto.createCipheriv('aes-256-gcm', masterKey, iv);
 
-    const encrypted = Buffer.concat([
-      cipher.update(dataToEncrypt),
-      cipher.final()
-    ]);
+    const encrypted = Buffer.concat([cipher.update(dataToEncrypt), cipher.final()]);
 
     const authTag = cipher.getAuthTag();
 
@@ -666,23 +645,16 @@ export class GitSecretProvider implements SecretProvider {
       iv: iv.toString('base64'),
       authTag: authTag.toString('base64'),
       compressed,
-      metadata: {}
+      metadata: {},
     };
   }
 
   private decryptValue(secret: any, masterKey: Buffer): string {
-    const decipher = crypto.createDecipheriv(
-      'aes-256-gcm',
-      masterKey,
-      Buffer.from(secret.iv, 'base64')
-    );
+    const decipher = crypto.createDecipheriv('aes-256-gcm', masterKey, Buffer.from(secret.iv, 'base64'));
 
     decipher.setAuthTag(Buffer.from(secret.authTag, 'base64'));
 
-    let decrypted = Buffer.concat([
-      decipher.update(Buffer.from(secret.value, 'base64')),
-      decipher.final()
-    ]);
+    let decrypted = Buffer.concat([decipher.update(Buffer.from(secret.value, 'base64')), decipher.final()]);
 
     // Phase 3: Decompress if needed
     if (secret.compressed) {
@@ -714,7 +686,7 @@ export class GitSecretProvider implements SecretProvider {
     try {
       const email = execSync('git config user.email', {
         cwd: this.repoPath,
-        encoding: 'utf8'
+        encoding: 'utf8',
       }).trim();
 
       return email || 'unknown';
@@ -731,7 +703,7 @@ export class GitSecretProvider implements SecretProvider {
       // Check if there are changes to commit
       const status = execSync('git status --porcelain', {
         cwd: this.repoPath,
-        encoding: 'utf8'
+        encoding: 'utf8',
       });
 
       if (status.trim()) {
@@ -840,14 +812,14 @@ export class GitSecretProvider implements SecretProvider {
         modulusLength: this.config.keySize || 4096,
         publicKeyEncoding: {
           type: 'spki',
-          format: 'pem'
+          format: 'pem',
         },
         privateKeyEncoding: {
           type: 'pkcs8',
           format: 'pem',
           cipher: 'aes-256-cbc',
-          passphrase: await this.getUserPassphrase()
-        }
+          passphrase: await this.getUserPassphrase(),
+        },
       });
 
       // Save keys
@@ -865,7 +837,7 @@ export class GitSecretProvider implements SecretProvider {
 
       this.userPrivateKey = crypto.createPrivateKey({
         key: privateKeyPem,
-        passphrase: await this.getUserPassphrase()
+        passphrase: await this.getUserPassphrase(),
       });
       this.userPublicKey = crypto.createPublicKey(publicKeyPem);
     }
@@ -901,10 +873,7 @@ export class GitSecretProvider implements SecretProvider {
         this.teamKeys.set(userId, info as TeamKeyInfo);
       }
     } catch (error) {
-      throw new SecretError(
-        'Failed to load team keys',
-        'TEAM_MEMBER_NOT_FOUND'
-      );
+      throw new SecretError('Failed to load team keys', 'TEAM_MEMBER_NOT_FOUND');
     }
   }
 
@@ -920,17 +889,17 @@ export class GitSecretProvider implements SecretProvider {
       metadata[userId] = info;
     }
 
-    await fs.writeFile(
-      metadataPath,
-      JSON.stringify(metadata, null, 2),
-      { mode: 0o600 }
-    );
+    await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2), { mode: 0o600 });
   }
 
   /**
    * Add a team member with their public key
    */
-  async addTeamMember(email: string, publicKeyPath: string, permissions: 'read' | 'read-write' | 'admin' = 'read-write'): Promise<void> {
+  async addTeamMember(
+    email: string,
+    publicKeyPath: string,
+    permissions: 'read' | 'read-write' | 'admin' = 'read-write'
+  ): Promise<void> {
     await this.ensureInitialized();
 
     // 1. Read and validate public key
@@ -945,7 +914,7 @@ export class GitSecretProvider implements SecretProvider {
       {
         key: publicKey,
         padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
-        oaepHash: 'sha256'
+        oaepHash: 'sha256',
       },
       masterKey
     );
@@ -957,7 +926,7 @@ export class GitSecretProvider implements SecretProvider {
       encryptedMasterKey: encryptedMasterKey.toString('base64'),
       addedAt: new Date(),
       addedBy: await this.getGitUser(),
-      permissions
+      permissions,
     };
 
     this.teamKeys.set(email, teamMember);
@@ -989,10 +958,7 @@ export class GitSecretProvider implements SecretProvider {
     await this.ensureInitialized();
 
     if (!this.teamKeys.has(email)) {
-      throw new SecretError(
-        `Team member ${email} not found`,
-        'TEAM_MEMBER_NOT_FOUND'
-      );
+      throw new SecretError(`Team member ${email} not found`, 'TEAM_MEMBER_NOT_FOUND');
     }
 
     // 1. Remove member's encrypted master key
@@ -1082,7 +1048,7 @@ export class GitSecretProvider implements SecretProvider {
         encrypted.metadata = {
           ...data.secrets[key]?.metadata,
           updatedAt: new Date(),
-          updatedBy: gitUser
+          updatedBy: gitUser,
         };
 
         data.secrets[key] = encrypted;
@@ -1100,7 +1066,7 @@ export class GitSecretProvider implements SecretProvider {
         {
           key: publicKey,
           padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
-          oaepHash: 'sha256'
+          oaepHash: 'sha256',
         },
         newMasterKey
       );
@@ -1117,10 +1083,15 @@ export class GitSecretProvider implements SecretProvider {
 
     // 8. Save new master key (encrypted with machine ID)
     const machineId = await getCachedMachineId();
-    const { encrypted, salt: encSalt, iv, authTag } = await encrypt(
+    const {
+      encrypted,
+      salt: encSalt,
+      iv,
+      authTag,
+    } = await encrypt(
       JSON.stringify({
         key: newMasterKey.toString('base64'),
-        salt: newSalt.toString('base64')
+        salt: newSalt.toString('base64'),
       }),
       machineId
     );
@@ -1134,16 +1105,12 @@ export class GitSecretProvider implements SecretProvider {
       metadata: {
         createdAt: new Date(),
         createdBy: await this.getGitUser(),
-        rotatedAt: new Date()
-      }
+        rotatedAt: new Date(),
+      },
     };
 
     const masterKeyPath = path.join(this.keyPath, 'master.key');
-    await fs.writeFile(
-      masterKeyPath,
-      JSON.stringify(encryptedMasterKey, null, 2),
-      { mode: 0o600 }
-    );
+    await fs.writeFile(masterKeyPath, JSON.stringify(encryptedMasterKey, null, 2), { mode: 0o600 });
 
     // 9. Commit rotation
     if (this.autoCommit) {
@@ -1166,10 +1133,7 @@ export class GitSecretProvider implements SecretProvider {
 
     // Encrypt backup with machine ID
     const machineId = await getCachedMachineId();
-    const { encrypted, salt, iv, authTag } = await encrypt(
-      key.toString('base64'),
-      machineId
-    );
+    const { encrypted, salt, iv, authTag } = await encrypt(key.toString('base64'), machineId);
 
     const backupData = {
       encrypted: encode(encrypted),
@@ -1177,14 +1141,10 @@ export class GitSecretProvider implements SecretProvider {
       iv: encode(iv),
       authTag: encode(authTag),
       backedUpAt: new Date(),
-      backedUpBy: await this.getGitUser()
+      backedUpBy: await this.getGitUser(),
     };
 
-    await fs.writeFile(
-      backupPath,
-      JSON.stringify(backupData, null, 2),
-      { mode: 0o600 }
-    );
+    await fs.writeFile(backupPath, JSON.stringify(backupData, null, 2), { mode: 0o600 });
   }
 
   /**
@@ -1211,17 +1171,14 @@ export class GitSecretProvider implements SecretProvider {
         {
           key: this.userPrivateKey,
           padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
-          oaepHash: 'sha256'
+          oaepHash: 'sha256',
         },
         Buffer.from(teamMember.encryptedMasterKey, 'base64')
       );
 
       return decryptedKey;
     } catch (error) {
-      throw new SecretError(
-        'Failed to decrypt master key with user key',
-        'DECRYPTION_FAILED'
-      );
+      throw new SecretError('Failed to decrypt master key with user key', 'DECRYPTION_FAILED');
     }
   }
 
@@ -1230,11 +1187,7 @@ export class GitSecretProvider implements SecretProvider {
   /**
    * Log an audit event
    */
-  private async logAudit(
-    action: AuditLog['action'],
-    key?: string,
-    details?: Record<string, any>
-  ): Promise<void> {
+  private async logAudit(action: AuditLog['action'], key?: string, details?: Record<string, any>): Promise<void> {
     if (!this.auditLogEnabled) {
       return;
     }
@@ -1245,17 +1198,17 @@ export class GitSecretProvider implements SecretProvider {
       user: await this.getGitUser(),
       environment: this.environment,
       key,
-      details
+      details,
     };
 
     // Add git commit hash if available
     try {
       const gitCommit = execSync('git rev-parse HEAD', {
         cwd: this.repoPath,
-        encoding: 'utf8'
+        encoding: 'utf8',
       }).trim();
       auditEntry.gitCommit = gitCommit;
-    } catch { }
+    } catch {}
 
     // Save audit log
     await this.saveAuditLog(auditEntry);
@@ -1277,11 +1230,7 @@ export class GitSecretProvider implements SecretProvider {
   /**
    * Read audit logs
    */
-  async getAuditLogs(
-    startDate?: Date,
-    endDate?: Date,
-    action?: AuditLog['action']
-  ): Promise<AuditLog[]> {
+  async getAuditLogs(startDate?: Date, endDate?: Date, action?: AuditLog['action']): Promise<AuditLog[]> {
     const auditDir = path.join(this.secretsPath, 'audit');
     const logs: AuditLog[] = [];
 
@@ -1312,7 +1261,7 @@ export class GitSecretProvider implements SecretProvider {
           if (action && log.action !== action) continue;
 
           logs.push(log);
-        } catch { }
+        } catch {}
       }
     }
 
@@ -1334,7 +1283,7 @@ export class GitSecretProvider implements SecretProvider {
       createdAt: new Date(),
       createdBy: await this.getGitUser(),
       environments: {},
-      checksum: ''
+      checksum: '',
     };
 
     const currentEnv = this.environment;
@@ -1359,14 +1308,15 @@ export class GitSecretProvider implements SecretProvider {
             secrets,
             metadata: {
               secretCount: Object.keys(secrets).length,
-              lastModified: firstKey ? data.secrets[firstKey]?.metadata?.updatedAt : undefined
-            }
+              lastModified: firstKey ? data.secrets[firstKey]?.metadata?.updatedAt : undefined,
+            },
           };
         }
       }
 
       // Compress backup if large
-      if (JSON.stringify(backup).length > 10 * 1024) { // 10KB threshold
+      if (JSON.stringify(backup).length > 10 * 1024) {
+        // 10KB threshold
         backup.compressed = true;
       }
 
@@ -1379,19 +1329,14 @@ export class GitSecretProvider implements SecretProvider {
           ? await gzipAsync(JSON.stringify(backup))
           : JSON.stringify(backup, null, 2);
 
-        await fs.writeFile(
-          outputPath,
-          backupData,
-          backup.compressed ? undefined : 'utf8'
-        );
+        await fs.writeFile(outputPath, backupData, backup.compressed ? undefined : 'utf8');
       }
 
       // Log audit event
       await this.logAudit('export', undefined, {
         type: 'backup',
         environments: Object.keys(backup.environments),
-        totalSecrets: Object.values(backup.environments)
-          .reduce((sum, env) => sum + Object.keys(env.secrets).length, 0)
+        totalSecrets: Object.values(backup.environments).reduce((sum, env) => sum + Object.keys(env.secrets).length, 0),
       });
 
       return backup;
@@ -1458,17 +1403,17 @@ export class GitSecretProvider implements SecretProvider {
 
       // Commit the restore
       if (this.autoCommit) {
-        await this.commitChanges(
-          `secrets: restore from backup (${Object.keys(backupData.environments).join(', ')})`
-        );
+        await this.commitChanges(`secrets: restore from backup (${Object.keys(backupData.environments).join(', ')})`);
       }
 
       // Log audit event
       await this.logAudit('import', undefined, {
         type: 'restore',
         environments: Object.keys(backupData.environments),
-        totalSecrets: Object.values(backupData.environments)
-          .reduce((sum, env) => sum + Object.keys(env.secrets).length, 0)
+        totalSecrets: Object.values(backupData.environments).reduce(
+          (sum, env) => sum + Object.keys(env.secrets).length,
+          0
+        ),
       });
     } finally {
       // Restore original environment
@@ -1501,7 +1446,7 @@ export class GitSecretProvider implements SecretProvider {
 
         encrypted.metadata = {
           updatedAt: new Date(),
-          updatedBy: gitUser
+          updatedBy: gitUser,
         };
 
         if (!data.secrets[key]) {
@@ -1520,16 +1465,14 @@ export class GitSecretProvider implements SecretProvider {
 
       // Single commit for all changes
       if (this.autoCommit) {
-        await this.commitChanges(
-          `secrets: bulk update ${Object.keys(secrets).length} secrets`
-        );
+        await this.commitChanges(`secrets: bulk update ${Object.keys(secrets).length} secrets`);
       }
 
       // Log audit event
       await this.logAudit('set', undefined, {
         type: 'bulk',
         keys: Object.keys(secrets),
-        count: Object.keys(secrets).length
+        count: Object.keys(secrets).length,
       });
     } catch (error) {
       throw new SecretError(
@@ -1577,7 +1520,7 @@ export class GitSecretProvider implements SecretProvider {
             this.secretsCache.set(cacheKey, {
               value,
               timestamp: Date.now(),
-              ttl: this.cacheTTL
+              ttl: this.cacheTTL,
             });
           } else {
             results[key] = null;
@@ -1595,7 +1538,7 @@ export class GitSecretProvider implements SecretProvider {
     await this.logAudit('get', undefined, {
       type: 'bulk',
       keys,
-      count: keys.length
+      count: keys.length,
     });
 
     return results;
@@ -1622,7 +1565,7 @@ export class GitSecretProvider implements SecretProvider {
     return {
       size: this.secretsCache.size,
       ttl: this.cacheTTL,
-      entries: Array.from(this.secretsCache.keys())
+      entries: Array.from(this.secretsCache.keys()),
     };
   }
 }

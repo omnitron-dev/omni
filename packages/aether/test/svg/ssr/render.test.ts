@@ -9,20 +9,20 @@ import type { Component } from '../../../src/core/component/types.js';
 describe('SSR Render - renderSVGToString', () => {
   it('should render simple SVG component to string', () => {
     const TestSVG: Component<{ size: number }> = (props) => () => ({
-        type: 'svg',
-        props: {
-          width: props.size,
-          height: props.size,
-          children: {
-            type: 'circle',
-            props: {
-              cx: props.size / 2,
-              cy: props.size / 2,
-              r: props.size / 4,
-            },
+      type: 'svg',
+      props: {
+        width: props.size,
+        height: props.size,
+        children: {
+          type: 'circle',
+          props: {
+            cx: props.size / 2,
+            cy: props.size / 2,
+            r: props.size / 4,
           },
         },
-      });
+      },
+    });
 
     const result = renderSVGToString(TestSVG, { size: 100 });
     expect(result).toContain('<svg');
@@ -220,10 +220,7 @@ describe('SSR Render - renderSVGBatch', () => {
     const SVG1: Component = () => () => ({ type: 'svg', props: { 'data-id': '1' } });
     const SVG2: Component = () => () => ({ type: 'svg', props: { 'data-id': '2' } });
 
-    const result = renderSVGBatch([
-      { component: SVG1 },
-      { component: SVG2 },
-    ]);
+    const result = renderSVGBatch([{ component: SVG1 }, { component: SVG2 }]);
 
     expect(result).toContain('data-id="1"');
     expect(result).toContain('data-id="2"');
@@ -247,10 +244,7 @@ describe('SSR Render - renderSVGBatch', () => {
   it('should apply config to all components', () => {
     const TestSVG: Component = () => () => ({ type: 'svg', props: {} });
 
-    const result = renderSVGBatch(
-      [{ component: TestSVG }, { component: TestSVG }],
-      { minify: true }
-    );
+    const result = renderSVGBatch([{ component: TestSVG }, { component: TestSVG }], { minify: true });
 
     expect(result.split('\n').length).toBeGreaterThan(1);
   });
@@ -339,13 +333,7 @@ describe('SSR Render - Edge Cases', () => {
     const MixedSVG: Component = () => () => ({
       type: 'svg',
       props: {
-        children: [
-          'Text content',
-          { type: 'circle', props: { r: 5 } },
-          42,
-          null,
-          undefined,
-        ],
+        children: ['Text content', { type: 'circle', props: { r: 5 } }, 42, null, undefined],
       },
     });
 

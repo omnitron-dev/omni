@@ -73,11 +73,7 @@ describe('Build System Integration Tests', () => {
       `;
 
       // Bundle worker with federation support
-      const workerBundle = await workerBundler.bundleWorker(
-        './worker.js',
-        workerCode,
-        'web-worker'
-      );
+      const workerBundle = await workerBundler.bundleWorker('./worker.js', workerCode, 'web-worker');
 
       expect(workerBundle.id).toBeDefined();
       expect(workerBundle.type).toBe('web-worker');
@@ -102,17 +98,9 @@ describe('Build System Integration Tests', () => {
         });
       `;
 
-      const bundle1 = await workerBundler.bundleWorker(
-        './shared-worker.js',
-        sharedWorkerCode,
-        'shared-worker'
-      );
+      const bundle1 = await workerBundler.bundleWorker('./shared-worker.js', sharedWorkerCode, 'shared-worker');
 
-      const bundle2 = await workerBundler.bundleWorker(
-        './shared-worker.js',
-        sharedWorkerCode,
-        'shared-worker'
-      );
+      const bundle2 = await workerBundler.bundleWorker('./shared-worker.js', sharedWorkerCode, 'shared-worker');
 
       // Should have same hash (cached)
       expect(bundle1.hash).toBe(bundle2.hash);
@@ -165,10 +153,7 @@ describe('Build System Integration Tests', () => {
         }
       `;
 
-      const cssModule = await cssProcessor.process(
-        './components/LazyComponent.module.css',
-        cssCode
-      );
+      const cssModule = await cssProcessor.process('./components/LazyComponent.module.css', cssCode);
 
       expect(cssModule.locals).toHaveProperty('container');
       expect(cssModule.locals).toHaveProperty('title');
@@ -280,10 +265,7 @@ describe('Build System Integration Tests', () => {
       });
 
       // Pre-compile critical modules for offline use
-      const criticalModules = [
-        './src/components/OfflinePage.tsx',
-        './src/components/ErrorBoundary.tsx',
-      ];
+      const criticalModules = ['./src/components/OfflinePage.tsx', './src/components/ErrorBoundary.tsx'];
 
       await lazyCompiler.precompileInBackground(criticalModules);
 
@@ -377,9 +359,7 @@ describe('Build System Integration Tests', () => {
       expect(result.manifest.chunks).toBeDefined();
 
       // Should have framework chunk
-      const frameworkChunk = Array.from(result.chunks.values()).find(
-        (c) => c.type === 'framework'
-      );
+      const frameworkChunk = Array.from(result.chunks.values()).find((c) => c.type === 'framework');
       expect(frameworkChunk).toBeDefined();
 
       // Should have vendor chunk
@@ -391,8 +371,8 @@ describe('Build System Integration Tests', () => {
       const federation = new ModuleFederationManager({
         name: 'host',
         remotes: {
-          'remote1': 'http://localhost:3001',
-          'remote2': 'http://localhost:3002',
+          remote1: 'http://localhost:3001',
+          remote2: 'http://localhost:3002',
         },
         shared: {
           react: '18.0.0',
@@ -855,11 +835,7 @@ describe('Build System Integration Tests', () => {
       const workerBundler = new WorkerBundler({
         minify: true,
       });
-      await workerBundler.bundleWorker(
-        './worker.js',
-        'self.postMessage("ready");',
-        'web-worker'
-      );
+      await workerBundler.bundleWorker('./worker.js', 'self.postMessage("ready");', 'web-worker');
       profiler.endMetric('worker-bundling');
 
       // 8. Module federation

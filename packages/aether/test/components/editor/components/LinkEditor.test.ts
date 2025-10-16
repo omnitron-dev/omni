@@ -185,7 +185,7 @@ describe('LinkEditor', () => {
     }) as HTMLElement;
 
     const saveButton = Array.from(element.querySelectorAll('button')).find(
-      (btn) => btn.textContent === 'Save',
+      (btn) => btn.textContent === 'Save'
     ) as HTMLButtonElement;
 
     expect(saveButton).toBeDefined();
@@ -203,7 +203,7 @@ describe('LinkEditor', () => {
     }) as HTMLElement;
 
     const cancelButton = Array.from(element.querySelectorAll('button')).find(
-      (btn) => btn.textContent === 'Cancel',
+      (btn) => btn.textContent === 'Cancel'
     ) as HTMLButtonElement;
 
     expect(cancelButton).toBeDefined();
@@ -252,7 +252,7 @@ describe('LinkEditor', () => {
     }) as HTMLElement;
 
     const cancelButton = Array.from(element.querySelectorAll('button')).find(
-      (btn) => btn.textContent === 'Cancel',
+      (btn) => btn.textContent === 'Cancel'
     ) as HTMLButtonElement;
 
     cancelButton.click();
@@ -325,7 +325,7 @@ describe('LinkEditor', () => {
 
     // Click cancel
     const cancelButton = Array.from(element.querySelectorAll('button')).find(
-      (btn) => btn.textContent === 'Cancel',
+      (btn) => btn.textContent === 'Cancel'
     ) as HTMLButtonElement;
     cancelButton.click();
 

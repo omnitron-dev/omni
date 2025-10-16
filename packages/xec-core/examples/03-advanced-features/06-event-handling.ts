@@ -1,8 +1,8 @@
 /**
  * 06. Event Handling - Обработка событий
- * 
+ *
  * Показывает работу с системой событий.
- * 
+ *
  * ВАЖНО: Для работы с событиями нужно создать экземпляр ExecutionEngine.
  * Прямой доступ к $ не даёт возможности подписаться на события.
  */
@@ -71,19 +71,19 @@ await $engine`echo "test data" > /tmp/test-file.txt`;
 // Отслеживаем выполнение команд
 class DeploymentTracker {
   private deployments = new Map();
-  
+
   constructor(private engine: ExecutionEngine) {
     // Отслеживаем начало и конец команд
     engine.on('command:start', (event) => {
       if (event.command.includes('deploy')) {
         this.deployments.set(event.command, {
           startTime: Date.now(),
-          status: 'in-progress'
+          status: 'in-progress',
         });
         console.log(`[Деплой] Начато: ${event.command}`);
       }
     });
-    
+
     engine.on('command:complete', (event) => {
       if (event.command.includes('deploy')) {
         const deployment = this.deployments.get(event.command);
@@ -95,7 +95,7 @@ class DeploymentTracker {
       }
     });
   }
-  
+
   getStats() {
     return Array.from(this.deployments.entries());
   }
@@ -111,10 +111,10 @@ console.log('\nСтатистика деплоев:', deploymentTracker.getStats
 
 // 6. Фильтрация событий
 const commandFilter = (pattern: RegExp) => (event: any) => {
-    if (pattern.test(event.command)) {
-      console.log(`[Фильтр] Найдена команда: ${event.command}`);
-    }
-  };
+  if (pattern.test(event.command)) {
+    console.log(`[Фильтр] Найдена команда: ${event.command}`);
+  }
+};
 
 // Отслеживать только echo команды
 engine.on('command:start', commandFilter(/^echo/));
@@ -129,25 +129,22 @@ const eventStats = {
   successfulCommands: 0,
   failedCommands: 0,
   totalDuration: 0,
-  commandTypes: new Map<string, number>()
+  commandTypes: new Map<string, number>(),
 };
 
 engine.on('command:complete', (event) => {
   eventStats.totalCommands++;
   eventStats.totalDuration += event.duration;
-  
+
   if (event.exitCode === 0) {
     eventStats.successfulCommands++;
   } else {
     eventStats.failedCommands++;
   }
-  
+
   // Тип команды
   const cmdType = event.command.split(' ')[0];
-  eventStats.commandTypes.set(
-    cmdType,
-    (eventStats.commandTypes.get(cmdType) || 0) + 1
-  );
+  eventStats.commandTypes.set(cmdType, (eventStats.commandTypes.get(cmdType) || 0) + 1);
 });
 
 // Выполняем разные команды
@@ -197,15 +194,15 @@ console.log(`Всего залогировано команд: ${commandCount}`)
 class CommandTracker {
   private commands = new Map();
   private errorCount = 0;
-  
+
   constructor(private engine: ExecutionEngine) {
     engine.on('command:start', (event) => {
       this.commands.set(event.command, {
         startTime: Date.now(),
-        status: 'running'
+        status: 'running',
       });
     });
-    
+
     engine.on('command:complete', (event) => {
       const cmd = this.commands.get(event.command);
       if (cmd) {
@@ -216,18 +213,18 @@ class CommandTracker {
         }
       }
     });
-    
+
     engine.on('command:error', (event) => {
       this.errorCount++;
       console.error(`Ошибка в команде: ${event.command}`);
     });
   }
-  
+
   getStats() {
     return {
       total: this.commands.size,
       errors: this.errorCount,
-      commands: Array.from(this.commands.entries())
+      commands: Array.from(this.commands.entries()),
     };
   }
 }

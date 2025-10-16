@@ -23,10 +23,7 @@ import type { Flow, FlowMeta, FlowOptions, Maybe, Result } from './types.js';
  * @category Core
  * @since 10.0.0
  */
-export function flow<In, Out>(
-  fn: (input: In) => Out | Promise<Out>,
-  meta?: FlowMeta,
-): Flow<In, Out>;
+export function flow<In, Out>(fn: (input: In) => Out | Promise<Out>, meta?: FlowMeta): Flow<In, Out>;
 
 /**
  * Creates a Flow from options.
@@ -50,13 +47,11 @@ export function flow<In, Out>(options: FlowOptions<In, Out>): Flow<In, Out>;
 
 export function flow<In, Out>(
   fnOrOptions: ((input: In) => Out | Promise<Out>) | FlowOptions<In, Out>,
-  meta?: FlowMeta,
+  meta?: FlowMeta
 ): Flow<In, Out> {
   // Normalize arguments
   const options: FlowOptions<In, Out> =
-    typeof fnOrOptions === 'function'
-      ? { fn: fnOrOptions, ...(meta !== undefined && { meta }) }
-      : fnOrOptions;
+    typeof fnOrOptions === 'function' ? { fn: fnOrOptions, ...(meta !== undefined && { meta }) } : fnOrOptions;
 
   const { fn, meta: flowMeta, onError } = options;
 
@@ -206,18 +201,13 @@ export const constant = <T>(value: T): Flow<any, T> =>
 export function compose<A, B>(f1: Flow<A, B>): Flow<A, B>;
 export function compose<A, B, C>(f1: Flow<A, B>, f2: Flow<B, C>): Flow<A, C>;
 export function compose<A, B, C, D>(f1: Flow<A, B>, f2: Flow<B, C>, f3: Flow<C, D>): Flow<A, D>;
-export function compose<A, B, C, D, E>(
-  f1: Flow<A, B>,
-  f2: Flow<B, C>,
-  f3: Flow<C, D>,
-  f4: Flow<D, E>,
-): Flow<A, E>;
+export function compose<A, B, C, D, E>(f1: Flow<A, B>, f2: Flow<B, C>, f3: Flow<C, D>, f4: Flow<D, E>): Flow<A, E>;
 export function compose<A, B, C, D, E, F>(
   f1: Flow<A, B>,
   f2: Flow<B, C>,
   f3: Flow<C, D>,
   f4: Flow<D, E>,
-  f5: Flow<E, F>,
+  f5: Flow<E, F>
 ): Flow<A, F>;
 export function compose(...flows: Flow[]): Flow {
   if (flows.length === 0) {
@@ -227,7 +217,7 @@ export function compose(...flows: Flow[]): Flow {
     return flows[0]!;
   }
 
-  const composed = flows.reduce((acc, flow) => acc.pipe(flow));
+  const composed = flows.reduce((acc, flow_) => acc.pipe(flow_));
   const metadata = flows
     .map((f) => f.meta)
     .filter(Boolean)
@@ -278,7 +268,7 @@ export const map = <In, Out>(mapper: Flow<In, Out>): Flow<In[], Out[]> =>
           memoizable: mapper.meta.performance.pure,
         },
       }),
-    },
+    }
   );
 
 /**
@@ -316,7 +306,7 @@ export const filter = <T>(predicate: Flow<T, boolean>): Flow<T[], T[]> =>
           memoizable: predicate.meta.performance.pure,
         },
       }),
-    },
+    }
   );
 
 /**
@@ -356,7 +346,7 @@ export const reduce = <T, R>(reducer: Flow<[R, T], R>, initial: R): Flow<T[], R>
           memoizable: reducer.meta.performance.pure,
         },
       }),
-    },
+    }
   );
 
 /**
@@ -380,9 +370,7 @@ export const reduce = <T, R>(reducer: Flow<[R, T], R>, initial: R): Flow<T[], R>
  */
 export const parallel = <In, Out>(flows: Flow<In, Out>[]): Flow<In, Out[]> =>
   flow(
-    async (input: In) => {
-      return Promise.all(flows.map((f) => f(input)));
-    },
+    async (input: In) => Promise.all(flows.map((f) => f(input))),
     {
       name: 'parallel',
       description: `Runs ${flows.length} flows in parallel`,
@@ -392,7 +380,7 @@ export const parallel = <In, Out>(flows: Flow<In, Out>[]): Flow<In, Out[]> =>
           memoizable: true,
         },
       }),
-    },
+    }
   );
 
 /**
@@ -415,21 +403,19 @@ export const parallel = <In, Out>(flows: Flow<In, Out>[]): Flow<In, Out[]> =>
  */
 export const race = <In, Out>(flows: Flow<In, Out>[]): Flow<In, Out> =>
   flow(
-    async (input: In) => {
-      return Promise.race(flows.map((f) => f(input)));
-    },
+    async (input: In) => Promise.race(flows.map((f) => f(input))),
     {
       name: 'race',
       description: `Races ${flows.length} flows`,
       performance: { pure: false, memoizable: false },
-    },
+    }
   );
 
 /**
  * Creates a Flow that applies a fallback on error.
  *
  * @param primary - The primary Flow to try
- * @param fallback - The fallback Flow to use on error
+ * @param fallback_ - The fallback Flow to use on error
  * @returns A Flow that tries primary, then fallback
  *
  * @example
@@ -443,25 +429,25 @@ export const race = <In, Out>(flows: Flow<In, Out>[]): Flow<In, Out> =>
  * @category Error Handling
  * @since 10.0.0
  */
-export const fallback = <In, Out>(primary: Flow<In, Out>, fallback: Flow<In, Out>): Flow<In, Out> =>
+export const fallback = <In, Out>(primary: Flow<In, Out>, fallback_: Flow<In, Out>): Flow<In, Out> =>
   flow(
     async (input: In) => {
       try {
         return await primary(input);
       } catch {
-        return await fallback(input);
+        return await fallback_(input);
       }
     },
     {
       name: 'fallback',
-      description: `Try ${primary.meta?.name || 'primary'}, fallback to ${fallback.meta?.name || 'fallback'}`,
+      description: `Try ${primary.meta?.name || 'primary'}, fallback to ${fallback_.meta?.name || 'fallback'}`,
       ...(primary.meta?.performance?.pure !== undefined &&
-        fallback.meta?.performance?.pure !== undefined && {
-          performance: {
-            pure: primary.meta.performance.pure && fallback.meta.performance.pure,
-          },
-        }),
-    },
+        fallback_.meta?.performance?.pure !== undefined && {
+        performance: {
+          pure: primary.meta.performance.pure && fallback_.meta.performance.pure,
+        },
+      }),
+    }
   );
 
 /**
@@ -480,33 +466,27 @@ export const fallback = <In, Out>(primary: Flow<In, Out>, fallback: Flow<In, Out
  * @category Error Handling
  * @since 10.0.0
  */
-export const retry = <In, Out>(
-  targetFlow: Flow<In, Out>,
-  maxRetries = 3,
-  delay = 1000,
-): Flow<In, Out> => {
-  return flow(
-    async (input: In) => {
-      let lastError: Error;
-      for (let i = 0; i <= maxRetries; i++) {
-        try {
-          return await targetFlow(input);
-        } catch (error) {
-          lastError = error as Error;
-          if (i < maxRetries) {
-            await new Promise((resolve) => setTimeout(resolve, delay));
-          }
+export const retry = <In, Out>(targetFlow: Flow<In, Out>, maxRetries = 3, delay = 1000): Flow<In, Out> => flow(
+  async (input: In) => {
+    let lastError: Error;
+    for (let i = 0; i <= maxRetries; i++) {
+      try {
+        return await targetFlow(input);
+      } catch (error) {
+        lastError = error as Error;
+        if (i < maxRetries) {
+          await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
-      throw lastError!;
-    },
-    {
-      name: 'retry',
-      description: `Retry ${targetFlow.meta?.name || 'flow'} up to ${maxRetries} times`,
-      performance: { pure: false, memoizable: false },
-    },
-  );
-};
+    }
+    throw lastError!;
+  },
+  {
+    name: 'retry',
+    description: `Retry ${targetFlow.meta?.name || 'flow'} up to ${maxRetries} times`,
+    performance: { pure: false, memoizable: false },
+  }
+);
 
 /**
  * Creates a Flow that times out after a specified duration.
@@ -523,21 +503,17 @@ export const retry = <In, Out>(
  * @category Async
  * @since 10.0.0
  */
-export const timeout = <In, Out>(targetFlow: Flow<In, Out>, ms: number): Flow<In, Out> => {
-  return flow(
-    async (input: In) => {
-      return Promise.race([
-        targetFlow(input),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms)),
-      ]);
-    },
-    {
-      name: 'timeout',
-      description: `Timeout ${targetFlow.meta?.name || 'flow'} after ${ms}ms`,
-      performance: { pure: false, memoizable: false },
-    },
-  );
-};
+export const timeout = <In, Out>(targetFlow: Flow<In, Out>, ms: number): Flow<In, Out> => flow(
+  async (input: In) => Promise.race([
+    targetFlow(input),
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms)),
+  ]),
+  {
+    name: 'timeout',
+    description: `Timeout ${targetFlow.meta?.name || 'flow'} after ${ms}ms`,
+    performance: { pure: false, memoizable: false },
+  }
+);
 
 /**
  * Creates a Flow that memoizes its results.
@@ -556,7 +532,7 @@ export const timeout = <In, Out>(targetFlow: Flow<In, Out>, ms: number): Flow<In
  */
 export const memoize = <In, Out>(
   targetFlow: Flow<In, Out>,
-  keyFn: (input: In) => string = JSON.stringify,
+  keyFn: (input: In) => string = JSON.stringify
 ): Flow<In, Out> => {
   const cache = new Map<string, Out>();
   return flow(
@@ -584,7 +560,7 @@ export const memoize = <In, Out>(
           memoizable: false, // Already memoized
         },
       }),
-    },
+    }
   );
 };
 
@@ -620,14 +596,14 @@ export const debounce = <In, Out>(targetFlow: Flow<In, Out>, ms: number): Flow<I
           const resolves = pendingResolves;
           pendingResolves = [];
           timer = undefined;
-          resolves.forEach(r => r(result));
+          resolves.forEach((r) => r(result));
         }, ms);
       }),
     {
       name: 'debounced',
       description: `Debounced ${targetFlow.meta?.name || 'flow'} by ${ms}ms`,
       performance: { pure: false, memoizable: false },
-    },
+    }
   );
 };
 
@@ -663,7 +639,7 @@ export const throttle = <In, Out>(targetFlow: Flow<In, Out>, ms: number): Flow<I
       name: 'throttled',
       description: `Throttled ${targetFlow.meta?.name || 'flow'} to ${1000 / ms}Hz`,
       performance: { pure: false, memoizable: false },
-    },
+    }
   );
 };
 
@@ -681,23 +657,21 @@ export const throttle = <In, Out>(targetFlow: Flow<In, Out>, ms: number): Flow<I
  * @category Maybe
  * @since 10.0.0
  */
-export const maybe = <In, Out>(targetFlow: Flow<In, Out>): Flow<Maybe<In>, Maybe<Out>> => {
-  return flow(
-    async (input: Maybe<In>) => {
-      if (input === null || input === undefined) {
-        return input as any;
-      }
-      return await targetFlow(input);
-    },
-    {
-      name: 'maybe',
-      description: `Maybe ${targetFlow.meta?.name || 'flow'}`,
-      ...(targetFlow.meta?.performance && {
-        performance: targetFlow.meta.performance,
-      }),
-    },
-  );
-};
+export const maybe = <In, Out>(targetFlow: Flow<In, Out>): Flow<Maybe<In>, Maybe<Out>> => flow(
+  async (input: Maybe<In>) => {
+    if (input === null || input === undefined) {
+      return input as any;
+    }
+    return await targetFlow(input);
+  },
+  {
+    name: 'maybe',
+    description: `Maybe ${targetFlow.meta?.name || 'flow'}`,
+    ...(targetFlow.meta?.performance && {
+      performance: targetFlow.meta.performance,
+    }),
+  }
+);
 
 /**
  * Creates a Flow that transforms Result values.
@@ -713,30 +687,26 @@ export const maybe = <In, Out>(targetFlow: Flow<In, Out>): Flow<Maybe<In>, Maybe
  * @category Result
  * @since 10.0.0
  */
-export const result = <In, Out, E = Error>(
-  targetFlow: Flow<In, Out>,
-): Flow<Result<In, E>, Result<Out, E>> => {
-  return flow(
-    async (input: Result<In, E>) => {
-      if (!input.ok) {
-        return input as any;
-      }
-      try {
-        const value = await targetFlow(input.value);
-        return { ok: true, value };
-      } catch (error) {
-        return { ok: false, error: error as E };
-      }
-    },
-    {
-      name: 'result',
-      description: `Result ${targetFlow.meta?.name || 'flow'}`,
-      ...(targetFlow.meta?.performance && {
-        performance: targetFlow.meta.performance,
-      }),
-    },
-  );
-};
+export const result = <In, Out, E = Error>(targetFlow: Flow<In, Out>): Flow<Result<In, E>, Result<Out, E>> => flow(
+  async (input: Result<In, E>) => {
+    if (!input.ok) {
+      return input as any;
+    }
+    try {
+      const value = await targetFlow(input.value);
+      return { ok: true, value };
+    } catch (error) {
+      return { ok: false, error: error as E };
+    }
+  },
+  {
+    name: 'result',
+    description: `Result ${targetFlow.meta?.name || 'flow'}`,
+    ...(targetFlow.meta?.performance && {
+      performance: targetFlow.meta.performance,
+    }),
+  }
+);
 
 /**
  * Creates a Flow that taps into the pipeline without modifying values.
@@ -752,19 +722,17 @@ export const result = <In, Out, E = Error>(
  * @category Utility
  * @since 10.0.0
  */
-export const tap = <T>(sideEffect: (value: T) => void | Promise<void>): Flow<T, T> => {
-  return flow(
-    async (input: T) => {
-      await sideEffect(input);
-      return input;
-    },
-    {
-      name: 'tap',
-      description: 'Side effect tap',
-      performance: { pure: false, memoizable: false },
-    },
-  );
-};
+export const tap = <T>(sideEffect: (value: T) => void | Promise<void>): Flow<T, T> => flow(
+  async (input: T) => {
+    await sideEffect(input);
+    return input;
+  },
+  {
+    name: 'tap',
+    description: 'Side effect tap',
+    performance: { pure: false, memoizable: false },
+  }
+);
 
 /**
  * Creates a Flow that validates input with a predicate.
@@ -784,24 +752,19 @@ export const tap = <T>(sideEffect: (value: T) => void | Promise<void>): Flow<T, 
  * @category Validation
  * @since 10.0.0
  */
-export const validate = <T>(
-  predicate: (value: T) => boolean,
-  errorMessage = 'Validation failed',
-): Flow<T, T> => {
-  return flow(
-    (input: T) => {
-      if (!predicate(input)) {
-        throw new Error(errorMessage);
-      }
-      return input;
-    },
-    {
-      name: 'validate',
-      description: errorMessage,
-      performance: { pure: true, memoizable: true },
-    },
-  );
-};
+export const validate = <T>(predicate: (value: T) => boolean, errorMessage = 'Validation failed'): Flow<T, T> => flow(
+  (input: T) => {
+    if (!predicate(input)) {
+      throw new Error(errorMessage);
+    }
+    return input;
+  },
+  {
+    name: 'validate',
+    description: errorMessage,
+    performance: { pure: true, memoizable: true },
+  }
+);
 
 // Helper function to merge metadata
 function mergeMetadata(meta1?: FlowMeta, meta2?: FlowMeta): FlowMeta | undefined {
@@ -899,7 +862,7 @@ function mergeMetadata(meta1?: FlowMeta, meta2?: FlowMeta): FlowMeta | undefined
  */
 export const batch = <In, Out>(
   targetFlow: Flow<In[], Out[]>,
-  options: { size?: number; delay?: number } = {},
+  options: { size?: number; delay?: number } = {}
 ): Flow<In, Out> => {
   const { size = 10, delay = 100 } = options;
   const queue: Array<{
@@ -955,7 +918,7 @@ export const batch = <In, Out>(
         pure: false,
         memoizable: false,
       },
-    },
+    }
   );
 };
 
@@ -979,7 +942,7 @@ export const batch = <In, Out>(
  */
 export const split = <In, Parts extends readonly unknown[], Outs extends readonly unknown[]>(
   splitter: Flow<In, Parts>,
-  flows: readonly Flow<any, any>[],
+  flows: readonly Flow<any, any>[]
 ): Flow<In, Outs> =>
   flow(
     async (input: In) => {
@@ -997,7 +960,7 @@ export const split = <In, Parts extends readonly unknown[], Outs extends readonl
         },
       }) ||
         {}),
-    },
+    }
   );
 
 /**
@@ -1016,9 +979,7 @@ export const split = <In, Parts extends readonly unknown[], Outs extends readonl
  * @category Data
  * @since 10.0.0
  */
-export const merge = <Ins extends readonly unknown[], Out>(
-  merger: Flow<Ins, Out>,
-): Flow<Ins, Out> =>
+export const merge = <Ins extends readonly unknown[], Out>(merger: Flow<Ins, Out>): Flow<Ins, Out> =>
   flow(merger, {
     name: 'merge',
     description: 'Merges multiple inputs',
@@ -1048,7 +1009,7 @@ export const merge = <Ins extends readonly unknown[], Out>(
 export const when = <In, Out>(
   predicate: Flow<In, boolean>,
   ifTrue: Flow<In, Out>,
-  ifFalse: Flow<In, Out>,
+  ifFalse: Flow<In, Out>
 ): Flow<In, Out> =>
   flow(
     async (input: In) => {
@@ -1061,12 +1022,12 @@ export const when = <In, Out>(
       ...(predicate.meta?.performance?.pure === true &&
         ifTrue.meta?.performance?.pure === true &&
         ifFalse.meta?.performance?.pure === true && {
-          performance: {
-            pure: true,
-            memoizable: false,
-          },
-        }),
-    },
+        performance: {
+          pure: true,
+          memoizable: false,
+        },
+      }),
+    }
   );
 
 /**
@@ -1091,11 +1052,11 @@ export const when = <In, Out>(
 export const repeat = <In, Out>(targetFlow: Flow<In, Out>, times: number): Flow<In, Out> =>
   flow(
     async (input: In) => {
-      let result: any = input;
+      let result_: any = input;
       for (let i = 0; i < times; i++) {
-        result = await targetFlow(result);
+        result_ = await targetFlow(result_);
       }
-      return result;
+      return result_;
     },
     {
       name: 'repeat',
@@ -1106,7 +1067,7 @@ export const repeat = <In, Out>(targetFlow: Flow<In, Out>, times: number): Flow<
           memoizable: true,
         },
       }),
-    },
+    }
   );
 
 /**
@@ -1130,22 +1091,18 @@ export const repeat = <In, Out>(targetFlow: Flow<In, Out>, times: number): Flow<
  * @category Control
  * @since 10.0.0
  */
-export const loop = <T>(
-  condition: Flow<T, boolean>,
-  body: Flow<T, T>,
-  maxIterations = 1000,
-): Flow<T, T> =>
+export const loop = <T>(condition: Flow<T, boolean>, body: Flow<T, T>, maxIterations = 1000): Flow<T, T> =>
   flow(
     async (input: T) => {
-      let result = input;
+      let result_ = input;
       let iterations = 0;
 
       while (iterations < maxIterations) {
-        const shouldContinue = await condition(result);
+        const shouldContinue = await condition(result_);
         if (!shouldContinue) {
           break;
         }
-        result = await body(result);
+        result_ = await body(result_);
         iterations++;
       }
 
@@ -1153,13 +1110,13 @@ export const loop = <T>(
         throw new Error(`Loop exceeded maximum iterations: ${maxIterations}`);
       }
 
-      return result;
+      return result_;
     },
     {
       name: 'loop',
       description: `Loops ${body.meta?.name || 'flow'} until condition met`,
       performance: { pure: false, memoizable: false },
-    },
+    }
   );
 
 /**
@@ -1187,5 +1144,5 @@ export const loop = <T>(
 export const conditional = <In, Out>(
   predicate: Flow<In, boolean>,
   ifTrue: Flow<In, Out>,
-  ifFalse: Flow<In, Out>,
+  ifFalse: Flow<In, Out>
 ): Flow<In, Out> => when(predicate, ifTrue, ifFalse);

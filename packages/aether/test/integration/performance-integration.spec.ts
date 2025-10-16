@@ -36,7 +36,7 @@ describe('Performance Integration', () => {
 
     it('should efficiently handle many subscriptions', () => {
       const callbacks = Array.from({ length: 1000 }, (_, i) => () => console.log(i));
-      const subscriptions = callbacks.map(cb => pool.acquire(cb));
+      const subscriptions = callbacks.map((cb) => pool.acquire(cb));
 
       expect(subscriptions.length).toBe(1000);
 
@@ -70,7 +70,7 @@ describe('Performance Integration', () => {
     it('should handle concurrent subscription operations', async () => {
       const operations = Array.from({ length: 100 }, async (_, i) => {
         const sub = pool.acquire(() => i);
-        await new Promise(resolve => setTimeout(resolve, Math.random() * 10));
+        await new Promise((resolve) => setTimeout(resolve, Math.random() * 10));
         pool.release(sub);
       });
 
@@ -184,7 +184,9 @@ describe('Performance Integration', () => {
       let executed = false;
 
       const computation = {
-        run: () => { executed = true; },
+        run: () => {
+          executed = true;
+        },
       } as any;
 
       batchManager.queue(computation, BatchPriority.IMMEDIATE);
@@ -232,7 +234,7 @@ describe('Performance Integration', () => {
     it('should provide accurate statistics', () => {
       for (let i = 0; i < 50; i++) {
         const computation = { run: () => {} } as any;
-        batchManager.queue(computation, i % 3 as BatchPriority);
+        batchManager.queue(computation, (i % 3) as BatchPriority);
       }
 
       batchManager.flush();
@@ -250,14 +252,18 @@ describe('Performance Integration', () => {
       });
 
       let executed = false;
-      const computation = { run: () => { executed = false; } } as any;
+      const computation = {
+        run: () => {
+          executed = false;
+        },
+      } as any;
 
       asyncManager.queue(computation);
 
       // Should not execute immediately
       expect(executed).toBe(false);
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       asyncManager.destroy();
     });
@@ -289,7 +295,7 @@ describe('Performance Integration', () => {
         instances.push(instance);
       }
 
-      instances.forEach(instance => {
+      instances.forEach((instance) => {
         componentPool.release('TestComponent', instance);
       });
 
@@ -333,7 +339,7 @@ describe('Performance Integration', () => {
         instances.push(instance);
       }
 
-      instances.forEach(instance => {
+      instances.forEach((instance) => {
         pool.release('Test', instance);
       });
 
@@ -383,7 +389,7 @@ describe('Performance Integration', () => {
       perfMonitor.mark('heavy-load-start');
 
       const signals = Array.from({ length: 100 }, () => signal(0));
-      const computedValues = signals.map(s => computed(() => s() * 2));
+      const computedValues = signals.map((s) => computed(() => s() * 2));
 
       // Batch many updates
       batch(() => {
@@ -391,7 +397,7 @@ describe('Performance Integration', () => {
       });
 
       // Read all computed values
-      const results = computedValues.map(c => c());
+      const results = computedValues.map((c) => c());
 
       perfMonitor.mark('heavy-load-end');
       const measure = perfMonitor.measure('heavy-load', 'heavy-load-start', 'heavy-load-end');
@@ -455,12 +461,10 @@ describe('Performance Integration', () => {
 
       perfMonitor.mark('many-components-start');
 
-      const components = Array.from({ length: 100 }, (_, i) =>
-        componentPool.acquire(`Component-${i}`, Component)
-      );
+      const components = Array.from({ length: 100 }, (_, i) => componentPool.acquire(`Component-${i}`, Component));
 
       // Simulate component operations
-      components.forEach(comp => {
+      components.forEach((comp) => {
         comp.value.set(Math.random() * 100);
       });
 
@@ -484,7 +488,7 @@ describe('Performance Integration', () => {
       // Create many signals with subscriptions
       const signals = Array.from({ length: 50 }, () => signal(0));
 
-      signals.forEach(s => {
+      signals.forEach((s) => {
         const sub = pool.acquire(() => s());
         s.subscribe(() => {});
         pool.release(sub);
@@ -521,7 +525,7 @@ describe('Performance Integration', () => {
         value: computed(() => i * 2),
       }));
 
-      const results = data.map(d => d.value());
+      const results = data.map((d) => d.value());
 
       monitor.mark('render-end');
       const measure = monitor.measure('render', 'render-start', 'render-end');
@@ -586,7 +590,7 @@ describe('Performance Integration', () => {
 
       batch(() => {
         for (let i = 0; i < operations / 100; i++) {
-          values.forEach(v => v.set(i));
+          values.forEach((v) => v.set(i));
         }
       });
 
@@ -606,7 +610,7 @@ describe('Performance Integration', () => {
 
       // Create large dependency graph
       const base = Array.from({ length: 100 }, () => signal(0));
-      const derived = base.map(b => computed(() => b() * 2));
+      const derived = base.map((b) => computed(() => b() * 2));
       const combined = computed(() => derived.reduce((sum, d) => sum + d(), 0));
 
       // Massive update
@@ -639,7 +643,7 @@ describe('Performance Integration', () => {
         updateCount++;
       }, 10);
 
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       clearInterval(interval);
 
       const duration = performance.now() - startTime;
@@ -663,8 +667,8 @@ describe('Performance Integration', () => {
         const all = todos();
 
         if (f === 'all') return all;
-        if (f === 'active') return all.filter(t => !t.done);
-        return all.filter(t => t.done);
+        if (f === 'active') return all.filter((t) => !t.done);
+        return all.filter((t) => t.done);
       });
 
       // Add many todos
@@ -678,7 +682,7 @@ describe('Performance Integration', () => {
       });
 
       // Filter operations
-      ['active', 'completed', 'all'].forEach(f => {
+      ['active', 'completed', 'all'].forEach((f) => {
         filter.set(f as any);
         const result = filtered();
         expect(result.length).toBeGreaterThan(0);
@@ -701,13 +705,13 @@ describe('Performance Integration', () => {
       const metrics = Array.from({ length: 50 }, (_, i) => ({
         name: `metric-${i}`,
         value: signal(0),
-        trend: computed(() => Math.random() > 0.5 ? 'up' : 'down'),
+        trend: computed(() => (Math.random() > 0.5 ? 'up' : 'down')),
       }));
 
       // Update all metrics
       const updateInterval = setInterval(() => {
         batch(() => {
-          metrics.forEach(m => {
+          metrics.forEach((m) => {
             m.value.set(Math.random() * 100);
           });
         });

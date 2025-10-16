@@ -3,11 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import {
-  BuildProfiler,
-  createBuildProfiler,
-  Profile,
-} from '../../src/build/build-profiler.js';
+import { BuildProfiler, createBuildProfiler, Profile } from '../../src/build/build-profiler.js';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
@@ -166,9 +162,7 @@ describe('BuildProfiler', () => {
       const report = await profiler.generateReport();
 
       // Modules should be sorted slowest first
-      expect(report.modules[0].compilationTime).toBeGreaterThanOrEqual(
-        report.modules[1].compilationTime,
-      );
+      expect(report.modules[0].compilationTime).toBeGreaterThanOrEqual(report.modules[1].compilationTime);
     });
 
     it('should calculate phases', async () => {
@@ -355,9 +349,7 @@ describe('BuildProfiler', () => {
         enabled: false,
       });
 
-      await expect(disabledProfiler.generateReport()).rejects.toThrow(
-        'Profiler is not enabled',
-      );
+      await expect(disabledProfiler.generateReport()).rejects.toThrow('Profiler is not enabled');
     });
   });
 

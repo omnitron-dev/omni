@@ -132,9 +132,7 @@ describe('SchemaBuilder', () => {
     builder.addNode('paragraph', { group: 'block' });
     builder.addNode('paragraph', { group: 'block' });
 
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Node "paragraph" is already defined')
-    );
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Node "paragraph" is already defined'));
 
     consoleSpy.mockRestore();
   });
@@ -145,9 +143,7 @@ describe('SchemaBuilder', () => {
     builder.addMark('bold', { toDOM: () => ['strong', 0] });
     builder.addMark('bold', { toDOM: () => ['b', 0] });
 
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Mark "bold" is already defined')
-    );
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Mark "bold" is already defined'));
 
     consoleSpy.mockRestore();
   });

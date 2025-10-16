@@ -9126,7 +9126,7 @@ export const HUGEICONS_DUOTONE_ICONS = [
   'ZoomOutAreaIcon',
   'ZoomSquareIcon',
   'ZshIcon',
-  'ZzzIcon'
+  'ZzzIcon',
 ] as const;
 
 /**
@@ -9136,5 +9136,5 @@ export const HUGEICONS_DUOTONE_METADATA = {
   preset: 'duotone',
   count: 4559,
   license: 'CC BY 4.0',
-  source: 'https://hugeicons.com'
+  source: 'https://hugeicons.com',
 } as const;

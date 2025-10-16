@@ -17,12 +17,7 @@ import { Circle } from '../../../src/svg/primitives/shapes.js';
 import { Path } from '../../../src/svg/primitives/shapes.js';
 import { Rect } from '../../../src/svg/primitives/shapes.js';
 import { SVGIcon } from '../../../src/svg/components/SVGIcon.js';
-import {
-  IconRegistry,
-  getIconRegistry,
-  resetIconRegistry,
-  type IconSet,
-} from '../../../src/svg/icons/IconRegistry.js';
+import { IconRegistry, getIconRegistry, resetIconRegistry, type IconSet } from '../../../src/svg/icons/IconRegistry.js';
 
 describe('Reactivity Integration', () => {
   let registry: IconRegistry;
@@ -464,8 +459,7 @@ describe('Reactivity Integration', () => {
     it('should interpolate between values smoothly', () => {
       const progress = signal(0);
 
-      const interpolate = (start: number, end: number, t: number) =>
-        start + (end - start) * t;
+      const interpolate = (start: number, end: number, t: number) => start + (end - start) * t;
 
       const x = computed(() => interpolate(0, 100, progress()));
       const y = computed(() => interpolate(0, 100, progress()));
@@ -491,8 +485,7 @@ describe('Reactivity Integration', () => {
     it('should apply easing functions', () => {
       const t = signal(0);
 
-      const easeInOut = (x: number): number =>
-        x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
+      const easeInOut = (x: number): number => (x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2);
 
       const easedProgress = computed(() => easeInOut(t()));
       const scale = computed(() => 0.5 + easedProgress() * 0.5);
@@ -526,9 +519,7 @@ describe('Reactivity Integration', () => {
       const thickness = signal(10);
 
       const innerRadius = computed(() => outerRadius() - thickness());
-      const area = computed(
-        () => Math.PI * (outerRadius() ** 2 - innerRadius() ** 2)
-      );
+      const area = computed(() => Math.PI * (outerRadius() ** 2 - innerRadius() ** 2));
 
       expect(innerRadius()).toBe(40);
       expect(area()).toBeCloseTo(Math.PI * (2500 - 1600), 0.01);
@@ -540,7 +531,8 @@ describe('Reactivity Integration', () => {
 
     it('should handle reactive icon properties', () => {
       const icons: IconSet = {
-        heart: 'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z',
+        heart:
+          'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z',
       };
 
       registry.registerSet('reactive', icons);
@@ -607,10 +599,7 @@ describe('Reactivity Integration', () => {
       expect(circles()).toHaveLength(3);
 
       // Add item
-      items.set([
-        ...items(),
-        { id: 4, x: 70, y: 70 },
-      ]);
+      items.set([...items(), { id: 4, x: 70, y: 70 }]);
 
       expect(circles()).toHaveLength(4);
 
@@ -623,9 +612,7 @@ describe('Reactivity Integration', () => {
       const mouseX = signal(0);
       const mouseY = signal(0);
 
-      const isHovered = computed(
-        () => Math.sqrt(mouseX() ** 2 + mouseY() ** 2) < 50
-      );
+      const isHovered = computed(() => Math.sqrt(mouseX() ** 2 + mouseY() ** 2) < 50);
 
       const fill = computed(() => (isHovered() ? 'blue' : 'gray'));
 

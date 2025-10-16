@@ -12,12 +12,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SVGIcon } from '../../../src/svg/components/SVGIcon.js';
 import { SVG } from '../../../src/svg/primitives/svg.js';
-import {
-  IconRegistry,
-  getIconRegistry,
-  resetIconRegistry,
-  type IconSet,
-} from '../../../src/svg/icons/IconRegistry.js';
+import { IconRegistry, getIconRegistry, resetIconRegistry, type IconSet } from '../../../src/svg/icons/IconRegistry.js';
 
 describe('Performance Integration', () => {
   let registry: IconRegistry;
@@ -211,7 +206,7 @@ describe('Performance Integration', () => {
 
       // Only load icons that are visible
       const visibleIndices = [0, 5, 10, 15, 20];
-      const loadedIcons = visibleIndices.map(i => registry.get(`lazy-${i}`));
+      const loadedIcons = visibleIndices.map((i) => registry.get(`lazy-${i}`));
 
       expect(loadedIcons).toHaveLength(5);
     });
@@ -301,11 +296,7 @@ describe('Performance Integration', () => {
       });
 
       // Make multiple requests
-      await Promise.all([
-        registry.get('test'),
-        registry.get('test'),
-        registry.get('test'),
-      ]);
+      await Promise.all([registry.get('test'), registry.get('test'), registry.get('test')]);
 
       // Should only make one network request
       expect(requestCount).toBe(1);
@@ -367,11 +358,7 @@ describe('Performance Integration', () => {
       });
 
       // Request multiple icons from same sprite
-      await Promise.all([
-        registry.get('sprite-1'),
-        registry.get('sprite-2'),
-        registry.get('sprite-3'),
-      ]);
+      await Promise.all([registry.get('sprite-1'), registry.get('sprite-2'), registry.get('sprite-3')]);
 
       // Should only fetch sprite once
       expect(fetchCount).toBeLessThanOrEqual(3); // May fetch for each if not optimized
@@ -382,11 +369,14 @@ describe('Performance Integration', () => {
     it('should extract icons from sprite efficiently', async () => {
       const spriteSVG = `
         <svg xmlns="http://www.w3.org/2000/svg">
-          ${Array.from({ length: 100 }, (_, i) => `
+          ${Array.from(
+            { length: 100 },
+            (_, i) => `
             <symbol id="sprite-icon-${i}" viewBox="0 0 24 24">
               <path d="M${i}"/>
             </symbol>
-          `).join('')}
+          `
+          ).join('')}
         </svg>
       `;
 
@@ -430,7 +420,7 @@ describe('Performance Integration', () => {
       // Simulate sprite loading time
       const spriteLoadTime = 200; // 200ms for sprite
       const extractionTime = 1; // 1ms per extraction
-      const spriteTotal = spriteLoadTime + (extractionTime * 100);
+      const spriteTotal = spriteLoadTime + extractionTime * 100;
 
       // Sprite should be significantly faster
       expect(spriteTotal).toBeLessThan(individualTotal);
@@ -511,10 +501,12 @@ describe('Performance Integration', () => {
 
       const renderedIcons = [];
       for (let i = 0; i < 50; i++) {
-        renderedIcons.push(SVGIcon({
-          name: `batch-${i}`,
-          size: 24,
-        }));
+        renderedIcons.push(
+          SVGIcon({
+            name: `batch-${i}`,
+            size: 24,
+          })
+        );
       }
 
       const endTime = performance.now();
@@ -600,7 +592,7 @@ describe('Performance Integration', () => {
       expect(endTime - startTime).toBeLessThan(20);
 
       // Verify all icons are loaded
-      iconNames.forEach(name => {
+      iconNames.forEach((name) => {
         expect(registry.has(name)).toBe(true);
       });
     });
@@ -638,9 +630,7 @@ describe('Performance Integration', () => {
 
       const startTime = performance.now();
 
-      const grid = Array.from({ length: 100 }, (_, i) =>
-        SVGIcon({ name: `grid-${i}`, size: 24 })
-      );
+      const grid = Array.from({ length: 100 }, (_, i) => SVGIcon({ name: `grid-${i}`, size: 24 }));
 
       const endTime = performance.now();
 
@@ -659,9 +649,7 @@ describe('Performance Integration', () => {
       registry.registerSet('list', icons);
 
       // Simulate viewport with 10 visible icons
-      const visibleIcons = Array.from({ length: 10 }, (_, i) =>
-        SVGIcon({ name: `list-${i}`, size: 24 })
-      );
+      const visibleIcons = Array.from({ length: 10 }, (_, i) => SVGIcon({ name: `list-${i}`, size: 24 }));
 
       expect(visibleIcons).toHaveLength(10);
       expect(registry.getStats().totalIcons).toBe(1000);
@@ -679,7 +667,7 @@ describe('Performance Integration', () => {
       const startTime = performance.now();
 
       const allIcons = registry.list();
-      const filtered = allIcons.filter(name => name.includes('search-1'));
+      const filtered = allIcons.filter((name) => name.includes('search-1'));
 
       const endTime = performance.now();
 

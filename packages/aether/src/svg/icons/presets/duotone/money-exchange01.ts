@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const MoneyExchange01Icon: IconDefinition = {
-  "id": "money-exchange01",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M15 10.5156C15 12.1725 13.6569 13.5156 12 13.5156C10.3431 13.5156 9 12.1725 9 10.5156C9 8.85877 10.3431 7.51562 12 7.51562C13.6569 7.51562 15 8.85877 15 10.5156Z\" fill=\"currentColor\" />\n    <path d=\"M18 3.51562C18 5.72476 19.7909 7.51562 22 7.51562C22 6.11549 22 5.41543 21.7275 4.88065C21.4878 4.41024 21.1054 4.02779 20.635 3.78811C20.1002 3.51562 19.4001 3.51562 18 3.51562Z\" fill=\"currentColor\" />\n    <path d=\"M6 3.51562C6 5.72476 4.20914 7.51562 2 7.51562C2 6.11549 2 5.41543 2.27248 4.88065C2.51217 4.41024 2.89462 4.02779 3.36502 3.78811C3.8998 3.51562 4.59987 3.51562 6 3.51562Z\" fill=\"currentColor\" />\n    <path d=\"M6 17.5156C6 15.3065 4.20914 13.5156 2 13.5156C2 14.9158 2 15.6158 2.27248 16.1506C2.51217 16.621 2.89462 17.0035 3.36502 17.2431C3.8998 17.5156 4.59987 17.5156 6 17.5156Z\" fill=\"currentColor\" />\n    <path d=\"M2.01733 13.5C4.2169 13.5 6.00001 15.2831 6.00001 17.4827\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M6.00001 3.51733C6.00001 5.7169 4.2169 7.50001 2.01733 7.50001\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M18 3.51733C18 5.69765 19.769 7.46876 21.9423 7.4996\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M22 10V9.5C22 6.67157 22 5.25736 21.1213 4.37868C20.2426 3.5 18.8284 3.5 16 3.5H8C5.17157 3.5 3.75736 3.5 2.87868 4.37868C2 5.25736 2 6.67157 2 9.5V11.5C2 14.3284 2 15.7426 2.87868 16.6213C3.75736 17.5 5.17157 17.5 8 17.5H13\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M15 10.5C15 12.1569 13.6569 13.5 12 13.5C10.3431 13.5 9 12.1569 9 10.5C9 8.84315 10.3431 7.5 12 7.5C13.6569 7.5 15 8.84315 15 10.5Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M16 15.5C16 14.9477 16.4477 14.5 17 14.5H22L20.5 12.5M22 17.5C22 18.0523 21.5523 18.5 21 18.5H16L17.5 20.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "duotone",
-    "originalName": "MoneyExchange01Icon",
-    "elementsCount": 10,
-    "hasOpacity": false,
-    "hasFill": true
-  }
+  id: 'money-exchange01',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path d="M15 10.5156C15 12.1725 13.6569 13.5156 12 13.5156C10.3431 13.5156 9 12.1725 9 10.5156C9 8.85877 10.3431 7.51562 12 7.51562C13.6569 7.51562 15 8.85877 15 10.5156Z" fill="currentColor" />\n    <path d="M18 3.51562C18 5.72476 19.7909 7.51562 22 7.51562C22 6.11549 22 5.41543 21.7275 4.88065C21.4878 4.41024 21.1054 4.02779 20.635 3.78811C20.1002 3.51562 19.4001 3.51562 18 3.51562Z" fill="currentColor" />\n    <path d="M6 3.51562C6 5.72476 4.20914 7.51562 2 7.51562C2 6.11549 2 5.41543 2.27248 4.88065C2.51217 4.41024 2.89462 4.02779 3.36502 3.78811C3.8998 3.51562 4.59987 3.51562 6 3.51562Z" fill="currentColor" />\n    <path d="M6 17.5156C6 15.3065 4.20914 13.5156 2 13.5156C2 14.9158 2 15.6158 2.27248 16.1506C2.51217 16.621 2.89462 17.0035 3.36502 17.2431C3.8998 17.5156 4.59987 17.5156 6 17.5156Z" fill="currentColor" />\n    <path d="M2.01733 13.5C4.2169 13.5 6.00001 15.2831 6.00001 17.4827" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M6.00001 3.51733C6.00001 5.7169 4.2169 7.50001 2.01733 7.50001" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M18 3.51733C18 5.69765 19.769 7.46876 21.9423 7.4996" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M22 10V9.5C22 6.67157 22 5.25736 21.1213 4.37868C20.2426 3.5 18.8284 3.5 16 3.5H8C5.17157 3.5 3.75736 3.5 2.87868 4.37868C2 5.25736 2 6.67157 2 9.5V11.5C2 14.3284 2 15.7426 2.87868 16.6213C3.75736 17.5 5.17157 17.5 8 17.5H13" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M15 10.5C15 12.1569 13.6569 13.5 12 13.5C10.3431 13.5 9 12.1569 9 10.5C9 8.84315 10.3431 7.5 12 7.5C13.6569 7.5 15 8.84315 15 10.5Z" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M16 15.5C16 14.9477 16.4477 14.5 17 14.5H22L20.5 12.5M22 17.5C22 18.0523 21.5523 18.5 21 18.5H16L17.5 20.5" stroke-linecap="round" stroke-linejoin="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'duotone',
+    originalName: 'MoneyExchange01Icon',
+    elementsCount: 10,
+    hasOpacity: false,
+    hasFill: true,
+  },
 };

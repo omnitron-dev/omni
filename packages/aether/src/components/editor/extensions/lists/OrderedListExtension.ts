@@ -54,8 +54,7 @@ export class OrderedListExtension extends Extension {
               },
             },
           ],
-          toDOM: (node) =>
-            node.attrs.order === 1 ? ['ol', 0] : ['ol', { start: node.attrs.order }, 0],
+          toDOM: (node) => (node.attrs.order === 1 ? ['ol', 0] : ['ol', { start: node.attrs.order }, 0]),
         } as NodeSpec,
       },
     };
@@ -63,8 +62,7 @@ export class OrderedListExtension extends Extension {
 
   getCommands() {
     return {
-      orderedList: (): Command => (state, dispatch) =>
-        wrapInList(state.schema.nodes.ordered_list)(state, dispatch),
+      orderedList: (): Command => (state, dispatch) => wrapInList(state.schema.nodes.ordered_list)(state, dispatch),
       toggleOrderedList: (): Command => (state, dispatch) => {
         const { $from, $to } = state.selection;
         const range = $from.blockRange($to);
@@ -97,7 +95,7 @@ export class OrderedListExtension extends Extension {
         /^(\d+)\.\s$/,
         orderedListNode,
         (match) => ({ order: parseInt(match[1], 10) }),
-        (match, node) => node.childCount + node.attrs.order === parseInt(match[1], 10),
+        (match, node) => node.childCount + node.attrs.order === parseInt(match[1], 10)
       ),
     ];
   }

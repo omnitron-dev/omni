@@ -6,8 +6,7 @@
  * Instant selection with a single key press!
  */
 
-import { intro , outro, cancel, isCancel, selectKey, prism as color } from '../src/index.js';
-
+import { intro, outro, cancel, isCancel, selectKey, prism as color } from '../src/index.js';
 
 async function main() {
   intro(color.bgCyan(color.black(' Quick Select Demo ')));

@@ -14,7 +14,6 @@ import {
 import { TaskManager } from '../config/task-manager.js';
 import { ConfigurationManager } from '../config/configuration-manager.js';
 
-
 export interface TasksCommandOptions {
   list?: boolean;
   run?: string | string[];
@@ -143,11 +142,7 @@ export class TasksCommand {
   /**
    * Build task dependency tree recursively
    */
-  private async buildTaskTree(
-    taskName: string,
-    result: KitTask[],
-    visited: Set<string>
-  ): Promise<void> {
+  private async buildTaskTree(taskName: string, result: KitTask[], visited: Set<string>): Promise<void> {
     if (visited.has(taskName)) {
       return; // Already processed or circular dependency
     }
@@ -190,11 +185,7 @@ export class TasksCommand {
   private async runWithKitRunner(tasks: KitTask[], options: TasksCommandOptions): Promise<void> {
     if (options.parallel) {
       // Run tasks in parallel
-      await Promise.all(
-        tasks.map(task =>
-          runKitTasks([task], { output: process.stdout })
-        )
-      );
+      await Promise.all(tasks.map((task) => runKitTasks([task], { output: process.stdout })));
     } else {
       // Run tasks sequentially using Kit's tasks function
       await runKitTasks(tasks, { output: process.stdout });
@@ -204,10 +195,7 @@ export class TasksCommand {
   /**
    * Run tasks with visualization using taskLog
    */
-  private async runWithVisualization(
-    tasks: KitTask[],
-    options: TasksCommandOptions
-  ): Promise<void> {
+  private async runWithVisualization(tasks: KitTask[], options: TasksCommandOptions): Promise<void> {
     const logger = taskLog({
       title: '🚀 Running Tasks',
       spacing: 1,
@@ -277,7 +265,7 @@ export class TasksCommand {
     // Show task selection
     const selectedNames = await multiselect({
       message: 'Select tasks to run:',
-      options: taskList.map(taskInfo => ({
+      options: taskList.map((taskInfo) => ({
         value: taskInfo.name,
         label: taskInfo.description || taskInfo.name,
         hint: taskInfo.isPrivate ? prism.yellow('private') : undefined,

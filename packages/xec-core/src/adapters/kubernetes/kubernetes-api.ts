@@ -50,12 +50,7 @@ export interface K8sPod {
   /**
    * Get logs from the pod
    */
-  logs(options?: {
-    container?: string;
-    tail?: number;
-    previous?: boolean;
-    timestamps?: boolean;
-  }): Promise<string>;
+  logs(options?: { container?: string; tail?: number; previous?: boolean; timestamps?: boolean }): Promise<string>;
 
   /**
    * Stream logs from the pod
@@ -136,8 +131,8 @@ function createK8sPod(
         type: 'kubernetes',
         ...baseOptions,
         pod: name,
-        namespace
-      }
+        namespace,
+      },
     });
     return k8sEngine.run(strings, ...values);
   };
@@ -149,8 +144,8 @@ function createK8sPod(
         type: 'kubernetes',
         ...baseOptions,
         pod: name,
-        namespace
-      }
+        namespace,
+      },
     });
     return k8sEngine.raw(strings, ...values);
   };
@@ -170,7 +165,7 @@ function createK8sPod(
     async portForwardDynamic(remotePort: number): Promise<K8sPortForward> {
       const pf = await adapter.portForward(name, 0, remotePort, {
         namespace,
-        dynamicLocalPort: true
+        dynamicLocalPort: true,
       });
       await pf.open();
       return pf;
@@ -220,7 +215,7 @@ function createK8sPod(
     ): Promise<K8sLogStream> {
       return adapter.streamLogs(name, onData, {
         namespace,
-        ...options
+        ...options,
       });
     },
 
@@ -240,7 +235,7 @@ function createK8sPod(
       await adapter.copyFiles(localPath, podPath, {
         namespace,
         container,
-        direction: 'to'
+        direction: 'to',
       });
     },
 
@@ -249,9 +244,9 @@ function createK8sPod(
       await adapter.copyFiles(podPath, localPath, {
         namespace,
         container,
-        direction: 'from'
+        direction: 'from',
       });
-    }
+    },
   };
 }
 
@@ -282,8 +277,8 @@ export function createK8sExecutionContext(
         ...(k8sOptions.container && { container: k8sOptions.container }),
         ...(k8sOptions.execFlags && { execFlags: k8sOptions.execFlags }),
         ...(k8sOptions.tty !== undefined && { tty: k8sOptions.tty }),
-        ...(k8sOptions.stdin !== undefined && { stdin: k8sOptions.stdin })
-      }
+        ...(k8sOptions.stdin !== undefined && { stdin: k8sOptions.stdin }),
+      },
     });
     return k8sEngine.run(strings, ...values);
   };
@@ -302,8 +297,8 @@ export function createK8sExecutionContext(
         ...(k8sOptions.container && { container: k8sOptions.container }),
         ...(k8sOptions.execFlags && { execFlags: k8sOptions.execFlags }),
         ...(k8sOptions.tty !== undefined && { tty: k8sOptions.tty }),
-        ...(k8sOptions.stdin !== undefined && { stdin: k8sOptions.stdin })
-      }
+        ...(k8sOptions.stdin !== undefined && { stdin: k8sOptions.stdin }),
+      },
     });
     return k8sEngine.raw(strings, ...values);
   };
@@ -315,7 +310,7 @@ export function createK8sExecutionContext(
     pod(name: string): K8sPod {
       const namespace = k8sOptions.namespace || 'default';
       return createK8sPod(engine, adapter, name, namespace, k8sOptions);
-    }
+    },
   });
 
   return context;

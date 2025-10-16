@@ -359,9 +359,7 @@ export class LazyLoadExtension extends Extension<LazyLoadConfig> {
   private async loadWithTimeout(loader: ExtensionLoader, timeout: number): Promise<IExtension> {
     return Promise.race([
       loader(),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Extension load timeout')), timeout)
-      ),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Extension load timeout')), timeout)),
     ]);
   }
 
@@ -407,9 +405,7 @@ export class LazyLoadExtension extends Extension<LazyLoadConfig> {
    * Preload all pending extensions
    */
   async preloadAll(): Promise<void> {
-    const pending = Array.from(this.loadingStates.values()).filter(
-      (state) => state.status === 'pending'
-    );
+    const pending = Array.from(this.loadingStates.values()).filter((state) => state.status === 'pending');
 
     await Promise.all(pending.map((state) => this.loadExtension(state.name)));
   }

@@ -34,14 +34,7 @@ export {
 } from './shapes.js';
 
 // Text primitives
-export {
-  Text,
-  TSpan,
-  TextPath,
-  type TextProps,
-  type TSpanProps,
-  type TextPathProps,
-} from './text.js';
+export { Text, TSpan, TextPath, type TextProps, type TSpanProps, type TextPathProps } from './text.js';
 
 // Gradients and patterns
 export {

@@ -35,7 +35,7 @@ export class ShellService {
    * Get active session
    */
   getActiveSession(): ShellSession | undefined {
-    return this.sessions().find(s => s.id === this.activeSessionId());
+    return this.sessions().find((s) => s.id === this.activeSessionId());
   }
 
   /**
@@ -50,7 +50,7 @@ export class ShellService {
       active: false,
     };
 
-    this.sessions.update(sessions => [...sessions, session]);
+    this.sessions.update((sessions) => [...sessions, session]);
     this.setActiveSession(session.id);
 
     return session;
@@ -61,16 +61,14 @@ export class ShellService {
    */
   setActiveSession(sessionId: string) {
     this.activeSessionId.set(sessionId);
-    this.sessions.update(sessions =>
-      sessions.map(s => ({ ...s, active: s.id === sessionId }))
-    );
+    this.sessions.update((sessions) => sessions.map((s) => ({ ...s, active: s.id === sessionId })));
   }
 
   /**
    * Close a session
    */
   closeSession(sessionId: string) {
-    const sessions = this.sessions().filter(s => s.id !== sessionId);
+    const sessions = this.sessions().filter((s) => s.id !== sessionId);
     this.sessions.set(sessions);
 
     if (this.activeSessionId() === sessionId && sessions.length > 0) {
@@ -82,8 +80,6 @@ export class ShellService {
    * Update session working directory
    */
   updateSessionCwd(sessionId: string, cwd: string) {
-    this.sessions.update(sessions =>
-      sessions.map(s => (s.id === sessionId ? { ...s, cwd } : s))
-    );
+    this.sessions.update((sessions) => sessions.map((s) => (s.id === sessionId ? { ...s, cwd } : s)));
   }
 }

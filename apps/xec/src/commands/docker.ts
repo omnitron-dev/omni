@@ -105,13 +105,16 @@ interface SwarmOptions extends ConfigAwareOptions {
  */
 function parseKeyValuePairs(pairs?: string[]): Record<string, string> {
   if (!pairs) return {};
-  return pairs.reduce((acc, pair) => {
-    const [key, ...values] = pair.split('=');
-    if (key) {
-      acc[key] = values.join('=');
-    }
-    return acc;
-  }, {} as Record<string, string>);
+  return pairs.reduce(
+    (acc, pair) => {
+      const [key, ...values] = pair.split('=');
+      if (key) {
+        acc[key] = values.join('=');
+      }
+      return acc;
+    },
+    {} as Record<string, string>
+  );
 }
 
 /**
@@ -169,10 +172,7 @@ export class DockerCommand extends SubcommandBase {
   }
 
   private setupContainerCommands(docker: Command): void {
-    const container = docker
-      .command('container')
-      .alias('c')
-      .description('Manage Docker containers');
+    const container = docker.command('container').alias('c').description('Manage Docker containers');
 
     container
       .command('run')
@@ -255,10 +255,7 @@ export class DockerCommand extends SubcommandBase {
   }
 
   private setupImageCommands(docker: Command): void {
-    const image = docker
-      .command('image')
-      .alias('i')
-      .description('Manage Docker images');
+    const image = docker.command('image').alias('i').description('Manage Docker images');
 
     image
       .command('build')
@@ -304,10 +301,7 @@ export class DockerCommand extends SubcommandBase {
   }
 
   private setupServiceCommands(docker: Command): void {
-    const service = docker
-      .command('service')
-      .alias('s')
-      .description('Manage pre-configured services');
+    const service = docker.command('service').alias('s').description('Manage pre-configured services');
 
     service
       .command('redis')
@@ -473,10 +467,7 @@ export class DockerCommand extends SubcommandBase {
   }
 
   private setupComposeCommands(docker: Command): void {
-    const compose = docker
-      .command('compose')
-      .alias('dc')
-      .description('Docker Compose operations');
+    const compose = docker.command('compose').alias('dc').description('Docker Compose operations');
 
     compose
       .command('up')
@@ -503,10 +494,7 @@ export class DockerCommand extends SubcommandBase {
   }
 
   private setupNetworkCommands(docker: Command): void {
-    const network = docker
-      .command('network')
-      .alias('n')
-      .description('Manage Docker networks');
+    const network = docker.command('network').alias('n').description('Manage Docker networks');
 
     network
       .command('create')
@@ -534,10 +522,7 @@ export class DockerCommand extends SubcommandBase {
   }
 
   private setupVolumeCommands(docker: Command): void {
-    const volume = docker
-      .command('volume')
-      .alias('v')
-      .description('Manage Docker volumes');
+    const volume = docker.command('volume').alias('v').description('Manage Docker volumes');
 
     volume
       .command('create')
@@ -562,9 +547,7 @@ export class DockerCommand extends SubcommandBase {
   }
 
   private setupSwarmCommands(docker: Command): void {
-    const swarm = docker
-      .command('swarm')
-      .description('Manage Docker Swarm');
+    const swarm = docker.command('swarm').description('Manage Docker Swarm');
 
     swarm
       .command('init')
@@ -746,7 +729,7 @@ export class DockerCommand extends SubcommandBase {
     try {
       if (this.isDryRun()) {
         s.stop(prism.green('[DRY RUN] Would stop containers'));
-        containers.forEach(c => this.log(`[DRY RUN] Would stop: ${c}`, 'info'));
+        containers.forEach((c) => this.log(`[DRY RUN] Would stop: ${c}`, 'info'));
         return;
       }
 
@@ -771,7 +754,7 @@ export class DockerCommand extends SubcommandBase {
     try {
       if (this.isDryRun()) {
         s.stop(prism.green('[DRY RUN] Would remove containers'));
-        containers.forEach(c => this.log(`[DRY RUN] Would remove: ${c}`, 'info'));
+        containers.forEach((c) => this.log(`[DRY RUN] Would remove: ${c}`, 'info'));
         return;
       }
 
@@ -802,7 +785,7 @@ export class DockerCommand extends SubcommandBase {
         follow: options.follow,
         tail: options.tail ? parseInt(options.tail) : undefined,
         since: options.since,
-        timestamps: options.timestamps
+        timestamps: options.timestamps,
       });
 
       console.log(result);
@@ -880,7 +863,7 @@ export class DockerCommand extends SubcommandBase {
     try {
       if (this.isDryRun()) {
         s.stop(prism.green('[DRY RUN] Would remove images'));
-        images.forEach(img => this.log(`[DRY RUN] Would remove: ${img}`, 'info'));
+        images.forEach((img) => this.log(`[DRY RUN] Would remove: ${img}`, 'info'));
         return;
       }
 
@@ -935,7 +918,7 @@ export class DockerCommand extends SubcommandBase {
         version: mergedOptions.version,
         persistent: mergedOptions.persistent,
         dataPath: mergedOptions.dataPath,
-        configPath: mergedOptions.configPath
+        configPath: mergedOptions.configPath,
       });
 
       await redis.start();
@@ -943,12 +926,15 @@ export class DockerCommand extends SubcommandBase {
       const info = redis.getConnectionInfo();
       s.stop(prism.green('✓ Redis started'));
 
-      note(`
+      note(
+        `
 Host: ${info['host']}
 Port: ${info['port']}
 Password: ${info['password'] || '(none)'}
 Connection: ${info['connectionString']}
-      `, 'Redis Connection Info');
+      `,
+        'Redis Connection Info'
+      );
     } catch (error) {
       s.stop(prism.red('✗ Failed to start Redis'));
       log.error(error instanceof Error ? error.message : String(error));
@@ -984,7 +970,7 @@ Connection: ${info['connectionString']}
         database: mergedOptions.database,
         version: mergedOptions.version,
         persistent: mergedOptions.persistent,
-        dataPath: mergedOptions.dataPath
+        dataPath: mergedOptions.dataPath,
       });
 
       await postgres.start();
@@ -992,14 +978,17 @@ Connection: ${info['connectionString']}
       const info = postgres.getConnectionInfo();
       s.stop(prism.green('✓ PostgreSQL started'));
 
-      note(`
+      note(
+        `
 Host: ${info['host']}
 Port: ${info['port']}
 Database: ${info['database']}
 User: ${info['username']}
 Password: ${info['password']}
 Connection: ${info['connectionString']}
-      `, 'PostgreSQL Connection Info');
+      `,
+        'PostgreSQL Connection Info'
+      );
     } catch (error) {
       s.stop(prism.red('✗ Failed to start PostgreSQL'));
       log.error(error instanceof Error ? error.message : String(error));
@@ -1034,7 +1023,7 @@ Connection: ${info['connectionString']}
         database: mergedOptions.database,
         version: mergedOptions.version,
         persistent: mergedOptions.persistent,
-        dataPath: mergedOptions.dataPath
+        dataPath: mergedOptions.dataPath,
       });
 
       await mysql.start();
@@ -1042,14 +1031,17 @@ Connection: ${info['connectionString']}
       const info = mysql.getConnectionInfo();
       s.stop(prism.green('✓ MySQL started'));
 
-      note(`
+      note(
+        `
 Host: ${info['host']}
 Port: ${info['port']}
 Database: ${info['database']}
 User: root
 Password: ${info['password']}
 Connection: ${info['connectionString']}
-      `, 'MySQL Connection Info');
+      `,
+        'MySQL Connection Info'
+      );
     } catch (error) {
       s.stop(prism.red('✗ Failed to start MySQL'));
       log.error(error instanceof Error ? error.message : String(error));
@@ -1086,7 +1078,7 @@ Connection: ${info['connectionString']}
         version: mergedOptions.version,
         persistent: mergedOptions.persistent,
         dataPath: mergedOptions.dataPath,
-        replicaSet: mergedOptions.replicaSet
+        replicaSet: mergedOptions.replicaSet,
       });
 
       await mongodb.start();
@@ -1094,14 +1086,17 @@ Connection: ${info['connectionString']}
       const info = mongodb.getConnectionInfo();
       s.stop(prism.green('✓ MongoDB started'));
 
-      note(`
+      note(
+        `
 Host: ${info['host']}
 Port: ${info['port']}
 Database: ${info['database']}
 User: ${info['user']}
 Password: ${info['password']}
 Connection: ${info['connectionString']}
-      `, 'MongoDB Connection Info');
+      `,
+        'MongoDB Connection Info'
+      );
     } catch (error) {
       s.stop(prism.red('✗ Failed to start MongoDB'));
       log.error(error instanceof Error ? error.message : String(error));
@@ -1130,14 +1125,14 @@ Connection: ${info['connectionString']}
         cluster: {
           enabled: true,
           masters: parseInt(options.masters || '3'),
-          replicas: parseInt(options.replicas || '1')
+          replicas: parseInt(options.replicas || '1'),
         },
         port: options.basePort,
         name: options.name,
         password: options.password,
         persistent: options.persistent,
         dataPath: options.dataPath,
-        network: options.network
+        network: options.network,
       });
 
       await cluster.start();
@@ -1145,14 +1140,17 @@ Connection: ${info['connectionString']}
       const endpoints = cluster.getEndpoints();
       s.stop(prism.green('✓ Redis Cluster started'));
 
-      note(`
+      note(
+        `
 Endpoints: ${endpoints.join(', ')}
 Masters: ${options.masters || '3'}
 Replicas: ${options.replicas || '1'} per master
 
 Connect with:
   redis-cli -c -p ${options.basePort || '7001'}
-      `, 'Redis Cluster Info');
+      `,
+        'Redis Cluster Info'
+      );
     } catch (error) {
       s.stop(prism.red('✗ Failed to start Redis Cluster'));
       log.error(error instanceof Error ? error.message : String(error));
@@ -1188,7 +1186,7 @@ Connect with:
         version: mergedOptions.version,
         persistent: mergedOptions.persistent,
         dataPath: mergedOptions.dataPath,
-        network: mergedOptions.network
+        network: mergedOptions.network,
       });
 
       await kafka.startWithZookeeper();
@@ -1196,14 +1194,17 @@ Connect with:
       const info = kafka.getConnectionInfo();
       s.stop(prism.green('✓ Kafka started with Zookeeper'));
 
-      note(`
+      note(
+        `
 Bootstrap Server: ${info['bootstrapServers']}
 Zookeeper: ${mergedOptions.zookeeper || 'xec-zookeeper:2181'}
 Broker ID: ${mergedOptions.brokerId || '1'}
 
 Connect with:
   kafka-topics --bootstrap-server localhost:${mergedOptions.port || '9092'} --list
-      `, 'Kafka Connection Info');
+      `,
+        'Kafka Connection Info'
+      );
     } catch (error) {
       s.stop(prism.red('✗ Failed to start Kafka'));
       log.error(error instanceof Error ? error.message : String(error));
@@ -1240,7 +1241,7 @@ Connect with:
         vhost: mergedOptions.vhost,
         version: mergedOptions.version,
         persistent: mergedOptions.persistent,
-        dataPath: mergedOptions.dataPath
+        dataPath: mergedOptions.dataPath,
       });
 
       await rabbitmq.start();
@@ -1248,12 +1249,15 @@ Connect with:
       const info = rabbitmq.getConnectionInfo();
       s.stop(prism.green('✓ RabbitMQ started'));
 
-      note(`
+      note(
+        `
 AMQP URL: ${info['amqpUrl']}
 Management UI: http://localhost:${mergedOptions.managementPort || '15672'}
 User: ${mergedOptions.user || 'admin'}
 Password: ${mergedOptions.password || 'admin'}
-      `, 'RabbitMQ Connection Info');
+      `,
+        'RabbitMQ Connection Info'
+      );
     } catch (error) {
       s.stop(prism.red('✗ Failed to start RabbitMQ'));
       log.error(error instanceof Error ? error.message : String(error));
@@ -1280,14 +1284,15 @@ Password: ${mergedOptions.password || 'admin'}
 
       // Elasticsearch is not yet implemented as a fluent API service
       // Using ephemeral container directly
-      const elasticsearch = $.docker().ephemeral(`elasticsearch:${options.version || '8.11.0'}`)
+      const elasticsearch = $.docker()
+        .ephemeral(`elasticsearch:${options.version || '8.11.0'}`)
         .name(options.name || 'xec-elasticsearch')
         .port(parseInt(options.port || '9200'), 9200)
         .port(9300, 9300)
         .env({
           'discovery.type': 'single-node',
           'xpack.security.enabled': 'false',
-          'ES_JAVA_OPTS': '-Xms512m -Xmx512m'
+          ES_JAVA_OPTS: '-Xms512m -Xmx512m',
         });
 
       if (options.persistent && options.dataPath) {
@@ -1298,17 +1303,20 @@ Password: ${mergedOptions.password || 'admin'}
 
       const info = {
         httpUrl: `http://localhost:${options.port || '9200'}`,
-        clusterName: 'elasticsearch'
+        clusterName: 'elasticsearch',
       };
       s.stop(prism.green('✓ Elasticsearch started'));
 
-      note(`
+      note(
+        `
 HTTP URL: ${info['httpUrl']}
 Cluster: ${info['clusterName']}
 
 Check health:
   curl http://localhost:${options.port || '9200'}/_cluster/health?pretty
-      `, 'Elasticsearch Connection Info');
+      `,
+        'Elasticsearch Connection Info'
+      );
     } catch (error) {
       s.stop(prism.red('✗ Failed to start Elasticsearch'));
       log.error(error instanceof Error ? error.message : String(error));
@@ -1338,7 +1346,7 @@ Check health:
         name: options.name,
         user: options.user,
         password: options.password,
-        distro: options.version || 'alpine'
+        distro: options.version || 'alpine',
       });
 
       await ssh.start();
@@ -1346,7 +1354,8 @@ Check health:
       const info = ssh.getConnectionConfig();
       s.stop(prism.green('✓ SSH server started'));
 
-      note(`
+      note(
+        `
 Host: localhost
 Port: ${info['port']}
 Username: ${info['username']}
@@ -1354,7 +1363,9 @@ Password: ${info['password'] || '(key-based auth)'}
 
 Connect with:
   ssh -p ${info['port']} ${info['username']}@localhost
-      `, 'SSH Connection Info');
+      `,
+        'SSH Connection Info'
+      );
     } catch (error) {
       s.stop(prism.red('✗ Failed to start SSH server'));
       log.error(error instanceof Error ? error.message : String(error));
@@ -1372,7 +1383,7 @@ Connect with:
       { name: 'kafka', description: '📨 Kafka - Message streaming platform' },
       { name: 'rabbitmq', description: '🐰 RabbitMQ - Message broker' },
       { name: 'elasticsearch', description: '🔍 Elasticsearch - Search engine' },
-      { name: 'ssh', description: '🔐 SSH - SSH server container' }
+      { name: 'ssh', description: '🔐 SSH - SSH server container' },
     ];
 
     intro(prism.blue('🐳 Available Docker Services'));
@@ -1465,7 +1476,7 @@ Connect with:
         ipRange: options.ipRange,
         attachable: options.attachable,
         internal: options.internal,
-        labels: options.labels ? parseKeyValuePairs(options.labels) : undefined
+        labels: options.labels ? parseKeyValuePairs(options.labels) : undefined,
       });
 
       s.stop(prism.green(`✓ Network ${name} created`));
@@ -1516,7 +1527,7 @@ Connect with:
       await volume.create({
         driver: options.driver,
         labels: options.labels ? parseKeyValuePairs(options.labels) : undefined,
-        driverOpts: options.opts ? parseKeyValuePairs(options.opts) : undefined
+        driverOpts: options.opts ? parseKeyValuePairs(options.opts) : undefined,
       });
 
       s.stop(prism.green(`✓ Volume ${name} created`));
@@ -1565,7 +1576,7 @@ Connect with:
       const token = await $.docker().swarm().init({
         advertiseAddr: options.advertiseAddr,
         listenAddr: options.listenAddr,
-        dataPathAddr: options.dataPathAddr
+        dataPathAddr: options.dataPathAddr,
       });
 
       s.stop(prism.green('✓ Swarm initialized'));
@@ -1650,8 +1661,8 @@ Connect with:
         { value: 'rabbitmq', label: '🐰 RabbitMQ - Message broker' },
         { value: 'elasticsearch', label: '🔍 Elasticsearch - Search engine' },
         { value: 'ssh', label: '🔐 SSH - SSH server' },
-        { value: 'custom', label: '📦 Custom - Run any image' }
-      ]
+        { value: 'custom', label: '📦 Custom - Run any image' },
+      ],
     });
 
     if (isCancel(serviceType)) {
@@ -1665,17 +1676,17 @@ Connect with:
           const port = await text({
             message: 'Port?',
             placeholder: '6379',
-            defaultValue: '6379'
+            defaultValue: '6379',
           });
 
           const password = await text({
             message: 'Password? (optional)',
-            placeholder: 'Leave empty for no password'
+            placeholder: 'Leave empty for no password',
           });
 
           await this.startRedisService({
             port: port as string,
-            password: password as string || undefined
+            password: (password as string) || undefined,
           });
           break;
         }
@@ -1684,25 +1695,25 @@ Connect with:
           const port = await text({
             message: 'Port?',
             placeholder: '5432',
-            defaultValue: '5432'
+            defaultValue: '5432',
           });
 
           const database = await text({
             message: 'Database name?',
             placeholder: 'postgres',
-            defaultValue: 'postgres'
+            defaultValue: 'postgres',
           });
 
           const password = await text({
             message: 'Password?',
             placeholder: 'postgres',
-            defaultValue: 'postgres'
+            defaultValue: 'postgres',
           });
 
           await this.startPostgresService({
             port: port as string,
             database: database as string,
-            password: password as string
+            password: password as string,
           });
           break;
         }
@@ -1710,7 +1721,7 @@ Connect with:
         case 'custom': {
           const image = await text({
             message: 'Docker image?',
-            placeholder: 'nginx:alpine'
+            placeholder: 'nginx:alpine',
           });
 
           if (isCancel(image)) {
@@ -1720,7 +1731,7 @@ Connect with:
 
           const ports = await text({
             message: 'Port mapping? (optional)',
-            placeholder: '8080:80'
+            placeholder: '8080:80',
           });
 
           if (isCancel(ports)) {
@@ -1731,7 +1742,7 @@ Connect with:
           const portList = ports && String(ports).trim() ? [String(ports)] : undefined;
           await this.runContainer(String(image), {
             ports: portList,
-            detached: true
+            detached: true,
           });
           break;
         }
@@ -1740,25 +1751,25 @@ Connect with:
           const port = await text({
             message: 'Port?',
             placeholder: '3306',
-            defaultValue: '3306'
+            defaultValue: '3306',
           });
 
           const database = await text({
             message: 'Database name?',
             placeholder: 'mysql',
-            defaultValue: 'mysql'
+            defaultValue: 'mysql',
           });
 
           const password = await text({
             message: 'Root password?',
             placeholder: 'mysql',
-            defaultValue: 'mysql'
+            defaultValue: 'mysql',
           });
 
           await this.startMysqlService({
             port: port as string,
             database: database as string,
-            password: password as string
+            password: password as string,
           });
           break;
         }
@@ -1767,18 +1778,18 @@ Connect with:
           const port = await text({
             message: 'Port?',
             placeholder: '27017',
-            defaultValue: '27017'
+            defaultValue: '27017',
           });
 
           const database = await text({
             message: 'Database name?',
             placeholder: 'test',
-            defaultValue: 'test'
+            defaultValue: 'test',
           });
 
           await this.startMongoDBService({
             port: port as string,
-            database: database as string
+            database: database as string,
           });
           break;
         }
@@ -1787,18 +1798,18 @@ Connect with:
           const masters = await text({
             message: 'Number of masters?',
             placeholder: '3',
-            defaultValue: '3'
+            defaultValue: '3',
           });
 
           const replicas = await text({
             message: 'Replicas per master?',
             placeholder: '1',
-            defaultValue: '1'
+            defaultValue: '1',
           });
 
           await this.startRedisClusterService({
             masters: masters as string,
-            replicas: replicas as string
+            replicas: replicas as string,
           });
           break;
         }
@@ -1807,11 +1818,11 @@ Connect with:
           const port = await text({
             message: 'Kafka port?',
             placeholder: '9092',
-            defaultValue: '9092'
+            defaultValue: '9092',
           });
 
           await this.startKafkaService({
-            port: port as string
+            port: port as string,
           });
           break;
         }
@@ -1820,18 +1831,18 @@ Connect with:
           const port = await text({
             message: 'AMQP port?',
             placeholder: '5672',
-            defaultValue: '5672'
+            defaultValue: '5672',
           });
 
           const managementPort = await text({
             message: 'Management UI port?',
             placeholder: '15672',
-            defaultValue: '15672'
+            defaultValue: '15672',
           });
 
           await this.startRabbitMQService({
             port: port as string,
-            managementPort: managementPort as string
+            managementPort: managementPort as string,
           });
           break;
         }
@@ -1840,11 +1851,11 @@ Connect with:
           const port = await text({
             message: 'HTTP port?',
             placeholder: '9200',
-            defaultValue: '9200'
+            defaultValue: '9200',
           });
 
           await this.startElasticsearchService({
-            port: port as string
+            port: port as string,
           });
           break;
         }
@@ -1853,25 +1864,25 @@ Connect with:
           const port = await text({
             message: 'SSH port?',
             placeholder: '2222',
-            defaultValue: '2222'
+            defaultValue: '2222',
           });
 
           const username = await text({
             message: 'SSH username?',
             placeholder: 'user',
-            defaultValue: 'user'
+            defaultValue: 'user',
           });
 
           const password = await text({
             message: 'SSH password?',
             placeholder: 'password',
-            defaultValue: 'password'
+            defaultValue: 'password',
           });
 
           await this.startSSHService({
             port: port as string,
             user: username as string,
-            password: password as string
+            password: password as string,
           });
           break;
         }
@@ -1897,7 +1908,7 @@ Connect with:
       autoRemove: defaults['autoRemove'] ?? true,
       user: defaults['user'],
       runMode: defaults['runMode'] as any,
-      ...defaults
+      ...defaults,
     };
   }
 
@@ -1908,7 +1919,7 @@ Connect with:
 
     return {
       ...commandDefaults,
-      ...serviceDefaults
+      ...serviceDefaults,
     };
   }
 }

@@ -249,7 +249,7 @@ export const AriaLive = defineComponent<AriaLiveProps>((props) => {
             jsx('div', {
               key: msg.id,
               children: msg.text,
-            }),
+            })
           ),
         }),
         // Assertive announcements
@@ -262,7 +262,7 @@ export const AriaLive = defineComponent<AriaLiveProps>((props) => {
             jsx('div', {
               key: msg.id,
               children: msg.text,
-            }),
+            })
           ),
         }),
       ],

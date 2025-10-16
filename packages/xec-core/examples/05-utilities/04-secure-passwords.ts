@@ -1,8 +1,8 @@
 /**
  * 04. Secure Passwords - Безопасная работа с паролями
- * 
+ *
  * Показывает безопасную работу с паролями и чувствительными данными.
- * 
+ *
  * ВАЖНО: В @xec-sh/core есть класс SecurePasswordHandler для работы с паролями,
  * но нет интерактивных промптов. Используем readline для ввода.
  */
@@ -14,7 +14,7 @@ import { $, SecurePasswordHandler } from '@xec-sh/core';
 const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout,
-  terminal: true
+  terminal: true,
 });
 
 // Утилита для безопасного ввода пароля
@@ -23,17 +23,17 @@ function passwordPrompt(prompt: string): Promise<string> {
     // Отключаем эхо ввода для скрытия пароля
     const stdin = process.stdin;
     const wasRaw = stdin.isRaw;
-    
+
     if (stdin.isTTY) {
       stdin.setRawMode?.(true);
     }
-    
+
     let password = '';
     process.stdout.write(prompt);
-    
+
     stdin.on('data', function onData(char) {
       const str = char.toString();
-      
+
       switch (str) {
         case '\n':
         case '\r':
@@ -74,12 +74,12 @@ const confirmPassword = await passwordPrompt('Confirm password: ');
 
 if (newPassword === confirmPassword) {
   console.log('Пароль успешно установлен');
-  
+
   // Проверяем силу пароля
   const validation = SecurePasswordHandler.validatePassword(newPassword);
   if (!validation.isValid) {
     console.log('Предупреждения о пароле:');
-    validation.issues.forEach(issue => console.log(`- ${issue}`));
+    validation.issues.forEach((issue) => console.log(`- ${issue}`));
   } else {
     console.log('Пароль соответствует требованиям безопасности');
   }
@@ -107,7 +107,7 @@ console.log('Замаскированная команда для логов:', 
 // Используем переменные окружения для безопасной передачи
 const $secure = $.env({
   API_KEY: apiKey,
-  DB_PASSWORD: dbPassword
+  DB_PASSWORD: dbPassword,
 });
 
 // Выполняем команду без отображения паролей
@@ -125,7 +125,7 @@ const sshPassword = 'demo-password'; // await passwordPrompt('SSH Password: ');
 const $ssh = $.ssh({
   host: 'example.com',
   username: 'user',
-  privateKey: '/path/to/id_rsa'
+  privateKey: '/path/to/id_rsa',
   // password не поддерживается в текущей реализации
 });
 
@@ -140,14 +140,14 @@ const sudoPassword = 'sudo-password'; // await passwordPrompt('Sudo password: ')
 try {
   // Создаём askpass скрипт для sudo
   const askpassPath = await secureHandler.createAskPassScript(sudoPassword);
-  
+
   // Создаём безопасное окружение
   const secureEnv = secureHandler.createSecureEnv(askpassPath);
-  
+
   // Используем с SSH (если бы sudo был поддержан)
   console.log('Askpass скрипт создан:', askpassPath);
   console.log('Безопасное окружение настроено');
-  
+
   // Очищаем временные файлы
   await secureHandler.cleanup();
 } catch (error) {
@@ -159,22 +159,22 @@ console.log('\n=== Хранение паролей ===');
 
 class SecureCredentials {
   private credentials = new Map<string, string>();
-  
+
   add(name: string, value: string) {
     // В реальном приложении используйте шифрование
     this.credentials.set(name, value);
   }
-  
+
   get(name: string): string | null {
     return this.credentials.get(name) || null;
   }
-  
+
   // Маскируем пароль при получении для логов
   getMasked(name: string): string {
     const value = this.credentials.get(name);
     return value ? '***MASKED***' : 'NOT_FOUND';
   }
-  
+
   clear() {
     // Очищаем все пароли
     this.credentials.clear();
@@ -198,21 +198,19 @@ console.log('Пароли очищены из памяти');
 // 7. Интерактивный ввод с валидацией
 async function getValidPassword() {
   while (true) {
-    const password = await passwordPrompt(
-      'Enter password (min 8 chars, must contain numbers): '
-    );
-    
+    const password = await passwordPrompt('Enter password (min 8 chars, must contain numbers): ');
+
     // Валидация
     if (password.length < 8) {
       console.log('Пароль слишком короткий');
       continue;
     }
-    
+
     if (!/\d/.test(password)) {
       console.log('Пароль должен содержать цифры');
       continue;
     }
-    
+
     return password;
   }
 }
@@ -227,31 +225,29 @@ import * as fs from 'fs/promises';
 async function loadPrivateKey(keyPath: string, passphrase?: string) {
   try {
     const keyContent = await fs.readFile(keyPath, 'utf-8');
-    
+
     // Проверяем, зашифрован ли ключ
     if (keyContent.includes('ENCRYPTED')) {
       if (!passphrase) {
-        passphrase = await passwordPrompt(
-          `Enter passphrase for ${path.basename(keyPath)}: `
-        );
+        passphrase = await passwordPrompt(`Enter passphrase for ${path.basename(keyPath)}: `);
       }
-      
+
       // Используем SSH с passphrase
       const $ssh = $.ssh({
         host: 'example.com',
         username: 'user',
         privateKey: keyPath,
-        passphrase
+        passphrase,
       });
-      
+
       return $ssh;
     }
-    
+
     // Ключ не зашифрован
     return $.ssh({
       host: 'example.com',
       username: 'user',
-      privateKey: keyPath
+      privateKey: keyPath,
     });
   } catch (error) {
     console.error('Ошибка загрузки ключа:', error.message);
@@ -267,20 +263,20 @@ async function secureEnvironment() {
   const secrets = {
     DATABASE_URL: 'postgresql://user:pass@localhost/db',
     API_SECRET: 'secret-api-key-123',
-    JWT_KEY: 'jwt-secret-key-456'
+    JWT_KEY: 'jwt-secret-key-456',
   };
-  
+
   // Маскируем все секреты для логов
   let maskedLogs = JSON.stringify(secrets);
-  Object.values(secrets).forEach(secret => {
+  Object.values(secrets).forEach((secret) => {
     maskedLogs = SecurePasswordHandler.maskPassword(maskedLogs, secret);
   });
-  
+
   console.log('Секреты (замаскированы):', maskedLogs);
-  
+
   // Создаём безопасный контекст
   const $secure = $.env(secrets);
-  
+
   // Выполняем команды
   await $secure`echo "Starting application with secure environment"`;
   console.log('Приложение запущено с безопасным окружением');
@@ -294,42 +290,37 @@ console.log('\n=== Проверка силы пароля ===');
 function checkPasswordStrength(password: string): string {
   let strength = 0;
   const feedback = [];
-  
+
   // Длина
   if (password.length >= 8) strength++;
   if (password.length >= 12) strength++;
   if (password.length < 8) feedback.push('Слишком короткий');
-  
+
   // Сложность
   if (/[a-z]/.test(password)) strength++;
   if (/[A-Z]/.test(password)) strength++;
   if (/[0-9]/.test(password)) strength++;
   if (/[^A-Za-z0-9]/.test(password)) strength++;
-  
+
   if (!/[a-z]/.test(password)) feedback.push('Добавьте строчные буквы');
   if (!/[A-Z]/.test(password)) feedback.push('Добавьте заглавные буквы');
   if (!/[0-9]/.test(password)) feedback.push('Добавьте цифры');
   if (!/[^A-Za-z0-9]/.test(password)) feedback.push('Добавьте спецсимволы');
-  
+
   // Оценка
   const levels = ['Очень слабый', 'Слабый', 'Средний', 'Хороший', 'Отличный'];
   const level = Math.min(Math.floor(strength / 1.5), levels.length - 1);
-  
+
   return `Сила: ${levels[level]}${feedback.length ? '. ' + feedback.join('. ') : ''}`;
 }
 
 // Демонстрация проверки паролей
-const testPasswords = [
-  'abc123',
-  'Password1',
-  'MyP@ssw0rd!',
-  'SuperSecureP@ssw0rd123!'
-];
+const testPasswords = ['abc123', 'Password1', 'MyP@ssw0rd!', 'SuperSecureP@ssw0rd123!'];
 
-testPasswords.forEach(pwd => {
+testPasswords.forEach((pwd) => {
   console.log(`Пароль: ${pwd.replace(/./g, '*')}`);
   console.log(checkPasswordStrength(pwd));
-  
+
   // Также проверяем встроенным валидатором
   const validation = SecurePasswordHandler.validatePassword(pwd);
   if (!validation.isValid) {
@@ -351,14 +342,14 @@ console.log('\n=== Очистка логов ===');
 
 function sanitizeLogs(logs: string, secrets: string[]): string {
   let sanitized = logs;
-  
-  secrets.forEach(secret => {
+
+  secrets.forEach((secret) => {
     if (secret && secret.length > 0) {
       // Используем встроенный метод маскирования
       sanitized = SecurePasswordHandler.maskPassword(sanitized, secret);
     }
   });
-  
+
   return sanitized;
 }
 

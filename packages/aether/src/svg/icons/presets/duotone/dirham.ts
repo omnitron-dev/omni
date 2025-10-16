@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const DirhamIcon: IconDefinition = {
-  "id": "dirham",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M22 12.001C22 17.5236 17.5229 22.001 12 22.001C6.47713 22.001 2 17.5236 2 12.001C2 6.47811 6.47713 2.00098 12 2.00098C17.5229 2.00098 22 6.47811 22 12.001Z\" opacity=\"0.4\" fill=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M15.6904 9.00098L17.1609 10.704C17.9481 11.6155 17.2771 12.9999 16.048 13.0005L15 13.001\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M9 8.00098V12.999\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M9.5 17.5007H11M9.5 17.5007H8M9.5 17.5007C9.16667 17.1673 8.69989 16.3005 9.5 15.5007C10.1328 14.8681 11 15.5015 11 15.5015\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M12 13.001V13.011\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "duotone",
-    "originalName": "DirhamIcon",
-    "elementsCount": 6,
-    "hasOpacity": true,
-    "hasFill": true
-  }
+  id: 'dirham',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path d="M22 12.001C22 17.5236 17.5229 22.001 12 22.001C6.47713 22.001 2 17.5236 2 12.001C2 6.47811 6.47713 2.00098 12 2.00098C17.5229 2.00098 22 6.47811 22 12.001Z" opacity="0.4" fill="currentColor" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M15.6904 9.00098L17.1609 10.704C17.9481 11.6155 17.2771 12.9999 16.048 13.0005L15 13.001" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M9 8.00098V12.999" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M9.5 17.5007H11M9.5 17.5007H8M9.5 17.5007C9.16667 17.1673 8.69989 16.3005 9.5 15.5007C10.1328 14.8681 11 15.5015 11 15.5015" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M12 13.001V13.011" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'duotone',
+    originalName: 'DirhamIcon',
+    elementsCount: 6,
+    hasOpacity: true,
+    hasFill: true,
+  },
 };

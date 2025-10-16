@@ -33,12 +33,14 @@ describe('ErrorBoundary', () => {
       });
 
       // Wrap in a parent component so ErrorChild is called in the right context
-      const Wrapper = defineComponent(() => () =>
+      const Wrapper = defineComponent(
+        () => () =>
           ErrorBoundary({
             onError: errorSpy,
             // Pass children as function so it's called inside ErrorBoundary context
             children: () => ErrorChild({}),
-          }));
+          })
+      );
 
       Wrapper({});
 

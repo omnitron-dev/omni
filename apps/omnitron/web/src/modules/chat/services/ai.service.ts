@@ -29,18 +29,18 @@ export class AIService {
    */
   async generateResponse(messages: Message[]): Promise<string> {
     // Simulate AI response delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    await new Promise((resolve) => setTimeout(resolve, 1500));
 
     // Simulated responses for demo
     const responses = [
       "I understand you're working with flows. Let me help you create an efficient data pipeline.",
       "Here's a code snippet that might help:\n\n```typescript\nconst processData = async (input: any) => {\n  // Processing logic here\n  return transformed;\n}\n```",
-      "Based on your requirements, I recommend using a reactive pattern with Aether signals for optimal performance.",
+      'Based on your requirements, I recommend using a reactive pattern with Aether signals for optimal performance.',
       "That's an interesting approach! Have you considered using the built-in module system for better organization?",
       "I can help you optimize that. The key is to leverage Aether's fine-grained reactivity system.",
-      "Let me break that down for you:\n\n1. First, define your data structure\n2. Then, create the processing pipeline\n3. Finally, handle edge cases and errors",
-      "Great question! In Omnitron, you can achieve this by combining the Terminal and Flow Canvas modules.",
-      "The best practice here is to use dependency injection for better testability and maintainability.",
+      'Let me break that down for you:\n\n1. First, define your data structure\n2. Then, create the processing pipeline\n3. Finally, handle edge cases and errors',
+      'Great question! In Omnitron, you can achieve this by combining the Terminal and Flow Canvas modules.',
+      'The best practice here is to use dependency injection for better testability and maintainability.',
     ];
 
     // Return a random response for demo purposes
@@ -50,15 +50,13 @@ export class AIService {
   /**
    * Generate streaming response
    */
-  async *generateStreamingResponse(
-    messages: Message[]
-  ): AsyncGenerator<string, void, unknown> {
+  async *generateStreamingResponse(messages: Message[]): AsyncGenerator<string, void, unknown> {
     const response = await this.generateResponse(messages);
     const words = response.split(' ');
 
     for (const word of words) {
       yield word + ' ';
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
     }
   }
 

@@ -1,2 +1,2 @@
-console.log('STDOUT')
-console.error('STDERR')
+console.log('STDOUT');
+console.error('STDERR');

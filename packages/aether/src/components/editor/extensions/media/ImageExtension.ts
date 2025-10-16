@@ -134,13 +134,7 @@ export class ImageExtension extends Extension<ImageOptions> {
        * Insert an image at the current position
        */
       insertImage:
-        (options: {
-          src: string;
-          alt?: string;
-          title?: string;
-          width?: number;
-          height?: number;
-        }) =>
+        (options: { src: string; alt?: string; title?: string; width?: number; height?: number }) =>
         (state, dispatch) => {
           const { src, alt, title, width, height } = options;
 
@@ -236,7 +230,7 @@ export class ImageExtension extends Extension<ImageOptions> {
             return true;
           },
         },
-      }),
+      })
     );
 
     // Handle paste
@@ -290,7 +284,7 @@ export class ImageExtension extends Extension<ImageOptions> {
             return true;
           },
         },
-      }),
+      })
     );
 
     return plugins;

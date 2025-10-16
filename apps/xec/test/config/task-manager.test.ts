@@ -100,7 +100,7 @@ tasks:
   afterEach(async () => {
     // Clean up temporary directory
     if (testDir) {
-      await fs.rm(testDir, { recursive: true, force: true }).catch(() => { });
+      await fs.rm(testDir, { recursive: true, force: true }).catch(() => {});
     }
   });
 
@@ -110,7 +110,7 @@ tasks:
 
       const tasks = await taskManager.list();
       expect(tasks).toHaveLength(4);
-      expect(tasks.map(t => t.name)).toEqual(['build', 'deploy', 'greet', 'test']);
+      expect(tasks.map((t) => t.name)).toEqual(['build', 'deploy', 'greet', 'test']);
     });
 
     it('should handle missing tasks section', async () => {
@@ -138,7 +138,7 @@ tasks:
 
       const tasks = await taskManager.list();
 
-      const testTask = tasks.find(t => t.name === 'test');
+      const testTask = tasks.find((t) => t.name === 'test');
       expect(testTask).toBeDefined();
       expect(testTask?.name).toBe('test');
       expect(testTask?.hasCommand).toBe(true);
@@ -149,7 +149,7 @@ tasks:
       expect(testTask?.target).toBeUndefined();
       expect(testTask?.targets).toBeUndefined();
 
-      const deployTask = tasks.find(t => t.name === 'deploy');
+      const deployTask = tasks.find((t) => t.name === 'deploy');
       expect(deployTask?.hasSteps).toBe(true);
       expect(deployTask?.hasCommand).toBe(false);
     });
@@ -170,7 +170,7 @@ tasks:
       await taskManager.load();
 
       const tasks = await taskManager.list();
-      expect(tasks.find(t => t.name === 'private')).toBeUndefined();
+      expect(tasks.find((t) => t.name === 'private')).toBeUndefined();
     });
 
     it('should show private tasks in debug mode', async () => {
@@ -200,7 +200,7 @@ tasks:
       await debugTaskManager.load();
 
       const tasks = await debugTaskManager.list();
-      expect(tasks.find(t => t.name === 'private')).toBeDefined();
+      expect(tasks.find((t) => t.name === 'private')).toBeDefined();
     });
   });
 
@@ -246,7 +246,6 @@ tasks:
       expect(content.trim()).toBe('test output');
     });
 
-
     it('should execute task with parameters', async () => {
       await taskManager.load();
 
@@ -262,15 +261,13 @@ tasks:
     it('should validate required parameters', async () => {
       await taskManager.load();
 
-      await expect(taskManager.run('greet'))
-        .rejects.toThrow('Missing required parameter: name');
+      await expect(taskManager.run('greet')).rejects.toThrow('Missing required parameter: name');
     });
 
     it('should throw for non-existent task', async () => {
       await taskManager.load();
 
-      await expect(taskManager.run('nonexistent'))
-        .rejects.toThrow("Task 'nonexistent' not found");
+      await expect(taskManager.run('nonexistent')).rejects.toThrow("Task 'nonexistent' not found");
     });
   });
 
@@ -326,8 +323,7 @@ tasks:
         description: 'Invalid',
       } as any;
 
-      await expect(taskManager.create('invalid', invalidTask))
-        .rejects.toThrow('Invalid task configuration');
+      await expect(taskManager.create('invalid', invalidTask)).rejects.toThrow('Invalid task configuration');
     });
   });
 
@@ -356,8 +352,9 @@ tasks:
     it('should throw for non-existent task', async () => {
       await taskManager.load();
 
-      await expect(taskManager.update('nonexistent', { command: 'echo' }))
-        .rejects.toThrow("Task 'nonexistent' not found");
+      await expect(taskManager.update('nonexistent', { command: 'echo' })).rejects.toThrow(
+        "Task 'nonexistent' not found"
+      );
     });
   });
 
@@ -379,8 +376,7 @@ tasks:
     it('should throw for non-existent task', async () => {
       await taskManager.load();
 
-      await expect(taskManager.delete('nonexistent'))
-        .rejects.toThrow("Task 'nonexistent' not found");
+      await expect(taskManager.delete('nonexistent')).rejects.toThrow("Task 'nonexistent' not found");
     });
   });
 
@@ -404,7 +400,7 @@ tasks:
       const explanationText = explanation.join('\n');
       expect(explanationText).toContain('Task: Deploy application');
       expect(explanationText).toContain('Execute 2 steps:');
-      expect(explanationText).toContain('1. Build: Run task \'build\'');
+      expect(explanationText).toContain("1. Build: Run task 'build'");
       expect(explanationText).toContain('2. Upload:');
       expect(explanationText).toContain('uploading...');
     });
@@ -477,34 +473,33 @@ tasks:
     });
 
     it('should validate parameter types', async () => {
-      await expect(taskManager.run('validated', { count: 'not a number' }))
-        .rejects.toThrow('Invalid type for parameter \'count\'');
+      await expect(taskManager.run('validated', { count: 'not a number' })).rejects.toThrow(
+        "Invalid type for parameter 'count'"
+      );
     });
 
     it('should validate number ranges', async () => {
-      await expect(taskManager.run('validated', { count: 0 }))
-        .rejects.toThrow('must be at least 1');
+      await expect(taskManager.run('validated', { count: 0 })).rejects.toThrow('must be at least 1');
 
-      await expect(taskManager.run('validated', { count: 11 }))
-        .rejects.toThrow('must be at most 10');
+      await expect(taskManager.run('validated', { count: 11 })).rejects.toThrow('must be at most 10');
     });
 
     it('should validate enum values', async () => {
-      await expect(taskManager.run('validated', { env: 'production' }))
-        .rejects.toThrow('must be one of: dev, staging, prod');
+      await expect(taskManager.run('validated', { env: 'production' })).rejects.toThrow(
+        'must be one of: dev, staging, prod'
+      );
     });
 
     it('should validate array constraints', async () => {
-      await expect(taskManager.run('validated', { tags: [] }))
-        .rejects.toThrow('must have at least 1 items');
+      await expect(taskManager.run('validated', { tags: [] })).rejects.toThrow('must have at least 1 items');
 
-      await expect(taskManager.run('validated', { tags: [1, 2, 3, 4, 5, 6] }))
-        .rejects.toThrow('must have at most 5 items');
+      await expect(taskManager.run('validated', { tags: [1, 2, 3, 4, 5, 6] })).rejects.toThrow(
+        'must have at most 5 items'
+      );
     });
 
     it('should validate string patterns', async () => {
-      await expect(taskManager.run('validated', { version: '1.2.3' }))
-        .rejects.toThrow('does not match pattern');
+      await expect(taskManager.run('validated', { version: '1.2.3' })).rejects.toThrow('does not match pattern');
 
       // This should succeed
       const result = await taskManager.run('validated', {
@@ -528,15 +523,15 @@ tasks:
       const events: any[] = [];
 
       // Set up event listeners before running the task
-      const startPromise = new Promise<void>(resolve => {
-        taskManager.once('task:start', e => {
+      const startPromise = new Promise<void>((resolve) => {
+        taskManager.once('task:start', (e) => {
           events.push({ type: 'start', ...e });
           resolve();
         });
       });
 
-      const completePromise = new Promise<void>(resolve => {
-        taskManager.once('task:complete', e => {
+      const completePromise = new Promise<void>((resolve) => {
+        taskManager.once('task:complete', (e) => {
           events.push({ type: 'complete', ...e });
           resolve();
         });

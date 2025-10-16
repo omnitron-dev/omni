@@ -12,10 +12,7 @@ import { createTestCommand } from './commands/test.js';
 
 const program = new Command();
 
-program
-  .name('holon')
-  .description('Flow-Machine runtime CLI')
-  .version('0.1.0');
+program.name('holon').description('Flow-Machine runtime CLI').version('0.1.0');
 
 // Add commands
 program.addCommand(createRunCommand());

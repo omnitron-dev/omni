@@ -105,7 +105,7 @@ describe('Application E2E Tests', () => {
 
       await waitFor(() => {
         const measures = monitor.getMeasures();
-        expect(measures.some(m => m.name === 'update')).toBe(true);
+        expect(measures.some((m) => m.name === 'update')).toBe(true);
       });
 
       monitor.dispose();
@@ -163,7 +163,7 @@ describe('Application E2E Tests', () => {
 
         const updateList = () => {
           list.innerHTML = '';
-          todos().forEach(todo => {
+          todos().forEach((todo) => {
             const item = document.createElement('li');
             item.className = 'todo-item';
             item.dataset.id = String(todo.id);
@@ -172,11 +172,7 @@ describe('Application E2E Tests', () => {
             checkbox.type = 'checkbox';
             checkbox.checked = todo.completed;
             checkbox.onchange = () => {
-              todos.set(
-                todos().map(t =>
-                  t.id === todo.id ? { ...t, completed: !t.completed } : t
-                )
-              );
+              todos.set(todos().map((t) => (t.id === todo.id ? { ...t, completed: !t.completed } : t)));
             };
 
             const text = document.createElement('span');
@@ -188,7 +184,7 @@ describe('Application E2E Tests', () => {
             const deleteBtn = document.createElement('button');
             deleteBtn.textContent = 'Delete';
             deleteBtn.onclick = () => {
-              todos.set(todos().filter(t => t.id !== todo.id));
+              todos.set(todos().filter((t) => t.id !== todo.id));
             };
 
             item.appendChild(checkbox);
@@ -250,8 +246,8 @@ describe('Application E2E Tests', () => {
       const filteredTodos = computed(() => {
         const currentFilter = filter();
         const currentTodos = todos();
-        if (currentFilter === 'active') return currentTodos.filter(t => !t.completed);
-        if (currentFilter === 'completed') return currentTodos.filter(t => t.completed);
+        if (currentFilter === 'active') return currentTodos.filter((t) => !t.completed);
+        if (currentFilter === 'completed') return currentTodos.filter((t) => t.completed);
         return currentTodos;
       });
 
@@ -259,11 +255,11 @@ describe('Application E2E Tests', () => {
 
       filter.set('active');
       expect(filteredTodos().length).toBe(2);
-      expect(filteredTodos().every(t => !t.completed)).toBe(true);
+      expect(filteredTodos().every((t) => !t.completed)).toBe(true);
 
       filter.set('completed');
       expect(filteredTodos().length).toBe(1);
-      expect(filteredTodos().every(t => t.completed)).toBe(true);
+      expect(filteredTodos().every((t) => t.completed)).toBe(true);
 
       filter.set('all');
       expect(filteredTodos().length).toBe(3);
@@ -380,7 +376,7 @@ describe('Application E2E Tests', () => {
         loading.set(true);
         error.set(null);
         try {
-          await new Promise(resolve => setTimeout(resolve, 50));
+          await new Promise((resolve) => setTimeout(resolve, 50));
           data.set([
             { id: 1, title: 'Item 1' },
             { id: 2, title: 'Item 2' },
@@ -464,12 +460,14 @@ describe('Application E2E Tests', () => {
         const container = document.createElement('div');
         const list = document.createElement('ul');
 
-        items().slice(0, 100).forEach(item => {
-          const li = document.createElement('li');
-          li.textContent = item.value;
-          li.dataset.id = String(item.id);
-          list.appendChild(li);
-        });
+        items()
+          .slice(0, 100)
+          .forEach((item) => {
+            const li = document.createElement('li');
+            li.textContent = item.value;
+            li.dataset.id = String(item.id);
+            list.appendChild(li);
+          });
 
         container.appendChild(list);
         return container as any;
@@ -575,7 +573,7 @@ describe('Application E2E Tests', () => {
       fireEvent.click(container.querySelector('button')!);
 
       expect(count()).toBe(1);
-      expect(monitor.getMeasures().some(m => m.name === 'click-handler')).toBe(true);
+      expect(monitor.getMeasures().some((m) => m.name === 'click-handler')).toBe(true);
       expect(inspector.getState().signals.has('count')).toBe(true);
 
       unmount();

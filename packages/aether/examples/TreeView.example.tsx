@@ -265,9 +265,7 @@ export function TreeViewWithCustomRenderer() {
             }}
           >
             {hasChildren && (
-              <span style={{ transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}>
-                ▶
-              </span>
+              <span style={{ transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}>▶</span>
             )}
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: isSelected ? 'bold' : 'normal' }}>{node.label}</div>
@@ -302,10 +300,7 @@ export function LargeDatasetTreeView() {
         >
           Expand First Level
         </button>
-        <button
-          onClick={() => expandedKeys.set([])}
-          style={{ padding: '0.5rem 1rem' }}
-        >
+        <button onClick={() => expandedKeys.set([])} style={{ padding: '0.5rem 1rem' }}>
           Collapse All
         </button>
       </div>

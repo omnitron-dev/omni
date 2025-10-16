@@ -20,9 +20,9 @@ const SIZE_PRESETS = {
 
 export interface SVGIconProps {
   // Icon source
-  name?: string;                    // Icon name from registry
-  src?: string;                      // URL or inline SVG
-  path?: string | Signal<string>;   // Path data
+  name?: string; // Icon name from registry
+  src?: string; // URL or inline SVG
+  path?: string | Signal<string>; // Path data
 
   // Sizing
   size?: keyof typeof SIZE_PRESETS | number | Signal<number>;
@@ -43,17 +43,17 @@ export interface SVGIconProps {
   hover?: AnimationConfig;
 
   // Behavior
-  spin?: boolean | number;           // Rotation animation
-  pulse?: boolean;                   // Pulse animation
+  spin?: boolean | number; // Rotation animation
+  pulse?: boolean; // Pulse animation
   flip?: 'horizontal' | 'vertical' | 'both';
   rotate?: number | Signal<number>;
 
   // Performance
-  sprite?: boolean;                  // Use sprite sheet
-  cache?: boolean;                   // Cache rendered SVG
+  sprite?: boolean; // Use sprite sheet
+  cache?: boolean; // Cache rendered SVG
 
   // Accessibility
-  decorative?: boolean;              // aria-hidden for decorative icons
+  decorative?: boolean; // aria-hidden for decorative icons
   role?: string;
   'aria-label'?: string;
   'aria-labelledby'?: string;
@@ -258,12 +258,7 @@ export const SVGIcon = defineComponent<SVGIconProps>((props) => {
           style={mergedStyles}
           {...accessibilityProps}
         >
-          <path
-            d={props.path as any}
-            fill={fill as any}
-            stroke={stroke as any}
-            strokeWidth={strokeWidth as any}
-          />
+          <path d={props.path as any} fill={fill as any} stroke={stroke as any} strokeWidth={strokeWidth as any} />
         </svg>
       );
     }
@@ -317,12 +312,7 @@ export const SVGIcon = defineComponent<SVGIconProps>((props) => {
             style={mergedStyles}
             {...accessibilityProps}
           >
-            <path
-              d={iconContent}
-              fill={fill as any}
-              stroke={stroke as any}
-              strokeWidth={strokeWidth as any}
-            />
+            <path d={iconContent} fill={fill as any} stroke={stroke as any} strokeWidth={strokeWidth as any} />
           </svg>
         );
       }

@@ -61,9 +61,7 @@ export class IconRegistry {
   registerSet(name: string, icons: IconSet, prefix?: string): void {
     for (const [iconName, iconData] of Object.entries(icons)) {
       const fullName = prefix ? `${prefix}:${iconName}` : iconName;
-      const definition: IconDefinition = typeof iconData === 'string'
-        ? { path: iconData }
-        : iconData;
+      const definition: IconDefinition = typeof iconData === 'string' ? { path: iconData } : iconData;
 
       this.icons.set(fullName, definition);
     }
@@ -149,7 +147,7 @@ export class IconRegistry {
    * Preload icons
    */
   async preload(names: string[]): Promise<void> {
-    await Promise.all(names.map(name => this.get(name)));
+    await Promise.all(names.map((name) => this.get(name)));
   }
 
   /**
@@ -173,7 +171,7 @@ export class IconRegistry {
    * Remove a transformer
    */
   removeTransformer(name: string): void {
-    this.transformers = this.transformers.filter(t => t.name !== name);
+    this.transformers = this.transformers.filter((t) => t.name !== name);
   }
 
   /**

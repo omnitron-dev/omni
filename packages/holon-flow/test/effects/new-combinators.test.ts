@@ -98,7 +98,7 @@ describe('New Combinators - Simple Tests', () => {
       const retried = retry(failing, {
         maxAttempts: 2,
         delay: 10,
-        backoff: 'linear'
+        backoff: 'linear',
       });
 
       await expect(retried(null)).rejects.toThrow('fail');
@@ -113,7 +113,7 @@ describe('New Combinators - Simple Tests', () => {
       const retried = retry(failing, {
         maxAttempts: 2,
         delay: 0,
-        onRetry
+        onRetry,
       });
 
       await expect(retried(null)).rejects.toThrow('retry');
@@ -147,23 +147,24 @@ describe('New Combinators - Simple Tests', () => {
     });
 
     it('should analyze effectful flows', () => {
-      const impure = effectful(() => {},
+      const impure = effectful(
+        () => {},
         EffectFlags.IO |
-        EffectFlags.Network |
-        EffectFlags.Async |
-        EffectFlags.Read |
-        EffectFlags.Write |
-        EffectFlags.Random |
-        EffectFlags.Time |
-        EffectFlags.Throw |
-        EffectFlags.Process |
-        EffectFlags.Memory |
-        EffectFlags.State |
-        EffectFlags.Unsafe |
-        EffectFlags.Database |
-        EffectFlags.Cache |
-        EffectFlags.Queue |
-        EffectFlags.Stream
+          EffectFlags.Network |
+          EffectFlags.Async |
+          EffectFlags.Read |
+          EffectFlags.Write |
+          EffectFlags.Random |
+          EffectFlags.Time |
+          EffectFlags.Throw |
+          EffectFlags.Process |
+          EffectFlags.Memory |
+          EffectFlags.State |
+          EffectFlags.Unsafe |
+          EffectFlags.Database |
+          EffectFlags.Cache |
+          EffectFlags.Queue |
+          EffectFlags.Stream
       );
       const analysis = analyze(impure);
 
@@ -230,8 +231,7 @@ describe('New Combinators - Simple Tests', () => {
 
     it('should throw for disallowed effects', () => {
       const flow = effectful(() => {}, EffectFlags.Network);
-      expect(() => restrict(flow, EffectFlags.IO))
-        .toThrow('Flow has disallowed effects');
+      expect(() => restrict(flow, EffectFlags.IO)).toThrow('Flow has disallowed effects');
     });
   });
 });

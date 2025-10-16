@@ -4,9 +4,7 @@
 
 import { it, expect, describe } from 'vitest';
 
-import {
-  createTableState,
-} from '../src/components/table/table-state.js';
+import { createTableState } from '../src/components/table/table-state.js';
 import { clearSort, toggleSort } from '../src/components/table/table-sorter.js';
 import {
   selectAll,
@@ -44,7 +42,9 @@ function createTestData() {
   ];
 }
 
-function createTestOptions(overrides?: Partial<InteractiveTableOptions<any>>): InteractiveTableOptions<any> {
+function createTestOptions(
+  overrides?: Partial<InteractiveTableOptions<any>>
+): InteractiveTableOptions<any> {
   return {
     data: createTestData(),
     columns: [

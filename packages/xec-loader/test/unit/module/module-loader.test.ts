@@ -213,10 +213,7 @@ describe('ModuleLoader', () => {
       await loaderWithCDN.import('npm:test-package');
 
       // Check that fetch was called with unpkg URL
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('unpkg.com'),
-        expect.any(Object)
-      );
+      expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('unpkg.com'), expect.any(Object));
     });
   });
 
@@ -227,7 +224,7 @@ describe('ModuleLoader', () => {
         status: 200,
         text: async () => {
           // Simulate slow network
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise((resolve) => setTimeout(resolve, 100));
           return 'export const concurrent = true;';
         },
         headers: new Map([['content-type', 'application/javascript']]),
@@ -253,9 +250,7 @@ describe('ModuleLoader', () => {
 
   describe('Error handling', () => {
     it('should throw error for non-existent local module', async () => {
-      await expect(
-        loader.import('/non/existent/path.js')
-      ).rejects.toThrow();
+      await expect(loader.import('/non/existent/path.js')).rejects.toThrow();
     });
 
     it('should throw error for failed CDN fetch', async () => {
@@ -267,9 +262,7 @@ describe('ModuleLoader', () => {
       };
       (global.fetch as any).mockResolvedValue(mockResponse);
 
-      await expect(
-        loader.import('npm:non-existent-cdn-package')
-      ).rejects.toThrow();
+      await expect(loader.import('npm:non-existent-cdn-package')).rejects.toThrow();
     });
   });
 

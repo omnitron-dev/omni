@@ -7,17 +7,18 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const AudioBook01Icon: IconDefinition = {
-  "id": "audio-book01",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M16 2C17.8856 2 18.8283 2.00015 19.4141 2.58594C19.9998 3.17172 20 4.11438 20 6V18H6C4.89543 18 4 18.8954 4 20V8C4 5.17157 4.00023 3.75759 4.87891 2.87891C5.75759 2.00023 7.17157 2 10 2H16ZM10.7773 7C10.3482 7 10 7.34815 10 7.77734V12.2227C10 12.6518 10.3482 13 10.7773 13C10.9229 13 11.066 12.959 11.1895 12.8818L14.5762 10.7646C14.8398 10.5998 15 10.3109 15 10C15 9.68907 14.8398 9.40023 14.5762 9.23535L11.1895 7.11816C11.066 7.04101 10.9229 7.00004 10.7773 7Z\" fill=\"currentColor\" fill-rule=\"evenodd\" />\n    <path d=\"M20 22H6C4.89543 22 4 21.1046 4 20M4 20C4 18.8954 4.89543 18 6 18H20V6C20 4.11438 20 3.17157 19.4142 2.58579C18.8284 2 17.8856 2 16 2H10C7.17157 2 5.75736 2 4.87868 2.87868C4 3.75736 4 5.17157 4 8V20Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M19.5 18C19.5 18 18.5 18.7628 18.5 20C18.5 21.2372 19.5 22 19.5 22\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M14.576 9.235L11.189 7.11812C11.0655 7.04093 10.9228 7 10.7771 7C10.3479 7 10 7.34793 10 7.77712V12.2229C10 12.6521 10.3479 13 10.7771 13C10.9228 13 11.0655 12.9591 11.189 12.8819L14.576 10.765C14.8398 10.6001 15 10.311 15 10C15 9.68896 14.8398 9.39985 14.576 9.235Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "duotone",
-    "originalName": "AudioBook01Icon",
-    "elementsCount": 4,
-    "hasOpacity": true,
-    "hasFill": true,
-    "hasFillRule": true
-  }
+  id: 'audio-book01',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path opacity="0.4" d="M16 2C17.8856 2 18.8283 2.00015 19.4141 2.58594C19.9998 3.17172 20 4.11438 20 6V18H6C4.89543 18 4 18.8954 4 20V8C4 5.17157 4.00023 3.75759 4.87891 2.87891C5.75759 2.00023 7.17157 2 10 2H16ZM10.7773 7C10.3482 7 10 7.34815 10 7.77734V12.2227C10 12.6518 10.3482 13 10.7773 13C10.9229 13 11.066 12.959 11.1895 12.8818L14.5762 10.7646C14.8398 10.5998 15 10.3109 15 10C15 9.68907 14.8398 9.40023 14.5762 9.23535L11.1895 7.11816C11.066 7.04101 10.9229 7.00004 10.7773 7Z" fill="currentColor" fill-rule="evenodd" />\n    <path d="M20 22H6C4.89543 22 4 21.1046 4 20M4 20C4 18.8954 4.89543 18 6 18H20V6C20 4.11438 20 3.17157 19.4142 2.58579C18.8284 2 17.8856 2 16 2H10C7.17157 2 5.75736 2 4.87868 2.87868C4 3.75736 4 5.17157 4 8V20Z" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M19.5 18C19.5 18 18.5 18.7628 18.5 20C18.5 21.2372 19.5 22 19.5 22" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M14.576 9.235L11.189 7.11812C11.0655 7.04093 10.9228 7 10.7771 7C10.3479 7 10 7.34793 10 7.77712V12.2229C10 12.6521 10.3479 13 10.7771 13C10.9228 13 11.0655 12.9591 11.189 12.8819L14.576 10.765C14.8398 10.6001 15 10.311 15 10C15 9.68896 14.8398 9.39985 14.576 9.235Z" stroke-linecap="round" stroke-linejoin="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'duotone',
+    originalName: 'AudioBook01Icon',
+    elementsCount: 4,
+    hasOpacity: true,
+    hasFill: true,
+    hasFillRule: true,
+  },
 };

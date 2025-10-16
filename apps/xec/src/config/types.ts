@@ -411,10 +411,7 @@ export interface ScriptConfig {
 /**
  * Script restrictions
  */
-export type ScriptRestriction =
-  | 'no_network'
-  | 'no_filesystem'
-  | 'no_child_process';
+export type ScriptRestriction = 'no_network' | 'no_filesystem' | 'no_child_process';
 
 /**
  * Command configuration
@@ -502,13 +499,7 @@ export interface DockerHealthCheckConfig {
 /**
  * Variable interpolation types
  */
-export type VariableValue =
-  | string
-  | number
-  | boolean
-  | null
-  | VariableValue[]
-  | { [key: string]: VariableValue };
+export type VariableValue = string | number | boolean | null | VariableValue[] | { [key: string]: VariableValue };
 
 /**
  * Target reference (parsed from string like "hosts.web-1")

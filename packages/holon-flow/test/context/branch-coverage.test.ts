@@ -1,11 +1,6 @@
 import { afterEach, describe, expect, test } from 'vitest';
 import { context, contextual, getCurrentContext, withContext } from '../../src/context.js';
-import {
-  clearModuleRegistry,
-  contextModule,
-  createModule,
-  withModules,
-} from '../../src/module.js';
+import { clearModuleRegistry, contextModule, createModule, withModules } from '../../src/module.js';
 
 describe('Branch Coverage Tests', () => {
   afterEach(async () => {

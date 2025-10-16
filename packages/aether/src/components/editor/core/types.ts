@@ -4,14 +4,7 @@
  * Core types for the ProseMirror-based editor with Aether integration
  */
 
-import type {
-  Schema,
-  Node as PMNode,
-  Mark,
-  NodeSpec,
-  MarkSpec,
-  NodeType,
-} from 'prosemirror-model';
+import type { Schema, Node as PMNode, Mark, NodeSpec, MarkSpec, NodeType } from 'prosemirror-model';
 import type { EditorState, Transaction, Selection, Plugin, Command } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
 import type { InputRule } from 'prosemirror-inputrules';

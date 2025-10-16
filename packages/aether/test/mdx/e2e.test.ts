@@ -8,11 +8,7 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { signal, computed, effect, batch } from '../../src/core/reactivity/index.js';
 import { onCleanup, onMount } from '../../src/core/component/lifecycle.js';
-import {
-  compileMDX,
-  compileMDXSync,
-  MDXProvider
-} from '../../src/mdx/index.js';
+import { compileMDX, compileMDXSync, MDXProvider } from '../../src/mdx/index.js';
 import { defineComponent } from '../../src/core/component/define.js';
 import { jsx } from '../../src/jsx-runtime.js';
 import { render } from '../../src/testing/render.js';
@@ -44,7 +40,7 @@ function cleanupContainer(container: HTMLElement) {
  * Helper to wait for DOM updates
  */
 async function waitForDOM(ms = 0): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -66,18 +62,21 @@ async function renderMDXWithProvider(
     mode: 'production',
     jsx: true,
     gfm: true,
-    frontmatter: true
+    frontmatter: true,
   });
 
   // Extract the default component from the module
   const MDXContent = module.default;
 
   // Create wrapper component that provides MDX context
-  const App = defineComponent(() => () => jsx(MDXProvider, {
-      components,
-      scope,
-      children: jsx(MDXContent, {})
-    }));
+  const App = defineComponent(
+    () => () =>
+      jsx(MDXProvider, {
+        components,
+        scope,
+        children: jsx(MDXContent, {}),
+      })
+  );
 
   // Render the app using the testing library
   const result = render(() => jsx(App, {}), { container });
@@ -91,7 +90,7 @@ async function renderMDXWithProvider(
     },
     unmount: () => {
       result.unmount();
-    }
+    },
   };
 }
 
@@ -157,10 +156,13 @@ const code = true;
   });
 
   test('should render JSX components in MDX', async () => {
-    const Button = defineComponent<{ children?: any }>((props) => () => jsx('button', {
-        class: 'custom-button',
-        children: props.children
-      }));
+    const Button = defineComponent<{ children?: any }>(
+      (props) => () =>
+        jsx('button', {
+          class: 'custom-button',
+          children: props.children,
+        })
+    );
 
     const source = '# Title\n\n<Button>Click me</Button>';
     const result = await renderMDXWithProvider(source, container, { Button });
@@ -172,13 +174,16 @@ const code = true;
   });
 
   test('should render nested MDX components', async () => {
-    const Card = defineComponent<{ title?: string; children?: any }>((props) => () => jsx('div', {
-        class: 'card',
-        children: [
-          props.title && jsx('h3', { children: props.title }),
-          jsx('div', { class: 'card-body', children: props.children })
-        ]
-      }));
+    const Card = defineComponent<{ title?: string; children?: any }>(
+      (props) => () =>
+        jsx('div', {
+          class: 'card',
+          children: [
+            props.title && jsx('h3', { children: props.title }),
+            jsx('div', { class: 'card-body', children: props.children }),
+          ],
+        })
+    );
 
     const source = `
 <Card title="My Card">
@@ -200,11 +205,14 @@ This is **markdown** inside a component!
   });
 
   test('should apply custom component styles', async () => {
-    const StyledDiv = defineComponent<{ children?: any }>((props) => () => jsx('div', {
-        style: 'color: red; font-size: 20px;',
-        class: 'styled',
-        children: props.children
-      }));
+    const StyledDiv = defineComponent<{ children?: any }>(
+      (props) => () =>
+        jsx('div', {
+          style: 'color: red; font-size: 20px;',
+          class: 'styled',
+          children: props.children,
+        })
+    );
 
     const source = '<StyledDiv>Styled content</StyledDiv>';
     const result = await renderMDXWithProvider(source, container, { StyledDiv });
@@ -237,10 +245,13 @@ describe('MDX E2E Tests - Reactive Updates', () => {
   test('should update DOM when signal changes', async () => {
     const count = signal(0);
 
-    const Counter = defineComponent(() => () => jsx('div', {
-        class: 'counter',
-        children: `Count: ${count()}`
-      }));
+    const Counter = defineComponent(
+      () => () =>
+        jsx('div', {
+          class: 'counter',
+          children: `Count: ${count()}`,
+        })
+    );
 
     const source = '<Counter />';
     const result = await renderMDXWithProvider(source, container, { Counter });
@@ -264,10 +275,13 @@ describe('MDX E2E Tests - Reactive Updates', () => {
     const lastName = signal('Doe');
     const fullName = computed(() => `${firstName()} ${lastName()}`);
 
-    const Greeting = defineComponent(() => () => jsx('div', {
-        class: 'greeting',
-        children: `Hello, ${fullName()}!`
-      }));
+    const Greeting = defineComponent(
+      () => () =>
+        jsx('div', {
+          class: 'greeting',
+          children: `Hello, ${fullName()}!`,
+        })
+    );
 
     const source = '<Greeting />';
     const result = await renderMDXWithProvider(source, container, { Greeting });
@@ -318,12 +332,12 @@ Current count: {count()}
     let renderCount = 0;
 
     const SumDisplay = defineComponent(() => () => {
-        renderCount++;
-        return jsx('div', {
-          class: 'sum',
-          children: `Sum: ${sum()}`
-        });
+      renderCount++;
+      return jsx('div', {
+        class: 'sum',
+        children: `Sum: ${sum()}`,
       });
+    });
 
     const source = '<SumDisplay />';
     const result = await renderMDXWithProvider(source, container, { SumDisplay });
@@ -348,10 +362,13 @@ Current count: {count()}
     const c = computed(() => b() + 3);
     const d = computed(() => c() * 4);
 
-    const Display = defineComponent(() => () => jsx('div', {
-        class: 'result',
-        children: `Result: ${d()}`
-      }));
+    const Display = defineComponent(
+      () => () =>
+        jsx('div', {
+          class: 'result',
+          children: `Result: ${d()}`,
+        })
+    );
 
     const source = '<Display />';
     const result = await renderMDXWithProvider(source, container, { Display });
@@ -418,9 +435,9 @@ describe('MDX E2E Tests - Component Lifecycle', () => {
       return () => jsx('div', { class: 'cleanup', children: 'Content' });
     });
 
-    const Conditional = defineComponent(() => () => show()
-        ? jsx(CleanupComponent, {})
-        : jsx('div', { children: 'Hidden' }));
+    const Conditional = defineComponent(
+      () => () => (show() ? jsx(CleanupComponent, {}) : jsx('div', { children: 'Hidden' }))
+    );
 
     const source = '<Conditional />';
     const result = await renderMDXWithProvider(source, container, { Conditional });
@@ -439,10 +456,13 @@ describe('MDX E2E Tests - Component Lifecycle', () => {
   test('should update component on prop changes', async () => {
     const name = signal('Alice');
 
-    const Greeting = defineComponent<{ name: string }>((props) => () => jsx('div', {
-        class: 'greeting',
-        children: `Hello, ${props.name}!`
-      }));
+    const Greeting = defineComponent<{ name: string }>(
+      (props) => () =>
+        jsx('div', {
+          class: 'greeting',
+          children: `Hello, ${props.name}!`,
+        })
+    );
 
     const Wrapper = defineComponent(() => () => jsx(Greeting, { name: name() }));
 
@@ -470,9 +490,7 @@ describe('MDX E2E Tests - Component Lifecycle', () => {
       return () => jsx('div', { class: 'tracker', children: 'Mounted' });
     });
 
-    const Conditional = defineComponent(() => () => show()
-        ? jsx(MountTracker, {})
-        : null);
+    const Conditional = defineComponent(() => () => (show() ? jsx(MountTracker, {}) : null));
 
     const source = '<Conditional />';
     const result = await renderMDXWithProvider(source, container, { Conditional });
@@ -516,11 +534,12 @@ describe('MDX E2E Tests - Event Handlers', () => {
         clicks.set(clicks() + 1);
       };
 
-      return () => jsx('button', {
-        class: 'click-btn',
-        onClick: handleClick,
-        children: `Clicks: ${clicks()}`
-      });
+      return () =>
+        jsx('button', {
+          class: 'click-btn',
+          onClick: handleClick,
+          children: `Clicks: ${clicks()}`,
+        });
     });
 
     const source = '<Button />';
@@ -549,20 +568,21 @@ describe('MDX E2E Tests - Event Handlers', () => {
         inputValue.set((e.target as HTMLInputElement).value);
       };
 
-      return () => jsx('div', {
-        children: [
-          jsx('input', {
-            type: 'text',
-            class: 'test-input',
-            value: inputValue(),
-            onInput: handleInput
-          }),
-          jsx('div', {
-            class: 'output',
-            children: `Value: ${inputValue()}`
-          })
-        ]
-      });
+      return () =>
+        jsx('div', {
+          children: [
+            jsx('input', {
+              type: 'text',
+              class: 'test-input',
+              value: inputValue(),
+              onInput: handleInput,
+            }),
+            jsx('div', {
+              class: 'output',
+              children: `Value: ${inputValue()}`,
+            }),
+          ],
+        });
     });
 
     const source = '<Input />';
@@ -589,11 +609,12 @@ describe('MDX E2E Tests - Event Handlers', () => {
         props.onCustomEvent?.({ type: 'custom', timestamp: Date.now() });
       };
 
-      return () => jsx('button', {
-        class: 'emitter',
-        onClick: handleClick,
-        children: 'Emit Event'
-      });
+      return () =>
+        jsx('button', {
+          class: 'emitter',
+          onClick: handleClick,
+          children: 'Emit Event',
+        });
     });
 
     const Wrapper = defineComponent(() => {
@@ -601,15 +622,16 @@ describe('MDX E2E Tests - Event Handlers', () => {
         eventData.set(data);
       };
 
-      return () => jsx('div', {
-        children: [
-          jsx(CustomEmitter, { onCustomEvent: handleCustomEvent }),
-          jsx('div', {
-            class: 'event-output',
-            children: eventData() ? `Event: ${eventData().type}` : 'No event'
-          })
-        ]
-      });
+      return () =>
+        jsx('div', {
+          children: [
+            jsx(CustomEmitter, { onCustomEvent: handleCustomEvent }),
+            jsx('div', {
+              class: 'event-output',
+              children: eventData() ? `Event: ${eventData().type}` : 'No event',
+            }),
+          ],
+        });
     });
 
     const source = '<Wrapper />';
@@ -633,13 +655,14 @@ describe('MDX E2E Tests - Event Handlers', () => {
         events.set([...events(), type]);
       };
 
-      return () => jsx('div', {
-        class: 'multi-event',
-        onClick: () => addEvent('click'),
-        onMouseEnter: () => addEvent('mouseenter'),
-        onMouseLeave: () => addEvent('mouseleave'),
-        children: jsx('span', { children: `Events: ${events().length}` })
-      });
+      return () =>
+        jsx('div', {
+          class: 'multi-event',
+          onClick: () => addEvent('click'),
+          onMouseEnter: () => addEvent('mouseenter'),
+          onMouseLeave: () => addEvent('mouseleave'),
+          children: jsx('span', { children: `Events: ${events().length}` }),
+        });
     });
 
     const source = '<MultiEvent />';
@@ -677,7 +700,7 @@ describe('MDX E2E Tests - Navigation and TOC', () => {
     // Mock window.location
     Object.defineProperty(window, 'location', {
       writable: true,
-      value: { hash: '' }
+      value: { hash: '' },
     });
   });
 
@@ -738,25 +761,26 @@ describe('MDX E2E Tests - Navigation and TOC', () => {
         }
       };
 
-      return () => jsx('nav', {
-        class: 'toc',
-        children: jsx('ul', {
-          children: props.sections.map(section =>
-            jsx('li', {
-              class: activeSection() === section.id ? 'active' : '',
-              onClick: () => handleClick(section.id),
-              children: section.title,
-              key: section.id
-            })
-          )
-        })
-      });
+      return () =>
+        jsx('nav', {
+          class: 'toc',
+          children: jsx('ul', {
+            children: props.sections.map((section) =>
+              jsx('li', {
+                class: activeSection() === section.id ? 'active' : '',
+                onClick: () => handleClick(section.id),
+                children: section.title,
+                key: section.id,
+              })
+            ),
+          }),
+        });
     });
 
     const source = '<TOC sections={sections} />';
     const sections = [
       { id: 'intro', title: 'Introduction' },
-      { id: 'content', title: 'Content' }
+      { id: 'content', title: 'Content' },
     ];
 
     const result = await renderMDXWithProvider(source, container, { TOC }, { sections });
@@ -793,8 +817,8 @@ describe('MDX E2E Tests - Error Boundaries', () => {
     const errors: Error[] = [];
 
     const ErrorComponent = defineComponent(() => () => {
-        throw new Error('Component error');
-      });
+      throw new Error('Component error');
+    });
 
     const ErrorBoundary = defineComponent<{ children?: any }>((props) => {
       const hasError = signal(false);
@@ -805,7 +829,7 @@ describe('MDX E2E Tests - Error Boundaries', () => {
           if (hasError()) {
             return jsx('div', {
               class: 'error-boundary',
-              children: `Error: ${errorMessage()}`
+              children: `Error: ${errorMessage()}`,
             });
           }
           return props.children;
@@ -815,7 +839,7 @@ describe('MDX E2E Tests - Error Boundaries', () => {
           errors.push(error as Error);
           return jsx('div', {
             class: 'error-boundary',
-            children: `Error: ${(error as Error).message}`
+            children: `Error: ${(error as Error).message}`,
           });
         }
       };
@@ -865,11 +889,14 @@ describe('MDX E2E Tests - Custom Components', () => {
   });
 
   test('should integrate custom Alert component', async () => {
-    const Alert = defineComponent<{ type: string; children?: any }>((props) => () => jsx('div', {
-        class: `alert alert-${props.type}`,
-        role: 'alert',
-        children: props.children
-      }));
+    const Alert = defineComponent<{ type: string; children?: any }>(
+      (props) => () =>
+        jsx('div', {
+          class: `alert alert-${props.type}`,
+          role: 'alert',
+          children: props.children,
+        })
+    );
 
     const source = '<Alert type="warning">This is a warning!</Alert>';
     const result = await renderMDXWithProvider(source, container, { Alert });
@@ -881,14 +908,17 @@ describe('MDX E2E Tests - Custom Components', () => {
   });
 
   test('should integrate custom Card with complex structure', async () => {
-    const Card = defineComponent<{ title: string; footer?: string; children?: any }>((props) => () => jsx('div', {
-        class: 'card',
-        children: [
-          jsx('div', { class: 'card-header', children: props.title }),
-          jsx('div', { class: 'card-body', children: props.children }),
-          props.footer && jsx('div', { class: 'card-footer', children: props.footer })
-        ]
-      }));
+    const Card = defineComponent<{ title: string; footer?: string; children?: any }>(
+      (props) => () =>
+        jsx('div', {
+          class: 'card',
+          children: [
+            jsx('div', { class: 'card-header', children: props.title }),
+            jsx('div', { class: 'card-body', children: props.children }),
+            props.footer && jsx('div', { class: 'card-footer', children: props.footer }),
+          ],
+        })
+    );
 
     const source = `
 <Card title="My Card" footer="Footer text">
@@ -913,16 +943,19 @@ This is **markdown** inside the card.
   test('should integrate reactive custom components', async () => {
     const count = signal(0);
 
-    const Counter = defineComponent(() => () => jsx('div', {
-        class: 'counter',
-        children: [
-          jsx('span', { children: `Count: ${count()}` }),
-          jsx('button', {
-            onClick: () => count.set(count() + 1),
-            children: 'Increment'
-          })
-        ]
-      }));
+    const Counter = defineComponent(
+      () => () =>
+        jsx('div', {
+          class: 'counter',
+          children: [
+            jsx('span', { children: `Count: ${count()}` }),
+            jsx('button', {
+              onClick: () => count.set(count() + 1),
+              children: 'Increment',
+            }),
+          ],
+        })
+    );
 
     const source = '<Counter />';
     const result = await renderMDXWithProvider(source, container, { Counter });
@@ -938,10 +971,13 @@ This is **markdown** inside the card.
   });
 
   test('should pass props to custom components', async () => {
-    const Badge = defineComponent<{ color: string; size: string; children?: any }>((props) => () => jsx('span', {
-        class: `badge badge-${props.color} badge-${props.size}`,
-        children: props.children
-      }));
+    const Badge = defineComponent<{ color: string; size: string; children?: any }>(
+      (props) => () =>
+        jsx('span', {
+          class: `badge badge-${props.color} badge-${props.size}`,
+          children: props.children,
+        })
+    );
 
     const source = '<Badge color="blue" size="large">Premium</Badge>';
     const result = await renderMDXWithProvider(source, container, { Badge });
@@ -974,7 +1010,7 @@ describe('MDX E2E Tests - Lazy Loading', () => {
   test('should lazy load MDX module', async () => {
     const loadMDX = async () => {
       // Add artificial delay to simulate async loading
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 20));
       return compileMDX('# Lazy Loaded Content\n\nThis content was loaded lazily.');
     };
 
@@ -1039,7 +1075,7 @@ describe('MDX E2E Tests - Lazy Loading', () => {
         if (error()) {
           return jsx('div', {
             class: 'error',
-            children: `Error: ${error()!.message}`
+            children: `Error: ${error()!.message}`,
           });
         }
         return null;
@@ -1085,20 +1121,21 @@ describe('MDX E2E Tests - Theme Switching', () => {
         document.documentElement.setAttribute('data-theme', theme());
       };
 
-      return () => jsx('div', {
-        class: `theme-container theme-${theme()}`,
-        children: [
-          jsx('div', {
-            class: 'current-theme',
-            children: `Current theme: ${theme()}`
-          }),
-          jsx('button', {
-            class: 'theme-toggle',
-            onClick: toggleTheme,
-            children: 'Toggle Theme'
-          })
-        ]
-      });
+      return () =>
+        jsx('div', {
+          class: `theme-container theme-${theme()}`,
+          children: [
+            jsx('div', {
+              class: 'current-theme',
+              children: `Current theme: ${theme()}`,
+            }),
+            jsx('button', {
+              class: 'theme-toggle',
+              onClick: toggleTheme,
+              children: 'Toggle Theme',
+            }),
+          ],
+        });
     });
 
     const source = '<ThemeToggle />';
@@ -1122,16 +1159,15 @@ describe('MDX E2E Tests - Theme Switching', () => {
 
     const ThemedContent = defineComponent(() => {
       const styles = computed(() =>
-        theme() === 'light'
-          ? 'background: white; color: black;'
-          : 'background: black; color: white;'
+        theme() === 'light' ? 'background: white; color: black;' : 'background: black; color: white;'
       );
 
-      return () => jsx('div', {
-        class: 'themed-content',
-        style: styles(),
-        children: 'Themed content'
-      });
+      return () =>
+        jsx('div', {
+          class: 'themed-content',
+          style: styles(),
+          children: 'Themed content',
+        });
     });
 
     const source = '<ThemedContent />';
@@ -1207,78 +1243,83 @@ describe('MDX E2E Tests - Complex Integration', () => {
       // Use the shared signals from closure
       const addTodo = () => {
         if (input().trim()) {
-          todos.set([...todos(), {
-            id: Date.now(),
-            text: input(),
-            done: false
-          }]);
+          todos.set([
+            ...todos(),
+            {
+              id: Date.now(),
+              text: input(),
+              done: false,
+            },
+          ]);
           input.set('');
         }
       };
 
       const toggleTodo = (id: number) => {
-        todos.set(todos().map(todo =>
-          todo.id === id ? { ...todo, done: !todo.done } : todo
-        ));
+        todos.set(todos().map((todo) => (todo.id === id ? { ...todo, done: !todo.done } : todo)));
       };
 
       const filteredTodos = computed(() => {
         switch (filter()) {
-          case 'active': return todos().filter(t => !t.done);
-          case 'completed': return todos().filter(t => t.done);
-          default: return todos();
+          case 'active':
+            return todos().filter((t) => !t.done);
+          case 'completed':
+            return todos().filter((t) => t.done);
+          default:
+            return todos();
         }
       });
 
-      return () => jsx('div', {
-        class: 'todo-app',
-        children: [
-          jsx('h1', { children: 'Todo App' }),
-          jsx('div', {
-            class: 'input-group',
-            children: [
-              jsx('input', {
-                type: 'text',
-                class: 'todo-input',
-                value: input(),
-                onInput: (e: Event) => input.set((e.target as HTMLInputElement).value),
-                placeholder: 'Add todo...'
-              }),
-              jsx('button', {
-                class: 'add-btn',
-                onClick: addTodo,
-                children: 'Add'
-              })
-            ]
-          }),
-          jsx('div', {
-            class: 'filters',
-            children: ['all', 'active', 'completed'].map(f =>
-              jsx('button', {
-                class: filter() === f ? 'active' : '',
-                onClick: () => filter.set(f as any),
-                children: f,
-                key: f
-              })
-            )
-          }),
-          jsx('ul', {
-            class: 'todo-list',
-            children: filteredTodos().map(todo =>
-              jsx('li', {
-                class: todo.done ? 'done' : '',
-                onClick: () => toggleTodo(todo.id),
-                children: todo.text,
-                key: todo.id
-              })
-            )
-          }),
-          jsx('div', {
-            class: 'stats',
-            children: `${todos().filter(t => !t.done).length} remaining`
-          })
-        ]
-      });
+      return () =>
+        jsx('div', {
+          class: 'todo-app',
+          children: [
+            jsx('h1', { children: 'Todo App' }),
+            jsx('div', {
+              class: 'input-group',
+              children: [
+                jsx('input', {
+                  type: 'text',
+                  class: 'todo-input',
+                  value: input(),
+                  onInput: (e: Event) => input.set((e.target as HTMLInputElement).value),
+                  placeholder: 'Add todo...',
+                }),
+                jsx('button', {
+                  class: 'add-btn',
+                  onClick: addTodo,
+                  children: 'Add',
+                }),
+              ],
+            }),
+            jsx('div', {
+              class: 'filters',
+              children: ['all', 'active', 'completed'].map((f) =>
+                jsx('button', {
+                  class: filter() === f ? 'active' : '',
+                  onClick: () => filter.set(f as any),
+                  children: f,
+                  key: f,
+                })
+              ),
+            }),
+            jsx('ul', {
+              class: 'todo-list',
+              children: filteredTodos().map((todo) =>
+                jsx('li', {
+                  class: todo.done ? 'done' : '',
+                  onClick: () => toggleTodo(todo.id),
+                  children: todo.text,
+                  key: todo.id,
+                })
+              ),
+            }),
+            jsx('div', {
+              class: 'stats',
+              children: `${todos().filter((t) => !t.done).length} remaining`,
+            }),
+          ],
+        });
     });
 
     const source = '<TodoApp />';
@@ -1331,29 +1372,30 @@ describe('MDX E2E Tests - Complex Integration', () => {
     const ParentComponent = defineComponent(() => {
       const localCount = signal(0);
 
-      return () => jsx('div', {
-        class: 'parent',
-        children: [
-          jsx('div', {
-            class: 'global-count',
-            children: `Global: ${globalCount()}`
-          }),
-          jsx('div', {
-            class: 'local-count',
-            children: `Local: ${localCount()}`
-          }),
-          jsx('button', {
-            class: 'inc-global',
-            onClick: () => globalCount.set(globalCount() + 1),
-            children: 'Inc Global'
-          }),
-          jsx('button', {
-            class: 'inc-local',
-            onClick: () => localCount.set(localCount() + 1),
-            children: 'Inc Local'
-          })
-        ]
-      });
+      return () =>
+        jsx('div', {
+          class: 'parent',
+          children: [
+            jsx('div', {
+              class: 'global-count',
+              children: `Global: ${globalCount()}`,
+            }),
+            jsx('div', {
+              class: 'local-count',
+              children: `Local: ${localCount()}`,
+            }),
+            jsx('button', {
+              class: 'inc-global',
+              onClick: () => globalCount.set(globalCount() + 1),
+              children: 'Inc Global',
+            }),
+            jsx('button', {
+              class: 'inc-local',
+              onClick: () => localCount.set(localCount() + 1),
+              children: 'Inc Local',
+            }),
+          ],
+        });
     });
 
     const source = '<ParentComponent />';
@@ -1375,21 +1417,26 @@ describe('MDX E2E Tests - Complex Integration', () => {
   });
 
   test('should handle performance with many reactive components', async () => {
-    const items = signal(Array.from({ length: 100 }, (_, i) => ({
-      id: i,
-      value: signal(i)
-    })));
+    const items = signal(
+      Array.from({ length: 100 }, (_, i) => ({
+        id: i,
+        value: signal(i),
+      }))
+    );
 
-    const List = defineComponent(() => () => jsx('div', {
-        class: 'perf-list',
-        children: items().map(item =>
-          jsx('div', {
-            class: 'item',
-            children: `Item ${item.id}: ${item.value()}`,
-            key: item.id
-          })
-        )
-      }));
+    const List = defineComponent(
+      () => () =>
+        jsx('div', {
+          class: 'perf-list',
+          children: items().map((item) =>
+            jsx('div', {
+              class: 'item',
+              children: `Item ${item.id}: ${item.value()}`,
+              key: item.id,
+            })
+          ),
+        })
+    );
 
     const source = '<List />';
     const result = await renderMDXWithProvider(source, container, { List });

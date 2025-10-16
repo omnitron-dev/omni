@@ -7,17 +7,18 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const Money02Icon: IconDefinition = {
-  "id": "money02",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M16 5C18.8284 5 20.2424 5.00023 21.1211 5.87891C21.9998 6.75759 22 8.17157 22 11V13C22 15.8284 21.9998 17.2424 21.1211 18.1211C20.2424 18.9998 18.8284 19 16 19H8C5.17157 19 3.75759 18.9998 2.87891 18.1211C2.00023 17.2424 2 15.8284 2 13V11C2 8.17157 2.00023 6.75759 2.87891 5.87891C3.75759 5.00023 5.17157 5 8 5H16ZM12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9Z\" fill=\"currentColor\" fill-rule=\"evenodd\" />\n    <path d=\"M16 5H8C5.17157 5 3.75736 5 2.87868 5.87868C2 6.75736 2 8.17157 2 11V13C2 15.8284 2 17.2426 2.87868 18.1213C3.75736 19 5.17157 19 8 19H16C18.8284 19 20.2426 19 21.1213 18.1213C22 17.2426 22 15.8284 22 13V11C22 8.17157 22 6.75736 21.1213 5.87868C20.2426 5 18.8284 5 16 5Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M18.5 12H18.51\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" />\n    <path d=\"M5.5 12H5.51\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" />\n    <path d=\"M15 12C15 13.6569 13.6569 15 12 15C10.3431 15 9 13.6569 9 12C9 10.3431 10.3431 9 12 9C13.6569 9 15 10.3431 15 12Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "duotone",
-    "originalName": "Money02Icon",
-    "elementsCount": 5,
-    "hasOpacity": true,
-    "hasFill": true,
-    "hasFillRule": true
-  }
+  id: 'money02',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path opacity="0.4" d="M16 5C18.8284 5 20.2424 5.00023 21.1211 5.87891C21.9998 6.75759 22 8.17157 22 11V13C22 15.8284 21.9998 17.2424 21.1211 18.1211C20.2424 18.9998 18.8284 19 16 19H8C5.17157 19 3.75759 18.9998 2.87891 18.1211C2.00023 17.2424 2 15.8284 2 13V11C2 8.17157 2.00023 6.75759 2.87891 5.87891C3.75759 5.00023 5.17157 5 8 5H16ZM12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9Z" fill="currentColor" fill-rule="evenodd" />\n    <path d="M16 5H8C5.17157 5 3.75736 5 2.87868 5.87868C2 6.75736 2 8.17157 2 11V13C2 15.8284 2 17.2426 2.87868 18.1213C3.75736 19 5.17157 19 8 19H16C18.8284 19 20.2426 19 21.1213 18.1213C22 17.2426 22 15.8284 22 13V11C22 8.17157 22 6.75736 21.1213 5.87868C20.2426 5 18.8284 5 16 5Z" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M18.5 12H18.51" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />\n    <path d="M5.5 12H5.51" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />\n    <path d="M15 12C15 13.6569 13.6569 15 12 15C10.3431 15 9 13.6569 9 12C9 10.3431 10.3431 9 12 9C13.6569 9 15 10.3431 15 12Z" stroke-linecap="round" stroke-linejoin="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'duotone',
+    originalName: 'Money02Icon',
+    elementsCount: 5,
+    hasOpacity: true,
+    hasFill: true,
+    hasFillRule: true,
+  },
 };

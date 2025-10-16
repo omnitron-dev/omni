@@ -230,12 +230,7 @@ export const BUNDLE_BOUNDARIES = {
    * Advanced bundle - loaded on demand
    * Target: <25KB gzipped
    */
-  advanced: [
-    'TableExtension',
-    'CodeBlockExtension',
-    'SearchExtension',
-    'CollaborationExtension',
-  ],
+  advanced: ['TableExtension', 'CodeBlockExtension', 'SearchExtension', 'CollaborationExtension'],
 
   /**
    * Optional bundle - loaded on demand
@@ -247,12 +242,7 @@ export const BUNDLE_BOUNDARIES = {
    * Performance bundle - loaded during idle time
    * Target: <10KB gzipped
    */
-  performance: [
-    'LazyLoadExtension',
-    'VirtualScrollExtension',
-    'DebounceExtension',
-    'MemoizationExtension',
-  ],
+  performance: ['LazyLoadExtension', 'VirtualScrollExtension', 'DebounceExtension', 'MemoizationExtension'],
 } as const;
 
 /**

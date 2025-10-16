@@ -29,9 +29,9 @@ function generateTestData(count: number) {
     email: `user${i + 1}@example.com`,
     role: roles[i % roles.length]!,
     status: statuses[i % statuses.length]!,
-    salary: 50000 + (i * 1000) % 100000,
+    salary: 50000 + ((i * 1000) % 100000),
     department: `Dept ${(i % 10) + 1}`,
-    joinDate: new Date(2020 + (i % 5), (i % 12), (i % 28) + 1).toISOString(),
+    joinDate: new Date(2020 + (i % 5), i % 12, (i % 28) + 1).toISOString(),
     performance: (i % 5) + 1,
     active: i % 3 === 0,
   }));
@@ -267,9 +267,7 @@ describe('table-performance', () => {
       const data = generateTestData(10000);
       const options: InteractiveTableOptions<any> = {
         data,
-        columns: [
-          { key: 'id', header: 'ID' },
-        ],
+        columns: [{ key: 'id', header: 'ID' }],
       };
       let state = createTableState(data, options);
 
@@ -395,9 +393,7 @@ describe('table-performance', () => {
       const data = generateTestData(5000);
       const options: InteractiveTableOptions<any> = {
         data,
-        columns: [
-          { key: 'role', header: 'Role' },
-        ],
+        columns: [{ key: 'role', header: 'Role' }],
       };
       let state = createTableState(data, options);
 

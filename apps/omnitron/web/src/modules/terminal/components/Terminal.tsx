@@ -65,7 +65,7 @@ Type 'help' for available commands
     <div class="terminal-container">
       <div class="terminal-output">
         <For each={() => terminalService.getCommandHistory()}>
-          {entry => (
+          {(entry) => (
             <div class="terminal-entry">
               {entry().command && (
                 <div class="terminal-command">
@@ -85,7 +85,7 @@ Type 'help' for available commands
             type="text"
             class="terminal-input"
             value={currentCommand()}
-            onInput={e => currentCommand.set(e.currentTarget.value)}
+            onInput={(e) => currentCommand.set(e.currentTarget.value)}
             onKeyDown={handleKeyDown}
             placeholder="Type command..."
             autofocus

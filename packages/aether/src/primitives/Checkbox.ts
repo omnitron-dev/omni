@@ -329,7 +329,7 @@ export const CheckboxIndicator = defineComponent<CheckboxIndicatorProps>((props)
       // Set initial display based on shouldShow
       // With forceMount, always visible (display empty string)
       // Without forceMount, hide if not checked/indeterminate
-      display: shouldShow ? (baseStyle.display || '') : 'none',
+      display: shouldShow ? baseStyle.display || '' : 'none',
     };
 
     // Always render the span, but control visibility with display style

@@ -41,7 +41,7 @@ export class EditorService {
    * Update editor settings
    */
   updateSettings(updates: Partial<EditorSettings>): void {
-    this.settings.update(current => ({ ...current, ...updates }));
+    this.settings.update((current) => ({ ...current, ...updates }));
     console.log('[EditorService] Updated settings:', updates);
   }
 
@@ -97,7 +97,7 @@ export class EditorService {
     console.log('[EditorService] Initializing editor...');
 
     // Simulate loading delay
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
     // Load sample files
     this.fileService.loadSampleFiles();
@@ -120,7 +120,7 @@ export class EditorService {
    */
   saveAllFiles(): void {
     const files = this.fileService.getFiles();
-    files.forEach(file => {
+    files.forEach((file) => {
       if (file.isDirty) {
         this.fileService.saveFile(file.id);
       }

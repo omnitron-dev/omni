@@ -36,18 +36,8 @@ export class CommandService {
    * Get command suggestions based on partial input
    */
   getSuggestions(partial: string): string[] {
-    const commands = [
-      'help',
-      'clear',
-      'pwd',
-      'ls',
-      'cd',
-      'echo',
-      'date',
-      'version',
-      'exit',
-    ];
+    const commands = ['help', 'clear', 'pwd', 'ls', 'cd', 'echo', 'date', 'version', 'exit'];
 
-    return commands.filter(cmd => cmd.startsWith(partial.toLowerCase()));
+    return commands.filter((cmd) => cmd.startsWith(partial.toLowerCase()));
   }
 }

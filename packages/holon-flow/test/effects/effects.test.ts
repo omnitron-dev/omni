@@ -42,11 +42,7 @@ describe('Effects', () => {
     });
 
     test('should combine multiple effect flags', () => {
-      const fileEffect = effect(
-        'file',
-        EffectFlags.Read | EffectFlags.IO | EffectFlags.Async,
-        async () => 'content',
-      );
+      const fileEffect = effect('file', EffectFlags.Read | EffectFlags.IO | EffectFlags.Async, async () => 'content');
 
       expect(fileEffect.flags & EffectFlags.Read).toBeTruthy();
       expect(fileEffect.flags & EffectFlags.IO).toBeTruthy();
@@ -101,10 +97,7 @@ describe('Effects', () => {
     });
 
     test('should combine effect flags', () => {
-      const multiEffect = effectful(
-        () => 'test',
-        [Effects.readFile, Effects.writeFile, Effects.now],
-      );
+      const multiEffect = effectful(() => 'test', [Effects.readFile, Effects.writeFile, Effects.now]);
 
       expect(multiEffect.flags & EffectFlags.Read).toBeTruthy();
       expect(multiEffect.flags & EffectFlags.Write).toBeTruthy();
@@ -303,9 +296,7 @@ describe('EffectInterpreter', () => {
 
     const flow = effectful(() => 'result', [unknownEffect]);
 
-    await expect(interpreter.run(flow, 'test', context())).rejects.toThrow(
-      'No handler for effect: Symbol(unknown)',
-    );
+    await expect(interpreter.run(flow, 'test', context())).rejects.toThrow('No handler for effect: Symbol(unknown)');
   });
 
   test('should create pure interpreter with mock handlers', () => {
@@ -384,50 +375,56 @@ describe('Effects Handlers', () => {
       }
     });
 
-    test.skipIf(typeof (globalThis as any).Bun !== 'undefined' || typeof (globalThis as any).Deno !== 'undefined')('should handle Bun runtime', async () => {
-      const originalBun = (globalThis as any).Bun;
+    test.skipIf(typeof (globalThis as any).Bun !== 'undefined' || typeof (globalThis as any).Deno !== 'undefined')(
+      'should handle Bun runtime',
+      async () => {
+        const originalBun = (globalThis as any).Bun;
 
-      (globalThis as any).Bun = {
-        file: vi.fn(() => ({ text: async () => 'bun content' })),
-        write: vi.fn(async () => undefined),
-      };
+        (globalThis as any).Bun = {
+          file: vi.fn(() => ({ text: async () => 'bun content' })),
+          write: vi.fn(async () => undefined),
+        };
 
-      const readResult = await Effects.readFile.handler('test.txt', context());
-      expect(readResult).toBe('bun content');
+        const readResult = await Effects.readFile.handler('test.txt', context());
+        expect(readResult).toBe('bun content');
 
-      await Effects.writeFile.handler(['test.txt', 'content'], context());
-      expect((globalThis as any).Bun.write).toHaveBeenCalled();
+        await Effects.writeFile.handler(['test.txt', 'content'], context());
+        expect((globalThis as any).Bun.write).toHaveBeenCalled();
 
-      // Restore original Bun global
-      if (originalBun) {
-        (globalThis as any).Bun = originalBun;
-      } else {
-        delete (globalThis as any).Bun;
+        // Restore original Bun global
+        if (originalBun) {
+          (globalThis as any).Bun = originalBun;
+        } else {
+          delete (globalThis as any).Bun;
+        }
       }
-    });
+    );
 
-    test.skipIf(typeof (globalThis as any).Deno !== 'undefined' || typeof (globalThis as any).Bun !== 'undefined')('should throw error when no runtime available', async () => {
-      const originalProcess = globalThis.process;
-      const originalDeno = (globalThis as any).Deno;
-      const originalBun = (globalThis as any).Bun;
+    test.skipIf(typeof (globalThis as any).Deno !== 'undefined' || typeof (globalThis as any).Bun !== 'undefined')(
+      'should throw error when no runtime available',
+      async () => {
+        const originalProcess = globalThis.process;
+        const originalDeno = (globalThis as any).Deno;
+        const originalBun = (globalThis as any).Bun;
 
-      delete (globalThis as any).process;
-      delete (globalThis as any).Deno;
-      delete (globalThis as any).Bun;
+        delete (globalThis as any).process;
+        delete (globalThis as any).Deno;
+        delete (globalThis as any).Bun;
 
-      await expect(Effects.readFile.handler('test.txt', context())).rejects.toThrow(
-        'File system not available in this runtime',
-      );
+        await expect(Effects.readFile.handler('test.txt', context())).rejects.toThrow(
+          'File system not available in this runtime'
+        );
 
-      await expect(Effects.writeFile.handler(['test.txt', 'content'], context())).rejects.toThrow(
-        'File system not available in this runtime',
-      );
+        await expect(Effects.writeFile.handler(['test.txt', 'content'], context())).rejects.toThrow(
+          'File system not available in this runtime'
+        );
 
-      // Restore all original globals
-      if (originalProcess) globalThis.process = originalProcess;
-      if (originalDeno) (globalThis as any).Deno = originalDeno;
-      if (originalBun) (globalThis as any).Bun = originalBun;
-    });
+        // Restore all original globals
+        if (originalProcess) globalThis.process = originalProcess;
+        if (originalDeno) (globalThis as any).Deno = originalDeno;
+        if (originalBun) (globalThis as any).Bun = originalBun;
+      }
+    );
   });
 
   describe('EffectFlags export', () => {

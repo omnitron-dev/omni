@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const BitcoinEllipseIcon: IconDefinition = {
-  "id": "bitcoin-ellipse",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <circle cx=\"12\" cy=\"12\" r=\"10\" />\n    <path opacity=\"0.4\" d=\"M9.5 16L9.5 8M11 8V6M13.5 8V6M11 18V16M13.5 18V16M9.5 12H14.5M14.5 12C15.3284 12 16 12.6716 16 13.5V14.5C16 15.3284 15.3284 16 14.5 16H8M14.5 12C15.3284 12 16 11.3284 16 10.5V9.5C16 8.67157 15.3284 8 14.5 8H8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "twotone",
-    "originalName": "BitcoinEllipseIcon",
-    "elementsCount": 2,
-    "hasOpacity": true,
-    "hasFill": false
-  }
+  id: 'bitcoin-ellipse',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <circle cx="12" cy="12" r="10" />\n    <path opacity="0.4" d="M9.5 16L9.5 8M11 8V6M13.5 8V6M11 18V16M13.5 18V16M9.5 12H14.5M14.5 12C15.3284 12 16 12.6716 16 13.5V14.5C16 15.3284 15.3284 16 14.5 16H8M14.5 12C15.3284 12 16 11.3284 16 10.5V9.5C16 8.67157 15.3284 8 14.5 8H8" stroke-linecap="round" stroke-linejoin="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'twotone',
+    originalName: 'BitcoinEllipseIcon',
+    elementsCount: 2,
+    hasOpacity: true,
+    hasFill: false,
+  },
 };

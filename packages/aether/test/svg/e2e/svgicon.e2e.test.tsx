@@ -28,9 +28,7 @@ describe('SVGIcon E2E Tests', () => {
 
   describe('Icon Loading and Rendering', () => {
     it('should load and render icon from path immediately', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 L10 30 Z" aria-label="Arrow icon" />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 L10 30 Z" aria-label="Arrow icon" />);
 
       const svg = container.querySelector('svg');
       expect(svg).toBeTruthy();
@@ -49,9 +47,7 @@ describe('SVGIcon E2E Tests', () => {
       });
 
       const onLoad = vi.fn();
-      const { container } = render(() => (
-        <SVGIcon name="home" onLoad={onLoad} aria-label="Home" />
-      ));
+      const { container } = render(() => <SVGIcon name="home" onLoad={onLoad} aria-label="Home" />);
 
       // Wait for icon to load
       await waitFor(() => {
@@ -98,9 +94,12 @@ describe('SVGIcon E2E Tests', () => {
       const { container } = render(() => <SVGIcon name="nonexistent-icon" onError={onError} />);
 
       // Wait for error callback - this proves the error was detected
-      await waitFor(() => {
-        expect(onError).toHaveBeenCalled();
-      }, { timeout: 2000 });
+      await waitFor(
+        () => {
+          expect(onError).toHaveBeenCalled();
+        },
+        { timeout: 2000 }
+      );
 
       // Verify error callback received an Error object with appropriate message
       expect(onError).toHaveBeenCalledWith(
@@ -141,9 +140,7 @@ describe('SVGIcon E2E Tests', () => {
     });
 
     it('should respond to hover state with animations', async () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" spin aria-label="Spinning icon" />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" spin aria-label="Spinning icon" />);
 
       const svg = container.querySelector('svg');
       expect(svg).toBeTruthy();
@@ -221,9 +218,7 @@ describe('SVGIcon E2E Tests', () => {
 
   describe('Accessibility Features', () => {
     it('should have proper ARIA attributes for non-decorative icons', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" aria-label="Settings" role="img" />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" aria-label="Settings" role="img" />);
 
       const svg = container.querySelector('svg');
       expect(svg?.getAttribute('aria-label')).toBe('Settings');
@@ -250,11 +245,7 @@ describe('SVGIcon E2E Tests', () => {
 
     it('should support aria-labelledby and aria-describedby', () => {
       const { container } = render(() => (
-        <SVGIcon
-          path="M10 10 L20 20 Z"
-          aria-labelledby="icon-title"
-          aria-describedby="icon-desc"
-        />
+        <SVGIcon path="M10 10 L20 20 Z" aria-labelledby="icon-title" aria-describedby="icon-desc" />
       ));
 
       const svg = container.querySelector('svg');
@@ -289,9 +280,7 @@ describe('SVGIcon E2E Tests', () => {
     });
 
     it('should combine rotation and flip', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" rotate={45} flip="horizontal" />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" rotate={45} flip="horizontal" />);
 
       const svg = container.querySelector('svg');
       const transform = svg?.getAttribute('transform');
@@ -324,9 +313,7 @@ describe('SVGIcon E2E Tests', () => {
     });
 
     it('should allow separate width and height', () => {
-      const { container } = render(() => (
-        <SVGIcon width={100} height={50} path="M10 10 L20 20 Z" />
-      ));
+      const { container } = render(() => <SVGIcon width={100} height={50} path="M10 10 L20 20 Z" />);
 
       const svg = container.querySelector('svg');
       expect(svg?.getAttribute('width')).toBe('100');
@@ -371,14 +358,15 @@ describe('SVGIcon E2E Tests', () => {
       const onError = vi.fn();
       global.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
 
-      const { container } = render(() => (
-        <SVGIcon src="https://example.com/missing.svg" onError={onError} />
-      ));
+      const { container } = render(() => <SVGIcon src="https://example.com/missing.svg" onError={onError} />);
 
       // Wait for error callback - this proves the error was detected and handled
-      await waitFor(() => {
-        expect(onError).toHaveBeenCalledWith(expect.any(Error));
-      }, { timeout: 2000 });
+      await waitFor(
+        () => {
+          expect(onError).toHaveBeenCalledWith(expect.any(Error));
+        },
+        { timeout: 2000 }
+      );
 
       // Verify the error contains network error information
       expect(onError).toHaveBeenCalledWith(
@@ -462,27 +450,21 @@ describe('SVGIcon E2E Tests', () => {
 
   describe('Edge Cases', () => {
     it('should handle null/undefined props gracefully', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" color={undefined} size={undefined} />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" color={undefined} size={undefined} />);
 
       const svg = container.querySelector('svg');
       expect(svg).toBeTruthy();
     });
 
     it('should handle empty children', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z">{null}</SVGIcon>
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z">{null}</SVGIcon>);
 
       const svg = container.querySelector('svg');
       expect(svg).toBeTruthy();
     });
 
     it('should apply custom className', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" className="custom-icon-class" />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" className="custom-icon-class" />);
 
       const svg = container.querySelector('svg');
       expect(svg?.classList.contains('custom-icon-class')).toBe(true);
@@ -499,9 +481,7 @@ describe('SVGIcon E2E Tests', () => {
     });
 
     it('should handle viewBox overrides', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" viewBox="0 0 100 100" />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" viewBox="0 0 100 100" />);
 
       const svg = container.querySelector('svg');
       expect(svg?.getAttribute('viewBox')).toBe('0 0 100 100');

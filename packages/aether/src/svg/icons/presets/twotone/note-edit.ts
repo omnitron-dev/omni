@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const NoteEditIcon: IconDefinition = {
-  "id": "note-edit",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M15.4987 2V5M6.49869 2V5M10.9987 2V5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M18.9987 12V10.5C18.9987 7.20017 18.9987 5.55025 17.9736 4.52512C16.9484 3.5 15.2985 3.5 11.9987 3.5H9.99869C6.69886 3.5 5.04894 3.5 4.02381 4.52513C2.99869 5.55025 2.99869 7.20017 2.99869 10.5V15C2.99869 18.2998 2.99869 19.9497 4.02381 20.9749C5.04894 22 6.69886 22 9.99869 22H10.9987\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M6.99869 15H10.9987M6.99869 11H14.9987\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M15.7353 21.6527L13.9987 22L14.346 20.2633C14.4166 19.9106 14.5899 19.5866 14.8443 19.3323L18.9097 15.2668C19.2655 14.9111 19.8424 14.9111 20.1982 15.2668L20.7318 15.8005C21.0876 16.1563 21.0876 16.7332 20.7318 17.0889L16.6664 21.1544C16.4121 21.4087 16.0881 21.5821 15.7353 21.6527Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "twotone",
-    "originalName": "NoteEditIcon",
-    "elementsCount": 4,
-    "hasOpacity": true,
-    "hasFill": false
-  }
+  id: 'note-edit',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path d="M15.4987 2V5M6.49869 2V5M10.9987 2V5" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M18.9987 12V10.5C18.9987 7.20017 18.9987 5.55025 17.9736 4.52512C16.9484 3.5 15.2985 3.5 11.9987 3.5H9.99869C6.69886 3.5 5.04894 3.5 4.02381 4.52513C2.99869 5.55025 2.99869 7.20017 2.99869 10.5V15C2.99869 18.2998 2.99869 19.9497 4.02381 20.9749C5.04894 22 6.69886 22 9.99869 22H10.9987" stroke-linecap="round" stroke-linejoin="round" />\n    <path opacity="0.4" d="M6.99869 15H10.9987M6.99869 11H14.9987" stroke-linecap="round" stroke-linejoin="round" />\n    <path opacity="0.4" d="M15.7353 21.6527L13.9987 22L14.346 20.2633C14.4166 19.9106 14.5899 19.5866 14.8443 19.3323L18.9097 15.2668C19.2655 14.9111 19.8424 14.9111 20.1982 15.2668L20.7318 15.8005C21.0876 16.1563 21.0876 16.7332 20.7318 17.0889L16.6664 21.1544C16.4121 21.4087 16.0881 21.5821 15.7353 21.6527Z" stroke-linecap="round" stroke-linejoin="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'twotone',
+    originalName: 'NoteEditIcon',
+    elementsCount: 4,
+    hasOpacity: true,
+    hasFill: false,
+  },
 };

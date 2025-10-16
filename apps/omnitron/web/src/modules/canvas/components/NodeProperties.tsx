@@ -233,12 +233,7 @@ export const NodeProperties = defineComponent<NodePropertiesProps>((props) => {
             </div>
           }
         >
-          <PropertyGrid
-            properties={properties()}
-            onChange={handlePropertyChange}
-            searchable={true}
-            size="sm"
-          />
+          <PropertyGrid properties={properties()} onChange={handlePropertyChange} searchable={true} size="sm" />
         </Show>
       </div>
     </div>

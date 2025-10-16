@@ -20,13 +20,17 @@ async function execDocker(args: string[]): Promise<{ stdout: string; stderr: str
   return new Promise((resolve) => {
     const dockerPath = findDockerPath();
     const proc = spawn(dockerPath, args, {
-      env: { ...process.env, PATH: `/usr/local/bin:/opt/homebrew/bin:${process.env['PATH']}` }
+      env: { ...process.env, PATH: `/usr/local/bin:/opt/homebrew/bin:${process.env['PATH']}` },
     });
     let stdout = '';
     let stderr = '';
 
-    proc.stdout.on('data', (data) => { stdout += data.toString(); });
-    proc.stderr.on('data', (data) => { stderr += data.toString(); });
+    proc.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+    proc.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
 
     proc.on('exit', (exitCode) => {
       resolve({ stdout: stdout.trim(), stderr: stderr.trim(), exitCode: exitCode || 0 });
@@ -49,7 +53,7 @@ async function ensureTestContainer(containerName: string): Promise<void> {
 // Cleanup helper
 async function cleanupTestContainers(): Promise<void> {
   for (const container of testContainers) {
-    await execDocker(['rm', '-f', container]).catch(() => { });
+    await execDocker(['rm', '-f', container]).catch(() => {});
   }
   testContainers = [];
 }
@@ -66,7 +70,7 @@ describe('DockerAdapter Enhanced Tests', () => {
 
     // Pull test image if needed
     const { exitCode } = await execDocker(['images', '-q', TEST_IMAGE]);
-    if (exitCode !== 0 || !await execDocker(['images', '-q', TEST_IMAGE]).then(r => r.stdout)) {
+    if (exitCode !== 0 || !(await execDocker(['images', '-q', TEST_IMAGE]).then((r) => r.stdout))) {
       console.log('Pulling test image...');
       await execDocker(['pull', TEST_IMAGE]);
     }
@@ -80,8 +84,8 @@ describe('DockerAdapter Enhanced Tests', () => {
     adapter = new DockerAdapter({
       throwOnNonZeroExit: false,
       defaultExecOptions: {
-        Env: ['TEST=true']
-      }
+        Env: ['TEST=true'],
+      },
     });
   });
 
@@ -121,8 +125,8 @@ describe('DockerAdapter Enhanced Tests', () => {
         command: 'echo "Hello from Docker"',
         adapterOptions: {
           type: 'docker',
-          container: testContainerName
-        }
+          container: testContainerName,
+        },
       });
 
       expect(result.exitCode).toBe(0);
@@ -137,8 +141,8 @@ describe('DockerAdapter Enhanced Tests', () => {
         shell: true,
         adapterOptions: {
           type: 'docker',
-          container: testContainerName
-        }
+          container: testContainerName,
+        },
       });
 
       expect(result.exitCode).toBe(0);
@@ -146,23 +150,27 @@ describe('DockerAdapter Enhanced Tests', () => {
     });
 
     it('should fail without Docker options', async () => {
-      await expect(adapter.execute({
-        command: 'echo test'
-      })).rejects.toThrow(AdapterError);
+      await expect(
+        adapter.execute({
+          command: 'echo test',
+        })
+      ).rejects.toThrow(AdapterError);
     });
 
     it('should handle non-existent container', async () => {
       adapter = new DockerAdapter({
-        throwOnNonZeroExit: true
+        throwOnNonZeroExit: true,
       });
 
-      await expect(adapter.execute({
-        command: 'echo test',
-        adapterOptions: {
-          type: 'docker',
-          container: 'nonexistent-container-12345'
-        }
-      })).rejects.toThrow(DockerError);
+      await expect(
+        adapter.execute({
+          command: 'echo test',
+          adapterOptions: {
+            type: 'docker',
+            container: 'nonexistent-container-12345',
+          },
+        })
+      ).rejects.toThrow(DockerError);
     });
 
     it('should handle command failures', async () => {
@@ -172,8 +180,8 @@ describe('DockerAdapter Enhanced Tests', () => {
         command: 'nonexistentcommand',
         adapterOptions: {
           type: 'docker',
-          container: testContainerName
-        }
+          container: testContainerName,
+        },
       });
 
       expect(result.exitCode).toBe(127); // Command not found exit code
@@ -187,8 +195,8 @@ describe('DockerAdapter Enhanced Tests', () => {
         command: 'echo "This is stdout" && echo "This is stderr" >&2',
         adapterOptions: {
           type: 'docker',
-          container: testContainerName
-        }
+          container: testContainerName,
+        },
       });
 
       expect(result.stdout.trim()).toBe('This is stdout');
@@ -207,8 +215,8 @@ describe('DockerAdapter Enhanced Tests', () => {
         command: 'adduser -D nobody || true',
         adapterOptions: {
           type: 'docker',
-          container: testContainerName
-        }
+          container: testContainerName,
+        },
       });
 
       const result = await adapter.execute({
@@ -216,8 +224,8 @@ describe('DockerAdapter Enhanced Tests', () => {
         adapterOptions: {
           type: 'docker',
           container: testContainerName,
-          user: 'nobody'
-        }
+          user: 'nobody',
+        },
       });
 
       expect(result.stdout.trim()).toBe('nobody');
@@ -229,8 +237,8 @@ describe('DockerAdapter Enhanced Tests', () => {
         command: 'mkdir -p /app',
         adapterOptions: {
           type: 'docker',
-          container: testContainerName
-        }
+          container: testContainerName,
+        },
       });
 
       const result = await adapter.execute({
@@ -238,8 +246,8 @@ describe('DockerAdapter Enhanced Tests', () => {
         adapterOptions: {
           type: 'docker',
           container: testContainerName,
-          workdir: '/app'
-        }
+          workdir: '/app',
+        },
       });
 
       expect(result.stdout.trim()).toBe('/app');
@@ -251,8 +259,8 @@ describe('DockerAdapter Enhanced Tests', () => {
         adapterOptions: {
           type: 'docker',
           container: testContainerName,
-          tty: true
-        }
+          tty: true,
+        },
       });
 
       expect(result.exitCode).toBe(0);
@@ -265,8 +273,8 @@ describe('DockerAdapter Enhanced Tests', () => {
         env: { TEST_VAR: 'test-value' },
         adapterOptions: {
           type: 'docker',
-          container: testContainerName
-        }
+          container: testContainerName,
+        },
       });
 
       expect(result.stdout.trim()).toBe('test-value');
@@ -284,8 +292,8 @@ describe('DockerAdapter Enhanced Tests', () => {
         stdin: 'test input',
         adapterOptions: {
           type: 'docker',
-          container: testContainerName
-        }
+          container: testContainerName,
+        },
       });
 
       expect(result.stdout.trim()).toBe('test input');
@@ -297,8 +305,8 @@ describe('DockerAdapter Enhanced Tests', () => {
         stdin: Buffer.from('buffer input'),
         adapterOptions: {
           type: 'docker',
-          container: testContainerName
-        }
+          container: testContainerName,
+        },
       });
 
       expect(result.stdout.trim()).toBe('buffer input');
@@ -311,8 +319,8 @@ describe('DockerAdapter Enhanced Tests', () => {
         stdin: stream,
         adapterOptions: {
           type: 'docker',
-          container: testContainerName
-        }
+          container: testContainerName,
+        },
       });
 
       expect(result.stdout.trim()).toBe('stream input');
@@ -328,7 +336,7 @@ describe('DockerAdapter Enhanced Tests', () => {
 
     afterEach(async () => {
       // Cleanup any containers created in these tests
-      await execDocker(['rm', '-f', managementContainerName]).catch(() => { });
+      await execDocker(['rm', '-f', managementContainerName]).catch(() => {});
     });
 
     it('should list containers', async () => {
@@ -357,7 +365,7 @@ describe('DockerAdapter Enhanced Tests', () => {
         image: TEST_IMAGE,
         env: { TEST: 'value' },
         volumes: [],
-        ports: []
+        ports: [],
       });
       testContainers.push(managementContainerName);
 
@@ -368,7 +376,15 @@ describe('DockerAdapter Enhanced Tests', () => {
 
     it('should start container', async () => {
       // Create a stopped container
-      await execDocker(['create', '--name', managementContainerName, TEST_IMAGE, 'sh', '-c', 'while true; do sleep 1; done']);
+      await execDocker([
+        'create',
+        '--name',
+        managementContainerName,
+        TEST_IMAGE,
+        'sh',
+        '-c',
+        'while true; do sleep 1; done',
+      ]);
       testContainers.push(managementContainerName);
 
       await adapter.startContainer(managementContainerName);
@@ -404,7 +420,7 @@ describe('DockerAdapter Enhanced Tests', () => {
       expect(exitCode).not.toBe(0);
 
       // Remove from our cleanup list since it's already removed
-      testContainers = testContainers.filter(c => c !== managementContainerName);
+      testContainers = testContainers.filter((c) => c !== managementContainerName);
     });
 
     it('should force remove container', async () => {
@@ -418,7 +434,7 @@ describe('DockerAdapter Enhanced Tests', () => {
       expect(exitCode).not.toBe(0);
 
       // Remove from our cleanup list since it's already removed
-      testContainers = testContainers.filter(c => c !== managementContainerName);
+      testContainers = testContainers.filter((c) => c !== managementContainerName);
     });
   });
 
@@ -435,7 +451,7 @@ describe('DockerAdapter Enhanced Tests', () => {
         await autoCreateAdapter.dispose();
       }
       // Clean up any auto-created containers
-      await execDocker(['rm', '-f', autoContainerName]).catch(() => { });
+      await execDocker(['rm', '-f', autoContainerName]).catch(() => {});
     });
 
     it('should create temporary container if enabled and container does not exist', async () => {
@@ -443,16 +459,16 @@ describe('DockerAdapter Enhanced Tests', () => {
         autoCreate: {
           enabled: true,
           image: TEST_IMAGE,
-          autoRemove: false
-        }
+          autoRemove: false,
+        },
       });
 
       const result = await autoCreateAdapter.execute({
         command: 'echo test',
         adapterOptions: {
           type: 'docker',
-          container: autoContainerName
-        }
+          container: autoContainerName,
+        },
       });
 
       expect(result.exitCode).toBe(0);
@@ -461,7 +477,7 @@ describe('DockerAdapter Enhanced Tests', () => {
       // The container created will have a different name (temp-ush-*)
       // Let's verify at least one temp container exists
       const { stdout } = await execDocker(['ps', '-a', '--format', '{{.Names}}']);
-      const tempContainers = stdout.split('\n').filter(name => name.startsWith('temp-ush-'));
+      const tempContainers = stdout.split('\n').filter((name) => name.startsWith('temp-ush-'));
       expect(tempContainers.length).toBeGreaterThan(0);
     });
 
@@ -470,25 +486,25 @@ describe('DockerAdapter Enhanced Tests', () => {
         autoCreate: {
           enabled: true,
           image: TEST_IMAGE,
-          autoRemove: true
-        }
+          autoRemove: true,
+        },
       });
 
       // Get temp containers before
       const { stdout: beforeStdout } = await execDocker(['ps', '-a', '--format', '{{.Names}}']);
-      const tempContainersBefore = beforeStdout.split('\n').filter(name => name.startsWith('temp-ush-'));
+      const tempContainersBefore = beforeStdout.split('\n').filter((name) => name.startsWith('temp-ush-'));
 
       await autoCreateAdapter.execute({
         command: 'echo test',
         adapterOptions: {
           type: 'docker',
-          container: autoContainerName
-        }
+          container: autoContainerName,
+        },
       });
 
       // Get temp containers after execute
       const { stdout: afterExecStdout } = await execDocker(['ps', '-a', '--format', '{{.Names}}']);
-      const tempContainersAfterExec = afterExecStdout.split('\n').filter(name => name.startsWith('temp-ush-'));
+      const tempContainersAfterExec = afterExecStdout.split('\n').filter((name) => name.startsWith('temp-ush-'));
       expect(tempContainersAfterExec.length).toBeGreaterThan(tempContainersBefore.length);
 
       // Now dispose should remove the container
@@ -497,7 +513,7 @@ describe('DockerAdapter Enhanced Tests', () => {
 
       // Get temp containers after dispose
       const { stdout: afterDisposeStdout } = await execDocker(['ps', '-a', '--format', '{{.Names}}']);
-      const tempContainersAfterDispose = afterDisposeStdout.split('\n').filter(name => name.startsWith('temp-ush-'));
+      const tempContainersAfterDispose = afterDisposeStdout.split('\n').filter((name) => name.startsWith('temp-ush-'));
       expect(tempContainersAfterDispose.length).toBeLessThan(tempContainersAfterExec.length);
     });
   });
@@ -508,7 +524,7 @@ describe('DockerAdapter Enhanced Tests', () => {
       await expect(
         adapter.createContainer({
           name: 'test-invalid',
-          image: 'invalid-image-that-does-not-exist:latest'
+          image: 'invalid-image-that-does-not-exist:latest',
         })
       ).rejects.toThrow(DockerError);
     });
@@ -517,14 +533,14 @@ describe('DockerAdapter Enhanced Tests', () => {
       // Try to execute on a container that doesn't exist
       const result = await adapter.execute({
         command: 'echo test',
-        nothrow: true,  // Enable nothrow to get result instead of exception
+        nothrow: true, // Enable nothrow to get result instead of exception
         adapterOptions: {
           type: 'docker',
-          container: 'container-that-does-not-exist-12345'
-        }
+          container: 'container-that-does-not-exist-12345',
+        },
       });
       // Should not throw when nothrow is true, but should have non-zero exit code
-      expect(result.exitCode).toBe(125);  // Docker standard error code for container not found
+      expect(result.exitCode).toBe(125); // Docker standard error code for container not found
       expect(result.stderr).toContain("Container 'container-that-does-not-exist-12345' not found");
     });
 
@@ -532,16 +548,18 @@ describe('DockerAdapter Enhanced Tests', () => {
       await ensureTestContainer(testContainerName);
 
       const strictAdapter = new DockerAdapter({
-        throwOnNonZeroExit: true
+        throwOnNonZeroExit: true,
       });
 
-      await expect(strictAdapter.execute({
-        command: 'exit 1',
-        adapterOptions: {
-          type: 'docker',
-          container: testContainerName
-        }
-      })).rejects.toThrow(DockerError);
+      await expect(
+        strictAdapter.execute({
+          command: 'exit 1',
+          adapterOptions: {
+            type: 'docker',
+            container: testContainerName,
+          },
+        })
+      ).rejects.toThrow(DockerError);
 
       await strictAdapter.dispose();
     });
@@ -556,8 +574,8 @@ describe('DockerAdapter Enhanced Tests', () => {
         command: 'sleep 1',
         adapterOptions: {
           type: 'docker',
-          container: testContainerName
-        }
+          container: testContainerName,
+        },
       });
 
       expect(result.exitCode).toBe(0);
@@ -570,7 +588,7 @@ describe('DockerAdapter Enhanced Tests', () => {
       await ensureTestContainer(testContainerName);
 
       // Mock console.warn
-      const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => { });
+      const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
       // Save original TTY values
       const originalStdinTTY = process.stdin.isTTY;
@@ -581,17 +599,17 @@ describe('DockerAdapter Enhanced Tests', () => {
       Object.defineProperty(process.stdin, 'isTTY', {
         value: false,
         writable: true,
-        configurable: true
+        configurable: true,
       });
       Object.defineProperty(process.stdout, 'isTTY', {
         value: false,
         writable: true,
-        configurable: true
+        configurable: true,
       });
       Object.defineProperty(process.stderr, 'isTTY', {
         value: false,
         writable: true,
-        configurable: true
+        configurable: true,
       });
 
       const result = await adapter.execute({
@@ -599,41 +617,41 @@ describe('DockerAdapter Enhanced Tests', () => {
         adapterOptions: {
           type: 'docker',
           container: testContainerName,
-          tty: true
-        }
+          tty: true,
+        },
       });
 
       expect(result.exitCode).toBe(0);
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        'TTY requested but not available in current environment'
-      );
+      expect(consoleWarnSpy).toHaveBeenCalledWith('TTY requested but not available in current environment');
 
       // Restore
       consoleWarnSpy.mockRestore();
       Object.defineProperty(process.stdin, 'isTTY', {
         value: originalStdinTTY,
         writable: true,
-        configurable: true
+        configurable: true,
       });
       Object.defineProperty(process.stdout, 'isTTY', {
         value: originalStdoutTTY,
         writable: true,
-        configurable: true
+        configurable: true,
       });
       Object.defineProperty(process.stderr, 'isTTY', {
         value: originalStderrTTY,
         writable: true,
-        configurable: true
+        configurable: true,
       });
     });
   });
 
   describe('Container validation', () => {
     it('should reject empty container names', async () => {
-      await expect(adapter.execute({
-        command: 'ls',
-        adapterOptions: { type: 'docker', container: '' }
-      })).rejects.toThrow(DockerError);
+      await expect(
+        adapter.execute({
+          command: 'ls',
+          adapterOptions: { type: 'docker', container: '' },
+        })
+      ).rejects.toThrow(DockerError);
     });
 
     it('should reject container names with shell metacharacters', async () => {
@@ -647,45 +665,37 @@ describe('DockerAdapter Enhanced Tests', () => {
         'test[0-9]',
         'test<input',
         'test>output',
-        'test\'quote',
+        "test'quote",
         'test"quote',
-        'test\\escape'
+        'test\\escape',
       ];
 
       for (const name of dangerousNames) {
-        await expect(adapter.execute({
-          command: 'ls',
-          adapterOptions: { type: 'docker', container: name }
-        })).rejects.toThrow(DockerError);
+        await expect(
+          adapter.execute({
+            command: 'ls',
+            adapterOptions: { type: 'docker', container: name },
+          })
+        ).rejects.toThrow(DockerError);
       }
     });
 
     it('should reject container names with path traversal', async () => {
-      const pathTraversalNames = [
-        '../test',
-        'test/../evil',
-        '/absolute/path',
-        'C:\\windows\\path'
-      ];
+      const pathTraversalNames = ['../test', 'test/../evil', '/absolute/path', 'C:\\windows\\path'];
 
       for (const name of pathTraversalNames) {
-        await expect(adapter.execute({
-          command: 'ls',
-          adapterOptions: { type: 'docker', container: name }
-        })).rejects.toThrow(DockerError);
+        await expect(
+          adapter.execute({
+            command: 'ls',
+            adapterOptions: { type: 'docker', container: name },
+          })
+        ).rejects.toThrow(DockerError);
       }
     });
 
     it('should accept valid container names', async () => {
       // We'll create a test container for each valid name to ensure they work
-      const validNames = [
-        'test-container',
-        'my_app_1',
-        'web.server',
-        'app123',
-        'UPPERCASE',
-        'a1b2c3'
-      ];
+      const validNames = ['test-container', 'my_app_1', 'web.server', 'app123', 'UPPERCASE', 'a1b2c3'];
 
       for (const name of validNames) {
         const fullName = `${TEST_CONTAINER_PREFIX}valid-${name}`;
@@ -693,7 +703,7 @@ describe('DockerAdapter Enhanced Tests', () => {
 
         const result = await adapter.execute({
           command: 'echo ok',
-          adapterOptions: { type: 'docker', container: fullName }
+          adapterOptions: { type: 'docker', container: fullName },
         });
 
         expect(result.exitCode).toBe(0);
@@ -717,8 +727,8 @@ describe('DockerAdapter Enhanced Tests', () => {
         signal: abortController.signal,
         adapterOptions: {
           type: 'docker',
-          container: testContainerName
-        }
+          container: testContainerName,
+        },
       });
 
       // Abort after a short delay
@@ -738,14 +748,16 @@ describe('DockerAdapter Enhanced Tests', () => {
       const abortController = new AbortController();
       abortController.abort(); // Pre-abort
 
-      await expect(adapter.execute({
-        command: 'echo test',
-        signal: abortController.signal,
-        adapterOptions: {
-          type: 'docker',
-          container: testContainerName
-        }
-      })).rejects.toThrow('Operation aborted');
+      await expect(
+        adapter.execute({
+          command: 'echo test',
+          signal: abortController.signal,
+          adapterOptions: {
+            type: 'docker',
+            container: testContainerName,
+          },
+        })
+      ).rejects.toThrow('Operation aborted');
     });
   });
 
@@ -759,8 +771,8 @@ describe('DockerAdapter Enhanced Tests', () => {
           Privileged: true,
           AttachStdin: true,
           AttachStdout: true,
-          AttachStderr: true
-        }
+          AttachStderr: true,
+        },
       });
 
       // Execute a command that requires privileged access (checking capabilities)
@@ -768,8 +780,8 @@ describe('DockerAdapter Enhanced Tests', () => {
         command: 'cat /proc/self/status | grep CapEff',
         adapterOptions: {
           type: 'docker',
-          container: testContainerName
-        }
+          container: testContainerName,
+        },
       });
 
       expect(result.exitCode).toBe(0);
@@ -787,8 +799,8 @@ describe('DockerAdapter Enhanced Tests', () => {
         command: 'mkdir -p /custom/workdir',
         adapterOptions: {
           type: 'docker',
-          container: testContainerName
-        }
+          container: testContainerName,
+        },
       });
 
       const customAdapter = new DockerAdapter({
@@ -796,16 +808,16 @@ describe('DockerAdapter Enhanced Tests', () => {
           WorkingDir: '/custom/workdir',
           AttachStdin: true,
           AttachStdout: true,
-          AttachStderr: true
-        }
+          AttachStderr: true,
+        },
       });
 
       const result = await customAdapter.execute({
         command: 'pwd',
         adapterOptions: {
           type: 'docker',
-          container: testContainerName
-        }
+          container: testContainerName,
+        },
       });
 
       expect(result.stdout.trim()).toBe('/custom/workdir');
@@ -825,8 +837,8 @@ describe('DockerAdapter Enhanced Tests', () => {
         shell: true,
         adapterOptions: {
           type: 'docker',
-          container: testContainerName
-        }
+          container: testContainerName,
+        },
       });
 
       expect(result.exitCode).toBe(0);
@@ -839,8 +851,8 @@ describe('DockerAdapter Enhanced Tests', () => {
         shell: true,
         adapterOptions: {
           type: 'docker',
-          container: testContainerName
-        }
+          container: testContainerName,
+        },
       });
 
       expect(result.exitCode).toBe(0);
@@ -853,8 +865,8 @@ describe('DockerAdapter Enhanced Tests', () => {
         shell: true,
         adapterOptions: {
           type: 'docker',
-          container: testContainerName
-        }
+          container: testContainerName,
+        },
       });
 
       expect(result.exitCode).toBe(0);
@@ -867,8 +879,8 @@ describe('DockerAdapter Enhanced Tests', () => {
         shell: true,
         adapterOptions: {
           type: 'docker',
-          container: testContainerName
-        }
+          container: testContainerName,
+        },
       });
 
       expect(result.exitCode).toBe(0);
@@ -881,8 +893,8 @@ describe('DockerAdapter Enhanced Tests', () => {
         args: ['Hello', 'Docker', 'World'],
         adapterOptions: {
           type: 'docker',
-          container: testContainerName
-        }
+          container: testContainerName,
+        },
       });
 
       expect(result.exitCode).toBe(0);
@@ -902,8 +914,8 @@ describe('DockerAdapter Enhanced Tests', () => {
         shell: true,
         adapterOptions: {
           type: 'docker',
-          container: testContainerName
-        }
+          container: testContainerName,
+        },
       });
 
       expect(result.exitCode).toBe(0);
@@ -917,8 +929,8 @@ describe('DockerAdapter Enhanced Tests', () => {
         shell: true,
         adapterOptions: {
           type: 'docker',
-          container: testContainerName
-        }
+          container: testContainerName,
+        },
       });
 
       expect(result.exitCode).toBe(0);
@@ -945,13 +957,15 @@ describe('DockerAdapter Enhanced Tests', () => {
       const available = await badAdapter.isAvailable();
       expect(available).toBe(false);
 
-      await expect(badAdapter.execute({
-        command: 'echo test',
-        adapterOptions: {
-          type: 'docker',
-          container: 'any-container'
-        }
-      })).rejects.toThrow();
+      await expect(
+        badAdapter.execute({
+          command: 'echo test',
+          adapterOptions: {
+            type: 'docker',
+            container: 'any-container',
+          },
+        })
+      ).rejects.toThrow();
 
       // Restore original method
       (badAdapter as any)['executeDockerCommand'] = originalExecute;
@@ -973,8 +987,8 @@ describe('DockerAdapter Enhanced Tests', () => {
         stdin: largeBuffer,
         adapterOptions: {
           type: 'docker',
-          container: testContainerName
-        }
+          container: testContainerName,
+        },
       });
 
       expect(result.exitCode).toBe(0);
@@ -989,8 +1003,8 @@ describe('DockerAdapter Enhanced Tests', () => {
         stdin: multilineInput,
         adapterOptions: {
           type: 'docker',
-          container: testContainerName
-        }
+          container: testContainerName,
+        },
       });
 
       expect(result.exitCode).toBe(0);
@@ -1003,8 +1017,8 @@ describe('DockerAdapter Enhanced Tests', () => {
         stdin: '',
         adapterOptions: {
           type: 'docker',
-          container: testContainerName
-        }
+          container: testContainerName,
+        },
       });
 
       expect(result.exitCode).toBe(0);
@@ -1016,8 +1030,8 @@ describe('DockerAdapter Enhanced Tests', () => {
         command: 'echo "no stdin needed"',
         adapterOptions: {
           type: 'docker',
-          container: testContainerName
-        }
+          container: testContainerName,
+        },
       });
 
       expect(result.exitCode).toBe(0);
@@ -1033,7 +1047,7 @@ describe('DockerAdapter Enhanced Tests', () => {
     it('should merge environment variables from multiple sources', async () => {
       // Test with simple default env and command env
       const envAdapter = new DockerAdapter({
-        defaultEnv: { DEFAULT_VAR: 'default' }
+        defaultEnv: { DEFAULT_VAR: 'default' },
       });
 
       const result = await envAdapter.execute({
@@ -1041,8 +1055,8 @@ describe('DockerAdapter Enhanced Tests', () => {
         env: { CMD_VAR: 'fromcmd' },
         adapterOptions: {
           type: 'docker',
-          container: testContainerName
-        }
+          container: testContainerName,
+        },
       });
 
       expect(result.exitCode).toBe(0);
@@ -1058,8 +1072,8 @@ describe('DockerAdapter Enhanced Tests', () => {
         env: { SPECIAL_VAR: 'value_with_special' },
         adapterOptions: {
           type: 'docker',
-          container: testContainerName
-        }
+          container: testContainerName,
+        },
       });
 
       expect(result.exitCode).toBe(0);
@@ -1080,8 +1094,8 @@ describe('DockerAdapter Enhanced Tests', () => {
         nothrow: true, // Return result instead of throwing
         adapterOptions: {
           type: 'docker',
-          container: testContainerName
-        }
+          container: testContainerName,
+        },
       });
 
       expect(result.exitCode).toBe(124); // Standard timeout exit code
@@ -1091,14 +1105,16 @@ describe('DockerAdapter Enhanced Tests', () => {
 
     it('should throw TimeoutError without nothrow', async () => {
       // Without nothrow, should throw TimeoutError
-      await expect(adapter.execute({
-        command: 'sleep 2',
-        timeout: 100, // 100ms timeout
-        adapterOptions: {
-          type: 'docker',
-          container: testContainerName
-        }
-      })).rejects.toThrow(TimeoutError);
+      await expect(
+        adapter.execute({
+          command: 'sleep 2',
+          timeout: 100, // 100ms timeout
+          adapterOptions: {
+            type: 'docker',
+            container: testContainerName,
+          },
+        })
+      ).rejects.toThrow(TimeoutError);
     });
   });
 });
@@ -1121,7 +1137,7 @@ describe('DockerAdapter Integration-like Tests', () => {
   afterEach(async () => {
     await adapter.dispose();
     // Clean up integration test containers
-    await execDocker(['rm', '-f', integrationContainerName]).catch(() => { });
+    await execDocker(['rm', '-f', integrationContainerName]).catch(() => {});
   });
 
   afterAll(async () => {
@@ -1134,7 +1150,16 @@ describe('DockerAdapter Integration-like Tests', () => {
 
     // Create and start new container
     // Need to create with a command that keeps container running
-    await execDocker(['run', '-d', '--name', integrationContainerName, TEST_IMAGE, 'sh', '-c', 'while true; do sleep 1; done']);
+    await execDocker([
+      'run',
+      '-d',
+      '--name',
+      integrationContainerName,
+      TEST_IMAGE,
+      'sh',
+      '-c',
+      'while true; do sleep 1; done',
+    ]);
     testContainers.push(integrationContainerName);
 
     // Give container time to start
@@ -1150,8 +1175,8 @@ describe('DockerAdapter Integration-like Tests', () => {
       command: 'echo "Hello from new container"',
       adapterOptions: {
         type: 'docker',
-        container: integrationContainerName
-      }
+        container: integrationContainerName,
+      },
     });
     expect(result.stdout.trim()).toBe('Hello from new container');
 
@@ -1160,7 +1185,7 @@ describe('DockerAdapter Integration-like Tests', () => {
     await adapter.removeContainer(integrationContainerName);
 
     // Remove from cleanup list since we removed it
-    testContainers = testContainers.filter(c => c !== integrationContainerName);
+    testContainers = testContainers.filter((c) => c !== integrationContainerName);
 
     // Verify container is gone
     const { exitCode } = await execDocker(['inspect', integrationContainerName]);
@@ -1192,8 +1217,8 @@ describe('DockerAdapter - Run Mode', () => {
         container: 'ephemeral',
         runMode: 'run',
         image: TEST_IMAGE,
-        autoRemove: true
-      }
+        autoRemove: true,
+      },
     });
 
     expect(result.exitCode).toBe(0);
@@ -1210,8 +1235,8 @@ describe('DockerAdapter - Run Mode', () => {
         runMode: 'run',
         image: TEST_IMAGE,
         volumes: [`${process.cwd()}:/data:ro`],
-        autoRemove: true
-      }
+        autoRemove: true,
+      },
     });
 
     expect(result.exitCode).toBe(0);
@@ -1227,8 +1252,8 @@ describe('DockerAdapter - Run Mode', () => {
         runMode: 'run',
         image: TEST_IMAGE,
         workdir: '/tmp',
-        autoRemove: true
-      }
+        autoRemove: true,
+      },
     });
 
     expect(result.exitCode).toBe(0);
@@ -1245,8 +1270,8 @@ describe('DockerAdapter - Run Mode', () => {
         container: 'ephemeral',
         runMode: 'run',
         image: TEST_IMAGE,
-        autoRemove: true
-      }
+        autoRemove: true,
+      },
     });
 
     expect(result.exitCode).toBe(0);
@@ -1264,28 +1289,30 @@ describe('DockerAdapter - Run Mode', () => {
         container: containerName,
         runMode: 'run',
         image: TEST_IMAGE,
-        autoRemove: false
-      }
+        autoRemove: false,
+      },
     });
 
     expect(result.exitCode).toBe(0);
-    
+
     // Clean up
     await execDocker(['rm', '-f', containerName]);
-    testContainers = testContainers.filter(c => c !== containerName);
+    testContainers = testContainers.filter((c) => c !== containerName);
   });
 
   it('should fail if image is not specified in run mode', async () => {
-    await expect(adapter.execute({
-      command: 'echo',
-      args: ['test'],
-      adapterOptions: {
-        type: 'docker',
-        container: 'ephemeral',
-        runMode: 'run'
-        // image is missing
-      }
-    })).rejects.toThrow('Image must be specified for run mode');
+    await expect(
+      adapter.execute({
+        command: 'echo',
+        args: ['test'],
+        adapterOptions: {
+          type: 'docker',
+          container: 'ephemeral',
+          runMode: 'run',
+          // image is missing
+        },
+      })
+    ).rejects.toThrow('Image must be specified for run mode');
   });
 
   it('should handle complex command with shell in run mode', async () => {
@@ -1297,8 +1324,8 @@ describe('DockerAdapter - Run Mode', () => {
         container: 'ephemeral',
         runMode: 'run',
         image: TEST_IMAGE,
-        autoRemove: true
-      }
+        autoRemove: true,
+      },
     });
 
     expect(result.exitCode).toBe(0);

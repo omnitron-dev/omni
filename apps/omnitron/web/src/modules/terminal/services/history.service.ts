@@ -17,7 +17,7 @@ export class HistoryService {
   addCommand(command: string) {
     if (!command.trim()) return;
 
-    this.history.update(h => [...h, command]);
+    this.history.update((h) => [...h, command]);
     this.historyIndex.set(-1);
   }
 

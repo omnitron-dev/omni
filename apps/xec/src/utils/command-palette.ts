@@ -31,7 +31,6 @@ export class CommandPalette {
   private static recentTargets: string[] = [];
   private static commandHistory: Map<string, number> = new Map();
 
-
   /**
    * Register global command palette shortcut
    */
@@ -62,11 +61,11 @@ export class CommandPalette {
     // Show command palette using select
     const selected = await select({
       message: 'Search commands...',
-      options: commands.map(cmd => ({
+      options: commands.map((cmd) => ({
         value: cmd.id,
         label: cmd.title,
-        hint: cmd.shortcut
-      }))
+        hint: cmd.shortcut,
+      })),
     });
 
     if (selected && !isCancel(selected)) {
@@ -74,7 +73,7 @@ export class CommandPalette {
       this.trackCommand(selected);
 
       // Find the command by ID and execute it
-      const command = commands.find(cmd => cmd.id === selected);
+      const command = commands.find((cmd) => cmd.id === selected);
       if (command) {
         try {
           await command.action();
@@ -288,15 +287,15 @@ export class CommandPalette {
     const files = await this.findExecutableFiles();
 
     // Show file selection using select
-    const fileOptions = files.map(file => ({
+    const fileOptions = files.map((file) => ({
       value: file,
       label: path.basename(file),
-      hint: this.getFileIcon(file)
+      hint: this.getFileIcon(file),
     }));
 
     const selected = await select({
       message: 'Search files...',
-      options: fileOptions
+      options: fileOptions,
     });
 
     if (selected && !isCancel(selected)) {
@@ -320,11 +319,11 @@ export class CommandPalette {
     // Show task selection using select
     const selected = await select({
       message: 'Select recent task...',
-      options: recentTasks.map(task => ({
+      options: recentTasks.map((task) => ({
         value: task.name,
         label: task.name,
-        hint: '⚡'
-      }))
+        hint: '⚡',
+      })),
     });
 
     if (selected && !isCancel(selected)) {
@@ -360,14 +359,7 @@ export class CommandPalette {
   private static async findExecutableFiles(): Promise<string[]> {
     const { glob } = await import('glob');
 
-    const patterns = [
-      '*.js',
-      '*.ts',
-      '*.mjs',
-      '*.cjs',
-      'src/**/*.{js,ts}',
-      'scripts/**/*.{js,ts,sh}',
-    ];
+    const patterns = ['*.js', '*.ts', '*.mjs', '*.cjs', 'src/**/*.{js,ts}', 'scripts/**/*.{js,ts,sh}'];
 
     const files: string[] = [];
 
@@ -420,7 +412,7 @@ export class CommandPalette {
     this.commandHistory.set(commandId, count + 1);
 
     // Update recent commands
-    this.recentCommands = this.recentCommands.filter(id => id !== commandId);
+    this.recentCommands = this.recentCommands.filter((id) => id !== commandId);
     this.recentCommands.unshift(commandId);
     this.recentCommands = this.recentCommands.slice(0, 10);
   }
@@ -429,7 +421,7 @@ export class CommandPalette {
    * Track file usage
    */
   private static trackFile(filePath: string): void {
-    this.recentFiles = this.recentFiles.filter(f => f !== filePath);
+    this.recentFiles = this.recentFiles.filter((f) => f !== filePath);
     this.recentFiles.unshift(filePath);
     this.recentFiles = this.recentFiles.slice(0, 10);
   }
@@ -438,7 +430,7 @@ export class CommandPalette {
    * Track target usage
    */
   static trackTarget(target: string): void {
-    this.recentTargets = this.recentTargets.filter(t => t !== target);
+    this.recentTargets = this.recentTargets.filter((t) => t !== target);
     this.recentTargets.unshift(target);
     this.recentTargets = this.recentTargets.slice(0, 10);
   }
@@ -472,9 +464,11 @@ export class CommandPalette {
   /**
    * Get recent tasks based on usage
    */
-  private static getRecentTasks(allTasks: Array<{ name: string; description?: string }>): Array<{ name: string; description?: string }> {
+  private static getRecentTasks(
+    allTasks: Array<{ name: string; description?: string }>
+  ): Array<{ name: string; description?: string }> {
     return allTasks
-      .filter(task => this.commandHistory.has(`task:${task.name}`))
+      .filter((task) => this.commandHistory.has(`task:${task.name}`))
       .sort((a, b) => {
         const aCount = this.commandHistory.get(`task:${a.name}`) || 0;
         const bCount = this.commandHistory.get(`task:${b.name}`) || 0;

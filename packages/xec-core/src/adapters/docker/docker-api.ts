@@ -88,7 +88,11 @@ export class DockerContainer {
             labels: this.config.labels,
             privileged: this.config.privileged,
             healthcheck: this.config.healthcheck,
-            command: this.config.command ? (Array.isArray(this.config.command) ? this.config.command : ['sh', '-c', this.config.command]) : undefined
+            command: this.config.command
+              ? Array.isArray(this.config.command)
+                ? this.config.command
+                : ['sh', '-c', this.config.command]
+              : undefined,
           });
         } else {
           // Fallback to create then start (with limited options)
@@ -97,7 +101,7 @@ export class DockerContainer {
             image: this.config.image,
             volumes: this.config.volumes ? this.formatVolumes(this.config.volumes) : undefined,
             env: this.config.env,
-            ports: this.config.ports ? this.formatPorts(this.config.ports) : undefined
+            ports: this.config.ports ? this.formatPorts(this.config.ports) : undefined,
           };
           await (this.adapter as any).createContainer(createOptions);
           await (this.adapter as any).startContainer(this.containerName);
@@ -124,7 +128,7 @@ export class DockerContainer {
     const dockerEngine = this.engine.docker({
       container: this.containerName,
       user: this.config.user,
-      workdir: this.config.workdir
+      workdir: this.config.workdir,
     });
 
     return dockerEngine.run(strings, ...values);
@@ -141,7 +145,7 @@ export class DockerContainer {
     const dockerEngine = this.engine.docker({
       container: this.containerName,
       user: this.config.user,
-      workdir: this.config.workdir
+      workdir: this.config.workdir,
     });
 
     // Build the full command - when shell is false, we need to pass the command and args separately
@@ -326,4 +330,3 @@ export class DockerContainer {
     return Object.entries(ports).map(([host, container]) => `${host}:${container}`);
   }
 }
-

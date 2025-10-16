@@ -208,10 +208,11 @@ export class LogsCommand extends ConfigAwareCommand {
   override async execute(args: any[]): Promise<void> {
     // Check if the last arg is a Command object (Commander.js pattern)
     const lastArg = args[args.length - 1];
-    const isCommand = lastArg && typeof lastArg === 'object' && lastArg.constructor && lastArg.constructor.name === 'Command';
+    const isCommand =
+      lastArg && typeof lastArg === 'object' && lastArg.constructor && lastArg.constructor.name === 'Command';
 
     // The actual options should be the second-to-last argument if the last is a Command
-    const options = isCommand ? args[args.length - 2] as LogsOptions : lastArg as LogsOptions;
+    const options = isCommand ? (args[args.length - 2] as LogsOptions) : (lastArg as LogsOptions);
     const positionalArgs = isCommand ? args.slice(0, -2) : args.slice(0, -1);
 
     let targetPattern = positionalArgs[0];
@@ -237,11 +238,14 @@ export class LogsCommand extends ConfigAwareCommand {
     // Apply command defaults from config
     const defaults = this.getCommandDefaults();
     // Include global options from this.options
-    const mergedOptions = this.applyDefaults({
-      ...options,
-      verbose: options.verbose ?? this.options?.verbose,
-      quiet: options.quiet ?? this.options?.quiet
-    }, defaults);
+    const mergedOptions = this.applyDefaults(
+      {
+        ...options,
+        verbose: options.verbose ?? this.options?.verbose,
+        quiet: options.quiet ?? this.options?.quiet,
+      },
+      defaults
+    );
 
     // Resolve targets
     let targets: ResolvedTarget[];
@@ -627,7 +631,7 @@ export class LogsCommand extends ConfigAwareCommand {
   }
 
   private displayLogs(logs: string, target: ResolvedTarget, options: LogsOptions): void {
-    const lines = logs.split('\n').filter(line => line.trim());
+    const lines = logs.split('\n').filter((line) => line.trim());
 
     if (lines.length === 0) {
       return;
@@ -664,19 +668,27 @@ export class LogsCommand extends ConfigAwareCommand {
       try {
         // Try to parse as JSON first
         const parsed = JSON.parse(line);
-        console.log(JSON.stringify({
-          target: target.id,
-          timestamp: new Date().toISOString(),
-          data: parsed,
-        }, null, 2));
+        console.log(
+          JSON.stringify(
+            {
+              target: target.id,
+              timestamp: new Date().toISOString(),
+              data: parsed,
+            },
+            null,
+            2
+          )
+        );
         return;
       } catch {
         // Not JSON, wrap as message
-        console.log(JSON.stringify({
-          target: target.id,
-          timestamp: new Date().toISOString(),
-          message: line.trim(),
-        }));
+        console.log(
+          JSON.stringify({
+            target: target.id,
+            timestamp: new Date().toISOString(),
+            message: line.trim(),
+          })
+        );
         return;
       }
     }
@@ -707,7 +719,7 @@ export class LogsCommand extends ConfigAwareCommand {
       /^\w{3} \d{1,2} \d{2}:\d{2}:\d{2}/, // Syslog format
     ];
 
-    return timestampPatterns.some(pattern => pattern.test(line));
+    return timestampPatterns.some((pattern) => pattern.test(line));
   }
 
   private convertTimeSpec(timeSpec: string): string {
@@ -735,11 +747,16 @@ export class LogsCommand extends ConfigAwareCommand {
 
   private getSeconds(value: number, unit: string): number {
     switch (unit) {
-      case 's': return value;
-      case 'm': return value * 60;
-      case 'h': return value * 3600;
-      case 'd': return value * 86400;
-      default: return value;
+      case 's':
+        return value;
+      case 'm':
+        return value * 60;
+      case 'h':
+        return value * 3600;
+      case 'd':
+        return value * 86400;
+      default:
+        return value;
     }
   }
 
@@ -781,7 +798,8 @@ export class LogsCommand extends ConfigAwareCommand {
       this.log(`Running log analysis task '${taskName}' on ${targetDisplay}...`, 'info');
 
       try {
-        const result = await this.taskManager.run(taskName,
+        const result = await this.taskManager.run(
+          taskName,
           { LOG_PATH: logPath || this.getDefaultLogPath(target) },
           { target: target.id }
         );
@@ -933,10 +951,7 @@ export class LogsCommand extends ConfigAwareCommand {
           interactiveOptions.context = contextLines.value;
         }
 
-        const invertMatch = await InteractiveHelpers.confirmAction(
-          'Invert match (exclude matching lines)?',
-          false
-        );
+        const invertMatch = await InteractiveHelpers.confirmAction('Invert match (exclude matching lines)?', false);
         if (invertMatch) {
           interactiveOptions.invert = true;
         }
@@ -978,10 +993,7 @@ export class LogsCommand extends ConfigAwareCommand {
       }
 
       // Configure time range
-      const useTimeRange = await InteractiveHelpers.confirmAction(
-        'Filter by time range?',
-        false
-      );
+      const useTimeRange = await InteractiveHelpers.confirmAction('Filter by time range?', false);
 
       if (useTimeRange) {
         const timeRange = await InteractiveHelpers.selectFromList(
@@ -1053,10 +1065,7 @@ export class LogsCommand extends ConfigAwareCommand {
       }
 
       // Additional options
-      const showColors = await InteractiveHelpers.confirmAction(
-        'Enable colored output for log levels?',
-        true
-      );
+      const showColors = await InteractiveHelpers.confirmAction('Enable colored output for log levels?', true);
       if (!showColors) {
         interactiveOptions.color = false;
       }

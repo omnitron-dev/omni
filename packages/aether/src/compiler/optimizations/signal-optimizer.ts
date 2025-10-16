@@ -450,12 +450,7 @@ export class SignalOptimizer implements OptimizationPass {
       // 2. Never updated
       // 3. No subscriptions
       // 4. Is a constant value
-      if (
-        info.accessCount === 1 &&
-        info.updateCount === 0 &&
-        info.subscriptionCount === 0 &&
-        info.isConstant
-      ) {
+      if (info.accessCount === 1 && info.updateCount === 0 && info.subscriptionCount === 0 && info.isConstant) {
         // Replace signal with direct value
         const accessPattern = new RegExp(`\\b${signalName}\\(\\)`, 'g');
         const value = typeof info.constantValue === 'string' ? info.constantValue : JSON.stringify(info.constantValue);

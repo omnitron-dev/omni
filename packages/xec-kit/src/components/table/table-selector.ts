@@ -7,10 +7,7 @@ import type { TableState, SelectionMode } from './types.js';
 /**
  * Toggle selection for current row
  */
-export function toggleSelection<T>(
-  state: TableState<T>,
-  mode: SelectionMode
-): TableState<T> {
+export function toggleSelection<T>(state: TableState<T>, mode: SelectionMode): TableState<T> {
   if (mode === 'none' || state.data.length === 0) {
     return state;
   }

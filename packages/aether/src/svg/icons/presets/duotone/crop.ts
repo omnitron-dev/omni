@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const CropIcon: IconDefinition = {
-  "id": "crop",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M18.8284 5.17158C20 6.34315 20 8.22877 20 12L20 20H9.99985C7.17152 20 5.75736 20 4.87868 19.1213C4 18.2426 4 16.8284 4 14V4H12C15.7712 4 17.6569 4 18.8284 5.17158Z\" fill=\"currentColor\" />\n    <path d=\"M4 2V4M22 20H20M16.5 20H10C7.17157 20 5.75736 20 4.87868 19.1213C4 18.2426 4 16.8284 4 14V7.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M20 22L20 12C20 8.22877 20 6.34315 18.8284 5.17158C17.6569 4 15.7712 4 12 4L2 4\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "duotone",
-    "originalName": "CropIcon",
-    "elementsCount": 3,
-    "hasOpacity": true,
-    "hasFill": true
-  }
+  id: 'crop',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path opacity="0.4" d="M18.8284 5.17158C20 6.34315 20 8.22877 20 12L20 20H9.99985C7.17152 20 5.75736 20 4.87868 19.1213C4 18.2426 4 16.8284 4 14V4H12C15.7712 4 17.6569 4 18.8284 5.17158Z" fill="currentColor" />\n    <path d="M4 2V4M22 20H20M16.5 20H10C7.17157 20 5.75736 20 4.87868 19.1213C4 18.2426 4 16.8284 4 14V7.5" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M20 22L20 12C20 8.22877 20 6.34315 18.8284 5.17158C17.6569 4 15.7712 4 12 4L2 4" stroke-linecap="round" stroke-linejoin="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'duotone',
+    originalName: 'CropIcon',
+    elementsCount: 3,
+    hasOpacity: true,
+    hasFill: true,
+  },
 };

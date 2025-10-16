@@ -40,21 +40,24 @@ export class AetherComponentGenerator {
       optimize: {
         removeComments: true,
         minify: false,
-        treeshake: false
+        treeshake: false,
       },
-      ...options
+      ...options,
     };
   }
 
   /**
    * Generate component code from VNode tree
    */
-  generate(vnodes: VNode[], metadata: {
-    hasReactiveContent?: boolean;
-    usedComponents?: string[];
-    frontmatter?: Record<string, any>;
-    scope?: Record<string, any>;
-  }): string {
+  generate(
+    vnodes: VNode[],
+    metadata: {
+      hasReactiveContent?: boolean;
+      usedComponents?: string[];
+      frontmatter?: Record<string, any>;
+      scope?: Record<string, any>;
+    }
+  ): string {
     this.hasReactiveContent = metadata.hasReactiveContent || false;
     this.usedComponents = new Set(metadata.usedComponents || []);
     this.scope = metadata.scope || {};
@@ -80,7 +83,9 @@ export class AetherComponentGenerator {
 
     // JSX runtime
     if (this.hasReactiveContent) {
-      imports.push(`import { createElementVNode, createTextVNode, renderVNodeWithBindings } from '@omnitron-dev/aether/reconciler';`);
+      imports.push(
+        `import { createElementVNode, createTextVNode, renderVNodeWithBindings } from '@omnitron-dev/aether/reconciler';`
+      );
     } else {
       imports.push(`import { jsx, jsxs, Fragment } from '@omnitron-dev/aether/jsx-runtime';`);
     }
@@ -109,8 +114,9 @@ export class AetherComponentGenerator {
     const componentName = 'MDXContent';
 
     // Generate frontmatter export if exists
-    const frontmatterExport = frontmatter ?
-      `export const frontmatter = ${JSON.stringify(frontmatter, null, 2)};\n\n` : '';
+    const frontmatterExport = frontmatter
+      ? `export const frontmatter = ${JSON.stringify(frontmatter, null, 2)};\n\n`
+      : '';
 
     // Component code based on mode
     if (this.hasReactiveContent || this.options.mode === 'reactive') {
@@ -124,19 +130,23 @@ export class AetherComponentGenerator {
   // Component overrides
   const components = {
     ...mdxContext.components,
-    ${Array.from(this.usedComponents).map(name => `${name}: mdxContext.components.${name} || ${name}`).join(',\n    ')}
+    ${Array.from(this.usedComponents)
+      .map((name) => `${name}: mdxContext.components.${name} || ${name}`)
+      .join(',\n    ')}
   };
 
   // Render function
   return () => {
-    ${this.options.mode === 'reactive' ?
-      `// Reactive mode - use VNodes for fine-grained updates
+    ${
+      this.options.mode === 'reactive'
+        ? `// Reactive mode - use VNodes for fine-grained updates
     return batch(() => {
       const vnodes = ${this.stringifyVNodes(vnodes)};
       return renderVNodeWithBindings(createElementVNode('div', { class: 'mdx-content' }, vnodes));
-    });` :
-      `// Static mode - use JSX directly
-    return jsx('div', { class: 'mdx-content' }, ${this.generateJSXFromVNodes(vnodes)});`}
+    });`
+        : `// Static mode - use JSX directly
+    return jsx('div', { class: 'mdx-content' }, ${this.generateJSXFromVNodes(vnodes)});`
+    }
   };
 });
 
@@ -165,7 +175,7 @@ export default ${componentName};`;
       const first = vnodes[0];
       return first ? this.stringifyVNode(first) : 'null';
     }
-    return `[${vnodes.map(vnode => this.stringifyVNode(vnode)).join(', ')}]`;
+    return `[${vnodes.map((vnode) => this.stringifyVNode(vnode)).join(', ')}]`;
   }
 
   /**
@@ -227,9 +237,7 @@ export default ${componentName};`;
     }
 
     // Multiple children
-    return `[${vnodes.map((vnode, i) =>
-      `${this.generateJSXFromVNode(vnode)}`
-    ).join(', ')}]`;
+    return `[${vnodes.map((vnode, i) => `${this.generateJSXFromVNode(vnode)}`).join(', ')}]`;
   }
 
   /**
@@ -294,7 +302,7 @@ export async function generateComponent(
   const generator = new AetherComponentGenerator({
     mode: options.mode as any,
     target: options.target,
-    optimize: options.optimize as any
+    optimize: options.optimize as any,
   });
 
   return generator.generate(vnodes, metadata || {});
@@ -314,18 +322,14 @@ export function createMDXModule(
 ): MDXModule {
   // Create a real component that renders the VNode tree
   const MDXContentComponent = defineComponent((props: any) => () => {
-      // Create a wrapper div containing all VNodes
-      // Ensure props is an object before spreading
-      const safeProps = props && typeof props === 'object' ? props : {};
-      const wrapperVNode = createElementVNode(
-        'div',
-        { class: 'mdx-content', ...safeProps },
-        vnodes
-      );
+    // Create a wrapper div containing all VNodes
+    // Ensure props is an object before spreading
+    const safeProps = props && typeof props === 'object' ? props : {};
+    const wrapperVNode = createElementVNode('div', { class: 'mdx-content', ...safeProps }, vnodes);
 
-      // Render the VNode tree with reactive bindings
-      return renderVNodeWithBindings(wrapperVNode);
-    });
+    // Render the VNode tree with reactive bindings
+    return renderVNodeWithBindings(wrapperVNode);
+  });
 
   return {
     code,
@@ -333,7 +337,7 @@ export function createMDXModule(
     frontmatter: metadata.frontmatter,
     toc: metadata.toc,
     usedComponents: metadata.usedComponents,
-    meta: extractMeta(metadata.frontmatter)
+    meta: extractMeta(metadata.frontmatter),
   };
 }
 
@@ -348,6 +352,6 @@ function extractMeta(frontmatter?: Record<string, any>) {
     description: frontmatter.description,
     keywords: frontmatter.keywords || frontmatter.tags,
     author: frontmatter.author,
-    date: frontmatter.date ? new Date(frontmatter.date) : undefined
+    date: frontmatter.date ? new Date(frontmatter.date) : undefined,
   };
 }

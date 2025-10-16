@@ -41,9 +41,12 @@ describe('async utilities', () => {
       const start = Date.now();
 
       await expect(
-        waitFor(() => {
-          throw new Error('Never');
-        }, { timeout: 200 })
+        waitFor(
+          () => {
+            throw new Error('Never');
+          },
+          { timeout: 200 }
+        )
       ).rejects.toThrow();
 
       const duration = Date.now() - start;
@@ -108,10 +111,7 @@ describe('async utilities', () => {
       });
 
       await expect(
-        waitForElementToBeRemoved(
-          () => container.querySelector('span'),
-          { timeout: 100 }
-        )
+        waitForElementToBeRemoved(() => container.querySelector('span'), { timeout: 100 })
       ).rejects.toThrow();
     });
   });
@@ -146,7 +146,7 @@ describe('async utilities', () => {
 
     it('should handle promises', async () => {
       const result = await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
         return 'async';
       });
 
@@ -182,9 +182,12 @@ describe('async utilities', () => {
       const error = new Error('Custom error');
 
       await expect(
-        waitFor(() => {
-          throw error;
-        }, { timeout: 100 })
+        waitFor(
+          () => {
+            throw error;
+          },
+          { timeout: 100 }
+        )
       ).rejects.toThrow('Timeout');
     });
 

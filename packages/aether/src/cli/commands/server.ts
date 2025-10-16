@@ -254,9 +254,7 @@ export async function serverCommand(options: ServerCommandOptions = {}): Promise
     }
 
     // Build server config based on mode
-    const config: ServerConfig | DevServerConfig = isDev
-      ? buildDevConfig(options)
-      : buildProductionConfig(options);
+    const config: ServerConfig | DevServerConfig = isDev ? buildDevConfig(options) : buildProductionConfig(options);
 
     // Log configuration if verbose
     if (options.verbose && !options.silent) {
@@ -332,7 +330,7 @@ function buildDevConfig(options: ServerCommandOptions): DevServerConfig {
 function buildProductionConfig(options: ServerCommandOptions): ServerConfig {
   return {
     mode: options.ssrMode || 'ssr',
-    port: options.port ?? process.env.PORT ? parseInt(process.env.PORT) : 3000,
+    port: (options.port ?? process.env.PORT) ? parseInt(process.env.PORT) : 3000,
     host: options.host ?? '0.0.0.0',
     routesDir: options.routesDir ?? './dist/pages',
     publicDir: options.publicDir ?? './dist/public',
@@ -570,7 +568,7 @@ function formatMetrics(metrics: any): string {
       '',
       '# HELP aether_hmr_full_reloads_total Total full reloads',
       '# TYPE aether_hmr_full_reloads_total counter',
-      `aether_hmr_full_reloads_total ${metrics.fullReloads}`,
+      `aether_hmr_full_reloads_total ${metrics.fullReloads}`
     );
   }
 
@@ -718,9 +716,9 @@ export function createServerCommand() {
       '--env': 'Environment variables file',
     },
     aliases: {
-      'dev': { mode: 'development' },
-      'prod': { mode: 'production' },
-      'start': { mode: 'production' },
+      dev: { mode: 'development' },
+      prod: { mode: 'production' },
+      start: { mode: 'production' },
     },
     async action(options: ServerCommandOptions) {
       await serverCommand(options);

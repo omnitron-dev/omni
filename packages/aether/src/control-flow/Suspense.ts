@@ -4,7 +4,6 @@
  * Shows fallback while async components/resources are loading
  */
 
-
 export interface SuspenseProps {
   /**
    * Fallback to show while loading

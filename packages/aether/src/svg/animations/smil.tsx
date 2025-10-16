@@ -136,7 +136,8 @@ export const AnimateColor = defineComponent<SMILAnimationProps>((props) => () =>
 /**
  * Set element - sets the value of an attribute for a duration
  */
-export interface SetProps extends Omit<SMILAnimationProps, 'from' | 'by' | 'values' | 'calcMode' | 'keyTimes' | 'keySplines'> {
+export interface SetProps
+  extends Omit<SMILAnimationProps, 'from' | 'by' | 'values' | 'calcMode' | 'keyTimes' | 'keySplines'> {
   to: string | number;
 }
 
@@ -180,10 +181,7 @@ export const Set = defineComponent<SetProps>((props) => () => (
  * animation.beginElement(); // Start animation
  * ```
  */
-export function createSMILAnimation(
-  target: SVGElement | null,
-  config: SMILAnimationProps
-): SVGAnimateElement | null {
+export function createSMILAnimation(target: SVGElement | null, config: SMILAnimationProps): SVGAnimateElement | null {
   if (!target) return null;
   if (typeof document === 'undefined') return null;
 

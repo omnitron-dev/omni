@@ -11,8 +11,7 @@
  * - Multiple use cases
  */
 
-import { note , intro, outro, cancel, isCancel, selectKey, prism as color } from '../src/index.js';
-
+import { note, intro, outro, cancel, isCancel, selectKey, prism as color } from '../src/index.js';
 
 async function main() {
   intro(color.bgCyan(color.black(' SelectKey Component Demo ')));

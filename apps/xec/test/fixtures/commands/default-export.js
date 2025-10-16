@@ -1,4 +1,4 @@
-export default function(program) {
+export default function (program) {
   program
     .command('default-test')
     .description('Command with default export')

@@ -1,11 +1,5 @@
 import { promisify } from 'util';
-import {
-  scrypt,
-  createHash,
-  randomBytes,
-  createCipheriv,
-  createDecipheriv
-} from 'crypto';
+import { scrypt, createHash, randomBytes, createCipheriv, createDecipheriv } from 'crypto';
 
 const scryptAsync = promisify(scrypt);
 
@@ -19,23 +13,19 @@ const TAG_LENGTH = 16;
 const KEY_LENGTH = 32;
 const SCRYPT_OPTIONS = {
   N: 16384, // CPU/memory cost parameter
-  r: 8,     // Block size parameter
-  p: 1,     // Parallelization parameter
+  r: 8, // Block size parameter
+  p: 1, // Parallelization parameter
 };
 
 /**
  * Derive encryption key from machine ID and optional user passphrase
  */
-export async function deriveKey(
-  machineId: string,
-  salt: Buffer,
-  passphrase?: string
-): Promise<Buffer> {
+export async function deriveKey(machineId: string, salt: Buffer, passphrase?: string): Promise<Buffer> {
   // Combine machine ID with optional passphrase
   const secret = passphrase ? `${machineId}:${passphrase}` : machineId;
-  
+
   // Use scrypt for key derivation (resistant to GPU attacks)
-  const key = await scryptAsync(secret, salt, KEY_LENGTH) as Buffer;
+  const key = (await scryptAsync(secret, salt, KEY_LENGTH)) as Buffer;
   return key;
 }
 
@@ -55,27 +45,24 @@ export async function encrypt(
   // Generate random salt and IV
   const salt = randomBytes(SALT_LENGTH);
   const iv = randomBytes(IV_LENGTH);
-  
+
   // Derive key
   const key = await deriveKey(machineId, salt, passphrase);
-  
+
   // Create cipher
   const cipher = createCipheriv(ALGORITHM, key, iv);
-  
+
   // Encrypt the value
-  const encrypted = Buffer.concat([
-    cipher.update(value, 'utf8'),
-    cipher.final()
-  ]);
-  
+  const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
+
   // Get the authentication tag
   const authTag = cipher.getAuthTag();
-  
+
   return {
     encrypted,
     salt,
     iv,
-    authTag
+    authTag,
   };
 }
 
@@ -92,17 +79,14 @@ export async function decrypt(
 ): Promise<string> {
   // Derive key
   const key = await deriveKey(machineId, salt, passphrase);
-  
+
   // Create decipher
   const decipher = createDecipheriv(ALGORITHM, key, iv);
   decipher.setAuthTag(authTag);
-  
+
   // Decrypt the value
-  const decrypted = Buffer.concat([
-    decipher.update(encrypted),
-    decipher.final()
-  ]);
-  
+  const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
+
   return decrypted.toString('utf8');
 }
 
@@ -143,12 +127,12 @@ export function secureCompare(a: string, b: string): boolean {
   if (a.length !== b.length) {
     return false;
   }
-  
+
   let result = 0;
   for (let i = 0; i < a.length; i++) {
     result |= a.charCodeAt(i) ^ b.charCodeAt(i);
   }
-  
+
   return result === 0;
 }
 
@@ -162,12 +146,12 @@ export function generateSecret(length: number = 32): string {
   if (length > 1024) {
     throw new Error('Length must be less than or equal to 1024');
   }
-  
+
   // Generate enough random bytes to produce the desired base64 length
   // Base64 encoding produces 4 characters for every 3 bytes
-  const bytesNeeded = Math.ceil(length * 3 / 4);
+  const bytesNeeded = Math.ceil((length * 3) / 4);
   const randomData = randomBytes(bytesNeeded);
-  
+
   // Convert to base64 and trim to exact length
   return randomData.toString('base64').substring(0, length);
 }

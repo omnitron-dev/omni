@@ -147,9 +147,7 @@ export function generateStructuredDocument(sizeKB: number): string {
  */
 export function createDocFromText(schema: Schema, text: string): ProseMirrorNode {
   const lines = text.split('\n\n');
-  const paragraphs = lines.map((line) =>
-    schema.nodes.paragraph.create(null, line ? schema.text(line) : null)
-  );
+  const paragraphs = lines.map((line) => schema.nodes.paragraph.create(null, line ? schema.text(line) : null));
 
   return schema.nodes.doc.create(null, paragraphs);
 }
@@ -158,9 +156,9 @@ export function createDocFromText(schema: Schema, text: string): ProseMirrorNode
  * Create a mock editor state
  */
 export function createMockEditorState(schema: Schema, content?: string): EditorState {
-  const doc = content ? createDocFromText(schema, content) : schema.nodes.doc.create(null, [
-    schema.nodes.paragraph.create(),
-  ]);
+  const doc = content
+    ? createDocFromText(schema, content)
+    : schema.nodes.doc.create(null, [schema.nodes.paragraph.create()]);
 
   return EditorState.create({
     doc,
@@ -262,9 +260,7 @@ export function assertBenchmarkBudget(
   const value = result[metric];
 
   if (value > budget) {
-    throw new Error(
-      `Benchmark "${result.name}" exceeded budget: ${value.toFixed(2)}ms > ${budget}ms (${metric})`
-    );
+    throw new Error(`Benchmark "${result.name}" exceeded budget: ${value.toFixed(2)}ms > ${budget}ms (${metric})`);
   }
 }
 
@@ -304,18 +300,13 @@ export function compareBenchmarks(
   }
 
   // Return most significant change
-  return results.reduce((max, r) =>
-    Math.abs(r.changePercent) > Math.abs(max.changePercent) ? r : max
-  );
+  return results.reduce((max, r) => (Math.abs(r.changePercent) > Math.abs(max.changePercent) ? r : max));
 }
 
 /**
  * Save benchmark results to file
  */
-export async function saveBenchmarkResults(
-  results: BenchmarkResult[],
-  filename: string
-): Promise<void> {
+export async function saveBenchmarkResults(results: BenchmarkResult[], filename: string): Promise<void> {
   const data = {
     timestamp: new Date().toISOString(),
     results,

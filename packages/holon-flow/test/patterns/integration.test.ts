@@ -21,19 +21,23 @@ describe('C.4 Integration Patterns', () => {
       }
 
       // Legacy service that returns old format
-      const legacyService = flow(async (id: number): Promise<LegacyUser> => ({
-        firstName: 'John',
-        lastName: 'Doe',
-        emailAddress: `user${id}@example.com`,
-        phoneNumber: '555-0123',
-      }));
+      const legacyService = flow(
+        async (id: number): Promise<LegacyUser> => ({
+          firstName: 'John',
+          lastName: 'Doe',
+          emailAddress: `user${id}@example.com`,
+          phoneNumber: '555-0123',
+        })
+      );
 
       // Adapter to convert legacy to modern format
-      const legacyAdapter = flow((legacy: LegacyUser): User => ({
-        name: `${legacy.firstName} ${legacy.lastName}`,
-        email: legacy.emailAddress,
-        phone: legacy.phoneNumber,
-      }));
+      const legacyAdapter = flow(
+        (legacy: LegacyUser): User => ({
+          name: `${legacy.firstName} ${legacy.lastName}`,
+          email: legacy.emailAddress,
+          phone: legacy.phoneNumber,
+        })
+      );
 
       // Modern service that expects new format
       const modernService = flow((user: User) => ({
@@ -71,13 +75,15 @@ describe('C.4 Integration Patterns', () => {
         }>;
       }
 
-      const xmlToJsonAdapter = flow((xml: XmlData): JsonData => ({
-        items: xml.root.item.map((item) => ({
-          id: item.attributes.id,
-          name: item.children.name,
-          value: item.children.value,
-        })),
-      }));
+      const xmlToJsonAdapter = flow(
+        (xml: XmlData): JsonData => ({
+          items: xml.root.item.map((item) => ({
+            id: item.attributes.id,
+            name: item.children.name,
+            value: item.children.value,
+          })),
+        })
+      );
 
       const xmlData: XmlData = {
         root: {
@@ -120,21 +126,25 @@ describe('C.4 Integration Patterns', () => {
         isActive: boolean;
       }
 
-      const dbToDomainAdapter = flow((record: DatabaseRecord): DomainModel => ({
-        id: record.id,
-        createdAt: new Date(record.created_at),
-        updatedAt: new Date(record.updated_at),
-        userName: record.user_name,
-        isActive: record.is_active,
-      }));
+      const dbToDomainAdapter = flow(
+        (record: DatabaseRecord): DomainModel => ({
+          id: record.id,
+          createdAt: new Date(record.created_at),
+          updatedAt: new Date(record.updated_at),
+          userName: record.user_name,
+          isActive: record.is_active,
+        })
+      );
 
-      const domainToDbAdapter = flow((model: DomainModel): DatabaseRecord => ({
-        id: model.id,
-        created_at: model.createdAt.toISOString(),
-        updated_at: model.updatedAt.toISOString(),
-        user_name: model.userName,
-        is_active: model.isActive,
-      }));
+      const domainToDbAdapter = flow(
+        (model: DomainModel): DatabaseRecord => ({
+          id: model.id,
+          created_at: model.createdAt.toISOString(),
+          updated_at: model.updatedAt.toISOString(),
+          user_name: model.userName,
+          is_active: model.isActive,
+        })
+      );
 
       const dbRecord: DatabaseRecord = {
         id: 1,
@@ -178,21 +188,19 @@ describe('C.4 Integration Patterns', () => {
       }));
 
       // Unified payment gateway
-      const paymentGateway = flow(
-        async (input: { amount: number; provider?: string }) => {
-          const { amount, provider = 'stripe' } = input;
+      const paymentGateway = flow(async (input: { amount: number; provider?: string }) => {
+        const { amount, provider = 'stripe' } = input;
 
-          switch (provider) {
-            case 'paypal':
-              return await paypalGateway(amount);
-            case 'square':
-              return await squareGateway(amount);
-            case 'stripe':
-            default:
-              return await stripeGateway(amount);
-          }
-        },
-      );
+        switch (provider) {
+          case 'paypal':
+            return await paypalGateway(amount);
+          case 'square':
+            return await squareGateway(amount);
+          case 'stripe':
+          default:
+            return await stripeGateway(amount);
+        }
+      });
 
       const stripeResult = await paymentGateway({ amount: 100 });
       expect(stripeResult.provider).toBe('stripe');
@@ -299,13 +307,11 @@ describe('C.4 Integration Patterns', () => {
         tax: 0.08,
       }));
 
-      const shippingSystem = flow(
-        async (input: { productId: string; quantity: number }) => ({
-          productId: input.productId,
-          shippingCost: input.quantity * 5,
-          estimatedDays: 3,
-        }),
-      );
+      const shippingSystem = flow(async (input: { productId: string; quantity: number }) => ({
+        productId: input.productId,
+        shippingCost: input.quantity * 5,
+        estimatedDays: 3,
+      }));
 
       const promotionSystem = flow(async (productId: string) => ({
         productId,
@@ -314,36 +320,34 @@ describe('C.4 Integration Patterns', () => {
       }));
 
       // Facade that simplifies interaction
-      const productFacade = flow(
-        async (input: { productId: string; quantity: number }) => {
-          const { productId, quantity } = input;
+      const productFacade = flow(async (input: { productId: string; quantity: number }) => {
+        const { productId, quantity } = input;
 
-          // Parallel calls to subsystems
-          const [inventory, pricing, shipping, promotion] = await Promise.all([
-            inventorySystem(productId),
-            pricingSystem(productId),
-            shippingSystem({ productId, quantity }),
-            promotionSystem(productId),
-          ]);
+        // Parallel calls to subsystems
+        const [inventory, pricing, shipping, promotion] = await Promise.all([
+          inventorySystem(productId),
+          pricingSystem(productId),
+          shippingSystem({ productId, quantity }),
+          promotionSystem(productId),
+        ]);
 
-          // Combine results in simple interface
-          const subtotal = pricing.price * quantity;
-          const discount = promotion.discount * subtotal;
-          const total = subtotal - discount + shipping.shippingCost;
+        // Combine results in simple interface
+        const subtotal = pricing.price * quantity;
+        const discount = promotion.discount * subtotal;
+        const total = subtotal - discount + shipping.shippingCost;
 
-          return {
-            available: inventory.available >= quantity,
-            price: pricing.price,
-            quantity,
-            subtotal,
-            discount,
-            shipping: shipping.shippingCost,
-            total,
-            estimatedDelivery: shipping.estimatedDays,
-            promoCode: promotion.promoCode,
-          };
-        },
-      );
+        return {
+          available: inventory.available >= quantity,
+          price: pricing.price,
+          quantity,
+          subtotal,
+          discount,
+          shipping: shipping.shippingCost,
+          total,
+          estimatedDelivery: shipping.estimatedDays,
+          promoCode: promotion.promoCode,
+        };
+      });
 
       const result = await productFacade({
         productId: 'PROD123',
@@ -386,19 +390,17 @@ describe('C.4 Integration Patterns', () => {
       };
 
       // High-level service facade
-      const userService = flow(
-        async (input: { action: 'get' | 'update'; id: number; name?: string }) => {
-          switch (input.action) {
-            case 'get':
-              return await userRepository.findById(input.id);
-            case 'update':
-              const user = await userRepository.findById(input.id);
-              return await userRepository.save({ ...user, name: input.name! });
-            default:
-              throw new Error('Unknown action');
-          }
-        },
-      );
+      const userService = flow(async (input: { action: 'get' | 'update'; id: number; name?: string }) => {
+        switch (input.action) {
+          case 'get':
+            return await userRepository.findById(input.id);
+          case 'update':
+            const user = await userRepository.findById(input.id);
+            return await userRepository.save({ ...user, name: input.name! });
+          default:
+            throw new Error('Unknown action');
+        }
+      });
 
       // Client uses simple facade
       const getResult = await userService({ action: 'get', id: 1 });

@@ -67,7 +67,10 @@ export function createInvalidDataError(message: string, context?: any): TableErr
 /**
  * Create a column not found error
  */
-export function createColumnNotFoundError(columnKey: string, availableColumns: string[]): TableError {
+export function createColumnNotFoundError(
+  columnKey: string,
+  availableColumns: string[]
+): TableError {
   return new TableError(
     'COLUMN_NOT_FOUND',
     `Column "${columnKey}" not found`,
@@ -194,11 +197,7 @@ export const ErrorRecovery = {
   /**
    * Retry operation with exponential backoff
    */
-  async retry<T>(
-    fn: () => Promise<T>,
-    maxAttempts: number = 3,
-    delayMs: number = 100
-  ): Promise<T> {
+  async retry<T>(fn: () => Promise<T>, maxAttempts: number = 3, delayMs: number = 100): Promise<T> {
     let lastError: Error | undefined;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {

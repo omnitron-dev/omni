@@ -102,7 +102,7 @@ describe('Context Edge Cases', () => {
               return next(result);
             }) as any;
           },
-        },
+        }
       );
 
       const piped = mockFlow.pipe((x: number) => x + 1);

@@ -7,7 +7,7 @@ describe('C.7 Security Patterns', () => {
     it('should validate input data', async () => {
       const emailValidator = validate(
         (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),
-        'Invalid email format',
+        'Invalid email format'
       );
 
       expect(await emailValidator('user@example.com')).toBe('user@example.com');
@@ -15,27 +15,24 @@ describe('C.7 Security Patterns', () => {
     });
 
     it('should compose multiple validators', async () => {
-      const minLength = (min: number) =>
-        validate((s: string) => s.length >= min, `Must be at least ${min} characters`);
+      const minLength = (min: number) => validate((s: string) => s.length >= min, `Must be at least ${min} characters`);
 
-      const maxLength = (max: number) =>
-        validate((s: string) => s.length <= max, `Must be at most ${max} characters`);
+      const maxLength = (max: number) => validate((s: string) => s.length <= max, `Must be at most ${max} characters`);
 
-      const alphanumeric = validate(
-        (s: string) => /^[a-zA-Z0-9]+$/.test(s),
-        'Must contain only letters and numbers',
-      );
+      const alphanumeric = validate((s: string) => /^[a-zA-Z0-9]+$/.test(s), 'Must contain only letters and numbers');
 
       const usernameValidator = flow((username: string) =>
-        minLength(3)
-          .pipe(maxLength(20))
-          .pipe(alphanumeric)(username),
+        minLength(3).pipe(maxLength(20)).pipe(alphanumeric)(username)
       );
 
       expect(await usernameValidator('john123')).toBe('john123');
       await expect(async () => await usernameValidator('ab')).rejects.toThrow('Must be at least 3 characters');
-      await expect(async () => await usernameValidator('a'.repeat(21))).rejects.toThrow('Must be at most 20 characters');
-      await expect(async () => await usernameValidator('user@123')).rejects.toThrow('Must contain only letters and numbers');
+      await expect(async () => await usernameValidator('a'.repeat(21))).rejects.toThrow(
+        'Must be at most 20 characters'
+      );
+      await expect(async () => await usernameValidator('user@123')).rejects.toThrow(
+        'Must contain only letters and numbers'
+      );
     });
 
     it('should validate complex objects', async () => {
@@ -196,23 +193,12 @@ describe('C.7 Security Patterns', () => {
 
       const content: Content = {
         text: 'Hello World',
-        scripts: [
-          'https://example.com/script.js',
-          'https://evil.com/malicious.js',
-          'https://cdn.example.com/lib.js',
-        ],
-        styles: [
-          'https://example.com/style.css',
-          'data:text/css,body{color:red}',
-          'https://untrusted.com/style.css',
-        ],
+        scripts: ['https://example.com/script.js', 'https://evil.com/malicious.js', 'https://cdn.example.com/lib.js'],
+        styles: ['https://example.com/style.css', 'data:text/css,body{color:red}', 'https://untrusted.com/style.css'],
       };
 
       const secured = await applyCSP(content);
-      expect(secured.scripts).toEqual([
-        'https://example.com/script.js',
-        'https://cdn.example.com/lib.js',
-      ]);
+      expect(secured.scripts).toEqual(['https://example.com/script.js', 'https://cdn.example.com/lib.js']);
       expect(secured.styles).toEqual(['https://example.com/style.css']);
     });
   });
@@ -224,7 +210,7 @@ describe('C.7 Security Patterns', () => {
 
         constructor(
           private maxRequests: number,
-          private windowMs: number,
+          private windowMs: number
         ) {}
 
         check = flow(async (clientId: string): Promise<boolean> => {
@@ -273,7 +259,7 @@ describe('C.7 Security Patterns', () => {
 
         constructor(
           private capacity: number,
-          private refillRate: number, // tokens per second
+          private refillRate: number // tokens per second
         ) {
           this.tokens = capacity;
           this.lastRefill = Date.now();
@@ -350,7 +336,7 @@ describe('C.7 Security Patterns', () => {
         constructor(
           private store: RateLimitStore,
           private maxRequests: number,
-          private windowMs: number,
+          private windowMs: number
         ) {}
 
         checkLimit = flow(async (clientId: string): Promise<{ allowed: boolean; remaining: number }> => {

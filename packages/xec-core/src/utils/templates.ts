@@ -63,18 +63,13 @@ export class CommandTemplate {
     return arg;
   }
 
-  async execute(
-    engine: ExecutionEngine | CallableExecutionEngine,
-    params: Record<string, any> = {}
-  ): Promise<any> {
+  async execute(engine: ExecutionEngine | CallableExecutionEngine, params: Record<string, any> = {}): Promise<any> {
     if (this.options.validate) {
       await this.options.validate(params);
     }
 
     const command = this.interpolate(params);
-    const engineWithOptions = this.options
-      ? engine.with(this.options as Partial<Command>)
-      : engine;
+    const engineWithOptions = this.options ? engine.with(this.options as Partial<Command>) : engine;
 
     const result = await engineWithOptions.execute({ command, shell: true });
 
@@ -84,7 +79,6 @@ export class CommandTemplate {
 
     return result;
   }
-
 
   bind(engine: ExecutionEngine | CallableExecutionEngine): BoundTemplate {
     return new BoundTemplate(this, engine);
@@ -103,12 +97,11 @@ export class BoundTemplate {
   constructor(
     private template: CommandTemplate,
     private engine: ExecutionEngine | CallableExecutionEngine
-  ) { }
+  ) {}
 
   async execute(params: Record<string, any> = {}): Promise<any> {
     return this.template.execute(this.engine, params);
   }
-
 
   with(config: Partial<Command>): BoundTemplate {
     return new BoundTemplate(this.template, this.engine.with(config));
@@ -119,9 +112,7 @@ export class TemplateRegistry {
   private templates = new Map<string, CommandTemplate>();
 
   register(name: string, template: string | CommandTemplate, options?: TemplateOptions): void {
-    const cmdTemplate = typeof template === 'string'
-      ? new CommandTemplate(template, options)
-      : template;
+    const cmdTemplate = typeof template === 'string' ? new CommandTemplate(template, options) : template;
 
     this.templates.set(name, cmdTemplate);
   }
@@ -147,7 +138,7 @@ export class BoundRegistry {
   constructor(
     private registry: TemplateRegistry,
     private engine: ExecutionEngine | CallableExecutionEngine
-  ) { }
+  ) {}
 
   async execute(name: string, params?: Record<string, any>): Promise<any> {
     const template = this.registry.get(name);
@@ -157,7 +148,6 @@ export class BoundRegistry {
 
     return template.execute(this.engine, params);
   }
-
 
   get(name: string): BoundTemplate | undefined {
     const template = this.registry.get(name);
@@ -172,7 +162,7 @@ export const commonTemplates = {
       if (!params['repo'] || !params['repo'].startsWith('http')) {
         throw new Error('Invalid repository URL');
       }
-    }
+    },
   }),
 
   dockerRun: new CommandTemplate('docker run {{options}} {{image}} {{command}}', {
@@ -187,17 +177,16 @@ export const commonTemplates = {
       } catch {
         return result.stdout;
       }
-    }
+    },
   }),
 
   mkdir: new CommandTemplate('mkdir -p {{path}}'),
 
   rsync: new CommandTemplate('rsync {{options}} {{source}} {{destination}}', {
-    defaults: { options: '-avz' }
+    defaults: { options: '-avz' },
   }),
 
   tar: new CommandTemplate('tar {{operation}} {{file}} {{path}}', {
-    defaults: { operation: '-czf' }
-  })
+    defaults: { operation: '-czf' },
+  }),
 };
-

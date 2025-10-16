@@ -3,10 +3,7 @@
  */
 import type { WaitForOptions } from './types.js';
 
-export async function waitFor<T>(
-  callback: () => T | Promise<T>,
-  options: WaitForOptions = {}
-): Promise<T> {
+export async function waitFor<T>(callback: () => T | Promise<T>, options: WaitForOptions = {}): Promise<T> {
   const { timeout = 1000, interval = 50 } = options;
   const startTime = Date.now();
 
@@ -21,10 +18,10 @@ export async function waitFor<T>(
       }
 
       // Result was explicitly falsy, treat as failure and retry
-      await new Promise(resolve => setTimeout(resolve, interval));
+      await new Promise((resolve) => setTimeout(resolve, interval));
     } catch (_error) {
       // Callback threw or assertion failed, wait and retry
-      await new Promise(resolve => setTimeout(resolve, interval));
+      await new Promise((resolve) => setTimeout(resolve, interval));
     }
   }
 
@@ -37,10 +34,7 @@ export async function waitFor<T>(
   }
 }
 
-export async function waitForElementToBeRemoved<T>(
-  callback: () => T,
-  options?: WaitForOptions
-): Promise<void> {
+export async function waitForElementToBeRemoved<T>(callback: () => T, options?: WaitForOptions): Promise<void> {
   return waitFor(() => {
     const result = callback();
     if (result) throw new Error('Element still present');

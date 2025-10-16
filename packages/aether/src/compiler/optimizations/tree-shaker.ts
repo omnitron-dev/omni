@@ -227,9 +227,7 @@ export class TreeShakerPass implements OptimizationPass {
     }
 
     // Function declarations (with optional pure annotation)
-    const functionMatch = /(?:\/\*[^*]*\*\/\s*)?(?:function|const|let|var)\s+(\w+)\s*=?\s*(?:async\s*)?\(/.exec(
-      line
-    );
+    const functionMatch = /(?:\/\*[^*]*\*\/\s*)?(?:function|const|let|var)\s+(\w+)\s*=?\s*(?:async\s*)?\(/.exec(line);
     if (functionMatch) {
       const name = functionMatch[1];
       if (name && !this.symbols.has(name)) {
@@ -387,9 +385,7 @@ export class TreeShakerPass implements OptimizationPass {
   private isSimpleLiteral(value: string): boolean {
     const trimmed = value.trim();
     // Simple literals: numbers, strings, booleans, null, undefined, simple objects/arrays
-    return (
-      /^(?:\d+|true|false|null|undefined|'[^']*'|"[^"]*"|`[^`]*`|\[[^\]]*\]|\{[^}]*\})(?:;.*)?$/.test(trimmed)
-    );
+    return /^(?:\d+|true|false|null|undefined|'[^']*'|"[^"]*"|`[^`]*`|\[[^\]]*\]|\{[^}]*\})(?:;.*)?$/.test(trimmed);
   }
 
   /**

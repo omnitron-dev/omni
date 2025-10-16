@@ -30,17 +30,19 @@ interface TransformContext {
 export class MDXToVNodeTransformer {
   private context: TransformContext;
 
-  constructor(options: {
-    plugins?: AetherMDXPlugin[];
-    scope?: Record<string, any>;
-    components?: Record<string, any>;
-  } = {}) {
+  constructor(
+    options: {
+      plugins?: AetherMDXPlugin[];
+      scope?: Record<string, any>;
+      components?: Record<string, any>;
+    } = {}
+  ) {
     this.context = {
       reactiveExpressions: new Set(),
       usedComponents: new Set(),
       plugins: options.plugins || [],
       scope: options.scope || {},
-      components: options.components || {}
+      components: options.components || {},
     };
   }
 
@@ -129,7 +131,7 @@ export class MDXToVNodeTransformer {
         props: { ...props, children },
         key: props.key,
         dom: null,
-        effects: []
+        effects: [],
       };
     }
 
@@ -168,7 +170,7 @@ export class MDXToVNodeTransformer {
         props: { ...props, children },
         key: props.key,
         dom: null,
-        effects: []
+        effects: [],
       };
     }
 
@@ -196,8 +198,8 @@ export class MDXToVNodeTransformer {
       data: {
         expression,
         isReactive: true,
-        scope: this.context.scope // Pass scope for evaluation
-      }
+        scope: this.context.scope, // Pass scope for evaluation
+      },
     } as any;
 
     return vnode;
@@ -237,7 +239,7 @@ export class MDXToVNodeTransformer {
         props: { ...props, children },
         key: props.key,
         dom: null,
-        effects: []
+        effects: [],
       };
     }
 
@@ -269,7 +271,7 @@ export class MDXToVNodeTransformer {
         props: { ...props, children },
         key: props.key,
         dom: null,
-        effects: []
+        effects: [],
       };
     }
 
@@ -324,7 +326,10 @@ export class MDXToVNodeTransformer {
    */
   private resolveAttributeValue(value: any): any {
     // Check for MDX expression attribute (from remark-mdx parser)
-    if (typeof value === 'object' && (value?.type === 'expression' || value?.type === 'mdxJsxAttributeValueExpression')) {
+    if (
+      typeof value === 'object' &&
+      (value?.type === 'expression' || value?.type === 'mdxJsxAttributeValueExpression')
+    ) {
       // Mark as reactive expression
       const expression = value.value;
       this.context.reactiveExpressions.add(expression);
@@ -395,7 +400,7 @@ export class MDXToVNodeTransformer {
     return {
       reactiveExpressions: Array.from(this.context.reactiveExpressions),
       usedComponents: Array.from(this.context.usedComponents),
-      hasReactiveContent: this.context.reactiveExpressions.size > 0
+      hasReactiveContent: this.context.reactiveExpressions.size > 0,
     };
   }
 }
@@ -439,7 +444,7 @@ export class TransformPipeline {
     return {
       remarkPlugins: this.remarkPlugins,
       rehypePlugins: this.rehypePlugins,
-      aetherPlugins: this.aetherTransforms
+      aetherPlugins: this.aetherTransforms,
     };
   }
 
@@ -452,7 +457,7 @@ export class TransformPipeline {
   }): MDXToVNodeTransformer {
     return new MDXToVNodeTransformer({
       ...options,
-      plugins: this.aetherTransforms
+      plugins: this.aetherTransforms,
     });
   }
 }
@@ -470,14 +475,14 @@ export class ReactiveContentTransform implements AetherMDXPlugin {
         ...node,
         data: {
           ...node.data,
-          reactive: true
-        }
+          reactive: true,
+        },
       };
     }
 
     // Process JSX elements with expressions in props
     if ((node.type === 'mdxJsxFlowElement' || node.type === 'mdxJsxTextElement') && node.attributes) {
-      const transformedAttributes = node.attributes.map(attr => {
+      const transformedAttributes = node.attributes.map((attr) => {
         if (typeof attr.value === 'object' && attr.value?.type === 'expression') {
           return {
             ...attr,
@@ -485,9 +490,9 @@ export class ReactiveContentTransform implements AetherMDXPlugin {
               ...attr.value,
               data: {
                 ...attr.value.data,
-                reactive: true
-              }
-            }
+                reactive: true,
+              },
+            },
           };
         }
         return attr;
@@ -495,7 +500,7 @@ export class ReactiveContentTransform implements AetherMDXPlugin {
 
       return {
         ...node,
-        attributes: transformedAttributes
+        attributes: transformedAttributes,
       };
     }
 

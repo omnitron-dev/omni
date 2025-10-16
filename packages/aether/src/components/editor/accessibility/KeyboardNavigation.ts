@@ -109,7 +109,7 @@ export class KeyboardNavigationExtension extends Extension {
         command: 'strike',
         group: 'Formatting',
       },
-      { key: 'Mod-e', description: 'Toggle code', command: 'code', group: 'Formatting' },
+      { key: 'Mod-e', description: 'Toggle code', command: 'code', group: 'Formatting' }
     );
 
     // Navigation shortcuts
@@ -126,7 +126,7 @@ export class KeyboardNavigationExtension extends Extension {
         group: 'Navigation',
       },
       { key: 'Alt-h', description: 'Previous heading', command: 'prevHeading', group: 'Navigation' },
-      { key: 'Alt-Shift-h', description: 'Next heading', command: 'nextHeading', group: 'Navigation' },
+      { key: 'Alt-Shift-h', description: 'Next heading', command: 'nextHeading', group: 'Navigation' }
     );
 
     // Editing shortcuts
@@ -136,7 +136,7 @@ export class KeyboardNavigationExtension extends Extension {
       { key: 'Mod-a', description: 'Select all', command: 'selectAll', group: 'Editing' },
       { key: 'Mod-x', description: 'Cut', command: 'cut', group: 'Editing' },
       { key: 'Mod-c', description: 'Copy', command: 'copy', group: 'Editing' },
-      { key: 'Mod-v', description: 'Paste', command: 'paste', group: 'Editing' },
+      { key: 'Mod-v', description: 'Paste', command: 'paste', group: 'Editing' }
     );
 
     // Search shortcuts
@@ -144,7 +144,7 @@ export class KeyboardNavigationExtension extends Extension {
       { key: 'Mod-f', description: 'Find', command: 'search', group: 'Search' },
       { key: 'Mod-g', description: 'Find next', command: 'searchNext', group: 'Search' },
       { key: 'Mod-Shift-g', description: 'Find previous', command: 'searchPrev', group: 'Search' },
-      { key: 'Mod-h', description: 'Find and replace', command: 'searchReplace', group: 'Search' },
+      { key: 'Mod-h', description: 'Find and replace', command: 'searchReplace', group: 'Search' }
     );
 
     // Help shortcut
@@ -234,15 +234,13 @@ export class KeyboardNavigationExtension extends Extension {
     }
 
     // Tab handling for accessibility
-    commands['Tab'] = (state, dispatch) => 
+    commands['Tab'] = (state, dispatch) =>
       // Allow tab to move to next focusable element
-       false
-    ;
+      false;
 
-    commands['Shift-Tab'] = (state, dispatch) => 
+    commands['Shift-Tab'] = (state, dispatch) =>
       // Allow shift-tab to move to previous focusable element
-       false
-    ;
+      false;
 
     return commands;
   }
@@ -365,7 +363,7 @@ export class KeyboardNavigationExtension extends Extension {
         acc[shortcut.group].push(shortcut);
         return acc;
       },
-      {} as Record<string, KeyboardShortcut[]>,
+      {} as Record<string, KeyboardShortcut[]>
     );
 
     let html = '<div class="keyboard-help-content">';
@@ -451,7 +449,7 @@ export class KeyboardNavigationExtension extends Extension {
    */
   private trapFocus(container: HTMLElement): void {
     const focusableElements = container.querySelectorAll(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
     );
 
     if (focusableElements.length === 0) return;

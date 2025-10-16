@@ -21,13 +21,12 @@ export class ProcessOutput extends Error {
   constructor(options: ProcessOutputOptions) {
     const message = ProcessOutput.formatErrorMessage(options);
     super(message);
-    
+
     this.name = 'ProcessOutput';
     this.stdout = ProcessOutput.bufferToString(options.stdout);
     this.stderr = ProcessOutput.bufferToString(options.stderr);
-    this.stdall = options.stdall !== undefined 
-      ? ProcessOutput.bufferToString(options.stdall)
-      : this.stdout + this.stderr;
+    this.stdall =
+      options.stdall !== undefined ? ProcessOutput.bufferToString(options.stdall) : this.stdout + this.stderr;
     this.exitCode = options.exitCode;
     this.signal = options.signal || null;
     this.duration = options.duration || 0;
@@ -87,7 +86,7 @@ export class ProcessOutput extends Error {
    * Split stdout into lines
    */
   lines(delimiter = '\n'): string[] {
-    return this.stdout.split(delimiter).filter(line => line.length > 0);
+    return this.stdout.split(delimiter).filter((line) => line.length > 0);
   }
 
   /**
@@ -119,7 +118,7 @@ export class ProcessOutput extends Error {
           return { value: lines[index++]!, done: false };
         }
         return { done: true, value: undefined as any };
-      }
+      },
     };
   }
 
@@ -159,7 +158,7 @@ export class ProcessOutput extends Error {
 
     if (options.exitCode !== null && options.exitCode !== 0) {
       parts.push(`Exit code: ${options.exitCode}`);
-      
+
       // Add human-readable error message for common exit codes
       const errorMessage = ProcessOutput.getErrorMessage(options.exitCode);
       if (errorMessage) {

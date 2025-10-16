@@ -84,9 +84,7 @@ describe('UnderlineExtension', () => {
 
     it('should serialize to <u> tag', () => {
       const doc = schema.node('doc', null, [
-        schema.node('paragraph', null, [
-          schema.text('underlined text', [schema.marks.underline.create()]),
-        ]),
+        schema.node('paragraph', null, [schema.text('underlined text', [schema.marks.underline.create()])]),
       ]);
 
       const serializer = DOMSerializer.fromSchema(schema);
@@ -108,9 +106,7 @@ describe('UnderlineExtension', () => {
     });
 
     it('should toggle underline mark with Mod-u', () => {
-      const doc = schema.node('doc', null, [
-        schema.node('paragraph', null, [schema.text('test')]),
-      ]);
+      const doc = schema.node('doc', null, [schema.node('paragraph', null, [schema.text('test')])]);
 
       const state = EditorState.create({
         schema,

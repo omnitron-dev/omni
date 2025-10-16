@@ -490,9 +490,7 @@ export abstract class BaseCognitiveFlow<In = any, Out = any> {
 /**
  * Create a cognitive flow from a function
  */
-export function cognitiveFlow<In, Out>(
-  fn: (input: In) => Out | Promise<Out>,
-): CognitiveFlow<In, Out> {
+export function cognitiveFlow<In, Out>(fn: (input: In) => Out | Promise<Out>): CognitiveFlow<In, Out> {
   const instance = new (class extends BaseCognitiveFlow<In, Out> {
     constructor() {
       super(fn);

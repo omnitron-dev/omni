@@ -79,18 +79,13 @@ export function hydrateSVG(
   return new Promise((resolve, reject) => {
     const performHydration = () => {
       try {
-        const result = hydrateElement(
-          element,
-          component,
-          props,
-          {
-            preserveAttributes: shouldPreserveAttributes,
-            preserveEvents,
-            preserveAnimations: shouldPreserveAnimations,
-            validateStructure: shouldValidateStructure,
-            onMismatch,
-          }
-        );
+        const result = hydrateElement(element, component, props, {
+          preserveAttributes: shouldPreserveAttributes,
+          preserveEvents,
+          preserveAnimations: shouldPreserveAnimations,
+          validateStructure: shouldValidateStructure,
+          onMismatch,
+        });
         resolve(result);
       } catch (error) {
         reject(error);
@@ -111,11 +106,7 @@ export function hydrateSVG(
         break;
 
       case 'interaction':
-        scheduleInteractionHydration(
-          element as Element,
-          performHydration,
-          config.interactionEvents
-        );
+        scheduleInteractionHydration(element as Element, performHydration, config.interactionEvents);
         break;
 
       default:
@@ -157,7 +148,7 @@ function hydrateElement(
 
     // Call mismatch handler for each error
     if (config.onMismatch) {
-      structureErrors.forEach(error => config.onMismatch!(error));
+      structureErrors.forEach((error) => config.onMismatch!(error));
     }
   }
 
@@ -196,7 +187,7 @@ function captureElementState(element: Element): {
   const styles: Record<string, string> = {};
 
   // Capture attributes
-  Array.from(element.attributes).forEach(attr => {
+  Array.from(element.attributes).forEach((attr) => {
     attributes[attr.name] = attr.value;
   });
 
@@ -236,9 +227,7 @@ function validateStructure(element: Element, expected: any): HydrationError[] {
 
   // Check children count (basic validation)
   if (expected?.props?.children) {
-    const expectedChildCount = Array.isArray(expected.props.children)
-      ? expected.props.children.length
-      : 1;
+    const expectedChildCount = Array.isArray(expected.props.children) ? expected.props.children.length : 1;
     const actualChildCount = element.children.length;
 
     if (actualChildCount !== expectedChildCount) {
@@ -270,7 +259,7 @@ function preserveAttributes(element: Element, attributes: Record<string, string>
  * Preserve animations on element
  */
 function preserveAnimations(element: Element, animations: Animation[]): void {
-  animations.forEach(animation => {
+  animations.forEach((animation) => {
     // Restart animation if it was playing
     if (animation.playState === 'running') {
       animation.play();
@@ -292,14 +281,10 @@ function scheduleIdleHydration(callback: () => void, timeout: number = 2000): vo
 /**
  * Schedule hydration when element becomes visible
  */
-function scheduleVisibleHydration(
-  element: Element,
-  callback: () => void,
-  options?: IntersectionObserverInit
-): void {
+function scheduleVisibleHydration(element: Element, callback: () => void, options?: IntersectionObserverInit): void {
   const observer = new IntersectionObserver(
-    entries => {
-      entries.forEach(entry => {
+    (entries) => {
+      entries.forEach((entry) => {
         if (entry.isIntersecting) {
           callback();
           observer.disconnect();
@@ -327,12 +312,12 @@ function scheduleInteractionHydration(
       executed = true;
       callback();
       // Remove listeners
-      events.forEach(event => element.removeEventListener(event, handler));
+      events.forEach((event) => element.removeEventListener(event, handler));
     }
   };
 
   // Add listeners
-  events.forEach(event => element.addEventListener(event, handler, { once: true, passive: true }));
+  events.forEach((event) => element.addEventListener(event, handler, { once: true, passive: true }));
 }
 
 /**
@@ -346,7 +331,7 @@ export function hydrateAll(
   const elements = root.querySelectorAll('[data-aether-hydrate]');
   const promises: Promise<HydrationResult>[] = [];
 
-  elements.forEach(element => {
+  elements.forEach((element) => {
     const componentName = element.getAttribute('data-aether-hydrate');
     const propsJson = element.getAttribute('data-aether-props');
 

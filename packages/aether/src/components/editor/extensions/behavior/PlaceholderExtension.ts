@@ -41,10 +41,7 @@ export class PlaceholderExtension extends Extension<PlaceholderOptions> {
             const { doc } = state;
             const decorations: Decoration[] = [];
 
-            const isEmpty =
-              doc.childCount === 1 &&
-              doc.firstChild?.isTextblock &&
-              doc.firstChild.content.size === 0;
+            const isEmpty = doc.childCount === 1 && doc.firstChild?.isTextblock && doc.firstChild.content.size === 0;
 
             if (isEmpty) {
               const placeholder =
@@ -59,7 +56,7 @@ export class PlaceholderExtension extends Extension<PlaceholderOptions> {
                   span.textContent = placeholder || '';
                   span.setAttribute('data-placeholder', '');
                   return span;
-                }),
+                })
               );
             }
 

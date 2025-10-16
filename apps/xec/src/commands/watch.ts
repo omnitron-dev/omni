@@ -206,14 +206,10 @@ export class WatchCommand extends ConfigAwareCommand {
       this.log('Watching for changes. Press Ctrl+C to stop...', 'info');
     }
 
-    await new Promise(() => { }); // Wait indefinitely
+    await new Promise(() => {}); // Wait indefinitely
   }
 
-  private async startWatching(
-    target: ResolvedTarget,
-    paths: string[],
-    options: WatchOptions
-  ): Promise<void> {
+  private async startWatching(target: ResolvedTarget, paths: string[], options: WatchOptions): Promise<void> {
     const sessionId = target.id;
 
     if (this.sessions.has(sessionId)) {
@@ -262,11 +258,7 @@ export class WatchCommand extends ConfigAwareCommand {
     }
   }
 
-  private async watchLocal(
-    target: ResolvedTarget,
-    paths: string[],
-    options: WatchOptions
-  ): Promise<WatchSession> {
+  private async watchLocal(target: ResolvedTarget, paths: string[], options: WatchOptions): Promise<WatchSession> {
     // Create watcher options
     const watcherOptions: Parameters<typeof chokidar.watch>[1] = {
       persistent: true,
@@ -306,11 +298,7 @@ export class WatchCommand extends ConfigAwareCommand {
     };
   }
 
-  private async watchSSH(
-    target: ResolvedTarget,
-    paths: string[],
-    options: WatchOptions
-  ): Promise<WatchSession> {
+  private async watchSSH(target: ResolvedTarget, paths: string[], options: WatchOptions): Promise<WatchSession> {
     const config = target.config as any;
     const sshEngine = await this.createTargetEngine(target);
 
@@ -345,11 +333,7 @@ export class WatchCommand extends ConfigAwareCommand {
     };
   }
 
-  private async watchDocker(
-    target: ResolvedTarget,
-    paths: string[],
-    options: WatchOptions
-  ): Promise<WatchSession> {
+  private async watchDocker(target: ResolvedTarget, paths: string[], options: WatchOptions): Promise<WatchSession> {
     const config = target.config as any;
     const container = config.container || target.name;
 
@@ -380,11 +364,7 @@ export class WatchCommand extends ConfigAwareCommand {
     };
   }
 
-  private async watchKubernetes(
-    target: ResolvedTarget,
-    paths: string[],
-    options: WatchOptions
-  ): Promise<WatchSession> {
+  private async watchKubernetes(target: ResolvedTarget, paths: string[], options: WatchOptions): Promise<WatchSession> {
     const config = target.config as any;
     const namespace = config.namespace || 'default';
     const pod = config.pod || target.name;
@@ -394,7 +374,8 @@ export class WatchCommand extends ConfigAwareCommand {
     const watchCommand = this.buildRemoteWatchCommand(paths, options);
 
     // Start watch process in pod
-    const watchProcess = $.local()`kubectl exec -n ${namespace} ${containerFlag} ${pod} -- sh -c "${watchCommand}"`.nothrow();
+    const watchProcess =
+      $.local()`kubectl exec -n ${namespace} ${containerFlag} ${pod} -- sh -c "${watchCommand}"`.nothrow();
 
     // Process output
     if (watchProcess.child?.stdout) {
@@ -420,13 +401,14 @@ export class WatchCommand extends ConfigAwareCommand {
   private buildRemoteWatchCommand(paths: string[], options: WatchOptions): string {
     // Build inotifywait command for remote systems
     const events = 'modify,create,delete,move';
-    const excludePatterns = options.exclude?.map(p => `--exclude '${p}'`).join(' ') || '';
+    const excludePatterns = options.exclude?.map((p) => `--exclude '${p}'`).join(' ') || '';
     const pathsStr = paths.join(' ');
 
     // First try inotifywait, then fallback to a simple watch loop
-    const inotifyCommand = options.pattern && options.pattern.length > 0
-      ? `while true; do find ${pathsStr} \\( ${options.pattern.map(p => `-name "${p}"`).join(' -o ')} \\) -print0 | xargs -0 inotifywait -e ${events} ${excludePatterns} --format '%w%f' 2>/dev/null || sleep 1; done`
-      : `inotifywait -mr -e ${events} ${excludePatterns} --format '%w%f' ${pathsStr} 2>/dev/null`;
+    const inotifyCommand =
+      options.pattern && options.pattern.length > 0
+        ? `while true; do find ${pathsStr} \\( ${options.pattern.map((p) => `-name "${p}"`).join(' -o ')} \\) -print0 | xargs -0 inotifywait -e ${events} ${excludePatterns} --format '%w%f' 2>/dev/null || sleep 1; done`
+        : `inotifywait -mr -e ${events} ${excludePatterns} --format '%w%f' ${pathsStr} 2>/dev/null`;
 
     // Fallback watch loop using stat
     const fallbackCommand = `
@@ -439,7 +421,9 @@ export class WatchCommand extends ConfigAwareCommand {
         fi
         sleep 1
       done
-    `.trim().replace(/\n\s*/g, ' ');
+    `
+      .trim()
+      .replace(/\n\s*/g, ' ');
 
     return `command -v inotifywait >/dev/null 2>&1 && (${inotifyCommand}) || (${fallbackCommand})`;
   }
@@ -461,11 +445,9 @@ export class WatchCommand extends ConfigAwareCommand {
     // Check if file matches patterns
     if (options.pattern && options.pattern.length > 0) {
       const basename = path.basename(filePath);
-      const matches = options.pattern.some(pattern => {
+      const matches = options.pattern.some((pattern) => {
         // Simple glob matching
-        const regex = pattern
-          .replace(/\*/g, '.*')
-          .replace(/\?/g, '.');
+        const regex = pattern.replace(/\*/g, '.*').replace(/\?/g, '.');
         return new RegExp(`^${regex}$`).test(basename);
       });
 
@@ -477,11 +459,7 @@ export class WatchCommand extends ConfigAwareCommand {
     return false;
   }
 
-  private scheduleExecution(
-    target: ResolvedTarget,
-    changedFile: string,
-    options: WatchOptions
-  ): void {
+  private scheduleExecution(target: ResolvedTarget, changedFile: string, options: WatchOptions): void {
     const session = this.sessions.get(target.id);
     if (!session) return;
 
@@ -499,11 +477,7 @@ export class WatchCommand extends ConfigAwareCommand {
     }, debounceMs);
   }
 
-  private async executeAction(
-    target: ResolvedTarget,
-    changedFile: string,
-    options: WatchOptions
-  ): Promise<void> {
+  private async executeAction(target: ResolvedTarget, changedFile: string, options: WatchOptions): Promise<void> {
     const targetDisplay = this.formatTargetDisplay(target);
     const timestamp = new Date().toLocaleTimeString();
 
@@ -532,7 +506,7 @@ export class WatchCommand extends ConfigAwareCommand {
             throw new Error(`Command failed with exit code ${result.exitCode}`);
           }
         } else if (result.exitCode !== 0) {
-          // In quiet mode, still throw error  
+          // In quiet mode, still throw error
           throw new Error(`Command failed with exit code ${result.exitCode}`);
         }
       } else if (options.script) {
@@ -568,9 +542,13 @@ export class WatchCommand extends ConfigAwareCommand {
         }
       } else if (options.task && this.taskManager) {
         // Execute task
-        const result = await this.taskManager.run(options.task, {}, {
-          target: target.id
-        });
+        const result = await this.taskManager.run(
+          options.task,
+          {},
+          {
+            target: target.id,
+          }
+        );
 
         if (!options.quiet) {
           this.stopSpinner();
@@ -632,11 +610,11 @@ export class WatchCommand extends ConfigAwareCommand {
 
     try {
       // Step 1: Select target
-      const target = await InteractiveHelpers.selectTarget({
+      const target = (await InteractiveHelpers.selectTarget({
         message: 'Select target to watch:',
         type: 'all',
         allowCustom: true,
-      }) as ResolvedTarget;
+      })) as ResolvedTarget;
 
       if (!target) {
         InteractiveHelpers.endInteractiveMode('Cancelled');
@@ -644,26 +622,26 @@ export class WatchCommand extends ConfigAwareCommand {
       }
 
       // Step 2: Configure watch paths
-      const pathsInput = await InteractiveHelpers.inputText(
-        'Enter paths to watch (comma-separated):',
-        {
-          placeholder: './src, ./config, ./app',
-          initialValue: '.',
-          validate: (value) => {
-            if (!value?.trim()) {
-              return 'At least one path is required';
-            }
-            return undefined;
-          },
-        }
-      );
+      const pathsInput = await InteractiveHelpers.inputText('Enter paths to watch (comma-separated):', {
+        placeholder: './src, ./config, ./app',
+        initialValue: '.',
+        validate: (value) => {
+          if (!value?.trim()) {
+            return 'At least one path is required';
+          }
+          return undefined;
+        },
+      });
 
       if (!pathsInput) {
         InteractiveHelpers.endInteractiveMode('Cancelled');
         return;
       }
 
-      const watchPaths = pathsInput.split(',').map(p => p.trim()).filter(Boolean);
+      const watchPaths = pathsInput
+        .split(',')
+        .map((p) => p.trim())
+        .filter(Boolean);
 
       // Step 3: Configure patterns (optional)
       const usePatterns = await InteractiveHelpers.confirmAction(
@@ -673,35 +651,32 @@ export class WatchCommand extends ConfigAwareCommand {
 
       let patterns: string[] | undefined;
       if (usePatterns) {
-        const patternsInput = await InteractiveHelpers.inputText(
-          'Enter file patterns (comma-separated):',
-          {
-            placeholder: '*.ts, *.js, *.json',
-          }
-        );
+        const patternsInput = await InteractiveHelpers.inputText('Enter file patterns (comma-separated):', {
+          placeholder: '*.ts, *.js, *.json',
+        });
 
         if (patternsInput) {
-          patterns = patternsInput.split(',').map(p => p.trim()).filter(Boolean);
+          patterns = patternsInput
+            .split(',')
+            .map((p) => p.trim())
+            .filter(Boolean);
         }
       }
 
       // Step 4: Configure exclude patterns (optional)
-      const useExcludes = await InteractiveHelpers.confirmAction(
-        'Do you want to exclude any patterns?',
-        false
-      );
+      const useExcludes = await InteractiveHelpers.confirmAction('Do you want to exclude any patterns?', false);
 
       let excludes: string[] | undefined;
       if (useExcludes) {
-        const excludesInput = await InteractiveHelpers.inputText(
-          'Enter exclude patterns (comma-separated):',
-          {
-            placeholder: 'node_modules, .git, *.log',
-          }
-        );
+        const excludesInput = await InteractiveHelpers.inputText('Enter exclude patterns (comma-separated):', {
+          placeholder: 'node_modules, .git, *.log',
+        });
 
         if (excludesInput) {
-          excludes = excludesInput.split(',').map(p => p.trim()).filter(Boolean);
+          excludes = excludesInput
+            .split(',')
+            .map((p) => p.trim())
+            .filter(Boolean);
         }
       }
 
@@ -711,10 +686,14 @@ export class WatchCommand extends ConfigAwareCommand {
         ['command', 'task', 'script'],
         (type) => {
           switch (type) {
-            case 'command': return '🔧 Execute a shell command';
-            case 'task': return '📋 Run a configured task';
-            case 'script': return '📜 Execute a script file';
-            default: return type;
+            case 'command':
+              return '🔧 Execute a shell command';
+            case 'task':
+              return '📋 Run a configured task';
+            case 'script':
+              return '📜 Execute a script file';
+            default:
+              return type;
           }
         }
       );
@@ -729,18 +708,15 @@ export class WatchCommand extends ConfigAwareCommand {
       let script: string | undefined;
 
       if (actionType === 'command') {
-        const commandInput = await InteractiveHelpers.inputText(
-          'Enter command to execute on change:',
-          {
-            placeholder: 'npm test, npm run build, etc.',
-            validate: (value) => {
-              if (!value?.trim()) {
-                return 'Command cannot be empty';
-              }
-              return undefined;
-            },
-          }
-        );
+        const commandInput = await InteractiveHelpers.inputText('Enter command to execute on change:', {
+          placeholder: 'npm test, npm run build, etc.',
+          validate: (value) => {
+            if (!value?.trim()) {
+              return 'Command cannot be empty';
+            }
+            return undefined;
+          },
+        });
         command = commandInput || undefined;
 
         if (!command) {
@@ -748,22 +724,19 @@ export class WatchCommand extends ConfigAwareCommand {
           return;
         }
       } else if (actionType === 'script') {
-        const scriptInput = await InteractiveHelpers.inputText(
-          'Enter script file path:',
-          {
-            placeholder: './scripts/build.js, ./tasks/deploy.ts',
-            validate: (value) => {
-              if (!value?.trim()) {
-                return 'Script path cannot be empty';
-              }
-              // Check if file exists
-              if (!fs.existsSync(value.trim())) {
-                return 'Script file not found';
-              }
-              return undefined;
-            },
-          }
-        );
+        const scriptInput = await InteractiveHelpers.inputText('Enter script file path:', {
+          placeholder: './scripts/build.js, ./tasks/deploy.ts',
+          validate: (value) => {
+            if (!value?.trim()) {
+              return 'Script path cannot be empty';
+            }
+            // Check if file exists
+            if (!fs.existsSync(value.trim())) {
+              return 'Script file not found';
+            }
+            return undefined;
+          },
+        });
         script = scriptInput || undefined;
 
         if (!script) {
@@ -774,29 +747,26 @@ export class WatchCommand extends ConfigAwareCommand {
         // Initialize config to get available tasks
         await this.initializeConfig({});
         const taskInfos = this.taskManager ? await this.taskManager.list() : [];
-        const availableTasks = taskInfos.map(info => info.name);
+        const availableTasks = taskInfos.map((info) => info.name);
 
         if (availableTasks.length === 0) {
           InteractiveHelpers.showWarning('No tasks found in configuration. You can still enter a task name.');
-          const taskInput = await InteractiveHelpers.inputText(
-            'Enter task name:',
-            {
-              placeholder: 'deploy, build, test',
-              validate: (value) => {
-                if (!value?.trim()) {
-                  return 'Task name cannot be empty';
-                }
-                return undefined;
-              },
-            }
-          );
+          const taskInput = await InteractiveHelpers.inputText('Enter task name:', {
+            placeholder: 'deploy, build, test',
+            validate: (value) => {
+              if (!value?.trim()) {
+                return 'Task name cannot be empty';
+              }
+              return undefined;
+            },
+          });
           task = taskInput || undefined;
         } else {
           const selectedTask = await InteractiveHelpers.selectFromList(
             'Select task to run:',
             availableTasks,
             (taskName) => {
-              const info = taskInfos.find(t => t.name === taskName);
+              const info = taskInfos.find((t) => t.name === taskName);
               const description = info?.description ? ` - ${info.description}` : '';
               return `📋 ${taskName}${description}`;
             },
@@ -809,17 +779,14 @@ export class WatchCommand extends ConfigAwareCommand {
           }
 
           if ((selectedTask as any).custom) {
-            const customTaskInput = await InteractiveHelpers.inputText(
-              'Enter custom task name:',
-              {
-                validate: (value) => {
-                  if (!value?.trim()) {
-                    return 'Task name cannot be empty';
-                  }
-                  return undefined;
-                },
-              }
-            );
+            const customTaskInput = await InteractiveHelpers.inputText('Enter custom task name:', {
+              validate: (value) => {
+                if (!value?.trim()) {
+                  return 'Task name cannot be empty';
+                }
+                return undefined;
+              },
+            });
             task = customTaskInput || undefined;
           } else {
             task = selectedTask as string;
@@ -844,55 +811,43 @@ export class WatchCommand extends ConfigAwareCommand {
       let initial = false;
 
       if (configureAdvanced) {
-        const debounceInput = await InteractiveHelpers.inputText(
-          'Debounce interval (ms):',
-          {
-            initialValue: '300',
-            validate: (value) => {
-              if (!value) return 'Value is required';
-              const num = parseInt(value, 10);
-              if (isNaN(num) || num < 0) {
-                return 'Must be a positive number';
-              }
-              return undefined;
-            },
-          }
-        );
+        const debounceInput = await InteractiveHelpers.inputText('Debounce interval (ms):', {
+          initialValue: '300',
+          validate: (value) => {
+            if (!value) return 'Value is required';
+            const num = parseInt(value, 10);
+            if (isNaN(num) || num < 0) {
+              return 'Must be a positive number';
+            }
+            return undefined;
+          },
+        });
 
         if (debounceInput) {
           debounce = debounceInput;
         }
 
-        poll = await InteractiveHelpers.confirmAction(
-          'Use polling instead of native file watchers?',
-          false
-        );
+        poll = await InteractiveHelpers.confirmAction('Use polling instead of native file watchers?', false);
 
         if (poll) {
-          const intervalInput = await InteractiveHelpers.inputText(
-            'Polling interval (ms):',
-            {
-              initialValue: '1000',
-              validate: (value) => {
-                if (!value) return 'Value is required';
-                const num = parseInt(value, 10);
-                if (isNaN(num) || num < 100) {
-                  return 'Must be at least 100ms';
-                }
-                return undefined;
-              },
-            }
-          );
+          const intervalInput = await InteractiveHelpers.inputText('Polling interval (ms):', {
+            initialValue: '1000',
+            validate: (value) => {
+              if (!value) return 'Value is required';
+              const num = parseInt(value, 10);
+              if (isNaN(num) || num < 100) {
+                return 'Must be at least 100ms';
+              }
+              return undefined;
+            },
+          });
 
           if (intervalInput) {
             interval = intervalInput;
           }
         }
 
-        initial = await InteractiveHelpers.confirmAction(
-          'Run action immediately on start?',
-          false
-        );
+        initial = await InteractiveHelpers.confirmAction('Run action immediately on start?', false);
       }
 
       // Step 7: Show summary and confirm
@@ -923,10 +878,7 @@ export class WatchCommand extends ConfigAwareCommand {
       }
       console.log('');
 
-      const proceed = await InteractiveHelpers.confirmAction(
-        'Start watching with these settings?',
-        true
-      );
+      const proceed = await InteractiveHelpers.confirmAction('Start watching with these settings?', true);
 
       if (!proceed) {
         InteractiveHelpers.endInteractiveMode('Cancelled');
@@ -972,11 +924,14 @@ export class WatchCommand extends ConfigAwareCommand {
       }
 
       // Keep process alive
-      console.log('\n' + prism.green('✓') + ` Watching ${InteractiveHelpers.getTargetIcon(target.type)} ${target.id} for changes...`);
+      console.log(
+        '\n' +
+          prism.green('✓') +
+          ` Watching ${InteractiveHelpers.getTargetIcon(target.type)} ${target.id} for changes...`
+      );
       console.log(prism.gray('Press Ctrl+C to stop watching'));
 
-      await new Promise(() => { }); // Wait indefinitely
-
+      await new Promise(() => {}); // Wait indefinitely
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       InteractiveHelpers.showError(`Configuration failed: ${errorMessage}`);

@@ -53,7 +53,7 @@ Be concise, helpful, and technical when appropriate.`,
     const ctx = context || this.defaultContext;
     const systemMessage = ctx.systemPrompt || '';
 
-    const messageTexts = messages.map(m => `${m.role}: ${m.content}`).join('\n');
+    const messageTexts = messages.map((m) => `${m.role}: ${m.content}`).join('\n');
 
     return `${systemMessage}\n\n${messageTexts}`;
   }
@@ -65,7 +65,7 @@ Be concise, helpful, and technical when appropriate.`,
     // Analyze messages for context clues
     const context: Record<string, any> = {
       messageCount: messages.length,
-      hasCode: messages.some(m => m.content.includes('```')),
+      hasCode: messages.some((m) => m.content.includes('```')),
       topics: this.extractTopics(messages),
     };
 
@@ -90,9 +90,9 @@ Be concise, helpful, and technical when appropriate.`,
       'architecture',
     ];
 
-    messages.forEach(message => {
+    messages.forEach((message) => {
       const content = message.content.toLowerCase();
-      keywords.forEach(keyword => {
+      keywords.forEach((keyword) => {
         if (content.includes(keyword)) {
           topics.add(keyword);
         }

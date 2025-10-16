@@ -102,11 +102,7 @@ export class LocalAdapter extends BaseAdapter {
         throw error;
       }
 
-      throw new AdapterError(
-        this.adapterName,
-        'execute',
-        error instanceof Error ? error : new Error(String(error))
-      );
+      throw new AdapterError(this.adapterName, 'execute', error instanceof Error ? error : new Error(String(error)));
     }
   }
 
@@ -201,12 +197,12 @@ export class LocalAdapter extends BaseAdapter {
     const stdoutHandler = new StreamHandler({
       encoding: this.config.encoding,
       maxBuffer: this.config.maxBuffer,
-      onData: progressReporter ? (data) => progressReporter.reportOutput(data) : undefined
+      onData: progressReporter ? (data) => progressReporter.reportOutput(data) : undefined,
     });
 
     const stderrHandler = new StreamHandler({
       encoding: this.config.encoding,
-      maxBuffer: this.config.maxBuffer
+      maxBuffer: this.config.maxBuffer,
     });
 
     const spawnOptions = this.buildNodeSpawnOptions(command);
@@ -297,7 +293,7 @@ export class LocalAdapter extends BaseAdapter {
             stdout: stdoutHandler.getContent(),
             stderr: stderrHandler.getContent(),
             exitCode,
-            signal: exitSignal
+            signal: exitSignal,
           });
         }
       };
@@ -370,11 +366,8 @@ export class LocalAdapter extends BaseAdapter {
 
     // Handle timeout
     const timeout = command.timeout ?? this.config.defaultTimeout;
-    const result = await this.handleTimeout(
-      processPromise,
-      timeout,
-      this.buildCommandString(command),
-      () => child.kill(this.localConfig.killSignal as any)
+    const result = await this.handleTimeout(processPromise, timeout, this.buildCommandString(command), () =>
+      child.kill(this.localConfig.killSignal as any)
     );
 
     return result;
@@ -392,12 +385,12 @@ export class LocalAdapter extends BaseAdapter {
     const stdoutHandler = new StreamHandler({
       encoding: this.config.encoding,
       maxBuffer: this.config.maxBuffer,
-      onData: progressReporter ? (data) => progressReporter.reportOutput(data) : undefined
+      onData: progressReporter ? (data) => progressReporter.reportOutput(data) : undefined,
     });
 
     const stderrHandler = new StreamHandler({
       encoding: this.config.encoding,
-      maxBuffer: this.config.maxBuffer
+      maxBuffer: this.config.maxBuffer,
     });
 
     // Start progress reporting if enabled
@@ -411,7 +404,7 @@ export class LocalAdapter extends BaseAdapter {
       env: this.createCombinedEnv(this.config.defaultEnv, command.env),
       stdin: this.mapBunStdin(command.stdin),
       stdout: command.stdout === 'pipe' ? 'pipe' : command.stdout,
-      stderr: command.stderr === 'pipe' ? 'pipe' : command.stderr
+      stderr: command.stderr === 'pipe' ? 'pipe' : command.stderr,
     });
 
     // Handle stdin for string/buffer
@@ -422,24 +415,19 @@ export class LocalAdapter extends BaseAdapter {
     }
 
     // Collect output
-    const stdoutPromise = command.stdout === 'pipe' && proc.stdout
-      ? this.streamBunReadable(proc.stdout, stdoutHandler)
-      : Promise.resolve();
+    const stdoutPromise =
+      command.stdout === 'pipe' && proc.stdout ? this.streamBunReadable(proc.stdout, stdoutHandler) : Promise.resolve();
 
-    const stderrPromise = command.stderr === 'pipe' && proc.stderr
-      ? this.streamBunReadable(proc.stderr, stderrHandler)
-      : Promise.resolve();
+    const stderrPromise =
+      command.stderr === 'pipe' && proc.stderr ? this.streamBunReadable(proc.stderr, stderrHandler) : Promise.resolve();
 
     // Wait for process completion
     const exitPromise = proc.exited;
 
     // Handle timeout
     const timeout = command.timeout ?? this.config.defaultTimeout;
-    const exitCode = await this.handleTimeout(
-      exitPromise,
-      timeout,
-      this.buildCommandString(command),
-      () => proc.kill()
+    const exitCode = await this.handleTimeout(exitPromise, timeout, this.buildCommandString(command), () =>
+      proc.kill()
     );
 
     await Promise.all([stdoutPromise, stderrPromise]);
@@ -457,7 +445,7 @@ export class LocalAdapter extends BaseAdapter {
       stdout: stdoutHandler.getContent(),
       stderr: stderrHandler.getContent(),
       exitCode,
-      signal: null
+      signal: null,
     };
   }
 
@@ -466,7 +454,7 @@ export class LocalAdapter extends BaseAdapter {
       cwd: command.cwd,
       env: this.createCombinedEnv(this.config.defaultEnv, command.env),
       detached: command.detached,
-      windowsHide: true
+      windowsHide: true,
     };
 
     // Check if cwd exists if provided
@@ -524,7 +512,7 @@ export class LocalAdapter extends BaseAdapter {
     options.stdio = [
       command.stdin ? 'pipe' : 'ignore',
       (typeof command.stdout === 'string' ? command.stdout : 'pipe') || 'pipe',
-      (typeof command.stderr === 'string' ? command.stderr : 'pipe') || 'pipe'
+      (typeof command.stderr === 'string' ? command.stderr : 'pipe') || 'pipe',
     ];
 
     return options;
@@ -587,7 +575,7 @@ export class LocalAdapter extends BaseAdapter {
       stdout: result.stdout?.toString() || '',
       stderr: result.stderr?.toString() || '',
       exitCode: result.status,
-      signal: result.signal
+      signal: result.signal,
     };
   }
 
@@ -596,18 +584,19 @@ export class LocalAdapter extends BaseAdapter {
       cmd: [command.command, ...(command.args || [])],
       cwd: command.cwd,
       env: this.createCombinedEnv(this.config.defaultEnv, command.env),
-      stdin: command.stdin && (typeof command.stdin === 'string' || Buffer.isBuffer(command.stdin))
-        ? command.stdin
-        : undefined,
+      stdin:
+        command.stdin && (typeof command.stdin === 'string' || Buffer.isBuffer(command.stdin))
+          ? command.stdin
+          : undefined,
       stdout: command.stdout === 'pipe' ? 'pipe' : command.stdout,
-      stderr: command.stderr === 'pipe' ? 'pipe' : command.stderr
+      stderr: command.stderr === 'pipe' ? 'pipe' : command.stderr,
     });
 
     return {
       stdout: proc.stdout ? new TextDecoder().decode(proc.stdout) : '',
       stderr: proc.stderr ? new TextDecoder().decode(proc.stderr) : '',
       exitCode: proc.exitCode,
-      signal: null
+      signal: null,
     };
   }
 

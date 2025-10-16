@@ -19,11 +19,7 @@ import { TableExtension } from '../../../../src/components/editor/extensions/tab
 import { TableRowExtension } from '../../../../src/components/editor/extensions/table/TableRowExtension.js';
 import { TableCellExtension } from '../../../../src/components/editor/extensions/table/TableCellExtension.js';
 import { TableHeaderExtension } from '../../../../src/components/editor/extensions/table/TableHeaderExtension.js';
-import {
-  createIntegrationTestEditor,
-  cleanupEditor,
-  setSelection,
-} from './helpers.js';
+import { createIntegrationTestEditor, cleanupEditor, setSelection } from './helpers.js';
 
 describe('Copy/Paste', () => {
   let editor: EditorInstance;

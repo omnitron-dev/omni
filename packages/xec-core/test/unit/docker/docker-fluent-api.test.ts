@@ -13,7 +13,7 @@ import {
   RedisClusterFluentAPI,
   DockerRedisClusterAPI,
   DockerEphemeralFluentAPI,
-  DockerPersistentFluentAPI
+  DockerPersistentFluentAPI,
 } from '../../../src/adapters/docker/docker-fluent-api.js';
 
 describe('Docker Fluent API', () => {
@@ -40,7 +40,7 @@ describe('Docker Fluent API', () => {
       text: () => '',
       json: () => ({}),
       lines: () => [],
-      buffer: () => Buffer.from('')
+      buffer: () => Buffer.from(''),
     };
 
     mockRun = jest.fn(() => {
@@ -224,23 +224,19 @@ describe('Docker Fluent API', () => {
       api.healthcheck(['CMD', 'curl', '-f', 'http://localhost/health'], {
         interval: '30s',
         timeout: '3s',
-        retries: 3
+        retries: 3,
       });
       const config = api.build();
       expect(config.healthcheck).toEqual({
         test: ['CMD', 'curl', '-f', 'http://localhost/health'],
         interval: '30s',
         timeout: '3s',
-        retries: 3
+        retries: 3,
       });
     });
 
     test('should build configuration with all settings', () => {
-      api
-        .name('test-container')
-        .ports(['80:80'])
-        .env({ NODE_ENV: 'production' })
-        .volumes(['/data:/data']);
+      api.name('test-container').ports(['80:80']).env({ NODE_ENV: 'production' }).volumes(['/data:/data']);
 
       const config = api.build();
 
@@ -374,7 +370,7 @@ describe('Docker Fluent API', () => {
         version: '6.2-alpine',
         port: 6380,
         password: 'mypassword',
-        name: 'custom-redis'
+        name: 'custom-redis',
       });
 
       const config = customApi.build();
@@ -393,8 +389,8 @@ describe('Docker Fluent API', () => {
         cluster: {
           enabled: true,
           masters: 3,
-          replicas: 1
-        }
+          replicas: 1,
+        },
       });
     });
 
@@ -404,8 +400,8 @@ describe('Docker Fluent API', () => {
           cluster: {
             enabled: true,
             masters: 2,
-            replicas: 0
-          }
+            replicas: 0,
+          },
         });
       }).toThrow('Redis cluster requires at least 3 master nodes');
     });
@@ -446,7 +442,7 @@ describe('Docker Fluent API', () => {
         port: 5433,
         database: 'mydb',
         user: 'myuser',
-        password: 'mypassword'
+        password: 'mypassword',
       });
 
       const config = customApi.build();
@@ -480,7 +476,7 @@ describe('Docker Fluent API', () => {
         database: 'mydb',
         user: 'myuser',
         password: 'mypassword',
-        rootPassword: 'rootpass'
+        rootPassword: 'rootpass',
       });
 
       const config = customApi.build();
@@ -513,7 +509,7 @@ describe('Docker Fluent API', () => {
         database: 'mydb',
         user: 'myuser',
         password: 'mypassword',
-        replicaSet: 'rs0'
+        replicaSet: 'rs0',
       });
 
       const config = customApi.build();
@@ -540,7 +536,7 @@ describe('Docker Fluent API', () => {
     test('should configure Kafka with custom settings', () => {
       const customApi = new KafkaFluentAPI(engine, {
         version: '3.3',
-        port: 9093
+        port: 9093,
       });
 
       const config = customApi.build();
@@ -570,7 +566,7 @@ describe('Docker Fluent API', () => {
         port: 5673,
         user: 'admin',
         password: 'admin123',
-        vhost: '/myvhost'
+        vhost: '/myvhost',
       });
 
       const config = customApi.build();
@@ -590,7 +586,7 @@ describe('Docker Fluent API', () => {
         masters: 3,
         replicas: 1,
         basePort: 8000,
-        containerPrefix: 'test-cluster'
+        containerPrefix: 'test-cluster',
       });
     });
 

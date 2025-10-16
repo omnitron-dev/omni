@@ -14,9 +14,9 @@ import type { CDNProvider, ModuleResolver, ModuleSpecifier, ModuleResolution } f
 const CDN_URLS: Record<CDNProvider, string> = {
   'esm.sh': 'https://esm.sh',
   'jsr.io': 'https://jsr.io',
-  'unpkg': 'https://unpkg.com',
-  'skypack': 'https://cdn.skypack.dev',
-  'jsdelivr': 'https://cdn.jsdelivr.net/npm',
+  unpkg: 'https://unpkg.com',
+  skypack: 'https://cdn.skypack.dev',
+  jsdelivr: 'https://cdn.jsdelivr.net/npm',
 };
 
 /**
@@ -91,12 +91,12 @@ export class CDNModuleResolver implements ModuleResolver {
       const [, prefix, pkg] = prefixMatch;
       // Map prefix to CDN provider
       const cdnMap: Record<string, CDNProvider> = {
-        'npm': this.preferredCDN,
-        'jsr': 'jsr.io',
-        'esm': 'esm.sh',
-        'unpkg': 'unpkg',
-        'skypack': 'skypack',
-        'jsdelivr': 'jsdelivr',
+        npm: this.preferredCDN,
+        jsr: 'jsr.io',
+        esm: 'esm.sh',
+        unpkg: 'unpkg',
+        skypack: 'skypack',
+        jsdelivr: 'jsdelivr',
       };
       const cdnProvider = cdnMap[prefix!] || this.preferredCDN;
       const url = this.getCDNUrl(pkg!, cdnProvider);
@@ -144,13 +144,12 @@ export class NodeModuleResolver implements ModuleResolver {
   canResolve(specifier: ModuleSpecifier): boolean {
     // Can resolve bare specifiers and node: prefixed specifiers
     const isNodePrefixed = specifier.startsWith('node:');
-    const isBareSpecifier = (
+    const isBareSpecifier =
       !specifier.startsWith('./') &&
       !specifier.startsWith('../') &&
       !specifier.startsWith('http') &&
       !path.isAbsolute(specifier) &&
-      !specifier.includes(':') // No other protocols
-    );
+      !specifier.includes(':'); // No other protocols
     return isNodePrefixed || isBareSpecifier;
   }
 
@@ -197,8 +196,21 @@ export class NodeModuleResolver implements ModuleResolver {
 
   private isBuiltinModule(specifier: string): boolean {
     const builtins = [
-      'fs', 'path', 'url', 'crypto', 'http', 'https', 'stream', 'buffer',
-      'events', 'util', 'os', 'child_process', 'zlib', 'readline', 'process'
+      'fs',
+      'path',
+      'url',
+      'crypto',
+      'http',
+      'https',
+      'stream',
+      'buffer',
+      'events',
+      'util',
+      'os',
+      'child_process',
+      'zlib',
+      'readline',
+      'process',
     ];
     return builtins.includes(specifier);
   }
@@ -211,7 +223,7 @@ export class CompositeModuleResolver implements ModuleResolver {
   constructor(private resolvers: ModuleResolver[]) {}
 
   canResolve(specifier: ModuleSpecifier): boolean {
-    return this.resolvers.some(r => r.canResolve(specifier));
+    return this.resolvers.some((r) => r.canResolve(specifier));
   }
 
   async resolve(specifier: ModuleSpecifier): Promise<ModuleResolution> {

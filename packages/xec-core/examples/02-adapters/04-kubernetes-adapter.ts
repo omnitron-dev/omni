@@ -1,6 +1,6 @@
 /**
  * 04. Kubernetes Adapter - Executing Commands in Kubernetes Pods
- * 
+ *
  * Demonstrates the use of Kubernetes adapter for working with pods
  */
 
@@ -9,7 +9,7 @@ import { $, CommandError } from '@xec-sh/core';
 // 1. Simple execution in existing pod
 const $k8s = $.k8s({
   pod: 'my-app-pod',
-  namespace: 'default'
+  namespace: 'default',
 });
 
 await $k8s`hostname`;
@@ -19,7 +19,7 @@ await $k8s`ls -la /app`;
 const $k8sContainer = $.k8s({
   pod: 'multi-container-pod',
   container: 'app',
-  namespace: 'production'
+  namespace: 'production',
 });
 
 await $k8sContainer`cat /etc/hostname`;
@@ -29,7 +29,7 @@ await $k8sContainer`ps aux`;
 const $k8sWithFlags = $.k8s({
   pod: 'my-app-pod',
   namespace: 'default',
-  execFlags: ['-it'] // interactive mode
+  execFlags: ['-it'], // interactive mode
 });
 
 await $k8sWithFlags`sh -c "echo 'Interactive mode'"`;
@@ -38,7 +38,7 @@ await $k8sWithFlags`sh -c "echo 'Interactive mode'"`;
 const $k8sTTY = $.k8s({
   pod: 'my-pod',
   namespace: 'default',
-  tty: true
+  tty: true,
 });
 
 await $k8sTTY`top -b -n 1`;
@@ -46,7 +46,7 @@ await $k8sTTY`top -b -n 1`;
 // 5. Combining with other methods
 const $k8sConfigured = $.k8s({
   pod: 'my-pod',
-  namespace: 'staging'
+  namespace: 'staging',
 })
   .env({ ENVIRONMENT: 'staging' })
   .timeout(10000);
@@ -58,14 +58,14 @@ const deploymentPods = ['web-1', 'web-2', 'web-3'];
 
 // Sequential log collection
 for (const podName of deploymentPods) {
-  const $pod = $.k8s({ 
-    pod: podName, 
-    namespace: 'production' 
+  const $pod = $.k8s({
+    pod: podName,
+    namespace: 'production',
   });
-  
+
   console.log(`\n=== Logs from ${podName} ===`);
   const logs = await $pod`tail -n 50 /var/log/app.log`.nothrow();
-  
+
   if (logs.ok) {
     console.log(logs.stdout);
   } else {
@@ -77,7 +77,7 @@ for (const podName of deploymentPods) {
 const $healthCheck = $.k8s({
   pod: 'app-pod',
   container: 'app',
-  namespace: 'production'
+  namespace: 'production',
 });
 
 const health = await $healthCheck`curl -s http://localhost:8080/health`.nothrow();
@@ -91,7 +91,7 @@ if (health.ok) {
 // 8. Cleaning temporary files
 const $cleaner = $.k8s({
   pod: 'cleaner-pod',
-  namespace: 'maintenance'
+  namespace: 'maintenance',
 });
 
 await $cleaner`find /tmp -type f -mtime +7 -delete`;
@@ -99,7 +99,7 @@ await $cleaner`du -sh /tmp`;
 
 // 9. Parallel processing of multiple pods
 const pods = ['web-1', 'web-2', 'web-3'];
-const logTasks = pods.map(pod => {
+const logTasks = pods.map((pod) => {
   const $pod = $.k8s({ pod, namespace: 'production' });
   return $pod`tail -n 100 /var/log/app.log | grep ERROR`;
 });
@@ -113,7 +113,7 @@ results.forEach((result, i) => {
 // Using existing debug pod
 const $debug = $.k8s({
   pod: 'debug-pod',
-  namespace: 'default'
+  namespace: 'default',
 });
 
 // DNS check
@@ -123,14 +123,15 @@ if (dnsCheck.ok) {
 }
 
 // API access check
-const apiCheck = await $debug`curl -s -o /dev/null -w "%{http_code}" https://kubernetes.default.svc.cluster.local/healthz`.nothrow();
+const apiCheck =
+  await $debug`curl -s -o /dev/null -w "%{http_code}" https://kubernetes.default.svc.cluster.local/healthz`.nothrow();
 console.log('API status:', apiCheck.stdout);
 
 // 11. CI/CD example in Kubernetes
 // Running tests in test pod
 const $testPod = $.k8s({
   pod: 'test-runner',
-  namespace: 'ci-cd'
+  namespace: 'ci-cd',
 });
 
 // CI steps
@@ -138,8 +139,8 @@ const steps = ['Preparation', 'Tests', 'Report'];
 
 for (const step of steps) {
   console.log(`\n=== ${step} ===`);
-  
-  switch(step) {
+
+  switch (step) {
     case 'Preparation':
       await $testPod`cd /app && npm ci`;
       break;
@@ -160,7 +161,7 @@ for (const step of steps) {
 try {
   const $failPod = $.k8s({
     pod: 'non-existent-pod',
-    namespace: 'default'
+    namespace: 'default',
   });
   await $failPod`echo "test"`;
 } catch (error) {

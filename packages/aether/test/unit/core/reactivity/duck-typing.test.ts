@@ -369,7 +369,7 @@ describe('Duck Typing for Module Duplication', () => {
 
       // Access all signals many times
       for (let i = 0; i < 1000; i++) {
-        signals.forEach(s => s());
+        signals.forEach((s) => s());
       }
 
       const duration = performance.now() - start;

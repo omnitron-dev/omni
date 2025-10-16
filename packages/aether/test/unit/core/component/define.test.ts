@@ -129,10 +129,11 @@ describe('defineComponent', () => {
     it('should support cleanup on unmount', () => {
       const cleanup = vi.fn();
 
-      const MyComponent = defineComponent(() => () => 
+      const MyComponent = defineComponent(
+        () => () =>
           // In real implementation, cleanup would be registered via onCleanup
-           null
-        );
+          null
+      );
 
       MyComponent({});
 
@@ -143,19 +144,22 @@ describe('defineComponent', () => {
 
   describe('Error handling', () => {
     it('should handle errors in setup function', () => {
-      const MyComponent = defineComponent(() => 
-        // This would throw in a real error scenario
-         () => null
+      const MyComponent = defineComponent(
+        () =>
+          // This would throw in a real error scenario
+          () =>
+            null
       );
 
       expect(() => MyComponent({})).not.toThrow();
     });
 
     it('should handle errors in render function', () => {
-      const MyComponent = defineComponent(() => () => 
+      const MyComponent = defineComponent(
+        () => () =>
           // Render function should be able to throw
-           null
-        );
+          null
+      );
 
       expect(() => MyComponent({})).not.toThrow();
     });
@@ -168,9 +172,11 @@ describe('defineComponent', () => {
         age: number;
       }
 
-      const MyComponent = defineComponent<Props>((props) =>
-        // TypeScript should enforce props.name is string and props.age is number
-         () => `${props.name} is ${props.age}`
+      const MyComponent = defineComponent<Props>(
+        (props) =>
+          // TypeScript should enforce props.name is string and props.age is number
+          () =>
+            `${props.name} is ${props.age}`
       );
 
       const result = MyComponent({ name: 'Alice', age: 30 });

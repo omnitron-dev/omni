@@ -193,7 +193,6 @@ export const CommandPalette = defineComponent<CommandPaletteProps>((props) => {
     }
   });
 
-
   const selectItem = (index: number) => {
     const items = itemElements();
     const item = items[index];
@@ -510,7 +509,14 @@ export const CommandPaletteItem = defineComponent<CommandPaletteItemProps>((prop
   const evaluatedChildren = typeof props.children === 'function' ? props.children() : props.children;
 
   return () => {
-    const { children: _children, value: _value, onSelect: _onSelect, disabled: _disabled, keywords: _keywords, ...restProps } = props;
+    const {
+      children: _children,
+      value: _value,
+      onSelect: _onSelect,
+      disabled: _disabled,
+      keywords: _keywords,
+      ...restProps
+    } = props;
 
     return jsx('div', {
       ...restProps,

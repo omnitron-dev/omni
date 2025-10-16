@@ -204,9 +204,7 @@ export class FastRefresh {
       const NewComponent = this.extractComponent(newModule);
 
       if (!NewComponent) {
-        console.warn(
-          `[Fast Refresh] Could not extract component from ${file}`
-        );
+        console.warn(`[Fast Refresh] Could not extract component from ${file}`);
         return;
       }
 
@@ -235,9 +233,7 @@ export class FastRefresh {
       this.triggerRefresh();
 
       const duration = performance.now() - startTime;
-      console.log(
-        `[Fast Refresh] Refreshed ${components.size} component(s) in ${duration.toFixed(2)}ms`
-      );
+      console.log(`[Fast Refresh] Refreshed ${components.size} component(s) in ${duration.toFixed(2)}ms`);
     } catch (error) {
       console.error('[Fast Refresh] Refresh failed:', error);
       throw error;
@@ -303,9 +299,7 @@ export class FastRefresh {
     // Check for common component patterns
     return (
       typeof value === 'function' &&
-      (value.$$component === true ||
-        value.prototype?.$$component === true ||
-        /^[A-Z]/.test(value.name))
+      (value.$$component === true || value.prototype?.$$component === true || /^[A-Z]/.test(value.name))
     );
   }
 
@@ -428,10 +422,7 @@ export function getFastRefresh(): FastRefresh | null {
 /**
  * Fast Refresh decorator for components
  */
-export function withFastRefresh<T extends { new (...args: any[]): any }>(
-  Component: T,
-  file: string
-): T {
+export function withFastRefresh<T extends { new (...args: any[]): any }>(Component: T, file: string): T {
   const refresh = getFastRefresh();
 
   if (!refresh) {

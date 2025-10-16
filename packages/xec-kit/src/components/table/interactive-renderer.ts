@@ -170,10 +170,7 @@ function renderInteractiveBody<T>(
 /**
  * Render status bar
  */
-function renderStatusBar<T>(
-  state: TableState<T>,
-  options: InteractiveTableOptions<T>
-): string {
+function renderStatusBar<T>(state: TableState<T>, options: InteractiveTableOptions<T>): string {
   const parts: string[] = [];
 
   if (options.message) {

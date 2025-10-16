@@ -109,12 +109,7 @@ export async function retry<T>(
     onRetry?: (error: Error, attempt: number) => void;
   } = {}
 ): Promise<T> {
-  const {
-    retries = 3,
-    delay = 1000,
-    backoff = 2,
-    onRetry = () => { },
-  } = options;
+  const { retries = 3, delay = 1000, backoff = 2, onRetry = () => {} } = options;
 
   let lastError: Error;
 
@@ -136,7 +131,7 @@ export async function retry<T>(
 
 // Sleep utility
 export function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // Template utility

@@ -424,10 +424,7 @@ describe('Module Helpers', () => {
     });
 
     it('should return empty module if no fallback', async () => {
-      const conditionalMod = conditional(
-        false,
-        () => Promise.resolve({} as Module)
-      );
+      const conditionalMod = conditional(false, () => Promise.resolve({} as Module));
 
       const definition = await conditionalMod.factory();
 
@@ -494,8 +491,7 @@ describe('Module Helpers', () => {
         definition: { id: 'router', providers: [] },
       };
 
-      const forRoot = (config: any) =>
-        withProviders(RouterModule, [{ provide: 'ROUTER_CONFIG', useValue: config }]);
+      const forRoot = (config: any) => withProviders(RouterModule, [{ provide: 'ROUTER_CONFIG', useValue: config }]);
 
       const configured = forRoot({ mode: 'history' });
 

@@ -20,12 +20,7 @@ import type { ExtensionConfig } from '../core/types.js';
 /**
  * Debounce operation type
  */
-export type DebounceOperation =
-  | 'search'
-  | 'autosave'
-  | 'collaboration'
-  | 'validation'
-  | 'custom';
+export type DebounceOperation = 'search' | 'autosave' | 'collaboration' | 'validation' | 'custom';
 
 /**
  * Debounce configuration for an operation
@@ -184,13 +179,12 @@ export class DebounceExtension extends Extension<DebounceConfig> {
         break;
       default:
         // Check custom configs
-        baseConfig =
-          this.config.custom?.[operation] || {
-            delay: 300,
-            maxWait: 1000,
-            leading: false,
-            trailing: true,
-          };
+        baseConfig = this.config.custom?.[operation] || {
+          delay: 300,
+          maxWait: 1000,
+          leading: false,
+          trailing: true,
+        };
     }
 
     return { ...baseConfig, ...customConfig };
@@ -367,9 +361,7 @@ export class DebounceExtension extends Extension<DebounceConfig> {
       };
     }
 
-    const pendingCount = Array.from(this.debouncedFunctions.values()).filter((fn) =>
-      fn.pending()
-    ).length;
+    const pendingCount = Array.from(this.debouncedFunctions.values()).filter((fn) => fn.pending()).length;
 
     return {
       totalOperations: this.debouncedFunctions.size,

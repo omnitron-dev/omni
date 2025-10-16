@@ -7,7 +7,13 @@
 
 import * as ts from 'typescript';
 import type { ModuleMetadata, ModuleAnalysisResult } from './module-analyzer.js';
-import type { OptimizationPass, OptimizationResult, OptimizationChange, OptimizationContext, OptimizerOptions } from '../optimizer.js';
+import type {
+  OptimizationPass,
+  OptimizationResult,
+  OptimizationChange,
+  OptimizationContext,
+  OptimizerOptions,
+} from '../optimizer.js';
 
 /**
  * Module tree shaker options
@@ -236,7 +242,10 @@ export class ModuleTreeShakerPass implements OptimizationPass {
       // 1. Not imported by any other module
       // 2. Marked as pure (or in aggressive mode)
       // 3. Has no side effects
-      const canRemove = usageInfo && !usageInfo.isImported && !module.hasSideEffects &&
+      const canRemove =
+        usageInfo &&
+        !usageInfo.isImported &&
+        !module.hasSideEffects &&
         (module.optimization?.pure || this.options.aggressive);
 
       if (canRemove) {
@@ -251,57 +260,54 @@ export class ModuleTreeShakerPass implements OptimizationPass {
     // Use AST transformation to remove modules
     const printer = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed });
     const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => (rootNode) => {
-        const visit: ts.Visitor = (node) => {
-          // Check if this is an export const declaration with defineModule
-          if (ts.isVariableStatement(node) &&
-              node.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword)) {
+      const visit: ts.Visitor = (node) => {
+        // Check if this is an export const declaration with defineModule
+        if (ts.isVariableStatement(node) && node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) {
+          const declaration = node.declarationList.declarations[0];
+          if (declaration && ts.isIdentifier(declaration.name)) {
+            const init = declaration.initializer;
 
-            const declaration = node.declarationList.declarations[0];
-            if (declaration && ts.isIdentifier(declaration.name)) {
-              const init = declaration.initializer;
+            // Check if initializer is a call to defineModule
+            if (
+              init &&
+              ts.isCallExpression(init) &&
+              ts.isIdentifier(init.expression) &&
+              init.expression.text === 'defineModule'
+            ) {
+              // Extract module ID from the call
+              const arg = init.arguments[0];
+              if (arg && ts.isObjectLiteralExpression(arg)) {
+                const idProp = arg.properties.find(
+                  (prop) => ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === 'id'
+                );
 
-              // Check if initializer is a call to defineModule
-              if (init && ts.isCallExpression(init) &&
-                  ts.isIdentifier(init.expression) &&
-                  init.expression.text === 'defineModule') {
+                if (idProp && ts.isPropertyAssignment(idProp) && ts.isStringLiteral(idProp.initializer)) {
+                  const moduleId = idProp.initializer.text;
 
-                // Extract module ID from the call
-                const arg = init.arguments[0];
-                if (arg && ts.isObjectLiteralExpression(arg)) {
-                  const idProp = arg.properties.find(
-                    (prop) => ts.isPropertyAssignment(prop) &&
-                              ts.isIdentifier(prop.name) &&
-                              prop.name.text === 'id'
-                  );
-
-                  if (idProp && ts.isPropertyAssignment(idProp) &&
-                      ts.isStringLiteral(idProp.initializer)) {
-                    const moduleId = idProp.initializer.text;
-
-                    // Remove this module if it's in our removal set
-                    if (modulesToRemove.has(moduleId)) {
-                      changes.push({
-                        type: 'tree-shake',
-                        description: `Removed unused module '${moduleId}'`,
-                        sizeImpact: node.getFullText(sourceFile).length,
-                        location: {
-                          line: sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1,
-                          column: sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).character,
-                        },
-                      });
-                      return undefined; // Remove this node
-                    }
+                  // Remove this module if it's in our removal set
+                  if (modulesToRemove.has(moduleId)) {
+                    changes.push({
+                      type: 'tree-shake',
+                      description: `Removed unused module '${moduleId}'`,
+                      sizeImpact: node.getFullText(sourceFile).length,
+                      location: {
+                        line: sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1,
+                        column: sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).character,
+                      },
+                    });
+                    return undefined; // Remove this node
                   }
                 }
               }
             }
           }
+        }
 
-          return ts.visitEachChild(node, visit, context);
-        };
-
-        return ts.visitNode(rootNode, visit) as ts.SourceFile;
+        return ts.visitEachChild(node, visit, context);
       };
+
+      return ts.visitNode(rootNode, visit) as ts.SourceFile;
+    };
 
     const result = ts.transform(sourceFile, [transformer]);
     const transformedSourceFile = result.transformed[0];
@@ -424,9 +430,10 @@ export class ModuleTreeShakerPass implements OptimizationPass {
                 type: 'tree-shake',
                 description: `Removed unused provider '${provider.name}' from module '${module.id}'`,
                 sizeImpact: beforeLength - afterLength,
-                location: provider.location?.line !== undefined && provider.location?.column !== undefined
-                  ? { line: provider.location.line, column: provider.location.column }
-                  : undefined,
+                location:
+                  provider.location?.line !== undefined && provider.location?.column !== undefined
+                    ? { line: provider.location.line, column: provider.location.column }
+                    : undefined,
               });
             }
           }
@@ -440,10 +447,7 @@ export class ModuleTreeShakerPass implements OptimizationPass {
   /**
    * Remove unused stores
    */
-  private removeUnusedStores(
-    code: string,
-    sourceFile: ts.SourceFile
-  ): { code: string; changes: OptimizationChange[] } {
+  private removeUnusedStores(code: string, sourceFile: ts.SourceFile): { code: string; changes: OptimizationChange[] } {
     if (!this.moduleAnalysis) {
       return { code, changes: [] };
     }
@@ -475,9 +479,10 @@ export class ModuleTreeShakerPass implements OptimizationPass {
                 type: 'tree-shake',
                 description: `Removed unused store '${store.id}' from module '${module.id}'`,
                 sizeImpact: beforeLength - afterLength,
-                location: store.location?.line !== undefined && store.location?.column !== undefined
-                  ? { line: store.location.line, column: store.location.column }
-                  : undefined,
+                location:
+                  store.location?.line !== undefined && store.location?.column !== undefined
+                    ? { line: store.location.line, column: store.location.column }
+                    : undefined,
               });
             }
           }
@@ -525,10 +530,7 @@ export class ModuleTreeShakerPass implements OptimizationPass {
   ): RegExp | null {
     // Pattern to match provider in providers array
     // Handle both class providers and object providers
-    return new RegExp(
-      `(?:${provider.name}\\s*,?|\\{[^}]*provide\\s*:\\s*${provider.name}[^}]*\\}\\s*,?)`,
-      'g'
-    );
+    return new RegExp(`(?:${provider.name}\\s*,?|\\{[^}]*provide\\s*:\\s*${provider.name}[^}]*\\}\\s*,?)`, 'g');
   }
 
   /**

@@ -55,11 +55,7 @@ export class Scheduler extends EventEmitter<SchedulerEvents> {
   /**
    * Schedule a task for execution
    */
-  async schedule<In, Out>(
-    flow: Flow<In, Out>,
-    input: In,
-    options: ExecutionOptions = {}
-  ): Promise<Out> {
+  async schedule<In, Out>(flow: Flow<In, Out>, input: In, options: ExecutionOptions = {}): Promise<Out> {
     const task: Task<In, Out> = {
       id: this.generateTaskId(),
       flowId: this.getFlowId(flow as Flow<unknown, unknown>),
@@ -89,9 +85,7 @@ export class Scheduler extends EventEmitter<SchedulerEvents> {
   async scheduleAll<In, Out>(
     tasks: Array<{ flow: Flow<In, Out>; input: In; options?: ExecutionOptions }>
   ): Promise<Out[]> {
-    const promises = tasks.map(({ flow, input, options }) =>
-      this.schedule(flow, input, options)
-    );
+    const promises = tasks.map(({ flow, input, options }) => this.schedule(flow, input, options));
     return Promise.all(promises);
   }
 
@@ -154,10 +148,7 @@ export class Scheduler extends EventEmitter<SchedulerEvents> {
    */
   private async processTasks(): Promise<void> {
     // Check if we can execute more tasks
-    while (
-      this.activeTasks.size < this.config.maxConcurrency &&
-      this.getTotalQueueSize() > 0
-    ) {
+    while (this.activeTasks.size < this.config.maxConcurrency && this.getTotalQueueSize() > 0) {
       // Check rate limit
       if (this.rateLimiter && !this.rateLimiter.allowRequest()) {
         break;
@@ -265,11 +256,7 @@ export class Scheduler extends EventEmitter<SchedulerEvents> {
    * Get total queue size
    */
   private getTotalQueueSize(): number {
-    return (
-      this.highPriorityQueue.length +
-      this.normalPriorityQueue.length +
-      this.lowPriorityQueue.length
-    );
+    return this.highPriorityQueue.length + this.normalPriorityQueue.length + this.lowPriorityQueue.length;
   }
 
   /**
@@ -347,10 +334,7 @@ class RateLimiter {
     const tokensToAdd = (elapsed / this.config.interval) * this.config.maxRequests;
 
     if (tokensToAdd > 0) {
-      this.tokens = Math.min(
-        this.tokens + tokensToAdd,
-        this.config.burst ?? this.config.maxRequests
-      );
+      this.tokens = Math.min(this.tokens + tokensToAdd, this.config.burst ?? this.config.maxRequests);
       this.lastRefill = now;
     }
   }

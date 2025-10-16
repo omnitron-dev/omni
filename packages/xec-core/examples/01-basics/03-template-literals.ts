@@ -1,6 +1,6 @@
 /**
  * 03. Template Literals - Interpolation and Escaping
- * 
+ *
  * Shows how to safely insert variables into commands.
  * @xec-sh/core automatically escapes all interpolated values,
  * preventing command injections.
@@ -36,7 +36,7 @@ await $`rm ${files}`;
 // Objects are converted to string via JSON.stringify
 const config = {
   name: 'test-app',
-  version: '1.0.0'
+  version: '1.0.0',
 };
 // Object will be converted to escaped JSON string
 const result = await $`echo ${config}`;
@@ -72,7 +72,7 @@ console.log('Found .txt files:', foundFiles.stdout);
 // null and undefined are converted to empty strings
 const nullValue = null;
 const undefinedValue = undefined;
-await $`echo "Null: ${nullValue}, Undefined: ${undefinedValue}"`; 
+await $`echo "Null: ${nullValue}, Undefined: ${undefinedValue}"`;
 // Will output: Null: , Undefined:
 
 // 10. Async interpolation support

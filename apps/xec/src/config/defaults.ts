@@ -75,31 +75,31 @@ export function getDefaultConfig(): DefaultConfig {
     description: 'A Xec managed project',
     targets: {
       local: {
-        type: 'local'
+        type: 'local',
       },
       defaults: {
         ssh: {
           port: 22,
           keepAlive: true,
           keepAliveInterval: 30000,
-          timeout: 60000
+          timeout: 60000,
         },
         docker: {
           workdir: '/app',
           tty: true,
-          interactive: true
+          interactive: true,
         },
         kubernetes: {
           namespace: 'default',
-          context: undefined
-        }
-      }
+          context: undefined,
+        },
+      },
     },
     commands: {
       exec: {
         shell: '/bin/sh',
         tty: true,
-        interactive: true
+        interactive: true,
       },
       logs: {
         tail: '50',
@@ -109,26 +109,26 @@ export function getDefaultConfig(): DefaultConfig {
         since: undefined,
         until: undefined,
         grep: undefined,
-        color: true
+        color: true,
       },
       cp: {
         recursive: true,
         preserveMode: true,
         preserveTimestamps: false,
-        followSymlinks: false
+        followSymlinks: false,
       },
       sync: {
         delete: false,
         exclude: [],
-        dryRun: false
-      }
+        dryRun: false,
+      },
     },
     secrets: {
       provider: 'env',
-      path: undefined
+      path: undefined,
     },
     vars: {},
-    tasks: {}
+    tasks: {},
   };
 }
 
@@ -144,7 +144,7 @@ export const ROOT_KEY_ORDER = [
   'commands',
   'secrets',
   'vars',
-  'tasks'
+  'tasks',
 ];
 
 /**

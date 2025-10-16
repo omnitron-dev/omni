@@ -23,27 +23,27 @@ describe('Script Context', () => {
   beforeEach(async () => {
     // Save current working directory
     originalCwd = process.cwd();
-    
+
     // Create temporary directory structure
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'xec-script-context-test-'));
     projectDir = path.join(tempDir, 'project');
-    
+
     await fs.mkdir(projectDir, { recursive: true });
     await fs.mkdir(path.join(projectDir, '.xec'), { recursive: true });
-    
+
     configPath = path.join(projectDir, '.xec', 'config.yaml');
-    
+
     // Change to project directory
     process.chdir(projectDir);
-    
+
     // Reset singletons for new directory
     const { config } = await import('../../src/api/config-api.js');
     (config as any).loaded = false;
-    
+
     const { tasks } = await import('../../src/api/task-api.js');
     (tasks as any).manager = undefined;
     (tasks as any).targetResolver = undefined;
-    
+
     // Removed Docker setup
   });
 
@@ -55,7 +55,7 @@ describe('Script Context', () => {
     delete globalAny.config;
     delete globalAny.tasks;
     delete globalAny.targets;
-    
+
     // Restore original working directory
     try {
       process.chdir(originalCwd);
@@ -63,11 +63,11 @@ describe('Script Context', () => {
       // If originalCwd no longer exists (due to test cleanup), go to temp dir
       process.chdir(os.tmpdir());
     }
-    
+
     // Reset config state for next test
     const { config } = await import('../../src/api/config-api.js');
     (config as any).loaded = false;
-    
+
     // Clean up files
     await fs.rm(tempDir, { recursive: true, force: true });
   });
@@ -76,9 +76,9 @@ describe('Script Context', () => {
     it('should create context for local execution', async () => {
       const scriptPath = path.join(tempDir, 'test.js');
       await fs.writeFile(scriptPath, 'console.log("test");');
-      
+
       const context = await ScriptContext.create(scriptPath, ['arg1', 'arg2']);
-      
+
       expect(context.$target).toBe($);
       expect(context.$targetInfo).toBeUndefined();
       expect(context.$).toBe($);
@@ -92,20 +92,20 @@ describe('Script Context', () => {
     it('should create context with target', async () => {
       const scriptPath = path.join(tempDir, 'test.js');
       await fs.writeFile(scriptPath, 'console.log("test");');
-      
+
       const target = {
         id: 'hosts.server',
         type: 'ssh' as const,
         name: 'server',
         config: {
           host: 'server.example.com',
-          user: 'admin'
+          user: 'admin',
         },
-        source: 'config' as const
+        source: 'config' as const,
       };
-      
+
       const context = await ScriptContext.create(scriptPath, [], target);
-      
+
       expect(context.$target).not.toBe($);
       expect(context.$targetInfo).toBeDefined();
       expect(context.$targetInfo?.type).toBe('ssh');
@@ -118,17 +118,17 @@ describe('Script Context', () => {
         version: '2.0',
         vars: {
           app_name: 'myapp',
-          environment: 'test'
-        }
+          environment: 'test',
+        },
       };
-      
+
       await fs.writeFile(configPath, yaml.dump(testConfig));
-      
+
       // Create a new config instance for this test to avoid singleton issues
       const { ConfigAPI } = await import('../../src/api/config-api.js');
       const testConfigApi = new ConfigAPI();
       await testConfigApi.load();
-      
+
       // Verify config loads correctly
       const vars = testConfigApi.get('vars');
       expect(vars).toBeDefined();
@@ -139,16 +139,19 @@ describe('Script Context', () => {
     it('should parse command-line parameters', async () => {
       const scriptPath = path.join(tempDir, 'test.js');
       const args = [
-        '--name', 'test-app',
-        '--port', '3000',
+        '--name',
+        'test-app',
+        '--port',
+        '3000',
         '--debug',
         '-v',
         '--config=production.yaml',
-        '--json', '{"key":"value"}'
+        '--json',
+        '{"key":"value"}',
       ];
-      
+
       const context = await ScriptContext.create(scriptPath, args);
-      
+
       expect(context.params.name).toBe('test-app');
       expect(context.params.port).toBe(3000);
       expect(context.params.debug).toBe(true);
@@ -160,7 +163,7 @@ describe('Script Context', () => {
     it('should include utility functions', async () => {
       const scriptPath = path.join(tempDir, 'test.js');
       const context = await ScriptContext.create(scriptPath);
-      
+
       expect(typeof context.chalk).toBe('function');
       expect(typeof context.glob).toBe('function');
       expect(typeof context.minimatch).toBe('function');
@@ -173,21 +176,21 @@ describe('Script Context', () => {
     it('should inject and cleanup global context', async () => {
       const scriptPath = path.join(tempDir, 'test.js');
       const context = await ScriptContext.create(scriptPath);
-      
+
       // Before injection
       expect((global as any).$target).toBeUndefined();
       expect((global as any).config).toBeUndefined();
-      
+
       // Inject
       ScriptContext.inject(context);
-      
+
       expect((global as any).$target).toBe($);
       expect((global as any).config).toBeDefined();
       expect((global as any).chalk).toBeDefined();
-      
+
       // Cleanup
       ScriptContext.cleanup(context);
-      
+
       expect((global as any).$target).toBeUndefined();
       expect((global as any).config).toBeUndefined();
       expect((global as any).chalk).toBeUndefined();
@@ -197,41 +200,44 @@ describe('Script Context', () => {
   describe('executeScript()', () => {
     it('should execute script with local context', async () => {
       const outputFile = path.join(tempDir, 'output.txt');
-      
+
       // Test script context creation and globals injection
       const scriptPath = path.join(tempDir, 'test-script.js');
       await fs.writeFile(scriptPath, '');
-      
+
       // Create config
       const configData = {
         version: '2.0',
-        vars: { test: true }
+        vars: { test: true },
       };
       await fs.writeFile(configPath, yaml.dump(configData));
-      
+
       // Create context manually and verify globals
       const context = await ScriptContext.create(scriptPath);
-      
+
       // Inject context
       ScriptContext.inject(context);
-      
+
       // Verify globals are available
       const globalAny = global as any;
       expect(globalAny.$target).toBeDefined();
       expect(globalAny.config).toBeDefined();
       expect(globalAny.vars).toBeDefined();
       expect(globalAny.vars?.test).toBe(true);
-      
+
       // Write test output using injected globals
-      await fs.writeFile(outputFile, JSON.stringify({
-        hasTarget: !!globalAny.$target,
-        hasConfig: !!globalAny.config,
-        vars: globalAny.vars || {}
-      }));
-      
+      await fs.writeFile(
+        outputFile,
+        JSON.stringify({
+          hasTarget: !!globalAny.$target,
+          hasConfig: !!globalAny.config,
+          vars: globalAny.vars || {},
+        })
+      );
+
       // Cleanup
       ScriptContext.cleanup(context);
-      
+
       // Verify output
       const output = await fs.readFile(outputFile, 'utf-8');
       const result = JSON.parse(output);
@@ -243,10 +249,10 @@ describe('Script Context', () => {
     it('should execute script with Docker target', async () => {
       // Create a test without Docker container dependency
       // Instead, verify that Docker target context is properly created
-      
+
       const scriptPath = path.join(tempDir, 'docker-script.js');
       const outputFile = path.join(tempDir, 'docker-output.txt');
-      
+
       // Create a test script that writes Docker target information
       const scriptContent = `
         import { writeFileSync } from 'fs';
@@ -271,30 +277,30 @@ describe('Script Context', () => {
           }, null, 2));
         }
       `;
-      
+
       await fs.writeFile(scriptPath, scriptContent);
-      
+
       const target = {
         id: 'containers.test-container',
         type: 'docker' as const,
         name: 'test-container',
-        config: { 
+        config: {
           container: 'test-container',
-          image: 'alpine:latest'
+          image: 'alpine:latest',
         },
-        source: 'config' as const
+        source: 'config' as const,
       };
-      
+
       // Execute script with Docker target
       await executeScript(scriptPath, [], target);
-      
+
       // Wait for script execution to complete
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Verify output file was created and contains expected data  
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // Verify output file was created and contains expected data
       const output = await fs.readFile(outputFile, 'utf-8');
       const result = JSON.parse(output);
-      
+
       expect(result.success).toBe(true);
       expect(result.hasTarget).toBe(true);
       expect(result.hasTargetInfo).toBe(true);
@@ -303,7 +309,7 @@ describe('Script Context', () => {
       expect(result.targetContainer).toBe('test-container');
       expect(result.targetConfig).toEqual({
         container: 'test-container',
-        image: 'alpine:latest'
+        image: 'alpine:latest',
       });
     });
   });
@@ -311,7 +317,7 @@ describe('Script Context', () => {
   describe('createREPL()', () => {
     it('should create REPL context with utilities', async () => {
       const replContext = await ScriptContext.createREPL();
-      
+
       expect(replContext.$target).toBe($);
       expect(replContext.$).toBe($);
       expect(typeof replContext.help).toBe('function');
@@ -327,11 +333,11 @@ describe('Script Context', () => {
         type: 'docker' as const,
         name: 'test',
         config: { container: 'test-container' },
-        source: 'config' as const
+        source: 'config' as const,
       };
-      
+
       const replContext = await ScriptContext.createREPL(target);
-      
+
       expect(replContext.$target).not.toBe($);
       expect(replContext.$targetInfo).toBeDefined();
       expect(replContext.$targetInfo.type).toBe('docker');
@@ -342,50 +348,50 @@ describe('Script Context', () => {
   describe('Parameter parsing', () => {
     it('should parse various parameter formats', async () => {
       const scriptPath = path.join(tempDir, 'test.js');
-      
+
       const testCases = [
         {
           args: ['--string', 'value'],
-          expected: { string: 'value' }
+          expected: { string: 'value' },
         },
         {
           args: ['--number', '42'],
-          expected: { number: 42 }
+          expected: { number: 42 },
         },
         {
           args: ['--float', '3.14'],
-          expected: { float: 3.14 }
+          expected: { float: 3.14 },
         },
         {
           args: ['--bool-true', 'true'],
-          expected: { 'bool-true': true }
+          expected: { 'bool-true': true },
         },
         {
           args: ['--bool-false', 'false'],
-          expected: { 'bool-false': false }
+          expected: { 'bool-false': false },
         },
         {
           args: ['--flag'],
-          expected: { flag: true }
+          expected: { flag: true },
         },
         {
           args: ['-v', '-d'],
-          expected: { v: true, d: true }
+          expected: { v: true, d: true },
         },
         {
           args: ['--key=value'],
-          expected: { key: 'value' }
+          expected: { key: 'value' },
         },
         {
           args: ['--json', '{"nested":{"value":123}}'],
-          expected: { json: { nested: { value: 123 } } }
+          expected: { json: { nested: { value: 123 } } },
         },
         {
           args: ['--array', '[1,2,3]'],
-          expected: { array: [1, 2, 3] }
-        }
+          expected: { array: [1, 2, 3] },
+        },
       ];
-      
+
       for (const { args, expected } of testCases) {
         const context = await ScriptContext.create(scriptPath, args);
         expect(context.params).toEqual(expected);
@@ -396,50 +402,53 @@ describe('Script Context', () => {
   describe('Integration with APIs', () => {
     it('should provide access to all APIs', async () => {
       const outputFile = path.join(tempDir, 'api-output.txt');
-      
+
       // Create config with a simple task
       const configData = {
         version: '2.0',
         vars: { test_var: 'test_value' },
         tasks: {
-          'test-task': `echo "Task executed" > ${outputFile}`
-        }
+          'test-task': `echo "Task executed" > ${outputFile}`,
+        },
       };
       await fs.writeFile(configPath, yaml.dump(configData));
-      
+
       // Create script context
       const scriptPath = path.join(tempDir, 'test-script.js');
       await fs.writeFile(scriptPath, '');
       const context = await ScriptContext.create(scriptPath);
-      
+
       // Test direct API access from context
       expect(context.config).toBeDefined();
       expect(context.tasks).toBeDefined();
       expect(context.targets).toBeDefined();
-      
+
       // Test config API
       const testVar = context.config.get('vars.test_var');
       expect(testVar).toBe('test_value');
-      
+
       // Test config API has the tasks
       const allTasks = context.config.get('tasks');
       expect(allTasks).toBeDefined();
       expect(Object.keys(allTasks)).toHaveLength(1);
-      
+
       // Create a new TaskAPI instance to test (avoiding singleton issues)
       const { TaskAPI } = await import('../../src/api/task-api.js');
       const testTaskApi = new TaskAPI();
       const taskList = await testTaskApi.list();
       expect(taskList).toHaveLength(1);
       expect(taskList[0].name).toBe('test-task');
-      
+
       // Create output to verify APIs work
-      await fs.writeFile(outputFile, [
-        `Config var: ${testVar}`,
-        `Tasks: ${taskList.map(t => t.name).join(', ')}`,
-        `APIs available: config=${!!context.config}, tasks=${!!context.tasks}, targets=${!!context.targets}`
-      ].join('\n'));
-      
+      await fs.writeFile(
+        outputFile,
+        [
+          `Config var: ${testVar}`,
+          `Tasks: ${taskList.map((t) => t.name).join(', ')}`,
+          `APIs available: config=${!!context.config}, tasks=${!!context.tasks}, targets=${!!context.targets}`,
+        ].join('\n')
+      );
+
       // Verify output
       const output = await fs.readFile(outputFile, 'utf-8');
       expect(output).toContain('Config var: test_value');

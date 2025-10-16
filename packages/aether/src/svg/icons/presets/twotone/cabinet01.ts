@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const Cabinet01Icon: IconDefinition = {
-  "id": "cabinet01",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M6 18L5 21M18 18L19 21\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M16 18H8C5.17157 18 3.75736 18 2.87868 17.0586C2 16.1171 2 14.6019 2 11.5714V9.42857C2 6.39811 2 4.88289 2.87868 3.94144C3.75736 3 5.17157 3 8 3H16C18.8284 3 20.2426 3 21.1213 3.94144C22 4.88289 22 6.39811 22 9.42857V11.5714C22 14.6019 22 16.1171 21.1213 17.0586C20.2426 18 18.8284 18 16 18Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M9 9V8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M15 9V8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M2.5 14H21.5M12 3V14\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "twotone",
-    "originalName": "Cabinet01Icon",
-    "elementsCount": 5,
-    "hasOpacity": true,
-    "hasFill": false
-  }
+  id: 'cabinet01',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path d="M6 18L5 21M18 18L19 21" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M16 18H8C5.17157 18 3.75736 18 2.87868 17.0586C2 16.1171 2 14.6019 2 11.5714V9.42857C2 6.39811 2 4.88289 2.87868 3.94144C3.75736 3 5.17157 3 8 3H16C18.8284 3 20.2426 3 21.1213 3.94144C22 4.88289 22 6.39811 22 9.42857V11.5714C22 14.6019 22 16.1171 21.1213 17.0586C20.2426 18 18.8284 18 16 18Z" stroke-linecap="round" stroke-linejoin="round" />\n    <path opacity="0.4" d="M9 9V8" stroke-linecap="round" stroke-linejoin="round" />\n    <path opacity="0.4" d="M15 9V8" stroke-linecap="round" stroke-linejoin="round" />\n    <path opacity="0.4" d="M2.5 14H21.5M12 3V14" stroke-linecap="round" stroke-linejoin="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'twotone',
+    originalName: 'Cabinet01Icon',
+    elementsCount: 5,
+    hasOpacity: true,
+    hasFill: false,
+  },
 };

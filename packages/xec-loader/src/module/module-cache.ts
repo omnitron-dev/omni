@@ -199,10 +199,7 @@ export class HybridCache implements Cache<string> {
 
   async set(key: string, value: string, ttl?: number): Promise<void> {
     // Write to both caches
-    await Promise.all([
-      this.memoryCache.set(key, value, ttl),
-      this.diskCache.set(key, value, ttl),
-    ]);
+    await Promise.all([this.memoryCache.set(key, value, ttl), this.diskCache.set(key, value, ttl)]);
   }
 
   async has(key: string): Promise<boolean> {
@@ -213,24 +210,15 @@ export class HybridCache implements Cache<string> {
   }
 
   async delete(key: string): Promise<void> {
-    await Promise.all([
-      this.memoryCache.delete(key),
-      this.diskCache.delete(key),
-    ]);
+    await Promise.all([this.memoryCache.delete(key), this.diskCache.delete(key)]);
   }
 
   async clear(): Promise<void> {
-    await Promise.all([
-      this.memoryCache.clear(),
-      this.diskCache.clear(),
-    ]);
+    await Promise.all([this.memoryCache.clear(), this.diskCache.clear()]);
   }
 
   async stats(): Promise<CacheStats> {
-    const [memStats, diskStats] = await Promise.all([
-      this.memoryCache.stats(),
-      this.diskCache.stats(),
-    ]);
+    const [memStats, diskStats] = await Promise.all([this.memoryCache.stats(), this.diskCache.stats()]);
 
     return {
       memoryEntries: memStats.memoryEntries,

@@ -15,10 +15,7 @@ export async function getMachineId(): Promise<string> {
     switch (platform) {
       case 'darwin': {
         // macOS: Use hardware UUID
-        const output = execSync(
-          'ioreg -rd1 -c IOPlatformExpertDevice | grep UUID',
-          { encoding: 'utf8' }
-        );
+        const output = execSync('ioreg -rd1 -c IOPlatformExpertDevice | grep UUID', { encoding: 'utf8' });
         const match = output.match(/"IOPlatformUUID"\s*=\s*"([^"]+)"/);
         if (match && match[1]) {
           rawId = match[1];
@@ -30,12 +27,8 @@ export async function getMachineId(): Promise<string> {
 
       case 'linux': {
         // Linux: Try multiple sources in order
-        const machineIdPaths = [
-          '/etc/machine-id',
-          '/var/lib/dbus/machine-id',
-          '/sys/class/dmi/id/product_uuid'
-        ];
-        
+        const machineIdPaths = ['/etc/machine-id', '/var/lib/dbus/machine-id', '/sys/class/dmi/id/product_uuid'];
+
         let found = false;
         for (const path of machineIdPaths) {
           if (existsSync(path)) {
@@ -44,12 +37,12 @@ export async function getMachineId(): Promise<string> {
             break;
           }
         }
-        
+
         if (!found) {
           // Fallback: generate from network interfaces
           const interfaces = os.networkInterfaces();
           const macs: string[] = [];
-          
+
           for (const [name, ifaces] of Object.entries(interfaces)) {
             if (name === 'lo') continue; // Skip loopback
             for (const iface of ifaces || []) {
@@ -58,7 +51,7 @@ export async function getMachineId(): Promise<string> {
               }
             }
           }
-          
+
           if (macs.length > 0) {
             rawId = macs.sort().join(':');
           } else {
@@ -71,10 +64,7 @@ export async function getMachineId(): Promise<string> {
       case 'win32': {
         // Windows: Use WMI to get hardware UUID
         try {
-          const output = execSync(
-            'wmic csproduct get UUID /value',
-            { encoding: 'utf8' }
-          );
+          const output = execSync('wmic csproduct get UUID /value', { encoding: 'utf8' });
           const match = output.match(/UUID=([^\r\n]+)/);
           if (match && match[1]) {
             rawId = match[1].trim();
@@ -83,10 +73,7 @@ export async function getMachineId(): Promise<string> {
           }
         } catch (error) {
           // Fallback: Use Windows Product ID
-          const productIdOutput = execSync(
-            'wmic os get SerialNumber /value',
-            { encoding: 'utf8' }
-          );
+          const productIdOutput = execSync('wmic os get SerialNumber /value', { encoding: 'utf8' });
           const productMatch = productIdOutput.match(/SerialNumber=([^\r\n]+)/);
           if (productMatch && productMatch[1]) {
             rawId = productMatch[1].trim();
@@ -102,7 +89,7 @@ export async function getMachineId(): Promise<string> {
         const hostname = os.hostname();
         const interfaces = os.networkInterfaces();
         const macs: string[] = [];
-        
+
         for (const [name, ifaces] of Object.entries(interfaces)) {
           for (const iface of ifaces || []) {
             if (iface.mac && iface.mac !== '00:00:00:00:00:00') {
@@ -110,7 +97,7 @@ export async function getMachineId(): Promise<string> {
             }
           }
         }
-        
+
         rawId = `${hostname}:${macs.sort().join(':')}`;
         break;
       }
@@ -124,7 +111,7 @@ export async function getMachineId(): Promise<string> {
       hash.substring(8, 12),
       '5' + hash.substring(13, 16), // Version 5
       hash.substring(16, 20),
-      hash.substring(20, 32)
+      hash.substring(20, 32),
     ].join('-');
 
     return uuid;
@@ -134,18 +121,18 @@ export async function getMachineId(): Promise<string> {
       os.hostname(),
       os.cpus()[0]?.model || 'unknown',
       os.totalmem().toString(),
-      Date.now().toString()
+      Date.now().toString(),
     ].join(':');
-    
+
     const hash = createHash('sha256').update(fallbackId).digest('hex');
     const uuid = [
       hash.substring(0, 8),
       hash.substring(8, 12),
       '5' + hash.substring(13, 16),
       hash.substring(16, 20),
-      hash.substring(20, 32)
+      hash.substring(20, 32),
     ].join('-');
-    
+
     return uuid;
   }
 }

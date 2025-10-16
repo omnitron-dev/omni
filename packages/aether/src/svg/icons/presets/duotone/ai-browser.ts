@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const AiBrowserIcon: IconDefinition = {
-  "id": "ai-browser",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M20.9977 13C21 12.5299 21 12.0307 21 11.5C21 7.02166 21 4.78249 19.6088 3.39124C18.2175 2 15.9783 2 11.5 2C7.02166 2 4.78249 2 3.39124 3.39124C2 4.78249 2 7.02166 2 11.5C2 15.9783 2 18.2175 3.39124 19.6088C4.78249 21 7.02166 21 11.5 21C12.0307 21 12.5299 21 13 20.9977\" stroke-linecap=\"round\" />\n    <path opacity=\"0.4\" d=\"M19.6282 3.39124C18.2336 2 15.9891 2 11.5 2C7.01091 2 4.76636 2 3.37178 3.39124C2.33116 4.42937 2.06704 6.43961 2 9H21C20.933 6.43961 20.6688 4.42937 19.6282 3.39124Z\" fill=\"currentColor\" />\n    <path d=\"M18.5 15L18.7579 15.697C19.0961 16.611 19.2652 17.068 19.5986 17.4014C19.932 17.7348 20.389 17.9039 21.303 18.2421L22 18.5L21.303 18.7579C20.389 19.0961 19.932 19.2652 19.5986 19.5986C19.2652 19.932 19.0961 20.389 18.7579 21.303L18.5 22L18.2421 21.303C17.9039 20.389 17.7348 19.932 17.4014 19.5986C17.068 19.2652 16.611 19.0961 15.697 18.7579L15 18.5L15.697 18.2421C16.611 17.9039 17.068 17.7348 17.4014 17.4014C17.7348 17.068 17.9039 16.611 18.2421 15.697L18.5 15Z\" stroke-linejoin=\"round\" opacity=\"0.4\" fill=\"currentColor\" />\n    <path d=\"M2 9H21\" stroke-linejoin=\"round\" />\n    <path d=\"M6.49981 5.5H6.50879\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" />\n    <path d=\"M10.4998 5.5H10.5088\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "duotone",
-    "originalName": "AiBrowserIcon",
-    "elementsCount": 7,
-    "hasOpacity": true,
-    "hasFill": true
-  }
+  id: 'ai-browser',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path d="M20.9977 13C21 12.5299 21 12.0307 21 11.5C21 7.02166 21 4.78249 19.6088 3.39124C18.2175 2 15.9783 2 11.5 2C7.02166 2 4.78249 2 3.39124 3.39124C2 4.78249 2 7.02166 2 11.5C2 15.9783 2 18.2175 3.39124 19.6088C4.78249 21 7.02166 21 11.5 21C12.0307 21 12.5299 21 13 20.9977" stroke-linecap="round" />\n    <path opacity="0.4" d="M19.6282 3.39124C18.2336 2 15.9891 2 11.5 2C7.01091 2 4.76636 2 3.37178 3.39124C2.33116 4.42937 2.06704 6.43961 2 9H21C20.933 6.43961 20.6688 4.42937 19.6282 3.39124Z" fill="currentColor" />\n    <path d="M18.5 15L18.7579 15.697C19.0961 16.611 19.2652 17.068 19.5986 17.4014C19.932 17.7348 20.389 17.9039 21.303 18.2421L22 18.5L21.303 18.7579C20.389 19.0961 19.932 19.2652 19.5986 19.5986C19.2652 19.932 19.0961 20.389 18.7579 21.303L18.5 22L18.2421 21.303C17.9039 20.389 17.7348 19.932 17.4014 19.5986C17.068 19.2652 16.611 19.0961 15.697 18.7579L15 18.5L15.697 18.2421C16.611 17.9039 17.068 17.7348 17.4014 17.4014C17.7348 17.068 17.9039 16.611 18.2421 15.697L18.5 15Z" stroke-linejoin="round" opacity="0.4" fill="currentColor" />\n    <path d="M2 9H21" stroke-linejoin="round" />\n    <path d="M6.49981 5.5H6.50879" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />\n    <path d="M10.4998 5.5H10.5088" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'duotone',
+    originalName: 'AiBrowserIcon',
+    elementsCount: 7,
+    hasOpacity: true,
+    hasFill: true,
+  },
 };

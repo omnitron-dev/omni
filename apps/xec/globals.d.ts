@@ -9,4 +9,4 @@
 // Ensure the globals are available
 import './dist/globals.js';
 
-export { };
+export {};

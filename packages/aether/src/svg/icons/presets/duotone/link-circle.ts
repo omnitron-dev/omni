@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const LinkCircleIcon: IconDefinition = {
-  "id": "link-circle",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M12 21C16.9706 21 21 16.9706 21 12C21 7.02944 16.9706 3 12 3C7.02944 3 3 7.02944 3 12C3 16.9706 7.02944 21 12 21Z\" fill=\"currentColor\" />\n    <path d=\"M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3\" stroke-linecap=\"round\" />\n    <path d=\"M20.5547 3.44473L14.9912 8.98597M20.5547 3.44473C20.0595 2.94957 16.7233 2.99573 16.0181 3.00575M20.5547 3.44473C21.05 3.93989 21.0038 7.27551 20.9938 7.98069\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "duotone",
-    "originalName": "LinkCircleIcon",
-    "elementsCount": 3,
-    "hasOpacity": true,
-    "hasFill": true
-  }
+  id: 'link-circle',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path opacity="0.4" d="M12 21C16.9706 21 21 16.9706 21 12C21 7.02944 16.9706 3 12 3C7.02944 3 3 7.02944 3 12C3 16.9706 7.02944 21 12 21Z" fill="currentColor" />\n    <path d="M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3" stroke-linecap="round" />\n    <path d="M20.5547 3.44473L14.9912 8.98597M20.5547 3.44473C20.0595 2.94957 16.7233 2.99573 16.0181 3.00575M20.5547 3.44473C21.05 3.93989 21.0038 7.27551 20.9938 7.98069" stroke-linecap="round" stroke-linejoin="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'duotone',
+    originalName: 'LinkCircleIcon',
+    elementsCount: 3,
+    hasOpacity: true,
+    hasFill: true,
+  },
 };

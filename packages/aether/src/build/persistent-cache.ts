@@ -226,9 +226,10 @@ export class PersistentCache {
 
     // Calculate TTL: if maxAge < 1000, assume it's already in milliseconds (for testing),
     // otherwise assume it's in days and convert to milliseconds
-    const defaultTTL = this.config.maxAge < 1000
-      ? this.config.maxAge  // Already in milliseconds
-      : this.config.maxAge * 24 * 60 * 60 * 1000;  // Convert days to milliseconds
+    const defaultTTL =
+      this.config.maxAge < 1000
+        ? this.config.maxAge // Already in milliseconds
+        : this.config.maxAge * 24 * 60 * 60 * 1000; // Convert days to milliseconds
 
     const entry: CacheEntry<T> = {
       hash: this.hash(content),
@@ -402,7 +403,13 @@ export class PersistentCache {
 
     try {
       const files = await fs.readdir(this.config.dir);
-      await Promise.all(files.map((file) => fs.unlink(path.join(this.config.dir, file)).catch(() => {/* ignore */})));
+      await Promise.all(
+        files.map((file) =>
+          fs.unlink(path.join(this.config.dir, file)).catch(() => {
+            /* ignore */
+          })
+        )
+      );
     } catch {
       // Ignore errors - directory might not exist
     }

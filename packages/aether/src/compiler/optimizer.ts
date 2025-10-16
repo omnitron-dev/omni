@@ -271,11 +271,11 @@ export class Optimizer {
 
     return {
       mode,
-      optimizeSignals: options.optimizeSignals ?? (mode !== 'none'),
-      batchEffects: options.batchEffects ?? (mode !== 'none'),
-      hoistComponents: options.hoistComponents ?? (mode === 'aggressive'),
-      treeShake: options.treeShake ?? (mode !== 'none'),
-      eliminateDeadCode: options.eliminateDeadCode ?? (mode !== 'none'),
+      optimizeSignals: options.optimizeSignals ?? mode !== 'none',
+      batchEffects: options.batchEffects ?? mode !== 'none',
+      hoistComponents: options.hoistComponents ?? mode === 'aggressive',
+      treeShake: options.treeShake ?? mode !== 'none',
+      eliminateDeadCode: options.eliminateDeadCode ?? mode !== 'none',
       minify: shouldMinify,
       target: options.target || 'browser',
       development,

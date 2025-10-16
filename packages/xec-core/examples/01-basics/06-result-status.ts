@@ -1,6 +1,6 @@
 /**
  * 06. Result Status - Using ok and cause Properties
- * 
+ *
  * This example demonstrates the simplified way to check command execution status
  * using the new `ok` and `cause` properties of ExecutionResult.
  */
@@ -25,15 +25,15 @@ if (!failResult.ok) {
 // Exit code failure
 const exitCodeError = await $`exit 42`.nothrow();
 console.log('Exit code error:', {
-  ok: exitCodeError.ok,          // false
-  cause: exitCodeError.cause      // "exitCode: 42"
+  ok: exitCodeError.ok, // false
+  cause: exitCodeError.cause, // "exitCode: 42"
 });
 
 // Signal failure (simulated)
 const signalError = await $`sleep 10`.timeout(100).nothrow();
 console.log('Signal error:', {
-  ok: signalError.ok,             // false
-  cause: signalError.cause        // Depends on how process was terminated
+  ok: signalError.ok, // false
+  cause: signalError.cause, // Depends on how process was terminated
 });
 
 // 4. Conditional logic based on ok
@@ -52,7 +52,7 @@ do {
   result = await $`curl -s https://api.github.com/rate_limit`.nothrow();
   if (!result.ok) {
     console.log(`Attempt ${attempts} failed: ${result.cause}`);
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   }
 } while (!result.ok && attempts < 3);
 

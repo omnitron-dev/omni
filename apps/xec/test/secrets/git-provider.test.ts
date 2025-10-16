@@ -24,7 +24,7 @@ describe('GitSecretProvider', () => {
     execSync('git init', { cwd: gitRepoDir });
     execSync('git config user.email "test@example.com"', { cwd: gitRepoDir });
     execSync('git config user.name "Test User"', { cwd: gitRepoDir });
-    
+
     // Make initial commit
     await fs.writeFile(path.join(gitRepoDir, 'README.md'), '# Test Repo');
     execSync('git add .', { cwd: gitRepoDir });
@@ -41,7 +41,7 @@ describe('GitSecretProvider', () => {
   beforeEach(async () => {
     provider = new GitSecretProvider({
       repoPath: gitRepoDir,
-      autoCommit: false // Disable auto-commit for most tests
+      autoCommit: false, // Disable auto-commit for most tests
     });
   });
 
@@ -87,7 +87,7 @@ describe('GitSecretProvider', () => {
         await fs.mkdir(nonGitDir, { recursive: true });
 
         const nonGitProvider = new GitSecretProvider({
-          repoPath: nonGitDir
+          repoPath: nonGitDir,
         });
 
         await expect(nonGitProvider.initialize()).rejects.toThrow(SecretError);
@@ -245,28 +245,28 @@ describe('GitSecretProvider', () => {
       it('should commit changes when autoCommit is enabled', async () => {
         const autoCommitProvider = new GitSecretProvider({
           repoPath: gitRepoDir,
-          autoCommit: true
+          autoCommit: true,
         });
 
         await autoCommitProvider.initialize();
-        
-        const beforeCommits = execSync('git log --oneline', { 
-          cwd: gitRepoDir, 
-          encoding: 'utf8' 
+
+        const beforeCommits = execSync('git log --oneline', {
+          cwd: gitRepoDir,
+          encoding: 'utf8',
         }).split('\n').length;
 
         await autoCommitProvider.set('auto-key', 'auto-value');
 
-        const afterCommits = execSync('git log --oneline', { 
-          cwd: gitRepoDir, 
-          encoding: 'utf8' 
+        const afterCommits = execSync('git log --oneline', {
+          cwd: gitRepoDir,
+          encoding: 'utf8',
         }).split('\n').length;
 
         expect(afterCommits).toBeGreaterThan(beforeCommits);
 
         const lastCommit = execSync('git log -1 --pretty=%B', {
           cwd: gitRepoDir,
-          encoding: 'utf8'
+          encoding: 'utf8',
         }).trim();
 
         expect(lastCommit).toContain('secrets: update auto-key');
@@ -282,7 +282,7 @@ describe('GitSecretProvider', () => {
         const secrets = {
           key1: 'value1',
           key2: 'value2',
-          key3: 'value3'
+          key3: 'value3',
         };
 
         for (const [key, value] of Object.entries(secrets)) {
@@ -296,7 +296,7 @@ describe('GitSecretProvider', () => {
       it('should import secrets', async () => {
         const secrets = {
           imported1: 'value1',
-          imported2: 'value2'
+          imported2: 'value2',
         };
 
         await provider.import(secrets);
@@ -332,7 +332,7 @@ describe('GitSecretProvider', () => {
         teamProvider = new GitSecretProvider({
           repoPath: gitRepoDir,
           autoCommit: false,
-          auditLog: true
+          auditLog: true,
         });
 
         await teamProvider.initialize();
@@ -342,12 +342,12 @@ describe('GitSecretProvider', () => {
           modulusLength: 2048,
           publicKeyEncoding: {
             type: 'spki',
-            format: 'pem'
+            format: 'pem',
           },
           privateKeyEncoding: {
             type: 'pkcs8',
-            format: 'pem'
-          }
+            format: 'pem',
+          },
         });
 
         memberPublicKey = publicKey;
@@ -372,10 +372,7 @@ describe('GitSecretProvider', () => {
         const pubKeyPath = path.join(testDir, 'member.pub');
         await teamProvider.addTeamMember('bob@example.com', pubKeyPath, 'read');
 
-        const encKeyPath = path.join(
-          gitRepoDir,
-          '.xec/secrets/keys/team/bob_at_example.com.key.enc'
-        );
+        const encKeyPath = path.join(gitRepoDir, '.xec/secrets/keys/team/bob_at_example.com.key.enc');
         expect(existsSync(encKeyPath)).toBe(true);
 
         // Verify the encrypted key exists and is base64
@@ -394,27 +391,25 @@ describe('GitSecretProvider', () => {
 
         members = await teamProvider.listTeamMembers();
         expect(members.length).toBe(initialCount - 1);
-        expect(members.find(m => m.userId === 'charlie@example.com')).toBeUndefined();
+        expect(members.find((m) => m.userId === 'charlie@example.com')).toBeUndefined();
       });
 
       it('should fail to remove non-existent member', async () => {
-        await expect(
-          teamProvider.removeTeamMember('nonexistent@example.com')
-        ).rejects.toThrow(SecretError);
+        await expect(teamProvider.removeTeamMember('nonexistent@example.com')).rejects.toThrow(SecretError);
       });
 
       it('should support different permission levels', async () => {
         const pubKeyPath = path.join(testDir, 'member.pub');
-        
+
         await teamProvider.addTeamMember('read@example.com', pubKeyPath, 'read');
         await teamProvider.addTeamMember('write@example.com', pubKeyPath, 'read-write');
         await teamProvider.addTeamMember('admin@example.com', pubKeyPath, 'admin');
 
         const members = await teamProvider.listTeamMembers();
-        
-        const readMember = members.find(m => m.userId === 'read@example.com');
-        const writeMember = members.find(m => m.userId === 'write@example.com');
-        const adminMember = members.find(m => m.userId === 'admin@example.com');
+
+        const readMember = members.find((m) => m.userId === 'read@example.com');
+        const writeMember = members.find((m) => m.userId === 'write@example.com');
+        const adminMember = members.find((m) => m.userId === 'admin@example.com');
 
         expect(readMember?.permissions).toBe('read');
         expect(writeMember?.permissions).toBe('read-write');
@@ -428,7 +423,7 @@ describe('GitSecretProvider', () => {
       beforeEach(async () => {
         rotationProvider = new GitSecretProvider({
           repoPath: gitRepoDir,
-          autoCommit: false
+          autoCommit: false,
         });
 
         await rotationProvider.initialize();
@@ -469,10 +464,10 @@ describe('GitSecretProvider', () => {
       it('should re-encrypt all secrets across environments during rotation', async () => {
         // Set secrets in multiple environments
         await rotationProvider.set('dev-secret', 'dev-value');
-        
+
         await rotationProvider.setEnvironment('staging');
         await rotationProvider.set('staging-secret', 'staging-value');
-        
+
         await rotationProvider.setEnvironment('production');
         await rotationProvider.set('prod-secret', 'prod-value');
 
@@ -482,10 +477,10 @@ describe('GitSecretProvider', () => {
 
         // Verify all secrets are still accessible
         expect(await rotationProvider.get('dev-secret')).toBe('dev-value');
-        
+
         await rotationProvider.setEnvironment('staging');
         expect(await rotationProvider.get('staging-secret')).toBe('staging-value');
-        
+
         await rotationProvider.setEnvironment('production');
         expect(await rotationProvider.get('prod-secret')).toBe('prod-value');
       });
@@ -496,23 +491,20 @@ describe('GitSecretProvider', () => {
           modulusLength: 2048,
           publicKeyEncoding: {
             type: 'spki',
-            format: 'pem'
+            format: 'pem',
           },
           privateKeyEncoding: {
             type: 'pkcs8',
-            format: 'pem'
-          }
+            format: 'pem',
+          },
         });
 
         const pubKeyPath = path.join(testDir, 'rotation-member.pub');
         await fs.writeFile(pubKeyPath, publicKey);
-        
+
         await rotationProvider.addTeamMember('rotate@example.com', pubKeyPath);
 
-        const encKeyPath = path.join(
-          gitRepoDir,
-          '.xec/secrets/keys/team/rotate_at_example.com.key.enc'
-        );
+        const encKeyPath = path.join(gitRepoDir, '.xec/secrets/keys/team/rotate_at_example.com.key.enc');
         const originalEncKey = await fs.readFile(encKeyPath, 'utf8');
 
         // Rotate master key
@@ -531,7 +523,7 @@ describe('GitSecretProvider', () => {
         auditProvider = new GitSecretProvider({
           repoPath: gitRepoDir,
           autoCommit: false,
-          auditLog: true
+          auditLog: true,
         });
 
         await auditProvider.initialize();
@@ -543,10 +535,10 @@ describe('GitSecretProvider', () => {
         await auditProvider.delete('audit-key');
 
         const logs = await auditProvider.getAuditLogs();
-        
-        expect(logs.some(l => l.action === 'set' && l.key === 'audit-key')).toBe(true);
-        expect(logs.some(l => l.action === 'get' && l.key === 'audit-key')).toBe(true);
-        expect(logs.some(l => l.action === 'delete' && l.key === 'audit-key')).toBe(true);
+
+        expect(logs.some((l) => l.action === 'set' && l.key === 'audit-key')).toBe(true);
+        expect(logs.some((l) => l.action === 'get' && l.key === 'audit-key')).toBe(true);
+        expect(logs.some((l) => l.action === 'delete' && l.key === 'audit-key')).toBe(true);
       });
 
       it('should log team operations', async () => {
@@ -554,12 +546,12 @@ describe('GitSecretProvider', () => {
           modulusLength: 2048,
           publicKeyEncoding: {
             type: 'spki',
-            format: 'pem'
+            format: 'pem',
           },
           privateKeyEncoding: {
             type: 'pkcs8',
-            format: 'pem'
-          }
+            format: 'pem',
+          },
         });
 
         const pubKeyPath = path.join(testDir, 'audit-member.pub');
@@ -569,31 +561,23 @@ describe('GitSecretProvider', () => {
         await auditProvider.removeTeamMember('audit@example.com');
 
         const logs = await auditProvider.getAuditLogs();
-        
-        expect(logs.some(l => 
-          l.action === 'team-add' && 
-          l.details?.member === 'audit@example.com'
-        )).toBe(true);
-        
-        expect(logs.some(l => 
-          l.action === 'team-remove' && 
-          l.details?.member === 'audit@example.com'
-        )).toBe(true);
+
+        expect(logs.some((l) => l.action === 'team-add' && l.details?.member === 'audit@example.com')).toBe(true);
+
+        expect(logs.some((l) => l.action === 'team-remove' && l.details?.member === 'audit@example.com')).toBe(true);
       });
 
       it('should filter audit logs by date', async () => {
         const startDate = new Date();
-        
+
         await auditProvider.set('date-test-key', 'value');
-        
+
         const endDate = new Date();
         endDate.setSeconds(endDate.getSeconds() + 1);
 
         const logs = await auditProvider.getAuditLogs(startDate, endDate);
-        
-        expect(logs.every(l => 
-          l.timestamp >= startDate && l.timestamp <= endDate
-        )).toBe(true);
+
+        expect(logs.every((l) => l.timestamp >= startDate && l.timestamp <= endDate)).toBe(true);
       });
 
       it('should filter audit logs by action', async () => {
@@ -606,16 +590,16 @@ describe('GitSecretProvider', () => {
         const getLogs = await auditProvider.getAuditLogs(undefined, undefined, 'get');
         const deleteLogs = await auditProvider.getAuditLogs(undefined, undefined, 'delete');
 
-        expect(setLogs.every(l => l.action === 'set')).toBe(true);
-        expect(getLogs.every(l => l.action === 'get')).toBe(true);
-        expect(deleteLogs.every(l => l.action === 'delete')).toBe(true);
+        expect(setLogs.every((l) => l.action === 'set')).toBe(true);
+        expect(getLogs.every((l) => l.action === 'get')).toBe(true);
+        expect(deleteLogs.every((l) => l.action === 'delete')).toBe(true);
       });
 
       it('should include git commit hash in audit logs', async () => {
         const commitProvider = new GitSecretProvider({
           repoPath: gitRepoDir,
           autoCommit: true,
-          auditLog: true
+          auditLog: true,
         });
 
         await commitProvider.initialize();
@@ -632,7 +616,7 @@ describe('GitSecretProvider', () => {
         const noAuditProvider = new GitSecretProvider({
           repoPath: gitRepoDir,
           autoCommit: false,
-          auditLog: false
+          auditLog: false,
         });
 
         await noAuditProvider.initialize();
@@ -640,11 +624,11 @@ describe('GitSecretProvider', () => {
 
         const auditDir = path.join(gitRepoDir, '.xec/secrets/audit');
         const files = existsSync(auditDir) ? await fs.readdir(auditDir) : [];
-        
+
         // Should not create new audit logs when disabled
         const beforeCount = files.length;
         await noAuditProvider.get('no-audit-key');
-        
+
         const afterFiles = existsSync(auditDir) ? await fs.readdir(auditDir) : [];
         expect(afterFiles.length).toBe(beforeCount);
       });
@@ -653,7 +637,7 @@ describe('GitSecretProvider', () => {
     describe('error handling', () => {
       it('should throw SecretError with proper codes', async () => {
         const errorProvider = new GitSecretProvider({
-          repoPath: gitRepoDir
+          repoPath: gitRepoDir,
         });
 
         await errorProvider.initialize();
@@ -687,7 +671,7 @@ describe('GitSecretProvider', () => {
 
         // Create new provider instance
         const newProvider = new GitSecretProvider({
-          repoPath: gitRepoDir
+          repoPath: gitRepoDir,
         });
 
         await newProvider.initialize();
@@ -714,7 +698,7 @@ describe('GitSecretProvider', () => {
       it('should not expose secrets in git history', async () => {
         const gitProvider = new GitSecretProvider({
           repoPath: gitRepoDir,
-          autoCommit: true
+          autoCommit: true,
         });
 
         await gitProvider.initialize();
@@ -728,9 +712,9 @@ describe('GitSecretProvider', () => {
         // Check git log doesn't contain the secret value
         const gitLog = execSync('git log --all --full-history -p', {
           cwd: gitRepoDir,
-          encoding: 'utf8'
+          encoding: 'utf8',
         });
-        
+
         expect(gitLog).not.toContain('sensitive-value-12345');
       });
 
@@ -741,7 +725,7 @@ describe('GitSecretProvider', () => {
         // Tamper with the encrypted file
         const secretsFile = path.join(gitRepoDir, '.xec/secrets/data/development.enc');
         const data = JSON.parse(await fs.readFile(secretsFile, 'utf8'));
-        
+
         // Change checksum
         data.checksum = 'invalid-checksum';
         await fs.writeFile(secretsFile, JSON.stringify(data, null, 2));
@@ -787,7 +771,7 @@ describe('GitSecretProvider', () => {
 
       // Create new provider instance
       const provider2 = new GitSecretProvider({
-        repoPath: gitRepoDir
+        repoPath: gitRepoDir,
       });
 
       expect(await provider2.get('shared-key')).toBe('shared-value');
@@ -796,12 +780,7 @@ describe('GitSecretProvider', () => {
     it('should handle special characters in keys', async () => {
       await provider.initialize();
 
-      const specialKeys = [
-        'key-with-dashes',
-        'key_with_underscores',
-        'key.with.dots',
-        'KEY_WITH_CAPS'
-      ];
+      const specialKeys = ['key-with-dashes', 'key_with_underscores', 'key.with.dots', 'KEY_WITH_CAPS'];
 
       for (const key of specialKeys) {
         await provider.set(key, `value-for-${key}`);

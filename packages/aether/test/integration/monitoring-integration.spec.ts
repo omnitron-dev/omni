@@ -41,7 +41,7 @@ describe('Monitoring Integration', () => {
 
       // Simulate render work
       const data = Array.from({ length: 100 }, (_, i) => i);
-      const processed = data.map(x => x * 2);
+      const processed = data.map((x) => x * 2);
 
       monitor.mark('render-end', { type: 'component' });
 
@@ -55,7 +55,7 @@ describe('Monitoring Integration', () => {
     it('should track multiple operations in sequence', () => {
       const operations = ['parse', 'analyze', 'transform', 'render'];
 
-      operations.forEach(op => {
+      operations.forEach((op) => {
         monitor.mark(`${op}-start`);
 
         // Simulate work
@@ -70,7 +70,7 @@ describe('Monitoring Integration', () => {
       const measures = monitor.getMeasures();
       expect(measures.length).toBe(4);
 
-      measures.forEach(measure => {
+      measures.forEach((measure) => {
         expect(measure.duration).toBeGreaterThan(0);
       });
     });
@@ -136,7 +136,7 @@ describe('Monitoring Integration', () => {
       const promises: Promise<any>[] = [];
 
       for (let i = 0; i < count; i++) {
-        const promise = new Promise(resolve => {
+        const promise = new Promise((resolve) => {
           monitor.mark(`async${i}-start`);
 
           setTimeout(() => {
@@ -389,7 +389,7 @@ describe('Monitoring Integration', () => {
         arrays.push(new Array(1000).fill(i));
       }
 
-      await new Promise(resolve => setTimeout(resolve, 150));
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
       profiler.stop();
 
@@ -416,7 +416,7 @@ describe('Monitoring Integration', () => {
         leakyArray.push(new Array(1000).fill(0));
       }, 10);
 
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 200));
 
       clearInterval(interval);
       leakDetector.stop();
@@ -490,7 +490,7 @@ describe('Monitoring Integration', () => {
       perfMonitor.measure('component-mount', 'component-mount-start', 'component-mount-end');
 
       // Verify all tracking
-      const perfMeasure = perfMonitor.getMeasures().find(m => m.name === 'component-mount');
+      const perfMeasure = perfMonitor.getMeasures().find((m) => m.name === 'component-mount');
       const compInfo = componentTracker.getComponentInfo(componentId);
       const sigInfo = signalTracker.getSignalInfo('component-state');
       const memStats = memoryProfiler.getStatistics();
@@ -552,10 +552,10 @@ describe('Monitoring Integration', () => {
       }
 
       const measures = perfMonitor.getMeasures();
-      const effectMeasures = measures.filter(m => m.name.startsWith('effect-'));
+      const effectMeasures = measures.filter((m) => m.name.startsWith('effect-'));
 
       expect(effectMeasures.length).toBe(5);
-      effectMeasures.forEach(m => {
+      effectMeasures.forEach((m) => {
         expect(m.duration).toBeGreaterThan(0);
       });
     });
@@ -617,7 +617,7 @@ describe('Monitoring Integration', () => {
 
       const compInfo = componentTracker.getComponentInfo(componentId);
       const sigInfo = signalTracker.getSignalInfo(signalId);
-      const measure = perfMonitor.getMeasures().find(m => m.name === 'high-freq');
+      const measure = perfMonitor.getMeasures().find((m) => m.name === 'high-freq');
 
       expect(compInfo!.renderCount).toBe(100);
       expect(sigInfo!.reads).toBe(1000);
@@ -650,7 +650,7 @@ describe('Monitoring Integration', () => {
       }
 
       const marks = monitor.getMarks();
-      const errorMark = marks.find(m => m.name === 'error-occurred');
+      const errorMark = marks.find((m) => m.name === 'error-occurred');
 
       expect(errorMark).toBeDefined();
       expect(errorMark!.metadata?.error).toBe('Test error');
@@ -678,15 +678,15 @@ describe('Monitoring Integration', () => {
       for (let i = 0; i < 5; i++) {
         tracker.trackMount(`comp-${i}`, `Component${i}`, {});
         monitor.mark(`op-${i}`);
-        await new Promise(resolve => setTimeout(resolve, 25));
+        await new Promise((resolve) => setTimeout(resolve, 25));
       }
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       clearInterval(interval);
 
       expect(updates.length).toBeGreaterThan(0);
-      updates.forEach(update => {
+      updates.forEach((update) => {
         expect(update.performance).toBeDefined();
         expect(update.components).toBeDefined();
       });

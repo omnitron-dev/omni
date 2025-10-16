@@ -221,9 +221,7 @@ describe('HeadingExtension', () => {
       const commands = extension.getCommands();
       const state = EditorState.create({
         schema,
-        doc: schema.node('doc', null, [
-          schema.node('heading', { level: 2 }, [schema.text('test')]),
-        ]),
+        doc: schema.node('doc', null, [schema.node('heading', { level: 2 }, [schema.text('test')])]),
       });
 
       let newState = state;
@@ -258,9 +256,7 @@ describe('HeadingExtension', () => {
       const commands = extension.getCommands();
       const state = EditorState.create({
         schema,
-        doc: schema.node('doc', null, [
-          schema.node('heading', { level: 1 }, [schema.text('test')]),
-        ]),
+        doc: schema.node('doc', null, [schema.node('heading', { level: 1 }, [schema.text('test')])]),
       });
 
       let newState = state;

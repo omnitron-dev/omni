@@ -452,9 +452,7 @@ describe('Server Integration Tests', () => {
       await server.close();
 
       // Verify server is closed
-      await expect(
-        fetch(`http://localhost:${port}/`)
-      ).rejects.toThrow();
+      await expect(fetch(`http://localhost:${port}/`)).rejects.toThrow();
     });
 
     it('should handle multiple close calls', async () => {
@@ -536,9 +534,7 @@ describe('Server Integration Tests', () => {
       server = await createServer(config);
       await server.listen();
 
-      const requests = Array.from({ length: 10 }, () =>
-        fetch(`http://localhost:${port}/`)
-      );
+      const requests = Array.from({ length: 10 }, () => fetch(`http://localhost:${port}/`));
 
       const responses = await Promise.all(requests);
       responses.forEach((response) => {
@@ -566,9 +562,7 @@ describe('Server Integration Tests', () => {
       await server.listen();
 
       const startTime = Date.now();
-      const requests = Array.from({ length: 100 }, () =>
-        fetch(`http://localhost:${port}/`)
-      );
+      const requests = Array.from({ length: 100 }, () => fetch(`http://localhost:${port}/`));
 
       await Promise.all(requests);
       const duration = Date.now() - startTime;

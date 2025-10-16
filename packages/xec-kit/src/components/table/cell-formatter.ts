@@ -58,11 +58,7 @@ export function truncateText(text: string, width: number, ellipsis = true): stri
 /**
  * Format cell value to string
  */
-export function formatCellValue<T>(
-  value: any,
-  row: T,
-  column: TableColumn<T>
-): string {
+export function formatCellValue<T>(value: any, row: T, column: TableColumn<T>): string {
   if (column.format) {
     return column.format(value, row);
   }

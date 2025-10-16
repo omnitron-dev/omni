@@ -212,11 +212,7 @@ export class EditorProfiler {
   /**
    * Profile a plugin
    */
-  profilePlugin(
-    pluginName: string,
-    phase: 'state' | 'view' | 'props',
-    fn: () => any
-  ): any {
+  profilePlugin(pluginName: string, phase: 'state' | 'view' | 'props', fn: () => any): any {
     if (!this.config.enabled || !this.config.profilePlugins) {
       return fn();
     }
@@ -249,11 +245,7 @@ export class EditorProfiler {
   /**
    * Profile a render
    */
-  profileRender(
-    updateType: 'full' | 'partial' | 'decoration',
-    nodeCount: number,
-    fn: () => void
-  ): void {
+  profileRender(updateType: 'full' | 'partial' | 'decoration', nodeCount: number, fn: () => void): void {
     if (!this.config.enabled || !this.config.profileRenders) {
       fn();
       return;
@@ -375,19 +367,11 @@ export class EditorProfiler {
     const renders = this.profiles.filter((p) => p.type === 'render');
 
     const avgTransaction =
-      transactions.length > 0
-        ? transactions.reduce((sum, p) => sum + p.duration, 0) / transactions.length
-        : 0;
+      transactions.length > 0 ? transactions.reduce((sum, p) => sum + p.duration, 0) / transactions.length : 0;
 
-    const avgPlugin =
-      plugins.length > 0
-        ? plugins.reduce((sum, p) => sum + p.duration, 0) / plugins.length
-        : 0;
+    const avgPlugin = plugins.length > 0 ? plugins.reduce((sum, p) => sum + p.duration, 0) / plugins.length : 0;
 
-    const avgRender =
-      renders.length > 0
-        ? renders.reduce((sum, p) => sum + p.duration, 0) / renders.length
-        : 0;
+    const avgRender = renders.length > 0 ? renders.reduce((sum, p) => sum + p.duration, 0) / renders.length : 0;
 
     const slowestTransaction = transactions.reduce(
       (max, p) => (p.duration > (max?.duration || 0) ? p : max),

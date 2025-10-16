@@ -96,7 +96,7 @@ export class StreamHandler {
       },
 
       // Add autoDestroy to ensure the stream is destroyed when it ends
-      autoDestroy: true
+      autoDestroy: true,
     });
 
     // Don't automatically reset/dispose on close - user may need to access
@@ -171,7 +171,7 @@ export function createLineTransform(onLine: (line: string) => void): Transform {
         onLine(buffer);
       }
       callback();
-    }
+    },
   });
 }
 
@@ -228,7 +228,7 @@ export const collectStream = streamToString;
 // Stream combination utilities
 export function combineStreams(stdout: Readable, stderr: Readable): Readable {
   const combined = new Readable({
-    read() { }
+    read() {},
   });
 
   let stdoutEnded = false;
@@ -255,8 +255,12 @@ export function combineStreams(stdout: Readable, stderr: Readable): Readable {
     });
   }
 
-  pipeStream(stdout, 'stdout', () => { stdoutEnded = true; });
-  pipeStream(stderr, 'stderr', () => { stderrEnded = true; });
+  pipeStream(stdout, 'stdout', () => {
+    stdoutEnded = true;
+  });
+  pipeStream(stderr, 'stderr', () => {
+    stderrEnded = true;
+  });
 
   return combined;
 }
@@ -285,7 +289,7 @@ export class StreamingExecution extends EventEmitter {
     const streamCommand = {
       ...this.command,
       stdio: ['pipe', 'pipe', 'pipe'] as const,
-      stream: true
+      stream: true,
     };
 
     this.process = await this.engine.execute(streamCommand);
@@ -359,7 +363,7 @@ export class StreamingExecution extends EventEmitter {
       if (lines.length > 0) {
         yield lines.shift()!;
       } else {
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
       }
     }
   }
@@ -427,9 +431,7 @@ export class ProgressTracker extends Transform {
   private totalBytes = 0;
   private startTime = Date.now();
 
-  constructor(
-    private onProgress: (bytes: number, totalBytes: number, bytesPerSecond: number) => void
-  ) {
+  constructor(private onProgress: (bytes: number, totalBytes: number, bytesPerSecond: number) => void) {
     super();
   }
 
@@ -446,10 +448,7 @@ export class ProgressTracker extends Transform {
 }
 
 // Stream creation utilities
-export function createOutputStream(
-  option: string | Writable | ((chunk: string) => void),
-  isStderr = false
-): Writable {
+export function createOutputStream(option: string | Writable | ((chunk: string) => void), isStderr = false): Writable {
   if (option === 'inherit') {
     return isStderr ? process.stderr : process.stdout;
   }
@@ -458,7 +457,7 @@ export function createOutputStream(
     return new Writable({
       write(chunk, encoding, callback) {
         callback();
-      }
+      },
     });
   }
 
@@ -476,7 +475,7 @@ export function createOutputStream(
       write(chunk, encoding, callback) {
         option(chunk.toString());
         callback();
-      }
+      },
     });
   }
 
@@ -487,9 +486,7 @@ export function createOutputStream(
   throw new Error(`Invalid output stream option: ${option}`);
 }
 
-export function createInputStream(
-  input: string | Buffer | Readable | null | undefined
-): Readable | null | undefined {
+export function createInputStream(input: string | Buffer | Readable | null | undefined): Readable | null | undefined {
   if (input === null || input === undefined) {
     return input as null | undefined;
   }
@@ -508,4 +505,3 @@ export function createInputStream(
 export function pipeStreams(source: Readable, destination: Writable): void {
   source.pipe(destination);
 }
-

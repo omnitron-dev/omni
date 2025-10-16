@@ -33,7 +33,7 @@ function cleanupContainer(container: HTMLElement) {
  * Helper to wait for DOM updates
  */
 async function waitForDOM(ms = 0): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -51,23 +51,26 @@ async function renderMDXWithProvider(
     mode: 'production',
     jsx: true,
     gfm: true,
-    frontmatter: true
+    frontmatter: true,
   });
 
   const MDXContent = module.default;
 
-  const App = defineComponent(() => () => jsx(MDXProvider, {
-      components,
-      scope,
-      children: jsx(MDXContent, {})
-    }));
+  const App = defineComponent(
+    () => () =>
+      jsx(MDXProvider, {
+        components,
+        scope,
+        children: jsx(MDXContent, {}),
+      })
+  );
 
   const result = render(() => jsx(App, {}), { container });
   await waitForDOM(10);
 
   return {
     dispose: () => result.unmount(),
-    unmount: () => result.unmount()
+    unmount: () => result.unmount(),
   };
 }
 
@@ -164,17 +167,17 @@ describe('MDX Heading ID Generation', () => {
     expect(module.toc[0]).toEqual({
       level: 1,
       title: 'Main Title',
-      id: 'main-title'
+      id: 'main-title',
     });
     expect(module.toc[1]).toEqual({
       level: 2,
       title: 'Sub Section',
-      id: 'sub-section'
+      id: 'sub-section',
     });
     expect(module.toc[2]).toEqual({
       level: 3,
       title: 'Deep Heading',
-      id: 'deep-heading'
+      id: 'deep-heading',
     });
   });
 

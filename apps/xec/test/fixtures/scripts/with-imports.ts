@@ -1,11 +1,11 @@
 // Test script with imports
 export async function main() {
   console.log('Script with imports starting');
-  
+
   // Test that module context is available
   if (globalThis.__xecModuleContext) {
     console.log('Module context available');
-    
+
     try {
       // Test importing from CDN
       const dayjs = await globalThis.__xecModuleContext.importNPM('dayjs');
@@ -16,7 +16,7 @@ export async function main() {
   } else {
     console.log('Module context not available');
   }
-  
+
   return { success: true, message: 'Import test completed' };
 }
 

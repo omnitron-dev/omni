@@ -50,26 +50,26 @@ export class EnhancedEventEmitter extends (EventEmitter as new () => TypedEventE
     if (eventStr.includes('*')) {
       const pattern = eventStr.replace(/\*/g, '.*');
       const regex = new RegExp(`^${pattern}$`);
-      
+
       if (!this.wildcardListeners.has(eventStr)) {
         this.wildcardListeners.set(eventStr, []);
       }
-      
+
       this.wildcardListeners.get(eventStr)!.push({ listener: handler, filter });
-      
+
       // Set up internal listener for all events
       this.setupWildcardListener(regex, eventStr);
     } else {
       // Regular event
       if (!this.filteredListeners.has(eventStr)) {
         this.filteredListeners.set(eventStr, []);
-        
+
         // Set up internal listener
         super.on(eventStr as any, (data: any) => {
           this.handleFilteredEvent(eventStr, data);
         });
       }
-      
+
       this.filteredListeners.get(eventStr)!.push({ listener: handler, filter });
     }
 
@@ -81,7 +81,7 @@ export class EnhancedEventEmitter extends (EventEmitter as new () => TypedEventE
    */
   private handleFilteredEvent(event: string, data: any): void {
     const listeners = this.filteredListeners.get(event) || [];
-    
+
     for (const { listener, filter } of listeners) {
       if (this.matchesFilter(data, filter)) {
         listener(data);
@@ -95,7 +95,7 @@ export class EnhancedEventEmitter extends (EventEmitter as new () => TypedEventE
   private setupWildcardListener(regex: RegExp, pattern: string): void {
     // Get all event names
     const eventNames = this.eventNames() as string[];
-    
+
     // Listen to existing events
     for (const eventName of eventNames) {
       if (regex.test(eventName) && !this.hasWildcardListenerSetup(eventName, pattern)) {
@@ -105,12 +105,12 @@ export class EnhancedEventEmitter extends (EventEmitter as new () => TypedEventE
         });
       }
     }
-    
+
     // Also override emit to catch new events
     const originalEmit = this.emit.bind(this);
     this.emit = (event: string | symbol, ...args: any[]): boolean => {
       const eventStr = String(event);
-      
+
       // Check if any wildcard patterns match this event
       for (const [pattern, listeners] of this.wildcardListeners.entries()) {
         const regex = new RegExp(`^${pattern.replace(/\*/g, '.*')}$`);
@@ -121,7 +121,7 @@ export class EnhancedEventEmitter extends (EventEmitter as new () => TypedEventE
           });
         }
       }
-      
+
       return originalEmit(event, ...args);
     };
   }
@@ -144,7 +144,7 @@ export class EnhancedEventEmitter extends (EventEmitter as new () => TypedEventE
    */
   private handleWildcardEvent(pattern: string, actualEvent: string, data: any): void {
     const listeners = this.wildcardListeners.get(pattern) || [];
-    
+
     for (const { listener, filter } of listeners) {
       if (this.matchesFilter(data, filter)) {
         listener(data);
@@ -176,17 +176,14 @@ export class EnhancedEventEmitter extends (EventEmitter as new () => TypedEventE
   /**
    * Remove filtered listener
    */
-  offFiltered<K extends keyof UshEventMap>(
-    event: K | string,
-    listener: (data: UshEventMap[K]) => void
-  ): this {
+  offFiltered<K extends keyof UshEventMap>(event: K | string, listener: (data: UshEventMap[K]) => void): this {
     const eventStr = String(event);
 
     if (eventStr.includes('*')) {
       // Remove from wildcard listeners
       const listeners = this.wildcardListeners.get(eventStr);
       if (listeners) {
-        const index = listeners.findIndex(l => l.listener === listener);
+        const index = listeners.findIndex((l) => l.listener === listener);
         if (index !== -1) {
           listeners.splice(index, 1);
         }
@@ -198,7 +195,7 @@ export class EnhancedEventEmitter extends (EventEmitter as new () => TypedEventE
       // Remove from regular filtered listeners
       const listeners = this.filteredListeners.get(eventStr);
       if (listeners) {
-        const index = listeners.findIndex(l => l.listener === listener);
+        const index = listeners.findIndex((l) => l.listener === listener);
         if (index !== -1) {
           listeners.splice(index, 1);
         }
@@ -224,7 +221,7 @@ export class EnhancedEventEmitter extends (EventEmitter as new () => TypedEventE
     return this.emit(event, {
       ...data,
       timestamp: new Date(),
-      adapter
+      adapter,
     } as UshEventMap[K]);
   }
 }

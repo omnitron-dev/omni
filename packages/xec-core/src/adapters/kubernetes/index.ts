@@ -88,7 +88,7 @@ export class KubernetesAdapter extends BaseAdapter {
       pod: k8sOptions.pod,
       namespace: k8sOptions.namespace || this.k8sConfig.namespace || 'default',
       container: k8sOptions.container,
-      command: this.buildCommandString(mergedCommand)
+      command: this.buildCommandString(mergedCommand),
     });
 
     // Execute via kubectl
@@ -109,7 +109,7 @@ export class KubernetesAdapter extends BaseAdapter {
         cwd: mergedCommand.cwd,
         env: {
           ...env,
-          PATH: `${env['PATH'] || process.env['PATH'] || ''}:/usr/local/bin:/opt/homebrew/bin`
+          PATH: `${env['PATH'] || process.env['PATH'] || ''}:/usr/local/bin:/opt/homebrew/bin`,
         },
         shell: false, // Never use shell for kubectl
       });
@@ -120,10 +120,7 @@ export class KubernetesAdapter extends BaseAdapter {
         timeoutHandle = setTimeout(async () => {
           proc.kill((mergedCommand.timeoutSignal as any) || 'SIGTERM');
           const timeoutMs = mergedCommand.timeout as number;
-          const timeoutError = new TimeoutError(
-            `kubectl exec timed out after ${timeoutMs}ms`,
-            timeoutMs
-          );
+          const timeoutError = new TimeoutError(`kubectl exec timed out after ${timeoutMs}ms`, timeoutMs);
 
           // If nothrow is set, resolve with a non-throwing result representation
           if (mergedCommand.nothrow) {
@@ -193,11 +190,13 @@ export class KubernetesAdapter extends BaseAdapter {
         this.config.throwOnNonZeroExit = originalThrowOnNonZeroExit;
 
         if (this.shouldThrowOnNonZeroExit(mergedCommand, code ?? -1)) {
-          reject(new ExecutionError(
-            `Command failed with exit code ${code}`,
-            'KUBERNETES_ERROR',
-            { stdout, stderr, command: sanitizeCommandForError(kubectlArgs.join(' ')) }
-          ));
+          reject(
+            new ExecutionError(`Command failed with exit code ${code}`, 'KUBERNETES_ERROR', {
+              stdout,
+              stderr,
+              command: sanitizeCommandForError(kubectlArgs.join(' ')),
+            })
+          );
         } else {
           resolve(result);
         }
@@ -321,8 +320,8 @@ export class KubernetesAdapter extends BaseAdapter {
         timeout: options.timeout,
         env: {
           ...process.env,
-          PATH: `${process.env['PATH']}:/usr/local/bin:/opt/homebrew/bin`
-        }
+          PATH: `${process.env['PATH']}:/usr/local/bin:/opt/homebrew/bin`,
+        },
       });
 
       let stdout = '';
@@ -341,7 +340,6 @@ export class KubernetesAdapter extends BaseAdapter {
       }
 
       proc.on('error', (error) => {
-
         reject(new ExecutionError(`kubectl command failed: ${error.message}`, 'KUBERNETES_ERROR'));
       });
 
@@ -349,11 +347,13 @@ export class KubernetesAdapter extends BaseAdapter {
         const exitCode = code ?? -1;
 
         if (options.throwOnNonZeroExit && exitCode !== 0) {
-          reject(new ExecutionError(
-            `kubectl command failed with exit code ${exitCode}: ${stderr}`,
-            'KUBERNETES_ERROR',
-            { stdout, stderr, args }
-          ));
+          reject(
+            new ExecutionError(`kubectl command failed with exit code ${exitCode}: ${stderr}`, 'KUBERNETES_ERROR', {
+              stdout,
+              stderr,
+              args,
+            })
+          );
         } else {
           resolve({ stdout, stderr, exitCode });
         }
@@ -460,19 +460,14 @@ export class KubernetesAdapter extends BaseAdapter {
     const args = ['port-forward', '-n', ns];
 
     // Build port mapping
-    const portMapping = actualLocalPort === 0
-      ? `:${remotePort}` // Dynamic local port
-      : `${localPort}:${remotePort}`;
+    const portMapping =
+      actualLocalPort === 0
+        ? `:${remotePort}` // Dynamic local port
+        : `${localPort}:${remotePort}`;
 
     args.push(pod, portMapping);
 
-    return new KubernetesPortForward(
-      this.kubectlPath,
-      args,
-      localPort,
-      remotePort,
-      this.buildGlobalOptions()
-    );
+    return new KubernetesPortForward(this.kubectlPath, args, localPort, remotePort, this.buildGlobalOptions());
   }
 
   /**
@@ -518,8 +513,8 @@ export class KubernetesAdapter extends BaseAdapter {
     const proc = spawn(this.kubectlPath, [...this.buildGlobalOptions(), ...args], {
       env: {
         ...process.env,
-        PATH: `${process.env['PATH']}:/usr/local/bin:/opt/homebrew/bin`
-      }
+        PATH: `${process.env['PATH']}:/usr/local/bin:/opt/homebrew/bin`,
+      },
     });
 
     let stopped = false;
@@ -527,7 +522,10 @@ export class KubernetesAdapter extends BaseAdapter {
     if (proc.stdout) {
       proc.stdout.on('data', (chunk) => {
         if (!stopped) {
-          const lines = chunk.toString().split('\n').filter((line: string) => line.trim());
+          const lines = chunk
+            .toString()
+            .split('\n')
+            .filter((line: string) => line.trim());
           lines.forEach((line: string) => onData(line + '\n'));
         }
       });
@@ -549,7 +547,7 @@ export class KubernetesAdapter extends BaseAdapter {
       stop: () => {
         stopped = true;
         proc.kill();
-      }
+      },
     };
   }
 
@@ -570,7 +568,7 @@ export class KubernetesAdapter extends BaseAdapter {
   private portForwards: Set<KubernetesPortForward> = new Set();
 
   private async closeAllPortForwards(): Promise<void> {
-    const closes = Array.from(this.portForwards).map(pf => pf.close());
+    const closes = Array.from(this.portForwards).map((pf) => pf.close());
     await Promise.all(closes);
     this.portForwards.clear();
   }
@@ -611,8 +609,8 @@ class KubernetesPortForward {
       this.proc = spawn(this.kubectlPath, [...this.globalOptions, ...this.args], {
         env: {
           ...process.env,
-          PATH: `${process.env['PATH']}:/usr/local/bin:/opt/homebrew/bin`
-        }
+          PATH: `${process.env['PATH']}:/usr/local/bin:/opt/homebrew/bin`,
+        },
       });
 
       let resolved = false;

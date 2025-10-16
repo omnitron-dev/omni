@@ -37,7 +37,7 @@ describe('inspect command', () => {
         version: '1.0.0',
         environment: 'test',
         port: 3000,
-        interpolated: '${vars.app_name}-${vars.version}'
+        interpolated: '${vars.app_name}-${vars.version}',
       },
       targets: {
         hosts: {
@@ -45,62 +45,57 @@ describe('inspect command', () => {
             type: 'ssh',
             host: 'test.example.com',
             user: 'test',
-            port: 22
+            port: 22,
           },
           'prod-server': {
             type: 'ssh',
             host: 'prod.example.com',
-            user: 'admin'
-          }
+            user: 'admin',
+          },
         },
         containers: {
           'test-app': {
             type: 'docker',
             image: 'test:latest',
-            ports: ['3000:3000']
+            ports: ['3000:3000'],
           },
-          'db': {
+          db: {
             type: 'docker',
             image: 'postgres:13',
             env: {
-              POSTGRES_DB: 'testdb'
-            }
-          }
+              POSTGRES_DB: 'testdb',
+            },
+          },
         },
         pods: {
           'test-pod': {
             type: 'k8s',
             namespace: 'default',
-            selector: 'app=test'
-          }
-        }
+            selector: 'app=test',
+          },
+        },
       },
       tasks: {
         test: 'npm test',
         build: {
           command: 'npm run build',
           description: 'Build the application',
-          target: 'hosts.test-server'
+          target: 'hosts.test-server',
         },
         deploy: {
           description: 'Deploy to production',
-          steps: [
-            { command: 'npm run build' },
-            { command: 'npm run deploy' }
-          ],
-          params: [
-            { name: 'environment', type: 'string', default: 'staging' }
-          ]
+          steps: [{ command: 'npm run build' }, { command: 'npm run deploy' }],
+          params: [{ name: 'environment', type: 'string', default: 'staging' }],
         },
         'private-task': {
           command: 'echo "This is private"',
-          private: true
+          private: true,
         },
         'with-script': {
           script: '.xec/scripts/deploy.js',
-          description: 'Run deployment script'
-        }
-      }
+          description: 'Run deployment script',
+        },
+      },
     };
 
     await fs.writeJson(path.join(testDir, '.xec', 'config.json'), config);
@@ -137,8 +132,8 @@ describe('inspect command', () => {
       scripts: {
         test: 'jest',
         build: 'tsc',
-        start: 'node index.js'
-      }
+        start: 'node index.js',
+      },
     });
 
     // Create other config files for detection
@@ -151,8 +146,8 @@ describe('inspect command', () => {
     command(program);
 
     // Mock console output
-    consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => { });
-    consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
+    consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+    consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterEach(async () => {
@@ -220,7 +215,7 @@ describe('inspect command', () => {
       expect(calls.length).toBeGreaterThan(0);
 
       // Get raw output and strip ANSI codes if present
-      const rawOutput = calls.map(call => call[0]).join('');
+      const rawOutput = calls.map((call) => call[0]).join('');
       const output = rawOutput.replace(/\x1b\[[0-9;]*m/g, ''); // Remove ANSI codes
 
       // If it's still not JSON, it might be a table - check for that
@@ -770,7 +765,7 @@ describe('inspect command', () => {
       await fs.writeFile(path.join(testDir, '.xec', 'config.yaml'), 'invalid:\n  yaml:\n bad indent here');
 
       // Mock console.warn to capture warnings
-      const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => { });
+      const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
       try {
         // The command should continue despite invalid config
@@ -789,7 +784,7 @@ describe('inspect command', () => {
       await fs.writeFile(path.join(testDir, '.xec', 'config.yaml'), 'invalid:\n  yaml:\n bad indent here');
 
       // Mock console.warn to capture warnings
-      const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => { });
+      const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
       try {
         // The command should continue despite invalid config
@@ -797,7 +792,7 @@ describe('inspect command', () => {
 
         // Should have warned about the invalid config
         expect(consoleWarnSpy).toHaveBeenCalled();
-        const warnOutput = consoleWarnSpy.mock.calls.map(call => call.join(' ')).join('\n');
+        const warnOutput = consoleWarnSpy.mock.calls.map((call) => call.join(' ')).join('\n');
 
         // Should show YAML error details
         expect(warnOutput).toMatch(/Failed to load|YAMLException|bad indentation/i);
@@ -813,11 +808,11 @@ describe('inspect command', () => {
       const prodConfig = {
         vars: {
           app_name: 'prod-app',
-          environment: 'production'
+          environment: 'production',
         },
         tasks: {
-          'prod-deploy': 'npm run deploy:prod'
-        }
+          'prod-deploy': 'npm run deploy:prod',
+        },
       };
 
       await fs.writeJson(path.join(testDir, '.xec', 'config.production.json'), prodConfig);
@@ -828,7 +823,7 @@ describe('inspect command', () => {
       const output = getConsoleOutput();
 
       // Should show variables from both base and profile configs
-      // Variables include those from base config and production profile  
+      // Variables include those from base config and production profile
       expect(output).toMatch(/app_name.*prod-app|app_name.*test-app|environment.*production|environment.*test/i);
     });
   });
@@ -839,7 +834,7 @@ describe('inspect command', () => {
       await fs.writeJson(path.join(testDir, '.xec', 'config.json'), {
         vars: {},
         targets: {},
-        tasks: {}
+        tasks: {},
       });
 
       await program.parseAsync(['node', 'xec', 'inspect', 'all']);
@@ -856,10 +851,10 @@ describe('inspect command', () => {
         deeply: {
           nested: {
             config: {
-              value: 'found'
-            }
-          }
-        }
+              value: 'found',
+            },
+          },
+        },
       };
 
       await fs.writeJson(path.join(testDir, '.xec', 'config.json'), config);
@@ -877,8 +872,8 @@ describe('inspect command', () => {
       const config = {
         vars: {
           'special-var-name': 'value',
-          'var.with.dots': 'another'
-        }
+          'var.with.dots': 'another',
+        },
       };
 
       await fs.writeJson(path.join(testDir, '.xec', 'config.json'), config);
@@ -909,6 +904,6 @@ describe('inspect command', () => {
 
   // Helper function to get console output
   function getConsoleOutput(): string {
-    return consoleLogSpy.mock.calls.map(call => call.join(' ')).join('\n');
+    return consoleLogSpy.mock.calls.map((call) => call.join(' ')).join('\n');
   }
 });

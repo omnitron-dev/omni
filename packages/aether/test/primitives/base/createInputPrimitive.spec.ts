@@ -8,7 +8,11 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createInputPrimitive, createFocusManager, createValidator } from '../../../src/primitives/base/createInputPrimitive.js';
+import {
+  createInputPrimitive,
+  createFocusManager,
+  createValidator,
+} from '../../../src/primitives/base/createInputPrimitive.js';
 import { signal } from '../../../src/core/reactivity/signal.js';
 
 describe('createInputPrimitive', () => {
@@ -610,7 +614,7 @@ describe('createInputPrimitive', () => {
       container.appendChild(element);
 
       // Wait for microtask to complete
-      await new Promise(resolve => queueMicrotask(resolve));
+      await new Promise((resolve) => queueMicrotask(resolve));
 
       expect(document.activeElement).toBe(element);
     });
@@ -801,11 +805,13 @@ describe('createInputPrimitive', () => {
         name: 'input',
       });
 
-      expect(() => Input({
-        value: undefined,
-        placeholder: undefined,
-        disabled: undefined,
-      })).not.toThrow();
+      expect(() =>
+        Input({
+          value: undefined,
+          placeholder: undefined,
+          disabled: undefined,
+        })
+      ).not.toThrow();
     });
 
     it('should handle multiple rapid value changes', () => {

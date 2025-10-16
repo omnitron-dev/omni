@@ -10,7 +10,7 @@ describe('No hanging on script completion', () => {
   it('should handle multiple sequential commands without hanging', async () => {
     const result1 = await $`echo first`;
     const result2 = await $`echo second`;
-    
+
     expect(result1.stdout.trim()).toBe('first');
     expect(result2.stdout.trim()).toBe('second');
   });
@@ -18,7 +18,7 @@ describe('No hanging on script completion', () => {
   it('should handle commands with promise interpolation without hanging', async () => {
     const a1 = $`echo foo`;
     const a2 = new Promise((resolve) => setTimeout(resolve, 20, ['bar', 'baz']));
-    
+
     const result = await $`echo ${a1} ${a2}`;
     expect(result.stdout.trim()).toBe('foo bar baz');
   });

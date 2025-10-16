@@ -21,7 +21,7 @@ export { SSHKeyValidator } from './adapters/ssh/ssh-key-validator.js';
 export { SecurePasswordHandler } from './adapters/ssh/secure-password.js';
 
 export function createCallableEngine(engine: ExecutionEngine): CallableExecutionEngine {
-  return new Proxy(function () { } as any, {
+  return new Proxy(function () {} as any, {
     // Handle function calls like $`ls`
     apply(target, thisArg, [strings, ...values]) {
       return engine.run(strings, ...values);
@@ -51,10 +51,7 @@ export function createCallableEngine(engine: ExecutionEngine): CallableExecution
         }
 
         // Methods that return a new engine instance
-        const chainableMethods = [
-          'with', 'k8s',
-          'local', 'cd', 'env', 'timeout', 'shell', 'retry', 'defaults', 'raw'
-        ];
+        const chainableMethods = ['with', 'k8s', 'local', 'cd', 'env', 'timeout', 'shell', 'retry', 'defaults', 'raw'];
 
         if (chainableMethods.includes(prop)) {
           return (...args: any[]) => {
@@ -68,7 +65,7 @@ export function createCallableEngine(engine: ExecutionEngine): CallableExecution
       }
 
       return value;
-    }
+    },
   }) as CallableExecutionEngine;
 }
 
@@ -77,7 +74,7 @@ let defaultEngine: CallableExecutionEngine | null = null;
 let defaultEngineInstance: ExecutionEngine | null = null;
 
 // Main export - the $ function
-export const $ = new Proxy(function () { } as any, {
+export const $ = new Proxy(function () {} as any, {
   get(target, prop: string) {
     if (!defaultEngine) {
       defaultEngineInstance = new ExecutionEngine();
@@ -131,7 +128,7 @@ export const $ = new Proxy(function () { } as any, {
       defaultEngine = createCallableEngine(defaultEngineInstance);
     }
     return (defaultEngine as any)(...args);
-  }
+  },
 }) as CallableExecutionEngine;
 
 let isConfiguringPromise: Promise<void> | null = null;
@@ -251,7 +248,8 @@ function registerCleanupHandlers(): void {
     // Handle unhandled promise rejections
     process.on('unhandledRejection', async (reason, promise) => {
       // Check if this is an xec promise that will be handled later
-      const isXecPromise = (promise as any).__isXecPromise ||
+      const isXecPromise =
+        (promise as any).__isXecPromise ||
         (reason && (reason as any).code === 'COMMAND_FAILED') ||
         (reason && (reason as any).constructor && (reason as any).constructor.name === 'CommandError');
 
@@ -277,19 +275,22 @@ registerCleanupHandlers();
 
 export { RetryError, withExecutionRetry as retry } from './utils/retry-adapter.js';
 
-export {
-  type ProgressEvent,
-  type ProgressOptions
-} from './utils/progress.js';
+export { type ProgressEvent, type ProgressOptions } from './utils/progress.js';
 export { SSHAdapter, type SSHSudoOptions, type SSHAdapterConfig } from './adapters/ssh/index.js';
 
-export { findSimilar, CommandRegistry, checkForCommandTypo, getCommandCompletions, defaultCommandRegistry } from './utils/suggestions.js';
+export {
+  findSimilar,
+  CommandRegistry,
+  checkForCommandTypo,
+  getCommandCompletions,
+  defaultCommandRegistry,
+} from './utils/suggestions.js';
 
 export {
   DockerFluentAPI,
   DockerFluentBuildAPI,
   DockerRedisClusterAPI,
-  type RedisClusterOptions
+  type RedisClusterOptions,
 } from './adapters/docker/docker-fluent-api.js';
 export {
   DockerError,
@@ -298,7 +299,7 @@ export {
   AdapterError,
   ExecutionError,
   ConnectionError,
-  KubernetesError
+  KubernetesError,
 } from './core/error.js';
 export type { EventFilter } from './types/events.js';
 export type { PipeTarget } from './types/process.js';
@@ -313,17 +314,18 @@ export type { CallableExecutionEngine } from './types/engine.js';
 
 export type { SSHExecutionContext } from './adapters/ssh/ssh-api.js';
 export type { Disposable, DisposableContainer } from './types/disposable.js';
-export type {
-  ErrorContext,
-  ErrorSuggestion,
-  EnhancedErrorDetails
-} from './types/error.js';
+export type { ErrorContext, ErrorSuggestion, EnhancedErrorDetails } from './types/error.js';
 export type { DockerOptions, DockerEphemeralOptions, DockerPersistentOptions } from './types/execution.js';
-export type { K8sPod, K8sLogStream, K8sPortForward, K8sExecutionContext } from './adapters/kubernetes/kubernetes-api.js';
+export type {
+  K8sPod,
+  K8sLogStream,
+  K8sPortForward,
+  K8sExecutionContext,
+} from './adapters/kubernetes/kubernetes-api.js';
 export type {
   Command,
   AdapterType,
   SSHAdapterOptions,
   DockerAdapterOptions,
-  KubernetesAdapterOptions
+  KubernetesAdapterOptions,
 } from './types/command.js';

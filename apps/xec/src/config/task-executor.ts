@@ -67,11 +67,7 @@ export class TaskExecutor extends EventEmitter {
   /**
    * Execute a task
    */
-  async execute(
-    taskName: string,
-    task: TaskDefinition,
-    options: TaskExecutionOptions = {}
-  ): Promise<TaskResult> {
+  async execute(taskName: string, task: TaskDefinition, options: TaskExecutionOptions = {}): Promise<TaskResult> {
     const startTime = Date.now();
     const result: TaskResult = {
       task: taskName,
@@ -108,10 +104,10 @@ export class TaskExecutor extends EventEmitter {
         // Pipeline is successful if:
         // 1. It completed all steps (no early exit due to failFast)
         // 2. Failed steps only had 'continue' or 'ignore' handlers
-        const hasUnhandledFailure = stepResults.some(step => {
+        const hasUnhandledFailure = stepResults.some((step) => {
           if (step.success) return false;
 
-          const taskStep = task.steps?.find(s => s.name === step.name);
+          const taskStep = task.steps?.find((s) => s.name === step.name);
           const handler = taskStep?.onFailure;
 
           // No handler or handler that doesn't allow continuation = unhandled failure
@@ -179,7 +175,11 @@ export class TaskExecutor extends EventEmitter {
     };
 
     // Execute command
-    const result = await engine.raw`${command}`.env(cmdOptions.env || {}).cwd(cmdOptions.cwd || process.cwd()).timeout(cmdOptions.timeout || 60000).nothrow();
+    const result = await engine.raw`${command}`
+      .env(cmdOptions.env || {})
+      .cwd(cmdOptions.cwd || process.cwd())
+      .timeout(cmdOptions.timeout || 60000)
+      .nothrow();
 
     if (!options.quiet) {
       if (result.stdout) console.log(result.stdout);
@@ -279,20 +279,22 @@ export class TaskExecutor extends EventEmitter {
         executing.add(promise);
 
         // Handle completion
-        promise.then(result => {
-          results.push(result);
-          executing.delete(promise);
+        promise
+          .then((result) => {
+            results.push(result);
+            executing.delete(promise);
 
-          // Check for fail-fast
-          if (!result.success && failFast) {
-            queue.length = 0; // Clear queue
-          }
-        }).catch(error => {
-          executing.delete(promise);
-          if (failFast) {
-            queue.length = 0;
-          }
-        });
+            // Check for fail-fast
+            if (!result.success && failFast) {
+              queue.length = 0; // Clear queue
+            }
+          })
+          .catch((error) => {
+            executing.delete(promise);
+            if (failFast) {
+              queue.length = 0;
+            }
+          });
       }
 
       // Wait for at least one to complete
@@ -324,7 +326,7 @@ export class TaskExecutor extends EventEmitter {
 
     try {
       // Check conditional execution
-      if (step.when && !await this.evaluateCondition(step.when, context)) {
+      if (step.when && !(await this.evaluateCondition(step.when, context))) {
         result.success = true;
         result.duration = Date.now() - startTime;
         return result;
@@ -401,17 +403,15 @@ export class TaskExecutor extends EventEmitter {
     if (step.targets && step.targets.length > 0) {
       // Execute on multiple targets
       const results = await Promise.all(
-        step.targets.map(targetRef =>
-          this.executeOnTarget(command, targetRef, context, options)
-        )
+        step.targets.map((targetRef) => this.executeOnTarget(command, targetRef, context, options))
       );
 
       // Combine outputs
       return {
-        stdout: results.map(r => r.stdout).join('\n'),
-        stderr: results.map(r => r.stderr).join('\n'),
-        exitCode: results.every(r => r.ok) ? 0 : 1,
-        ok: results.every(r => r.ok),
+        stdout: results.map((r) => r.stdout).join('\n'),
+        stderr: results.map((r) => r.stderr).join('\n'),
+        exitCode: results.every((r) => r.ok) ? 0 : 1,
+        ok: results.every((r) => r.ok),
       } as ExecutionResult;
     }
 
@@ -438,7 +438,11 @@ export class TaskExecutor extends EventEmitter {
       timeout: options.timeout,
     };
 
-    return engine.raw`${command}`.env(cmdOptions.env || {}).cwd(cmdOptions.cwd || process.cwd()).timeout(cmdOptions.timeout || 60000).nothrow();
+    return engine.raw`${command}`
+      .env(cmdOptions.env || {})
+      .cwd(cmdOptions.cwd || process.cwd())
+      .timeout(cmdOptions.timeout || 60000)
+      .nothrow();
   }
 
   /**
@@ -581,7 +585,7 @@ export class TaskExecutor extends EventEmitter {
       for (let i = 0; i < retries; i++) {
         this.emit('step:retry', { step, attempt: i + 1, maxAttempts: retries });
 
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise((resolve) => setTimeout(resolve, delay));
 
         try {
           const result = await this.executeStepCommand(step, context, options);
@@ -635,10 +639,7 @@ export class TaskExecutor extends EventEmitter {
   /**
    * Resolve target reference
    */
-  private async resolveTarget(
-    targetRef: string,
-    context: VariableContext
-  ): Promise<ResolvedTarget> {
+  private async resolveTarget(targetRef: string, context: VariableContext): Promise<ResolvedTarget> {
     const interpolated = this.options.interpolator.interpolate(targetRef, context);
     return this.options.targetResolver.resolve(interpolated);
   }
@@ -650,73 +651,70 @@ export class TaskExecutor extends EventEmitter {
     const config = target.config as any;
 
     switch (target.type) {
-      case 'ssh':
-        {
-          const sshEngine = $.ssh({
-            host: config.host,
-            username: config.user,
-            port: config.port,
-            privateKey: config.privateKey,
-            password: config.password,
-            passphrase: config.passphrase,
-            ...config
-          });
+      case 'ssh': {
+        const sshEngine = $.ssh({
+          host: config.host,
+          username: config.user,
+          port: config.port,
+          privateKey: config.privateKey,
+          password: config.password,
+          passphrase: config.passphrase,
+          ...config,
+        });
 
-          // Apply environment variables from config
-          if (config.env && Object.keys(config.env).length > 0) {
-            return sshEngine.env(config.env);
+        // Apply environment variables from config
+        if (config.env && Object.keys(config.env).length > 0) {
+          return sshEngine.env(config.env);
+        }
+
+        return sshEngine;
+      }
+
+      case 'docker': {
+        const dockerOptions: any = {
+          container: config.container,
+          image: config.image,
+          user: config.user,
+          workingDir: config.workdir,
+          ...config,
+        };
+
+        // Remove undefined values
+        Object.keys(dockerOptions).forEach((key) => {
+          if (dockerOptions[key] === undefined) {
+            delete dockerOptions[key];
           }
+        });
 
-          return sshEngine;
+        const dockerEngine = $.docker(dockerOptions);
+
+        // Apply environment variables from config
+        if (config.env && Object.keys(config.env).length > 0) {
+          return (dockerEngine as any).env(config.env);
         }
 
-      case 'docker':
-        {
-          const dockerOptions: any = {
-            container: config.container,
-            image: config.image,
-            user: config.user,
-            workingDir: config.workdir,
-            ...config
-          };
+        return dockerEngine;
+      }
 
-          // Remove undefined values
-          Object.keys(dockerOptions).forEach(key => {
-            if (dockerOptions[key] === undefined) {
-              delete dockerOptions[key];
-            }
-          });
+      case 'kubernetes': {
+        const k8sOptions: any = {
+          pod: config.pod,
+          namespace: config.namespace || 'default',
+          container: config.container,
+          context: config.context,
+          kubeconfig: config.kubeconfig,
+          ...config,
+        };
 
-          const dockerEngine = $.docker(dockerOptions);
-
-          // Apply environment variables from config
-          if (config.env && Object.keys(config.env).length > 0) {
-            return (dockerEngine as any).env(config.env);
+        // Remove undefined values
+        Object.keys(k8sOptions).forEach((key) => {
+          if (k8sOptions[key] === undefined) {
+            delete k8sOptions[key];
           }
+        });
 
-          return dockerEngine;
-        }
-
-      case 'kubernetes':
-        {
-          const k8sOptions: any = {
-            pod: config.pod,
-            namespace: config.namespace || 'default',
-            container: config.container,
-            context: config.context,
-            kubeconfig: config.kubeconfig,
-            ...config
-          };
-
-          // Remove undefined values
-          Object.keys(k8sOptions).forEach(key => {
-            if (k8sOptions[key] === undefined) {
-              delete k8sOptions[key];
-            }
-          });
-
-          return $.k8s(k8sOptions);
-        }
+        return $.k8s(k8sOptions);
+      }
 
       case 'local':
       default:

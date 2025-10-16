@@ -36,10 +36,7 @@ import { ParagraphExtension } from '../../src/components/editor/extensions/nodes
 import { HistoryExtension } from '../../src/components/editor/extensions/behavior/HistoryExtension.js';
 
 // Import code-specific extensions
-import {
-  CodeBlockExtension,
-  SyntaxHighlightExtension,
-} from '../../src/components/editor/extensions/code/index.js';
+import { CodeBlockExtension, SyntaxHighlightExtension } from '../../src/components/editor/extensions/code/index.js';
 
 import type { EditorInstance } from '../../src/components/editor/core/types.js';
 
@@ -275,10 +272,7 @@ export interface CodeEditorInstance {
  * await editor.copyToClipboard();
  * ```
  */
-export function createCodeEditor(
-  container: HTMLElement,
-  options: CodeEditorOptions = {}
-): CodeEditorInstance {
+export function createCodeEditor(container: HTMLElement, options: CodeEditorOptions = {}): CodeEditorInstance {
   // Destructure options with defaults
   const {
     content = '',
@@ -499,11 +493,7 @@ export function createCodeEditor(
  */
 function wrapInCodeBlock(code: string, language: CodeLanguage): string {
   // Escape HTML entities
-  const escaped = code
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  const escaped = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
   return `<pre><code class="language-${language}">${escaped}</code></pre>`;
 }
@@ -523,11 +513,7 @@ function updateCodeBlockLanguage(editor: EditorInstance, language: CodeLanguage)
 /**
  * Set up tab key handling for code editing
  */
-function setupTabHandling(
-  editor: EditorInstance,
-  tabSize: number,
-  insertSpaces: boolean
-): void {
+function setupTabHandling(editor: EditorInstance, tabSize: number, insertSpaces: boolean): void {
   // Create the tab string (spaces or tab character)
   const tabString = insertSpaces ? ' '.repeat(tabSize) : '\t';
 

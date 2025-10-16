@@ -84,7 +84,7 @@ How can I assist you today?`,
             <select
               class="model-selector"
               value={chatStore.selectedModel()}
-              onChange={e => chatStore.setModel(e.currentTarget.value)}
+              onChange={(e) => chatStore.setModel(e.currentTarget.value)}
             >
               <option value="gpt-4">GPT-4</option>
               <option value="gpt-3.5">GPT-3.5 Turbo</option>
@@ -102,15 +102,11 @@ How can I assist you today?`,
           <div class="chat-container">
             <div class="messages-container">
               <For each={() => messages}>
-                {message => (
+                {(message) => (
                   <div class={`message message-${message().role}`}>
                     <div class="message-header">
-                      <span class="message-role">
-                        {message().role === 'user' ? '👤 You' : '🤖 Assistant'}
-                      </span>
-                      <span class="message-time">
-                        {message().timestamp.toLocaleTimeString()}
-                      </span>
+                      <span class="message-role">{message().role === 'user' ? '👤 You' : '🤖 Assistant'}</span>
+                      <span class="message-time">{message().timestamp.toLocaleTimeString()}</span>
                     </div>
                     <div class="message-content">
                       <pre>{message().content}</pre>
@@ -134,7 +130,7 @@ How can I assist you today?`,
                 <textarea
                   class="chat-input"
                   value={chatStore.inputMessage()}
-                  onInput={e => chatStore.setInputMessage(e.currentTarget.value)}
+                  onInput={(e) => chatStore.setInputMessage(e.currentTarget.value)}
                   onKeyDown={handleKeyDown}
                   placeholder="Ask me anything..."
                   rows={3}
@@ -149,11 +145,7 @@ How can I assist you today?`,
                   <button class="tool-button" title="Settings">
                     ⚙️
                   </button>
-                  <button
-                    class="send-button"
-                    onClick={sendMessage}
-                    disabled={() => !chatStore.canSend()}
-                  >
+                  <button class="send-button" onClick={sendMessage} disabled={() => !chatStore.canSend()}>
                     {chatStore.isTyping() ? '⏳' : '📤'} Send
                   </button>
                 </div>

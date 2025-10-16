@@ -108,11 +108,11 @@ describe('Component Composition Patterns', () => {
       // HOC that adds loading state
       function withLoading<P extends object>(Component: (props: P) => any, isLoading: () => boolean) {
         return defineComponent<P>((props) => () => {
-            if (isLoading()) {
-              return 'Loading...';
-            }
-            return Component(props);
-          });
+          if (isLoading()) {
+            return 'Loading...';
+          }
+          return Component(props);
+        });
       }
 
       const BaseComponent = defineComponent<{ name: string }>((props) => () => `Hello, ${props.name}`);
@@ -332,11 +332,13 @@ describe('Component Composition Patterns', () => {
     it('should provide and consume context across component tree', () => {
       const ThemeContext = createContext({ theme: 'light' });
 
-      const ThemeProvider = defineComponent<{ theme: string; children: any }>((props) => () =>
+      const ThemeProvider = defineComponent<{ theme: string; children: any }>(
+        (props) => () =>
           ThemeContext.Provider({
             value: { theme: props.theme },
             children: props.children,
-          }));
+          })
+      );
 
       const ThemedComponent = defineComponent(() => {
         const context = useContext(ThemeContext);
@@ -355,7 +357,8 @@ describe('Component Composition Patterns', () => {
       const UserContext = createContext({ user: 'guest' });
       const SettingsContext = createContext({ lang: 'en' });
 
-      const App = defineComponent(() => () =>
+      const App = defineComponent(
+        () => () =>
           UserContext.Provider({
             value: { user: 'admin' },
             children: SettingsContext.Provider({
@@ -366,7 +369,8 @@ describe('Component Composition Patterns', () => {
                 return () => `${user?.user}-${settings?.lang}`;
               })({}),
             }),
-          }));
+          })
+      );
 
       const result = App({});
       expect(result).toBeTruthy();
@@ -399,7 +403,8 @@ describe('Component Composition Patterns', () => {
     it('should support multiple context consumers', () => {
       const DataContext = createContext({ data: 'shared-data' });
 
-      const Provider = defineComponent<{ children: any }>(() => () =>
+      const Provider = defineComponent<{ children: any }>(
+        () => () =>
           DataContext.Provider({
             value: { data: 'test-data' },
             children: [
@@ -412,7 +417,8 @@ describe('Component Composition Patterns', () => {
                 return () => `Consumer2: ${ctx?.data}`;
               })({}),
             ],
-          }));
+          })
+      );
 
       const result = Provider({ children: null });
       expect(result).toBeTruthy();
@@ -534,10 +540,12 @@ describe('Component Composition Patterns', () => {
       (Tabs as any).Tab = Tab;
 
       // Test that compound pattern works - Tabs provides context
-      const CompoundTest = defineComponent(() => () =>
+      const CompoundTest = defineComponent(
+        () => () =>
           Tabs({
             children: Tab({ index: 0, children: 'Tab Content' }),
-          }));
+          })
+      );
 
       const result = CompoundTest({});
       // Result should be the Provider structure, not null

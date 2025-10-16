@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const WorkoutGymnasticsIcon: IconDefinition = {
-  "id": "workout-gymnastics",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M6.99804 9.5C6.99804 10.3284 6.32691 11 5.49902 11C4.67113 11 4 10.3284 4 9.5C4 8.67157 4.67113 8 5.49902 8C6.32691 8 6.99804 8.67157 6.99804 9.5Z\" />\n    <path d=\"M8.97064 3L9.82862 8.77139C9.85742 8.96518 9.87189 9.16082 9.87189 9.35673V9.4375C9.87189 9.64662 9.84991 9.85516 9.80633 10.0597L9.75655 10.2933C9.73952 10.3732 9.71273 10.4507 9.67677 10.5241L6.99805 15.989M10.4281 8.75435L15.9425 11.0591L16.5006 11.3014C16.8385 11.4481 17.0962 11.7338 17.207 12.0846L19.9995 20.999M9.51383 11.9597L14.6353 13.9708M14.6353 13.9708L12.0212 20.8732M14.6353 13.9708L16.8161 11.806\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "twotone",
-    "originalName": "WorkoutGymnasticsIcon",
-    "elementsCount": 2,
-    "hasOpacity": true,
-    "hasFill": false
-  }
+  id: 'workout-gymnastics',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path opacity="0.4" d="M6.99804 9.5C6.99804 10.3284 6.32691 11 5.49902 11C4.67113 11 4 10.3284 4 9.5C4 8.67157 4.67113 8 5.49902 8C6.32691 8 6.99804 8.67157 6.99804 9.5Z" />\n    <path d="M8.97064 3L9.82862 8.77139C9.85742 8.96518 9.87189 9.16082 9.87189 9.35673V9.4375C9.87189 9.64662 9.84991 9.85516 9.80633 10.0597L9.75655 10.2933C9.73952 10.3732 9.71273 10.4507 9.67677 10.5241L6.99805 15.989M10.4281 8.75435L15.9425 11.0591L16.5006 11.3014C16.8385 11.4481 17.0962 11.7338 17.207 12.0846L19.9995 20.999M9.51383 11.9597L14.6353 13.9708M14.6353 13.9708L12.0212 20.8732M14.6353 13.9708L16.8161 11.806" stroke-linecap="round" stroke-linejoin="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'twotone',
+    originalName: 'WorkoutGymnasticsIcon',
+    elementsCount: 2,
+    hasOpacity: true,
+    hasFill: false,
+  },
 };

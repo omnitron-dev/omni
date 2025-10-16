@@ -9,11 +9,7 @@ import { pathToFileURL } from 'node:url';
 
 import { ExecutionContext } from './execution-context.js';
 
-import type {
-  ScriptContext,
-  ExecutionResult,
-  ExecutionOptions,
-} from '../types/index.js';
+import type { ScriptContext, ExecutionResult, ExecutionOptions } from '../types/index.js';
 
 /**
  * ScriptExecutor executes script files with context injection
@@ -70,10 +66,7 @@ export class ScriptExecutor {
    * });
    * ```
    */
-  async executeScript(
-    scriptPath: string,
-    options: ExecutionOptions = {}
-  ): Promise<ExecutionResult> {
+  async executeScript(scriptPath: string, options: ExecutionOptions = {}): Promise<ExecutionResult> {
     try {
       // Resolve absolute path
       const absolutePath = path.resolve(scriptPath);
@@ -129,10 +122,7 @@ export class ScriptExecutor {
   /**
    * Load a script module (for dynamic commands, etc.)
    */
-  async loadScript(
-    scriptPath: string,
-    _options: ExecutionOptions = {}
-  ): Promise<any> {
+  async loadScript(scriptPath: string, _options: ExecutionOptions = {}): Promise<any> {
     const absolutePath = path.resolve(scriptPath);
 
     // Check if file exists

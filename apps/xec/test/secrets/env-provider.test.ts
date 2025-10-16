@@ -9,7 +9,7 @@ describe('EnvSecretProvider', () => {
   beforeEach(() => {
     originalEnv = { ...process.env };
     // Clear any existing SECRET_ vars
-    Object.keys(process.env).forEach(key => {
+    Object.keys(process.env).forEach((key) => {
       if (key.startsWith('SECRET_')) {
         delete process.env[key];
       }
@@ -40,7 +40,7 @@ describe('EnvSecretProvider', () => {
     it('should delete secrets', async () => {
       process.env.SECRET_DELETE_ME = 'value';
       expect(await provider.has('delete-me')).toBe(true);
-      
+
       await provider.delete('delete-me');
       expect(await provider.has('delete-me')).toBe(false);
       expect(process.env.SECRET_DELETE_ME).toBeUndefined();
@@ -51,7 +51,7 @@ describe('EnvSecretProvider', () => {
       process.env.SECRET_KEY2 = 'value2';
       process.env.SECRET_KEY3 = 'value3';
       process.env.OTHER_VAR = 'not-a-secret';
-      
+
       const keys = await provider.list();
       expect(keys).toHaveLength(3);
       expect(keys.sort()).toEqual(['key1', 'key2', 'key3']);
@@ -59,7 +59,7 @@ describe('EnvSecretProvider', () => {
 
     it('should check if secret exists', async () => {
       process.env.SECRET_EXISTS = 'value';
-      
+
       expect(await provider.has('exists')).toBe(true);
       expect(await provider.has('not-exists')).toBe(false);
     });
@@ -94,7 +94,7 @@ describe('EnvSecretProvider', () => {
       process.env.SECRET_SIMPLE = 'value1';
       process.env.SECRET_WITH_UNDERSCORE = 'value2';
       process.env.SECRET_MULTIPLE_PARTS_HERE = 'value3';
-      
+
       const keys = await provider.list();
       expect(keys).toContain('simple');
       expect(keys).toContain('with-underscore');
@@ -106,22 +106,22 @@ describe('EnvSecretProvider', () => {
     it('should use custom prefix', async () => {
       provider = new EnvSecretProvider({ prefix: 'CUSTOM_' });
       await provider.initialize();
-      
+
       await provider.set('key', 'value');
       expect(process.env.CUSTOM_KEY).toBe('value');
       expect(process.env.SECRET_KEY).toBeUndefined();
-      
+
       expect(await provider.get('key')).toBe('value');
     });
 
     it('should list with custom prefix', async () => {
       provider = new EnvSecretProvider({ prefix: 'APP_SECRET_' });
       await provider.initialize();
-      
+
       process.env.APP_SECRET_KEY1 = 'value1';
       process.env.APP_SECRET_KEY2 = 'value2';
       process.env.SECRET_KEY3 = 'value3'; // Wrong prefix
-      
+
       const keys = await provider.list();
       expect(keys).toHaveLength(2);
       expect(keys.sort()).toEqual(['key1', 'key2']);
@@ -130,7 +130,7 @@ describe('EnvSecretProvider', () => {
     it('should handle edge case with empty key parts', async () => {
       provider = new EnvSecretProvider();
       await provider.initialize();
-      
+
       // This tests the getKeyFromEnv null return path
       const envProvider = provider as any;
       expect(envProvider.getKeyFromEnv('WRONG_PREFIX')).toBeNull();
@@ -147,7 +147,7 @@ describe('EnvSecretProvider', () => {
     it('should handle database connection strings', async () => {
       const dbUrl = 'postgres://user:pass@host:5432/db?ssl=true';
       await provider.set('database.url', dbUrl);
-      
+
       expect(process.env.SECRET_DATABASE_URL).toBe(dbUrl);
       expect(await provider.get('database.url')).toBe(dbUrl);
     });
@@ -156,16 +156,16 @@ describe('EnvSecretProvider', () => {
       const apiKeys = {
         'github.token': 'ghp_1234567890abcdef',
         'openai.api.key': 'sk-1234567890abcdef',
-        'stripe-secret-key': 'sk_test_1234567890'
+        'stripe-secret-key': 'sk_test_1234567890',
       };
-      
+
       for (const [key, value] of Object.entries(apiKeys)) {
         await provider.set(key, value);
       }
-      
+
       const keys = await provider.list();
       expect(keys).toHaveLength(3);
-      
+
       for (const [key, value] of Object.entries(apiKeys)) {
         expect(await provider.get(key)).toBe(value);
       }
@@ -180,22 +180,22 @@ describe('EnvSecretProvider', () => {
         secrets[key] = value;
         await provider.set(key, value);
       }
-      
+
       // List should find all
       const keys = await provider.list();
       expect(keys).toHaveLength(50);
-      
+
       // Get all values
       for (const [key, expectedValue] of Object.entries(secrets)) {
         const value = await provider.get(key);
         expect(value).toBe(expectedValue);
       }
-      
+
       // Delete half
       for (let i = 0; i < 25; i++) {
         await provider.delete(`bulk-key-${i}`);
       }
-      
+
       // Should have 25 left
       const remainingKeys = await provider.list();
       expect(remainingKeys).toHaveLength(25);
@@ -204,7 +204,7 @@ describe('EnvSecretProvider', () => {
     it('should handle environment variable limits', async () => {
       // Most systems have limits on env var size
       const largeValue = 'x'.repeat(10000); // 10KB
-      
+
       await provider.set('large-value', largeValue);
       expect(await provider.get('large-value')).toBe(largeValue);
     });

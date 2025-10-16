@@ -15,10 +15,10 @@ export interface SpriteGeneratorConfig {
   removeStyles?: boolean;
   removeIds?: boolean;
   removeDuplicates?: boolean;
-  deduplicatePaths?: boolean;        // Deduplicate identical paths
-  extractColors?: boolean;            // Extract and create color variants
-  simplifyPaths?: boolean;            // Simplify path data
-  mergePaths?: boolean;               // Merge adjacent paths
+  deduplicatePaths?: boolean; // Deduplicate identical paths
+  extractColors?: boolean; // Extract and create color variants
+  simplifyPaths?: boolean; // Simplify path data
+  mergePaths?: boolean; // Merge adjacent paths
 
   // Output
   format?: 'inline' | 'external' | 'component';
@@ -165,10 +165,7 @@ export function generateSprite(config: SpriteGeneratorConfig): GeneratedSprite {
 /**
  * Extract an icon from an external sprite
  */
-export async function extractFromSprite(
-  spriteUrl: string,
-  iconId: string
-): Promise<IconDefinition | null> {
+export async function extractFromSprite(spriteUrl: string, iconId: string): Promise<IconDefinition | null> {
   try {
     const response = await fetch(spriteUrl);
     if (!response.ok) {
@@ -264,9 +261,7 @@ function stripColors(content: string): string {
  * Strip style attributes and elements from SVG content
  */
 function stripStyles(content: string): string {
-  return content
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/\s+style="[^"]*"/gi, '');
+  return content.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '').replace(/\s+style="[^"]*"/gi, '');
 }
 
 /**
@@ -280,15 +275,17 @@ function stripIds(content: string): string {
  * Compress SVG by removing unnecessary whitespace
  */
 function compressSVG(svg: string): string {
-  return svg
-    // Remove comments
-    .replace(/<!--[\s\S]*?-->/g, '')
-    // Remove whitespace between tags
-    .replace(/>\s+</g, '><')
-    // Remove leading/trailing whitespace
-    .trim()
-    // Remove extra spaces in attributes
-    .replace(/\s+/g, ' ');
+  return (
+    svg
+      // Remove comments
+      .replace(/<!--[\s\S]*?-->/g, '')
+      // Remove whitespace between tags
+      .replace(/>\s+</g, '><')
+      // Remove leading/trailing whitespace
+      .trim()
+      // Remove extra spaces in attributes
+      .replace(/\s+/g, ' ')
+  );
 }
 
 /**
@@ -318,7 +315,7 @@ export async function loadSprite(url: string, cache: boolean = true): Promise<st
     return spriteCache.get(url)!;
   }
 
-  const loadPromise = fetch(url).then(res => {
+  const loadPromise = fetch(url).then((res) => {
     if (!res.ok) {
       throw new Error(`Failed to load sprite from ${url}`);
     }
@@ -439,16 +436,13 @@ function simplifyPathData(d: string): string {
 function mergePathsInContent(content: string): string {
   // This is a simplified implementation
   // Full implementation would parse paths and merge when possible
-  return content.replace(
-    /<\/path>\s*<path([^>]*)>/gi,
-    (match, attrs) => {
-      // Only merge if no special attributes
-      if (attrs.includes('fill') || attrs.includes('stroke')) {
-        return match;
-      }
-      return ' '; // Merge paths by removing separator
+  return content.replace(/<\/path>\s*<path([^>]*)>/gi, (match, attrs) => {
+    // Only merge if no special attributes
+    if (attrs.includes('fill') || attrs.includes('stroke')) {
+      return match;
     }
-  );
+    return ' '; // Merge paths by removing separator
+  });
 }
 
 /**

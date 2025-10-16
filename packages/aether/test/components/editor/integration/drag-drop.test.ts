@@ -9,22 +9,13 @@ import type { EditorInstance } from '../../../../src/components/editor/core/type
 import { ParagraphExtension } from '../../../../src/components/editor/extensions/nodes/ParagraphExtension.js';
 import { ImageExtension } from '../../../../src/components/editor/extensions/media/ImageExtension.js';
 import { DropCursorExtension } from '../../../../src/components/editor/extensions/behavior/DropCursorExtension.js';
-import {
-  createIntegrationTestEditor,
-  cleanupEditor,
-  simulateDragDrop,
-  createTestFile,
-} from './helpers.js';
+import { createIntegrationTestEditor, cleanupEditor, simulateDragDrop, createTestFile } from './helpers.js';
 
 describe('Drag and Drop', () => {
   let editor: EditorInstance;
 
   beforeEach(() => {
-    editor = createIntegrationTestEditor([
-      new ParagraphExtension(),
-      new ImageExtension(),
-      new DropCursorExtension(),
-    ]);
+    editor = createIntegrationTestEditor([new ParagraphExtension(), new ImageExtension(), new DropCursorExtension()]);
   });
 
   afterEach(() => {

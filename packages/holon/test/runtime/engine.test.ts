@@ -96,8 +96,6 @@ describe('Engine', () => {
       return 'done';
     });
 
-    await expect(
-      engine.execute(slowFlow, null, { timeout: 100 })
-    ).rejects.toThrow('timeout');
+    await expect(engine.execute(slowFlow, null, { timeout: 100 })).rejects.toThrow('timeout');
   });
 });

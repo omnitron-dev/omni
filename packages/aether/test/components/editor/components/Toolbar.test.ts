@@ -230,9 +230,7 @@ describe('Toolbar', () => {
   });
 
   it('should render divider items', () => {
-    const items: ToolbarItem[] = [
-      { type: 'divider' },
-    ];
+    const items: ToolbarItem[] = [{ type: 'divider' }];
 
     const element = Toolbar({ editor: editorSignal, items }) as HTMLElement;
 
@@ -352,15 +350,15 @@ describe('Toolbar', () => {
     expect(defaultItems.length).toBeGreaterThan(0);
 
     // Check for groups
-    const groups = defaultItems.filter(item => item.type === 'group');
+    const groups = defaultItems.filter((item) => item.type === 'group');
     expect(groups.length).toBeGreaterThan(0);
 
     // Check for dividers
-    const dividers = defaultItems.filter(item => item.type === 'divider');
+    const dividers = defaultItems.filter((item) => item.type === 'divider');
     expect(dividers.length).toBeGreaterThan(0);
 
     // Check for dropdown
-    const dropdowns = defaultItems.filter(item => item.type === 'dropdown');
+    const dropdowns = defaultItems.filter((item) => item.type === 'dropdown');
     expect(dropdowns.length).toBeGreaterThan(0);
   });
 

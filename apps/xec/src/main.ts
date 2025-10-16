@@ -88,8 +88,9 @@ export async function run(argv: string[] = process.argv): Promise<void> {
   // Build command registry for validation
   const commandRegistry = registerCliCommands(program);
   // Include dynamic command names in the command list
-  const commandNames = program.commands.map(cmd => cmd.name())
-    .concat(program.commands.flatMap(cmd => cmd.aliases() || []))
+  const commandNames = program.commands
+    .map((cmd) => cmd.name())
+    .concat(program.commands.flatMap((cmd) => cmd.aliases() || []))
     .concat(dynamicCommandNames);
 
   try {
@@ -137,7 +138,12 @@ export async function run(argv: string[] = process.argv): Promise<void> {
     }
 
     // Check if this is a task execution (but not a registered command)
-    if (firstArg && !firstArg.startsWith('-') && !commandNames.includes(firstArg) && await taskManager.exists(firstArg)) {
+    if (
+      firstArg &&
+      !firstArg.startsWith('-') &&
+      !commandNames.includes(firstArg) &&
+      (await taskManager.exists(firstArg))
+    ) {
       // This is a task
       const taskName = firstArg;
       const taskArgs = args.slice(1);
@@ -183,7 +189,7 @@ export async function run(argv: string[] = process.argv): Promise<void> {
         handleError(error, {
           verbose: args.includes('-v') || args.includes('--verbose'),
           quiet: args.includes('-q') || args.includes('--quiet'),
-          output: 'text'
+          output: 'text',
         });
         process.exit(1);
       }
@@ -212,9 +218,8 @@ export async function run(argv: string[] = process.argv): Promise<void> {
       }
 
       // Remove other flags from args
-      const cleanArgs = args.filter(arg =>
-        !arg.startsWith('-') ||
-        (arg.startsWith('-') && !['--verbose', '-v', '--quiet', '-q'].includes(arg))
+      const cleanArgs = args.filter(
+        (arg) => !arg.startsWith('-') || (arg.startsWith('-') && !['--verbose', '-v', '--quiet', '-q'].includes(arg))
       );
 
       await executeDirectCommand(cleanArgs, options);
@@ -255,7 +260,7 @@ export async function run(argv: string[] = process.argv): Promise<void> {
     handleError(error, {
       verbose: program.opts()['verbose'],
       quiet: program.opts()['quiet'],
-      output: 'text'
+      output: 'text',
     });
   }
 }

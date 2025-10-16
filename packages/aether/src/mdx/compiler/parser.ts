@@ -40,8 +40,7 @@ export interface ParserOptions {
  * Create a unified processor with configured plugins
  */
 function createProcessor(options: ParserOptions): Processor<MdastRoot, undefined, undefined, MdastRoot, string> {
-  let processor: Processor<any, any, any, any, any> = unified()
-    .use(remarkParse);
+  let processor: Processor<any, any, any, any, any> = unified().use(remarkParse);
 
   // MDX support (must be after remarkParse)
   if (options.jsx !== false) {
@@ -100,7 +99,7 @@ export class AetherMDXParser {
       frontmatter: true,
       math: false,
       directives: false,
-      ...options
+      ...options,
     };
     this.processor = createProcessor(this.options);
     this.headingIds = new Map();
@@ -141,7 +140,7 @@ export class AetherMDXParser {
   private convertNode(node: any): MDXNode {
     const mdxNode: MDXNode = {
       type: this.mapNodeType(node.type),
-      position: node.position
+      position: node.position,
     };
 
     // Handle different node types
@@ -181,9 +180,7 @@ export class AetherMDXParser {
           const headingText = this.extractText(node);
           headingId = this.generateUniqueId(headingText);
         }
-        mdxNode.attributes = [
-          { type: 'mdxJsxAttribute' as const, name: 'id', value: headingId }
-        ];
+        mdxNode.attributes = [{ type: 'mdxJsxAttribute' as const, name: 'id', value: headingId }];
         break;
       }
 
@@ -299,10 +296,10 @@ export class AetherMDXParser {
     if (!attrs) return undefined;
 
     if (Array.isArray(attrs)) {
-      return attrs.map(attr => ({
+      return attrs.map((attr) => ({
         type: 'mdxJsxAttribute' as const,
         name: attr.name,
-        value: attr.value
+        value: attr.value,
       }));
     }
 
@@ -310,7 +307,7 @@ export class AetherMDXParser {
     return Object.entries(attrs).map(([name, value]) => ({
       type: 'mdxJsxAttribute' as const,
       name,
-      value: value as any
+      value: value as any,
     }));
   }
 
@@ -319,16 +316,16 @@ export class AetherMDXParser {
    */
   private convertChildren(children: any[]): MDXNode[] | undefined {
     if (!children || children.length === 0) return undefined;
-    return children.map(child => this.convertNode(child));
+    return children.map((child) => this.convertNode(child));
   }
 
   /**
    * Extract frontmatter from AST
    */
   extractFrontmatter(ast: MdastRoot): Record<string, any> | undefined {
-    const frontmatterNode = ast.children.find(
-      (node: any) => node.type === 'yaml' || node.type === 'toml'
-    ) as { type: 'yaml' | 'toml'; value: string } | undefined;
+    const frontmatterNode = ast.children.find((node: any) => node.type === 'yaml' || node.type === 'toml') as
+      | { type: 'yaml' | 'toml'; value: string }
+      | undefined;
 
     if (!frontmatterNode) return undefined;
 
@@ -416,7 +413,7 @@ export class AetherMDXParser {
         toc.push({
           level: node.depth,
           title,
-          id
+          id,
         });
       }
 
@@ -490,6 +487,6 @@ export function createParser(options: CompileMDXOptions = {}): AetherMDXParser {
     math: options.math,
     frontmatter: options.frontmatter,
     directives: options.directives,
-    remarkPlugins: options.remarkPlugins
+    remarkPlugins: options.remarkPlugins,
   });
 }

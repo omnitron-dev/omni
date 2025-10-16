@@ -6,13 +6,7 @@
  */
 
 import type { DIContainer } from '../di/container.js';
-import type {
-  IslandComponent,
-  IslandOptions,
-  HydrationStrategy,
-  IslandInstance,
-  HydrationState,
-} from './types.js';
+import type { IslandComponent, IslandOptions, HydrationStrategy, IslandInstance, HydrationState } from './types.js';
 import type { StoreFactory } from '../store/types.js';
 import { signal } from '../core/reactivity/signal.js';
 import { setIslandContext, clearIslandContext } from '../store/module-integration.js';
@@ -167,10 +161,7 @@ export class ModuleIslandManager {
   /**
    * Hydrate island based on strategy
    */
-  private async hydrateByStrategy(
-    instance: IslandInstance,
-    strategy: HydrationStrategy
-  ): Promise<void> {
+  private async hydrateByStrategy(instance: IslandInstance, strategy: HydrationStrategy): Promise<void> {
     switch (strategy) {
       case 'immediate':
         await instance.hydrate();

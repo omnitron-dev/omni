@@ -3,12 +3,7 @@
  */
 
 import type { Flow } from '@holon/flow';
-import type {
-  CoordinatorConfig,
-  WorkerStatus,
-  JobConfig,
-  ExecutionOptions,
-} from '../types.js';
+import type { CoordinatorConfig, WorkerStatus, JobConfig, ExecutionOptions } from '../types.js';
 import { EventEmitter } from 'eventemitter3';
 
 export interface CoordinatorEvents {
@@ -59,11 +54,7 @@ export class Coordinator extends EventEmitter<CoordinatorEvents> {
   /**
    * Execute a job on the cluster
    */
-  async execute<In, Out>(
-    flow: Flow<In, Out>,
-    input: In,
-    options: ExecutionOptions = {}
-  ): Promise<Out> {
+  async execute<In, Out>(flow: Flow<In, Out>, input: In, options: ExecutionOptions = {}): Promise<Out> {
     const jobId = this.generateJobId();
     const job: JobConfig = {
       id: jobId,
@@ -222,9 +213,7 @@ export class Coordinator extends EventEmitter<CoordinatorEvents> {
    * Least-loaded worker selection
    */
   private leastLoadedSelect(workers: WorkerConnection[]): WorkerConnection {
-    return workers.reduce((min, worker) =>
-      worker.status.activeTasks < min.status.activeTasks ? worker : min
-    );
+    return workers.reduce((min, worker) => (worker.status.activeTasks < min.status.activeTasks ? worker : min));
   }
 
   /**
@@ -240,19 +229,13 @@ export class Coordinator extends EventEmitter<CoordinatorEvents> {
    * Get healthy workers
    */
   private getHealthyWorkers(): WorkerConnection[] {
-    return Array.from(this.workers.values()).filter(
-      (w) => w.status.health === 'healthy'
-    );
+    return Array.from(this.workers.values()).filter((w) => w.status.health === 'healthy');
   }
 
   /**
    * Execute flow on worker
    */
-  private async executeOnWorker<In, Out>(
-    worker: WorkerConnection,
-    flow: Flow<In, Out>,
-    input: In
-  ): Promise<Out> {
+  private async executeOnWorker<In, Out>(worker: WorkerConnection, flow: Flow<In, Out>, input: In): Promise<Out> {
     // In real implementation, would serialize flow and send to worker
     // For now, simulate execution
     return flow(input);

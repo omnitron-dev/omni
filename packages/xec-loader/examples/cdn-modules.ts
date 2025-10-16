@@ -102,15 +102,15 @@ async function main() {
   console.log('     import path from "/node/path.js";');
   console.log('');
   console.log('   Transformed imports:');
-  const importLines = transformedCode.split('\n').filter(line => line.includes('import'));
-  importLines.forEach(line => console.log(`     ${line.trim()}`));
+  const importLines = transformedCode.split('\n').filter((line) => line.includes('import'));
+  importLines.forEach((line) => console.log(`     ${line.trim()}`));
   console.log('');
 
   // Example 6: Hybrid caching (memory + filesystem)
   console.log('6. Hybrid caching strategy:');
   const hybridCache = new HybridCache<string>(
     { ttl: 300000, maxSize: 100 }, // Memory: 5 minutes, max 100 items
-    { cacheDir, ttl: 86400000 }     // Disk: 24 hours
+    { cacheDir, ttl: 86400000 } // Disk: 24 hours
   );
 
   const hybridFetcher = new ModuleFetcher(hybridCache);

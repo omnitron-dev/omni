@@ -15,7 +15,7 @@ import {
   parseMemorySize,
   getDefaultShell,
   parseTargetReference,
-  isValidTargetReference
+  isValidTargetReference,
 } from '../../src/config/utils.js';
 
 describe('Configuration Utils', () => {
@@ -33,18 +33,18 @@ describe('Configuration Utils', () => {
         level1: {
           a: 1,
           level2: {
-            x: 10
-          }
-        }
+            x: 10,
+          },
+        },
       };
 
       const source = {
         level1: {
           b: 2,
           level2: {
-            y: 20
-          }
-        }
+            y: 20,
+          },
+        },
       };
 
       const result = deepMerge(target, source);
@@ -55,9 +55,9 @@ describe('Configuration Utils', () => {
           b: 2,
           level2: {
             x: 10,
-            y: 20
-          }
-        }
+            y: 20,
+          },
+        },
       });
     });
 
@@ -101,13 +101,13 @@ describe('Configuration Utils', () => {
     it('should handle $merge marker in nested array', () => {
       const target = {
         nested: {
-          arr: [1, 2, 3]
-        }
+          arr: [1, 2, 3],
+        },
       };
       const source = {
         nested: {
-          arr: ['$merge', 4, 5]
-        }
+          arr: ['$merge', 4, 5],
+        },
       };
       const result = deepMerge(target, source);
 
@@ -268,7 +268,7 @@ describe('Configuration Utils', () => {
     it('should parse local reference', () => {
       expect(parseTargetReference('local')).toEqual({
         type: 'local',
-        isWildcard: false
+        isWildcard: false,
       });
     });
 
@@ -276,19 +276,19 @@ describe('Configuration Utils', () => {
       expect(parseTargetReference('ssh:hostname')).toEqual({
         type: 'hosts',
         name: 'hostname',
-        isWildcard: false
+        isWildcard: false,
       });
 
       expect(parseTargetReference('docker:container')).toEqual({
         type: 'containers',
         name: 'container',
-        isWildcard: false
+        isWildcard: false,
       });
 
       expect(parseTargetReference('pod:mypod')).toEqual({
         type: 'pods',
         name: 'mypod',
-        isWildcard: false
+        isWildcard: false,
       });
     });
 
@@ -296,13 +296,13 @@ describe('Configuration Utils', () => {
       expect(parseTargetReference('hosts.web-1')).toEqual({
         type: 'hosts',
         name: 'web-1',
-        isWildcard: false
+        isWildcard: false,
       });
 
       expect(parseTargetReference('containers.app')).toEqual({
         type: 'containers',
         name: 'app',
-        isWildcard: false
+        isWildcard: false,
       });
     });
 
@@ -310,13 +310,13 @@ describe('Configuration Utils', () => {
       expect(parseTargetReference('hosts.web-*')).toEqual({
         type: 'hosts',
         name: 'web-*',
-        isWildcard: true
+        isWildcard: true,
       });
 
       expect(parseTargetReference('containers.app?')).toEqual({
         type: 'containers',
         name: 'app?',
-        isWildcard: true
+        isWildcard: true,
       });
     });
 
@@ -324,7 +324,7 @@ describe('Configuration Utils', () => {
       expect(parseTargetReference('hostname')).toEqual({
         type: 'auto',
         name: 'hostname',
-        isWildcard: false
+        isWildcard: false,
       });
     });
   });
@@ -426,12 +426,12 @@ describe('Configuration Utils', () => {
     it('should flatten simple object', () => {
       const obj = {
         a: 1,
-        b: 2
+        b: 2,
       };
 
       expect(flattenObject(obj)).toEqual({
         a: 1,
-        b: 2
+        b: 2,
       });
     });
 
@@ -442,18 +442,18 @@ describe('Configuration Utils', () => {
           level2: {
             b: 2,
             level3: {
-              c: 3
-            }
-          }
+              c: 3,
+            },
+          },
         },
-        d: 4
+        d: 4,
       };
 
       expect(flattenObject(obj)).toEqual({
         'level1.a': 1,
         'level1.level2.b': 2,
         'level1.level2.level3.c': 3,
-        'd': 4
+        d: 4,
       });
     });
 
@@ -463,15 +463,15 @@ describe('Configuration Utils', () => {
         nested: {
           bool: true,
           str: 'value',
-          num: 42
-        }
+          num: 42,
+        },
       };
 
       expect(flattenObject(obj)).toEqual({
-        'arr': [1, 2, 3],
+        arr: [1, 2, 3],
         'nested.bool': true,
         'nested.str': 'value',
-        'nested.num': 42
+        'nested.num': 42,
       });
     });
 
@@ -523,7 +523,7 @@ describe('Configuration Utils', () => {
       // Test Windows
       Object.defineProperty(process, 'platform', {
         value: 'win32',
-        configurable: true
+        configurable: true,
       });
       process.env = { ...originalEnv, COMSPEC: 'C:\\Windows\\System32\\cmd.exe' };
       expect(getDefaultShell()).toBe('C:\\Windows\\System32\\cmd.exe');
@@ -535,7 +535,7 @@ describe('Configuration Utils', () => {
       // Test Unix-like
       Object.defineProperty(process, 'platform', {
         value: 'linux',
-        configurable: true
+        configurable: true,
       });
       process.env = { ...originalEnv, SHELL: '/bin/bash' };
       expect(getDefaultShell()).toBe('/bin/bash');

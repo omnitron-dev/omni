@@ -193,11 +193,7 @@ export class PatternRecognizer {
   /**
    * Calculate Pearson correlation coefficient
    */
-  private calculateCorrelation(
-    examples: ProcessedExample<any, any>[],
-    feature1: string,
-    feature2: string,
-  ): number {
+  private calculateCorrelation(examples: ProcessedExample<any, any>[], feature1: string, feature2: string): number {
     const values1: number[] = [];
     const values2: number[] = [];
 
@@ -394,7 +390,10 @@ export class SimilarityCalculator {
     const keys2 = new Set(features2.keys());
 
     const commonFeatures = Array.from(keys1).filter((k) => keys2.has(k));
-    const uniqueFeatures = [...Array.from(keys1).filter((k) => !keys2.has(k)), ...Array.from(keys2).filter((k) => !keys1.has(k))];
+    const uniqueFeatures = [
+      ...Array.from(keys1).filter((k) => !keys2.has(k)),
+      ...Array.from(keys2).filter((k) => !keys1.has(k)),
+    ];
 
     // Calculate similarity based on common features
     let similarity = 0;
@@ -433,12 +432,7 @@ export class KMeansClustering<T> {
   /**
    * Cluster items into k groups
    */
-  cluster(
-    items: T[],
-    k: number,
-    distanceFn: (a: T, b: T) => number,
-    maxIterations = 100,
-  ): Cluster<T>[] {
+  cluster(items: T[], k: number, distanceFn: (a: T, b: T) => number, maxIterations = 100): Cluster<T>[] {
     if (k >= items.length) {
       // Each item is its own cluster
       return items.map((item, i) => ({

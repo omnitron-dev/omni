@@ -88,9 +88,7 @@ describe('SearchPanel + SearchExtension Integration', () => {
       searchExtension.search('test');
 
       // Get decorations from editor state
-      const decorations = editor.view.state.plugins.find(
-        (p) => p.spec.props?.decorations !== undefined
-      );
+      const decorations = editor.view.state.plugins.find((p) => p.spec.props?.decorations !== undefined);
 
       expect(decorations).toBeDefined();
     });

@@ -4,7 +4,7 @@
 import type { TypeOptions, ClickOptions } from './types.js';
 import { fireEvent } from './events.js';
 
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export const userEvent = {
   async type(element: Element, text: string, options: TypeOptions = {}) {
@@ -39,7 +39,7 @@ export const userEvent = {
   async selectOptions(element: Element, values: string | string[]) {
     if (element instanceof HTMLSelectElement) {
       const vals = Array.isArray(values) ? values : [values];
-      Array.from(element.options).forEach(option => {
+      Array.from(element.options).forEach((option) => {
         option.selected = vals.includes(option.value);
       });
       fireEvent.change(element);

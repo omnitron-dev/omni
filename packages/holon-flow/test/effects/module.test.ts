@@ -120,9 +120,7 @@ describe('Effects Module', () => {
       );
       const effectfulAnalysis = effects.analyze(effectfulFlow);
       expect(effectfulAnalysis.pure).toBe(false);
-      expect(effectfulAnalysis.effects).toBe(
-        EffectFlags.IO | EffectFlags.Network | EffectFlags.Async
-      );
+      expect(effectfulAnalysis.effects).toBe(EffectFlags.IO | EffectFlags.Network | EffectFlags.Async);
       expect(effectfulAnalysis.sideEffects).toContain('io');
       expect(effectfulAnalysis.sideEffects).toContain('network');
       expect(effectfulAnalysis.async).toBe(true);
@@ -139,14 +137,10 @@ describe('Effects Module', () => {
       const ioFlow = effects.effectful(() => {}, EffectFlags.IO);
 
       // Should not throw for allowed effects
-      expect(() =>
-        effects.restrict(ioFlow, EffectFlags.IO | EffectFlags.Read)
-      ).not.toThrow();
+      expect(() => effects.restrict(ioFlow, EffectFlags.IO | EffectFlags.Read)).not.toThrow();
 
       // Should throw for disallowed effects
-      expect(() =>
-        effects.restrict(ioFlow, EffectFlags.Read)
-      ).toThrow(/Flow has disallowed effects/);
+      expect(() => effects.restrict(ioFlow, EffectFlags.Read)).toThrow(/Flow has disallowed effects/);
     });
 
     it('should create IO effect', async () => {
@@ -212,10 +206,7 @@ describe('Effects Module', () => {
       const customModule = createEffectsModule(
         'custom',
         (_ctx, effects) => ({
-          customEffect: effects.effectful(
-            () => 'custom',
-            effects.EffectFlags.IO
-          ),
+          customEffect: effects.effectful(() => 'custom', effects.EffectFlags.IO),
         }),
         {
           version: '1.0.0',
@@ -232,15 +223,12 @@ describe('Effects Module', () => {
     it('should provide effects to factory', async () => {
       let capturedEffects: EffectsModule['effects'] | undefined;
 
-      const customModule = createEffectsModule(
-        'test',
-        (_ctx, effects) => {
-          capturedEffects = effects;
-          return {
-            testEffect: effects.pure(() => 'test'),
-          };
-        }
-      );
+      const customModule = createEffectsModule('test', (_ctx, effects) => {
+        capturedEffects = effects;
+        return {
+          testEffect: effects.pure(() => 'test'),
+        };
+      });
 
       // Mock context with effects module
       const mockEffectsModule = await effectsModule.factory({ get: () => ({ flow }) });
@@ -260,30 +248,21 @@ describe('Effects Module', () => {
     });
 
     it('should throw if effects module not found', async () => {
-      const customModule = createEffectsModule(
-        'test',
-        (_ctx, effects) => ({
-          test: effects.pure(() => 'test'),
-        })
-      );
+      const customModule = createEffectsModule('test', (_ctx, effects) => ({
+        test: effects.pure(() => 'test'),
+      }));
 
       const mockContext = {
         get: () => undefined,
       };
 
-      await expect(customModule.factory(mockContext)).rejects.toThrow(
-        "Base module 'holon:flow-effects' not found"
-      );
+      await expect(customModule.factory(mockContext)).rejects.toThrow("Base module 'holon:flow-effects' not found");
     });
 
     it('should handle dependencies', () => {
-      const customModule = createEffectsModule(
-        'deps',
-        (_ctx, _effects) => ({ test: 'value' }),
-        {
-          dependencies: [Symbol.for('other-module')],
-        }
-      );
+      const customModule = createEffectsModule('deps', (_ctx, _effects) => ({ test: 'value' }), {
+        dependencies: [Symbol.for('other-module')],
+      });
 
       expect(customModule.dependencies).toContain(Symbol.for('holon:flow-effects'));
       expect(customModule.dependencies).toContain(Symbol.for('other-module'));

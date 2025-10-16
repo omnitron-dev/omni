@@ -1,7 +1,15 @@
 import * as path from 'path';
 import { $ } from '@xec-sh/core';
 import { Command } from 'commander';
-import { log, prism, text as kitText, select as kitSelect, spinner as kitSpinner, confirm as kitConfirm, multiselect as kitMultiselect } from '@xec-sh/kit';
+import {
+  log,
+  prism,
+  text as kitText,
+  select as kitSelect,
+  spinner as kitSpinner,
+  confirm as kitConfirm,
+  multiselect as kitMultiselect,
+} from '@xec-sh/kit';
 
 import { handleError } from './error-handler.js';
 import { OutputFormatter } from './output-formatter.js';
@@ -49,7 +57,7 @@ export abstract class BaseCommand {
     verbose: false,
     quiet: false,
     output: 'text',
-    dryRun: false
+    dryRun: false,
   };
 
   // Configuration-aware properties
@@ -83,12 +91,12 @@ export abstract class BaseCommand {
 
     // Add aliases
     if (this.config.aliases) {
-      this.config.aliases.forEach(alias => command.alias(alias));
+      this.config.aliases.forEach((alias) => command.alias(alias));
     }
 
     // Add custom options
     if (this.config.options) {
-      this.config.options.forEach(opt => {
+      this.config.options.forEach((opt) => {
         command.option(opt.flags, opt.description, opt.defaultValue);
       });
     }
@@ -96,7 +104,7 @@ export abstract class BaseCommand {
     // Add examples to help
     if (this.config.examples) {
       const exampleText = this.config.examples
-        .map(ex => `  ${prism.cyan(ex.command)}\n    ${ex.description}`)
+        .map((ex) => `  ${prism.cyan(ex.command)}\n    ${ex.description}`)
         .join('\n\n');
       command.addHelpText('after', `\nExamples:\n\n${exampleText}`);
     }
@@ -112,15 +120,21 @@ export abstract class BaseCommand {
         const commandOptions: any = {};
         for (const key in options) {
           // Skip commander internal properties
-          if (!key.startsWith('_') && key !== 'parent' && key !== 'args' &&
-            key !== 'commands' && key !== 'options' && typeof options[key] !== 'function') {
+          if (
+            !key.startsWith('_') &&
+            key !== 'parent' &&
+            key !== 'args' &&
+            key !== 'commands' &&
+            key !== 'options' &&
+            typeof options[key] !== 'function'
+          ) {
             commandOptions[key] = options[key];
           }
         }
 
         // Merge all options together, with defaults
         this.options = {
-          ...commandOptions,  // Include all parsed command options
+          ...commandOptions, // Include all parsed command options
           verbose: parentOptions.verbose || options.verbose || false,
           quiet: parentOptions.quiet || options.quiet || false,
           output: options.output || 'text',
@@ -181,7 +195,7 @@ export abstract class BaseCommand {
     this.taskManager = new TaskManager({
       configManager: this.configManager,
       debug: options.verbose,
-      dryRun: options.dryRun
+      dryRun: options.dryRun,
     });
     await this.taskManager.load();
   }
@@ -233,77 +247,74 @@ export abstract class BaseCommand {
         // Return the global $ instance to preserve configuration
         return $;
 
-      case 'ssh':
-        {
-          if (this.options?.verbose) {
-            console.log('SSH target config:', JSON.stringify(config, null, 2));
-          }
-
-          const sshEngine = $.ssh({
-            host: config.host,
-            username: config.user || config.username,
-            port: config.port,
-            privateKey: config.privateKey,
-            password: config.password,
-            passphrase: config.passphrase
-          });
-
-          // Apply environment variables from config
-          if (config.env && Object.keys(config.env).length > 0) {
-            return sshEngine.env(config.env);
-          }
-
-          return sshEngine;
+      case 'ssh': {
+        if (this.options?.verbose) {
+          console.log('SSH target config:', JSON.stringify(config, null, 2));
         }
 
-      case 'docker':
-        {
-          const dockerOptions: any = {
-            container: config.container,
-            image: config.image,
-            user: config.user,
-            workingDir: config.workdir,
-            tty: config.tty,
-            ...config
-          };
+        const sshEngine = $.ssh({
+          host: config.host,
+          username: config.user || config.username,
+          port: config.port,
+          privateKey: config.privateKey,
+          password: config.password,
+          passphrase: config.passphrase,
+        });
 
-          // Remove undefined values
-          Object.keys(dockerOptions).forEach(key => {
-            if (dockerOptions[key] === undefined) {
-              delete dockerOptions[key];
-            }
-          });
+        // Apply environment variables from config
+        if (config.env && Object.keys(config.env).length > 0) {
+          return sshEngine.env(config.env);
+        }
 
-          const dockerEngine = $.docker(dockerOptions);
+        return sshEngine;
+      }
 
-          // Apply environment variables from config
-          if (config.env && Object.keys(config.env).length > 0) {
-            return (dockerEngine as any).env(config.env);
+      case 'docker': {
+        const dockerOptions: any = {
+          container: config.container,
+          image: config.image,
+          user: config.user,
+          workingDir: config.workdir,
+          tty: config.tty,
+          ...config,
+        };
+
+        // Remove undefined values
+        Object.keys(dockerOptions).forEach((key) => {
+          if (dockerOptions[key] === undefined) {
+            delete dockerOptions[key];
           }
+        });
 
-          return dockerEngine;
+        const dockerEngine = $.docker(dockerOptions);
+
+        // Apply environment variables from config
+        if (config.env && Object.keys(config.env).length > 0) {
+          return (dockerEngine as any).env(config.env);
         }
 
-      case 'kubernetes':
-        {
-          const k8sOptions: any = {
-            pod: config.pod,
-            namespace: config.namespace || 'default',
-            container: config.container,
-            context: config.context,
-            kubeconfig: config.kubeconfig,
-            ...config
-          };
+        return dockerEngine;
+      }
 
-          // Remove undefined values
-          Object.keys(k8sOptions).forEach(key => {
-            if (k8sOptions[key] === undefined) {
-              delete k8sOptions[key];
-            }
-          });
+      case 'kubernetes': {
+        const k8sOptions: any = {
+          pod: config.pod,
+          namespace: config.namespace || 'default',
+          container: config.container,
+          context: config.context,
+          kubeconfig: config.kubeconfig,
+          ...config,
+        };
 
-          return $.k8s(k8sOptions);
-        }
+        // Remove undefined values
+        Object.keys(k8sOptions).forEach((key) => {
+          if (k8sOptions[key] === undefined) {
+            delete k8sOptions[key];
+          }
+        });
+
+        return $.k8s(k8sOptions);
+      }
 
       default:
         throw new Error(`Unsupported target type: ${target.type}`);
@@ -321,34 +332,31 @@ export abstract class BaseCommand {
 
     // eslint-disable-next-line default-case
     switch (target.type) {
-      case 'ssh':
-        {
-          const sshConfig = target.config as any;
-          const username = sshConfig.user || sshConfig.username || 'unknown';
-          details = ` ${prism.gray(`${username}@${sshConfig.host}`)}`;
-          break;
-        }
+      case 'ssh': {
+        const sshConfig = target.config as any;
+        const username = sshConfig.user || sshConfig.username || 'unknown';
+        details = ` ${prism.gray(`${username}@${sshConfig.host}`)}`;
+        break;
+      }
 
-      case 'docker':
-        {
-          const dockerConfig = target.config as any;
-          if (dockerConfig.image) {
-            details = ` ${prism.gray(`(${dockerConfig.image})`)}`;
-          }
-          break;
+      case 'docker': {
+        const dockerConfig = target.config as any;
+        if (dockerConfig.image) {
+          details = ` ${prism.gray(`(${dockerConfig.image})`)}`;
         }
+        break;
+      }
 
-      case 'kubernetes':
-        {
-          const k8sConfig = target.config as any;
-          if (k8sConfig.namespace && k8sConfig.namespace !== 'default') {
-            details = ` ${prism.gray(`(ns: ${k8sConfig.namespace})`)}`;
-          }
-          if (k8sConfig.container) {
-            details += ` ${prism.gray(`[${k8sConfig.container}]`)}`;
-          }
-          break;
+      case 'kubernetes': {
+        const k8sConfig = target.config as any;
+        if (k8sConfig.namespace && k8sConfig.namespace !== 'default') {
+          details = ` ${prism.gray(`(ns: ${k8sConfig.namespace})`)}`;
         }
+        if (k8sConfig.container) {
+          details += ` ${prism.gray(`[${k8sConfig.container}]`)}`;
+        }
+        break;
+      }
     }
 
     return `${name}${details} ${type}`;
@@ -365,7 +373,7 @@ export abstract class BaseCommand {
     const merged: any = { ...options };
 
     // Apply config defaults for any keys that weren't explicitly set on command line
-    Object.keys(defaults).forEach(key => {
+    Object.keys(defaults).forEach((key) => {
       // Check if this option was explicitly provided on command line
       // For now, we'll apply config defaults for all options from config
       if (defaults[key] !== undefined) {
@@ -436,14 +444,14 @@ export abstract class BaseCommand {
 
   protected table(rows: any[], headers?: string[]): void {
     const tableData = {
-      columns: headers ? headers.map(h => ({ header: h })) : Object.keys(rows[0] || {}).map(k => ({ header: k })),
-      rows: rows.map(row => {
+      columns: headers ? headers.map((h) => ({ header: h })) : Object.keys(rows[0] || {}).map((k) => ({ header: k })),
+      rows: rows.map((row) => {
         if (headers) {
-          return headers.map(h => row[h] || '');
+          return headers.map((h) => row[h] || '');
         } else {
           return Object.values(row);
         }
-      })
+      }),
     };
     this.formatter.table(tableData);
   }
@@ -472,7 +480,10 @@ export abstract class BaseCommand {
     return result;
   }
 
-  protected async select(message: string, options: Array<{ value: string; label: string; hint?: string }>): Promise<string> {
+  protected async select(
+    message: string,
+    options: Array<{ value: string; label: string; hint?: string }>
+  ): Promise<string> {
     if (this.options.quiet) return Promise.resolve(options[0]?.value || '');
 
     const result = await kitSelect({ message, options });
@@ -484,7 +495,10 @@ export abstract class BaseCommand {
     return result;
   }
 
-  protected async multiselect(message: string, options: Array<{ value: string; label: string; hint?: string }>): Promise<string[]> {
+  protected async multiselect(
+    message: string,
+    options: Array<{ value: string; label: string; hint?: string }>
+  ): Promise<string[]> {
     if (this.options.quiet) return Promise.resolve([]);
 
     const result = await kitMultiselect({ message, options });

@@ -207,10 +207,10 @@ describe('Development Workflow E2E Tests', () => {
 
       await waitFor(() => {
         const measures = monitor.getMeasures();
-        expect(measures.some(m => m.name === 'render')).toBe(true);
+        expect(measures.some((m) => m.name === 'render')).toBe(true);
       });
 
-      const renderMeasure = monitor.getMeasures().find(m => m.name === 'render');
+      const renderMeasure = monitor.getMeasures().find((m) => m.name === 'render');
       expect(renderMeasure?.duration).toBeLessThan(100);
 
       monitor.dispose();
@@ -363,7 +363,7 @@ describe('Development Workflow E2E Tests', () => {
 
       const fetchData = async () => {
         loading.set(true);
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
         data.set({ result: 'success' });
         loading.set(false);
       };

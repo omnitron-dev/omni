@@ -11,7 +11,11 @@ import {
   getSortableColumns,
 } from '../src/components/table/table-sorter.js';
 
-import type { TableState, TableColumn, InteractiveTableOptions } from '../src/components/table/types.js';
+import type {
+  TableState,
+  TableColumn,
+  InteractiveTableOptions,
+} from '../src/components/table/types.js';
 
 function createTestData(length: number) {
   return Array.from({ length }, (_, i) => ({
@@ -305,13 +309,7 @@ describe('table-sorter', () => {
   describe('sorting different data types', () => {
     it('should sort numbers correctly', () => {
       const state = createTestState(5);
-      state.data = [
-        { value: 50 },
-        { value: 10 },
-        { value: 30 },
-        { value: 20 },
-        { value: 40 },
-      ];
+      state.data = [{ value: 50 }, { value: 10 }, { value: 30 }, { value: 20 }, { value: 40 }];
       state.originalData = [...state.data];
       const options: InteractiveTableOptions<any> = {
         data: state.data,

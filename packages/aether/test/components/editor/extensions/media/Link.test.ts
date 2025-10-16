@@ -153,9 +153,7 @@ describe('LinkExtension', () => {
     it('should serialize to <a> tag', () => {
       const doc = schema.node('doc', null, [
         schema.node('paragraph', null, [
-          schema.text('link text', [
-            schema.marks.link.create({ href: 'https://example.com' }),
-          ]),
+          schema.text('link text', [schema.marks.link.create({ href: 'https://example.com' })]),
         ]),
       ]);
 
@@ -172,9 +170,7 @@ describe('LinkExtension', () => {
     it('should serialize with HTMLAttributes', () => {
       const doc = schema.node('doc', null, [
         schema.node('paragraph', null, [
-          schema.text('link text', [
-            schema.marks.link.create({ href: 'https://example.com' }),
-          ]),
+          schema.text('link text', [schema.marks.link.create({ href: 'https://example.com' })]),
         ]),
       ]);
 
@@ -198,9 +194,7 @@ describe('LinkExtension', () => {
       });
 
       it('should add link mark to selection', () => {
-        const doc = schema.node('doc', null, [
-          schema.node('paragraph', null, [schema.text('test text')]),
-        ]);
+        const doc = schema.node('doc', null, [schema.node('paragraph', null, [schema.text('test text')])]);
 
         const state = EditorState.create({
           schema,
@@ -226,9 +220,7 @@ describe('LinkExtension', () => {
       });
 
       it('should add link with title', () => {
-        const doc = schema.node('doc', null, [
-          schema.node('paragraph', null, [schema.text('test text')]),
-        ]);
+        const doc = schema.node('doc', null, [schema.node('paragraph', null, [schema.text('test text')])]);
 
         const state = EditorState.create({
           schema,
@@ -252,9 +244,7 @@ describe('LinkExtension', () => {
       });
 
       it('should reject invalid URLs', () => {
-        const doc = schema.node('doc', null, [
-          schema.node('paragraph', null, [schema.text('test text')]),
-        ]);
+        const doc = schema.node('doc', null, [schema.node('paragraph', null, [schema.text('test text')])]);
 
         const state = EditorState.create({
           schema,
@@ -279,9 +269,7 @@ describe('LinkExtension', () => {
       });
 
       it('should add link when not present', () => {
-        const doc = schema.node('doc', null, [
-          schema.node('paragraph', null, [schema.text('test text')]),
-        ]);
+        const doc = schema.node('doc', null, [schema.node('paragraph', null, [schema.text('test text')])]);
 
         const state = EditorState.create({
           schema,
@@ -307,9 +295,7 @@ describe('LinkExtension', () => {
       it('should remove link when present', () => {
         const doc = schema.node('doc', null, [
           schema.node('paragraph', null, [
-            schema.text('test text', [
-              schema.marks.link.create({ href: 'https://example.com' }),
-            ]),
+            schema.text('test text', [schema.marks.link.create({ href: 'https://example.com' })]),
           ]),
         ]);
 
@@ -334,9 +320,7 @@ describe('LinkExtension', () => {
       });
 
       it('should return false when no href provided and no link present', () => {
-        const doc = schema.node('doc', null, [
-          schema.node('paragraph', null, [schema.text('test text')]),
-        ]);
+        const doc = schema.node('doc', null, [schema.node('paragraph', null, [schema.text('test text')])]);
 
         const state = EditorState.create({
           schema,
@@ -363,9 +347,7 @@ describe('LinkExtension', () => {
       it('should remove link mark', () => {
         const doc = schema.node('doc', null, [
           schema.node('paragraph', null, [
-            schema.text('test text', [
-              schema.marks.link.create({ href: 'https://example.com' }),
-            ]),
+            schema.text('test text', [schema.marks.link.create({ href: 'https://example.com' })]),
           ]),
         ]);
 

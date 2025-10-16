@@ -4,20 +4,8 @@ import * as fs from 'fs/promises';
 
 import { getCachedMachineId } from '../machine-id.js';
 import { getSecretsDir } from '../../config/utils.js';
-import {
-  encode,
-  decode,
-  encrypt,
-  decrypt,
-  hashKey,
-  createFingerprint
-} from '../crypto.js';
-import {
-  SecretError,
-  SecretProvider,
-  EncryptedSecret,
-  SecretProviderConfig
-} from '../types.js';
+import { encode, decode, encrypt, decrypt, hashKey, createFingerprint } from '../crypto.js';
+import { SecretError, SecretProvider, EncryptedSecret, SecretProviderConfig } from '../types.js';
 
 /**
  * Local secret provider that stores encrypted secrets on disk
@@ -51,10 +39,7 @@ export class LocalSecretProvider implements SecretProvider {
     try {
       await fs.access(this.storageDir, fs.constants.R_OK | fs.constants.W_OK);
     } catch (error) {
-      throw new SecretError(
-        `Cannot access secret storage directory: ${this.storageDir}`,
-        'STORAGE_ACCESS_ERROR'
-      );
+      throw new SecretError(`Cannot access secret storage directory: ${this.storageDir}`, 'STORAGE_ACCESS_ERROR');
     }
 
     this.initialized = true;
@@ -112,11 +97,7 @@ export class LocalSecretProvider implements SecretProvider {
       const machineId = await getCachedMachineId();
 
       // Encrypt the secret
-      const { encrypted, salt, iv, authTag } = await encrypt(
-        value,
-        machineId,
-        this.passphrase
-      );
+      const { encrypted, salt, iv, authTag } = await encrypt(value, machineId, this.passphrase);
 
       // Create encrypted secret object
       const encryptedSecret: EncryptedSecret = {
@@ -128,30 +109,26 @@ export class LocalSecretProvider implements SecretProvider {
         metadata: {
           key,
           createdAt: new Date(),
-          updatedAt: new Date()
-        }
+          updatedAt: new Date(),
+        },
       };
 
       // Store salt separately in the encrypted data
       const dataWithSalt = {
         ...encryptedSecret,
-        salt: encode(salt)
+        salt: encode(salt),
       };
 
       // Write to disk
       const secretPath = this.getSecretPath(key);
-      await fs.writeFile(
-        secretPath,
-        JSON.stringify(dataWithSalt, null, 2),
-        { mode: 0o600 }
-      );
+      await fs.writeFile(secretPath, JSON.stringify(dataWithSalt, null, 2), { mode: 0o600 });
 
       // Update index
       await this.updateIndex(key, {
         hashedKey: hashKey(key),
         createdAt: encryptedSecret.metadata.createdAt,
         updatedAt: encryptedSecret.metadata.updatedAt,
-        fingerprint: createFingerprint(encrypted)
+        fingerprint: createFingerprint(encrypted),
       });
     } catch (error) {
       throw new SecretError(
@@ -217,7 +194,7 @@ export class LocalSecretProvider implements SecretProvider {
     const keys = await this.list();
     const tempProvider = new LocalSecretProvider({
       storageDir: this.storageDir,
-      passphrase: oldPassphrase
+      passphrase: oldPassphrase,
     });
 
     // Re-encrypt all secrets with new passphrase
@@ -289,11 +266,7 @@ export class LocalSecretProvider implements SecretProvider {
   }
 
   private async writeIndex(index: Record<string, any>): Promise<void> {
-    await fs.writeFile(
-      this.getIndexPath(),
-      JSON.stringify(index, null, 2),
-      { mode: 0o600 }
-    );
+    await fs.writeFile(this.getIndexPath(), JSON.stringify(index, null, 2), { mode: 0o600 });
   }
 
   private async updateIndex(key: string, metadata: any): Promise<void> {

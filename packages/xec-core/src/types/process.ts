@@ -20,15 +20,15 @@ export interface ProcessOutputOptions {
 /**
  * Target types for pipe operations
  */
-export type PipeTarget = 
-  | TemplateStringsArray                                      // Template literal
-  | string                                                    // Command string
-  | Command                                                   // Command object
-  | ProcessPromise                                           // Another ProcessPromise
-  | Transform                                                 // Transform stream
-  | Writable                                                  // Writable stream
-  | ((line: string) => void | Promise<void>)                 // Line processor function
-  | ((result: ExecutionResult) => Command | string | null);  // Conditional function
+export type PipeTarget =
+  | TemplateStringsArray // Template literal
+  | string // Command string
+  | Command // Command object
+  | ProcessPromise // Another ProcessPromise
+  | Transform // Transform stream
+  | Writable // Writable stream
+  | ((line: string) => void | Promise<void>) // Line processor function
+  | ((result: ExecutionResult) => Command | string | null); // Conditional function
 
 /**
  * Options for pipe operations
@@ -39,19 +39,19 @@ export interface PipeOptions {
    * @default true
    */
   throwOnError?: boolean;
-  
+
   /**
    * Encoding to use for text operations
    * @default 'utf8'
    */
   encoding?: BufferEncoding;
-  
+
   /**
    * Whether to process output line by line when piping to functions
    * @default true
    */
   lineByLine?: boolean;
-  
+
   /**
    * Line separator for line-by-line processing
    * @default '\n'
@@ -70,26 +70,26 @@ export interface ProcessPromise extends Promise<ExecutionResult> {
   quiet(): ProcessPromise;
   nothrow(): ProcessPromise;
   kill(signal?: string): void;
-  
+
   // Configuration methods
   cwd(dir: string): ProcessPromise;
   env(env: Record<string, string>): ProcessPromise;
   shell(shell: string | boolean): ProcessPromise;
-  
+
   // Stream configuration methods
   interactive(): ProcessPromise;
   stdout(stream: StreamOption): ProcessPromise;
   stderr(stream: StreamOption): ProcessPromise;
-  
+
   // Convenience methods
   text(): Promise<string>;
   json<T = any>(): Promise<T>;
   lines(): Promise<string[]>;
   buffer(): Promise<Buffer>;
-  
+
   // Caching
   cache(options?: any): ProcessPromise; // CacheOptions
-  
+
   // Process-related properties
   child?: any;
   exitCode: Promise<number | null>;

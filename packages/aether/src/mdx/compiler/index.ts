@@ -14,11 +14,7 @@ import { AetherComponentGenerator, generateComponent, createMDXModule } from './
 import { defineComponent } from '../../core/component/define.js';
 import { jsx } from '../../jsx-runtime.js';
 
-import type {
-  CompileMDXOptions,
-  MDXModule,
-  MDXComponent
-} from '../types.js';
+import type { CompileMDXOptions, MDXModule, MDXComponent } from '../types.js';
 
 /**
  * MDX Compiler class
@@ -36,7 +32,7 @@ export class MDXCompiler {
       jsx: true,
       gfm: true,
       frontmatter: true,
-      ...options
+      ...options,
     };
 
     // Initialize components
@@ -57,13 +53,13 @@ export class MDXCompiler {
 
     this.transformer = pipeline.createTransformer({
       scope: this.options.scope,
-      components: this.options.components
+      components: this.options.components,
     });
 
     this.generator = new AetherComponentGenerator({
       mode: this.options.mode as any,
       target: this.options.target,
-      optimize: this.options.optimize as any
+      optimize: this.options.optimize as any,
     });
   }
 
@@ -82,9 +78,7 @@ export class MDXCompiler {
       // Apply remark plugins if needed
       let processedAst = ast;
       if (this.options.remarkPlugins) {
-        const processor = unified()
-          .use(remarkParse)
-          .use(remarkMdx);
+        const processor = unified().use(remarkParse).use(remarkMdx);
 
         for (const plugin of this.options.remarkPlugins) {
           if (Array.isArray(plugin)) {
@@ -112,22 +106,18 @@ export class MDXCompiler {
       const metadata = this.transformer.getMetadata();
 
       // Generate component code
-      const code = await generateComponent(
-        [vnodes],
-        this.options,
-        {
-          hasReactiveContent: metadata.hasReactiveContent,
-          usedComponents: metadata.usedComponents,
-          frontmatter,
-          scope: this.options.scope
-        }
-      );
+      const code = await generateComponent([vnodes], this.options, {
+        hasReactiveContent: metadata.hasReactiveContent,
+        usedComponents: metadata.usedComponents,
+        frontmatter,
+        scope: this.options.scope,
+      });
 
       // Create module with VNode tree for actual rendering
       return createMDXModule(code, [vnodes], {
         frontmatter,
         toc,
-        usedComponents: metadata.usedComponents
+        usedComponents: metadata.usedComponents,
       });
     } catch (error) {
       console.error('MDX compilation failed:', error);
@@ -162,14 +152,14 @@ export class MDXCompiler {
         hasReactiveContent: metadata.hasReactiveContent,
         usedComponents: metadata.usedComponents,
         frontmatter,
-        scope: this.options.scope
+        scope: this.options.scope,
       });
 
       // Create module with VNode tree for actual rendering
       return createMDXModule(code, [vnodes], {
         frontmatter,
         toc,
-        usedComponents: metadata.usedComponents
+        usedComponents: metadata.usedComponents,
       });
     } catch (error) {
       console.error('MDX sync compilation failed:', error);
@@ -189,10 +179,7 @@ export class MDXCompiler {
 /**
  * Compile MDX source to module
  */
-export async function compileMDX(
-  source: string,
-  options?: CompileMDXOptions
-): Promise<MDXModule> {
+export async function compileMDX(source: string, options?: CompileMDXOptions): Promise<MDXModule> {
   const compiler = new MDXCompiler(options);
   return compiler.compile(source);
 }
@@ -200,10 +187,7 @@ export async function compileMDX(
 /**
  * Compile MDX synchronously
  */
-export function compileMDXSync(
-  source: string,
-  options?: CompileMDXOptions
-): MDXModule {
+export function compileMDXSync(source: string, options?: CompileMDXOptions): MDXModule {
   const compiler = new MDXCompiler(options);
   return compiler.compileSync(source);
 }
@@ -212,10 +196,7 @@ export function compileMDXSync(
  * Evaluate compiled MDX code
  * In production, this would use a proper module system
  */
-export function evaluateMDX(
-  compiledCode: string,
-  scope?: Record<string, any>
-): MDXComponent {
+export function evaluateMDX(compiledCode: string, scope?: Record<string, any>): MDXComponent {
   // This is a placeholder - in production we'd use a proper evaluation method
   // For now, return a dummy component
   void compiledCode; // Mark as intentionally unused
@@ -227,10 +208,7 @@ export function evaluateMDX(
 /**
  * Render MDX component
  */
-export function renderMDX(
-  component: MDXComponent,
-  props?: Record<string, any>
-): any {
+export function renderMDX(component: MDXComponent, props?: Record<string, any>): any {
   return component(props || {});
 }
 
@@ -239,10 +217,4 @@ export { AetherMDXParser, MDXToVNodeTransformer, AetherComponentGenerator };
 export { TransformPipeline, ReactiveContentTransform };
 
 // Re-export types
-export type {
-  CompileMDXOptions,
-  MDXModule,
-  MDXComponent,
-  AetherMDXPlugin,
-  TOCEntry
-} from '../types.js';
+export type { CompileMDXOptions, MDXModule, MDXComponent, AetherMDXPlugin, TOCEntry } from '../types.js';

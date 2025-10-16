@@ -12,7 +12,7 @@ import {
   useCopyToClipboard,
   useReadingTime,
   useMDXTheme,
-  useMDXSearch
+  useMDXSearch,
 } from '../../src/mdx/hooks/index.js';
 
 // Mock MDX context
@@ -22,20 +22,20 @@ vi.mock('../../src/mdx/runtime/provider', () => ({
     scope: {
       frontmatter: {
         title: 'Test Title',
-        author: 'Test Author'
-      }
+        author: 'Test Author',
+      },
     },
-    reactiveScope: {}
-  })
+    reactiveScope: {},
+  }),
 }));
 
 // Mock lifecycle hooks
 vi.mock('../../src/core/component/lifecycle', async (importOriginal) => {
-  const actual = await importOriginal() as any;
+  const actual = (await importOriginal()) as any;
   return {
     ...actual,
     onMount: (fn: () => void) => fn(),
-    onCleanup: (fn: () => void) => {}
+    onCleanup: (fn: () => void) => {},
   };
 });
 
@@ -84,7 +84,7 @@ describe('MDX Hooks', () => {
 
       expect(frontmatter).toEqual({
         title: 'Test Title',
-        author: 'Test Author'
+        author: 'Test Author',
       });
     });
   });
@@ -99,15 +99,15 @@ describe('MDX Hooks', () => {
         takeRecords: vi.fn(),
         root: null,
         rootMargin: '',
-        thresholds: []
+        thresholds: [],
       }));
 
       global.document = {
-        getElementById: vi.fn((id) => ({ id, scrollIntoView: vi.fn() }))
+        getElementById: vi.fn((id) => ({ id, scrollIntoView: vi.fn() })),
       } as any;
 
       global.window = {
-        location: { hash: '' }
+        location: { hash: '' },
       } as any;
     });
 
@@ -118,7 +118,7 @@ describe('MDX Hooks', () => {
     test('should initialize with TOC', () => {
       const toc = [
         { level: 1, title: 'Title 1', id: 'title-1' },
-        { level: 2, title: 'Title 2', id: 'title-2' }
+        { level: 2, title: 'Title 2', id: 'title-2' },
       ];
 
       const navigation = useMDXNavigation(toc);
@@ -133,7 +133,7 @@ describe('MDX Hooks', () => {
 
       const mockElement = {
         id: 'title',
-        scrollIntoView: vi.fn()
+        scrollIntoView: vi.fn(),
       };
       document.getElementById = vi.fn(() => mockElement) as any;
 
@@ -141,7 +141,7 @@ describe('MDX Hooks', () => {
 
       expect(mockElement.scrollIntoView).toHaveBeenCalledWith({
         behavior: 'smooth',
-        block: 'start'
+        block: 'start',
       });
       expect(navigation.activeSection()).toBe('title');
       expect(window.location.hash).toBe('title');
@@ -160,8 +160,8 @@ describe('MDX Hooks', () => {
     beforeEach(() => {
       global.navigator = {
         clipboard: {
-          writeText: vi.fn().mockResolvedValue(undefined)
-        }
+          writeText: vi.fn().mockResolvedValue(undefined),
+        },
       } as any;
     });
 
@@ -228,14 +228,14 @@ describe('MDX Hooks', () => {
         matchMedia: vi.fn((query) => ({
           matches: query === '(prefers-color-scheme: dark)',
           addEventListener: vi.fn(),
-          removeEventListener: vi.fn()
-        }))
+          removeEventListener: vi.fn(),
+        })),
       } as any;
 
       global.document = {
         documentElement: {
-          setAttribute: vi.fn()
-        }
+          setAttribute: vi.fn(),
+        },
       } as any;
     });
 
@@ -253,17 +253,14 @@ describe('MDX Hooks', () => {
       expect(theme()).toBe('light');
       expect(resolvedTheme()).toBe('light');
 
-      expect(document.documentElement.setAttribute).toHaveBeenCalledWith(
-        'data-mdx-theme',
-        'light'
-      );
+      expect(document.documentElement.setAttribute).toHaveBeenCalledWith('data-mdx-theme', 'light');
     });
 
     test('should detect system theme in auto mode', () => {
       window.matchMedia = vi.fn(() => ({
         matches: false, // Light mode
         addEventListener: vi.fn(),
-        removeEventListener: vi.fn()
+        removeEventListener: vi.fn(),
       })) as any;
 
       const { resolvedTheme } = useMDXTheme();

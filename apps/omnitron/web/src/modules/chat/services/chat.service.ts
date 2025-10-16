@@ -37,7 +37,7 @@ export class ChatService {
    * Get active conversation
    */
   getActiveConversation(): Conversation | undefined {
-    return this.conversations().find(c => c.id === this.activeConversationId());
+    return this.conversations().find((c) => c.id === this.activeConversationId());
   }
 
   /**
@@ -52,7 +52,7 @@ export class ChatService {
       updatedAt: new Date(),
     };
 
-    this.conversations.update(convs => [...convs, conversation]);
+    this.conversations.update((convs) => [...convs, conversation]);
     this.setActiveConversation(conversation.id);
 
     return conversation;
@@ -69,9 +69,7 @@ export class ChatService {
    * Delete a conversation
    */
   deleteConversation(conversationId: string) {
-    this.conversations.update(convs =>
-      convs.filter(c => c.id !== conversationId)
-    );
+    this.conversations.update((convs) => convs.filter((c) => c.id !== conversationId));
 
     if (this.activeConversationId() === conversationId) {
       const remaining = this.conversations();
@@ -93,8 +91,8 @@ export class ChatService {
       timestamp: new Date(),
     };
 
-    this.conversations.update(convs =>
-      convs.map(c =>
+    this.conversations.update((convs) =>
+      convs.map((c) =>
         c.id === conversationId
           ? {
               ...c,
@@ -112,7 +110,7 @@ export class ChatService {
    * Get messages for a conversation
    */
   getMessages(conversationId: string): Message[] {
-    const conversation = this.conversations().find(c => c.id === conversationId);
+    const conversation = this.conversations().find((c) => c.id === conversationId);
     return conversation?.messages || [];
   }
 
@@ -120,12 +118,8 @@ export class ChatService {
    * Clear all messages in a conversation
    */
   clearMessages(conversationId: string) {
-    this.conversations.update(convs =>
-      convs.map(c =>
-        c.id === conversationId
-          ? { ...c, messages: [], updatedAt: new Date() }
-          : c
-      )
+    this.conversations.update((convs) =>
+      convs.map((c) => (c.id === conversationId ? { ...c, messages: [], updatedAt: new Date() } : c))
     );
   }
 
@@ -133,10 +127,8 @@ export class ChatService {
    * Update conversation name
    */
   updateConversationName(conversationId: string, name: string) {
-    this.conversations.update(convs =>
-      convs.map(c =>
-        c.id === conversationId ? { ...c, name, updatedAt: new Date() } : c
-      )
+    this.conversations.update((convs) =>
+      convs.map((c) => (c.id === conversationId ? { ...c, name, updatedAt: new Date() } : c))
     );
   }
 }

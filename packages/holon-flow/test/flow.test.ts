@@ -1,15 +1,5 @@
 import { describe, expect, it, test } from 'vitest';
-import {
-  compose,
-  constant,
-  filter,
-  flow,
-  identity,
-  map,
-  parallel,
-  race,
-  reduce,
-} from '../src/flow.js';
+import { compose, constant, filter, flow, identity, map, parallel, race, reduce } from '../src/flow.js';
 
 describe('flow', () => {
   describe('basic creation', () => {
@@ -150,7 +140,7 @@ describe('flow', () => {
     it('reduce should accumulate values', async () => {
       const sum = reduce<number, number>(
         flow(([acc, x]) => acc + x),
-        0,
+        0
       );
 
       expect(await sum([1, 2, 3, 4])).toBe(10);

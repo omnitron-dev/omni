@@ -94,22 +94,19 @@ describe('In Command', () => {
         targets: {
           containers: {
             test: {
-              container: testContainerName
-            }
-          }
-        }
+              container: testContainerName,
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Execute command in container - write to a file so we can verify
       await command.execute([
         'containers.test',
         'echo "Hello from Docker" > /tmp/test-output.txt',
-        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') }
+        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') },
       ]);
 
       // Verify command was executed by reading the file from container
@@ -137,23 +134,20 @@ describe('In Command', () => {
               container: testContainerName,
               env: {
                 TEST_VAR: 'test_value',
-                NODE_ENV: 'production'
-              }
-            }
-          }
-        }
+                NODE_ENV: 'production',
+              },
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Execute command that uses environment variable - write to file for verification
       await command.execute([
         'containers.test',
         'echo "TEST_VAR=$TEST_VAR NODE_ENV=$NODE_ENV" > /tmp/env-test.txt',
-        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') }
+        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') },
       ]);
 
       // Check output by reading the file from container
@@ -169,13 +163,14 @@ describe('In Command', () => {
       }
 
       // Start a test container
-      const result = await $.local()`/usr/local/bin/docker run -d --name ${testContainerName} alpine:latest sh -c "mkdir -p /custom/dir && sleep 3600"`;
+      const result =
+        await $.local()`/usr/local/bin/docker run -d --name ${testContainerName} alpine:latest sh -c "mkdir -p /custom/dir && sleep 3600"`;
       if (result.exitCode !== 0) {
         throw new Error('Failed to start test container');
       }
 
       // Wait for container to be ready
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
       const config = {
         version: '2.0',
@@ -183,16 +178,13 @@ describe('In Command', () => {
           containers: {
             test: {
               container: testContainerName,
-              workdir: '/custom/dir'
-            }
-          }
-        }
+              workdir: '/custom/dir',
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Create a file in the custom directory
       await $.local()`/usr/local/bin/docker exec ${testContainerName} sh -c "echo 'test content' > /custom/dir/test.txt"`;
@@ -201,14 +193,14 @@ describe('In Command', () => {
       await command.execute([
         'containers.test',
         'pwd > /tmp/pwd.txt',
-        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') }
+        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') },
       ]);
 
       // Also check files in the directory
       await command.execute([
         'containers.test',
         'ls > /tmp/ls.txt',
-        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') }
+        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') },
       ]);
 
       // Check output shows custom working directory
@@ -260,16 +252,13 @@ describe('In Command', () => {
               namespace: 'test',
               pod: 'test-pod',
               container: 'main',
-              kubeconfig: clusterManager.getKubeConfigPath() // Add kubeconfig path
-            }
-          }
-        }
+              kubeconfig: clusterManager.getKubeConfigPath(), // Add kubeconfig path
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Set KUBECONFIG environment variable
       const originalKubeconfig = process.env.KUBECONFIG;
@@ -280,7 +269,7 @@ describe('In Command', () => {
         await command.execute([
           'pods.test',
           'echo "Hello from Kubernetes" > /tmp/k8s-test.txt',
-          { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') }
+          { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') },
         ]);
 
         // Verify by reading the file
@@ -320,22 +309,19 @@ describe('In Command', () => {
               namespace: 'test',
               pod: 'multi-pod',
               container: 'app',
-              kubeconfig: clusterManager.getKubeConfigPath() // Add kubeconfig path
+              kubeconfig: clusterManager.getKubeConfigPath(), // Add kubeconfig path
             },
             sidecar: {
               namespace: 'test',
               pod: 'multi-pod',
               container: 'sidecar',
-              kubeconfig: clusterManager.getKubeConfigPath() // Add kubeconfig path
-            }
-          }
-        }
+              kubeconfig: clusterManager.getKubeConfigPath(), // Add kubeconfig path
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Set KUBECONFIG
       const originalKubeconfig = process.env.KUBECONFIG;
@@ -346,14 +332,14 @@ describe('In Command', () => {
         await command.execute([
           'pods.app',
           'echo "From app container" > /tmp/app.txt',
-          { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') }
+          { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') },
         ]);
 
         // Execute in sidecar container
         await command.execute([
           'pods.sidecar',
           'echo "From sidecar container" > /tmp/sidecar.txt',
-          { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') }
+          { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') },
         ]);
 
         // Verify output from both containers
@@ -373,103 +359,101 @@ describe('In Command', () => {
   });
 
   // SSH tests using real containers
-  describeSSH('SSH Host Execution', () => {
-    it('should execute commands on SSH hosts', async () => {
-      const container = 'ubuntu-apt';
-      const sshConfig = getSSHConfig(container);
+  describeSSH(
+    'SSH Host Execution',
+    () => {
+      it('should execute commands on SSH hosts', async () => {
+        const container = 'ubuntu-apt';
+        const sshConfig = getSSHConfig(container);
 
-      const config = {
-        version: '2.0',
-        targets: {
-          hosts: {
-            test: {
-              host: sshConfig.host,
-              port: sshConfig.port,
-              user: sshConfig.username,
-              password: sshConfig.password
-            }
-          }
-        }
-      };
+        const config = {
+          version: '2.0',
+          targets: {
+            hosts: {
+              test: {
+                host: sshConfig.host,
+                port: sshConfig.port,
+                user: sshConfig.username,
+                password: sshConfig.password,
+              },
+            },
+          },
+        };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+        await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
-      // Execute command on SSH host - write to file
-      await command.execute([
-        'hosts.test',
-        'echo "Hello from SSH host" > /tmp/ssh-test.txt',
-        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') }
-      ]);
+        // Execute command on SSH host - write to file
+        await command.execute([
+          'hosts.test',
+          'echo "Hello from SSH host" > /tmp/ssh-test.txt',
+          { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') },
+        ]);
 
-      // Verify by reading the file
-      const sshEngine = $.ssh({
-        host: sshConfig.host,
-        port: sshConfig.port,
-        username: sshConfig.username,
-        password: sshConfig.password
+        // Verify by reading the file
+        const sshEngine = $.ssh({
+          host: sshConfig.host,
+          port: sshConfig.port,
+          username: sshConfig.username,
+          password: sshConfig.password,
+        });
+
+        const result = await sshEngine`cat /tmp/ssh-test.txt`;
+        expect(result.stdout.trim()).toBe('Hello from SSH host');
+
+        // Cleanup
+        await sshEngine`rm -f /tmp/ssh-test.txt`;
       });
 
-      const result = await sshEngine`cat /tmp/ssh-test.txt`;
-      expect(result.stdout.trim()).toBe('Hello from SSH host');
+      it('should execute commands with environment variables on SSH hosts', async () => {
+        const container = 'ubuntu-apt';
+        const sshConfig = getSSHConfig(container);
 
-      // Cleanup
-      await sshEngine`rm -f /tmp/ssh-test.txt`;
-    });
+        const config = {
+          version: '2.0',
+          targets: {
+            hosts: {
+              test: {
+                host: sshConfig.host,
+                port: sshConfig.port,
+                user: sshConfig.username,
+                password: sshConfig.password,
+                env: {
+                  TEST_ENV: 'ssh_value',
+                  CUSTOM_VAR: 'custom',
+                },
+              },
+            },
+          },
+        };
 
-    it('should execute commands with environment variables on SSH hosts', async () => {
-      const container = 'ubuntu-apt';
-      const sshConfig = getSSHConfig(container);
+        await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
-      const config = {
-        version: '2.0',
-        targets: {
-          hosts: {
-            test: {
-              host: sshConfig.host,
-              port: sshConfig.port,
-              user: sshConfig.username,
-              password: sshConfig.password,
-              env: {
-                TEST_ENV: 'ssh_value',
-                CUSTOM_VAR: 'custom'
-              }
-            }
-          }
-        }
-      };
+        // Create a test file to capture environment variables
+        const sshEngine = $.ssh({
+          host: sshConfig.host,
+          port: sshConfig.port,
+          username: sshConfig.username,
+          password: sshConfig.password,
+        });
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+        // Execute command that writes env vars to a file
+        await command.execute([
+          'hosts.test',
+          'echo "TEST_ENV=$TEST_ENV CUSTOM_VAR=$CUSTOM_VAR" > /tmp/env-test.txt',
+          { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') },
+        ]);
 
-      // Create a test file to capture environment variables
-      const sshEngine = $.ssh({
-        host: sshConfig.host,
-        port: sshConfig.port,
-        username: sshConfig.username,
-        password: sshConfig.password
+        // Read the file to verify env vars were set
+        const result = await sshEngine`cat /tmp/env-test.txt`;
+        expect(result.stdout).toContain('TEST_ENV=ssh_value');
+        expect(result.stdout).toContain('CUSTOM_VAR=custom');
+
+        // Cleanup
+        await sshEngine`rm -f /tmp/env-test.txt`;
       });
-
-      // Execute command that writes env vars to a file
-      await command.execute([
-        'hosts.test',
-        'echo "TEST_ENV=$TEST_ENV CUSTOM_VAR=$CUSTOM_VAR" > /tmp/env-test.txt',
-        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') }
-      ]);
-
-      // Read the file to verify env vars were set
-      const result = await sshEngine`cat /tmp/env-test.txt`;
-      expect(result.stdout).toContain('TEST_ENV=ssh_value');
-      expect(result.stdout).toContain('CUSTOM_VAR=custom');
-
-      // Cleanup
-      await sshEngine`rm -f /tmp/env-test.txt`;
-    });
-  }, { containers: ['ubuntu-apt'] });
+    },
+    { containers: ['ubuntu-apt'] }
+  );
 
   describe('Script Execution', () => {
     let testContainerName: string;
@@ -502,20 +486,19 @@ describe('In Command', () => {
         targets: {
           containers: {
             node: {
-              container: testContainerName
-            }
-          }
-        }
+              container: testContainerName,
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Create a test script in the project directory
       const scriptPath = path.join(projectDir, 'test-script.js');
-      await fs.writeFile(scriptPath, `
+      await fs.writeFile(
+        scriptPath,
+        `
 // This script will be executed with $target available for the container
 const result = await $target\`echo "Script executed successfully"\`;
 console.log(result.stdout);
@@ -526,13 +509,14 @@ console.log('Node version:', nodeVersion.stdout.trim());
 
 // Write output to verify execution
 await $target\`echo "Test completed" > /tmp/script-test-done.txt\`;
-`);
+`
+      );
 
       // Execute the script file using xec (this tests script execution feature)
       await command.execute([
         'containers.node',
-        scriptPath,  // Use the absolute path to the script
-        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') }
+        scriptPath, // Use the absolute path to the script
+        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') },
       ]);
 
       // Check that the script executed by verifying the file it created
@@ -571,28 +555,29 @@ await $target\`echo "Test completed" > /tmp/script-test-done.txt\`;
         targets: {
           containers: {
             test: {
-              container: testContainerName
-            }
-          }
+              container: testContainerName,
+            },
+          },
         },
         tasks: {
           'test-task': {
             description: 'Test task',
             steps: [
               { command: 'echo "Step 1 executed" >> /tmp/task-output.txt' },
-              { command: 'echo "Step 2 executed" >> /tmp/task-output.txt' }
-            ]
-          }
-        }
+              { command: 'echo "Step 2 executed" >> /tmp/task-output.txt' },
+            ],
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Execute task - the execute method expects arguments array with options as last element
-      await command.execute(['containers.test', 'dummy', { task: 'test-task', quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') }]);
+      await command.execute([
+        'containers.test',
+        'dummy',
+        { task: 'test-task', quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') },
+      ]);
 
       // Verify task steps were executed by reading the output file
       const taskOutput = await $.local()`/usr/local/bin/docker exec ${testContainerName} cat /tmp/task-output.txt`;
@@ -640,21 +625,18 @@ await $target\`echo "Test completed" > /tmp/script-test-done.txt\`;
             'worker-1': { container: containerNames[0] },
             'worker-2': { container: containerNames[1] },
             'worker-3': { container: containerNames[2] },
-            'database': { image: 'postgres:latest' } // Not started, shouldn't match
-          }
-        }
+            database: { image: 'postgres:latest' }, // Not started, shouldn't match
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Execute on all workers - write hostname to file
       await command.execute([
         'containers.worker-*',
         'echo "Worker $(hostname) reporting" > /tmp/worker-output.txt',
-        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') }
+        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') },
       ]);
 
       // Verify all workers executed the command
@@ -673,21 +655,18 @@ await $target\`echo "Test completed" > /tmp/script-test-done.txt\`;
         version: '2.0',
         targets: {
           containers: {
-            missing: { container: 'non-existent-container' }
-          }
-        }
+            missing: { container: 'non-existent-container' },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       try {
         await command.execute([
           'containers.missing',
           'echo test',
-          { quiet: true, configPath: path.join(projectDir, '.xec', 'config.yaml') }
+          { quiet: true, configPath: path.join(projectDir, '.xec', 'config.yaml') },
         ]);
         // If it doesn't throw, fail the test
         fail('Expected command.execute to throw an error');
@@ -714,15 +693,12 @@ await $target\`echo "Test completed" > /tmp/script-test-done.txt\`;
           version: '2.0',
           targets: {
             containers: {
-              test: { container: testContainerName }
-            }
-          }
+              test: { container: testContainerName },
+            },
+          },
         };
 
-        await fs.writeFile(
-          path.join(projectDir, '.xec', 'config.yaml'),
-          yaml.dump(config)
-        );
+        await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
         // Execute a command that should fail
         let errorThrown = false;
@@ -730,7 +706,7 @@ await $target\`echo "Test completed" > /tmp/script-test-done.txt\`;
           await command.execute([
             'containers.test',
             'exit 1',
-            { quiet: true, configPath: path.join(projectDir, '.xec', 'config.yaml') }
+            { quiet: true, configPath: path.join(projectDir, '.xec', 'config.yaml') },
           ]);
         } catch (error: any) {
           errorThrown = true;
@@ -747,13 +723,10 @@ await $target\`echo "Test completed" > /tmp/script-test-done.txt\`;
     it('should require target specification', async () => {
       const config = {
         version: '2.0',
-        targets: {}
+        targets: {},
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       await expect(
         command.execute([{ quiet: true, configPath: path.join(projectDir, '.xec', 'config.yaml') }])
@@ -767,21 +740,18 @@ await $target\`echo "Test completed" > /tmp/script-test-done.txt\`;
         version: '2.0',
         targets: {
           containers: {
-            app: { image: 'alpine:latest' }
+            app: { image: 'alpine:latest' },
           },
           hosts: {
-            server: { host: 'example.com', user: 'deploy' }
+            server: { host: 'example.com', user: 'deploy' },
           },
           pods: {
-            web: { namespace: 'default', pod: 'web-pod' }
-          }
-        }
+            web: { namespace: 'default', pod: 'web-pod' },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Capture console output - clack uses process.stdout.write
       const output: string[] = [];
@@ -798,19 +768,19 @@ await $target\`echo "Test completed" > /tmp/script-test-done.txt\`;
         await command.execute([
           'containers.app',
           'echo test',
-          { dryRun: true, quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') }
+          { dryRun: true, quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') },
         ]);
 
         await command.execute([
           'hosts.server',
           'ls -la',
-          { dryRun: true, quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') }
+          { dryRun: true, quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') },
         ]);
 
         await command.execute([
           'pods.web',
           'date',
-          { dryRun: true, quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') }
+          { dryRun: true, quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') },
         ]);
 
         // Verify dry run output - clack uses special formatting
@@ -858,22 +828,19 @@ await $target\`echo "Test completed" > /tmp/script-test-done.txt\`;
         targets: {
           containers: {
             test: {
-              container: testContainerName
-            }
-          }
-        }
+              container: testContainerName,
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Execute complex command with pipes
       await command.execute([
         'containers.test',
         'echo "line1\nline2\nline3" | grep "line2" > /tmp/grep-result.txt',
-        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') }
+        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') },
       ]);
 
       // Verify result
@@ -884,7 +851,7 @@ await $target\`echo "Test completed" > /tmp/script-test-done.txt\`;
       await command.execute([
         'containers.test',
         'TEST_VAR="hello world"; echo $TEST_VAR > /tmp/var-test.txt',
-        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') }
+        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') },
       ]);
 
       const varResult = await $.local()`/usr/local/bin/docker exec ${testContainerName} cat /tmp/var-test.txt`;
@@ -908,22 +875,19 @@ await $target\`echo "Test completed" > /tmp/script-test-done.txt\`;
         targets: {
           containers: {
             test: {
-              container: testContainerName
-            }
-          }
-        }
+              container: testContainerName,
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Execute command that writes to tty (non-interactive mode should still work)
       await command.execute([
         'containers.test',
         'tty > /tmp/tty-test.txt || echo "not a tty" > /tmp/tty-test.txt',
-        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') }
+        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') },
       ]);
 
       const ttyResult = await $.local()`/usr/local/bin/docker exec ${testContainerName} cat /tmp/tty-test.txt`;
@@ -947,52 +911,49 @@ await $target\`echo "Test completed" > /tmp/script-test-done.txt\`;
         targets: {
           containers: {
             test: {
-              container: testContainerName
-            }
-          }
-        }
+              container: testContainerName,
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Test with special characters - write them individually to avoid complex escaping
       await command.execute([
         'containers.test',
         'echo "Test with spaces" > /tmp/special-chars.txt',
-        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') }
+        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') },
       ]);
 
       await command.execute([
         'containers.test',
         'echo "Pipe: |" >> /tmp/special-chars.txt',
-        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') }
+        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') },
       ]);
 
       await command.execute([
         'containers.test',
         'echo "Ampersand: &" >> /tmp/special-chars.txt',
-        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') }
+        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') },
       ]);
 
       await command.execute([
         'containers.test',
         'echo "Redirects: > <" >> /tmp/special-chars.txt',
-        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') }
+        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') },
       ]);
 
       await command.execute([
         'containers.test',
         "echo 'Single quote: \"' >> /tmp/special-chars.txt",
-        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') }
+        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') },
       ]);
 
       await command.execute([
         'containers.test',
         'echo "Backslash: \\\\" >> /tmp/special-chars.txt',
-        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') }
+        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') },
       ]);
 
       const specialResult = await $.local()`/usr/local/bin/docker exec ${testContainerName} cat /tmp/special-chars.txt`;
@@ -1011,7 +972,8 @@ await $target\`echo "Test completed" > /tmp/script-test-done.txt\`;
       }
 
       // Start a Node.js container for REPL testing
-      const result = await $.local()`/usr/local/bin/docker run -d --name ${testContainerName} node:18-alpine sleep 3600`;
+      const result =
+        await $.local()`/usr/local/bin/docker run -d --name ${testContainerName} node:18-alpine sleep 3600`;
       if (result.exitCode !== 0) {
         throw new Error('Failed to start test container');
       }
@@ -1021,16 +983,13 @@ await $target\`echo "Test completed" > /tmp/script-test-done.txt\`;
         targets: {
           containers: {
             test: {
-              container: testContainerName
-            }
-          }
-        }
+              container: testContainerName,
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Test REPL mode with a single target (it should not throw since it's interactive)
       // We can't test the actual REPL interaction in unit tests
@@ -1038,7 +997,7 @@ await $target\`echo "Test completed" > /tmp/script-test-done.txt\`;
       const replPromise = command.execute([
         'containers.test',
         '',
-        { repl: true, quiet: true, configPath: path.join(projectDir, '.xec', 'config.yaml') }
+        { repl: true, quiet: true, configPath: path.join(projectDir, '.xec', 'config.yaml') },
       ]);
 
       // Since REPL is interactive, we need to force exit
@@ -1070,21 +1029,18 @@ await $target\`echo "Test completed" > /tmp/script-test-done.txt\`;
           targets: {
             containers: {
               'parallel-1': { container: container1 },
-              'parallel-2': { container: container2 }
-            }
-          }
+              'parallel-2': { container: container2 },
+            },
+          },
         };
 
-        await fs.writeFile(
-          path.join(projectDir, '.xec', 'config.yaml'),
-          yaml.dump(config)
-        );
+        await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
         // Execute command in parallel
         await command.execute([
           'containers.parallel-*',
           'echo "Parallel execution" > /tmp/parallel.txt',
-          { parallel: true, quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') }
+          { parallel: true, quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') },
         ]);
 
         // Verify both containers executed the command
@@ -1115,16 +1071,13 @@ await $target\`echo "Test completed" > /tmp/script-test-done.txt\`;
         targets: {
           containers: {
             test: {
-              container: testContainerName
-            }
-          }
-        }
+              container: testContainerName,
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Execute command that should timeout
       let errorThrown = false;
@@ -1132,7 +1085,7 @@ await $target\`echo "Test completed" > /tmp/script-test-done.txt\`;
         await command.execute([
           'containers.test',
           'sleep 5',
-          { quiet: true, timeout: '1s', configPath: path.join(projectDir, '.xec', 'config.yaml') }
+          { quiet: true, timeout: '1s', configPath: path.join(projectDir, '.xec', 'config.yaml') },
         ]);
       } catch (error: any) {
         errorThrown = true;
@@ -1149,14 +1102,11 @@ await $target\`echo "Test completed" > /tmp/script-test-done.txt\`;
         version: '2.0',
         targets: {
           // Local targets don't go under a type, they're a special case
-          local: {} // Global local target config
-        }
+          local: {}, // Global local target config
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Create test file in temp directory
       const testFile = path.join(tempDir, 'local-test.txt');
@@ -1165,7 +1115,7 @@ await $target\`echo "Test completed" > /tmp/script-test-done.txt\`;
       await command.execute([
         'local',
         `echo "Local execution test" > "${testFile}"`,
-        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') }
+        { quiet: false, configPath: path.join(projectDir, '.xec', 'config.yaml') },
       ]);
 
       // Verify the file was created

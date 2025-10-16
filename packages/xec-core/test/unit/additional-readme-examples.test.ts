@@ -46,13 +46,13 @@ describe('Additional README Examples', () => {
   it('should work with isCommandAvailable method', async () => {
     const exists = await $.isCommandAvailable('echo');
     expect(exists).toBe(true);
-    
+
     const notExists = await $.isCommandAvailable('nonexistent-command-xyz');
     expect(notExists).toBe(false);
   });
 
   it('should work with string interpolation', async () => {
-    const filename = "test file.txt";
+    const filename = 'test file.txt';
     const result = await $`echo ${filename}`;
     expect(result.stdout.trim()).toBe('test file.txt');
   });

@@ -479,7 +479,7 @@ export enum ServiceName {
   Neo4j = 'neo4j',
   ArangoDB = 'arangodb',
   DynamoDB = 'dynamodb',
-  ScyllaDB = 'scylladb'
+  ScyllaDB = 'scylladb',
 }
 
 /**

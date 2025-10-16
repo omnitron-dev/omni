@@ -29,7 +29,7 @@ export class ResultCache {
     this.cleanupInterval = setInterval(() => {
       this.cleanup();
     }, cleanupIntervalMs);
-    
+
     // Don't keep process alive
     this.cleanupInterval.unref();
   }
@@ -41,13 +41,10 @@ export class ResultCache {
     const data = {
       command,
       cwd: cwd || process.cwd(),
-      env: env || {}
+      env: env || {},
     };
-    
-    return crypto
-      .createHash('sha256')
-      .update(JSON.stringify(data))
-      .digest('hex');
+
+    return crypto.createHash('sha256').update(JSON.stringify(data)).digest('hex');
   }
 
   /**
@@ -76,51 +73,67 @@ export class ResultCache {
    */
   get(key: string): ExecutionResult | null {
     const cached = this.cache.get(key);
-    
+
     if (!cached) {
       // Emit cache miss event
       if (this.eventEmitter) {
-        this.eventEmitter.emitEnhanced('cache:miss', {
-          key
-        }, 'cache');
+        this.eventEmitter.emitEnhanced(
+          'cache:miss',
+          {
+            key,
+          },
+          'cache'
+        );
       }
       return null;
     }
-    
+
     const now = Date.now();
     const age = now - cached.timestamp;
-    
+
     // Check if expired
     if (cached.ttl > 0 && age > cached.ttl) {
       this.cache.delete(key);
-      
+
       // Emit cache evict event
       if (this.eventEmitter) {
-        this.eventEmitter.emitEnhanced('cache:evict', {
-          key,
-          reason: 'ttl'
-        }, 'cache');
+        this.eventEmitter.emitEnhanced(
+          'cache:evict',
+          {
+            key,
+            reason: 'ttl',
+          },
+          'cache'
+        );
       }
-      
+
       // Emit cache miss event
       if (this.eventEmitter) {
-        this.eventEmitter.emitEnhanced('cache:miss', {
-          key
-        }, 'cache');
+        this.eventEmitter.emitEnhanced(
+          'cache:miss',
+          {
+            key,
+          },
+          'cache'
+        );
       }
-      
+
       return null;
     }
-    
+
     // Emit cache hit event
     if (this.eventEmitter) {
-      this.eventEmitter.emitEnhanced('cache:hit', {
-        key,
-        ttl: cached.ttl,
-        size: JSON.stringify(cached.result).length
-      }, 'cache');
+      this.eventEmitter.emitEnhanced(
+        'cache:hit',
+        {
+          key,
+          ttl: cached.ttl,
+          size: JSON.stringify(cached.result).length,
+        },
+        'cache'
+      );
     }
-    
+
     return cached.result;
   }
 
@@ -132,16 +145,20 @@ export class ResultCache {
       result,
       timestamp: Date.now(),
       ttl,
-      key
+      key,
     });
-    
+
     // Emit cache set event
     if (this.eventEmitter) {
-      this.eventEmitter.emitEnhanced('cache:set', {
-        key,
-        ttl,
-        size: JSON.stringify(result).length
-      }, 'cache');
+      this.eventEmitter.emitEnhanced(
+        'cache:set',
+        {
+          key,
+          ttl,
+          size: JSON.stringify(result).length,
+        },
+        'cache'
+      );
     }
   }
 
@@ -150,19 +167,15 @@ export class ResultCache {
    */
   invalidate(patterns: string[]): void {
     if (patterns.length === 0) return;
-    
-    const regexes = patterns.map(p => {
+
+    const regexes = patterns.map((p) => {
       // Convert glob-like patterns to regex
-      const regexPattern = p
-        .replace(/\*/g, '.*')
-        .replace(/\?/g, '.')
-        .replace(/\[/g, '\\[')
-        .replace(/\]/g, '\\]');
+      const regexPattern = p.replace(/\*/g, '.*').replace(/\?/g, '.').replace(/\[/g, '\\[').replace(/\]/g, '\\]');
       return new RegExp(`^${regexPattern}$`);
     });
-    
+
     for (const [key, cached] of this.cache.entries()) {
-      if (regexes.some(regex => regex.test(key))) {
+      if (regexes.some((regex) => regex.test(key))) {
         this.cache.delete(key);
       }
     }
@@ -191,7 +204,7 @@ export class ResultCache {
       size,
       hits: 0,
       misses: 0,
-      hitRate: 0
+      hitRate: 0,
     };
   }
 
@@ -200,19 +213,23 @@ export class ResultCache {
    */
   private cleanup(): void {
     const now = Date.now();
-    
+
     for (const [key, cached] of this.cache.entries()) {
       if (cached.ttl > 0) {
         const age = now - cached.timestamp;
         if (age > cached.ttl) {
           this.cache.delete(key);
-          
+
           // Emit cache evict event
           if (this.eventEmitter) {
-            this.eventEmitter.emitEnhanced('cache:evict', {
-              key,
-              reason: 'ttl'
-            }, 'cache');
+            this.eventEmitter.emitEnhanced(
+              'cache:evict',
+              {
+                key,
+                reason: 'ttl',
+              },
+              'cache'
+            );
           }
         }
       }

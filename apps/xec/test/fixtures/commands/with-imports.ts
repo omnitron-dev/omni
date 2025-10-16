@@ -5,10 +5,10 @@ export async function command(program) {
     .action(async () => {
       // Test local package import
       const { $ } = await import('@xec-sh/core');
-      
+
       // Test that $ is available
       console.log('$ function available:', typeof $ === 'function');
-      
+
       // Test CDN import through module context
       if (globalThis.__xecModuleContext) {
         try {

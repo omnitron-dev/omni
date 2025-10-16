@@ -54,9 +54,7 @@ describe('LazyCompilationManager', () => {
     it('should throw error if compiler not set', async () => {
       const managerWithoutCompiler = new LazyCompilationManager();
 
-      await expect(
-        managerWithoutCompiler.requestCompilation('test.js'),
-      ).rejects.toThrow('Compiler not set');
+      await expect(managerWithoutCompiler.requestCompilation('test.js')).rejects.toThrow('Compiler not set');
     });
   });
 
@@ -159,9 +157,7 @@ describe('LazyCompilationManager', () => {
 
       manager.setCompiler(errorCompiler);
 
-      await expect(manager.requestCompilation('error-module.js')).rejects.toThrow(
-        'Compilation failed',
-      );
+      await expect(manager.requestCompilation('error-module.js')).rejects.toThrow('Compilation failed');
 
       const state = manager.getModuleState('error-module.js');
       expect(state?.status).toBe('error');
@@ -179,9 +175,7 @@ describe('LazyCompilationManager', () => {
 
       timeoutManager.setCompiler(slowCompiler);
 
-      await expect(
-        timeoutManager.requestCompilation('slow-module.js'),
-      ).rejects.toThrow('Compilation timeout');
+      await expect(timeoutManager.requestCompilation('slow-module.js')).rejects.toThrow('Compilation timeout');
     });
   });
 
@@ -201,9 +195,7 @@ describe('LazyCompilationManager', () => {
       expect(results[1]).toEqual(results[2]);
 
       // Compiler should only be called once
-      const callCount = mockCompiler.mock.calls.filter(
-        (call) => call[0] === 'concurrent-module.js',
-      ).length;
+      const callCount = mockCompiler.mock.calls.filter((call) => call[0] === 'concurrent-module.js').length;
       expect(callCount).toBe(1);
     });
   });
@@ -228,13 +220,7 @@ describe('LazyCompilationManager', () => {
       limitedManager.setCompiler(mockCompiler);
 
       // Try to queue more than the limit
-      await limitedManager.precompileInBackground([
-        'bg1.js',
-        'bg2.js',
-        'bg3.js',
-        'bg4.js',
-        'bg5.js',
-      ]);
+      await limitedManager.precompileInBackground(['bg1.js', 'bg2.js', 'bg3.js', 'bg4.js', 'bg5.js']);
 
       // Background queue should be limited
       const stats = limitedManager.getStats();

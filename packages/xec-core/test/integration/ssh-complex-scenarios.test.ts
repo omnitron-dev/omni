@@ -46,7 +46,7 @@ describeSSH('SSH Complex Scenarios Tests', () => {
         await $ssh`cd ${extractDir} && tar -xzf /tmp/${archiveName}`;
 
         // Wait a moment for extraction to complete
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 500));
 
         // List extracted files for debugging
         const listResult = await $ssh`find ${extractDir} -type f 2>/dev/null | sort`;
@@ -56,9 +56,9 @@ describeSSH('SSH Complex Scenarios Tests', () => {
         expect(extractedFiles.length).toBeGreaterThanOrEqual(1);
 
         // Check if the expected structure exists (more lenient)
-        const hasSource = extractedFiles.some(f => f.includes('app.js'));
-        const hasDocs = extractedFiles.some(f => f.includes('README.md'));
-        const hasConfig = extractedFiles.some(f => f.includes('settings.json'));
+        const hasSource = extractedFiles.some((f) => f.includes('app.js'));
+        const hasDocs = extractedFiles.some((f) => f.includes('README.md'));
+        const hasConfig = extractedFiles.some((f) => f.includes('settings.json'));
 
         // At least one of the expected files should exist
         expect(hasSource || hasDocs || hasConfig).toBe(true);
@@ -134,7 +134,7 @@ describeSSH('SSH Complex Scenarios Tests', () => {
           'project2/src/helpers.py',
           'project2/docs/README.md',
           'logs/app.log',
-          'logs/error.log'
+          'logs/error.log',
         ];
 
         for (const file of files) {
@@ -142,11 +142,14 @@ describeSSH('SSH Complex Scenarios Tests', () => {
         }
 
         // Wait a bit for file creation to complete
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
         // Find all JavaScript files - use simpler find syntax for compatibility
         const jsFilesResult = await $ssh`find ${testDir} -name "*.js" | grep -v "^$" | sort || true`;
-        const jsFiles = jsFilesResult.stdout.trim().split('\n').filter(line => line.length > 0);
+        const jsFiles = jsFilesResult.stdout
+          .trim()
+          .split('\n')
+          .filter((line) => line.length > 0);
 
         // Should find at least 3 JS files
         expect(jsFiles.length).toBeGreaterThanOrEqual(3);
@@ -193,7 +196,8 @@ describeSSH('SSH Complex Scenarios Tests', () => {
         const shellCheck = await $ssh`which bash > /dev/null 2>&1 && echo "bash" || echo "sh"`;
         const shell = shellCheck.stdout.trim();
 
-        const startResult = await $ssh`${shell} -c 'nohup /tmp/${processName}.sh > /tmp/${processName}.out 2>&1 & echo $!'`;
+        const startResult =
+          await $ssh`${shell} -c 'nohup /tmp/${processName}.sh > /tmp/${processName}.out 2>&1 & echo $!'`;
         const pid = startResult.stdout.trim();
 
         // Skip test if we couldn't start the process (e.g., missing nohup)
@@ -204,7 +208,7 @@ describeSSH('SSH Complex Scenarios Tests', () => {
         expect(pid).toMatch(/^\d+$/);
 
         // Wait for process to write some logs
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        await new Promise((resolve) => setTimeout(resolve, 3000));
 
         // Check process is running using different methods
         const psResult = await $ssh`ps -p ${pid} > /dev/null 2>&1 && echo "running" || echo "not found"`;
@@ -224,7 +228,8 @@ describeSSH('SSH Complex Scenarios Tests', () => {
           const outCheckResult = await $ssh`test -f /tmp/${processName}.out && echo "out exists" || echo "no out"`;
           // If neither log nor out exists, the process might not have started properly
           // This is acceptable for some containers that don't have nohup
-          const hasAnyOutput = logCheckResult.stdout.trim() === 'log exists' || outCheckResult.stdout.trim() === 'out exists';
+          const hasAnyOutput =
+            logCheckResult.stdout.trim() === 'log exists' || outCheckResult.stdout.trim() === 'out exists';
           if (!hasAnyOutput && container.name === 'fedora-dnf') {
             console.log(`Skipping log check for ${container.name} - process didn't create output files`);
             return; // Skip this test for Fedora
@@ -252,7 +257,7 @@ describeSSH('SSH Complex Scenarios Tests', () => {
           await $ssh`kill -TERM ${pid} 2>/dev/null || true`; // Terminate
 
           // Wait and verify process stopped
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          await new Promise((resolve) => setTimeout(resolve, 1000));
           const checkResult = await $ssh`ps -p ${pid} > /dev/null 2>&1 && echo "running" || echo "stopped"`;
           expect(checkResult.stdout.trim()).toBe('stopped');
         } else {
@@ -295,7 +300,8 @@ describeSSH('SSH Complex Scenarios Tests', () => {
       expect(cpuCount).toBeGreaterThanOrEqual(1);
 
       // Check load average
-      const loadResult = await $ssh`uptime | grep -oE "load average: [0-9., ]+" || echo "load average: 0.00, 0.00, 0.00"`;
+      const loadResult =
+        await $ssh`uptime | grep -oE "load average: [0-9., ]+" || echo "load average: 0.00, 0.00, 0.00"`;
       expect(loadResult.stdout).toContain('load average:');
     });
   });
@@ -356,15 +362,18 @@ EOF`;
 
         // Get all data rows
         const allDataResult = await $ssh`tail -n +2 ${dataFile}`;
-        const allLines = allDataResult.stdout.trim().split('\n').filter(line => line.length > 0);
+        const allLines = allDataResult.stdout
+          .trim()
+          .split('\n')
+          .filter((line) => line.length > 0);
         expect(allLines.length).toBe(5); // We have 5 data rows
 
         // Verify all expected lines are present
-        const hasAlice = allLines.some(line => line.includes('Alice,28,Tokyo,95'));
-        const hasJane = allLines.some(line => line.includes('Jane,30,London,92'));
-        const hasBob = allLines.some(line => line.includes('Bob,22,Paris,78'));
-        const hasJohn = allLines.some(line => line.includes('John,25,NewYork,85'));
-        const hasCharlie = allLines.some(line => line.includes('Charlie,35,Berlin,88'));
+        const hasAlice = allLines.some((line) => line.includes('Alice,28,Tokyo,95'));
+        const hasJane = allLines.some((line) => line.includes('Jane,30,London,92'));
+        const hasBob = allLines.some((line) => line.includes('Bob,22,Paris,78'));
+        const hasJohn = allLines.some((line) => line.includes('John,25,NewYork,85'));
+        const hasCharlie = allLines.some((line) => line.includes('Charlie,35,Berlin,88'));
 
         expect(hasAlice).toBe(true);
         expect(hasJane).toBe(true);
@@ -462,7 +471,7 @@ EOF`;
         const stdinResult = await ssh.execute({
           command: 'cat | wc -l',
           stdin: 'Line 1\nLine 2\nLine 3\n',
-          adapterOptions: { type: 'ssh' as const, ...sshConfig }
+          adapterOptions: { type: 'ssh' as const, ...sshConfig },
         });
         expect(stdinResult.exitCode).toBe(0);
         expect(stdinResult.stdout.trim()).toBe('3');
@@ -470,13 +479,15 @@ EOF`;
         // Test stderr capture
         const stderrResult = await ssh.execute({
           command: 'echo "stdout" && echo "stderr" >&2',
-          adapterOptions: { type: 'ssh' as const, ...sshConfig }
+          adapterOptions: { type: 'ssh' as const, ...sshConfig },
         });
         expect(stderrResult.stdout.trim()).toBe('stdout');
         // Filter out common system warnings that might appear in stderr
         const stderrLines = stderrResult.stderr.trim().split('\n');
         const actualStderr = stderrLines
-          .filter(line => !line.includes('setlocale') && !line.includes('LC_') && !line.includes('cannot change locale'))
+          .filter(
+            (line) => !line.includes('setlocale') && !line.includes('LC_') && !line.includes('cannot change locale')
+          )
           .join('\n')
           .trim();
         expect(actualStderr).toBe('stderr');
@@ -484,7 +495,7 @@ EOF`;
         // Test large output handling
         const largeResult = await ssh.execute({
           command: 'seq 1 10000 | tail -5',
-          adapterOptions: { type: 'ssh' as const, ...sshConfig }
+          adapterOptions: { type: 'ssh' as const, ...sshConfig },
         });
         expect(largeResult.stdout.trim()).toContain('10000');
 
@@ -514,7 +525,7 @@ EOF`;
         // Verify file was uploaded
         const verifyResult = await ssh.execute({
           command: `cat ${remoteFile}`,
-          adapterOptions: { type: 'ssh' as const, ...sshConfig }
+          adapterOptions: { type: 'ssh' as const, ...sshConfig },
         });
         expect(verifyResult.stdout).toBe('Test content for upload');
 
@@ -530,14 +541,14 @@ EOF`;
         await fs.unlink(downloadFile);
         await ssh.execute({
           command: `rm -f ${remoteFile}`,
-          adapterOptions: { type: 'ssh' as const, ...sshConfig }
+          adapterOptions: { type: 'ssh' as const, ...sshConfig },
         });
 
         await ssh.dispose();
       } catch (error) {
         await ssh.dispose();
-        await fs.unlink(localFile).catch(() => { });
-        await fs.unlink(downloadFile).catch(() => { });
+        await fs.unlink(localFile).catch(() => {});
+        await fs.unlink(downloadFile).catch(() => {});
         throw error;
       }
     });
@@ -577,7 +588,7 @@ EOF`;
       const results = await Promise.all([
         $ssh`sleep 1 && echo "Command 1"`,
         $ssh`sleep 1 && echo "Command 2"`,
-        $ssh`sleep 1 && echo "Command 3"`
+        $ssh`sleep 1 && echo "Command 3"`,
       ]);
       const duration = Date.now() - start;
 
@@ -600,7 +611,7 @@ EOF`;
       // Set and use environment variables
       const result = await $ssh.env({
         CUSTOM_VAR: 'test_value',
-        ANOTHER_VAR: '123'
+        ANOTHER_VAR: '123',
       })`echo "CUSTOM_VAR=$CUSTOM_VAR ANOTHER_VAR=$ANOTHER_VAR"`;
 
       expect(result.exitCode).toBe(0);
@@ -673,7 +684,7 @@ EOF`;
         // Create a command that fails first time but succeeds on retry
         const result = await $ssh.retry({
           maxRetries: 2,
-          initialDelay: 100
+          initialDelay: 100,
         })`
           COUNT=$(cat ${counterFile})
           NEXT=$((COUNT + 1))
@@ -729,7 +740,7 @@ EOF`;
       const $ssh = getConfiguredSSH(sshConfig);
 
       const result = await $ssh`printf "Line 1\\nLine 2\\nLine 3\\n"`;
-      const lines = result.stdout.split('\n').filter(l => l.length > 0);
+      const lines = result.stdout.split('\n').filter((l) => l.length > 0);
 
       expect(lines).toHaveLength(3);
       expect(lines[0]).toBe('Line 1');
@@ -745,8 +756,8 @@ EOF`;
           enabled: true,
           maxConnections: 5,
           idleTimeout: 300000,
-          keepAlive: true
-        }
+          keepAlive: true,
+        },
       });
 
       try {
@@ -755,7 +766,7 @@ EOF`;
         for (let i = 0; i < 3; i++) {
           const result = await ssh.execute({
             command: `echo "Command ${i}"`,
-            adapterOptions: { type: 'ssh' as const, ...sshConfig }
+            adapterOptions: { type: 'ssh' as const, ...sshConfig },
           });
           results.push(result);
         }
@@ -785,16 +796,14 @@ EOF`;
     testEachPackageManager('should handle SFTP configuration', async (container) => {
       const sshConfig = getSSHConfig(container.name);
       const ssh = new SSHAdapter({
-        sftp: { enabled: false, concurrency: 5 }
+        sftp: { enabled: false, concurrency: 5 },
       });
 
       try {
         // Should fail when SFTP is disabled
-        await expect(ssh.uploadFile(
-          '/tmp/test.txt',
-          '/tmp/remote.txt',
-          { type: 'ssh' as const, ...sshConfig }
-        )).rejects.toThrow('SFTP is disabled');
+        await expect(
+          ssh.uploadFile('/tmp/test.txt', '/tmp/remote.txt', { type: 'ssh' as const, ...sshConfig })
+        ).rejects.toThrow('SFTP is disabled');
 
         await ssh.dispose();
       } catch (error) {
@@ -818,25 +827,23 @@ EOF`;
         }
 
         // Upload files in parallel
-        await Promise.all(files.map(f =>
-          ssh.uploadFile(f.local, f.remote, { type: 'ssh' as const, ...sshConfig })
-        ));
+        await Promise.all(files.map((f) => ssh.uploadFile(f.local, f.remote, { type: 'ssh' as const, ...sshConfig })));
 
         // Verify uploads
         for (const f of files) {
           const result = await ssh.execute({
             command: `cat ${f.remote}`,
-            adapterOptions: { type: 'ssh' as const, ...sshConfig }
+            adapterOptions: { type: 'ssh' as const, ...sshConfig },
           });
           expect(result.stdout).toMatch(/Test content \d/);
         }
 
         // Cleanup
         for (const f of files) {
-          await fs.unlink(f.local).catch(() => { });
+          await fs.unlink(f.local).catch(() => {});
           await ssh.execute({
             command: `rm -f ${f.remote}`,
-            adapterOptions: { type: 'ssh' as const, ...sshConfig }
+            adapterOptions: { type: 'ssh' as const, ...sshConfig },
           });
         }
 
@@ -844,7 +851,7 @@ EOF`;
       } catch (error) {
         await ssh.dispose();
         for (const f of files) {
-          await fs.unlink(f.local).catch(() => { });
+          await fs.unlink(f.local).catch(() => {});
         }
         throw error;
       }
@@ -859,14 +866,16 @@ EOF`;
         host: 'nonexistent.host.invalid',
         port: 22,
         username: 'test',
-        password: 'test'
+        password: 'test',
       };
 
       // Should throw connection error
-      await expect(ssh.execute({
-        command: 'echo test',
-        adapterOptions: badConfig
-      })).rejects.toThrow(/Connection|Failed to connect|ENOTFOUND|EAI_AGAIN|getaddrinfo/);
+      await expect(
+        ssh.execute({
+          command: 'echo test',
+          adapterOptions: badConfig,
+        })
+      ).rejects.toThrow(/Connection|Failed to connect|ENOTFOUND|EAI_AGAIN|getaddrinfo/);
 
       await ssh.dispose();
     });
@@ -880,7 +889,7 @@ EOF`;
         const result = await ssh.execute({
           command: 'sleep 10',
           timeout: 1000, // 1 second timeout
-          adapterOptions: { type: 'ssh' as const, ...sshConfig }
+          adapterOptions: { type: 'ssh' as const, ...sshConfig },
         });
 
         const duration = Date.now() - startTime;

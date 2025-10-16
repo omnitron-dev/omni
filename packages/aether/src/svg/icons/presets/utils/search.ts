@@ -42,9 +42,7 @@ import { loadIconPreset } from './loader.js';
  * });
  * ```
  */
-export async function searchIcons(
-  options: IconSearchOptions
-): Promise<IconSearchResult[]> {
+export async function searchIcons(options: IconSearchOptions): Promise<IconSearchResult[]> {
   const { query, preset = 'stroke', limit, caseSensitive = false } = options;
 
   if (!query || query.trim().length === 0) {
@@ -52,8 +50,7 @@ export async function searchIcons(
   }
 
   const searchQuery = caseSensitive ? query : query.toLowerCase();
-  const presetsToSearch: IconPreset[] =
-    preset === 'all' ? ['stroke', 'duotone', 'twotone'] : [preset];
+  const presetsToSearch: IconPreset[] = preset === 'all' ? ['stroke', 'duotone', 'twotone'] : [preset];
 
   const allResults: IconSearchResult[] = [];
 
@@ -112,9 +109,7 @@ export async function searchIcons(
  * console.log(names); // ['arrow-up', 'arrow-down', 'arrow-left', ...]
  * ```
  */
-export async function getMatchingIconNames(
-  options: IconSearchOptions
-): Promise<string[]> {
+export async function getMatchingIconNames(options: IconSearchOptions): Promise<string[]> {
   const results = await searchIcons(options);
   return results.map((r) => r.name);
 }
@@ -206,8 +201,7 @@ export async function searchByMetadata(
   preset: IconPreset | 'all',
   filter: (metadata: Record<string, any>) => boolean
 ): Promise<IconSearchResult[]> {
-  const presetsToSearch: IconPreset[] =
-    preset === 'all' ? ['stroke', 'duotone', 'twotone'] : [preset];
+  const presetsToSearch: IconPreset[] = preset === 'all' ? ['stroke', 'duotone', 'twotone'] : [preset];
 
   const results: IconSearchResult[] = [];
 

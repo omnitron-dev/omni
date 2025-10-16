@@ -27,7 +27,7 @@ describe('Store Patterns Integration Tests', () => {
         const appStore = createMethodBasedStore();
 
         // Create computed that depends on store
-        const theme = computed(() => appStore.sidebarComponent()?.focused ? 'accent' : 'muted');
+        const theme = computed(() => (appStore.sidebarComponent()?.focused ? 'accent' : 'muted'));
 
         // Verify initial state
         expect(theme()).toBe('muted');
@@ -115,7 +115,7 @@ describe('Store Patterns Integration Tests', () => {
 
         const appStore = createSignalBasedStore();
 
-        const theme = computed(() => appStore.sidebarComponent()?.focused ? 'accent' : 'muted');
+        const theme = computed(() => (appStore.sidebarComponent()?.focused ? 'accent' : 'muted'));
 
         expect(theme()).toBe('muted');
 
@@ -164,7 +164,7 @@ describe('Store Patterns Integration Tests', () => {
         const appStore = createComputedBasedStore();
 
         // Computed depending on store's computed
-        const theme = computed(() => appStore.sidebarComponent()?.focused ? 'accent' : 'muted');
+        const theme = computed(() => (appStore.sidebarComponent()?.focused ? 'accent' : 'muted'));
 
         expect(theme()).toBe('muted');
 
@@ -208,7 +208,9 @@ describe('Store Patterns Integration Tests', () => {
         dispose = d;
 
         const store = createComplexStore();
-        const computeFn = vi.fn(() => `Theme: ${store.theme()}, Dark: ${store.isDarkMode()}, Focused: ${store.isFocused()}`);
+        const computeFn = vi.fn(
+          () => `Theme: ${store.theme()}, Dark: ${store.isDarkMode()}, Focused: ${store.isFocused()}`
+        );
 
         const summary = computed(computeFn);
 
@@ -246,7 +248,7 @@ describe('Store Patterns Integration Tests', () => {
           other: () => otherSignal(),
         };
 
-        const computeFn = vi.fn(() => store.sidebar().focused ? 'accent' : 'muted');
+        const computeFn = vi.fn(() => (store.sidebar().focused ? 'accent' : 'muted'));
 
         const theme = computed(computeFn);
 

@@ -8,11 +8,7 @@
 import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { Patcher, patch, batchPatches } from '../../../src/reconciler/patch.js';
 import { diff, PatchType, type Patch } from '../../../src/reconciler/diff.js';
-import {
-  createElementVNode,
-  createTextVNode,
-  createFragmentVNode,
-} from '../../../src/reconciler/vnode.js';
+import { createElementVNode, createTextVNode, createFragmentVNode } from '../../../src/reconciler/vnode.js';
 import { createDOMFromVNode } from '../../../src/reconciler/create-dom.js';
 
 describe('Patching Engine', () => {

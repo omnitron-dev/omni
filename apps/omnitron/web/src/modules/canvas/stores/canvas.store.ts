@@ -46,9 +46,7 @@ export const useCanvasStore = defineStore('canvas', () => {
   const isPanning = signal(false);
 
   // Computed values
-  const hasSelection = computed(
-    () => selectedNodeIds().length > 0 || selectedConnectionIds().length > 0,
-  );
+  const hasSelection = computed(() => selectedNodeIds().length > 0 || selectedConnectionIds().length > 0);
 
   const state = computed(() => ({
     zoom: zoom(),

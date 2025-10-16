@@ -15,7 +15,7 @@ import type {
   DockerContainerConfig,
   DockerEphemeralConfig,
   ServiceLifecycleHooks,
-  DockerPersistentConfig
+  DockerPersistentConfig,
 } from './types.js';
 
 /**
@@ -169,9 +169,10 @@ export abstract class BaseDockerFluentAPI<T extends DockerContainerConfig> {
 /**
  * Docker Ephemeral Container Fluent API
  */
-export class DockerEphemeralFluentAPI extends BaseDockerFluentAPI<DockerEphemeralConfig>
-  implements FluentAPIBuilder<DockerEphemeralConfig>, ServiceManager {
-
+export class DockerEphemeralFluentAPI
+  extends BaseDockerFluentAPI<DockerEphemeralConfig>
+  implements FluentAPIBuilder<DockerEphemeralConfig>, ServiceManager
+{
   constructor(engine: ExecutionEngine, image: string) {
     super(engine);
     this.config.image = image;
@@ -342,12 +343,15 @@ export class DockerEphemeralFluentAPI extends BaseDockerFluentAPI<DockerEphemera
   /**
    * Set healthcheck
    */
-  healthcheck(test: string | string[], options?: {
-    interval?: string;
-    timeout?: string;
-    startPeriod?: string;
-    retries?: number;
-  }): this {
+  healthcheck(
+    test: string | string[],
+    options?: {
+      interval?: string;
+      timeout?: string;
+      startPeriod?: string;
+      retries?: number;
+    }
+  ): this {
     this.config.healthcheck = { test, ...options };
     return this;
   }
@@ -580,7 +584,7 @@ export class DockerEphemeralFluentAPI extends BaseDockerFluentAPI<DockerEphemera
     // Pull image if requested
     if (this.config.pull) {
       const pullCmd = getDockerCommand('pull', this.config.image!);
-    await this.engine.raw`${pullCmd}`;
+      await this.engine.raw`${pullCmd}`;
     }
 
     // Build and execute run command
@@ -641,7 +645,7 @@ export class DockerEphemeralFluentAPI extends BaseDockerFluentAPI<DockerEphemera
       running,
       healthy: await this.isHealthy(),
       containers: info ? [info] : [],
-      endpoints: this.getEndpoints()
+      endpoints: this.getEndpoints(),
     };
   }
 
@@ -682,9 +686,15 @@ export class DockerEphemeralFluentAPI extends BaseDockerFluentAPI<DockerEphemera
   // Overloaded exec method to support both interfaces
   exec(command: string | string[]): Promise<ExecutionResult>;
   exec(strings: TemplateStringsArray, ...values: any[]): ProcessPromise;
-  exec(commandOrStrings: string | string[] | TemplateStringsArray, ...values: any[]): Promise<ExecutionResult> | ProcessPromise {
+  exec(
+    commandOrStrings: string | string[] | TemplateStringsArray,
+    ...values: any[]
+  ): Promise<ExecutionResult> | ProcessPromise {
     // Handle string/array commands (ServiceManager interface)
-    if (typeof commandOrStrings === 'string' || (Array.isArray(commandOrStrings) && typeof commandOrStrings[0] === 'string')) {
+    if (
+      typeof commandOrStrings === 'string' ||
+      (Array.isArray(commandOrStrings) && typeof commandOrStrings[0] === 'string')
+    ) {
       const cmd = Array.isArray(commandOrStrings) ? commandOrStrings.join(' ') : commandOrStrings;
       const containerName = this.config.name;
       if (!containerName && !this.config.image) {
@@ -695,14 +705,14 @@ export class DockerEphemeralFluentAPI extends BaseDockerFluentAPI<DockerEphemera
         // Use sh -c to ensure proper PATH environment
         const escapedCmd = cmd.replace(/"/g, '\\"');
         const fullCmd = getDockerCommand('exec', containerName, 'sh', '-c', `"${escapedCmd}"`);
-        return this.engine.raw`${fullCmd}`.then(result => result);
+        return this.engine.raw`${fullCmd}`.then((result) => result);
       } else {
         // Run ephemeral container
         const args = this.buildRunArgs();
-        const execArgs = args.filter(arg => arg !== '-d');
+        const execArgs = args.filter((arg) => arg !== '-d');
         execArgs.push('--rm');
         const fullCmd = getDockerCommand(...execArgs, cmd);
-        return this.engine.raw`${fullCmd}`.then(result => result);
+        return this.engine.raw`${fullCmd}`.then((result) => result);
       }
     }
 
@@ -730,7 +740,7 @@ export class DockerEphemeralFluentAPI extends BaseDockerFluentAPI<DockerEphemera
       // Run ephemeral container
       const args = this.buildRunArgs();
       // Remove -d flag for ephemeral execution
-      const execArgs = args.filter(arg => arg !== '-d');
+      const execArgs = args.filter((arg) => arg !== '-d');
       execArgs.push('--rm'); // Always remove after execution
       const cmdParts = strings.raw.join('').trim().split(/\s+/);
       const cmdStr = getDockerCommand(...execArgs, ...cmdParts);
@@ -765,7 +775,7 @@ export class DockerEphemeralFluentAPI extends BaseDockerFluentAPI<DockerEphemera
         started: data.State.StartedAt ? new Date(data.State.StartedAt) : undefined,
         ip: data.NetworkSettings.IPAddress,
         volumes: data.Mounts?.map((m: any) => `${m.Source}:${m.Destination}`),
-        labels: data.Config.Labels
+        labels: data.Config.Labels,
       };
     } catch {
       return null;
@@ -834,7 +844,7 @@ export class DockerEphemeralFluentAPI extends BaseDockerFluentAPI<DockerEphemera
         }
       }
 
-      await new Promise(resolve => setTimeout(resolve, interval));
+      await new Promise((resolve) => setTimeout(resolve, interval));
     }
 
     throw new Error(`Container ${this.config.name || 'ephemeral'} failed to become ready within ${timeout}ms`);
@@ -844,9 +854,10 @@ export class DockerEphemeralFluentAPI extends BaseDockerFluentAPI<DockerEphemera
 /**
  * Docker Persistent Container Fluent API
  */
-export class DockerPersistentFluentAPI extends BaseDockerFluentAPI<DockerPersistentConfig>
-  implements FluentAPIBuilder<DockerPersistentConfig>, ServiceManager {
-
+export class DockerPersistentFluentAPI
+  extends BaseDockerFluentAPI<DockerPersistentConfig>
+  implements FluentAPIBuilder<DockerPersistentConfig>, ServiceManager
+{
   constructor(engine: ExecutionEngine, container: string) {
     super(engine);
     this.config.container = container;
@@ -975,7 +986,7 @@ export class DockerPersistentFluentAPI extends BaseDockerFluentAPI<DockerPersist
 
     return {
       running,
-      containers: info ? [info] : []
+      containers: info ? [info] : [],
     };
   }
 
@@ -985,9 +996,15 @@ export class DockerPersistentFluentAPI extends BaseDockerFluentAPI<DockerPersist
   // Overloaded exec method to support both interfaces
   exec(command: string | string[]): Promise<ExecutionResult>;
   exec(strings: TemplateStringsArray, ...values: any[]): ProcessPromise;
-  exec(commandOrStrings: string | string[] | TemplateStringsArray, ...values: any[]): Promise<ExecutionResult> | ProcessPromise {
+  exec(
+    commandOrStrings: string | string[] | TemplateStringsArray,
+    ...values: any[]
+  ): Promise<ExecutionResult> | ProcessPromise {
     // Handle string/array commands (ServiceManager interface)
-    if (typeof commandOrStrings === 'string' || (Array.isArray(commandOrStrings) && typeof commandOrStrings[0] === 'string')) {
+    if (
+      typeof commandOrStrings === 'string' ||
+      (Array.isArray(commandOrStrings) && typeof commandOrStrings[0] === 'string')
+    ) {
       const cmd = Array.isArray(commandOrStrings) ? commandOrStrings.join(' ') : commandOrStrings;
       const container = this.config.container;
       if (!container) {
@@ -996,7 +1013,7 @@ export class DockerPersistentFluentAPI extends BaseDockerFluentAPI<DockerPersist
       // Use sh -c to ensure proper PATH environment
       const escapedCmd = cmd.replace(/"/g, '\\"');
       const fullCmd = getDockerCommand('exec', container, 'sh', '-c', `"${escapedCmd}"`);
-      return this.engine.raw`${fullCmd}`.then(result => result);
+      return this.engine.raw`${fullCmd}`.then((result) => result);
     }
 
     // Handle template literals
@@ -1053,7 +1070,7 @@ export class DockerPersistentFluentAPI extends BaseDockerFluentAPI<DockerPersist
         started: data.State.StartedAt ? new Date(data.State.StartedAt) : undefined,
         ip: data.NetworkSettings.IPAddress,
         volumes: data.Mounts?.map((m: any) => `${m.Source}:${m.Destination}`),
-        labels: data.Config.Labels
+        labels: data.Config.Labels,
       };
     } catch {
       return null;
@@ -1105,7 +1122,7 @@ export class DockerPersistentFluentAPI extends BaseDockerFluentAPI<DockerPersist
       if (await this.isRunning()) {
         return;
       }
-      await new Promise(resolve => setTimeout(resolve, interval));
+      await new Promise((resolve) => setTimeout(resolve, interval));
     }
 
     throw new Error(`Container ${this.config.container} failed to become ready within ${timeout}ms`);

@@ -89,9 +89,7 @@ export default defineComponent(() => {
                 <For each={() => flowService.getFlows()}>
                   {(flow) => (
                     <div
-                      class={() =>
-                        `flow-item ${selectedFlowId() === flow().id ? 'selected' : ''}`
-                      }
+                      class={() => `flow-item ${selectedFlowId() === flow().id ? 'selected' : ''}`}
                       onClick={() => selectFlow(flow().id)}
                     >
                       <div class="flow-item-content">

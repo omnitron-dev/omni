@@ -259,9 +259,7 @@ describe('Search Integration', () => {
     });
 
     it('should search in deeply nested structures', () => {
-      editor.setContent(
-        '<ul><li><p><strong>Deep</strong></p><ul><li><p>Deeper</p></li></ul></li></ul>'
-      );
+      editor.setContent('<ul><li><p><strong>Deep</strong></p><ul><li><p>Deeper</p></li></ul></li></ul>');
 
       const text = editor.getText();
       expect(text).toContain('Deep');

@@ -136,14 +136,14 @@ function updateDOM(oldNode: Node, newNode: Node): void {
 
     // Update attributes
     // Remove old attributes that don't exist in new element
-    Array.from(oldEl.attributes).forEach(attr => {
+    Array.from(oldEl.attributes).forEach((attr) => {
       if (!newEl.hasAttribute(attr.name)) {
         oldEl.removeAttribute(attr.name);
       }
     });
 
     // Set new/updated attributes
-    Array.from(newEl.attributes).forEach(attr => {
+    Array.from(newEl.attributes).forEach((attr) => {
       const oldValue = oldEl.getAttribute(attr.name);
       if (oldValue !== attr.value) {
         // Special handling for class attribute - use className for better performance
@@ -366,7 +366,7 @@ export function defineComponent<P = {}>(setup: ComponentSetup<P>, name?: string)
                   rootElement.nodeType !== newNode.nodeType ||
                   // Different element tags
                   (rootElement.nodeType === Node.ELEMENT_NODE &&
-                   (rootElement as Element).tagName !== (newNode as Element).tagName) ||
+                    (rootElement as Element).tagName !== (newNode as Element).tagName) ||
                   // Root has an owner from a child component (means it's from a different component)
                   (nodeOwners.has(rootElement) && nodeOwners.get(rootElement) !== owner);
 

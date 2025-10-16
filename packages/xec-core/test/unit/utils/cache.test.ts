@@ -7,17 +7,7 @@ import type { ExecutionResult } from '../../../src/core/result.js';
 
 // Mock execution result
 function createMockResult(stdout: string, exitCode = 0): ExecutionResult {
-  return new ExecutionResultImpl(
-    stdout,
-    '',
-    exitCode,
-    undefined,
-    'test command',
-    100,
-    new Date(),
-    new Date(),
-    'mock'
-  );
+  return new ExecutionResultImpl(stdout, '', exitCode, undefined, 'test command', 100, new Date(), new Date(), 'mock');
 }
 
 describe('ResultCache', () => {

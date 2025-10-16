@@ -3,11 +3,7 @@
  * @module @xec-sh/loader/core/execution-context
  */
 
-import type {
-  TargetInfo,
-  ScriptContext,
-  ExecutionContextOptions,
-} from '../types/index.js';
+import type { TargetInfo, ScriptContext, ExecutionContextOptions } from '../types/index.js';
 
 /**
  * ExecutionContext provides isolated execution environment for scripts

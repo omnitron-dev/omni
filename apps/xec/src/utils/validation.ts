@@ -3,7 +3,11 @@ import { z } from 'zod';
 import path from 'path';
 
 export class ValidationError extends Error {
-  constructor(message: string, public field?: string, public code?: string) {
+  constructor(
+    message: string,
+    public field?: string,
+    public code?: string
+  ) {
     super(message);
     this.name = 'ValidationError';
   }
@@ -90,10 +94,7 @@ export const schemas = {
 export function validateFileExtension(filePath: string, allowedExtensions: string[]): void {
   const ext = path.extname(filePath).toLowerCase();
   if (!allowedExtensions.includes(ext)) {
-    throw new ValidationError(
-      `File must have one of these extensions: ${allowedExtensions.join(', ')}`,
-      'filePath'
-    );
+    throw new ValidationError(`File must have one of these extensions: ${allowedExtensions.join(', ')}`, 'filePath');
   }
 }
 
@@ -158,7 +159,7 @@ export function validateVariables(vars: string): Record<string, any> {
   } catch {
     // Try to parse as key=value pairs
     const result: Record<string, any> = {};
-    const pairs = vars.split(',').map(pair => pair.trim());
+    const pairs = vars.split(',').map((pair) => pair.trim());
 
     for (const pair of pairs) {
       const [key, ...valueParts] = pair.split('=');
@@ -252,7 +253,7 @@ export function validateOptions(options: any, schema: z.ZodSchema): void {
     schema.parse(options);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      const messages = error.issues.map(err => `${err.path.join('.')}: ${err.message}`).join(', ');
+      const messages = error.issues.map((err) => `${err.path.join('.')}: ${err.message}`).join(', ');
       throw new ValidationError(`Validation failed: ${messages}`);
     }
     throw error;
@@ -263,10 +264,7 @@ export function validateOptions(options: any, schema: z.ZodSchema): void {
  * Validate project structure
  */
 export function validateProjectStructure(projectPath: string): void {
-  const requiredFiles = [
-    'package.json',
-    'tsconfig.json',
-  ];
+  const requiredFiles = ['package.json', 'tsconfig.json'];
 
   for (const file of requiredFiles) {
     const filePath = path.join(projectPath, file);
@@ -294,7 +292,7 @@ export function validateXecConfig(config: any): void {
     configSchema.parse(config);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      const messages = error.issues.map(err => `${err.path.join('.')}: ${err.message}`).join(', ');
+      const messages = error.issues.map((err) => `${err.path.join('.')}: ${err.message}`).join(', ');
       throw new ValidationError(`Invalid xec configuration: ${messages}`);
     }
     throw error;
@@ -310,12 +308,16 @@ export function validateRecipeStructure(recipe: any): void {
     description: z.string().optional(),
     version: z.string().optional(),
     author: z.string().optional(),
-    tasks: z.array(z.object({
-      name: z.string(),
-      type: z.string().optional(),
-      handler: z.any().optional(),
-      command: z.string().optional(),
-    })).optional(),
+    tasks: z
+      .array(
+        z.object({
+          name: z.string(),
+          type: z.string().optional(),
+          handler: z.any().optional(),
+          command: z.string().optional(),
+        })
+      )
+      .optional(),
     phases: z.record(z.string(), z.any()).optional(),
     vars: z.record(z.string(), z.any()).optional(),
     metadata: z.record(z.string(), z.any()).optional(),
@@ -325,7 +327,7 @@ export function validateRecipeStructure(recipe: any): void {
     recipeSchema.parse(recipe);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      const messages = error.issues.map(err => `${err.path.join('.')}: ${err.message}`).join(', ');
+      const messages = error.issues.map((err) => `${err.path.join('.')}: ${err.message}`).join(', ');
       throw new ValidationError(`Invalid recipe structure: ${messages}`);
     }
     throw error;

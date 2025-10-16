@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const BoundingBoxIcon: IconDefinition = {
-  "id": "bounding-box",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M10 4H6C5.6 5.6 4.5 6 4 6V10C4.5 10 5.6 10.4 6 12H10C10 11.3333 10.4 10 12 10V6C10.4 6 10 4.66667 10 4Z\" fill=\"currentColor\" />\n    <path d=\"M18 12H14C13.6 14 12.5 14.1667 12 14V18C12.6667 18 14 18.4 14 20H18C18 19.3333 18.4 18 20 18V14C18.4 14 18 12.6667 18 12Z\" fill=\"currentColor\" />\n    <path d=\"M6 4H10M4 10V6M12 6V10M6 12H10M14 12H18M20 14V18M12 14V18M14 20H18\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <circle cx=\"4\" cy=\"4\" r=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <circle cx=\"4\" cy=\"12\" r=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <circle cx=\"12\" cy=\"4\" r=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <circle cx=\"12\" cy=\"12\" r=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <circle cx=\"20\" cy=\"12\" r=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <circle cx=\"12\" cy=\"20\" r=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <circle cx=\"20\" cy=\"20\" r=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "duotone",
-    "originalName": "BoundingBoxIcon",
-    "elementsCount": 10,
-    "hasOpacity": false,
-    "hasFill": true
-  }
+  id: 'bounding-box',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path d="M10 4H6C5.6 5.6 4.5 6 4 6V10C4.5 10 5.6 10.4 6 12H10C10 11.3333 10.4 10 12 10V6C10.4 6 10 4.66667 10 4Z" fill="currentColor" />\n    <path d="M18 12H14C13.6 14 12.5 14.1667 12 14V18C12.6667 18 14 18.4 14 20H18C18 19.3333 18.4 18 20 18V14C18.4 14 18 12.6667 18 12Z" fill="currentColor" />\n    <path d="M6 4H10M4 10V6M12 6V10M6 12H10M14 12H18M20 14V18M12 14V18M14 20H18" stroke-linecap="round" stroke-linejoin="round" />\n    <circle cx="4" cy="4" r="2" stroke-linecap="round" stroke-linejoin="round" />\n    <circle cx="4" cy="12" r="2" stroke-linecap="round" stroke-linejoin="round" />\n    <circle cx="12" cy="4" r="2" stroke-linecap="round" stroke-linejoin="round" />\n    <circle cx="12" cy="12" r="2" stroke-linecap="round" stroke-linejoin="round" />\n    <circle cx="20" cy="12" r="2" stroke-linecap="round" stroke-linejoin="round" />\n    <circle cx="12" cy="20" r="2" stroke-linecap="round" stroke-linejoin="round" />\n    <circle cx="20" cy="20" r="2" stroke-linecap="round" stroke-linejoin="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'duotone',
+    originalName: 'BoundingBoxIcon',
+    elementsCount: 10,
+    hasOpacity: false,
+    hasFill: true,
+  },
 };

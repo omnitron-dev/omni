@@ -226,12 +226,18 @@ export function SearchablePropertyGrid() {
     { key: 'fillColor', label: 'Fill Color', type: 'color', value: '#3b82f6' },
     { key: 'strokeColor', label: 'Stroke Color', type: 'color', value: '#000000' },
     { key: 'strokeWidth', label: 'Stroke Width', type: 'number', value: 2, min: 0, max: 50 },
-    { key: 'blendMode', label: 'Blend Mode', type: 'select', value: 'normal', options: [
-      { label: 'Normal', value: 'normal' },
-      { label: 'Multiply', value: 'multiply' },
-      { label: 'Screen', value: 'screen' },
-      { label: 'Overlay', value: 'overlay' },
-    ]},
+    {
+      key: 'blendMode',
+      label: 'Blend Mode',
+      type: 'select',
+      value: 'normal',
+      options: [
+        { label: 'Normal', value: 'normal' },
+        { label: 'Multiply', value: 'multiply' },
+        { label: 'Screen', value: 'screen' },
+        { label: 'Overlay', value: 'overlay' },
+      ],
+    },
   ];
 
   return (

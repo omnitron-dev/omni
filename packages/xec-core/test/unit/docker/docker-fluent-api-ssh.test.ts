@@ -23,7 +23,7 @@ const createMockProcessPromise = (result = { stdout: '', stderr: '', exitCode: 0
     text: jest.fn(() => Promise.resolve('')),
     lines: jest.fn(() => Promise.resolve([])),
     json: jest.fn(() => Promise.resolve({})),
-    stdin: {} as any
+    stdin: {} as any,
   });
   return mockPromise;
 };
@@ -37,7 +37,12 @@ const mockEngine = {
 
     if (cmd.includes('netstat') || cmd.includes('ss')) {
       // SSH ready check - return success with :22 in output
-      return createMockProcessPromise({ stdout: 'tcp 0 0 0.0.0.0:22 0.0.0.0:* LISTEN', stderr: '', exitCode: 0, ok: true });
+      return createMockProcessPromise({
+        stdout: 'tcp 0 0 0.0.0.0:22 0.0.0.0:* LISTEN',
+        stderr: '',
+        exitCode: 0,
+        ok: true,
+      });
     }
     return createMockProcessPromise();
   }),
@@ -54,7 +59,7 @@ const mockEngine = {
 
     // All other raw commands succeed
     return createMockProcessPromise();
-  })
+  }),
 } as unknown as ExecutionEngine;
 
 describe('Docker Fluent API - SSH Service', () => {
@@ -76,7 +81,7 @@ describe('Docker Fluent API - SSH Service', () => {
         distro: 'alpine',
         port: 2323,
         user: 'admin',
-        password: 'secret'
+        password: 'secret',
       });
       expect(ssh).toBeInstanceOf(SSHFluentAPI);
     });
@@ -89,7 +94,8 @@ describe('Docker Fluent API - SSH Service', () => {
 
   describe('SSH Fluent API Methods', () => {
     test('should support fluent chaining', () => {
-      const ssh = docker.ssh()
+      const ssh = docker
+        .ssh()
         .withDistro('ubuntu')
         .withCredentials('myuser', 'mypass')
         .withPort(2222)
@@ -109,14 +115,14 @@ describe('Docker Fluent API - SSH Service', () => {
       const ssh = docker.ssh({
         port: 2323,
         user: 'admin',
-        password: 'secret'
+        password: 'secret',
       });
       const config = ssh.getConnectionConfig();
       expect(config).toEqual({
         host: 'localhost',
         port: 2323,
         username: 'admin',
-        password: 'secret'
+        password: 'secret',
       });
     });
   });
@@ -139,17 +145,14 @@ describe('Docker Fluent API - SSH Service', () => {
     });
 
     test('should configure with custom packages', async () => {
-      const ssh = docker.ssh()
-        .withPackages('git', 'vim', 'curl')
-        .withSetupCommand('echo "Custom setup"');
+      const ssh = docker.ssh().withPackages('git', 'vim', 'curl').withSetupCommand('echo "Custom setup"');
 
       await ssh.start();
       expect(mockEngine.run).toHaveBeenCalled();
     });
 
     test('should configure sudo access', async () => {
-      const ssh = docker.ssh()
-        .withSudo(false); // No password required
+      const ssh = docker.ssh().withSudo(false); // No password required
 
       await ssh.start();
       expect(mockEngine.run).toHaveBeenCalled();
@@ -161,7 +164,7 @@ describe('Docker Fluent API - SSH Service', () => {
       const ssh = docker.ssh({
         user: 'admin',
         password: 'secret',
-        port: 2222
+        port: 2222,
       });
 
       ssh.ssh('ls -la');
@@ -178,7 +181,7 @@ describe('Docker Fluent API - SSH Service', () => {
       const ssh = docker.ssh({
         user: 'admin',
         password: 'secret',
-        port: 2222
+        port: 2222,
       });
 
       ssh.scpTo('/local/file.txt', '/remote/file.txt');
@@ -195,7 +198,7 @@ describe('Docker Fluent API - SSH Service', () => {
       const ssh = docker.ssh({
         user: 'admin',
         password: 'secret',
-        port: 2222
+        port: 2222,
       });
 
       ssh.scpFrom('/remote/file.txt', '/local/file.txt');
@@ -217,17 +220,9 @@ describe('Docker Fluent API - SSH Service', () => {
   });
 
   describe('Different Linux Distributions', () => {
-    const distros = [
-      'ubuntu',
-      'alpine',
-      'debian',
-      'fedora',
-      'centos',
-      'rocky',
-      'alma'
-    ];
+    const distros = ['ubuntu', 'alpine', 'debian', 'fedora', 'centos', 'rocky', 'alma'];
 
-    distros.forEach(distro => {
+    distros.forEach((distro) => {
       test(`should create SSH container with ${distro}`, () => {
         const ssh = docker.ssh({ distro });
         expect(ssh).toBeInstanceOf(SSHFluentAPI);
@@ -243,17 +238,18 @@ describe('Docker Fluent API - SSH Service', () => {
 
       // Alpine uses apk - check raw calls for the docker run command
       const rawCalls = (mockEngine.raw as jest.Mock).mock.calls;
-      const commands = rawCalls.map(call => {
+      const commands = rawCalls.map((call) => {
         if (!Array.isArray(call[0])) return String(call[0]);
         const strings = call[0];
         const values = call.slice(1);
-        return strings.reduce((acc:string, str:string, i:number) =>
-          acc + str + (values[i] !== undefined ? String(values[i]) : ''), ''
+        return strings.reduce(
+          (acc: string, str: string, i: number) => acc + str + (values[i] !== undefined ? String(values[i]) : ''),
+          ''
         );
       });
 
       // Check if any command contains 'apk'
-      const hasApkCommand = commands.some(cmd => cmd.includes('apk'));
+      const hasApkCommand = commands.some((cmd) => cmd.includes('apk'));
 
       // If test fails, log the commands for debugging
       if (!hasApkCommand) {
@@ -269,12 +265,13 @@ describe('Docker Fluent API - SSH Service', () => {
 
       // Ubuntu uses apt-get - check raw calls for the docker run command
       const rawCalls = (mockEngine.raw as jest.Mock).mock.calls;
-      const hasAptCommand = rawCalls.some(call => {
+      const hasAptCommand = rawCalls.some((call) => {
         if (!Array.isArray(call[0])) return false;
         const strings = call[0];
         const values = call.slice(1);
-        const cmd = strings.reduce((acc:string, str:string, i:number) =>
-          acc + str + (values[i] !== undefined ? String(values[i]) : ''), ''
+        const cmd = strings.reduce(
+          (acc: string, str: string, i: number) => acc + str + (values[i] !== undefined ? String(values[i]) : ''),
+          ''
         );
         return cmd.includes('apt-get');
       });
@@ -287,12 +284,13 @@ describe('Docker Fluent API - SSH Service', () => {
 
       // Fedora uses dnf - check raw calls for the docker run command
       const rawCalls = (mockEngine.raw as jest.Mock).mock.calls;
-      const hasDnfCommand = rawCalls.some(call => {
+      const hasDnfCommand = rawCalls.some((call) => {
         if (!Array.isArray(call[0])) return false;
         const strings = call[0];
         const values = call.slice(1);
-        const cmd = strings.reduce((acc:string, str:string, i:number) =>
-          acc + str + (values[i] !== undefined ? String(values[i]) : ''), ''
+        const cmd = strings.reduce(
+          (acc: string, str: string, i: number) => acc + str + (values[i] !== undefined ? String(values[i]) : ''),
+          ''
         );
         return cmd.includes('dnf');
       });
@@ -306,12 +304,13 @@ describe('Docker Fluent API - SSH Service', () => {
       await ssh.start();
 
       const rawCalls = (mockEngine.raw as jest.Mock).mock.calls;
-      const hasAutoRemove = rawCalls.some(call => {
+      const hasAutoRemove = rawCalls.some((call) => {
         if (!Array.isArray(call[0])) return false;
         const strings = call[0];
         const values = call.slice(1);
-        const cmd = strings.reduce((acc:string, str:string, i:number) =>
-          acc + str + (values[i] !== undefined ? String(values[i]) : ''), ''
+        const cmd = strings.reduce(
+          (acc: string, str: string, i: number) => acc + str + (values[i] !== undefined ? String(values[i]) : ''),
+          ''
         );
         return cmd.includes('--rm');
       });
@@ -323,12 +322,13 @@ describe('Docker Fluent API - SSH Service', () => {
       await ssh.start();
 
       const rawCalls = (mockEngine.raw as jest.Mock).mock.calls;
-      const hasAutoRemove = rawCalls.some(call => {
+      const hasAutoRemove = rawCalls.some((call) => {
         if (!Array.isArray(call[0])) return false;
         const strings = call[0];
         const values = call.slice(1);
-        const cmd = strings.reduce((acc:string, str:string, i:number) =>
-          acc + str + (values[i] !== undefined ? String(values[i]) : ''), ''
+        const cmd = strings.reduce(
+          (acc: string, str: string, i: number) => acc + str + (values[i] !== undefined ? String(values[i]) : ''),
+          ''
         );
         return cmd.includes('--rm');
       });
@@ -358,8 +358,7 @@ describe('Docker Fluent API - SSH Service', () => {
 
   describe('Authentication', () => {
     test('should set user credentials', () => {
-      const ssh = docker.ssh()
-        .withCredentials('myuser', 'mypassword');
+      const ssh = docker.ssh().withCredentials('myuser', 'mypassword');
 
       const config = ssh.getConnectionConfig();
       expect(config.username).toBe('myuser');
@@ -367,24 +366,20 @@ describe('Docker Fluent API - SSH Service', () => {
     });
 
     test('should support root password', async () => {
-      const ssh = docker.ssh()
-        .withRootPassword('rootpass');
+      const ssh = docker.ssh().withRootPassword('rootpass');
 
       await ssh.start();
       expect(mockEngine.run).toHaveBeenCalled();
     });
 
     test('should add public key authentication', async () => {
-      const ssh = docker.ssh()
-        .withPubKeyAuth('/home/user/.ssh/id_rsa.pub');
+      const ssh = docker.ssh().withPubKeyAuth('/home/user/.ssh/id_rsa.pub');
 
       await ssh.start();
 
       // Should attempt to copy public key
       const runCalls = (mockEngine.run as jest.Mock).mock.calls;
-      const hasCopyCommand = runCalls.some(call =>
-        (call[0] as any)?.[0]?.includes?.('docker cp')
-      );
+      const hasCopyCommand = runCalls.some((call) => (call[0] as any)?.[0]?.includes?.('docker cp'));
       expect(hasCopyCommand).toBe(true);
     });
   });
@@ -413,26 +408,26 @@ describe('Docker Fluent API - SSH Service', () => {
 
   describe('Container Information', () => {
     test('should get container info', async () => {
-      const mockInfo = JSON.stringify([{
-        Id: 'abc123',
-        Name: '/test-ssh',
-        Config: {
-          Image: 'ubuntu:latest',
-          Labels: { 'com.docker.compose.service': 'ssh' }
+      const mockInfo = JSON.stringify([
+        {
+          Id: 'abc123',
+          Name: '/test-ssh',
+          Config: {
+            Image: 'ubuntu:latest',
+            Labels: { 'com.docker.compose.service': 'ssh' },
+          },
+          State: {
+            Status: 'running',
+            StartedAt: '2025-01-01T00:00:00Z',
+          },
+          NetworkSettings: {
+            IPAddress: '172.17.0.2',
+            Networks: { bridge: {} },
+          },
+          Created: '2025-01-01T00:00:00Z',
+          Mounts: [{ Source: '/host/path', Destination: '/container/path' }],
         },
-        State: {
-          Status: 'running',
-          StartedAt: '2025-01-01T00:00:00Z'
-        },
-        NetworkSettings: {
-          IPAddress: '172.17.0.2',
-          Networks: { bridge: {} }
-        },
-        Created: '2025-01-01T00:00:00Z',
-        Mounts: [
-          { Source: '/host/path', Destination: '/container/path' }
-        ]
-      }]);
+      ]);
 
       (mockEngine.run as jest.Mock).mockImplementation((strings: any, ...values: any[]) => {
         const cmd = Array.isArray(strings)
@@ -471,8 +466,7 @@ describe('Docker Fluent API - SSH Service', () => {
 
   describe('Sudo Configuration', () => {
     test('should configure sudo with password required', () => {
-      const ssh = docker.ssh()
-        .withSudo(true); // Password required
+      const ssh = docker.ssh().withSudo(true); // Password required
 
       // Check the fluent API returns correct instance
       expect(ssh).toBeInstanceOf(SSHFluentAPI);
@@ -484,8 +478,7 @@ describe('Docker Fluent API - SSH Service', () => {
     });
 
     test('should configure sudo for Alpine with password', () => {
-      const ssh = docker.ssh({ distro: 'alpine' })
-        .withSudo(true);
+      const ssh = docker.ssh({ distro: 'alpine' }).withSudo(true);
 
       // Verify SSH instance is created with correct distro and sudo config
       expect(ssh).toBeInstanceOf(SSHFluentAPI);
@@ -496,7 +489,8 @@ describe('Docker Fluent API - SSH Service', () => {
 
   describe('Custom Setup Commands', () => {
     test('should support adding custom setup commands', () => {
-      const ssh = docker.ssh()
+      const ssh = docker
+        .ssh()
         .withSetupCommand('echo "Setup 1"')
         .withSetupCommand('echo "Setup 2"')
         .withSetupCommand('echo "Setup 3"');
@@ -506,8 +500,7 @@ describe('Docker Fluent API - SSH Service', () => {
     });
 
     test('should support adding custom packages', () => {
-      const ssh = docker.ssh({ distro: 'ubuntu' })
-        .withPackages('git', 'curl', 'vim');
+      const ssh = docker.ssh({ distro: 'ubuntu' }).withPackages('git', 'curl', 'vim');
 
       // Verify fluent API works correctly
       expect(ssh).toBeInstanceOf(SSHFluentAPI);
@@ -527,7 +520,7 @@ describe('Docker Fluent API - SSH Service', () => {
       const ssh = docker.ssh({
         port: 3333,
         user: 'testuser',
-        password: 'testpass'
+        password: 'testpass',
       });
 
       const config = ssh.getConnectionConfig();
@@ -545,7 +538,8 @@ describe('Docker Fluent API - SSH Service', () => {
     });
 
     test('should support method chaining with all options', () => {
-      const ssh = docker.ssh()
+      const ssh = docker
+        .ssh()
         .withDistro('ubuntu')
         .withPort(3000)
         .withCredentials('user', 'pass')

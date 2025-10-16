@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const PoundSquareIcon: IconDefinition = {
-  "id": "pound-square",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M16.5 2.5H7.5C4.73858 2.5 2.5 4.73858 2.5 7.5V16.5C2.5 19.2614 4.73858 21.5 7.5 21.5H16.5C19.2614 21.5 21.5 19.2614 21.5 16.5V7.5C21.5 4.73858 19.2614 2.5 16.5 2.5Z\" />\n    <path opacity=\"0.4\" d=\"M14.9928 10.2382C14.9497 9.65829 14.6215 8.25322 13.36 7.73409C11.7833 7.08517 9.70699 7.90176 9.51273 10.0051C9.42158 10.992 9.93273 12.0268 10.6755 12.538C11.358 13.0078 12.3936 12.984 13.36 12.984H7.99707M11.2367 12.984C11.0549 13.6735 10.0573 15.6554 8.46745 16.4825H14.253C14.4768 16.4825 15.1083 16.5371 16.0025 15.9371\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "twotone",
-    "originalName": "PoundSquareIcon",
-    "elementsCount": 2,
-    "hasOpacity": true,
-    "hasFill": false
-  }
+  id: 'pound-square',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path d="M16.5 2.5H7.5C4.73858 2.5 2.5 4.73858 2.5 7.5V16.5C2.5 19.2614 4.73858 21.5 7.5 21.5H16.5C19.2614 21.5 21.5 19.2614 21.5 16.5V7.5C21.5 4.73858 19.2614 2.5 16.5 2.5Z" />\n    <path opacity="0.4" d="M14.9928 10.2382C14.9497 9.65829 14.6215 8.25322 13.36 7.73409C11.7833 7.08517 9.70699 7.90176 9.51273 10.0051C9.42158 10.992 9.93273 12.0268 10.6755 12.538C11.358 13.0078 12.3936 12.984 13.36 12.984H7.99707M11.2367 12.984C11.0549 13.6735 10.0573 15.6554 8.46745 16.4825H14.253C14.4768 16.4825 15.1083 16.5371 16.0025 15.9371" stroke-linecap="round" stroke-linejoin="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'twotone',
+    originalName: 'PoundSquareIcon',
+    elementsCount: 2,
+    hasOpacity: true,
+    hasFill: false,
+  },
 };

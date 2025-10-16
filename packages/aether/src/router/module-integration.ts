@@ -71,17 +71,11 @@ export class ModuleAwareRouter {
   /**
    * Register routes from a module
    */
-  registerModuleRoutes(
-    moduleId: string,
-    routes: RouteDefinition[],
-    container: DIContainer
-  ): void {
+  registerModuleRoutes(moduleId: string, routes: RouteDefinition[], container: DIContainer): void {
     this.moduleContainers.set(moduleId, container);
 
     // Enhance routes with module metadata
-    const enhancedRoutes = routes.map((route) =>
-      this.enhanceRouteWithModule(route, moduleId, container)
-    );
+    const enhancedRoutes = routes.map((route) => this.enhanceRouteWithModule(route, moduleId, container));
 
     // Track route-module mapping
     for (const route of enhancedRoutes) {
@@ -141,7 +135,7 @@ export class ModuleAwareRouter {
     return this.baseRouter.beforeEach((context) => {
       // Execute module-specific guards first
       const pathParam = context.params.path;
-      const pathString = Array.isArray(pathParam) ? (pathParam[0] || '') : (pathParam || '');
+      const pathString = Array.isArray(pathParam) ? pathParam[0] || '' : pathParam || '';
       const moduleId = this.routeModules.get(pathString);
 
       if (moduleId) {
@@ -265,11 +259,7 @@ export class ModuleAwareRouter {
   /**
    * Enhance route with module metadata and container
    */
-  private enhanceRouteWithModule(
-    route: RouteDefinition,
-    moduleId: string,
-    container: DIContainer
-  ): RouteDefinition {
+  private enhanceRouteWithModule(route: RouteDefinition, moduleId: string, container: DIContainer): RouteDefinition {
     return {
       ...route,
       meta: {
@@ -278,9 +268,7 @@ export class ModuleAwareRouter {
       },
       loader: route.loader ? this.wrapLoaderWithContainer(route.loader, container) : undefined,
       action: route.action ? this.wrapActionWithContainer(route.action, container) : undefined,
-      children: route.children?.map((child) =>
-        this.enhanceRouteWithModule(child, moduleId, container)
-      ),
+      children: route.children?.map((child) => this.enhanceRouteWithModule(child, moduleId, container)),
     };
   }
 
@@ -290,11 +278,10 @@ export class ModuleAwareRouter {
   private wrapLoader(loader: any): any {
     return (context: LoaderContext) =>
       // Add root container to context
-       loader({
+      loader({
         ...context,
         container: this.rootContainer,
-      })
-    ;
+      });
   }
 
   /**
@@ -303,37 +290,34 @@ export class ModuleAwareRouter {
   private wrapAction(action: any): any {
     return (context: ActionContext) =>
       // Add root container to context
-       action({
+      action({
         ...context,
         container: this.rootContainer,
-      })
-    ;
+      });
   }
 
   /**
    * Wrap loader to inject module container
    */
   private wrapLoaderWithContainer(loader: any, container: DIContainer): any {
-    return (context: LoaderContext) => 
+    return (context: LoaderContext) =>
       // Add module container to context
-       loader({
+      loader({
         ...context,
         container,
-      })
-    ;
+      });
   }
 
   /**
    * Wrap action to inject module container
    */
   private wrapActionWithContainer(action: any, container: DIContainer): any {
-    return (context: ActionContext) => 
+    return (context: ActionContext) =>
       // Add module container to context
-       action({
+      action({
         ...context,
         container,
-      })
-    ;
+      });
   }
 }
 
@@ -361,9 +345,7 @@ export class ModuleAwareRouter {
  * });
  * ```
  */
-export function createModuleAwareRouter(
-  config: ModuleAwareRouterConfig = {}
-): ModuleAwareRouter {
+export function createModuleAwareRouter(config: ModuleAwareRouterConfig = {}): ModuleAwareRouter {
   return new ModuleAwareRouter(config);
 }
 
@@ -383,11 +365,7 @@ export class RouterLifecycleManager {
   /**
    * Initialize routes for a module
    */
-  async initializeModule(
-    moduleId: string,
-    routes: RouteDefinition[],
-    container: DIContainer
-  ): Promise<void> {
+  async initializeModule(moduleId: string, routes: RouteDefinition[], container: DIContainer): Promise<void> {
     if (this.registeredModules.has(moduleId)) {
       return;
     }

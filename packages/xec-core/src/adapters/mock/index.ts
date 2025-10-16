@@ -35,7 +35,7 @@ export class MockAdapter extends BaseAdapter {
     this.mockConfig = {
       recordCommands: config.recordCommands ?? true,
       defaultDelay: config.defaultDelay ?? 10,
-      ...config
+      ...config,
     };
   }
 
@@ -174,11 +174,7 @@ export class MockAdapter extends BaseAdapter {
         throw error;
       }
 
-      throw new AdapterError(
-        this.adapterName,
-        'execute',
-        error instanceof Error ? error : new Error(String(error))
-      );
+      throw new AdapterError(this.adapterName, 'execute', error instanceof Error ? error : new Error(String(error)));
     }
   }
 
@@ -212,15 +208,15 @@ export class MockAdapter extends BaseAdapter {
     if (typeof command === 'string') {
       return this.executedCommands.includes(command);
     } else {
-      return this.executedCommands.some(cmd => command.test(cmd));
+      return this.executedCommands.some((cmd) => command.test(cmd));
     }
   }
 
   getCommandExecutionCount(command: string | RegExp): number {
     if (typeof command === 'string') {
-      return this.executedCommands.filter(cmd => cmd === command).length;
+      return this.executedCommands.filter((cmd) => cmd === command).length;
     } else {
-      return this.executedCommands.filter(cmd => command.test(cmd)).length;
+      return this.executedCommands.filter((cmd) => command.test(cmd)).length;
     }
   }
 
@@ -327,11 +323,11 @@ export class MockAdapter extends BaseAdapter {
     else if (command.includes('echo ')) {
       // Handle && chained commands
       if (command.includes('&&')) {
-        const parts = command.split('&&').map(p => p.trim());
+        const parts = command.split('&&').map((p) => p.trim());
         const outputs = parts
-          .filter(p => p.startsWith('echo '))
-          .map(p => this.handleEchoCommand(p, env))
-          .filter(p => p !== null);
+          .filter((p) => p.startsWith('echo '))
+          .map((p) => this.handleEchoCommand(p, env))
+          .filter((p) => p !== null);
         return outputs.join('\n');
       }
       // Extract echo part
@@ -349,7 +345,9 @@ export class MockAdapter extends BaseAdapter {
 
       // Expand environment variables if env is provided
       if (env) {
-        echoContent = echoContent.replace(/\$(\w+)/g, (match, varName) => env[varName] !== undefined ? env[varName] : match);
+        echoContent = echoContent.replace(/\$(\w+)/g, (match, varName) =>
+          env[varName] !== undefined ? env[varName] : match
+        );
       }
 
       return echoContent;
@@ -372,7 +370,7 @@ export class MockAdapter extends BaseAdapter {
       delay,
       // Store error info instead of creating the error immediately
       errorType: 'timeout',
-      errorDelay: delay
+      errorDelay: delay,
     });
   }
 
@@ -392,7 +390,9 @@ export class MockAdapter extends BaseAdapter {
   assertCommandExecutedTimes(command: string | RegExp, times: number): void {
     const count = this.getCommandExecutionCount(command);
     if (count !== times) {
-      throw new Error(`Expected command "${command}" to be executed ${times} times, but it was executed ${count} times`);
+      throw new Error(
+        `Expected command "${command}" to be executed ${times} times, but it was executed ${count} times`
+      );
     }
   }
 
@@ -406,7 +406,9 @@ export class MockAdapter extends BaseAdapter {
       });
 
       if (index === -1) {
-        throw new Error(`Expected command "${command}" to be executed in order, but it was not found after index ${lastIndex}`);
+        throw new Error(
+          `Expected command "${command}" to be executed in order, but it was not found after index ${lastIndex}`
+        );
       }
 
       lastIndex = index;

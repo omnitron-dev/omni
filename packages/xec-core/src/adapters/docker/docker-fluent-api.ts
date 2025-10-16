@@ -18,28 +18,14 @@ export { DockerBuildFluentAPI } from './docker-fluent-api/build.js';
 export { DockerBuildFluentAPI as DockerFluentBuildAPI } from './docker-fluent-api/build.js';
 
 // Re-export service APIs
-export {
-  RedisFluentAPI,
-  RedisClusterFluentAPI
-} from './docker-fluent-api/services/redis.js';
+export { RedisFluentAPI, RedisClusterFluentAPI } from './docker-fluent-api/services/redis.js';
 
-export {
-  KafkaFluentAPI,
-  RabbitMQFluentAPI
-} from './docker-fluent-api/services/messaging.js';
+export { KafkaFluentAPI, RabbitMQFluentAPI } from './docker-fluent-api/services/messaging.js';
 
-export {
-  MySQLFluentAPI,
-  MongoDBFluentAPI,
-  PostgreSQLFluentAPI
-} from './docker-fluent-api/services/databases.js';
+export { MySQLFluentAPI, MongoDBFluentAPI, PostgreSQLFluentAPI } from './docker-fluent-api/services/databases.js';
 
 // Re-export base classes
-export {
-  BaseDockerFluentAPI,
-  DockerEphemeralFluentAPI,
-  DockerPersistentFluentAPI
-} from './docker-fluent-api/base.js';
+export { BaseDockerFluentAPI, DockerEphemeralFluentAPI, DockerPersistentFluentAPI } from './docker-fluent-api/base.js';
 
 // Re-export main API
 export {
@@ -47,7 +33,7 @@ export {
   DockerSwarmFluentAPI,
   DockerVolumeFluentAPI,
   DockerComposeFluentAPI,
-  DockerNetworkFluentAPI
+  DockerNetworkFluentAPI,
 } from './docker-fluent-api/index.js';
 
 // Legacy Redis Cluster configuration (kept for compatibility)
@@ -77,7 +63,7 @@ export class DockerRedisClusterAPI {
         enabled: true,
         masters: options?.masters,
         replicas: options?.replicas,
-        nodeTimeout: options?.nodeTimeout
+        nodeTimeout: options?.nodeTimeout,
       },
       port: options?.basePort,
       version: options?.image?.replace('redis:', '').replace('-alpine', ''),
@@ -85,20 +71,36 @@ export class DockerRedisClusterAPI {
       name: options?.containerPrefix,
       persistent: options?.persistent,
       dataPath: options?.dataPath,
-      config: options?.redisConfig
+      config: options?.redisConfig,
     });
   }
 
-  async start() { return await this.api.start(); }
-  async stop() { return await this.api.stop(); }
-  async remove() { return await this.api.remove(); }
-  async exec(command: string) { return await this.api.exec(command); }
-  async info() { return await this.api.getClusterInfo(); }
+  async start() {
+    return await this.api.start();
+  }
+  async stop() {
+    return await this.api.stop();
+  }
+  async remove() {
+    return await this.api.remove();
+  }
+  async exec(command: string) {
+    return await this.api.exec(command);
+  }
+  async info() {
+    return await this.api.getClusterInfo();
+  }
   async nodes() {
     const nodes = await this.api.getClusterNodes();
     return nodes.map((n: any) => `${n.id} ${n.host}:${n.port} ${n.role}`).join('\n');
   }
-  getConnectionString() { return this.api.getConnectionString(); }
-  getContainerNames() { return this.api.nodes.map((n: any) => n.config.name); }
-  isRunning() { return this.api.isRunning(); }
+  getConnectionString() {
+    return this.api.getConnectionString();
+  }
+  getContainerNames() {
+    return this.api.nodes.map((n: any) => n.config.name);
+  }
+  isRunning() {
+    return this.api.isRunning();
+  }
 }

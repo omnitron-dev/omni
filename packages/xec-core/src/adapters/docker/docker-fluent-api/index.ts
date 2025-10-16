@@ -108,14 +108,18 @@ export class DockerFluentAPI {
   /**
    * Redis cluster shortcut
    */
-  redisCluster(config?: Partial<import('./types.js').RedisServiceConfig>): import('./services/redis.js').RedisClusterFluentAPI {
+  redisCluster(
+    config?: Partial<import('./types.js').RedisServiceConfig>
+  ): import('./services/redis.js').RedisClusterFluentAPI {
     return this.service('redis-cluster', config);
   }
 
   /**
    * PostgreSQL service shortcut
    */
-  postgresql(config?: Partial<import('./types.js').PostgresServiceConfig>): import('./services/databases.js').PostgreSQLFluentAPI {
+  postgresql(
+    config?: Partial<import('./types.js').PostgresServiceConfig>
+  ): import('./services/databases.js').PostgreSQLFluentAPI {
     return this.service('postgresql', config);
   }
 
@@ -129,7 +133,9 @@ export class DockerFluentAPI {
   /**
    * MongoDB service shortcut
    */
-  mongodb(config?: Partial<import('./types.js').MongoServiceConfig>): import('./services/databases.js').MongoDBFluentAPI {
+  mongodb(
+    config?: Partial<import('./types.js').MongoServiceConfig>
+  ): import('./services/databases.js').MongoDBFluentAPI {
     return this.service('mongodb', config);
   }
 
@@ -143,7 +149,9 @@ export class DockerFluentAPI {
   /**
    * RabbitMQ service shortcut
    */
-  rabbitmq(config?: Partial<import('./types.js').RabbitMQServiceConfig>): import('./services/messaging.js').RabbitMQFluentAPI {
+  rabbitmq(
+    config?: Partial<import('./types.js').RabbitMQServiceConfig>
+  ): import('./services/messaging.js').RabbitMQFluentAPI {
     return this.service('rabbitmq', config);
   }
 
@@ -269,7 +277,10 @@ export class DockerComposeFluentAPI {
   private profiles: string[] = [];
   private envVars: Record<string, string> = {};
 
-  constructor(private engine: ExecutionEngine, file?: string) {
+  constructor(
+    private engine: ExecutionEngine,
+    file?: string
+  ) {
     this.file = file;
   }
 
@@ -497,10 +508,13 @@ export class DockerNetworkFluentAPI {
   /**
    * Connect container to network
    */
-  async connect(container: string, options?: {
-    ip?: string;
-    alias?: string[];
-  }): Promise<void> {
+  async connect(
+    container: string,
+    options?: {
+      ip?: string;
+      alias?: string[];
+    }
+  ): Promise<void> {
     const args = ['network', 'connect'];
 
     if (options?.ip) {
@@ -632,11 +646,7 @@ export class DockerSwarmFluentAPI {
   /**
    * Initialize swarm
    */
-  async init(options?: {
-    advertiseAddr?: string;
-    listenAddr?: string;
-    dataPathAddr?: string;
-  }): Promise<string> {
+  async init(options?: { advertiseAddr?: string; listenAddr?: string; dataPathAddr?: string }): Promise<string> {
     const args = ['swarm', 'init'];
 
     if (options?.advertiseAddr) {
@@ -698,15 +708,19 @@ export class DockerSwarmFluentAPI {
   /**
    * Create service
    */
-  async createService(name: string, image: string, options?: {
-    replicas?: number;
-    ports?: string[];
-    env?: Record<string, string>;
-    networks?: string[];
-    constraints?: string[];
-    labels?: Record<string, string>;
-    mounts?: string[];
-  }): Promise<void> {
+  async createService(
+    name: string,
+    image: string,
+    options?: {
+      replicas?: number;
+      ports?: string[];
+      env?: Record<string, string>;
+      networks?: string[];
+      constraints?: string[];
+      labels?: Record<string, string>;
+      mounts?: string[];
+    }
+  ): Promise<void> {
     const args = ['service', 'create', '--name', name];
 
     if (options?.replicas) {
@@ -757,12 +771,15 @@ export class DockerSwarmFluentAPI {
   /**
    * Update service
    */
-  async updateService(name: string, options: {
-    image?: string;
-    replicas?: number;
-    updateParallelism?: number;
-    updateDelay?: string;
-  }): Promise<void> {
+  async updateService(
+    name: string,
+    options: {
+      image?: string;
+      replicas?: number;
+      updateParallelism?: number;
+      updateDelay?: string;
+    }
+  ): Promise<void> {
     const args = ['service', 'update'];
 
     if (options.image) {
@@ -803,11 +820,14 @@ export class DockerSwarmFluentAPI {
   /**
    * Get service logs
    */
-  async serviceLogs(name: string, options?: {
-    follow?: boolean;
-    tail?: number;
-    since?: string;
-  }): Promise<string> {
+  async serviceLogs(
+    name: string,
+    options?: {
+      follow?: boolean;
+      tail?: number;
+      since?: string;
+    }
+  ): Promise<string> {
     const args = ['service', 'logs'];
 
     if (options?.follow) {

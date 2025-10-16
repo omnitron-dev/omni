@@ -77,7 +77,7 @@ describe('Micro Frontend E2E Tests', () => {
           return moduleCache.get(cacheKey);
         }
 
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
 
         const module = {
           name: moduleName,
@@ -103,7 +103,7 @@ describe('Micro Frontend E2E Tests', () => {
             setTimeout(() => reject(new Error('Network error')), 10);
           });
         } catch (e) {
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 10));
           return {
             source: 'fallback',
             url: fallbackUrl,
@@ -112,10 +112,7 @@ describe('Micro Frontend E2E Tests', () => {
         }
       };
 
-      const result = await loadWithFallback(
-        'http://localhost:3001',
-        'http://localhost:3002'
-      );
+      const result = await loadWithFallback('http://localhost:3001', 'http://localhost:3002');
 
       expect(result.source).toBe('fallback');
       expect(result.module.default()).toBe('Fallback Component');
@@ -125,7 +122,7 @@ describe('Micro Frontend E2E Tests', () => {
       const loadedModules: string[] = [];
 
       const LazyRemoteComponent = async (moduleName: string) => {
-        await new Promise(resolve => setTimeout(resolve, 20));
+        await new Promise((resolve) => setTimeout(resolve, 20));
         loadedModules.push(moduleName);
         return {
           render: () => {
@@ -190,7 +187,7 @@ describe('Micro Frontend E2E Tests', () => {
 
       effect(() => {
         const state = globalState();
-        subscribers.forEach(fn => fn(state));
+        subscribers.forEach((fn) => fn(state));
       });
 
       const subscribe = (callback: any) => {
@@ -235,7 +232,7 @@ describe('Micro Frontend E2E Tests', () => {
         },
         emit(event: string, data: any) {
           const handlers = this.handlers.get(event) || [];
-          handlers.forEach(handler => handler(data));
+          handlers.forEach((handler) => handler(data));
         },
       };
 
@@ -285,7 +282,7 @@ describe('Micro Frontend E2E Tests', () => {
         publish(topic: string, data: any) {
           const subscribers = this.topics.get(topic);
           if (subscribers) {
-            subscribers.forEach(callback => callback(data));
+            subscribers.forEach((callback) => callback(data));
           }
         },
       };
@@ -368,20 +365,16 @@ describe('Micro Frontend E2E Tests', () => {
 
       const loadApp = async (appName: string) => {
         const start = performance.now();
-        await new Promise(resolve => setTimeout(resolve, 20));
+        await new Promise((resolve) => setTimeout(resolve, 20));
         const duration = performance.now() - start;
         loadingTimes.push(duration);
         return { name: appName, loaded: true };
       };
 
-      await Promise.all([
-        loadApp('App1'),
-        loadApp('App2'),
-        loadApp('App3'),
-      ]);
+      await Promise.all([loadApp('App1'), loadApp('App2'), loadApp('App3')]);
 
       expect(loadingTimes.length).toBe(3);
-      loadingTimes.forEach(time => {
+      loadingTimes.forEach((time) => {
         expect(time).toBeLessThan(50);
       });
     });
@@ -395,13 +388,13 @@ describe('Micro Frontend E2E Tests', () => {
 
       const start = performance.now();
 
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
       metrics.hostLoad = performance.now() - start;
 
       const remoteStart = performance.now();
       await Promise.all([
-        new Promise(resolve => setTimeout(resolve, 15)),
-        new Promise(resolve => setTimeout(resolve, 20)),
+        new Promise((resolve) => setTimeout(resolve, 15)),
+        new Promise((resolve) => setTimeout(resolve, 20)),
       ]);
       metrics.remoteLoads.push(performance.now() - remoteStart);
 
@@ -417,20 +410,16 @@ describe('Micro Frontend E2E Tests', () => {
 
       const loadApp = async (name: string, priority: 'critical' | 'lazy') => {
         const delay = priority === 'critical' ? 10 : 30;
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise((resolve) => setTimeout(resolve, delay));
         return { name, loaded: true, priority };
       };
 
-      const criticalResults = await Promise.all(
-        criticalApps.map(app => loadApp(app, 'critical'))
-      );
+      const criticalResults = await Promise.all(criticalApps.map((app) => loadApp(app, 'critical')));
 
-      const lazyResults = await Promise.all(
-        lazyApps.map(app => loadApp(app, 'lazy'))
-      );
+      const lazyResults = await Promise.all(lazyApps.map((app) => loadApp(app, 'lazy')));
 
-      expect(criticalResults.every(r => r.loaded)).toBe(true);
-      expect(lazyResults.every(r => r.loaded)).toBe(true);
+      expect(criticalResults.every((r) => r.loaded)).toBe(true);
+      expect(lazyResults.every((r) => r.loaded)).toBe(true);
     });
   });
 
@@ -546,22 +535,19 @@ describe('Micro Frontend E2E Tests', () => {
       const hostApp = signal({ loaded: false, remotes: [] as any[] });
 
       const loadHost = async () => {
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
         hostApp.set({ loaded: true, remotes: [] });
       };
 
       const loadRemote = async (name: string) => {
-        await new Promise(resolve => setTimeout(resolve, 15));
+        await new Promise((resolve) => setTimeout(resolve, 15));
         return { name, status: 'loaded' };
       };
 
       await loadHost();
       expect(hostApp().loaded).toBe(true);
 
-      const remotes = await Promise.all([
-        loadRemote('App1'),
-        loadRemote('App2'),
-      ]);
+      const remotes = await Promise.all([loadRemote('App1'), loadRemote('App2')]);
 
       hostApp.set({ ...hostApp(), remotes });
       expect(hostApp().remotes.length).toBe(2);
@@ -596,8 +582,8 @@ describe('Micro Frontend E2E Tests', () => {
         { name: 'app2', port: 3002, status: 'built' },
       ];
 
-      expect(apps.every(app => app.status === 'built')).toBe(true);
-      expect(apps.map(a => a.port)).toEqual([3000, 3001, 3002]);
+      expect(apps.every((app) => app.status === 'built')).toBe(true);
+      expect(apps.map((a) => a.port)).toEqual([3000, 3001, 3002]);
     });
 
     it('should support independent versioning', () => {
@@ -617,7 +603,7 @@ describe('Micro Frontend E2E Tests', () => {
         { app: 'app2', version: '1.5.3', status: 'deployed', timestamp: Date.now() },
       ];
 
-      expect(deployments.every(d => d.status === 'deployed')).toBe(true);
+      expect(deployments.every((d) => d.status === 'deployed')).toBe(true);
     });
   });
 });

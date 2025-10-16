@@ -153,13 +153,9 @@ describe('C.6 Testing Patterns', () => {
     it('should support conditional stubbing', async () => {
       const stub = new StubFlow<{ type: string; value: number }, string>();
 
-      stub
-        .withArgs((input) => input.type === 'even' && input.value % 2 === 0)
-        .returns('valid even');
+      stub.withArgs((input) => input.type === 'even' && input.value % 2 === 0).returns('valid even');
 
-      stub
-        .withArgs((input) => input.type === 'odd' && input.value % 2 === 1)
-        .returns('valid odd');
+      stub.withArgs((input) => input.type === 'odd' && input.value % 2 === 1).returns('valid odd');
 
       stub.returns('invalid'); // Default
 
@@ -178,7 +174,7 @@ describe('C.6 Testing Patterns', () => {
           const id = identity<number>();
           const result = await id(n);
           expect(result).toBe(n);
-        }),
+        })
       );
 
       // Composition associativity
@@ -195,7 +191,7 @@ describe('C.6 Testing Patterns', () => {
           const rightResult = await right(n);
 
           expect(leftResult).toBe(rightResult);
-        }),
+        })
       );
     });
 
@@ -227,7 +223,7 @@ describe('C.6 Testing Patterns', () => {
           }
 
           expect(sortedCounts).toEqual(originalCounts);
-        }),
+        })
       );
     });
 
@@ -241,7 +237,7 @@ describe('C.6 Testing Patterns', () => {
           const once = await reverseFlow(s);
           const twice = await reverseFlow(once);
           expect(twice).toBe(s);
-        }),
+        })
       );
 
       // Test preservation of length
@@ -249,7 +245,7 @@ describe('C.6 Testing Patterns', () => {
         fc.asyncProperty(fc.string(), async (s) => {
           const result = await reverseFlow(s);
           expect(result.length).toBe(s.length);
-        }),
+        })
       );
 
       // Test commutative property doesn't hold
@@ -270,18 +266,14 @@ describe('C.6 Testing Patterns', () => {
       });
 
       await fc.assert(
-        fc.asyncProperty(
-          fc.integer(),
-          fc.integer({ min: -100, max: 100 }),
-          async (a, b) => {
-            if (b === 0) {
-              expect(() => safeDivide({ a, b })).toThrow('Division by zero');
-            } else {
-              const result = safeDivide({ a, b });
-              expect(result).toBeCloseTo(a / b, 10);
-            }
-          },
-        ),
+        fc.asyncProperty(fc.integer(), fc.integer({ min: -100, max: 100 }), async (a, b) => {
+          if (b === 0) {
+            expect(() => safeDivide({ a, b })).toThrow('Division by zero');
+          } else {
+            const result = safeDivide({ a, b });
+            expect(result).toBeCloseTo(a / b, 10);
+          }
+        })
       );
     });
   });
@@ -350,11 +342,7 @@ describe('C.6 Testing Patterns', () => {
       class SnapshotTester {
         private snapshots = new Map<string, any>();
 
-        async testFlow<In, Out>(
-          name: string,
-          targetFlow: Flow<In, Out>,
-          inputs: In[],
-        ): Promise<void> {
+        async testFlow<In, Out>(name: string, targetFlow: Flow<In, Out>, inputs: In[]): Promise<void> {
           const results = await Promise.all(inputs.map((input) => targetFlow(input)));
 
           const snapshot = {

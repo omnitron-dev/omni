@@ -1,8 +1,8 @@
 /**
  * 01. Piping - Redirecting Output Between Commands
- * 
+ *
  * Demonstrates various ways to redirect output.
- * 
+ *
  * IMPORTANT: Most pipe operations can be performed through shell,
  * using standard pipe syntax (|) in commands.
  */

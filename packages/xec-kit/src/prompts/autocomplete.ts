@@ -124,8 +124,8 @@ export const autocomplete = <Value>(opts: AutocompleteOptions<Value>) => {
           const matches =
             this.filteredOptions.length !== options.length
               ? prism.dim(
-                ` (${this.filteredOptions.length} match${this.filteredOptions.length === 1 ? '' : 'es'})`
-              )
+                  ` (${this.filteredOptions.length} match${this.filteredOptions.length === 1 ? '' : 'es'})`
+                )
               : '';
 
           // No matches message
@@ -161,24 +161,24 @@ export const autocomplete = <Value>(opts: AutocompleteOptions<Value>) => {
             this.filteredOptions.length === 0
               ? []
               : limitOptions({
-                cursor: this.cursor,
-                options: this.filteredOptions,
-                columnPadding: 3, // for `|  `
-                rowPadding: headings.length + footers.length,
-                style: (option, active) => {
-                  const label = getLabel(option);
-                  const hint =
-                    option.hint && option.value === this.focusedValue
-                      ? prism.dim(` (${option.hint})`)
-                      : '';
+                  cursor: this.cursor,
+                  options: this.filteredOptions,
+                  columnPadding: 3, // for `|  `
+                  rowPadding: headings.length + footers.length,
+                  style: (option, active) => {
+                    const label = getLabel(option);
+                    const hint =
+                      option.hint && option.value === this.focusedValue
+                        ? prism.dim(` (${option.hint})`)
+                        : '';
 
-                  return active
-                    ? `${prism.green(S_RADIO_ACTIVE)} ${label}${hint}`
-                    : `${prism.dim(S_RADIO_INACTIVE)} ${prism.dim(label)}${hint}`;
-                },
-                maxItems: opts.maxItems,
-                output: opts.output,
-              });
+                    return active
+                      ? `${prism.green(S_RADIO_ACTIVE)} ${label}${hint}`
+                      : `${prism.dim(S_RADIO_INACTIVE)} ${prism.dim(label)}${hint}`;
+                  },
+                  maxItems: opts.maxItems,
+                  output: opts.output,
+                });
 
           // Return the formatted prompt
           return [
@@ -266,8 +266,8 @@ export const autocompleteMultiselect = <Value>(opts: AutocompleteMultiSelectOpti
       const matches =
         this.filteredOptions.length !== options.length
           ? prism.dim(
-            ` (${this.filteredOptions.length} match${this.filteredOptions.length === 1 ? '' : 'es'})`
-          )
+              ` (${this.filteredOptions.length} match${this.filteredOptions.length === 1 ? '' : 'es'})`
+            )
           : '';
 
       // Render prompt state

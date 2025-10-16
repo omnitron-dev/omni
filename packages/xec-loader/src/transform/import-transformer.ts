@@ -57,13 +57,10 @@ export class ImportTransformer {
     }
 
     // Transform /node/module@version or /node/module.js to node:module
-    return content.replace(
-      /from\s+["']\/node\/([^@"'/.]+)(?:\.m?js)?(?:@[^"']+)?["']/g,
-      (match, moduleName) => {
-        const quote = match.includes('"') ? '"' : "'";
-        return `from ${quote}node:${moduleName}${quote}`;
-      }
-    );
+    return content.replace(/from\s+["']\/node\/([^@"'/.]+)(?:\.m?js)?(?:@[^"']+)?["']/g, (match, moduleName) => {
+      const quote = match.includes('"') ? '"' : "'";
+      return `from ${quote}node:${moduleName}${quote}`;
+    });
   }
 
   /**
@@ -80,49 +77,37 @@ export class ImportTransformer {
     }
 
     // Transform from statements with relative paths
-    content = content.replace(
-      /from\s+["'](\/.+?)["']/g,
-      (match, importPath) => {
-        if (!importPath.startsWith('/node/')) {
-          return `from "${baseUrl}${importPath}"`;
-        }
-        return match;
+    content = content.replace(/from\s+["'](\/.+?)["']/g, (match, importPath) => {
+      if (!importPath.startsWith('/node/')) {
+        return `from "${baseUrl}${importPath}"`;
       }
-    );
+      return match;
+    });
 
     // Transform static import statements
-    content = content.replace(
-      /import\s+["'](\/.+?)["']/g,
-      (match, importPath) => {
-        if (!importPath.startsWith('/node/')) {
-          return `import "${baseUrl}${importPath}"`;
-        }
-        return match;
+    content = content.replace(/import\s+["'](\/.+?)["']/g, (match, importPath) => {
+      if (!importPath.startsWith('/node/')) {
+        return `import "${baseUrl}${importPath}"`;
       }
-    );
+      return match;
+    });
 
     // Transform dynamic imports
-    content = content.replace(
-      /import\s*\(\s*["'](\/.+?)["']\s*\)/g,
-      (match, importPath) => {
-        if (!importPath.startsWith('/node/')) {
-          return `import("${baseUrl}${importPath}")`;
-        }
-        return match;
+    content = content.replace(/import\s*\(\s*["'](\/.+?)["']\s*\)/g, (match, importPath) => {
+      if (!importPath.startsWith('/node/')) {
+        return `import("${baseUrl}${importPath}")`;
       }
-    );
+      return match;
+    });
 
     // Transform export from statements
-    content = content.replace(
-      /export\s+(?:\*|\{[^}]+\})\s+from\s+["'](\/.+?)["']/g,
-      (match, importPath) => {
-        if (!importPath.startsWith('/node/')) {
-          const exportPart = match.substring(0, match.indexOf('from'));
-          return `${exportPart}from "${baseUrl}${importPath}"`;
-        }
-        return match;
+    content = content.replace(/export\s+(?:\*|\{[^}]+\})\s+from\s+["'](\/.+?)["']/g, (match, importPath) => {
+      if (!importPath.startsWith('/node/')) {
+        const exportPart = match.substring(0, match.indexOf('from'));
+        return `${exportPart}from "${baseUrl}${importPath}"`;
       }
-    );
+      return match;
+    });
 
     return content;
   }

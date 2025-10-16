@@ -18,13 +18,13 @@ describe('Kubernetes API', () => {
       portForward: jest.fn(),
       streamLogs: jest.fn(),
       copyFiles: jest.fn(),
-      dispose: jest.fn()
+      dispose: jest.fn(),
     } as any;
 
     // Mock k8s engine returned by with()
     mockK8sEngine = {
       run: jest.fn().mockReturnValue({ stdout: 'test output', exitCode: 0 }),
-      raw: jest.fn().mockReturnValue({ stdout: 'raw output', exitCode: 0 })
+      raw: jest.fn().mockReturnValue({ stdout: 'raw output', exitCode: 0 }),
     };
 
     // Mock execution engine
@@ -33,14 +33,14 @@ describe('Kubernetes API', () => {
       k8s: jest.fn().mockReturnThis(),
       with: jest.fn().mockReturnValue(mockK8sEngine),
       run: jest.fn(),
-      raw: jest.fn()
+      raw: jest.fn(),
     } as any;
   });
 
   describe('createK8sExecutionContext', () => {
     it('should create execution context without pod', () => {
       const context = createK8sExecutionContext(mockEngine, {
-        namespace: 'default'
+        namespace: 'default',
       });
 
       expect(context).toBeDefined();
@@ -51,7 +51,7 @@ describe('Kubernetes API', () => {
 
     it('should throw error when executing without pod', async () => {
       const context = createK8sExecutionContext(mockEngine, {
-        namespace: 'default'
+        namespace: 'default',
       });
 
       expect(() => context.exec`echo test`).toThrow('Pod must be specified for direct execution');
@@ -61,18 +61,18 @@ describe('Kubernetes API', () => {
     it('should execute commands when pod is specified', () => {
       const context = createK8sExecutionContext(mockEngine, {
         pod: 'test-pod',
-        namespace: 'default'
+        namespace: 'default',
       });
 
       context.exec`echo test`;
-      
+
       expect(mockEngine.with).toHaveBeenCalledWith({
         adapter: 'kubernetes',
         adapterOptions: {
           type: 'kubernetes',
           pod: 'test-pod',
-          namespace: 'default'
-        }
+          namespace: 'default',
+        },
       });
       expect(mockK8sEngine.run).toHaveBeenCalled();
     });
@@ -80,25 +80,25 @@ describe('Kubernetes API', () => {
     it('should execute raw commands when pod is specified', () => {
       const context = createK8sExecutionContext(mockEngine, {
         pod: 'test-pod',
-        namespace: 'default'
+        namespace: 'default',
       });
 
       context.raw`echo $VAR`;
-      
+
       expect(mockEngine.with).toHaveBeenCalledWith({
         adapter: 'kubernetes',
         adapterOptions: {
           type: 'kubernetes',
           pod: 'test-pod',
-          namespace: 'default'
-        }
+          namespace: 'default',
+        },
       });
       expect(mockK8sEngine.raw).toHaveBeenCalled();
     });
 
     it('should throw error when kubernetes adapter is not available', () => {
       const mockEngineNoAdapter = {
-        getAdapter: jest.fn().mockReturnValue(null)
+        getAdapter: jest.fn().mockReturnValue(null),
       } as any;
 
       expect(() => createK8sExecutionContext(mockEngineNoAdapter, {})).toThrow('Kubernetes adapter not available');
@@ -111,11 +111,11 @@ describe('Kubernetes API', () => {
         container: 'main',
         execFlags: ['-i', '-t'],
         tty: true,
-        stdin: true
+        stdin: true,
       });
 
       context.exec`echo test`;
-      
+
       expect(mockEngine.with).toHaveBeenCalledWith({
         adapter: 'kubernetes',
         adapterOptions: {
@@ -125,8 +125,8 @@ describe('Kubernetes API', () => {
           container: 'main',
           execFlags: ['-i', '-t'],
           tty: true,
-          stdin: true
-        }
+          stdin: true,
+        },
       });
     });
 
@@ -137,11 +137,11 @@ describe('Kubernetes API', () => {
         container: 'main',
         execFlags: ['-i', '-t'],
         tty: false,
-        stdin: false
+        stdin: false,
       });
 
       context.raw`echo $VAR`;
-      
+
       expect(mockEngine.with).toHaveBeenCalledWith({
         adapter: 'kubernetes',
         adapterOptions: {
@@ -151,8 +151,8 @@ describe('Kubernetes API', () => {
           container: 'main',
           execFlags: ['-i', '-t'],
           tty: false,
-          stdin: false
-        }
+          stdin: false,
+        },
       });
     });
   });
@@ -163,7 +163,7 @@ describe('Kubernetes API', () => {
 
     beforeEach(() => {
       context = createK8sExecutionContext(mockEngine, {
-        namespace: 'test-namespace'
+        namespace: 'test-namespace',
       });
       pod = context.pod('test-pod');
     });
@@ -177,8 +177,8 @@ describe('Kubernetes API', () => {
           adapterOptions: {
             type: 'kubernetes',
             pod: 'test-pod',
-            namespace: 'test-namespace'
-          }
+            namespace: 'test-namespace',
+          },
         });
         expect(mockK8sEngine.run).toHaveBeenCalled();
       });
@@ -191,8 +191,8 @@ describe('Kubernetes API', () => {
           adapterOptions: {
             type: 'kubernetes',
             pod: 'test-pod',
-            namespace: 'test-namespace'
-          }
+            namespace: 'test-namespace',
+          },
         });
         expect(mockK8sEngine.raw).toHaveBeenCalled();
       });
@@ -204,7 +204,7 @@ describe('Kubernetes API', () => {
         remotePort: 80,
         isOpen: false,
         open: jest.fn().mockImplementation(() => Promise.resolve()),
-        close: jest.fn().mockImplementation(() => Promise.resolve())
+        close: jest.fn().mockImplementation(() => Promise.resolve()),
       };
 
       beforeEach(() => {
@@ -214,12 +214,7 @@ describe('Kubernetes API', () => {
       it('should create port forward with specific ports', async () => {
         const forward = await pod.portForward(8080, 80);
 
-        expect(mockAdapter.portForward).toHaveBeenCalledWith(
-          'test-pod',
-          8080,
-          80,
-          { namespace: 'test-namespace' }
-        );
+        expect(mockAdapter.portForward).toHaveBeenCalledWith('test-pod', 8080, 80, { namespace: 'test-namespace' });
         expect(mockPortForward.open).toHaveBeenCalled();
         expect(forward).toBe(mockPortForward);
       });
@@ -227,12 +222,10 @@ describe('Kubernetes API', () => {
       it('should create port forward with dynamic local port', async () => {
         const forward = await pod.portForwardDynamic(3000);
 
-        expect(mockAdapter.portForward).toHaveBeenCalledWith(
-          'test-pod',
-          0,
-          3000,
-          { namespace: 'test-namespace', dynamicLocalPort: true }
-        );
+        expect(mockAdapter.portForward).toHaveBeenCalledWith('test-pod', 0, 3000, {
+          namespace: 'test-namespace',
+          dynamicLocalPort: true,
+        });
         expect(mockPortForward.open).toHaveBeenCalled();
         expect(forward).toBe(mockPortForward);
       });
@@ -243,7 +236,7 @@ describe('Kubernetes API', () => {
         mockAdapter.executeKubectl.mockResolvedValue({
           stdout: 'log line 1\nlog line 2',
           stderr: '',
-          exitCode: 0
+          exitCode: 0,
         });
 
         const logs = await pod.logs({ tail: 10, timestamps: true });
@@ -259,7 +252,7 @@ describe('Kubernetes API', () => {
         mockAdapter.executeKubectl.mockResolvedValue({
           stdout: 'container logs',
           stderr: '',
-          exitCode: 0
+          exitCode: 0,
         });
 
         const logs = await pod.logs({ container: 'nginx', previous: true });
@@ -274,7 +267,7 @@ describe('Kubernetes API', () => {
 
     describe('streaming logs', () => {
       const mockLogStream = {
-        stop: jest.fn()
+        stop: jest.fn(),
       };
 
       beforeEach(() => {
@@ -285,18 +278,14 @@ describe('Kubernetes API', () => {
         const onData = jest.fn();
         const stream = await pod.streamLogs(onData, {
           follow: true,
-          tail: 20
+          tail: 20,
         });
 
-        expect(mockAdapter.streamLogs).toHaveBeenCalledWith(
-          'test-pod',
-          onData,
-          {
-            namespace: 'test-namespace',
-            follow: true,
-            tail: 20
-          }
-        );
+        expect(mockAdapter.streamLogs).toHaveBeenCalledWith('test-pod', onData, {
+          namespace: 'test-namespace',
+          follow: true,
+          tail: 20,
+        });
         expect(stream).toBe(mockLogStream);
       });
 
@@ -304,19 +293,15 @@ describe('Kubernetes API', () => {
         const onData = jest.fn();
         const stream = await pod.follow(onData, {
           container: 'app',
-          tail: 50
+          tail: 50,
         });
 
-        expect(mockAdapter.streamLogs).toHaveBeenCalledWith(
-          'test-pod',
-          onData,
-          {
-            namespace: 'test-namespace',
-            container: 'app',
-            tail: 50,
-            follow: true
-          }
-        );
+        expect(mockAdapter.streamLogs).toHaveBeenCalledWith('test-pod', onData, {
+          namespace: 'test-namespace',
+          container: 'app',
+          tail: 50,
+          follow: true,
+        });
         expect(stream).toBe(mockLogStream);
       });
     });
@@ -350,7 +335,7 @@ describe('Kubernetes API', () => {
           remotePort: 80,
           isOpen: false,
           open: jest.fn().mockImplementation(() => Promise.reject(new Error('open failed'))),
-          close: jest.fn()
+          close: jest.fn(),
         };
         mockAdapter.portForward.mockReturnValue(mockPortForward as any);
 
@@ -362,43 +347,31 @@ describe('Kubernetes API', () => {
       it('should copy file to pod', async () => {
         await pod.copyTo('/local/file.txt', '/pod/file.txt');
 
-        expect(mockAdapter.copyFiles).toHaveBeenCalledWith(
-          '/local/file.txt',
-          'test-pod:/pod/file.txt',
-          {
-            namespace: 'test-namespace',
-            container: undefined,
-            direction: 'to'
-          }
-        );
+        expect(mockAdapter.copyFiles).toHaveBeenCalledWith('/local/file.txt', 'test-pod:/pod/file.txt', {
+          namespace: 'test-namespace',
+          container: undefined,
+          direction: 'to',
+        });
       });
 
       it('should copy file to specific container', async () => {
         await pod.copyTo('/local/config.json', '/app/config.json', 'app');
 
-        expect(mockAdapter.copyFiles).toHaveBeenCalledWith(
-          '/local/config.json',
-          'test-pod:/app/config.json -c app',
-          {
-            namespace: 'test-namespace',
-            container: 'app',
-            direction: 'to'
-          }
-        );
+        expect(mockAdapter.copyFiles).toHaveBeenCalledWith('/local/config.json', 'test-pod:/app/config.json -c app', {
+          namespace: 'test-namespace',
+          container: 'app',
+          direction: 'to',
+        });
       });
 
       it('should copy file from pod', async () => {
         await pod.copyFrom('/pod/output.log', '/local/output.log');
 
-        expect(mockAdapter.copyFiles).toHaveBeenCalledWith(
-          'test-pod:/pod/output.log',
-          '/local/output.log',
-          {
-            namespace: 'test-namespace',
-            container: undefined,
-            direction: 'from'
-          }
-        );
+        expect(mockAdapter.copyFiles).toHaveBeenCalledWith('test-pod:/pod/output.log', '/local/output.log', {
+          namespace: 'test-namespace',
+          container: undefined,
+          direction: 'from',
+        });
       });
 
       it('should copy file from specific container', async () => {
@@ -410,7 +383,7 @@ describe('Kubernetes API', () => {
           {
             namespace: 'test-namespace',
             container: 'nginx',
-            direction: 'from'
+            direction: 'from',
           }
         );
       });
@@ -420,10 +393,10 @@ describe('Kubernetes API', () => {
   describe('multiple pods', () => {
     it('should create multiple pod instances', () => {
       const context = createK8sExecutionContext(mockEngine, {});
-      
+
       const web1 = context.pod('web-1');
       const web2 = context.pod('web-2');
-      
+
       expect(web1.name).toBe('web-1');
       expect(web2.name).toBe('web-2');
       expect(web1.namespace).toBe('default');
@@ -432,11 +405,11 @@ describe('Kubernetes API', () => {
 
     it('should create pod instances with custom namespace', () => {
       const context = createK8sExecutionContext(mockEngine, {
-        namespace: 'production'
+        namespace: 'production',
       });
-      
+
       const pod = context.pod('app-pod');
-      
+
       expect(pod.name).toBe('app-pod');
       expect(pod.namespace).toBe('production');
     });
@@ -447,7 +420,7 @@ describe('Kubernetes API', () => {
       const context = createK8sExecutionContext(mockEngine, {
         namespace: 'test',
         container: 'sidecar',
-        tty: true
+        tty: true,
       });
       const pod = context.pod('test-pod');
 
@@ -460,8 +433,8 @@ describe('Kubernetes API', () => {
           container: 'sidecar',
           tty: true,
           pod: 'test-pod',
-          namespace: 'test'
-        }
+          namespace: 'test',
+        },
       });
     });
   });
@@ -474,18 +447,18 @@ describe('Kubernetes API', () => {
         container: undefined,
         execFlags: undefined,
         tty: undefined,
-        stdin: undefined
+        stdin: undefined,
       });
 
       context.exec`echo test`;
-      
+
       // Should only include defined values
       expect(mockEngine.with).toHaveBeenCalledWith({
         adapter: 'kubernetes',
         adapterOptions: {
           type: 'kubernetes',
-          pod: 'test-pod'
-        }
+          pod: 'test-pod',
+        },
       });
     });
 
@@ -493,7 +466,7 @@ describe('Kubernetes API', () => {
       mockAdapter.executeKubectl.mockResolvedValue({
         stdout: 'logs',
         stderr: '',
-        exitCode: 0
+        exitCode: 0,
       });
 
       const context = createK8sExecutionContext(mockEngine, {});
@@ -501,17 +474,16 @@ describe('Kubernetes API', () => {
 
       // Test with no options
       await pod.logs();
-      expect(mockAdapter.executeKubectl).toHaveBeenCalledWith(
-        ['logs', '-n', 'default', 'test-pod'],
-        { throwOnNonZeroExit: true }
-      );
+      expect(mockAdapter.executeKubectl).toHaveBeenCalledWith(['logs', '-n', 'default', 'test-pod'], {
+        throwOnNonZeroExit: true,
+      });
 
       // Test with all options
       await pod.logs({
         container: 'app',
         tail: 100,
         previous: true,
-        timestamps: true
+        timestamps: true,
       });
       expect(mockAdapter.executeKubectl).toHaveBeenCalledWith(
         ['logs', '-n', 'default', '-c', 'app', '--tail', '100', '--previous', '--timestamps', 'test-pod'],
@@ -526,11 +498,7 @@ describe('Kubernetes API', () => {
 
       // Test with minimal options
       await pod.streamLogs(onData);
-      expect(mockAdapter.streamLogs).toHaveBeenCalledWith(
-        'test-pod',
-        onData,
-        { namespace: 'default' }
-      );
+      expect(mockAdapter.streamLogs).toHaveBeenCalledWith('test-pod', onData, { namespace: 'default' });
 
       // Test with all options
       await pod.streamLogs(onData, {
@@ -538,20 +506,16 @@ describe('Kubernetes API', () => {
         follow: true,
         tail: 500,
         previous: true,
-        timestamps: true
+        timestamps: true,
       });
-      expect(mockAdapter.streamLogs).toHaveBeenCalledWith(
-        'test-pod',
-        onData,
-        {
-          namespace: 'default',
-          container: 'nginx',
-          follow: true,
-          tail: 500,
-          previous: true,
-          timestamps: true
-        }
-      );
+      expect(mockAdapter.streamLogs).toHaveBeenCalledWith('test-pod', onData, {
+        namespace: 'default',
+        container: 'nginx',
+        follow: true,
+        tail: 500,
+        previous: true,
+        timestamps: true,
+      });
     });
   });
 });

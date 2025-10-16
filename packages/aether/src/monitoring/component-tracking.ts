@@ -184,7 +184,11 @@ export class ComponentTracker {
    */
   trackMount(componentId: string, name: string, props?: Record<string, any>): void;
   trackMount(name: string, props?: Record<string, any>): void;
-  trackMount(componentIdOrName: string, nameOrProps?: string | Record<string, any>, propsOrUndefined?: Record<string, any>): void {
+  trackMount(
+    componentIdOrName: string,
+    nameOrProps?: string | Record<string, any>,
+    propsOrUndefined?: Record<string, any>
+  ): void {
     if (!this.enabled) return;
 
     // Handle overloaded parameters
@@ -467,8 +471,8 @@ export class ComponentTracker {
 
     // Calculate min/max render times
     const allRenders = this.renderInfo.get(name) || [];
-    const minRenderTime = allRenders.length > 0 ? Math.min(...allRenders.map(r => r.duration)) : undefined;
-    const maxRenderTime = allRenders.length > 0 ? Math.max(...allRenders.map(r => r.duration)) : undefined;
+    const minRenderTime = allRenders.length > 0 ? Math.min(...allRenders.map((r) => r.duration)) : undefined;
+    const maxRenderTime = allRenders.length > 0 ? Math.max(...allRenders.map((r) => r.duration)) : undefined;
 
     // Add aliases and computed fields
     return {
@@ -490,11 +494,16 @@ export class ComponentTracker {
   /**
    * Get overall statistics
    */
-  getStatistics(): { totalComponents: number; totalRenders: number; averageRenderDuration: number; avgRenderTime: number } {
+  getStatistics(): {
+    totalComponents: number;
+    totalRenders: number;
+    averageRenderDuration: number;
+    avgRenderTime: number;
+  } {
     const components = Array.from(this.mountInfo.values());
     const totalComponents = components.length;
     const totalRenders = components.reduce((sum, c) => sum + c.totalRenders, 0);
-    const totalDuration = components.reduce((sum, c) => sum + (c.averageRenderDuration * c.totalRenders), 0);
+    const totalDuration = components.reduce((sum, c) => sum + c.averageRenderDuration * c.totalRenders, 0);
     const averageRenderDuration = totalRenders > 0 ? totalDuration / totalRenders : 0;
 
     return {

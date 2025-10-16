@@ -264,9 +264,7 @@ describe('C.3 State Management Patterns', () => {
           const targetId = upToEventId ?? this.events.length - 1;
 
           // Find nearest snapshot
-          const snapshot = this.snapshots
-            .filter((s) => s.eventId <= targetId)
-            .sort((a, b) => b.eventId - a.eventId)[0];
+          const snapshot = this.snapshots.filter((s) => s.eventId <= targetId).sort((a, b) => b.eventId - a.eventId)[0];
 
           let state = snapshot ? snapshot.state : { count: 0 };
           const startIndex = snapshot ? snapshot.eventId + 1 : 0;

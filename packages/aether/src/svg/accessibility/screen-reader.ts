@@ -314,10 +314,7 @@ export function createSROnlyText(text: string): HTMLSpanElement {
  * @param message - Message to announce
  * @param priority - Priority level ('polite' or 'assertive')
  */
-export function announceToScreenReader(
-  message: string,
-  priority: 'polite' | 'assertive' = 'polite'
-): void {
+export function announceToScreenReader(message: string, priority: 'polite' | 'assertive' = 'polite'): void {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
     return;
   }

@@ -5,14 +5,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import {
-  waitForEditor,
-  typeText,
-  pressShortcut,
-  pressEscape,
-  waitForVisible,
-  waitForHidden,
-} from './helpers';
+import { waitForEditor, typeText, pressShortcut, pressEscape, waitForVisible, waitForHidden } from './helpers';
 
 test.describe('Search and Replace', () => {
   test.beforeEach(async ({ page }) => {
@@ -137,7 +130,7 @@ test.describe('Search and Replace', () => {
     const searchInput = page.locator('input[type="search"]');
     const caseSensitiveToggle = page.locator('[aria-label="Case sensitive"], input[type="checkbox"]');
 
-    if (await searchInput.isVisible() && await caseSensitiveToggle.isVisible()) {
+    if ((await searchInput.isVisible()) && (await caseSensitiveToggle.isVisible())) {
       await searchInput.fill('hello');
       await caseSensitiveToggle.click();
 
@@ -154,7 +147,7 @@ test.describe('Search and Replace', () => {
     const searchInput = page.locator('input[type="search"]');
     const replaceInput = page.locator('input[placeholder*="Replace"]');
 
-    if (await searchInput.isVisible() && await replaceInput.isVisible()) {
+    if ((await searchInput.isVisible()) && (await replaceInput.isVisible())) {
       await searchInput.fill('World');
       await replaceInput.fill('Universe');
 
@@ -174,7 +167,7 @@ test.describe('Search and Replace', () => {
     const searchInput = page.locator('input[type="search"]');
     const replaceInput = page.locator('input[placeholder*="Replace"]');
 
-    if (await searchInput.isVisible() && await replaceInput.isVisible()) {
+    if ((await searchInput.isVisible()) && (await replaceInput.isVisible())) {
       await searchInput.fill('test');
       await replaceInput.fill('replaced');
 
@@ -285,7 +278,7 @@ test.describe('Search and Replace', () => {
     const searchInput = page.locator('input[type="search"]');
     const regexToggle = page.locator('[aria-label="Regex"], input[type="checkbox"]');
 
-    if (await searchInput.isVisible() && await regexToggle.isVisible()) {
+    if ((await searchInput.isVisible()) && (await regexToggle.isVisible())) {
       await regexToggle.click();
       await searchInput.fill('test\\d+');
 
@@ -319,7 +312,7 @@ test.describe('Search and Replace', () => {
     const searchInput = page.locator('input[type="search"]');
     const replaceInput = page.locator('input[placeholder*="Replace"]');
 
-    if (await searchInput.isVisible() && await replaceInput.isVisible()) {
+    if ((await searchInput.isVisible()) && (await replaceInput.isVisible())) {
       await searchInput.fill('test');
       await replaceInput.fill('replaced');
 
@@ -342,7 +335,7 @@ test.describe('Search and Replace', () => {
     const searchInput = page.locator('input[type="search"]');
     const wordBoundaryToggle = page.locator('[aria-label="Whole word"]');
 
-    if (await searchInput.isVisible() && await wordBoundaryToggle.isVisible()) {
+    if ((await searchInput.isVisible()) && (await wordBoundaryToggle.isVisible())) {
       await searchInput.fill('test');
       await wordBoundaryToggle.click();
 

@@ -1,6 +1,6 @@
 /**
  * Task API
- * 
+ *
  * Provides programmatic access to xec task management.
  * Supports listing, executing, and creating tasks.
  */
@@ -9,11 +9,7 @@ import { TaskManager } from '../config/task-manager.js';
 import { TargetResolver } from '../config/target-resolver.js';
 import { ConfigurationManager } from '../config/configuration-manager.js';
 
-import type { 
-  TaskResult, 
-  TaskDefinition, 
-  TaskExecutionOptions 
-} from './types.js';
+import type { TaskResult, TaskDefinition, TaskExecutionOptions } from './types.js';
 
 export class TaskAPI {
   private manager?: TaskManager;
@@ -32,7 +28,7 @@ export class TaskAPI {
       await this.configManager.load();
       this.targetResolver = new TargetResolver(this.configManager.getConfig());
       this.manager = new TaskManager({
-        configManager: this.configManager
+        configManager: this.configManager,
       });
     }
   }
@@ -45,22 +41,20 @@ export class TaskAPI {
     await this.initialize();
     const config = this.configManager.getConfig();
     const tasks = config.tasks || {};
-    
+
     let taskList = Object.entries(tasks).map(([name, def]) => {
-      const taskDef = typeof def === 'string' 
-        ? { command: def }
-        : def;
-      
+      const taskDef = typeof def === 'string' ? { command: def } : def;
+
       return {
         name,
-        ...taskDef
+        ...taskDef,
       } as TaskDefinition;
     });
 
     // Apply filter if provided
     if (filter) {
       const pattern = new RegExp(filter, 'i');
-      taskList = taskList.filter(task => pattern.test(task.name));
+      taskList = taskList.filter((task) => pattern.test(task.name));
     }
 
     return taskList;
@@ -74,18 +68,16 @@ export class TaskAPI {
     await this.initialize();
     const config = this.configManager.getConfig();
     const taskDef = config.tasks?.[name];
-    
+
     if (!taskDef) {
       return undefined;
     }
 
-    const definition = typeof taskDef === 'string'
-      ? { command: taskDef }
-      : taskDef;
+    const definition = typeof taskDef === 'string' ? { command: taskDef } : taskDef;
 
     return {
       name,
-      ...definition
+      ...definition,
     } as TaskDefinition;
   }
 
@@ -95,13 +87,9 @@ export class TaskAPI {
    * @param params - Task parameters
    * @param options - Execution options
    */
-  async run(
-    name: string, 
-    params: Record<string, any> = {}, 
-    options: TaskExecutionOptions = {}
-  ): Promise<TaskResult> {
+  async run(name: string, params: Record<string, any> = {}, options: TaskExecutionOptions = {}): Promise<TaskResult> {
     await this.initialize();
-    
+
     // Check if task exists
     const taskDef = await this.get(name);
     if (!taskDef) {
@@ -112,7 +100,7 @@ export class TaskAPI {
     const result = await this.manager!.run(name, params, {
       target: options.target,
       timeout: options.timeout,
-      env: options.env
+      env: options.env,
     });
 
     // Convert to API result format
@@ -121,13 +109,13 @@ export class TaskAPI {
       error: result.error,
       duration: result.duration,
       outputs: {},
-      steps: result.steps?.map(step => ({
+      steps: result.steps?.map((step) => ({
         name: step.name || 'unnamed',
         success: step.success,
         output: step.output,
         error: step.error,
-        duration: step.duration
-      }))
+        duration: step.duration,
+      })),
     };
   }
 
@@ -138,17 +126,17 @@ export class TaskAPI {
    */
   async create(name: string, definition: Partial<TaskDefinition>): Promise<void> {
     await this.initialize();
-    
+
     // Add task to configuration
     const config = this.configManager.getConfig();
     if (!config.tasks) {
       config.tasks = {};
     }
-    
+
     // Remove name from definition as it's stored as the key
     const { name: _, ...taskDef } = definition as any;
     config.tasks[name] = taskDef;
-    
+
     // Save configuration
     await this.configManager.save();
   }
@@ -160,22 +148,21 @@ export class TaskAPI {
    */
   async update(name: string, definition: Partial<TaskDefinition>): Promise<void> {
     await this.initialize();
-    
+
     const config = this.configManager.getConfig();
     if (!config.tasks?.[name]) {
       throw new Error(`Task '${name}' not found`);
     }
-    
+
     // Merge with existing definition
     const existing = config.tasks[name];
-    const updated = typeof existing === 'string'
-      ? { command: existing, ...definition }
-      : { ...existing, ...definition };
-    
+    const updated =
+      typeof existing === 'string' ? { command: existing, ...definition } : { ...existing, ...definition };
+
     // Remove name from definition
     const { name: _, ...taskDef } = updated as any;
     config.tasks[name] = taskDef;
-    
+
     await this.configManager.save();
   }
 
@@ -185,12 +172,12 @@ export class TaskAPI {
    */
   async delete(name: string): Promise<void> {
     await this.initialize();
-    
+
     const config = this.configManager.getConfig();
     if (!config.tasks?.[name]) {
       throw new Error(`Task '${name}' not found`);
     }
-    
+
     delete config.tasks[name];
     await this.configManager.save();
   }
@@ -222,22 +209,22 @@ export class TaskAPI {
    * @param options - Execution options
    */
   async runSequence(
-    taskNames: string[], 
+    taskNames: string[],
     params: Record<string, any> = {},
     options: TaskExecutionOptions = {}
   ): Promise<TaskResult[]> {
     const results: TaskResult[] = [];
-    
+
     for (const taskName of taskNames) {
       const result = await this.run(taskName, params, options);
       results.push(result);
-      
+
       // Stop on failure unless explicitly told to continue
       if (!result.success && !options.parallel) {
         break;
       }
     }
-    
+
     return results;
   }
 
@@ -248,14 +235,12 @@ export class TaskAPI {
    * @param options - Execution options
    */
   async runParallel(
-    taskNames: string[], 
+    taskNames: string[],
     params: Record<string, any> = {},
     options: TaskExecutionOptions = {}
   ): Promise<TaskResult[]> {
-    const promises = taskNames.map(taskName => 
-      this.run(taskName, params, { ...options, parallel: true })
-    );
-    
+    const promises = taskNames.map((taskName) => this.run(taskName, params, { ...options, parallel: true }));
+
     return Promise.all(promises);
   }
 
@@ -264,12 +249,9 @@ export class TaskAPI {
    * @param name - Task name
    * @param params - Task parameters
    */
-  async dryRun(
-    name: string, 
-    params: Record<string, any> = {}
-  ): Promise<string[]> {
+  async dryRun(name: string, params: Record<string, any> = {}): Promise<string[]> {
     await this.initialize();
-    
+
     const task = await this.get(name);
     if (!task) {
       throw new Error(`Task '${name}' not found`);
@@ -277,11 +259,11 @@ export class TaskAPI {
 
     // Return array of commands that would be executed
     const commands: string[] = [];
-    
+
     if (task.command) {
       commands.push(task.command);
     }
-    
+
     if (task.steps) {
       for (const step of task.steps) {
         if (typeof step === 'string') {
@@ -293,7 +275,7 @@ export class TaskAPI {
         }
       }
     }
-    
+
     return commands;
   }
 }

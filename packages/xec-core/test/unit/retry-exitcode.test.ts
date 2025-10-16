@@ -5,10 +5,10 @@ import { ExecutionEngine } from '../../src/core/execution-engine.js';
 
 describe('Retry Mechanism with Exit Codes', () => {
   let engine: ExecutionEngine;
-  
+
   beforeEach(() => {
     engine = new ExecutionEngine({
-      throwOnNonZeroExit: false // Test explicitly with false setting
+      throwOnNonZeroExit: false, // Test explicitly with false setting
     });
   });
 
@@ -28,17 +28,19 @@ describe('Retry Mechanism with Exit Codes', () => {
             duration: 10,
             startedAt: new Date(),
             finishedAt: new Date(),
-            adapter: 'local'
+            adapter: 'local',
           };
         },
-        async isAvailable() { return true; }
+        async isAvailable() {
+          return true;
+        },
       };
 
       // Create retry-enabled engine
       const $reliable = engine.retry({
         maxRetries: 2,
         initialDelay: 10,
-        jitter: false
+        jitter: false,
       });
 
       // Register mock adapter
@@ -47,7 +49,7 @@ describe('Retry Mechanism with Exit Codes', () => {
       try {
         await $reliable.execute({
           command: 'curl https://non-existent-domain.com',
-          adapter: 'local'
+          adapter: 'local',
         });
         fail('Should have thrown RetryError');
       } catch (error: any) {
@@ -72,16 +74,18 @@ describe('Retry Mechanism with Exit Codes', () => {
             duration: 10,
             startedAt: new Date(),
             finishedAt: new Date(),
-            adapter: 'local'
+            adapter: 'local',
           };
         },
-        async isAvailable() { return true; }
+        async isAvailable() {
+          return true;
+        },
       };
 
       const $reliable = engine.retry({
         maxRetries: 1,
         initialDelay: 10,
-        jitter: false
+        jitter: false,
       });
 
       ($reliable as any).registerAdapter('local', mockAdapter);
@@ -89,7 +93,7 @@ describe('Retry Mechanism with Exit Codes', () => {
       try {
         await $reliable.execute({
           command: 'curl https://unreachable-host.com',
-          adapter: 'local'
+          adapter: 'local',
         });
         fail('Should have thrown RetryError');
       } catch (error: any) {
@@ -113,10 +117,12 @@ describe('Retry Mechanism with Exit Codes', () => {
             duration: 10,
             startedAt: new Date(),
             finishedAt: new Date(),
-            adapter: 'local'
+            adapter: 'local',
           };
         },
-        async isAvailable() { return true; }
+        async isAvailable() {
+          return true;
+        },
       };
 
       const $reliable = engine.retry({
@@ -124,10 +130,9 @@ describe('Retry Mechanism with Exit Codes', () => {
         initialDelay: 10,
         jitter: false,
         // Custom isRetryable that excludes HTTP client errors
-        isRetryable: (result) => 
+        isRetryable: (result) =>
           // Don't retry on HTTP client errors (exit code 22)
-           result.exitCode !== 0 && result.exitCode !== 22
-        
+          result.exitCode !== 0 && result.exitCode !== 22,
       });
 
       ($reliable as any).registerAdapter('local', mockAdapter);
@@ -135,9 +140,9 @@ describe('Retry Mechanism with Exit Codes', () => {
       const result = await $reliable.execute({
         command: 'curl https://httpbin.org/status/404',
         adapter: 'local',
-        nothrow: true
+        nothrow: true,
       });
-      
+
       expect(attempts).toBe(1); // Only 1 attempt, no retries
       expect(result.exitCode).toBe(22);
     });
@@ -156,16 +161,18 @@ describe('Retry Mechanism with Exit Codes', () => {
             duration: 10,
             startedAt: new Date(),
             finishedAt: new Date(),
-            adapter: 'local'
+            adapter: 'local',
           };
         },
-        async isAvailable() { return true; }
+        async isAvailable() {
+          return true;
+        },
       };
 
       const $reliable = engine.retry({
         maxRetries: 2,
         initialDelay: 10,
-        jitter: false
+        jitter: false,
       });
 
       ($reliable as any).registerAdapter('local', mockAdapter);
@@ -174,7 +181,7 @@ describe('Retry Mechanism with Exit Codes', () => {
       const result = await $reliable.execute({
         command: 'curl https://test.com',
         adapter: 'local',
-        nothrow: true
+        nothrow: true,
       });
 
       expect(attempts).toBe(3); // 1 initial + 2 retries
@@ -189,7 +196,7 @@ describe('Retry Mechanism with Exit Codes', () => {
       const $reliable = $.retry({
         maxRetries: 1,
         initialDelay: 50,
-        jitter: false
+        jitter: false,
       });
 
       expect($reliable).toBeDefined();
@@ -212,10 +219,12 @@ describe('Retry Mechanism with Exit Codes', () => {
             duration: 10,
             startedAt: new Date(),
             finishedAt: new Date(),
-            adapter: 'local'
+            adapter: 'local',
           };
         },
-        async isAvailable() { return true; }
+        async isAvailable() {
+          return true;
+        },
       };
 
       (engine as any).registerAdapter('local', mockAdapter);
@@ -227,8 +236,8 @@ describe('Retry Mechanism with Exit Codes', () => {
           retry: {
             maxRetries: 1,
             initialDelay: 10,
-            jitter: false
-          }
+            jitter: false,
+          },
         });
         fail('Should have thrown RetryError');
       } catch (error: any) {
@@ -256,10 +265,12 @@ describe('Retry Mechanism with Exit Codes', () => {
             duration: 10,
             startedAt: new Date(),
             finishedAt: new Date(),
-            adapter: 'local'
+            adapter: 'local',
           };
         },
-        async isAvailable() { return true; }
+        async isAvailable() {
+          return true;
+        },
       };
 
       (engine as any).registerAdapter('local', mockAdapter);
@@ -272,8 +283,8 @@ describe('Retry Mechanism with Exit Codes', () => {
             maxRetries: 2,
             initialDelay: 10,
             jitter: false,
-            onRetry: onRetryCallback
-          }
+            onRetry: onRetryCallback,
+          },
         });
         fail('Should have thrown RetryError');
       } catch (error: any) {

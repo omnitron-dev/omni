@@ -58,9 +58,7 @@ export type { UserState, UserPreferences } from './stores/user.store';
  *
  * @param options - Initialization options
  */
-export async function initializeCoreModule(options?: {
-  router?: any;
-}): Promise<void> {
+export async function initializeCoreModule(options?: { router?: any }): Promise<void> {
   console.log('[CoreModule] Initializing...');
 
   // Services are automatically initialized via DI

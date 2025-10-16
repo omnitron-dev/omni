@@ -112,7 +112,7 @@ export class TimelineController implements ITimelineController {
       }
 
       const elapsed = timestamp - this.startTime;
-      this.currentTime = Math.min((elapsed * this.speedFactor), this.duration);
+      this.currentTime = Math.min(elapsed * this.speedFactor, this.duration);
 
       // Update active animations
       this.updateAnimations(this.currentTime);
@@ -251,10 +251,7 @@ export class TimelineController implements ITimelineController {
 /**
  * Create a timeline with stagger effect
  */
-export function createStaggerTimeline(
-  animations: AnimationConfig[],
-  staggerDelay: number
-): TimelineController {
+export function createStaggerTimeline(animations: AnimationConfig[], staggerDelay: number): TimelineController {
   const timeline = new TimelineController({ stagger: staggerDelay });
   animations.forEach((anim) => timeline.add(anim));
   return timeline;
@@ -263,10 +260,7 @@ export function createStaggerTimeline(
 /**
  * Create a timeline with overlap
  */
-export function createOverlapTimeline(
-  animations: AnimationConfig[],
-  overlapAmount: number
-): TimelineController {
+export function createOverlapTimeline(animations: AnimationConfig[], overlapAmount: number): TimelineController {
   const timeline = new TimelineController({ overlap: overlapAmount });
   animations.forEach((anim) => timeline.add(anim));
   return timeline;
@@ -275,9 +269,7 @@ export function createOverlapTimeline(
 /**
  * Create a parallel timeline (all animations start together)
  */
-export function createParallelTimeline(
-  animations: AnimationConfig[]
-): TimelineController {
+export function createParallelTimeline(animations: AnimationConfig[]): TimelineController {
   const timeline = new TimelineController();
   animations.forEach((anim) => timeline.add(anim, 0));
   return timeline;
@@ -286,9 +278,7 @@ export function createParallelTimeline(
 /**
  * Create a sequential timeline (animations play one after another)
  */
-export function createSequentialTimeline(
-  animations: AnimationConfig[]
-): TimelineController {
+export function createSequentialTimeline(animations: AnimationConfig[]): TimelineController {
   const timeline = new TimelineController();
   let position = 0;
   animations.forEach((anim) => {

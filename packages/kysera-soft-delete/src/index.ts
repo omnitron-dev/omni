@@ -1,6 +1,6 @@
-import type { Plugin, AnyQueryBuilder } from '../../kysera-repository/dist/index.js'
-import type { SelectQueryBuilder, Kysely } from 'kysely'
-import { sql } from 'kysely'
+import type { Plugin, AnyQueryBuilder } from '../../kysera-repository/dist/index.js';
+import type { SelectQueryBuilder, Kysely } from 'kysely';
+import { sql } from 'kysely';
 
 /**
  * Configuration options for the soft delete plugin.
@@ -20,7 +20,7 @@ export interface SoftDeleteOptions {
    *
    * @default 'deleted_at'
    */
-  deletedAtColumn?: string
+  deletedAtColumn?: string;
 
   /**
    * Include deleted records by default in queries.
@@ -28,7 +28,7 @@ export interface SoftDeleteOptions {
    *
    * @default false
    */
-  includeDeleted?: boolean
+  includeDeleted?: boolean;
 
   /**
    * List of tables that support soft delete.
@@ -36,15 +36,15 @@ export interface SoftDeleteOptions {
    *
    * @example ['users', 'posts', 'comments']
    */
-  tables?: string[]
+  tables?: string[];
 }
 
 interface BaseRepository {
-  tableName: string
-  executor: Kysely<Record<string, unknown>>
-  findAll: () => Promise<unknown[]>
-  findById: (id: number) => Promise<unknown>
-  update: (id: number, data: Record<string, unknown>) => Promise<unknown>
+  tableName: string;
+  executor: Kysely<Record<string, unknown>>;
+  findAll: () => Promise<unknown[]>;
+  findById: (id: number) => Promise<unknown>;
+  update: (id: number, data: Record<string, unknown>) => Promise<unknown>;
 }
 
 /**
@@ -99,11 +99,7 @@ interface BaseRepository {
  * @returns Plugin instance that can be used with createORM
  */
 export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
-  const {
-    deletedAtColumn = 'deleted_at',
-    includeDeleted = false,
-    tables
-  } = options
+  const { deletedAtColumn = 'deleted_at', includeDeleted = false, tables } = options;
 
   return {
     name: '@kysera/soft-delete',
@@ -120,9 +116,12 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
      *
      * This approach is simpler and more explicit than full query interception.
      */
-    interceptQuery<QB extends AnyQueryBuilder>(qb: QB, context: { operation: string; table: string; metadata: Record<string, unknown> }): QB {
+    interceptQuery<QB extends AnyQueryBuilder>(
+      qb: QB,
+      context: { operation: string; table: string; metadata: Record<string, unknown> }
+    ): QB {
       // Check if table supports soft delete
-      const supportsSoftDelete = !tables || tables.includes(context.table)
+      const supportsSoftDelete = !tables || tables.includes(context.table);
 
       // Only filter SELECT queries when not explicitly including deleted
       if (
@@ -132,20 +131,19 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
         !includeDeleted
       ) {
         // Add WHERE deleted_at IS NULL to the query builder
-        type GenericSelectQueryBuilder = SelectQueryBuilder<
-          Record<string, unknown>,
-          string,
-          Record<string, unknown>
-        >
-        return (qb as unknown as GenericSelectQueryBuilder)
-          .where(`${context.table}.${deletedAtColumn}` as never, 'is', null) as QB
+        type GenericSelectQueryBuilder = SelectQueryBuilder<Record<string, unknown>, string, Record<string, unknown>>;
+        return (qb as unknown as GenericSelectQueryBuilder).where(
+          `${context.table}.${deletedAtColumn}` as never,
+          'is',
+          null
+        ) as QB;
       }
 
       // Note: DELETE operations are NOT intercepted here
       // Use softDelete() method instead of delete() to perform soft deletes
       // This is by design - method override is simpler and more explicit
 
-      return qb
+      return qb;
     },
 
     /**
@@ -164,24 +162,24 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
      */
     extendRepository<T extends object>(repo: T): T {
       // Type assertion is safe here as we're checking for BaseRepository properties
-      const baseRepo = repo as unknown as BaseRepository
+      const baseRepo = repo as unknown as BaseRepository;
 
       // Check if it's actually a repository (has required properties)
       if (!('tableName' in baseRepo) || !('executor' in baseRepo)) {
-        return repo
+        return repo;
       }
 
       // Check if table supports soft delete
-      const supportsSoftDelete = !tables || tables.includes(baseRepo.tableName)
+      const supportsSoftDelete = !tables || tables.includes(baseRepo.tableName);
 
       // If table doesn't support soft delete, return unmodified repo
       if (!supportsSoftDelete) {
-        return repo
+        return repo;
       }
 
       // Wrap original methods to apply soft delete filtering
-      const originalFindAll = baseRepo.findAll.bind(baseRepo)
-      const originalFindById = baseRepo.findById.bind(baseRepo)
+      const originalFindAll = baseRepo.findAll.bind(baseRepo);
+      const originalFindById = baseRepo.findById.bind(baseRepo);
 
       const extendedRepo = {
         ...baseRepo,
@@ -193,10 +191,10 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
               .selectFrom(baseRepo.tableName)
               .selectAll()
               .where(deletedAtColumn as never, 'is', null)
-              .execute()
-            return result as unknown[]
+              .execute();
+            return result as unknown[];
           }
-          return await originalFindAll()
+          return await originalFindAll();
         },
 
         async findById(id: number): Promise<unknown> {
@@ -206,10 +204,10 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
               .selectAll()
               .where('id' as never, '=', id as never)
               .where(deletedAtColumn as never, 'is', null)
-              .executeTakeFirst()
-            return result ?? null
+              .executeTakeFirst();
+            return result ?? null;
           }
-          return await originalFindById(id)
+          return await originalFindById(id);
         },
 
         async softDelete(id: number): Promise<unknown> {
@@ -220,21 +218,21 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
             .updateTable(baseRepo.tableName)
             .set({ [deletedAtColumn]: sql`CURRENT_TIMESTAMP` } as never)
             .where('id' as never, '=', id as never)
-            .execute()
+            .execute();
 
           // Fetch the updated record to verify it exists
-          const record = await originalFindById(id)
+          const record = await originalFindById(id);
 
           // If record not found or deleted_at not set, throw error
           if (!record) {
-            throw new Error(`Record with id ${id} not found`)
+            throw new Error(`Record with id ${id} not found`);
           }
 
-          return record
+          return record;
         },
 
         async restore(id: number): Promise<unknown> {
-          return await baseRepo.update(id, { [deletedAtColumn]: null })
+          return await baseRepo.update(id, { [deletedAtColumn]: null });
         },
 
         async hardDelete(id: number): Promise<void> {
@@ -242,17 +240,17 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
           await baseRepo.executor
             .deleteFrom(baseRepo.tableName)
             .where('id' as never, '=', id as never)
-            .execute()
+            .execute();
         },
 
         async findWithDeleted(id: number): Promise<unknown> {
           // Use original method without filtering
-          return await originalFindById(id)
+          return await originalFindById(id);
         },
 
         async findAllWithDeleted(): Promise<unknown[]> {
           // Use original method without filtering
-          return await originalFindAll()
+          return await originalFindAll();
         },
 
         async findDeleted(): Promise<unknown[]> {
@@ -260,12 +258,12 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
             .selectFrom(baseRepo.tableName)
             .selectAll()
             .where(deletedAtColumn as never, 'is not', null)
-            .execute()
-          return result as unknown[]
-        }
-      }
+            .execute();
+          return result as unknown[];
+        },
+      };
 
-      return extendedRepo as T
-    }
-  }
-}
+      return extendedRepo as T;
+    },
+  };
+};

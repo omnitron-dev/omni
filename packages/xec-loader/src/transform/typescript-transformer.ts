@@ -71,7 +71,7 @@ export class TypeScriptTransformer {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
       const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
+      hash = (hash << 5) - hash + char;
       hash = hash & hash; // Convert to 32-bit integer
     }
     return Math.abs(hash).toString(36);
@@ -126,11 +126,7 @@ export class TypeScriptTransformer {
   /**
    * Transform TypeScript code with custom options
    */
-  async transformWithOptions(
-    code: string,
-    filename: string,
-    options: Partial<TransformOptions>
-  ): Promise<string> {
+  async transformWithOptions(code: string, filename: string, options: Partial<TransformOptions>): Promise<string> {
     const result = await esbuildTransform(code, {
       format: this.options.format,
       target: this.options.target,
@@ -150,9 +146,7 @@ export class TypeScriptTransformer {
    * Check if file needs transformation
    */
   needsTransformation(filename: string): boolean {
-    return filename.endsWith('.ts') ||
-      filename.endsWith('.tsx') ||
-      filename.endsWith('.jsx');
+    return filename.endsWith('.ts') || filename.endsWith('.tsx') || filename.endsWith('.jsx');
   }
 
   /**
@@ -178,9 +172,6 @@ export class TypeScriptTransformer {
 /**
  * Create a new TypeScriptTransformer instance
  */
-export function createTransformer(
-  cache?: Cache<string>,
-  options?: TypeScriptTransformOptions
-): TypeScriptTransformer {
+export function createTransformer(cache?: Cache<string>, options?: TypeScriptTransformOptions): TypeScriptTransformer {
   return new TypeScriptTransformer(cache, options);
 }

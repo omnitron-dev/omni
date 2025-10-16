@@ -116,7 +116,7 @@ describe('Production Deployment E2E Tests', () => {
 
       expect(largeState().length).toBe(1000);
 
-      const filtered = computed(() => largeState().filter(item => item.metadata.active));
+      const filtered = computed(() => largeState().filter((item) => item.metadata.active));
 
       expect(filtered().length).toBe(500);
     });
@@ -271,7 +271,7 @@ describe('Production Deployment E2E Tests', () => {
 
       await waitFor(() => {
         const measures = monitor.getMeasures();
-        expect(measures.some(m => m.name === 'app-render')).toBe(true);
+        expect(measures.some((m) => m.name === 'app-render')).toBe(true);
       });
 
       monitor.dispose();
@@ -386,7 +386,7 @@ describe('Production Deployment E2E Tests', () => {
 
       const simulateLoad = async () => {
         const promises = users.map(async (user) => {
-          await new Promise(resolve => setTimeout(resolve, Math.random() * 10));
+          await new Promise((resolve) => setTimeout(resolve, Math.random() * 10));
           user.state.set({ active: true, data: `User ${user.id} data` });
         });
 
@@ -395,7 +395,7 @@ describe('Production Deployment E2E Tests', () => {
 
       await simulateLoad();
 
-      const allLoaded = users.every(user => user.state().data !== null);
+      const allLoaded = users.every((user) => user.state().data !== null);
       expect(allLoaded).toBe(true);
     });
 
@@ -503,7 +503,7 @@ describe('Production Deployment E2E Tests', () => {
       const totalInstances = versions.reduce((sum, v) => sum + v.instances, 0);
 
       expect(totalInstances).toBe(5);
-      expect(versions.some(v => v.status === 'deploying')).toBe(true);
+      expect(versions.some((v) => v.status === 'deploying')).toBe(true);
     });
 
     it('should support blue-green deployment', () => {
@@ -553,7 +553,7 @@ describe('Production Deployment E2E Tests', () => {
           return { source: 'cache', data: cache.get(key) };
         }
 
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
         const data = { value: key };
         cache.set(key, data);
         return { source: 'network', data };
@@ -596,7 +596,7 @@ describe('Production Deployment E2E Tests', () => {
       };
 
       const fetchFresh = async (key: string) => {
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
         return { value: key };
       };
 
@@ -610,7 +610,7 @@ describe('Production Deployment E2E Tests', () => {
       const loadedModules = new Set<string>();
 
       const lazyLoad = async (moduleName: string) => {
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
         loadedModules.add(moduleName);
         return { name: moduleName, loaded: true };
       };

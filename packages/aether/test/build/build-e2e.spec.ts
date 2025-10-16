@@ -27,7 +27,11 @@ class E2ETestEnvironment {
   public readonly cacheDir: string;
 
   constructor(private testName: string) {
-    const hash = crypto.createHash('md5').update(testName + Date.now()).digest('hex').slice(0, 8);
+    const hash = crypto
+      .createHash('md5')
+      .update(testName + Date.now())
+      .digest('hex')
+      .slice(0, 8);
     this.tempDir = path.join(os.tmpdir(), `aether-e2e-${hash}`);
     this.srcDir = path.join(this.tempDir, 'src');
     this.distDir = path.join(this.tempDir, 'dist');
@@ -83,7 +87,7 @@ class E2ETestEnvironment {
       const fullPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
         const subFiles = await this.listFiles(fullPath);
-        files.push(...subFiles.map(f => path.join(entry.name, f)));
+        files.push(...subFiles.map((f) => path.join(entry.name, f)));
       } else {
         files.push(entry.name);
       }
@@ -92,7 +96,6 @@ class E2ETestEnvironment {
     return files;
   }
 }
-
 
 describe('E2E: Simple Application Build', () => {
   let env: E2ETestEnvironment;
@@ -159,15 +162,15 @@ describe('E2E: Simple Application Build', () => {
     ];
 
     const results = await Promise.all(
-      files.map(async file => {
+      files.map(async (file) => {
         await env.writeFile(`components/${file.path}`, file.code);
         return compiler.compile(file.code, file.path);
       })
     );
 
     expect(results).toHaveLength(3);
-    results.forEach(result => {
-      expect(result.warnings.filter(w => w.level === 'error')).toHaveLength(0);
+    results.forEach((result) => {
+      expect(result.warnings.filter((w) => w.level === 'error')).toHaveLength(0);
     });
   });
 });
@@ -288,9 +291,7 @@ describe('E2E: Progressive Web App', () => {
           { src: '/icon-192.png', sizes: '192x192', purpose: 'any' as const },
           { src: '/icon-512.png', sizes: '512x512', purpose: 'maskable' as const },
         ],
-        screenshots: [
-          { src: '/screenshot.png', sizes: '1280x720', type: 'image/png' },
-        ],
+        screenshots: [{ src: '/screenshot.png', sizes: '1280x720', type: 'image/png' }],
       },
       outDir: env.distDir,
     });
@@ -383,9 +384,7 @@ describe('E2E: Large Scale Application', () => {
     }
 
     // Write all components
-    await Promise.all(
-      components.map(c => env.writeFile(`components/${c.path}`, c.source))
-    );
+    await Promise.all(components.map((c) => env.writeFile(`components/${c.path}`, c.source)));
 
     // Compile in parallel
     const startTime = Date.now();
@@ -778,7 +777,7 @@ describe('E2E: Production Deployment', () => {
 
     expect(result.code).toBeTruthy();
     expect(result.metrics!.sizeReduction).toBeGreaterThan(0);
-    expect(result.warnings.filter(w => w.level === 'error')).toHaveLength(0);
+    expect(result.warnings.filter((w) => w.level === 'error')).toHaveLength(0);
   });
 
   it('should verify minification works', async () => {
@@ -840,21 +839,16 @@ describe('E2E: Incremental Build', () => {
   });
 
   it('should perform initial full build', async () => {
-    const files = [
-      'App.tsx',
-      'Header.tsx',
-      'Footer.tsx',
-      'Sidebar.tsx',
-    ];
+    const files = ['App.tsx', 'Header.tsx', 'Footer.tsx', 'Sidebar.tsx'];
 
     const results = await Promise.all(
-      files.map(file =>
+      files.map((file) =>
         compiler.compile(`export const ${file.replace('.tsx', '')} = () => <div>${file}</div>;`, file)
       )
     );
 
     expect(results).toHaveLength(4);
-    results.forEach(result => {
+    results.forEach((result) => {
       expect(result.metrics!.totalTime).toBeGreaterThanOrEqual(0);
     });
   });
@@ -867,14 +861,12 @@ describe('E2E: Incremental Build', () => {
       'export const Version3 = () => <div>Version 3</div>;',
     ];
 
-    const results = await Promise.all(
-      files.map((code, i) => compiler.compile(code, `Component${i}.tsx`))
-    );
+    const results = await Promise.all(files.map((code, i) => compiler.compile(code, `Component${i}.tsx`)));
 
     // Verify all compilations were successful
     for (const result of results) {
       expect(result.code).toBeTruthy();
-      expect(result.warnings.filter(w => w.level === 'error')).toHaveLength(0);
+      expect(result.warnings.filter((w) => w.level === 'error')).toHaveLength(0);
 
       if (result.metrics) {
         expect(result.metrics.compiledSize).toBeGreaterThan(0);
@@ -919,7 +911,7 @@ describe('E2E: Cross-Platform Build', () => {
     const targets = ['es2020', 'es2022', 'esnext'] as const;
 
     const results = await Promise.all(
-      targets.map(target => {
+      targets.map((target) => {
         const compiler = new AetherCompiler({
           target,
           mode: 'production',
@@ -929,9 +921,9 @@ describe('E2E: Cross-Platform Build', () => {
     );
 
     expect(results).toHaveLength(3);
-    results.forEach(result => {
+    results.forEach((result) => {
       expect(result.code).toBeTruthy();
-      expect(result.warnings.filter(w => w.level === 'error')).toHaveLength(0);
+      expect(result.warnings.filter((w) => w.level === 'error')).toHaveLength(0);
     });
   });
 
@@ -1031,7 +1023,7 @@ describe('E2E: Complete Build Pipeline', () => {
       code: `export const Component${i} = () => <div>Component ${i}</div>;`,
     }));
 
-    await Promise.all(files.map(f => compiler.compile(f.code, f.path)));
+    await Promise.all(files.map((f) => compiler.compile(f.code, f.path)));
 
     const duration = Date.now() - startTime;
 

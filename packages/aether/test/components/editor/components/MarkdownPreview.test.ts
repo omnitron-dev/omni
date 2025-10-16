@@ -67,7 +67,7 @@ describe('MarkdownPreview', () => {
       const rendered = MarkdownPreview({ markdown });
 
       // Wait for async rendering
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(rendered).toBeDefined();
       expect(rendered).toBeInstanceOf(Node);
@@ -88,7 +88,7 @@ describe('MarkdownPreview', () => {
       const markdown = signal('# Heading 1\n## Heading 2');
       const rendered = MarkdownPreview({ markdown });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       if (rendered instanceof Element) {
         expect(rendered.innerHTML).toBeTruthy();
@@ -99,7 +99,7 @@ describe('MarkdownPreview', () => {
       const markdown = signal('**bold text**');
       const rendered = MarkdownPreview({ markdown });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       if (rendered instanceof Element) {
         expect(rendered.innerHTML).toBeTruthy();
@@ -110,7 +110,7 @@ describe('MarkdownPreview', () => {
       const markdown = signal('*italic text*');
       const rendered = MarkdownPreview({ markdown });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       if (rendered instanceof Element) {
         expect(rendered.innerHTML).toBeTruthy();
@@ -121,7 +121,7 @@ describe('MarkdownPreview', () => {
       const markdown = signal('```javascript\nconst x = 1;\n```');
       const rendered = MarkdownPreview({ markdown });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       if (rendered instanceof Element) {
         expect(rendered.innerHTML).toBeTruthy();
@@ -132,7 +132,7 @@ describe('MarkdownPreview', () => {
       const markdown = signal('- Item 1\n- Item 2\n- Item 3');
       const rendered = MarkdownPreview({ markdown });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       if (rendered instanceof Element) {
         expect(rendered.innerHTML).toBeTruthy();
@@ -143,7 +143,7 @@ describe('MarkdownPreview', () => {
       const markdown = signal('[link](http://example.com)');
       const rendered = MarkdownPreview({ markdown });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       if (rendered instanceof Element) {
         expect(rendered.innerHTML).toBeTruthy();
@@ -154,7 +154,7 @@ describe('MarkdownPreview', () => {
       const markdown = signal('> This is a quote');
       const rendered = MarkdownPreview({ markdown });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       if (rendered instanceof Element) {
         expect(rendered.innerHTML).toBeTruthy();
@@ -165,7 +165,7 @@ describe('MarkdownPreview', () => {
       const markdown = signal('| Header |\n|--------|\n| Cell   |');
       const rendered = MarkdownPreview({ markdown });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       if (rendered instanceof Element) {
         expect(rendered.innerHTML).toBeTruthy();
@@ -176,7 +176,7 @@ describe('MarkdownPreview', () => {
       const markdown = signal('~~strikethrough~~');
       const rendered = MarkdownPreview({ markdown });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       if (rendered instanceof Element) {
         expect(rendered.innerHTML).toBeTruthy();
@@ -189,13 +189,13 @@ describe('MarkdownPreview', () => {
       const markdown = signal('# Initial');
       const rendered = MarkdownPreview({ markdown });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       const innerHTML1 = rendered instanceof Element ? rendered.innerHTML : '';
 
       // Update markdown
       markdown.set('# Updated');
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       const innerHTML2 = rendered instanceof Element ? rendered.innerHTML : '';
 
@@ -212,7 +212,7 @@ describe('MarkdownPreview', () => {
       markdown.set('# Test 3');
       markdown.set('# Test 4');
 
-      await new Promise(resolve => setTimeout(resolve, 150));
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
       expect(rendered).toBeDefined();
     });
@@ -221,10 +221,10 @@ describe('MarkdownPreview', () => {
       const markdown = signal('# Content');
       const rendered = MarkdownPreview({ markdown });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       markdown.set('');
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       if (rendered instanceof Element) {
         expect(rendered.innerHTML).toBeFalsy();
@@ -238,7 +238,7 @@ describe('MarkdownPreview', () => {
       const renderer = (md: string) => `<div class="custom">${md}</div>`;
       const rendered = MarkdownPreview({ markdown, renderer });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       if (rendered instanceof Element) {
         expect(rendered.innerHTML).toContain('custom');
@@ -250,7 +250,7 @@ describe('MarkdownPreview', () => {
       const renderer = vi.fn((md: string) => md);
       MarkdownPreview({ markdown, renderer });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(renderer).toHaveBeenCalledWith('**test**');
     });
@@ -261,7 +261,7 @@ describe('MarkdownPreview', () => {
       const markdown = signal('```js\ncode\n```');
       const rendered = MarkdownPreview({ markdown });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(rendered).toBeDefined();
     });
@@ -270,7 +270,7 @@ describe('MarkdownPreview', () => {
       const markdown = signal('```js\ncode\n```');
       const rendered = MarkdownPreview({ markdown, enableSyntaxHighlight: false });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(rendered).toBeDefined();
     });
@@ -279,7 +279,7 @@ describe('MarkdownPreview', () => {
       const markdown = signal('~~strike~~');
       const rendered = MarkdownPreview({ markdown });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(rendered).toBeDefined();
     });
@@ -288,7 +288,7 @@ describe('MarkdownPreview', () => {
       const markdown = signal('~~strike~~');
       const rendered = MarkdownPreview({ markdown, enableGFM: false });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(rendered).toBeDefined();
     });
@@ -297,7 +297,7 @@ describe('MarkdownPreview', () => {
       const markdown = signal('# Heading');
       const rendered = MarkdownPreview({ markdown });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(rendered).toBeDefined();
     });
@@ -306,7 +306,7 @@ describe('MarkdownPreview', () => {
       const markdown = signal('# Heading');
       const rendered = MarkdownPreview({ markdown, enableHeadingAnchors: false });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(rendered).toBeDefined();
     });
@@ -317,7 +317,7 @@ describe('MarkdownPreview', () => {
       const markdown = signal('<script>alert("xss")</script>');
       const rendered = MarkdownPreview({ markdown });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       if (rendered instanceof Element) {
         expect(rendered.innerHTML).not.toContain('<script>');
@@ -328,7 +328,7 @@ describe('MarkdownPreview', () => {
       const markdown = signal('<div>content</div>');
       const rendered = MarkdownPreview({ markdown, sanitize: false });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(rendered).toBeDefined();
     });
@@ -337,7 +337,7 @@ describe('MarkdownPreview', () => {
       const markdown = signal('<div onclick="alert()">click</div>');
       const rendered = MarkdownPreview({ markdown });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       if (rendered instanceof Element) {
         expect(rendered.innerHTML).not.toContain('onclick');
@@ -348,7 +348,7 @@ describe('MarkdownPreview', () => {
       const markdown = signal('<a href="javascript:alert()">link</a>');
       const rendered = MarkdownPreview({ markdown });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       if (rendered instanceof Element) {
         expect(rendered.innerHTML).not.toContain('javascript:');
@@ -361,7 +361,7 @@ describe('MarkdownPreview', () => {
       const markdown = signal('```\nunclosed code block');
       const rendered = MarkdownPreview({ markdown });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(rendered).toBeDefined();
     });
@@ -373,7 +373,7 @@ describe('MarkdownPreview', () => {
       };
       const rendered = MarkdownPreview({ markdown, renderer });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       if (rendered instanceof Element) {
         expect(rendered.innerHTML).toContain('error');

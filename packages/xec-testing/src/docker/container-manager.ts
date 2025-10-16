@@ -15,7 +15,7 @@ export const DOCKER_CONTAINERS: ContainerConfig[] = [
   { name: 'alpine-apk', port: 2204, packageManager: 'apk', testPackage: 'vim' },
   { name: 'manjaro-pacman', port: 2205, packageManager: 'pacman', testPackage: 'htop' },
   { name: 'ubuntu-brew', port: 2206, packageManager: 'brew', testPackage: 'jq' },
-  { name: 'ubuntu-snap', port: 2207, packageManager: 'snap', testPackage: 'hello' }
+  { name: 'ubuntu-snap', port: 2207, packageManager: 'snap', testPackage: 'hello' },
 ];
 
 export class DockerContainerManager {
@@ -60,7 +60,7 @@ export class DockerContainerManager {
     try {
       const result = execSync(`/usr/local/bin/docker ps --format '{{.Names}}' | grep -q "^${name}$"`, {
         shell: '/bin/bash',
-        stdio: 'pipe'
+        stdio: 'pipe',
       });
       return true;
     } catch {
@@ -106,7 +106,7 @@ export class DockerContainerManager {
     try {
       execSync(`${this.managerScriptPath} start ${containerName}`, {
         stdio: 'inherit',
-        cwd: this.dockerImagesPath
+        cwd: this.dockerImagesPath,
       });
       this.startedContainers.add(containerName);
       return true;
@@ -130,11 +130,11 @@ export class DockerContainerManager {
     try {
       execSync(`${this.managerScriptPath} start`, {
         stdio: 'inherit',
-        cwd: this.dockerImagesPath
+        cwd: this.dockerImagesPath,
       });
 
       // Mark all containers as started
-      DOCKER_CONTAINERS.forEach(container => {
+      DOCKER_CONTAINERS.forEach((container) => {
         this.startedContainers.add(container.name);
       });
 
@@ -157,7 +157,7 @@ export class DockerContainerManager {
     // For CI/CD, we might want to start only a subset of containers
     const requiredContainers = process.env['CI']
       ? ['ubuntu-apt', 'alpine-apk'] // Minimal set for CI
-      : DOCKER_CONTAINERS.map(c => c.name); // All containers for local
+      : DOCKER_CONTAINERS.map((c) => c.name); // All containers for local
 
     console.log(`Starting required SSH test containers: ${requiredContainers.join(', ')}`);
 
@@ -186,7 +186,7 @@ export class DockerContainerManager {
     try {
       execSync(`${this.managerScriptPath} stop ${containerName}`, {
         stdio: 'inherit',
-        cwd: this.dockerImagesPath
+        cwd: this.dockerImagesPath,
       });
       this.startedContainers.delete(containerName);
       return true;
@@ -224,7 +224,7 @@ export class DockerContainerManager {
     try {
       execSync(`${this.managerScriptPath} status`, {
         stdio: 'inherit',
-        cwd: this.dockerImagesPath
+        cwd: this.dockerImagesPath,
       });
     } catch (error) {
       console.error('Failed to get container status:', error);
@@ -247,7 +247,7 @@ export class DockerContainerManager {
         return true;
       } catch {
         // SSH not ready yet
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise((resolve) => setTimeout(resolve, 2000));
       }
     }
 

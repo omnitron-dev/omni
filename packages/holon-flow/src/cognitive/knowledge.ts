@@ -66,13 +66,7 @@ export class KnowledgeGraph {
   /**
    * Add an edge to the graph
    */
-  addEdge(
-    type: string,
-    from: string,
-    to: string,
-    weight = 1.0,
-    attributes: Record<string, any> = {},
-  ): KnowledgeEdge {
+  addEdge(type: string, from: string, to: string, weight = 1.0, attributes: Record<string, any> = {}): KnowledgeEdge {
     const id = `${from}-${type}-${to}`;
     const edge: KnowledgeEdge = {
       id,

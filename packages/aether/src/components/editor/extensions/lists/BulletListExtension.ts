@@ -50,8 +50,7 @@ export class BulletListExtension extends Extension {
 
   getCommands() {
     return {
-      bulletList: (): Command => (state, dispatch) =>
-        wrapInList(state.schema.nodes.bullet_list)(state, dispatch),
+      bulletList: (): Command => (state, dispatch) => wrapInList(state.schema.nodes.bullet_list)(state, dispatch),
       toggleBulletList: (): Command => (state, dispatch) => {
         const { $from, $to } = state.selection;
         const range = $from.blockRange($to);
@@ -79,9 +78,7 @@ export class BulletListExtension extends Extension {
     const bulletListNode = schema.nodes.bullet_list;
     if (!bulletListNode) return [];
 
-    return [
-      wrappingInputRule(/^\s*([-+*])\s$/, bulletListNode),
-    ];
+    return [wrappingInputRule(/^\s*([-+*])\s$/, bulletListNode)];
   }
 
   /**

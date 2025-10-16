@@ -8,9 +8,7 @@ expect.extend({
     const pass = document.body.contains(received);
     return {
       pass,
-      message: () => pass
-        ? 'expected element not to be in the document'
-        : 'expected element to be in the document',
+      message: () => (pass ? 'expected element not to be in the document' : 'expected element to be in the document'),
     };
   },
 
@@ -19,9 +17,7 @@ expect.extend({
     const pass = textContent.includes(expected);
     return {
       pass,
-      message: () => pass
-        ? `expected element not to have text content`
-        : `expected element to have text content`,
+      message: () => (pass ? `expected element not to have text content` : `expected element to have text content`),
     };
   },
 
@@ -31,9 +27,7 @@ expect.extend({
     const pass = val !== undefined ? attrValue === val : hasAttr;
     return {
       pass,
-      message: () => pass
-        ? `expected element not to have attribute`
-        : `expected element to have attribute`,
+      message: () => (pass ? `expected element not to have attribute` : `expected element to have attribute`),
     };
   },
 
@@ -41,9 +35,7 @@ expect.extend({
     const pass = received.classList.contains(className);
     return {
       pass,
-      message: () => pass
-        ? 'expected element not to have class'
-        : 'expected element to have class',
+      message: () => (pass ? 'expected element not to have class' : 'expected element to have class'),
     };
   },
 
@@ -51,9 +43,7 @@ expect.extend({
     const pass = received.offsetParent !== null;
     return {
       pass,
-      message: () => pass
-        ? 'expected element not to be visible'
-        : 'expected element to be visible',
+      message: () => (pass ? 'expected element not to be visible' : 'expected element to be visible'),
     };
   },
 
@@ -62,9 +52,7 @@ expect.extend({
     const pass = el.disabled === true;
     return {
       pass,
-      message: () => pass
-        ? 'expected element not to be disabled'
-        : 'expected element to be disabled',
+      message: () => (pass ? 'expected element not to be disabled' : 'expected element to be disabled'),
     };
   },
 
@@ -72,9 +60,7 @@ expect.extend({
     const pass = received.value === expected;
     return {
       pass,
-      message: () => pass
-        ? 'expected input not to have given value'
-        : 'expected input to have given value',
+      message: () => (pass ? 'expected input not to have given value' : 'expected input to have given value'),
     };
   },
 
@@ -82,9 +68,7 @@ expect.extend({
     const pass = received.checked === true;
     return {
       pass,
-      message: () => pass
-        ? 'expected checkbox/radio not to be checked'
-        : 'expected checkbox/radio to be checked',
+      message: () => (pass ? 'expected checkbox/radio not to be checked' : 'expected checkbox/radio to be checked'),
     };
   },
 });

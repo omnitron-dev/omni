@@ -1,6 +1,6 @@
 /**
  * 05. Retry Mechanism - Механизм повторных попыток
- * 
+ *
  * Показывает различные стратегии повторных попыток
  */
 
@@ -37,7 +37,7 @@ const $exponentialRetry = $.retry({
   maxRetries: 4,
   backoffMultiplier: 2, // Удваивать задержку после каждой попытки
   initialDelay: 1000, // Начать с 1 секунды
-  maxDelay: 10000 // Максимум 10 секунд
+  maxDelay: 10000, // Максимум 10 секунд
 });
 
 // Задержки: 1s, 2s, 4s, 8s (но не больше 10s)
@@ -56,7 +56,7 @@ const $conditionalRetry = $.retry({
   onRetry: (attempt, result, nextDelay) => {
     attemptCount = attempt;
     console.log(`Попытка ${attempt}: exit code ${result.exitCode}, следующая задержка ${nextDelay}мс`);
-  }
+  },
 });
 
 try {
@@ -70,7 +70,7 @@ try {
 // Пример с локальным адаптером
 const $localRetry = $.local().retry({
   maxRetries: 3,
-  initialDelay: 2000
+  initialDelay: 2000,
 });
 
 // Проверяем доступность сервиса
@@ -85,14 +85,12 @@ try {
 const $jitterRetry = $.retry({
   maxRetries: 5,
   initialDelay: 1000,
-  jitter: true // Добавить случайную задержку
+  jitter: true, // Добавить случайную задержку
 });
 
 // Проверка нескольких файлов
 const files = ['/tmp/file1', '/tmp/file2', '/tmp/file3'];
-const fileChecks = files.map(file => 
-  $jitterRetry`test -f ${file} || exit 1`.nothrow()
-);
+const fileChecks = files.map((file) => $jitterRetry`test -f ${file} || exit 1`.nothrow());
 
 const results = await Promise.all(fileChecks);
 results.forEach((result, i) => {
@@ -105,7 +103,7 @@ const $serviceRetry = $.retry({
   initialDelay: 1000,
   onRetry: (attempt, result, nextDelay) => {
     console.log(`Ожидание сервиса... Попытка ${attempt}/30`);
-  }
+  },
 });
 
 // Создаём файл-маркер для теста
@@ -132,7 +130,7 @@ const $smartRetry = $.retry({
     // Повторять только для временных ошибок
     const temporaryErrors = [1, 2, 124, 125]; // Коды временных ошибок
     return temporaryErrors.includes(result.exitCode);
-  }
+  },
 });
 
 const apiResult = await $smartRetry`curl -f -X POST http://example.com/api/test || exit 2`.nothrow();
@@ -148,7 +146,7 @@ const $complexRetry = $.retry({
   backoffMultiplier: 1.5,
   initialDelay: 500,
   maxDelay: 5000,
-  jitter: true
+  jitter: true,
 });
 
 // Пример с таймаутом
@@ -165,7 +163,7 @@ const retryMetrics = {
   totalAttempts: 0,
   successfulAttempts: 0,
   failedAttempts: 0,
-  totalRetryTime: 0
+  totalRetryTime: 0,
 };
 
 const startTime = Date.now();
@@ -176,7 +174,7 @@ const $metricRetry = $.retry({
     retryMetrics.totalAttempts = attempt;
     retryMetrics.failedAttempts++;
     console.log(`Retry ${attempt}: exit code ${result.exitCode}`);
-  }
+  },
 });
 
 try {
@@ -197,12 +195,12 @@ class CircuitBreaker {
   private failures = 0;
   private lastFailureTime = 0;
   private state: 'closed' | 'open' | 'half-open' = 'closed';
-  
+
   constructor(
     private threshold = 5,
     private timeout = 60000
   ) {}
-  
+
   async execute(command: any) {
     if (this.state === 'open') {
       if (Date.now() - this.lastFailureTime > this.timeout) {
@@ -212,7 +210,7 @@ class CircuitBreaker {
         throw new Error('Circuit breaker is open');
       }
     }
-    
+
     try {
       const result = await command;
       if (this.state === 'half-open') {
@@ -224,7 +222,7 @@ class CircuitBreaker {
     } catch (error) {
       this.failures++;
       this.lastFailureTime = Date.now();
-      
+
       if (this.failures >= this.threshold) {
         this.state = 'open';
         console.log('Circuit breaker: open');
@@ -241,15 +239,13 @@ for (let i = 0; i < 10; i++) {
   try {
     // 60% шанс успеха
     const random = Math.random();
-    await breaker.execute(
-      $`test ${random} '<' '0.6' || exit 1`
-    );
+    await breaker.execute($`test ${random} '<' '0.6' || exit 1`);
     console.log(`Попытка ${i + 1}: успешно`);
   } catch (error: any) {
     console.log(`Попытка ${i + 1}: ${error.message}`);
   }
-  
-  await new Promise(resolve => setTimeout(resolve, 500));
+
+  await new Promise((resolve) => setTimeout(resolve, 500));
 }
 
 console.log('\nТест circuit breaker завершён');

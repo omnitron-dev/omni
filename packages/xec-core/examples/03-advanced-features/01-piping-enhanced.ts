@@ -1,6 +1,6 @@
 /**
  * 01. Enhanced Piping - Comprehensive Pipe Capabilities
- * 
+ *
  * Demonstrates the new comprehensive pipe functionality including:
  * - Template literal piping
  * - Stream piping
@@ -24,21 +24,19 @@ console.log('Uppercase:', upper.stdout.trim()); // HELLO WORLD
 
 // 2. Chain multiple pipes
 console.log('\n2. Chained pipes:');
-const processed = await $`echo "hello world"`
-  .pipe`tr a-z A-Z`
-  .pipe`sed 's/WORLD/UNIVERSE/'`
-  .pipe`rev`;
+const processed = await $`echo "hello world"`.pipe`tr a-z A-Z`.pipe`sed 's/WORLD/UNIVERSE/'`.pipe`rev`;
 console.log('Processed:', processed.stdout.trim()); // ESREVINU OLLEH
 
 // 3. Pipe to Transform streams
 console.log('\n3. Transform stream piping:');
-const doubled = await $`echo "123"`
-  .pipe(new Transform({
+const doubled = await $`echo "123"`.pipe(
+  new Transform({
     transform(chunk, encoding, callback) {
       const num = parseInt(chunk.toString().trim());
       callback(null, String(num * 2));
-    }
-  }));
+    },
+  })
+);
 console.log('Doubled:', doubled.stdout.trim()); // 246
 
 // 4. Using pipe utilities
@@ -49,24 +47,21 @@ const upperUtil = await $`echo "hello"`.pipe(pipeUtils.toUpperCase());
 console.log('Upper with util:', upperUtil.stdout.trim()); // HELLO
 
 // grep
-const grepResult = await $`echo -e "apple\nbanana\napple pie\ncherry"`
-  .pipe(pipeUtils.grep('apple'));
+const grepResult = await $`echo -e "apple\nbanana\napple pie\ncherry"`.pipe(pipeUtils.grep('apple'));
 console.log('Grep result:', grepResult.stdout.trim());
 // apple
 // apple pie
 
 // replace
-const replaced = await $`echo "hello world"`
-  .pipe(pipeUtils.replace(/w\w+d/, 'universe'));
+const replaced = await $`echo "hello world"`.pipe(pipeUtils.replace(/w\w+d/, 'universe'));
 console.log('Replaced:', replaced.stdout.trim()); // hello universe
 
 // 5. Pipe to functions (line processing)
 console.log('\n5. Function piping (line processing):');
 const lines: string[] = [];
-await $`echo -e "item1\nitem2\nitem3"`
-  .pipe((line: string) => {
-    lines.push(`processed: ${line}`);
-  });
+await $`echo -e "item1\nitem2\nitem3"`.pipe((line: string) => {
+  lines.push(`processed: ${line}`);
+});
 console.log('Processed lines:', lines);
 // ['processed: item1', 'processed: item2', 'processed: item3']
 
@@ -89,17 +84,16 @@ const collector1 = new Writable({
   write(chunk, encoding, callback) {
     outputs.push(`Stream1: ${chunk.toString().trim()}`);
     callback();
-  }
+  },
 });
 const collector2 = new Writable({
   write(chunk, encoding, callback) {
     outputs.push(`Stream2: ${chunk.toString().trim()}`);
     callback();
-  }
+  },
 });
 
-const teeResult = await $`echo "broadcast message"`
-  .pipe(pipeUtils.tee(collector1, collector2));
+const teeResult = await $`echo "broadcast message"`.pipe(pipeUtils.tee(collector1, collector2));
 console.log('Tee result:', teeResult.stdout.trim());
 console.log('Collected outputs:', outputs);
 
@@ -113,9 +107,7 @@ try {
 }
 
 // With nothrow, pipe continues
-const recovered = await $`false`
-  .nothrow()
-  .pipe`echo "Recovered from error"`;
+const recovered = await $`false`.nothrow().pipe`echo "Recovered from error"`;
 console.log('Recovered:', recovered.stdout.trim());
 
 // 9. Complex pipe chain with mixed targets
@@ -143,22 +135,22 @@ const processIfLarge = async (result: any) => {
 };
 
 // This will pipe because we have 3 lines
-const largeOutput = await $`echo -e "line1\nline2\nline3"`
-  .pipe(processIfLarge as any);
+const largeOutput = await $`echo -e "line1\nline2\nline3"`.pipe(processIfLarge as any);
 console.log('Large output result:', largeOutput?.stdout?.trim());
 
 // This won't pipe because we have only 1 line
-const smallOutput = await $`echo "single line"`
-  .pipe(processIfLarge as any);
+const smallOutput = await $`echo "single line"`.pipe(processIfLarge as any);
 console.log('Small output result:', smallOutput?.stdout?.trim());
 
 // 11. Custom line separator
 console.log('\n11. Custom line separator:');
 const csvData: string[] = [];
-await $`echo "name,age,city"`
-  .pipe((field: string) => {
+await $`echo "name,age,city"`.pipe(
+  (field: string) => {
     csvData.push(field);
-  }, { lineByLine: true, lineSeparator: ',' });
+  },
+  { lineByLine: true, lineSeparator: ',' }
+);
 console.log('CSV fields:', csvData);
 // ['name', 'age', 'city']
 
@@ -166,11 +158,7 @@ console.log('CSV fields:', csvData);
 console.log('\n12. Parallel pipe processing:');
 const urls = ['url1', 'url2', 'url3'];
 const results = await Promise.all(
-  urls.map(url => 
-    $`echo "Fetching ${url}"`
-      .pipe`sed 's/Fetching/Downloaded/'`
-      .then(r => r.stdout.trim())
-  )
+  urls.map((url) => $`echo "Fetching ${url}"`.pipe`sed 's/Fetching/Downloaded/'`.then((r) => r.stdout.trim()))
 );
 console.log('Parallel results:', results);
 

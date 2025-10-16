@@ -4,11 +4,7 @@
  * Middleware stack for Aether dev server
  */
 
-import type {
-  Middleware,
-  MiddlewareStack as IMiddlewareStack,
-  DevServerConfig,
-} from '../types.js';
+import type { Middleware, MiddlewareStack as IMiddlewareStack, DevServerConfig } from '../types.js';
 
 /**
  * Middleware Stack Implementation
@@ -106,17 +102,12 @@ function createLoggerMiddleware(): Middleware {
         const response = await next();
         const duration = Date.now() - start;
 
-        console.log(
-          `${req.method} ${url.pathname} ${response.status} ${duration}ms`
-        );
+        console.log(`${req.method} ${url.pathname} ${response.status} ${duration}ms`);
 
         return response;
       } catch (error) {
         const duration = Date.now() - start;
-        console.error(
-          `${req.method} ${url.pathname} ERROR ${duration}ms`,
-          error
-        );
+        console.error(`${req.method} ${url.pathname} ERROR ${duration}ms`, error);
         throw error;
       }
     },
@@ -224,9 +215,7 @@ function createCompressionMiddleware(config: any): Middleware {
 
       // Fallback to gzip
       if (acceptEncoding.includes('gzip') && typeof CompressionStream !== 'undefined') {
-        const stream = response.body?.pipeThrough(
-          new CompressionStream('gzip')
-        );
+        const stream = response.body?.pipeThrough(new CompressionStream('gzip'));
 
         const headers = new Headers(response.headers);
         headers.set('Content-Encoding', 'gzip');
@@ -262,10 +251,7 @@ function createStaticMiddleware(publicDir: string): Middleware {
       // Check if path looks like a static file
       const ext = url.pathname.split('.').pop();
       const isStatic =
-        ext &&
-        ['js', 'css', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'ico', 'woff', 'woff2', 'ttf', 'eot'].includes(
-          ext
-        );
+        ext && ['js', 'css', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'ico', 'woff', 'woff2', 'ttf', 'eot'].includes(ext);
 
       if (!isStatic) {
         return next();

@@ -41,11 +41,7 @@ function detectRuntime(): 'node' | 'bun' | 'deno' {
  * Check if running in development mode
  */
 function isDevelopment(config: ServerConfig): boolean {
-  return (
-    (config as any).dev === true ||
-    process.env.NODE_ENV === 'development' ||
-    process.env.AETHER_DEV === 'true'
-  );
+  return (config as any).dev === true || process.env.NODE_ENV === 'development' || process.env.AETHER_DEV === 'true';
 }
 
 /**
@@ -83,11 +79,7 @@ export async function createServer(config: ServerConfig): Promise<Server> {
   const runtime = detectRuntime();
 
   // Common configuration
-  const {
-    port = 3000,
-    host = '0.0.0.0',
-    mode = 'ssr',
-  } = config;
+  const { port = 3000, host = '0.0.0.0', mode = 'ssr' } = config;
 
   // Server state
   let serverInstance: any = null;
@@ -120,9 +112,7 @@ export async function createServer(config: ServerConfig): Promise<Server> {
   if (isDev) {
     // Initialize HMR
     const hmrConfig = (config as DevServerConfig).hmr;
-    hmr = new HMREngine(
-      typeof hmrConfig === 'object' ? hmrConfig : {}
-    );
+    hmr = new HMREngine(typeof hmrConfig === 'object' ? hmrConfig : {});
 
     // Initialize Fast Refresh
     initFastRefresh({
@@ -201,9 +191,7 @@ export async function createServer(config: ServerConfig): Promise<Server> {
    */
   function updateMetrics(requestStart: number): void {
     const duration = Math.max(1, Date.now() - requestStart); // Ensure minimum 1ms
-    metrics.avgResponseTime =
-      (metrics.avgResponseTime * (metrics.requests - 1) + duration) /
-      metrics.requests;
+    metrics.avgResponseTime = (metrics.avgResponseTime * (metrics.requests - 1) + duration) / metrics.requests;
   }
 
   /**
@@ -268,7 +256,7 @@ export async function createServer(config: ServerConfig): Promise<Server> {
               handleWebSocket(ws as unknown as WebSocket);
             },
             message() {}, // Handled in handleWebSocket
-            close() {},   // Handled in handleWebSocket
+            close() {}, // Handled in handleWebSocket
           },
         }),
       });
@@ -277,10 +265,7 @@ export async function createServer(config: ServerConfig): Promise<Server> {
 
       serverInstance = createNodeServer(async (req, res) => {
         try {
-          const url = new URL(
-            req.url || '/',
-            `http://${req.headers.host || 'localhost'}`
-          );
+          const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
           const request = new Request(url.href, {
             method: req.method,
             headers: req.headers as any,
@@ -324,9 +309,8 @@ export async function createServer(config: ServerConfig): Promise<Server> {
       return; // Early return for Node.js since it uses callback
     } else {
       // Deno server
-      serverInstance = (globalThis as any).Deno.serve(
-        { port, hostname: host },
-        (request: Request) => handleRequest(request)
+      serverInstance = (globalThis as any).Deno.serve({ port, hostname: host }, (request: Request) =>
+        handleRequest(request)
       );
     }
 
@@ -508,9 +492,7 @@ function createSSRMiddleware(config: ServerConfig): Middleware {
           url,
         });
 
-        const html = injectDevScripts(
-          renderDocument(result.html, result.data, result.meta)
-        );
+        const html = injectDevScripts(renderDocument(result.html, result.data, result.meta));
 
         return new Response(html, {
           status: 200,

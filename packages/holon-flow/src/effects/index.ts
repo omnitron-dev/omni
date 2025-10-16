@@ -138,21 +138,18 @@ export interface EffectOptions<T = any, R = any> {
 /**
  * Create an effect
  */
-export function effect<T = any, R = any>(
-  id: string | symbol,
-  options: EffectOptions<T, R>,
-): Effect<T, R>;
+export function effect<T = any, R = any>(id: string | symbol, options: EffectOptions<T, R>): Effect<T, R>;
 export function effect<T = any, R = any>(
   id: string | symbol,
   flags: EffectFlags,
   handler: EffectHandler<T, R>,
-  cleanup?: (result: R) => void | Promise<void>,
+  cleanup?: (result: R) => void | Promise<void>
 ): Effect<T, R>;
 export function effect<T = any, R = any>(
   id: string | symbol,
   flagsOrOptions: EffectFlags | EffectOptions<T, R>,
   handler?: EffectHandler<T, R>,
-  cleanup?: (result: R) => void | Promise<void>,
+  cleanup?: (result: R) => void | Promise<void>
 ): Effect<T, R> {
   const effectId = typeof id === 'string' ? Symbol(id) : id;
 
@@ -191,26 +188,22 @@ export const Effects = {
   /**
    * File system read effect
    */
-  readFile: effect(
-    'readFile',
-    EffectFlags.Read | EffectFlags.IO | EffectFlags.Async,
-    async (path: string) => {
-      // Runtime-specific implementation
-      if (typeof (globalThis as any).Deno !== 'undefined') {
-        return await (globalThis as any).Deno.readTextFile(path);
-      }
-      if (typeof (globalThis as any).Bun !== 'undefined') {
-        const file = (globalThis as any).Bun.file(path);
-        return await file.text();
-      }
-      if (typeof globalThis.process !== 'undefined') {
-        // Node.js
-        const { readFile } = await import('node:fs/promises');
-        return await readFile(path, 'utf-8');
-      }
-      throw new Error('File system not available in this runtime');
-    },
-  ),
+  readFile: effect('readFile', EffectFlags.Read | EffectFlags.IO | EffectFlags.Async, async (path: string) => {
+    // Runtime-specific implementation
+    if (typeof (globalThis as any).Deno !== 'undefined') {
+      return await (globalThis as any).Deno.readTextFile(path);
+    }
+    if (typeof (globalThis as any).Bun !== 'undefined') {
+      const file = (globalThis as any).Bun.file(path);
+      return await file.text();
+    }
+    if (typeof globalThis.process !== 'undefined') {
+      // Node.js
+      const { readFile } = await import('node:fs/promises');
+      return await readFile(path, 'utf-8');
+    }
+    throw new Error('File system not available in this runtime');
+  }),
 
   /**
    * File system write effect
@@ -232,19 +225,15 @@ export const Effects = {
         return await writeFile(path, content, 'utf-8');
       }
       throw new Error('File system not available in this runtime');
-    },
+    }
   ),
 
   /**
    * HTTP fetch effect
    */
-  fetch: effect(
-    'fetch',
-    EffectFlags.Network | EffectFlags.Async,
-    async (url: string | URL | Request) => {
-      return await fetch(url);
-    },
-  ),
+  fetch: effect('fetch', EffectFlags.Network | EffectFlags.Async, async (url: string | URL | Request) => {
+    return await fetch(url);
+  }),
 
   /**
    * Random number effect
@@ -270,7 +259,7 @@ export const Effects = {
 export function effectful<In, Out>(
   fn: (input: In) => Out | Promise<Out>,
   effectsOrFlags: Effect[] | EffectFlags,
-  flags?: EffectFlags,
+  flags?: EffectFlags
 ): EffectFlow<In, Out> {
   const effectFlow = flow(fn) as EffectFlow<In, Out>;
 
@@ -457,10 +446,7 @@ export interface BatchOptions {
 /**
  * Parallel execution with limit
  */
-export function parallelLimit<In, Out>(
-  limit: number,
-  ...effects: EffectFlow<In, Out>[]
-): EffectFlow<In, Out[]> {
+export function parallelLimit<In, Out>(limit: number, ...effects: EffectFlow<In, Out>[]): EffectFlow<In, Out[]> {
   return effectful(
     async (input: In) => {
       const results: Out[] = [];
@@ -478,7 +464,7 @@ export function parallelLimit<In, Out>(
           await Promise.race(executing);
           executing.splice(
             executing.findIndex((p) => p),
-            1,
+            1
           );
         }
       }
@@ -486,7 +472,7 @@ export function parallelLimit<In, Out>(
       await Promise.all(executing);
       return results;
     },
-    combineEffects(...effects),
+    combineEffects(...effects)
   );
 }
 
@@ -496,36 +482,29 @@ export function parallelLimit<In, Out>(
 export function raceTimeout<In, Out>(
   effect: EffectFlow<In, Out>,
   timeoutMs: number,
-  fallback?: Out,
+  fallback?: Out
 ): EffectFlow<In, Out> {
-  return effectful(
-    async (input: In) => {
-      const timeoutPromise = new Promise<Out>((resolve, reject) =>
-        setTimeout(() => {
-          if (fallback !== undefined) {
-            resolve(fallback);
-          } else {
-            reject(new Error(`Effect timeout after ${timeoutMs}ms`));
-          }
-        }, timeoutMs),
-      );
+  return effectful(async (input: In) => {
+    const timeoutPromise = new Promise<Out>((resolve, reject) =>
+      setTimeout(() => {
+        if (fallback !== undefined) {
+          resolve(fallback);
+        } else {
+          reject(new Error(`Effect timeout after ${timeoutMs}ms`));
+        }
+      }, timeoutMs)
+    );
 
-      return Promise.race([effect(input), timeoutPromise]);
-    },
-    effect.flags | EffectFlags.Time,
-  );
+    return Promise.race([effect(input), timeoutPromise]);
+  }, effect.flags | EffectFlags.Time);
 }
 
 /**
  * Batch effect execution
  */
-export function batch<In, Out>(
-  effect: EffectFlow<In[], Out[]>,
-  options: BatchOptions = {},
-): EffectFlow<In, Out> {
+export function batch<In, Out>(effect: EffectFlow<In[], Out[]>, options: BatchOptions = {}): EffectFlow<In, Out> {
   const { size = 10, delay = 100, maxWait = 1000 } = options;
-  let queue: Array<{ input: In; resolve: (value: Out) => void; reject: (error: any) => void }> =
-    [];
+  let queue: Array<{ input: In; resolve: (value: Out) => void; reject: (error: any) => void }> = [];
   let timer: NodeJS.Timeout | null = null;
   let firstQueueTime: number | null = null;
 
@@ -576,10 +555,7 @@ export function batch<In, Out>(
 /**
  * Debounce effect execution
  */
-export function debounceEffect<In, Out>(
-  effect: EffectFlow<In, Out>,
-  delayMs: number,
-): EffectFlow<In, Out> {
+export function debounceEffect<In, Out>(effect: EffectFlow<In, Out>, delayMs: number): EffectFlow<In, Out> {
   let timer: NodeJS.Timeout | null = null;
   let lastInput: In;
   let pendingResolves: Array<(value: Out) => void> = [];
@@ -614,10 +590,7 @@ export function debounceEffect<In, Out>(
 /**
  * Throttle effect execution
  */
-export function throttleEffect<In, Out>(
-  effect: EffectFlow<In, Out>,
-  limitMs: number,
-): EffectFlow<In, Out> {
+export function throttleEffect<In, Out>(effect: EffectFlow<In, Out>, limitMs: number): EffectFlow<In, Out> {
   let lastRun = 0;
   let lastResult: Out | undefined;
   let pendingInput: In | undefined;
@@ -652,7 +625,7 @@ export function throttleEffect<In, Out>(
                 // Resolve all pending promises with the new result
                 const resolvesToProcess = [...pendingResolves];
                 pendingResolves = [];
-                resolvesToProcess.forEach(res => res(lastResult!));
+                resolvesToProcess.forEach((res) => res(lastResult!));
               } catch (error) {
                 // Reject all pending promises
                 const resolvesToProcess = [...pendingResolves];
@@ -670,9 +643,7 @@ export function throttleEffect<In, Out>(
 /**
  * Parallel execution of multiple effects
  */
-export function parallel<In, Out>(
-  ...effects: EffectFlow<In, Out>[]
-): EffectFlow<In, Out[]> {
+export function parallel<In, Out>(...effects: EffectFlow<In, Out>[]): EffectFlow<In, Out[]> {
   return parallelLimit(Infinity, ...effects);
 }
 
@@ -688,7 +659,7 @@ export function sequential<T>(...effects: EffectFlow<any, any>[]): EffectFlow<T,
       }
       return result;
     },
-    combineEffects(...effects) | EffectFlags.Async,
+    combineEffects(...effects) | EffectFlags.Async
   );
 }
 
@@ -698,37 +669,28 @@ export function sequential<T>(...effects: EffectFlow<any, any>[]): EffectFlow<T,
 export function conditional<In, Out1, Out2>(
   condition: (input: In) => boolean,
   ifTrue: EffectFlow<In, Out1>,
-  ifFalse: EffectFlow<In, Out2>,
+  ifFalse: EffectFlow<In, Out2>
 ): EffectFlow<In, Out1 | Out2> {
-  return effectful(
-    (input: In) => {
-      if (condition(input)) {
-        return ifTrue(input);
-      } else {
-        return ifFalse(input);
-      }
-    },
-    ifTrue.flags | ifFalse.flags,
-  );
+  return effectful((input: In) => {
+    if (condition(input)) {
+      return ifTrue(input);
+    } else {
+      return ifFalse(input);
+    }
+  }, ifTrue.flags | ifFalse.flags);
 }
 
 /**
  * Suppress errors in effect with fallback
  */
-export function suppress<In, Out>(
-  effect: EffectFlow<In, Out>,
-  fallback: (error: any) => Out,
-): EffectFlow<In, Out> {
-  return effectful(
-    async (input: In) => {
-      try {
-        return await effect(input);
-      } catch (error) {
-        return fallback(error);
-      }
-    },
-    effect.flags,
-  );
+export function suppress<In, Out>(effect: EffectFlow<In, Out>, fallback: (error: any) => Out): EffectFlow<In, Out> {
+  return effectful(async (input: In) => {
+    try {
+      return await effect(input);
+    } catch (error) {
+      return fallback(error);
+    }
+  }, effect.flags);
 }
 
 /**
@@ -744,16 +706,8 @@ export interface RetryOptions {
 /**
  * Retry effect on failure
  */
-export function retry<In, Out>(
-  effect: EffectFlow<In, Out>,
-  options: RetryOptions = {},
-): EffectFlow<In, Out> {
-  const {
-    maxAttempts = 3,
-    delay = 1000,
-    backoff = 'linear',
-    onRetry,
-  } = options;
+export function retry<In, Out>(effect: EffectFlow<In, Out>, options: RetryOptions = {}): EffectFlow<In, Out> {
+  const { maxAttempts = 3, delay = 1000, backoff = 'linear', onRetry } = options;
 
   return effectful(
     async (input: In) => {
@@ -770,40 +724,32 @@ export function retry<In, Out>(
               onRetry(attempt, error);
             }
 
-            const waitTime = backoff === 'exponential'
-              ? delay * Math.pow(2, attempt - 1)
-              : delay * attempt;
+            const waitTime = backoff === 'exponential' ? delay * Math.pow(2, attempt - 1) : delay * attempt;
 
-            await new Promise(resolve => setTimeout(resolve, waitTime));
+            await new Promise((resolve) => setTimeout(resolve, waitTime));
           }
         }
       }
 
       throw lastError;
     },
-    effect.flags | EffectFlags.Async | EffectFlags.Time,
+    effect.flags | EffectFlags.Async | EffectFlags.Time
   );
 }
 
 /**
  * Timeout effect execution
  */
-export function timeout<In, Out>(
-  effect: EffectFlow<In, Out>,
-  ms: number,
-): EffectFlow<In, Out> {
+export function timeout<In, Out>(effect: EffectFlow<In, Out>, ms: number): EffectFlow<In, Out> {
   return effectful(
     async (input: In) => {
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error(`Effect timeout after ${ms}ms`)), ms)
       );
 
-      return Promise.race([
-        effect(input),
-        timeoutPromise,
-      ]);
+      return Promise.race([effect(input), timeoutPromise]);
     },
-    effect.flags | EffectFlags.Async | EffectFlags.Time,
+    effect.flags | EffectFlags.Async | EffectFlags.Time
   );
 }
 
@@ -863,9 +809,7 @@ export function analyze(flow: EffectFlow<any, any>): AnalysisResult {
 /**
  * Optimize effect flow (simplified version)
  */
-export function optimize<In, Out>(
-  flow: EffectFlow<In, Out>,
-): EffectFlow<In, Out> {
+export function optimize<In, Out>(flow: EffectFlow<In, Out>): EffectFlow<In, Out> {
   // This is a simplified optimization that just returns the flow
   // A real implementation would analyze and optimize the flow
   const analysis = analyze(flow);
@@ -873,18 +817,15 @@ export function optimize<In, Out>(
   // For pure flows, we could add memoization
   if (analysis.pure) {
     const cache = new Map<In, Out>();
-    return effectful(
-      (input: In) => {
-        if (cache.has(input)) {
-          return cache.get(input)!;
-        }
-        const result = flow(input);
-        // Cast to Out since pure flows shouldn't return promises
-        cache.set(input, result as Out);
-        return result;
-      },
-      flow.flags,
-    );
+    return effectful((input: In) => {
+      if (cache.has(input)) {
+        return cache.get(input)!;
+      }
+      const result = flow(input);
+      // Cast to Out since pure flows shouldn't return promises
+      cache.set(input, result as Out);
+      return result;
+    }, flow.flags);
   }
 
   // For now, just return the original flow
@@ -894,26 +835,15 @@ export function optimize<In, Out>(
 /**
  * Restrict effect to allowed flags
  */
-export function restrict<In, Out>(
-  flow: EffectFlow<In, Out>,
-  allowed: EffectFlags,
-): EffectFlow<In, Out> {
+export function restrict<In, Out>(flow: EffectFlow<In, Out>, allowed: EffectFlags): EffectFlow<In, Out> {
   if ((flow.flags & ~allowed) !== 0) {
-    throw new Error(
-      `Flow has disallowed effects. Has: ${flow.flags}, Allowed: ${allowed}`,
-    );
+    throw new Error(`Flow has disallowed effects. Has: ${flow.flags}, Allowed: ${allowed}`);
   }
   return flow;
 }
 
 // Algebraic effects exports
-export {
-  AlgebraicEffect,
-  AlgebraicEffects,
-  scopedEffect,
-  withHandler,
-  type TypeSignature,
-} from './algebraic.js';
+export { AlgebraicEffect, AlgebraicEffects, scopedEffect, withHandler, type TypeSignature } from './algebraic.js';
 
 // Effect tracking exports
 export {

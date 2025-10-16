@@ -356,12 +356,15 @@ describe('Compiler Integration', () => {
 
     it('should handle large files efficiently', async () => {
       // Generate a large component
-      const components = Array.from({ length: 50 }, (_, i) => `
+      const components = Array.from(
+        { length: 50 },
+        (_, i) => `
         function Component${i}() {
           const state${i} = signal(${i});
           return () => <div>{state${i}()}</div>;
         }
-      `).join('\n');
+      `
+      ).join('\n');
 
       const source = `
         import { signal } from '@omnitron-dev/aether';
@@ -470,7 +473,7 @@ describe('Compiler Integration', () => {
       const result = await compileWithResult(invalidSource, 'Invalid.tsx');
 
       expect(result.warnings.length).toBeGreaterThan(0);
-      expect(result.warnings.some(w => w.level === 'error')).toBe(true);
+      expect(result.warnings.some((w) => w.level === 'error')).toBe(true);
     });
 
     it('should recover from optimization failures', async () => {

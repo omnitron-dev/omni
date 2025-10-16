@@ -205,10 +205,7 @@ export type FlowOutput<F> = F extends Flow<any, infer Out> ? Out : never;
 /**
  * Utility type for a chain of Flows
  */
-export type FlowChain<T extends readonly Flow[]> = T extends readonly [
-  Flow<infer First, any>,
-  ...infer Rest,
-]
+export type FlowChain<T extends readonly Flow[]> = T extends readonly [Flow<infer First, any>, ...infer Rest]
   ? Rest extends readonly Flow[]
     ? Rest extends readonly []
       ? T[0]

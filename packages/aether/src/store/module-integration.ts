@@ -48,11 +48,7 @@ export class ModuleScopedStoreManager {
   /**
    * Register a store with module scope
    */
-  register(
-    storeId: string,
-    factory: StoreFactory,
-    options: ModuleScopedStoreOptions = {}
-  ): void {
+  register(storeId: string, factory: StoreFactory, options: ModuleScopedStoreOptions = {}): void {
     const scope = options.scope ?? 'singleton';
 
     this.stores.set(storeId, {
@@ -325,11 +321,7 @@ export class StoreLifecycleManager {
   /**
    * Initialize stores for a module
    */
-  async initializeStores(
-    moduleId: string,
-    storeFactories: StoreFactory[],
-    container: DIContainer
-  ): Promise<void> {
+  async initializeStores(moduleId: string, storeFactories: StoreFactory[], container: DIContainer): Promise<void> {
     const key = `${moduleId}:init`;
 
     // Prevent duplicate initialization

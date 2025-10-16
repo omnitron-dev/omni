@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const NotificationCircleIcon: IconDefinition = {
-  "id": "notification-circle",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M12 2.5C13.3466 2.5 14.6275 2.78089 15.7881 3.28613C15.0016 3.92794 14.5 4.9057 14.5 6C14.5 7.933 16.067 9.5 18 9.5C19.0943 9.5 20.0711 8.9975 20.7129 8.21094C21.2185 9.37186 21.5 10.6529 21.5 12C21.5 17.2467 17.2467 21.5 12 21.5C6.75329 21.5 2.5 17.2467 2.5 12C2.5 6.75329 6.75329 2.5 12 2.5Z\" fill=\"currentColor\" />\n    <path d=\"M21.5 6C21.5 7.933 19.933 9.5 18 9.5C16.067 9.5 14.5 7.933 14.5 6C14.5 4.067 16.067 2.5 18 2.5C19.933 2.5 21.5 4.067 21.5 6Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M21.5 12C21.5 17.2467 17.2467 21.5 12 21.5C6.75329 21.5 2.5 17.2467 2.5 12C2.5 6.75329 6.75329 2.5 12 2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M8 12H12\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M8 16H16\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "duotone",
-    "originalName": "NotificationCircleIcon",
-    "elementsCount": 5,
-    "hasOpacity": true,
-    "hasFill": true
-  }
+  id: 'notification-circle',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path opacity="0.4" d="M12 2.5C13.3466 2.5 14.6275 2.78089 15.7881 3.28613C15.0016 3.92794 14.5 4.9057 14.5 6C14.5 7.933 16.067 9.5 18 9.5C19.0943 9.5 20.0711 8.9975 20.7129 8.21094C21.2185 9.37186 21.5 10.6529 21.5 12C21.5 17.2467 17.2467 21.5 12 21.5C6.75329 21.5 2.5 17.2467 2.5 12C2.5 6.75329 6.75329 2.5 12 2.5Z" fill="currentColor" />\n    <path d="M21.5 6C21.5 7.933 19.933 9.5 18 9.5C16.067 9.5 14.5 7.933 14.5 6C14.5 4.067 16.067 2.5 18 2.5C19.933 2.5 21.5 4.067 21.5 6Z" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M21.5 12C21.5 17.2467 17.2467 21.5 12 21.5C6.75329 21.5 2.5 17.2467 2.5 12C2.5 6.75329 6.75329 2.5 12 2.5" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M8 12H12" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M8 16H16" stroke-linecap="round" stroke-linejoin="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'duotone',
+    originalName: 'NotificationCircleIcon',
+    elementsCount: 5,
+    hasOpacity: true,
+    hasFill: true,
+  },
 };

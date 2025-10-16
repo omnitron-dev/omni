@@ -759,7 +759,7 @@ describe('SVG Viewport Utils', () => {
         'xMaxYMax',
       ];
 
-      alignments.forEach(align => {
+      alignments.forEach((align) => {
         const result = fitToViewport(viewBox, viewport, { align, meetOrSlice: 'meet' });
         expect(result).toBeDefined();
         expect(result.scale).toBeGreaterThan(0);

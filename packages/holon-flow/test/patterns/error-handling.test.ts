@@ -89,22 +89,18 @@ describe('C.2 Error Handling Patterns', () => {
     });
 
     it('should handle async Result operations', async () => {
-      const fetchUser = flow(
-        async (id: number): Promise<Result<{ id: number; name: string }, string>> => {
-          if (id < 0) return { ok: false, error: 'Invalid ID' };
-          // Simulate API call
-          await new Promise((resolve) => setTimeout(resolve, 10));
-          return { ok: true, value: { id, name: `User${id}` } };
-        },
-      );
+      const fetchUser = flow(async (id: number): Promise<Result<{ id: number; name: string }, string>> => {
+        if (id < 0) return { ok: false, error: 'Invalid ID' };
+        // Simulate API call
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        return { ok: true, value: { id, name: `User${id}` } };
+      });
 
-      const getUserName = flow(
-        async (id: number): Promise<Result<string, string>> => {
-          const userResult = await fetchUser(id);
-          if (!userResult.ok) return userResult;
-          return { ok: true, value: userResult.value.name };
-        },
-      );
+      const getUserName = flow(async (id: number): Promise<Result<string, string>> => {
+        const userResult = await fetchUser(id);
+        if (!userResult.ok) return userResult;
+        return { ok: true, value: userResult.value.name };
+      });
 
       expect(await getUserName(42)).toEqual({ ok: true, value: 'User42' });
       expect(await getUserName(-1)).toEqual({ ok: false, error: 'Invalid ID' });
@@ -148,7 +144,7 @@ describe('C.2 Error Handling Patterns', () => {
       const retryWithBackoff = <In, Out>(
         targetFlow: Flow<In, Out>,
         maxRetries: number,
-        shouldRetry?: (error: Error, attempt: number) => boolean,
+        shouldRetry?: (error: Error, attempt: number) => boolean
       ): Flow<In, Out> => {
         return flow(async (input: In) => {
           let lastError: Error;
@@ -196,7 +192,7 @@ describe('C.2 Error Handling Patterns', () => {
           failureThreshold: number;
           resetTimeout: number;
           halfOpenRequests: number;
-        },
+        }
       ): Flow<In, Out> => {
         let failureCount = 0;
         let lastFailureTime = 0;
@@ -281,8 +277,7 @@ describe('C.2 Error Handling Patterns', () => {
   describe('Timeout Pattern', () => {
     it('should timeout long-running operations', async () => {
       const slowFlow = flow(
-        async (x: number) =>
-          new Promise<number>((resolve) => setTimeout(() => resolve(x * 2), 200)),
+        async (x: number) => new Promise<number>((resolve) => setTimeout(() => resolve(x * 2), 200))
       );
 
       const timeoutFlow = timeout(slowFlow, 100);
@@ -292,8 +287,7 @@ describe('C.2 Error Handling Patterns', () => {
 
     it('should complete before timeout', async () => {
       const fastFlow = flow(
-        async (x: number) =>
-          new Promise<number>((resolve) => setTimeout(() => resolve(x * 2), 50)),
+        async (x: number) => new Promise<number>((resolve) => setTimeout(() => resolve(x * 2), 50))
       );
 
       const timeoutFlow = timeout(fastFlow, 100);

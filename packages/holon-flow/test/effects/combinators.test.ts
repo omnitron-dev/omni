@@ -100,11 +100,7 @@ describe('Effect Combinators', () => {
 
       const batched = batch(batchEffect, { size: 3, delay: 50 });
 
-      const results = await Promise.all([
-        batched(1),
-        batched(2),
-        batched(3),
-      ]);
+      const results = await Promise.all([batched(1), batched(2), batched(3)]);
 
       expect(results).toEqual([2, 4, 6]);
       expect(callCount).toBe(1);
@@ -119,13 +115,7 @@ describe('Effect Combinators', () => {
 
       const batched = batch(batchEffect, { size: 2, delay: 10 });
 
-      const results = await Promise.all([
-        batched(1),
-        batched(2),
-        batched(3),
-        batched(4),
-        batched(5),
-      ]);
+      const results = await Promise.all([batched(1), batched(2), batched(3), batched(4), batched(5)]);
 
       expect(results).toEqual([2, 4, 6, 8, 10]);
       expect(callCount).toBeGreaterThanOrEqual(2);
@@ -278,9 +268,7 @@ describe('Effect Combinators', () => {
 
       const combined = combineEffects(effect1, effect2, effect3, effect4);
 
-      expect(combined).toBe(
-        EffectFlags.IO | EffectFlags.Network | EffectFlags.Async | EffectFlags.Database
-      );
+      expect(combined).toBe(EffectFlags.IO | EffectFlags.Network | EffectFlags.Async | EffectFlags.Database);
     });
 
     it('should handle flows without flags', () => {

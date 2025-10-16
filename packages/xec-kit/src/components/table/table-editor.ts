@@ -201,7 +201,10 @@ export function navigateToNextEditableColumn<T>(
   // Find next editable column
   while (attempts < totalColumns) {
     const column = options.columns[nextColumn];
-    if (column && (!options.editableColumns || options.editableColumns.includes(String(column.key)))) {
+    if (
+      column &&
+      (!options.editableColumns || options.editableColumns.includes(String(column.key)))
+    ) {
       return {
         ...state,
         focusedColumn: nextColumn,
@@ -232,7 +235,10 @@ export function navigateToPreviousEditableColumn<T>(
   // Find previous editable column
   while (attempts < totalColumns) {
     const column = options.columns[prevColumn];
-    if (column && (!options.editableColumns || options.editableColumns.includes(String(column.key)))) {
+    if (
+      column &&
+      (!options.editableColumns || options.editableColumns.includes(String(column.key)))
+    ) {
       return {
         ...state,
         focusedColumn: prevColumn,

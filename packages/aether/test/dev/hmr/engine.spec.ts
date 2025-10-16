@@ -308,9 +308,7 @@ describe('HMR Engine', () => {
       engine.addConnection(mockWs);
 
       expect(engine.getConnections().size).toBe(1);
-      expect(mockWs.send).toHaveBeenCalledWith(
-        JSON.stringify({ type: 'connected' })
-      );
+      expect(mockWs.send).toHaveBeenCalledWith(JSON.stringify({ type: 'connected' }));
     });
 
     it('should remove WebSocket connection', () => {
@@ -500,10 +498,7 @@ describe('HMR Engine', () => {
       engine.registerModule('module-b', '/src/b.ts', 'module', new Set());
 
       // Send concurrent updates
-      await Promise.all([
-        engine.handleUpdate('/src/a.ts'),
-        engine.handleUpdate('/src/b.ts'),
-      ]);
+      await Promise.all([engine.handleUpdate('/src/a.ts'), engine.handleUpdate('/src/b.ts')]);
 
       expect(onUpdate).toHaveBeenCalledTimes(2);
     });

@@ -180,9 +180,7 @@ export class ErrorOverlay {
       .map((line, i) => {
         const lineNum = start + i + 1;
         const isError = lineNum === errorLine;
-        const lineStyle = isError
-          ? 'background: rgba(239, 68, 68, 0.1); color: #ef4444;'
-          : '';
+        const lineStyle = isError ? 'background: rgba(239, 68, 68, 0.1); color: #ef4444;' : '';
 
         return `<span style="${lineStyle}">${lineNum.toString().padStart(4, ' ')} | ${this.escapeHtml(line)}</span>`;
       })

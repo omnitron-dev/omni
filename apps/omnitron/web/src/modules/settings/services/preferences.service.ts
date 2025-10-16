@@ -27,8 +27,7 @@ export class PreferencesService {
       language: 'en',
       notifications: true,
       autoSave: this.settingsService.getSetting('editor', 'autoSave') || true,
-      compactMode:
-        this.settingsService.getSetting('appearance', 'compactMode') || false,
+      compactMode: this.settingsService.getSetting('appearance', 'compactMode') || false,
     };
   }
 
@@ -43,11 +42,7 @@ export class PreferencesService {
       this.settingsService.updateSetting('editor', 'autoSave', preferences.autoSave);
     }
     if (preferences.compactMode !== undefined) {
-      this.settingsService.updateSetting(
-        'appearance',
-        'compactMode',
-        preferences.compactMode
-      );
+      this.settingsService.updateSetting('appearance', 'compactMode', preferences.compactMode);
     }
   }
 
@@ -71,19 +66,14 @@ export class PreferencesService {
   /**
    * Get preference value
    */
-  getPreference<K extends keyof UserPreferences>(
-    key: K
-  ): UserPreferences[K] {
+  getPreference<K extends keyof UserPreferences>(key: K): UserPreferences[K] {
     return this.getPreferences()[key];
   }
 
   /**
    * Set preference value
    */
-  setPreference<K extends keyof UserPreferences>(
-    key: K,
-    value: UserPreferences[K]
-  ) {
+  setPreference<K extends keyof UserPreferences>(key: K, value: UserPreferences[K]) {
     this.updatePreferences({ [key]: value } as Partial<UserPreferences>);
   }
 }

@@ -11,20 +11,11 @@ export interface SSHTestConfig {
 /**
  * Wrapper for SSH test suites that automatically manages Docker containers
  */
-export function describeSSH(
-  name: string, 
-  fn: () => void, 
-  config: SSHTestConfig = {}
-): void {
-  const {
-    containers = DOCKER_CONTAINERS.map(c => c.name),
-    timeout = 120000,
-    skipIfNoDocker = true
-  } = config;
+export function describeSSH(name: string, fn: () => void, config: SSHTestConfig = {}): void {
+  const { containers = DOCKER_CONTAINERS.map((c) => c.name), timeout = 120000, skipIfNoDocker = true } = config;
 
   // Check if we should skip
-  const shouldSkip = dockerManager.shouldSkipSSHTests() || 
-    (skipIfNoDocker && !dockerManager.isDockerAvailable());
+  const shouldSkip = dockerManager.shouldSkipSSHTests() || (skipIfNoDocker && !dockerManager.isDockerAvailable());
 
   const describeFn = shouldSkip ? describe.skip : describe;
 
@@ -38,7 +29,7 @@ export function describeSSH(
       }
 
       console.log(`Starting Docker containers for ${name}...`);
-      
+
       // Start only the specified containers
       containersStarted = true;
       for (const containerName of containers) {
@@ -54,13 +45,13 @@ export function describeSSH(
       }
 
       // Wait a bit for SSH to be fully ready
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
     }, timeout);
 
     afterAll(async () => {
       if (containersStarted) {
         console.log(`Cleaning up Docker containers for ${name}...`);
-        
+
         // Only stop the containers we started
         for (const containerName of containers) {
           await dockerManager.stopContainer(containerName);
@@ -77,7 +68,7 @@ export function describeSSH(
  * Helper to get SSH configuration for a specific container
  */
 export function getSSHConfig(containerName: string) {
-  const container = DOCKER_CONTAINERS.find(c => c.name === containerName);
+  const container = DOCKER_CONTAINERS.find((c) => c.name === containerName);
   if (!container) {
     throw new Error(`Unknown container: ${containerName}`);
   }
@@ -88,7 +79,7 @@ export function getSSHConfig(containerName: string) {
     username: 'user',
     password: 'password',
     connectTimeout: 30000,
-    readyTimeout: 30000
+    readyTimeout: 30000,
   };
 }
 
@@ -106,29 +97,29 @@ export function testEachPackageManager(
   testName: string,
   testFn: (container: ContainerConfig) => Promise<void> | void
 ): void {
-  DOCKER_CONTAINERS.forEach(container => {
+  DOCKER_CONTAINERS.forEach((container) => {
     it(`${testName} (${container.packageManager} on ${container.name})`, async () => {
       await testFn(container);
     });
   });
 }
 
-testEachPackageManager.only = function(
+testEachPackageManager.only = function (
   testName: string,
   testFn: (container: ContainerConfig) => Promise<void> | void
 ): void {
-  DOCKER_CONTAINERS.forEach(container => {
+  DOCKER_CONTAINERS.forEach((container) => {
     it.only(`${testName} (${container.packageManager} on ${container.name})`, async () => {
       await testFn(container);
     });
   });
 };
 
-testEachPackageManager.skip = function(
+testEachPackageManager.skip = function (
   testName: string,
   testFn: (container: ContainerConfig) => Promise<void> | void
 ): void {
-  DOCKER_CONTAINERS.forEach(container => {
+  DOCKER_CONTAINERS.forEach((container) => {
     it.skip(`${testName} (${container.packageManager} on ${container.name})`, async () => {
       await testFn(container);
     });
@@ -154,11 +145,9 @@ export function testPackageManagers(
   testName: string,
   testFn: (container: ContainerConfig) => Promise<void> | void
 ): void {
-  const containers = DOCKER_CONTAINERS.filter(c => 
-    packageManagers.includes(c.packageManager)
-  );
+  const containers = DOCKER_CONTAINERS.filter((c) => packageManagers.includes(c.packageManager));
 
-  containers.forEach(container => {
+  containers.forEach((container) => {
     it(`${testName} (${container.packageManager})`, async () => {
       await testFn(container);
     });
@@ -169,7 +158,7 @@ export function testPackageManagers(
  * Helper to wait for container to be ready
  */
 export async function waitForContainer(containerName: string, maxWait = 30000): Promise<boolean> {
-  const container = DOCKER_CONTAINERS.find(c => c.name === containerName);
+  const container = DOCKER_CONTAINERS.find((c) => c.name === containerName);
   if (!container) {
     throw new Error(`Unknown container: ${containerName}`);
   }
@@ -183,7 +172,7 @@ export async function waitForContainer(containerName: string, maxWait = 30000): 
         return true;
       }
     }
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   }
 
   return false;

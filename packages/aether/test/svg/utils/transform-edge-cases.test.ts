@@ -316,9 +316,7 @@ describe('SVG Transform Utils - Edge Cases', () => {
     });
 
     it('should handle single transform', () => {
-      const transforms: Transform[] = [
-        { type: 'translate', values: [10, 20] },
-      ];
+      const transforms: Transform[] = [{ type: 'translate', values: [10, 20] }];
       const result = composeTransforms(transforms);
       expect(result).toEqual([1, 0, 0, 1, 10, 20]);
     });
@@ -334,9 +332,7 @@ describe('SVG Transform Utils - Edge Cases', () => {
     });
 
     it('should handle transforms with NaN', () => {
-      const transforms: Transform[] = [
-        { type: 'translate', values: [NaN, NaN] },
-      ];
+      const transforms: Transform[] = [{ type: 'translate', values: [NaN, NaN] }];
       const result = composeTransforms(transforms);
       expect(result).toBeDefined();
     });
@@ -400,12 +396,7 @@ describe('SVG Transform Utils - Edge Cases', () => {
 
     it('should handle near-identity with default tolerance', () => {
       const nearIdentity: TransformMatrix = [
-        1.0000000001,
-        0.0000000001,
-        0.0000000001,
-        1.0000000001,
-        0.0000000001,
-        0.0000000001,
+        1.0000000001, 0.0000000001, 0.0000000001, 1.0000000001, 0.0000000001, 0.0000000001,
       ];
       expect(isIdentityMatrix(nearIdentity)).toBe(true);
     });
@@ -468,14 +459,7 @@ describe('SVG Transform Utils - Edge Cases', () => {
 
     it('should decompose rotation', () => {
       const angle = 45 * (Math.PI / 180);
-      const rotate: TransformMatrix = [
-        Math.cos(angle),
-        Math.sin(angle),
-        -Math.sin(angle),
-        Math.cos(angle),
-        0,
-        0,
-      ];
+      const rotate: TransformMatrix = [Math.cos(angle), Math.sin(angle), -Math.sin(angle), Math.cos(angle), 0, 0];
       const decomposed = decomposeMatrix(rotate);
       expect(decomposed.rotate).toBeCloseTo(45, 1);
     });

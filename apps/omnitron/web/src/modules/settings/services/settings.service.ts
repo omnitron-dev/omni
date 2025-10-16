@@ -289,7 +289,7 @@ export class SettingsService {
    * Get a specific setting group
    */
   getSettingGroup(groupId: string): SettingGroup | undefined {
-    return this.settingGroups().find(g => g.id === groupId);
+    return this.settingGroups().find((g) => g.id === groupId);
   }
 
   /**
@@ -297,7 +297,7 @@ export class SettingsService {
    */
   getSetting(groupId: string, settingId: string): any {
     const group = this.getSettingGroup(groupId);
-    const setting = group?.settings.find(s => s.id === settingId);
+    const setting = group?.settings.find((s) => s.id === settingId);
     return setting?.value;
   }
 
@@ -305,14 +305,12 @@ export class SettingsService {
    * Update a setting value
    */
   updateSetting(groupId: string, settingId: string, value: any) {
-    this.settingGroups.update(groups =>
-      groups.map(group =>
+    this.settingGroups.update((groups) =>
+      groups.map((group) =>
         group.id === groupId
           ? {
               ...group,
-              settings: group.settings.map(setting =>
-                setting.id === settingId ? { ...setting, value } : setting
-              ),
+              settings: group.settings.map((setting) => (setting.id === settingId ? { ...setting, value } : setting)),
             }
           : group
       )

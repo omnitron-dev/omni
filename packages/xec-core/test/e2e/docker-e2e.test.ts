@@ -12,17 +12,17 @@ import { $ } from '../../src/index.js';
 
 // Helper to wait for condition with timeout
 async function waitFor(
-  condition: () => Promise<boolean>, 
+  condition: () => Promise<boolean>,
   options: { timeout?: number; interval?: number; message?: string } = {}
 ): Promise<void> {
   const { timeout = 30000, interval = 1000, message = 'Condition not met' } = options;
   const startTime = Date.now();
-  
+
   while (Date.now() - startTime < timeout) {
     if (await condition()) return;
-    await new Promise(resolve => setTimeout(resolve, interval));
+    await new Promise((resolve) => setTimeout(resolve, interval));
   }
-  
+
   throw new Error(`Timeout waiting for condition: ${message}`);
 }
 
@@ -35,14 +35,14 @@ const DOCKER_AVAILABLE = await (async () => {
       console.log('PATH:', process.env['PATH']);
       return false;
     }
-    
+
     // Check Docker daemon is running
     const infoResult = await $`docker info`.nothrow();
     if (infoResult.exitCode !== 0) {
       console.log('Docker daemon is not running');
       return false;
     }
-    
+
     return true;
   } catch (error) {
     console.log('Error checking Docker availability:', error);
@@ -55,7 +55,7 @@ const describeIfDocker = DOCKER_AVAILABLE ? describe : describe.skip;
 describeIfDocker('Docker E2E Real-World Scenarios', () => {
   const TEST_PREFIX = `ush-e2e-${Date.now()}`;
   const workDir = join(tmpdir(), TEST_PREFIX);
-  
+
   // Track created resources for cleanup
   const createdContainers = new Set<string>();
   const createdNetworks = new Set<string>();
@@ -69,36 +69,36 @@ describeIfDocker('Docker E2E Real-World Scenarios', () => {
 
   afterAll(async () => {
     console.log('Cleaning up Docker E2E test resources...');
-    
+
     // Clean containers
     if (createdContainers.size > 0) {
       const containers = Array.from(createdContainers).join(' ');
       await $`docker rm -f ${containers}`.nothrow();
     }
-    
+
     // Clean networks
     if (createdNetworks.size > 0) {
       const networks = Array.from(createdNetworks).join(' ');
       await $`docker network rm ${networks}`.nothrow();
     }
-    
+
     // Clean volumes
     if (createdVolumes.size > 0) {
       const volumes = Array.from(createdVolumes).join(' ');
       await $`docker volume rm ${volumes}`.nothrow();
     }
-    
+
     // Clean images
     if (createdImages.size > 0) {
       const images = Array.from(createdImages).join(' ');
       await $`docker rmi ${images}`.nothrow();
     }
-    
+
     // Also do pattern-based cleanup as backup
     await $`docker ps -a --filter "name=${TEST_PREFIX}" --format "{{.Names}}" | xargs -r docker rm -f`.nothrow();
     await $`docker network ls --filter "name=${TEST_PREFIX}" --format "{{.Name}}" | xargs -r docker network rm`.nothrow();
     await $`docker volume ls --filter "name=${TEST_PREFIX}" --format "{{.Name}}" | xargs -r docker volume rm`.nothrow();
-    
+
     // Clean work directory
     await fs.rm(workDir, { recursive: true, force: true });
   });
@@ -109,28 +109,41 @@ describeIfDocker('Docker E2E Real-World Scenarios', () => {
       await fs.mkdir(appDir, { recursive: true });
 
       // Create a simple Node.js app
-      await fs.writeFile(join(appDir, 'package.json'), JSON.stringify({
-        name: 'test-app',
-        version: '1.0.0',
-        scripts: {
-          test: 'node test.js',
-          start: 'node index.js'
-        }
-      }, null, 2));
+      await fs.writeFile(
+        join(appDir, 'package.json'),
+        JSON.stringify(
+          {
+            name: 'test-app',
+            version: '1.0.0',
+            scripts: {
+              test: 'node test.js',
+              start: 'node index.js',
+            },
+          },
+          null,
+          2
+        )
+      );
 
-      await fs.writeFile(join(appDir, 'index.js'), `
+      await fs.writeFile(
+        join(appDir, 'index.js'),
+        `
         console.log('Hello from Node.js app!');
         console.log('Node version:', process.version);
         console.log('Platform:', process.platform);
-      `);
+      `
+      );
 
-      await fs.writeFile(join(appDir, 'test.js'), `
+      await fs.writeFile(
+        join(appDir, 'test.js'),
+        `
         console.log('Running tests...');
         console.log('Test 1: Basic functionality - PASS');
         console.log('Test 2: Error handling - PASS');
         console.log('All tests passed!');
         process.exit(0);
-      `);
+      `
+      );
 
       // Build and run in Docker
       const containerName = `${TEST_PREFIX}-node-app`;
@@ -166,7 +179,7 @@ describeIfDocker('Docker E2E Real-World Scenarios', () => {
     it('should set up and interact with PostgreSQL', async () => {
       const dbName = `${TEST_PREFIX}-postgres`;
       const network = `${TEST_PREFIX}-db-network`;
-      
+
       createdContainers.add(dbName);
       createdNetworks.add(network);
 
@@ -195,22 +208,26 @@ describeIfDocker('Docker E2E Real-World Scenarios', () => {
 
       try {
         // Create table
-        const createResult = await $`docker exec ${dbName} psql -U testuser -d testdb -c "CREATE TABLE users (id SERIAL PRIMARY KEY, name VARCHAR(100), created_at TIMESTAMP DEFAULT NOW());"`;
+        const createResult =
+          await $`docker exec ${dbName} psql -U testuser -d testdb -c "CREATE TABLE users (id SERIAL PRIMARY KEY, name VARCHAR(100), created_at TIMESTAMP DEFAULT NOW());"`;
         expect(createResult.exitCode).toBe(0);
 
         // Insert data
-        const insertResult = await $`docker exec ${dbName} psql -U testuser -d testdb -c "INSERT INTO users (name) VALUES ('Alice'), ('Bob'), ('Charlie');"`;
+        const insertResult =
+          await $`docker exec ${dbName} psql -U testuser -d testdb -c "INSERT INTO users (name) VALUES ('Alice'), ('Bob'), ('Charlie');"`;
         expect(insertResult.exitCode).toBe(0);
 
         // Query data
-        const queryResult = await $`docker exec ${dbName} psql -U testuser -d testdb -t -c "SELECT name FROM users ORDER BY name;"`;
+        const queryResult =
+          await $`docker exec ${dbName} psql -U testuser -d testdb -t -c "SELECT name FROM users ORDER BY name;"`;
         expect(queryResult.exitCode).toBe(0);
         expect(queryResult.stdout).toContain('Alice');
         expect(queryResult.stdout).toContain('Bob');
         expect(queryResult.stdout).toContain('Charlie');
-        
+
         // Count records
-        const countResult = await $`docker exec ${dbName} psql -U testuser -d testdb -t -c "SELECT COUNT(*) FROM users;"`;
+        const countResult =
+          await $`docker exec ${dbName} psql -U testuser -d testdb -t -c "SELECT COUNT(*) FROM users;"`;
         expect(countResult.exitCode).toBe(0);
         expect(countResult.stdout.trim()).toBe('3');
       } finally {
@@ -260,7 +277,7 @@ describeIfDocker('Docker E2E Real-World Scenarios', () => {
         expect(items).toContain('item3');
         expect(items).toContain('item2');
         expect(items).toContain('item1');
-        
+
         // Hash operations
         await $`docker exec ${redisName} redis-cli HSET user:1 name "John" age "30" city "NYC"`;
         const hashResult = await $`docker exec ${redisName} redis-cli HGETALL user:1`;
@@ -281,7 +298,7 @@ describeIfDocker('Docker E2E Real-World Scenarios', () => {
       const network = `${TEST_PREFIX}-web-network`;
       const nginxName = `${TEST_PREFIX}-nginx`;
       const appName = `${TEST_PREFIX}-webapp`;
-      
+
       createdNetworks.add(network);
       createdContainers.add(nginxName);
       createdContainers.add(appName);
@@ -293,7 +310,9 @@ describeIfDocker('Docker E2E Real-World Scenarios', () => {
       const webDir = join(workDir, 'webapp');
       await fs.mkdir(webDir, { recursive: true });
 
-      await fs.writeFile(join(webDir, 'index.html'), `<!DOCTYPE html>
+      await fs.writeFile(
+        join(webDir, 'index.html'),
+        `<!DOCTYPE html>
 <html>
 <head>
     <title>Test App</title>
@@ -312,9 +331,12 @@ describeIfDocker('Docker E2E Real-World Scenarios', () => {
             });
     </script>
 </body>
-</html>`);
+</html>`
+      );
 
-      await fs.writeFile(join(webDir, 'app.js'), `const http = require('http');
+      await fs.writeFile(
+        join(webDir, 'app.js'),
+        `const http = require('http');
 const server = http.createServer((req, res) => {
     console.log('Request received:', req.url);
     res.writeHead(200, { 
@@ -327,10 +349,13 @@ const server = http.createServer((req, res) => {
         version: '1.0.0'
     }));
 });
-server.listen(3000, () => console.log('Backend server running on port 3000'));`);
+server.listen(3000, () => console.log('Backend server running on port 3000'));`
+      );
 
       // Nginx config
-      await fs.writeFile(join(webDir, 'nginx.conf'), `server {
+      await fs.writeFile(
+        join(webDir, 'nginx.conf'),
+        `server {
     listen 80;
     server_name localhost;
     
@@ -348,7 +373,8 @@ server.listen(3000, () => console.log('Backend server running on port 3000'));`)
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
-}`);
+}`
+      );
 
       try {
         // Start backend app
@@ -383,14 +409,16 @@ server.listen(3000, () => console.log('Backend server running on port 3000'));`)
 
         // Test the stack
         // Add small delay to ensure nginx is fully ready
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+
         // Test static content (nginx:alpine doesn't have wget, use curl)
-        const staticResult = await $`docker exec ${nginxName} sh -c "apk add --no-cache curl > /dev/null 2>&1 && curl -s http://localhost/"`.nothrow();
+        const staticResult =
+          await $`docker exec ${nginxName} sh -c "apk add --no-cache curl > /dev/null 2>&1 && curl -s http://localhost/"`.nothrow();
         if (staticResult.exitCode !== 0) {
           console.log('Static content test failed:', staticResult.stderr);
           // Debug what's wrong
-          const debugResult = await $`docker exec ${nginxName} sh -c "ls -la /usr/share/nginx/html/ && cat /etc/nginx/conf.d/default.conf"`.nothrow();
+          const debugResult =
+            await $`docker exec ${nginxName} sh -c "ls -la /usr/share/nginx/html/ && cat /etc/nginx/conf.d/default.conf"`.nothrow();
           console.log('Debug info:', debugResult.stdout);
           throw new Error(`Failed to fetch static content: ${staticResult.stderr}`);
         }
@@ -404,7 +432,7 @@ server.listen(3000, () => console.log('Backend server running on port 3000'));`)
         expect(apiResponse.message).toBe('Hello from backend!');
         expect(apiResponse.version).toBe('1.0.0');
         expect(apiResponse.timestamp).toBeTruthy();
-        
+
         // Test via host port (if running in CI this might not work)
         if (process.env['CI'] !== 'true') {
           const hostResult = await $`curl -s http://localhost:8080/api`.nothrow();
@@ -429,45 +457,51 @@ server.listen(3000, () => console.log('Backend server running on port 3000'));`)
       await fs.mkdir(buildDir, { recursive: true });
 
       // Create Dockerfile
-      await fs.writeFile(join(buildDir, 'Dockerfile'), `FROM alpine:latest
+      await fs.writeFile(
+        join(buildDir, 'Dockerfile'),
+        `FROM alpine:latest
 RUN apk add --no-cache python3 py3-pip
 WORKDIR /app
 COPY requirements.txt .
 RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt
 COPY . .
-CMD ["python3", "app.py"]`);
+CMD ["python3", "app.py"]`
+      );
 
       // Create requirements.txt
       await fs.writeFile(join(buildDir, 'requirements.txt'), ``);
 
       // Create app
-      await fs.writeFile(join(buildDir, 'app.py'), `import sys
+      await fs.writeFile(
+        join(buildDir, 'app.py'),
+        `import sys
 import platform
 
 print("Hello from Dockerized Python app!")
 print(f"Python version: {sys.version}")
 print(f"Platform: {platform.platform()}")
-print("Application started successfully!")`);
+print("Application started successfully!")`
+      );
 
       const imageName = `${TEST_PREFIX}-build-test:latest`;
       const containerName = `${TEST_PREFIX}-built-app`;
-      
+
       createdImages.add(imageName);
       createdContainers.add(containerName);
 
       try {
         // Build image
         console.log('Building Docker image from:', buildDir);
-        
+
         // Check if directory and files exist
         const dirContents = await fs.readdir(buildDir);
         console.log('Build directory contents:', dirContents);
-        
+
         // Try a simpler approach to capture all output
         let buildSucceeded = false;
         let buildOutput = '';
         let buildError = '';
-        
+
         try {
           const buildResult = await $`docker build -t ${imageName} ${buildDir}`;
           buildSucceeded = true;
@@ -475,14 +509,14 @@ print("Application started successfully!")`);
         } catch (error: any) {
           buildSucceeded = false;
           buildError = error.message || String(error);
-          
+
           // Extract any output from the error
           if (error.stdout) buildOutput = error.stdout;
           if (error.stderr) buildError = error.stderr;
-          
+
           console.log('Docker build failed with error:', buildError);
           console.log('Build output:', buildOutput);
-          
+
           // List what's in the build directory
           const files = await fs.readdir(buildDir);
           for (const file of files) {
@@ -490,7 +524,7 @@ print("Application started successfully!")`);
             console.log(`${file}:`, content.substring(0, 100));
           }
         }
-        
+
         expect(buildSucceeded).toBe(true);
         if (buildOutput) {
           expect(buildOutput).toContain('Successfully built');
@@ -502,7 +536,7 @@ print("Application started successfully!")`);
         expect(runResult.stdout).toContain('Hello from Dockerized Python app!');
         expect(runResult.stdout).toContain('Python version:');
         expect(runResult.stdout).toContain('Application started successfully!');
-        
+
         // Verify image exists
         const imagesResult = await $`docker images ${imageName} --format "{{.Repository}}:{{.Tag}}"`;
         expect(imagesResult.stdout.trim()).toBe(imageName);
@@ -519,11 +553,16 @@ print("Application started successfully!")`);
       await fs.mkdir(pipelineDir, { recursive: true });
 
       // Create test project
-      await fs.writeFile(join(pipelineDir, 'requirements.txt'), `pytest==7.4.0
+      await fs.writeFile(
+        join(pipelineDir, 'requirements.txt'),
+        `pytest==7.4.0
 coverage==7.3.0
-flake8==6.1.0`);
+flake8==6.1.0`
+      );
 
-      await fs.writeFile(join(pipelineDir, 'app.py'), `"""Simple calculator module for CI pipeline demo."""
+      await fs.writeFile(
+        join(pipelineDir, 'app.py'),
+        `"""Simple calculator module for CI pipeline demo."""
 
 
 def add(a: float, b: float) -> float:
@@ -541,9 +580,12 @@ def divide(a: float, b: float) -> float:
     if b == 0:
         raise ValueError("Cannot divide by zero")
     return a / b
-`);
+`
+      );
 
-      await fs.writeFile(join(pipelineDir, 'test_app.py'), `"""Tests for the calculator module."""
+      await fs.writeFile(
+        join(pipelineDir, 'test_app.py'),
+        `"""Tests for the calculator module."""
 
 import pytest
 from app import add, multiply, divide
@@ -570,7 +612,8 @@ def test_divide():
 
     with pytest.raises(ValueError):
         divide(5, 0)
-`);
+`
+      );
 
       const containerName = `${TEST_PREFIX}-ci-pipeline`;
       createdContainers.add(containerName);
@@ -583,11 +626,13 @@ def test_divide():
           python:3.11-slim sleep 600`;
 
         console.log('📦 Stage 2: Install dependencies');
-        const installResult = await $`docker exec ${containerName} pip install --break-system-packages -r requirements.txt`;
+        const installResult =
+          await $`docker exec ${containerName} pip install --break-system-packages -r requirements.txt`;
         expect(installResult.exitCode).toBe(0);
 
         console.log('🧪 Stage 3: Run linting');
-        const lintResult = await $`docker exec ${containerName} sh -c "flake8 app.py test_app.py --max-line-length=100 2>&1 || true"`;
+        const lintResult =
+          await $`docker exec ${containerName} sh -c "flake8 app.py test_app.py --max-line-length=100 2>&1 || true"`;
         if (lintResult.stdout.trim()) {
           console.log('Flake8 output:', lintResult.stdout);
           throw new Error(`Flake8 found issues: ${lintResult.stdout}`);
@@ -599,7 +644,8 @@ def test_divide():
         expect(testResult.stdout).toContain('3 passed');
 
         console.log('📊 Stage 5: Generate coverage report');
-        const coverageResult = await $`docker exec ${containerName} sh -c "coverage run -m pytest test_app.py && coverage report"`;
+        const coverageResult =
+          await $`docker exec ${containerName} sh -c "coverage run -m pytest test_app.py && coverage report"`;
         expect(coverageResult.exitCode).toBe(0);
         expect(coverageResult.stdout).toContain('100%');
 
@@ -626,13 +672,10 @@ def test_divide():
         id: i + 1,
         value: Math.floor(Math.random() * 100),
         timestamp: new Date().toISOString(),
-        category: Math.random() > 0.5 ? 'A' : 'B'
+        category: Math.random() > 0.5 ? 'A' : 'B',
       }));
 
-      await fs.writeFile(
-        join(dataDir, 'input.json'),
-        JSON.stringify(inputData, null, 2)
-      );
+      await fs.writeFile(join(dataDir, 'input.json'), JSON.stringify(inputData, null, 2));
 
       const network = `${TEST_PREFIX}-pipeline-net`;
       createdNetworks.add(network);
@@ -642,7 +685,7 @@ def test_divide():
       const validator = `${TEST_PREFIX}-validator`;
       const transformer = `${TEST_PREFIX}-transformer`;
       const aggregator = `${TEST_PREFIX}-aggregator`;
-      
+
       createdContainers.add(validator);
       createdContainers.add(transformer);
       createdContainers.add(aggregator);
@@ -687,13 +730,15 @@ def test_divide():
             timestamp: new Date().toISOString()
           }, null, 2));
         "`;
-        
+
         expect(validationResult.exitCode).toBe(0);
 
         // Stage 2: Data transformation
         console.log('🔄 Stage 2: Transforming data...');
         // Create transform script
-        await fs.writeFile(join(dataDir, 'transform.py'), `
+        await fs.writeFile(
+          join(dataDir, 'transform.py'),
+          `
 import json
 import statistics
 
@@ -741,14 +786,15 @@ with open('transform-stats.json', 'w') as f:
 print(f'✓ Transformed {len(transformed)} records')
 print(f'  Category A: {stats["category_A_count"]} records, mean: {stats["category_A_mean"]:.2f}')
 print(f'  Category B: {stats["category_B_count"]} records, mean: {stats["category_B_mean"]:.2f}')
-`);
+`
+        );
 
         await $`docker run -d --name ${transformer} --network ${network} \
           -v ${dataDir}:/data -w /data \
           python:3.11-slim sleep 300`;
 
         const transformResult = await $`docker exec ${transformer} python3 transform.py`.nothrow();
-        
+
         if (transformResult.exitCode !== 0) {
           console.log('Transform error:', transformResult.stderr || transformResult.stdout);
         }
@@ -807,7 +853,6 @@ print(f'  Category B: {stats["category_B_count"]} records, mean: {stats["categor
         expect(report.data.high_value_count + report.data.low_value_count).toBe(100);
         expect(report.data.value_stats.min).toBeGreaterThanOrEqual(0);
         expect(report.data.value_stats.max).toBeLessThanOrEqual(100);
-
       } finally {
         await $`docker rm -f ${validator} ${transformer} ${aggregator}`.nothrow();
         await $`docker network rm ${network}`.nothrow();
@@ -829,7 +874,7 @@ print(f'  Category B: {stats["category_B_count"]} records, mean: {stats["categor
       const registry = `${TEST_PREFIX}-registry`;
       const coordinator = `${TEST_PREFIX}-coordinator`;
       const workers: string[] = [];
-      
+
       createdContainers.add(registry);
       createdContainers.add(coordinator);
 
@@ -908,22 +953,24 @@ print(f'  Category B: {stats["category_B_count"]} records, mean: {stats["categor
 
         // Wait for all workers to be ready
         console.log('⏳ Waiting for workers to be ready...');
-        
+
         await waitFor(
           async () => {
-            const statusResult = await $`docker exec ${coordinator} sh -c "redis-cli -h ${registry} MGET worker:1:status worker:2:status worker:3:status"`.nothrow();
+            const statusResult =
+              await $`docker exec ${coordinator} sh -c "redis-cli -h ${registry} MGET worker:1:status worker:2:status worker:3:status"`.nothrow();
             if (statusResult.exitCode !== 0) {
               console.log('Redis error:', statusResult.stderr);
               return false;
             }
-            const readyCount = statusResult.stdout.split('\n').filter(line => line.trim() === 'ready').length;
+            const readyCount = statusResult.stdout.split('\n').filter((line) => line.trim() === 'ready').length;
             return readyCount === 3;
           },
           { timeout: 30000, message: 'Workers failed to become ready' }
         );
 
         // Verify all workers registered
-        const workersResult = await $`docker exec ${coordinator} sh -c "redis-cli -h ${registry} KEYS 'worker:*:status' | sort"`;
+        const workersResult =
+          await $`docker exec ${coordinator} sh -c "redis-cli -h ${registry} KEYS 'worker:*:status' | sort"`;
         const workerKeys = workersResult.stdout.trim().split('\n');
         expect(workerKeys).toHaveLength(3);
         expect(workerKeys).toContain('worker:1:status');
@@ -945,7 +992,8 @@ print(f'  Category B: {stats["category_B_count"]} records, mean: {stats["categor
         console.log('⏳ Waiting for task completion...');
         await waitFor(
           async () => {
-            const completed = await $`docker exec ${coordinator} redis-cli -h ${registry} LLEN work:completed`.nothrow();
+            const completed =
+              await $`docker exec ${coordinator} redis-cli -h ${registry} LLEN work:completed`.nothrow();
             return parseInt(completed.stdout.trim()) === taskCount;
           },
           { timeout: 20000, message: 'Tasks were not completed in time' }
@@ -955,34 +1003,33 @@ print(f'  Category B: {stats["category_B_count"]} records, mean: {stats["categor
         const completedTasks = await $`docker exec ${coordinator} redis-cli -h ${registry} LRANGE work:completed 0 -1`;
         const completedList = completedTasks.stdout.trim().split('\n');
         expect(completedList).toHaveLength(taskCount);
-        
+
         // Check task distribution
         const workerStats = {
-          worker1: completedList.filter(t => t.includes('worker1')).length,
-          worker2: completedList.filter(t => t.includes('worker2')).length,
-          worker3: completedList.filter(t => t.includes('worker3')).length
+          worker1: completedList.filter((t) => t.includes('worker1')).length,
+          worker2: completedList.filter((t) => t.includes('worker2')).length,
+          worker3: completedList.filter((t) => t.includes('worker3')).length,
         };
-        
+
         console.log('📊 Task distribution:', workerStats);
         expect(workerStats.worker1 + workerStats.worker2 + workerStats.worker3).toBe(taskCount);
-        
+
         // Each worker should have processed at least one task
         expect(workerStats.worker1).toBeGreaterThan(0);
         expect(workerStats.worker2).toBeGreaterThan(0);
         expect(workerStats.worker3).toBeGreaterThan(0);
 
         console.log('✅ Container management test completed successfully!');
-
       } finally {
         // Cleanup all containers
         const allContainers = [coordinator, registry, ...workers];
         await $`docker rm -f ${allContainers.join(' ')}`.nothrow();
         await $`docker network rm ${network}`.nothrow();
-        
+
         // Clean from tracking
         createdContainers.delete(coordinator);
         createdContainers.delete(registry);
-        workers.forEach(w => createdContainers.delete(w));
+        workers.forEach((w) => createdContainers.delete(w));
         createdNetworks.delete(network);
       }
     }, 120000);

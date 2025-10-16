@@ -19,12 +19,12 @@ class MockSSHAdapter {
         keepAlive: true,
         keepAliveInterval: 1000,
         autoReconnect: false,
-        ...config?.connectionPool
+        ...config?.connectionPool,
       },
       defaultConnectOptions: {
         readyTimeout: 100,
-        ...config?.defaultConnectOptions
-      }
+        ...config?.defaultConnectOptions,
+      },
     };
   }
 
@@ -33,13 +33,15 @@ class MockSSHAdapter {
       connect: jest.fn(() => Promise.resolve()),
       dispose: jest.fn(() => Promise.resolve()),
       isConnected: jest.fn(() => true),
-      execCommand: jest.fn(() => Promise.resolve({
-        stdout: 'test',
-        stderr: '',
-        code: 0,
-        signal: null
-      })),
-      createdAt: Date.now()
+      execCommand: jest.fn(() =>
+        Promise.resolve({
+          stdout: 'test',
+          stderr: '',
+          code: 0,
+          signal: null,
+        })
+      ),
+      createdAt: Date.now(),
     };
     this.mockInstances.push(connection);
     return connection;
@@ -99,7 +101,7 @@ class MockSSHAdapter {
       stdout: result.stdout,
       stderr: result.stderr,
       exitCode: result.code,
-      signal: result.signal
+      signal: result.signal,
     };
   }
 
@@ -135,7 +137,11 @@ class MockSSHAdapter {
       idleConnections: 0,
       connectionsCreated: this.mockInstances.length,
       connectionsDestroyed: this.mockInstances.filter((c: any) => c.dispose.mock.calls.length > 0).length,
-      connectionReuses: Math.max(0, this.mockInstances.reduce((sum: number, c: any) => sum + c.execCommand.mock.calls.length, 0) - this.mockInstances.length)
+      connectionReuses: Math.max(
+        0,
+        this.mockInstances.reduce((sum: number, c: any) => sum + c.execCommand.mock.calls.length, 0) -
+          this.mockInstances.length
+      ),
     };
   }
 
@@ -151,7 +157,7 @@ class MockSSHAdapter {
 // Helper module for managing mocks
 const sshModule = {
   __getMockInstances: () => (global as any).currentAdapter?.__getMockInstances() || [],
-  __clearMockInstances: () => (global as any).currentAdapter?.__clearMockInstances()
+  __clearMockInstances: () => (global as any).currentAdapter?.__clearMockInstances(),
 };
 
 describe('SSH Adapter Resource Management', () => {
@@ -171,11 +177,11 @@ describe('SSH Adapter Resource Management', () => {
         maxLifetime: 10000,
         keepAlive: true,
         keepAliveInterval: 1000,
-        autoReconnect: false
+        autoReconnect: false,
       },
       defaultConnectOptions: {
-        readyTimeout: 100 // Short timeout for tests
-      }
+        readyTimeout: 100, // Short timeout for tests
+      },
     });
     (global as any).currentAdapter = adapter;
   });
@@ -194,16 +200,16 @@ describe('SSH Adapter Resource Management', () => {
       const connections = await Promise.all([
         adapter.execute({
           command: 'echo test1',
-          adapterOptions: { type: 'ssh', host: 'server1.example.com', username: 'user', password: 'test' }
+          adapterOptions: { type: 'ssh', host: 'server1.example.com', username: 'user', password: 'test' },
         }),
         adapter.execute({
           command: 'echo test2',
-          adapterOptions: { type: 'ssh', host: 'server2.example.com', username: 'user', password: 'test' }
+          adapterOptions: { type: 'ssh', host: 'server2.example.com', username: 'user', password: 'test' },
         }),
         adapter.execute({
           command: 'echo test3',
-          adapterOptions: { type: 'ssh', host: 'server3.example.com', username: 'user', password: 'test' }
-        })
+          adapterOptions: { type: 'ssh', host: 'server3.example.com', username: 'user', password: 'test' },
+        }),
       ]);
 
       expect(connections).toHaveLength(3);
@@ -230,7 +236,7 @@ describe('SSH Adapter Resource Management', () => {
       // Create a connection
       await adapter.execute({
         command: 'echo test',
-        adapterOptions: { type: 'ssh', host: 'server.example.com', username: 'user', password: 'test' }
+        adapterOptions: { type: 'ssh', host: 'server.example.com', username: 'user', password: 'test' },
       });
 
       const mockInstances = adapter.__getMockInstances();
@@ -265,7 +271,7 @@ describe('SSH Adapter Resource Management', () => {
       // Create a connection
       await adapter.execute({
         command: 'echo test',
-        adapterOptions: { type: 'ssh', host: 'server.example.com', username: 'user', password: 'test' }
+        adapterOptions: { type: 'ssh', host: 'server.example.com', username: 'user', password: 'test' },
       });
 
       const mockInstances = adapter.__getMockInstances();
@@ -277,7 +283,7 @@ describe('SSH Adapter Resource Management', () => {
       // Execute another command - should create new connection
       await adapter.execute({
         command: 'echo test2',
-        adapterOptions: { type: 'ssh', host: 'server.example.com', username: 'user', password: 'test' }
+        adapterOptions: { type: 'ssh', host: 'server.example.com', username: 'user', password: 'test' },
       });
 
       // Should have created a new connection
@@ -290,12 +296,12 @@ describe('SSH Adapter Resource Management', () => {
     });
 
     it('should handle connection cleanup errors gracefully', async () => {
-      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
       // Create a connection that will fail to dispose
       await adapter.execute({
         command: 'echo test',
-        adapterOptions: { type: 'ssh', host: 'server.example.com', username: 'user', password: 'test' }
+        adapterOptions: { type: 'ssh', host: 'server.example.com', username: 'user', password: 'test' },
       });
 
       const mockInstances = adapter.__getMockInstances();
@@ -320,7 +326,7 @@ describe('SSH Adapter Resource Management', () => {
       // Create a connection
       await adapter.execute({
         command: 'echo test',
-        adapterOptions: { type: 'ssh', host: 'server.example.com', username: 'user', password: 'test' }
+        adapterOptions: { type: 'ssh', host: 'server.example.com', username: 'user', password: 'test' },
       });
 
       const mockInstances = adapter.__getMockInstances();
@@ -346,10 +352,10 @@ describe('SSH Adapter Resource Management', () => {
       const hosts = ['server1.example.com', 'server2.example.com', 'server3.example.com'];
 
       await Promise.all(
-        hosts.map(host =>
+        hosts.map((host) =>
           adapter.execute({
             command: 'echo test',
-            adapterOptions: { type: 'ssh', host, username: 'user', password: 'test' }
+            adapterOptions: { type: 'ssh', host, username: 'user', password: 'test' },
           })
         )
       );
@@ -358,7 +364,7 @@ describe('SSH Adapter Resource Management', () => {
       const concurrentInstances = adapter.__getMockInstances();
       concurrentInstances.forEach((instance: any, index: number) => {
         instance.dispose.mockImplementation(async () => {
-          await new Promise(resolve => setTimeout(resolve, index * 100));
+          await new Promise((resolve) => setTimeout(resolve, index * 100));
         });
       });
 
@@ -383,14 +389,14 @@ describe('SSH Adapter Resource Management', () => {
           enabled: true,
           maxConnections: 3,
           idleTimeout: 60000,
-          keepAlive: false
-        }
+          keepAlive: false,
+        },
       });
 
       // Execute command to create connection
       await adapter.execute({
         command: 'echo test',
-        adapterOptions: { type: 'ssh', host: 'server.example.com', username: 'user', password: 'test' }
+        adapterOptions: { type: 'ssh', host: 'server.example.com', username: 'user', password: 'test' },
       });
 
       const metrics = adapter.getPoolMetrics();
@@ -404,7 +410,7 @@ describe('SSH Adapter Resource Management', () => {
       // Reuse connection
       await adapter.execute({
         command: 'echo test2',
-        adapterOptions: { type: 'ssh', host: 'server.example.com', username: 'user', password: 'test' }
+        adapterOptions: { type: 'ssh', host: 'server.example.com', username: 'user', password: 'test' },
       });
 
       const metricsAfterReuse = adapter.getPoolMetrics();

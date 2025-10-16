@@ -81,9 +81,9 @@ describe('streaming', () => {
       // Abort after 10ms
       setTimeout(() => controller.abort(), 10);
 
-      await expect(
-        streamToArray(stream, { signal: controller.signal })
-      ).rejects.toThrow('cancelled');
+      await expect(streamToArray(stream, { signal: controller.signal })).rejects.toThrow(
+        'cancelled'
+      );
     });
 
     it('should handle empty stream', async () => {

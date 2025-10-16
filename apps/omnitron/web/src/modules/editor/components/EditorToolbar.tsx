@@ -54,35 +54,16 @@ export const EditorToolbar = defineComponent(() => {
           }}
         </span>
         <div class="editor-tools">
-          <button
-            class="tool-button"
-            title="Format Document"
-            onClick={handleFormat}
-            disabled={() => !activeFile}
-          >
+          <button class="tool-button" title="Format Document" onClick={handleFormat} disabled={() => !activeFile}>
             ⚡
           </button>
-          <button
-            class="tool-button"
-            title="Find"
-            onClick={handleFind}
-            disabled={() => !activeFile}
-          >
+          <button class="tool-button" title="Find" onClick={handleFind} disabled={() => !activeFile}>
             🔍
           </button>
-          <button
-            class="tool-button"
-            title="Replace"
-            onClick={handleReplace}
-            disabled={() => !activeFile}
-          >
+          <button class="tool-button" title="Replace" onClick={handleReplace} disabled={() => !activeFile}>
             🔄
           </button>
-          <button
-            class="tool-button"
-            title="Settings"
-            onClick={handleSettings}
-          >
+          <button class="tool-button" title="Settings" onClick={handleSettings}>
             ⚙️
           </button>
         </div>

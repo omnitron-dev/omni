@@ -5,11 +5,7 @@
 import { toggleSort } from './table-sorter.js';
 import { createTableState } from './table-state.js';
 import Prompt, { type PromptOptions } from '../../core/prompts/prompt.js';
-import {
-  selectAll,
-  clearSelection,
-  toggleSelection,
-} from './table-selector.js';
+import { selectAll, clearSelection, toggleSelection } from './table-selector.js';
 import {
   exitFilterMode,
   enterFilterMode,
@@ -28,8 +24,7 @@ import {
 
 import type { TableState, SelectionMode, InteractiveTableOptions } from './types.js';
 
-interface InteractiveTablePromptOptions<T>
-  extends PromptOptions<T[], InteractiveTablePrompt<T>> {
+interface InteractiveTablePromptOptions<T> extends PromptOptions<T[], InteractiveTablePrompt<T>> {
   data: T[];
   columns: InteractiveTableOptions<T>['columns'];
   selectable?: SelectionMode;
@@ -100,7 +95,10 @@ export default class InteractiveTablePrompt<T> extends Prompt<T[]> {
           // Future: horizontal scrolling
           break;
         case 'space':
-          if (this.tableOptions.selectable === 'single' || this.tableOptions.selectable === 'multiple') {
+          if (
+            this.tableOptions.selectable === 'single' ||
+            this.tableOptions.selectable === 'multiple'
+          ) {
             this.tableState = toggleSelection(this.tableState, this.tableOptions.selectable);
             this.updateValue();
           }
@@ -160,7 +158,11 @@ export default class InteractiveTablePrompt<T> extends Prompt<T[]> {
           if (this.tableOptions.sortable && this.tableState.data.length > 0) {
             const firstColumn = this.tableOptions.columns[0];
             if (firstColumn) {
-              this.tableState = toggleSort(this.tableState, String(firstColumn.key), this.tableOptions);
+              this.tableState = toggleSort(
+                this.tableState,
+                String(firstColumn.key),
+                this.tableOptions
+              );
             }
           }
           break;

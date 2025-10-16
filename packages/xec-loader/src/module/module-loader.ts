@@ -6,9 +6,14 @@
 import { ModuleFetcher } from './module-fetcher.js';
 import { ModuleExecutor } from './module-executor.js';
 import { MemoryCache, HybridCache } from './module-cache.js';
-import { CDNModuleResolver, NodeModuleResolver, LocalModuleResolver, CompositeModuleResolver } from './module-resolver.js';
+import {
+  CDNModuleResolver,
+  NodeModuleResolver,
+  LocalModuleResolver,
+  CompositeModuleResolver,
+} from './module-resolver.js';
 
-import type { Cache , ModuleSpecifier, ModuleLoaderOptions } from '../types/index.js';
+import type { Cache, ModuleSpecifier, ModuleLoaderOptions } from '../types/index.js';
 
 /**
  * ModuleLoader - main orchestrator for module loading
@@ -32,10 +37,7 @@ export class ModuleLoader {
 
     // Set up cache
     if (this.options.cache) {
-      this.cache = new HybridCache(
-        { maxSize: 500, ttl: 3600 },
-        { cacheDir: this.options.cacheDir, ttl: 3600 }
-      );
+      this.cache = new HybridCache({ maxSize: 500, ttl: 3600 }, { cacheDir: this.options.cacheDir, ttl: 3600 });
     } else {
       this.cache = new MemoryCache({ maxSize: 100 });
     }
@@ -90,10 +92,12 @@ export class ModuleLoader {
     // Check if it's a local file or built-in Node module (but not HTTP URLs)
     if (resolution.resolved.startsWith('http://') || resolution.resolved.startsWith('https://')) {
       // HTTP(S) URLs need to be fetched, not imported directly
-    } else if (resolution.resolved.startsWith('/') ||
-        resolution.resolved.startsWith('file://') ||
-        resolution.resolved.startsWith('node:') ||
-        this.isBuiltinModule(resolution.resolved)) {
+    } else if (
+      resolution.resolved.startsWith('/') ||
+      resolution.resolved.startsWith('file://') ||
+      resolution.resolved.startsWith('node:') ||
+      this.isBuiltinModule(resolution.resolved)
+    ) {
       // Direct import for local files and built-in modules
       return import(resolution.resolved);
     }
@@ -132,11 +136,38 @@ export class ModuleLoader {
    */
   private isBuiltinModule(specifier: string): boolean {
     const builtins = [
-      'fs', 'path', 'url', 'crypto', 'http', 'https', 'stream', 'buffer',
-      'events', 'util', 'os', 'child_process', 'zlib', 'readline', 'process',
-      'assert', 'querystring', 'string_decoder', 'timers', 'tty', 'v8', 'vm',
-      'worker_threads', 'cluster', 'dgram', 'dns', 'domain', 'net', 'perf_hooks',
-      'punycode', 'repl', 'tls'
+      'fs',
+      'path',
+      'url',
+      'crypto',
+      'http',
+      'https',
+      'stream',
+      'buffer',
+      'events',
+      'util',
+      'os',
+      'child_process',
+      'zlib',
+      'readline',
+      'process',
+      'assert',
+      'querystring',
+      'string_decoder',
+      'timers',
+      'tty',
+      'v8',
+      'vm',
+      'worker_threads',
+      'cluster',
+      'dgram',
+      'dns',
+      'domain',
+      'net',
+      'perf_hooks',
+      'punycode',
+      'repl',
+      'tls',
     ];
     return builtins.includes(specifier);
   }

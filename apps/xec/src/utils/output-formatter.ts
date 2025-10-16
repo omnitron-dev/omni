@@ -123,7 +123,7 @@ export class OutputFormatter {
 
     switch (this.format) {
       case 'json':
-        const jsonData = data.rows.map(row => {
+        const jsonData = data.rows.map((row) => {
           const obj: any = {};
           data.columns.forEach((col, index) => {
             obj[col.header] = row[index] || '';
@@ -133,7 +133,7 @@ export class OutputFormatter {
         console.log(JSON.stringify(jsonData, null, 2));
         break;
       case 'yaml':
-        const yamlData = data.rows.map(row => {
+        const yamlData = data.rows.map((row) => {
           const obj: any = {};
           data.columns.forEach((col, index) => {
             obj[col.header] = row[index] || '';
@@ -143,7 +143,7 @@ export class OutputFormatter {
         console.log(jsYaml.dump(yamlData, { lineWidth: -1, noRefs: true }));
         break;
       case 'csv':
-        this.outputCsv([data.columns.map(col => col.header), ...data.rows]);
+        this.outputCsv([data.columns.map((col) => col.header), ...data.rows]);
         break;
       default:
         this.outputTable(data);
@@ -196,10 +196,10 @@ export class OutputFormatter {
         console.log(jsYaml.dump(items, { lineWidth: -1, noRefs: true }));
         break;
       case 'csv':
-        items.forEach(item => console.log(item));
+        items.forEach((item) => console.log(item));
         break;
       default:
-        items.forEach(item => console.log(`  ${prism.cyan('•')} ${item}`));
+        items.forEach((item) => console.log(`  ${prism.cyan('•')} ${item}`));
     }
   }
 
@@ -264,10 +264,10 @@ export class OutputFormatter {
       const afterLines = after.split('\n');
 
       console.log(prism.red('- Before:'));
-      beforeLines.forEach(line => console.log(prism.red(`  ${line}`)));
+      beforeLines.forEach((line) => console.log(prism.red(`  ${line}`)));
 
       console.log(prism.green('+ After:'));
-      afterLines.forEach(line => console.log(prism.green(`  ${line}`)));
+      afterLines.forEach((line) => console.log(prism.green(`  ${line}`)));
     } else {
       const data = { before, after };
       this.output(data);
@@ -309,13 +309,13 @@ export class OutputFormatter {
     }
 
     // Print header
-    const header = cols.map(col => col.padEnd(widths[col] || 0)).join('  ');
+    const header = cols.map((col) => col.padEnd(widths[col] || 0)).join('  ');
     console.log(header);
-    console.log(cols.map(col => '-'.repeat(widths[col] || 0)).join('  '));
+    console.log(cols.map((col) => '-'.repeat(widths[col] || 0)).join('  '));
 
     // Print rows
     for (const row of data) {
-      const line = cols.map(col => String(row[col] ?? '').padEnd(widths[col] || 0)).join('  ');
+      const line = cols.map((col) => String(row[col] ?? '').padEnd(widths[col] || 0)).join('  ');
       console.log(line);
     }
   }
@@ -365,7 +365,7 @@ export class OutputFormatter {
       if (typeof value === 'object' && value !== null) {
         console.log(`${formattedKey}:`);
         if (Array.isArray(value)) {
-          value.forEach(item => console.log(`  ${prism.cyan('•')} ${item}`));
+          value.forEach((item) => console.log(`  ${prism.cyan('•')} ${item}`));
         } else {
           Object.entries(value).forEach(([subKey, subValue]) => {
             console.log(`  ${subKey}: ${subValue}`);
@@ -378,10 +378,7 @@ export class OutputFormatter {
   }
 
   private outputTable(data: TableData): void {
-    const tableData = [
-      data.columns.map(col => prism.bold(col.header)),
-      ...data.rows
-    ];
+    const tableData = [data.columns.map((col) => prism.bold(col.header)), ...data.rows];
 
     const config = {
       border: {
@@ -399,13 +396,13 @@ export class OutputFormatter {
         joinBody: `─`,
         joinLeft: `├`,
         joinRight: `┤`,
-        joinJoin: `┼`
+        joinJoin: `┼`,
       },
       columnDefault: {
         paddingLeft: 1,
         paddingRight: 1,
       },
-      columns: data.columns.map(col => ({
+      columns: data.columns.map((col) => ({
         width: col.width,
         alignment: col.align || 'left',
         wrapWord: col.wrap !== false,
@@ -418,7 +415,7 @@ export class OutputFormatter {
   private outputCsv(data: any[]): void {
     if (Array.isArray(data) && Array.isArray(data[0])) {
       // Table format
-      data.forEach(row => {
+      data.forEach((row) => {
         console.log(row.map((cell: any) => `"${String(cell).replace(/"/g, '""')}"`).join(','));
       });
     } else {
@@ -440,7 +437,7 @@ class CLISpinner implements Spinner {
   constructor(
     private message: string,
     private config: { quiet: boolean; colors: boolean }
-  ) { }
+  ) {}
 
   start(): void {
     if (this.config.quiet || this.isSpinning) return;
@@ -448,9 +445,7 @@ class CLISpinner implements Spinner {
     this.isSpinning = true;
     this.interval = setInterval(() => {
       const frame = this.frames[this.currentFrame];
-      const text = this.config.colors
-        ? prism.cyan(`${frame} ${this.message}`)
-        : `${frame} ${this.message}`;
+      const text = this.config.colors ? prism.cyan(`${frame} ${this.message}`) : `${frame} ${this.message}`;
 
       process.stdout.write(`\r${text}`);
       this.currentFrame = (this.currentFrame + 1) % this.frames.length;
@@ -472,9 +467,7 @@ class CLISpinner implements Spinner {
     this.stop();
     if (!this.config.quiet) {
       const text = message || this.message;
-      const formatted = this.config.colors
-        ? prism.green(`✓ ${text}`)
-        : `✓ ${text}`;
+      const formatted = this.config.colors ? prism.green(`✓ ${text}`) : `✓ ${text}`;
       console.log(formatted);
     }
   }
@@ -483,9 +476,7 @@ class CLISpinner implements Spinner {
     this.stop();
     if (!this.config.quiet) {
       const text = message || this.message;
-      const formatted = this.config.colors
-        ? prism.red(`✗ ${text}`)
-        : `✗ ${text}`;
+      const formatted = this.config.colors ? prism.red(`✗ ${text}`) : `✗ ${text}`;
       console.log(formatted);
     }
   }

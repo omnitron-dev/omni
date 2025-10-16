@@ -120,9 +120,7 @@ export class AetherCompiler {
               currentCode = result.code;
               if (result.warnings) {
                 warnings.push(
-                  ...result.warnings.map((w) =>
-                    typeof w === 'string' ? { message: w, level: 'warning' as const } : w
-                  )
+                  ...result.warnings.map((w) => (typeof w === 'string' ? { message: w, level: 'warning' as const } : w))
                 );
               }
             } else if (typeof result === 'string') {
@@ -166,9 +164,7 @@ export class AetherCompiler {
               finalCode = result.code;
               if (result.warnings) {
                 warnings.push(
-                  ...result.warnings.map((w) =>
-                    typeof w === 'string' ? { message: w, level: 'warning' as const } : w
-                  )
+                  ...result.warnings.map((w) => (typeof w === 'string' ? { message: w, level: 'warning' as const } : w))
                 );
               }
             } else if (typeof result === 'string') {
@@ -297,9 +293,10 @@ export class AetherCompiler {
 
     // Enable minification for aggressive optimization or production mode (unless explicitly set)
     // But NOT if optimize is explicitly 'none'
-    const shouldMinify = options.minify !== undefined
-      ? options.minify
-      : (optimizeLevel === 'aggressive' || (optimizeLevel !== 'none' && mode === 'production'));
+    const shouldMinify =
+      options.minify !== undefined
+        ? options.minify
+        : optimizeLevel === 'aggressive' || (optimizeLevel !== 'none' && mode === 'production');
 
     const normalized: CompilerOptions = {
       target: options.target || 'esnext',

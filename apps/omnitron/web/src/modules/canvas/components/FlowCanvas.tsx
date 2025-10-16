@@ -145,12 +145,8 @@ export const FlowCanvas = defineComponent<FlowCanvasProps>((props) => {
       type: 'Transform',
       position: { x: 400, y: 300 },
       data: {},
-      inputs: [
-        { id: 'input-1', name: 'Input', type: 'any' },
-      ],
-      outputs: [
-        { id: 'output-1', name: 'Output', type: 'any' },
-      ],
+      inputs: [{ id: 'input-1', name: 'Input', type: 'any' }],
+      outputs: [{ id: 'output-1', name: 'Output', type: 'any' }],
     };
 
     await flowService.addNode(props.flowId, newNode);
@@ -280,8 +276,8 @@ export const FlowCanvas = defineComponent<FlowCanvasProps>((props) => {
           <Show when={() => store.hasSelection()}>
             <span>
               {' '}
-              | Selected: {() => store.selectedNodeIds().length} nodes,{' '}
-              {() => store.selectedConnectionIds().length} connections
+              | Selected: {() => store.selectedNodeIds().length} nodes, {() => store.selectedConnectionIds().length}{' '}
+              connections
             </span>
           </Show>
         </div>

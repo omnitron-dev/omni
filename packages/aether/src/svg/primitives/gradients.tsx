@@ -42,7 +42,8 @@ export const LinearGradient = defineComponent<LinearGradientProps>((props) => ()
 /**
  * RadialGradient element
  */
-export interface RadialGradientProps extends Omit<JSX.SVGAttributes, 'cx' | 'cy' | 'r' | 'fx' | 'fy' | 'fr' | 'gradientTransform'> {
+export interface RadialGradientProps
+  extends Omit<JSX.SVGAttributes, 'cx' | 'cy' | 'r' | 'fx' | 'fy' | 'fr' | 'gradientTransform'> {
   id: string;
   cx?: string | Signal<string>;
   cy?: string | Signal<string>;
@@ -65,7 +66,6 @@ export const RadialGradient = defineComponent<RadialGradientProps>((props) => ()
     r={props.r as any}
     fx={props.fx as any}
     fy={props.fy as any}
-    
     gradientUnits={props.gradientUnits}
     gradientTransform={props.gradientTransform as any}
     spreadMethod={props.spreadMethod}
@@ -162,11 +162,7 @@ export interface ClipPathProps extends JSX.SVGAttributes {
 }
 
 export const ClipPath = defineComponent<ClipPathProps>((props) => () => (
-  <clipPath
-    {...props}
-    id={props.id}
-    clipPathUnits={props.clipPathUnits}
-  >
+  <clipPath {...props} id={props.id} clipPathUnits={props.clipPathUnits}>
     {props.children}
   </clipPath>
 ));

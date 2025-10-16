@@ -142,11 +142,14 @@ export interface JSAnimationConfig {
   target: Element | string;
 
   // Properties to animate
-  props: Record<string, {
-    from?: any;
-    to?: any;
-    through?: any[]; // Intermediate values
-  }>;
+  props: Record<
+    string,
+    {
+      from?: any;
+      to?: any;
+      through?: any[]; // Intermediate values
+    }
+  >;
 
   // Timing
   duration?: number;

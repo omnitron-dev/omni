@@ -39,22 +39,24 @@ function createHeading(level: 1 | 2 | 3 | 4 | 5 | 6): Component<HeadingProps> {
       }
     };
 
-    return () => jsx(Tag, {
-      ...restProps,
-      id,
-      class: `mdx-h${level} ${className || ''}`,
-      onClick: handleAnchorClick,
-      children: [
-        // Anchor link icon (optional)
-        id && jsx('a', {
-          href: `#${id}`,
-          class: 'mdx-anchor',
-          'aria-label': `Link to ${id}`,
-          children: '#'
-        }),
-        children
-      ]
-    });
+    return () =>
+      jsx(Tag, {
+        ...restProps,
+        id,
+        class: `mdx-h${level} ${className || ''}`,
+        onClick: handleAnchorClick,
+        children: [
+          // Anchor link icon (optional)
+          id &&
+            jsx('a', {
+              href: `#${id}`,
+              class: 'mdx-anchor',
+              'aria-label': `Link to ${id}`,
+              children: '#',
+            }),
+          children,
+        ],
+      });
   });
 }
 
@@ -114,36 +116,38 @@ export const MDXCodeBlock = defineComponent<{
     return lines;
   });
 
-  return () => jsx('div', {
-    class: 'mdx-code-block',
-    children: [
-      // Header with filename and copy button (always show header for copy button)
-      jsx('div', {
-        class: 'mdx-code-header',
-        children: [
-          props.filename && jsx('span', {
-            class: 'mdx-code-filename',
-            children: props.filename
-          }),
-          jsx('button', {
-            class: 'mdx-code-copy',
-            onClick: handleCopy,
-            'aria-label': copied() ? 'Copied!' : 'Copy code',
-            children: copied() ? '✓ Copied' : '📋 Copy'
-          })
-        ]
-      }),
-      // Code content
-      jsx(Code, {
-        block: true,
-        language: props.language,
-        ref: codeRef,
-        'data-highlight': props.highlight,
-        'data-line-numbers': props.showLineNumbers,
-        children: props.children
-      })
-    ]
-  });
+  return () =>
+    jsx('div', {
+      class: 'mdx-code-block',
+      children: [
+        // Header with filename and copy button (always show header for copy button)
+        jsx('div', {
+          class: 'mdx-code-header',
+          children: [
+            props.filename &&
+              jsx('span', {
+                class: 'mdx-code-filename',
+                children: props.filename,
+              }),
+            jsx('button', {
+              class: 'mdx-code-copy',
+              onClick: handleCopy,
+              'aria-label': copied() ? 'Copied!' : 'Copy code',
+              children: copied() ? '✓ Copied' : '📋 Copy',
+            }),
+          ],
+        }),
+        // Code content
+        jsx(Code, {
+          block: true,
+          language: props.language,
+          ref: codeRef,
+          'data-highlight': props.highlight,
+          'data-line-numbers': props.showLineNumbers,
+          children: props.children,
+        }),
+      ],
+    });
 });
 
 /**
@@ -158,21 +162,23 @@ export const MDXLink = defineComponent<{
 
   const isExternal = computed(() => href.startsWith('http://') || href.startsWith('https://'));
 
-  return () => jsx('a', {
-    ...restProps,
-    href,
-    class: `mdx-link ${isExternal() ? 'mdx-link-external' : 'mdx-link-internal'}`,
-    target: isExternal() ? '_blank' : undefined,
-    rel: isExternal() ? 'noopener noreferrer' : undefined,
-    children: [
-      children,
-      isExternal() && jsx('span', {
-        class: 'mdx-external-icon',
-        'aria-label': 'External link',
-        children: ' ↗'
-      })
-    ]
-  });
+  return () =>
+    jsx('a', {
+      ...restProps,
+      href,
+      class: `mdx-link ${isExternal() ? 'mdx-link-external' : 'mdx-link-internal'}`,
+      target: isExternal() ? '_blank' : undefined,
+      rel: isExternal() ? 'noopener noreferrer' : undefined,
+      children: [
+        children,
+        isExternal() &&
+          jsx('span', {
+            class: 'mdx-external-icon',
+            'aria-label': 'External link',
+            children: ' ↗',
+          }),
+      ],
+    });
 });
 
 /**
@@ -190,26 +196,28 @@ export const MDXImage = defineComponent<{
   const loaded = signal(false);
   const error = signal(false);
 
-  return () => jsx('figure', {
-    class: 'mdx-figure',
-    children: [
-      jsx('img', {
-        ...restProps,
-        src,
-        alt: alt || '',
-        width,
-        height,
-        loading: 'lazy',
-        class: `mdx-img ${loaded() ? 'mdx-img-loaded' : ''} ${error() ? 'mdx-img-error' : ''}`,
-        onLoad: () => loaded.set(true),
-        onError: () => error.set(true)
-      }),
-      title && jsx('figcaption', {
-        class: 'mdx-figcaption',
-        children: title
-      })
-    ]
-  });
+  return () =>
+    jsx('figure', {
+      class: 'mdx-figure',
+      children: [
+        jsx('img', {
+          ...restProps,
+          src,
+          alt: alt || '',
+          width,
+          height,
+          loading: 'lazy',
+          class: `mdx-img ${loaded() ? 'mdx-img-loaded' : ''} ${error() ? 'mdx-img-error' : ''}`,
+          onLoad: () => loaded.set(true),
+          onError: () => error.set(true),
+        }),
+        title &&
+          jsx('figcaption', {
+            class: 'mdx-figcaption',
+            children: title,
+          }),
+      ],
+    });
 });
 
 /**
@@ -218,13 +226,16 @@ export const MDXImage = defineComponent<{
 export const MDXTable = defineComponent<{
   children?: any;
   [key: string]: any;
-}>((props) => () => jsx('div', {
-    class: 'mdx-table-wrapper',
-    children: jsx('table', {
-      ...props,
-      class: 'mdx-table'
+}>(
+  (props) => () =>
+    jsx('div', {
+      class: 'mdx-table-wrapper',
+      children: jsx('table', {
+        ...props,
+        class: 'mdx-table',
+      }),
     })
-  }));
+);
 
 /**
  * MDX Blockquote with citation support
@@ -237,32 +248,36 @@ export const MDXBlockquote = defineComponent<{
 }>((props) => {
   const { children, cite, author, ...restProps } = props;
 
-  return () => jsx('blockquote', {
-    ...restProps,
-    class: 'mdx-blockquote',
-    cite,
-    children: [
-      jsx('div', {
-        class: 'mdx-blockquote-content',
-        children
-      }),
-      (author || cite) && jsx('footer', {
-        class: 'mdx-blockquote-footer',
-        children: [
-          author && jsx('cite', {
-            class: 'mdx-blockquote-author',
-            children: `— ${author}`
+  return () =>
+    jsx('blockquote', {
+      ...restProps,
+      class: 'mdx-blockquote',
+      cite,
+      children: [
+        jsx('div', {
+          class: 'mdx-blockquote-content',
+          children,
+        }),
+        (author || cite) &&
+          jsx('footer', {
+            class: 'mdx-blockquote-footer',
+            children: [
+              author &&
+                jsx('cite', {
+                  class: 'mdx-blockquote-author',
+                  children: `— ${author}`,
+                }),
+              cite && author && ', ',
+              cite &&
+                jsx('a', {
+                  href: cite,
+                  class: 'mdx-blockquote-source',
+                  children: 'Source',
+                }),
+            ],
           }),
-          cite && author && ', ',
-          cite && jsx('a', {
-            href: cite,
-            class: 'mdx-blockquote-source',
-            children: 'Source'
-          })
-        ]
-      })
-    ]
-  });
+      ],
+    });
 });
 
 /**
@@ -280,32 +295,33 @@ export const MDXAlert = defineComponent<{
     warning: '⚠️',
     error: '❌',
     success: '✅',
-    note: '📝'
+    note: '📝',
   };
 
-  return () => jsx('div', {
-    class: `mdx-alert mdx-alert-${type}`,
-    role: 'alert',
-    children: [
-      jsx('div', {
-        class: 'mdx-alert-header',
-        children: [
-          jsx('span', {
-            class: 'mdx-alert-icon',
-            children: icons[type]
-          }),
-          jsx('span', {
-            class: 'mdx-alert-title',
-            children: props.title || type.charAt(0).toUpperCase() + type.slice(1)
-          })
-        ]
-      }),
-      jsx('div', {
-        class: 'mdx-alert-content',
-        children: props.children
-      })
-    ]
-  });
+  return () =>
+    jsx('div', {
+      class: `mdx-alert mdx-alert-${type}`,
+      role: 'alert',
+      children: [
+        jsx('div', {
+          class: 'mdx-alert-header',
+          children: [
+            jsx('span', {
+              class: 'mdx-alert-icon',
+              children: icons[type],
+            }),
+            jsx('span', {
+              class: 'mdx-alert-title',
+              children: props.title || type.charAt(0).toUpperCase() + type.slice(1),
+            }),
+          ],
+        }),
+        jsx('div', {
+          class: 'mdx-alert-content',
+          children: props.children,
+        }),
+      ],
+    });
 });
 
 /**
@@ -318,21 +334,22 @@ export const MDXDetails = defineComponent<{
 }>((props) => {
   const isOpen = signal(props.open || false);
 
-  return () => jsx('details', {
-    class: 'mdx-details',
-    open: isOpen(),
-    onToggle: (e: any) => isOpen.set(e.target.open),
-    children: [
-      jsx('summary', {
-        class: 'mdx-summary',
-        children: props.summary
-      }),
-      jsx('div', {
-        class: 'mdx-details-content',
-        children: props.children
-      })
-    ]
-  });
+  return () =>
+    jsx('details', {
+      class: 'mdx-details',
+      open: isOpen(),
+      onToggle: (e: any) => isOpen.set(e.target.open),
+      children: [
+        jsx('summary', {
+          class: 'mdx-summary',
+          children: props.summary,
+        }),
+        jsx('div', {
+          class: 'mdx-details-content',
+          children: props.children,
+        }),
+      ],
+    });
 });
 
 /**
@@ -376,5 +393,5 @@ export const MDXComponents = {
 
   // Layout
   hr: () => jsx('hr', { class: 'mdx-hr' }),
-  br: () => jsx('br', {})
+  br: () => jsx('br', {}),
 };

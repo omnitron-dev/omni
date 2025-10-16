@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const TaskEdit02Icon: IconDefinition = {
-  "id": "task-edit02",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M18.9986 12V8C18.9986 5.17157 18.9986 3.75736 18.1199 2.87868C17.2412 2 15.827 2 12.9986 2H8.9986C6.17017 2 4.75596 2 3.87728 2.87868C2.9986 3.75736 2.9986 5.17157 2.9986 8V16C2.9986 18.8284 2.9986 20.2426 3.87728 21.1213C4.75596 22 6.17017 22 8.9986 22H10.9986\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M14.4986 2H7.4986C7.4986 3.41421 7.4986 4.12132 7.93794 4.56066C8.37728 5 9.08438 5 10.4986 5H11.4986C12.9128 5 13.6199 5 14.0593 4.56066C14.4986 4.12132 14.4986 3.41421 14.4986 2Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M6.9986 15H10.9986M6.9986 11H14.9986\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M15.7353 21.6527L13.9986 22L14.3459 20.2633C14.4165 19.9106 14.5899 19.5866 14.8442 19.3323L18.9096 15.2668C19.2654 14.9111 19.8423 14.9111 20.1981 15.2668L20.7318 15.8005C21.0875 16.1563 21.0875 16.7332 20.7318 17.0889L16.6663 21.1544C16.412 21.4087 16.088 21.5821 15.7353 21.6527Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "twotone",
-    "originalName": "TaskEdit02Icon",
-    "elementsCount": 4,
-    "hasOpacity": true,
-    "hasFill": false
-  }
+  id: 'task-edit02',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path d="M18.9986 12V8C18.9986 5.17157 18.9986 3.75736 18.1199 2.87868C17.2412 2 15.827 2 12.9986 2H8.9986C6.17017 2 4.75596 2 3.87728 2.87868C2.9986 3.75736 2.9986 5.17157 2.9986 8V16C2.9986 18.8284 2.9986 20.2426 3.87728 21.1213C4.75596 22 6.17017 22 8.9986 22H10.9986" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M14.4986 2H7.4986C7.4986 3.41421 7.4986 4.12132 7.93794 4.56066C8.37728 5 9.08438 5 10.4986 5H11.4986C12.9128 5 13.6199 5 14.0593 4.56066C14.4986 4.12132 14.4986 3.41421 14.4986 2Z" stroke-linecap="round" stroke-linejoin="round" />\n    <path opacity="0.4" d="M6.9986 15H10.9986M6.9986 11H14.9986" stroke-linecap="round" stroke-linejoin="round" />\n    <path opacity="0.4" d="M15.7353 21.6527L13.9986 22L14.3459 20.2633C14.4165 19.9106 14.5899 19.5866 14.8442 19.3323L18.9096 15.2668C19.2654 14.9111 19.8423 14.9111 20.1981 15.2668L20.7318 15.8005C21.0875 16.1563 21.0875 16.7332 20.7318 17.0889L16.6663 21.1544C16.412 21.4087 16.088 21.5821 15.7353 21.6527Z" stroke-linecap="round" stroke-linejoin="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'twotone',
+    originalName: 'TaskEdit02Icon',
+    elementsCount: 4,
+    hasOpacity: true,
+    hasFill: false,
+  },
 };

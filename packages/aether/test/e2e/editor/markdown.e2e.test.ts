@@ -5,13 +5,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import {
-  waitForEditor,
-  typeText,
-  getEditorHTML,
-  pressEnter,
-  pressShortcut,
-} from './helpers';
+import { waitForEditor, typeText, getEditorHTML, pressEnter, pressShortcut } from './helpers';
 
 test.describe('Markdown', () => {
   test.beforeEach(async ({ page }) => {

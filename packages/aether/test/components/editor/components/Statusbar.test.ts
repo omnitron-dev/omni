@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { signal } from '../../../../src/core/index.js';
-import { Statusbar, getDefaultStatusbarItems, type StatusbarItem } from '../../../../src/components/editor/components/Statusbar.js';
+import {
+  Statusbar,
+  getDefaultStatusbarItems,
+  type StatusbarItem,
+} from '../../../../src/components/editor/components/Statusbar.js';
 import type { EditorInstance } from '../../../../src/components/editor/core/types.js';
 import { Schema } from 'prosemirror-model';
 

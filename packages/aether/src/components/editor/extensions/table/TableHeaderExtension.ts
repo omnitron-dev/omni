@@ -34,7 +34,10 @@ export class TableHeaderExtension extends Extension<TableHeaderOptions> {
                 colspan: parseInt(dom.getAttribute('colspan') || '1', 10),
                 rowspan: parseInt(dom.getAttribute('rowspan') || '1', 10),
                 colwidth: dom.getAttribute('colwidth')
-                  ? dom.getAttribute('colwidth')!.split(',').map((w) => parseInt(w, 10))
+                  ? dom
+                      .getAttribute('colwidth')!
+                      .split(',')
+                      .map((w) => parseInt(w, 10))
                   : null,
               }),
             },

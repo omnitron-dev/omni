@@ -46,16 +46,16 @@ describe('Configuration API', () => {
         version: '2.0',
         vars: {
           app_name: 'test-app',
-          port: 3000
+          port: 3000,
         },
         targets: {
           hosts: {
             dev: {
               host: 'dev.example.com',
-              user: 'developer'
-            }
-          }
-        }
+              user: 'developer',
+            },
+          },
+        },
       };
 
       await fs.writeFile(configPath, yaml.dump(testConfig));
@@ -74,8 +74,8 @@ describe('Configuration API', () => {
       const testConfig = {
         version: '1.0',
         vars: {
-          env: 'development'
-        }
+          env: 'development',
+        },
       };
 
       await fs.writeFile(configPath, yaml.dump(testConfig));
@@ -85,8 +85,8 @@ describe('Configuration API', () => {
         path: configPath,
         overrides: {
           'vars.env': 'production',
-          'vars.debug': true
-        }
+          'vars.debug': true,
+        },
       });
 
       await apiWithOverrides.load();
@@ -116,10 +116,10 @@ describe('Configuration API', () => {
         vars: {
           app: {
             name: 'myapp',
-            version: '1.0.0'
+            version: '1.0.0',
           },
-          ports: [3000, 3001]
-        }
+          ports: [3000, 3001],
+        },
       };
 
       await fs.writeFile(configPath, yaml.dump(config));
@@ -159,9 +159,9 @@ describe('Configuration API', () => {
           remove: 'that',
           nested: {
             keep: 'this too',
-            remove: 'that too'
-          }
-        }
+            remove: 'that too',
+          },
+        },
       };
 
       await fs.writeFile(configPath, yaml.dump(config));
@@ -190,7 +190,7 @@ describe('Configuration API', () => {
     it('should save configuration to file', async () => {
       const config = {
         version: '2.0',
-        vars: { original: true }
+        vars: { original: true },
       };
 
       await fs.writeFile(configPath, yaml.dump(config));
@@ -235,22 +235,22 @@ describe('Configuration API', () => {
         version: '2.0',
         vars: {
           env: 'development',
-          debug: true
+          debug: true,
         },
         profiles: {
           production: {
             vars: {
               env: 'production',
               debug: false,
-              optimize: true
-            }
+              optimize: true,
+            },
           },
           staging: {
             vars: {
-              env: 'staging'
-            }
-          }
-        }
+              env: 'staging',
+            },
+          },
+        },
       };
 
       await fs.writeFile(configPath, yaml.dump(config));
@@ -292,8 +292,8 @@ describe('Configuration API', () => {
         vars: {
           app_name: 'myapp',
           version: '1.2.3',
-          full_name: '${vars.app_name}-${vars.version}'
-        }
+          full_name: '${vars.app_name}-${vars.version}',
+        },
       };
 
       await fs.writeFile(configPath, yaml.dump(config));
@@ -307,7 +307,7 @@ describe('Configuration API', () => {
 
     it('should interpolate with custom context', () => {
       const result = api.interpolate('${params.env}-${vars.app_name}', {
-        params: { env: 'prod' }
+        params: { env: 'prod' },
       });
       expect(result).toBe('prod-myapp');
     });
@@ -334,10 +334,10 @@ describe('Configuration API', () => {
           hosts: {
             server: {
               host: 'example.com',
-              user: 'admin'
-            }
-          }
-        }
+              user: 'admin',
+            },
+          },
+        },
       };
 
       await fs.writeFile(configPath, yaml.dump(config));
@@ -354,10 +354,10 @@ describe('Configuration API', () => {
           hosts: {
             invalid: {
               // Missing required fields
-              port: 'not-a-number'
-            }
-          }
-        }
+              port: 'not-a-number',
+            },
+          },
+        },
       };
 
       await fs.writeFile(configPath, yaml.dump(config));
@@ -395,16 +395,16 @@ describe('Configuration API', () => {
             web: {
               host: 'web.example.com',
               user: 'deploy',
-              port: 2222
-            }
+              port: 2222,
+            },
           },
           containers: {
             app: {
               image: 'node:20',
-              workdir: '/app'
-            }
-          }
-        }
+              workdir: '/app',
+            },
+          },
+        },
       };
 
       await fs.writeFile(configPath, yaml.dump(config));
@@ -428,7 +428,7 @@ describe('Configuration API', () => {
   describe('feature detection', () => {
     it('should check for features', async () => {
       const config = {
-        features: ['parallel-tasks', 'experimental-api']
+        features: ['parallel-tasks', 'experimental-api'],
       };
 
       await fs.writeFile(configPath, yaml.dump(config));

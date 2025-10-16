@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const Attachment02Icon: IconDefinition = {
-  "id": "attachment02",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M16 18V6C16 3.79086 14.2091 2 12 2C9.79086 2 8 3.79086 8 6V18C8 20.2091 9.79086 22 12 22C14.2091 22 16 20.2091 16 18Z\" fill=\"currentColor\" />\n    <path d=\"M8 8V6C8 3.79086 9.79086 2 12 2C14.2091 2 16 3.79086 16 6V18C16 20.2091 14.2091 22 12 22C9.79086 22 8 20.2091 8 18V13.5C8 12.1193 9.11929 11 10.5 11C11.8807 11 13 12.1193 13 13.5V16\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "duotone",
-    "originalName": "Attachment02Icon",
-    "elementsCount": 2,
-    "hasOpacity": true,
-    "hasFill": true
-  }
+  id: 'attachment02',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path opacity="0.4" d="M16 18V6C16 3.79086 14.2091 2 12 2C9.79086 2 8 3.79086 8 6V18C8 20.2091 9.79086 22 12 22C14.2091 22 16 20.2091 16 18Z" fill="currentColor" />\n    <path d="M8 8V6C8 3.79086 9.79086 2 12 2C14.2091 2 16 3.79086 16 6V18C16 20.2091 14.2091 22 12 22C9.79086 22 8 20.2091 8 18V13.5C8 12.1193 9.11929 11 10.5 11C11.8807 11 13 12.1193 13 13.5V16" stroke-linecap="round" stroke-linejoin="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'duotone',
+    originalName: 'Attachment02Icon',
+    elementsCount: 2,
+    hasOpacity: true,
+    hasFill: true,
+  },
 };

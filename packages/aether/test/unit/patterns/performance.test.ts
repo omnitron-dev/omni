@@ -82,9 +82,9 @@ describe('Performance Patterns', () => {
       const count2 = signal(0);
 
       const Component = defineComponent(() => () => {
-          renderSpy();
-          return `${count1()} - ${count2()}`;
-        });
+        renderSpy();
+        return `${count1()} - ${count2()}`;
+      });
 
       Component({});
       renderSpy.mockClear();
@@ -138,11 +138,13 @@ describe('Performance Patterns', () => {
         })
       );
 
-      const App = defineComponent(() => () =>
+      const App = defineComponent(
+        () => () =>
           Suspense({
             fallback: 'Loading...',
             children: LazyComponent({}),
-          }));
+          })
+      );
 
       const result = App({});
       expect(result).toBeDefined();
@@ -156,11 +158,13 @@ describe('Performance Patterns', () => {
 
       const LazyComponent = lazy(() => loadPromise as any);
 
-      const App = defineComponent(() => () =>
+      const App = defineComponent(
+        () => () =>
           Suspense({
             fallback: 'Loading...',
             children: LazyComponent({}),
-          }));
+          })
+      );
 
       const result = App({});
       // Should show fallback initially
@@ -183,20 +187,24 @@ describe('Performance Patterns', () => {
       });
 
       // First load
-      const App1 = defineComponent(() => () =>
+      const App1 = defineComponent(
+        () => () =>
           Suspense({
             fallback: 'Loading...',
             children: LazyComponent({}),
-          }));
+          })
+      );
 
       App1({});
 
       // Second load - should use cache
-      const App2 = defineComponent(() => () =>
+      const App2 = defineComponent(
+        () => () =>
           Suspense({
             fallback: 'Loading...',
             children: LazyComponent({}),
-          }));
+          })
+      );
 
       App2({});
 
@@ -224,11 +232,13 @@ describe('Performance Patterns', () => {
       // Using the component should use cached version
       loader.mockClear();
 
-      const App = defineComponent(() => () =>
+      const App = defineComponent(
+        () => () =>
           Suspense({
             fallback: 'Loading...',
             children: LazyComponent({}),
-          }));
+          })
+      );
 
       App({});
 
@@ -367,14 +377,14 @@ describe('Performance Patterns', () => {
       const currentRoute = signal('/');
 
       const Router = defineComponent(() => () => {
-          const route = currentRoute();
-          const Page = route === '/' ? HomePage : AboutPage;
+        const route = currentRoute();
+        const Page = route === '/' ? HomePage : AboutPage;
 
-          return Suspense({
-            fallback: 'Loading...',
-            children: Page({}),
-          });
+        return Suspense({
+          fallback: 'Loading...',
+          children: Page({}),
         });
+      });
 
       const result = Router({});
       expect(result).toBeDefined();
@@ -400,10 +410,10 @@ describe('Performance Patterns', () => {
       );
 
       const Page = defineComponent(() => () => [
-          Suspense({ fallback: 'Loading header...', children: Header({}) }),
-          Suspense({ fallback: 'Loading content...', children: Content({}) }),
-          Suspense({ fallback: 'Loading footer...', children: Footer({}) }),
-        ]);
+        Suspense({ fallback: 'Loading header...', children: Header({}) }),
+        Suspense({ fallback: 'Loading content...', children: Content({}) }),
+        Suspense({ fallback: 'Loading footer...', children: Footer({}) }),
+      ]);
 
       const result = Page({});
       expect(result).toBeDefined();
@@ -427,9 +437,9 @@ describe('Performance Patterns', () => {
       });
 
       const App = defineComponent(() => () => [
-          Suspense({ fallback: 'Loading 1...', children: Component1({}) }),
-          Suspense({ fallback: 'Loading 2...', children: Component2({}) }),
-        ]);
+        Suspense({ fallback: 'Loading 1...', children: Component1({}) }),
+        Suspense({ fallback: 'Loading 2...', children: Component2({}) }),
+      ]);
 
       App({});
 
@@ -448,9 +458,9 @@ describe('Performance Patterns', () => {
       const isEven = computed(() => value() % 2 === 0);
 
       const Component = defineComponent(() => () => {
-          renderSpy();
-          return isEven() ? 'Even' : 'Odd';
-        });
+        renderSpy();
+        return isEven() ? 'Even' : 'Odd';
+      });
 
       Component({});
       renderSpy.mockClear();
@@ -475,10 +485,12 @@ describe('Performance Patterns', () => {
       const List = defineComponent(() => {
         // Create a computed that maps items to text with tracking
         const itemsWithTracking = computed(() =>
-          items().map((item) => {
-            renderCounts.set(item.id, (renderCounts.get(item.id) || 0) + 1);
-            return `${item.text}`;
-          }).join(', ')
+          items()
+            .map((item) => {
+              renderCounts.set(item.id, (renderCounts.get(item.id) || 0) + 1);
+              return `${item.text}`;
+            })
+            .join(', ')
         );
 
         return () => itemsWithTracking();

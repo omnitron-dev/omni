@@ -88,9 +88,7 @@ export class ThemeManager {
   registerTheme(theme: Theme): void {
     const validation = this.validateTheme(theme);
     if (!validation.valid) {
-      throw new Error(
-        `Invalid theme: ${validation.errors.join(', ')}`
-      );
+      throw new Error(`Invalid theme: ${validation.errors.join(', ')}`);
     }
 
     this.themes.set(theme.metadata.name, theme);
@@ -109,9 +107,7 @@ export class ThemeManager {
     themes.forEach((theme, index) => {
       const validation = this.validateTheme(theme);
       if (!validation.valid) {
-        throw new Error(
-          `Invalid theme: ${validation.errors.join(', ')}`
-        );
+        throw new Error(`Invalid theme: ${validation.errors.join(', ')}`);
       }
       this.themes.set(theme.metadata.name, theme);
     });
@@ -206,7 +202,7 @@ export class ThemeManager {
    */
   switchThemeMode(isDark: boolean): void {
     const themes = this.getAllThemes();
-    const targetTheme = themes.find(t => t.metadata.isDark === isDark);
+    const targetTheme = themes.find((t) => t.metadata.isDark === isDark);
 
     if (targetTheme) {
       this.applyTheme(targetTheme.metadata.name);
@@ -266,14 +262,9 @@ export class ThemeManager {
 
     // Check contrast
     if (theme.colors?.background && theme.colors?.text) {
-      const contrast = this.calculateContrast(
-        theme.colors.background,
-        theme.colors.text
-      );
+      const contrast = this.calculateContrast(theme.colors.background, theme.colors.text);
       if (contrast.ratio < 4.5) {
-        errors.push(
-          `Insufficient contrast ratio (${contrast.ratio.toFixed(2)}:1) for body text`
-        );
+        errors.push(`Insufficient contrast ratio (${contrast.ratio.toFixed(2)}:1) for body text`);
       }
     }
 
@@ -382,7 +373,7 @@ export class ThemeManager {
    */
   private updateThemeClass(themeName: string): void {
     // Remove existing theme classes
-    this.rootElement.classList.forEach(className => {
+    this.rootElement.classList.forEach((className) => {
       if (className.startsWith('theme-')) {
         this.rootElement.classList.remove(className);
       }
@@ -396,7 +387,7 @@ export class ThemeManager {
    * Wait for transition to complete
    */
   private waitForTransition(): Promise<void> {
-    return new Promise(resolve => {
+    return new Promise((resolve) => {
       setTimeout(resolve, this.config.transitionDuration);
     });
   }
@@ -458,7 +449,7 @@ export class ThemeManager {
    * Emit theme change event
    */
   private emitThemeChange(event: ThemeChangeEvent): void {
-    this.listeners.forEach(listener => {
+    this.listeners.forEach((listener) => {
       try {
         listener(event);
       } catch (error) {
@@ -474,11 +465,9 @@ export class ThemeManager {
     const rgb = this.parseColor(color);
     if (!rgb) return 0;
 
-    const [r, g, b] = rgb.map(channel => {
+    const [r, g, b] = rgb.map((channel) => {
       const normalized = channel / 255;
-      return normalized <= 0.03928
-        ? normalized / 12.92
-        : Math.pow((normalized + 0.055) / 1.055, 2.4);
+      return normalized <= 0.03928 ? normalized / 12.92 : Math.pow((normalized + 0.055) / 1.055, 2.4);
     });
 
     return 0.2126 * r + 0.7152 * g + 0.0722 * b;
@@ -507,11 +496,7 @@ export class ThemeManager {
     // Handle rgb/rgba colors
     const rgbMatch = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
     if (rgbMatch) {
-      return [
-        parseInt(rgbMatch[1], 10),
-        parseInt(rgbMatch[2], 10),
-        parseInt(rgbMatch[3], 10),
-      ];
+      return [parseInt(rgbMatch[1], 10), parseInt(rgbMatch[2], 10), parseInt(rgbMatch[3], 10)];
     }
 
     return null;

@@ -28,45 +28,45 @@ describe('TargetResolver', () => {
       version: '2.0',
       targets: {
         local: {
-          type: 'local'
+          type: 'local',
         },
         hosts: {
           'web-1': {
             host: 'web1.example.com',
             user: 'deploy',
-            port: 22
+            port: 22,
           },
           'web-2': {
             host: 'web2.example.com',
-            user: 'deploy'
+            user: 'deploy',
           },
           'db-master': {
             host: 'db.example.com',
             user: 'postgres',
-            port: 5432
-          }
+            port: 5432,
+          },
         },
         containers: {
           app: {
             image: 'node:18',
-            volumes: ['./:/app']
+            volumes: ['./:/app'],
           },
           redis: {
             image: 'redis:7',
-            container: 'redis-cache'
-          }
+            container: 'redis-cache',
+          },
         },
         pods: {
           api: {
             namespace: 'production',
-            selector: 'app=api'
+            selector: 'app=api',
           },
           worker: {
             pod: 'worker-deployment-abc',
-            namespace: 'production'
-          }
-        }
-      }
+            namespace: 'production',
+          },
+        },
+      },
     };
 
     resolver = new TargetResolver(config);
@@ -75,7 +75,7 @@ describe('TargetResolver', () => {
   afterEach(async () => {
     // Clean up test directory
     if (testDir) {
-      await fs.rm(testDir, { recursive: true, force: true }).catch(() => { });
+      await fs.rm(testDir, { recursive: true, force: true }).catch(() => {});
     }
   });
 
@@ -87,9 +87,9 @@ describe('TargetResolver', () => {
         id: 'local',
         type: 'local',
         config: {
-          type: 'local'
+          type: 'local',
         },
-        source: 'configured'
+        source: 'configured',
       });
     });
 
@@ -104,9 +104,9 @@ describe('TargetResolver', () => {
           type: 'ssh',
           host: 'web1.example.com',
           user: 'deploy',
-          port: 22
+          port: 22,
         },
-        source: 'configured'
+        source: 'configured',
       });
     });
 
@@ -120,9 +120,9 @@ describe('TargetResolver', () => {
         config: {
           type: 'docker',
           image: 'node:18',
-          volumes: ['./:/app']
+          volumes: ['./:/app'],
         },
-        source: 'configured'
+        source: 'configured',
       });
     });
 
@@ -136,9 +136,9 @@ describe('TargetResolver', () => {
         config: {
           type: 'k8s',
           namespace: 'production',
-          selector: 'app=api'
+          selector: 'app=api',
         },
-        source: 'configured'
+        source: 'configured',
       });
     });
 
@@ -157,7 +157,7 @@ describe('TargetResolver', () => {
       const target1 = await resolver.resolve('hosts.web-1');
 
       // Wait for cache to expire
-      await new Promise(resolve => setTimeout(resolve, 150));
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
       const target2 = await resolver.resolve('hosts.web-1');
 
@@ -170,9 +170,7 @@ describe('TargetResolver', () => {
       // Disable auto-detection for this test
       resolver = new TargetResolver(config, { autoDetect: false });
 
-      await expect(resolver.resolve('hosts.nonexistent')).rejects.toThrow(
-        "Target 'nonexistent' not found in hosts"
-      );
+      await expect(resolver.resolve('hosts.nonexistent')).rejects.toThrow("Target 'nonexistent' not found in hosts");
     });
 
     it('should handle missing targets config', async () => {
@@ -184,9 +182,7 @@ describe('TargetResolver', () => {
       expect(local.type).toBe('local');
 
       // Other targets should fail
-      await expect(resolver.resolve('hosts.anything')).rejects.toThrow(
-        "Target 'anything' not found in hosts"
-      );
+      await expect(resolver.resolve('hosts.anything')).rejects.toThrow("Target 'anything' not found in hosts");
     });
 
     describe('auto-detection', () => {
@@ -217,9 +213,9 @@ describe('TargetResolver', () => {
           name: 'mycontainer',
           config: {
             type: 'docker',
-            container: 'mycontainer'
+            container: 'mycontainer',
           },
-          source: 'detected'
+          source: 'detected',
         });
       });
 
@@ -254,16 +250,16 @@ describe('TargetResolver', () => {
           config: {
             type: 'k8s',
             pod: 'mypod',
-            namespace: 'default'
+            namespace: 'default',
           },
-          source: 'detected'
+          source: 'detected',
         });
       });
 
       it('should use Kubernetes context and namespace from config', async () => {
         config.targets!.kubernetes = {
           $namespace: 'production',
-          $context: 'prod-cluster'
+          $context: 'prod-cluster',
         };
 
         // Create test file for K8s pods in production namespace
@@ -292,7 +288,7 @@ describe('TargetResolver', () => {
         expect(target.config).toMatchObject({
           type: 'k8s',
           pod: 'mypod',
-          namespace: 'production'
+          namespace: 'production',
         });
       });
 
@@ -317,9 +313,9 @@ describe('TargetResolver', () => {
           name: 'example.com',
           config: {
             type: 'ssh',
-            host: 'example.com'
+            host: 'example.com',
           },
-          source: 'detected'
+          source: 'detected',
         });
       });
 
@@ -344,9 +340,9 @@ describe('TargetResolver', () => {
           config: {
             type: 'ssh',
             host: 'example.com',
-            user: 'user'
+            user: 'user',
           },
-          source: 'detected'
+          source: 'detected',
         });
       });
 
@@ -364,11 +360,8 @@ describe('TargetResolver', () => {
         const testResolver = new TestableTargetResolver(config);
 
         // This should not be detected as SSH
-        await expect(testResolver.resolve('simplestring')).rejects.toThrow(
-          "Target 'simplestring' not found"
-        );
+        await expect(testResolver.resolve('simplestring')).rejects.toThrow("Target 'simplestring' not found");
       });
-
     });
   });
 
@@ -384,24 +377,24 @@ describe('TargetResolver', () => {
       const targets = await resolver.find('hosts.web-*');
 
       expect(targets).toHaveLength(2);
-      expect(targets.map(t => t.id)).toContain('hosts.web-1');
-      expect(targets.map(t => t.id)).toContain('hosts.web-2');
+      expect(targets.map((t) => t.id)).toContain('hosts.web-1');
+      expect(targets.map((t) => t.id)).toContain('hosts.web-2');
     });
 
     it('should find targets with ? wildcard', async () => {
       const targets = await resolver.find('hosts.web-?');
 
       expect(targets).toHaveLength(2);
-      expect(targets.map(t => t.id)).toContain('hosts.web-1');
-      expect(targets.map(t => t.id)).toContain('hosts.web-2');
+      expect(targets.map((t) => t.id)).toContain('hosts.web-1');
+      expect(targets.map((t) => t.id)).toContain('hosts.web-2');
     });
 
     it('should expand brace patterns', async () => {
       const targets = await resolver.find('hosts.web-{1,2}');
 
       expect(targets).toHaveLength(2);
-      expect(targets.map(t => t.id)).toContain('hosts.web-1');
-      expect(targets.map(t => t.id)).toContain('hosts.web-2');
+      expect(targets.map((t) => t.id)).toContain('hosts.web-1');
+      expect(targets.map((t) => t.id)).toContain('hosts.web-2');
     });
 
     it('should search across types with auto mode', async () => {
@@ -426,14 +419,14 @@ describe('TargetResolver', () => {
 
       // Should find configured container 'app'
       expect(targets.length).toBeGreaterThanOrEqual(1);
-      expect(targets.some(t => t.id === 'containers.app')).toBe(true);
+      expect(targets.some((t) => t.id === 'containers.app')).toBe(true);
     });
 
     it('should remove duplicates', async () => {
       const targets = await resolver.find('hosts.web-1');
 
       // Even if found multiple times, should only appear once
-      const ids = targets.map(t => t.id);
+      const ids = targets.map((t) => t.id);
       const uniqueIds = [...new Set(ids)];
 
       expect(ids).toEqual(uniqueIds);
@@ -447,14 +440,14 @@ describe('TargetResolver', () => {
       // Should include local + all configured targets
       expect(targets).toHaveLength(8); // 1 local + 3 hosts + 2 containers + 2 pods
 
-      expect(targets.some(t => t.id === 'local')).toBe(true);
-      expect(targets.some(t => t.id === 'hosts.web-1')).toBe(true);
-      expect(targets.some(t => t.id === 'hosts.web-2')).toBe(true);
-      expect(targets.some(t => t.id === 'hosts.db-master')).toBe(true);
-      expect(targets.some(t => t.id === 'containers.app')).toBe(true);
-      expect(targets.some(t => t.id === 'containers.redis')).toBe(true);
-      expect(targets.some(t => t.id === 'pods.api')).toBe(true);
-      expect(targets.some(t => t.id === 'pods.worker')).toBe(true);
+      expect(targets.some((t) => t.id === 'local')).toBe(true);
+      expect(targets.some((t) => t.id === 'hosts.web-1')).toBe(true);
+      expect(targets.some((t) => t.id === 'hosts.web-2')).toBe(true);
+      expect(targets.some((t) => t.id === 'hosts.db-master')).toBe(true);
+      expect(targets.some((t) => t.id === 'containers.app')).toBe(true);
+      expect(targets.some((t) => t.id === 'containers.redis')).toBe(true);
+      expect(targets.some((t) => t.id === 'pods.api')).toBe(true);
+      expect(targets.some((t) => t.id === 'pods.worker')).toBe(true);
     });
 
     it('should handle empty targets config', async () => {
@@ -474,7 +467,7 @@ describe('TargetResolver', () => {
       const target = await resolver.create({
         type: 'ssh',
         host: 'dynamic.example.com',
-        user: 'admin'
+        user: 'admin',
       });
 
       expect(target).toEqual({
@@ -483,9 +476,9 @@ describe('TargetResolver', () => {
         config: {
           type: 'ssh',
           host: 'dynamic.example.com',
-          user: 'admin'
+          user: 'admin',
         },
-        source: 'created'
+        source: 'created',
       });
 
       // Should be cached
@@ -496,7 +489,7 @@ describe('TargetResolver', () => {
     it('should create dynamic Docker target', async () => {
       const target = await resolver.create({
         type: 'docker',
-        image: 'alpine:latest'
+        image: 'alpine:latest',
       });
 
       expect(target).toEqual({
@@ -504,9 +497,9 @@ describe('TargetResolver', () => {
         type: 'docker',
         config: {
           type: 'docker',
-          image: 'alpine:latest'
+          image: 'alpine:latest',
         },
-        source: 'created'
+        source: 'created',
       });
     });
 
@@ -514,7 +507,7 @@ describe('TargetResolver', () => {
       const target = await resolver.create({
         type: 'k8s',
         pod: 'mypod',
-        namespace: 'custom'
+        namespace: 'custom',
       });
 
       expect(target).toEqual({
@@ -523,16 +516,16 @@ describe('TargetResolver', () => {
         config: {
           type: 'k8s',
           pod: 'mypod',
-          namespace: 'custom'
+          namespace: 'custom',
         },
-        source: 'created'
+        source: 'created',
       });
     });
 
     it('should create local target', async () => {
       const target = await resolver.create({
         type: 'local',
-        env: { CUSTOM_VAR: 'value' }
+        env: { CUSTOM_VAR: 'value' },
       });
 
       expect(target).toEqual({
@@ -540,9 +533,9 @@ describe('TargetResolver', () => {
         type: 'local',
         config: {
           type: 'local',
-          env: { CUSTOM_VAR: 'value' }
+          env: { CUSTOM_VAR: 'value' },
         },
-        source: 'created'
+        source: 'created',
       });
     });
   });
@@ -551,21 +544,24 @@ describe('TargetResolver', () => {
     it('should find compose services', async () => {
       config.targets!.$compose = {
         file: 'docker-compose.yml',
-        project: 'myproject'
+        project: 'myproject',
       };
 
       // Create test file for compose services
       const composeServicesFile = path.join(testDir, 'compose-services.json');
-      await fs.writeFile(composeServicesFile,
-        '{"Service":"web","Name":"myproject_web_1"}\n' +
-        '{"Service":"db","Name":"myproject_db_1"}\n'
+      await fs.writeFile(
+        composeServicesFile,
+        '{"Service":"web","Name":"myproject_web_1"}\n' + '{"Service":"db","Name":"myproject_db_1"}\n'
       );
 
       class TestableTargetResolver extends TargetResolver {
         async findComposeServices(pattern: string): Promise<any[]> {
           try {
             const content = await fs.readFile(composeServicesFile, 'utf-8');
-            const services = content.trim().split('\n').map(line => JSON.parse(line));
+            const services = content
+              .trim()
+              .split('\n')
+              .map((line) => JSON.parse(line));
             const targets = [];
 
             for (const service of services) {
@@ -576,9 +572,9 @@ describe('TargetResolver', () => {
                   name: service.Service,
                   config: this.applyDefaults({
                     type: 'docker',
-                    container: service.Name
+                    container: service.Name,
                   }),
-                  source: 'detected'
+                  source: 'detected',
                 });
               }
             }
@@ -594,14 +590,14 @@ describe('TargetResolver', () => {
       const targets = await testResolver.find('containers.*');
 
       // Should include configured containers
-      expect(targets.some(t => t.id === 'containers.app')).toBe(true);
-      expect(targets.some(t => t.id === 'containers.redis')).toBe(true);
+      expect(targets.some((t) => t.id === 'containers.app')).toBe(true);
+      expect(targets.some((t) => t.id === 'containers.redis')).toBe(true);
     });
 
     it('should handle docker compose failures gracefully', async () => {
       config.targets!.$compose = {
         file: 'docker-compose.yml',
-        project: 'failing'
+        project: 'failing',
       };
 
       // Don't create compose services file to simulate failure
@@ -616,8 +612,8 @@ describe('TargetResolver', () => {
       const targets = await testResolver.find('containers.*');
 
       // Should still find configured containers
-      expect(targets.some(t => t.id === 'containers.app')).toBe(true);
-      expect(targets.some(t => t.id === 'containers.redis')).toBe(true);
+      expect(targets.some((t) => t.id === 'containers.app')).toBe(true);
+      expect(targets.some((t) => t.id === 'containers.redis')).toBe(true);
       // But no compose services
       expect(targets.length).toBe(2);
     });
@@ -658,9 +654,7 @@ describe('TargetResolver', () => {
       await fs.writeFile(dockerPsFile, 'different-container\n');
 
       // Try to resolve the same target - should not find it anymore
-      await expect(testResolver.resolve('mycontainer')).rejects.toThrow(
-        "Target 'mycontainer' not found"
-      );
+      await expect(testResolver.resolve('mycontainer')).rejects.toThrow("Target 'mycontainer' not found");
     });
   });
 
@@ -679,7 +673,7 @@ describe('TargetResolver', () => {
         ...config.targets!.hosts,
         'api-prod-1': { host: 'api1.prod.example.com' },
         'api-prod-2': { host: 'api2.prod.example.com' },
-        'api-dev-1': { host: 'api1.dev.example.com' }
+        'api-dev-1': { host: 'api1.dev.example.com' },
       };
 
       resolver = new TargetResolver(config);
@@ -709,7 +703,7 @@ describe('TargetResolver', () => {
             maxBuffer: 20000000,
             throwOnNonZeroExit: false,
             env: {
-              GLOBAL_VAR: 'global_value'
+              GLOBAL_VAR: 'global_value',
             },
             ssh: {
               port: 2222,
@@ -718,16 +712,16 @@ describe('TargetResolver', () => {
               connectionPool: {
                 enabled: true,
                 maxConnections: 5,
-                idleTimeout: 300000
+                idleTimeout: 300000,
               },
               sudo: {
                 enabled: true,
-                method: 'askpass'
+                method: 'askpass',
               },
               sftp: {
                 enabled: true,
-                concurrency: 2
-              }
+                concurrency: 2,
+              },
             },
             docker: {
               tty: true,
@@ -735,7 +729,7 @@ describe('TargetResolver', () => {
               autoRemove: true,
               socketPath: '/custom/docker.sock',
               user: 'appuser',
-              runMode: 'run'
+              runMode: 'run',
             },
             kubernetes: {
               namespace: 'production',
@@ -743,12 +737,12 @@ describe('TargetResolver', () => {
               stdin: true,
               kubeconfig: '/custom/kube.config',
               context: 'prod-cluster',
-              execFlags: ['--verbose']
-            }
+              execFlags: ['--verbose'],
+            },
           },
           hosts: {
             'test-host': {
-              host: 'test.example.com'
+              host: 'test.example.com',
             },
             'custom-host': {
               host: 'custom.example.com',
@@ -756,37 +750,37 @@ describe('TargetResolver', () => {
               timeout: 60000,
               env: {
                 CUSTOM_VAR: 'custom_value',
-                GLOBAL_VAR: 'override_value'
-              }
-            }
+                GLOBAL_VAR: 'override_value',
+              },
+            },
           },
           containers: {
             'test-container': {
-              image: 'test:latest'
+              image: 'test:latest',
             },
             'custom-container': {
               image: 'custom:latest',
               tty: false,
               workdir: '/app',
-              timeout: 45000
-            }
+              timeout: 45000,
+            },
           },
           pods: {
             'test-pod': {
-              selector: 'app=test'
+              selector: 'app=test',
             },
             'custom-pod': {
               selector: 'app=custom',
               namespace: 'dev',
               tty: true,
-              timeout: 90000
-            }
+              timeout: 90000,
+            },
           },
           local: {
             type: 'local',
-            timeout: 15000
-          }
-        }
+            timeout: 15000,
+          },
+        },
       };
       resolver = new TargetResolver(config);
     });
@@ -805,7 +799,7 @@ describe('TargetResolver', () => {
           maxBuffer: 20000000,
           throwOnNonZeroExit: false,
           env: {
-            GLOBAL_VAR: 'global_value'
+            GLOBAL_VAR: 'global_value',
           },
           // SSH defaults
           port: 2222,
@@ -814,16 +808,16 @@ describe('TargetResolver', () => {
           connectionPool: {
             enabled: true,
             maxConnections: 5,
-            idleTimeout: 300000
+            idleTimeout: 300000,
           },
           sudo: {
             enabled: true,
-            method: 'askpass'
+            method: 'askpass',
           },
           sftp: {
             enabled: true,
-            concurrency: 2
-          }
+            concurrency: 2,
+          },
         });
       });
 
@@ -838,7 +832,7 @@ describe('TargetResolver', () => {
           timeout: 60000,
           env: {
             CUSTOM_VAR: 'custom_value',
-            GLOBAL_VAR: 'override_value' // Target env overrides default
+            GLOBAL_VAR: 'override_value', // Target env overrides default
           },
           // Common defaults still applied
           shell: '/bin/bash',
@@ -851,8 +845,8 @@ describe('TargetResolver', () => {
           connectionPool: {
             enabled: true,
             maxConnections: 5,
-            idleTimeout: 300000
-          }
+            idleTimeout: 300000,
+          },
         });
       });
 
@@ -869,7 +863,7 @@ describe('TargetResolver', () => {
           maxBuffer: 20000000,
           throwOnNonZeroExit: false,
           env: {
-            GLOBAL_VAR: 'global_value'
+            GLOBAL_VAR: 'global_value',
           },
           // Docker defaults
           tty: true,
@@ -877,7 +871,7 @@ describe('TargetResolver', () => {
           autoRemove: true,
           socketPath: '/custom/docker.sock',
           user: 'appuser',
-          runMode: 'run'
+          runMode: 'run',
         });
       });
 
@@ -894,7 +888,7 @@ describe('TargetResolver', () => {
           maxBuffer: 20000000,
           throwOnNonZeroExit: false,
           env: {
-            GLOBAL_VAR: 'global_value'
+            GLOBAL_VAR: 'global_value',
           },
           // Kubernetes defaults
           namespace: 'production',
@@ -902,7 +896,7 @@ describe('TargetResolver', () => {
           stdin: true,
           kubeconfig: '/custom/kube.config',
           context: 'prod-cluster',
-          execFlags: ['--verbose']
+          execFlags: ['--verbose'],
         });
       });
 
@@ -919,8 +913,8 @@ describe('TargetResolver', () => {
           maxBuffer: 20000000,
           throwOnNonZeroExit: false,
           env: {
-            GLOBAL_VAR: 'global_value'
-          }
+            GLOBAL_VAR: 'global_value',
+          },
         });
       });
     });
@@ -958,9 +952,9 @@ describe('TargetResolver', () => {
         config.targets!.hosts!['nested-host'] = {
           host: 'nested.example.com',
           connectionPool: {
-            maxConnections: 10
+            maxConnections: 10,
             // idleTimeout and enabled should come from defaults
-          }
+          },
         };
 
         resolver = new TargetResolver(config);
@@ -969,14 +963,14 @@ describe('TargetResolver', () => {
         expect(target.config.connectionPool).toEqual({
           enabled: true, // from defaults
           maxConnections: 10, // overridden
-          idleTimeout: 300000 // from defaults
+          idleTimeout: 300000, // from defaults
         });
       });
 
       it('should merge arrays correctly for Kubernetes execFlags', async () => {
         config.targets!.pods!['array-pod'] = {
           selector: 'app=array',
-          execFlags: ['--quiet']
+          execFlags: ['--quiet'],
         };
 
         resolver = new TargetResolver(config);
@@ -990,9 +984,9 @@ describe('TargetResolver', () => {
         config.targets!.hosts!['sudo-host'] = {
           host: 'sudo.example.com',
           sudo: {
-            password: 'secret123'
+            password: 'secret123',
             // enabled and method should come from defaults
-          }
+          },
         };
 
         resolver = new TargetResolver(config);
@@ -1001,7 +995,7 @@ describe('TargetResolver', () => {
         expect(target.config.sudo).toEqual({
           enabled: true, // from defaults
           method: 'askpass', // from defaults
-          password: 'secret123' // overridden
+          password: 'secret123', // overridden
         });
       });
     });
@@ -1037,7 +1031,7 @@ describe('TargetResolver', () => {
           maxBuffer: 20000000,
           throwOnNonZeroExit: false,
           env: {
-            GLOBAL_VAR: 'global_value'
+            GLOBAL_VAR: 'global_value',
           },
           // Docker defaults
           tty: true,
@@ -1045,7 +1039,7 @@ describe('TargetResolver', () => {
           autoRemove: true,
           socketPath: '/custom/docker.sock',
           user: 'appuser',
-          runMode: 'run'
+          runMode: 'run',
         });
       });
 
@@ -1075,7 +1069,7 @@ describe('TargetResolver', () => {
           maxBuffer: 20000000,
           throwOnNonZeroExit: false,
           env: {
-            GLOBAL_VAR: 'global_value'
+            GLOBAL_VAR: 'global_value',
           },
           // SSH defaults
           port: 2222,
@@ -1084,8 +1078,8 @@ describe('TargetResolver', () => {
           connectionPool: {
             enabled: true,
             maxConnections: 5,
-            idleTimeout: 300000
-          }
+            idleTimeout: 300000,
+          },
         });
       });
     });
@@ -1098,10 +1092,10 @@ describe('TargetResolver', () => {
             hosts: {
               'no-defaults': {
                 host: 'nodefaults.example.com',
-                port: 22
-              }
-            }
-          }
+                port: 22,
+              },
+            },
+          },
         };
 
         resolver = new TargetResolver(config);
@@ -1110,7 +1104,7 @@ describe('TargetResolver', () => {
         expect(target.config).toEqual({
           type: 'ssh',
           host: 'nodefaults.example.com',
-          port: 22
+          port: 22,
         });
       });
     });
@@ -1132,15 +1126,15 @@ describe('TargetResolver', () => {
         const targets = await resolver.list();
 
         // Check that all targets have defaults applied
-        const sshTarget = targets.find(t => t.id === 'hosts.test-host');
+        const sshTarget = targets.find((t) => t.id === 'hosts.test-host');
         expect(sshTarget?.config.timeout).toBe(30000);
         expect(sshTarget?.config.port).toBe(2222);
 
-        const dockerTarget = targets.find(t => t.id === 'containers.test-container');
+        const dockerTarget = targets.find((t) => t.id === 'containers.test-container');
         expect(dockerTarget?.config.timeout).toBe(30000);
         expect(dockerTarget?.config.tty).toBe(true);
 
-        const k8sTarget = targets.find(t => t.id === 'pods.test-pod');
+        const k8sTarget = targets.find((t) => t.id === 'pods.test-pod');
         expect(k8sTarget?.config.timeout).toBe(30000);
         expect(k8sTarget?.config.namespace).toBe('production');
       });
@@ -1151,7 +1145,7 @@ describe('TargetResolver', () => {
         const targets = await resolver.find('hosts.*');
 
         expect(targets).toHaveLength(2);
-        targets.forEach(target => {
+        targets.forEach((target) => {
           expect(target.config.shell).toBe('/bin/bash');
           expect(target.config.encoding).toBe('utf8');
           expect(target.config.keepAlive).toBe(true);
@@ -1167,7 +1161,7 @@ describe('TargetResolver', () => {
         const target = await resolver.resolve('hosts.test-host');
         expect(target.config).toEqual({
           type: 'ssh',
-          host: 'test.example.com'
+          host: 'test.example.com',
         });
       });
 
@@ -1178,7 +1172,7 @@ describe('TargetResolver', () => {
         const target = await resolver.resolve('hosts.test-host');
         expect(target.config).toEqual({
           type: 'ssh',
-          host: 'test.example.com'
+          host: 'test.example.com',
         });
       });
 
@@ -1194,7 +1188,7 @@ describe('TargetResolver', () => {
         config.targets!.hosts!['null-host'] = {
           host: 'null.example.com',
           port: undefined as any,
-          user: null as any
+          user: null as any,
         };
 
         resolver = new TargetResolver(config);
@@ -1213,9 +1207,9 @@ describe('TargetResolver', () => {
       it('should filter out duplicate targets in find()', async () => {
         // Create a scenario where the same target might be found multiple times
         config.targets!.hosts = {
-          'test': { host: 'test.com' },
+          test: { host: 'test.com' },
           'test-1': { host: 'test1.com' },
-          'test-2': { host: 'test2.com' }
+          'test-2': { host: 'test2.com' },
         };
 
         // Create a mock that returns duplicates at a lower level
@@ -1246,7 +1240,9 @@ describe('TargetResolver', () => {
         await fs.mkdir(sshDir, { recursive: true });
         const sshConfigPath = path.join(sshDir, 'config');
 
-        await fs.writeFile(sshConfigPath, `
+        await fs.writeFile(
+          sshConfigPath,
+          `
 Host myserver
   HostName 192.168.1.100
   User admin
@@ -1260,7 +1256,8 @@ Host otherserver
 
 Host * 
   ForwardAgent yes
-`);
+`
+        );
 
         // Create a custom resolver that uses our test directory
         class TestableTargetResolver extends TargetResolver {
@@ -1282,10 +1279,10 @@ Host *
                   const value = valueParts.join(' ');
 
                   const keyMap: Record<string, string> = {
-                    'HostName': 'host',
-                    'User': 'user',
-                    'Port': 'port',
-                    'IdentityFile': 'privateKey'
+                    HostName: 'host',
+                    User: 'user',
+                    Port: 'port',
+                    IdentityFile: 'privateKey',
                   };
 
                   if (key) {
@@ -1301,7 +1298,7 @@ Host *
                 return {
                   type: 'ssh',
                   host: hosts[name].host || name,
-                  ...hosts[name]
+                  ...hosts[name],
                 };
               }
             } catch {
@@ -1331,9 +1328,9 @@ Host *
             host: '192.168.1.100',
             user: 'admin',
             port: '2222',
-            privateKey: '~/.ssh/id_rsa'
+            privateKey: '~/.ssh/id_rsa',
           },
-          source: 'detected'
+          source: 'detected',
         });
       });
 
@@ -1355,9 +1352,7 @@ Host *
 
         const testResolver = new TestableTargetResolver(config);
 
-        await expect(testResolver.resolve('unknownhost')).rejects.toThrow(
-          "Target 'unknownhost' not found"
-        );
+        await expect(testResolver.resolve('unknownhost')).rejects.toThrow("Target 'unknownhost' not found");
       });
 
       it('should cover line 468 in getSSHHost', async () => {
@@ -1385,10 +1380,10 @@ Host *
                   const value = valueParts.join(' ');
 
                   const keyMap: Record<string, string> = {
-                    'HostName': 'host',
-                    'User': 'user',
-                    'Port': 'port',
-                    'IdentityFile': 'privateKey'
+                    HostName: 'host',
+                    User: 'user',
+                    Port: 'port',
+                    IdentityFile: 'privateKey',
                   };
 
                   if (key) {
@@ -1405,7 +1400,7 @@ Host *
                 return {
                   type: 'ssh',
                   host: hosts[name].host || name,
-                  ...hosts[name]
+                  ...hosts[name],
                 };
               }
             } catch {
@@ -1434,7 +1429,7 @@ Host *
       it('should handle Docker Compose command failure gracefully', async () => {
         config.targets!.$compose = {
           file: 'docker-compose.yml',
-          project: 'myproject'
+          project: 'myproject',
         };
 
         // Since we can't easily override the real $, let's test a scenario without compose
@@ -1444,8 +1439,8 @@ Host *
         const targets = await resolver.find('containers.*');
 
         // Should still return configured containers
-        expect(targets.some(t => t.id === 'containers.app')).toBe(true);
-        expect(targets.some(t => t.id === 'containers.redis')).toBe(true);
+        expect(targets.some((t) => t.id === 'containers.app')).toBe(true);
+        expect(targets.some((t) => t.id === 'containers.redis')).toBe(true);
       });
     });
 
@@ -1461,7 +1456,7 @@ Host *
         const testResolver = new TestableTargetResolver(config);
         const result = await testResolver.testResolveConfigured({
           type: 'unknown',
-          name: 'test'
+          name: 'test',
         });
 
         expect(result).toBeUndefined();
@@ -1540,7 +1535,7 @@ Host *
       it('should use Kubernetes context from config', async () => {
         config.targets!.kubernetes = {
           $namespace: 'custom-ns',
-          $context: 'prod-cluster'
+          $context: 'prod-cluster',
         };
 
         // Create a test resolver that captures the arguments passed to kubectl
@@ -1578,7 +1573,7 @@ Host *
       it('should handle empty compose services list', async () => {
         config.targets!.$compose = {
           file: 'docker-compose.yml',
-          project: 'testproject'
+          project: 'testproject',
         };
 
         // Test the logic when compose returns empty results
@@ -1591,7 +1586,7 @@ Host *
             const services = [
               { Service: 'web', Name: 'testproject_web_1' },
               { Service: 'db', Name: 'testproject_db_1' },
-              { Service: 'cache', Name: 'testproject_cache_1' }
+              { Service: 'cache', Name: 'testproject_cache_1' },
             ];
 
             const targets = [];
@@ -1603,9 +1598,9 @@ Host *
                   name: service.Service,
                   config: this.applyDefaults({
                     type: 'docker',
-                    container: service.Name
+                    container: service.Name,
                   }),
-                  source: 'detected'
+                  source: 'detected',
                 });
               }
             }
@@ -1617,16 +1612,16 @@ Host *
         const targets = await testResolver.find('containers.*');
 
         // Should include compose services
-        expect(targets.some(t => t.id === 'containers.web')).toBe(true);
-        expect(targets.some(t => t.id === 'containers.db')).toBe(true);
-        expect(targets.some(t => t.id === 'containers.cache')).toBe(true);
+        expect(targets.some((t) => t.id === 'containers.web')).toBe(true);
+        expect(targets.some((t) => t.id === 'containers.db')).toBe(true);
+        expect(targets.some((t) => t.id === 'containers.cache')).toBe(true);
       });
 
       it('should build correct Docker Compose arguments', async () => {
         // Test that the compose configuration is used correctly
         config.targets!.$compose = {
           file: 'custom-compose.yml',
-          project: 'myapp'
+          project: 'myapp',
         };
 
         // Verify the configuration is set correctly

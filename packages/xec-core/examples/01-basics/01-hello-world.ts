@@ -1,8 +1,8 @@
 /**
  * 01. Hello World - Simplest example of using @xec-sh/core
- * 
+ *
  * This example demonstrates basic command execution using $
- * 
+ *
  * @xec-sh/core provides an elegant API for executing shell commands
  * in Node.js/TypeScript, inspired by google/zx, but with extended capabilities.
  */
@@ -17,10 +17,10 @@ await $`echo "Hello, World!"`;
 // 2. Getting execution result
 // Each command returns ExecutionResult with complete information
 const result = await $`echo "Hello from xec!"`;
-console.log('Output:', result.stdout);       // Command standard output
-console.log('Exit code:', result.exitCode);  // Return code (0 = success)
-console.log('Success:', result.ok);          // true if exitCode === 0
-console.log('Cause:', result.cause);         // undefined when ok is true
+console.log('Output:', result.stdout); // Command standard output
+console.log('Exit code:', result.exitCode); // Return code (0 = success)
+console.log('Success:', result.ok); // true if exitCode === 0
+console.log('Cause:', result.cause); // undefined when ok is true
 
 // 3. Variable interpolation in commands
 // Variables are automatically escaped for security
@@ -29,7 +29,7 @@ await $`echo "Hello, ${name}!"`;
 
 // Even if variable contains special characters, it will be safely escaped
 const userInput = 'World; rm -rf /';
-await $`echo "Hello, ${userInput}!"`;  // Safe! Will output: Hello, World; rm -rf /!
+await $`echo "Hello, ${userInput}!"`; // Safe! Will output: Hello, World; rm -rf /!
 
 // 4. Working with standard streams
 // Redirecting to stderr

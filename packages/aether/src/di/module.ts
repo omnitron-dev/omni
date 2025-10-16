@@ -73,10 +73,7 @@ export function compileModule(rootModule: Module | ModuleWithProviders, parentCo
   const additionalProviders = 'providers' in rootModule ? rootModule.providers : [];
 
   // Collect all providers from this module
-  const allModuleProviders = [
-    ...(module.definition.providers || []),
-    ...(additionalProviders || []),
-  ];
+  const allModuleProviders = [...(module.definition.providers || []), ...(additionalProviders || [])];
 
   // Attach dependency metadata to classes (for constructor injection without decorators)
   if (allModuleProviders.length > 0) {

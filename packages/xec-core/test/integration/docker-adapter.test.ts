@@ -47,7 +47,7 @@ describeIfDocker('DockerAdapter Integration Tests', () => {
       const result = await adapter.execute({
         command: 'echo',
         args: ['Hello from Docker'],
-        adapterOptions: { type: 'docker', container: TEST_CONTAINER }
+        adapterOptions: { type: 'docker', container: TEST_CONTAINER },
       });
 
       expect(result.exitCode).toBe(0);
@@ -60,7 +60,7 @@ describeIfDocker('DockerAdapter Integration Tests', () => {
       const result = await adapter.execute({
         command: 'echo $((2 + 2))',
         shell: true,
-        adapterOptions: { type: 'docker', container: TEST_CONTAINER }
+        adapterOptions: { type: 'docker', container: TEST_CONTAINER },
       });
 
       expect(result.exitCode).toBe(0);
@@ -71,7 +71,7 @@ describeIfDocker('DockerAdapter Integration Tests', () => {
       const result = await adapter.execute({
         command: 'false',
         nothrow: true,
-        adapterOptions: { type: 'docker', container: TEST_CONTAINER }
+        adapterOptions: { type: 'docker', container: TEST_CONTAINER },
       });
 
       expect(result.exitCode).toBe(1);
@@ -83,7 +83,7 @@ describeIfDocker('DockerAdapter Integration Tests', () => {
         args: ['-c', 'echo "error" >&2'],
         shell: false,
         nothrow: true,
-        adapterOptions: { type: 'docker', container: TEST_CONTAINER }
+        adapterOptions: { type: 'docker', container: TEST_CONTAINER },
       });
 
       // Debug output
@@ -107,7 +107,7 @@ describeIfDocker('DockerAdapter Integration Tests', () => {
         shell: false,
         env: { VAR1: 'hello', VAR2: 'world' },
         nothrow: true,
-        adapterOptions: { type: 'docker', container: TEST_CONTAINER }
+        adapterOptions: { type: 'docker', container: TEST_CONTAINER },
       });
 
       // Debug output
@@ -127,8 +127,8 @@ describeIfDocker('DockerAdapter Integration Tests', () => {
         adapterOptions: {
           type: 'docker',
           container: TEST_CONTAINER,
-          workdir: '/tmp'
-        }
+          workdir: '/tmp',
+        },
       });
 
       expect(result.stdout.trim()).toBe('/tmp');
@@ -140,8 +140,8 @@ describeIfDocker('DockerAdapter Integration Tests', () => {
         adapterOptions: {
           type: 'docker',
           container: TEST_CONTAINER,
-          user: 'nobody'
-        }
+          user: 'nobody',
+        },
       });
 
       expect(result.stdout.trim()).toBe('nobody');
@@ -153,7 +153,7 @@ describeIfDocker('DockerAdapter Integration Tests', () => {
       const result = await adapter.execute({
         command: 'cat',
         stdin: 'Hello stdin',
-        adapterOptions: { type: 'docker', container: TEST_CONTAINER }
+        adapterOptions: { type: 'docker', container: TEST_CONTAINER },
       });
 
       expect(result.stdout).toBe('Hello stdin');
@@ -163,7 +163,7 @@ describeIfDocker('DockerAdapter Integration Tests', () => {
       const result = await adapter.execute({
         command: 'cat',
         stdin: Buffer.from('Buffer input'),
-        adapterOptions: { type: 'docker', container: TEST_CONTAINER }
+        adapterOptions: { type: 'docker', container: TEST_CONTAINER },
       });
 
       expect(result.stdout).toBe('Buffer input');
@@ -175,7 +175,7 @@ describeIfDocker('DockerAdapter Integration Tests', () => {
         command: 'wc',
         args: ['-l'],
         stdin: input,
-        adapterOptions: { type: 'docker', container: TEST_CONTAINER }
+        adapterOptions: { type: 'docker', container: TEST_CONTAINER },
       });
 
       expect(result.stdout.trim()).toBe('3');
@@ -194,7 +194,7 @@ describeIfDocker('DockerAdapter Integration Tests', () => {
 
       await adapter.createContainer({
         name: tempContainer,
-        image: TEST_IMAGE
+        image: TEST_IMAGE,
       });
 
       // Verify it exists
@@ -224,7 +224,7 @@ describeIfDocker('DockerAdapter Integration Tests', () => {
           command: 'echo',
           args: ['running'],
           nothrow: true,
-          adapterOptions: { type: 'docker', container: tempContainer }
+          adapterOptions: { type: 'docker', container: tempContainer },
         });
         expect(result.stdout.trim()).toBe('running');
 
@@ -243,8 +243,8 @@ describeIfDocker('DockerAdapter Integration Tests', () => {
         autoCreate: {
           enabled: true,
           image: TEST_IMAGE,
-          autoRemove: true
-        }
+          autoRemove: true,
+        },
       });
 
       const nonExistentContainer = `non-existent-${Date.now()}`;
@@ -252,7 +252,7 @@ describeIfDocker('DockerAdapter Integration Tests', () => {
       const result = await autoAdapter.execute({
         command: 'echo',
         args: ['auto created'],
-        adapterOptions: { type: 'docker', container: nonExistentContainer }
+        adapterOptions: { type: 'docker', container: nonExistentContainer },
       });
 
       expect(result.exitCode).toBe(0);
@@ -263,7 +263,7 @@ describeIfDocker('DockerAdapter Integration Tests', () => {
 
       // Verify temp container was removed
       const containers = await adapter.listContainers(true);
-      const tempContainers = containers.filter(c => c.startsWith('temp-ush-'));
+      const tempContainers = containers.filter((c) => c.startsWith('temp-ush-'));
       expect(tempContainers).toHaveLength(0);
     });
   });
@@ -274,7 +274,7 @@ describeIfDocker('DockerAdapter Integration Tests', () => {
         command: 'echo',
         args: ['test'],
         nothrow: true,
-        adapterOptions: { type: 'docker', container: 'non-existent-container' }
+        adapterOptions: { type: 'docker', container: 'non-existent-container' },
       });
 
       expect(result.exitCode).not.toBe(0);
@@ -285,7 +285,7 @@ describeIfDocker('DockerAdapter Integration Tests', () => {
       await expect(
         adapter.createContainer({
           name: 'invalid-test',
-          image: 'non-existent-image:latest'
+          image: 'non-existent-image:latest',
         })
       ).rejects.toThrow();
     });
@@ -296,7 +296,7 @@ describeIfDocker('DockerAdapter Integration Tests', () => {
           command: 'sleep',
           args: ['10'],
           timeout: 100,
-          adapterOptions: { type: 'docker', container: TEST_CONTAINER }
+          adapterOptions: { type: 'docker', container: TEST_CONTAINER },
         })
       ).rejects.toThrow(/timed out/);
     }, 2000);
@@ -312,8 +312,7 @@ describeIfDocker('DockerAdapter Integration Tests', () => {
     });
 
     it('should chain with other helpers', async () => {
-      const $docker = $.docker({ container: TEST_CONTAINER })
-        .env({ TEST: 'value' });
+      const $docker = $.docker({ container: TEST_CONTAINER }).env({ TEST: 'value' });
 
       const result = await $docker`sh -c 'echo $TEST && cd /tmp && pwd'`;
       const lines = result.stdout.trim().split('\n');
@@ -323,11 +322,11 @@ describeIfDocker('DockerAdapter Integration Tests', () => {
 
     it('should work with retry', async () => {
       const attempt = 0;
-      const $docker = $.docker({ container: TEST_CONTAINER })
-        .retry({ maxRetries: 2 });
+      const $docker = $.docker({ container: TEST_CONTAINER }).retry({ maxRetries: 2 });
 
       // This simulates a flaky command
-      const result = await $docker`sh -c 'if [ ! -f /tmp/retry-test ]; then touch /tmp/retry-test && exit 1; else echo "success"; fi'`.nothrow();
+      const result =
+        await $docker`sh -c 'if [ ! -f /tmp/retry-test ]; then touch /tmp/retry-test && exit 1; else echo "success"; fi'`.nothrow();
 
       expect(result.stdout.trim()).toBe('success');
     });
@@ -365,7 +364,7 @@ describe('DockerAdapter Advanced Features', () => {
           command: 'cat',
           args: [`${containerPath}/${testFile}`],
           nothrow: true,
-          adapterOptions: { type: 'docker', container: containerName }
+          adapterOptions: { type: 'docker', container: containerName },
         });
 
         expect(result.stdout.trim()).toBe('test content');
@@ -382,7 +381,7 @@ describe('DockerAdapter Advanced Features', () => {
       await adapter.createContainer({
         name: containerName,
         image: 'alpine:latest',
-        ports: ['8080:80']
+        ports: ['8080:80'],
       });
 
       // Verify container was created with port mapping
@@ -397,24 +396,14 @@ describe('DockerAdapter Advanced Features', () => {
 
   describeIfDocker('Multiple Container Scenario', () => {
     it('should handle operations on multiple containers', async () => {
-      const containers = [
-        `multi-test-1-${Date.now()}`,
-        `multi-test-2-${Date.now()}`,
-        `multi-test-3-${Date.now()}`
-      ];
+      const containers = [`multi-test-1-${Date.now()}`, `multi-test-2-${Date.now()}`, `multi-test-3-${Date.now()}`];
 
       try {
         // Create all containers with interactive mode
-        await Promise.all(
-          containers.map(name =>
-            $`docker create --name ${name} -it alpine:latest sh`
-          )
-        );
+        await Promise.all(containers.map((name) => $`docker create --name ${name} -it alpine:latest sh`));
 
         // Start all containers
-        await Promise.all(
-          containers.map(name => adapter.startContainer(name))
-        );
+        await Promise.all(containers.map((name) => adapter.startContainer(name)));
 
         // Execute commands in parallel
         const results = await Promise.all(
@@ -423,7 +412,7 @@ describe('DockerAdapter Advanced Features', () => {
               command: 'echo',
               args: [`Hello from container ${i + 1}`],
               nothrow: true,
-              adapterOptions: { type: 'docker', container: name }
+              adapterOptions: { type: 'docker', container: name },
             })
           )
         );
@@ -433,9 +422,7 @@ describe('DockerAdapter Advanced Features', () => {
         });
       } finally {
         // Cleanup all containers
-        await Promise.all(
-          containers.map(name => adapter.removeContainer(name, true))
-        );
+        await Promise.all(containers.map((name) => adapter.removeContainer(name, true)));
       }
     });
   });

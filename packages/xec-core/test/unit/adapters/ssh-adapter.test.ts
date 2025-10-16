@@ -40,21 +40,25 @@ describeSSH('SSHAdapter - Real SSH Tests', () => {
   describe('Basic command execution', () => {
     it('should fail without SSH options', async () => {
       adapter = new SSHAdapter();
-      await expect(adapter.execute({
-        command: 'ls'
-      })).rejects.toThrow('SSH connection options not provided');
+      await expect(
+        adapter.execute({
+          command: 'ls',
+        })
+      ).rejects.toThrow('SSH connection options not provided');
     });
 
     it('should require valid SSH options', async () => {
       adapter = new SSHAdapter();
-      await expect(adapter.execute({
-        command: 'ls',
-        adapterOptions: {
-          type: 'ssh',
-          host: '', // Invalid empty host
-          username: ''
-        }
-      })).rejects.toThrow();
+      await expect(
+        adapter.execute({
+          command: 'ls',
+          adapterOptions: {
+            type: 'ssh',
+            host: '', // Invalid empty host
+            username: '',
+          },
+        })
+      ).rejects.toThrow();
     });
 
     testEachPackageManager('should execute commands successfully', async (container) => {
@@ -66,8 +70,8 @@ describeSSH('SSHAdapter - Real SSH Tests', () => {
         shell: true,
         adapterOptions: {
           type: 'ssh',
-          ...sshConfig
-        }
+          ...sshConfig,
+        },
       });
 
       expect(result.exitCode).toBe(0);
@@ -86,8 +90,8 @@ describeSSH('SSHAdapter - Real SSH Tests', () => {
         nothrow: true,
         adapterOptions: {
           type: 'ssh',
-          ...sshConfig
-        }
+          ...sshConfig,
+        },
       });
 
       expect(result.exitCode).toBe(42);
@@ -103,8 +107,8 @@ describeSSH('SSHAdapter - Real SSH Tests', () => {
         nothrow: true,
         adapterOptions: {
           type: 'ssh',
-          ...sshConfig
-        }
+          ...sshConfig,
+        },
       });
 
       // CentOS may include locale warnings in stderr
@@ -123,8 +127,8 @@ describeSSH('SSHAdapter - Real SSH Tests', () => {
         shell: true,
         adapterOptions: {
           type: 'ssh',
-          ...sshConfig
-        }
+          ...sshConfig,
+        },
       });
 
       // Then execute command in that directory
@@ -134,8 +138,8 @@ describeSSH('SSHAdapter - Real SSH Tests', () => {
         cwd: '/tmp/test-dir',
         adapterOptions: {
           type: 'ssh',
-          ...sshConfig
-        }
+          ...sshConfig,
+        },
       });
 
       expect(result.exitCode).toBe(0);
@@ -154,12 +158,12 @@ describeSSH('SSHAdapter - Real SSH Tests', () => {
         shell: true,
         env: {
           VAR1: 'value1',
-          VAR2: 'value2'
+          VAR2: 'value2',
         },
         adapterOptions: {
           type: 'ssh',
-          ...sshConfig
-        }
+          ...sshConfig,
+        },
       });
 
       expect(result.exitCode).toBe(0);
@@ -179,8 +183,8 @@ describeSSH('SSHAdapter - Real SSH Tests', () => {
         nothrow: true,
         adapterOptions: {
           type: 'ssh',
-          ...sshConfig
-        }
+          ...sshConfig,
+        },
       });
 
       const duration = Date.now() - startTime;
@@ -192,7 +196,7 @@ describeSSH('SSHAdapter - Real SSH Tests', () => {
   describe('File Operations', () => {
     testEachPackageManager('should upload files via SFTP', async (container) => {
       adapter = new SSHAdapter({
-        sftp: { enabled: true, concurrency: 3 }
+        sftp: { enabled: true, concurrency: 3 },
       });
       const sshConfig = getSSHConfig(container.name);
 
@@ -205,7 +209,7 @@ describeSSH('SSHAdapter - Real SSH Tests', () => {
       const remoteFile = '/tmp/uploaded-file.txt';
       await adapter.uploadFile(localFile, remoteFile, {
         type: 'ssh',
-        ...sshConfig
+        ...sshConfig,
       });
 
       // Verify file was uploaded
@@ -213,8 +217,8 @@ describeSSH('SSHAdapter - Real SSH Tests', () => {
         command: `cat ${remoteFile}`,
         adapterOptions: {
           type: 'ssh',
-          ...sshConfig
-        }
+          ...sshConfig,
+        },
       });
 
       expect(result.exitCode).toBe(0);
@@ -223,7 +227,7 @@ describeSSH('SSHAdapter - Real SSH Tests', () => {
 
     testEachPackageManager('should download files via SFTP', async (container) => {
       adapter = new SSHAdapter({
-        sftp: { enabled: true, concurrency: 3 }
+        sftp: { enabled: true, concurrency: 3 },
       });
       const sshConfig = getSSHConfig(container.name);
 
@@ -235,15 +239,15 @@ describeSSH('SSHAdapter - Real SSH Tests', () => {
         shell: true,
         adapterOptions: {
           type: 'ssh',
-          ...sshConfig
-        }
+          ...sshConfig,
+        },
       });
 
       // Download file
       const localFile = join(testDir, 'downloaded-file.txt');
       await adapter.downloadFile(remoteFile, localFile, {
         type: 'ssh',
-        ...sshConfig
+        ...sshConfig,
       });
 
       // Verify file was downloaded
@@ -262,8 +266,8 @@ describeSSH('SSHAdapter - Real SSH Tests', () => {
         shell: true,
         adapterOptions: {
           type: 'ssh',
-          ...sshConfig
-        }
+          ...sshConfig,
+        },
       });
 
       // Check existence using test command
@@ -272,8 +276,8 @@ describeSSH('SSHAdapter - Real SSH Tests', () => {
         shell: true,
         adapterOptions: {
           type: 'ssh',
-          ...sshConfig
-        }
+          ...sshConfig,
+        },
       });
       expect(existsResult.stdout.trim()).toBe('exists');
 
@@ -283,8 +287,8 @@ describeSSH('SSHAdapter - Real SSH Tests', () => {
         shell: true,
         adapterOptions: {
           type: 'ssh',
-          ...sshConfig
-        }
+          ...sshConfig,
+        },
       });
       expect(notExistsResult.stdout.trim()).toBe('not exists');
     });
@@ -297,8 +301,8 @@ describeSSH('SSHAdapter - Real SSH Tests', () => {
           enabled: true,
           maxConnections: 2,
           idleTimeout: 60000,
-          keepAlive: true
-        }
+          keepAlive: true,
+        },
       });
 
       const sshConfig = getSSHConfig('ubuntu-apt');
@@ -312,8 +316,8 @@ describeSSH('SSHAdapter - Real SSH Tests', () => {
             command: `echo "Command ${i}"`,
             adapterOptions: {
               type: 'ssh',
-              ...sshConfig
-            }
+              ...sshConfig,
+            },
           })
         );
       }
@@ -342,8 +346,8 @@ describeSSH('SSHAdapter - Real SSH Tests', () => {
         nothrow: true,
         adapterOptions: {
           type: 'ssh',
-          ...sshConfig
-        }
+          ...sshConfig,
+        },
       });
 
       expect(result.exitCode).not.toBe(0);
@@ -360,8 +364,8 @@ describeSSH('SSHAdapter - Real SSH Tests', () => {
         nothrow: true,
         adapterOptions: {
           type: 'ssh',
-          ...sshConfig
-        }
+          ...sshConfig,
+        },
       });
 
       expect(result.exitCode).not.toBe(0);
@@ -379,8 +383,8 @@ describeSSH('SSHAdapter - Real SSH Tests', () => {
         shell: true,
         adapterOptions: {
           type: 'ssh',
-          ...sshConfig
-        }
+          ...sshConfig,
+        },
       });
 
       expect(result.exitCode).toBe(0);
@@ -402,8 +406,8 @@ describeSSH('SSHAdapter - Real SSH Tests', () => {
         shell: true,
         adapterOptions: {
           type: 'ssh',
-          ...sshConfig
-        }
+          ...sshConfig,
+        },
       });
 
       expect(result.exitCode).toBe(0);
@@ -417,8 +421,8 @@ describeSSH('SSHAdapter - Real SSH Tests', () => {
         sudo: {
           enabled: true,
           password: 'password', // Same as user password in test containers
-          method: 'stdin'
-        }
+          method: 'stdin',
+        },
       });
       const sshConfig = getSSHConfig(container.name);
 
@@ -426,8 +430,8 @@ describeSSH('SSHAdapter - Real SSH Tests', () => {
         command: 'whoami', // Don't use 'sudo' prefix - adapter will add it
         adapterOptions: {
           type: 'ssh',
-          ...sshConfig
-        }
+          ...sshConfig,
+        },
       });
 
       expect(result.exitCode).toBe(0);
@@ -470,8 +474,8 @@ describeSSH('SSHAdapter - Real SSH Tests', () => {
           enabled: true,
           maxConnections: 5,
           idleTimeout: 60000,
-          keepAlive: true
-        }
+          keepAlive: true,
+        },
       });
 
       const sshConfig = getSSHConfig('ubuntu-apt');
@@ -484,8 +488,8 @@ describeSSH('SSHAdapter - Real SSH Tests', () => {
             command: 'echo "test"',
             adapterOptions: {
               type: 'ssh',
-              ...sshConfig
-            }
+              ...sshConfig,
+            },
           })
         );
       }
@@ -500,8 +504,8 @@ describeSSH('SSHAdapter - Real SSH Tests', () => {
         command: 'echo "after dispose"',
         adapterOptions: {
           type: 'ssh',
-          ...sshConfig
-        }
+          ...sshConfig,
+        },
       });
 
       expect(afterDispose.exitCode).toBe(0);

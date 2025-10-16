@@ -1,25 +1,25 @@
 /**
  * 02. Parallel Execution - Parallel Command Execution
- * 
+ *
  * Demonstrates various ways to execute commands in parallel.
- * 
+ *
  * @xec-sh/core provides three approaches for parallel execution:
- * 
+ *
  * 1. $.parallel (high-level API) - RECOMMENDED for most cases
  *    - Use when: You need rich functionality like map, filter, race, etc.
  *    - Benefits: Built-in error handling, progress tracking, concurrency control
  *    - Examples: $.parallel.all(), $.parallel.map(), $.parallel.filter()
- * 
+ *
  * 2. $.batch() - Convenience method for limited concurrency execution
  *    - Use when: You want to limit concurrent executions with simple API
  *    - Benefits: Simple API, built-in concurrency limit (default: 5)
  *    - Key difference: It's just $.parallel.settled() with concurrency alias
- * 
+ *
  * 3. Promise.all - Simple approach for basic parallel execution
  *    - Use when: You need simple parallel execution with Promise compatibility
  *    - Benefits: Familiar JavaScript API, works with any Promise-based code
  *    - Examples: Promise.all(), Promise.race(), Promise.allSettled()
- * 
+ *
  * 4. parallel() function - Low-level API for advanced use cases
  *    - Use when: You need fine control over execution details
  *    - Benefits: Full control over concurrency, detailed result information
@@ -36,7 +36,7 @@ console.log('\n=== Method 1: $.parallel (Recommended) ===');
 const parallelResults = await $.parallel.all([
   'sleep 1 && echo "Task 1 done"',
   'sleep 0.5 && echo "Task 2 done"',
-  'sleep 0.7 && echo "Task 3 done"'
+  'sleep 0.7 && echo "Task 3 done"',
 ]);
 
 parallelResults.forEach((result, i) => {
@@ -46,8 +46,8 @@ parallelResults.forEach((result, i) => {
 // $.parallel.settled() - executes all commands, returns all results (including errors)
 const settledResults = await $.parallel.settled([
   'echo "Success 1"',
-  'exit 1',  // This will fail
-  'echo "Success 2"'
+  'exit 1', // This will fail
+  'echo "Success 2"',
 ]);
 
 console.log('\nSettled results:');
@@ -57,8 +57,8 @@ console.log(`Failed: ${settledResults.failed.length}`);
 // $.parallel.race() - returns the first completed result
 const winner = await $.parallel.race([
   'sleep 2 && echo "Slow"',
-  'sleep 0.5 && echo "Fast"',  // This will win
-  'sleep 1 && echo "Medium"'
+  'sleep 0.5 && echo "Fast"', // This will win
+  'sleep 1 && echo "Medium"',
 ]);
 console.log('\nRace winner:', winner.stdout.trim());
 
@@ -69,16 +69,18 @@ const apiEndpoints = Array.from({ length: 20 }, (_, i) => `https://api.example.c
 
 console.log('Making 20 API calls with rate limit of 3 concurrent requests:');
 const apiResults = await $.batch(
-  apiEndpoints.map(url => `echo "GET ${url}" && sleep 0.3 && echo "Response: {data: ${url.split('/').pop()}}"`),
+  apiEndpoints.map((url) => `echo "GET ${url}" && sleep 0.3 && echo "Response: {data: ${url.split('/').pop()}}"`),
   {
     concurrency: 3, // Rate limit: max 3 concurrent requests
     onProgress: (completed, total) => {
       const percentage = Math.round((completed / total) * 100);
       console.log(`  Progress: ${completed}/${total} (${percentage}%)`);
-    }
+    },
   }
 );
-console.log(`All API calls completed. Success rate: ${(apiResults.succeeded.length / apiEndpoints.length * 100).toFixed(1)}%`);
+console.log(
+  `All API calls completed. Success rate: ${((apiResults.succeeded.length / apiEndpoints.length) * 100).toFixed(1)}%`
+);
 
 // 3. Simple approach with Promise.all
 // Good for basic cases and when you need Promise compatibility
@@ -86,7 +88,7 @@ console.log('\n=== Method 3: Promise.all (Simple cases) ===');
 const promiseResults = await Promise.all([
   $`echo "Promise Task 1"`,
   $`echo "Promise Task 2"`,
-  $`echo "Promise Task 3"`
+  $`echo "Promise Task 3"`,
 ]);
 
 promiseResults.forEach((result, i) => {
@@ -102,15 +104,15 @@ const advancedResult = await parallel(
     'echo "Advanced Task 2" && sleep 0.5',
     'echo "Advanced Task 3" && sleep 0.7',
     'echo "Advanced Task 4" && sleep 0.3',
-    'echo "Advanced Task 5" && sleep 0.6'
+    'echo "Advanced Task 5" && sleep 0.6',
   ],
   $,
-  { 
-    maxConcurrency: 2,  // Limit to 2 concurrent tasks
+  {
+    maxConcurrency: 2, // Limit to 2 concurrent tasks
     stopOnError: false, // Continue even if some tasks fail
     onProgress: (completed, total, succeeded, failed) => {
       console.log(`  Progress: ${completed}/${total} completed`);
-    }
+    },
   }
 );
 
@@ -142,12 +144,12 @@ console.log('  - You want fine control over error handling (all vs settled)');
 console.log('  - You need unlimited concurrency by default');
 console.log('\n📋 Choose $.batch() when:');
 console.log('  - You want a simple API for limited concurrency');
-console.log('  - You\'re OK with always getting all results (no fail-fast)');
+console.log("  - You're OK with always getting all results (no fail-fast)");
 console.log('  - You prefer "concurrency" over "maxConcurrency" as parameter name');
 console.log('\n📋 Choose Promise.all/race/allSettled when:');
 console.log('  - You need standard JavaScript Promise behavior');
-console.log('  - You\'re mixing with other Promise-based code');
-console.log('  - You don\'t need progress tracking or concurrency limits');
+console.log("  - You're mixing with other Promise-based code");
+console.log("  - You don't need progress tracking or concurrency limits");
 
 // 5. IMPORTANT: Understanding the difference between $.parallel and $.batch()
 console.log('\n=== COMPARISON: $.parallel vs $.batch() ===');
@@ -155,12 +157,12 @@ console.log('\n=== COMPARISON: $.parallel vs $.batch() ===');
 // First, let's use $.parallel.settled() with maxConcurrency
 console.log('\n1. Using $.parallel.settled() with maxConcurrency:');
 const parallelSettledResult = await $.parallel.settled(
-  ['cmd1', 'cmd2', 'cmd3', 'cmd4', 'cmd5'].map(cmd => `echo "${cmd}" && sleep 0.5`),
+  ['cmd1', 'cmd2', 'cmd3', 'cmd4', 'cmd5'].map((cmd) => `echo "${cmd}" && sleep 0.5`),
   {
     maxConcurrency: 2, // Note: parameter is called maxConcurrency
     onProgress: (completed, total, succeeded, failed) => {
       console.log(`  Progress: ${completed}/${total}`);
-    }
+    },
   }
 );
 console.log(`  Completed in ${parallelSettledResult.duration}ms`);
@@ -168,12 +170,12 @@ console.log(`  Completed in ${parallelSettledResult.duration}ms`);
 // Now, let's use $.batch() - which is just a convenience wrapper
 console.log('\n2. Using $.batch() (convenience wrapper for $.parallel.settled()):');
 const batchResult = await $.batch(
-  ['cmd1', 'cmd2', 'cmd3', 'cmd4', 'cmd5'].map(cmd => `echo "${cmd}" && sleep 0.5`),
+  ['cmd1', 'cmd2', 'cmd3', 'cmd4', 'cmd5'].map((cmd) => `echo "${cmd}" && sleep 0.5`),
   {
     concurrency: 2, // Note: parameter is called concurrency (alias for maxConcurrency)
     onProgress: (completed, total, succeeded, failed) => {
       console.log(`  Progress: ${completed}/${total}`);
-    }
+    },
   }
 );
 console.log(`  Completed in ${batchResult.duration}ms`);
@@ -181,7 +183,7 @@ console.log(`  Completed in ${batchResult.duration}ms`);
 console.log('\n🔍 Key insights:');
 console.log('- $.batch() is EXACTLY $.parallel.settled() with a different parameter name');
 console.log('- $.batch() uses "concurrency" instead of "maxConcurrency"');
-console.log('- $.batch() defaults to concurrency: 5 (vs $.parallel\'s Infinity)');
+console.log("- $.batch() defaults to concurrency: 5 (vs $.parallel's Infinity)");
 console.log('- Both return the same ParallelResult structure');
 console.log('- $.batch() ALWAYS continues on errors (like settled), never throws');
 
@@ -210,7 +212,7 @@ try {
     'echo "Check 1: OK"',
     'echo "Check 2: OK"',
     'false', // This will fail
-    'echo "Check 3: Will not run"'
+    'echo "Check 3: Will not run"',
   ]);
 } catch (error) {
   console.log('  ❌ Stopped on first error (as expected)');
@@ -219,12 +221,15 @@ try {
 // Use Case 2: When you want all results regardless of errors - use $.batch() or $.parallel.settled()
 console.log('\n📌 Use Case 2: Bulk operations where some might fail');
 console.log('Use $.batch() - continues despite errors:');
-const bulkResults = await $.batch([
-  'echo "Upload file1.txt"',
-  'echo "Upload file2.txt" && false', // This fails
-  'echo "Upload file3.txt"',
-  'echo "Upload file4.txt"'
-], { concurrency: 2 });
+const bulkResults = await $.batch(
+  [
+    'echo "Upload file1.txt"',
+    'echo "Upload file2.txt" && false', // This fails
+    'echo "Upload file3.txt"',
+    'echo "Upload file4.txt"',
+  ],
+  { concurrency: 2 }
+);
 console.log(`  ✓ Succeeded: ${bulkResults.succeeded.length}`);
 console.log(`  ✗ Failed: ${bulkResults.failed.length}`);
 
@@ -244,7 +249,7 @@ console.log('  Existing files:', existingFiles);
 const fastestResult = await $.parallel.race([
   'sleep 2 && echo "Slow algorithm"',
   'sleep 0.5 && echo "Fast algorithm"',
-  'sleep 1 && echo "Medium algorithm"'
+  'sleep 1 && echo "Medium algorithm"',
 ]);
 console.log('  Fastest algorithm:', fastestResult.stdout.trim());
 
@@ -256,7 +261,7 @@ const mixedTasks = [
   // $.docker({ container: 'my-container' })`echo "Docker task"`,
   // $.ssh({ host: 'example.com', username: 'user', privateKey: '/path/to/key' })`echo "SSH task"`
   $.local()`echo "Another local task"`,
-  $.local()`echo "Third local task"`
+  $.local()`echo "Third local task"`,
 ];
 
 try {
@@ -275,12 +280,10 @@ const tasksWithErrors = [
   $`exit 1`, // Error
   $`echo "Success 2"`,
   $`false`, // Error
-  $`echo "Success 3"`
+  $`echo "Success 3"`,
 ];
 
-const resultsWithErrors = await Promise.all(
-  tasksWithErrors.map(task => task.nothrow())
-);
+const resultsWithErrors = await Promise.all(tasksWithErrors.map((task) => task.nothrow()));
 
 resultsWithErrors.forEach((result, i) => {
   if (result.ok) {
@@ -296,7 +299,7 @@ console.log('\n=== Parallel Filtering ===');
 const numbers = [1, 2, 3, 4, 5];
 const evenNumbers = await $.parallel.filter(
   numbers,
-  (num) => `test $((${num} % 2)) -eq 0`  // Shell test for even numbers
+  (num) => `test $((${num} % 2)) -eq 0` // Shell test for even numbers
 );
 console.log('Even numbers:', evenNumbers);
 
@@ -305,31 +308,31 @@ console.log('\n=== Parallel Conditions ===');
 const someSuccess = await $.parallel.some([
   'false',
   'false',
-  'true',  // At least one succeeds
-  'false'
+  'true', // At least one succeeds
+  'false',
 ]);
 console.log('At least one command succeeded:', someSuccess);
 
 const allSuccess = await $.parallel.every([
   'true',
   'true',
-  'false',  // One fails
-  'true'
+  'false', // One fails
+  'true',
 ]);
 console.log('All commands succeeded:', allSuccess);
 
 // 10. Parallel information gathering from servers
 // Simulate gathering information from servers
 const servers = ['server1', 'server2', 'server3'];
-const infoTasks = servers.map(server => ({
+const infoTasks = servers.map((server) => ({
   server,
-  task: $`echo "CPU: ${Math.floor(Math.random() * 100)}%" && echo "Memory: ${Math.floor(Math.random() * 16)}GB" && echo "Disk: ${Math.floor(Math.random() * 500)}GB"`
+  task: $`echo "CPU: ${Math.floor(Math.random() * 100)}%" && echo "Memory: ${Math.floor(Math.random() * 16)}GB" && echo "Disk: ${Math.floor(Math.random() * 500)}GB"`,
 }));
 
 const serverInfo = await Promise.all(
   infoTasks.map(async ({ server, task }) => ({
     server,
-    info: await task
+    info: await task,
   }))
 );
 
@@ -339,9 +342,7 @@ serverInfo.forEach(({ server, info }) => {
 
 // 11. Parallel processing with progress tracking
 // Simple way to track progress without external dependencies
-const longTasks = Array.from({ length: 10 }, (_, i) =>
-  $`sleep ${Math.random() * 2} && echo "Task ${i + 1} completed"`
-);
+const longTasks = Array.from({ length: 10 }, (_, i) => $`sleep ${Math.random() * 2} && echo "Task ${i + 1} completed"`);
 
 let completed = 0;
 const total = longTasks.length;
@@ -369,20 +370,16 @@ const dataFiles = ['data1.txt', 'data2.txt', 'data3.txt'];
 await Promise.all([
   $`echo -e "line1\nline2\nline3" > ${testDir}/data1.txt`,
   $`echo -e "line1\nline2\nline3\nline4\nline5" > ${testDir}/data2.txt`,
-  $`echo -e "line1\nline2" > ${testDir}/data3.txt`
+  $`echo -e "line1\nline2" > ${testDir}/data3.txt`,
 ]);
 
 // Map: count lines in each file
-const mapTasks = dataFiles.map(file =>
-  $`wc -l < ${testDir}/${file} || echo 0`
-);
+const mapTasks = dataFiles.map((file) => $`wc -l < ${testDir}/${file} || echo 0`);
 
 const counts = await Promise.all(mapTasks);
 
 // Reduce: sum the results
-const totalLines = counts.reduce((sum, result) =>
-  sum + parseInt(result.stdout.trim() || '0'), 0
-);
+const totalLines = counts.reduce((sum, result) => sum + parseInt(result.stdout.trim() || '0'), 0);
 
 console.log(`Total number of lines: ${totalLines}`);
 
@@ -407,11 +404,7 @@ dynamicResults.forEach((result) => {
 
 // 14. Parallel pipelines
 // Use pipe through shell for parallel processing
-const pipelineTasks = [
-  $`echo "data1" | base64`,
-  $`echo "data2" | base64`,
-  $`echo "data3" | base64`
-];
+const pipelineTasks = [$`echo "data1" | base64`, $`echo "data2" | base64`, $`echo "data3" | base64`];
 
 const encodedResults = await Promise.all(pipelineTasks);
 encodedResults.forEach((result, i) => {
@@ -423,7 +416,7 @@ encodedResults.forEach((result, i) => {
 const raceTasks = [
   $`sleep 3 && echo "Slow task 1"`,
   $`sleep 1 && echo "Fast task 2"`,
-  $`sleep 2 && echo "Medium task 3"`
+  $`sleep 2 && echo "Medium task 3"`,
 ];
 
 try {
@@ -437,12 +430,7 @@ try {
 
 // 16. Comparison: $.parallel.settled() vs Promise.allSettled()
 // allSettled waits for all tasks, regardless of success or error
-const settledTasks = [
-  $`echo "Success"`,
-  $`exit 1`,
-  $`echo "Another success"`,
-  $`false`
-];
+const settledTasks = [$`echo "Success"`, $`exit 1`, $`echo "Another success"`, $`false`];
 
 const settled = await Promise.allSettled(settledTasks);
 settled.forEach((result, i) => {

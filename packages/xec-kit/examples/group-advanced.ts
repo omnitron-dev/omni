@@ -10,7 +10,8 @@
  * - Async data fetching within prompts
  */
 
-import { text ,
+import {
+  text,
   note,
   prism,
   group,
@@ -20,7 +21,6 @@ import { text ,
   isCancel,
   multiselect,
 } from '../src/index.js';
-
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 

@@ -574,10 +574,10 @@ describe('Fine-Grained Reactivity', () => {
       const count3 = signal(3);
 
       const nodes = batchEffects(() => [
-          createReactiveTextNode(() => count1()),
-          createReactiveTextNode(() => count2()),
-          createReactiveTextNode(() => count3()),
-        ]);
+        createReactiveTextNode(() => count1()),
+        createReactiveTextNode(() => count2()),
+        createReactiveTextNode(() => count3()),
+      ]);
 
       expect(nodes.length).toBe(3);
       expect(nodes[0].textContent).toBe('1');

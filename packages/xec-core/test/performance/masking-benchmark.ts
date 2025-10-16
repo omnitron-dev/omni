@@ -32,13 +32,13 @@ const defaultPatterns = [
   // Generic secret patterns
   /\b(secret|client[_-]?secret)(\s*[:=]\s*)("([^"]+)"|'([^']+)'|([^"'\s]+))/gi,
   // Standalone Bearer tokens
-  /\b(Bearer)(\s+)([a-zA-Z0-9_\-/.]+)/gi
+  /\b(Bearer)(\s+)([a-zA-Z0-9_\-/.]+)/gi,
 ];
 
 // Generate test data
 function generateTestData(lines: number): string {
   const data: string[] = [];
-  
+
   for (let i = 0; i < lines; i++) {
     if (i % 10 === 0) {
       data.push(`{"api_key": "sk-1234567890abcdef${i}", "data": "normal content"}`);
@@ -62,18 +62,18 @@ function generateTestData(lines: number): string {
       data.push(`{"secret": "confidential-data-${i}", "public": "visible"}`);
     }
   }
-  
+
   return data.join('\n');
 }
 
 // Benchmark function
 function benchmark(name: string, fn: (text: string) => string, text: string, iterations: number): number {
   const start = performance.now();
-  
+
   for (let i = 0; i < iterations; i++) {
     fn(text);
   }
-  
+
   const duration = performance.now() - start;
   return duration;
 }
@@ -81,35 +81,35 @@ function benchmark(name: string, fn: (text: string) => string, text: string, ite
 // Main benchmark
 function main() {
   console.log('=== Sensitive Data Masking Performance Benchmark ===\n');
-  
+
   const maskerOld = createOptimizedMaskerOld(defaultPatterns, '[REDACTED]');
   const maskerNew = createOptimizedMaskerNew(defaultPatterns, '[REDACTED]');
-  
+
   // Warm up
   const warmupData = generateTestData(100);
   maskerOld(warmupData);
   maskerNew(warmupData);
-  
+
   // Test different data sizes
   const testCases = [
     { lines: 100, iterations: 100 },
     { lines: 1000, iterations: 50 },
     { lines: 10000, iterations: 10 },
   ];
-  
+
   for (const { lines, iterations } of testCases) {
     const testData = generateTestData(lines);
     console.log(`\n--- Test: ${lines} lines, ${iterations} iterations ---`);
     console.log(`Data size: ${(testData.length / 1024).toFixed(2)} KB`);
-    
+
     const timeOld = benchmark('Original', maskerOld, testData, iterations);
     const timeNew = benchmark('Optimized', maskerNew, testData, iterations);
-    
+
     console.log(`Original:  ${timeOld.toFixed(2)}ms (${(timeOld / iterations).toFixed(2)}ms per run)`);
     console.log(`Optimized: ${timeNew.toFixed(2)}ms (${(timeNew / iterations).toFixed(2)}ms per run)`);
     console.log(`Speed-up:  ${(timeOld / timeNew).toFixed(2)}x`);
-    console.log(`Improvement: ${((timeOld - timeNew) / timeOld * 100).toFixed(1)}%`);
-    
+    console.log(`Improvement: ${(((timeOld - timeNew) / timeOld) * 100).toFixed(1)}%`);
+
     // Verify both produce the same output
     const resultOld = maskerOld(testData);
     const resultNew = maskerNew(testData);
@@ -118,7 +118,7 @@ function main() {
       process.exit(1);
     }
   }
-  
+
   console.log('\n✅ All tests passed - both implementations produce identical results');
 }
 

@@ -30,44 +30,44 @@ interface HeadingData {
  */
 export const remarkCustomHeadingId: Plugin = () => (tree: any) => {
   visit(tree, 'heading', (node: Heading & { data?: HeadingData }) => {
-      // Find MDX expression nodes that might contain the ID comment
-      if (!node.children || node.children.length === 0) return;
+    // Find MDX expression nodes that might contain the ID comment
+    if (!node.children || node.children.length === 0) return;
 
-      // Look for mdxTextExpression or mdxFlowExpression at the end
-      for (let i = node.children.length - 1; i >= 0; i--) {
-        const child = node.children[i];
-        if (!child) continue;
+    // Look for mdxTextExpression or mdxFlowExpression at the end
+    for (let i = node.children.length - 1; i >= 0; i--) {
+      const child = node.children[i];
+      if (!child) continue;
 
-        // Check for MDX expression node (JSX comment)
-        if (child.type === 'mdxTextExpression' || (child as any).type === 'mdxFlowExpression') {
-          const exprNode = child as any;
-          const value = exprNode.value || '';
+      // Check for MDX expression node (JSX comment)
+      if (child.type === 'mdxTextExpression' || (child as any).type === 'mdxFlowExpression') {
+        const exprNode = child as any;
+        const value = exprNode.value || '';
 
-          // Match /* mdx-heading-id: custom-id */ pattern
-          const match = value.match(/\/\*\s*mdx-heading-id:\s*([a-zA-Z0-9-_]+)\s*\*\//);
+        // Match /* mdx-heading-id: custom-id */ pattern
+        const match = value.match(/\/\*\s*mdx-heading-id:\s*([a-zA-Z0-9-_]+)\s*\*\//);
 
-          if (match) {
-            const customId = match[1];
+        if (match) {
+          const customId = match[1];
 
-            // Remove the expression node from children
-            node.children.splice(i, 1);
+          // Remove the expression node from children
+          node.children.splice(i, 1);
 
-            // Set the custom ID in the heading's data
-            if (!node.data) {
-              node.data = {};
-            }
-            if (!node.data.hProperties) {
-              node.data.hProperties = {};
-            }
-            node.data.hProperties.id = customId;
-            node.data.id = customId;
-
-            break;
+          // Set the custom ID in the heading's data
+          if (!node.data) {
+            node.data = {};
           }
+          if (!node.data.hProperties) {
+            node.data.hProperties = {};
+          }
+          node.data.hProperties.id = customId;
+          node.data.id = customId;
+
+          break;
         }
       }
-    });
-  };
+    }
+  });
+};
 
 /**
  * Default export for convenience

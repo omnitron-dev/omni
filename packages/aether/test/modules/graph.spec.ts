@@ -132,10 +132,11 @@ describe('ModuleGraph', () => {
       const cycles = graph.findCircularDependencies();
       expect(cycles.length).toBeGreaterThan(0);
 
-      const hasCycle = cycles.some((cycle) => (
+      const hasCycle = cycles.some(
+        (cycle) =>
           (cycle.includes('module1') && cycle.includes('module2')) ||
           (cycle.includes('module2') && cycle.includes('module1'))
-        ));
+      );
       expect(hasCycle).toBe(true);
     });
 
@@ -148,8 +149,7 @@ describe('ModuleGraph', () => {
       expect(cycles.length).toBeGreaterThan(0);
 
       const hasCycle = cycles.some(
-        (cycle) =>
-          cycle.includes('module1') && cycle.includes('module2') && cycle.includes('module3')
+        (cycle) => cycle.includes('module1') && cycle.includes('module2') && cycle.includes('module3')
       );
       expect(hasCycle).toBe(true);
     });

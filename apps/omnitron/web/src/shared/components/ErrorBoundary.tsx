@@ -177,15 +177,7 @@ export const ErrorBoundary = defineComponent<ErrorBoundaryProps>((props) => {
   });
 
   return () => {
-    const {
-      children,
-      fallback,
-      fallbackRender,
-      resetable = true,
-      resetText,
-      class: className = '',
-      ...rest
-    } = props;
+    const { children, fallback, fallbackRender, resetable = true, resetText, class: className = '', ...rest } = props;
 
     // If there's an error, render fallback
     if (hasError()) {

@@ -113,9 +113,7 @@ export class CollaborationCursorExtension extends Extension<CollaborationCursorO
   onCreate() {
     // Get the collaboration extension
     if (this.editor) {
-      this.collaborationExtension = this.editor.extensionManager?.getExtension<CollaborationExtension>(
-        'collaboration',
-      );
+      this.collaborationExtension = this.editor.extensionManager?.getExtension<CollaborationExtension>('collaboration');
     }
   }
 
@@ -191,16 +189,12 @@ export class CollaborationCursorExtension extends Extension<CollaborationCursorO
           Decoration.widget(cursor.anchor, cursorEl, {
             side: -1,
             key: `cursor-${clientId}`,
-          }),
+          })
         );
       }
 
       // Create selection decoration
-      if (
-        cursor.anchor !== undefined &&
-        cursor.head !== undefined &&
-        cursor.anchor !== cursor.head
-      ) {
+      if (cursor.anchor !== undefined && cursor.head !== undefined && cursor.anchor !== cursor.head) {
         const from = Math.min(cursor.anchor, cursor.head);
         const to = Math.max(cursor.anchor, cursor.head);
 
@@ -210,7 +204,7 @@ export class CollaborationCursorExtension extends Extension<CollaborationCursorO
             Decoration.inline(from, to, {
               class: selectionEl.className,
               style: selectionEl.style.cssText,
-            }),
+            })
           );
         }
       }

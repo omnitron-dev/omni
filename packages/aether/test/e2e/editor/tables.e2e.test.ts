@@ -5,14 +5,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import {
-  waitForEditor,
-  typeText,
-  getEditorHTML,
-  pressShortcut,
-  pressTab,
-  getEditor,
-} from './helpers';
+import { waitForEditor, typeText, getEditorHTML, pressShortcut, pressTab, getEditor } from './helpers';
 
 test.describe('Tables', () => {
   test.beforeEach(async ({ page }) => {

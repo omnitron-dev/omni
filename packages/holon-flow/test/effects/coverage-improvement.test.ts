@@ -1,17 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import {
-  throttleEffect,
-  batch,
-  EffectFlags,
-  effectful,
-  EffectInterpreter,
-  Effects
-} from '../../src/effects/index.js';
-import {
-  EffectTracker,
-  trackedFlow,
-  trackedEffect
-} from '../../src/effects/tracker.js';
+import { throttleEffect, batch, EffectFlags, effectful, EffectInterpreter, Effects } from '../../src/effects/index.js';
+import { EffectTracker, trackedFlow, trackedEffect } from '../../src/effects/tracker.js';
 import { context } from '../../src/context.js';
 
 describe('Coverage Improvement Tests', () => {
@@ -104,7 +93,7 @@ describe('Coverage Improvement Tests', () => {
 
       failingFlow.effects = new Set([
         { id: Symbol('test1'), flags: EffectFlags.IO },
-        { id: Symbol('test2'), flags: EffectFlags.Network }
+        { id: Symbol('test2'), flags: EffectFlags.Network },
       ]);
 
       await expect(tracker.trackFlow(failingFlow, null)).rejects.toThrow('Flow error');
@@ -180,21 +169,21 @@ describe('Coverage Improvement Tests', () => {
       const allFlagsFlow = effects.effectful(
         () => {},
         EffectFlags.IO |
-        EffectFlags.Read |
-        EffectFlags.Write |
-        EffectFlags.Network |
-        EffectFlags.Random |
-        EffectFlags.Time |
-        EffectFlags.Throw |
-        EffectFlags.Async |
-        EffectFlags.Process |
-        EffectFlags.Memory |
-        EffectFlags.State |
-        EffectFlags.Unsafe |
-        EffectFlags.Database |
-        EffectFlags.Cache |
-        EffectFlags.Queue |
-        EffectFlags.Stream
+          EffectFlags.Read |
+          EffectFlags.Write |
+          EffectFlags.Network |
+          EffectFlags.Random |
+          EffectFlags.Time |
+          EffectFlags.Throw |
+          EffectFlags.Async |
+          EffectFlags.Process |
+          EffectFlags.Memory |
+          EffectFlags.State |
+          EffectFlags.Unsafe |
+          EffectFlags.Database |
+          EffectFlags.Cache |
+          EffectFlags.Queue |
+          EffectFlags.Stream
       );
 
       const analysis = effects.analyze(allFlagsFlow);
@@ -228,9 +217,7 @@ describe('Coverage Improvement Tests', () => {
       const plainFlow = (x: number) => x * 2;
 
       // Should not throw for plain functions (treated as pure)
-      expect(() =>
-        effects.restrict(plainFlow, EffectFlags.None)
-      ).not.toThrow();
+      expect(() => effects.restrict(plainFlow, EffectFlags.None)).not.toThrow();
     });
   });
 });

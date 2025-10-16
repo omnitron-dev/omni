@@ -72,10 +72,7 @@ export class RedisClient {
   /**
    * Subscribe to channel
    */
-  async subscribe(
-    channel: string,
-    handler: (message: unknown) => void
-  ): Promise<void> {
+  async subscribe(channel: string, handler: (message: unknown) => void): Promise<void> {
     const subscriber = this.client.duplicate();
     await subscriber.subscribe(channel);
 

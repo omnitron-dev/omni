@@ -158,8 +158,19 @@ describe('SVG Viewport Utils - Edge Cases', () => {
     });
 
     it('should handle all alignment values', () => {
-      const aligns = ['none', 'xMinYMin', 'xMidYMin', 'xMaxYMin', 'xMinYMid', 'xMidYMid', 'xMaxYMid', 'xMinYMax', 'xMidYMax', 'xMaxYMax'];
-      aligns.forEach(align => {
+      const aligns = [
+        'none',
+        'xMinYMin',
+        'xMidYMin',
+        'xMaxYMin',
+        'xMinYMid',
+        'xMidYMid',
+        'xMaxYMid',
+        'xMinYMax',
+        'xMidYMax',
+        'xMaxYMax',
+      ];
+      aligns.forEach((align) => {
         const result = parsePreserveAspectRatio(`${align} meet`);
         expect(result.align).toBe(align);
       });
@@ -208,18 +219,12 @@ describe('SVG Viewport Utils - Edge Cases', () => {
 
   describe('fitToViewport - Edge Cases', () => {
     it('should handle zero viewBox dimensions', () => {
-      const result = fitToViewport(
-        { x: 0, y: 0, width: 0, height: 0 },
-        { width: 100, height: 100 }
-      );
+      const result = fitToViewport({ x: 0, y: 0, width: 0, height: 0 }, { width: 100, height: 100 });
       expect(result.scale).toBe(Infinity);
     });
 
     it('should handle zero viewport dimensions', () => {
-      const result = fitToViewport(
-        { x: 0, y: 0, width: 100, height: 100 },
-        { width: 0, height: 0 }
-      );
+      const result = fitToViewport({ x: 0, y: 0, width: 100, height: 100 }, { width: 0, height: 0 });
       expect(result.scale).toBe(0);
     });
 
@@ -254,12 +259,18 @@ describe('SVG Viewport Utils - Edge Cases', () => {
 
     it('should handle all alignment positions', () => {
       const aligns: PreserveAspectRatio['align'][] = [
-        'xMinYMin', 'xMidYMin', 'xMaxYMin',
-        'xMinYMid', 'xMidYMid', 'xMaxYMid',
-        'xMinYMax', 'xMidYMax', 'xMaxYMax'
+        'xMinYMin',
+        'xMidYMin',
+        'xMaxYMin',
+        'xMinYMid',
+        'xMidYMid',
+        'xMaxYMid',
+        'xMinYMax',
+        'xMidYMax',
+        'xMaxYMax',
       ];
 
-      aligns.forEach(align => {
+      aligns.forEach((align) => {
         const result = fitToViewport(
           { x: 0, y: 0, width: 100, height: 100 },
           { width: 200, height: 200 },
@@ -270,10 +281,7 @@ describe('SVG Viewport Utils - Edge Cases', () => {
     });
 
     it('should handle negative viewBox', () => {
-      const result = fitToViewport(
-        { x: -50, y: -50, width: 100, height: 100 },
-        { width: 200, height: 200 }
-      );
+      const result = fitToViewport({ x: -50, y: -50, width: 100, height: 100 }, { width: 200, height: 200 });
       expect(result).toBeDefined();
     });
   });
@@ -303,10 +311,14 @@ describe('SVG Viewport Utils - Edge Cases', () => {
 
     it('should handle all anchor points', () => {
       const anchors: Array<'center' | 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight'> = [
-        'center', 'topLeft', 'topRight', 'bottomLeft', 'bottomRight'
+        'center',
+        'topLeft',
+        'topRight',
+        'bottomLeft',
+        'bottomRight',
       ];
 
-      anchors.forEach(anchor => {
+      anchors.forEach((anchor) => {
         const result = scaleViewBox({ x: 0, y: 0, width: 100, height: 100 }, 2, anchor);
         expect(result.width).toBe(200);
         expect(result.height).toBe(200);
@@ -421,18 +433,12 @@ describe('SVG Viewport Utils - Edge Cases', () => {
 
     it('should handle viewBox within bounds', () => {
       const viewBox = { x: 10, y: 10, width: 50, height: 50 };
-      const result = constrainViewBox(
-        viewBox,
-        { x: 0, y: 0, width: 100, height: 100 }
-      );
+      const result = constrainViewBox(viewBox, { x: 0, y: 0, width: 100, height: 100 });
       expect(result).toEqual(viewBox);
     });
 
     it('should handle viewBox larger than bounds', () => {
-      const result = constrainViewBox(
-        { x: 0, y: 0, width: 200, height: 200 },
-        { x: 0, y: 0, width: 100, height: 100 }
-      );
+      const result = constrainViewBox({ x: 0, y: 0, width: 200, height: 200 }, { x: 0, y: 0, width: 100, height: 100 });
       expect(result.width).toBe(100);
       expect(result.height).toBe(100);
     });
@@ -446,10 +452,7 @@ describe('SVG Viewport Utils - Edge Cases', () => {
     });
 
     it('should handle zero bounds', () => {
-      const result = constrainViewBox(
-        { x: 10, y: 10, width: 50, height: 50 },
-        { x: 0, y: 0, width: 0, height: 0 }
-      );
+      const result = constrainViewBox({ x: 10, y: 10, width: 50, height: 50 }, { x: 0, y: 0, width: 0, height: 0 });
       expect(result.width).toBe(0);
       expect(result.height).toBe(0);
     });

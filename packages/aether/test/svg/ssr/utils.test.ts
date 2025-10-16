@@ -114,9 +114,7 @@ describe('SSR Utils - ID Generation', () => {
 
 describe('SSR Utils - HTML Escaping', () => {
   it('should escape HTML special characters', () => {
-    expect(escapeHtml('<script>alert()</script>')).toBe(
-      '&lt;script&gt;alert()&lt;/script&gt;'
-    );
+    expect(escapeHtml('<script>alert()</script>')).toBe('&lt;script&gt;alert()&lt;/script&gt;');
     expect(escapeHtml('"Hello"')).toBe('&quot;Hello&quot;');
     expect(escapeHtml("'Hello'")).toBe('&#39;Hello&#39;');
     expect(escapeHtml('A & B')).toBe('A &amp; B');

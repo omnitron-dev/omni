@@ -3,13 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
-  Animate,
-  AnimateMotion,
-  AnimateTransform,
-  AnimateColor,
-  Set,
-} from '../../../src/svg/animations/smil.js';
+import { Animate, AnimateMotion, AnimateTransform, AnimateColor, Set } from '../../../src/svg/animations/smil.js';
 
 describe('SMIL Animations', () => {
   describe('Animate', () => {

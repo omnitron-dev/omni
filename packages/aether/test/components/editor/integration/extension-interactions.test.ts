@@ -200,9 +200,7 @@ describe('Extension Interactions', () => {
     });
 
     it('should support formatted text in table cells', () => {
-      editor.setContent(
-        '<table><tr><td><p>Cell content</p></td></tr></table>'
-      );
+      editor.setContent('<table><tr><td><p>Cell content</p></td></tr></table>');
       setSelection(editor, 4, 8); // Select "Cell"
 
       toggleMarkCommand(editor, 'bold');
@@ -235,9 +233,7 @@ describe('Extension Interactions', () => {
     });
 
     it('should support link with multiple marks', () => {
-      editor.setContent(
-        '<p><a href="https://example.com"><strong><em>Formatted link</em></strong></a></p>'
-      );
+      editor.setContent('<p><a href="https://example.com"><strong><em>Formatted link</em></strong></a></p>');
 
       const html = editor.getHTML();
       expect(html).toContain('<a');
@@ -274,9 +270,7 @@ describe('Extension Interactions', () => {
 
   describe('Nested Block Nodes', () => {
     it('should support lists inside blockquotes', () => {
-      editor.setContent(
-        '<blockquote><ul><li><p>List in quote</p></li></ul></blockquote>'
-      );
+      editor.setContent('<blockquote><ul><li><p>List in quote</p></li></ul></blockquote>');
 
       const html = editor.getHTML();
       expect(html).toContain('<blockquote>');
@@ -285,9 +279,7 @@ describe('Extension Interactions', () => {
     });
 
     it('should support multiple list items in blockquote', () => {
-      editor.setContent(
-        '<blockquote><ul><li><p>Item 1</p></li><li><p>Item 2</p></li></ul></blockquote>'
-      );
+      editor.setContent('<blockquote><ul><li><p>Item 1</p></li><li><p>Item 2</p></li></ul></blockquote>');
 
       const html = editor.getHTML();
       expect(html).toContain('<blockquote>');
@@ -298,9 +290,7 @@ describe('Extension Interactions', () => {
 
   describe('Task Lists with Formatting', () => {
     it('should support bold text in task items', () => {
-      editor.setContent(
-        '<ul data-type="taskList"><li data-type="taskItem" data-checked="false"><p>Task</p></li></ul>'
-      );
+      editor.setContent('<ul data-type="taskList"><li data-type="taskItem" data-checked="false"><p>Task</p></li></ul>');
       setSelection(editor, 3, 7);
 
       toggleMarkCommand(editor, 'bold');
@@ -383,9 +373,7 @@ describe('Extension Interactions', () => {
     });
 
     it('should handle code blocks with other content', () => {
-      editor.setContent(
-        '<p>Text before</p><pre><code>Code block</code></pre><p>Text after</p>'
-      );
+      editor.setContent('<p>Text before</p><pre><code>Code block</code></pre><p>Text after</p>');
 
       const html = editor.getHTML();
       expect(html).toContain('Text before');
@@ -415,9 +403,7 @@ describe('Extension Interactions', () => {
     });
 
     it('should enforce table structure rules', () => {
-      editor.setContent(
-        '<table><tr><td><p>Cell</p></td></tr></table>'
-      );
+      editor.setContent('<table><tr><td><p>Cell</p></td></tr></table>');
 
       const html = editor.getHTML();
       expect(html).toContain('<table>');

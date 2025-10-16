@@ -30,13 +30,7 @@ import type {
 import * as CoreExports from '@xec-sh/core';
 
 // Import types from @xec-sh/cli config
-import type {
-  TargetType,
-  TargetConfig,
-  Configuration,
-  CommandConfig,
-  ResolvedTarget,
-} from './config/types.js';
+import type { TargetType, TargetConfig, Configuration, CommandConfig, ResolvedTarget } from './config/types.js';
 
 // Re-export commonly used items to global scope
 declare global {
@@ -102,13 +96,7 @@ declare global {
     };
 
     // Export CLI configuration types
-    export type {
-      TargetType,
-      TargetConfig,
-      Configuration,
-      CommandConfig,
-      ResolvedTarget,
-    };
+    export type { TargetType, TargetConfig, Configuration, CommandConfig, ResolvedTarget };
   }
 }
 

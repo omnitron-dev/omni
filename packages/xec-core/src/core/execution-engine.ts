@@ -25,7 +25,8 @@ function setupUnhandledRejectionHandler() {
 
   unhandledRejectionHandler = (reason: any, promise: Promise<any>) => {
     // Check if this is an xec promise by looking for xec-specific error types or properties
-    const isXecPromise = (promise as any).__isXecPromise ||
+    const isXecPromise =
+      (promise as any).__isXecPromise ||
       (reason && reason.code === 'COMMAND_FAILED') ||
       (reason && reason.constructor && reason.constructor.name === 'CommandError');
 
@@ -57,10 +58,20 @@ import { Command, SSHAdapterOptions, DockerAdapterOptions, KubernetesAdapterOpti
 import type { UshEventMap } from '../types/events.js';
 import type { Disposable } from '../types/disposable.js';
 import type { ProcessPromise } from '../types/process.js';
-import type { DockerOptions, ExecutionEngineConfig, DockerEphemeralOptions, DockerPersistentOptions } from '../types/execution.js';
+import type {
+  DockerOptions,
+  ExecutionEngineConfig,
+  DockerEphemeralOptions,
+  DockerPersistentOptions,
+} from '../types/execution.js';
 
 export { ProcessPromise } from '../types/process.js';
-export { DockerOptions, ExecutionEngineConfig, DockerEphemeralOptions, DockerPersistentOptions } from '../types/execution.js';
+export {
+  DockerOptions,
+  ExecutionEngineConfig,
+  DockerEphemeralOptions,
+  DockerPersistentOptions,
+} from '../types/execution.js';
 
 export class ExecutionEngine extends EnhancedEventEmitter implements Disposable {
   // Core features
@@ -111,7 +122,6 @@ export class ExecutionEngine extends EnhancedEventEmitter implements Disposable 
       this.emit = () => false;
     }
 
-
     if (existingAdapters) {
       this.adapters = existingAdapters;
     } else {
@@ -122,17 +132,14 @@ export class ExecutionEngine extends EnhancedEventEmitter implements Disposable 
   /**
    * Helper method to emit events with proper typing and performance optimization
    */
-  private emitEvent<K extends keyof UshEventMap>(
-    event: K,
-    data: Omit<UshEventMap[K], 'timestamp' | 'adapter'>
-  ): void {
+  private emitEvent<K extends keyof UshEventMap>(event: K, data: Omit<UshEventMap[K], 'timestamp' | 'adapter'>): void {
     // Skip if no listeners (performance optimization)
     if (!this.listenerCount(event)) return;
 
     this.emit(event, {
       ...data,
       timestamp: new Date(),
-      adapter: this.getCurrentAdapter()?.name || 'local'
+      adapter: this.getCurrentAdapter()?.name || 'local',
     } as UshEventMap[K]);
   }
 
@@ -151,7 +158,19 @@ export class ExecutionEngine extends EnhancedEventEmitter implements Disposable 
 
     // Validate encoding
     if (config.encoding !== undefined) {
-      const validEncodings: BufferEncoding[] = ['ascii', 'utf8', 'utf-8', 'utf16le', 'ucs2', 'ucs-2', 'base64', 'base64url', 'latin1', 'binary', 'hex'];
+      const validEncodings: BufferEncoding[] = [
+        'ascii',
+        'utf8',
+        'utf-8',
+        'utf16le',
+        'ucs2',
+        'ucs-2',
+        'base64',
+        'base64url',
+        'latin1',
+        'binary',
+        'hex',
+      ];
       if (!validEncodings.includes(config.encoding)) {
         throw new Error(`Unsupported encoding: ${config.encoding}`);
       }
@@ -184,28 +203,28 @@ export class ExecutionEngine extends EnhancedEventEmitter implements Disposable 
     // Initialize local adapter (always available)
     const localConfig = {
       ...this.getBaseAdapterConfig(),
-      ...this._config.adapters?.local
+      ...this._config.adapters?.local,
     };
     this.adapters.set('local', new LocalAdapter(localConfig));
 
     // Initialize SSH adapter (always available for lazy loading)
     const sshConfig = {
       ...this.getBaseAdapterConfig(),
-      ...this._config.adapters?.ssh
+      ...this._config.adapters?.ssh,
     };
     this.adapters.set('ssh', new SSHAdapter(sshConfig));
 
     // Initialize Kubernetes adapter (always available for lazy loading)
     const k8sConfig = {
       ...this.getBaseAdapterConfig(),
-      ...this._config.adapters?.kubernetes
+      ...this._config.adapters?.kubernetes,
     };
     this.adapters.set('kubernetes', new KubernetesAdapter(k8sConfig));
 
     // Initialize Docker adapter (always available for lazy loading)
     const dockerConfig = {
       ...this.getBaseAdapterConfig(),
-      ...this._config.adapters?.docker
+      ...this._config.adapters?.docker,
     };
     this.adapters.set('docker', new DockerAdapter(dockerConfig));
   }
@@ -238,8 +257,8 @@ export class ExecutionEngine extends EnhancedEventEmitter implements Disposable 
         ...command,
         env: {
           ...(defaultEnv || {}),
-          ...(command.env || {})
-        }
+          ...(command.env || {}),
+        },
       };
     }
 
@@ -249,8 +268,8 @@ export class ExecutionEngine extends EnhancedEventEmitter implements Disposable 
       ...contextCommand,
       env: {
         ...(this._config.defaultEnv || {}),
-        ...(contextCommand.env || {})
-      }
+        ...(contextCommand.env || {}),
+      },
     };
     const mergedCommand = finalCommand;
     const adapter = await this.selectAdapter(mergedCommand);
@@ -265,7 +284,7 @@ export class ExecutionEngine extends EnhancedEventEmitter implements Disposable 
       args: mergedCommand.args,
       cwd: mergedCommand.cwd,
       shell: typeof mergedCommand.shell === 'boolean' ? mergedCommand.shell : !!mergedCommand.shell,
-      env: mergedCommand.env
+      env: mergedCommand.env,
     });
 
     try {
@@ -276,11 +295,7 @@ export class ExecutionEngine extends EnhancedEventEmitter implements Disposable 
         const maxRetries = mergedCommand.retry.maxRetries ?? 0;
         if (maxRetries > 0) {
           try {
-            result = await withExecutionRetry(
-              () => adapter.execute(mergedCommand),
-              mergedCommand.retry,
-              this
-            );
+            result = await withExecutionRetry(() => adapter.execute(mergedCommand), mergedCommand.retry, this);
           } catch (error) {
             // If nothrow is set and it's a RetryError, return the last result
             if (mergedCommand.nothrow && error instanceof RetryError) {
@@ -302,7 +317,7 @@ export class ExecutionEngine extends EnhancedEventEmitter implements Disposable 
         exitCode: result.exitCode,
         stdout: result.stdout,
         stderr: result.stderr,
-        duration: Date.now() - startTime
+        duration: Date.now() - startTime,
       });
 
       return result;
@@ -311,7 +326,7 @@ export class ExecutionEngine extends EnhancedEventEmitter implements Disposable 
       this.emitEvent('command:error', {
         command: mergedCommand.command || '',
         error: error instanceof Error ? error.message : String(error),
-        duration: Date.now() - startTime
+        duration: Date.now() - startTime,
       });
 
       throw error;
@@ -387,8 +402,7 @@ export class ExecutionEngine extends EnhancedEventEmitter implements Disposable 
         return String(value);
       });
     },
-    create: (templateStr: string, options?: TemplateOptions) =>
-      new CommandTemplate(templateStr, options),
+    create: (templateStr: string, options?: TemplateOptions) => new CommandTemplate(templateStr, options),
     parse: (templateStr: string) => {
       const regex = /\{\{(\w+)\}\}/g;
       const params: string[] = [];
@@ -410,7 +424,7 @@ export class ExecutionEngine extends EnhancedEventEmitter implements Disposable 
         throw new Error(`Template '${name}' not found`);
       }
       return template;
-    }
+    },
   };
 
   // Alias for template literal support (for compatibility)
@@ -454,7 +468,7 @@ export class ExecutionEngine extends EnhancedEventEmitter implements Disposable 
             // Create Docker adapter on demand
             const dockerConfig = {
               ...this.getBaseAdapterConfig(),
-              ...this._config.adapters?.docker
+              ...this._config.adapters?.docker,
             };
             this.adapters.set('docker', new DockerAdapter(dockerConfig));
           }
@@ -464,7 +478,7 @@ export class ExecutionEngine extends EnhancedEventEmitter implements Disposable 
             // Create Kubernetes adapter on demand
             const k8sConfig = {
               ...this.getBaseAdapterConfig(),
-              ...this._config.adapters?.kubernetes
+              ...this._config.adapters?.kubernetes,
             };
             this.adapters.set('kubernetes', new KubernetesAdapter(k8sConfig));
           }
@@ -491,11 +505,7 @@ export class ExecutionEngine extends EnhancedEventEmitter implements Disposable 
       const retryOptions = { ...options, ...cmd.retry };
 
       try {
-        return await withExecutionRetry(
-          () => originalExecute(cmd),
-          retryOptions,
-          this
-        );
+        return await withExecutionRetry(() => originalExecute(cmd), retryOptions, this);
       } catch (error) {
         // If nothrow is set and it's a RetryError, return the last result
         if (cmd.nothrow && error instanceof RetryError) {
@@ -552,13 +562,13 @@ export class ExecutionEngine extends EnhancedEventEmitter implements Disposable 
     const result = await this.execute({
       command: 'cat',
       args: [path],
-      shell: false
+      shell: false,
     });
 
     if (result.exitCode === 0) {
       // Emit file:read event
       this.emitEvent('file:read', {
-        path
+        path,
       });
       return result.stdout;
     } else {
@@ -571,14 +581,14 @@ export class ExecutionEngine extends EnhancedEventEmitter implements Disposable 
       command: 'tee',
       args: [path],
       stdin: content,
-      shell: false
+      shell: false,
     });
 
     if (result.exitCode === 0) {
       // Emit file:write event
       this.emitEvent('file:write', {
         path,
-        size: Buffer.byteLength(content, 'utf8')
+        size: Buffer.byteLength(content, 'utf8'),
       });
     } else {
       throw new Error(`Failed to write file ${path}: ${result.stderr}`);
@@ -589,20 +599,20 @@ export class ExecutionEngine extends EnhancedEventEmitter implements Disposable 
     const result = await this.execute({
       command: 'rm',
       args: ['-f', path],
-      shell: false
+      shell: false,
     });
 
     if (result.exitCode === 0) {
       // Emit file:delete event
       this.emitEvent('file:delete', {
-        path
+        path,
       });
     } else {
       throw new Error(`Failed to delete file ${path}: ${result.stderr}`);
     }
   }
 
-  // Enhanced interactive method  
+  // Enhanced interactive method
   interactive(): ExecutionEngine {
     const newEngine = Object.create(this);
     // Apply interactive configuration
@@ -610,7 +620,7 @@ export class ExecutionEngine extends EnhancedEventEmitter implements Disposable 
       ...this.currentConfig,
       stdout: 'inherit',
       stderr: 'inherit',
-      stdin: process.stdin
+      stdin: process.stdin,
     };
     return newEngine;
   }
@@ -633,19 +643,20 @@ export class ExecutionEngine extends EnhancedEventEmitter implements Disposable 
   with(config: Partial<Command> & { defaultEnv?: Record<string, string>; defaultCwd?: string }): ExecutionEngine {
     // Check for local context from within()
     const localContext = asyncLocalStorage.getStore();
-    const mergedConfig = localContext
-      ? { ...localContext, ...config }
-      : config;
+    const mergedConfig = localContext ? { ...localContext, ...config } : config;
 
     // Extract default* properties from command config
     const { defaultEnv, defaultCwd, ...commandConfig } = mergedConfig;
 
     // Create new config if defaults are provided
-    const engineConfig = (defaultEnv !== undefined || defaultCwd !== undefined) ? {
-      ...this._config,
-      defaultEnv: defaultEnv ?? this._config.defaultEnv,
-      defaultCwd: defaultCwd ?? this._config.defaultCwd
-    } : this._config;
+    const engineConfig =
+      defaultEnv !== undefined || defaultCwd !== undefined
+        ? {
+            ...this._config,
+            defaultEnv: defaultEnv ?? this._config.defaultEnv,
+            defaultCwd: defaultCwd ?? this._config.defaultCwd,
+          }
+        : this._config;
 
     // Create new engine with potentially updated config
     const newEngine = new ExecutionEngine(engineConfig, this.adapters);
@@ -688,7 +699,7 @@ export class ExecutionEngine extends EnhancedEventEmitter implements Disposable 
           user: ephemeralOptions.user,
           env: ephemeralOptions.env,
           // Additional options not in current DockerAdapterOptions but would be passed through
-        } as DockerAdapterOptions
+        } as DockerAdapterOptions,
       });
     } else {
       // Persistent container flow
@@ -700,8 +711,8 @@ export class ExecutionEngine extends EnhancedEventEmitter implements Disposable 
           container: persistentOptions.container,
           workdir: persistentOptions.workdir,
           user: persistentOptions.user,
-          env: persistentOptions.env
-        } as DockerAdapterOptions
+          env: persistentOptions.env,
+        } as DockerAdapterOptions,
       });
     }
   }
@@ -727,7 +738,7 @@ export class ExecutionEngine extends EnhancedEventEmitter implements Disposable 
   local(): ExecutionEngine {
     return this.with({
       adapter: 'local',
-      adapterOptions: { type: 'local' }
+      adapterOptions: { type: 'local' },
     });
   }
 
@@ -780,7 +791,7 @@ export class ExecutionEngine extends EnhancedEventEmitter implements Disposable 
     // Ensure concurrency is set (alias for maxConcurrency)
     const batchOptions: ParallelOptions = {
       ...options,
-      maxConcurrency: options.concurrency || options.maxConcurrency || 5
+      maxConcurrency: options.concurrency || options.maxConcurrency || 5,
     };
 
     return this.parallel.settled(commands, batchOptions);
@@ -788,7 +799,7 @@ export class ExecutionEngine extends EnhancedEventEmitter implements Disposable 
 
   env(env: Record<string, string>): ExecutionEngine {
     return this.with({
-      env: { ...this.currentConfig.env, ...env }
+      env: { ...this.currentConfig.env, ...env },
     });
   }
 
@@ -833,7 +844,7 @@ export class ExecutionEngine extends EnhancedEventEmitter implements Disposable 
        */
       get(): Readonly<ExecutionEngineConfig> {
         return { ...self._config };
-      }
+      },
     };
   }
 
@@ -891,14 +902,14 @@ export class ExecutionEngine extends EnhancedEventEmitter implements Disposable 
       const result = await this.run`which ${command}`.nothrow();
       const path = result.stdout.trim();
       // If which returns empty output or non-zero exit, command not found
-      return (path && result.exitCode === 0) ? path : null;
+      return path && result.exitCode === 0 ? path : null;
     } catch {
       return null;
     }
   }
 
   async isCommandAvailable(command: string): Promise<boolean> {
-    return await this.which(command) !== null;
+    return (await this.which(command)) !== null;
   }
 
   /**

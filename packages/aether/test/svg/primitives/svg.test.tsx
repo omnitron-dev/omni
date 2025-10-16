@@ -33,9 +33,7 @@ describe('SVG Primitive', () => {
     const [width, setWidth] = createSignal(100);
     const [height, setHeight] = createSignal(100);
 
-    const { container } = render(() => (
-      <SVG width={width} height={height} />
-    ));
+    const { container } = render(() => <SVG width={width} height={height} />);
 
     const svg = container.querySelector('svg');
     expect(svg?.getAttribute('width')).toBe('100');
@@ -50,9 +48,7 @@ describe('SVG Primitive', () => {
   });
 
   it('should support viewBox attribute', () => {
-    const { container } = render(() => (
-      <SVG width={100} height={100} viewBox="0 0 200 200" />
-    ));
+    const { container } = render(() => <SVG width={100} height={100} viewBox="0 0 200 200" />);
 
     const svg = container.querySelector('svg');
     expect(svg?.getAttribute('viewBox')).toBe('0 0 200 200');
@@ -61,9 +57,7 @@ describe('SVG Primitive', () => {
   it('should support reactive viewBox', () => {
     const [viewBox, setViewBox] = createSignal('0 0 100 100');
 
-    const { container } = render(() => (
-      <SVG width={100} height={100} viewBox={viewBox} />
-    ));
+    const { container } = render(() => <SVG width={100} height={100} viewBox={viewBox} />);
 
     const svg = container.querySelector('svg');
     expect(svg?.getAttribute('viewBox')).toBe('0 0 100 100');
@@ -76,12 +70,7 @@ describe('SVG Primitive', () => {
 
   it('should support className and style', () => {
     const { container } = render(() => (
-      <SVG
-        width={100}
-        height={100}
-        className="test-svg"
-        style={{ border: '1px solid black' }}
-      />
+      <SVG width={100} height={100} className="test-svg" style={{ border: '1px solid black' }} />
     ));
 
     const svg = container.querySelector('svg');
@@ -117,9 +106,7 @@ describe('SVG Primitive', () => {
   });
 
   it('should handle numeric dimensions', () => {
-    const { container } = render(() => (
-      <SVG width={200} height={150} />
-    ));
+    const { container } = render(() => <SVG width={200} height={150} />);
 
     const svg = container.querySelector('svg');
     expect(svg?.getAttribute('width')).toBe('200');
@@ -127,9 +114,7 @@ describe('SVG Primitive', () => {
   });
 
   it('should handle string dimensions', () => {
-    const { container } = render(() => (
-      <SVG width="100%" height="50vh" />
-    ));
+    const { container } = render(() => <SVG width="100%" height="50vh" />);
 
     const svg = container.querySelector('svg');
     expect(svg?.getAttribute('width')).toBe('100%');
@@ -138,12 +123,7 @@ describe('SVG Primitive', () => {
 
   it('should support preserveAspectRatio', () => {
     const { container } = render(() => (
-      <SVG
-        width={100}
-        height={100}
-        viewBox="0 0 200 200"
-        preserveAspectRatio="xMidYMid meet"
-      />
+      <SVG width={100} height={100} viewBox="0 0 200 200" preserveAspectRatio="xMidYMid meet" />
     ));
 
     const svg = container.querySelector('svg');
@@ -187,14 +167,7 @@ describe('SVG Primitive', () => {
     const onClick = vi.fn();
 
     const { container } = render(() => (
-      <SVG
-        width={100}
-        height={100}
-        onClick={onClick}
-        fill="blue"
-        stroke="red"
-        strokeWidth="2"
-      />
+      <SVG width={100} height={100} onClick={onClick} fill="blue" stroke="red" strokeWidth="2" />
     ));
 
     const svg = container.querySelector('svg');
@@ -228,18 +201,14 @@ describe('SVG Primitive', () => {
   });
 
   it('should auto-set role="img" when aria-label is provided', () => {
-    const { container } = render(() => (
-      <SVG width={100} height={100} aria-label="Icon" />
-    ));
+    const { container } = render(() => <SVG width={100} height={100} aria-label="Icon" />);
 
     const svg = container.querySelector('svg');
     expect(svg?.getAttribute('role')).toBe('img');
   });
 
   it('should not override explicit role', () => {
-    const { container } = render(() => (
-      <SVG width={100} height={100} aria-label="Icon" role="presentation" />
-    ));
+    const { container } = render(() => <SVG width={100} height={100} aria-label="Icon" role="presentation" />);
 
     const svg = container.querySelector('svg');
     expect(svg?.getAttribute('role')).toBe('presentation');

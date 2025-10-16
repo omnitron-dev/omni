@@ -1,8 +1,8 @@
 /**
  * 03. Streaming - Stream Data Processing
- * 
+ *
  * Demonstrates working with data streams.
- * 
+ *
  * IMPORTANT: @xec-sh/core doesn't support direct access to stdout/stderr streams
  * during execution. Commands are executed and return results.
  * For real streaming, it's recommended to use separate
@@ -90,7 +90,7 @@ if (files.length === 0) {
   for (let i = 0; i < files.length; i += BATCH_SIZE) {
     const batch = files.slice(i, i + BATCH_SIZE);
     console.log(`\nProcessing batch ${Math.floor(i / BATCH_SIZE) + 1}:`);
-    batch.forEach(file => console.log(`  - ${file}`));
+    batch.forEach((file) => console.log(`  - ${file}`));
 
     // Here you can add processing for each batch
   }
@@ -152,7 +152,8 @@ console.log('\nNumbered lines:');
 console.log(numbered.stdout);
 
 // Reverse order
-const reversed = await $`echo "${inputData}" | tac 2>/dev/null || echo "${inputData}" | tail -r 2>/dev/null || echo "tac/tail -r not available"`;
+const reversed =
+  await $`echo "${inputData}" | tac 2>/dev/null || echo "${inputData}" | tail -r 2>/dev/null || echo "tac/tail -r not available"`;
 console.log('\nReverse order:');
 console.log(reversed.stdout);
 
@@ -183,7 +184,7 @@ try {
     // Simple output of first lines
     const systemLines = topOutput.stdout.split('\n').slice(0, 10);
     console.log('System information:');
-    systemLines.forEach(line => {
+    systemLines.forEach((line) => {
       if (line.includes('CPU') || line.includes('Mem') || line.includes('Load')) {
         console.log(line);
       }

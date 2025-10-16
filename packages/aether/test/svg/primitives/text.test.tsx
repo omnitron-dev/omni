@@ -20,7 +20,9 @@ describe('SVG Text Primitives', () => {
     it('should render basic text element', () => {
       const { container } = render(() => (
         <svg>
-          <Text x={10} y={20}>Hello World</Text>
+          <Text x={10} y={20}>
+            Hello World
+          </Text>
         </svg>
       ));
 
@@ -34,7 +36,9 @@ describe('SVG Text Primitives', () => {
     it('should support string coordinates', () => {
       const { container } = render(() => (
         <svg>
-          <Text x="50%" y="50%">Centered</Text>
+          <Text x="50%" y="50%">
+            Centered
+          </Text>
         </svg>
       ));
 
@@ -49,7 +53,9 @@ describe('SVG Text Primitives', () => {
 
       const { container } = render(() => (
         <svg>
-          <Text x={x} y={y}>Moving Text</Text>
+          <Text x={x} y={y}>
+            Moving Text
+          </Text>
         </svg>
       ));
 
@@ -69,7 +75,9 @@ describe('SVG Text Primitives', () => {
     it('should apply dx and dy offsets', () => {
       const { container } = render(() => (
         <svg>
-          <Text x={10} y={20} dx={5} dy={10}>Offset Text</Text>
+          <Text x={10} y={20} dx={5} dy={10}>
+            Offset Text
+          </Text>
         </svg>
       ));
 
@@ -83,7 +91,9 @@ describe('SVG Text Primitives', () => {
 
       const { container } = render(() => (
         <svg>
-          <Text x={10} y={20} dx={dx}>Text</Text>
+          <Text x={10} y={20} dx={dx}>
+            Text
+          </Text>
         </svg>
       ));
 
@@ -100,7 +110,9 @@ describe('SVG Text Primitives', () => {
     it('should apply rotate attribute', () => {
       const { container } = render(() => (
         <svg>
-          <Text x={10} y={20} rotate="45">Rotated Text</Text>
+          <Text x={10} y={20} rotate="45">
+            Rotated Text
+          </Text>
         </svg>
       ));
 
@@ -111,7 +123,9 @@ describe('SVG Text Primitives', () => {
     it('should apply multiple rotation values', () => {
       const { container } = render(() => (
         <svg>
-          <Text x={10} y={20} rotate="10 20 30 40">Each Letter Rotated</Text>
+          <Text x={10} y={20} rotate="10 20 30 40">
+            Each Letter Rotated
+          </Text>
         </svg>
       ));
 
@@ -124,7 +138,9 @@ describe('SVG Text Primitives', () => {
 
       const { container } = render(() => (
         <svg>
-          <Text x={10} y={20} rotate={rotate}>Text</Text>
+          <Text x={10} y={20} rotate={rotate}>
+            Text
+          </Text>
         </svg>
       ));
 
@@ -141,7 +157,9 @@ describe('SVG Text Primitives', () => {
     it('should apply textLength', () => {
       const { container } = render(() => (
         <svg>
-          <Text x={10} y={20} textLength={200}>Stretched Text</Text>
+          <Text x={10} y={20} textLength={200}>
+            Stretched Text
+          </Text>
         </svg>
       ));
 
@@ -150,10 +168,7 @@ describe('SVG Text Primitives', () => {
     });
 
     it('should apply lengthAdjust', () => {
-      const adjustMethods: Array<'spacing' | 'spacingAndGlyphs'> = [
-        'spacing',
-        'spacingAndGlyphs'
-      ];
+      const adjustMethods: Array<'spacing' | 'spacingAndGlyphs'> = ['spacing', 'spacingAndGlyphs'];
 
       adjustMethods.forEach((method) => {
         const { container } = render(() => (
@@ -175,7 +190,9 @@ describe('SVG Text Primitives', () => {
 
       const { container } = render(() => (
         <svg>
-          <Text x={10} y={20} textLength={length}>Text</Text>
+          <Text x={10} y={20} textLength={length}>
+            Text
+          </Text>
         </svg>
       ));
 
@@ -192,14 +209,7 @@ describe('SVG Text Primitives', () => {
     it('should apply styling attributes', () => {
       const { container } = render(() => (
         <svg>
-          <Text
-            x={10}
-            y={20}
-            fill="red"
-            fontSize="20"
-            fontFamily="Arial"
-            fontWeight="bold"
-          >
+          <Text x={10} y={20} fill="red" fontSize="20" fontFamily="Arial" fontWeight="bold">
             Styled Text
           </Text>
         </svg>
@@ -252,7 +262,9 @@ describe('SVG Text Primitives', () => {
       const { container } = render(() => (
         <svg>
           <Text x={10} y={20}>
-            <TSpan x={50} y={30}>Positioned Span</TSpan>
+            <TSpan x={50} y={30}>
+              Positioned Span
+            </TSpan>
           </Text>
         </svg>
       ));
@@ -266,7 +278,9 @@ describe('SVG Text Primitives', () => {
       const { container } = render(() => (
         <svg>
           <Text x={10} y={20}>
-            <TSpan dx={5} dy={10}>Offset Span</TSpan>
+            <TSpan dx={5} dy={10}>
+              Offset Span
+            </TSpan>
           </Text>
         </svg>
       ));
@@ -283,7 +297,9 @@ describe('SVG Text Primitives', () => {
       const { container } = render(() => (
         <svg>
           <Text x={10} y={20}>
-            <TSpan x={x} fill={fill}>Reactive Span</TSpan>
+            <TSpan x={x} fill={fill}>
+              Reactive Span
+            </TSpan>
           </Text>
         </svg>
       ));
@@ -306,8 +322,12 @@ describe('SVG Text Primitives', () => {
         <svg>
           <Text x={10} y={20}>
             Line 1
-            <TSpan x={10} dy={20}>Line 2</TSpan>
-            <TSpan x={10} dy={20}>Line 3</TSpan>
+            <TSpan x={10} dy={20}>
+              Line 2
+            </TSpan>
+            <TSpan x={10} dy={20}>
+              Line 3
+            </TSpan>
           </Text>
         </svg>
       ));
@@ -482,9 +502,7 @@ describe('SVG Text Primitives', () => {
             <path id="curve5" d="M10 80 Q 95 10 180 80" />
           </defs>
           <Text>
-            <TextPath href="#curve5">
-              This is a very long text that follows the curve path
-            </TextPath>
+            <TextPath href="#curve5">This is a very long text that follows the curve path</TextPath>
           </Text>
         </svg>
       ));
@@ -521,9 +539,15 @@ describe('SVG Text Primitives', () => {
         <svg>
           <Text x={10} y={20}>
             Line 1
-            <TSpan x={10} dy={20}>Line 2</TSpan>
-            <TSpan x={10} dy={20}>Line 3</TSpan>
-            <TSpan x={10} dy={20}>Line 4</TSpan>
+            <TSpan x={10} dy={20}>
+              Line 2
+            </TSpan>
+            <TSpan x={10} dy={20}>
+              Line 3
+            </TSpan>
+            <TSpan x={10} dy={20}>
+              Line 4
+            </TSpan>
           </Text>
         </svg>
       ));
@@ -536,11 +560,7 @@ describe('SVG Text Primitives', () => {
       const { container } = render(() => (
         <svg>
           <Text x={10} y={20} fontSize="16">
-            This is{' '}
-            <TSpan fontWeight="bold">bold</TSpan>
-            {' '}and{' '}
-            <TSpan fontStyle="italic">italic</TSpan>
-            {' '}text
+            This is <TSpan fontWeight="bold">bold</TSpan> and <TSpan fontStyle="italic">italic</TSpan> text
           </Text>
         </svg>
       ));
@@ -575,7 +595,9 @@ describe('SVG Text Primitives', () => {
             Base text
             <TSpan dx={5} dy={5}>
               Offset 1
-              <TSpan dx={10} dy={10}>Nested Offset</TSpan>
+              <TSpan dx={10} dy={10}>
+                Nested Offset
+              </TSpan>
             </TSpan>
           </Text>
         </svg>
@@ -591,8 +613,12 @@ describe('SVG Text Primitives', () => {
         <svg>
           <Text x={50} y={20} textAnchor="middle">
             Title
-            <TSpan x={50} dy={30}>Subtitle</TSpan>
-            <TSpan x={50} dy={20} fontSize="12">Description</TSpan>
+            <TSpan x={50} dy={30}>
+              Subtitle
+            </TSpan>
+            <TSpan x={50} dy={20} fontSize="12">
+              Description
+            </TSpan>
           </Text>
         </svg>
       ));
@@ -617,7 +643,9 @@ describe('SVG Text Primitives', () => {
     it('should handle text with only whitespace', () => {
       const { container } = render(() => (
         <svg>
-          <Text x={10} y={20}>   </Text>
+          <Text x={10} y={20}>
+            {' '}
+          </Text>
         </svg>
       ));
 
@@ -640,7 +668,9 @@ describe('SVG Text Primitives', () => {
       const longText = 'a'.repeat(10000);
       const { container } = render(() => (
         <svg>
-          <Text x={10} y={20}>{longText}</Text>
+          <Text x={10} y={20}>
+            {longText}
+          </Text>
         </svg>
       ));
 
@@ -652,7 +682,9 @@ describe('SVG Text Primitives', () => {
       const specialChars = '< > & " \' \n \t';
       const { container } = render(() => (
         <svg>
-          <Text x={10} y={20}>{specialChars}</Text>
+          <Text x={10} y={20}>
+            {specialChars}
+          </Text>
         </svg>
       ));
 
@@ -663,7 +695,9 @@ describe('SVG Text Primitives', () => {
     it('should handle unicode characters', () => {
       const { container } = render(() => (
         <svg>
-          <Text x={10} y={20}>🎨 Hello 世界 مرحبا שָׁלוֹם</Text>
+          <Text x={10} y={20}>
+            🎨 Hello 世界 مرحبا שָׁלוֹם
+          </Text>
         </svg>
       ));
 
@@ -675,7 +709,9 @@ describe('SVG Text Primitives', () => {
     it('should handle negative coordinates', () => {
       const { container } = render(() => (
         <svg>
-          <Text x={-10} y={-20}>Negative Position</Text>
+          <Text x={-10} y={-20}>
+            Negative Position
+          </Text>
         </svg>
       ));
 
@@ -687,7 +723,9 @@ describe('SVG Text Primitives', () => {
     it('should handle zero coordinates', () => {
       const { container } = render(() => (
         <svg>
-          <Text x={0} y={0}>Origin</Text>
+          <Text x={0} y={0}>
+            Origin
+          </Text>
         </svg>
       ));
 

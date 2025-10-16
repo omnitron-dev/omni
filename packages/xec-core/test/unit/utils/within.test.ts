@@ -40,7 +40,7 @@ describe('within utilities', () => {
       ).rejects.toThrow('Test error');
     });
   });
-  
+
   describe('withinSync', () => {
     test('should run sync function with context', () => {
       const config = { shell: '/bin/sh' };
@@ -54,7 +54,7 @@ describe('within utilities', () => {
       expect(result).toBe('sync-result');
       expect(capturedContext).toEqual(config);
     });
-    
+
     test('should handle errors in sync function', () => {
       const config = { stdin: 'ignore' };
 
@@ -65,12 +65,12 @@ describe('within utilities', () => {
       }).toThrow('Sync error');
     });
   });
-  
+
   describe('getLocalContext', () => {
     test('should return undefined when no context', () => {
       expect(getLocalContext()).toBeUndefined();
     });
-    
+
     test('should return context when inside within', async () => {
       const config = { shell: '/bin/bash' };
 
@@ -79,38 +79,38 @@ describe('within utilities', () => {
         expect(context).toEqual(config);
       });
     });
-    
+
     test('should return context when inside withinSync', () => {
       const config = { detached: true };
-      
+
       withinSync(config, () => {
         const context = getLocalContext();
         expect(context).toEqual(config);
       });
     });
   });
-  
+
   describe('nested contexts', () => {
     test('should handle nested within calls', async () => {
       const outerConfig = { timeout: 1000 };
       const innerConfig = { timeout: 2000, stdin: 'pipe' };
-      
+
       await within(outerConfig, async () => {
         const outerContext = getLocalContext();
         expect(outerContext).toEqual(outerConfig);
-        
+
         await within(innerConfig, async () => {
           const innerContext = getLocalContext();
           expect(innerContext).toEqual(innerConfig);
         });
-        
+
         // Back to outer context
         const contextAfterInner = getLocalContext();
         expect(contextAfterInner).toEqual(outerConfig);
       });
     });
   });
-  
+
   describe('asyncLocalStorage export', () => {
     test('should export asyncLocalStorage instance', () => {
       expect(asyncLocalStorage).toBeDefined();

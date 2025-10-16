@@ -27,7 +27,7 @@ const handlerStack: HandlerContext<any, any>[] = [];
 export class AlgebraicEffect<T = any, R = any> {
   constructor(
     public readonly name: string,
-    public readonly signature?: TypeSignature<T, R>,
+    public readonly signature?: TypeSignature<T, R>
   ) {}
 
   /**
@@ -70,10 +70,7 @@ export class AlgebraicEffect<T = any, R = any> {
   /**
    * Handle the effect with a specific handler
    */
-  handle<In, Out>(
-    handler: (value: T, resume: (result: R) => Out) => Out,
-    computation: () => In,
-  ): In {
+  handle<In, Out>(handler: (value: T, resume: (result: R) => Out) => Out, computation: () => In): In {
     // Push handler onto stack
     handlerStack.push({
       effect: this,
@@ -93,35 +90,25 @@ export class AlgebraicEffect<T = any, R = any> {
    * Create a simple handler that always returns the same value
    */
   static constant<T, R>(effect: AlgebraicEffect<T, R>, value: R): <Out>(computation: () => Out) => Out {
-    return <Out>(computation: () => Out) =>
-      effect.handle((_, resume) => resume(value), computation);
+    return <Out>(computation: () => Out) => effect.handle((_, resume) => resume(value), computation);
   }
 
   /**
    * Create a handler that transforms the input
    */
-  static transform<T, R>(
-    effect: AlgebraicEffect<T, R>,
-    fn: (value: T) => R,
-  ): <Out>(computation: () => Out) => Out {
-    return <Out>(computation: () => Out) =>
-      effect.handle((value, resume) => resume(fn(value)), computation);
+  static transform<T, R>(effect: AlgebraicEffect<T, R>, fn: (value: T) => R): <Out>(computation: () => Out) => Out {
+    return <Out>(computation: () => Out) => effect.handle((value, resume) => resume(fn(value)), computation);
   }
 
   /**
    * Compose multiple handlers
    */
-  static compose<Out>(
-    ...handlers: Array<(computation: () => Out) => Out>
-  ): (computation: () => Out) => Out {
+  static compose<Out>(...handlers: Array<(computation: () => Out) => Out>): (computation: () => Out) => Out {
     return (computation: () => Out) => {
       if (handlers.length === 0) {
         return computation();
       }
-      const result = handlers.reduceRight(
-        (comp: () => Out, handler) => () => handler(comp),
-        computation,
-      )();
+      const result = handlers.reduceRight((comp: () => Out, handler) => () => handler(comp), computation)();
       return result;
     };
   }
@@ -133,7 +120,7 @@ export class AlgebraicEffect<T = any, R = any> {
 export function withHandler<T, R, Out>(
   effect: AlgebraicEffect<T, R>,
   handler: (value: T, resume: (result: R) => Out) => Out,
-  computation: () => Out,
+  computation: () => Out
 ): Out {
   return effect.handle(handler, computation);
 }
@@ -232,10 +219,7 @@ export const AlgebraicEffects = {
     /**
      * Catch exceptions
      */
-    catch<Out>(
-      computation: () => Out,
-      handler: (error: E) => Out,
-    ): Out {
+    catch<Out>(computation: () => Out, handler: (error: E) => Out): Out {
       // Push custom exception handler onto stack
       const ctx: HandlerContext<any, any> = {
         effect: this.raise as any,
@@ -263,10 +247,7 @@ export const AlgebraicEffects = {
     /**
      * Try-catch with finally
      */
-    tryFinally<Out>(
-      computation: () => Out,
-      finallyBlock: () => void,
-    ): Out {
+    tryFinally<Out>(computation: () => Out, finallyBlock: () => void): Out {
       try {
         return computation();
       } finally {
@@ -308,7 +289,7 @@ export const AlgebraicEffects = {
           },
           () => {
             results.push(computation());
-          },
+          }
         );
       }
 
@@ -318,25 +299,19 @@ export const AlgebraicEffects = {
     /**
      * Run with first successful choice
      */
-    first<Out>(
-      computation: () => Out,
-      isSuccess: (result: Out) => boolean,
-    ): Out | undefined {
+    first<Out>(computation: () => Out, isSuccess: (result: Out) => boolean): Out | undefined {
       let result: Out | undefined;
 
-      this.choose.handle(
-        (choices, resume) => {
-          for (const choice of choices) {
-            const attempt = resume(choice) as Out;
-            if (isSuccess(attempt)) {
-              result = attempt as Out | undefined;
-              break;
-            }
+      this.choose.handle((choices, resume) => {
+        for (const choice of choices) {
+          const attempt = resume(choice) as Out;
+          if (isSuccess(attempt)) {
+            result = attempt as Out | undefined;
+            break;
           }
-          return result;
-        },
-        computation,
-      );
+        }
+        return result;
+      }, computation);
 
       return result;
     }
@@ -368,16 +343,13 @@ export const AlgebraicEffects = {
       // const values: any[] = [];
 
       // Collect all promises
-      const result = this.await.handle(
-        (promise, resume) => {
-          const index = promises.length;
-          promises.push(promise);
-          // Placeholder that will be replaced
-          resume(Symbol(index.toString()));
-          return undefined;
-        },
-        computation,
-      );
+      const result = this.await.handle((promise, resume) => {
+        const index = promises.length;
+        promises.push(promise);
+        // Placeholder that will be replaced
+        resume(Symbol(index.toString()));
+        return undefined;
+      }, computation);
 
       // Wait for all promises
       if (promises.length > 0) {
@@ -399,8 +371,7 @@ export const AlgebraicEffects = {
 export function scopedEffect<T, R, Out>(
   effect: AlgebraicEffect<T, R>,
   handler: (value: T, ctx: Context) => R,
-  ctx: Context,
+  ctx: Context
 ): (computation: () => Out) => Out {
-  return (computation: () => Out) =>
-    effect.handle((value, resume) => resume(handler(value, ctx)), computation);
+  return (computation: () => Out) => effect.handle((value, resume) => resume(handler(value, ctx)), computation);
 }

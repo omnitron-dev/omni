@@ -166,9 +166,7 @@ describe('Icon Presets Isomorphism', () => {
       const duotoneIcons = presetIconNames.duotone;
       const twotoneIcons = presetIconNames.twotone;
 
-      const missingFromStroke = [...duotoneIcons, ...twotoneIcons].filter(
-        (icon) => !strokeIcons.has(icon)
-      );
+      const missingFromStroke = [...duotoneIcons, ...twotoneIcons].filter((icon) => !strokeIcons.has(icon));
 
       const uniqueMissing = [...new Set(missingFromStroke)].sort();
 
@@ -185,9 +183,7 @@ describe('Icon Presets Isomorphism', () => {
       const duotoneIcons = presetIconNames.duotone;
       const twotoneIcons = presetIconNames.twotone;
 
-      const missingFromDuotone = [...strokeIcons, ...twotoneIcons].filter(
-        (icon) => !duotoneIcons.has(icon)
-      );
+      const missingFromDuotone = [...strokeIcons, ...twotoneIcons].filter((icon) => !duotoneIcons.has(icon));
 
       const uniqueMissing = [...new Set(missingFromDuotone)].sort();
 
@@ -204,9 +200,7 @@ describe('Icon Presets Isomorphism', () => {
       const duotoneIcons = presetIconNames.duotone;
       const twotoneIcons = presetIconNames.twotone;
 
-      const missingFromTwotone = [...strokeIcons, ...duotoneIcons].filter(
-        (icon) => !twotoneIcons.has(icon)
-      );
+      const missingFromTwotone = [...strokeIcons, ...duotoneIcons].filter((icon) => !twotoneIcons.has(icon));
 
       const uniqueMissing = [...new Set(missingFromTwotone)].sort();
 
@@ -224,19 +218,13 @@ describe('Icon Presets Isomorphism', () => {
       const twotoneIcons = presetIconNames.twotone;
 
       // Icons only in stroke
-      const onlyInStroke = [...strokeIcons].filter(
-        (icon) => !duotoneIcons.has(icon) && !twotoneIcons.has(icon)
-      );
+      const onlyInStroke = [...strokeIcons].filter((icon) => !duotoneIcons.has(icon) && !twotoneIcons.has(icon));
 
       // Icons only in duotone
-      const onlyInDuotone = [...duotoneIcons].filter(
-        (icon) => !strokeIcons.has(icon) && !twotoneIcons.has(icon)
-      );
+      const onlyInDuotone = [...duotoneIcons].filter((icon) => !strokeIcons.has(icon) && !twotoneIcons.has(icon));
 
       // Icons only in twotone
-      const onlyInTwotone = [...twotoneIcons].filter(
-        (icon) => !strokeIcons.has(icon) && !duotoneIcons.has(icon)
-      );
+      const onlyInTwotone = [...twotoneIcons].filter((icon) => !strokeIcons.has(icon) && !duotoneIcons.has(icon));
 
       if (onlyInStroke.length > 0) {
         console.error(`\n🔴 Icons ONLY in STROKE: ${onlyInStroke.length}`);
@@ -269,9 +257,7 @@ describe('Icon Presets Isomorphism', () => {
       const duotoneTwotone = [...duotoneIcons].filter((icon) => twotoneIcons.has(icon));
 
       // Calculate full intersection (icons in ALL presets)
-      const allThree = [...strokeIcons].filter(
-        (icon) => duotoneIcons.has(icon) && twotoneIcons.has(icon)
-      );
+      const allThree = [...strokeIcons].filter((icon) => duotoneIcons.has(icon) && twotoneIcons.has(icon));
 
       console.log('\n=== Intersection Report ===');
       console.log(`Stroke ∩ Duotone: ${strokeDuotone.length} icons`);

@@ -459,7 +459,7 @@ export function createFlowId(source: string): FlowId {
 /**
  * Extract source location from a function
  */
-export function extractSourceLocation(fn: Function): SourceLocation {
+export function extractSourceLocation(fn: (...args: any[]) => any): SourceLocation {
   const source = fn.toString();
   const name = fn.name || 'anonymous';
 

@@ -229,7 +229,7 @@ describe('Icon Presets Integrity Tests', () => {
           const content = readFileSync(join(presetDir, file), 'utf-8');
 
           // Should have TypeScript import statement
-          expect(content).toContain("import type { IconDefinition }");
+          expect(content).toContain('import type { IconDefinition }');
 
           // Should have typed export
           expect(content).toMatch(/export const \w+:\s*IconDefinition/);

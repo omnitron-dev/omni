@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 /**
  * Docker Simplified API Examples
- * 
+ *
  * This example demonstrates the new simplified Docker API that makes
  * working with containers more intuitive and requires less boilerplate.
  */
@@ -15,9 +15,9 @@ async function main() {
   console.log('1. Running ephemeral container with simplified API:');
   const result1 = await $.docker({
     image: 'alpine:latest',
-    volumes: ['/tmp:/data']
+    volumes: ['/tmp:/data'],
   })`echo "Hello from ephemeral container" > /data/test.txt && cat /data/test.txt`;
-  
+
   console.log('Output:', result1.stdout);
   console.log('Success:', result1.ok);
 
@@ -25,39 +25,34 @@ async function main() {
   console.log('\n2. Executing in existing container:');
   // First create a container
   await $`docker run -d --name test-container alpine:latest sleep 3600`.quiet();
-  
+
   const result2 = await $.docker({
     container: 'test-container',
-    workdir: '/tmp'
+    workdir: '/tmp',
   })`pwd && echo "Working in persistent container"`;
-  
+
   console.log('Output:', result2.stdout);
-  
+
   // Cleanup
   await $`docker rm -f test-container`.quiet();
 
   // Example 3: Fluent API for ephemeral containers
   console.log('\n3. Using fluent API for ephemeral containers:');
-  const result3 = await $.docker()
-    .ephemeral('node:18-alpine')
-    .workdir('/app')
-    .env({ NODE_ENV: 'production' })
+  const result3 = await $.docker().ephemeral('node:18-alpine').workdir('/app').env({ NODE_ENV: 'production' })
     .run`node -e "console.log('Node version:', process.version); console.log('ENV:', process.env.NODE_ENV)"`;
-  
+
   console.log('Output:', result3.stdout);
 
   // Example 4: Fluent API for persistent containers
   console.log('\n4. Using fluent API for persistent containers:');
   // Create a container with Node.js
   await $`docker run -d --name node-container -w /app node:18-alpine sleep 3600`.quiet();
-  
-  const result4 = await $.docker()
-    .container('node-container')
-    .workdir('/tmp')
+
+  const result4 = await $.docker().container('node-container').workdir('/tmp')
     .exec`node -e "console.log('Current dir:', process.cwd())"`;
-  
+
   console.log('Output:', result4.stdout);
-  
+
   // Cleanup
   await $`docker rm -f node-container`.quiet();
 
@@ -70,16 +65,15 @@ async function main() {
     .user('nobody')
     .env({
       MY_VAR: 'test',
-      ANOTHER_VAR: 'value'
+      ANOTHER_VAR: 'value',
     })
-    .network('bridge')
-    .run`ls -la && echo "MY_VAR=$MY_VAR"`;
-  
+    .network('bridge').run`ls -la && echo "MY_VAR=$MY_VAR"`;
+
   console.log('Output:', result5.stdout);
 
   // Example 6: Build and run pattern
   console.log('\n6. Build and run pattern with fluent API:');
-  
+
   // Create a simple Dockerfile
   await $`mkdir -p /tmp/docker-test`;
   await $`cat > /tmp/docker-test/Dockerfile << 'EOF'
@@ -91,20 +85,20 @@ EOF`;
   // Build and run
   const buildAPI = $.docker().build('/tmp/docker-test', 'my-test-image:latest');
   await buildAPI.execute();
-  
+
   const result6 = await $.docker({
-    image: 'my-test-image:latest'
+    image: 'my-test-image:latest',
   })`cat /build-time.txt`;
-  
+
   console.log('Build output:', result6.stdout);
-  
+
   // Cleanup
   await $`docker rmi my-test-image:latest`.quiet();
   await $`rm -rf /tmp/docker-test`;
 
   // Example 7: Comparing old vs new API
   console.log('\n7. API Comparison - Old vs New:');
-  
+
   console.log('Old verbose API:');
   console.log(`await $.with({
   adapter: 'docker',

@@ -81,28 +81,28 @@ export type AdapterSpecificOptions =
  */
 export interface Command {
   // Basic
-  command: string;                      // Command to execute
-  args?: string[];                      // Command arguments
+  command: string; // Command to execute
+  args?: string[]; // Command arguments
 
   // Execution context
-  cwd?: string;                         // Working directory
-  env?: Record<string, string>;         // Environment variables
-  timeout?: number;                     // Execution timeout
-  timeoutSignal?: string;               // Signal to send on timeout
+  cwd?: string; // Working directory
+  env?: Record<string, string>; // Environment variables
+  timeout?: number; // Execution timeout
+  timeoutSignal?: string; // Signal to send on timeout
 
   // Stream management
-  stdin?: string | Buffer | Readable;   // Input data
+  stdin?: string | Buffer | Readable; // Input data
   stdout?: StreamOption;
   stderr?: StreamOption;
 
   // Execution options
-  shell?: string | boolean;             // Use shell
-  detached?: boolean;                   // Detached process
-  signal?: AbortSignal;                 // Abort signal
-  nothrow?: boolean;                    // Don't throw exceptions on non-zero exit code
+  shell?: string | boolean; // Use shell
+  detached?: boolean; // Detached process
+  signal?: AbortSignal; // Abort signal
+  nothrow?: boolean; // Don't throw exceptions on non-zero exit code
 
   // Retry configuration
-  retry?: RetryOptions;                 // Retry options
+  retry?: RetryOptions; // Retry options
 
   // Progress reporting
   progress?: {

@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const BlackHole01Icon: IconDefinition = {
-  "id": "black-hole01",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <ellipse cx=\"12\" cy=\"13\" rx=\"10\" ry=\"5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M18.6017 12C17.6407 13.1652 15.0478 14 12 14C8.95216 14 6.35927 13.1652 5.39832 12\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M10.063 13.5C10.0219 13.3402 10 13.1726 10 13C10 11.8954 10.8954 11 12 11C13.1046 11 14 11.8954 14 13C14 13.1726 13.9781 13.3402 13.937 13.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M6 4L9 13.5M17 6L15 13.5M12 2V11\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M9 18L7 20M15 18L17 20M12 18V22\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "twotone",
-    "originalName": "BlackHole01Icon",
-    "elementsCount": 5,
-    "hasOpacity": true,
-    "hasFill": false
-  }
+  id: 'black-hole01',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <ellipse cx="12" cy="13" rx="10" ry="5" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M18.6017 12C17.6407 13.1652 15.0478 14 12 14C8.95216 14 6.35927 13.1652 5.39832 12" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M10.063 13.5C10.0219 13.3402 10 13.1726 10 13C10 11.8954 10.8954 11 12 11C13.1046 11 14 11.8954 14 13C14 13.1726 13.9781 13.3402 13.937 13.5" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M6 4L9 13.5M17 6L15 13.5M12 2V11" stroke-linecap="round" stroke-linejoin="round" />\n    <path opacity="0.4" d="M9 18L7 20M15 18L17 20M12 18V22" stroke-linecap="round" stroke-linejoin="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'twotone',
+    originalName: 'BlackHole01Icon',
+    elementsCount: 5,
+    hasOpacity: true,
+    hasFill: false,
+  },
 };

@@ -1,6 +1,6 @@
 /**
  * Script Context Enhancement
- * 
+ *
  * Provides enhanced context for script execution including $target,
  * global APIs, and utility functions.
  */
@@ -25,27 +25,21 @@ export class ScriptContext {
    * @param args - Script arguments
    * @param target - Optional target for execution
    */
-  static async create(
-    scriptPath: string,
-    args: string[] = [],
-    target?: Target
-  ): Promise<ScriptGlobals> {
+  static async create(scriptPath: string, args: string[] = [], target?: Target): Promise<ScriptGlobals> {
     // Create $target engine
-    const $target = target
-      ? await createTargetEngine(target)
-      : $;
+    const $target = target ? await createTargetEngine(target) : $;
 
     // Create target info
     const $targetInfo: TargetInfo | undefined = target
       ? {
-        type: target.type,
-        name: target.name,
-        host: target.type === 'ssh' ? (target.config as any).host : undefined,
-        container: target.type === 'docker' ? (target.config as any).container : undefined,
-        pod: target.type === 'kubernetes' ? (target.config as any).pod : undefined,
-        namespace: target.type === 'kubernetes' ? (target.config as any).namespace : undefined,
-        config: target.config
-      }
+          type: target.type,
+          name: target.name,
+          host: target.type === 'ssh' ? (target.config as any).host : undefined,
+          container: target.type === 'docker' ? (target.config as any).container : undefined,
+          pod: target.type === 'kubernetes' ? (target.config as any).pod : undefined,
+          namespace: target.type === 'kubernetes' ? (target.config as any).namespace : undefined,
+          config: target.config,
+        }
       : undefined;
 
     // Load configuration
@@ -59,7 +53,7 @@ export class ScriptContext {
     const scriptInfo: ScriptInfo = {
       path: scriptPath,
       args,
-      target
+      target,
     };
 
     // Return complete context
@@ -86,7 +80,7 @@ export class ScriptContext {
       // Utilities
       prism,
       glob: (pattern: string) => glob(pattern),
-      minimatch: (filePath: string, pattern: string) => minimatch(filePath, pattern)
+      minimatch: (filePath: string, pattern: string) => minimatch(filePath, pattern),
     };
   }
 
@@ -226,7 +220,7 @@ Examples:
 
       clear: () => {
         process.stdout.write('\x1B[2J\x1B[0f');
-      }
+      },
     };
 
     return replContext;
@@ -239,11 +233,7 @@ Examples:
  * @param args - Script arguments
  * @param target - Optional target
  */
-export async function executeScript(
-  scriptPath: string,
-  args: string[] = [],
-  target?: Target
-): Promise<void> {
+export async function executeScript(scriptPath: string, args: string[] = [], target?: Target): Promise<void> {
   // Create context
   const context = await ScriptContext.create(scriptPath, args, target);
 

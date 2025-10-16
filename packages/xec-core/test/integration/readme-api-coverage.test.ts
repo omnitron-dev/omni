@@ -124,7 +124,10 @@ describe('README API Coverage', () => {
     const ssh = $.ssh({ host: 'localhost', username: 'testuser' });
     const docker = $.docker({ container: 'test' });
     const k8s = $.k8s({ pod: 'test', namespace: 'default' });
-    const remoteDocker = $.remoteDocker({ ssh: { host: 'localhost', username: 'testuser' }, docker: { container: 'test' } });
+    const remoteDocker = $.remoteDocker({
+      ssh: { host: 'localhost', username: 'testuser' },
+      docker: { container: 'test' },
+    });
     const local = $.local();
 
     expect(typeof ssh).toBe('function');

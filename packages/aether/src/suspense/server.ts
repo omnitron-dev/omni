@@ -27,8 +27,4 @@ export {
 } from './streaming.js';
 
 // Server-only types
-export type {
-  SSRSuspenseContext,
-  SuspenseBoundaryMarker,
-  StreamingSuspenseOptions,
-} from './types.js';
+export type { SSRSuspenseContext, SuspenseBoundaryMarker, StreamingSuspenseOptions } from './types.js';

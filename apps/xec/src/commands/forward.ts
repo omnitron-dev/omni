@@ -146,7 +146,10 @@ export class ForwardCommand extends ConfigAwareCommand {
     if (mergedOptions.dryRun) {
       this.log('[DRY RUN] Would forward ports:', 'info');
       for (const mapping of mappings) {
-        this.log(`  ${mergedOptions.bind}:${mapping.local} -> ${this.formatTargetDisplay(target)}:${mapping.remote}`, 'info');
+        this.log(
+          `  ${mergedOptions.bind}:${mapping.local} -> ${this.formatTargetDisplay(target)}:${mapping.remote}`,
+          'info'
+        );
       }
       return;
     }
@@ -162,7 +165,7 @@ export class ForwardCommand extends ConfigAwareCommand {
     // If not running in background, wait for interrupt
     if (!mergedOptions.background) {
       this.log('Press Ctrl+C to stop port forwarding...', 'info');
-      await new Promise(() => { }); // Wait indefinitely
+      await new Promise(() => {}); // Wait indefinitely
     }
   }
 
@@ -189,11 +192,7 @@ export class ForwardCommand extends ConfigAwareCommand {
     return mappings;
   }
 
-  private async forwardPort(
-    target: ResolvedTarget,
-    mapping: PortMapping,
-    options: ForwardOptions
-  ): Promise<void> {
+  private async forwardPort(target: ResolvedTarget, mapping: PortMapping, options: ForwardOptions): Promise<void> {
     // Auto-select local port if needed
     let localPort = mapping.local;
     if (localPort === 0) {
@@ -210,7 +209,9 @@ export class ForwardCommand extends ConfigAwareCommand {
     const targetDisplay = this.formatTargetDisplay(target);
 
     if (!options.quiet) {
-      this.startSpinner(`Setting up port forward ${options.bind}:${localPort} -> ${targetDisplay}:${mapping.remote}...`);
+      this.startSpinner(
+        `Setting up port forward ${options.bind}:${localPort} -> ${targetDisplay}:${mapping.remote}...`
+      );
     }
 
     try {
@@ -281,7 +282,7 @@ export class ForwardCommand extends ConfigAwareCommand {
         localPort: mapping.local,
         localHost: options.bind || 'localhost',
         remoteHost: 'localhost',
-        remotePort: mapping.remote
+        remotePort: mapping.remote,
       });
 
       return {
@@ -320,10 +321,11 @@ export class ForwardCommand extends ConfigAwareCommand {
     try {
       await local()`/usr/local/bin/docker stop ${socatContainer}`.nothrow();
       await local()`/usr/local/bin/docker rm ${socatContainer}`.nothrow();
-    } catch { }
+    } catch {}
 
     // Get container network
-    const inspectResult = await local()`/usr/local/bin/docker inspect ${container} --format='{{range .NetworkSettings.Networks}}{{.NetworkID}}{{end}}'`;
+    const inspectResult =
+      await local()`/usr/local/bin/docker inspect ${container} --format='{{range .NetworkSettings.Networks}}{{.NetworkID}}{{end}}'`;
     const networkId = inspectResult.stdout.trim();
 
     // Start socat container
@@ -339,7 +341,7 @@ export class ForwardCommand extends ConfigAwareCommand {
         try {
           await local()`/usr/local/bin/docker stop ${socatContainer}`;
           await local()`/usr/local/bin/docker rm ${socatContainer}`;
-        } catch { }
+        } catch {}
       },
     };
   }
@@ -360,17 +362,19 @@ export class ForwardCommand extends ConfigAwareCommand {
     // Use kubectl port-forward
     const args = [
       'port-forward',
-      '-n', namespace,
+      '-n',
+      namespace,
       pod,
       `${mapping.local}:${mapping.remote}`,
-      '--address', options.bind || '127.0.0.1'
+      '--address',
+      options.bind || '127.0.0.1',
     ];
 
     // Start port forwarding in background
     const process = $.local()`kubectl ${args.join(' ')}`.nothrow();
 
     // Wait a bit to ensure it started
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
 
     return {
       target,
@@ -530,10 +534,7 @@ export class ForwardCommand extends ConfigAwareCommand {
       const forwardOptions: Partial<ForwardOptions> = {};
 
       // Bind address
-      const customBind = await InteractiveHelpers.confirmAction(
-        'Use custom bind address? (default: 127.0.0.1)',
-        false
-      );
+      const customBind = await InteractiveHelpers.confirmAction('Use custom bind address? (default: 127.0.0.1)', false);
 
       if (customBind) {
         const bindAddress = await InteractiveHelpers.inputText('Enter bind address:', {
@@ -546,10 +547,7 @@ export class ForwardCommand extends ConfigAwareCommand {
       }
 
       // Background mode
-      forwardOptions.background = await InteractiveHelpers.confirmAction(
-        'Run in background?',
-        false
-      );
+      forwardOptions.background = await InteractiveHelpers.confirmAction('Run in background?', false);
 
       // Build specs
       const targetSpec = target.id;
@@ -558,13 +556,12 @@ export class ForwardCommand extends ConfigAwareCommand {
       // Show summary
       InteractiveHelpers.showInfo('\nPort Forward Summary:');
       console.log(`  Target: ${prism.cyan(targetSpec)} (${target.type})`);
-      console.log(`  Port mapping: ${prism.cyan(`${forwardOptions.bind || '127.0.0.1'}:${localPort === '0' ? 'auto' : localPort} → ${remotePort}`)}`);
+      console.log(
+        `  Port mapping: ${prism.cyan(`${forwardOptions.bind || '127.0.0.1'}:${localPort === '0' ? 'auto' : localPort} → ${remotePort}`)}`
+      );
       if (forwardOptions.background) console.log(`  Mode: ${prism.gray('background')}`);
 
-      const confirm = await InteractiveHelpers.confirmAction(
-        '\nProceed with port forwarding?',
-        true
-      );
+      const confirm = await InteractiveHelpers.confirmAction('\nProceed with port forwarding?', true);
 
       if (!confirm) {
         InteractiveHelpers.endInteractiveMode('Port forwarding cancelled');

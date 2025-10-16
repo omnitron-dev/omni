@@ -21,7 +21,7 @@ function getPortPosition(
   nodeId: string,
   portId: string,
   isOutput: boolean,
-  nodes: FlowNode[],
+  nodes: FlowNode[]
 ): { x: number; y: number } | null {
   const node = nodes.find((n) => n.id === nodeId);
   if (!node) return null;
@@ -64,19 +64,9 @@ export const FlowConnection = defineComponent<FlowConnectionProps>((props) => {
   };
 
   return () => {
-    const fromPos = getPortPosition(
-      props.connection.from.nodeId,
-      props.connection.from.portId,
-      true,
-      props.nodes,
-    );
+    const fromPos = getPortPosition(props.connection.from.nodeId, props.connection.from.portId, true, props.nodes);
 
-    const toPos = getPortPosition(
-      props.connection.to.nodeId,
-      props.connection.to.portId,
-      false,
-      props.nodes,
-    );
+    const toPos = getPortPosition(props.connection.to.nodeId, props.connection.to.portId, false, props.nodes);
 
     if (!fromPos || !toPos) {
       return null;
@@ -87,13 +77,7 @@ export const FlowConnection = defineComponent<FlowConnectionProps>((props) => {
     return (
       <g class={() => `flow-connection ${props.selected ? 'selected' : ''}`} onClick={handleClick}>
         {/* Invisible wider path for easier clicking */}
-        <path
-          d={path}
-          fill="none"
-          stroke="transparent"
-          stroke-width="20"
-          style={{ cursor: 'pointer' }}
-        />
+        <path d={path} fill="none" stroke="transparent" stroke-width="20" style={{ cursor: 'pointer' }} />
         {/* Visible path */}
         <path
           d={path}

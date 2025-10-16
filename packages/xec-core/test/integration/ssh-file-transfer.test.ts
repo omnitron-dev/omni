@@ -167,7 +167,7 @@ describeSSH('SSH File Transfer Tests', () => {
           'file_with_underscores.txt',
           'file.multiple.dots.txt',
           'file(with)parens.txt',
-          'file[with]brackets.txt'
+          'file[with]brackets.txt',
         ];
 
         for (const fileName of specialNames) {
@@ -238,8 +238,7 @@ describeSSH('SSH File Transfer Tests', () => {
 
         await fs.writeFile(localPath, 'test');
 
-        await expect(ssh.uploadFile(localPath, remotePath, sshOptions))
-          .rejects.toThrow();
+        await expect(ssh.uploadFile(localPath, remotePath, sshOptions)).rejects.toThrow();
       } finally {
         await fs.rm(localTempDir, { recursive: true, force: true });
         await $ssh`rm -rf ${remoteTempDir}`.nothrow();
@@ -260,8 +259,7 @@ describeSSH('SSH File Transfer Tests', () => {
         const localPath = join(localTempDir, 'nonexistent.txt');
         const remotePath = join(remoteTempDir, 'test.txt');
 
-        await expect(ssh.uploadFile(localPath, remotePath, sshOptions))
-          .rejects.toThrow();
+        await expect(ssh.uploadFile(localPath, remotePath, sshOptions)).rejects.toThrow();
       } finally {
         await fs.rm(localTempDir, { recursive: true, force: true });
         await $ssh`rm -rf ${remoteTempDir}`.nothrow();
@@ -414,8 +412,7 @@ describeSSH('SSH File Transfer Tests', () => {
         const remotePath = join(remoteTempDir, 'nonexistent.txt');
         const localPath = join(localTempDir, 'download.txt');
 
-        await expect(ssh.downloadFile(remotePath, localPath, sshOptions))
-          .rejects.toThrow();
+        await expect(ssh.downloadFile(remotePath, localPath, sshOptions)).rejects.toThrow();
       } finally {
         await fs.rm(localTempDir, { recursive: true, force: true });
         await $ssh`rm -rf ${remoteTempDir}`.nothrow();
@@ -712,10 +709,7 @@ describeSSH('SSH File Transfer Tests', () => {
 
         // Verify all downloads
         for (let i = 0; i < fileCount; i++) {
-          const content = await fs.readFile(
-            join(localTempDir, `concurrent-download-${i}.txt`),
-            'utf8'
-          );
+          const content = await fs.readFile(join(localTempDir, `concurrent-download-${i}.txt`), 'utf8');
           expect(content.trim()).toBe(`Remote content ${i}`);
         }
       } finally {
@@ -749,8 +743,7 @@ describeSSH('SSH File Transfer Tests', () => {
         await ssh.uploadFile(localPath, remotePath, sshOptions);
 
         // Retry should work
-        await expect(ssh.uploadFile(localPath, remotePath, sshOptions))
-          .resolves.not.toThrow();
+        await expect(ssh.uploadFile(localPath, remotePath, sshOptions)).resolves.not.toThrow();
       } finally {
         await fs.rm(localTempDir, { recursive: true, force: true });
         await $ssh`rm -rf ${remoteTempDir}`.nothrow();
@@ -773,8 +766,7 @@ describeSSH('SSH File Transfer Tests', () => {
 
         await fs.writeFile(localPath, 'test');
 
-        await expect(ssh.uploadFile(localPath, remotePath, sshOptions))
-          .rejects.toThrow(/permission|denied/i);
+        await expect(ssh.uploadFile(localPath, remotePath, sshOptions)).rejects.toThrow(/permission|denied/i);
       } finally {
         await fs.rm(localTempDir, { recursive: true, force: true });
         await $ssh`rm -rf ${remoteTempDir}`.nothrow();
@@ -799,8 +791,7 @@ describeSSH('SSH File Transfer Tests', () => {
 
         await fs.writeFile(localPath, 'test');
 
-        await expect(ssh.uploadFile(localPath, remotePath, sshOptions))
-          .rejects.toThrow();
+        await expect(ssh.uploadFile(localPath, remotePath, sshOptions)).rejects.toThrow();
       } finally {
         await fs.rm(localTempDir, { recursive: true, force: true });
         await $ssh`rm -rf ${remoteTempDir}`.nothrow();

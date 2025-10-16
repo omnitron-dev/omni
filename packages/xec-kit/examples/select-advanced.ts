@@ -13,7 +13,17 @@
 
 import { setTimeout } from 'node:timers/promises';
 
-import { note , intro, outro, select, cancel, spinner, confirm, isCancel, prism as color } from '../src/index.js';
+import {
+  note,
+  intro,
+  outro,
+  select,
+  cancel,
+  spinner,
+  confirm,
+  isCancel,
+  prism as color,
+} from '../src/index.js';
 
 // Simulate API types
 interface ApiUser {

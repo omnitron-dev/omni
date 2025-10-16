@@ -22,12 +22,7 @@ const config: Config = {
     ],
   },
   testMatch: ['**/src/**/*.spec.ts', '**/src/**/*.test.ts'],
-  collectCoverageFrom: [
-    'src/**/*.ts',
-    '!src/**/*.spec.ts',
-    '!src/**/*.test.ts',
-    '!src/**/*.d.ts',
-  ],
+  collectCoverageFrom: ['src/**/*.ts', '!src/**/*.spec.ts', '!src/**/*.test.ts', '!src/**/*.d.ts'],
   coverageDirectory: 'coverage/backend',
   coverageReporters: ['text', 'lcov', 'html'],
   roots: ['<rootDir>/src'],

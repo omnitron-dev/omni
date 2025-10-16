@@ -15,10 +15,7 @@ interface DirectExecutionOptions {
 /**
  * Execute a command directly based on smart defaults
  */
-export async function executeDirectCommand(
-  args: string[],
-  options: DirectExecutionOptions = {}
-): Promise<void> {
+export async function executeDirectCommand(args: string[], options: DirectExecutionOptions = {}): Promise<void> {
   // Join all arguments as the command
   const command = args.join(' ');
 
@@ -119,11 +116,7 @@ async function detectTarget(arg: string): Promise<Target | null> {
 /**
  * Execute command on detected target
  */
-async function executeOnTarget(
-  target: Target,
-  command: string,
-  options: DirectExecutionOptions
-): Promise<void> {
+async function executeOnTarget(target: Target, command: string, options: DirectExecutionOptions): Promise<void> {
   if (!command.trim()) {
     throw new Error('No command specified for target');
   }
@@ -138,37 +131,34 @@ async function executeOnTarget(
 
   // eslint-disable-next-line default-case
   switch (target.type) {
-    case 'ssh':
-      {
-        const sshConfig = target.config || { host: target.name };
-        engine = $.ssh({
-          host: sshConfig.host || target.name,
-          username: sshConfig.username || sshConfig.user || process.env['USER'] || 'root',
-          port: sshConfig.port || 22,
-          privateKey: sshConfig.privateKey || sshConfig.key || sshConfig.identityFile,
-          password: sshConfig.password,
-          passphrase: sshConfig.passphrase,
-        });
-        break;
-      }
+    case 'ssh': {
+      const sshConfig = target.config || { host: target.name };
+      engine = $.ssh({
+        host: sshConfig.host || target.name,
+        username: sshConfig.username || sshConfig.user || process.env['USER'] || 'root',
+        port: sshConfig.port || 22,
+        privateKey: sshConfig.privateKey || sshConfig.key || sshConfig.identityFile,
+        password: sshConfig.password,
+        passphrase: sshConfig.passphrase,
+      });
+      break;
+    }
 
-    case 'docker':
-      {
-        const containerName = target.config?.name || target.name;
-        engine = $.docker({ container: containerName });
-        break;
-      }
+    case 'docker': {
+      const containerName = target.config?.name || target.name;
+      engine = $.docker({ container: containerName });
+      break;
+    }
 
-    case 'kubernetes':
-      {
-        const podConfig = target.config || {};
-        engine = $.k8s({
-          pod: podConfig.name || target.name,
-          namespace: podConfig.namespace || 'default',
-          container: podConfig.container,
-        });
-        break;
-      }
+    case 'kubernetes': {
+      const podConfig = target.config || {};
+      engine = $.k8s({
+        pod: podConfig.name || target.name,
+        namespace: podConfig.namespace || 'default',
+        container: podConfig.container,
+      });
+      break;
+    }
   }
 
   // Apply options
@@ -200,10 +190,7 @@ async function executeOnTarget(
 /**
  * Execute command locally
  */
-async function executeLocally(
-  command: string,
-  options: DirectExecutionOptions
-): Promise<void> {
+async function executeLocally(command: string, options: DirectExecutionOptions): Promise<void> {
   let engine = $.local();
 
   // Apply options
@@ -264,11 +251,32 @@ export function isDirectCommand(args: string[], commandRegistry?: string[], task
   } else {
     // Fallback to static list if no registry provided
     const knownSubcommands = [
-      'exec', 'ssh', 'docker', 'k8s', 'run', 'init', 'config',
-      'env', 'copy', 'list', 'new', 'version', 'watch',
-      'on', 'in', 'help', 'cache', 'forward', 'interactive', 'logs',
-      'release', 'r', 'i', 'v', // Include aliases and dynamic commands
-      'tasks', 'explain' // Add new task-related commands
+      'exec',
+      'ssh',
+      'docker',
+      'k8s',
+      'run',
+      'init',
+      'config',
+      'env',
+      'copy',
+      'list',
+      'new',
+      'version',
+      'watch',
+      'on',
+      'in',
+      'help',
+      'cache',
+      'forward',
+      'interactive',
+      'logs',
+      'release',
+      'r',
+      'i',
+      'v', // Include aliases and dynamic commands
+      'tasks',
+      'explain', // Add new task-related commands
     ];
 
     if (knownSubcommands.includes(firstArg)) {
@@ -305,7 +313,7 @@ export async function createTargetEngine(target: any, options: any = {}): Promis
         passphrase: config.passphrase,
         keepAlive: config.keepAlive,
         keepAliveInterval: config.keepAliveInterval,
-        ...options
+        ...options,
       });
 
     case 'docker':
@@ -315,7 +323,7 @@ export async function createTargetEngine(target: any, options: any = {}): Promis
         user: config.user,
         workingDir: config.workdir,
         tty: config.tty,
-        ...options
+        ...options,
       });
 
     case 'kubernetes':
@@ -325,7 +333,7 @@ export async function createTargetEngine(target: any, options: any = {}): Promis
         container: config.container,
         context: config.context,
         kubeconfig: config.kubeconfig,
-        ...options
+        ...options,
       });
 
     default:

@@ -68,14 +68,15 @@ describe('AlgebraicEffect', () => {
 
       const result = outer.handle(
         (str, resume) => resume(`[${str}]`),
-        () => inner.handle(
-          (num, resume) => resume(num * 2),
-          () => {
-            const a = outer.perform('hello');
-            const b = inner.perform(5);
-            return `${a} - ${b}`;
-          }
-        )
+        () =>
+          inner.handle(
+            (num, resume) => resume(num * 2),
+            () => {
+              const a = outer.perform('hello');
+              const b = inner.perform(5);
+              return `${a} - ${b}`;
+            }
+          )
       );
 
       expect(result).toBe('[hello] - 10');
@@ -160,11 +161,7 @@ describe('AlgebraicEffect', () => {
         apiKey: 'secret123',
       });
 
-      const handler = scopedEffect(
-        getConfig,
-        (key, ctx) => ctx.get(key),
-        ctx
-      );
+      const handler = scopedEffect(getConfig, (key, ctx) => ctx.get(key), ctx);
 
       const result = handler(() => {
         const url = getConfig.perform('apiUrl');
@@ -187,7 +184,7 @@ describe('AlgebraicEffect', () => {
         const initial = state.getValue();
         state.setValue(10);
         const middle = state.getValue();
-        state.modify(x => x * 2);
+        state.modify((x) => x * 2);
         const final = state.getValue();
         return [initial, middle, final];
       });
@@ -204,16 +201,13 @@ describe('AlgebraicEffect', () => {
 
       const state = new AlgebraicEffects.State<AppState>('app');
 
-      const [result, finalState] = state.run(
-        { count: 0, items: [] },
-        () => {
-          state.modify(s => ({ ...s, count: s.count + 1 }));
-          state.modify(s => ({ ...s, items: [...s.items, 'first'] }));
-          state.modify(s => ({ ...s, count: s.count * 2 }));
-          state.modify(s => ({ ...s, items: [...s.items, 'second'] }));
-          return state.getValue();
-        }
-      );
+      const [result, finalState] = state.run({ count: 0, items: [] }, () => {
+        state.modify((s) => ({ ...s, count: s.count + 1 }));
+        state.modify((s) => ({ ...s, items: [...s.items, 'first'] }));
+        state.modify((s) => ({ ...s, count: s.count * 2 }));
+        state.modify((s) => ({ ...s, items: [...s.items, 'second'] }));
+        return state.getValue();
+      });
 
       expect(result).toEqual({
         count: 2,

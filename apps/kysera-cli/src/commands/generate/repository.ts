@@ -1,22 +1,22 @@
-import { Command } from 'commander'
-import { prism, spinner } from '@xec-sh/kit'
-import { writeFileSync, mkdirSync, existsSync } from 'node:fs'
-import { join } from 'node:path'
-import { logger } from '../../utils/logger.js'
-import { CLIError } from '../../utils/errors.js'
-import { getDatabaseConnection } from '../../utils/database.js'
-import { loadConfig } from '../../config/loader.js'
-import { DatabaseIntrospector, TableInfo } from './introspector.js'
+import { Command } from 'commander';
+import { prism, spinner } from '@xec-sh/kit';
+import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { logger } from '../../utils/logger.js';
+import { CLIError } from '../../utils/errors.js';
+import { getDatabaseConnection } from '../../utils/database.js';
+import { loadConfig } from '../../config/loader.js';
+import { DatabaseIntrospector, TableInfo } from './introspector.js';
 
 export interface RepositoryOptions {
-  table?: string
-  output?: string
-  overwrite?: boolean
-  config?: string
-  withValidation?: boolean
-  withPagination?: boolean
-  withSoftDelete?: boolean
-  withTimestamps?: boolean
+  table?: string;
+  output?: string;
+  overwrite?: boolean;
+  config?: string;
+  withValidation?: boolean;
+  withPagination?: boolean;
+  withSoftDelete?: boolean;
+  withTimestamps?: boolean;
 }
 
 export function repositoryCommand(): Command {
@@ -35,85 +35,80 @@ export function repositoryCommand(): Command {
     .option('--no-with-timestamps', 'Skip timestamp support')
     .action(async (table: string | undefined, options: RepositoryOptions) => {
       try {
-        await generateRepository(table, options)
+        await generateRepository(table, options);
       } catch (error) {
         if (error instanceof CLIError) {
-          throw error
+          throw error;
         }
         throw new CLIError(
           `Failed to generate repository: ${error instanceof Error ? error.message : String(error)}`,
           'GENERATE_REPOSITORY_ERROR'
-        )
+        );
       }
-    })
+    });
 
-  return cmd
+  return cmd;
 }
 
 async function generateRepository(tableName: string | undefined, options: RepositoryOptions): Promise<void> {
   // Load configuration
-  const config = await loadConfig(options.config)
+  const config = await loadConfig(options.config);
 
   if (!config?.database) {
-    throw new CLIError(
-      'Database configuration not found',
-      'CONFIG_ERROR',
-      [
-        'Create a kysera.config.ts file with database configuration',
-        'Or specify a config file with --config option'
-      ]
-    )
+    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
+      'Create a kysera.config.ts file with database configuration',
+      'Or specify a config file with --config option',
+    ]);
   }
 
   // Get database connection
-  const db = await getDatabaseConnection(config.database)
+  const db = await getDatabaseConnection(config.database);
 
   if (!db) {
-    throw new CLIError(
-      'Failed to connect to database',
-      'DATABASE_ERROR',
-      ['Check your database configuration', 'Ensure the database server is running']
-    )
+    throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', [
+      'Check your database configuration',
+      'Ensure the database server is running',
+    ]);
   }
 
-  const generateSpinner = spinner()
-  generateSpinner.start('Introspecting database...')
+  const generateSpinner = spinner();
+  generateSpinner.start('Introspecting database...');
 
   try {
-    const introspector = new DatabaseIntrospector(db, config.database.dialect as any)
+    const introspector = new DatabaseIntrospector(db, config.database.dialect as any);
 
     // Get table information
-    let tables: TableInfo[] = []
+    let tables: TableInfo[] = [];
 
     if (tableName) {
       // Generate for specific table
-      const tableInfo = await introspector.getTableInfo(tableName)
-      tables = [tableInfo]
+      const tableInfo = await introspector.getTableInfo(tableName);
+      tables = [tableInfo];
     } else {
       // Generate for all tables
-      tables = await introspector.introspect()
+      tables = await introspector.introspect();
     }
 
-    generateSpinner.succeed(`Found ${tables.length} table${tables.length !== 1 ? 's' : ''}`)
+    generateSpinner.succeed(`Found ${tables.length} table${tables.length !== 1 ? 's' : ''}`);
 
     // Generate repositories
-    const outputDir = options.output || './src/repositories'
+    const outputDir = options.output || './src/repositories';
 
     if (!existsSync(outputDir)) {
-      mkdirSync(outputDir, { recursive: true })
-      logger.debug(`Created output directory: ${outputDir}`)
+      mkdirSync(outputDir, { recursive: true });
+      logger.debug(`Created output directory: ${outputDir}`);
     }
 
-    let generated = 0
+    let generated = 0;
 
     for (const table of tables) {
-      const fileName = `${toKebabCase(table.name)}.repository.ts`
-      const filePath = join(outputDir, fileName)
+      const fileName = `${toKebabCase(table.name)}.repository.ts`;
+      const filePath = join(outputDir, fileName);
 
       // Check if file exists
       if (existsSync(filePath) && !options.overwrite) {
-        logger.warn(`Skipping ${fileName} (file exists, use --overwrite to replace)`)
-        continue
+        logger.warn(`Skipping ${fileName} (file exists, use --overwrite to replace)`);
+        continue;
       }
 
       // Generate repository code
@@ -121,78 +116,79 @@ async function generateRepository(tableName: string | undefined, options: Reposi
         withValidation: options.withValidation !== false,
         withPagination: options.withPagination !== false,
         withSoftDelete: options.withSoftDelete === true,
-        withTimestamps: options.withTimestamps !== false
-      })
+        withTimestamps: options.withTimestamps !== false,
+      });
 
       // Write file
-      writeFileSync(filePath, repositoryCode, 'utf-8')
-      logger.info(`${prism.green('✓')} Generated ${prism.cyan(fileName)}`)
-      generated++
+      writeFileSync(filePath, repositoryCode, 'utf-8');
+      logger.info(`${prism.green('✓')} Generated ${prism.cyan(fileName)}`);
+      generated++;
     }
 
     if (generated === 0) {
-      logger.warn('No repositories were generated')
+      logger.warn('No repositories were generated');
     } else {
-      logger.info('')
-      logger.info(prism.green(`✅ Generated ${generated} repositor${generated !== 1 ? 'ies' : 'y'} successfully`))
+      logger.info('');
+      logger.info(prism.green(`✅ Generated ${generated} repositor${generated !== 1 ? 'ies' : 'y'} successfully`));
     }
-
   } finally {
     // Close database connection
-    await db.destroy()
+    await db.destroy();
   }
 }
 
 function generateRepositoryCode(
   table: TableInfo,
   options: {
-    withValidation: boolean
-    withPagination: boolean
-    withSoftDelete: boolean
-    withTimestamps: boolean
+    withValidation: boolean;
+    withPagination: boolean;
+    withSoftDelete: boolean;
+    withTimestamps: boolean;
   }
 ): string {
-  const entityName = toPascalCase(table.name)
-  const repositoryName = `${entityName}Repository`
-  const tableName = table.name
-  const primaryKey = table.primaryKey?.[0] || 'id'
+  const entityName = toPascalCase(table.name);
+  const repositoryName = `${entityName}Repository`;
+  const tableName = table.name;
+  const primaryKey = table.primaryKey?.[0] || 'id';
 
   let imports: string[] = [
     `import { Kysely } from 'kysely'`,
     `import type { ${entityName}, New${entityName}, ${entityName}Update, ${entityName}Table } from '../models/${toKebabCase(table.name)}.js'`,
-    `import type { Database } from '../database.js'`
-  ]
+    `import type { Database } from '../database.js'`,
+  ];
 
   if (options.withPagination) {
-    imports.push(`import { paginate, type PaginationOptions, type PaginatedResult } from '@kysera/core'`)
+    imports.push(`import { paginate, type PaginationOptions, type PaginatedResult } from '@kysera/core'`);
   }
 
   if (options.withValidation) {
-    imports.push(`import { ${entityName}Schema, New${entityName}Schema, Update${entityName}Schema } from '../schemas/${toKebabCase(table.name)}.schema.js'`)
+    imports.push(
+      `import { ${entityName}Schema, New${entityName}Schema, Update${entityName}Schema } from '../schemas/${toKebabCase(table.name)}.schema.js'`
+    );
   }
 
   if (options.withSoftDelete) {
-    imports.push(`import { withSoftDelete } from '@kysera/soft-delete'`)
+    imports.push(`import { withSoftDelete } from '@kysera/soft-delete'`);
   }
 
   if (options.withTimestamps) {
-    imports.push(`import { withTimestamps } from '@kysera/timestamps'`)
+    imports.push(`import { withTimestamps } from '@kysera/timestamps'`);
   }
 
   // Generate repository class
   let classCode = `export class ${repositoryName} {
-  constructor(private db: Kysely<Database>) {`
+  constructor(private db: Kysely<Database>) {`;
 
   if (options.withSoftDelete) {
     classCode += `
     // Apply soft delete plugin if not already applied
-    this.db = withSoftDelete(this.db)`
+    this.db = withSoftDelete(this.db)`;
   }
 
   if (options.withTimestamps) {
     classCode += `
     // Apply timestamps plugin if not already applied
-    this.db = withTimestamps(this.db)`
+    this.db = withTimestamps(this.db)`;
   }
 
   classCode += `
@@ -205,11 +201,11 @@ function generateRepositoryCode(
     const result = await this.db
       .selectFrom('${tableName}')
       .selectAll()
-      .where('${primaryKey}', '=', ${primaryKey})`
+      .where('${primaryKey}', '=', ${primaryKey})`;
 
   if (options.withSoftDelete) {
     classCode += `
-      .where('deleted_at', 'is', null)`
+      .where('deleted_at', 'is', null)`;
   }
 
   classCode += `
@@ -224,11 +220,11 @@ function generateRepositoryCode(
   async findAll(): Promise<${entityName}[]> {
     const results = await this.db
       .selectFrom('${tableName}')
-      .selectAll()`
+      .selectAll()`;
 
   if (options.withSoftDelete) {
     classCode += `
-      .where('deleted_at', 'is', null)`
+      .where('deleted_at', 'is', null)`;
   }
 
   classCode += `
@@ -243,11 +239,11 @@ function generateRepositoryCode(
   async findMany(filters: Partial<${entityName}>): Promise<${entityName}[]> {
     let query = this.db
       .selectFrom('${tableName}')
-      .selectAll()`
+      .selectAll()`;
 
   if (options.withSoftDelete) {
     classCode += `
-      .where('deleted_at', 'is', null)`
+      .where('deleted_at', 'is', null)`;
   }
 
   classCode += `
@@ -262,7 +258,7 @@ function generateRepositoryCode(
     const results = await query.execute()
     return results as ${entityName}[]
   }
-`
+`;
 
   if (options.withPagination) {
     classCode += `
@@ -274,31 +270,31 @@ function generateRepositoryCode(
   ): Promise<PaginatedResult<${entityName}>> {
     let query = this.db
       .selectFrom('${tableName}')
-      .selectAll()`
+      .selectAll()`;
 
     if (options.withSoftDelete) {
       classCode += `
-      .where('deleted_at', 'is', null)`
+      .where('deleted_at', 'is', null)`;
     }
 
     classCode += `
 
     return paginate(query, options) as Promise<PaginatedResult<${entityName}>>
   }
-`
+`;
   }
 
   classCode += `
   /**
    * Create a new ${entityName.toLowerCase()}
    */
-  async create(data: New${entityName}): Promise<${entityName}> {`
+  async create(data: New${entityName}): Promise<${entityName}> {`;
 
   if (options.withValidation) {
     classCode += `
     // Validate input
     const validated = New${entityName}Schema.parse(data)
-`
+`;
   }
 
   classCode += `
@@ -314,24 +310,24 @@ function generateRepositoryCode(
   /**
    * Update a ${entityName.toLowerCase()}
    */
-  async update(${primaryKey}: ${getPrimaryKeyType(table)}, data: ${entityName}Update): Promise<${entityName}> {`
+  async update(${primaryKey}: ${getPrimaryKeyType(table)}, data: ${entityName}Update): Promise<${entityName}> {`;
 
   if (options.withValidation) {
     classCode += `
     // Validate input
     const validated = Update${entityName}Schema.parse(data)
-`
+`;
   }
 
   classCode += `
     const result = await this.db
       .updateTable('${tableName}')
       .set(${options.withValidation ? 'validated' : 'data'} as any)
-      .where('${primaryKey}', '=', ${primaryKey})`
+      .where('${primaryKey}', '=', ${primaryKey})`;
 
   if (options.withSoftDelete) {
     classCode += `
-      .where('deleted_at', 'is', null)`
+      .where('deleted_at', 'is', null)`;
   }
 
   classCode += `
@@ -344,7 +340,7 @@ function generateRepositoryCode(
   /**
    * Delete a ${entityName.toLowerCase()}
    */
-  async delete(${primaryKey}: ${getPrimaryKeyType(table)}): Promise<void> {`
+  async delete(${primaryKey}: ${getPrimaryKeyType(table)}): Promise<void> {`;
 
   if (options.withSoftDelete) {
     classCode += `
@@ -353,18 +349,18 @@ function generateRepositoryCode(
       .updateTable('${tableName}')
       .set({ deleted_at: new Date() } as any)
       .where('${primaryKey}', '=', ${primaryKey})
-      .execute()`
+      .execute()`;
   } else {
     classCode += `
     await this.db
       .deleteFrom('${tableName}')
       .where('${primaryKey}', '=', ${primaryKey})
-      .execute()`
+      .execute()`;
   }
 
   classCode += `
   }
-`
+`;
 
   if (options.withSoftDelete) {
     classCode += `
@@ -404,7 +400,7 @@ function generateRepositoryCode(
       .where('${primaryKey}', '=', ${primaryKey})
       .execute()
   }
-`
+`;
   }
 
   classCode += `
@@ -414,11 +410,11 @@ function generateRepositoryCode(
   async count(filters?: Partial<${entityName}>): Promise<number> {
     let query = this.db
       .selectFrom('${tableName}')
-      .select(this.db.fn.countAll().as('count'))`
+      .select(this.db.fn.countAll().as('count'))`;
 
   if (options.withSoftDelete) {
     classCode += `
-      .where('deleted_at', 'is', null)`
+      .where('deleted_at', 'is', null)`;
   }
 
   classCode += `
@@ -443,11 +439,11 @@ function generateRepositoryCode(
     const result = await this.db
       .selectFrom('${tableName}')
       .select(this.db.fn.countAll().as('count'))
-      .where('${primaryKey}', '=', ${primaryKey})`
+      .where('${primaryKey}', '=', ${primaryKey})`;
 
   if (options.withSoftDelete) {
     classCode += `
-      .where('deleted_at', 'is', null)`
+      .where('deleted_at', 'is', null)`;
   }
 
   classCode += `
@@ -459,32 +455,32 @@ function generateRepositoryCode(
 
 // Export singleton instance
 export const ${toCamelCase(table.name)}Repository = (db: Kysely<Database>) => new ${repositoryName}(db)
-`
+`;
 
   // Combine all parts
   return `${imports.join('\n')}
 
-${classCode}`
+${classCode}`;
 }
 
 function getPrimaryKeyType(table: TableInfo): string {
-  const primaryKeyColumn = table.columns.find(col => col.isPrimaryKey)
+  const primaryKeyColumn = table.columns.find((col) => col.isPrimaryKey);
   if (!primaryKeyColumn) {
-    return 'number' // Default to number
+    return 'number'; // Default to number
   }
-  return DatabaseIntrospector.mapDataTypeToTypeScript(primaryKeyColumn.dataType, false)
+  return DatabaseIntrospector.mapDataTypeToTypeScript(primaryKeyColumn.dataType, false);
 }
 
 // Utility functions
 function toCamelCase(str: string): string {
-  return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
+  return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
 }
 
 function toPascalCase(str: string): string {
-  const camel = toCamelCase(str)
-  return camel.charAt(0).toUpperCase() + camel.slice(1)
+  const camel = toCamelCase(str);
+  return camel.charAt(0).toUpperCase() + camel.slice(1);
 }
 
 function toKebabCase(str: string): string {
-  return str.replace(/_/g, '-')
+  return str.replace(/_/g, '-');
 }

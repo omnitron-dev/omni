@@ -171,11 +171,7 @@ export class InCommand extends ConfigAwareCommand {
     }
   }
 
-  private async executeCommand(
-    targets: ResolvedTarget[],
-    command: string,
-    options: InOptions
-  ): Promise<void> {
+  private async executeCommand(targets: ResolvedTarget[], command: string, options: InOptions): Promise<void> {
     if (options.dryRun) {
       for (const target of targets) {
         this.log(`[DRY RUN] Would execute in ${this.formatTargetDisplay(target)}: ${prism.yellow(command)}`, 'info');
@@ -192,11 +188,7 @@ export class InCommand extends ConfigAwareCommand {
     }
   }
 
-  private async executeSingle(
-    target: ResolvedTarget,
-    command: string,
-    options: InOptions
-  ): Promise<void> {
+  private async executeSingle(target: ResolvedTarget, command: string, options: InOptions): Promise<void> {
     const targetDisplay = this.formatTargetDisplay(target);
 
     if (!options.quiet) {
@@ -262,11 +254,7 @@ export class InCommand extends ConfigAwareCommand {
     }
   }
 
-  private async executeParallel(
-    targets: ResolvedTarget[],
-    command: string,
-    options: InOptions
-  ): Promise<void> {
+  private async executeParallel(targets: ResolvedTarget[], command: string, options: InOptions): Promise<void> {
     this.log(`Executing on ${targets.length} targets in parallel...`, 'info');
 
     const promises = targets.map(async (target) => {
@@ -281,8 +269,8 @@ export class InCommand extends ConfigAwareCommand {
     const results = await Promise.all(promises);
 
     // Display results
-    const successful = results.filter(r => r.success);
-    const failed = results.filter(r => !r.success);
+    const successful = results.filter((r) => r.success);
+    const failed = results.filter((r) => !r.success);
 
     if (successful.length > 0) {
       this.log(`${prism.green('✓')} Succeeded on ${successful.length} targets:`, 'success');
@@ -301,11 +289,7 @@ export class InCommand extends ConfigAwareCommand {
     }
   }
 
-  private async executeTask(
-    targets: ResolvedTarget[],
-    taskName: string,
-    options: InOptions
-  ): Promise<void> {
+  private async executeTask(targets: ResolvedTarget[], taskName: string, options: InOptions): Promise<void> {
     if (!this.taskManager) {
       throw new Error('Task manager not initialized');
     }
@@ -315,9 +299,13 @@ export class InCommand extends ConfigAwareCommand {
       this.log(`Running task '${taskName}' on ${targetDisplay}...`, 'info');
 
       try {
-        const result = await this.taskManager.run(taskName, {}, {
-          target: target.id
-        });
+        const result = await this.taskManager.run(
+          taskName,
+          {},
+          {
+            target: target.id,
+          }
+        );
 
         if (result.success) {
           this.log(`${prism.green('✓')} Task completed on ${targetDisplay}`, 'success');
@@ -332,16 +320,12 @@ export class InCommand extends ConfigAwareCommand {
     }
   }
 
-  private async executeScript(
-    targets: ResolvedTarget[],
-    scriptPath: string,
-    options: InOptions
-  ): Promise<void> {
+  private async executeScript(targets: ResolvedTarget[], scriptPath: string, options: InOptions): Promise<void> {
     const scriptLoader = new ScriptLoader({
       verbose: options.verbose || process.env['XEC_DEBUG'] === 'true',
       quiet: options.quiet,
       cache: true,
-      preferredCDN: 'esm.sh'
+      preferredCDN: 'esm.sh',
     });
 
     for (const target of targets) {
@@ -357,10 +341,10 @@ export class InCommand extends ConfigAwareCommand {
             args: process.argv.slice(3),
             argv: [process.argv[0] || 'node', scriptPath, ...process.argv.slice(3)],
             __filename: path.resolve(scriptPath),
-            __dirname: path.dirname(path.resolve(scriptPath))
+            __dirname: path.dirname(path.resolve(scriptPath)),
           },
           verbose: options.verbose,
-          quiet: options.quiet
+          quiet: options.quiet,
         };
 
         const result = await scriptLoader.executeScript(scriptPath, execOptions);
@@ -378,10 +362,7 @@ export class InCommand extends ConfigAwareCommand {
     }
   }
 
-  private async startRepl(
-    target: ResolvedTarget,
-    options: InOptions
-  ): Promise<void> {
+  private async startRepl(target: ResolvedTarget, options: InOptions): Promise<void> {
     const targetDisplay = this.formatTargetDisplay(target);
     this.log(`Starting REPL with $target configured for ${targetDisplay}...`, 'info');
 
@@ -389,7 +370,7 @@ export class InCommand extends ConfigAwareCommand {
       verbose: options.verbose || process.env['XEC_DEBUG'] === 'true',
       quiet: options.quiet,
       cache: true,
-      preferredCDN: 'esm.sh'
+      preferredCDN: 'esm.sh',
     });
 
     const engine = await this.createTargetEngine(target);
@@ -398,16 +379,13 @@ export class InCommand extends ConfigAwareCommand {
       target,
       targetEngine: engine,
       verbose: options.verbose,
-      quiet: options.quiet
+      quiet: options.quiet,
     };
 
     await scriptLoader.startRepl(execOptions);
   }
 
-  private async executeInteractive(
-    target: ResolvedTarget,
-    options: InOptions
-  ): Promise<void> {
+  private async executeInteractive(target: ResolvedTarget, options: InOptions): Promise<void> {
     const targetDisplay = this.formatTargetDisplay(target);
 
     if (options.dryRun) {
@@ -460,7 +438,8 @@ export class InCommand extends ConfigAwareCommand {
       // Use local execution for interactive mode
       const result = await $.local().raw`${command.join(' ')}`.interactive();
 
-      if (result.exitCode !== 0 && result.exitCode !== 130) { // 130 is Ctrl+C
+      if (result.exitCode !== 0 && result.exitCode !== 130) {
+        // 130 is Ctrl+C
         throw new Error(`Interactive session ended with exit code ${result.exitCode}`);
       }
     } catch (error) {
@@ -504,9 +483,7 @@ export class InCommand extends ConfigAwareCommand {
 
       if (!targets) return null;
 
-      const targetPattern = Array.isArray(targets)
-        ? targets.map(t => t.id).join(' ')
-        : targets.id;
+      const targetPattern = Array.isArray(targets) ? targets.map((t) => t.id).join(' ') : targets.id;
 
       const inOptions: Partial<InOptions> = {};
       let commandParts: string[] = [];
@@ -528,16 +505,10 @@ export class InCommand extends ConfigAwareCommand {
 
           // Command-specific options
           if (Array.isArray(targets) && targets.length > 1) {
-            inOptions.parallel = await InteractiveHelpers.confirmAction(
-              'Execute in parallel?',
-              false
-            );
+            inOptions.parallel = await InteractiveHelpers.confirmAction('Execute in parallel?', false);
           }
 
-          const configureEnv = await InteractiveHelpers.confirmAction(
-            'Set environment variables?',
-            false
-          );
+          const configureEnv = await InteractiveHelpers.confirmAction('Set environment variables?', false);
 
           if (configureEnv) {
             const envVars: string[] = [];
@@ -562,10 +533,7 @@ export class InCommand extends ConfigAwareCommand {
             }
           }
 
-          const configureCwd = await InteractiveHelpers.confirmAction(
-            'Set working directory?',
-            false
-          );
+          const configureCwd = await InteractiveHelpers.confirmAction('Set working directory?', false);
 
           if (configureCwd) {
             const cwd = await InteractiveHelpers.inputText('Enter working directory:', {
@@ -576,10 +544,7 @@ export class InCommand extends ConfigAwareCommand {
             }
           }
 
-          const configureTimeout = await InteractiveHelpers.confirmAction(
-            'Set command timeout?',
-            false
-          );
+          const configureTimeout = await InteractiveHelpers.confirmAction('Set command timeout?', false);
 
           if (configureTimeout) {
             const timeout = await InteractiveHelpers.inputText('Enter timeout:', {
@@ -674,10 +639,7 @@ export class InCommand extends ConfigAwareCommand {
         console.log(`  Timeout: ${prism.gray(inOptions.timeout)}`);
       }
 
-      const confirm = await InteractiveHelpers.confirmAction(
-        '\nProceed with execution?',
-        true
-      );
+      const confirm = await InteractiveHelpers.confirmAction('\nProceed with execution?', true);
 
       if (!confirm) {
         InteractiveHelpers.endInteractiveMode('Execution cancelled');

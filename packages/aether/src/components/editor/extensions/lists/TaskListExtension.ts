@@ -50,8 +50,7 @@ export class TaskListExtension extends Extension {
 
   getCommands() {
     return {
-      taskList: (): Command => (state, dispatch) =>
-        wrapInList(state.schema.nodes.task_list)(state, dispatch),
+      taskList: (): Command => (state, dispatch) => wrapInList(state.schema.nodes.task_list)(state, dispatch),
       toggleTaskList: (): Command => (state, dispatch) => {
         const { $from, $to } = state.selection;
         const range = $from.blockRange($to);
@@ -79,14 +78,7 @@ export class TaskListExtension extends Extension {
     const taskListNode = schema.nodes.task_list;
     if (!taskListNode) return [];
 
-    return [
-      wrappingInputRule(
-        /^\s*\[\s?\]\s$/,
-        taskListNode,
-        undefined,
-        undefined,
-      ),
-    ];
+    return [wrappingInputRule(/^\s*\[\s?\]\s$/, taskListNode, undefined, undefined)];
   }
 
   /**

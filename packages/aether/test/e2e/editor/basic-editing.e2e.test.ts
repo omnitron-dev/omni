@@ -304,8 +304,7 @@ test.describe('Basic Editing', () => {
   });
 
   test('should handle rapid typing', async ({ page }) => {
-    const rapidText =
-      'The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog.';
+    const rapidText = 'The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog.';
     await typeText(page, rapidText);
 
     const text = await getEditorText(page);

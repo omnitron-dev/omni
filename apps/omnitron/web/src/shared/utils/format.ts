@@ -13,7 +13,7 @@
  */
 export function formatDate(
   date: Date | string | number,
-  format: 'short' | 'medium' | 'long' | 'full' = 'medium',
+  format: 'short' | 'medium' | 'long' | 'full' = 'medium'
 ): string {
   const d = new Date(date);
 
@@ -34,10 +34,7 @@ export function formatDate(
 /**
  * Format a date and time
  */
-export function formatDateTime(
-  date: Date | string | number,
-  includeSeconds = false,
-): string {
+export function formatDateTime(date: Date | string | number, includeSeconds = false): string {
   const d = new Date(date);
 
   if (isNaN(d.getTime())) {
@@ -98,10 +95,7 @@ export function formatRelativeTime(date: Date | string | number): string {
 /**
  * Format time (HH:MM:SS or HH:MM)
  */
-export function formatTime(
-  date: Date | string | number,
-  includeSeconds = true,
-): string {
+export function formatTime(date: Date | string | number, includeSeconds = true): string {
   const d = new Date(date);
 
   if (isNaN(d.getTime())) {
@@ -122,11 +116,7 @@ export function formatTime(
 /**
  * Format a number with thousands separators
  */
-export function formatNumber(
-  value: number,
-  decimals?: number,
-  locale = 'en-US',
-): string {
+export function formatNumber(value: number, decimals?: number, locale = 'en-US'): string {
   return new Intl.NumberFormat(locale, {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
@@ -136,11 +126,7 @@ export function formatNumber(
 /**
  * Format a number as currency
  */
-export function formatCurrency(
-  value: number,
-  currency = 'USD',
-  locale = 'en-US',
-): string {
+export function formatCurrency(value: number, currency = 'USD', locale = 'en-US'): string {
   return new Intl.NumberFormat(locale, {
     style: 'currency',
     currency,
@@ -150,11 +136,7 @@ export function formatCurrency(
 /**
  * Format a number as percentage
  */
-export function formatPercentage(
-  value: number,
-  decimals = 2,
-  locale = 'en-US',
-): string {
+export function formatPercentage(value: number, decimals = 2, locale = 'en-US'): string {
   return new Intl.NumberFormat(locale, {
     style: 'percent',
     minimumFractionDigits: decimals,
@@ -165,10 +147,7 @@ export function formatPercentage(
 /**
  * Format a number in compact notation (e.g., 1.2K, 3.4M)
  */
-export function formatCompactNumber(
-  value: number,
-  locale = 'en-US',
-): string {
+export function formatCompactNumber(value: number, locale = 'en-US'): string {
   return new Intl.NumberFormat(locale, {
     notation: 'compact',
     compactDisplay: 'short',
@@ -198,17 +177,11 @@ export function formatOrdinal(value: number, locale = 'en-US'): string {
 /**
  * Format bytes as human-readable file size
  */
-export function formatFileSize(
-  bytes: number,
-  decimals = 2,
-  binary = false,
-): string {
+export function formatFileSize(bytes: number, decimals = 2, binary = false): string {
   if (bytes === 0) return '0 Bytes';
 
   const k = binary ? 1024 : 1000;
-  const sizes = binary
-    ? ['Bytes', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB']
-    : ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB'];
+  const sizes = binary ? ['Bytes', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'] : ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB'];
 
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   const value = bytes / Math.pow(k, i);
@@ -233,11 +206,7 @@ export function truncate(text: string, maxLength: number, ellipsis = '...'): str
 /**
  * Truncate text in the middle
  */
-export function truncateMiddle(
-  text: string,
-  maxLength: number,
-  ellipsis = '...',
-): string {
+export function truncateMiddle(text: string, maxLength: number, ellipsis = '...'): string {
   if (text.length <= maxLength) {
     return text;
   }
@@ -253,10 +222,7 @@ export function truncateMiddle(
  * Convert string to title case
  */
 export function toTitleCase(text: string): string {
-  return text.replace(
-    /\w\S*/g,
-    (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase(),
-  );
+  return text.replace(/\w\S*/g, (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
 }
 
 /**
@@ -280,19 +246,13 @@ export function fromCamelCase(text: string): string {
  * Convert kebab-case or snake_case to readable text
  */
 export function fromKebabCase(text: string): string {
-  return text
-    .replace(/[-_]/g, ' ')
-    .replace(/^./, (str) => str.toUpperCase());
+  return text.replace(/[-_]/g, ' ').replace(/^./, (str) => str.toUpperCase());
 }
 
 /**
  * Pluralize a word based on count
  */
-export function pluralize(
-  word: string,
-  count: number,
-  plural?: string,
-): string {
+export function pluralize(word: string, count: number, plural?: string): string {
   if (count === 1) {
     return word;
   }

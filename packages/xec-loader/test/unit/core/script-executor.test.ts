@@ -25,9 +25,12 @@ describe('ScriptExecutor', () => {
   describe('executeScript', () => {
     it('should execute a simple JavaScript file', async () => {
       const scriptPath = path.join(tempDir, 'simple.js');
-      await fs.writeFile(scriptPath, `
+      await fs.writeFile(
+        scriptPath,
+        `
         globalThis.__testResult = 'success';
-      `);
+      `
+      );
 
       const result = await executor.executeScript(scriptPath);
       expect(result.success).toBe(true);
@@ -45,22 +48,25 @@ describe('ScriptExecutor', () => {
 
     it('should inject script context', async () => {
       const scriptPath = path.join(tempDir, 'context.js');
-      await fs.writeFile(scriptPath, `
+      await fs.writeFile(
+        scriptPath,
+        `
         const ctx = globalThis.__xecScriptContext;
         globalThis.__testContext = {
           args: ctx.args,
           filename: ctx.__filename,
           dirname: ctx.__dirname
         };
-      `);
+      `
+      );
 
       const result = await executor.executeScript(scriptPath, {
         context: {
           args: ['arg1', 'arg2'],
           argv: ['node', scriptPath, 'arg1', 'arg2'],
           __filename: scriptPath,
-          __dirname: path.dirname(scriptPath)
-        }
+          __dirname: path.dirname(scriptPath),
+        },
       });
 
       expect(result.success).toBe(true);
@@ -74,14 +80,17 @@ describe('ScriptExecutor', () => {
 
     it('should inject custom globals', async () => {
       const scriptPath = path.join(tempDir, 'globals.js');
-      await fs.writeFile(scriptPath, `
+      await fs.writeFile(
+        scriptPath,
+        `
         globalThis.__testCustom = globalThis.customValue;
-      `);
+      `
+      );
 
       const result = await executor.executeScript(scriptPath, {
         customGlobals: {
-          customValue: 'injected'
-        }
+          customValue: 'injected',
+        },
       });
 
       expect(result.success).toBe(true);
@@ -92,9 +101,12 @@ describe('ScriptExecutor', () => {
 
     it('should handle script errors', async () => {
       const scriptPath = path.join(tempDir, 'error.js');
-      await fs.writeFile(scriptPath, `
+      await fs.writeFile(
+        scriptPath,
+        `
         throw new Error('Script error');
-      `);
+      `
+      );
 
       const result = await executor.executeScript(scriptPath);
       expect(result.success).toBe(false);
@@ -106,10 +118,13 @@ describe('ScriptExecutor', () => {
   describe('loadScript', () => {
     it('should load a module and return exports', async () => {
       const scriptPath = path.join(tempDir, 'module.js');
-      await fs.writeFile(scriptPath, `
+      await fs.writeFile(
+        scriptPath,
+        `
         export default { value: 'test' };
         export const namedExport = 'named';
-      `);
+      `
+      );
 
       const module = await executor.loadScript(scriptPath);
       expect(module.default).toEqual({ value: 'test' });
@@ -117,9 +132,7 @@ describe('ScriptExecutor', () => {
     });
 
     it('should throw for non-existent file', async () => {
-      await expect(
-        executor.loadScript('/non/existent/module.js')
-      ).rejects.toThrow('Script file not found');
+      await expect(executor.loadScript('/non/existent/module.js')).rejects.toThrow('Script file not found');
     });
   });
 });

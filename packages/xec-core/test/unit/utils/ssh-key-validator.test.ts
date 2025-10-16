@@ -108,7 +108,7 @@ MIIEpAIBAAKCAQEAw7bJxlXi1M+WmWpJ0iZFcSBmz1+0vPBhIITrUUjJVGnqOzzX
 
         const result = await SSHKeyValidator.validatePrivateKey(unsupportedKey);
         expect(result.isValid).toBe(false);
-        expect(result.issues.some(issue => issue.includes('Unsupported key type'))).toBe(true);
+        expect(result.issues.some((issue) => issue.includes('Unsupported key type'))).toBe(true);
       });
 
       it('should detect encrypted keys', async () => {
@@ -149,7 +149,8 @@ It contains invalid characters @#$%
   describe('validatePublicKey', () => {
     describe('valid keys', () => {
       it('should validate RSA public key', () => {
-        const rsaPublicKey = 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDDtsnGVeLUz5aZaknSJkVxIGbPX7S88GEghOtRSMlUaeo7PNcpmmpmKHBLA== user@host';
+        const rsaPublicKey =
+          'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDDtsnGVeLUz5aZaknSJkVxIGbPX7S88GEghOtRSMlUaeo7PNcpmmpmKHBLA== user@host';
 
         const result = SSHKeyValidator.validatePublicKey(rsaPublicKey);
         expect(result.isValid).toBe(true);
@@ -158,7 +159,8 @@ It contains invalid characters @#$%
       });
 
       it('should validate DSA public key', () => {
-        const dsaPublicKey = 'ssh-dss AAAAB3NzaC1kc3MAAACBAMe9PUcSwsEpeblDQWp+UcDyft9juUEXHCj8dBBsCHWfUn2UsrPPQVE2o8sXcnnHSmKwKYsolQ==';
+        const dsaPublicKey =
+          'ssh-dss AAAAB3NzaC1kc3MAAACBAMe9PUcSwsEpeblDQWp+UcDyft9juUEXHCj8dBBsCHWfUn2UsrPPQVE2o8sXcnnHSmKwKYsolQ==';
 
         const result = SSHKeyValidator.validatePublicKey(dsaPublicKey);
         expect(result.isValid).toBe(true);
@@ -167,7 +169,8 @@ It contains invalid characters @#$%
       });
 
       it('should validate ECDSA public key', () => {
-        const ecdsaPublicKey = 'ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBDsFOaDcisE23RTJrnR6hCry2cGy6QCWXG77f8V0kRnz';
+        const ecdsaPublicKey =
+          'ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBDsFOaDcisE23RTJrnR6hCry2cGy6QCWXG77f8V0kRnz';
 
         const result = SSHKeyValidator.validatePublicKey(ecdsaPublicKey);
         expect(result.isValid).toBe(true);
@@ -185,7 +188,8 @@ It contains invalid characters @#$%
       });
 
       it('should validate key without comment', () => {
-        const keyWithoutComment = 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDDtsnGVeLUz5aZaknSJkVxIGbPX7S88GEghOtRSMlUaeo7PNcpmmpmKHBLA==';
+        const keyWithoutComment =
+          'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDDtsnGVeLUz5aZaknSJkVxIGbPX7S88GEghOtRSMlUaeo7PNcpmmpmKHBLA==';
 
         const result = SSHKeyValidator.validatePublicKey(keyWithoutComment);
         expect(result.isValid).toBe(true);
@@ -239,7 +243,7 @@ Y0IkhYPRLnqPbcKKHQfXzCUfVDQvQvvwvRoZJQPNnR2WpNxFJyvgJbQKLqCZE3fU
     it('should handle non-existent file', async () => {
       const result = await SSHKeyValidator.validateKeyFile('/non/existent/file');
       expect(result.isValid).toBe(false);
-      expect(result.issues.some(issue => issue.includes('Failed to read key file'))).toBe(true);
+      expect(result.issues.some((issue) => issue.includes('Failed to read key file'))).toBe(true);
     });
 
     it('should validate file permissions', async () => {
@@ -249,13 +253,13 @@ MIIEpAIBAAKCAQEAw7bJxlXi1M+WmWpJ0iZFcSBmz1+0vPBhIITrUUjJVGnqOzzX
 -----END RSA PRIVATE KEY-----`;
 
       await fs.writeFile(keyPath, keyContent);
-      
+
       // Set insecure permissions
       await fs.chmod(keyPath, 0o644);
 
       const result = await SSHKeyValidator.checkKeyFilePermissions(keyPath);
       expect(result.isSecure).toBe(false);
-      expect(result.issues.some(issue => issue.includes('insecure permissions'))).toBe(true);
+      expect(result.issues.some((issue) => issue.includes('insecure permissions'))).toBe(true);
     });
 
     it('should accept secure permissions', async () => {
@@ -266,12 +270,12 @@ KZpqZLEWCQfYnfpLpTCzLmKzc7VNT5ZvEtLx8EqQg8H7Je8OfD3Q/5mSPassCIy+
 -----END RSA PRIVATE KEY-----`;
 
       await fs.writeFile(keyPath, keyContent);
-      
+
       // Set secure permissions
       await fs.chmod(keyPath, 0o600);
 
       const result = await SSHKeyValidator.validateKeyFile(keyPath);
-      expect(result.issues.some(issue => issue.includes('insecure permissions'))).toBe(false);
+      expect(result.issues.some((issue) => issue.includes('insecure permissions'))).toBe(false);
     });
   });
 
@@ -296,7 +300,8 @@ FALn/7sOgPP4g7BUJpXoLhcK0XPZ2h1TtpXU/7B3gSxLCxYk5a9F0QFqGS7iF1qZ
     });
 
     it('should handle keys with Windows line endings', async () => {
-      const keyWithCRLF = '-----BEGIN RSA PRIVATE KEY-----\r\n' +
+      const keyWithCRLF =
+        '-----BEGIN RSA PRIVATE KEY-----\r\n' +
         'MIIEpAIBAAKCAQEAw7bJxlXi1M+WmWpJ0iZFcSBmz1+0vPBhIITrUUjJVGnqOzzX\r\n' +
         'KZpqZLEWCQfYnfpLpTCzLmKzc7VNT5ZvEtLx8EqQg8H7Je8OfD3Q/5mSPassCIy+\r\n' +
         'Y0IkhYPRLnqPbcKKHQfXzCUfVDQvQvvwvRoZJQPNnR2WpNxFJyvgJbQKLqCZE3fU\r\n' +
@@ -333,9 +338,7 @@ MIIBOgIBAAJBAKj34+5SNkn0S8nfMzoLHwFJRDzfBQ0=
 
       const result = await SSHKeyValidator.validatePrivateKey(weakKey);
       // In a real implementation, this would check key length
-      expect(result.issues.some(issue => 
-        issue.includes('too short') || issue.includes('Base64')
-      )).toBe(true);
+      expect(result.issues.some((issue) => issue.includes('too short') || issue.includes('Base64'))).toBe(true);
     });
 
     it('should warn about DSA keys', async () => {
@@ -363,7 +366,7 @@ FALn/7sOgPP4g7BUJpXoLhcK0XPZ2h1TtpXU/7B3gSxLCxYk5a9F0QFqGS7iF1qZ
 
       const buffer = Buffer.from(rsaKey, 'utf8');
       const result = await SSHKeyValidator.validatePrivateKey(buffer);
-      
+
       expect(result.isValid).toBe(true);
       expect(result.keyType).toBe('RSA');
       expect(result.issues).toHaveLength(0);
@@ -390,7 +393,7 @@ MIIEpAIBAAKCAQEAw7bJxlXi1M+WmWpJ0iZFcSBmz1+0vPBhIITrUUjJVGnqOzzX
         host: 'example.com',
         username: 'user',
         port: 22,
-        privateKey: 'key-content'
+        privateKey: 'key-content',
       });
 
       expect(result.isValid).toBe(true);
@@ -401,7 +404,7 @@ MIIEpAIBAAKCAQEAw7bJxlXi1M+WmWpJ0iZFcSBmz1+0vPBhIITrUUjJVGnqOzzX
       const result = SSHKeyValidator.validateSSHOptions({
         host: 'example.com',
         username: 'user',
-        password: 'secret'
+        password: 'secret',
       });
 
       expect(result.isValid).toBe(true);
@@ -411,7 +414,7 @@ MIIEpAIBAAKCAQEAw7bJxlXi1M+WmWpJ0iZFcSBmz1+0vPBhIITrUUjJVGnqOzzX
     it('should reject missing host', () => {
       const result = SSHKeyValidator.validateSSHOptions({
         username: 'user',
-        privateKey: 'key'
+        privateKey: 'key',
       });
 
       expect(result.isValid).toBe(false);
@@ -421,7 +424,7 @@ MIIEpAIBAAKCAQEAw7bJxlXi1M+WmWpJ0iZFcSBmz1+0vPBhIITrUUjJVGnqOzzX
     it('should reject missing username', () => {
       const result = SSHKeyValidator.validateSSHOptions({
         host: 'example.com',
-        privateKey: 'key'
+        privateKey: 'key',
       });
 
       expect(result.isValid).toBe(false);
@@ -433,7 +436,7 @@ MIIEpAIBAAKCAQEAw7bJxlXi1M+WmWpJ0iZFcSBmz1+0vPBhIITrUUjJVGnqOzzX
         { port: 0, desc: 'port 0' },
         { port: -1, desc: 'negative port' },
         { port: 65536, desc: 'port > 65535' },
-        { port: 1.5, desc: 'non-integer port' }
+        { port: 1.5, desc: 'non-integer port' },
       ];
 
       testCases.forEach(({ port, desc }) => {
@@ -441,7 +444,7 @@ MIIEpAIBAAKCAQEAw7bJxlXi1M+WmWpJ0iZFcSBmz1+0vPBhIITrUUjJVGnqOzzX
           host: 'example.com',
           username: 'user',
           port,
-          privateKey: 'key'
+          privateKey: 'key',
         });
 
         expect(result.isValid).toBe(false);
@@ -452,7 +455,7 @@ MIIEpAIBAAKCAQEAw7bJxlXi1M+WmWpJ0iZFcSBmz1+0vPBhIITrUUjJVGnqOzzX
     it('should reject missing authentication', () => {
       const result = SSHKeyValidator.validateSSHOptions({
         host: 'example.com',
-        username: 'user'
+        username: 'user',
       });
 
       expect(result.isValid).toBe(false);
@@ -464,18 +467,20 @@ MIIEpAIBAAKCAQEAw7bJxlXi1M+WmWpJ0iZFcSBmz1+0vPBhIITrUUjJVGnqOzzX
         host: 'example.com',
         username: 'user',
         privateKey: 'key',
-        password: 'password'
+        password: 'password',
       });
 
       expect(result.isValid).toBe(false);
-      expect(result.issues).toContain('Both privateKey and password provided. Only one authentication method should be used');
+      expect(result.issues).toContain(
+        'Both privateKey and password provided. Only one authentication method should be used'
+      );
     });
 
     it('should accept Buffer as privateKey', () => {
       const result = SSHKeyValidator.validateSSHOptions({
         host: 'example.com',
         username: 'user',
-        privateKey: Buffer.from('key-content')
+        privateKey: Buffer.from('key-content'),
       });
 
       expect(result.isValid).toBe(true);
@@ -486,9 +491,9 @@ MIIEpAIBAAKCAQEAw7bJxlXi1M+WmWpJ0iZFcSBmz1+0vPBhIITrUUjJVGnqOzzX
   describe('checkKeyFilePermissions error handling', () => {
     it('should handle file stat errors', async () => {
       const result = await SSHKeyValidator.checkKeyFilePermissions('/path/that/does/not/exist');
-      
+
       expect(result.isSecure).toBe(false);
-      expect(result.issues.some(issue => issue.includes('Failed to check file permissions'))).toBe(true);
+      expect(result.issues.some((issue) => issue.includes('Failed to check file permissions'))).toBe(true);
     });
   });
 });

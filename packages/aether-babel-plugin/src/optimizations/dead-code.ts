@@ -17,11 +17,7 @@ import type { PluginState, PluginOptions } from '../index';
 /**
  * Apply dead code elimination to JSX elements
  */
-export function deadCodeElimination(
-  path: NodePath<t.JSXElement>,
-  state: PluginState,
-  opts: PluginOptions
-): void {
+export function deadCodeElimination(path: NodePath<t.JSXElement>, state: PluginState, opts: PluginOptions): void {
   const openingElement = path.node.openingElement;
 
   // Check if this is a Show component

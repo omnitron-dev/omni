@@ -58,7 +58,7 @@ if (import.meta.env.DEV) {
  * Call the component function to get the DOM node and append it to root.
  * Components in Aether are functions that return DOM nodes when called.
  */
-const appNode = component({});  // Call component with empty props
+const appNode = component({}); // Call component with empty props
 if (appNode instanceof Node) {
   root.appendChild(appNode);
 }

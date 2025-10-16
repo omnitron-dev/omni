@@ -13,26 +13,21 @@ export const flowProperty = {
     flow: Flow<In, Out>,
     property: (input: In, output: Out) => boolean,
     arbitrary: fc.Arbitrary<In>,
-    options?: fc.Parameters<[In]>,
+    options?: fc.Parameters<[In]>
   ) {
     return fc.assert(
       fc.asyncProperty(arbitrary, async (input) => {
         const output = await flow(input);
         return property(input, output);
       }),
-      options,
+      options
     );
   },
 
   /**
    * Test composition associativity
    */
-  associativity<A, B, C, D>(
-    f: Flow<A, B>,
-    g: Flow<B, C>,
-    h: Flow<C, D>,
-    arbitrary: fc.Arbitrary<A>,
-  ) {
+  associativity<A, B, C, D>(f: Flow<A, B>, g: Flow<B, C>, h: Flow<C, D>, arbitrary: fc.Arbitrary<A>) {
     return fc.assert(
       fc.asyncProperty(arbitrary, async (input) => {
         const left = f.pipe(g).pipe(h);
@@ -42,7 +37,7 @@ export const flowProperty = {
         const rightResult = await right(input);
 
         expect(leftResult).toEqual(rightResult);
-      }),
+      })
     );
   },
 
@@ -58,7 +53,7 @@ export const flowProperty = {
 
         expect(leftIdentity).toEqual(original);
         expect(rightIdentity).toEqual(original);
-      }),
+      })
     );
   },
 };
@@ -71,7 +66,7 @@ export function trackingFlow<In, Out>(
   tracker: {
     calls: Array<{ input: In; output: Out }>;
     callCount: number;
-  } = { calls: [], callCount: 0 },
+  } = { calls: [], callCount: 0 }
 ): Flow<In, Out> & { tracker: typeof tracker } {
   const flow = ((input: In) => {
     const output = fn(input);
@@ -101,12 +96,8 @@ export function trackingFlow<In, Out>(
 /**
  * Create a delayed Flow for testing async behavior
  */
-export function delayedFlow<In, Out>(
-  fn: (input: In) => Out,
-  delay: number,
-): Flow<In, Promise<Out>> {
-  return ((input: In) =>
-    new Promise<Out>((resolve) => setTimeout(() => resolve(fn(input)), delay))) as Flow<
+export function delayedFlow<In, Out>(fn: (input: In) => Out, delay: number): Flow<In, Promise<Out>> {
+  return ((input: In) => new Promise<Out>((resolve) => setTimeout(() => resolve(fn(input)), delay))) as Flow<
     In,
     Promise<Out>
   >;
@@ -115,10 +106,7 @@ export function delayedFlow<In, Out>(
 /**
  * Test helper to measure Flow execution time
  */
-export async function measureFlow<In, Out>(
-  flow: Flow<In, Out>,
-  input: In,
-): Promise<{ result: Out; duration: number }> {
+export async function measureFlow<In, Out>(flow: Flow<In, Out>, input: In): Promise<{ result: Out; duration: number }> {
   const start = performance.now();
   const result = await flow(input);
   const duration = performance.now() - start;
@@ -128,11 +116,7 @@ export async function measureFlow<In, Out>(
 /**
  * Test helper to verify Flow purity
  */
-export async function isPure<In, Out>(
-  flow: Flow<In, Out>,
-  input: In,
-  iterations = 10,
-): Promise<boolean> {
+export async function isPure<In, Out>(flow: Flow<In, Out>, input: In, iterations = 10): Promise<boolean> {
   const results: Out[] = [];
 
   for (let i = 0; i < iterations; i++) {
@@ -151,7 +135,7 @@ export async function isPure<In, Out>(
 export function failingFlow<In, Out>(
   fn: (input: In) => Out,
   failAfter: number,
-  error: Error = new Error('Intentional test failure'),
+  error: Error = new Error('Intentional test failure')
 ): Flow<In, Out> {
   let callCount = 0;
 
@@ -204,8 +188,7 @@ export class ControllableFlow<In, Out> {
 
   delay(ms: number) {
     const original = this.behavior;
-    this.behavior = (input: In) =>
-      new Promise<Out>((resolve) => setTimeout(() => resolve(original(input) as Out), ms));
+    this.behavior = (input: In) => new Promise<Out>((resolve) => setTimeout(() => resolve(original(input) as Out), ms));
   }
 }
 
@@ -213,29 +196,24 @@ export class ControllableFlow<In, Out> {
  * Arbitraries for common types
  */
 export const arbitraries = {
-  flow: <In, Out>(
-    _inputArb: fc.Arbitrary<In>,
-    outputArb: fc.Arbitrary<Out>,
-  ): fc.Arbitrary<Flow<In, Out>> =>
+  flow: <In, Out>(_inputArb: fc.Arbitrary<In>, outputArb: fc.Arbitrary<Out>): fc.Arbitrary<Flow<In, Out>> =>
     fc.func(outputArb).map((fn) => ((input: In) => fn(input)) as Flow<In, Out>),
 
-  pureFlow: <T>(_arb: fc.Arbitrary<T>): fc.Arbitrary<Flow<T, T>> =>
-    fc.constant(((x: T) => x) as Flow<T, T>),
+  pureFlow: <T>(_arb: fc.Arbitrary<T>): fc.Arbitrary<Flow<T, T>> => fc.constant(((x: T) => x) as Flow<T, T>),
 
   asyncFlow: <In, Out>(
     _inputArb: fc.Arbitrary<In>,
     outputArb: fc.Arbitrary<Out>,
-    delayArb: fc.Arbitrary<number> = fc.nat({ max: 100 }),
+    delayArb: fc.Arbitrary<number> = fc.nat({ max: 100 })
   ): fc.Arbitrary<Flow<In, Promise<Out>>> =>
     fc
       .tuple(fc.func(outputArb), delayArb)
       .map(
         ([fn, delay]) =>
-          ((input: In) =>
-            new Promise<Out>((resolve) => setTimeout(() => resolve(fn(input)), delay))) as Flow<
+          ((input: In) => new Promise<Out>((resolve) => setTimeout(() => resolve(fn(input)), delay))) as Flow<
             In,
             Promise<Out>
-          >,
+          >
       ),
 };
 
@@ -360,7 +338,7 @@ export class SpyFlow<In, Out> {
                 timestamp,
               });
               throw error;
-            },
+            }
           );
         }
 

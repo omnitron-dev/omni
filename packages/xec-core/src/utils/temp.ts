@@ -5,7 +5,6 @@ import { join, relative, normalize, isAbsolute } from 'node:path';
 
 import type { UshEventMap, TypedEventEmitter } from '../types/events.js';
 
-
 export interface TempOptions {
   prefix?: string;
   suffix?: string;
@@ -18,21 +17,16 @@ export class TempFile {
   private _path: string;
   private _cleaned = false;
 
-  constructor(
-    private options: TempOptions = {}
-  ) {
+  constructor(private options: TempOptions = {}) {
     this._path = this.generatePath();
   }
 
-  private emitEvent<K extends keyof UshEventMap>(
-    event: K,
-    data: Omit<UshEventMap[K], 'timestamp' | 'adapter'>
-  ): void {
+  private emitEvent<K extends keyof UshEventMap>(event: K, data: Omit<UshEventMap[K], 'timestamp' | 'adapter'>): void {
     if (this.options.emitter) {
       this.options.emitter.emit(event, {
         ...data,
         timestamp: new Date(),
-        adapter: 'local'
+        adapter: 'local',
       } as UshEventMap[K]);
     }
   }
@@ -59,13 +53,12 @@ export class TempFile {
         // Create empty file
         await fs.writeFile(this._path, '', 'utf8');
       }
-      
+
       // Emit temp:create event
       this.emitEvent('temp:create', {
         path: this._path,
-        type: 'file'
+        type: 'file',
       });
-
     } catch (error) {
       throw error;
     }
@@ -74,10 +67,7 @@ export class TempFile {
   async write(content: string): Promise<void> {
     try {
       await fs.writeFile(this._path, content, 'utf8');
-      
-
     } catch (error) {
-
       throw error;
     }
   }
@@ -85,10 +75,7 @@ export class TempFile {
   async append(content: string): Promise<void> {
     try {
       await fs.appendFile(this._path, content, 'utf8');
-      
-
     } catch (error) {
-
       throw error;
     }
   }
@@ -111,13 +98,12 @@ export class TempFile {
       try {
         await fs.unlink(this._path);
         this._cleaned = true;
-        
+
         // Emit temp:cleanup event
         this.emitEvent('temp:cleanup', {
           path: this._path,
-          type: 'file'
+          type: 'file',
         });
-
       } catch (error) {
         // Ignore cleanup errors
       }
@@ -129,21 +115,16 @@ export class TempDir {
   private _path: string;
   private _cleaned = false;
 
-  constructor(
-    private options: TempOptions = {}
-  ) {
+  constructor(private options: TempOptions = {}) {
     this._path = this.generatePath();
   }
 
-  private emitEvent<K extends keyof UshEventMap>(
-    event: K,
-    data: Omit<UshEventMap[K], 'timestamp' | 'adapter'>
-  ): void {
+  private emitEvent<K extends keyof UshEventMap>(event: K, data: Omit<UshEventMap[K], 'timestamp' | 'adapter'>): void {
     if (this.options.emitter) {
       this.options.emitter.emit(event, {
         ...data,
         timestamp: new Date(),
-        adapter: 'local'
+        adapter: 'local',
       } as UshEventMap[K]);
     }
   }
@@ -164,13 +145,12 @@ export class TempDir {
   async create(): Promise<void> {
     try {
       await fs.mkdir(this._path, { recursive: true });
-      
+
       // Emit temp:create event
       this.emitEvent('temp:create', {
         path: this._path,
-        type: 'directory'
+        type: 'directory',
       });
-
     } catch (error) {
       throw error;
     }
@@ -187,21 +167,21 @@ export class TempDir {
 
   file(name: string): string {
     // Prevent path traversal by validating the name
-    
+
     // Check for absolute paths
     if (isAbsolute(name)) {
       throw new Error(`Invalid file name: ${name}`);
     }
-    
+
     const normalizedName = normalize(name);
     const resolved = join(this._path, normalizedName);
-    
+
     // Ensure the resolved path is still within our temp directory
     const relativePath = relative(this._path, resolved);
     if (relativePath.startsWith('..')) {
       throw new Error(`Invalid file name: ${name}`);
     }
-    
+
     return resolved;
   }
 
@@ -210,13 +190,12 @@ export class TempDir {
       try {
         await fs.rm(this._path, { recursive: true, force: true });
         this._cleaned = true;
-        
+
         // Emit temp:cleanup event
         this.emitEvent('temp:cleanup', {
           path: this._path,
-          type: 'directory'
+          type: 'directory',
         });
-
       } catch (error) {
         // Ignore cleanup errors
       }
@@ -224,10 +203,7 @@ export class TempDir {
   }
 }
 
-export async function withTempFile<T>(
-  fn: (file: TempFile) => T | Promise<T>,
-  options?: TempOptions
-): Promise<T> {
+export async function withTempFile<T>(fn: (file: TempFile) => T | Promise<T>, options?: TempOptions): Promise<T> {
   const file = new TempFile(options);
 
   try {
@@ -238,10 +214,7 @@ export async function withTempFile<T>(
   }
 }
 
-export async function withTempDir<T>(
-  fn: (dir: TempDir) => T | Promise<T>,
-  options?: TempOptions
-): Promise<T> {
+export async function withTempDir<T>(fn: (dir: TempDir) => T | Promise<T>, options?: TempOptions): Promise<T> {
   const dir = new TempDir(options);
 
   try {

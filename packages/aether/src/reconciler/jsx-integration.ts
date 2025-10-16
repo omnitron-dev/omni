@@ -200,7 +200,7 @@ function evaluateExpression(expression: string, scope: Record<string, any>): any
   try {
     // Create a function with scope variables as parameters
     const scopeKeys = Object.keys(scope);
-    const scopeValues = scopeKeys.map(key => scope[key]);
+    const scopeValues = scopeKeys.map((key) => scope[key]);
 
     // Create function that evaluates the expression
     const fn = new Function(...scopeKeys, `return ${expression}`);
@@ -237,9 +237,7 @@ function setupReactiveChildren(vnode: VNode): void {
       const textNode = vnode.dom as Text;
 
       // Create a reactive binding that evaluates the expression
-      const binding = bindSignalToTextNode(textNode, () =>
-        String(evaluateExpression(expression, scope))
-      );
+      const binding = bindSignalToTextNode(textNode, () => String(evaluateExpression(expression, scope)));
 
       vnode.effects!.push(binding.effect);
     }

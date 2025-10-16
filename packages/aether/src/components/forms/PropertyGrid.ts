@@ -146,12 +146,7 @@ export interface GroupPropertyDescriptor extends Omit<BasePropertyDescriptor, 'v
 
 export interface CustomPropertyDescriptor extends BasePropertyDescriptor {
   type: 'custom';
-  render: (props: {
-    value: any;
-    onChange: (value: any) => void;
-    disabled?: boolean;
-    readonly?: boolean;
-  }) => any;
+  render: (props: { value: any; onChange: (value: any) => void; disabled?: boolean; readonly?: boolean }) => any;
 }
 
 export type PropertyDescriptor =

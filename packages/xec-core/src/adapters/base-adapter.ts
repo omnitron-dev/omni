@@ -68,7 +68,7 @@ export abstract class BaseAdapter extends EnhancedEventEmitter implements Dispos
       // Generic secret patterns
       /\b(secret|client[_-]?secret)(\s*[:=]\s*)("([^"]+)"|'([^']+)'|([^"'\s]+))/gi,
       // Standalone Bearer tokens
-      /\b(Bearer)(\s+)([a-zA-Z0-9_\-/.]+)/gi
+      /\b(Bearer)(\s+)([a-zA-Z0-9_\-/.]+)/gi,
     ];
 
     this.config = {
@@ -82,8 +82,8 @@ export abstract class BaseAdapter extends EnhancedEventEmitter implements Dispos
       sensitiveDataMasking: {
         enabled: config.sensitiveDataMasking?.enabled ?? true,
         patterns: config.sensitiveDataMasking?.patterns ?? defaultPatterns,
-        replacement: config.sensitiveDataMasking?.replacement ?? '[REDACTED]'
-      }
+        replacement: config.sensitiveDataMasking?.replacement ?? '[REDACTED]',
+      },
     };
 
     // Initialize optimized masker if masking is enabled
@@ -111,7 +111,7 @@ export abstract class BaseAdapter extends EnhancedEventEmitter implements Dispos
     this.emit(event, {
       ...data,
       timestamp: new Date(),
-      adapter: this.adapterName
+      adapter: this.adapterName,
     } as UshEventMap[K]);
   }
 
@@ -130,7 +130,7 @@ export abstract class BaseAdapter extends EnhancedEventEmitter implements Dispos
       timeout: command.timeout ?? this.config.defaultTimeout,
       shell: command.shell ?? this.config.defaultShell,
       stdout: command.stdout ?? 'pipe',
-      stderr: command.stderr ?? 'pipe'
+      stderr: command.stderr ?? 'pipe',
     };
   }
 
@@ -138,11 +138,13 @@ export abstract class BaseAdapter extends EnhancedEventEmitter implements Dispos
     return new StreamHandler({
       encoding: this.config.encoding,
       maxBuffer: this.config.maxBuffer,
-      onData: options?.onData ? (chunk: string) => {
-        // Apply masking to streaming data
-        const maskedChunk = this.maskSensitiveData(chunk);
-        options.onData!(maskedChunk);
-      } : undefined
+      onData: options?.onData
+        ? (chunk: string) => {
+            // Apply masking to streaming data
+            const maskedChunk = this.maskSensitiveData(chunk);
+            options.onData!(maskedChunk);
+          }
+        : undefined,
     });
   }
 
@@ -156,7 +158,7 @@ export abstract class BaseAdapter extends EnhancedEventEmitter implements Dispos
       onProgress: command.progress.onProgress,
       updateInterval: command.progress.updateInterval,
       reportLines: command.progress.reportLines,
-      prefix: this.adapterName
+      prefix: this.adapterName,
     });
   }
 
@@ -219,7 +221,6 @@ export abstract class BaseAdapter extends EnhancedEventEmitter implements Dispos
       context?.container
     );
 
-
     // Use originalCommand if available, otherwise fall back to command string
     const commandForThrowCheck = context?.originalCommand ?? command;
 
@@ -228,8 +229,10 @@ export abstract class BaseAdapter extends EnhancedEventEmitter implements Dispos
     // or when the base promise is awaited directly
     // Only throw if it's not being used through ProcessPromise
     // We can detect this by checking if the command has a special marker
-    const isProcessPromise = commandForThrowCheck && typeof commandForThrowCheck === 'object' &&
-                            '__fromProcessPromise' in commandForThrowCheck;
+    const isProcessPromise =
+      commandForThrowCheck &&
+      typeof commandForThrowCheck === 'object' &&
+      '__fromProcessPromise' in commandForThrowCheck;
 
     if (!isProcessPromise && this.shouldThrowOnNonZeroExit(commandForThrowCheck, exitCode)) {
       result.throwIfFailed();
@@ -267,7 +270,6 @@ export abstract class BaseAdapter extends EnhancedEventEmitter implements Dispos
       context?.container
     );
 
-
     // Use originalCommand if available, otherwise fall back to command string
     const commandForThrowCheck = context?.originalCommand ?? command;
 
@@ -276,8 +278,10 @@ export abstract class BaseAdapter extends EnhancedEventEmitter implements Dispos
     // or when the base promise is awaited directly
     // Only throw if it's not being used through ProcessPromise
     // We can detect this by checking if the command has a special marker
-    const isProcessPromise = commandForThrowCheck && typeof commandForThrowCheck === 'object' &&
-                            '__fromProcessPromise' in commandForThrowCheck;
+    const isProcessPromise =
+      commandForThrowCheck &&
+      typeof commandForThrowCheck === 'object' &&
+      '__fromProcessPromise' in commandForThrowCheck;
 
     if (!isProcessPromise && this.shouldThrowOnNonZeroExit(commandForThrowCheck, exitCode)) {
       result.throwIfFailed();
@@ -379,10 +383,7 @@ export abstract class BaseAdapter extends EnhancedEventEmitter implements Dispos
     return command.command;
   }
 
-  protected async handleAbortSignal(
-    signal: AbortSignal | undefined,
-    cleanup: () => void
-  ): Promise<void> {
+  protected async handleAbortSignal(signal: AbortSignal | undefined, cleanup: () => void): Promise<void> {
     if (!signal) return;
 
     if (signal.aborted) {
@@ -397,7 +398,10 @@ export abstract class BaseAdapter extends EnhancedEventEmitter implements Dispos
     signal.addEventListener('abort', abortHandler, { once: true });
   }
 
-  protected createCombinedEnv(baseEnv: Record<string, string>, commandEnv?: Record<string, string>): Record<string, string> {
+  protected createCombinedEnv(
+    baseEnv: Record<string, string>,
+    commandEnv?: Record<string, string>
+  ): Record<string, string> {
     const combined: Record<string, string> = {};
 
     // Copy process.env, filtering out undefined values
@@ -422,10 +426,10 @@ export abstract class BaseAdapter extends EnhancedEventEmitter implements Dispos
     // Handle sensitiveDataMasking separately to ensure proper merging
     const newSensitiveDataMasking = config.sensitiveDataMasking
       ? {
-        enabled: config.sensitiveDataMasking.enabled ?? this.config.sensitiveDataMasking.enabled,
-        patterns: config.sensitiveDataMasking.patterns ?? this.config.sensitiveDataMasking.patterns,
-        replacement: config.sensitiveDataMasking.replacement ?? this.config.sensitiveDataMasking.replacement
-      }
+          enabled: config.sensitiveDataMasking.enabled ?? this.config.sensitiveDataMasking.enabled,
+          patterns: config.sensitiveDataMasking.patterns ?? this.config.sensitiveDataMasking.patterns,
+          replacement: config.sensitiveDataMasking.replacement ?? this.config.sensitiveDataMasking.replacement,
+        }
       : this.config.sensitiveDataMasking;
 
     this.config = {
@@ -435,10 +439,10 @@ export abstract class BaseAdapter extends EnhancedEventEmitter implements Dispos
       defaultShell: config.defaultShell ?? this.config.defaultShell,
       encoding: config.encoding ?? this.config.encoding,
       maxBuffer: config.maxBuffer ?? this.config.maxBuffer,
-      throwOnNonZeroExit: config.throwOnNonZeroExit !== undefined ? config.throwOnNonZeroExit : this.config.throwOnNonZeroExit,
-      sensitiveDataMasking: newSensitiveDataMasking
+      throwOnNonZeroExit:
+        config.throwOnNonZeroExit !== undefined ? config.throwOnNonZeroExit : this.config.throwOnNonZeroExit,
+      sensitiveDataMasking: newSensitiveDataMasking,
     };
-
   }
 
   getConfig(): Readonly<ResolvedBaseAdapterConfig> {
@@ -465,13 +469,13 @@ export abstract class BaseAdapter extends EnhancedEventEmitter implements Dispos
       try {
         // If this is a retry, wait before attempting
         if (attempt > 0) {
-          await new Promise(resolve => setTimeout(resolve, retryDelay));
+          await new Promise((resolve) => setTimeout(resolve, retryDelay));
 
           // Emit retry event
           this.emitAdapterEvent('command:retry', {
             command: this.buildCommandString(command),
             attempt,
-            maxRetries
+            maxRetries,
           });
         }
 

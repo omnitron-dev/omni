@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const ShoppingBasketFavorite03Icon: IconDefinition = {
-  "id": "shopping-basket-favorite03",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M12 12V16\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M8 12V16\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M22.5 8H1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M18 8L15 3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M6 8L9 3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M18.5 21C18.5 21 15 18.8824 15 16.8333C15 15.8208 15.7368 15 16.75 15C17.275 15 17.8 15.1765 18.5 15.8824C19.2 15.1765 19.725 15 20.25 15C21.2632 15 22 15.8208 22 16.8333C22 18.8824 18.5 21 18.5 21Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M13 20H9.58276C7.15525 20 5.94149 20 5.10226 19.2891C4.26302 18.5781 4.06348 17.3809 3.6644 14.9864L2.5 8H21.5L20.8333 12\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "twotone",
-    "originalName": "ShoppingBasketFavorite03Icon",
-    "elementsCount": 7,
-    "hasOpacity": true,
-    "hasFill": false
-  }
+  id: 'shopping-basket-favorite03',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path opacity="0.4" d="M12 12V16" stroke-linecap="round" stroke-linejoin="round" />\n    <path opacity="0.4" d="M8 12V16" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M22.5 8H1.5" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M18 8L15 3" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M6 8L9 3" stroke-linecap="round" stroke-linejoin="round" />\n    <path opacity="0.4" d="M18.5 21C18.5 21 15 18.8824 15 16.8333C15 15.8208 15.7368 15 16.75 15C17.275 15 17.8 15.1765 18.5 15.8824C19.2 15.1765 19.725 15 20.25 15C21.2632 15 22 15.8208 22 16.8333C22 18.8824 18.5 21 18.5 21Z" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M13 20H9.58276C7.15525 20 5.94149 20 5.10226 19.2891C4.26302 18.5781 4.06348 17.3809 3.6644 14.9864L2.5 8H21.5L20.8333 12" stroke-linecap="round" stroke-linejoin="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'twotone',
+    originalName: 'ShoppingBasketFavorite03Icon',
+    elementsCount: 7,
+    hasOpacity: true,
+    hasFill: false,
+  },
 };

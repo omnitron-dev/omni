@@ -11,12 +11,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SVGIcon } from '../../../src/svg/components/SVGIcon.js';
-import {
-  IconRegistry,
-  getIconRegistry,
-  resetIconRegistry,
-  type IconSet,
-} from '../../../src/svg/icons/IconRegistry.js';
+import { IconRegistry, getIconRegistry, resetIconRegistry, type IconSet } from '../../../src/svg/icons/IconRegistry.js';
 
 describe('Accessibility Integration', () => {
   let registry: IconRegistry;
@@ -101,7 +96,8 @@ describe('Accessibility Integration', () => {
 
     it('should apply role="img" for meaningful icons', () => {
       const icons: IconSet = {
-        meaningful: 'M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z',
+        meaningful:
+          'M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z',
       };
 
       registry.registerSet('icons', icons);
@@ -335,7 +331,8 @@ describe('Accessibility Integration', () => {
       const trapFocus = (e: KeyboardEvent) => {
         if (e.key === 'Tab') {
           e.preventDefault();
-          currentFocusIndex = (currentFocusIndex + (e.shiftKey ? -1 : 1) + focusableElements.length) % focusableElements.length;
+          currentFocusIndex =
+            (currentFocusIndex + (e.shiftKey ? -1 : 1) + focusableElements.length) % focusableElements.length;
           focusableElements[currentFocusIndex]?.focus();
         }
       };
@@ -458,11 +455,9 @@ describe('Accessibility Integration', () => {
 
     it('should provide sufficient color contrast (WCAG AA)', () => {
       // WCAG AA requires 4.5:1 contrast ratio for normal text
-      const checkContrast = (foreground: string, background: string): boolean => 
+      const checkContrast = (foreground: string, background: string): boolean =>
         // Simplified contrast check (real implementation would calculate luminance)
-         true
-      ;
-
+        true;
       expect(checkContrast('#000000', '#FFFFFF')).toBe(true);
     });
 
@@ -613,7 +608,8 @@ describe('Accessibility Integration', () => {
 
     it('should handle icon form controls accessibility', () => {
       const icons: IconSet = {
-        search: 'M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z',
+        search:
+          'M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z',
       };
 
       registry.registerSet('icons', icons);
@@ -656,8 +652,10 @@ describe('Accessibility Integration', () => {
 
     it('should handle icon status indicators accessibility', () => {
       const icons: IconSet = {
-        success: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z',
-        error: 'M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm5 13.59L15.59 17 12 13.41 8.41 17 7 15.59 10.59 12 7 8.41 8.41 7 12 10.59 15.59 7 17 8.41 13.41 12 17 15.59z',
+        success:
+          'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z',
+        error:
+          'M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm5 13.59L15.59 17 12 13.41 8.41 17 7 15.59 10.59 12 7 8.41 8.41 7 12 10.59 15.59 7 17 8.41 13.41 12 17 15.59z',
         warning: 'M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z',
       };
 

@@ -17,12 +17,7 @@ import { hydrateSVG, isHydrated, getHydrationData } from '../../../src/svg/ssr/h
 import { SVGIcon } from '../../../src/svg/components/SVGIcon.js';
 import { ProgressiveSVG } from '../../../src/svg/components/ProgressiveSVG.js';
 import type { Component } from '../../../src/core/component/types.js';
-import {
-  IconRegistry,
-  getIconRegistry,
-  resetIconRegistry,
-  type IconSet,
-} from '../../../src/svg/icons/IconRegistry.js';
+import { IconRegistry, getIconRegistry, resetIconRegistry, type IconSet } from '../../../src/svg/icons/IconRegistry.js';
 
 // Mock DOM element for testing
 class MockSVGElement {
@@ -105,10 +100,14 @@ describe('SSR and Hydration Integration', () => {
         },
       });
 
-      const serverHTML = renderSVGToString(ServerComponent, { size: 100 }, {
-        addHydrationMarkers: true,
-        componentName: 'ServerComponent',
-      });
+      const serverHTML = renderSVGToString(
+        ServerComponent,
+        { size: 100 },
+        {
+          addHydrationMarkers: true,
+          componentName: 'ServerComponent',
+        }
+      );
 
       expect(serverHTML).toContain('<svg');
       expect(serverHTML).toContain('width="100"');
@@ -138,9 +137,13 @@ describe('SSR and Hydration Integration', () => {
       };
 
       // Server render
-      const serverHTML = renderSVGToString(Component, { initialValue: 42 }, {
-        addHydrationMarkers: true,
-      });
+      const serverHTML = renderSVGToString(
+        Component,
+        { initialValue: 42 },
+        {
+          addHydrationMarkers: true,
+        }
+      );
 
       expect(serverHTML).toContain('data-value="42"');
 
@@ -148,9 +151,14 @@ describe('SSR and Hydration Integration', () => {
       const element = new MockSVGElement() as any;
       element.setAttribute('data-value', '42');
 
-      const result = await hydrateSVG(element, Component, { initialValue: 42 }, {
-        preserveAttributes: true,
-      });
+      const result = await hydrateSVG(
+        element,
+        Component,
+        { initialValue: 42 },
+        {
+          preserveAttributes: true,
+        }
+      );
 
       expect(result.element.getAttribute('data-value')).toBe('42');
     });
@@ -187,10 +195,15 @@ describe('SSR and Hydration Integration', () => {
 
       const onMismatch = vi.fn();
 
-      await hydrateSVG(element, Component, {}, {
-        validateStructure: true,
-        onMismatch,
-      });
+      await hydrateSVG(
+        element,
+        Component,
+        {},
+        {
+          validateStructure: true,
+          onMismatch,
+        }
+      );
 
       // Should detect mismatch
       expect(onMismatch).toHaveBeenCalled();
@@ -211,9 +224,14 @@ describe('SSR and Hydration Integration', () => {
       const element = new MockSVGElement() as any;
       // Element is missing attributes
 
-      await hydrateSVG(element, Component, {}, {
-        preserveAttributes: false,
-      });
+      await hydrateSVG(
+        element,
+        Component,
+        {},
+        {
+          preserveAttributes: false,
+        }
+      );
 
       expect(isHydrated(element)).toBe(true);
     });
@@ -230,9 +248,14 @@ describe('SSR and Hydration Integration', () => {
       element.setAttribute('width', '100');
       element.setAttribute('data-extra', 'value'); // Extra attribute
 
-      await hydrateSVG(element, Component, {}, {
-        validateStructure: true,
-      });
+      await hydrateSVG(
+        element,
+        Component,
+        {},
+        {
+          validateStructure: true,
+        }
+      );
 
       expect(isHydrated(element)).toBe(true);
     });
@@ -311,9 +334,14 @@ describe('SSR and Hydration Integration', () => {
       const Component: Component = () => () => ({ type: 'svg', props: {} });
       const element = new MockSVGElement() as any;
 
-      const result = await hydrateSVG(element, Component, {}, {
-        strategy: 'immediate',
-      });
+      const result = await hydrateSVG(
+        element,
+        Component,
+        {},
+        {
+          strategy: 'immediate',
+        }
+      );
 
       expect(isHydrated(result.element)).toBe(true);
     });
@@ -328,9 +356,14 @@ describe('SSR and Hydration Integration', () => {
         return 1;
       };
 
-      const result = await hydrateSVG(element, Component, {}, {
-        strategy: 'idle',
-      });
+      const result = await hydrateSVG(
+        element,
+        Component,
+        {},
+        {
+          strategy: 'idle',
+        }
+      );
 
       expect(result.element).toBe(element);
     });
@@ -349,9 +382,14 @@ describe('SSR and Hydration Integration', () => {
         disconnect() {}
       };
 
-      const result = await hydrateSVG(element, Component, {}, {
-        strategy: 'visible',
-      });
+      const result = await hydrateSVG(
+        element,
+        Component,
+        {},
+        {
+          strategy: 'visible',
+        }
+      );
 
       expect(result.element).toBe(element);
     });
@@ -367,9 +405,14 @@ describe('SSR and Hydration Integration', () => {
         }
       };
 
-      const promise = hydrateSVG(element, Component, {}, {
-        strategy: 'interaction',
-      });
+      const promise = hydrateSVG(
+        element,
+        Component,
+        {},
+        {
+          strategy: 'interaction',
+        }
+      );
 
       // Trigger interaction
       if (listener) listener();
@@ -424,21 +467,27 @@ describe('SSR and Hydration Integration', () => {
   describe('Icon SSR and Hydration', () => {
     it('should server-render and hydrate icons', async () => {
       const icons: IconSet = {
-        heart: 'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z',
+        heart:
+          'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z',
       };
 
       registry.registerSet('ssr-icons', icons);
 
-      const IconComponent: Component = () => SVGIcon({
-        name: 'heart',
-        size: 24,
-        color: 'red',
-      });
+      const IconComponent: Component = () =>
+        SVGIcon({
+          name: 'heart',
+          size: 24,
+          color: 'red',
+        });
 
       // Server render
-      const serverHTML = renderSVGToString(IconComponent, {}, {
-        addHydrationMarkers: true,
-      });
+      const serverHTML = renderSVGToString(
+        IconComponent,
+        {},
+        {
+          addHydrationMarkers: true,
+        }
+      );
 
       // IconComponent returns an element, not a VNode, so check it's defined
       expect(serverHTML).toBeDefined();
@@ -460,11 +509,12 @@ describe('SSR and Hydration Integration', () => {
       const size = signal(24);
       const color = signal('gold');
 
-      const IconComponent: Component = () => SVGIcon({
-        name: 'star',
-        size,
-        color,
-      });
+      const IconComponent: Component = () =>
+        SVGIcon({
+          name: 'star',
+          size,
+          color,
+        });
 
       const element = new MockSVGElement() as any;
       await hydrateSVG(element, IconComponent, {});
@@ -506,9 +556,14 @@ describe('SSR and Hydration Integration', () => {
 
       const element = new MockSVGElement() as any;
 
-      await hydrateSVG(element, AnimatedComponent, {}, {
-        preserveAnimations: true,
-      });
+      await hydrateSVG(
+        element,
+        AnimatedComponent,
+        {},
+        {
+          preserveAnimations: true,
+        }
+      );
 
       expect(isHydrated(element)).toBe(true);
     });
@@ -525,9 +580,14 @@ describe('SSR and Hydration Integration', () => {
 
       const element = new MockSVGElement() as any;
 
-      await hydrateSVG(element, InteractiveComponent, {}, {
-        preserveEvents: true,
-      });
+      await hydrateSVG(
+        element,
+        InteractiveComponent,
+        {},
+        {
+          preserveEvents: true,
+        }
+      );
 
       expect(isHydrated(element)).toBe(true);
     });
@@ -581,11 +641,7 @@ describe('SSR and Hydration Integration', () => {
       const SVG2: Component = () => () => ({ type: 'svg', props: { 'data-id': '2' } });
       const SVG3: Component = () => () => ({ type: 'svg', props: { 'data-id': '3' } });
 
-      const batchHTML = renderSVGBatch([
-        { component: SVG1 },
-        { component: SVG2 },
-        { component: SVG3 },
-      ]);
+      const batchHTML = renderSVGBatch([{ component: SVG1 }, { component: SVG2 }, { component: SVG3 }]);
 
       expect(batchHTML).toContain('data-id="1"');
       expect(batchHTML).toContain('data-id="2"');
@@ -696,10 +752,15 @@ describe('SSR and Hydration Integration', () => {
 
       const onMismatch = vi.fn();
 
-      await hydrateSVG(element, Component, {}, {
-        validateStructure: true,
-        onMismatch,
-      });
+      await hydrateSVG(
+        element,
+        Component,
+        {},
+        {
+          validateStructure: true,
+          onMismatch,
+        }
+      );
 
       expect(onMismatch).toHaveBeenCalled();
     });
@@ -731,9 +792,7 @@ describe('SSR and Hydration Integration', () => {
 
       const startTime = performance.now();
 
-      await Promise.all(
-        elements.map((element) => hydrateSVG(element, Component, {}))
-      );
+      await Promise.all(elements.map((element) => hydrateSVG(element, Component, {})));
 
       const endTime = performance.now();
 

@@ -166,7 +166,9 @@ async function main() {
               console.log(picocolors.green(`  ✓ Email available`));
               return email;
             } catch (error) {
-              s.stop(picocolors.red(`  ✗ ${error instanceof Error ? error.message : String(error)}`));
+              s.stop(
+                picocolors.red(`  ✗ ${error instanceof Error ? error.message : String(error)}`)
+              );
               attempts++;
 
               if (attempts < maxAttempts) {

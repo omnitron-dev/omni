@@ -26,7 +26,7 @@ export class CommandError extends ExecutionError {
       signal,
       stdout,
       stderr,
-      duration
+      duration,
     });
     this.name = 'CommandError';
   }
@@ -76,7 +76,7 @@ export class ConnectionError extends ExecutionError {
   ) {
     super(`Failed to connect to ${host}: ${originalError.message}`, 'CONNECTION_FAILED', {
       host,
-      originalError: originalError.message
+      originalError: originalError.message,
     });
     this.name = 'ConnectionError';
   }
@@ -89,7 +89,7 @@ export class TimeoutError extends ExecutionError {
   ) {
     super(`Command timed out after ${timeout}ms: ${command}`, 'TIMEOUT', {
       command,
-      timeout
+      timeout,
     });
     this.name = 'TimeoutError';
   }
@@ -101,11 +101,15 @@ export class DockerError extends ExecutionError {
     public readonly operation: string,
     public readonly originalError: Error
   ) {
-    super(`Docker operation '${operation}' failed for container ${container}: ${originalError.message}`, 'DOCKER_ERROR', {
-      container,
-      operation,
-      originalError: originalError.message
-    });
+    super(
+      `Docker operation '${operation}' failed for container ${container}: ${originalError.message}`,
+      'DOCKER_ERROR',
+      {
+        container,
+        operation,
+        originalError: originalError.message,
+      }
+    );
     this.name = 'DockerError';
   }
 }
@@ -138,7 +142,7 @@ export class AdapterError extends ExecutionError {
     super(message, 'ADAPTER_ERROR', {
       adapter,
       operation,
-      originalError: originalError?.message
+      originalError: originalError?.message,
     });
     this.name = 'AdapterError';
   }
@@ -156,7 +160,7 @@ export class KubernetesError extends ExecutionError {
       pod,
       namespace,
       container,
-      ...details
+      ...details,
     });
     this.name = 'KubernetesError';
   }

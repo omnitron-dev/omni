@@ -5,7 +5,7 @@ export interface Disposable {
   /**
    * Dispose of the resources held by this object.
    * After calling dispose, the object should not be used.
-   * 
+   *
    * @returns A promise that resolves when the resource has been disposed
    */
   dispose(): Promise<void>;
@@ -19,12 +19,12 @@ export interface DisposableContainer {
    * Register a disposable resource for automatic cleanup
    */
   registerDisposable(disposable: Disposable): void;
-  
+
   /**
    * Unregister a disposable resource
    */
   unregisterDisposable(disposable: Disposable): void;
-  
+
   /**
    * Dispose all registered resources
    */

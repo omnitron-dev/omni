@@ -100,7 +100,7 @@ describe('IconProvider', () => {
     });
 
     // Wait for effect
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(onLoad).toHaveBeenCalled();
   });
@@ -126,7 +126,7 @@ describe('IconProvider', () => {
     });
 
     // Wait for effect to complete
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(onError).toHaveBeenCalled();
 
@@ -152,7 +152,7 @@ describe('IconProvider', () => {
     });
 
     // Wait for effect
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     // Icon should be registered with prefix
     expect(registry.has('my:heart')).toBe(true);
@@ -234,7 +234,7 @@ describe('IconProvider', () => {
     });
 
     // Wait for effect
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(registry.has('icon1')).toBe(true);
     expect(registry.has('icon2')).toBe(true);
@@ -263,7 +263,7 @@ describe('IconProvider', () => {
     });
 
     // Wait for effect
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(onLoad).toHaveBeenCalledTimes(1);
   });

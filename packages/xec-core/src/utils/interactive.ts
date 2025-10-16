@@ -27,18 +27,12 @@ export class InteractiveSession {
     this.rl = createInterface({
       input: this.options.input || process.stdin,
       output: this.options.output || process.stdout,
-      terminal: this.options.terminal ?? true
+      terminal: this.options.terminal ?? true,
     });
   }
 
   async question(prompt: string, options: QuestionOptions = {}): Promise<string> {
-    const {
-      defaultValue,
-      choices,
-      validate,
-      mask,
-      multiline
-    } = options;
+    const { defaultValue, choices, validate, mask, multiline } = options;
 
     let displayPrompt = prompt;
 
@@ -86,10 +80,9 @@ export class InteractiveSession {
   }
 
   async confirm(prompt: string, defaultValue = false): Promise<boolean> {
-    const answer = await this.question(
-      `${prompt} (${defaultValue ? 'Y/n' : 'y/N'})`,
-      { defaultValue: defaultValue ? 'y' : 'n' }
-    );
+    const answer = await this.question(`${prompt} (${defaultValue ? 'Y/n' : 'y/N'})`, {
+      defaultValue: defaultValue ? 'y' : 'n',
+    });
 
     return answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes';
   }
@@ -99,16 +92,15 @@ export class InteractiveSession {
   }
 
   async multiselect(prompt: string, choices: string[]): Promise<string[]> {
-    const displayPrompt = prompt + '\n' +
-      choices.map((c, i) => `  ${i + 1}. ${c}`).join('\n') +
-      '\nEnter numbers separated by commas: ';
+    const displayPrompt =
+      prompt + '\n' + choices.map((c, i) => `  ${i + 1}. ${c}`).join('\n') + '\nEnter numbers separated by commas: ';
 
     const answer = await this.question(displayPrompt);
-    const indices = answer.split(',').map(s => parseInt(s.trim()) - 1);
+    const indices = answer.split(',').map((s) => parseInt(s.trim()) - 1);
 
     return indices
-      .filter(i => i >= 0 && i < choices.length)
-      .map(i => choices[i])
+      .filter((i) => i >= 0 && i < choices.length)
+      .map((i) => choices[i])
       .filter((choice): choice is string => choice !== undefined);
   }
 
@@ -117,7 +109,7 @@ export class InteractiveSession {
       const rl = createInterface({
         input: process.stdin,
         output: process.stdout,
-        terminal: true
+        terminal: true,
       });
 
       (rl as any).stdoutMuted = true;
@@ -140,11 +132,7 @@ export class InteractiveSession {
   }
 }
 
-export async function question(
-  engine: ExecutionEngine,
-  prompt: string,
-  options?: QuestionOptions
-): Promise<string> {
+export async function question(engine: ExecutionEngine, prompt: string, options?: QuestionOptions): Promise<string> {
   const session = new InteractiveSession(engine);
   try {
     return await session.question(prompt, options);
@@ -153,11 +141,7 @@ export async function question(
   }
 }
 
-export async function confirm(
-  engine: ExecutionEngine,
-  prompt: string,
-  defaultValue?: boolean
-): Promise<boolean> {
+export async function confirm(engine: ExecutionEngine, prompt: string, defaultValue?: boolean): Promise<boolean> {
   const session = new InteractiveSession(engine);
   try {
     return await session.confirm(prompt, defaultValue);
@@ -166,11 +150,7 @@ export async function confirm(
   }
 }
 
-export async function select(
-  engine: ExecutionEngine,
-  prompt: string,
-  choices: string[]
-): Promise<string> {
+export async function select(engine: ExecutionEngine, prompt: string, choices: string[]): Promise<string> {
   const session = new InteractiveSession(engine);
   try {
     return await session.select(prompt, choices);
@@ -179,10 +159,7 @@ export async function select(
   }
 }
 
-export async function password(
-  engine: ExecutionEngine,
-  prompt: string
-): Promise<string> {
+export async function password(engine: ExecutionEngine, prompt: string): Promise<string> {
   const session = new InteractiveSession(engine);
   try {
     return await session.password(prompt);
@@ -233,10 +210,7 @@ export class Spinner {
   }
 }
 
-export async function withSpinner<T>(
-  text: string,
-  fn: () => T | Promise<T>
-): Promise<T> {
+export async function withSpinner<T>(text: string, fn: () => T | Promise<T>): Promise<T> {
   const spinner = new Spinner(text);
   spinner.start();
 
@@ -251,9 +225,8 @@ export async function withSpinner<T>(
 }
 
 // Re-export interactive process functionality
-export { 
+export {
   type InteractiveOptions,
   createInteractiveSession,
-  type InteractiveSessionAPI
+  type InteractiveSessionAPI,
 } from './interactive-process.js';
-

@@ -239,10 +239,7 @@ describe('TaskParser', () => {
           description: 'Build project',
         },
         deploy: {
-          steps: [
-            { task: 'build' },
-            { command: './deploy.sh' },
-          ],
+          steps: [{ task: 'build' }, { command: './deploy.sh' }],
         },
       };
 

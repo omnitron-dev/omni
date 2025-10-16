@@ -161,7 +161,7 @@ export class ComputationImpl implements Computation {
 
     try {
       this.isRunning = true;
-       
+
       state.currentComputation = this;
       state.currentOwner = this.owner;
 

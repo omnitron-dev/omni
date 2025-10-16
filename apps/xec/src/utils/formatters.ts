@@ -3,11 +3,11 @@
  */
 export function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
-  
+
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  
+
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
 }
 
@@ -51,11 +51,11 @@ export function formatDuration(ms: number): string {
   if (ms < 1000) {
     return `${ms}ms`;
   }
-  
+
   const sec = Math.floor(ms / 1000);
   const min = Math.floor(sec / 60);
   const hour = Math.floor(min / 60);
-  
+
   if (hour > 0) {
     const remainingMin = min % 60;
     return `${hour}h${remainingMin > 0 ? ` ${remainingMin}m` : ''}`;

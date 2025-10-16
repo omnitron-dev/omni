@@ -21,9 +21,7 @@ describe('SVGIcon Component', () => {
   describe('Basic Rendering', () => {
     it('should render icon from path prop', () => {
       const pathData = 'M10 10 L20 20 L10 30 Z';
-      const { container } = render(() => (
-        <SVGIcon path={pathData} />
-      ));
+      const { container } = render(() => <SVGIcon path={pathData} />);
 
       const svg = container.querySelector('svg');
       expect(svg).toBeTruthy();
@@ -34,9 +32,7 @@ describe('SVGIcon Component', () => {
 
     it('should render icon with reactive path', () => {
       const [path, setPath] = createSignal('M10 10 L20 20 Z');
-      const { container } = render(() => (
-        <SVGIcon path={path} />
-      ));
+      const { container } = render(() => <SVGIcon path={path} />);
 
       const svg = container.querySelector('svg');
       const pathEl = svg?.querySelector('path');
@@ -49,13 +45,11 @@ describe('SVGIcon Component', () => {
     it('should render icon from registry', async () => {
       const registry = getIconRegistry();
       registry.registerSet('test', {
-        'home': 'M10 20 L30 5 L50 20 V45 H10 Z'
+        home: 'M10 20 L30 5 L50 20 V45 H10 Z',
       });
 
       const onLoad = vi.fn();
-      const { container } = render(() => (
-        <SVGIcon name="home" onLoad={onLoad} />
-      ));
+      const { container } = render(() => <SVGIcon name="home" onLoad={onLoad} />);
 
       await waitFor(() => {
         expect(onLoad).toHaveBeenCalled();
@@ -69,9 +63,7 @@ describe('SVGIcon Component', () => {
       const svgContent = '<svg><circle cx="10" cy="10" r="5"/></svg>';
       const onLoad = vi.fn();
 
-      const { container } = render(() => (
-        <SVGIcon src={svgContent} onLoad={onLoad} />
-      ));
+      const { container } = render(() => <SVGIcon src={svgContent} onLoad={onLoad} />);
 
       await waitFor(() => {
         expect(onLoad).toHaveBeenCalled();
@@ -83,9 +75,7 @@ describe('SVGIcon Component', () => {
     it('should handle error when icon not found', async () => {
       const onError = vi.fn();
 
-      render(() => (
-        <SVGIcon name="nonexistent" onError={onError} />
-      ));
+      render(() => <SVGIcon name="nonexistent" onError={onError} />);
 
       await waitFor(() => {
         expect(onError).toHaveBeenCalled();
@@ -99,9 +89,7 @@ describe('SVGIcon Component', () => {
       const expectedSizes = [16, 20, 24, 32, 48];
 
       sizes.forEach((size, index) => {
-        const { container } = render(() => (
-          <SVGIcon size={size} path="M10 10 L20 20 Z" />
-        ));
+        const { container } = render(() => <SVGIcon size={size} path="M10 10 L20 20 Z" />);
 
         const svg = container.querySelector('svg');
         expect(svg?.getAttribute('width')).toBe(String(expectedSizes[index]));
@@ -111,9 +99,7 @@ describe('SVGIcon Component', () => {
     });
 
     it('should apply custom numeric size', () => {
-      const { container } = render(() => (
-        <SVGIcon size={64} path="M10 10 L20 20 Z" />
-      ));
+      const { container } = render(() => <SVGIcon size={64} path="M10 10 L20 20 Z" />);
 
       const svg = container.querySelector('svg');
       expect(svg?.getAttribute('width')).toBe('64');
@@ -121,9 +107,7 @@ describe('SVGIcon Component', () => {
     });
 
     it('should apply width and height separately', () => {
-      const { container } = render(() => (
-        <SVGIcon width={100} height={50} path="M10 10 L20 20 Z" />
-      ));
+      const { container } = render(() => <SVGIcon width={100} height={50} path="M10 10 L20 20 Z" />);
 
       const svg = container.querySelector('svg');
       expect(svg?.getAttribute('width')).toBe('100');
@@ -133,9 +117,7 @@ describe('SVGIcon Component', () => {
     it('should support reactive size', () => {
       const [size, setSize] = createSignal(24);
 
-      const { container } = render(() => (
-        <SVGIcon size={size} path="M10 10 L20 20 Z" />
-      ));
+      const { container } = render(() => <SVGIcon size={size} path="M10 10 L20 20 Z" />);
 
       const svg = container.querySelector('svg');
       expect(svg?.getAttribute('width')).toBe('24');
@@ -145,9 +127,7 @@ describe('SVGIcon Component', () => {
     });
 
     it('should use default size when not specified', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" />);
 
       const svg = container.querySelector('svg');
       expect(svg?.getAttribute('width')).toBe('24');
@@ -157,18 +137,14 @@ describe('SVGIcon Component', () => {
 
   describe('Styling', () => {
     it('should apply fill color', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" fill="red" />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" fill="red" />);
 
       const path = container.querySelector('path');
       expect(path?.getAttribute('fill')).toBe('red');
     });
 
     it('should apply color prop as fill', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" color="blue" />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" color="blue" />);
 
       const path = container.querySelector('path');
       expect(path?.getAttribute('fill')).toBe('blue');
@@ -177,9 +153,7 @@ describe('SVGIcon Component', () => {
     it('should apply reactive color', () => {
       const [color, setColor] = createSignal('red');
 
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" color={color} />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" color={color} />);
 
       const path = container.querySelector('path');
       expect(path?.getAttribute('fill')).toBe('red');
@@ -189,13 +163,7 @@ describe('SVGIcon Component', () => {
     });
 
     it('should apply stroke properties', () => {
-      const { container } = render(() => (
-        <SVGIcon
-          path="M10 10 L20 20 Z"
-          stroke="blue"
-          strokeWidth={2}
-        />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" stroke="blue" strokeWidth={2} />);
 
       const path = container.querySelector('path');
       expect(path?.getAttribute('stroke')).toBe('blue');
@@ -203,9 +171,7 @@ describe('SVGIcon Component', () => {
     });
 
     it('should apply className', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" className="test-icon" />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" className="test-icon" />);
 
       const svg = container.querySelector('svg');
       expect(svg?.classList.contains('test-icon')).toBe(true);
@@ -213,10 +179,7 @@ describe('SVGIcon Component', () => {
 
     it('should apply custom styles', () => {
       const { container } = render(() => (
-        <SVGIcon
-          path="M10 10 L20 20 Z"
-          style={{ border: '1px solid red', opacity: 0.5 }}
-        />
+        <SVGIcon path="M10 10 L20 20 Z" style={{ border: '1px solid red', opacity: 0.5 }} />
       ));
 
       const svg = container.querySelector('svg');
@@ -225,9 +188,7 @@ describe('SVGIcon Component', () => {
     });
 
     it('should default fill to currentColor', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" />);
 
       const path = container.querySelector('path');
       expect(path?.getAttribute('fill')).toBe('currentColor');
@@ -236,9 +197,7 @@ describe('SVGIcon Component', () => {
 
   describe('Transformations', () => {
     it('should apply rotation', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" rotate={45} />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" rotate={45} />);
 
       const svg = container.querySelector('svg');
       const transform = svg?.getAttribute('transform');
@@ -248,9 +207,7 @@ describe('SVGIcon Component', () => {
     it('should apply reactive rotation', () => {
       const [rotate, setRotate] = createSignal(0);
 
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" rotate={rotate} />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" rotate={rotate} />);
 
       let svg = container.querySelector('svg');
       expect(svg?.getAttribute('transform')).toBeFalsy();
@@ -261,9 +218,7 @@ describe('SVGIcon Component', () => {
     });
 
     it('should apply horizontal flip', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" flip="horizontal" />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" flip="horizontal" />);
 
       const svg = container.querySelector('svg');
       const transform = svg?.getAttribute('transform');
@@ -271,9 +226,7 @@ describe('SVGIcon Component', () => {
     });
 
     it('should apply vertical flip', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" flip="vertical" />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" flip="vertical" />);
 
       const svg = container.querySelector('svg');
       const transform = svg?.getAttribute('transform');
@@ -281,9 +234,7 @@ describe('SVGIcon Component', () => {
     });
 
     it('should apply both horizontal and vertical flip', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" flip="both" />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" flip="both" />);
 
       const svg = container.querySelector('svg');
       const transform = svg?.getAttribute('transform');
@@ -293,9 +244,7 @@ describe('SVGIcon Component', () => {
 
   describe('Animations', () => {
     it('should apply spin animation with default duration', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" spin />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" spin />);
 
       const svg = container.querySelector('svg');
       expect(svg?.style.animation).toContain('aether-spin');
@@ -303,9 +252,7 @@ describe('SVGIcon Component', () => {
     });
 
     it('should apply spin animation with custom duration', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" spin={5} />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" spin={5} />);
 
       const svg = container.querySelector('svg');
       expect(svg?.style.animation).toContain('aether-spin');
@@ -313,9 +260,7 @@ describe('SVGIcon Component', () => {
     });
 
     it('should apply pulse animation', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" pulse />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" pulse />);
 
       const svg = container.querySelector('svg');
       expect(svg?.style.animation).toContain('aether-pulse');
@@ -324,9 +269,7 @@ describe('SVGIcon Component', () => {
 
   describe('Accessibility', () => {
     it('should be decorative by default', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" decorative />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" decorative />);
 
       const svg = container.querySelector('svg');
       expect(svg?.getAttribute('role')).toBe('presentation');
@@ -334,60 +277,42 @@ describe('SVGIcon Component', () => {
     });
 
     it('should apply aria-label', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" aria-label="Home icon" />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" aria-label="Home icon" />);
 
       const svg = container.querySelector('svg');
       expect(svg?.getAttribute('aria-label')).toBe('Home icon');
     });
 
     it('should apply custom role', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" role="img" />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" role="img" />);
 
       const svg = container.querySelector('svg');
       expect(svg?.getAttribute('role')).toBe('img');
     });
 
     it('should apply aria-labelledby', () => {
-      const { container } = render(() => (
-        <SVGIcon
-          path="M10 10 L20 20 Z"
-          aria-labelledby="icon-title"
-        />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" aria-labelledby="icon-title" />);
 
       const svg = container.querySelector('svg');
       expect(svg?.getAttribute('aria-labelledby')).toBe('icon-title');
     });
 
     it('should apply aria-describedby', () => {
-      const { container } = render(() => (
-        <SVGIcon
-          path="M10 10 L20 20 Z"
-          aria-describedby="icon-desc"
-        />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" aria-describedby="icon-desc" />);
 
       const svg = container.querySelector('svg');
       expect(svg?.getAttribute('aria-describedby')).toBe('icon-desc');
     });
 
     it('should render title element', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" title="Home Icon" />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" title="Home Icon" />);
 
       const svg = container.querySelector('svg');
       expect(svg?.getAttribute('title')).toBe('Home Icon');
     });
 
     it('should render desc element', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" desc="Navigate to home page" />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" desc="Navigate to home page" />);
 
       const svg = container.querySelector('svg');
       expect(svg?.getAttribute('desc')).toBe('Navigate to home page');
@@ -397,9 +322,7 @@ describe('SVGIcon Component', () => {
   describe('Events', () => {
     it('should call onClick handler', () => {
       const onClick = vi.fn();
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" onClick={onClick} />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" onClick={onClick} />);
 
       const svg = container.querySelector('svg');
       svg?.dispatchEvent(new MouseEvent('click'));
@@ -409,13 +332,11 @@ describe('SVGIcon Component', () => {
     it('should call onLoad when icon loads from registry', async () => {
       const registry = getIconRegistry();
       registry.registerSet('test', {
-        'star': 'M10 0 L12 8 L20 8 L14 12 L16 20 L10 15 L4 20 L6 12 L0 8 L8 8 Z'
+        star: 'M10 0 L12 8 L20 8 L14 12 L16 20 L10 15 L4 20 L6 12 L0 8 L8 8 Z',
       });
 
       const onLoad = vi.fn();
-      render(() => (
-        <SVGIcon name="star" onLoad={onLoad} />
-      ));
+      render(() => <SVGIcon name="star" onLoad={onLoad} />);
 
       await waitFor(() => {
         expect(onLoad).toHaveBeenCalledTimes(1);
@@ -424,9 +345,7 @@ describe('SVGIcon Component', () => {
 
     it('should call onError when icon fails to load', async () => {
       const onError = vi.fn();
-      render(() => (
-        <SVGIcon name="nonexistent-icon" onError={onError} />
-      ));
+      render(() => <SVGIcon name="nonexistent-icon" onError={onError} />);
 
       await waitFor(() => {
         expect(onError).toHaveBeenCalledTimes(1);
@@ -436,9 +355,7 @@ describe('SVGIcon Component', () => {
 
     it('should call onLoad when inline SVG loads', async () => {
       const onLoad = vi.fn();
-      render(() => (
-        <SVGIcon src="<svg></svg>" onLoad={onLoad} />
-      ));
+      render(() => <SVGIcon src="<svg></svg>" onLoad={onLoad} />);
 
       await waitFor(() => {
         expect(onLoad).toHaveBeenCalled();
@@ -448,9 +365,7 @@ describe('SVGIcon Component', () => {
 
   describe('Loading States', () => {
     it('should show loading state initially', () => {
-      const { container } = render(() => (
-        <SVGIcon name="loading-icon" />
-      ));
+      const { container } = render(() => <SVGIcon name="loading-icon" />);
 
       const svg = container.querySelector('svg');
       expect(svg?.style.opacity).toBe('0.3');
@@ -458,9 +373,7 @@ describe('SVGIcon Component', () => {
 
     it('should show error state when loading fails', async () => {
       const onError = vi.fn();
-      render(() => (
-        <SVGIcon name="error-icon" onError={onError} />
-      ));
+      render(() => <SVGIcon name="error-icon" onError={onError} />);
 
       // Wait for error callback to be called
       await waitFor(() => {
@@ -474,21 +387,14 @@ describe('SVGIcon Component', () => {
 
   describe('ViewBox', () => {
     it('should apply custom viewBox', () => {
-      const { container } = render(() => (
-        <SVGIcon
-          path="M10 10 L20 20 Z"
-          viewBox="0 0 100 100"
-        />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" viewBox="0 0 100 100" />);
 
       const svg = container.querySelector('svg');
       expect(svg?.getAttribute('viewBox')).toBe('0 0 100 100');
     });
 
     it('should use default viewBox based on dimensions', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" width={50} height={50} />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" width={50} height={50} />);
 
       const svg = container.querySelector('svg');
       expect(svg?.getAttribute('viewBox')).toBe('0 0 50 50');
@@ -499,13 +405,11 @@ describe('SVGIcon Component', () => {
     it('should fetch SVG from URL', async () => {
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
-        text: async () => '<svg><path d="M10 10"/></svg>'
+        text: async () => '<svg><path d="M10 10"/></svg>',
       });
 
       const onLoad = vi.fn();
-      render(() => (
-        <SVGIcon src="https://example.com/icon.svg" onLoad={onLoad} />
-      ));
+      render(() => <SVGIcon src="https://example.com/icon.svg" onLoad={onLoad} />);
 
       await waitFor(() => {
         expect(onLoad).toHaveBeenCalled();
@@ -517,9 +421,7 @@ describe('SVGIcon Component', () => {
       global.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
 
       const onError = vi.fn();
-      render(() => (
-        <SVGIcon src="https://example.com/missing.svg" onError={onError} />
-      ));
+      render(() => <SVGIcon src="https://example.com/missing.svg" onError={onError} />);
 
       await waitFor(() => {
         expect(onError).toHaveBeenCalledWith(expect.any(Error));
@@ -530,14 +432,16 @@ describe('SVGIcon Component', () => {
   describe('Registry Integration', () => {
     it('should load icon from registry with prefix', async () => {
       const registry = getIconRegistry();
-      registry.registerSet('icons', {
-        'home': 'M10 20 L30 5 L50 20 V45 H10 Z'
-      }, 'fa');
+      registry.registerSet(
+        'icons',
+        {
+          home: 'M10 20 L30 5 L50 20 V45 H10 Z',
+        },
+        'fa'
+      );
 
       const onLoad = vi.fn();
-      render(() => (
-        <SVGIcon name="fa:home" onLoad={onLoad} />
-      ));
+      render(() => <SVGIcon name="fa:home" onLoad={onLoad} />);
 
       await waitFor(() => {
         expect(onLoad).toHaveBeenCalled();
@@ -547,21 +451,19 @@ describe('SVGIcon Component', () => {
     it('should apply transformers from registry', async () => {
       const registry = getIconRegistry();
       registry.registerSet('test', {
-        'circle': 'M50 50 m-40 0 a 40 40 0 1 0 80 0 a 40 40 0 1 0 -80 0'
+        circle: 'M50 50 m-40 0 a 40 40 0 1 0 80 0 a 40 40 0 1 0 -80 0',
       });
 
       registry.addTransformer({
         name: 'test-transformer',
         transform: (icon) => ({
           ...icon,
-          metadata: { transformed: true }
-        })
+          metadata: { transformed: true },
+        }),
       });
 
       const onLoad = vi.fn();
-      render(() => (
-        <SVGIcon name="circle" onLoad={onLoad} />
-      ));
+      render(() => <SVGIcon name="circle" onLoad={onLoad} />);
 
       await waitFor(() => {
         expect(onLoad).toHaveBeenCalled();
@@ -571,42 +473,28 @@ describe('SVGIcon Component', () => {
 
   describe('Edge Cases', () => {
     it('should handle null children', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z">
-          {null}
-        </SVGIcon>
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z">{null}</SVGIcon>);
 
       const svg = container.querySelector('svg');
       expect(svg).toBeTruthy();
     });
 
     it('should handle undefined props gracefully', () => {
-      const { container } = render(() => (
-        <SVGIcon
-          path="M10 10 L20 20 Z"
-          color={undefined}
-          size={undefined}
-        />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" color={undefined} size={undefined} />);
 
       const svg = container.querySelector('svg');
       expect(svg).toBeTruthy();
     });
 
     it('should handle empty path string', () => {
-      const { container } = render(() => (
-        <SVGIcon path="" />
-      ));
+      const { container } = render(() => <SVGIcon path="" />);
 
       const svg = container.querySelector('svg');
       expect(svg).toBeTruthy();
     });
 
     it('should handle all size presets being undefined', () => {
-      const { container } = render(() => (
-        <SVGIcon path="M10 10 L20 20 Z" />
-      ));
+      const { container } = render(() => <SVGIcon path="M10 10 L20 20 Z" />);
 
       const svg = container.querySelector('svg');
       expect(svg?.getAttribute('width')).toBe('24');

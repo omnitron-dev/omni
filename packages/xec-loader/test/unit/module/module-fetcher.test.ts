@@ -88,9 +88,7 @@ describe('ModuleFetcher', () => {
       headers: new Map([['content-type', 'application/javascript']]),
     };
 
-    (global.fetch as any)
-      .mockRejectedValueOnce(mockError)
-      .mockResolvedValueOnce(mockSuccess);
+    (global.fetch as any).mockRejectedValueOnce(mockError).mockResolvedValueOnce(mockSuccess);
 
     const result = await fetcher.fetch('https://example.com/module.js', { retries: 2 });
 
@@ -102,9 +100,7 @@ describe('ModuleFetcher', () => {
     const mockError = new Error('Network error');
     (global.fetch as any).mockRejectedValue(mockError);
 
-    await expect(
-      fetcher.fetch('https://example.com/module.js', { retries: 2 })
-    ).rejects.toThrow();
+    await expect(fetcher.fetch('https://example.com/module.js', { retries: 2 })).rejects.toThrow();
 
     expect(global.fetch).toHaveBeenCalledTimes(3); // Initial + 2 retries
   });
@@ -114,9 +110,7 @@ describe('ModuleFetcher', () => {
     const mockResponse = new Promise(() => {}); // Never resolves
     (global.fetch as any).mockReturnValue(mockResponse);
 
-    await expect(
-      fetcher.fetch('https://example.com/module.js', { timeout: 100, retries: 0 })
-    ).rejects.toThrow();
+    await expect(fetcher.fetch('https://example.com/module.js', { timeout: 100, retries: 0 })).rejects.toThrow();
   });
 
   it('should throw on HTTP errors', async () => {
@@ -129,9 +123,7 @@ describe('ModuleFetcher', () => {
     };
     (global.fetch as any).mockResolvedValue(mockResponse);
 
-    await expect(
-      fetcher.fetch('https://example.com/module.js', { retries: 0 })
-    ).rejects.toThrow('HTTP 404: Not Found');
+    await expect(fetcher.fetch('https://example.com/module.js', { retries: 0 })).rejects.toThrow('HTTP 404: Not Found');
   });
 
   it('should include custom headers', async () => {

@@ -59,10 +59,7 @@ import {
 import { LinkExtension, ImageExtension } from '../../src/components/editor/extensions/media/index.js';
 
 // Import behavior extensions
-import {
-  HistoryExtension,
-  PlaceholderExtension,
-} from '../../src/components/editor/extensions/behavior/index.js';
+import { HistoryExtension, PlaceholderExtension } from '../../src/components/editor/extensions/behavior/index.js';
 
 // Import collaboration extensions
 import {
@@ -616,11 +613,7 @@ function updateConnectionStatus(element: HTMLElement, status: ConnectionStatus):
 /**
  * Update user list display
  */
-function updateUserList(
-  element: HTMLElement,
-  users: User[],
-  currentUser: User
-): void {
+function updateUserList(element: HTMLElement, users: User[], currentUser: User): void {
   // Clear existing content
   element.innerHTML = '';
 

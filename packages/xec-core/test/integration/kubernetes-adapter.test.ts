@@ -26,13 +26,13 @@ describe('KubernetesAdapter Integration Tests', () => {
     await cluster.createMultiContainerPod('multi-pod', 'test');
 
     // Wait a bit for pods to stabilize
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    await new Promise((resolve) => setTimeout(resolve, 3000));
 
     // Create adapter with cluster's kubeconfig
     adapter = new KubernetesAdapter({
       namespace: 'test',
       kubeconfig: cluster.getKubeConfigPath(),
-      kubectlPath: 'kubectl'
+      kubectlPath: 'kubectl',
     });
   }, 300000);
 
@@ -55,8 +55,8 @@ describe('KubernetesAdapter Integration Tests', () => {
         adapterOptions: {
           type: 'kubernetes',
           pod: 'multi-pod',
-          container: 'app'
-        }
+          container: 'app',
+        },
       });
 
       expect(result1.exitCode).toBe(0);
@@ -69,8 +69,8 @@ describe('KubernetesAdapter Integration Tests', () => {
         adapterOptions: {
           type: 'kubernetes',
           pod: 'multi-pod',
-          container: 'sidecar'
-        }
+          container: 'sidecar',
+        },
       });
 
       expect(result2.exitCode).toBe(0);
@@ -84,8 +84,8 @@ describe('KubernetesAdapter Integration Tests', () => {
         shell: '/bin/sh',
         adapterOptions: {
           type: 'kubernetes',
-          pod: 'test-pod'
-        }
+          pod: 'test-pod',
+        },
       });
 
       expect(result.exitCode).toBe(0);
@@ -106,14 +106,14 @@ describe('KubernetesAdapter Integration Tests', () => {
       const testAdapter = new KubernetesAdapter({
         namespace: 'test',
         kubeconfig: cluster.getKubeConfigPath(),
-        kubectlPath: 'kubectl'
+        kubectlPath: 'kubectl',
       });
 
-      await testAdapter.copyFiles(
-        localFile,
-        'test-pod:/tmp/test.txt',
-        { container: 'nginx', namespace: 'test', direction: 'to' }
-      );
+      await testAdapter.copyFiles(localFile, 'test-pod:/tmp/test.txt', {
+        container: 'nginx',
+        namespace: 'test',
+        direction: 'to',
+      });
 
       // Verify through nginx container
       const result = await testAdapter.execute({
@@ -121,8 +121,8 @@ describe('KubernetesAdapter Integration Tests', () => {
         adapterOptions: {
           type: 'kubernetes',
           pod: 'test-pod',
-          container: 'nginx'
-        }
+          container: 'nginx',
+        },
       });
 
       expect(result.stdout.trim()).toBe(testContent);

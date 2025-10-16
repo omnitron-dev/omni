@@ -26,8 +26,8 @@ describe('DockerAdapter standardized error handling', () => {
           // Force run mode to avoid container existence check path
           image: 'alpine:latest',
           runMode: 'run',
-          autoRemove: true
-        }
+          autoRemove: true,
+        },
       });
 
       // If we reached here, timeout was handled with nothrow returning a standardized result

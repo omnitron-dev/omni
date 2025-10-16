@@ -30,8 +30,8 @@ describe('ExecutionContext', () => {
         target: {
           type: 'local',
           name: 'test',
-          config: {}
-        }
+          config: {},
+        },
       };
 
       context = new ExecutionContext(options);
@@ -51,7 +51,7 @@ describe('ExecutionContext', () => {
         type: 'docker' as const,
         name: 'mycontainer',
         container: 'mycontainer',
-        config: { image: 'node:20' }
+        config: { image: 'node:20' },
       };
 
       context = new ExecutionContext({ target: targetInfo });
@@ -83,7 +83,7 @@ describe('ExecutionContext', () => {
         args: ['arg1', 'arg2'],
         argv: ['node', 'script.js', 'arg1', 'arg2'],
         __filename: '/path/to/script.js',
-        __dirname: '/path/to'
+        __dirname: '/path/to',
       };
 
       context = new ExecutionContext({ context: scriptContext });
@@ -141,12 +141,12 @@ describe('ExecutionContext', () => {
       const targetInfo = {
         type: 'docker' as const,
         name: 'test',
-        config: {}
+        config: {},
       };
 
       context = new ExecutionContext({
         target: targetInfo,
-        targetEngine: mockEngine
+        targetEngine: mockEngine,
       });
 
       await context.injectGlobals();

@@ -120,11 +120,7 @@ export {
   DropCursorExtension,
   GapCursorExtension,
 } from './extensions/behavior/index.js';
-export type {
-  HistoryOptions,
-  PlaceholderOptions,
-  DropCursorOptions,
-} from './extensions/behavior/index.js';
+export type { HistoryOptions, PlaceholderOptions, DropCursorOptions } from './extensions/behavior/index.js';
 
 // Search extension
 export { SearchExtension } from './extensions/search/index.js';
@@ -137,11 +133,7 @@ export {
   TableCellExtension,
   TableHeaderExtension,
 } from './extensions/table/index.js';
-export type {
-  TableOptions,
-  TableCellOptions,
-  TableHeaderOptions,
-} from './extensions/table/index.js';
+export type { TableOptions, TableCellOptions, TableHeaderOptions } from './extensions/table/index.js';
 
 // Media extensions
 export { LinkExtension, ImageExtension } from './extensions/media/index.js';
@@ -160,10 +152,7 @@ export { MarkdownPreview, markdownPreviewStyles } from './components/MarkdownPre
 export type { MarkdownPreviewProps } from './components/MarkdownPreview.js';
 
 // Collaboration extensions
-export {
-  CollaborationExtension,
-  CollaborationCursorExtension,
-} from './extensions/collaboration/index.js';
+export { CollaborationExtension, CollaborationCursorExtension } from './extensions/collaboration/index.js';
 export type {
   CollaborationOptions,
   CollaborationCursorOptions,

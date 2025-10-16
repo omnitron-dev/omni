@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const Knowledge01Icon: IconDefinition = {
-  "id": "knowledge01",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M11.9867 6.5C11.9867 4 9.2548 3 9.2548 3M11.9867 6.92131C11.9867 6.92131 5.97656 3.85577 5.97656 8.90819C5.97656 13.9606 8.71125 16 9.80117 16C10.6706 16 11.1834 14.9913 11.9867 14.9913C12.7899 14.9913 13.0794 16 14.1721 16C15.2621 16 17.9968 13.9606 17.9968 8.90819C17.9968 3.85578 11.9867 6.92131 11.9867 6.92131ZM12.5331 6C12.5331 2.01035 14.5011 3 15.4852 2C16.4692 4.5 15.1521 5.00259 12.5331 6Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M20.9995 16H4.86374C4.21318 16 3.88725 16.2325 3.60204 16.5117C3.01607 17.0852 3.09046 17.5901 3.01607 18.2429C3.01607 19.1837 2.94329 19.8131 3.10748 20.5343C3.25294 21.1733 3.99264 22 4.85927 22H20.9995M19.4031 22C17.8618 20.5885 17.2288 18.1421 19.4031 16\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "twotone",
-    "originalName": "Knowledge01Icon",
-    "elementsCount": 2,
-    "hasOpacity": true,
-    "hasFill": false
-  }
+  id: 'knowledge01',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path opacity="0.4" d="M11.9867 6.5C11.9867 4 9.2548 3 9.2548 3M11.9867 6.92131C11.9867 6.92131 5.97656 3.85577 5.97656 8.90819C5.97656 13.9606 8.71125 16 9.80117 16C10.6706 16 11.1834 14.9913 11.9867 14.9913C12.7899 14.9913 13.0794 16 14.1721 16C15.2621 16 17.9968 13.9606 17.9968 8.90819C17.9968 3.85578 11.9867 6.92131 11.9867 6.92131ZM12.5331 6C12.5331 2.01035 14.5011 3 15.4852 2C16.4692 4.5 15.1521 5.00259 12.5331 6Z" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M20.9995 16H4.86374C4.21318 16 3.88725 16.2325 3.60204 16.5117C3.01607 17.0852 3.09046 17.5901 3.01607 18.2429C3.01607 19.1837 2.94329 19.8131 3.10748 20.5343C3.25294 21.1733 3.99264 22 4.85927 22H20.9995M19.4031 22C17.8618 20.5885 17.2288 18.1421 19.4031 16" stroke-linecap="round" stroke-linejoin="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'twotone',
+    originalName: 'Knowledge01Icon',
+    elementsCount: 2,
+    hasOpacity: true,
+    hasFill: false,
+  },
 };

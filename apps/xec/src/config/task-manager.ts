@@ -11,13 +11,7 @@ import { ConfigurationManager } from './configuration-manager.js';
 import { VariableInterpolator } from './variable-interpolator.js';
 import { TaskExecutor, TaskExecutionOptions } from './task-executor.js';
 
-import type {
-  TaskConfig,
-  TaskResult,
-  TaskParameter,
-  Configuration,
-  TaskDefinition,
-} from './types.js';
+import type { TaskConfig, TaskResult, TaskParameter, Configuration, TaskDefinition } from './types.js';
 
 export interface TaskManagerOptions {
   /** Configuration manager instance */
@@ -73,11 +67,11 @@ export class TaskManager extends EventEmitter {
     });
 
     // Forward executor events
-    this.executor.on('task:start', event => this.emit('task:start', event));
-    this.executor.on('task:complete', event => this.emit('task:complete', event));
-    this.executor.on('task:error', event => this.emit('task:error', event));
-    this.executor.on('step:retry', event => this.emit('step:retry', event));
-    this.executor.on('event', event => this.emit('event', event));
+    this.executor.on('task:start', (event) => this.emit('task:start', event));
+    this.executor.on('task:complete', (event) => this.emit('task:complete', event));
+    this.executor.on('task:error', (event) => this.emit('task:error', event));
+    this.executor.on('step:retry', (event) => this.emit('step:retry', event));
+    this.executor.on('event', (event) => this.emit('event', event));
   }
 
   /**
@@ -95,15 +89,15 @@ export class TaskManager extends EventEmitter {
       targetResolver: this.targetResolver,
       defaultTimeout: (this.executor as any).options.defaultTimeout,
       debug: (this.executor as any).options.debug || this.options.debug,
-      dryRun: (this.executor as any).options.dryRun
+      dryRun: (this.executor as any).options.dryRun,
     });
 
     // Re-attach event listeners
-    this.executor.on('task:start', event => this.emit('task:start', event));
-    this.executor.on('task:complete', event => this.emit('task:complete', event));
-    this.executor.on('task:error', event => this.emit('task:error', event));
-    this.executor.on('step:retry', event => this.emit('step:retry', event));
-    this.executor.on('event', event => this.emit('event', event));
+    this.executor.on('task:start', (event) => this.emit('task:start', event));
+    this.executor.on('task:complete', (event) => this.emit('task:complete', event));
+    this.executor.on('task:error', (event) => this.emit('task:error', event));
+    this.executor.on('step:retry', (event) => this.emit('step:retry', event));
+    this.executor.on('event', (event) => this.emit('event', event));
 
     if (!this.config.tasks) {
       return;
@@ -165,11 +159,7 @@ export class TaskManager extends EventEmitter {
   /**
    * Execute a task
    */
-  async run(
-    taskName: string,
-    params?: Record<string, any>,
-    options?: TaskExecutionOptions
-  ): Promise<TaskResult> {
+  async run(taskName: string, params?: Record<string, any>, options?: TaskExecutionOptions): Promise<TaskResult> {
     await this.ensureLoaded();
 
     const task = this.parsedTasks.get(taskName);
@@ -306,7 +296,7 @@ export class TaskManager extends EventEmitter {
     if (task.command) {
       const interpolated = this.interpolator.interpolate(task.command, {
         params: params || {},
-        vars: await this.configManager.get('vars') || {},
+        vars: (await this.configManager.get('vars')) || {},
       });
       explanation.push(`  Execute: ${interpolated}`);
     } else if (task.steps) {
@@ -322,7 +312,7 @@ export class TaskManager extends EventEmitter {
         if (step.command) {
           const interpolated = this.interpolator.interpolate(step.command, {
             params: params || {},
-            vars: await this.configManager.get('vars') || {},
+            vars: (await this.configManager.get('vars')) || {},
           });
           explanation.push(`${prefix}${step.name || 'Command'}: ${interpolated}`);
         } else if (step.task) {
@@ -368,10 +358,7 @@ export class TaskManager extends EventEmitter {
   /**
    * Apply parameter defaults for missing values
    */
-  private applyParameterDefaults(
-    params: TaskParameter[],
-    provided: Record<string, any>
-  ): Record<string, any> {
+  private applyParameterDefaults(params: TaskParameter[], provided: Record<string, any>): Record<string, any> {
     const result = { ...provided };
 
     for (const param of params) {
@@ -386,11 +373,7 @@ export class TaskManager extends EventEmitter {
   /**
    * Validate task parameters
    */
-  private validateParameters(
-    taskName: string,
-    params: TaskParameter[],
-    provided: Record<string, any>
-  ): void {
+  private validateParameters(taskName: string, params: TaskParameter[], provided: Record<string, any>): void {
     const errors: string[] = [];
 
     for (const param of params) {

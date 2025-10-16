@@ -12,10 +12,7 @@ let animationCounter = 0;
 /**
  * Creates a CSS animation and injects it into the stylesheet
  */
-export function createCSSAnimation(
-  name: string | undefined,
-  config: CSSAnimationConfig
-): string {
+export function createCSSAnimation(name: string | undefined, config: CSSAnimationConfig): string {
   const animationName = name || `aether-svg-anim-${++animationCounter}`;
 
   // Generate keyframes CSS
@@ -49,10 +46,7 @@ export function createCSSAnimation(
 /**
  * Applies a CSS animation to an SVG element
  */
-export function applyCSSAnimation(
-  element: SVGElement,
-  animation: string | CSSAnimationConfig
-): void {
+export function applyCSSAnimation(element: SVGElement, animation: string | CSSAnimationConfig): void {
   if (typeof animation === 'string') {
     // Simple animation name
     element.style.animation = animation;
@@ -67,16 +61,7 @@ export function applyCSSAnimation(
     const fillMode = animation.fillMode || 'none';
     const playState = animation.playState || 'running';
 
-    element.style.animation = [
-      name,
-      duration,
-      timingFunction,
-      delay,
-      iterationCount,
-      direction,
-      fillMode,
-      playState,
-    ]
+    element.style.animation = [name, duration, timingFunction, delay, iterationCount, direction, fillMode, playState]
       .filter(Boolean)
       .join(' ');
   }
@@ -117,7 +102,7 @@ export function getAnimationState(element: SVGElement): {
   return {
     isRunning: animation ? animation.playState === 'running' : false,
     isPaused: animation ? animation.playState === 'paused' : false,
-    currentTime: animation?.currentTime as number ?? 0,
+    currentTime: (animation?.currentTime as number) ?? 0,
   };
 }
 
@@ -157,10 +142,7 @@ function formatDuration(value: number | string | undefined): string {
  * });
  * ```
  */
-export function generateKeyframes(
-  name: string,
-  keyframes: Record<string, Record<string, string | number>>
-): string {
+export function generateKeyframes(name: string, keyframes: Record<string, Record<string, string | number>>): string {
   const keyframesCSS = Object.entries(keyframes)
     .map(([key, styles]) => {
       const styleString = Object.entries(styles)

@@ -18,17 +18,17 @@ describe('Extended Combinators', () => {
   describe('parallel', () => {
     it('should execute effects in parallel', async () => {
       const effect1 = effectful(async (x: number) => {
-        await new Promise(r => setTimeout(r, 10));
+        await new Promise((r) => setTimeout(r, 10));
         return x * 2;
       }, EffectFlags.Async);
 
       const effect2 = effectful(async (x: number) => {
-        await new Promise(r => setTimeout(r, 10));
+        await new Promise((r) => setTimeout(r, 10));
         return x * 3;
       }, EffectFlags.Async);
 
       const effect3 = effectful(async (x: number) => {
-        await new Promise(r => setTimeout(r, 10));
+        await new Promise((r) => setTimeout(r, 10));
         return x * 4;
       }, EffectFlags.Async);
 
@@ -67,12 +67,12 @@ describe('Extended Combinators', () => {
 
     it('should handle async effects in sequence', async () => {
       const effect1 = effectful(async (x: number) => {
-        await new Promise(r => setTimeout(r, 10));
+        await new Promise((r) => setTimeout(r, 10));
         return x * 2;
       }, EffectFlags.Async);
 
       const effect2 = effectful(async (x: number) => {
-        await new Promise(r => setTimeout(r, 10));
+        await new Promise((r) => setTimeout(r, 10));
         return x + 10;
       }, EffectFlags.Async);
 
@@ -88,9 +88,7 @@ describe('Extended Combinators', () => {
       const e3 = effectful(() => 3, EffectFlags.Random);
 
       const pipeline = sequential(e1, e2, e3);
-      expect(pipeline.flags).toBe(
-        EffectFlags.IO | EffectFlags.Network | EffectFlags.Random | EffectFlags.Async
-      );
+      expect(pipeline.flags).toBe(EffectFlags.IO | EffectFlags.Network | EffectFlags.Random | EffectFlags.Async);
     });
   });
 
@@ -99,11 +97,7 @@ describe('Extended Combinators', () => {
       const ifTrue = effectful(() => 'true branch', EffectFlags.IO);
       const ifFalse = effectful(() => 'false branch', EffectFlags.Network);
 
-      const cond = conditional(
-        (x: number) => x > 5,
-        ifTrue,
-        ifFalse
-      );
+      const cond = conditional((x: number) => x > 5, ifTrue, ifFalse);
 
       const result = await cond(10);
       expect(result).toBe('true branch');
@@ -113,11 +107,7 @@ describe('Extended Combinators', () => {
       const ifTrue = effectful(() => 'true branch', EffectFlags.IO);
       const ifFalse = effectful(() => 'false branch', EffectFlags.Network);
 
-      const cond = conditional(
-        (x: number) => x > 5,
-        ifTrue,
-        ifFalse
-      );
+      const cond = conditional((x: number) => x > 5, ifTrue, ifFalse);
 
       const result = await cond(3);
       expect(result).toBe('false branch');
@@ -133,7 +123,7 @@ describe('Extended Combinators', () => {
 
     it('should work with async effects', async () => {
       const ifTrue = effectful(async () => {
-        await new Promise(r => setTimeout(r, 10));
+        await new Promise((r) => setTimeout(r, 10));
         return 'async true';
       }, EffectFlags.Async);
 
@@ -166,7 +156,7 @@ describe('Extended Combinators', () => {
 
     it('should handle async errors', async () => {
       const effect = effectful(async () => {
-        await new Promise(r => setTimeout(r, 10));
+        await new Promise((r) => setTimeout(r, 10));
         throw new Error('Async error');
       }, EffectFlags.Async | EffectFlags.Throw);
 
@@ -253,7 +243,7 @@ describe('Extended Combinators', () => {
       const retried = retry(effect, {
         maxAttempts: 3,
         delay: 10,
-        backoff: 'exponential'
+        backoff: 'exponential',
       });
 
       vi.useRealTimers();
@@ -276,8 +266,8 @@ describe('Extended Combinators', () => {
 
       const retried = retry(effect, {
         maxAttempts: 3,
-        delay: 0,  // No delay for testing
-        onRetry
+        delay: 0, // No delay for testing
+        onRetry,
       });
 
       vi.useRealTimers();
@@ -311,7 +301,7 @@ describe('Extended Combinators', () => {
       vi.useRealTimers();
 
       const effect = effectful(async () => {
-        await new Promise(r => setTimeout(r, 10));
+        await new Promise((r) => setTimeout(r, 10));
         return 'success';
       }, EffectFlags.Async);
 
@@ -328,7 +318,7 @@ describe('Extended Combinators', () => {
       vi.useRealTimers();
 
       const effect = effectful(async () => {
-        await new Promise(r => setTimeout(r, 200));
+        await new Promise((r) => setTimeout(r, 200));
         return 'success';
       }, EffectFlags.Async);
 
@@ -359,10 +349,7 @@ describe('Extended Combinators', () => {
     });
 
     it('should analyze effectful flow', () => {
-      const flow = effectful(
-        () => 'test',
-        EffectFlags.IO | EffectFlags.Network | EffectFlags.Async
-      );
+      const flow = effectful(() => 'test', EffectFlags.IO | EffectFlags.Network | EffectFlags.Async);
       const analysis = analyze(flow);
 
       expect(analysis.pure).toBe(false);
@@ -375,11 +362,21 @@ describe('Extended Combinators', () => {
     it('should include all effect types in analysis', () => {
       const flow = effectful(
         () => {},
-        EffectFlags.IO | EffectFlags.Read | EffectFlags.Write |
-        EffectFlags.Network | EffectFlags.Random | EffectFlags.Time |
-        EffectFlags.Throw | EffectFlags.Process | EffectFlags.Memory |
-        EffectFlags.State | EffectFlags.Unsafe | EffectFlags.Database |
-        EffectFlags.Cache | EffectFlags.Queue | EffectFlags.Stream
+        EffectFlags.IO |
+          EffectFlags.Read |
+          EffectFlags.Write |
+          EffectFlags.Network |
+          EffectFlags.Random |
+          EffectFlags.Time |
+          EffectFlags.Throw |
+          EffectFlags.Process |
+          EffectFlags.Memory |
+          EffectFlags.State |
+          EffectFlags.Unsafe |
+          EffectFlags.Database |
+          EffectFlags.Cache |
+          EffectFlags.Queue |
+          EffectFlags.Stream
       );
 
       const analysis = analyze(flow);
@@ -475,8 +472,7 @@ describe('Extended Combinators', () => {
     it('should throw for flows with disallowed effects', () => {
       const flow = effectful(() => 'test', EffectFlags.IO | EffectFlags.Network);
 
-      expect(() => restrict(flow, EffectFlags.IO))
-        .toThrow('Flow has disallowed effects');
+      expect(() => restrict(flow, EffectFlags.IO)).toThrow('Flow has disallowed effects');
     });
 
     it('should allow pure flows with any restriction', () => {

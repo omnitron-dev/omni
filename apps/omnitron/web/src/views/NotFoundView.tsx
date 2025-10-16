@@ -23,9 +23,7 @@ export default defineComponent(() => {
         <div class="not-found-content">
           <h1 class="error-code">404</h1>
           <h2 class="error-title">Page Not Found</h2>
-          <p class="error-message">
-            The page you're looking for doesn't exist or has been moved.
-          </p>
+          <p class="error-message">The page you're looking for doesn't exist or has been moved.</p>
 
           <div class="not-found-illustration">
             <svg width="300" height="200" viewBox="0 0 300 200" class="illustration">
@@ -53,7 +51,9 @@ export default defineComponent(() => {
               {/* Disconnected node */}
               <g transform="translate(150, 100)">
                 <circle cx="0" cy="0" r="20" fill="none" stroke="currentColor" stroke-width="2" />
-                <text x="0" y="5" text-anchor="middle" font-size="16" fill="currentColor">?</text>
+                <text x="0" y="5" text-anchor="middle" font-size="16" fill="currentColor">
+                  ?
+                </text>
               </g>
             </svg>
           </div>
@@ -70,10 +70,18 @@ export default defineComponent(() => {
           <div class="not-found-suggestions">
             <p>You might want to check out:</p>
             <ul>
-              <li><a href="/canvas">Flow Canvas</a></li>
-              <li><a href="/editor">Code Editor</a></li>
-              <li><a href="/terminal">Terminal</a></li>
-              <li><a href="/settings">Settings</a></li>
+              <li>
+                <a href="/canvas">Flow Canvas</a>
+              </li>
+              <li>
+                <a href="/editor">Code Editor</a>
+              </li>
+              <li>
+                <a href="/terminal">Terminal</a>
+              </li>
+              <li>
+                <a href="/settings">Settings</a>
+              </li>
             </ul>
           </div>
         </div>

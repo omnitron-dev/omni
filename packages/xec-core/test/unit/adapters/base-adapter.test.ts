@@ -15,15 +15,7 @@ class TestAdapter extends BaseAdapter {
 
   async execute(command: Command): Promise<ExecutionResult> {
     // Simple implementation that returns the command as stdout
-    return this.createResult(
-      command.command,
-      '',
-      0,
-      undefined,
-      command.command,
-      Date.now(),
-      Date.now()
-    );
+    return this.createResult(command.command, '', 0, undefined, command.command, Date.now(), Date.now());
   }
 
   async isAvailable(): Promise<boolean> {
@@ -60,7 +52,10 @@ class TestAdapter extends BaseAdapter {
     return this.buildCommandString(command);
   }
 
-  public testCreateCombinedEnv(baseEnv: Record<string, string>, commandEnv?: Record<string, string>): Record<string, string> {
+  public testCreateCombinedEnv(
+    baseEnv: Record<string, string>,
+    commandEnv?: Record<string, string>
+  ): Record<string, string> {
     return this.createCombinedEnv(baseEnv, commandEnv);
   }
 
@@ -72,7 +67,11 @@ class TestAdapter extends BaseAdapter {
     return this.handleAbortSignal(signal, cleanup);
   }
 
-  public testCreateStreamHandler(options?: { onData?: (chunk: string) => void; maxBuffer?: number; encoding?: BufferEncoding }): any {
+  public testCreateStreamHandler(options?: {
+    onData?: (chunk: string) => void;
+    maxBuffer?: number;
+    encoding?: BufferEncoding;
+  }): any {
     return this.createStreamHandler(options);
   }
 
@@ -84,7 +83,12 @@ class TestAdapter extends BaseAdapter {
     return this.createProgressReporter(command);
   }
 
-  public async testHandleTimeout(promise: Promise<any>, timeout: number, command: string, cleanup?: () => void): Promise<any> {
+  public async testHandleTimeout(
+    promise: Promise<any>,
+    timeout: number,
+    command: string,
+    cleanup?: () => void
+  ): Promise<any> {
     return this.handleTimeout(promise, timeout, command, cleanup);
   }
 
@@ -111,7 +115,7 @@ describe('BaseAdapter', () => {
         { input: 'api_key=sk-1234567890abcdef', expected: 'api_key=[REDACTED]' },
         { input: 'apikey: "test123456"', expected: 'apikey: [REDACTED]' },
         { input: 'API_KEY="my-secret-key"', expected: 'API_KEY=[REDACTED]' },
-        { input: 'access_token=ghp_1234567890abcdef', expected: 'access_token=[REDACTED]' }
+        { input: 'access_token=ghp_1234567890abcdef', expected: 'access_token=[REDACTED]' },
       ];
 
       for (const { input, expected } of testCases) {
@@ -142,7 +146,10 @@ describe('BaseAdapter', () => {
 
       const testCases = [
         { input: 'AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE', expected: 'AWS_ACCESS_KEY_ID=[REDACTED]' },
-        { input: 'aws_secret_access_key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY', expected: 'aws_secret_access_key=[REDACTED]' }
+        {
+          input: 'aws_secret_access_key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+          expected: 'aws_secret_access_key=[REDACTED]',
+        },
       ];
 
       for (const { input, expected } of testCases) {
@@ -155,7 +162,7 @@ describe('BaseAdapter', () => {
 
       const testCases = [
         { input: 'github_token=ghp_0123456789abcdefghijklmnopqrstuvwxyzAB', expected: 'github_token=[REDACTED]' },
-        { input: 'token: ghs_0123456789abcdefghijklmnopqrstuvwxyzAB', expected: 'token: [REDACTED]' }
+        { input: 'token: ghs_0123456789abcdefghijklmnopqrstuvwxyzAB', expected: 'token: [REDACTED]' },
       ];
 
       for (const { input, expected } of testCases) {
@@ -169,7 +176,7 @@ describe('BaseAdapter', () => {
       const testCases = [
         { input: 'password=mysecretpassword', expected: 'password=[REDACTED]' },
         { input: 'passwd: "p@ssw0rd!"', expected: 'passwd: [REDACTED]' },
-        { input: 'pwd="123456"', expected: 'pwd=[REDACTED]' }
+        { input: 'pwd="123456"', expected: 'pwd=[REDACTED]' },
       ];
 
       for (const { input, expected } of testCases) {
@@ -196,7 +203,7 @@ MIIEpAIBAAKCAQEA1234567890abcdef
         { input: 'SECRET_KEY=my-secret-value', expected: 'SECRET_KEY=[REDACTED]' },
         { input: 'DATABASE_PASSWORD="p@ssw0rd"', expected: 'DATABASE_PASSWORD=[REDACTED]' },
         { input: 'GITHUB_TOKEN=ghp_123456', expected: 'GITHUB_TOKEN=[REDACTED]' },
-        { input: 'API_KEY_PROD=sk-prod-12345', expected: 'API_KEY_PROD=[REDACTED]' }
+        { input: 'API_KEY_PROD=sk-prod-12345', expected: 'API_KEY_PROD=[REDACTED]' },
       ];
 
       for (const { input, expected } of testCases) {
@@ -230,8 +237,8 @@ MIIEpAIBAAKCAQEA1234567890abcdef
     test('should not mask when disabled', () => {
       const adapter = new TestAdapter({
         sensitiveDataMasking: {
-          enabled: false
-        }
+          enabled: false,
+        },
       });
 
       const input = 'password=mysecretpassword';
@@ -242,8 +249,8 @@ MIIEpAIBAAKCAQEA1234567890abcdef
       const adapter = new TestAdapter({
         sensitiveDataMasking: {
           enabled: true,
-          replacement: '***HIDDEN***'
-        }
+          replacement: '***HIDDEN***',
+        },
       });
 
       const input = 'password=mysecretpassword';
@@ -254,10 +261,8 @@ MIIEpAIBAAKCAQEA1234567890abcdef
       const adapter = new TestAdapter({
         sensitiveDataMasking: {
           enabled: true,
-          patterns: [
-            /(custom_secret=)([^\s]+)/gi
-          ]
-        }
+          patterns: [/(custom_secret=)([^\s]+)/gi],
+        },
       });
 
       const input = 'custom_secret=my-custom-value password=should-not-be-masked';
@@ -299,7 +304,7 @@ MIIEpAIBAAKCAQEA1234567890abcdef
       const handler = (adapter as any).createStreamHandler({
         onData: (chunk: string) => {
           capturedData += chunk;
-        }
+        },
       });
 
       // Simulate streaming data with sensitive info
@@ -331,8 +336,8 @@ MIIEpAIBAAKCAQEA1234567890abcdef
     test('should allow disabling masking', () => {
       const adapter = new TestAdapter({
         sensitiveDataMasking: {
-          enabled: false
-        }
+          enabled: false,
+        },
       });
 
       const config = (adapter as any).config;
@@ -342,8 +347,8 @@ MIIEpAIBAAKCAQEA1234567890abcdef
     test('should merge custom patterns with defaults when not specified', () => {
       const adapter = new TestAdapter({
         sensitiveDataMasking: {
-          replacement: '***'
-        }
+          replacement: '***',
+        },
       });
 
       const config = (adapter as any).config;
@@ -358,7 +363,7 @@ MIIEpAIBAAKCAQEA1234567890abcdef
         defaultTimeout: 60000,
         defaultCwd: '/tmp',
         defaultEnv: { TEST: 'value' },
-        throwOnNonZeroExit: false
+        throwOnNonZeroExit: false,
       });
 
       const config = adapter.getConfig();
@@ -373,8 +378,8 @@ MIIEpAIBAAKCAQEA1234567890abcdef
 
       adapter.updateConfig({
         sensitiveDataMasking: {
-          replacement: '***MASKED***'
-        }
+          replacement: '***MASKED***',
+        },
       });
 
       const config = adapter.getConfig();
@@ -465,7 +470,7 @@ MIIEpAIBAAKCAQEA1234567890abcdef
 
       const combined = adapter.testCreateCombinedEnv(baseEnv);
       // All values should be defined strings
-      Object.values(combined).forEach(value => {
+      Object.values(combined).forEach((value) => {
         expect(value).toBeDefined();
         expect(typeof value).toBe('string');
       });
@@ -477,12 +482,12 @@ MIIEpAIBAAKCAQEA1234567890abcdef
       const adapter = new TestAdapter({
         defaultCwd: '/base',
         defaultEnv: { BASE: 'base' },
-        defaultTimeout: 5000
+        defaultTimeout: 5000,
       });
       const command: Command = {
         command: 'test',
         cwd: '/command',
-        env: { COMMAND: 'command' }
+        env: { COMMAND: 'command' },
       };
 
       const merged = adapter.testMergeCommand(command);
@@ -513,8 +518,7 @@ MIIEpAIBAAKCAQEA1234567890abcdef
 
       const cleanup = jest.fn();
 
-      await expect(adapter.testHandleAbortSignal(controller.signal, cleanup))
-        .rejects.toThrow('Operation aborted');
+      await expect(adapter.testHandleAbortSignal(controller.signal, cleanup)).rejects.toThrow('Operation aborted');
       expect(cleanup).toHaveBeenCalled();
     });
 
@@ -537,8 +541,7 @@ MIIEpAIBAAKCAQEA1234567890abcdef
       const adapter = new TestAdapter();
       const cleanup = jest.fn();
 
-      await expect(adapter.testHandleAbortSignal(undefined, cleanup))
-        .resolves.toBeUndefined();
+      await expect(adapter.testHandleAbortSignal(undefined, cleanup)).resolves.toBeUndefined();
       expect(cleanup).not.toHaveBeenCalled();
     });
   });
@@ -550,7 +553,7 @@ MIIEpAIBAAKCAQEA1234567890abcdef
       const testCases = [
         { input: 'token: ghp_1234567890123456', expected: 'token: [REDACTED]' },
         { input: 'ghs_1234567890123456', expected: '[REDACTED]' },
-        { input: 'GITHUB_TOKEN=ghp_abcdefghijklmnop', expected: 'GITHUB_TOKEN=[REDACTED]' }
+        { input: 'GITHUB_TOKEN=ghp_abcdefghijklmnop', expected: 'GITHUB_TOKEN=[REDACTED]' },
       ];
 
       for (const { input, expected } of testCases) {
@@ -564,7 +567,7 @@ MIIEpAIBAAKCAQEA1234567890abcdef
       const testCases = [
         { input: '--password mysecret', expected: '--password [REDACTED]' },
         { input: '--client-secret "my secret"', expected: '--client-secret [REDACTED]' },
-        { input: "--secret 'secret123'", expected: '--secret [REDACTED]' }
+        { input: "--secret 'secret123'", expected: '--secret [REDACTED]' },
       ];
 
       for (const { input, expected } of testCases) {
@@ -577,7 +580,7 @@ MIIEpAIBAAKCAQEA1234567890abcdef
 
       const testCases = [
         { input: 'secret=mysecret', expected: 'secret=[REDACTED]' },
-        { input: 'client_secret: "secret123"', expected: 'client_secret: [REDACTED]' }
+        { input: 'client_secret: "secret123"', expected: 'client_secret: [REDACTED]' },
       ];
 
       for (const { input, expected } of testCases) {
@@ -592,7 +595,7 @@ MIIEpAIBAAKCAQEA1234567890abcdef
         '-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA\n-----END RSA PRIVATE KEY-----',
         '-----BEGIN DSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA\n-----END DSA PRIVATE KEY-----',
         '-----BEGIN EC PRIVATE KEY-----\nMIIEpAIBAAKCAQEA\n-----END EC PRIVATE KEY-----',
-        '-----BEGIN OPENSSH PRIVATE KEY-----\nMIIEpAIBAAKCAQEA\n-----END OPENSSH PRIVATE KEY-----'
+        '-----BEGIN OPENSSH PRIVATE KEY-----\nMIIEpAIBAAKCAQEA\n-----END OPENSSH PRIVATE KEY-----',
       ];
 
       for (const key of sshKeys) {
@@ -625,7 +628,7 @@ MIIEpAIBAAKCAQEA1234567890abcdef
       const handler = adapter.testCreateStreamHandler({
         onData,
         maxBuffer: 1024,
-        encoding: 'utf8'
+        encoding: 'utf8',
       });
 
       expect(handler).toBeDefined();
@@ -639,7 +642,7 @@ MIIEpAIBAAKCAQEA1234567890abcdef
       const handler = adapter.testCreateStreamHandler({
         onData: (chunk: string) => {
           capturedData += chunk;
-        }
+        },
       });
 
       const transform = handler.createTransform();
@@ -665,7 +668,7 @@ MIIEpAIBAAKCAQEA1234567890abcdef
 
       // This should return early without emitting
       adapter.testEmitAdapterEvent('command:start', {
-        command: 'test'
+        command: 'test',
       });
 
       // No error should occur
@@ -679,15 +682,17 @@ MIIEpAIBAAKCAQEA1234567890abcdef
       adapter.on('command:start', listener);
 
       adapter.testEmitAdapterEvent('command:start', {
-        command: 'test'
+        command: 'test',
       });
 
       expect(listener).toHaveBeenCalled();
-      expect(listener).toHaveBeenCalledWith(expect.objectContaining({
-        command: 'test',
-        adapter: 'test',
-        timestamp: expect.any(Date)
-      }));
+      expect(listener).toHaveBeenCalledWith(
+        expect.objectContaining({
+          command: 'test',
+          adapter: 'test',
+          timestamp: expect.any(Date),
+        })
+      );
     });
   });
 
@@ -709,8 +714,8 @@ MIIEpAIBAAKCAQEA1234567890abcdef
           enabled: true,
           onProgress,
           updateInterval: 1000,
-          reportLines: true
-        }
+          reportLines: true,
+        },
       };
 
       const reporter = adapter.testCreateProgressReporter(command);
@@ -741,18 +746,18 @@ MIIEpAIBAAKCAQEA1234567890abcdef
       const cleanup = jest.fn();
 
       // Create a promise that never resolves
-      const promise = new Promise(() => { });
+      const promise = new Promise(() => {});
 
-      await expect(
-        adapter.testHandleTimeout(promise, 100, 'test command', cleanup)
-      ).rejects.toThrow('Command timed out');
+      await expect(adapter.testHandleTimeout(promise, 100, 'test command', cleanup)).rejects.toThrow(
+        'Command timed out'
+      );
 
       expect(cleanup).toHaveBeenCalled();
     });
 
     test('should resolve normally when promise completes before timeout', async () => {
       const adapter = new TestAdapter();
-      const promise = new Promise(resolve => {
+      const promise = new Promise((resolve) => {
         setTimeout(() => resolve('success'), 50);
       });
 
@@ -790,15 +795,7 @@ MIIEpAIBAAKCAQEA1234567890abcdef
       const endTime = startTime + 1000;
 
       expect(() => {
-        adapter.testCreateResultSync(
-          'stdout',
-          'stderr',
-          1,
-          undefined,
-          'failing command',
-          startTime,
-          endTime
-        );
+        adapter.testCreateResultSync('stdout', 'stderr', 1, undefined, 'failing command', startTime, endTime);
       }).toThrow();
     });
 
@@ -826,15 +823,7 @@ MIIEpAIBAAKCAQEA1234567890abcdef
       const startTime = Date.now();
       const endTime = startTime + 1000;
 
-      const result = adapter.testCreateResultSync(
-        'stdout',
-        'stderr',
-        130,
-        'SIGINT',
-        'command',
-        startTime,
-        endTime
-      );
+      const result = adapter.testCreateResultSync('stdout', 'stderr', 130, 'SIGINT', 'command', startTime, endTime);
 
       expect(result.signal).toBe('SIGINT');
       expect(result.exitCode).toBe(130);
@@ -845,16 +834,10 @@ MIIEpAIBAAKCAQEA1234567890abcdef
       const startTime = Date.now();
       const endTime = startTime + 1000;
 
-      const result = adapter.testCreateResultSync(
-        'stdout',
-        'stderr',
-        0,
-        undefined,
-        'command',
-        startTime,
-        endTime,
-        { host: 'remote-host', container: 'my-container' }
-      );
+      const result = adapter.testCreateResultSync('stdout', 'stderr', 0, undefined, 'command', startTime, endTime, {
+        host: 'remote-host',
+        container: 'my-container',
+      });
 
       expect(result.host).toBe('remote-host');
       expect(result.container).toBe('my-container');
@@ -872,8 +855,8 @@ MIIEpAIBAAKCAQEA1234567890abcdef
     test('should handle patterns with no capture groups', () => {
       const adapter = new TestAdapter({
         sensitiveDataMasking: {
-          patterns: [/test-pattern-no-groups/gi]
-        }
+          patterns: [/test-pattern-no-groups/gi],
+        },
       });
 
       const input = 'This contains test-pattern-no-groups here';
@@ -884,8 +867,8 @@ MIIEpAIBAAKCAQEA1234567890abcdef
     test('should handle patterns with undefined capture groups', () => {
       const adapter = new TestAdapter({
         sensitiveDataMasking: {
-          patterns: [/(undefined-group)?test/gi]
-        }
+          patterns: [/(undefined-group)?test/gi],
+        },
       });
 
       const input = 'This contains test here';
@@ -903,8 +886,8 @@ MIIEpAIBAAKCAQEA1234567890abcdef
     test('should handle fallback masking for equals sign', () => {
       const adapter = new TestAdapter({
         sensitiveDataMasking: {
-          patterns: [/fallback-test/gi]
-        }
+          patterns: [/fallback-test/gi],
+        },
       });
 
       const input = 'key=fallback-test';
@@ -915,8 +898,8 @@ MIIEpAIBAAKCAQEA1234567890abcdef
     test('should handle fallback masking for colon', () => {
       const adapter = new TestAdapter({
         sensitiveDataMasking: {
-          patterns: [/fallback-test/gi]
-        }
+          patterns: [/fallback-test/gi],
+        },
       });
 
       const input = 'key: fallback-test';
@@ -927,8 +910,8 @@ MIIEpAIBAAKCAQEA1234567890abcdef
     test('should handle pattern with flags not including g', () => {
       const adapter = new TestAdapter({
         sensitiveDataMasking: {
-          patterns: [/password=\w+/i] // No 'g' flag
-        }
+          patterns: [/password=\w+/i], // No 'g' flag
+        },
       });
 
       const input = 'password=secret1 password=secret2';
@@ -940,8 +923,8 @@ MIIEpAIBAAKCAQEA1234567890abcdef
     test('should handle single group patterns', () => {
       const adapter = new TestAdapter({
         sensitiveDataMasking: {
-          patterns: [/(single-group-test)/gi]
-        }
+          patterns: [/(single-group-test)/gi],
+        },
       });
 
       const input = 'This has single-group-test in it';
@@ -952,8 +935,8 @@ MIIEpAIBAAKCAQEA1234567890abcdef
     test('should handle two group patterns', () => {
       const adapter = new TestAdapter({
         sensitiveDataMasking: {
-          patterns: [/(prefix-)(\w+)/gi]
-        }
+          patterns: [/(prefix-)(\w+)/gi],
+        },
       });
 
       const input = 'This has prefix-secret in it';
@@ -975,7 +958,7 @@ MIIEpAIBAAKCAQEA1234567890abcdef
       const adapter = new TestAdapter();
 
       const handler = adapter.testCreateStreamHandler({
-        maxBuffer: 1024
+        maxBuffer: 1024,
       });
 
       expect(handler).toBeDefined();
@@ -988,7 +971,7 @@ MIIEpAIBAAKCAQEA1234567890abcdef
       const command: Command = {
         command: 'test',
         stdout: 'inherit',
-        stderr: 'ignore'
+        stderr: 'ignore',
       };
 
       const merged = adapter.testMergeCommand(command);

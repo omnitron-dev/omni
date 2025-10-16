@@ -38,7 +38,12 @@ export interface SSHExecutionContext {
   cd(dir: string): SSHExecutionContext;
   timeout(ms: number): SSHExecutionContext;
   shell(shell: string | boolean): SSHExecutionContext;
-  retry(options: { maxRetries?: number; initialDelay?: number; maxDelay?: number; factor?: number }): SSHExecutionContext;
+  retry(options: {
+    maxRetries?: number;
+    initialDelay?: number;
+    maxDelay?: number;
+    factor?: number;
+  }): SSHExecutionContext;
 }
 
 /**
@@ -63,7 +68,7 @@ export function createSSHExecutionContext(
     let sshEngine = engine.with({
       adapter: 'ssh',
       adapterOptions: { type: 'ssh', ...sshOptions },
-      ...commandConfig
+      ...commandConfig,
     });
 
     // Apply retry if configured
@@ -82,7 +87,7 @@ export function createSSHExecutionContext(
     let sshEngine = engine.with({
       adapter: 'ssh',
       adapterOptions: { type: 'ssh', ...sshOptions },
-      ...commandConfig
+      ...commandConfig,
     });
 
     // Apply retry if configured
@@ -127,7 +132,7 @@ export function createSSHExecutionContext(
 
     await adapter.uploadFile(localPath, remotePath, {
       type: 'ssh',
-      ...sshOptions
+      ...sshOptions,
     });
   };
 
@@ -142,7 +147,7 @@ export function createSSHExecutionContext(
 
     await adapter.downloadFile(remotePath, localPath, {
       type: 'ssh',
-      ...sshOptions
+      ...sshOptions,
     });
   };
 
@@ -157,35 +162,45 @@ export function createSSHExecutionContext(
 
     await adapter.uploadDirectory(localPath, remotePath, {
       type: 'ssh',
-      ...sshOptions
+      ...sshOptions,
     });
   };
 
   // Chainable configuration methods
-  const env = (envVars: Record<string, string>): SSHExecutionContext => createSSHExecutionContext(engine, sshOptions, {
-    ...commandConfig,
-    env: { ...commandConfig.env, ...envVars }
-  });
+  const env = (envVars: Record<string, string>): SSHExecutionContext =>
+    createSSHExecutionContext(engine, sshOptions, {
+      ...commandConfig,
+      env: { ...commandConfig.env, ...envVars },
+    });
 
-  const cd = (dir: string): SSHExecutionContext => createSSHExecutionContext(engine, sshOptions, {
-    ...commandConfig,
-    cwd: dir
-  });
+  const cd = (dir: string): SSHExecutionContext =>
+    createSSHExecutionContext(engine, sshOptions, {
+      ...commandConfig,
+      cwd: dir,
+    });
 
-  const timeout = (ms: number): SSHExecutionContext => createSSHExecutionContext(engine, sshOptions, {
-    ...commandConfig,
-    timeout: ms
-  });
+  const timeout = (ms: number): SSHExecutionContext =>
+    createSSHExecutionContext(engine, sshOptions, {
+      ...commandConfig,
+      timeout: ms,
+    });
 
-  const shell = (shellValue: string | boolean): SSHExecutionContext => createSSHExecutionContext(engine, sshOptions, {
-    ...commandConfig,
-    shell: shellValue
-  });
+  const shell = (shellValue: string | boolean): SSHExecutionContext =>
+    createSSHExecutionContext(engine, sshOptions, {
+      ...commandConfig,
+      shell: shellValue,
+    });
 
-  const retry = (options: { maxRetries?: number; initialDelay?: number; maxDelay?: number; factor?: number }): SSHExecutionContext => createSSHExecutionContext(engine, sshOptions, {
-    ...commandConfig,
-    retry: options
-  });
+  const retry = (options: {
+    maxRetries?: number;
+    initialDelay?: number;
+    maxDelay?: number;
+    factor?: number;
+  }): SSHExecutionContext =>
+    createSSHExecutionContext(engine, sshOptions, {
+      ...commandConfig,
+      retry: options,
+    });
 
   // Create the callable object
   const context = Object.assign(exec, {
@@ -199,7 +214,7 @@ export function createSSHExecutionContext(
     cd,
     timeout,
     shell,
-    retry
+    retry,
   });
 
   return context;

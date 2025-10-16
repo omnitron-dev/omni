@@ -77,7 +77,7 @@ describe('Module System E2E Tests', () => {
 
       class AppService {
         async init() {
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 10));
           initialized.set(true);
         }
       }
@@ -111,9 +111,7 @@ describe('Module System E2E Tests', () => {
 
       const HomeModule = defineModule({
         id: 'home',
-        routes: [
-          { path: '/', component: null },
-        ],
+        routes: [{ path: '/', component: null }],
       });
 
       const ProductsModule = defineModule({
@@ -145,7 +143,7 @@ describe('Module System E2E Tests', () => {
       const loadedModules = signal<string[]>([]);
 
       const lazyLoadModule = async (moduleId: string) => {
-        await new Promise(resolve => setTimeout(resolve, 20));
+        await new Promise((resolve) => setTimeout(resolve, 20));
         loadedModules.set([...loadedModules(), moduleId]);
 
         return defineModule({
@@ -404,14 +402,14 @@ describe('Module System E2E Tests', () => {
         defineModule({ id: 'feature-b' }),
       ];
 
-      const chunks = modules.map(m => ({
+      const chunks = modules.map((m) => ({
         name: m.id,
         size: Math.random() * 50000, // Simulated size
         minified: bundleConfig.minify,
       }));
 
       expect(chunks.length).toBe(3);
-      expect(chunks.every(c => c.minified)).toBe(true);
+      expect(chunks.every((c) => c.minified)).toBe(true);
     });
 
     it('should verify module tree-shaking', () => {
@@ -451,8 +449,8 @@ describe('Module System E2E Tests', () => {
         { module: 'feature-b', strategy: 'lazy', priority: 'low' },
       ] as const;
 
-      const immediate = splitPoints.filter(p => p.strategy === 'immediate');
-      const lazy = splitPoints.filter(p => p.strategy === 'lazy');
+      const immediate = splitPoints.filter((p) => p.strategy === 'immediate');
+      const lazy = splitPoints.filter((p) => p.strategy === 'lazy');
 
       expect(immediate.length).toBe(1);
       expect(lazy.length).toBe(2);
@@ -471,7 +469,7 @@ describe('Module System E2E Tests', () => {
         'feature-b': 15000,
       };
 
-      const violations = bundles.filter(b => b.size > budgets[b.name as keyof typeof budgets]);
+      const violations = bundles.filter((b) => b.size > budgets[b.name as keyof typeof budgets]);
 
       expect(violations.length).toBe(0);
 
@@ -491,7 +489,7 @@ describe('Module System E2E Tests', () => {
       });
 
       const preload = (modules: string[]) => {
-        modules.forEach(m => preloadQueue.push(m));
+        modules.forEach((m) => preloadQueue.push(m));
       };
 
       if (ModuleWithPreload.definition.optimization?.preloadModules) {
@@ -626,7 +624,7 @@ describe('Module System E2E Tests', () => {
 
       it('should implement reports module with lazy loading', async () => {
         const loadReport = async (reportId: string) => {
-          await new Promise(resolve => setTimeout(resolve, 20));
+          await new Promise((resolve) => setTimeout(resolve, 20));
           return { id: reportId, data: [] };
         };
 
@@ -685,7 +683,7 @@ describe('Module System E2E Tests', () => {
 
           async loadMore() {
             this.page.set(this.page() + 1);
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
             return Array.from({ length: 20 }, (_, i) => ({
               id: this.page() * 20 + i,
               content: `Post ${this.page() * 20 + i}`,
@@ -701,7 +699,7 @@ describe('Module System E2E Tests', () => {
         const container = compileModule(FeedModule);
         const service = container.get(FeedService);
 
-        return service.loadMore().then(posts => {
+        return service.loadMore().then((posts) => {
           expect(posts.length).toBe(20);
         });
       });
@@ -709,7 +707,7 @@ describe('Module System E2E Tests', () => {
       it('should implement profile module with data loading', () => {
         class ProfileService {
           async loadProfile(userId: string) {
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
             return {
               id: userId,
               name: 'John Doe',
@@ -735,7 +733,7 @@ describe('Module System E2E Tests', () => {
         const container = compileModule(ProfileModule);
         const service = container.get(ProfileService);
 
-        return service.loadProfile('123').then(profile => {
+        return service.loadProfile('123').then((profile) => {
           expect(profile.name).toBe('John Doe');
         });
       });
@@ -743,7 +741,7 @@ describe('Module System E2E Tests', () => {
       it('should implement messaging module with real-time updates', () => {
         const messagesStore = () => {
           const messages = signal<any[]>([]);
-          const unread = computed(() => messages().filter(m => !m.read).length);
+          const unread = computed(() => messages().filter((m) => !m.read).length);
 
           return {
             messages,
@@ -752,9 +750,7 @@ describe('Module System E2E Tests', () => {
               messages.set([...messages(), { ...msg, read: false }]);
             },
             markRead: (id: number) => {
-              messages.set(
-                messages().map(m => (m.id === id ? { ...m, read: true } : m))
-              );
+              messages.set(messages().map((m) => (m.id === id ? { ...m, read: true } : m)));
             },
           };
         };
@@ -771,9 +767,7 @@ describe('Module System E2E Tests', () => {
     describe('Admin Panel', () => {
       it('should implement users module with CRUD operations', () => {
         class UserService {
-          private users = signal<any[]>([
-            { id: 1, name: 'Admin', role: 'admin' },
-          ]);
+          private users = signal<any[]>([{ id: 1, name: 'Admin', role: 'admin' }]);
 
           getAll() {
             return this.users();
@@ -784,7 +778,7 @@ describe('Module System E2E Tests', () => {
           }
 
           delete(id: number) {
-            this.users.set(this.users().filter(u => u.id !== id));
+            this.users.set(this.users().filter((u) => u.id !== id));
           }
         }
 
@@ -856,11 +850,7 @@ describe('Module System E2E Tests', () => {
         const container = compileModule(AdminAnalyticsModule);
         const service = container.get(AnalyticsService);
 
-        const result = service.aggregate([
-          { value: 10 },
-          { value: 20 },
-          { value: 30 },
-        ]);
+        const result = service.aggregate([{ value: 10 }, { value: 20 }, { value: 30 }]);
 
         expect(result.total).toBe(3);
         expect(result.sum).toBe(60);
@@ -895,13 +885,9 @@ describe('Module System E2E Tests', () => {
 
     it('should handle module timeout scenarios', async () => {
       const loadWithTimeout = async (delay: number, timeout: number) => {
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Timeout')), timeout)
-        );
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), timeout));
 
-        const loadPromise = new Promise(resolve =>
-          setTimeout(() => resolve({ module: 'loaded' }), delay)
-        );
+        const loadPromise = new Promise((resolve) => setTimeout(() => resolve({ module: 'loaded' }), delay));
 
         try {
           return await Promise.race([loadPromise, timeoutPromise]);
@@ -954,7 +940,7 @@ describe('Module System E2E Tests', () => {
 
       const validateDependencies = (module: Module) => {
         if (module.definition.imports) {
-          module.definition.imports.forEach(dep => {
+          module.definition.imports.forEach((dep) => {
             if (!dep || !dep.id) {
               errors.push(`Missing dependency in module ${module.id}`);
             }
@@ -977,7 +963,7 @@ describe('Module System E2E Tests', () => {
       const checkVersionConflict = (modules: Module[]) => {
         const versions = new Map<string, Set<string>>();
 
-        modules.forEach(module => {
+        modules.forEach((module) => {
           if (!versions.has(module.id)) {
             versions.set(module.id, new Set());
           }
@@ -993,10 +979,7 @@ describe('Module System E2E Tests', () => {
         });
       };
 
-      const modules = [
-        defineModule({ id: 'lib', version: '1.0.0' }),
-        defineModule({ id: 'lib', version: '2.0.0' }),
-      ];
+      const modules = [defineModule({ id: 'lib', version: '1.0.0' }), defineModule({ id: 'lib', version: '2.0.0' })];
 
       checkVersionConflict(modules);
       expect(conflicts.length).toBeGreaterThan(0);
@@ -1063,7 +1046,7 @@ describe('Module System E2E Tests', () => {
       const loadModule = async () => {
         const startTime = performance.now();
 
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
 
         const module = defineModule({
           id: 'lazy-feature',
@@ -1084,9 +1067,7 @@ describe('Module System E2E Tests', () => {
     it('should verify module memory overhead (< 5%)', () => {
       const baseMemory = 1000000; // 1MB baseline
 
-      const modules = Array.from({ length: 10 }, (_, i) =>
-        defineModule({ id: `module-${i}` })
-      );
+      const modules = Array.from({ length: 10 }, (_, i) => defineModule({ id: `module-${i}` }));
 
       // Simulate memory overhead per module
       const moduleOverhead = 1000; // 1KB per module
@@ -1141,7 +1122,7 @@ describe('Module System E2E Tests', () => {
       monitor.measure('large-app-init', 'app-start', 'app-end');
 
       const measures = monitor.getMeasures();
-      const initMeasure = measures.find(m => m.name === 'large-app-init');
+      const initMeasure = measures.find((m) => m.name === 'large-app-init');
 
       expect(container).toBeDefined();
       expect(initMeasure).toBeDefined();
@@ -1151,11 +1132,9 @@ describe('Module System E2E Tests', () => {
     });
 
     it('should optimize module resolution performance', () => {
-      const tokens = Array.from({ length: 100 }, (_, i) =>
-        new InjectionToken(`TOKEN_${i}`)
-      );
+      const tokens = Array.from({ length: 100 }, (_, i) => new InjectionToken(`TOKEN_${i}`));
 
-      const providers: Provider[] = tokens.map(token => ({
+      const providers: Provider[] = tokens.map((token) => ({
         provide: token,
         useValue: `value-${token}`,
       }));
@@ -1170,7 +1149,7 @@ describe('Module System E2E Tests', () => {
       const container = compileModule(TestModule);
 
       // Resolve all tokens
-      tokens.forEach(token => {
+      tokens.forEach((token) => {
         container.get(token);
       });
 
@@ -1186,7 +1165,7 @@ describe('Module System E2E Tests', () => {
         defineModule({
           id: `module-${i}`,
           setup: async () => {
-            await new Promise(resolve => setTimeout(resolve, 5));
+            await new Promise((resolve) => setTimeout(resolve, 5));
             initOrder.push(`module-${i}`);
             return {};
           },
@@ -1197,7 +1176,7 @@ describe('Module System E2E Tests', () => {
 
       // Simulate parallel initialization
       await Promise.all(
-        modules.map(async module => {
+        modules.map(async (module) => {
           if (module.definition.setup) {
             await module.definition.setup({ container: new DIContainer() });
           }
@@ -1238,13 +1217,13 @@ describe('Module System E2E Tests', () => {
         return async () => {
           const module = defineModule({ id: `concurrent-${i}` });
           const container = compileModule(module);
-          await new Promise(resolve => setTimeout(resolve, Math.random() * 10));
+          await new Promise((resolve) => setTimeout(resolve, Math.random() * 10));
           return container;
         };
       });
 
       const startTime = performance.now();
-      const results = await Promise.all(operations.map(op => op()));
+      const results = await Promise.all(operations.map((op) => op()));
       const duration = performance.now() - startTime;
 
       expect(results.length).toBe(20);

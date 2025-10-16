@@ -9,11 +9,7 @@ const path = require('path');
 console.log('Building Aether DevTools extension...');
 
 // Check required files
-const requiredFiles = [
-  'manifest.json',
-  'devtools.html',
-  'panel.html'
-];
+const requiredFiles = ['manifest.json', 'devtools.html', 'panel.html'];
 
 const packageDir = path.resolve(__dirname, '..');
 let success = true;

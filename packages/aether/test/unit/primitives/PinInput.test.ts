@@ -29,7 +29,7 @@ describe('PinInput', () => {
     // Mock focus/blur for happy-dom compatibility using Object.defineProperty
     // This ensures we override happy-dom's native implementation
     Object.defineProperty(HTMLElement.prototype, 'focus', {
-      value (this: HTMLElement) {
+      value(this: HTMLElement) {
         _activeElement = this;
         this.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       },
@@ -38,7 +38,7 @@ describe('PinInput', () => {
     });
 
     Object.defineProperty(HTMLElement.prototype, 'blur', {
-      value (this: HTMLElement) {
+      value(this: HTMLElement) {
         _activeElement = document.body;
         this.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
       },

@@ -72,9 +72,7 @@ export function parsePath(pathData: string): PathCommand[] {
     const current = matches[i]!;
     const next = matches[i + 1];
     const type = current.type;
-    const valueString = pathData
-      .substring(current.end, next ? next.start : pathData.length)
-      .trim();
+    const valueString = pathData.substring(current.end, next ? next.start : pathData.length).trim();
 
     // Parse values
     const values: number[] = [];
@@ -347,8 +345,10 @@ export function calculatePathBounds(pathData: string): PathBounds {
       case 'S':
       case 'T': {
         // Simplified - just use end point
-        const qEndX = type === type.toLowerCase() ? currentX + (values[values.length - 2] ?? 0) : (values[values.length - 2] ?? 0);
-        const qEndY = type === type.toLowerCase() ? currentY + (values[values.length - 1] ?? 0) : (values[values.length - 1] ?? 0);
+        const qEndX =
+          type === type.toLowerCase() ? currentX + (values[values.length - 2] ?? 0) : (values[values.length - 2] ?? 0);
+        const qEndY =
+          type === type.toLowerCase() ? currentY + (values[values.length - 1] ?? 0) : (values[values.length - 1] ?? 0);
         updateBounds(qEndX, qEndY);
         currentX = qEndX;
         currentY = qEndY;

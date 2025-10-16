@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const Wifi02Icon: IconDefinition = {
-  "id": "wifi02",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path opacity=\"0.4\" d=\"M8.25 15.5C10.25 13.5 13.75 13.5 15.75 15.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M18.5 12.5C14.7324 9.16667 9.5 9.16667 5.5 12.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M2 9.5C8.31579 4.16669 15.6842 4.16668 22 9.49989\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M12 18.5H12.0118\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "duotone",
-    "originalName": "Wifi02Icon",
-    "elementsCount": 4,
-    "hasOpacity": true,
-    "hasFill": false
-  }
+  id: 'wifi02',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path opacity="0.4" d="M8.25 15.5C10.25 13.5 13.75 13.5 15.75 15.5" stroke-linecap="round" stroke-linejoin="round" />\n    <path opacity="0.4" d="M18.5 12.5C14.7324 9.16667 9.5 9.16667 5.5 12.5" stroke-linecap="round" stroke-linejoin="round" />\n    <path opacity="0.4" d="M2 9.5C8.31579 4.16669 15.6842 4.16668 22 9.49989" stroke-linecap="round" stroke-linejoin="round" />\n    <path opacity="0.4" d="M12 18.5H12.0118" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'duotone',
+    originalName: 'Wifi02Icon',
+    elementsCount: 4,
+    hasOpacity: true,
+    hasFill: false,
+  },
 };

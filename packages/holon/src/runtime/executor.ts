@@ -19,7 +19,7 @@ export interface ExecutorEvents {
   'task:start': (taskId: string) => void;
   'task:complete': (taskId: string, result: unknown) => void;
   'task:error': (taskId: string, error: Error) => void;
-  'backpressure': (queueSize: number) => void;
+  backpressure: (queueSize: number) => void;
 }
 
 /**
@@ -51,11 +51,7 @@ export class Executor extends EventEmitter<ExecutorEvents> {
   /**
    * Execute flow in sequential mode
    */
-  async executeSequential<In, Out>(
-    flow: Flow<In, Out>,
-    inputs: In[],
-    options: ExecutionOptions = {}
-  ): Promise<Out[]> {
+  async executeSequential<In, Out>(flow: Flow<In, Out>, inputs: In[], options: ExecutionOptions = {}): Promise<Out[]> {
     const results: Out[] = [];
 
     for (const input of inputs) {
@@ -69,11 +65,7 @@ export class Executor extends EventEmitter<ExecutorEvents> {
   /**
    * Execute flow in parallel mode
    */
-  async executeParallel<In, Out>(
-    flow: Flow<In, Out>,
-    inputs: In[],
-    options: ExecutionOptions = {}
-  ): Promise<Out[]> {
+  async executeParallel<In, Out>(flow: Flow<In, Out>, inputs: In[], options: ExecutionOptions = {}): Promise<Out[]> {
     const chunks = this.chunkArray(inputs, this.config.maxConcurrency);
     const results: Out[] = [];
 
@@ -340,9 +332,7 @@ export class Executor extends EventEmitter<ExecutorEvents> {
   /**
    * Convert iterable to async iterable
    */
-  private async *toAsyncIterable<T>(
-    iterable: AsyncIterable<T> | Iterable<T>
-  ): AsyncGenerator<T, void, unknown> {
+  private async *toAsyncIterable<T>(iterable: AsyncIterable<T> | Iterable<T>): AsyncGenerator<T, void, unknown> {
     if (Symbol.asyncIterator in iterable) {
       yield* iterable as AsyncIterable<T>;
     } else {

@@ -12,13 +12,7 @@ import type { EditorInstance, EditorProps, EditorSignals, JSONContent, ContentTy
 import { ExtensionManager } from './ExtensionManager.js';
 import { createEditorSignals, updateEditorSignals } from '../signals/editorSignals.js';
 import { computeDerivedState } from '../signals/derivedSignals.js';
-import {
-  parseContent,
-  serializeHTML,
-  serializeJSON,
-  serializeText,
-  createEmptyDoc,
-} from '../utils/content.js';
+import { parseContent, serializeHTML, serializeJSON, serializeText, createEmptyDoc } from '../utils/content.js';
 
 /**
  * EditorBridge class
@@ -206,14 +200,10 @@ export class EditorBridge implements EditorInstance {
     this.view.focus();
 
     if (position === 'start') {
-      const tr = this.state.tr.setSelection(
-        this.state.selection.constructor.atStart(this.state.doc) as any
-      );
+      const tr = this.state.tr.setSelection(this.state.selection.constructor.atStart(this.state.doc) as any);
       this.view.dispatch(tr);
     } else if (position === 'end') {
-      const tr = this.state.tr.setSelection(
-        this.state.selection.constructor.atEnd(this.state.doc) as any
-      );
+      const tr = this.state.tr.setSelection(this.state.selection.constructor.atEnd(this.state.doc) as any);
       this.view.dispatch(tr);
     } else if (typeof position === 'number') {
       const tr = this.state.tr.setSelection(

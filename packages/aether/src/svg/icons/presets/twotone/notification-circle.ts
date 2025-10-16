@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const NotificationCircleIcon: IconDefinition = {
-  "id": "notification-circle",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M21.5 6C21.5 7.933 19.933 9.5 18 9.5C16.067 9.5 14.5 7.933 14.5 6C14.5 4.067 16.067 2.5 18 2.5C19.933 2.5 21.5 4.067 21.5 6Z\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path opacity=\"0.4\" d=\"M21.5 12C21.5 17.2467 17.2467 21.5 12 21.5C6.75329 21.5 2.5 17.2467 2.5 12C2.5 6.75329 6.75329 2.5 12 2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M8 12H12\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n    <path d=\"M8 16H16\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "twotone",
-    "originalName": "NotificationCircleIcon",
-    "elementsCount": 4,
-    "hasOpacity": true,
-    "hasFill": false
-  }
+  id: 'notification-circle',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path d="M21.5 6C21.5 7.933 19.933 9.5 18 9.5C16.067 9.5 14.5 7.933 14.5 6C14.5 4.067 16.067 2.5 18 2.5C19.933 2.5 21.5 4.067 21.5 6Z" stroke-linecap="round" stroke-linejoin="round" />\n    <path opacity="0.4" d="M21.5 12C21.5 17.2467 17.2467 21.5 12 21.5C6.75329 21.5 2.5 17.2467 2.5 12C2.5 6.75329 6.75329 2.5 12 2.5" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M8 12H12" stroke-linecap="round" stroke-linejoin="round" />\n    <path d="M8 16H16" stroke-linecap="round" stroke-linejoin="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'twotone',
+    originalName: 'NotificationCircleIcon',
+    elementsCount: 4,
+    hasOpacity: true,
+    hasFill: false,
+  },
 };

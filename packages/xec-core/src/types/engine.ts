@@ -6,7 +6,11 @@ import type { K8sExecutionContext } from '../adapters/kubernetes/kubernetes-api.
 import type { Command, SSHAdapterOptions, DockerAdapterOptions, KubernetesAdapterOptions } from './command.js';
 
 // Callable ExecutionEngine interface
-export interface CallableExecutionEngine extends Omit<ExecutionEngine, 'with' | 'ssh' | 'docker' | 'k8s' | 'local' | 'cd' | 'env' | 'timeout' | 'shell' | 'retry' | 'defaults'> {
+export interface CallableExecutionEngine
+  extends Omit<
+    ExecutionEngine,
+    'with' | 'ssh' | 'docker' | 'k8s' | 'local' | 'cd' | 'env' | 'timeout' | 'shell' | 'retry' | 'defaults'
+  > {
   // Make it callable
   (strings: TemplateStringsArray, ...values: any[]): ProcessPromise;
 
@@ -26,7 +30,9 @@ export interface CallableExecutionEngine extends Omit<ExecutionEngine, 'with' | 
   timeout(ms: number): CallableExecutionEngine;
   shell(shell: string | boolean): CallableExecutionEngine;
   retry(options: any): CallableExecutionEngine;
-  defaults(config: Partial<Command> & { defaultEnv?: Record<string, string>; defaultCwd?: string }): CallableExecutionEngine;
+  defaults(
+    config: Partial<Command> & { defaultEnv?: Record<string, string>; defaultCwd?: string }
+  ): CallableExecutionEngine;
 
   // Configuration property
   readonly config: {

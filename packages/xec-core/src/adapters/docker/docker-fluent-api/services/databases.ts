@@ -6,12 +6,7 @@ import { DockerEphemeralFluentAPI } from '../base.js';
 
 import type { ExecutionResult } from '../../../../types/result.js';
 import type { ExecutionEngine } from '../../../../core/execution-engine.js';
-import type {
-  ServiceManager,
-  MySQLServiceConfig,
-  MongoServiceConfig,
-  PostgresServiceConfig
-} from '../types.js';
+import type { ServiceManager, MySQLServiceConfig, MongoServiceConfig, PostgresServiceConfig } from '../types.js';
 
 /**
  * PostgreSQL Service Fluent API
@@ -38,7 +33,7 @@ export class PostgreSQLFluentAPI extends DockerEphemeralFluentAPI implements Ser
       config: config?.config || {},
       extensions: config?.extensions || [],
       initDb: config?.initDb,
-      replication: config?.replication
+      replication: config?.replication,
     };
 
     this.applyConfiguration();
@@ -64,7 +59,7 @@ export class PostgreSQLFluentAPI extends DockerEphemeralFluentAPI implements Ser
       POSTGRES_DB: this.pgConfig.database!,
       POSTGRES_USER: this.pgConfig.user!,
       POSTGRES_PASSWORD: this.pgConfig.password!,
-      ...this.pgConfig.env
+      ...this.pgConfig.env,
     });
 
     // Init scripts
@@ -77,19 +72,16 @@ export class PostgreSQLFluentAPI extends DockerEphemeralFluentAPI implements Ser
     // Labels
     this.labels({
       service: 'postgresql',
-      'managed-by': 'xec'
+      'managed-by': 'xec',
     });
 
     // Health check
-    this.healthcheck(
-      `pg_isready -U ${this.pgConfig.user} -d ${this.pgConfig.database}`,
-      {
-        interval: '10s',
-        timeout: '5s',
-        retries: 5,
-        startPeriod: '30s'
-      }
-    );
+    this.healthcheck(`pg_isready -U ${this.pgConfig.user} -d ${this.pgConfig.database}`, {
+      interval: '10s',
+      timeout: '5s',
+      retries: 5,
+      startPeriod: '30s',
+    });
 
     // Replication configuration
     if (this.pgConfig.replication?.enabled) {
@@ -102,14 +94,14 @@ export class PostgreSQLFluentAPI extends DockerEphemeralFluentAPI implements Ser
       this.env({
         POSTGRES_REPLICATION_MODE: 'master',
         POSTGRES_REPLICATION_USER: 'replicator',
-        POSTGRES_REPLICATION_PASSWORD: this.pgConfig.password!
+        POSTGRES_REPLICATION_PASSWORD: this.pgConfig.password!,
       });
     } else if (this.pgConfig.replication?.role === 'replica') {
       this.env({
         POSTGRES_REPLICATION_MODE: 'slave',
         POSTGRES_MASTER_HOST: this.pgConfig.replication.masterHost!,
         POSTGRES_REPLICATION_USER: 'replicator',
-        POSTGRES_REPLICATION_PASSWORD: this.pgConfig.password!
+        POSTGRES_REPLICATION_PASSWORD: this.pgConfig.password!,
       });
     }
   }
@@ -131,7 +123,8 @@ export class PostgreSQLFluentAPI extends DockerEphemeralFluentAPI implements Ser
   }
 
   async installExtension(extension: string): Promise<void> {
-    await this.exec`psql -U ${this.pgConfig.user} -d ${this.pgConfig.database} -c "CREATE EXTENSION IF NOT EXISTS ${extension};"`;
+    await this
+      .exec`psql -U ${this.pgConfig.user} -d ${this.pgConfig.database} -c "CREATE EXTENSION IF NOT EXISTS ${extension};"`;
   }
 
   async backup(backupPath: string): Promise<void> {
@@ -160,7 +153,7 @@ export class PostgreSQLFluentAPI extends DockerEphemeralFluentAPI implements Ser
       database: this.pgConfig.database,
       user: this.pgConfig.user,
       password: this.pgConfig.password,
-      connectionString: this.getConnectionString()
+      connectionString: this.getConnectionString(),
     };
   }
 }
@@ -192,7 +185,7 @@ export class MySQLFluentAPI extends DockerEphemeralFluentAPI implements ServiceM
       env: config?.env || {},
       config: config?.config || {},
       initScripts: config?.initScripts || [],
-      replication: config?.replication
+      replication: config?.replication,
     };
 
     this.applyConfiguration();
@@ -219,7 +212,7 @@ export class MySQLFluentAPI extends DockerEphemeralFluentAPI implements ServiceM
       MYSQL_DATABASE: this.mysqlConfig.database!,
       MYSQL_USER: this.mysqlConfig.user!,
       MYSQL_PASSWORD: this.mysqlConfig.password!,
-      ...this.mysqlConfig.env
+      ...this.mysqlConfig.env,
     });
 
     // Init scripts
@@ -240,19 +233,16 @@ export class MySQLFluentAPI extends DockerEphemeralFluentAPI implements ServiceM
     // Labels
     this.labels({
       service: 'mysql',
-      'managed-by': 'xec'
+      'managed-by': 'xec',
     });
 
     // Health check
-    this.healthcheck(
-      `mysqladmin ping -h localhost -u root -p${this.mysqlConfig.rootPassword}`,
-      {
-        interval: '10s',
-        timeout: '5s',
-        retries: 5,
-        startPeriod: '30s'
-      }
-    );
+    this.healthcheck(`mysqladmin ping -h localhost -u root -p${this.mysqlConfig.rootPassword}`, {
+      interval: '10s',
+      timeout: '5s',
+      retries: 5,
+      startPeriod: '30s',
+    });
 
     // Replication configuration
     if (this.mysqlConfig.replication?.enabled) {
@@ -266,7 +256,7 @@ export class MySQLFluentAPI extends DockerEphemeralFluentAPI implements ServiceM
         MYSQL_REPLICATION_MODE: 'master',
         MYSQL_REPLICATION_USER: 'replicator',
         MYSQL_REPLICATION_PASSWORD: this.mysqlConfig.password!,
-        MYSQL_SERVER_ID: String(this.mysqlConfig.replication.masterId || 1)
+        MYSQL_SERVER_ID: String(this.mysqlConfig.replication.masterId || 1),
       });
     } else if (this.mysqlConfig.replication?.role === 'slave') {
       this.env({
@@ -274,7 +264,7 @@ export class MySQLFluentAPI extends DockerEphemeralFluentAPI implements ServiceM
         MYSQL_MASTER_HOST: 'mysql-master',
         MYSQL_REPLICATION_USER: 'replicator',
         MYSQL_REPLICATION_PASSWORD: this.mysqlConfig.password!,
-        MYSQL_SERVER_ID: String(this.mysqlConfig.replication.slaveId || 2)
+        MYSQL_SERVER_ID: String(this.mysqlConfig.replication.slaveId || 2),
       });
     }
   }
@@ -288,11 +278,13 @@ export class MySQLFluentAPI extends DockerEphemeralFluentAPI implements ServiceM
   }
 
   async createUser(username: string, password: string, host = '%'): Promise<void> {
-    await this.exec`mysql -u root -p${this.mysqlConfig.rootPassword} -e "CREATE USER '${username}'@'${host}' IDENTIFIED BY '${password}';"`;
+    await this
+      .exec`mysql -u root -p${this.mysqlConfig.rootPassword} -e "CREATE USER '${username}'@'${host}' IDENTIFIED BY '${password}';"`;
   }
 
   async grantPrivileges(username: string, database: string, host = '%'): Promise<void> {
-    await this.exec`mysql -u root -p${this.mysqlConfig.rootPassword} -e "GRANT ALL PRIVILEGES ON ${database}.* TO '${username}'@'${host}'; FLUSH PRIVILEGES;"`;
+    await this
+      .exec`mysql -u root -p${this.mysqlConfig.rootPassword} -e "GRANT ALL PRIVILEGES ON ${database}.* TO '${username}'@'${host}'; FLUSH PRIVILEGES;"`;
   }
 
   async backup(backupPath: string): Promise<void> {
@@ -324,7 +316,7 @@ export class MySQLFluentAPI extends DockerEphemeralFluentAPI implements ServiceM
       user: this.mysqlConfig.user,
       password: this.mysqlConfig.password,
       rootPassword: this.mysqlConfig.rootPassword,
-      connectionString: this.getConnectionString()
+      connectionString: this.getConnectionString(),
     };
   }
 }
@@ -359,7 +351,7 @@ export class MongoDBFluentAPI extends DockerEphemeralFluentAPI implements Servic
       arbiter: config?.arbiter ?? false,
       env: config?.env || {},
       config: config?.config || {},
-      initScripts: config?.initScripts || []
+      initScripts: config?.initScripts || [],
     };
 
     this.applyConfiguration();
@@ -382,7 +374,7 @@ export class MongoDBFluentAPI extends DockerEphemeralFluentAPI implements Servic
 
     // Environment variables
     const envVars: Record<string, string> = {
-      ...this.mongoConfig.env
+      ...this.mongoConfig.env,
     };
 
     if (this.mongoConfig.rootUser && this.mongoConfig.rootPassword) {
@@ -436,19 +428,16 @@ export class MongoDBFluentAPI extends DockerEphemeralFluentAPI implements Servic
     // Labels
     this.labels({
       service: 'mongodb',
-      'managed-by': 'xec'
+      'managed-by': 'xec',
     });
 
     // Health check
-    this.healthcheck(
-      'mongosh --eval "db.adminCommand(\'ping\')"',
-      {
-        interval: '10s',
-        timeout: '5s',
-        retries: 5,
-        startPeriod: '30s'
-      }
-    );
+    this.healthcheck('mongosh --eval "db.adminCommand(\'ping\')"', {
+      interval: '10s',
+      timeout: '5s',
+      retries: 5,
+      startPeriod: '30s',
+    });
   }
 
   async createDatabase(name: string): Promise<void> {
@@ -456,10 +445,16 @@ export class MongoDBFluentAPI extends DockerEphemeralFluentAPI implements Servic
     await this.exec`mongosh ${authStr} --eval "use ${name}; db.createCollection('_init')"`;
   }
 
-  async createUser(username: string, password: string, database: string, roles: string[] = ['readWrite']): Promise<void> {
+  async createUser(
+    username: string,
+    password: string,
+    database: string,
+    roles: string[] = ['readWrite']
+  ): Promise<void> {
     const authStr = this.getAuthString();
-    const rolesJson = JSON.stringify(roles.map(r => ({ role: r, db: database })));
-    await this.exec`mongosh ${authStr} --eval "use ${database}; db.createUser({user: '${username}', pwd: '${password}', roles: ${rolesJson})"`;
+    const rolesJson = JSON.stringify(roles.map((r) => ({ role: r, db: database })));
+    await this
+      .exec`mongosh ${authStr} --eval "use ${database}; db.createUser({user: '${username}', pwd: '${password}', roles: ${rolesJson})"`;
   }
 
   async createCollection(database: string, collection: string): Promise<void> {
@@ -480,17 +475,19 @@ export class MongoDBFluentAPI extends DockerEphemeralFluentAPI implements Servic
   }
 
   async backup(backupPath: string): Promise<void> {
-    const authStr = this.mongoConfig.rootUser && this.mongoConfig.rootPassword
-      ? `-u ${this.mongoConfig.rootUser} -p ${this.mongoConfig.rootPassword} --authenticationDatabase admin`
-      : '';
+    const authStr =
+      this.mongoConfig.rootUser && this.mongoConfig.rootPassword
+        ? `-u ${this.mongoConfig.rootUser} -p ${this.mongoConfig.rootPassword} --authenticationDatabase admin`
+        : '';
     await this.exec`mongodump ${authStr} --out /tmp/backup`;
     await this.exec`tar -czf ${backupPath} -C /tmp backup`;
   }
 
   async restore(backupPath: string): Promise<void> {
-    const authStr = this.mongoConfig.rootUser && this.mongoConfig.rootPassword
-      ? `-u ${this.mongoConfig.rootUser} -p ${this.mongoConfig.rootPassword} --authenticationDatabase admin`
-      : '';
+    const authStr =
+      this.mongoConfig.rootUser && this.mongoConfig.rootPassword
+        ? `-u ${this.mongoConfig.rootUser} -p ${this.mongoConfig.rootPassword} --authenticationDatabase admin`
+        : '';
     await this.exec`tar -xzf ${backupPath} -C /tmp`;
     await this.exec`mongorestore ${authStr} /tmp/backup`;
   }
@@ -502,9 +499,7 @@ export class MongoDBFluentAPI extends DockerEphemeralFluentAPI implements Servic
 
     const config = {
       _id: this.mongoConfig.replicaSet,
-      members: [
-        { _id: 0, host: `${this.mongoConfig.name}:27017` }
-      ]
+      members: [{ _id: 0, host: `${this.mongoConfig.name}:27017` }],
     };
 
     const authStr = this.getAuthString();
@@ -548,7 +543,7 @@ export class MongoDBFluentAPI extends DockerEphemeralFluentAPI implements Servic
       user: this.mongoConfig.rootUser,
       password: this.mongoConfig.rootPassword,
       replicaSet: this.mongoConfig.replicaSet,
-      connectionString: this.getConnectionString()
+      connectionString: this.getConnectionString(),
     };
   }
 }

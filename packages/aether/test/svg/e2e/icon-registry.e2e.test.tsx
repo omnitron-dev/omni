@@ -431,9 +431,7 @@ describe('Icon Registry E2E Tests', () => {
       registry.registerSet('dark', { home: 'M15 25 L35 10 L55 25 V50 H15 Z' }, 'dark');
 
       const onLoadLight = vi.fn();
-      const { container: lightContainer } = render(() => (
-        <SVGIcon name="light:home" onLoad={onLoadLight} />
-      ));
+      const { container: lightContainer } = render(() => <SVGIcon name="light:home" onLoad={onLoadLight} />);
 
       await waitFor(() => {
         expect(onLoadLight).toHaveBeenCalled();
@@ -442,9 +440,7 @@ describe('Icon Registry E2E Tests', () => {
       cleanup();
 
       const onLoadDark = vi.fn();
-      const { container: darkContainer } = render(() => (
-        <SVGIcon name="dark:home" onLoad={onLoadDark} />
-      ));
+      const { container: darkContainer } = render(() => <SVGIcon name="dark:home" onLoad={onLoadDark} />);
 
       await waitFor(() => {
         expect(onLoadDark).toHaveBeenCalled();
@@ -522,11 +518,7 @@ describe('Icon Registry E2E Tests', () => {
       });
 
       // Request multiple icons concurrently
-      const promises = [
-        registry.get('icon1'),
-        registry.get('icon2'),
-        registry.get('icon3'),
-      ];
+      const promises = [registry.get('icon1'), registry.get('icon2'), registry.get('icon3')];
 
       const results = await Promise.all(promises);
 

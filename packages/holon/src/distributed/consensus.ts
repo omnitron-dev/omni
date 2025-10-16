@@ -116,8 +116,7 @@ export class Consensus extends EventEmitter<ConsensusEvents> {
       clearTimeout(this.electionTimeout);
     }
 
-    const timeout =
-      this.config.electionTimeout! + Math.random() * this.config.electionTimeout!;
+    const timeout = this.config.electionTimeout! + Math.random() * this.config.electionTimeout!;
 
     this.electionTimeout = setTimeout(() => {
       if (!this.isLeader) {

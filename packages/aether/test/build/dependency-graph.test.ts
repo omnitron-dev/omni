@@ -3,10 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  DependencyGraph,
-  createDependencyGraph,
-} from '../../src/build/dependency-graph.js';
+import { DependencyGraph, createDependencyGraph } from '../../src/build/dependency-graph.js';
 
 describe('DependencyGraph', () => {
   let graph: DependencyGraph;

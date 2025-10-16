@@ -74,11 +74,7 @@ describe('Fixed Combinators Tests', () => {
       const ifTrue = effectful(() => 'yes', EffectFlags.IO);
       const ifFalse = effectful(() => 'no', EffectFlags.Network);
 
-      const cond = conditional(
-        (x: number) => x > 5,
-        ifTrue,
-        ifFalse
-      );
+      const cond = conditional((x: number) => x > 5, ifTrue, ifFalse);
 
       expect(cond(10)).toBe('yes');
       expect(cond(3)).toBe('no');
@@ -122,7 +118,7 @@ describe('Fixed Combinators Tests', () => {
 
       const retried = retry(effect, {
         maxAttempts: 3,
-        delay: 0  // No delay for testing
+        delay: 0, // No delay for testing
       });
 
       const result = await retried(null);
@@ -137,7 +133,7 @@ describe('Fixed Combinators Tests', () => {
 
       const retried = retry(effect, {
         maxAttempts: 2,
-        delay: 0
+        delay: 0,
       });
 
       await expect(retried(null)).rejects.toThrow('Always fails');
@@ -158,7 +154,7 @@ describe('Fixed Combinators Tests', () => {
       const retried = retry(effect, {
         maxAttempts: 3,
         delay: 0,
-        onRetry
+        onRetry,
       });
 
       await retried(null);
@@ -181,7 +177,7 @@ describe('Fixed Combinators Tests', () => {
 
     it('should timeout slow operations', async () => {
       const effect = effectful(async () => {
-        await new Promise(r => setTimeout(r, 200));
+        await new Promise((r) => setTimeout(r, 200));
         return 'slow';
       }, EffectFlags.Async);
 
@@ -193,23 +189,24 @@ describe('Fixed Combinators Tests', () => {
 
   describe('analyze', () => {
     it('should analyze all effect types', () => {
-      const flow = effectful(() => {},
+      const flow = effectful(
+        () => {},
         EffectFlags.IO |
-        EffectFlags.Network |
-        EffectFlags.Async |
-        EffectFlags.Read |
-        EffectFlags.Write |
-        EffectFlags.Random |
-        EffectFlags.Time |
-        EffectFlags.Throw |
-        EffectFlags.Process |
-        EffectFlags.Memory |
-        EffectFlags.State |
-        EffectFlags.Unsafe |
-        EffectFlags.Database |
-        EffectFlags.Cache |
-        EffectFlags.Queue |
-        EffectFlags.Stream
+          EffectFlags.Network |
+          EffectFlags.Async |
+          EffectFlags.Read |
+          EffectFlags.Write |
+          EffectFlags.Random |
+          EffectFlags.Time |
+          EffectFlags.Throw |
+          EffectFlags.Process |
+          EffectFlags.Memory |
+          EffectFlags.State |
+          EffectFlags.Unsafe |
+          EffectFlags.Database |
+          EffectFlags.Cache |
+          EffectFlags.Queue |
+          EffectFlags.Stream
       );
 
       const analysis = analyze(flow);
@@ -296,8 +293,7 @@ describe('Fixed Combinators Tests', () => {
       expect(() => restrict(ioFlow, EffectFlags.IO | EffectFlags.Read)).not.toThrow();
 
       // Disallow network when only IO is allowed
-      expect(() => restrict(networkFlow, EffectFlags.IO))
-        .toThrow('Flow has disallowed effects');
+      expect(() => restrict(networkFlow, EffectFlags.IO)).toThrow('Flow has disallowed effects');
 
       // Pure flows are always allowed
       expect(() => restrict(pureFlow, EffectFlags.None)).not.toThrow();
@@ -323,7 +319,7 @@ describe('Fixed Combinators Tests', () => {
       const retried = retry(effect, {
         maxAttempts: 3,
         delay: 10,
-        backoff: 'linear'
+        backoff: 'linear',
       });
 
       const result = await retried(null);
@@ -352,7 +348,7 @@ describe('Fixed Combinators Tests', () => {
       const retried = retry(effect, {
         maxAttempts: 3,
         delay: 10,
-        backoff: 'exponential'
+        backoff: 'exponential',
       });
 
       const result = await retried(null);

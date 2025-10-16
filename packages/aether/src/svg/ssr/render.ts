@@ -44,11 +44,7 @@ export interface SSRConfig {
 /**
  * Render an SVG component to HTML string for server-side rendering
  */
-export function renderSVGToString(
-  component: Component<any>,
-  props: any = {},
-  config: SSRConfig = {}
-): string {
+export function renderSVGToString(component: Component<any>, props: any = {}, config: SSRConfig = {}): string {
   const {
     renderToString = true,
     inlineStyles = false,
@@ -103,11 +99,7 @@ export function renderSVGToString(
 /**
  * Convert JSX element or value to HTML string
  */
-function convertToString(
-  element: any,
-  props: any = {},
-  inlineStyles: boolean = false
-): string {
+function convertToString(element: any, props: any = {}, inlineStyles: boolean = false): string {
   // Handle null/undefined
   if (element == null) {
     return '';
@@ -120,7 +112,7 @@ function convertToString(
 
   // Handle arrays
   if (Array.isArray(element)) {
-    return element.map(el => convertToString(el, props, inlineStyles)).join('');
+    return element.map((el) => convertToString(el, props, inlineStyles)).join('');
   }
 
   // Handle functions (execute them first, then convert)
@@ -245,7 +237,7 @@ function renderSVGElement(tagName: string, props: any, inlineStyles: boolean): s
   const openTag = `<${tagName}${attributes.length > 0 ? ' ' + attributes.join(' ') : ''}>`;
 
   // Build children
-  const childrenString = children.map(child => convertToString(child, {}, inlineStyles)).join('');
+  const childrenString = children.map((child) => convertToString(child, {}, inlineStyles)).join('');
 
   // Build closing tag
   const closeTag = `</${tagName}>`;
@@ -322,7 +314,7 @@ function prettifySVG(svgString: string, indent: string = '  '): string {
   let formatted = '';
   let level = 0;
 
-  svgString.split(/(<[^>]+>)/g).forEach(part => {
+  svgString.split(/(<[^>]+>)/g).forEach((part) => {
     if (!part.trim()) return;
 
     if (part.startsWith('</')) {
@@ -350,17 +342,13 @@ export function renderSVGBatch(
   components: Array<{ component: Component<any>; props?: any }>,
   config: SSRConfig = {}
 ): string {
-  return components
-    .map(({ component, props }) => renderSVGToString(component, props, config))
-    .join('\n');
+  return components.map(({ component, props }) => renderSVGToString(component, props, config)).join('\n');
 }
 
 /**
  * Create a server-safe version of a component that always renders on server
  */
-export function createServerSVG<P = any>(
-  component: Component<P>
-): Component<P & { ssrConfig?: SSRConfig }> {
+export function createServerSVG<P = any>(component: Component<P>): Component<P & { ssrConfig?: SSRConfig }> {
   return (props: P & { ssrConfig?: SSRConfig }) => {
     const { ssrConfig, ...componentProps } = props as any;
     return () => renderSVGToString(component, componentProps, ssrConfig);
@@ -393,11 +381,7 @@ export async function* renderSVGToStream(
   props: any = {},
   config: StreamConfig = {}
 ): AsyncGenerator<string, void, unknown> {
-  const {
-    chunkSize = 1024,
-    onChunk,
-    onError,
-  } = config;
+  const { chunkSize = 1024, onChunk, onError } = config;
 
   try {
     // Render the full component
@@ -454,11 +438,7 @@ export function renderSVGWithCriticalCSS(
  * Render SVG with optimized signal handling
  * Signals are resolved to their static values on the server
  */
-export function renderSVGWithSignals(
-  component: Component<any>,
-  props: any = {},
-  config: SSRConfig = {}
-): string {
+export function renderSVGWithSignals(component: Component<any>, props: any = {}, config: SSRConfig = {}): string {
   // Serialize props to resolve signals
   const serializedProps = serializeProps(props);
 
@@ -479,13 +459,7 @@ export function renderSVGWithHydration(
     priority?: 'high' | 'medium' | 'low';
   } = {}
 ): string {
-  const {
-    hasAnimations,
-    hasInteractivity,
-    isAboveFold,
-    priority,
-    ...ssrConfig
-  } = config;
+  const { hasAnimations, hasInteractivity, isAboveFold, priority, ...ssrConfig } = config;
 
   // Generate hydration hints
   const hints = generateHydrationHints({

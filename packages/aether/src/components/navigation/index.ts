@@ -59,8 +59,4 @@ export {
   ToolbarToggleItem,
   type ToolbarProps,
 } from './Toolbar.js';
-export {
-  DraggableTabs,
-  type DraggableTabsProps,
-  type DraggableTabItem,
-} from './DraggableTabs.js';
+export { DraggableTabs, type DraggableTabsProps, type DraggableTabItem } from './DraggableTabs.js';

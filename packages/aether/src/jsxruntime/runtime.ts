@@ -99,7 +99,7 @@ function createFragment(children: any): DocumentFragment | any {
       type: Fragment,
       props: { children },
       key: undefined,
-      children: normalizeChildren(children)
+      children: normalizeChildren(children),
     };
   }
 
@@ -150,7 +150,7 @@ function createComponentElement(
       type: Component,
       props: componentProps,
       key,
-      children: []
+      children: [],
     } as any;
   }
 
@@ -223,14 +223,54 @@ function hasReactivePropsInVNode(vnode: any): boolean {
  * SVG element tags that need special namespace handling
  */
 const SVG_TAGS = new Set([
-  'svg', 'path', 'circle', 'rect', 'line', 'polyline', 'polygon', 'ellipse',
-  'g', 'text', 'tspan', 'textPath', 'defs', 'use', 'symbol',
-  'linearGradient', 'radialGradient', 'stop', 'pattern', 'mask', 'clipPath',
-  'title', 'desc', 'image', 'foreignObject', 'marker', 'animate', 'animateMotion',
-  'animateTransform', 'animateColor', 'set', 'filter', 'feBlend', 'feColorMatrix',
-  'feComponentTransfer', 'feComposite', 'feConvolveMatrix', 'feDiffuseLighting',
-  'feDisplacementMap', 'feFlood', 'feGaussianBlur', 'feImage', 'feMerge',
-  'feMorphology', 'feOffset', 'feSpecularLighting', 'feTile', 'feTurbulence'
+  'svg',
+  'path',
+  'circle',
+  'rect',
+  'line',
+  'polyline',
+  'polygon',
+  'ellipse',
+  'g',
+  'text',
+  'tspan',
+  'textPath',
+  'defs',
+  'use',
+  'symbol',
+  'linearGradient',
+  'radialGradient',
+  'stop',
+  'pattern',
+  'mask',
+  'clipPath',
+  'title',
+  'desc',
+  'image',
+  'foreignObject',
+  'marker',
+  'animate',
+  'animateMotion',
+  'animateTransform',
+  'animateColor',
+  'set',
+  'filter',
+  'feBlend',
+  'feColorMatrix',
+  'feComponentTransfer',
+  'feComposite',
+  'feConvolveMatrix',
+  'feDiffuseLighting',
+  'feDisplacementMap',
+  'feFlood',
+  'feGaussianBlur',
+  'feImage',
+  'feMerge',
+  'feMorphology',
+  'feOffset',
+  'feSpecularLighting',
+  'feTile',
+  'feTurbulence',
 ]);
 
 /**

@@ -10,10 +10,32 @@ export * from './asset-pipeline.js';
 export * from './bundle-optimization.js';
 export * from './vite-plugin.js';
 // Re-export from module-federation, excluding ModuleFederationManager (use from build-performance)
-export type { ModuleFederationConfig, ShareConfig, FederationManifest, RemoteInfo, SharedInfo, RemoteContainer } from './module-federation.js';
-export { moduleFederationPlugin, loadRemoteComponent, ModuleFederationRuntime, MockModuleFederationRuntime, testUtils } from './module-federation.js';
+export type {
+  ModuleFederationConfig,
+  ShareConfig,
+  FederationManifest,
+  RemoteInfo,
+  SharedInfo,
+  RemoteContainer,
+} from './module-federation.js';
+export {
+  moduleFederationPlugin,
+  loadRemoteComponent,
+  ModuleFederationRuntime,
+  MockModuleFederationRuntime,
+  testUtils,
+} from './module-federation.js';
 // Re-export from worker-bundling, excluding WorkerPool and ServiceWorkerConfig (use from build-performance and pwa-manifest)
-export type { WorkerBundlingConfig, WorkerBundleResult, WorkerDetectionResult, WorkerOptions, WorkerMessage, WorkerMetrics, WorkerType, WorkerFormat } from './worker-bundling.js';
+export type {
+  WorkerBundlingConfig,
+  WorkerBundleResult,
+  WorkerDetectionResult,
+  WorkerOptions,
+  WorkerMessage,
+  WorkerMetrics,
+  WorkerType,
+  WorkerFormat,
+} from './worker-bundling.js';
 export { WorkerBundler, detectWorkers, createWorkerPool } from './worker-bundling.js';
 export * from './shared-chunks.js';
 export * from './pwa-manifest.js';

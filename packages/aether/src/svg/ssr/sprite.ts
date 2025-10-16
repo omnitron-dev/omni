@@ -190,12 +190,14 @@ function cleanupIds(content: string): string {
   const idMap = new Map<string, string>();
   let idCounter = 0;
 
-  return content.replace(/id="([^"]*)"/g, (match, id) => {
-    if (!idMap.has(id)) {
-      idMap.set(id, `id${idCounter++}`);
-    }
-    return `id="${idMap.get(id)}"`;
-  }).replace(/url\(#([^)]*)\)/g, (match, id) => `url(#${idMap.get(id) || id})`);
+  return content
+    .replace(/id="([^"]*)"/g, (match, id) => {
+      if (!idMap.has(id)) {
+        idMap.set(id, `id${idCounter++}`);
+      }
+      return `id="${idMap.get(id)}"`;
+    })
+    .replace(/url\(#([^)]*)\)/g, (match, id) => `url(#${idMap.get(id) || id})`);
 }
 
 /**
@@ -209,12 +211,7 @@ function extractViewBox(content: string): string | null {
 /**
  * Create a symbol element
  */
-function createSymbol(
-  id: string,
-  viewBox: string,
-  content: string,
-  preserveAspectRatio: string
-): string {
+function createSymbol(id: string, viewBox: string, content: string, preserveAspectRatio: string): string {
   return `<symbol id="${escapeHtml(id)}" viewBox="${escapeHtml(viewBox)}" preserveAspectRatio="${escapeHtml(preserveAspectRatio)}">${content}</symbol>`;
 }
 
@@ -238,7 +235,7 @@ export async function generateSpriteFromRegistry(
 
   // Fetch all icons
   await Promise.all(
-    iconNames.map(async name => {
+    iconNames.map(async (name) => {
       const icon = await registry.get(name);
       if (icon) {
         iconData[name] = icon;
@@ -290,7 +287,9 @@ export function generateInlineSprite(
  */
 export function generateSpritePreloadLinks(spriteUrls: string[]): string {
   return spriteUrls
-    .map(url => `<link rel="preload" as="image" type="image/svg+xml" href="${escapeHtml(url)}" crossorigin="anonymous">`)
+    .map(
+      (url) => `<link rel="preload" as="image" type="image/svg+xml" href="${escapeHtml(url)}" crossorigin="anonymous">`
+    )
     .join('\n');
 }
 

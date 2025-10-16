@@ -43,11 +43,7 @@ describe('C.1 Basic Composition Patterns', () => {
           return `${input}-${value}`;
         });
 
-      const flows = [
-        makeDelayedFlow(50, 'A'),
-        makeDelayedFlow(30, 'B'),
-        makeDelayedFlow(40, 'C'),
-      ];
+      const flows = [makeDelayedFlow(50, 'A'), makeDelayedFlow(30, 'B'), makeDelayedFlow(40, 'C')];
 
       const parallelFlow = parallel(flows);
       const results = await parallelFlow('test');
@@ -142,7 +138,7 @@ describe('C.1 Basic Composition Patterns', () => {
           if (list.length === 0) return acc;
           const [head, ...tail] = list;
           return sumList({ list: tail, acc: acc + head! });
-        },
+        }
       );
 
       expect(await sumList({ list: [1, 2, 3, 4, 5] })).toBe(15);
@@ -152,14 +148,8 @@ describe('C.1 Basic Composition Patterns', () => {
 
   describe('Race Pattern', () => {
     it('should return the first flow to complete', async () => {
-      const fast = flow(
-        async (x: number) =>
-          new Promise<string>((resolve) => setTimeout(() => resolve('fast'), 10)),
-      );
-      const slow = flow(
-        async (x: number) =>
-          new Promise<string>((resolve) => setTimeout(() => resolve('slow'), 100)),
-      );
+      const fast = flow(async (x: number) => new Promise<string>((resolve) => setTimeout(() => resolve('fast'), 10)));
+      const slow = flow(async (x: number) => new Promise<string>((resolve) => setTimeout(() => resolve('slow'), 100)));
 
       const raceFlow = race([fast, slow]);
       const result = await raceFlow(5);
@@ -168,12 +158,10 @@ describe('C.1 Basic Composition Patterns', () => {
 
     it('should handle errors in race', async () => {
       const errorFlow = flow(
-        async (x: number) =>
-          new Promise<string>((_, reject) => setTimeout(() => reject(new Error('Failed')), 10)),
+        async (x: number) => new Promise<string>((_, reject) => setTimeout(() => reject(new Error('Failed')), 10))
       );
       const successFlow = flow(
-        async (x: number) =>
-          new Promise<string>((resolve) => setTimeout(() => resolve('success'), 100)),
+        async (x: number) => new Promise<string>((resolve) => setTimeout(() => resolve('success'), 100))
       );
 
       const raceFlow = race([errorFlow, successFlow]);

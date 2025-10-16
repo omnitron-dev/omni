@@ -22,11 +22,13 @@ class TestableOnCommand extends OnCommand {
   public errorLines: string[] = [];
   private _currentOptions: any = {};
 
-  constructor(private options: {
-    mockExecute?: boolean;
-    mockScripts?: boolean;
-    failExecution?: boolean;
-  } = {}) {
+  constructor(
+    private options: {
+      mockExecute?: boolean;
+      mockScripts?: boolean;
+      failExecution?: boolean;
+    } = {}
+  ) {
     super();
   }
 
@@ -58,9 +60,9 @@ class TestableOnCommand extends OnCommand {
 
           return {
             success: true,
-            error: null
+            error: null,
           };
-        }
+        },
       } as any;
     }
   }
@@ -93,7 +95,7 @@ class TestableOnCommand extends OnCommand {
           stdout: '',
           stderr: '',
           exitCode: 0,
-          ok: true
+          ok: true,
         };
       } as any;
 
@@ -123,7 +125,7 @@ class TestableOnCommand extends OnCommand {
           stdout: '',
           stderr: '',
           exitCode: 0,
-          ok: true
+          ok: true,
         };
       };
 
@@ -180,7 +182,7 @@ class TestableOnCommand extends OnCommand {
             this.executeCalls.push({
               target,
               command: `script:${command}`,
-              options
+              options,
             });
           }
           return;
@@ -210,17 +212,19 @@ class TestableOnCommand extends OnCommand {
     // Check if it's a direct SSH spec (user@host) - but only if no dots after @
     if (hostPattern.includes('@') && !hostPattern.includes('.')) {
       const [user, host] = hostPattern.split('@');
-      targets = [{
-        id: `ssh:${hostPattern}`,
-        type: 'ssh',
-        name: host,
-        config: {
+      targets = [
+        {
+          id: `ssh:${hostPattern}`,
           type: 'ssh',
-          host,
-          user,
+          name: host,
+          config: {
+            type: 'ssh',
+            host,
+            user,
+          },
+          source: 'detected',
         },
-        source: 'detected'
-      }];
+      ];
     } else if (hostPattern.includes('*') || hostPattern.includes('{')) {
       // Pattern matching
       const pattern = hostPattern.startsWith('hosts.') ? hostPattern : `hosts.${hostPattern}`;
@@ -234,17 +238,19 @@ class TestableOnCommand extends OnCommand {
       } catch {
         // If not found in config, treat as direct host
         // This is where deploy@server.example.com ends up due to the dot check
-        targets = [{
-          id: `ssh:${hostPattern}`,
-          type: 'ssh',
-          name: hostPattern,
-          config: {
+        targets = [
+          {
+            id: `ssh:${hostPattern}`,
             type: 'ssh',
-            host: hostPattern,
-            user: process.env['USER'] || 'root',
+            name: hostPattern,
+            config: {
+              type: 'ssh',
+              host: hostPattern,
+              user: process.env['USER'] || 'root',
+            },
+            source: 'detected',
           },
-          source: 'detected'
-        }];
+        ];
       }
     }
 
@@ -304,21 +310,18 @@ describe('On Command', () => {
               host: 'web1.example.com',
               user: 'deploy',
               port: 22,
-              privateKey: '~/.ssh/id_rsa'
+              privateKey: '~/.ssh/id_rsa',
             },
             'web-2': {
               host: 'web2.example.com',
               user: 'deploy',
-              port: 2222
-            }
-          }
-        }
+              port: 2222,
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Test resolving specific host
       await command.execute(['hosts.web-1', 'uptime', { quiet: true }]);
@@ -333,23 +336,20 @@ describe('On Command', () => {
             host: 'web1.example.com',
             user: 'deploy',
             port: 22,
-            privateKey: '~/.ssh/id_rsa'
-          }
+            privateKey: '~/.ssh/id_rsa',
+          },
         },
-        command: 'uptime'
+        command: 'uptime',
       });
     });
 
     it('should support direct SSH specification (user@host)', async () => {
       const config = {
         version: '2.0',
-        targets: {}
+        targets: {},
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       await command.execute(['deploy@server.example.com', 'date', { quiet: true }]);
 
@@ -361,10 +361,10 @@ describe('On Command', () => {
           name: 'deploy@server.example.com',
           config: {
             host: 'deploy@server.example.com',
-            user: process.env['USER'] || 'root'
-          }
+            user: process.env['USER'] || 'root',
+          },
         },
-        command: 'date'
+        command: 'date',
       });
     });
 
@@ -376,22 +376,19 @@ describe('On Command', () => {
             'app-1': { host: 'app1.example.com', user: 'deploy' },
             'app-2': { host: 'app2.example.com', user: 'deploy' },
             'app-3': { host: 'app3.example.com', user: 'deploy' },
-            'db-1': { host: 'db1.example.com', user: 'postgres' }
-          }
-        }
+            'db-1': { host: 'db1.example.com', user: 'postgres' },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       await command.execute(['hosts.app-*', 'echo "test"', { quiet: true }]);
 
       const calls = command.getExecuteCalls();
       expect(calls).toHaveLength(3);
 
-      const targetNames = calls.map(c => c.target.name).sort();
+      const targetNames = calls.map((c) => c.target.name).sort();
       expect(targetNames).toEqual(['app-1', 'app-2', 'app-3']);
     });
   });
@@ -412,17 +409,14 @@ describe('On Command', () => {
               privateKey: '~/.ssh/deploy_key',
               env: {
                 NODE_ENV: 'production',
-                API_KEY: 'secret'
-              }
-            }
-          }
-        }
+                API_KEY: 'secret',
+              },
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       await command.execute([
         'hosts.app',
@@ -430,15 +424,15 @@ describe('On Command', () => {
         {
           env: { PORT: '3000' },
           cwd: '/opt/app',
-          quiet: true
-        }
+          quiet: true,
+        },
       ]);
 
       const calls = command.getExecuteCalls();
       expect(calls).toHaveLength(1);
       expect(calls[0].options).toMatchObject({
         env: { PORT: '3000' },
-        cwd: '/opt/app'
+        cwd: '/opt/app',
       });
     });
 
@@ -449,27 +443,20 @@ describe('On Command', () => {
           hosts: {
             'db-1': { host: 'db1.example.com', user: 'postgres' },
             'db-2': { host: 'db2.example.com', user: 'postgres' },
-            'db-3': { host: 'db3.example.com', user: 'postgres' }
-          }
-        }
+            'db-3': { host: 'db3.example.com', user: 'postgres' },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
-      await command.execute([
-        'hosts.db-*',
-        'pg_isready',
-        { quiet: true }
-      ]);
+      await command.execute(['hosts.db-*', 'pg_isready', { quiet: true }]);
 
       const calls = command.getExecuteCalls();
       expect(calls).toHaveLength(3);
 
       // Verify targets are executed
-      const targetNames = calls.map(c => c.target.name);
+      const targetNames = calls.map((c) => c.target.name);
       expect(targetNames).toContain('db-1');
       expect(targetNames).toContain('db-2');
       expect(targetNames).toContain('db-3');
@@ -483,20 +470,17 @@ describe('On Command', () => {
             'web-1': { host: 'web1.example.com', user: 'deploy' },
             'web-2': { host: 'web2.example.com', user: 'deploy' },
             'web-3': { host: 'web3.example.com', user: 'deploy' },
-            'web-4': { host: 'web4.example.com', user: 'deploy' }
-          }
-        }
+            'web-4': { host: 'web4.example.com', user: 'deploy' },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       await command.execute([
         'hosts.web-*',
         'systemctl restart nginx',
-        { parallel: true, maxConcurrent: '2', quiet: true }
+        { parallel: true, maxConcurrent: '2', quiet: true },
       ]);
 
       const calls = command.getExecuteCalls();
@@ -518,16 +502,13 @@ describe('On Command', () => {
           hosts: {
             server: {
               host: 'server.example.com',
-              user: 'admin'
-            }
-          }
-        }
+              user: 'admin',
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Create a test script
       const scriptPath = path.join(projectDir, 'deploy.sh');
@@ -547,15 +528,12 @@ describe('On Command', () => {
         targets: {
           hosts: {
             'worker-1': { host: 'worker1.example.com', user: 'deploy' },
-            'worker-2': { host: 'worker2.example.com', user: 'deploy' }
-          }
-        }
+            'worker-2': { host: 'worker2.example.com', user: 'deploy' },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       const scriptPath = path.join(projectDir, 'update.sh');
       await fs.writeFile(scriptPath, '#!/bin/bash\necho "Updating system..."');
@@ -578,8 +556,8 @@ describe('On Command', () => {
         version: '2.0',
         targets: {
           hosts: {
-            app: { host: 'app.example.com', user: 'deploy' }
-          }
+            app: { host: 'app.example.com', user: 'deploy' },
+          },
         },
         tasks: {
           deploy: {
@@ -588,16 +566,13 @@ describe('On Command', () => {
               { command: 'git pull' },
               { command: 'npm install' },
               { command: 'npm run build' },
-              { command: 'pm2 restart app' }
-            ]
-          }
-        }
+              { command: 'pm2 restart app' },
+            ],
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       await command.execute(['hosts.app', { task: 'deploy', quiet: true }]);
 
@@ -614,23 +589,18 @@ describe('On Command', () => {
           hosts: {
             'web-1': { host: 'web1.example.com', user: 'deploy' },
             'web-2': { host: 'web2.example.com', user: 'deploy' },
-            'web-3': { host: 'web3.example.com', user: 'deploy' }
-          }
+            'web-3': { host: 'web3.example.com', user: 'deploy' },
+          },
         },
         tasks: {
           'health-check': {
             description: 'Health check',
-            steps: [
-              { command: 'curl -f http://localhost/health || exit 1' }
-            ]
-          }
-        }
+            steps: [{ command: 'curl -f http://localhost/health || exit 1' }],
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       await command.execute(['hosts.web-*', { task: 'health-check', quiet: true }]);
 
@@ -640,7 +610,7 @@ describe('On Command', () => {
       expect(taskCalls[1].taskName).toBe('health-check');
       expect(taskCalls[2].taskName).toBe('health-check');
 
-      const targetIds = taskCalls.map(c => c.targetId).sort();
+      const targetIds = taskCalls.map((c) => c.targetId).sort();
       expect(targetIds).toEqual(['hosts.web-1', 'hosts.web-2', 'hosts.web-3']);
     });
   });
@@ -657,21 +627,18 @@ describe('On Command', () => {
           on: {
             timeout: 30000,
             env: {
-              LANG: 'en_US.UTF-8'
-            }
-          }
+              LANG: 'en_US.UTF-8',
+            },
+          },
         },
         targets: {
           hosts: {
-            server: { host: 'server.example.com', user: 'admin' }
-          }
-        }
+            server: { host: 'server.example.com', user: 'admin' },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       await command.execute(['hosts.server', 'locale', { quiet: true }]);
 
@@ -694,16 +661,13 @@ describe('On Command', () => {
             dev: {
               host: 'dev.example.com',
               user: 'developer',
-              env: { NODE_ENV: 'development' }
-            }
-          }
-        }
+              env: { NODE_ENV: 'development' },
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       await command.execute(['hosts.dev', { repl: true, quiet: true }]);
 
@@ -725,15 +689,12 @@ describe('On Command', () => {
         targets: {
           hosts: {
             'app-1': { host: 'app1.example.com', user: 'deploy' },
-            'app-2': { host: 'app2.example.com', user: 'deploy' }
-          }
-        }
+            'app-2': { host: 'app2.example.com', user: 'deploy' },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       await command.execute(['hosts.app-*', 'echo "online"', { quiet: true }]);
 
@@ -752,19 +713,16 @@ describe('On Command', () => {
         version: '2.0',
         targets: {
           hosts: {
-            'test-server': { host: 'test.example.com', user: 'admin' }
-          }
-        }
+            'test-server': { host: 'test.example.com', user: 'admin' },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
-      await expect(
-        command.execute(['hosts.test-server', 'failing-command', { quiet: true }])
-      ).rejects.toThrow('Command execution failed');
+      await expect(command.execute(['hosts.test-server', 'failing-command', { quiet: true }])).rejects.toThrow(
+        'Command execution failed'
+      );
     });
 
     it('should handle parallel execution failures with failFast', async () => {
@@ -774,22 +732,15 @@ describe('On Command', () => {
           hosts: {
             'server-1': { host: 'server1.example.com', user: 'admin' },
             'server-2': { host: 'server2.example.com', user: 'admin' },
-            'server-3': { host: 'server3.example.com', user: 'admin' }
-          }
-        }
+            'server-3': { host: 'server3.example.com', user: 'admin' },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       await expect(
-        command.execute([
-          'hosts.server-*',
-          'test-command',
-          { parallel: true, failFast: true, quiet: true }
-        ])
+        command.execute(['hosts.server-*', 'test-command', { parallel: true, failFast: true, quiet: true }])
       ).rejects.toThrow('Command failed on');
     });
   });
@@ -800,21 +751,16 @@ describe('On Command', () => {
     });
 
     it('should handle missing host specification', async () => {
-      await expect(
-        command.execute(['', { quiet: true }])
-      ).rejects.toThrow('Host specification is required');
+      await expect(command.execute(['', { quiet: true }])).rejects.toThrow('Host specification is required');
     });
 
     it('should handle direct host without @ symbol', async () => {
       const config = {
         version: '2.0',
-        targets: {}
+        targets: {},
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       await command.execute(['simple-hostname', 'uptime', { quiet: true }]);
 
@@ -831,21 +777,18 @@ describe('On Command', () => {
             'web-prod': { host: 'web-prod.example.com', user: 'deploy' },
             'web-staging': { host: 'web-staging.example.com', user: 'deploy' },
             'web-dev': { host: 'web-dev.example.com', user: 'deploy' },
-            'db-prod': { host: 'db-prod.example.com', user: 'postgres' }
-          }
-        }
+            'db-prod': { host: 'db-prod.example.com', user: 'postgres' },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       await command.execute(['hosts.web-{prod,staging}', 'status', { quiet: true }]);
 
       const calls = command.getExecuteCalls();
       expect(calls).toHaveLength(2);
-      const targetNames = calls.map(c => c.target.name).sort();
+      const targetNames = calls.map((c) => c.target.name).sort();
       expect(targetNames).toEqual(['web-prod', 'web-staging']);
     });
 
@@ -854,15 +797,12 @@ describe('On Command', () => {
         version: '2.0',
         targets: {
           hosts: {
-            'verbose-test': { host: 'verbose.example.com', user: 'admin' }
-          }
-        }
+            'verbose-test': { host: 'verbose.example.com', user: 'admin' },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       await command.execute(['hosts.verbose-test', 'echo test', { verbose: true, quiet: false }]);
 
@@ -877,19 +817,16 @@ describe('On Command', () => {
         targets: {
           hosts: {
             'server-1': { host: 'server1.example.com', user: 'admin' },
-            'server-2': { host: 'server2.example.com', user: 'admin' }
-          }
-        }
+            'server-2': { host: 'server2.example.com', user: 'admin' },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
-      await expect(
-        command.execute(['hosts.server-*', { repl: true, quiet: true }])
-      ).rejects.toThrow('REPL mode is only supported for single hosts');
+      await expect(command.execute(['hosts.server-*', { repl: true, quiet: true }])).rejects.toThrow(
+        'REPL mode is only supported for single hosts'
+      );
     });
   });
 
@@ -901,13 +838,10 @@ describe('On Command', () => {
     it('should detect SSH format without domain (user@host)', async () => {
       const config = {
         version: '2.0',
-        targets: {}
+        targets: {},
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       await command.execute(['admin@testserver', 'uptime', { quiet: true }]);
 
@@ -918,8 +852,8 @@ describe('On Command', () => {
         name: 'testserver',
         config: {
           host: 'testserver',
-          user: 'admin'
-        }
+          user: 'admin',
+        },
       });
     });
 
@@ -931,16 +865,13 @@ describe('On Command', () => {
             'deploy@server.example.com': {
               host: 'server.internal.com',
               user: 'deployment',
-              port: 2222
-            }
-          }
-        }
+              port: 2222,
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // This should match the configured host, not create a direct SSH connection
       await command.execute(['hosts.deploy@server.example.com', 'pwd', { quiet: true }]);
@@ -963,15 +894,12 @@ describe('On Command', () => {
         version: '2.0',
         targets: {
           hosts: {
-            'node-server': { host: 'node.example.com', user: 'node' }
-          }
-        }
+            'node-server': { host: 'node.example.com', user: 'node' },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       const scriptPath = path.join(projectDir, 'script.js');
       await fs.writeFile(scriptPath, 'console.log("JavaScript");');
@@ -988,15 +916,12 @@ describe('On Command', () => {
         version: '2.0',
         targets: {
           hosts: {
-            'ts-server': { host: 'ts.example.com', user: 'typescript' }
-          }
-        }
+            'ts-server': { host: 'ts.example.com', user: 'typescript' },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       const scriptPath = path.join(projectDir, 'script.ts');
       await fs.writeFile(scriptPath, 'const msg: string = "TypeScript"; console.log(msg);');
@@ -1019,28 +944,20 @@ describe('On Command', () => {
         version: '2.0',
         targets: {
           hosts: {
-            'timeout-test': { host: 'timeout.example.com', user: 'admin' }
-          }
-        }
+            'timeout-test': { host: 'timeout.example.com', user: 'admin' },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
-      await command.execute([
-        'hosts.timeout-test',
-        'long-running-command',
-        { timeout: '30s', quiet: true }
-      ]);
+      await command.execute(['hosts.timeout-test', 'long-running-command', { timeout: '30s', quiet: true }]);
 
       const calls = command.getExecuteCalls();
       expect(calls).toHaveLength(1);
       expect(calls[0].options.timeout).toBe(30000);
     });
   });
-
 
   describe('No Command Specified', () => {
     beforeEach(() => {
@@ -1052,19 +969,16 @@ describe('On Command', () => {
         version: '2.0',
         targets: {
           hosts: {
-            'test-host': { host: 'test.example.com', user: 'admin' }
-          }
-        }
+            'test-host': { host: 'test.example.com', user: 'admin' },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
-      await expect(
-        command.execute(['hosts.test-host', { quiet: true }])
-      ).rejects.toThrow('No command, task, or REPL mode specified');
+      await expect(command.execute(['hosts.test-host', { quiet: true }])).rejects.toThrow(
+        'No command, task, or REPL mode specified'
+      );
     });
   });
 
@@ -1078,15 +992,12 @@ describe('On Command', () => {
         version: '2.0',
         targets: {
           hosts: {
-            'script-host': { host: 'script.example.com', user: 'admin' }
-          }
-        }
+            'script-host': { host: 'script.example.com', user: 'admin' },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       const scriptPath = path.join(projectDir, 'setup.sh');
       await fs.writeFile(scriptPath, '#!/bin/bash\necho "Setup script"');
@@ -1114,12 +1025,18 @@ describe('On Command', () => {
               stdout: 'Command output',
               stderr: 'Warning message',
               exitCode: 0,
-              ok: true
+              ok: true,
             };
           },
-          env() { return this; },
-          cd() { return this; },
-          timeout() { return this; }
+          env() {
+            return this;
+          },
+          cd() {
+            return this;
+          },
+          timeout() {
+            return this;
+          },
         };
         return execFunction;
       };
@@ -1128,15 +1045,12 @@ describe('On Command', () => {
         version: '2.0',
         targets: {
           hosts: {
-            'verbose-host': { host: 'verbose.example.com', user: 'admin' }
-          }
-        }
+            'verbose-host': { host: 'verbose.example.com', user: 'admin' },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       await command.execute(['hosts.verbose-host', 'test-command', { verbose: true, quiet: false }]);
 
@@ -1149,18 +1063,15 @@ describe('On Command', () => {
       const config = {
         version: '2.0',
         targets: {
-          hosts: {}
-        }
+          hosts: {},
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
-      await expect(
-        command.execute(['hosts.non-existent-*', { repl: true, quiet: true }])
-      ).rejects.toThrow('No hosts found matching pattern');
+      await expect(command.execute(['hosts.non-existent-*', { repl: true, quiet: true }])).rejects.toThrow(
+        'No hosts found matching pattern'
+      );
     });
   });
 
@@ -1173,28 +1084,21 @@ describe('On Command', () => {
         version: '2.0',
         targets: {
           hosts: {
-            'dry-run-test': { host: 'dryrun.example.com', user: 'admin' }
-          }
-        }
+            'dry-run-test': { host: 'dryrun.example.com', user: 'admin' },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
-      await command.execute([
-        'hosts.dry-run-test',
-        'rm -rf /important',
-        { dryRun: true, quiet: false }
-      ]);
+      await command.execute(['hosts.dry-run-test', 'rm -rf /important', { dryRun: true, quiet: false }]);
 
       // In dry run mode, it should log but not execute
-      expect(command.outputLines.some(line =>
-        line.includes('[DRY RUN]') &&
-        line.includes('Would execute') &&
-        line.includes('rm -rf /important')
-      )).toBe(true);
+      expect(
+        command.outputLines.some(
+          (line) => line.includes('[DRY RUN]') && line.includes('Would execute') && line.includes('rm -rf /important')
+        )
+      ).toBe(true);
     });
 
     it('should handle dry run with multiple hosts', async () => {
@@ -1205,24 +1109,17 @@ describe('On Command', () => {
         targets: {
           hosts: {
             'server-1': { host: 'server1.example.com', user: 'admin' },
-            'server-2': { host: 'server2.example.com', user: 'admin' }
-          }
-        }
+            'server-2': { host: 'server2.example.com', user: 'admin' },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
-      await command.execute([
-        'hosts.server-*',
-        'deploy.sh',
-        { dryRun: true, quiet: false }
-      ]);
+      await command.execute(['hosts.server-*', 'deploy.sh', { dryRun: true, quiet: false }]);
 
       // Should show dry run for both hosts
-      const dryRunLines = command.outputLines.filter(line => line.includes('[DRY RUN]'));
+      const dryRunLines = command.outputLines.filter((line) => line.includes('[DRY RUN]'));
       expect(dryRunLines).toHaveLength(2);
       expect(dryRunLines[0]).toContain('server-1');
       expect(dryRunLines[1]).toContain('server-2');
@@ -1239,34 +1136,32 @@ describe('On Command', () => {
         version: '2.0',
         targets: {
           hosts: {
-            'task-host': { host: 'task.example.com', user: 'admin' }
-          }
+            'task-host': { host: 'task.example.com', user: 'admin' },
+          },
         },
         tasks: {
           'parametrized-task': {
             description: 'Task with parameters',
             params: [
               { name: 'env', required: true },
-              { name: 'version', required: false, default: '1.0.0' }
+              { name: 'version', required: false, default: '1.0.0' },
             ],
-            steps: [
-              { command: 'echo "Deploying ${params.version} to ${params.env}"' }
-            ]
-          }
-        }
+            steps: [{ command: 'echo "Deploying ${params.version} to ${params.env}"' }],
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
-      await command.execute(['hosts.task-host', {
-        task: 'parametrized-task',
-        env: 'production',
-        version: '2.0.0',
-        quiet: true
-      }]);
+      await command.execute([
+        'hosts.task-host',
+        {
+          task: 'parametrized-task',
+          env: 'production',
+          version: '2.0.0',
+          quiet: true,
+        },
+      ]);
 
       const taskCalls = command.taskCalls;
       expect(taskCalls).toHaveLength(1);
@@ -1280,30 +1175,31 @@ describe('On Command', () => {
         version: '2.0',
         targets: {
           hosts: {
-            'test': { host: 'test.example.com', user: 'admin' }
-          }
-        }
+            test: { host: 'test.example.com', user: 'admin' },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Test various valid options
-      await command.execute(['hosts.test', 'echo test', {
-        profile: 'production',
-        timeout: '30s',
-        env: ['VAR1=value1', 'VAR2=value2'],
-        cwd: '/tmp',
-        user: 'deploy',
-        parallel: true,
-        maxConcurrent: '5',
-        failFast: true,
-        verbose: true,
-        quiet: false,
-        dryRun: false
-      }]);
+      await command.execute([
+        'hosts.test',
+        'echo test',
+        {
+          profile: 'production',
+          timeout: '30s',
+          env: ['VAR1=value1', 'VAR2=value2'],
+          cwd: '/tmp',
+          user: 'deploy',
+          parallel: true,
+          maxConcurrent: '5',
+          failFast: true,
+          verbose: true,
+          quiet: false,
+          dryRun: false,
+        },
+      ]);
 
       const calls = command.getExecuteCalls();
       expect(calls).toHaveLength(1);
@@ -1314,19 +1210,20 @@ describe('On Command', () => {
         version: '2.0',
         targets: {
           hosts: {
-            'interactive-test': { host: 'interactive.example.com', user: 'admin' }
-          }
-        }
+            'interactive-test': { host: 'interactive.example.com', user: 'admin' },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
-      await command.execute(['hosts.interactive-test', 'echo test', {
-        quiet: false
-      }]);
+      await command.execute([
+        'hosts.interactive-test',
+        'echo test',
+        {
+          quiet: false,
+        },
+      ]);
 
       const calls = command.getExecuteCalls();
       expect(calls).toHaveLength(1);
@@ -1337,20 +1234,21 @@ describe('On Command', () => {
         version: '2.0',
         targets: {
           hosts: {
-            'user-test': { host: 'user.example.com', user: 'default' }
-          }
-        }
+            'user-test': { host: 'user.example.com', user: 'default' },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
-      await command.execute(['hosts.user-test', 'whoami', {
-        user: 'override',
-        quiet: true
-      }]);
+      await command.execute([
+        'hosts.user-test',
+        'whoami',
+        {
+          user: 'override',
+          quiet: true,
+        },
+      ]);
 
       const calls = command.getExecuteCalls();
       expect(calls).toHaveLength(1);
@@ -1365,27 +1263,28 @@ describe('On Command', () => {
             defaults: {
               timeout: 60000,
               env: {
-                NODE_ENV: 'production'
-              }
-            }
-          }
+                NODE_ENV: 'production',
+              },
+            },
+          },
         },
         targets: {
           hosts: {
-            'profile-test': { host: 'profile.example.com', user: 'admin' }
-          }
-        }
+            'profile-test': { host: 'profile.example.com', user: 'admin' },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
-      await command.execute(['hosts.profile-test', 'echo $NODE_ENV', {
-        profile: 'production',
-        quiet: true
-      }]);
+      await command.execute([
+        'hosts.profile-test',
+        'echo $NODE_ENV',
+        {
+          profile: 'production',
+          quiet: true,
+        },
+      ]);
 
       const calls = command.getExecuteCalls();
       expect(calls).toHaveLength(1);
@@ -1409,17 +1308,14 @@ describe('On Command', () => {
               keepaliveInterval: 10000,
               keepaliveCountMax: 3,
               env: {
-                CUSTOM_VAR: 'value'
-              }
-            }
-          }
-        }
+                CUSTOM_VAR: 'value',
+              },
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       await command.execute(['hosts.full-ssh', 'env', { quiet: true }]);
 
@@ -1432,7 +1328,7 @@ describe('On Command', () => {
         privateKey: '~/.ssh/id_rsa',
         passphrase: 'test',
         strictHostKeyChecking: false,
-        compression: true
+        compression: true,
       });
     });
   });
@@ -1447,8 +1343,8 @@ describe('On Command', () => {
         version: '2.0',
         targets: {
           hosts: {
-            'conditional-host': { host: 'conditional.example.com', user: 'admin' }
-          }
+            'conditional-host': { host: 'conditional.example.com', user: 'admin' },
+          },
         },
         tasks: {
           'conditional-task': {
@@ -1457,32 +1353,32 @@ describe('On Command', () => {
               {
                 name: 'Check environment',
                 command: 'test -f /etc/production',
-                continueOnError: true
+                continueOnError: true,
               },
               {
                 name: 'Production deploy',
                 command: 'deploy-prod.sh',
-                when: '${steps[0].exitCode} == 0'
+                when: '${steps[0].exitCode} == 0',
               },
               {
                 name: 'Development deploy',
                 command: 'deploy-dev.sh',
-                when: '${steps[0].exitCode} != 0'
-              }
-            ]
-          }
-        }
+                when: '${steps[0].exitCode} != 0',
+              },
+            ],
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
-      await command.execute(['hosts.conditional-host', {
-        task: 'conditional-task',
-        quiet: true
-      }]);
+      await command.execute([
+        'hosts.conditional-host',
+        {
+          task: 'conditional-task',
+          quiet: true,
+        },
+      ]);
 
       const taskCalls = command.taskCalls;
       expect(taskCalls).toHaveLength(1);
@@ -1494,31 +1390,28 @@ describe('On Command', () => {
         version: '2.0',
         targets: {
           hosts: {
-            'retry-host': { host: 'retry.example.com', user: 'admin' }
-          }
+            'retry-host': { host: 'retry.example.com', user: 'admin' },
+          },
         },
         tasks: {
           'retry-task': {
             description: 'Task with retry logic',
             retries: 3,
             retryDelay: 1000,
-            steps: [
-              { command: 'curl -f http://api.example.com/health' },
-              { command: 'deploy.sh' }
-            ]
-          }
-        }
+            steps: [{ command: 'curl -f http://api.example.com/health' }, { command: 'deploy.sh' }],
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
-      await command.execute(['hosts.retry-host', {
-        task: 'retry-task',
-        quiet: true
-      }]);
+      await command.execute([
+        'hosts.retry-host',
+        {
+          task: 'retry-task',
+          quiet: true,
+        },
+      ]);
 
       const taskCalls = command.taskCalls;
       expect(taskCalls).toHaveLength(1);
@@ -1529,33 +1422,30 @@ describe('On Command', () => {
         version: '2.0',
         targets: {
           hosts: {
-            'secret-host': { host: 'secret.example.com', user: 'admin' }
-          }
+            'secret-host': { host: 'secret.example.com', user: 'admin' },
+          },
         },
         tasks: {
           'secret-task': {
             description: 'Task with secrets',
             env: {
               API_KEY: '${secrets.api_key}',
-              DB_PASSWORD: '${secrets.db_password}'
+              DB_PASSWORD: '${secrets.db_password}',
             },
-            steps: [
-              { command: 'echo $API_KEY > /tmp/key.txt' },
-              { command: 'mysql -p$DB_PASSWORD < schema.sql' }
-            ]
-          }
-        }
+            steps: [{ command: 'echo $API_KEY > /tmp/key.txt' }, { command: 'mysql -p$DB_PASSWORD < schema.sql' }],
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
-      await command.execute(['hosts.secret-host', {
-        task: 'secret-task',
-        quiet: true
-      }]);
+      await command.execute([
+        'hosts.secret-host',
+        {
+          task: 'secret-task',
+          quiet: true,
+        },
+      ]);
 
       const taskCalls = command.taskCalls;
       expect(taskCalls).toHaveLength(1);
@@ -1575,21 +1465,22 @@ describe('On Command', () => {
             'timeout-host': {
               host: 'timeout.example.com',
               user: 'admin',
-              connectionTimeout: 1000
-            }
-          }
-        }
+              connectionTimeout: 1000,
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
-      await command.execute(['hosts.timeout-host', 'echo test', {
-        timeout: '1s',
-        quiet: true
-      }]);
+      await command.execute([
+        'hosts.timeout-host',
+        'echo test',
+        {
+          timeout: '1s',
+          quiet: true,
+        },
+      ]);
 
       const calls = command.getExecuteCalls();
       expect(calls).toHaveLength(1);
@@ -1605,20 +1496,21 @@ describe('On Command', () => {
               host: 'keepalive.example.com',
               user: 'admin',
               keepaliveInterval: 5000,
-              keepaliveCountMax: 10
-            }
-          }
-        }
+              keepaliveCountMax: 10,
+            },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
-      await command.execute(['hosts.keepalive-host', 'long-running-command', {
-        quiet: true
-      }]);
+      await command.execute([
+        'hosts.keepalive-host',
+        'long-running-command',
+        {
+          quiet: true,
+        },
+      ]);
 
       const calls = command.getExecuteCalls();
       expect(calls).toHaveLength(1);
@@ -1637,15 +1529,12 @@ describe('On Command', () => {
         version: '2.0',
         targets: {
           hosts: {
-            'upload-host': { host: 'upload.example.com', user: 'admin' }
-          }
-        }
+            'upload-host': { host: 'upload.example.com', user: 'admin' },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Create a local file
       const localFile = path.join(projectDir, 'upload-test.txt');
@@ -1654,7 +1543,7 @@ describe('On Command', () => {
       // Since the file needs to have a script extension to be detected as a script
       const scriptFile = path.join(projectDir, 'upload-test.sh');
       await fs.rename(localFile, scriptFile);
-      
+
       await command.execute(['hosts.upload-host', scriptFile, { quiet: true }]);
 
       const scriptCalls = command.scriptCalls;
@@ -1677,26 +1566,23 @@ describe('On Command', () => {
             'prod-web-2': { host: 'prod-web-2.example.com', user: 'deploy' },
             'prod-db-1': { host: 'prod-db-1.example.com', user: 'postgres' },
             'staging-web-1': { host: 'staging-web-1.example.com', user: 'deploy' },
-            'dev-web-1': { host: 'dev-web-1.example.com', user: 'developer' }
-          }
-        }
+            'dev-web-1': { host: 'dev-web-1.example.com', user: 'developer' },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Test various patterns
       await command.execute(['hosts.prod-*', 'echo "Production"', { quiet: true }]);
-      
+
       let calls = command.getExecuteCalls();
       expect(calls).toHaveLength(3);
-      expect(calls.map(c => c.target.name).sort()).toEqual(['prod-db-1', 'prod-web-1', 'prod-web-2']);
+      expect(calls.map((c) => c.target.name).sort()).toEqual(['prod-db-1', 'prod-web-1', 'prod-web-2']);
 
       command.executeCalls = [];
       await command.execute(['hosts.*-web-*', 'echo "Web servers"', { quiet: true }]);
-      
+
       calls = command.getExecuteCalls();
       expect(calls).toHaveLength(4);
     });
@@ -1706,26 +1592,23 @@ describe('On Command', () => {
         version: '2.0',
         targets: {
           hosts: {
-            'server1': { host: 'server1.example.com', user: 'admin' },
-            'server10': { host: 'server10.example.com', user: 'admin' },
-            'server2': { host: 'server2.example.com', user: 'admin' },
-            'server20': { host: 'server20.example.com', user: 'admin' }
-          }
-        }
+            server1: { host: 'server1.example.com', user: 'admin' },
+            server10: { host: 'server10.example.com', user: 'admin' },
+            server2: { host: 'server2.example.com', user: 'admin' },
+            server20: { host: 'server20.example.com', user: 'admin' },
+          },
+        },
       };
 
-      await fs.writeFile(
-        path.join(projectDir, '.xec', 'config.yaml'),
-        yaml.dump(config)
-      );
+      await fs.writeFile(path.join(projectDir, '.xec', 'config.yaml'), yaml.dump(config));
 
       // Use wildcard pattern instead of regex-like pattern
       await command.execute(['hosts.server1', 'echo test', { quiet: true }]);
       await command.execute(['hosts.server2', 'echo test', { quiet: true }]);
-      
+
       const calls = command.getExecuteCalls();
       expect(calls).toHaveLength(2);
-      expect(calls.map(c => c.target.name).sort()).toEqual(['server1', 'server2']);
+      expect(calls.map((c) => c.target.name).sort()).toEqual(['server1', 'server2']);
     });
   });
 });

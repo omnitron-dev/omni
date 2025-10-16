@@ -25,21 +25,21 @@ describe('TargetResolver Integration Tests', () => {
         hosts: {
           'test-host': {
             host: 'test.example.com',
-            user: 'testuser'
-          }
+            user: 'testuser',
+          },
         },
         containers: {
           'test-container': {
-            image: 'node:18'
-          }
+            image: 'node:18',
+          },
         },
         pods: {
           'test-pod': {
             namespace: 'default',
-            selector: 'app=test'
-          }
-        }
-      }
+            selector: 'app=test',
+          },
+        },
+      },
     };
   });
 
@@ -183,7 +183,7 @@ describe('TargetResolver Integration Tests', () => {
           const entry = {
             timestamp: new Date().toISOString(),
             operation,
-            details
+            details,
           };
           const logEntry = JSON.stringify(entry) + '\n';
           await fs.appendFile(logFile, logEntry);
@@ -222,20 +222,26 @@ describe('TargetResolver Integration Tests', () => {
       const k8sLog = await fs.readFile(path.join(logDir, 'k8s-operations.log'), 'utf-8');
 
       // Parse and verify log entries
-      const dockerEntries = dockerLog.trim().split('\n').map(line => JSON.parse(line));
-      const k8sEntries = k8sLog.trim().split('\n').map(line => JSON.parse(line));
+      const dockerEntries = dockerLog
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line));
+      const k8sEntries = k8sLog
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line));
 
       expect(dockerEntries).toHaveLength(4); // 2 calls * 2 entries each
       expect(k8sEntries).toHaveLength(4);
 
       // Verify specific results
       const dockerAppResult = dockerEntries.find(
-        e => e.operation === 'isDockerContainer-result' && e.details.name === 'docker-app'
+        (e) => e.operation === 'isDockerContainer-result' && e.details.name === 'docker-app'
       );
       expect(dockerAppResult?.details.result).toBe(true);
 
       const regularAppResult = dockerEntries.find(
-        e => e.operation === 'isDockerContainer-result' && e.details.name === 'regular-app'
+        (e) => e.operation === 'isDockerContainer-result' && e.details.name === 'regular-app'
       );
       expect(regularAppResult?.details.result).toBe(false);
     });
@@ -276,7 +282,7 @@ describe('TargetResolver Integration Tests', () => {
 
           try {
             // Simulate detection with delay
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
             return acquired && name.includes('container');
           } finally {
             if (acquired) {
@@ -296,13 +302,13 @@ describe('TargetResolver Integration Tests', () => {
         (resolver as any).isDockerContainer('test-container-1'),
         (resolver as any).isDockerContainer('test-container-2'),
         (resolver as any).isDockerContainer('test-app'),
-        (resolver as any).isDockerContainer('test-container-3')
+        (resolver as any).isDockerContainer('test-container-3'),
       ]);
 
-      expect(results[0]).toBe(true);  // contains 'container'
-      expect(results[1]).toBe(true);  // contains 'container'
+      expect(results[0]).toBe(true); // contains 'container'
+      expect(results[1]).toBe(true); // contains 'container'
       expect(results[2]).toBe(false); // doesn't contain 'container'
-      expect(results[3]).toBe(true);  // contains 'container'
+      expect(results[3]).toBe(true); // contains 'container'
 
       // Verify all locks were released
       const remainingFiles = await fs.readdir(lockDir);
@@ -358,10 +364,10 @@ Host prod-api
                 const value = valueParts.join(' ');
 
                 const keyMap: Record<string, string> = {
-                  'HostName': 'host',
-                  'User': 'user',
-                  'Port': 'port',
-                  'IdentityFile': 'privateKey'
+                  HostName: 'host',
+                  User: 'user',
+                  Port: 'port',
+                  IdentityFile: 'privateKey',
                 };
 
                 const mappedKey = keyMap[key] || key.toLowerCase();
@@ -403,7 +409,7 @@ Host prod-api
         host: 'test.example.com',
         user: 'testuser',
         port: '2222',
-        privateKey: '~/.ssh/test_key'
+        privateKey: '~/.ssh/test_key',
       });
 
       // Test wildcard pattern
@@ -412,7 +418,7 @@ Host prod-api
         type: 'ssh',
         host: 'web.prod.example.com',
         user: 'deploy',
-        port: '22'
+        port: '22',
       });
 
       // Test non-existent host

@@ -500,9 +500,7 @@ describe('Fast Refresh', () => {
 
       await refresh.refresh('/src/Unknown.tsx', { default: function Component() {} });
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('No components to refresh')
-      );
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('No components to refresh'));
 
       consoleSpy.mockRestore();
     });
@@ -515,9 +513,7 @@ describe('Fast Refresh', () => {
 
       await refresh.refresh('/src/Component.tsx', { data: 'not a component' });
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Could not extract component')
-      );
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Could not extract component'));
 
       consoleSpy.mockRestore();
     });
@@ -574,9 +570,7 @@ describe('Fast Refresh', () => {
 
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-      await expect(
-        refresh.refresh('/src/Component.tsx', { default: function Component() {} })
-      ).rejects.toThrow();
+      await expect(refresh.refresh('/src/Component.tsx', { default: function Component() {} })).rejects.toThrow();
 
       consoleSpy.mockRestore();
     });

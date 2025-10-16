@@ -129,9 +129,7 @@ test.describe('Block Formatting', () => {
     await clickToolbarButton(page, 'blockquote');
 
     const html = await getEditorHTML(page);
-    expect(html).toMatch(
-      /<blockquote>.*<(em|i)>Italic Quote<\/(em|i)>.*<\/blockquote>/,
-    );
+    expect(html).toMatch(/<blockquote>.*<(em|i)>Italic Quote<\/(em|i)>.*<\/blockquote>/);
   });
 
   test('should handle multi-line blockquote', async ({ page }) => {

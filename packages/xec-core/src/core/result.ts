@@ -27,7 +27,6 @@ export class ExecutionResultImpl implements ExecutionResult {
     }
   }
 
-
   toMetadata(): object {
     return {
       stdout: this.stdout,
@@ -40,20 +39,13 @@ export class ExecutionResultImpl implements ExecutionResult {
       finishedAt: this.finishedAt.toISOString(),
       adapter: this.adapter,
       host: this.host,
-      container: this.container
+      container: this.container,
     };
   }
 
   throwIfFailed(): void {
     if (this.exitCode !== 0) {
-      throw new CommandError(
-        this.command,
-        this.exitCode,
-        this.signal,
-        this.stdout,
-        this.stderr,
-        this.duration
-      );
+      throw new CommandError(this.command, this.exitCode, this.signal, this.stdout, this.stderr, this.duration);
     }
   }
 
@@ -66,12 +58,14 @@ export class ExecutionResultImpl implements ExecutionResult {
     try {
       return JSON.parse(text);
     } catch (error) {
-      throw new Error(`Failed to parse JSON: ${error instanceof Error ? error.message : String(error)}\nOutput: ${text}`);
+      throw new Error(
+        `Failed to parse JSON: ${error instanceof Error ? error.message : String(error)}\nOutput: ${text}`
+      );
     }
   }
 
   lines(): string[] {
-    return this.stdout.split('\n').filter(line => line.length > 0);
+    return this.stdout.split('\n').filter((line) => line.length > 0);
   }
 
   buffer(): Buffer {

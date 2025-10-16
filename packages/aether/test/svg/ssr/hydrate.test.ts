@@ -40,12 +40,12 @@ class MockElement {
   children: MockElement[] = [];
 
   getAttribute(name: string): string | null {
-    const attr = this.attributes.find(a => a.name === name);
+    const attr = this.attributes.find((a) => a.name === name);
     return attr ? attr.value : null;
   }
 
   setAttribute(name: string, value: string): void {
-    const existing = this.attributes.find(a => a.name === name);
+    const existing = this.attributes.find((a) => a.name === name);
     if (existing) {
       existing.value = value;
     } else {
@@ -54,11 +54,11 @@ class MockElement {
   }
 
   hasAttribute(name: string): boolean {
-    return this.attributes.some(a => a.name === name);
+    return this.attributes.some((a) => a.name === name);
   }
 
   removeAttribute(name: string): void {
-    this.attributes = this.attributes.filter(a => a.name !== name);
+    this.attributes = this.attributes.filter((a) => a.name !== name);
   }
 
   getAnimations(): any[] {

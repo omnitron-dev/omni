@@ -10,9 +10,9 @@ import type { HttpServerConfig } from '../types.js';
 import { EventEmitter } from 'eventemitter3';
 
 export interface HttpServerEvents {
-  'request': (path: string, method: string) => void;
-  'response': (path: string, statusCode: number) => void;
-  'error': (error: Error) => void;
+  request: (path: string, method: string) => void;
+  response: (path: string, statusCode: number) => void;
+  error: (error: Error) => void;
 }
 
 /**

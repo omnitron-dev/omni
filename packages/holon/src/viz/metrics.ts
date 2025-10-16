@@ -15,12 +15,7 @@ export class MetricsCollector {
   /**
    * Record execution metrics
    */
-  record(
-    flowId: string,
-    flowName: string,
-    duration: number,
-    success: boolean
-  ): void {
+  record(flowId: string, flowName: string, duration: number, success: boolean): void {
     let metrics = this.metrics.get(flowId);
 
     if (!metrics) {

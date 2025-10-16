@@ -28,13 +28,7 @@ import { toggleMark } from 'prosemirror-commands';
 import { setBlockType } from 'prosemirror-commands';
 import { wrapInList } from 'prosemirror-schema-list';
 import { undo, redo } from 'prosemirror-history';
-import {
-  createIntegrationTestEditor,
-  cleanupEditor,
-  setSelection,
-  isMarkActive,
-  isNodeActive,
-} from './helpers.js';
+import { createIntegrationTestEditor, cleanupEditor, setSelection, isMarkActive, isNodeActive } from './helpers.js';
 
 describe('Toolbar + Editor Integration', () => {
   let editor: EditorInstance;

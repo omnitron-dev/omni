@@ -50,8 +50,7 @@ export const ApplicationShell = styled<
     width: '100%',
     height: '100vh',
     overflow: 'hidden',
-    fontFamily:
-      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
     fontSize: '14px',
     lineHeight: '1.5',
     backgroundColor: '#ffffff',

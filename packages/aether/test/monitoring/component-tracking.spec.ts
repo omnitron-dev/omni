@@ -50,9 +50,13 @@ describe('Component Tracking', () => {
     it('should track component unmount', () => {
       const Component = function TestComponent() {};
 
-      inspector.trackComponent(Component, {}, {
-        name: 'TestComponent',
-      });
+      inspector.trackComponent(
+        Component,
+        {},
+        {
+          name: 'TestComponent',
+        }
+      );
 
       const state = inspector.getState();
       const component = Array.from(state.components.values())[0] as ComponentMetadata;
@@ -300,12 +304,7 @@ describe('Component Tracking', () => {
     it('should track props changes over multiple renders', () => {
       const Component = function TestComponent() {};
 
-      const propsHistory = [
-        { count: 0 },
-        { count: 1 },
-        { count: 2 },
-        { count: 3 },
-      ];
+      const propsHistory = [{ count: 0 }, { count: 1 }, { count: 2 }, { count: 3 }];
 
       for (const props of propsHistory) {
         inspector.trackComponent(Component, props);
@@ -559,9 +558,13 @@ describe('Component Tracking', () => {
     it('should handle large numbers of component instances', () => {
       for (let i = 0; i < 1000; i++) {
         const Component = function TestComponent() {};
-        inspector.trackComponent(Component, { id: i }, {
-          name: `Component${i}`,
-        });
+        inspector.trackComponent(
+          Component,
+          { id: i },
+          {
+            name: `Component${i}`,
+          }
+        );
       }
 
       const state = inspector.getState();

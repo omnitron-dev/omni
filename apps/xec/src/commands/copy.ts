@@ -177,12 +177,7 @@ export class CopyCommand extends ConfigAwareCommand {
         // Expand wildcards
         const files = await this.expandWildcard(sourceTarget, sourceParts.path);
         for (const file of files) {
-          const destPath = this.computeDestinationPath(
-            file,
-            sourceParts.path,
-            destParts.path,
-            sourceTarget.name
-          );
+          const destPath = this.computeDestinationPath(file, sourceParts.path, destParts.path, sourceTarget.name);
           operations.push({
             source: sourceTarget,
             sourcePath: file,
@@ -230,15 +225,17 @@ export class CopyCommand extends ConfigAwareCommand {
 
   private async resolveTargetsFromSpec(targetSpec: string): Promise<ResolvedTarget[]> {
     if (targetSpec === 'local') {
-      return [{
-        id: 'local',
-        type: 'local',
-        name: 'local',
-        config: {
-          type: 'local'
+      return [
+        {
+          id: 'local',
+          type: 'local',
+          name: 'local',
+          config: {
+            type: 'local',
+          },
+          source: 'configured',
         },
-        source: 'configured',
-      }];
+      ];
     }
 
     if (targetSpec.includes('*') || targetSpec.includes('{')) {
@@ -249,10 +246,7 @@ export class CopyCommand extends ConfigAwareCommand {
     return [target];
   }
 
-  private async expandWildcard(
-    target: ResolvedTarget,
-    pattern: string
-  ): Promise<string[]> {
+  private async expandWildcard(target: ResolvedTarget, pattern: string): Promise<string[]> {
     if (target.type === 'local') {
       // Use local glob
       const files = await this.localGlob(pattern);
@@ -307,10 +301,7 @@ export class CopyCommand extends ConfigAwareCommand {
     return destPattern;
   }
 
-  private async executeSingleCopy(
-    operation: CopyOperation,
-    options: CopyOptions
-  ): Promise<void> {
+  private async executeSingleCopy(operation: CopyOperation, options: CopyOptions): Promise<void> {
     const { source, sourcePath, destination, destinationPath } = operation;
 
     const sourceDisplay = this.formatCopyPath(source, sourcePath);
@@ -339,14 +330,7 @@ export class CopyCommand extends ConfigAwareCommand {
       }
 
       // Perform the copy based on source and destination types
-      await this.performCopy(
-        source,
-        sourcePath,
-        destination,
-        destinationPath,
-        isDir,
-        options
-      );
+      await this.performCopy(source, sourcePath, destination, destinationPath, isDir, options);
 
       if (!options.quiet) {
         this.stopSpinner();
@@ -363,10 +347,7 @@ export class CopyCommand extends ConfigAwareCommand {
     }
   }
 
-  private async executeParallelCopy(
-    operations: CopyOperation[],
-    options: CopyOptions
-  ): Promise<void> {
+  private async executeParallelCopy(operations: CopyOperation[], options: CopyOptions): Promise<void> {
     const maxConcurrent = parseInt(options.maxConcurrent || '4', 10);
     this.log(`Copying ${operations.length} files in parallel (max ${maxConcurrent} concurrent)...`, 'info');
 
@@ -385,7 +366,10 @@ export class CopyCommand extends ConfigAwareCommand {
           results.push({ operation, success: true });
 
           if (!options.quiet) {
-            this.log(`[${completed}/${total}] Copied ${this.formatCopyPath(operation.source, operation.sourcePath)}`, 'info');
+            this.log(
+              `[${completed}/${total}] Copied ${this.formatCopyPath(operation.source, operation.sourcePath)}`,
+              'info'
+            );
           }
         } catch (error) {
           results.push({ operation, success: false, error });
@@ -396,8 +380,8 @@ export class CopyCommand extends ConfigAwareCommand {
     }
 
     // Display results
-    const successful = results.filter(r => r.success);
-    const failed = results.filter(r => !r.success);
+    const successful = results.filter((r) => r.success);
+    const failed = results.filter((r) => !r.success);
 
     if (successful.length > 0) {
       this.log(`${prism.green('✓')} Successfully copied ${successful.length} files`, 'success');
@@ -407,7 +391,10 @@ export class CopyCommand extends ConfigAwareCommand {
       this.log(`${prism.red('✗')} Failed to copy ${failed.length} files:`, 'error');
       for (const result of failed) {
         const errorMessage = result.error instanceof Error ? result.error.message : String(result.error);
-        this.log(`  - ${this.formatCopyPath(result.operation.source, result.operation.sourcePath)}: ${errorMessage}`, 'error');
+        this.log(
+          `  - ${this.formatCopyPath(result.operation.source, result.operation.sourcePath)}: ${errorMessage}`,
+          'error'
+        );
       }
       throw new Error(`Copy failed for ${failed.length} files`);
     }
@@ -787,44 +774,29 @@ export class CopyCommand extends ConfigAwareCommand {
       const copyOptions: Partial<CopyOptions> = {};
 
       if (sourceType.value === 'directory') {
-        copyOptions.recursive = await InteractiveHelpers.confirmAction(
-          'Copy recursively?',
-          true
-        );
+        copyOptions.recursive = await InteractiveHelpers.confirmAction('Copy recursively?', true);
       }
 
-      copyOptions.preserve = await InteractiveHelpers.confirmAction(
-        'Preserve file attributes?',
-        false
-      );
+      copyOptions.preserve = await InteractiveHelpers.confirmAction('Preserve file attributes?', false);
 
-      copyOptions.force = await InteractiveHelpers.confirmAction(
-        'Force overwrite existing files?',
-        false
-      );
+      copyOptions.force = await InteractiveHelpers.confirmAction('Force overwrite existing files?', false);
 
       // For multiple files, ask about parallel copy
       if (sourceType.value === 'pattern') {
-        copyOptions.parallel = await InteractiveHelpers.confirmAction(
-          'Copy files in parallel?',
-          false
-        );
+        copyOptions.parallel = await InteractiveHelpers.confirmAction('Copy files in parallel?', false);
 
         if (copyOptions.parallel) {
-          const maxConcurrent = await InteractiveHelpers.inputText(
-            'Maximum concurrent operations:',
-            {
-              initialValue: '4',
-              validate: (value) => {
-                if (!value) return 'Value is required';
-                const num = parseInt(value);
-                if (isNaN(num) || num < 1) {
-                  return 'Please enter a valid number (1 or more)';
-                }
-                return undefined;
-              },
-            }
-          );
+          const maxConcurrent = await InteractiveHelpers.inputText('Maximum concurrent operations:', {
+            initialValue: '4',
+            validate: (value) => {
+              if (!value) return 'Value is required';
+              const num = parseInt(value);
+              if (isNaN(num) || num < 1) {
+                return 'Please enter a valid number (1 or more)';
+              }
+              return undefined;
+            },
+          });
           if (maxConcurrent) {
             copyOptions.maxConcurrent = maxConcurrent;
           }
@@ -832,13 +804,9 @@ export class CopyCommand extends ConfigAwareCommand {
       }
 
       // Build source and destination specs
-      const sourceSpec = sourceTarget.type === 'local'
-        ? sourcePath
-        : `${sourceTarget.id}:${sourcePath}`;
+      const sourceSpec = sourceTarget.type === 'local' ? sourcePath : `${sourceTarget.id}:${sourcePath}`;
 
-      const destinationSpec = destTarget.type === 'local'
-        ? destPath
-        : `${destTarget.id}:${destPath}`;
+      const destinationSpec = destTarget.type === 'local' ? destPath : `${destTarget.id}:${destPath}`;
 
       // Show summary
       InteractiveHelpers.showInfo('\nCopy Summary:');
@@ -847,12 +815,10 @@ export class CopyCommand extends ConfigAwareCommand {
       if (copyOptions.recursive) console.log(`  Options: ${prism.gray('recursive')}`);
       if (copyOptions.preserve) console.log(`  Options: ${prism.gray('preserve attributes')}`);
       if (copyOptions.force) console.log(`  Options: ${prism.gray('force overwrite')}`);
-      if (copyOptions.parallel) console.log(`  Options: ${prism.gray(`parallel (max ${copyOptions.maxConcurrent || '4'})`)}`);
+      if (copyOptions.parallel)
+        console.log(`  Options: ${prism.gray(`parallel (max ${copyOptions.maxConcurrent || '4'})`)}`);
 
-      const confirm = await InteractiveHelpers.confirmAction(
-        '\nProceed with copy?',
-        true
-      );
+      const confirm = await InteractiveHelpers.confirmAction('\nProceed with copy?', true);
 
       if (!confirm) {
         InteractiveHelpers.endInteractiveMode('Copy cancelled');

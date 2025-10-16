@@ -1,12 +1,25 @@
 import * as yaml from 'js-yaml';
 import { Command } from 'commander';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
-import { log, box, text, note, prism, intro, outro, cancel, select, confirm, spinner, isCancel, password } from '@xec-sh/kit';
+import {
+  log,
+  box,
+  text,
+  note,
+  prism,
+  intro,
+  outro,
+  cancel,
+  select,
+  confirm,
+  spinner,
+  isCancel,
+  password,
+} from '@xec-sh/kit';
 
 import { BaseCommand } from '../utils/command-base.js';
 import { ConfigurationManager } from '../config/configuration-manager.js';
 import { sortConfigKeys, getDefaultConfig, mergeWithDefaults } from '../config/defaults.js';
-
 
 /**
  * Config command implementation
@@ -18,7 +31,7 @@ export class ConfigCommand extends BaseCommand {
     super({
       name: 'config',
       description: 'Manage Xec configuration',
-      aliases: ['conf', 'cfg']
+      aliases: ['conf', 'cfg'],
     });
   }
 
@@ -26,12 +39,11 @@ export class ConfigCommand extends BaseCommand {
    * Create command with subcommands
    */
   override create(): Command {
-    const cmd = new Command(this.config.name)
-      .description(this.config.description);
+    const cmd = new Command(this.config.name).description(this.config.description);
 
     // Add aliases
     if (this.config.aliases) {
-      this.config.aliases.forEach(alias => cmd.alias(alias));
+      this.config.aliases.forEach((alias) => cmd.alias(alias));
     }
 
     // Set up action for when no subcommand is provided
@@ -58,7 +70,7 @@ export class ConfigCommand extends BaseCommand {
     if (!this.configManager) {
       this.configManager = new ConfigurationManager({
         projectRoot: process.cwd(),
-        profile: undefined
+        profile: undefined,
       });
     }
   }
@@ -146,9 +158,7 @@ export class ConfigCommand extends BaseCommand {
   }
 
   private setupTargetCommands(parent: Command): void {
-    const targets = parent
-      .command('targets')
-      .description('Manage targets');
+    const targets = parent.command('targets').description('Manage targets');
 
     targets
       .command('list')
@@ -184,9 +194,7 @@ export class ConfigCommand extends BaseCommand {
   }
 
   private setupVarCommands(parent: Command): void {
-    const vars = parent
-      .command('vars')
-      .description('Manage variables');
+    const vars = parent.command('vars').description('Manage variables');
 
     vars
       .command('list')
@@ -230,9 +238,7 @@ export class ConfigCommand extends BaseCommand {
   }
 
   private setupTaskCommands(parent: Command): void {
-    const tasks = parent
-      .command('tasks')
-      .description('Manage tasks');
+    const tasks = parent.command('tasks').description('Manage tasks');
 
     tasks
       .command('list')
@@ -276,9 +282,7 @@ export class ConfigCommand extends BaseCommand {
   }
 
   private setupDefaultsCommands(parent: Command): void {
-    const defaults = parent
-      .command('defaults')
-      .description('Manage default configurations');
+    const defaults = parent.command('defaults').description('Manage default configurations');
 
     defaults
       .command('view')
@@ -381,7 +385,7 @@ export class ConfigCommand extends BaseCommand {
         case 'doctor': {
           const showDefaults = await confirm({
             message: 'Show all possible configuration options with default values?',
-            initialValue: false
+            initialValue: false,
           });
           if (!isCancel(showDefaults)) {
             await this.runDoctor({ defaults: showDefaults });
@@ -411,7 +415,7 @@ export class ConfigCommand extends BaseCommand {
         contentAlign: 'left',
         contentPadding: 1,
         rounded: true,
-        formatBorder: (text_) => prism.dim(text_)
+        formatBorder: (text_) => prism.dim(text_),
       });
     } else {
       // Sort config keys according to defined order
@@ -421,7 +425,7 @@ export class ConfigCommand extends BaseCommand {
         contentAlign: 'left',
         contentPadding: 1,
         rounded: true,
-        formatBorder: (text_) => prism.green(text_)
+        formatBorder: (text_) => prism.green(text_),
       });
     }
   }
@@ -445,7 +449,8 @@ export class ConfigCommand extends BaseCommand {
         result += `${indentStr}${key}:\n`;
         result += this.formatYamlWithDefaults(value, userValue || {}, fullPath, indent + 1);
       } else {
-        const valueStr = yaml.dump({ [key]: value }, { indent: 2 })
+        const valueStr = yaml
+          .dump({ [key]: value }, { indent: 2 })
           .replace(/^\{\s*/, '')
           .replace(/\s*\}$/, '')
           .trim();
@@ -479,12 +484,10 @@ export class ConfigCommand extends BaseCommand {
     }
 
     // Format output based on value type
-    const content = typeof value === 'object'
-      ? yaml.dump(value, { indent: 2 })
-      : String(value);
+    const content = typeof value === 'object' ? yaml.dump(value, { indent: 2 }) : String(value);
 
     note(content, `Value for '${key}'`, {
-      format: (line) => prism.cyan(line)
+      format: (line) => prism.cyan(line),
     });
   }
 
@@ -575,15 +578,13 @@ export class ConfigCommand extends BaseCommand {
       ? JSON.stringify(displayConfig, null, 2)
       : yaml.dump(displayConfig, { indent: 2, sortKeys: false });
 
-    const title = options.path
-      ? `📋 Configuration at '${options.path}'`
-      : '📋 All Configuration';
+    const title = options.path ? `📋 Configuration at '${options.path}'` : '📋 All Configuration';
 
     box(content, title, {
       contentAlign: 'left',
       contentPadding: 1,
       rounded: true,
-      formatBorder: (text_) => prism.blue(text_)
+      formatBorder: (text_) => prism.blue(text_),
     });
   }
 
@@ -637,7 +638,8 @@ export class ConfigCommand extends BaseCommand {
     if (targets.hosts && Object.keys(targets.hosts).length > 0) {
       content += '\n' + prism.bold('SSH Hosts:\n');
       for (const [name, host] of Object.entries(targets.hosts)) {
-        content += prism.cyan(`  🖥️  ${name}`) + prism.dim(` (${(host as any).host}:${(host as any).port || 22})`) + '\n';
+        content +=
+          prism.cyan(`  🖥️  ${name}`) + prism.dim(` (${(host as any).host}:${(host as any).port || 22})`) + '\n';
       }
     }
 
@@ -645,7 +647,10 @@ export class ConfigCommand extends BaseCommand {
     if (targets.containers && Object.keys(targets.containers).length > 0) {
       content += '\n' + prism.bold('Docker Containers:\n');
       for (const [name, container] of Object.entries(targets.containers)) {
-        content += prism.blue(`  🐳 ${name}`) + prism.dim(` (${(container as any).container || (container as any).image})`) + '\n';
+        content +=
+          prism.blue(`  🐳 ${name}`) +
+          prism.dim(` (${(container as any).container || (container as any).image})`) +
+          '\n';
       }
     }
 
@@ -653,13 +658,16 @@ export class ConfigCommand extends BaseCommand {
     if (targets.pods && Object.keys(targets.pods).length > 0) {
       content += '\n' + prism.bold('Kubernetes Pods:\n');
       for (const [name, pod] of Object.entries(targets.pods)) {
-        content += prism.yellow(`  ☸️  ${name}`) + prism.dim(` (${(pod as any).namespace || 'default'}/${(pod as any).pod})`) + '\n';
+        content +=
+          prism.yellow(`  ☸️  ${name}`) +
+          prism.dim(` (${(pod as any).namespace || 'default'}/${(pod as any).pod})`) +
+          '\n';
       }
     }
 
     if (!content.trim()) {
       note('No targets configured yet. Use "xec config" to add targets.', '🎯 Targets', {
-        format: (line) => prism.dim(line)
+        format: (line) => prism.dim(line),
       });
     } else {
       box(content.trim(), '🎯 Configured Targets', {
@@ -667,24 +675,24 @@ export class ConfigCommand extends BaseCommand {
         contentAlign: 'left',
         contentPadding: 1,
         rounded: true,
-        formatBorder: (text_) => prism.magenta(text_)
+        formatBorder: (text_) => prism.magenta(text_),
       });
     }
   }
 
   private async addTarget(): Promise<void> {
-    const targetType = await select({
+    const targetType = (await select({
       message: 'Select target type',
       options: [
         { value: 'ssh', label: '🖥️  SSH Host' },
         { value: 'docker', label: '🐳 Docker Container' },
         { value: 'kubernetes', label: '☸️  Kubernetes Pod' },
       ],
-    }) as string;
+    })) as string;
 
     if (isCancel(targetType)) return;
 
-    const name = await text({
+    const name = (await text({
       message: 'Target name',
       placeholder: 'my-target',
       validate: (value) => {
@@ -692,7 +700,7 @@ export class ConfigCommand extends BaseCommand {
         if (!/^[a-z0-9-]+$/.test(value)) return 'Name must contain only lowercase letters, numbers, and hyphens';
         return undefined;
       },
-    }) as string;
+    })) as string;
 
     if (isCancel(name)) return;
 
@@ -742,45 +750,44 @@ export class ConfigCommand extends BaseCommand {
   }
 
   private async promptSSHConfig(currentConfig?: any): Promise<any> {
-    const host = await text({
+    const host = (await text({
       message: 'SSH host',
       placeholder: 'example.com',
       initialValue: currentConfig?.host || '',
-      validate: (value) => value ? undefined : 'Host is required',
-    }) as string;
+      validate: (value) => (value ? undefined : 'Host is required'),
+    })) as string;
 
     if (isCancel(host)) return null;
 
-    const port = await text({
+    const port = (await text({
       message: 'SSH port',
       placeholder: '22',
       initialValue: currentConfig?.port?.toString() || '',
       defaultValue: '22',
-    }) as string;
+    })) as string;
 
     if (isCancel(port)) return null;
 
-    const username = await text({
+    const username = (await text({
       message: 'SSH username',
       placeholder: 'user',
       initialValue: currentConfig?.username || '',
-      validate: (value) => value ? undefined : 'Username is required',
-    }) as string;
+      validate: (value) => (value ? undefined : 'Username is required'),
+    })) as string;
 
     if (isCancel(username)) return null;
 
     // Determine default auth method based on current config
-    const defaultAuthMethod = currentConfig?.privateKey ? 'key' :
-      currentConfig?.password ? 'password' : 'key';
+    const defaultAuthMethod = currentConfig?.privateKey ? 'key' : currentConfig?.password ? 'password' : 'key';
 
-    const authMethod = await select({
+    const authMethod = (await select({
       message: 'Authentication method',
       options: [
         { value: 'key', label: '🔑 SSH Key' },
         { value: 'password', label: '🔒 Password (not recommended)' },
       ],
       initialValue: defaultAuthMethod,
-    }) as string;
+    })) as string;
 
     if (isCancel(authMethod)) return null;
 
@@ -792,26 +799,28 @@ export class ConfigCommand extends BaseCommand {
     };
 
     if (authMethod === 'key') {
-      const privateKey = await text({
+      const privateKey = (await text({
         message: 'Path to SSH private key',
         placeholder: '~/.ssh/id_rsa',
         initialValue: currentConfig?.privateKey || '',
         defaultValue: '~/.ssh/id_rsa',
-      }) as string;
+      })) as string;
 
       if (isCancel(privateKey)) return null;
       config.privateKey = privateKey;
 
-      const passphrase = await password({
+      const passphrase = (await password({
         message: 'SSH key passphrase (optional)',
-      }) as string;
+      })) as string;
 
       if (passphrase && !isCancel(passphrase)) {
         log.warn('⚠️  Passphrase will be stored in plain text. Consider using the secrets command instead.');
         config.passphrase = passphrase;
       }
     } else {
-      log.error('❌ Password authentication is not supported in config. Use the secrets command to manage passwords securely.');
+      log.error(
+        '❌ Password authentication is not supported in config. Use the secrets command to manage passwords securely.'
+      );
       return null;
     }
 
@@ -827,31 +836,31 @@ export class ConfigCommand extends BaseCommand {
     const config: any = { type: 'docker' };
 
     if (useContainer) {
-      const container = await text({
+      const container = (await text({
         message: 'Container name or ID',
         placeholder: 'my-container',
         initialValue: currentConfig?.container || '',
-        validate: (value) => value ? undefined : 'Container is required',
-      }) as string;
+        validate: (value) => (value ? undefined : 'Container is required'),
+      })) as string;
 
       if (isCancel(container)) return null;
       config.container = container;
     } else {
-      const image = await text({
+      const image = (await text({
         message: 'Docker image',
         placeholder: 'ubuntu:latest',
         initialValue: currentConfig?.image || '',
-        validate: (value) => value ? undefined : 'Image is required',
-      }) as string;
+        validate: (value) => (value ? undefined : 'Image is required'),
+      })) as string;
 
       if (isCancel(image)) return null;
       config.image = image;
 
-      const workdir = await text({
+      const workdir = (await text({
         message: 'Working directory (optional)',
         placeholder: '/app',
         initialValue: currentConfig?.workdir || '',
-      }) as string;
+      })) as string;
 
       if (workdir && !isCancel(workdir)) {
         config.workdir = workdir;
@@ -862,29 +871,29 @@ export class ConfigCommand extends BaseCommand {
   }
 
   private async promptK8sConfig(currentConfig?: any): Promise<any> {
-    const pod = await text({
+    const pod = (await text({
       message: 'Pod name',
       placeholder: 'my-pod',
       initialValue: currentConfig?.pod || '',
-      validate: (value) => value ? undefined : 'Pod name is required',
-    }) as string;
+      validate: (value) => (value ? undefined : 'Pod name is required'),
+    })) as string;
 
     if (isCancel(pod)) return null;
 
-    const namespace = await text({
+    const namespace = (await text({
       message: 'Namespace',
       placeholder: 'default',
       initialValue: currentConfig?.namespace || '',
       defaultValue: 'default',
-    }) as string;
+    })) as string;
 
     if (isCancel(namespace)) return null;
 
-    const container = await text({
+    const container = (await text({
       message: 'Container name (for multi-container pods)',
       placeholder: 'main',
       initialValue: currentConfig?.container || '',
-    }) as string;
+    })) as string;
 
     const config: any = {
       type: 'kubernetes',
@@ -896,10 +905,10 @@ export class ConfigCommand extends BaseCommand {
       config.container = container;
     }
 
-    const context = await text({
+    const context = (await text({
       message: 'Kubernetes context (optional)',
       placeholder: 'default',
-    }) as string;
+    })) as string;
 
     if (context && !isCancel(context)) {
       config.context = context;
@@ -934,10 +943,10 @@ export class ConfigCommand extends BaseCommand {
       return;
     }
 
-    const target = await select({
+    const target = (await select({
       message: 'Select target to edit',
-      options: allTargets.map(t => ({ value: t, label: t })),
-    }) as string;
+      options: allTargets.map((t) => ({ value: t, label: t })),
+    })) as string;
 
     if (isCancel(target)) return;
 
@@ -964,7 +973,7 @@ export class ConfigCommand extends BaseCommand {
     }
 
     note(yaml.dump(currentConfig, { indent: 2 }), 'Current configuration', {
-      format: (line) => prism.cyan(line)
+      format: (line) => prism.cyan(line),
     });
 
     const edit = await confirm({
@@ -1036,10 +1045,10 @@ export class ConfigCommand extends BaseCommand {
       return;
     }
 
-    const target = await select({
+    const target = (await select({
       message: 'Select target to delete',
-      options: allTargets.map(t => ({ value: t, label: t })),
-    }) as string;
+      options: allTargets.map((t) => ({ value: t, label: t })),
+    })) as string;
 
     if (isCancel(target)) return;
 
@@ -1118,7 +1127,7 @@ export class ConfigCommand extends BaseCommand {
 
     if (Object.keys(vars).length === 0) {
       note('No variables configured. Use "xec config vars set" to add variables.', '📝 Variables', {
-        format: (line) => prism.dim(line)
+        format: (line) => prism.dim(line),
       });
       return;
     }
@@ -1137,12 +1146,12 @@ export class ConfigCommand extends BaseCommand {
       contentAlign: 'left',
       contentPadding: 1,
       rounded: true,
-      formatBorder: (text_) => prism.blue(text_)
+      formatBorder: (text_) => prism.blue(text_),
     });
   }
 
   private async setVar(): Promise<void> {
-    const name = await text({
+    const name = (await text({
       message: 'Variable name',
       placeholder: 'MY_VAR',
       validate: (value) => {
@@ -1150,7 +1159,7 @@ export class ConfigCommand extends BaseCommand {
         if (!/^[A-Z][A-Z0-9_]*$/.test(value)) return 'Variable names should be UPPER_SNAKE_CASE';
         return undefined;
       },
-    }) as string;
+    })) as string;
 
     if (isCancel(name)) return;
 
@@ -1166,11 +1175,11 @@ export class ConfigCommand extends BaseCommand {
       return;
     }
 
-    const value = await text({
+    const value = (await text({
       message: 'Variable value',
       placeholder: 'value',
-      validate: (v) => v ? undefined : 'Value is required',
-    }) as string;
+      validate: (v) => (v ? undefined : 'Value is required'),
+    })) as string;
 
     if (isCancel(value)) return;
 
@@ -1191,10 +1200,10 @@ export class ConfigCommand extends BaseCommand {
       return;
     }
 
-    const name = await select({
+    const name = (await select({
       message: 'Select variable to delete',
-      options: Object.keys(vars).map(v => ({ value: v, label: v })),
-    }) as string;
+      options: Object.keys(vars).map((v) => ({ value: v, label: v })),
+    })) as string;
 
     if (isCancel(name)) return;
 
@@ -1210,11 +1219,11 @@ export class ConfigCommand extends BaseCommand {
   }
 
   private async importVars(): Promise<void> {
-    const envFile = await text({
+    const envFile = (await text({
       message: 'Path to .env file',
       placeholder: '.env',
       defaultValue: '.env',
-    }) as string;
+    })) as string;
 
     if (isCancel(envFile)) return;
 
@@ -1263,11 +1272,11 @@ export class ConfigCommand extends BaseCommand {
       return;
     }
 
-    const envFile = await text({
+    const envFile = (await text({
       message: 'Output .env file',
       placeholder: '.env',
       defaultValue: '.env',
-    }) as string;
+    })) as string;
 
     if (isCancel(envFile)) return;
 
@@ -1332,7 +1341,7 @@ export class ConfigCommand extends BaseCommand {
 
     if (Object.keys(taskList).length === 0) {
       note('No tasks configured. Use "xec config tasks create" to add tasks.', '⚡ Tasks', {
-        format: (line) => prism.dim(line)
+        format: (line) => prism.dim(line),
       });
       return;
     }
@@ -1348,7 +1357,7 @@ export class ConfigCommand extends BaseCommand {
       contentAlign: 'left',
       contentPadding: 1,
       rounded: true,
-      formatBorder: (text_) => prism.yellow(text_)
+      formatBorder: (text_) => prism.yellow(text_),
     });
   }
 
@@ -1361,10 +1370,10 @@ export class ConfigCommand extends BaseCommand {
       return;
     }
 
-    const name = await select({
+    const name = (await select({
       message: 'Select task to view',
-      options: Object.keys(tasks).map(t => ({ value: t, label: t })),
-    }) as string;
+      options: Object.keys(tasks).map((t) => ({ value: t, label: t })),
+    })) as string;
 
     if (isCancel(name)) return;
 
@@ -1373,12 +1382,12 @@ export class ConfigCommand extends BaseCommand {
       contentAlign: 'left',
       contentPadding: 1,
       rounded: true,
-      formatBorder: (text_) => prism.yellow(text_)
+      formatBorder: (text_) => prism.yellow(text_),
     });
   }
 
   private async createTask(): Promise<void> {
-    const name = await text({
+    const name = (await text({
       message: 'Task name',
       placeholder: 'my-task',
       validate: (value) => {
@@ -1386,25 +1395,25 @@ export class ConfigCommand extends BaseCommand {
         if (!/^[a-z][a-z0-9-]*$/.test(value)) return 'Task names should be lowercase with hyphens';
         return undefined;
       },
-    }) as string;
+    })) as string;
 
     if (isCancel(name)) return;
 
-    const description = await text({
+    const description = (await text({
       message: 'Task description',
       placeholder: 'Describe what this task does',
-    }) as string;
+    })) as string;
 
     if (isCancel(description)) return;
 
-    const taskType = await select({
+    const taskType = (await select({
       message: 'Task type',
       options: [
         { value: 'command', label: 'Shell command' },
         { value: 'script', label: 'Script file' },
         { value: 'composite', label: 'Multiple steps' },
       ],
-    }) as string;
+    })) as string;
 
     if (isCancel(taskType)) return;
 
@@ -1417,29 +1426,27 @@ export class ConfigCommand extends BaseCommand {
 
     // eslint-disable-next-line default-case
     switch (taskType) {
-      case 'command':
-        {
-          const cmd = await text({
-            message: 'Command to run',
-            placeholder: 'echo "Hello, World!"',
-            validate: (value) => value ? undefined : 'Command is required',
-          }) as string;
-          if (isCancel(cmd)) return;
-          task.steps = [{ command: cmd }];
-          break;
-        }
+      case 'command': {
+        const cmd = (await text({
+          message: 'Command to run',
+          placeholder: 'echo "Hello, World!"',
+          validate: (value) => (value ? undefined : 'Command is required'),
+        })) as string;
+        if (isCancel(cmd)) return;
+        task.steps = [{ command: cmd }];
+        break;
+      }
 
-      case 'script':
-        {
-          const script = await text({
-            message: 'Script file path',
-            placeholder: './scripts/my-script.sh',
-            validate: (value) => value ? undefined : 'Script path is required',
-          }) as string;
-          if (isCancel(script)) return;
-          task.steps = [{ script }];
-          break;
-        }
+      case 'script': {
+        const script = (await text({
+          message: 'Script file path',
+          placeholder: './scripts/my-script.sh',
+          validate: (value) => (value ? undefined : 'Script path is required'),
+        })) as string;
+        if (isCancel(script)) return;
+        task.steps = [{ script }];
+        break;
+      }
 
       case 'composite':
         log.info('Multi-step tasks can be edited manually in the config file');
@@ -1470,10 +1477,10 @@ export class ConfigCommand extends BaseCommand {
       return;
     }
 
-    const name = await select({
+    const name = (await select({
       message: 'Select task to delete',
-      options: Object.keys(tasks).map(t => ({ value: t, label: t })),
-    }) as string;
+      options: Object.keys(tasks).map((t) => ({ value: t, label: t })),
+    })) as string;
 
     if (isCancel(name)) return;
 
@@ -1605,7 +1612,16 @@ export class ConfigCommand extends BaseCommand {
     }
   }
 
-  private readonly MANAGED_KEYS = ['version', 'targets', 'vars', 'tasks', 'defaults', 'commands', 'name', 'description'];
+  private readonly MANAGED_KEYS = [
+    'version',
+    'targets',
+    'vars',
+    'tasks',
+    'defaults',
+    'commands',
+    'name',
+    'description',
+  ];
 
   private isCustomParameter(key: string): boolean {
     const topLevelKey = key.split('.')[0];
@@ -1623,9 +1639,13 @@ export class ConfigCommand extends BaseCommand {
     }
 
     if (Object.keys(customParams).length === 0) {
-      note('No custom parameters configured. You can add custom parameters using "xec config"', '🔧 Custom Parameters', {
-        format: (line) => prism.dim(line)
-      });
+      note(
+        'No custom parameters configured. You can add custom parameters using "xec config"',
+        '🔧 Custom Parameters',
+        {
+          format: (line) => prism.dim(line),
+        }
+      );
       return;
     }
 
@@ -1634,12 +1654,12 @@ export class ConfigCommand extends BaseCommand {
       contentAlign: 'left',
       contentPadding: 1,
       rounded: true,
-      formatBorder: (text_) => prism.magenta(text_)
+      formatBorder: (text_) => prism.magenta(text_),
     });
   }
 
   private async setCustomParameter(): Promise<void> {
-    const key = await text({
+    const key = (await text({
       message: 'Parameter key (use dot notation for nested values)',
       placeholder: 'myapp.config.port',
       validate: (value) => {
@@ -1650,11 +1670,11 @@ export class ConfigCommand extends BaseCommand {
         }
         return undefined;
       },
-    }) as string;
+    })) as string;
 
     if (isCancel(key)) return;
 
-    const valueType = await select({
+    const valueType = (await select({
       message: 'Value type',
       options: [
         { value: 'string', label: 'String' },
@@ -1662,7 +1682,7 @@ export class ConfigCommand extends BaseCommand {
         { value: 'boolean', label: 'Boolean' },
         { value: 'json', label: 'JSON (for objects/arrays)' },
       ],
-    }) as string;
+    })) as string;
 
     if (isCancel(valueType)) return;
 
@@ -1670,61 +1690,57 @@ export class ConfigCommand extends BaseCommand {
 
     // eslint-disable-next-line default-case
     switch (valueType) {
-      case 'string':
-        {
-          const stringValue = await text({
-            message: 'Value',
-            placeholder: 'my-value',
-          }) as string;
-          if (isCancel(stringValue)) return;
-          parsedValue = stringValue;
-          break;
-        }
+      case 'string': {
+        const stringValue = (await text({
+          message: 'Value',
+          placeholder: 'my-value',
+        })) as string;
+        if (isCancel(stringValue)) return;
+        parsedValue = stringValue;
+        break;
+      }
 
-      case 'number':
-        {
-          const numberValue = await text({
-            message: 'Value',
-            placeholder: '8080',
-            validate: (value) => {
-              if (!value || isNaN(Number(value))) return 'Must be a valid number';
+      case 'number': {
+        const numberValue = (await text({
+          message: 'Value',
+          placeholder: '8080',
+          validate: (value) => {
+            if (!value || isNaN(Number(value))) return 'Must be a valid number';
+            return undefined;
+          },
+        })) as string;
+        if (isCancel(numberValue)) return;
+        parsedValue = Number(numberValue);
+        break;
+      }
+
+      case 'boolean': {
+        const boolValue = await confirm({
+          message: 'Value',
+        });
+        if (isCancel(boolValue)) return;
+        parsedValue = boolValue;
+        break;
+      }
+
+      case 'json': {
+        const jsonValue = (await text({
+          message: 'JSON value',
+          placeholder: '{"key": "value"}',
+          validate: (value) => {
+            if (!value) return 'Value is required';
+            try {
+              JSON.parse(value);
               return undefined;
-            },
-          }) as string;
-          if (isCancel(numberValue)) return;
-          parsedValue = Number(numberValue);
-          break;
-        }
-
-      case 'boolean':
-        {
-          const boolValue = await confirm({
-            message: 'Value',
-          });
-          if (isCancel(boolValue)) return;
-          parsedValue = boolValue;
-          break;
-        }
-
-      case 'json':
-        {
-          const jsonValue = await text({
-            message: 'JSON value',
-            placeholder: '{"key": "value"}',
-            validate: (value) => {
-              if (!value) return 'Value is required';
-              try {
-                JSON.parse(value);
-                return undefined;
-              } catch (error) {
-                return 'Invalid JSON';
-              }
-            },
-          }) as string;
-          if (isCancel(jsonValue)) return;
-          parsedValue = JSON.parse(jsonValue);
-          break;
-        }
+            } catch (error) {
+              return 'Invalid JSON';
+            }
+          },
+        })) as string;
+        if (isCancel(jsonValue)) return;
+        parsedValue = JSON.parse(jsonValue);
+        break;
+      }
     }
 
     const config = await this.configManager.load();
@@ -1774,7 +1790,7 @@ export class ConfigCommand extends BaseCommand {
 
     const key = await select({
       message: 'Select parameter to view',
-      options: customKeys.map(k => ({ value: k, label: k })),
+      options: customKeys.map((k) => ({ value: k, label: k })),
     });
 
     if (isCancel(key) || !key) return;
@@ -1807,7 +1823,7 @@ export class ConfigCommand extends BaseCommand {
 
     const key = await select({
       message: 'Select parameter to delete',
-      options: customKeys.map(k => ({ value: k, label: k })),
+      options: customKeys.map((k) => ({ value: k, label: k })),
     });
 
     if (isCancel(key) || !key) return;
@@ -1836,27 +1852,28 @@ export class ConfigCommand extends BaseCommand {
       return;
     }
 
-    const format = await select({
+    const format = (await select({
       message: 'Export format',
       options: [
         { value: 'yaml', label: 'YAML' },
         { value: 'json', label: 'JSON' },
       ],
-    }) as string;
+    })) as string;
 
     if (isCancel(format)) return;
 
-    const filename = await text({
+    const filename = (await text({
       message: 'Output filename',
       placeholder: format === 'json' ? 'custom-params.json' : 'custom-params.yaml',
       defaultValue: format === 'json' ? 'custom-params.json' : 'custom-params.yaml',
-    }) as string;
+    })) as string;
 
     if (isCancel(filename)) return;
 
-    const content = format === 'json'
-      ? JSON.stringify(customParams, null, 2)
-      : yaml.dump(customParams, { indent: 2, sortKeys: false });
+    const content =
+      format === 'json'
+        ? JSON.stringify(customParams, null, 2)
+        : yaml.dump(customParams, { indent: 2, sortKeys: false });
 
     writeFileSync(filename, content);
     log.success(`Custom parameters exported to ${filename}`);
@@ -1868,7 +1885,7 @@ export class ConfigCommand extends BaseCommand {
 
     if (Object.keys(defaults).length === 0) {
       note('No custom defaults configured. The system defaults are being used.', '⚙️ Defaults', {
-        format: (line) => prism.dim(line)
+        format: (line) => prism.dim(line),
       });
       return;
     }
@@ -1880,7 +1897,7 @@ export class ConfigCommand extends BaseCommand {
       contentAlign: 'left',
       contentPadding: 1,
       rounded: true,
-      formatBorder: (text_) => prism.cyan(text_)
+      formatBorder: (text_) => prism.cyan(text_),
     });
   }
 
@@ -1890,11 +1907,11 @@ export class ConfigCommand extends BaseCommand {
     if (!config.targets.defaults) config.targets.defaults = {};
     if (!config.targets.defaults.ssh) config.targets.defaults.ssh = {};
 
-    const port = await text({
+    const port = (await text({
       message: 'Default SSH port',
       placeholder: '22',
       defaultValue: '22',
-    }) as string;
+    })) as string;
 
     if (!isCancel(port)) {
       config.targets.defaults.ssh.port = parseInt(port);
@@ -1911,11 +1928,11 @@ export class ConfigCommand extends BaseCommand {
       config.targets.defaults.ssh.keepAlive = keepAlive;
     }
 
-    const keepAliveInterval = await text({
+    const keepAliveInterval = (await text({
       message: 'Keep alive interval (ms)',
       placeholder: '30000',
       defaultValue: '30000',
-    }) as string;
+    })) as string;
 
     if (!isCancel(keepAliveInterval)) {
       config.targets.defaults.ssh.keepAliveInterval = parseInt(keepAliveInterval);
@@ -1931,19 +1948,19 @@ export class ConfigCommand extends BaseCommand {
     if (!config.targets.defaults) config.targets.defaults = {};
     if (!config.targets.defaults.docker) config.targets.defaults.docker = {};
 
-    const workdir = await text({
+    const workdir = (await text({
       message: 'Default working directory',
       placeholder: '/app',
-    }) as string;
+    })) as string;
 
     if (workdir && !isCancel(workdir)) {
       config.targets.defaults.docker.workdir = workdir;
     }
 
-    const user = await text({
+    const user = (await text({
       message: 'Default user',
       placeholder: 'root',
-    }) as string;
+    })) as string;
 
     if (user && !isCancel(user)) {
       config.targets.defaults.docker.user = user;
@@ -1959,20 +1976,20 @@ export class ConfigCommand extends BaseCommand {
     if (!config.targets.defaults) config.targets.defaults = {};
     if (!config.targets.defaults.kubernetes) config.targets.defaults.kubernetes = {};
 
-    const namespace = await text({
+    const namespace = (await text({
       message: 'Default namespace',
       placeholder: 'default',
       defaultValue: 'default',
-    }) as string;
+    })) as string;
 
     if (!isCancel(namespace)) {
       config.targets.defaults.kubernetes.namespace = namespace;
     }
 
-    const context = await text({
+    const context = (await text({
       message: 'Default context',
       placeholder: 'Current context',
-    }) as string;
+    })) as string;
 
     if (context && !isCancel(context)) {
       // Note: context is not part of KubernetesDefaults
@@ -1986,7 +2003,7 @@ export class ConfigCommand extends BaseCommand {
     const config = await this.configManager.load();
     if (!config.commands) config.commands = {};
 
-    const cmd = await select({
+    const cmd = (await select({
       message: 'Select command to configure defaults for',
       options: [
         { value: 'exec', label: 'exec' },
@@ -1994,7 +2011,7 @@ export class ConfigCommand extends BaseCommand {
         { value: 'cp', label: 'cp' },
         { value: 'sync', label: 'sync' },
       ],
-    }) as string;
+    })) as string;
 
     if (isCancel(cmd)) return;
 
@@ -2005,54 +2022,51 @@ export class ConfigCommand extends BaseCommand {
     // Command-specific defaults
     // eslint-disable-next-line default-case
     switch (cmd) {
-      case 'logs':
-        {
-          const tail = await text({
-            message: 'Default number of lines to tail',
-            placeholder: '50',
-            defaultValue: '50',
-          }) as string;
-          if (!isCancel(tail)) {
-            if (!config.commands['logs']) config.commands['logs'] = {};
-            config.commands['logs']['tail'] = tail;
-          }
-
-          const timestamps = await confirm({
-            message: 'Show timestamps by default?',
-          });
-          if (!isCancel(timestamps)) {
-            if (!config.commands['logs']) config.commands['logs'] = {};
-            config.commands['logs']['timestamps'] = timestamps;
-          }
-          break;
+      case 'logs': {
+        const tail = (await text({
+          message: 'Default number of lines to tail',
+          placeholder: '50',
+          defaultValue: '50',
+        })) as string;
+        if (!isCancel(tail)) {
+          if (!config.commands['logs']) config.commands['logs'] = {};
+          config.commands['logs']['tail'] = tail;
         }
 
-      case 'exec':
-        {
-          const shell = await text({
-            message: 'Default shell',
-            placeholder: '/bin/sh',
-            defaultValue: '/bin/sh',
-          }) as string;
-          if (!isCancel(shell)) {
-            if (!config.commands['exec']) config.commands['exec'] = {};
-            config.commands['exec']['shell'] = shell;
-          }
-          break;
+        const timestamps = await confirm({
+          message: 'Show timestamps by default?',
+        });
+        if (!isCancel(timestamps)) {
+          if (!config.commands['logs']) config.commands['logs'] = {};
+          config.commands['logs']['timestamps'] = timestamps;
         }
+        break;
+      }
+
+      case 'exec': {
+        const shell = (await text({
+          message: 'Default shell',
+          placeholder: '/bin/sh',
+          defaultValue: '/bin/sh',
+        })) as string;
+        if (!isCancel(shell)) {
+          if (!config.commands['exec']) config.commands['exec'] = {};
+          config.commands['exec']['shell'] = shell;
+        }
+        break;
+      }
 
       case 'cp':
-      case 'sync':
-        {
-          const recursive = await confirm({
-            message: 'Recursive by default?',
-          });
-          if (!isCancel(recursive)) {
-            if (!config.commands[cmd]) config.commands[cmd] = {};
-            config.commands[cmd]['recursive'] = recursive;
-          }
-          break;
+      case 'sync': {
+        const recursive = await confirm({
+          message: 'Recursive by default?',
+        });
+        if (!isCancel(recursive)) {
+          if (!config.commands[cmd]) config.commands[cmd] = {};
+          config.commands[cmd]['recursive'] = recursive;
         }
+        break;
+      }
     }
 
     await this.saveConfig(config);
@@ -2089,19 +2103,19 @@ export class ConfigCommand extends BaseCommand {
     // Check for basic configuration
     if (!config.name) {
       recommendations.push('Set project name');
-      config.name = await text({
+      config.name = (await text({
         message: 'Project name',
         placeholder: defaultConfig.name || 'my-project',
-      }) as string;
+      })) as string;
       if (isCancel(config.name)) return;
     }
 
     if (!config.description) {
       recommendations.push('Add project description');
-      config.description = await text({
+      config.description = (await text({
         message: 'Project description',
         placeholder: defaultConfig.description || 'Describe your project',
-      }) as string;
+      })) as string;
       if (isCancel(config.description)) delete config.description;
     }
 
@@ -2154,7 +2168,7 @@ export class ConfigCommand extends BaseCommand {
     if (!config.secrets && defaultConfig.secrets) {
       config.secrets = {
         provider: defaultConfig.secrets.provider as 'local' | 'vault' | '1password' | 'aws-secrets' | 'env' | 'dotenv',
-        config: defaultConfig.secrets.path ? { path: defaultConfig.secrets.path } : undefined
+        config: defaultConfig.secrets.path ? { path: defaultConfig.secrets.path } : undefined,
       };
       recommendations.push('Added secrets configuration');
     }
@@ -2176,17 +2190,17 @@ export class ConfigCommand extends BaseCommand {
 
     // Report results
     if (recommendations.length > 0) {
-      const content = recommendations.map(rec => `✅ ${rec}`).join('\n');
+      const content = recommendations.map((rec) => `✅ ${rec}`).join('\n');
       box(content, '🏥 Doctor Improvements', {
         width: 'auto',
         contentAlign: 'left',
         contentPadding: 1,
         rounded: true,
-        formatBorder: (text_) => prism.green(text_)
+        formatBorder: (text_) => prism.green(text_),
       });
     } else {
       note('Configuration is healthy! No changes needed.', '🏥 Doctor', {
-        format: (line) => prism.green(line)
+        format: (line) => prism.green(line),
       });
     }
 
@@ -2271,28 +2285,28 @@ export class ConfigCommand extends BaseCommand {
 
       // Report results
       if (errors.length > 0) {
-        const content = errors.map(error => `❌ ${error}`).join('\n');
+        const content = errors.map((error) => `❌ ${error}`).join('\n');
         box(content, '⚠️ Configuration Errors', {
           contentAlign: 'left',
           contentPadding: 1,
           rounded: true,
-          formatBorder: (text_) => prism.red(text_)
+          formatBorder: (text_) => prism.red(text_),
         });
       }
 
       if (warnings.length > 0) {
-        const content = warnings.map(warning => `⚠️  ${warning}`).join('\n');
+        const content = warnings.map((warning) => `⚠️  ${warning}`).join('\n');
         box(content, '⚠️ Configuration Warnings', {
           contentAlign: 'left',
           contentPadding: 1,
           rounded: true,
-          formatBorder: (text_) => prism.yellow(text_)
+          formatBorder: (text_) => prism.yellow(text_),
         });
       }
 
       if (errors.length === 0 && warnings.length === 0) {
         note('Configuration is valid!', '✅ Validation', {
-          format: (line) => prism.green(line)
+          format: (line) => prism.green(line),
         });
       }
     } catch (error) {
@@ -2300,7 +2314,6 @@ export class ConfigCommand extends BaseCommand {
       log.error(`Failed to validate configuration: ${error}`);
     }
   }
-
 
   private async saveConfig(config: any): Promise<void> {
     // Use ConfigurationManager's save method which properly finds the root
@@ -2324,7 +2337,7 @@ export class ConfigCommand extends BaseCommand {
     const allTargets = [
       ...Object.keys(config.targets?.hosts || {}),
       ...Object.keys(config.targets?.containers || {}),
-      ...Object.keys(config.targets?.pods || {})
+      ...Object.keys(config.targets?.pods || {}),
     ];
     if (!allTargets.includes(name)) {
       console.error(prism.red(`Target '${name}' not found`));
@@ -2338,7 +2351,7 @@ export class ConfigCommand extends BaseCommand {
     const allTargets = [
       ...Object.keys(config.targets?.hosts || {}),
       ...Object.keys(config.targets?.containers || {}),
-      ...Object.keys(config.targets?.pods || {})
+      ...Object.keys(config.targets?.pods || {}),
     ];
     if (!allTargets.includes(name)) {
       console.error(prism.red(`Target '${name}' not found`));

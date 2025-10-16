@@ -46,49 +46,49 @@ function getFileIcon(node: FileNode): string {
 
   const iconMap: Record<string, string> = {
     // TypeScript/JavaScript
-    'ts': '🔷',
-    'tsx': '⚛️',
-    'js': '🟨',
-    'jsx': '⚛️',
-    'mjs': '🟨',
-    'cjs': '🟨',
+    ts: '🔷',
+    tsx: '⚛️',
+    js: '🟨',
+    jsx: '⚛️',
+    mjs: '🟨',
+    cjs: '🟨',
 
     // Web
-    'html': '🌐',
-    'css': '🎨',
-    'scss': '🎨',
-    'sass': '🎨',
-    'less': '🎨',
+    html: '🌐',
+    css: '🎨',
+    scss: '🎨',
+    sass: '🎨',
+    less: '🎨',
 
     // Config
-    'json': '📋',
-    'yaml': '📋',
-    'yml': '📋',
-    'toml': '📋',
-    'xml': '📋',
+    json: '📋',
+    yaml: '📋',
+    yml: '📋',
+    toml: '📋',
+    xml: '📋',
 
     // Markdown/Docs
-    'md': '📝',
-    'mdx': '📝',
-    'txt': '📄',
+    md: '📝',
+    mdx: '📝',
+    txt: '📄',
 
     // Images
-    'png': '🖼️',
-    'jpg': '🖼️',
-    'jpeg': '🖼️',
-    'gif': '🖼️',
-    'svg': '🖼️',
-    'webp': '🖼️',
+    png: '🖼️',
+    jpg: '🖼️',
+    jpeg: '🖼️',
+    gif: '🖼️',
+    svg: '🖼️',
+    webp: '🖼️',
 
     // Other
-    'sh': '⚙️',
-    'bash': '⚙️',
-    'py': '🐍',
-    'rs': '🦀',
-    'go': '🐹',
-    'java': '☕',
-    'cpp': '⚙️',
-    'c': '⚙️',
+    sh: '⚙️',
+    bash: '⚙️',
+    py: '🐍',
+    rs: '🦀',
+    go: '🐹',
+    java: '☕',
+    cpp: '⚙️',
+    c: '⚙️',
   };
 
   return iconMap[ext || ''] || '📄';
@@ -98,7 +98,7 @@ function getFileIcon(node: FileNode): string {
  * Convert FileNode tree to TreeNodeData for TreeView
  */
 function convertToTreeNodeData(nodes: FileNode[]): TreeNodeData[] {
-  return nodes.map(node => ({
+  return nodes.map((node) => ({
     id: node.id,
     label: node.name,
     data: node,
@@ -132,7 +132,7 @@ export const FileTree = defineComponent<FileTreeProps>((props) => {
     if (keys.length > 0) {
       const nodeId = keys[0];
       const allNodes = flattenFileTree(fileTree());
-      const node = allNodes.find(n => n.id === nodeId);
+      const node = allNodes.find((n) => n.id === nodeId);
 
       if (node && node.type === 'file') {
         props.onFileSelect?.(nodeId);
@@ -167,7 +167,7 @@ export const FileTree = defineComponent<FileTreeProps>((props) => {
       const nodeId = nodeElement.getAttribute('data-node-id');
       if (nodeId) {
         const allNodes = flattenFileTree(fileTree());
-        const node = allNodes.find(n => n.id === nodeId);
+        const node = allNodes.find((n) => n.id === nodeId);
 
         if (node) {
           contextMenuNode.set(node);
@@ -228,7 +228,7 @@ export const FileTree = defineComponent<FileTreeProps>((props) => {
         }}
       >
         <Show when={() => fileNode.type === 'folder'}>
-          <span class="folder-icon">{() => isExpanded ? '📂' : '📁'}</span>
+          <span class="folder-icon">{() => (isExpanded ? '📂' : '📁')}</span>
         </Show>
         <Show when={() => fileNode.type === 'file'}>
           <span class="file-icon">{icon}</span>
@@ -267,11 +267,7 @@ export const FileTree = defineComponent<FileTreeProps>((props) => {
           class="search-input"
         />
         <Show when={() => searchTerm()}>
-          <button
-            class="clear-search-button"
-            onClick={clearSearch}
-            title="Clear search"
-          >
+          <button class="clear-search-button" onClick={clearSearch} title="Clear search">
             ×
           </button>
         </Show>
@@ -284,10 +280,7 @@ export const FileTree = defineComponent<FileTreeProps>((props) => {
           fallback={
             <div class="empty-tree">
               <p>No files yet</p>
-              <button
-                class="primary-button"
-                onClick={() => props.onFileCreate?.()}
-              >
+              <button class="primary-button" onClick={() => props.onFileCreate?.()}>
                 Create File
               </button>
             </div>
@@ -327,22 +320,13 @@ export const FileTree = defineComponent<FileTreeProps>((props) => {
           }}
           onClick={(e: Event) => e.stopPropagation()}
         >
-          <button
-            class="context-menu-item"
-            onClick={handleCreateFile}
-          >
+          <button class="context-menu-item" onClick={handleCreateFile}>
             ➕ New File
           </button>
-          <button
-            class="context-menu-item"
-            onClick={handleRename}
-          >
+          <button class="context-menu-item" onClick={handleRename}>
             ✏️ Rename
           </button>
-          <button
-            class="context-menu-item danger"
-            onClick={handleDelete}
-          >
+          <button class="context-menu-item danger" onClick={handleDelete}>
             🗑️ Delete
           </button>
         </div>

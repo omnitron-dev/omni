@@ -7,16 +7,17 @@
 import type { IconDefinition } from '../../../IconRegistry.js';
 
 export const DollarCircleIcon: IconDefinition = {
-  "id": "dollar-circle",
-  "content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\">\n    <path d=\"M22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12Z\" />\n    <path opacity=\"0.4\" d=\"M14.7317 10.063C14.6326 9.30039 13.7569 8.06817 12.1823 8.06814C10.3526 8.06811 9.58285 9.08141 9.42663 9.58807C9.18294 10.2657 9.23167 11.659 11.3762 11.811C14.0569 12.001 15.1308 12.3173 14.9941 13.9579C14.8575 15.5985 13.3632 15.9529 12.1823 15.9149C11.0013 15.8769 9.06912 15.3345 8.99414 13.8753M11.9948 7V8.07177M11.9948 15.905V17\" stroke-linecap=\"round\" />\n  </svg>",
-  "viewBox": "0 0 24 24",
-  "width": 24,
-  "height": 24,
-  "metadata": {
-    "preset": "twotone",
-    "originalName": "DollarCircleIcon",
-    "elementsCount": 2,
-    "hasOpacity": true,
-    "hasFill": false
-  }
+  id: 'dollar-circle',
+  content:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">\n    <path d="M22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12Z" />\n    <path opacity="0.4" d="M14.7317 10.063C14.6326 9.30039 13.7569 8.06817 12.1823 8.06814C10.3526 8.06811 9.58285 9.08141 9.42663 9.58807C9.18294 10.2657 9.23167 11.659 11.3762 11.811C14.0569 12.001 15.1308 12.3173 14.9941 13.9579C14.8575 15.5985 13.3632 15.9529 12.1823 15.9149C11.0013 15.8769 9.06912 15.3345 8.99414 13.8753M11.9948 7V8.07177M11.9948 15.905V17" stroke-linecap="round" />\n  </svg>',
+  viewBox: '0 0 24 24',
+  width: 24,
+  height: 24,
+  metadata: {
+    preset: 'twotone',
+    originalName: 'DollarCircleIcon',
+    elementsCount: 2,
+    hasOpacity: true,
+    hasFill: false,
+  },
 };

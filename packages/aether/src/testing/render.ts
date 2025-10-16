@@ -14,10 +14,7 @@ const mountedContainers = new Set<HTMLElement>();
 /**
  * Render a component for testing
  */
-export function render(
-  ui: () => JSXElement,
-  options: RenderOptions = {}
-): RenderResult {
+export function render(ui: () => JSXElement, options: RenderOptions = {}): RenderResult {
   const {
     container = document.body.appendChild(document.createElement('div')),
     baseElement = container,
@@ -31,9 +28,7 @@ export function render(
   const currentUi = ui; // Track the current UI function
 
   const mount = (component: () => JSXElement) => {
-    const element = wrapper
-      ? wrapper({ children: component() })
-      : component();
+    const element = wrapper ? wrapper({ children: component() }) : component();
 
     dispose = createRoot((disposeFn) => {
       if (hydrate && container.firstChild) {
@@ -85,7 +80,8 @@ export function render(
       if (newUi && newUi !== currentUi) {
         Promise.resolve().then(() => {
           // Check if we should restore (only if no other rerender happened)
-          if (container.innerHTML !== '') { // Still mounted
+          if (container.innerHTML !== '') {
+            // Still mounted
             if (dispose) dispose();
             container.innerHTML = '';
             mount(currentUi);

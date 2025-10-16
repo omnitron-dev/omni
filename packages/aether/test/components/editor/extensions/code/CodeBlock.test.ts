@@ -292,9 +292,7 @@ describe('CodeBlockExtension', () => {
 
     it('should toggle code block off to paragraph', () => {
       const commands = extension.getCommands();
-      const doc = schema.node('doc', null, [
-        schema.node('code_block', null, [schema.text('test')]),
-      ]);
+      const doc = schema.node('doc', null, [schema.node('code_block', null, [schema.text('test')])]);
 
       const state = EditorState.create({
         schema,
@@ -316,9 +314,7 @@ describe('CodeBlockExtension', () => {
       const commands = extension.getCommands();
       const state = EditorState.create({
         schema,
-        doc: schema.node('doc', null, [
-          schema.node('paragraph', null, [schema.text('preserved text')]),
-        ]),
+        doc: schema.node('doc', null, [schema.node('paragraph', null, [schema.text('preserved text')])]),
       });
 
       let newState = state;
@@ -426,9 +422,7 @@ describe('CodeBlockExtension', () => {
       });
 
       // Move to end of code block
-      const tr = state.tr.setSelection(
-        state.selection.constructor.near(doc.resolve(5)) as any,
-      );
+      const tr = state.tr.setSelection(state.selection.constructor.near(doc.resolve(5)) as any);
       const stateAtEnd = state.apply(tr);
 
       let newState = stateAtEnd;
@@ -478,9 +472,7 @@ describe('CodeBlockExtension', () => {
       ext.setEditor(createMockEditor(customSchema));
 
       const shortcuts = ext.getKeyboardShortcuts();
-      const doc = customSchema.node('doc', null, [
-        customSchema.node('code_block', null, [customSchema.text('test')]),
-      ]);
+      const doc = customSchema.node('doc', null, [customSchema.node('code_block', null, [customSchema.text('test')])]);
 
       const state = EditorState.create({
         schema: customSchema,

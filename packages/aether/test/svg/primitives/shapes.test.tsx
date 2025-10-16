@@ -18,7 +18,7 @@ import {
   G,
   Use,
   Symbol,
-  Defs
+  Defs,
 } from '../../../src/svg/primitives/shapes';
 import { createSignal } from '../../../src/core/reactivity/signal';
 import { render, cleanup, nextTick } from '../../test-utils';

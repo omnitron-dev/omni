@@ -1,15 +1,4 @@
-import {
-  log,
-  text,
-  prism,
-  intro,
-  outro,
-  select,
-  confirm,
-  spinner,
-  isCancel,
-  multiselect
-} from '@xec-sh/kit';
+import { log, text, prism, intro, outro, select, confirm, spinner, isCancel, multiselect } from '@xec-sh/kit';
 
 import { ConfigurationManager } from '../config/configuration-manager.js';
 
@@ -69,10 +58,10 @@ export class InteractiveHelpers {
         if (options.type && options.type !== 'all') {
           // Map legacy types to new types
           const typeMap: Record<string, TargetType> = {
-            'ssh': 'ssh',
-            'docker': 'docker',
-            'kubernetes': 'kubernetes',
-            'local': 'local'
+            ssh: 'ssh',
+            docker: 'docker',
+            kubernetes: 'kubernetes',
+            local: 'local',
           };
 
           if (targetType !== typeMap[options.type]) {
@@ -91,8 +80,7 @@ export class InteractiveHelpers {
     }
 
     // Add local target if not already present and requested
-    if ((options.type === 'all' || options.type === 'local') &&
-      !targets.some(t => t.type === 'local')) {
+    if ((options.type === 'all' || options.type === 'local') && !targets.some((t) => t.type === 'local')) {
       targets.push({
         id: 'local',
         type: 'local',
@@ -102,7 +90,7 @@ export class InteractiveHelpers {
       });
     }
 
-    const targetOptions = targets.map(target => ({
+    const targetOptions = targets.map((target) => ({
       value: target,
       label: `${this.getTargetIcon(target.type)} ${target.id} ${prism.gray(`(${target.type})`)}`,
     }));
@@ -129,7 +117,10 @@ export class InteractiveHelpers {
       if (this.isCancelled(selected)) return null;
 
       // Handle custom target selection
-      if (Array.isArray(selected) && selected.some((t: any) => typeof t === 'object' && t && 'custom' in t && t.custom)) {
+      if (
+        Array.isArray(selected) &&
+        selected.some((t: any) => typeof t === 'object' && t && 'custom' in t && t.custom)
+      ) {
         const customTarget = await this.enterCustomTarget();
         if (!customTarget) return null;
         return [customTarget];
@@ -183,9 +174,7 @@ export class InteractiveHelpers {
         if (this.isCancelled(hostInput)) return null;
 
         const hostStr = String(hostInput);
-        const [user, host] = hostStr.includes('@')
-          ? hostStr.split('@')
-          : [process.env['USER'] || 'root', hostStr];
+        const [user, host] = hostStr.includes('@') ? hostStr.split('@') : [process.env['USER'] || 'root', hostStr];
 
         return {
           id: `ssh:${hostStr}`,
@@ -303,7 +292,7 @@ export class InteractiveHelpers {
       return null;
     }
 
-    const options: Array<{ value: T | { custom: boolean }, label: string }> = items.map(item => ({
+    const options: Array<{ value: T | { custom: boolean }; label: string }> = items.map((item) => ({
       value: item,
       label: getLabelFn(item),
     }));
@@ -356,7 +345,7 @@ export class InteractiveHelpers {
       return null;
     }
 
-    const options: Array<{ value: T, label: string }> = items.map(item => ({
+    const options: Array<{ value: T; label: string }> = items.map((item) => ({
       value: item,
       label: getLabelFn(item),
     }));

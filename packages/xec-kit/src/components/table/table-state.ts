@@ -7,10 +7,7 @@ import type { TableState, SortColumn, InteractiveTableOptions } from './types.js
 /**
  * Create initial table state
  */
-export function createTableState<T>(
-  data: T[],
-  options: InteractiveTableOptions<T>
-): TableState<T> {
+export function createTableState<T>(data: T[], options: InteractiveTableOptions<T>): TableState<T> {
   const pageSize = options.pageSize ?? 10;
 
   return {
@@ -32,11 +29,7 @@ export function createTableState<T>(
 /**
  * Apply filter to data
  */
-export function filterData<T>(
-  data: T[],
-  query: string,
-  options: InteractiveTableOptions<T>
-): T[] {
+export function filterData<T>(data: T[], query: string, options: InteractiveTableOptions<T>): T[] {
   if (!query) {
     return data;
   }

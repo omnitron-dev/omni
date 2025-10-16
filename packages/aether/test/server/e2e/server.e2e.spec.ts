@@ -34,11 +34,7 @@ describe('Server E2E Tests', () => {
   describe('Production Server E2E', () => {
     beforeAll(async () => {
       // Start production server
-      serverProcess = spawn('node', [
-        path.join(__dirname, 'fixtures', 'prod-server.js'),
-        '--port',
-        port.toString(),
-      ]);
+      serverProcess = spawn('node', [path.join(__dirname, 'fixtures', 'prod-server.js'), '--port', port.toString()]);
 
       // Wait for server to start
       await waitForServer(`http://localhost:${port}`);
@@ -110,11 +106,7 @@ describe('Server E2E Tests', () => {
       devPort = Math.floor(Math.random() * 10000) + 50000;
 
       // Start development server
-      devProcess = spawn('node', [
-        path.join(__dirname, 'fixtures', 'dev-server.js'),
-        '--port',
-        devPort.toString(),
-      ]);
+      devProcess = spawn('node', [path.join(__dirname, 'fixtures', 'dev-server.js'), '--port', devPort.toString()]);
 
       // Wait for server to start
       await waitForServer(`http://localhost:${devPort}`);
@@ -177,7 +169,7 @@ describe('Server E2E Tests', () => {
       const response = await fetch(`http://localhost:${devPort}/`, {
         method: 'OPTIONS',
         headers: {
-          'Origin': 'http://example.com',
+          Origin: 'http://example.com',
           'Access-Control-Request-Method': 'GET',
         },
       });
@@ -238,16 +230,22 @@ describe('Server E2E Tests', () => {
 
       const cliProcess = spawn('node', [
         path.join(__dirname, 'fixtures', 'cli-wrapper.js'),
-        '--port', cliPort.toString(),
-        '--host', 'localhost',
-        '--mode', 'production',
-        '--ssr-mode', 'ssg',
+        '--port',
+        cliPort.toString(),
+        '--host',
+        'localhost',
+        '--mode',
+        'production',
+        '--ssr-mode',
+        'ssg',
         '--cors',
         '--compression',
         '--cache',
         '--metrics',
-        '--health-endpoint', '/_health',
-        '--ready-endpoint', '/_ready',
+        '--health-endpoint',
+        '/_health',
+        '--ready-endpoint',
+        '/_ready',
       ]);
 
       try {
@@ -372,11 +370,7 @@ describe('Server E2E Tests', () => {
     beforeAll(async () => {
       perfPort = Math.floor(Math.random() * 500) + 55000;
 
-      perfProcess = spawn('node', [
-        path.join(__dirname, 'fixtures', 'prod-server.js'),
-        '--port',
-        perfPort.toString(),
-      ]);
+      perfProcess = spawn('node', [path.join(__dirname, 'fixtures', 'prod-server.js'), '--port', perfPort.toString()]);
 
       // Capture output for debugging
       perfProcess.stdout?.on('data', (data) => console.log(`[perf-test] ${data}`));
@@ -398,9 +392,7 @@ describe('Server E2E Tests', () => {
       const startTime = Date.now();
 
       for (let i = 0; i < requests / concurrency; i++) {
-        const batch = Array.from({ length: concurrency }, () =>
-          fetch(`http://localhost:${perfPort}/`)
-        );
+        const batch = Array.from({ length: concurrency }, () => fetch(`http://localhost:${perfPort}/`));
 
         const responses = await Promise.all(batch);
         responses.forEach((response) => {
@@ -471,9 +463,7 @@ describe('Server E2E Tests', () => {
       await new Promise((resolve) => setTimeout(resolve, 500));
 
       // Server should be down now
-      await expect(
-        fetch(`http://localhost:${shutdownPort}/`)
-      ).rejects.toThrow();
+      await expect(fetch(`http://localhost:${shutdownPort}/`)).rejects.toThrow();
     });
   });
 });

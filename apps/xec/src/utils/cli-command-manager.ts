@@ -34,7 +34,7 @@ export class CliCommandManager {
     this.scriptLoader = getScriptLoader({
       verbose: process.env['XEC_DEBUG'] === 'true',
       preferredCDN: 'esm.sh',
-      cache: true
+      cache: true,
     });
   }
 
@@ -43,10 +43,7 @@ export class CliCommandManager {
    */
   private initializeCommandDirs(): void {
     // Default directories
-    this.commandDirs = [
-      path.join(process.cwd(), '.xec', 'commands'),
-      path.join(process.cwd(), '.xec', 'cli')
-    ];
+    this.commandDirs = [path.join(process.cwd(), '.xec', 'commands'), path.join(process.cwd(), '.xec', 'cli')];
 
     // Check parent directories (up to 3 levels)
     let currentDir = process.cwd();
@@ -92,8 +89,8 @@ export class CliCommandManager {
 
     // Merge (dynamic overrides built-in if same name)
     const allCommands = new Map<string, CliCommand>();
-    builtIn.forEach(cmd => allCommands.set(cmd.name, cmd));
-    dynamic.forEach(cmd => allCommands.set(cmd.name, cmd));
+    builtIn.forEach((cmd) => allCommands.set(cmd.name, cmd));
+    dynamic.forEach((cmd) => allCommands.set(cmd.name, cmd));
 
     this.commands = allCommands;
 
@@ -118,8 +115,8 @@ export class CliCommandManager {
 
     // Merge (dynamic overrides built-in if same name)
     const allCommands = new Map<string, CliCommand>();
-    builtIn.forEach(cmd => allCommands.set(cmd.name, cmd));
-    dynamic.forEach(cmd => allCommands.set(cmd.name, cmd));
+    builtIn.forEach((cmd) => allCommands.set(cmd.name, cmd));
+    dynamic.forEach((cmd) => allCommands.set(cmd.name, cmd));
 
     this.commands = allCommands;
     return Array.from(allCommands.values());
@@ -132,7 +129,7 @@ export class CliCommandManager {
     const commandsDir = path.join(__dirname, '../commands');
     const commands: CliCommand[] = [];
 
-    if (!await fs.pathExists(commandsDir)) {
+    if (!(await fs.pathExists(commandsDir))) {
       return commands;
     }
 
@@ -153,7 +150,7 @@ export class CliCommandManager {
         type: 'built-in',
         path: filePath,
         loaded: true,
-        ...metadata
+        ...metadata,
       });
     }
 
@@ -183,7 +180,10 @@ export class CliCommandManager {
 
     // DEBUG: Log discovered commands
     if (process.env['XEC_DEBUG']) {
-      console.log(`[DEBUG] Discovered ${commands.length} dynamic commands:`, commands.map(c => c.name));
+      console.log(
+        `[DEBUG] Discovered ${commands.length} dynamic commands:`,
+        commands.map((c) => c.name)
+      );
     }
 
     return commands;
@@ -192,11 +192,7 @@ export class CliCommandManager {
   /**
    * Recursively discover commands in directory
    */
-  private async discoverCommandsInDirectory(
-    dir: string,
-    commands: CliCommand[],
-    prefix: string
-  ): Promise<void> {
+  private async discoverCommandsInDirectory(dir: string, commands: CliCommand[], prefix: string): Promise<void> {
     try {
       const entries = await fs.readdir(dir, { withFileTypes: true });
 
@@ -216,7 +212,7 @@ export class CliCommandManager {
             type: 'dynamic',
             path: fullPath,
             loaded: false,
-            ...metadata
+            ...metadata,
           });
         }
       }
@@ -237,11 +233,7 @@ export class CliCommandManager {
     }
 
     for (const cmd of dynamicCommands) {
-      const result = await this.scriptLoader.loadDynamicCommand(
-        cmd.path,
-        program,
-        cmd.name
-      );
+      const result = await this.scriptLoader.loadDynamicCommand(cmd.path, program, cmd.name);
 
       if (result.success) {
         cmd.loaded = true;
@@ -297,7 +289,7 @@ export class CliCommandManager {
               return {
                 description: cmd.description(),
                 aliases: cmd.aliases(),
-                usage: cmd.usage()
+                usage: cmd.usage(),
               };
             }
           }
@@ -325,7 +317,7 @@ export class CliCommandManager {
       /\/\*\*[\s\S]*?\*\s*(.+?)[\s\S]*?\*\//,
       /\.description\s*\(\s*['"`]([^'"`]+)['"`]\s*\)/,
       /description\s*:\s*['"`]([^'"`]+)['"`]/,
-      /\/\/\s*(?:Command|Description):\s*(.+)/i
+      /\/\/\s*(?:Command|Description):\s*(.+)/i,
     ];
 
     for (const pattern of patterns) {
@@ -337,17 +329,17 @@ export class CliCommandManager {
 
     // Default descriptions
     const defaults: Record<string, string> = {
-      'config': 'Manage xec configuration',
-      'copy': 'Copy files between local and remote systems',
-      'forward': 'Set up port forwarding and tunnels',
-      'in': 'Execute commands in containers or pods',
-      'inspect': 'Inspect xec resources and configuration',
-      'logs': 'View logs from various sources',
-      'new': 'Create new xec resources',
-      'on': 'Execute commands on remote hosts via SSH',
-      'run': 'Run scripts and evaluate code',
-      'secrets': 'Manage encrypted secrets',
-      'watch': 'Watch files and execute commands on changes'
+      config: 'Manage xec configuration',
+      copy: 'Copy files between local and remote systems',
+      forward: 'Set up port forwarding and tunnels',
+      in: 'Execute commands in containers or pods',
+      inspect: 'Inspect xec resources and configuration',
+      logs: 'View logs from various sources',
+      new: 'Create new xec resources',
+      on: 'Execute commands on remote hosts via SSH',
+      run: 'Run scripts and evaluate code',
+      secrets: 'Manage encrypted secrets',
+      watch: 'Watch files and execute commands on changes',
     };
 
     return defaults[commandName];
@@ -374,12 +366,8 @@ export class CliCommandManager {
   /**
    * Register commands recursively
    */
-  private registerCommandsRecursively(
-    cmd: Command,
-    registry: CommandRegistry,
-    parentName: string = ''
-  ): void {
-    cmd.commands.forEach(subCmd => {
+  private registerCommandsRecursively(cmd: Command, registry: CommandRegistry, parentName: string = ''): void {
+    cmd.commands.forEach((subCmd) => {
       const info = this.extractCommandInfo(subCmd);
       if (parentName) {
         info.command = `${parentName} ${info.command}`;
@@ -401,7 +389,7 @@ export class CliCommandManager {
       command: cmd.name(),
       description: cmd.description(),
       aliases: cmd.aliases(),
-      usage: cmd.usage() || `xec ${cmd.name()} [options]`
+      usage: cmd.usage() || `xec ${cmd.name()} [options]`,
     };
   }
 
@@ -410,8 +398,8 @@ export class CliCommandManager {
    */
   private reportLoadingSummary(): void {
     const dynamic = this.getDynamicCommands();
-    const loaded = dynamic.filter(cmd => cmd.loaded);
-    const failed = dynamic.filter(cmd => !cmd.loaded && cmd.error);
+    const loaded = dynamic.filter((cmd) => cmd.loaded);
+    const failed = dynamic.filter((cmd) => !cmd.loaded && cmd.error);
 
     if (process.env['XEC_DEBUG'] && dynamic.length > 0) {
       const logger = log;
@@ -419,7 +407,7 @@ export class CliCommandManager {
 
       if (failed.length > 0) {
         logger.warning('Failed commands:');
-        failed.forEach(cmd => {
+        failed.forEach((cmd) => {
           logger.error(`  - ${cmd.name}: ${cmd.error}`);
         });
       }
@@ -444,7 +432,7 @@ export class CliCommandManager {
     // Then try aliases
     for (const cmd of program.commands) {
       const aliases = cmd.aliases();
-      if (aliases && aliases.some(alias => alias.toLowerCase() === searchTerm)) {
+      if (aliases && aliases.some((alias) => alias.toLowerCase() === searchTerm)) {
         return cmd;
       }
     }
@@ -472,28 +460,28 @@ export class CliCommandManager {
    * Get built-in commands
    */
   getBuiltInCommands(): CliCommand[] {
-    return this.getCommands().filter(cmd => cmd.type === 'built-in');
+    return this.getCommands().filter((cmd) => cmd.type === 'built-in');
   }
 
   /**
    * Get dynamic commands
    */
   getDynamicCommands(): CliCommand[] {
-    return this.getCommands().filter(cmd => cmd.type === 'dynamic');
+    return this.getCommands().filter((cmd) => cmd.type === 'dynamic');
   }
 
   /**
    * Get loaded commands
    */
   getLoadedCommands(): CliCommand[] {
-    return this.getCommands().filter(cmd => cmd.loaded);
+    return this.getCommands().filter((cmd) => cmd.loaded);
   }
 
   /**
    * Get failed commands
    */
   getFailedCommands(): CliCommand[] {
-    return this.getCommands().filter(cmd => !cmd.loaded && cmd.error);
+    return this.getCommands().filter((cmd) => !cmd.loaded && cmd.error);
   }
 
   /**
@@ -574,14 +562,14 @@ export default function command(program) {
       if (!content.includes('export default') && !content.includes('export function command')) {
         return {
           valid: false,
-          error: 'Command file must export a default function or "command" function'
+          error: 'Command file must export a default function or "command" function',
         };
       }
 
       if (!content.includes('.command(') && !content.includes('program.command(')) {
         return {
           valid: false,
-          error: 'Command file must register at least one command'
+          error: 'Command file must register at least one command',
         };
       }
 
@@ -589,7 +577,7 @@ export default function command(program) {
     } catch (error) {
       return {
         valid: false,
-        error: error instanceof Error ? error.message : 'Failed to read command file'
+        error: error instanceof Error ? error.message : 'Failed to read command file',
       };
     }
   }
@@ -630,9 +618,10 @@ export async function discoverAllCommands(): Promise<CliCommand[]> {
 export async function loadDynamicCommands(program: Command): Promise<string[]> {
   const manager = getCliCommandManager();
   await manager.discoverAndLoad(program);
-  return manager.getDynamicCommands()
-    .filter(cmd => cmd.loaded)
-    .map(cmd => cmd.name);
+  return manager
+    .getDynamicCommands()
+    .filter((cmd) => cmd.loaded)
+    .map((cmd) => cmd.name);
 }
 
 /**

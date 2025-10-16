@@ -44,13 +44,14 @@ const routes = [
   },
 ];
 
-// Create server with custom middleware for /_info endpoint
+// Create dev server (supports middleware)
 const server = await createServer({
-  dev: false,
+  dev: true,
   mode: 'ssr',
   port,
   host: 'localhost',
   routes,
+  compression: false,
 });
 
 // Add custom middleware for /_info endpoint

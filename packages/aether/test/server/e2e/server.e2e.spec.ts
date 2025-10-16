@@ -211,21 +211,17 @@ describe('Server E2E Tests', () => {
     });
   });
 
-  describe.skip('CLI Integration E2E', () => {
-    // SKIP: Requires 'npx aether' to be available, which needs package to be installed/linked
+  describe('CLI Integration E2E', () => {
     it('should start server with CLI command', async () => {
-      const cliPort = Math.floor(Math.random() * 10000) + 60000;
+      const cliPort = Math.floor(Math.random() * 5000) + 50000;
 
-      const cliProcess = spawn('npx', [
-        'aether',
-        'server',
+      const cliProcess = spawn('node', [
+        path.join(__dirname, 'fixtures', 'cli-wrapper.js'),
         '--port',
         cliPort.toString(),
         '--mode',
         'development',
-      ], {
-        cwd: path.join(__dirname, '../../..'),
-      });
+      ]);
 
       try {
         await waitForServer(`http://localhost:${cliPort}`, 10000);
@@ -238,11 +234,10 @@ describe('Server E2E Tests', () => {
     });
 
     it('should accept all CLI options', async () => {
-      const cliPort = Math.floor(Math.random() * 10000) + 61000;
+      const cliPort = Math.floor(Math.random() * 4000) + 51000;
 
-      const cliProcess = spawn('npx', [
-        'aether',
-        'server',
+      const cliProcess = spawn('node', [
+        path.join(__dirname, 'fixtures', 'cli-wrapper.js'),
         '--port', cliPort.toString(),
         '--host', 'localhost',
         '--mode', 'production',
@@ -253,9 +248,7 @@ describe('Server E2E Tests', () => {
         '--metrics',
         '--health-endpoint', '/_health',
         '--ready-endpoint', '/_ready',
-      ], {
-        cwd: path.join(__dirname, '../../..'),
-      });
+      ]);
 
       try {
         await waitForServer(`http://localhost:${cliPort}`, 10000);
@@ -279,10 +272,9 @@ describe('Server E2E Tests', () => {
     });
   });
 
-  describe.skip('Multi-Runtime E2E', () => {
-    // SKIP: Runtime tests require complex process spawning and are better tested in integration tests
+  describe('Multi-Runtime E2E', () => {
     it('should run on Node.js', async () => {
-      const nodePort = Math.floor(Math.random() * 10000) + 62000;
+      const nodePort = Math.floor(Math.random() * 3000) + 62000;
 
       const nodeProcess = spawn('node', [
         path.join(__dirname, 'fixtures', 'runtime-test.js'),
@@ -290,8 +282,12 @@ describe('Server E2E Tests', () => {
         nodePort.toString(),
       ]);
 
+      // Capture output for debugging
+      nodeProcess.stdout?.on('data', (data) => console.log(`[runtime-test] ${data}`));
+      nodeProcess.stderr?.on('data', (data) => console.error(`[runtime-test error] ${data}`));
+
       try {
-        await waitForServer(`http://localhost:${nodePort}`);
+        await waitForServer(`http://localhost:${nodePort}`, 15000);
 
         const response = await fetch(`http://localhost:${nodePort}/`);
         expect(response.status).toBe(200);
@@ -312,7 +308,7 @@ describe('Server E2E Tests', () => {
         return;
       }
 
-      const bunPort = Math.floor(Math.random() * 10000) + 63000;
+      const bunPort = Math.floor(Math.random() * 1000) + 60000;
 
       const bunProcess = spawn('bun', [
         path.join(__dirname, 'fixtures', 'runtime-test.js'),
@@ -321,7 +317,7 @@ describe('Server E2E Tests', () => {
       ]);
 
       try {
-        await waitForServer(`http://localhost:${bunPort}`);
+        await waitForServer(`http://localhost:${bunPort}`, 10000);
 
         const response = await fetch(`http://localhost:${bunPort}/`);
         expect(response.status).toBe(200);
@@ -342,7 +338,7 @@ describe('Server E2E Tests', () => {
         return;
       }
 
-      const denoPort = Math.floor(Math.random() * 10000) + 64000;
+      const denoPort = Math.floor(Math.random() * 1000) + 61000;
 
       const denoProcess = spawn('deno', [
         'run',
@@ -355,7 +351,7 @@ describe('Server E2E Tests', () => {
       ]);
 
       try {
-        await waitForServer(`http://localhost:${denoPort}`);
+        await waitForServer(`http://localhost:${denoPort}`, 10000);
 
         const response = await fetch(`http://localhost:${denoPort}/`);
         expect(response.status).toBe(200);
@@ -369,13 +365,12 @@ describe('Server E2E Tests', () => {
     });
   });
 
-  describe.skip('Performance E2E', () => {
-    // SKIP: Performance tests are long-running and better tested in integration tests
+  describe('Performance E2E', () => {
     let perfPort: number;
     let perfProcess: ChildProcess;
 
     beforeAll(async () => {
-      perfPort = Math.floor(Math.random() * 10000) + 65000;
+      perfPort = Math.floor(Math.random() * 500) + 55000;
 
       perfProcess = spawn('node', [
         path.join(__dirname, 'fixtures', 'prod-server.js'),
@@ -383,8 +378,12 @@ describe('Server E2E Tests', () => {
         perfPort.toString(),
       ]);
 
-      await waitForServer(`http://localhost:${perfPort}`);
-    });
+      // Capture output for debugging
+      perfProcess.stdout?.on('data', (data) => console.log(`[perf-test] ${data}`));
+      perfProcess.stderr?.on('data', (data) => console.error(`[perf-test error] ${data}`));
+
+      await waitForServer(`http://localhost:${perfPort}`, 15000);
+    }, 20000);
 
     afterAll(() => {
       if (perfProcess) {
@@ -439,10 +438,9 @@ describe('Server E2E Tests', () => {
     });
   });
 
-  describe.skip('Graceful Shutdown E2E', () => {
-    // SKIP: Graceful shutdown is thoroughly tested in integration tests
+  describe('Graceful Shutdown E2E', () => {
     it('should shutdown gracefully on SIGTERM', async () => {
-      const shutdownPort = Math.floor(Math.random() * 10000) + 66000;
+      const shutdownPort = Math.floor(Math.random() * 500) + 56000;
 
       const shutdownProcess = spawn('node', [
         path.join(__dirname, 'fixtures', 'graceful-shutdown-test.js'),
@@ -450,10 +448,17 @@ describe('Server E2E Tests', () => {
         shutdownPort.toString(),
       ]);
 
-      await waitForServer(`http://localhost:${shutdownPort}`);
+      // Capture output for debugging
+      shutdownProcess.stdout?.on('data', (data) => console.log(`[shutdown-test] ${data}`));
+      shutdownProcess.stderr?.on('data', (data) => console.error(`[shutdown-test error] ${data}`));
+
+      await waitForServer(`http://localhost:${shutdownPort}`, 15000);
 
       // Start a long-running request
       const longRequest = fetch(`http://localhost:${shutdownPort}/slow`);
+
+      // Wait a bit to ensure request is in progress
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Send SIGTERM
       shutdownProcess.kill('SIGTERM');
@@ -461,6 +466,9 @@ describe('Server E2E Tests', () => {
       // Should complete the request before shutting down
       const response = await longRequest;
       expect(response.status).toBe(200);
+
+      // Wait for server to fully shut down
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
       // Server should be down now
       await expect(

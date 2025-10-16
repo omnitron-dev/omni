@@ -58,16 +58,8 @@ export {
   clearLazyCache,
 } from './lazy.js';
 
-// SSR streaming
-export {
-  streamSuspenseBoundaries,
-  createSSRSuspenseContext,
-  createSuspensePlaceholder,
-  extractSuspenseBoundaries,
-  renderWithSuspenseStreaming,
-  renderToReadableStreamWithSuspense,
-  hydrateSuspenseBoundaries,
-} from './streaming.js';
+// SSR streaming exports removed - now available at @omnitron-dev/aether/suspense/server
+// This prevents Node.js 'stream' module from leaking into browser bundles
 
 // Types
 export type {

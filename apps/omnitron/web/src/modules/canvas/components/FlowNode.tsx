@@ -70,7 +70,7 @@ export const FlowNode = defineComponent<FlowNodeProps>((props) => {
           left: `${props.node.position.x}px`,
           top: `${props.node.position.y}px`,
           transform: 'translate(-50%, -50%)',
-          opacity: opacity,
+          opacity,
           display: visible ? 'block' : 'none',
           borderColor: color,
         }}

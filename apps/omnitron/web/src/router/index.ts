@@ -111,28 +111,28 @@ export const router = createRouter({
 });
 
 // Navigation guards
-router.beforeEach((to, from, next) => {
+router.beforeEach((context) => {
   // Update document title
-  if (to.meta?.title) {
-    document.title = to.meta.title as string;
+  if (context.meta?.title) {
+    document.title = context.meta.title as string;
   }
 
   // Check authentication if required
-  if (to.meta?.requiresAuth) {
+  if (context.meta?.requiresAuth) {
     // TODO: Implement auth check
     // const isAuthenticated = checkAuth();
     // if (!isAuthenticated) {
-    //   return next('/login');
+    //   return { redirect: '/login' };
     // }
   }
 
-  next();
+  return true; // Allow navigation
 });
 
 // After each navigation
 router.afterEach((to, from) => {
   // Log navigation for analytics
-  console.log(`[Router] Navigated from ${from.path} to ${to.path}`);
+  console.log(`[Router] Navigated from ${from?.path ?? 'null'} to ${to.path}`);
 
   // Send analytics event
   // analytics.track('page_view', { path: to.path });

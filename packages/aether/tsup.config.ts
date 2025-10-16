@@ -21,6 +21,7 @@ export default defineConfig({
     'store/index': 'src/store/index.ts',
     'data/index': 'src/data/index.ts',
     'suspense/index': 'src/suspense/index.ts',
+    'suspense/server': 'src/suspense/server.ts',
     'i18n/index': 'src/i18n/index.ts',
     'styling/index': 'src/styling/index.ts',
     'theming/index': 'src/theming/index.ts',
@@ -59,6 +60,8 @@ export default defineConfig({
     'fs',
     'path',
     'crypto',
+    'stream',
+    'node:stream',
   ],
   esbuildOptions(options) {
     // Allow jsx-runtime imports to be resolved after build

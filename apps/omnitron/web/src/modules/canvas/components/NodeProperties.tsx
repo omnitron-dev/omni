@@ -6,8 +6,8 @@
  */
 
 import { defineComponent, computed } from '@omnitron-dev/aether';
-import { PropertyGrid } from '@omnitron-dev/aether/forms';
-import type { PropertyDescriptor } from '@omnitron-dev/aether/forms';
+import { PropertyGrid } from '@omnitron-dev/aether/components/forms';
+import type { PropertyDescriptor } from '@omnitron-dev/aether/components/forms';
 import { Show } from '@omnitron-dev/aether/control-flow';
 import { FlowService, inject } from '../services/flow.service';
 import { useCanvasStore } from '../stores/canvas.store';

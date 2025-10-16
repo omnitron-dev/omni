@@ -86,6 +86,10 @@
       "types": "./dist/suspense/index.d.ts",
       "import": "./dist/suspense/index.js"
     },
+    "./suspense/server": {
+      "types": "./dist/suspense/server.d.ts",
+      "import": "./dist/suspense/server.js"
+    },
     "./i18n": {
       "types": "./dist/i18n/index.d.ts",
       "import": "./dist/i18n/index.js"

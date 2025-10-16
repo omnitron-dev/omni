@@ -23,7 +23,10 @@
     "noUnusedParameters": true,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "useDefineForClassFields": false
   },
   "include": ["web/src/**/*", "web/src/**/*.tsx"],
   "exclude": ["web/src/**/*.spec.ts", "web/src/**/*.spec.tsx", "node_modules"],

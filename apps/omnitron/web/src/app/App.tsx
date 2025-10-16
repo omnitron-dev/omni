@@ -54,7 +54,7 @@ export const App = defineComponent(() => {
     <div class="omnitron-app" data-theme="dark">
       <Show when={appReady} fallback={<LoadingScreen />}>
         <Shell>
-          <RouterView router={router} />
+          <RouterView routes={router.config.routes} />
         </Shell>
       </Show>
     </div>
@@ -66,11 +66,9 @@ export const App = defineComponent(() => {
  *
  * Displayed while the application is initializing
  */
-const LoadingScreen = defineComponent(() => {
-  return () => (
+const LoadingScreen = defineComponent(() => () => (
     <div class="loading-screen">
       <div class="loading-spinner" />
       <p>Initializing Omnitron System...</p>
     </div>
-  );
-});
+  ));

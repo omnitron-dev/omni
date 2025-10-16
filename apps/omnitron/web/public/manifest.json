@@ -13,52 +13,16 @@
   "categories": ["developer", "productivity", "utilities"],
   "icons": [
     {
-      "src": "/icons/icon-72x72.png",
-      "sizes": "72x72",
-      "type": "image/png",
-      "purpose": "maskable any"
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
     },
     {
-      "src": "/icons/icon-96x96.png",
-      "sizes": "96x96",
-      "type": "image/png",
-      "purpose": "maskable any"
-    },
-    {
-      "src": "/icons/icon-128x128.png",
-      "sizes": "128x128",
-      "type": "image/png",
-      "purpose": "maskable any"
-    },
-    {
-      "src": "/icons/icon-144x144.png",
-      "sizes": "144x144",
-      "type": "image/png",
-      "purpose": "maskable any"
-    },
-    {
-      "src": "/icons/icon-152x152.png",
-      "sizes": "152x152",
-      "type": "image/png",
-      "purpose": "maskable any"
-    },
-    {
-      "src": "/icons/icon-192x192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable any"
-    },
-    {
-      "src": "/icons/icon-384x384.png",
-      "sizes": "384x384",
-      "type": "image/png",
-      "purpose": "maskable any"
-    },
-    {
-      "src": "/icons/icon-512x512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable any"
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
     }
   ],
   "screenshots": [
@@ -82,29 +46,25 @@
       "name": "Flow Canvas",
       "short_name": "Canvas",
       "description": "Open Flow Canvas",
-      "url": "/canvas",
-      "icons": [{ "src": "/icons/canvas-96.png", "sizes": "96x96" }]
+      "url": "/canvas"
     },
     {
       "name": "Code Editor",
       "short_name": "Editor",
       "description": "Open Code Editor",
-      "url": "/editor",
-      "icons": [{ "src": "/icons/editor-96.png", "sizes": "96x96" }]
+      "url": "/editor"
     },
     {
       "name": "Terminal",
       "short_name": "Terminal",
       "description": "Open Terminal",
-      "url": "/terminal",
-      "icons": [{ "src": "/icons/terminal-96.png", "sizes": "96x96" }]
+      "url": "/terminal"
     },
     {
       "name": "AI Chat",
       "short_name": "Chat",
       "description": "Open AI Chat",
-      "url": "/chat",
-      "icons": [{ "src": "/icons/chat-96.png", "sizes": "96x96" }]
+      "url": "/chat"
     }
   ],
   "share_target": {
@@ -125,7 +85,7 @@
   },
   "protocol_handlers": [
     {
-      "protocol": "omnitron",
+      "protocol": "web+omnitron",
       "url": "/protocol?url=%s"
     }
   ]

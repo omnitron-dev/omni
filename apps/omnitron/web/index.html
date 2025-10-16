@@ -20,27 +20,7 @@
     <link rel="manifest" href="/manifest.json" />
 
     <!-- iOS Icons -->
-    <link rel="apple-touch-icon" href="/icons/icon-152x152.png" />
-    <link rel="apple-touch-icon" sizes="72x72" href="/icons/icon-72x72.png" />
-    <link rel="apple-touch-icon" sizes="96x96" href="/icons/icon-96x96.png" />
-    <link rel="apple-touch-icon" sizes="128x128" href="/icons/icon-128x128.png" />
-    <link rel="apple-touch-icon" sizes="144x144" href="/icons/icon-144x144.png" />
-    <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152x152.png" />
-    <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192x192.png" />
-    <link rel="apple-touch-icon" sizes="384x384" href="/icons/icon-384x384.png" />
-    <link rel="apple-touch-icon" sizes="512x512" href="/icons/icon-512x512.png" />
-
-    <!-- iOS Splash Screens -->
-    <link rel="apple-touch-startup-image" href="/splash/splash-640x1136.png" media="(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2)" />
-    <link rel="apple-touch-startup-image" href="/splash/splash-750x1334.png" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2)" />
-    <link rel="apple-touch-startup-image" href="/splash/splash-828x1792.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2)" />
-    <link rel="apple-touch-startup-image" href="/splash/splash-1125x2436.png" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3)" />
-    <link rel="apple-touch-startup-image" href="/splash/splash-1242x2208.png" media="(device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3)" />
-    <link rel="apple-touch-startup-image" href="/splash/splash-1242x2688.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3)" />
-    <link rel="apple-touch-startup-image" href="/splash/splash-1536x2048.png" media="(device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2)" />
-    <link rel="apple-touch-startup-image" href="/splash/splash-1668x2224.png" media="(device-width: 834px) and (device-height: 1112px) and (-webkit-device-pixel-ratio: 2)" />
-    <link rel="apple-touch-startup-image" href="/splash/splash-1668x2388.png" media="(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2)" />
-    <link rel="apple-touch-startup-image" href="/splash/splash-2048x2732.png" media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2)" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
 
     <title>Omnitron</title>
   </head>
@@ -48,13 +28,16 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
 
-    <!-- Service Worker Registration -->
+    <!-- Service Worker Registration (Disabled in Development) -->
     <script>
-      if ('serviceWorker' in navigator) {
+      // Disable service worker in development to avoid caching issues
+      const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+      if ('serviceWorker' in navigator && !isDevelopment) {
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('/sw.js')
             .then((registration) => {
-              console.log('Service Worker registered:', registration);
+              console.log('[PWA] Service Worker registered:', registration);
 
               // Check for updates periodically
               setInterval(() => {
@@ -68,16 +51,18 @@
                   newWorker.addEventListener('statechange', () => {
                     if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                       // New service worker available, show update prompt
-                      console.log('New version available! Refresh to update.');
+                      console.log('[PWA] New version available! Refresh to update.');
                     }
                   });
                 }
               });
             })
             .catch((error) => {
-              console.error('Service Worker registration failed:', error);
+              console.error('[PWA] Service Worker registration failed:', error);
             });
         });
+      } else if (isDevelopment) {
+        console.log('[PWA] Service Worker disabled in development mode');
       }
     </script>
   </body>

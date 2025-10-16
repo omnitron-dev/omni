@@ -63,6 +63,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Skip chrome-extension, moz-extension, and other browser extension URLs
+  if (url.protocol === 'chrome-extension:' || url.protocol === 'moz-extension:' || url.protocol === 'safari-web-extension:') {
+    return;
+  }
+
   // Skip WebSocket connections
   if (url.protocol === 'ws:' || url.protocol === 'wss:') {
     return;
@@ -112,11 +117,15 @@ self.addEventListener('fetch', (event) => {
           return response;
         }
 
-        // Cache the response for future use
-        const responseToCache = response.clone();
-        caches.open(RUNTIME_CACHE).then((cache) => {
-          cache.put(request, responseToCache);
-        });
+        // Only cache HTTP/HTTPS requests (skip chrome-extension, etc.)
+        const requestUrl = new URL(request.url);
+        if (requestUrl.protocol === 'http:' || requestUrl.protocol === 'https:') {
+          // Cache the response for future use
+          const responseToCache = response.clone();
+          caches.open(RUNTIME_CACHE).then((cache) => {
+            cache.put(request, responseToCache);
+          });
+        }
 
         return response;
       });

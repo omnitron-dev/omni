@@ -6,6 +6,7 @@
 
 import { DIContainer } from './container.js';
 import { InjectionToken } from './tokens.js';
+import { setInjectorContext } from './inject.js';
 import type { Module, ModuleDefinition, ModuleWithProviders, Provider } from './types.js';
 
 /**
@@ -130,14 +131,14 @@ export function compileModule(rootModule: Module | ModuleWithProviders, parentCo
       const importedContainer = compileModule(importedModule, container);
 
       // Make ALL providers from imported modules available in this container
-      // This allows the importing module to use any provider from imported modules
+      // Register provider definitions directly to allow lazy instantiation
+      // This fixes the issue where hierarchy checks caused providers not to be registered
       if (importedModule.definition.providers) {
         importedModule.definition.providers.forEach((provider) => {
           const token = getProviderToken(provider);
-          if (importedContainer.has(token)) {
-            const instance = importedContainer.get(token);
-            container.register(token, { provide: token, useValue: instance });
-          }
+          // Register the provider definition itself, not an instantiated value
+          // This allows proper lazy instantiation when inject() is called
+          container.register(token, provider);
         });
       }
 
@@ -145,10 +146,8 @@ export function compileModule(rootModule: Module | ModuleWithProviders, parentCo
       if (importedModule.definition.exportProviders) {
         importedModule.definition.exportProviders.forEach((exportedProvider) => {
           const token = getProviderToken(exportedProvider);
-          if (importedContainer.has(token)) {
-            const instance = importedContainer.get(token);
-            container.register(token, { provide: token, useValue: instance });
-          }
+          // Register the provider definition directly
+          container.register(token, exportedProvider);
         });
       }
 
@@ -327,11 +326,13 @@ export function bootstrapModule(rootModule: Module): {
 } {
   const container = compileModule(rootModule);
 
-  // Instantiate bootstrap component if defined
-  let component: any;
-  if (rootModule.definition.bootstrap) {
-    component = container.get(rootModule.definition.bootstrap);
-  }
+  // Set this container as the global injector context
+  // This ensures inject() calls use this container instead of an empty root injector
+  setInjectorContext(container);
+
+  // Return the bootstrap component reference as-is (don't instantiate it via DI)
+  // Components are functions created by defineComponent(), not DI providers
+  const component = rootModule.definition.bootstrap;
 
   return { container, component };
 }

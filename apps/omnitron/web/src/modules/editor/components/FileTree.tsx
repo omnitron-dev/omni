@@ -14,7 +14,8 @@
 import { defineComponent, signal, computed, onMount } from '@omnitron-dev/aether';
 import { Show } from '@omnitron-dev/aether/control-flow';
 import { inject } from '@omnitron-dev/aether/di';
-import { TreeView, type TreeNodeData } from '@omnitron-dev/aether/data';
+import { Tree as TreeView } from '@omnitron-dev/aether/components/data';
+import type { TreeItemProps as TreeNodeData } from '@omnitron-dev/aether/primitives';
 import { FileService } from '../services/file.service';
 
 export interface FileNode {
@@ -119,14 +120,10 @@ export const FileTree = defineComponent<FileTreeProps>((props) => {
   const contextMenuNode = signal<FileNode | null>(null);
 
   // Get file tree from service
-  const fileTree = computed(() => {
-    return fileService.getFileTree();
-  });
+  const fileTree = computed(() => fileService.getFileTree());
 
   // Convert to TreeNodeData
-  const treeData = computed(() => {
-    return convertToTreeNodeData(fileTree());
-  });
+  const treeData = computed(() => convertToTreeNodeData(fileTree()));
 
   // Handle file selection
   const handleSelect = (keys: string[]) => {

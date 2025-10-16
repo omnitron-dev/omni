@@ -4,7 +4,7 @@
  * Application-wide event bus for cross-module communication
  */
 
-import { Injectable, inject } from '@omnitron-dev/aether/di';
+import { Injectable } from '@omnitron-dev/aether/di';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 
 /**

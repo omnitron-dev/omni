@@ -178,3 +178,8 @@ export const useEditorStore = defineStore('editor', () => {
     reset,
   };
 });
+
+/**
+ * Alias for module exports compatibility
+ */
+export const editorStore = useEditorStore;

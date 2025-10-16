@@ -17,6 +17,27 @@ export default defineConfig({
     }),
   ],
   root: './web',
+  define: {
+    // Polyfill Node.js globals for browser
+    'process.env': {},
+    'process.version': '"v22.0.0"',
+    'process.versions': '{}',
+    global: 'globalThis',
+  },
+  esbuild: {
+    // Configure JSX to use Aether's runtime instead of React
+    jsx: 'automatic',
+    jsxImportSource: '@omnitron-dev/aether',
+    jsxDev: false,
+    // Enable decorators support in esbuild
+    tsconfigRaw: {
+      compilerOptions: {
+        experimentalDecorators: true,
+        emitDecoratorMetadata: true,
+        useDefineForClassFields: false,
+      },
+    },
+  },
   build: {
     outDir: 'dist',
     emptyOutDir: true,

@@ -1,4 +1,4 @@
-import { defineComponent, signal, onMount } from '@omnitron-dev/aether';
+import { defineComponent, onMount } from '@omnitron-dev/aether';
 import { inject } from '@omnitron-dev/aether/di';
 import { Show, For } from '@omnitron-dev/aether/control-flow';
 import { ChatService } from '../services/chat.service';

@@ -57,7 +57,7 @@ export async function createServer(config: ServerConfig): Promise<Server> {
   // Delegate to dev server if in development mode
   if (isDev) {
     // Dynamic import to keep dev dependencies optional
-    const { createDevServer } = await import('../dev/server.js');
+    const { createDevServer } = await import('./dev-server.js');
     return createDevServer(config as any);
   }
 

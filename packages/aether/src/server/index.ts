@@ -162,7 +162,7 @@ export type {
 } from './types.js';
 
 // ===== Dev Server =====
-export { createDevServer } from '../dev/server.js';
+export { createDevServer } from './dev-server.js';
 
 // ===== HMR =====
 export {

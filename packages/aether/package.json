@@ -59,12 +59,12 @@
       "import": "./dist/server/index.js"
     },
     "./dev": {
-      "types": "./dist/dev/index.d.ts",
-      "import": "./dist/dev/index.js"
+      "types": "./dist/server/index.d.ts",
+      "import": "./dist/server/index.js"
     },
-    "./dev/devtools": {
-      "types": "./dist/dev/devtools.d.ts",
-      "import": "./dist/dev/devtools.js"
+    "./devtools": {
+      "types": "./dist/devtools/index.d.ts",
+      "import": "./dist/devtools/index.js"
     },
     "./cli": {
       "types": "./dist/cli/index.d.ts",

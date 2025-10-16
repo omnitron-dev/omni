@@ -5,7 +5,7 @@
  */
 
 import { createServer } from '../../server/server.js';
-import type { DevServerConfig } from '../../dev/types.js';
+import type { DevServerConfig } from '../../server/types.js';
 
 /**
  * Dev command options

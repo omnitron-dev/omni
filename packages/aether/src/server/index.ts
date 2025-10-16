@@ -43,7 +43,7 @@ export type {
 } from './types.js';
 
 // ===== Server =====
-export { createServer } from './server.js';
+export { createServer, createDevServer } from './server.js';
 
 // ===== Renderer (Original) =====
 export { renderDocument } from './renderer.js';
@@ -161,8 +161,6 @@ export type {
   FileWatcher,
 } from './types.js';
 
-// ===== Dev Server =====
-export { createDevServer } from './dev-server.js';
 
 // ===== HMR =====
 export {

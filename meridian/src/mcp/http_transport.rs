@@ -239,7 +239,7 @@ impl HttpTransport {
             .route("/mcp/events", get(handle_sse_events))
 
             // SSE endpoint for project-specific notifications
-            .route("/mcp/events/:project_id", get(handle_project_sse_events))
+            .route("/mcp/events/{project_id}", get(handle_project_sse_events))
 
             // Server info endpoint
             .route("/mcp/info", get(server_info));

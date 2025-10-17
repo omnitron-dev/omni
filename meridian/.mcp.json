@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "meridian": {
+      "command": "/Users/taaliman/projects/luxquant/omnitron-dev/omni/meridian/target/release/meridian",
+      "args": ["serve", "--stdio"],
+      "env": {
+        "RUST_LOG": "info"
+      }
+    }
+  }
+}

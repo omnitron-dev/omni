@@ -11,6 +11,7 @@ use meridian::mcp::ToolHandlers;
 use meridian::session::SessionManager;
 use meridian::types::*;
 use serde_json::json;
+use std::sync::Arc;
 
 /// Helper to create test handlers with all required components
 fn create_test_handlers(storage: std::sync::Arc<dyn meridian::storage::Storage>) -> ToolHandlers {
@@ -37,7 +38,12 @@ fn create_test_handlers(storage: std::sync::Arc<dyn meridian::storage::Storage>)
     let indexer = CodeIndexer::new(storage.clone(), index_config).unwrap();
     let session_manager = SessionManager::new(storage, session_config);
 
-    ToolHandlers::new(memory_system, context_manager, indexer, session_manager)
+    ToolHandlers::new(
+        Arc::new(tokio::sync::RwLock::new(memory_system)),
+        Arc::new(tokio::sync::RwLock::new(context_manager)),
+        Arc::new(tokio::sync::RwLock::new(indexer)),
+        Arc::new(session_manager),
+    )
 }
 
 // ============================================================================

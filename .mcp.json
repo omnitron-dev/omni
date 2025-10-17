@@ -7,7 +7,9 @@
         "--stdio"
       ],
       "env": {
+        "PATH": "/Users/taaliman/.cargo/bin:/Users/taaliman/.nvm/versions/node/v22.19.0/bin:/usr/local/bin:/usr/bin:/bin",
         "RUST_LOG": "info",
+        "RUST_BACKTRACE": "1",
         "MERIDIAN_CONFIG": "/Users/taaliman/projects/luxquant/omnitron-dev/omni/meridian/meridian.toml"
       }
     }

@@ -1,0 +1,15 @@
+{
+  "servers": {
+    "meridian": {
+      "command": "./meridian/target/release/meridian",
+      "args": [
+        "serve",
+        "--stdio"
+      ],
+      "env": {
+        "MERIDIAN_CONFIG": "./meridian.toml",
+        "RUST_LOG": "info"
+      }
+    }
+  }
+}

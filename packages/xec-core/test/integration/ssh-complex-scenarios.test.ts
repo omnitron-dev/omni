@@ -3,7 +3,7 @@ import { expect, describe } from '@jest/globals';
 import { describeSSH, getSSHConfig, testEachPackageManager } from '@xec-sh/testing';
 
 import { $ } from '../../src/index.js';
-import { SSHAdapter } from '../../../src/adapters/ssh/index';
+import { SSHAdapter } from '../../src/adapters/ssh/index.js';
 
 // Helper to get configured SSH instance
 function getConfiguredSSH(sshConfig: any) {
@@ -486,7 +486,7 @@ EOF`;
         const stderrLines = stderrResult.stderr.trim().split('\n');
         const actualStderr = stderrLines
           .filter(
-            (line) => !line.includes('setlocale') && !line.includes('LC_') && !line.includes('cannot change locale')
+            (line: string) => !line.includes('setlocale') && !line.includes('LC_') && !line.includes('cannot change locale')
           )
           .join('\n')
           .trim();

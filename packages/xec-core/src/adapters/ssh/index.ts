@@ -123,6 +123,115 @@ export class SSHAdapter extends BaseAdapter {
     }
   }
 
+  /**
+   * Build a Docker command for remote execution over SSH
+   */
+  private buildRemoteDockerCommand(
+    command: string,
+    dockerOptions: import('../../types/command.js').RemoteDockerOptions,
+    mergedCommand: Command
+  ): string {
+    const parts: string[] = ['docker'];
+
+    if (dockerOptions.runMode === 'run' || dockerOptions.image) {
+      // Docker run mode
+      parts.push('run');
+
+      if (dockerOptions.autoRemove !== false) {
+        parts.push('--rm');
+      }
+
+      if (dockerOptions.tty !== false && mergedCommand.shell) {
+        parts.push('-it');
+      }
+
+      if (dockerOptions.user) {
+        parts.push('-u', escapeArg(dockerOptions.user));
+      }
+
+      if (dockerOptions.workdir) {
+        parts.push('-w', escapeArg(dockerOptions.workdir));
+      }
+
+      if (dockerOptions.env) {
+        for (const [key, value] of Object.entries(dockerOptions.env)) {
+          parts.push('-e', `${key}=${escapeArg(value)}`);
+        }
+      }
+
+      if (dockerOptions.volumes) {
+        for (const volume of dockerOptions.volumes) {
+          parts.push('-v', escapeArg(volume));
+        }
+      }
+
+      if (dockerOptions.network) {
+        parts.push('--network', escapeArg(dockerOptions.network));
+      }
+
+      if (dockerOptions.platform) {
+        parts.push('--platform', escapeArg(dockerOptions.platform));
+      }
+
+      if (dockerOptions.privileged) {
+        parts.push('--privileged');
+      }
+
+      if (dockerOptions.ports) {
+        for (const port of dockerOptions.ports) {
+          parts.push('-p', escapeArg(port));
+        }
+      }
+
+      if (dockerOptions.labels) {
+        for (const [key, value] of Object.entries(dockerOptions.labels)) {
+          parts.push('--label', `${key}=${escapeArg(value)}`);
+        }
+      }
+
+      if (dockerOptions.entrypoint) {
+        const entrypoint = Array.isArray(dockerOptions.entrypoint)
+          ? dockerOptions.entrypoint.join(' ')
+          : dockerOptions.entrypoint;
+        parts.push('--entrypoint', escapeArg(entrypoint));
+      }
+
+      parts.push(dockerOptions.image!);
+    } else {
+      // Docker exec mode
+      parts.push('exec');
+
+      if (dockerOptions.tty !== false && mergedCommand.shell) {
+        parts.push('-it');
+      }
+
+      if (dockerOptions.user) {
+        parts.push('-u', escapeArg(dockerOptions.user));
+      }
+
+      if (dockerOptions.workdir) {
+        parts.push('-w', escapeArg(dockerOptions.workdir));
+      }
+
+      if (dockerOptions.env) {
+        for (const [key, value] of Object.entries(dockerOptions.env)) {
+          parts.push('-e', `${key}=${escapeArg(value)}`);
+        }
+      }
+
+      parts.push(dockerOptions.container);
+    }
+
+    // Add the actual command
+    if (mergedCommand.shell) {
+      parts.push('sh', '-c', escapeArg(command));
+    } else {
+      parts.push(command);
+    }
+
+    return parts.join(' ');
+  }
+
   async execute(command: Command): Promise<ExecutionResult> {
     const mergedCommand = this.mergeCommand(command);
     const sshOptions = this.extractSSHOptions(mergedCommand);
@@ -136,10 +245,15 @@ export class SSHAdapter extends BaseAdapter {
 
     const startTime = Date.now();
     let connection: PooledConnection | null = null;
-    const commandString = this.buildCommandString(mergedCommand);
+    let commandString = this.buildCommandString(mergedCommand);
 
     try {
       connection = await this.getConnection(sshOptions);
+
+      // Check if remoteDocker is configured
+      if (sshOptions.remoteDocker) {
+        commandString = this.buildRemoteDockerCommand(commandString, sshOptions.remoteDocker, mergedCommand);
+      }
 
       // Emit execute event
       this.emitAdapterEvent('ssh:execute', {

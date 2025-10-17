@@ -13,6 +13,28 @@ export type StreamOption = 'pipe' | 'ignore' | 'inherit' | Writable;
 export type AdapterType = 'local' | 'ssh' | 'docker' | 'kubernetes' | 'auto' | 'mock';
 
 /**
+ * Remote Docker configuration for SSH-based Docker execution
+ */
+export interface RemoteDockerOptions {
+  container: string;
+  runMode?: 'run' | 'exec';
+  image?: string;
+  volumes?: string[];
+  workdir?: string;
+  user?: string;
+  env?: Record<string, string>;
+  network?: string;
+  platform?: string;
+  pull?: boolean;
+  privileged?: boolean;
+  ports?: string[];
+  labels?: Record<string, string>;
+  entrypoint?: string | string[];
+  tty?: boolean;
+  autoRemove?: boolean;
+}
+
+/**
  * SSH adapter configuration options
  */
 export interface SSHAdapterOptions {
@@ -30,6 +52,7 @@ export interface SSHAdapterOptions {
     passwordMethod?: 'stdin' | 'askpass' | 'echo' | 'secure';
     secureHandler?: any; // SecurePasswordHandler
   };
+  remoteDocker?: RemoteDockerOptions;
 }
 
 /**

@@ -4,7 +4,7 @@ import { promises as fs } from 'fs';
 import { it, expect, describe, afterAll, beforeAll } from '@jest/globals';
 
 import { $ } from '../../src/index.js';
-import { DockerAdapter } from '../../../src/adapters/docker/index.js';
+import { DockerAdapter } from '../../src/adapters/docker/index.js';
 
 // Skip if Docker is not available
 const DOCKER_AVAILABLE = await (async () => {
@@ -383,12 +383,12 @@ describeIfDocker('Docker Adapter Real Integration Tests', () => {
         // List all containers
         const containers = await adapter.listContainers(true);
         expect(Array.isArray(containers)).toBe(true);
-        expect(containers.some((c) => c.includes(containerName))).toBe(true);
+        expect(containers.some((c: string) => c.includes(containerName))).toBe(true);
 
         // List only running containers
         const runningContainers = await adapter.listContainers(false);
         expect(Array.isArray(runningContainers)).toBe(true);
-        expect(runningContainers.some((c) => c.includes(containerName))).toBe(true);
+        expect(runningContainers.some((c: string) => c.includes(containerName))).toBe(true);
       } finally {
         await $`docker rm -f ${containerName}`;
       }
@@ -423,7 +423,7 @@ describeIfDocker('Docker Adapter Real Integration Tests', () => {
 
         // Verify it's removed
         const containers = await adapter.listContainers(true);
-        expect(containers.some((c) => c.includes(containerName))).toBe(false);
+        expect(containers.some((c: string) => c.includes(containerName))).toBe(false);
       } catch (e) {
         await $`docker rm -f ${containerName}`.nothrow();
         throw e;
@@ -469,12 +469,12 @@ describeIfDocker('Docker Adapter Real Integration Tests', () => {
 
       const images = await adapter.listImages();
       expect(Array.isArray(images)).toBe(true);
-      expect(images.some((img) => img.includes('alpine'))).toBe(true);
+      expect(images.some((img: string) => img.includes('alpine'))).toBe(true);
 
       // Test with filter
       const alpineImages = await adapter.listImages('alpine');
       expect(Array.isArray(alpineImages)).toBe(true);
-      expect(alpineImages.every((img) => img.includes('alpine'))).toBe(true);
+      expect(alpineImages.every((img: string) => img.includes('alpine'))).toBe(true);
     });
 
     it('should tag and remove images', async () => {
@@ -486,14 +486,14 @@ describeIfDocker('Docker Adapter Real Integration Tests', () => {
 
         // Verify tag exists
         const images = await adapter.listImages();
-        expect(images.some((img) => img.includes(TEST_PREFIX))).toBe(true);
+        expect(images.some((img: string) => img.includes(TEST_PREFIX))).toBe(true);
 
         // Remove tagged image
         await adapter.removeImage(newTag);
 
         // Verify it's gone
         const imagesAfter = await adapter.listImages();
-        expect(imagesAfter.some((img) => img.includes(newTag))).toBe(false);
+        expect(imagesAfter.some((img: string) => img.includes(newTag))).toBe(false);
       } catch (e) {
         await $`docker rmi ${newTag}`.nothrow();
         throw e;
@@ -536,7 +536,7 @@ describeIfDocker('Docker Adapter Real Integration Tests', () => {
         const lines: string[] = [];
 
         // Stream logs in background
-        const streamPromise = adapter.streamLogs(containerName, (data) => lines.push(data), { follow: true });
+        const streamPromise = adapter.streamLogs(containerName, (data: string) => lines.push(data), { follow: true });
 
         // Wait for logs to accumulate
         await new Promise((resolve) => setTimeout(resolve, 4000));
@@ -619,7 +619,7 @@ describeIfDocker('Docker Adapter Real Integration Tests', () => {
 
         // List networks
         const networks = await adapter.listNetworks();
-        expect(networks.some((n) => n.includes(networkName))).toBe(true);
+        expect(networks.some((n: string) => n.includes(networkName))).toBe(true);
 
         // Use network with container
         const containerName = `${TEST_PREFIX}-network-container`;
@@ -639,7 +639,7 @@ describeIfDocker('Docker Adapter Real Integration Tests', () => {
 
         // Verify removal
         const networksAfter = await adapter.listNetworks();
-        expect(networksAfter.some((n) => n.includes(networkName))).toBe(false);
+        expect(networksAfter.some((n: string) => n.includes(networkName))).toBe(false);
       } catch (e) {
         await $`docker network rm ${networkName}`.nothrow();
         throw e;
@@ -659,7 +659,7 @@ describeIfDocker('Docker Adapter Real Integration Tests', () => {
 
         // List volumes
         const volumes = await adapter.listVolumes();
-        expect(volumes.some((v) => v.includes(volumeName))).toBe(true);
+        expect(volumes.some((v: string) => v.includes(volumeName))).toBe(true);
 
         // Use volume with container
         const containerName = `${TEST_PREFIX}-volume-container`;
@@ -690,7 +690,7 @@ describeIfDocker('Docker Adapter Real Integration Tests', () => {
 
         // Verify removal
         const volumesAfter = await adapter.listVolumes();
-        expect(volumesAfter.some((v) => v.includes(volumeName))).toBe(false);
+        expect(volumesAfter.some((v: string) => v.includes(volumeName))).toBe(false);
       } catch (e) {
         await $`docker volume rm ${volumeName}`.nothrow();
         throw e;
@@ -794,7 +794,7 @@ describeIfDocker('Docker Adapter Real Integration Tests', () => {
 
       // Verify image exists
       const images = await adapter.listImages();
-      expect(images.some((img) => img.includes('hello-world'))).toBe(true);
+      expect(images.some((img: string) => img.includes('hello-world'))).toBe(true);
 
       // Note: Push would require registry authentication, skip for integration test
     });
@@ -852,7 +852,7 @@ CMD ["echo", "Built successfully"]
 
         // Verify image was built
         const images = await adapter.listImages();
-        expect(images.some((img) => img.includes(TEST_PREFIX))).toBe(true);
+        expect(images.some((img: string) => img.includes(TEST_PREFIX))).toBe(true);
 
         // Test the built image
         const containerName = `${TEST_PREFIX}-built-test`;

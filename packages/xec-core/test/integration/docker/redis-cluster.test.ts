@@ -1,7 +1,7 @@
 import { test, expect, describe, afterAll, beforeAll } from '@jest/globals';
 
 import { ExecutionEngine } from '../../../src/core/execution-engine.js';
-import { DockerRedisClusterAPI } from '../../../src/adapters/docker/docker-fluent-api.js';
+import { DockerRedisClusterAPI } from '../../src/adapters/docker/docker-fluent-api.js';
 
 describe('Docker Redis Cluster', () => {
   let engine: ExecutionEngine;

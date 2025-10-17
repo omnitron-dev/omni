@@ -735,6 +735,54 @@ export class ExecutionEngine extends EnhancedEventEmitter implements Disposable 
     return createK8sExecutionContext(this, options || {});
   }
 
+  remoteDocker(options: {
+    ssh: Omit<SSHAdapterOptions, 'type'>;
+    docker: { container: string } | { image: string };
+  }): ExecutionEngine {
+    // For remoteDocker, we first SSH to the remote host, then execute docker commands there
+    // This means configuring the engine to use SSH adapter with docker commands being run remotely
+
+    // Apply Docker configuration
+    if ('image' in options.docker) {
+      const ephemeralOptions = options.docker as DockerEphemeralOptions;
+      const containerName = this.generateEphemeralContainerName(ephemeralOptions.image);
+
+      return this.with({
+        adapter: 'ssh',
+        adapterOptions: {
+          type: 'ssh',
+          ...options.ssh,
+          // When using SSH, docker commands will be executed on the remote host
+          remoteDocker: {
+            container: containerName,
+            runMode: 'run',
+            image: ephemeralOptions.image,
+            volumes: ephemeralOptions.volumes,
+            autoRemove: true,
+            workdir: ephemeralOptions.workdir,
+            user: ephemeralOptions.user,
+            env: ephemeralOptions.env,
+          },
+        } as SSHAdapterOptions,
+      });
+    } else {
+      const persistentOptions = options.docker as DockerPersistentOptions;
+      return this.with({
+        adapter: 'ssh',
+        adapterOptions: {
+          type: 'ssh',
+          ...options.ssh,
+          remoteDocker: {
+            container: persistentOptions.container,
+            workdir: persistentOptions.workdir,
+            user: persistentOptions.user,
+            env: persistentOptions.env,
+          },
+        } as SSHAdapterOptions,
+      });
+    }
+  }
+
   local(): ExecutionEngine {
     return this.with({
       adapter: 'local',

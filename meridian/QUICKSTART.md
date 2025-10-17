@@ -4,7 +4,7 @@
 
 - Rust 1.70+ with cargo installed
 - Git (for history-related features)
-- Claude Code or any MCP-compatible client
+- Claude Desktop or Claude Code (MCP-compatible client)
 
 ## Installation
 
@@ -27,118 +27,91 @@ cargo install --path .
 sudo ln -s $(pwd)/target/release/meridian /usr/local/bin/meridian
 ```
 
-## Running Meridian MCP Server
+## Connecting to Claude
 
-### Option 1: HTTP/SSE Transport (Recommended for Claude Code)
+### For Claude Desktop (Recommended)
 
-Start the server in HTTP mode:
+Claude Desktop uses the **STDIO transport** which is the official MCP standard.
 
-```bash
-# From the meridian directory
-./target/release/meridian serve --http
+1. **Find your Claude Desktop configuration file:**
 
-# Or if installed system-wide
-meridian serve --http
-```
+   - **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+   - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
 
-The server will start on `http://127.0.0.1:3000` (configurable in `meridian.toml`).
-
-**Verify it's running:**
-
-```bash
-# Health check
-curl http://127.0.0.1:3000/health
-
-# Server info
-curl http://127.0.0.1:3000/mcp/info
-
-# Test MCP protocol
-curl -X POST http://127.0.0.1:3000/mcp/request \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
-```
-
-### Option 2: STDIO Transport
-
-Start the server in STDIO mode:
-
-```bash
-./target/release/meridian serve --stdio
-```
-
-This mode is useful for direct integration with MCP clients that support STDIO transport.
-
-## Connecting Claude Code
-
-### For HTTP Transport
-
-1. **Start Meridian HTTP server:**
-
-```bash
-cd /path/to/meridian
-./target/release/meridian serve --http
-```
-
-2. **Configure Claude Code to use the HTTP server:**
-
-Claude Code will automatically discover HTTP MCP servers running on localhost. Alternatively, you can manually configure it by creating `.claude/mcp_config.json` in your project root:
+2. **Add Meridian to the configuration:**
 
 ```json
 {
   "mcpServers": {
     "meridian": {
-      "url": "http://127.0.0.1:3000/mcp",
-      "transport": "http-sse"
-    }
-  }
-}
-```
-
-3. **Verify Connection in Claude Code:**
-
-Try asking Claude Code to use Meridian tools:
-- "Use meridian to search for authentication functions"
-- "Show me the MCP tools available"
-
-### For STDIO Transport
-
-1. **Create MCP configuration:**
-
-Create or edit `.claude/mcp_config.json` in your project root:
-
-```json
-{
-  "mcpServers": {
-    "meridian": {
-      "command": "/path/to/meridian/target/release/meridian",
+      "command": "/Users/taaliman/projects/luxquant/omnitron-dev/omni/meridian/target/release/meridian",
       "args": ["serve", "--stdio"],
-      "transport": "stdio"
+      "env": {
+        "RUST_LOG": "info"
+      }
     }
   }
 }
 ```
 
-2. **Restart Claude Code** to pick up the new configuration.
+**Important:** Replace the `command` path with the **absolute path** to your meridian binary!
+
+3. **Restart Claude Desktop**
+
+The Meridian server will start automatically when Claude Desktop launches.
+
+### For Claude Code (CLI/Editor)
+
+Claude Code uses project-scoped MCP configuration.
+
+1. **Create `.mcp.json` in your project root:**
+
+```json
+{
+  "mcpServers": {
+    "meridian": {
+      "command": "/Users/taaliman/projects/luxquant/omnitron-dev/omni/meridian/target/release/meridian",
+      "args": ["serve", "--stdio"],
+      "env": {
+        "RUST_LOG": "info"
+      }
+    }
+  }
+}
+```
+
+**Important:** Replace the `command` path with the **absolute path** to your meridian binary!
+
+2. **Restart Claude Code or reload the project**
+
+## Verification
+
+Once configured, you can verify Meridian is working by asking Claude:
+
+- "What MCP tools are available?"
+- "Use meridian to search for functions in the codebase"
+- "Show me the meridian resources"
+
+Claude should list the Meridian tools and be able to use them.
 
 ## Configuration
 
 Edit `meridian.toml` to customize Meridian's behavior:
 
 ```toml
-[mcp.http]
-enabled = true
-host = "127.0.0.1"
-port = 3000
-cors_origins = ["*"]
-max_connections = 100
-
 [index]
 languages = ["rust", "typescript", "javascript", "python", "go", "markdown"]
 ignore = ["node_modules", "target", ".git", "dist", "build"]
+max_file_size = "1MB"
+
+[storage]
+path = ".meridian/index"
+cache_size = "256MB"
 
 [memory]
 episodic_retention_days = 30
 working_memory_size = "10MB"
+consolidation_interval = "1h"
 
 [session]
 max_sessions = 10
@@ -153,10 +126,12 @@ Meridian provides 30 comprehensive MCP tools organized into categories:
 - `memory.record_episode` - Record task episodes for learning
 - `memory.find_similar_episodes` - Find similar past tasks
 - `memory.update_working_set` - Update active working context
+- `memory.get_statistics` - Get memory system statistics
 
-### Context Management (2 tools)
+### Context Management (3 tools)
 - `context.prepare_adaptive` - Get optimized context for specific LLM
 - `context.defragment` - Defragment scattered context
+- `context.compress` - Compress context using various strategies
 
 ### Learning & Feedback (3 tools)
 - `feedback.mark_useful` - Mark useful/unnecessary symbols
@@ -201,14 +176,14 @@ Meridian provides 30 comprehensive MCP tools organized into categories:
 Run the test suite to verify everything works:
 
 ```bash
-# Run all tests
+# Run all tests (330+ tests)
 cargo test
 
 # Run only unit tests
 cargo test --lib
 
 # Run integration tests
-cargo test --test integration_test
+cargo test --tests
 
 # Run e2e tests
 cargo test --test e2e_new_mcp_tools
@@ -221,77 +196,72 @@ test result: ok. 330+ passed; 0 failed
 
 ## Troubleshooting
 
-### "Failed to connect" error
+### MCP server not appearing in Claude
 
-**Problem:** Claude Code shows "Failed to connect" when trying to use Meridian.
+**Problem:** Claude Desktop or Claude Code doesn't show Meridian tools.
 
 **Solution:**
 
-1. **Verify server is running:**
-   ```bash
-   curl http://127.0.0.1:3000/health
-   ```
-   Should return: `{"status":"ok","service":"meridian-mcp","version":"0.1.0"}`
+1. **Check configuration path:**
+   - Make sure you're editing the correct configuration file
+   - Verify the JSON syntax is valid
 
-2. **Check the port:**
-   - Default is 3000, verify in `meridian.toml` under `[mcp.http]`
-   - Make sure no other service is using that port
-
-3. **Check logs:**
+2. **Verify absolute path:**
    ```bash
-   # Run with verbose logging
-   RUST_LOG=debug ./target/release/meridian serve --http
+   # Get the absolute path
+   cd /path/to/meridian
+   pwd
+   # Use this path + /target/release/meridian in the config
    ```
 
-4. **Firewall/Network:**
-   - Ensure localhost connections are allowed
-   - Try using `127.0.0.1` instead of `localhost`
+3. **Check Claude logs:**
+   - **macOS**: `~/Library/Logs/Claude/mcp.log`
+   - **Windows**: Check Event Viewer or Claude logs directory
 
-### Server won't start
+4. **Test STDIO manually:**
+   ```bash
+   echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | ./target/release/meridian serve --stdio
+   ```
+   Should return a JSON response with capabilities.
+
+5. **Restart Claude** after configuration changes
+
+### Server crashes on startup
 
 **Problem:** Server fails to start or crashes immediately.
 
 **Solution:**
 
-1. **Check configuration file:**
-   ```bash
-   # Validate meridian.toml syntax
-   cat meridian.toml
-   ```
-
-2. **Check storage permissions:**
+1. **Check storage permissions:**
    ```bash
    # Ensure .meridian directory is writable
    ls -la .meridian/
+   chmod -R 755 .meridian/
    ```
 
-3. **Clear corrupted index:**
+2. **Clear corrupted index:**
    ```bash
    rm -rf .meridian/index
-   ./target/release/meridian serve --http
+   ./target/release/meridian serve --stdio
    ```
 
-### MCP tools not appearing in Claude Code
+3. **Check for RocksDB lock:**
+   ```bash
+   # If you see "lock hold by current process"
+   rm -f .meridian/index/LOCK
+   ```
 
-**Problem:** Claude Code doesn't show Meridian tools.
+### Multiple instances running
+
+**Problem:** "lock hold by current process" error.
 
 **Solution:**
 
-1. **Verify MCP config:**
-   ```bash
-   cat .claude/mcp_config.json
-   ```
+Only one Meridian instance can access the database at a time. This is by design.
 
-2. **Check Claude Code logs** for connection errors
-
-3. **Test MCP protocol directly:**
-   ```bash
-   curl -X POST http://127.0.0.1:3000/mcp/request \
-     -H "Content-Type: application/json" \
-     -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
-   ```
-
-4. **Restart Claude Code** after configuration changes
+- STDIO mode is automatically managed by Claude (one instance per project)
+- Don't manually run `meridian serve --stdio` if using with Claude
+- HTTP mode is experimental and should not be used with Claude
 
 ### Performance issues
 
@@ -317,6 +287,35 @@ test result: ok. 330+ passed; 0 failed
    languages = ["rust", "typescript"]  # Only index what you need
    ```
 
+## Advanced: HTTP Transport (For Testing Only)
+
+⚠️ **Warning**: HTTP transport is **NOT** part of the official MCP standard and is **NOT** supported by Claude Desktop or Claude Code. It is provided only for manual testing and debugging.
+
+### Starting HTTP Server
+
+```bash
+./target/release/meridian serve --http
+```
+
+Server will be available at `http://127.0.0.1:3000`
+
+### Testing HTTP Endpoints
+
+```bash
+# Health check
+curl http://127.0.0.1:3000/health
+
+# Initialize
+curl -X POST http://127.0.0.1:3000/mcp/request \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
+
+# List tools
+curl -X POST http://127.0.0.1:3000/mcp/request \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
+```
+
 ## Next Steps
 
 - Read the [full specification](specs/spec.md) for detailed architecture
@@ -326,6 +325,7 @@ test result: ok. 330+ passed; 0 failed
 
 ## Support
 
-- **Issues:** https://github.com/omnitron-dev/meridian/issues
-- **Documentation:** See `specs/` directory
-- **Architecture:** See `specs/spec.md`
+- **Issues**: https://github.com/omnitron-dev/meridian/issues
+- **Documentation**: See `specs/` directory
+- **Architecture**: See `specs/spec.md`
+- **MCP Protocol**: https://modelcontextprotocol.io/

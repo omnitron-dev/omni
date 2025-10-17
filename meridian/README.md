@@ -42,7 +42,8 @@ Meridian is not a traditional code indexing system—it's a **cognitive memory s
 
 ### 🔌 MCP Server
 - **30 comprehensive tools** (100% spec coverage)
-- **HTTP/SSE + STDIO** transports
+- **STDIO transport** (official MCP standard for Claude Desktop/Code)
+- **HTTP/SSE transport** (experimental, for testing only)
 - **JSON-RPC 2.0** compliant
 - **Multi-project support** for monorepos
 
@@ -54,28 +55,35 @@ Meridian is not a traditional code indexing system—it's a **cognitive memory s
 cargo build --release
 ```
 
-### 2. Start Server
+### 2. Configure Claude
 
-```bash
-# Easy way
-./start_server.sh
+**For Claude Desktop:** Add to `~/Library/Application Support/Claude/claude_desktop_config.json`
 
-# Or manually
-./target/release/meridian serve --http
+```json
+{
+  "mcpServers": {
+    "meridian": {
+      "command": "/absolute/path/to/meridian/target/release/meridian",
+      "args": ["serve", "--stdio"],
+      "env": {
+        "RUST_LOG": "info"
+      }
+    }
+  }
+}
 ```
 
-### 3. Verify
+**For Claude Code:** Create `.mcp.json` in your project root with the same format.
 
-```bash
-curl http://127.0.0.1:3000/health
-# {"status":"ok","service":"meridian-mcp","version":"0.1.0"}
-```
+### 3. Restart Claude
 
-### 4. Connect Claude Code
+Meridian will start automatically when Claude launches.
 
-The server is ready at `http://127.0.0.1:3000/mcp`
+### 4. Verify
 
-See **[QUICKSTART.md](QUICKSTART.md)** for detailed setup.
+Ask Claude: "What MCP tools are available?" or "Use meridian to search for functions"
+
+See **[QUICKSTART.md](QUICKSTART.md)** for detailed setup and troubleshooting.
 
 ## 📚 Documentation
 
@@ -143,17 +151,23 @@ cargo test --test e2e_new_mcp_tools
 Edit `meridian.toml`:
 
 ```toml
-[mcp.http]
-host = "127.0.0.1"
-port = 3000
-
 [index]
 languages = ["rust", "typescript", "javascript", "python", "go"]
 ignore = ["node_modules", "target", ".git"]
 
+[storage]
+path = ".meridian/index"
+cache_size = "256MB"
+
 [memory]
 episodic_retention_days = 30
 working_memory_size = "10MB"
+
+# HTTP transport (experimental, for testing only)
+[mcp.http]
+enabled = false  # Enable only for testing
+host = "127.0.0.1"
+port = 3000
 ```
 
 ## ✅ Production Ready

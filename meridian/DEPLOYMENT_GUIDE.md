@@ -6,7 +6,74 @@ This guide provides instructions for deploying and running the Meridian MCP serv
 
 ## Deployment Modes
 
-### 1. HTTP/SSE Mode (Recommended for Claude Code)
+### 1. STDIO Mode (Recommended for Claude Desktop/Code)
+
+**STDIO transport is the official MCP standard** used by Claude Desktop and Claude Code. The server starts automatically when Claude launches.
+
+#### Build
+
+```bash
+cd /path/to/meridian
+cargo build --release
+```
+
+#### Configure Claude Desktop
+
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+
+```json
+{
+  "mcpServers": {
+    "meridian": {
+      "command": "/absolute/path/to/meridian/target/release/meridian",
+      "args": ["serve", "--stdio"],
+      "env": {
+        "RUST_LOG": "info"
+      }
+    }
+  }
+}
+```
+
+**Important:** Use the **absolute path** to your meridian binary!
+
+#### Configure Claude Code
+
+Create `.mcp.json` in your project root:
+
+```json
+{
+  "mcpServers": {
+    "meridian": {
+      "command": "/absolute/path/to/meridian/target/release/meridian",
+      "args": ["serve", "--stdio"],
+      "env": {
+        "RUST_LOG": "info"
+      }
+    }
+  }
+}
+```
+
+#### Verify
+
+1. Restart Claude Desktop or Claude Code
+2. Ask Claude: "What MCP tools are available?"
+3. Claude should list 30 Meridian tools
+
+#### Manual Testing
+
+You can test STDIO transport manually:
+
+```bash
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | ./target/release/meridian serve --stdio
+```
+
+Should return JSON response with server capabilities.
+
+### 2. HTTP/SSE Mode (Experimental - For Testing Only)
+
+⚠️ **Warning**: HTTP transport is **NOT** part of the official MCP standard and is **NOT** supported by Claude Desktop or Claude Code. It is provided only for manual testing and debugging.
 
 #### Quick Start
 
@@ -16,15 +83,8 @@ cd /path/to/meridian
 
 # Start server using convenience script
 ./start_server.sh
-```
 
-#### Manual Start
-
-```bash
-# Build release binary
-cargo build --release
-
-# Start HTTP server
+# Or manually
 ./target/release/meridian serve --http
 ```
 
@@ -54,33 +114,6 @@ host = "127.0.0.1"    # Bind address
 port = 3000            # Port number
 cors_origins = ["*"]   # CORS configuration
 max_connections = 100  # Max concurrent connections
-```
-
-### 2. STDIO Mode (For Direct Integration)
-
-#### Start Server
-
-```bash
-./target/release/meridian serve --stdio
-```
-
-#### Configuration
-
-Create `.claude/mcp_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "meridian": {
-      "command": "/absolute/path/to/meridian",
-      "args": ["serve", "--stdio"],
-      "transport": "stdio",
-      "env": {
-        "RUST_LOG": "info"
-      }
-    }
-  }
-}
 ```
 
 ## Production Deployment

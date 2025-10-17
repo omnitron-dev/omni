@@ -76,15 +76,47 @@ enum Commands {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
+    // Check if we're in stdio mode - if so, disable console logging
+    let is_stdio = matches!(cli.command, Commands::Serve { stdio: true, .. } | Commands::Serve { stdio: false, socket: None, http: false });
+
     // Initialize logging
-    if cli.verbose {
-        tracing_subscriber::fmt()
-            .with_env_filter("meridian=debug")
-            .init();
+    if is_stdio {
+        // In STDIO mode, redirect logs to file to avoid interfering with JSON-RPC protocol
+        use tracing_subscriber::fmt::writer::MakeWriterExt;
+        use std::fs::{create_dir_all, OpenOptions};
+
+        // Create log directory
+        let log_dir = std::path::Path::new(".meridian/logs");
+        create_dir_all(log_dir).ok();
+
+        // Create log file
+        if let Ok(log_file) = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(log_dir.join("meridian.log"))
+        {
+            tracing_subscriber::fmt()
+                .with_writer(log_file.with_max_level(tracing::Level::INFO))
+                .with_ansi(false)
+                .with_env_filter(if cli.verbose { "meridian=debug" } else { "meridian=info" })
+                .init();
+        } else {
+            // Fallback: disable logging if we can't create log file
+            tracing_subscriber::fmt()
+                .with_writer(std::io::sink)
+                .init();
+        }
     } else {
-        tracing_subscriber::fmt()
-            .with_env_filter("meridian=info")
-            .init();
+        // For non-STDIO modes, log to stderr as usual
+        if cli.verbose {
+            tracing_subscriber::fmt()
+                .with_env_filter("meridian=debug")
+                .init();
+        } else {
+            tracing_subscriber::fmt()
+                .with_env_filter("meridian=info")
+                .init();
+        }
     }
 
     info!("Meridian cognitive memory system starting...");

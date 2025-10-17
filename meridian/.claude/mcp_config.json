@@ -1,0 +1,22 @@
+{
+  "$schema": "https://modelcontextprotocol.io/schema/mcp_config.json",
+  "mcpServers": {
+    "meridian-http": {
+      "url": "http://127.0.0.1:3000/mcp",
+      "transport": "http-sse",
+      "description": "Meridian cognitive memory system for LLM codebase interaction (HTTP mode)",
+      "enabled": true
+    },
+    "meridian-stdio": {
+      "command": "meridian",
+      "args": ["serve", "--stdio"],
+      "transport": "stdio",
+      "description": "Meridian cognitive memory system for LLM codebase interaction (STDIO mode)",
+      "enabled": false,
+      "env": {
+        "RUST_LOG": "info",
+        "MERIDIAN_CONFIG": "./meridian.toml"
+      }
+    }
+  }
+}

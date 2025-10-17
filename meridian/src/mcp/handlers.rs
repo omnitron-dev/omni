@@ -648,42 +648,109 @@ impl ToolHandlers {
 
         let mut memory = self.memory_system.write().await;
 
-        // Extract task description from task object
+        // Extract task description and metadata from task object
         let task_desc = params.task.get("description")
             .and_then(|v| v.as_str())
             .unwrap_or("Unknown task")
             .to_string();
 
-        // Create an episode from this successful task
+        // Extract queries made if available
+        let queries_made: Vec<String> = params.task.get("queries_made")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+            .unwrap_or_default();
+
+        // Extract files accessed if available
+        let files_touched: Vec<String> = params.task.get("files_accessed")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+            .unwrap_or_default();
+
+        // Extract solution path
+        let solution_path = if let Some(sol_str) = params.solution.as_str() {
+            sol_str.to_string()
+        } else {
+            params.solution.to_string()
+        };
+
+        // Extract tokens used if available
+        let tokens_used = params.task.get("tokens_used")
+            .and_then(|v| v.as_u64())
+            .map(|t| TokenCount::new(t as u32))
+            .unwrap_or_else(TokenCount::zero);
+
+        // Create a rich episode from this successful task
         let episode = TaskEpisode {
             id: EpisodeId::new(),
             timestamp: chrono::Utc::now(),
             task_description: task_desc.clone(),
-            initial_context: ContextSnapshot::default(),
-            queries_made: vec![],
-            files_touched: vec![],
-            solution_path: params.solution.to_string(),
+            initial_context: ContextSnapshot {
+                active_files: files_touched.clone(),
+                active_symbols: vec![],
+                working_directory: None,
+            },
+            queries_made: queries_made.clone(),
+            files_touched: files_touched.clone(),
+            solution_path: solution_path.clone(),
             outcome: Outcome::Success,
-            tokens_used: TokenCount::zero(),
+            tokens_used,
             access_count: 0,
             pattern_value: 0.9,
         };
 
-        // Record the episode
-        memory.episodic.record_episode(episode).await?;
+        info!("Recording successful episode: {} - {}", episode.id.0, task_desc);
 
-        // Learn procedure from successful episodes
+        // Record the episode in episodic memory
+        memory.episodic.record_episode(episode.clone()).await?;
+
+        // Find similar successful episodes for pattern extraction
         let similar_episodes = memory.episodic.find_similar(&task_desc, 10).await;
+        debug!("Found {} similar episodes for learning", similar_episodes.len());
+
+        let mut patterns_learned = 0;
+        let mut procedure_updated = false;
+
+        // Learn patterns from semantic memory
         if !similar_episodes.is_empty() {
-            memory.procedural.learn_from_episodes(&similar_episodes).await?;
+            memory.semantic.learn_patterns(&similar_episodes).await?;
+            patterns_learned = memory.semantic.patterns().len();
+            debug!("Learned {} semantic patterns", patterns_learned);
         }
 
-        let insights_count = params.key_insights.map(|i| i.len()).unwrap_or(0);
+        // Learn or update procedural knowledge
+        let all_similar = {
+            let mut all = similar_episodes;
+            all.push(episode.clone());
+            all
+        };
+
+        if all_similar.len() >= 2 {
+            memory.procedural.learn_from_episodes(&all_similar).await?;
+            procedure_updated = true;
+            info!("Updated procedural memory with {} episodes", all_similar.len());
+        }
+
+        // Extract patterns from key insights if provided
+        if let Some(insights) = params.key_insights {
+            for insight in &insights {
+                debug!("Processing insight: {}", insight);
+            }
+        }
+
+        // Calculate confidence based on number of similar episodes
+        let confidence = (all_similar.len() as f32 / 10.0).min(1.0) * 0.9 + 0.1;
+
+        info!(
+            "Training complete: {} patterns learned, procedure_updated={}, confidence={:.2}",
+            patterns_learned, procedure_updated, confidence
+        );
 
         Ok(json!({
-            "patterns_learned": insights_count,
-            "procedure_updated": true,
-            "confidence": 0.85
+            "patterns_learned": patterns_learned,
+            "procedure_updated": procedure_updated,
+            "confidence": confidence,
+            "similar_episodes_count": all_similar.len() - 1,
+            "episode_id": episode.id.0
         }))
     }
 
@@ -699,43 +766,183 @@ impl ToolHandlers {
 
         let memory = self.memory_system.read().await;
 
-        // Get task type or infer from context
+        // Get task description from context
         let task_desc = params.current_context.get("task")
             .and_then(|v| v.as_str())
             .or(params.task_type.as_deref())
             .unwrap_or("Unknown task");
 
-        // Get procedure for task type
+        // Extract completed steps if available
+        let completed_steps: Vec<String> = params.current_context.get("completed_steps")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+            .unwrap_or_default();
+
+        debug!("Predicting next actions for task: '{}', completed steps: {:?}", task_desc, completed_steps);
+
+        // Get procedure for task type using ProceduralMemory
         let procedure = memory.procedural.get_procedure_for_task(task_desc);
 
-        let (predicted_actions, suggested_queries, confidence) = if let Some(proc) = procedure {
-            let actions: Vec<String> = proc.steps.iter()
-                .take(3)
-                .map(|s| s.description.clone())
-                .collect();
+        let (predicted_actions, suggested_queries, confidence_scores, predicted_files) = if let Some(proc) = procedure {
+            info!(
+                "Found procedure for task with {} steps, success_rate: {:.2}",
+                proc.steps.len(),
+                proc.success_rate
+            );
 
-            let queries = proc.typical_queries.iter().take(5).cloned().collect();
-            let conf = proc.success_rate;
+            // Get next steps that haven't been completed yet
+            let mut next_steps = Vec::new();
+            let mut step_confidences = Vec::new();
 
-            (actions, queries, conf)
+            for step in &proc.steps {
+                // Check if step was completed
+                let is_completed = completed_steps.iter().any(|completed| {
+                    step.description.to_lowercase().contains(&completed.to_lowercase())
+                        || completed.to_lowercase().contains(&step.description.to_lowercase())
+                });
+
+                if !is_completed {
+                    // Calculate confidence for this step
+                    let step_confidence = if step.optional {
+                        proc.success_rate * 0.7 // Lower confidence for optional steps
+                    } else {
+                        proc.success_rate
+                    };
+
+                    next_steps.push(json!({
+                        "description": step.description,
+                        "typical_actions": step.typical_actions,
+                        "expected_files": step.expected_files,
+                        "optional": step.optional,
+                        "order": step.order
+                    }));
+
+                    step_confidences.push(step_confidence);
+
+                    // Return top 3 most likely next actions
+                    if next_steps.len() >= 3 {
+                        break;
+                    }
+                }
+            }
+
+            // If all steps completed, check for optional steps
+            if next_steps.is_empty() {
+                for step in proc.steps.iter().filter(|s| s.optional) {
+                    next_steps.push(json!({
+                        "description": step.description,
+                        "typical_actions": step.typical_actions,
+                        "expected_files": step.expected_files,
+                        "optional": true,
+                        "order": step.order
+                    }));
+                    step_confidences.push(proc.success_rate * 0.5);
+
+                    if next_steps.len() >= 3 {
+                        break;
+                    }
+                }
+            }
+
+            // Get top 5 typical queries for this task type
+            let queries: Vec<String> = proc.typical_queries.iter().take(5).cloned().collect();
+
+            // Get predicted files from required context
+            let files: Vec<String> = proc.required_context.iter().take(5).cloned().collect();
+
+            (next_steps, queries, step_confidences, files)
         } else {
-            (vec![], vec![], 0.0)
+            // No procedure found - try to find similar episodes
+            debug!("No procedure found, searching for similar episodes");
+
+            let similar_episodes = memory.episodic.find_similar(task_desc, 5).await;
+
+            if !similar_episodes.is_empty() {
+                // Extract common actions from similar episodes
+                let mut action_frequency = std::collections::HashMap::<String, usize>::new();
+                let mut query_frequency = std::collections::HashMap::<String, usize>::new();
+                let mut file_frequency = std::collections::HashMap::<String, usize>::new();
+
+                for episode in &similar_episodes {
+                    // Count solution path steps
+                    for step in episode.solution_path.split(['.', ',', ';']) {
+                        let trimmed = step.trim();
+                        if !trimmed.is_empty() {
+                            *action_frequency.entry(trimmed.to_string()).or_insert(0) += 1;
+                        }
+                    }
+
+                    // Count queries
+                    for query in &episode.queries_made {
+                        *query_frequency.entry(query.clone()).or_insert(0) += 1;
+                    }
+
+                    // Count files
+                    for file in &episode.files_touched {
+                        *file_frequency.entry(file.clone()).or_insert(0) += 1;
+                    }
+                }
+
+                // Get top 3 actions by frequency
+                let mut actions: Vec<(String, usize)> = action_frequency.into_iter().collect();
+                actions.sort_by(|a, b| b.1.cmp(&a.1));
+
+                let predicted_actions: Vec<Value> = actions.iter().take(3)
+                    .map(|(action, freq)| json!({
+                        "description": action,
+                        "frequency": freq,
+                        "source": "similar_episodes"
+                    }))
+                    .collect();
+
+                // Get top 5 queries
+                let mut queries: Vec<(String, usize)> = query_frequency.into_iter().collect();
+                queries.sort_by(|a, b| b.1.cmp(&a.1));
+                let suggested_queries: Vec<String> = queries.iter().take(5)
+                    .map(|(q, _)| q.clone())
+                    .collect();
+
+                // Get top 5 files
+                let mut files: Vec<(String, usize)> = file_frequency.into_iter().collect();
+                files.sort_by(|a, b| b.1.cmp(&a.1));
+                let predicted_files: Vec<String> = files.iter().take(5)
+                    .map(|(f, _)| f.clone())
+                    .collect();
+
+                // Calculate confidence based on episode count and consistency
+                let avg_frequency = if !actions.is_empty() {
+                    actions.iter().map(|(_, f)| *f as f32).sum::<f32>() / actions.len() as f32
+                } else {
+                    0.0
+                };
+                let confidence = (avg_frequency / similar_episodes.len() as f32).min(1.0);
+                let confidences = vec![confidence; predicted_actions.len()];
+
+                info!("Predicted {} actions from {} similar episodes (confidence: {:.2})",
+                    predicted_actions.len(), similar_episodes.len(), confidence);
+
+                (predicted_actions, suggested_queries, confidences, predicted_files)
+            } else {
+                // No similar episodes found
+                info!("No similar episodes found for task: '{}'", task_desc);
+                (vec![], vec![], vec![], vec![])
+            }
         };
 
         Ok(json!({
             "predicted_actions": predicted_actions,
             "suggested_queries": suggested_queries,
-            "confidence_scores": vec![confidence; predicted_actions.len()]
+            "confidence_scores": confidence_scores,
+            "predicted_files": predicted_files,
+            "has_procedure": procedure.is_some()
         }))
     }
 
     async fn handle_attention_retrieve(&self, args: Value) -> Result<Value> {
         #[derive(Deserialize)]
         struct AttentionRetrieveParams {
-            #[allow(dead_code)]
             attention_pattern: Value,
             token_budget: usize,
-            #[allow(dead_code)]
             project_path: Option<String>,
         }
 
@@ -744,44 +951,73 @@ impl ToolHandlers {
 
         let memory = self.memory_system.read().await;
 
+        // Extract focused symbols from attention pattern
+        let focused_symbols: Vec<String> = params.attention_pattern.get("focused_symbols")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+            .unwrap_or_default();
+
+        debug!("Retrieving context for {} focused symbols with budget {} tokens", focused_symbols.len(), params.token_budget);
+
         // Get symbols from working memory sorted by attention weight
-        // Note: We need to iterate through active_symbols and look up in the symbol cache
         use crate::indexer::Indexer;
         let active_ids = memory.working.active_symbols().clone();
         let indexer = self.indexer.read().await;
 
-        let mut symbols_with_weights: Vec<(CodeSymbol, f32)> = Vec::new();
+        let mut symbols_with_weights: Vec<(CodeSymbol, f32, bool)> = Vec::new();
 
+        // First pass: load active symbols with their weights
         for symbol_id in active_ids.iter() {
             if let Ok(Some(symbol)) = indexer.get_symbol(&symbol_id.0).await {
                 let weight = memory.working.get_attention_weight(symbol_id).unwrap_or(1.0);
-                symbols_with_weights.push((symbol, weight));
+                let is_focused = focused_symbols.contains(&symbol.name);
+                symbols_with_weights.push((symbol, weight, is_focused));
             }
         }
 
+        // Boost weights for currently focused symbols
+        for (_, weight, is_focused) in &mut symbols_with_weights {
+            if *is_focused {
+                *weight *= 1.5; // Boost focused symbols
+            }
+        }
+
+        // Sort by weight (descending)
         symbols_with_weights.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         // Categorize by attention level and fit within token budget
         let mut high_attention = Vec::new();
         let mut medium_attention = Vec::new();
         let mut context_symbols = Vec::new();
+        let mut prefetched_symbols = Vec::new();
         let mut total_tokens = 0usize;
 
-        for (symbol, weight) in symbols_with_weights {
-            if total_tokens + symbol.metadata.token_cost.0 as usize > params.token_budget {
+        // Reserve 20% of budget for prefetching related symbols
+        let main_budget = (params.token_budget as f32 * 0.8) as usize;
+        let prefetch_budget = params.token_budget - main_budget;
+
+        // First pass: categorize existing symbols within main budget
+        for (symbol, weight, _is_focused) in &symbols_with_weights {
+            if total_tokens + symbol.metadata.token_cost.0 as usize > main_budget {
                 break;
             }
 
             let symbol_json = json!({
                 "id": symbol.id.0,
                 "name": symbol.name,
+                "kind": symbol.kind.as_str(),
                 "weight": weight,
-                "token_cost": symbol.metadata.token_cost.0
+                "token_cost": symbol.metadata.token_cost.0,
+                "location": {
+                    "file": symbol.location.file,
+                    "line_start": symbol.location.line_start
+                }
             });
 
-            if weight > 1.5 {
+            // Categorize based on attention weight
+            if *weight > 1.5 {
                 high_attention.push(symbol_json);
-            } else if weight > 0.8 {
+            } else if *weight > 0.8 {
                 medium_attention.push(symbol_json);
             } else {
                 context_symbols.push(symbol_json);
@@ -790,11 +1026,69 @@ impl ToolHandlers {
             total_tokens += symbol.metadata.token_cost.0 as usize;
         }
 
+        // Second pass: prefetch related symbols for high-attention symbols
+        let mut prefetch_tokens = 0usize;
+        let mut prefetched_ids = std::collections::HashSet::new();
+
+        for (symbol, _weight, _) in symbols_with_weights.iter().filter(|(_, w, _)| *w > 1.5) {
+            if prefetch_tokens >= prefetch_budget {
+                break;
+            }
+
+            // Get related symbols using semantic memory
+            let related = memory.semantic.find_related_symbols(&symbol.id);
+
+            for rel in related.iter().take(3) {
+                // Don't prefetch if already in working memory
+                if active_ids.contains(&rel.to) || prefetched_ids.contains(&rel.to.0) {
+                    continue;
+                }
+
+                if let Ok(Some(related_symbol)) = indexer.get_symbol(&rel.to.0).await {
+                    if prefetch_tokens + related_symbol.metadata.token_cost.0 as usize <= prefetch_budget {
+                        prefetched_symbols.push(json!({
+                            "id": related_symbol.id.0,
+                            "name": related_symbol.name,
+                            "kind": related_symbol.kind.as_str(),
+                            "relationship": format!("{:?}", rel.relationship_type),
+                            "strength": rel.strength,
+                            "token_cost": related_symbol.metadata.token_cost.0
+                        }));
+
+                        prefetched_ids.insert(rel.to.0.clone());
+                        prefetch_tokens += related_symbol.metadata.token_cost.0 as usize;
+                    }
+                }
+            }
+        }
+
+        total_tokens += prefetch_tokens;
+
+        // Get eviction history for recommendations
+        let eviction_history = memory.working.eviction_history();
+        let recently_evicted: Vec<String> = eviction_history.iter()
+            .rev()
+            .take(5)
+            .map(|s| s.0.clone())
+            .collect();
+
+        info!(
+            "Retrieved {} high, {} medium, {} context symbols + {} prefetched (total: {} tokens)",
+            high_attention.len(),
+            medium_attention.len(),
+            context_symbols.len(),
+            prefetched_symbols.len(),
+            total_tokens
+        );
+
         Ok(json!({
             "high_attention": high_attention,
             "medium_attention": medium_attention,
             "context_symbols": context_symbols,
-            "total_tokens": total_tokens
+            "prefetched_symbols": prefetched_symbols,
+            "total_tokens": total_tokens,
+            "budget_utilization": (total_tokens as f32 / params.token_budget as f32),
+            "recently_evicted": recently_evicted
         }))
     }
 

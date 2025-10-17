@@ -241,11 +241,11 @@ impl MeridianServer {
     }
 
     /// Handle initialize request
-    fn handle_initialize(&self, id: Option<Value>, _params: Option<Value>) -> JsonRpcResponse {
+    pub fn handle_initialize(&self, id: Option<Value>, _params: Option<Value>) -> JsonRpcResponse {
         info!("Handling initialize request");
 
         let result = json!({
-            "protocolVersion": "2024-11-05",
+            "protocolVersion": "2025-06-18",
             "capabilities": ServerCapabilities::default(),
             "serverInfo": {
                 "name": "meridian",
@@ -257,7 +257,7 @@ impl MeridianServer {
     }
 
     /// Handle tools/list request
-    fn handle_list_tools(&self, id: Option<Value>) -> JsonRpcResponse {
+    pub fn handle_list_tools(&self, id: Option<Value>) -> JsonRpcResponse {
         info!("Handling tools/list request");
 
         let tools = get_all_tools();
@@ -322,7 +322,7 @@ impl MeridianServer {
     }
 
     /// Handle resources/list request
-    fn handle_list_resources(&self, id: Option<Value>) -> JsonRpcResponse {
+    pub fn handle_list_resources(&self, id: Option<Value>) -> JsonRpcResponse {
         info!("Handling resources/list request");
 
         let resources = get_all_resources();

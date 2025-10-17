@@ -502,4 +502,457 @@ fn main() {
         let quality = compressor.assess_quality(compressed, original);
         assert!(quality > 0.0 && quality <= 1.0);
     }
+
+    // ========== COMPREHENSIVE TESTS FOR ALL 8 COMPRESSION STRATEGIES ==========
+
+    #[test]
+    fn test_strategy_none() {
+        let compressor = ContextCompressor::new(0.7);
+        let code = "fn main() {\n    // Comment\n    println!(\"Hello\");\n}";
+        let result = compressor
+            .compress(code, CompressionStrategy::None, 1000)
+            .unwrap();
+
+        // None strategy should preserve content exactly
+        assert_eq!(result.content, code);
+        assert_eq!(result.ratio, 1.0);
+    }
+
+    #[test]
+    fn test_strategy_remove_comments_comprehensive() {
+        let compressor = ContextCompressor::new(0.7);
+
+        // Test with various comment types
+        let code = r#"
+// Single line comment
+fn main() {
+    /* Block comment */
+    let x = 5; // Inline comment
+
+    /* Multi-line
+       block comment */
+    println!("Hello");
+
+    /* Nested /* not really */ comment */
+}
+"#;
+        let result = compressor
+            .compress(code, CompressionStrategy::RemoveComments, 1000)
+            .unwrap();
+
+        assert!(!result.content.contains("// Single line comment"));
+        assert!(!result.content.contains("/* Block comment */"));
+        assert!(!result.content.contains("// Inline comment"));
+        assert!(!result.content.contains("Multi-line"));
+        assert!(result.content.contains("fn main()"));
+        assert!(result.content.contains("let x = 5"));
+        assert!(result.ratio < 1.0); // Should be compressed
+    }
+
+    #[test]
+    fn test_strategy_remove_whitespace_comprehensive() {
+        let compressor = ContextCompressor::new(0.7);
+        let code = r#"
+fn     main()    {
+    let    x    =    5   ;
+
+
+    println!(  "Hello"  );
+}
+"#;
+        let result = compressor
+            .compress(code, CompressionStrategy::RemoveWhitespace, 1000)
+            .unwrap();
+
+        assert!(result.content.len() < code.len());
+        assert!(!result.content.contains("    "));
+        assert!(result.content.contains("fn main()"));
+        assert!(result.ratio < 1.0);
+    }
+
+    #[test]
+    fn test_strategy_abstract_to_signatures() {
+        let compressor = ContextCompressor::new(0.7);
+        let code = r#"
+pub fn add(a: i32, b: i32) -> i32 {
+    let result = a + b;
+    result
+}
+
+pub async fn fetch_data(url: &str) -> Result<String> {
+    let data = http_get(url).await?;
+    Ok(data)
+}
+
+pub struct Point {
+    x: i32,
+    y: i32,
+}
+
+pub enum Status {
+    Active,
+    Inactive,
+}
+
+pub trait Calculator {
+    fn compute(&self) -> i32;
+}
+"#;
+        let result = compressor
+            .compress(code, CompressionStrategy::AbstractToSignatures, 1000)
+            .unwrap();
+
+        // Should not contain implementation details
+        assert!(!result.content.contains("let result = a + b"));
+        assert!(!result.content.contains("http_get"));
+
+        // Should contain signatures
+        assert!(!result.content.is_empty());
+        assert!(result.ratio < 1.0);
+    }
+
+    #[test]
+    fn test_strategy_skeleton() {
+        let compressor = ContextCompressor::new(0.7);
+        let code = r#"
+impl MyStruct {
+    pub fn new() -> Self {
+        Self { data: Vec::new() }
+    }
+
+    fn internal_method(&self) -> bool {
+        self.data.is_empty()
+    }
+}
+"#;
+        let result = compressor
+            .compress(code, CompressionStrategy::Skeleton, 1000)
+            .unwrap();
+
+        // Skeleton should extract structure without bodies
+        assert!(!result.content.contains("Vec::new()"));
+        assert!(!result.content.contains("is_empty()"));
+    }
+
+    #[test]
+    fn test_strategy_summarize() {
+        let compressor = ContextCompressor::new(0.7);
+        let code = r#"
+struct Point { x: i32, y: i32 }
+struct Line { start: Point, end: Point }
+fn add(a: i32, b: i32) -> i32 { a + b }
+fn subtract(a: i32, b: i32) -> i32 { a - b }
+fn multiply(a: i32, b: i32) -> i32 { a * b }
+"#;
+        let result = compressor
+            .compress(code, CompressionStrategy::Summarize, 1000)
+            .unwrap();
+
+        // Summary should mention key structures and functions
+        let content_lower = result.content.to_lowercase();
+        assert!(
+            content_lower.contains("point")
+            || content_lower.contains("line")
+            || content_lower.contains("add")
+            || content_lower.contains("subtract")
+            || content_lower.contains("multiply")
+        );
+        assert!(result.ratio < 1.0);
+    }
+
+    #[test]
+    fn test_strategy_summary_alias() {
+        let compressor = ContextCompressor::new(0.7);
+        let code = "struct Data { value: i32 }\nfn process() {}";
+
+        let result1 = compressor
+            .compress(code, CompressionStrategy::Summarize, 1000)
+            .unwrap();
+        let result2 = compressor
+            .compress(code, CompressionStrategy::Summary, 1000)
+            .unwrap();
+
+        // Both aliases should produce same result
+        assert_eq!(result1.content, result2.content);
+    }
+
+    #[test]
+    fn test_strategy_extract_key_points() {
+        let compressor = ContextCompressor::new(0.7);
+        let code = r#"
+// This is a comment
+let x = 5;
+println!("debug");
+
+pub struct Config {
+    timeout: u64,
+}
+
+fn helper() {
+    // do something
+}
+
+pub fn main_function() {
+    helper();
+}
+
+trait Processor {
+    fn process(&self);
+}
+"#;
+        let result = compressor
+            .compress(code, CompressionStrategy::ExtractKeyPoints, 1000)
+            .unwrap();
+
+        // Should extract only lines with keywords
+        assert!(result.content.contains("pub struct Config"));
+        assert!(result.content.contains("fn helper"));
+        assert!(result.content.contains("pub fn main_function"));
+        assert!(result.content.contains("trait Processor"));
+
+        // Should not contain non-keyword lines
+        assert!(!result.content.contains("let x = 5"));
+        assert!(!result.content.contains("println!"));
+        assert!(result.ratio < 1.0);
+    }
+
+    #[test]
+    fn test_strategy_tree_shaking() {
+        let compressor = ContextCompressor::new(0.7);
+        let code = r#"
+fn main() {
+    let x = 5;
+
+    if false {
+        println!("Dead code 1");
+        let y = 10;
+        unreachable_function();
+    }
+
+    println!("Live code");
+
+    if (false) {
+        println!("Dead code 2");
+    }
+
+    let z = 10;
+}
+"#;
+        let result = compressor
+            .compress(code, CompressionStrategy::TreeShaking, 1000)
+            .unwrap();
+
+        // Should remove dead code blocks
+        assert!(!result.content.contains("Dead code 1"));
+        assert!(!result.content.contains("Dead code 2"));
+        assert!(!result.content.contains("unreachable_function"));
+
+        // Should preserve live code
+        assert!(result.content.contains("Live code"));
+        assert!(result.content.contains("let x = 5"));
+        assert!(result.content.contains("let z = 10"));
+    }
+
+    #[test]
+    fn test_strategy_hybrid() {
+        let compressor = ContextCompressor::new(0.7);
+        let code = r#"
+// Comment to remove
+fn main() {
+    // Another comment
+    let    x    =    5;
+
+    if false {
+        println!("Dead code");
+    }
+
+    println!("Hello");
+}
+
+pub fn helper(a: i32, b: i32) -> i32 {
+    a + b
+}
+"#;
+        let result = compressor
+            .compress(code, CompressionStrategy::Hybrid, 50) // Small target
+            .unwrap();
+
+        // Hybrid should apply multiple strategies
+        assert!(!result.content.contains("// Comment"));
+        assert!(result.content.len() < code.len());
+        assert!(result.ratio < 1.0);
+
+        // With very small target, should eventually extract signatures
+        let small_result = compressor
+            .compress(code, CompressionStrategy::Hybrid, 10)
+            .unwrap();
+        assert!(small_result.content.len() < result.content.len());
+    }
+
+    #[test]
+    fn test_strategy_ultra_compact() {
+        let compressor = ContextCompressor::new(0.7);
+        let code = r#"
+struct Point { x: i32, y: i32 }
+struct Line { start: Point, end: Point }
+
+fn add(a: i32, b: i32) -> i32 { a + b }
+fn subtract(a: i32, b: i32) -> i32 { a - b }
+
+impl Point {
+    fn new(x: i32, y: i32) -> Self {
+        Self { x, y }
+    }
+}
+"#;
+        let result = compressor
+            .compress(code, CompressionStrategy::UltraCompact, 1000)
+            .unwrap();
+
+        // Ultra compact should produce very small output
+        assert!(result.content.len() < code.len() / 2);
+
+        // Should contain high-level information
+        let content_lower = result.content.to_lowercase();
+        assert!(
+            content_lower.contains("point")
+            || content_lower.contains("line")
+            || content_lower.contains("struct")
+        );
+        assert!(result.ratio < 0.5); // Should be highly compressed
+    }
+
+    #[test]
+    fn test_truncate_to_budget() {
+        let compressor = ContextCompressor::new(0.7);
+        let long_code = "fn main() { ".to_string() + &"let x = 1; ".repeat(100) + "}";
+
+        let result = compressor
+            .compress(&long_code, CompressionStrategy::None, 20)
+            .unwrap();
+
+        // Should be truncated
+        assert!(result.content.contains("[truncated]"));
+        assert!(result.content.len() < long_code.len());
+    }
+
+    #[test]
+    fn test_compression_ratio_calculation() {
+        let compressor = ContextCompressor::new(0.7);
+        let code = "fn main() {\n    // Comment\n    println!(\"Hello\");\n}";
+
+        let result = compressor
+            .compress(code, CompressionStrategy::RemoveComments, 1000)
+            .unwrap();
+
+        // Ratio should be between 0 and 1
+        assert!(result.ratio > 0.0 && result.ratio <= 1.0);
+
+        // Ratio should reflect compression
+        let original_tokens = compressor.count_tokens(code);
+        let compressed_tokens = compressor.count_tokens(&result.content);
+        let expected_ratio = compressed_tokens as f32 / original_tokens as f32;
+        assert!((result.ratio - expected_ratio).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_quality_score_range() {
+        let compressor = ContextCompressor::new(0.7);
+        let code = "pub fn test() { let x = 5; }";
+
+        for strategy in [
+            CompressionStrategy::None,
+            CompressionStrategy::RemoveComments,
+            CompressionStrategy::RemoveWhitespace,
+            CompressionStrategy::Summarize,
+            CompressionStrategy::ExtractKeyPoints,
+        ] {
+            let result = compressor.compress(code, strategy.clone(), 1000).unwrap();
+            assert!(
+                result.quality_score >= 0.0 && result.quality_score <= 1.0,
+                "Quality score out of range for strategy {:?}: {}",
+                strategy,
+                result.quality_score
+            );
+        }
+    }
+
+    #[test]
+    fn test_empty_input() {
+        let compressor = ContextCompressor::new(0.7);
+        let code = "";
+
+        let result = compressor
+            .compress(code, CompressionStrategy::RemoveComments, 100)
+            .unwrap();
+
+        assert!(result.content.is_empty() || result.content.trim().is_empty());
+        assert_eq!(result.ratio, 1.0); // No compression possible
+    }
+
+    #[test]
+    fn test_comment_edge_cases() {
+        let compressor = ContextCompressor::new(0.7);
+
+        // Nested block comments
+        let code1 = "/* outer /* inner */ outer */\nfn main() {}";
+        let result1 = compressor.remove_comments(code1);
+        assert!(result1.contains("fn main()"));
+
+        // Multiple inline comments
+        let code2 = "let x = 5; // comment 1\nlet y = 10; // comment 2";
+        let result2 = compressor.remove_comments(code2);
+        assert!(result2.contains("let x = 5"));
+        assert!(!result2.contains("comment"));
+    }
+
+    #[test]
+    fn test_signature_extraction_edge_cases() {
+        let compressor = ContextCompressor::new(0.7);
+
+        // Generic functions
+        let code = r#"
+pub fn process<T: Clone>(item: T) -> Result<T, Error> {
+    Ok(item.clone())
+}
+
+impl<T> MyStruct<T> where T: Debug {
+    fn debug(&self) {
+        println!("{:?}", self);
+    }
+}
+"#;
+        let result = compressor.extract_signatures(code);
+
+        // Should handle generics
+        assert!(!result.is_empty());
+        // Should not contain implementation
+        assert!(!result.contains("clone()"));
+        assert!(!result.contains("println!"));
+    }
+
+    #[test]
+    fn test_compression_preserves_structure() {
+        let compressor = ContextCompressor::new(0.7);
+        let code = r#"
+pub struct Config {
+    timeout: u64,
+}
+
+impl Config {
+    pub fn new() -> Self {
+        Self { timeout: 30 }
+    }
+}
+"#;
+
+        let result = compressor
+            .compress(code, CompressionStrategy::AbstractToSignatures, 1000)
+            .unwrap();
+
+        // Should preserve structure definitions
+        assert!(!result.content.is_empty());
+        assert!(result.quality_score > 0.0 && result.quality_score <= 1.0);
+        assert!(result.ratio < 1.0); // Should be compressed
+    }
 }

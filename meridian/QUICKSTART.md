@@ -49,7 +49,7 @@ Create or update `.claude/mcp_config.json`:
 ./target/release/meridian serve --stdio
 ```
 
-## 📋 Available Tools (30 total)
+## 📋 Available Tools (29 total)
 
 - **Memory**: record_episode, find_similar_episodes, update_working_set, get_statistics
 - **Context**: prepare_adaptive, defragment, compress
@@ -65,8 +65,8 @@ Create or update `.claude/mcp_config.json`:
 ## ✅ Production Status
 
 - ✅ **321 tests passing (100%)** - Unit + Integration + E2E coverage
-- ✅ **All 30 MCP tools implemented** - Complete feature set
-- ✅ **MCP 2024-11-05 spec compliant** - Custom implementation (not SDK)
+- ✅ **All 29 MCP tools implemented** - Complete feature set
+- ✅ **MCP 2025-06-18 spec compliant** - Custom implementation (not SDK)
 - ✅ **Zero compiler warnings** - Clean release build
 - ✅ **Thread-safe async** - DashMap, RwLock, Arc
 - ✅ **Two transports** - STDIO (Claude Code) + HTTP/SSE (multi-project)

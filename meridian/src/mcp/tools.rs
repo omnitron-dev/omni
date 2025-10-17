@@ -1,13 +1,18 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-/// MCP Tool definition
+/// MCP Tool definition (MCP spec 2025-06-18 compliant)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tool {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    #[serde(rename = "inputSchema")]
     pub input_schema: Value,
+    #[serde(rename = "outputSchema", skip_serializing_if = "Option::is_none")]
+    pub output_schema: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub _meta: Option<Value>,
 }
 
 /// Get all available tools for Meridian MCP server
@@ -46,6 +51,8 @@ pub fn get_all_tools() -> Vec<Tool> {
                 },
                 "required": ["task", "outcome"]
             }),
+            output_schema: None,
+            _meta: None,
         },
         Tool {
             name: "memory.find_similar_episodes".to_string(),
@@ -65,6 +72,8 @@ pub fn get_all_tools() -> Vec<Tool> {
                 },
                 "required": ["task_description"]
             }),
+            output_schema: None,
+            _meta: None,
         },
         Tool {
             name: "memory.update_working_set".to_string(),
@@ -95,6 +104,8 @@ pub fn get_all_tools() -> Vec<Tool> {
                 },
                 "required": ["focused_symbols", "accessed_files", "session_id"]
             }),
+            output_schema: None,
+            _meta: None,
         },
 
         // === Context Management Tools ===
@@ -120,6 +131,8 @@ pub fn get_all_tools() -> Vec<Tool> {
                 },
                 "required": ["request", "model", "available_tokens"]
             }),
+            output_schema: None,
+            _meta: None,
         },
         Tool {
             name: "context.defragment".to_string(),
@@ -139,6 +152,8 @@ pub fn get_all_tools() -> Vec<Tool> {
                 },
                 "required": ["fragments", "target_tokens"]
             }),
+            output_schema: None,
+            _meta: None,
         },
 
         // === Code Navigation Tools ===
@@ -177,6 +192,8 @@ pub fn get_all_tools() -> Vec<Tool> {
                 },
                 "required": ["query"]
             }),
+            output_schema: None,
+            _meta: None,
         },
         Tool {
             name: "code.get_definition".to_string(),
@@ -206,6 +223,8 @@ pub fn get_all_tools() -> Vec<Tool> {
                 },
                 "required": ["symbol_id"]
             }),
+            output_schema: None,
+            _meta: None,
         },
         Tool {
             name: "code.find_references".to_string(),
@@ -230,6 +249,8 @@ pub fn get_all_tools() -> Vec<Tool> {
                 },
                 "required": ["symbol_id"]
             }),
+            output_schema: None,
+            _meta: None,
         },
         Tool {
             name: "code.get_dependencies".to_string(),
@@ -255,6 +276,8 @@ pub fn get_all_tools() -> Vec<Tool> {
                 },
                 "required": ["entry_point"]
             }),
+            output_schema: None,
+            _meta: None,
         },
 
         // === Session Management Tools ===
@@ -280,6 +303,8 @@ pub fn get_all_tools() -> Vec<Tool> {
                 },
                 "required": ["task_description"]
             }),
+            output_schema: None,
+            _meta: None,
         },
         Tool {
             name: "session.update".to_string(),
@@ -307,6 +332,8 @@ pub fn get_all_tools() -> Vec<Tool> {
                 },
                 "required": ["session_id", "path", "content"]
             }),
+            output_schema: None,
+            _meta: None,
         },
         Tool {
             name: "session.query".to_string(),
@@ -330,6 +357,8 @@ pub fn get_all_tools() -> Vec<Tool> {
                 },
                 "required": ["session_id", "query"]
             }),
+            output_schema: None,
+            _meta: None,
         },
         Tool {
             name: "session.complete".to_string(),
@@ -353,6 +382,8 @@ pub fn get_all_tools() -> Vec<Tool> {
                 },
                 "required": ["session_id", "action"]
             }),
+            output_schema: None,
+            _meta: None,
         },
 
         // === Feedback and Learning Tools ===
@@ -383,6 +414,8 @@ pub fn get_all_tools() -> Vec<Tool> {
                 },
                 "required": ["session_id"]
             }),
+            output_schema: None,
+            _meta: None,
         },
         Tool {
             name: "learning.train_on_success".to_string(),
@@ -406,6 +439,8 @@ pub fn get_all_tools() -> Vec<Tool> {
                 },
                 "required": ["task", "solution"]
             }),
+            output_schema: None,
+            _meta: None,
         },
         Tool {
             name: "predict.next_action".to_string(),
@@ -424,6 +459,8 @@ pub fn get_all_tools() -> Vec<Tool> {
                 },
                 "required": ["current_context"]
             }),
+            output_schema: None,
+            _meta: None,
         },
 
         // === Attention-based Retrieval ===
@@ -448,6 +485,8 @@ pub fn get_all_tools() -> Vec<Tool> {
                 },
                 "required": ["attention_pattern", "token_budget"]
             }),
+            output_schema: None,
+            _meta: None,
         },
         Tool {
             name: "attention.analyze_patterns".to_string(),
@@ -470,6 +509,8 @@ pub fn get_all_tools() -> Vec<Tool> {
                 },
                 "required": ["session_id"]
             }),
+            output_schema: None,
+            _meta: None,
         },
 
         // === Documentation Tools ===
@@ -499,6 +540,8 @@ pub fn get_all_tools() -> Vec<Tool> {
                 },
                 "required": ["query"]
             }),
+            output_schema: None,
+            _meta: None,
         },
         Tool {
             name: "docs.get_for_symbol".to_string(),
@@ -522,6 +565,8 @@ pub fn get_all_tools() -> Vec<Tool> {
                 },
                 "required": ["symbol_id"]
             }),
+            output_schema: None,
+            _meta: None,
         },
 
         // === History Tools ===
@@ -552,6 +597,8 @@ pub fn get_all_tools() -> Vec<Tool> {
                 },
                 "required": ["path"]
             }),
+            output_schema: None,
+            _meta: None,
         },
         Tool {
             name: "history.blame".to_string(),
@@ -578,6 +625,8 @@ pub fn get_all_tools() -> Vec<Tool> {
                 },
                 "required": ["path"]
             }),
+            output_schema: None,
+            _meta: None,
         },
 
         // === Analysis Tools ===
@@ -606,6 +655,8 @@ pub fn get_all_tools() -> Vec<Tool> {
                 },
                 "required": ["target"]
             }),
+            output_schema: None,
+            _meta: None,
         },
         Tool {
             name: "analyze.token_cost".to_string(),
@@ -637,6 +688,8 @@ pub fn get_all_tools() -> Vec<Tool> {
                 },
                 "required": ["items"]
             }),
+            output_schema: None,
+            _meta: None,
         },
 
         // === Monorepo Tools ===
@@ -658,6 +711,8 @@ pub fn get_all_tools() -> Vec<Tool> {
                 },
                 "required": []
             }),
+            output_schema: None,
+            _meta: None,
         },
         Tool {
             name: "monorepo.set_context".to_string(),
@@ -676,6 +731,8 @@ pub fn get_all_tools() -> Vec<Tool> {
                 },
                 "required": ["project_name", "session_id"]
             }),
+            output_schema: None,
+            _meta: None,
         },
         Tool {
             name: "monorepo.find_cross_references".to_string(),
@@ -700,6 +757,8 @@ pub fn get_all_tools() -> Vec<Tool> {
                 },
                 "required": ["source_project"]
             }),
+            output_schema: None,
+            _meta: None,
         },
 
         // === Memory Tools (new) ===
@@ -721,6 +780,8 @@ pub fn get_all_tools() -> Vec<Tool> {
                 },
                 "required": []
             }),
+            output_schema: None,
+            _meta: None,
         },
         Tool {
             name: "context.compress".to_string(),
@@ -748,11 +809,13 @@ pub fn get_all_tools() -> Vec<Tool> {
                 },
                 "required": ["content", "strategy"]
             }),
+            output_schema: None,
+            _meta: None,
         },
     ]
 }
 
-/// MCP Resource definition
+/// MCP Resource definition (MCP spec 2025-06-18 compliant)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Resource {
     pub uri: String,
@@ -760,8 +823,10 @@ pub struct Resource {
     pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", rename = "mimeType")]
     pub mime_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub _meta: Option<Value>,
 }
 
 /// Get all available resources
@@ -772,44 +837,58 @@ pub fn get_all_resources() -> Vec<Resource> {
             name: Some("Current Index State".to_string()),
             description: Some("Current state of the code index".to_string()),
             mime_type: Some("application/json".to_string()),
+            _meta: None,
         },
         Resource {
             uri: "meridian://memory/episodes".to_string(),
             name: Some("Task Episodes".to_string()),
             description: Some("History of task episodes for learning".to_string()),
             mime_type: Some("application/json".to_string()),
+            _meta: None,
         },
         Resource {
             uri: "meridian://memory/working".to_string(),
             name: Some("Working Memory".to_string()),
             description: Some("Current working memory state".to_string()),
             mime_type: Some("application/json".to_string()),
+            _meta: None,
         },
         Resource {
             uri: "meridian://sessions/active".to_string(),
             name: Some("Active Sessions".to_string()),
             description: Some("List of active work sessions".to_string()),
             mime_type: Some("application/json".to_string()),
+            _meta: None,
         },
     ]
 }
 
-/// Server capabilities
+/// Server capabilities (MCP spec 2025-06-18 compliant)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerCapabilities {
-    pub tools: bool,
-    pub resources: bool,
-    pub prompts: bool,
-    pub logging: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tools: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resources: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompts: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logging: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completions: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub experimental: Option<serde_json::Value>,
 }
 
 impl Default for ServerCapabilities {
     fn default() -> Self {
         Self {
-            tools: true,
-            resources: true,
-            prompts: true,
-            logging: true,
+            tools: Some(true),
+            resources: Some(true),
+            prompts: Some(true),
+            logging: Some(true),
+            completions: None,
+            experimental: None,
         }
     }
 }

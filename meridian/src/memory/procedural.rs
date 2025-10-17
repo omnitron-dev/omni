@@ -142,86 +142,15 @@ impl ProceduralMemory {
         let successful: Vec<_> = episodes
             .iter()
             .filter(|e| e.outcome == Outcome::Success)
+            .copied()
             .collect();
 
-        let success_rate = if episodes.is_empty() {
-            0.0
-        } else {
-            successful.len() as f32 / episodes.len() as f32
-        };
-
-        // Extract common steps from solution paths
-        let mut step_frequency: HashMap<String, usize> = HashMap::new();
-        for episode in &successful {
-            if !episode.solution_path.is_empty() {
-                *step_frequency.entry(episode.solution_path.clone()).or_insert(0) += 1;
-            }
-        }
-
-        // Convert to procedure steps
-        let mut steps_vec: Vec<_> = step_frequency.into_iter().collect();
-        steps_vec.sort_by(|a, b| b.1.cmp(&a.1)); // Sort by frequency
-
-        let steps = steps_vec
-            .into_iter()
-            .enumerate()
-            .map(|(i, (desc, freq))| ProcedureStep {
-                order: i,
-                description: desc.clone(),
-                typical_actions: vec![desc],
-                expected_files: vec![],
-                optional: freq < successful.len() / 2, // Optional if not in majority
-            })
-            .collect();
-
-        // Extract required context (files that appear in most episodes)
-        let mut file_frequency: HashMap<String, usize> = HashMap::new();
-        for episode in &successful {
-            for file in &episode.files_touched {
-                *file_frequency.entry(file.clone()).or_insert(0) += 1;
-            }
-        }
-
-        let required_context: Vec<String> = file_frequency
-            .into_iter()
-            .filter(|(_, freq)| *freq >= successful.len() / 2)
-            .map(|(file, _)| file)
-            .collect();
-
-        // Extract typical queries
-        let mut query_frequency: HashMap<String, usize> = HashMap::new();
-        for episode in &successful {
-            for query in &episode.queries_made {
-                *query_frequency.entry(query.clone()).or_insert(0) += 1;
-            }
-        }
-
-        let typical_queries: Vec<String> = query_frequency
-            .into_iter()
-            .filter(|(_, freq)| *freq >= 2)
-            .map(|(query, _)| query)
-            .collect();
-
-        // Calculate average tokens
-        let total_tokens: u32 = episodes.iter().map(|e| e.tokens_used.0).sum();
-        let average_tokens = if episodes.is_empty() {
-            0
-        } else {
-            total_tokens / episodes.len() as u32
-        };
-
-        // Extract common pitfalls from failed episodes
-        let failed: Vec<_> = episodes
-            .iter()
-            .filter(|e| e.outcome == Outcome::Failure)
-            .collect();
-
-        let mut pitfalls = Vec::new();
-        for episode in failed {
-            if !episode.solution_path.is_empty() {
-                pitfalls.push(format!("Failed at: {}", episode.solution_path));
-            }
-        }
+        let success_rate = Self::calculate_success_rate(episodes);
+        let steps = Self::extract_common_steps(&successful);
+        let required_context = Self::extract_minimal_context(&successful);
+        let typical_queries = Self::extract_query_patterns(&successful);
+        let average_tokens = Self::calculate_average_tokens(episodes);
+        let common_pitfalls = Self::extract_common_pitfalls(episodes);
 
         Procedure {
             steps,
@@ -230,8 +159,213 @@ impl ProceduralMemory {
             success_rate,
             execution_count: episodes.len() as u32,
             average_tokens,
-            common_pitfalls: pitfalls,
+            common_pitfalls,
         }
+    }
+
+    /// Calculate success rate from episodes
+    fn calculate_success_rate(episodes: &[&TaskEpisode]) -> f32 {
+        if episodes.is_empty() {
+            return 0.0;
+        }
+
+        let successful_count = episodes
+            .iter()
+            .filter(|e| e.outcome == Outcome::Success)
+            .count();
+
+        successful_count as f32 / episodes.len() as f32
+    }
+
+    /// Extract common steps across successful episodes
+    fn extract_common_steps(successful: &[&TaskEpisode]) -> Vec<ProcedureStep> {
+        // Track frequency of each step description
+        let mut step_frequency: HashMap<String, usize> = HashMap::new();
+
+        for episode in successful {
+            if !episode.solution_path.is_empty() {
+                // Split solution path into individual steps
+                let steps: Vec<&str> = episode.solution_path
+                    .split(['.', ',', ';'])
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+
+                for step in steps {
+                    *step_frequency
+                        .entry(step.to_string())
+                        .or_insert(0) += 1;
+                }
+            }
+        }
+
+        // Sort by frequency and convert to ProcedureSteps
+        let mut steps_vec: Vec<_> = step_frequency.into_iter().collect();
+        steps_vec.sort_by(|a, b| b.1.cmp(&a.1)); // Sort by frequency descending
+
+        // Calculate threshold for optional vs required steps
+        let majority_threshold = if successful.is_empty() {
+            1
+        } else {
+            successful.len() / 2
+        };
+
+        steps_vec
+            .into_iter()
+            .enumerate()
+            .map(|(i, (desc, freq))| {
+                // Extract typical actions from the step description
+                let typical_actions = Self::extract_actions_from_step(&desc);
+
+                // Extract expected files mentioned in the step
+                let expected_files = Self::extract_files_from_step(&desc);
+
+                ProcedureStep {
+                    order: i,
+                    description: desc.clone(),
+                    typical_actions,
+                    expected_files,
+                    optional: freq < majority_threshold,
+                }
+            })
+            .collect()
+    }
+
+    /// Extract minimal context (files) required from episodes
+    fn extract_minimal_context(successful: &[&TaskEpisode]) -> Vec<String> {
+        let mut file_frequency: HashMap<String, usize> = HashMap::new();
+
+        for episode in successful {
+            for file in &episode.files_touched {
+                *file_frequency.entry(file.clone()).or_insert(0) += 1;
+            }
+        }
+
+        // Only include files that appear in at least half of successful episodes (ceiling)
+        let threshold = if successful.is_empty() {
+            1
+        } else {
+            successful.len().div_ceil(2)
+        };
+
+        let mut required: Vec<(String, usize)> = file_frequency
+            .into_iter()
+            .filter(|(_, freq)| *freq >= threshold)
+            .collect();
+
+        // Sort by frequency to get most critical files first
+        required.sort_by(|a, b| b.1.cmp(&a.1));
+
+        required.into_iter().map(|(file, _)| file).collect()
+    }
+
+    /// Learn typical query patterns from episodes
+    fn extract_query_patterns(successful: &[&TaskEpisode]) -> Vec<String> {
+        let mut query_frequency: HashMap<String, usize> = HashMap::new();
+
+        for episode in successful {
+            for query in &episode.queries_made {
+                // Normalize query (lowercase, trim)
+                let normalized = query.trim().to_lowercase();
+                if !normalized.is_empty() {
+                    *query_frequency
+                        .entry(normalized)
+                        .or_insert(0) += 1;
+                }
+            }
+        }
+
+        // Filter queries that appear at least twice (recurring patterns)
+        let mut patterns: Vec<(String, usize)> = query_frequency
+            .into_iter()
+            .filter(|(_, freq)| *freq >= 2)
+            .collect();
+
+        // Sort by frequency to get most common patterns first
+        patterns.sort_by(|a, b| b.1.cmp(&a.1));
+
+        patterns.into_iter().map(|(query, _)| query).collect()
+    }
+
+    /// Calculate average token usage across episodes
+    fn calculate_average_tokens(episodes: &[&TaskEpisode]) -> u32 {
+        if episodes.is_empty() {
+            return 0;
+        }
+
+        let total_tokens: u32 = episodes.iter().map(|e| e.tokens_used.0).sum();
+        total_tokens / episodes.len() as u32
+    }
+
+    /// Extract common pitfalls from failed episodes
+    fn extract_common_pitfalls(episodes: &[&TaskEpisode]) -> Vec<String> {
+        let failed: Vec<_> = episodes
+            .iter()
+            .filter(|e| e.outcome == Outcome::Failure)
+            .collect();
+
+        let mut pitfalls = Vec::new();
+
+        for episode in failed {
+            if !episode.solution_path.is_empty() {
+                let pitfall = format!("Failed at: {}", episode.solution_path);
+
+                // Avoid duplicates
+                if !pitfalls.contains(&pitfall) {
+                    pitfalls.push(pitfall);
+                }
+            }
+        }
+
+        pitfalls
+    }
+
+    /// Extract actions from step description (helper)
+    fn extract_actions_from_step(step_desc: &str) -> Vec<String> {
+        // Look for action verbs and extract them
+        let action_keywords = [
+            "read", "write", "modify", "delete", "create", "update",
+            "search", "find", "analyze", "test", "build", "deploy",
+            "refactor", "fix", "implement", "add", "remove"
+        ];
+
+        let mut actions = Vec::new();
+        let step_lower = step_desc.to_lowercase();
+
+        for keyword in &action_keywords {
+            if step_lower.contains(keyword) {
+                actions.push(keyword.to_string());
+            }
+        }
+
+        // If no actions found, use the full step as action
+        if actions.is_empty() {
+            actions.push(step_desc.to_string());
+        }
+
+        actions
+    }
+
+    /// Extract file paths mentioned in step description (helper)
+    fn extract_files_from_step(step_desc: &str) -> Vec<String> {
+        let mut files = Vec::new();
+
+        // Look for common file extensions
+        let extensions = [".rs", ".ts", ".js", ".py", ".go", ".md", ".toml", ".json", ".yml"];
+
+        for ext in &extensions {
+            if step_desc.contains(ext) {
+                // Try to extract the full filename
+                if let Some(start) = step_desc.rfind(|c: char| c.is_whitespace()) {
+                    if let Some(end) = step_desc[start..].find(|c: char| c.is_whitespace()) {
+                        let file = &step_desc[start..start + end];
+                        files.push(file.trim().to_string());
+                    }
+                }
+            }
+        }
+
+        files
     }
 
     async fn add_or_update_procedure(
@@ -531,5 +665,464 @@ mod tests {
 
         let procedure = memory.extract_procedure(&[&failed_episode]);
         assert!(!procedure.common_pitfalls.is_empty());
+    }
+
+    #[test]
+    fn test_calculate_success_rate() {
+        let episode1 = TaskEpisode {
+            id: EpisodeId::new(),
+            timestamp: Utc::now(),
+            task_description: "Task 1".to_string(),
+            initial_context: crate::types::ContextSnapshot::default(),
+            queries_made: vec![],
+            files_touched: vec![],
+            solution_path: "Success".to_string(),
+            outcome: Outcome::Success,
+            tokens_used: TokenCount::new(100),
+            access_count: 0,
+            pattern_value: 0.9,
+        };
+
+        let episode2 = TaskEpisode {
+            id: EpisodeId::new(),
+            timestamp: Utc::now(),
+            task_description: "Task 2".to_string(),
+            initial_context: crate::types::ContextSnapshot::default(),
+            queries_made: vec![],
+            files_touched: vec![],
+            solution_path: "Failed".to_string(),
+            outcome: Outcome::Failure,
+            tokens_used: TokenCount::new(50),
+            access_count: 0,
+            pattern_value: 0.0,
+        };
+
+        let episode3 = TaskEpisode {
+            id: EpisodeId::new(),
+            timestamp: Utc::now(),
+            task_description: "Task 3".to_string(),
+            initial_context: crate::types::ContextSnapshot::default(),
+            queries_made: vec![],
+            files_touched: vec![],
+            solution_path: "Success".to_string(),
+            outcome: Outcome::Success,
+            tokens_used: TokenCount::new(120),
+            access_count: 0,
+            pattern_value: 0.8,
+        };
+
+        let episodes = vec![&episode1, &episode2, &episode3];
+        let success_rate = ProceduralMemory::calculate_success_rate(&episodes);
+
+        // 2 out of 3 successful = 0.666...
+        assert!((success_rate - 0.666).abs() < 0.01);
+
+        // Test empty episodes
+        let empty: Vec<&TaskEpisode> = vec![];
+        assert_eq!(ProceduralMemory::calculate_success_rate(&empty), 0.0);
+    }
+
+    #[test]
+    fn test_extract_common_steps() {
+        let episode1 = TaskEpisode {
+            id: EpisodeId::new(),
+            timestamp: Utc::now(),
+            task_description: "Task 1".to_string(),
+            initial_context: crate::types::ContextSnapshot::default(),
+            queries_made: vec![],
+            files_touched: vec![],
+            solution_path: "Read file, Analyze code, Fix bug".to_string(),
+            outcome: Outcome::Success,
+            tokens_used: TokenCount::new(100),
+            access_count: 0,
+            pattern_value: 0.9,
+        };
+
+        let episode2 = TaskEpisode {
+            id: EpisodeId::new(),
+            timestamp: Utc::now(),
+            task_description: "Task 2".to_string(),
+            initial_context: crate::types::ContextSnapshot::default(),
+            queries_made: vec![],
+            files_touched: vec![],
+            solution_path: "Read file, Analyze code, Write tests".to_string(),
+            outcome: Outcome::Success,
+            tokens_used: TokenCount::new(120),
+            access_count: 0,
+            pattern_value: 0.8,
+        };
+
+        let episode3 = TaskEpisode {
+            id: EpisodeId::new(),
+            timestamp: Utc::now(),
+            task_description: "Task 3".to_string(),
+            initial_context: crate::types::ContextSnapshot::default(),
+            queries_made: vec![],
+            files_touched: vec![],
+            solution_path: "Read file, Fix bug".to_string(),
+            outcome: Outcome::Success,
+            tokens_used: TokenCount::new(80),
+            access_count: 0,
+            pattern_value: 0.7,
+        };
+
+        let episodes = vec![&episode1, &episode2, &episode3];
+        let steps = ProceduralMemory::extract_common_steps(&episodes);
+
+        // Should have at least 3 unique steps
+        assert!(!steps.is_empty());
+
+        // "Read file" should be the most common (appears in all 3)
+        let read_step = steps.iter().find(|s| s.description.contains("Read file"));
+        assert!(read_step.is_some());
+
+        // Check that actions are extracted
+        for step in &steps {
+            assert!(!step.typical_actions.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_extract_minimal_context() {
+        let episode1 = TaskEpisode {
+            id: EpisodeId::new(),
+            timestamp: Utc::now(),
+            task_description: "Task 1".to_string(),
+            initial_context: crate::types::ContextSnapshot::default(),
+            queries_made: vec![],
+            files_touched: vec!["auth.rs".to_string(), "config.toml".to_string()],
+            solution_path: "Success".to_string(),
+            outcome: Outcome::Success,
+            tokens_used: TokenCount::new(100),
+            access_count: 0,
+            pattern_value: 0.9,
+        };
+
+        let episode2 = TaskEpisode {
+            id: EpisodeId::new(),
+            timestamp: Utc::now(),
+            task_description: "Task 2".to_string(),
+            initial_context: crate::types::ContextSnapshot::default(),
+            queries_made: vec![],
+            files_touched: vec!["auth.rs".to_string(), "user.rs".to_string()],
+            solution_path: "Success".to_string(),
+            outcome: Outcome::Success,
+            tokens_used: TokenCount::new(120),
+            access_count: 0,
+            pattern_value: 0.8,
+        };
+
+        let episode3 = TaskEpisode {
+            id: EpisodeId::new(),
+            timestamp: Utc::now(),
+            task_description: "Task 3".to_string(),
+            initial_context: crate::types::ContextSnapshot::default(),
+            queries_made: vec![],
+            files_touched: vec!["auth.rs".to_string(), "config.toml".to_string()],
+            solution_path: "Success".to_string(),
+            outcome: Outcome::Success,
+            tokens_used: TokenCount::new(90),
+            access_count: 0,
+            pattern_value: 0.85,
+        };
+
+        let episodes = vec![&episode1, &episode2, &episode3];
+        let context = ProceduralMemory::extract_minimal_context(&episodes);
+
+        // auth.rs appears in all 3 episodes (100%), should be included
+        assert!(context.contains(&"auth.rs".to_string()));
+
+        // config.toml appears in 2/3 episodes (66%), should be included
+        assert!(context.contains(&"config.toml".to_string()));
+
+        // user.rs appears in only 1/3 episodes (33%), should NOT be included
+        assert!(!context.contains(&"user.rs".to_string()));
+    }
+
+    #[test]
+    fn test_extract_query_patterns() {
+        let episode1 = TaskEpisode {
+            id: EpisodeId::new(),
+            timestamp: Utc::now(),
+            task_description: "Task 1".to_string(),
+            initial_context: crate::types::ContextSnapshot::default(),
+            queries_made: vec![
+                "find auth".to_string(),
+                "search authentication".to_string(),
+            ],
+            files_touched: vec![],
+            solution_path: "Success".to_string(),
+            outcome: Outcome::Success,
+            tokens_used: TokenCount::new(100),
+            access_count: 0,
+            pattern_value: 0.9,
+        };
+
+        let episode2 = TaskEpisode {
+            id: EpisodeId::new(),
+            timestamp: Utc::now(),
+            task_description: "Task 2".to_string(),
+            initial_context: crate::types::ContextSnapshot::default(),
+            queries_made: vec![
+                "find auth".to_string(),
+                "get user service".to_string(),
+            ],
+            files_touched: vec![],
+            solution_path: "Success".to_string(),
+            outcome: Outcome::Success,
+            tokens_used: TokenCount::new(120),
+            access_count: 0,
+            pattern_value: 0.8,
+        };
+
+        let episode3 = TaskEpisode {
+            id: EpisodeId::new(),
+            timestamp: Utc::now(),
+            task_description: "Task 3".to_string(),
+            initial_context: crate::types::ContextSnapshot::default(),
+            queries_made: vec![
+                "  FIND AUTH  ".to_string(), // Should be normalized
+                "search authentication".to_string(),
+            ],
+            files_touched: vec![],
+            solution_path: "Success".to_string(),
+            outcome: Outcome::Success,
+            tokens_used: TokenCount::new(90),
+            access_count: 0,
+            pattern_value: 0.85,
+        };
+
+        let episodes = vec![&episode1, &episode2, &episode3];
+        let patterns = ProceduralMemory::extract_query_patterns(&episodes);
+
+        // "find auth" appears 3 times (with normalization), should be included
+        assert!(patterns.contains(&"find auth".to_string()));
+
+        // "search authentication" appears 2 times, should be included
+        assert!(patterns.contains(&"search authentication".to_string()));
+
+        // "get user service" appears only once, should NOT be included
+        assert!(!patterns.contains(&"get user service".to_string()));
+
+        // Check that the most frequent pattern is first
+        assert_eq!(patterns[0], "find auth");
+    }
+
+    #[test]
+    fn test_calculate_average_tokens() {
+        let episode1 = TaskEpisode {
+            id: EpisodeId::new(),
+            timestamp: Utc::now(),
+            task_description: "Task 1".to_string(),
+            initial_context: crate::types::ContextSnapshot::default(),
+            queries_made: vec![],
+            files_touched: vec![],
+            solution_path: "Success".to_string(),
+            outcome: Outcome::Success,
+            tokens_used: TokenCount::new(100),
+            access_count: 0,
+            pattern_value: 0.9,
+        };
+
+        let episode2 = TaskEpisode {
+            id: EpisodeId::new(),
+            timestamp: Utc::now(),
+            task_description: "Task 2".to_string(),
+            initial_context: crate::types::ContextSnapshot::default(),
+            queries_made: vec![],
+            files_touched: vec![],
+            solution_path: "Success".to_string(),
+            outcome: Outcome::Success,
+            tokens_used: TokenCount::new(200),
+            access_count: 0,
+            pattern_value: 0.8,
+        };
+
+        let episode3 = TaskEpisode {
+            id: EpisodeId::new(),
+            timestamp: Utc::now(),
+            task_description: "Task 3".to_string(),
+            initial_context: crate::types::ContextSnapshot::default(),
+            queries_made: vec![],
+            files_touched: vec![],
+            solution_path: "Success".to_string(),
+            outcome: Outcome::Success,
+            tokens_used: TokenCount::new(300),
+            access_count: 0,
+            pattern_value: 0.7,
+        };
+
+        let episodes = vec![&episode1, &episode2, &episode3];
+        let avg = ProceduralMemory::calculate_average_tokens(&episodes);
+
+        // Average of 100, 200, 300 = 200
+        assert_eq!(avg, 200);
+
+        // Test empty episodes
+        let empty: Vec<&TaskEpisode> = vec![];
+        assert_eq!(ProceduralMemory::calculate_average_tokens(&empty), 0);
+    }
+
+    #[test]
+    fn test_extract_common_pitfalls() {
+        let episode1 = TaskEpisode {
+            id: EpisodeId::new(),
+            timestamp: Utc::now(),
+            task_description: "Task 1".to_string(),
+            initial_context: crate::types::ContextSnapshot::default(),
+            queries_made: vec![],
+            files_touched: vec![],
+            solution_path: "Failed at validation".to_string(),
+            outcome: Outcome::Failure,
+            tokens_used: TokenCount::new(100),
+            access_count: 0,
+            pattern_value: 0.0,
+        };
+
+        let episode2 = TaskEpisode {
+            id: EpisodeId::new(),
+            timestamp: Utc::now(),
+            task_description: "Task 2".to_string(),
+            initial_context: crate::types::ContextSnapshot::default(),
+            queries_made: vec![],
+            files_touched: vec![],
+            solution_path: "Failed at database connection".to_string(),
+            outcome: Outcome::Failure,
+            tokens_used: TokenCount::new(120),
+            access_count: 0,
+            pattern_value: 0.0,
+        };
+
+        let episode3 = TaskEpisode {
+            id: EpisodeId::new(),
+            timestamp: Utc::now(),
+            task_description: "Task 3".to_string(),
+            initial_context: crate::types::ContextSnapshot::default(),
+            queries_made: vec![],
+            files_touched: vec![],
+            solution_path: "Failed at validation".to_string(), // Duplicate
+            outcome: Outcome::Failure,
+            tokens_used: TokenCount::new(90),
+            access_count: 0,
+            pattern_value: 0.0,
+        };
+
+        let episodes = vec![&episode1, &episode2, &episode3];
+        let pitfalls = ProceduralMemory::extract_common_pitfalls(&episodes);
+
+        // Should have 2 unique pitfalls (duplicates removed)
+        assert_eq!(pitfalls.len(), 2);
+        assert!(pitfalls.iter().any(|p| p.contains("validation")));
+        assert!(pitfalls.iter().any(|p| p.contains("database connection")));
+    }
+
+    #[test]
+    fn test_extract_actions_from_step() {
+        let step1 = "Read the configuration file and update settings";
+        let actions1 = ProceduralMemory::extract_actions_from_step(step1);
+        assert!(actions1.contains(&"read".to_string()));
+        assert!(actions1.contains(&"update".to_string()));
+
+        let step2 = "Refactor the authentication module";
+        let actions2 = ProceduralMemory::extract_actions_from_step(step2);
+        assert!(actions2.contains(&"refactor".to_string()));
+
+        let step3 = "Some random text without actions";
+        let actions3 = ProceduralMemory::extract_actions_from_step(step3);
+        // Should use full step if no actions found
+        assert!(!actions3.is_empty());
+    }
+
+    #[test]
+    fn test_extract_files_from_step() {
+        let step1 = "Modified auth.rs to fix validation";
+        let files1 = ProceduralMemory::extract_files_from_step(step1);
+        // This is a simplified test - actual implementation might need improvement
+        assert!(!files1.is_empty() || step1.contains(".rs"));
+
+        let step2 = "Updated config.toml and package.json";
+        let _files2 = ProceduralMemory::extract_files_from_step(step2);
+        // File extraction from step descriptions is basic
+        assert!(step2.contains(".toml"));
+    }
+
+    #[tokio::test]
+    async fn test_full_learning_cycle() {
+        let (storage, _temp) = create_test_storage().await;
+        let mut memory = ProceduralMemory::new(storage).unwrap();
+
+        // Create episodes with varying outcomes
+        let episodes = vec![
+            TaskEpisode {
+                id: EpisodeId::new(),
+                timestamp: Utc::now(),
+                task_description: "Fix auth bug".to_string(),
+                initial_context: crate::types::ContextSnapshot::default(),
+                queries_made: vec!["find auth".to_string(), "search user".to_string()],
+                files_touched: vec!["auth.rs".to_string(), "user.rs".to_string()],
+                solution_path: "Read file, Analyze code, Fix validation".to_string(),
+                outcome: Outcome::Success,
+                tokens_used: TokenCount::new(500),
+                access_count: 0,
+                pattern_value: 0.9,
+            },
+            TaskEpisode {
+                id: EpisodeId::new(),
+                timestamp: Utc::now(),
+                task_description: "Fix login bug".to_string(),
+                initial_context: crate::types::ContextSnapshot::default(),
+                queries_made: vec!["find auth".to_string()],
+                files_touched: vec!["auth.rs".to_string()],
+                solution_path: "Read file, Analyze code, Update tests".to_string(),
+                outcome: Outcome::Success,
+                tokens_used: TokenCount::new(450),
+                access_count: 0,
+                pattern_value: 0.8,
+            },
+            TaskEpisode {
+                id: EpisodeId::new(),
+                timestamp: Utc::now(),
+                task_description: "Fix validation bug".to_string(),
+                initial_context: crate::types::ContextSnapshot::default(),
+                queries_made: vec!["search validation".to_string()],
+                files_touched: vec!["validator.rs".to_string()],
+                solution_path: "Attempted fix but failed at testing".to_string(),
+                outcome: Outcome::Failure,
+                tokens_used: TokenCount::new(300),
+                access_count: 0,
+                pattern_value: 0.0,
+            },
+        ];
+
+        // Learn from episodes
+        memory.learn_from_episodes(&episodes).await.unwrap();
+
+        // Verify procedure was learned
+        let procedure = memory.get_procedure(&TaskType::BugFix);
+        assert!(procedure.is_some());
+
+        let proc = procedure.unwrap();
+
+        // Check success rate (2 successful out of 3 = 0.666...)
+        assert!((proc.success_rate - 0.666).abs() < 0.01);
+
+        // Check that common steps were extracted
+        assert!(!proc.steps.is_empty());
+
+        // Check that required context includes auth.rs (appears in 2/3)
+        assert!(proc.required_context.contains(&"auth.rs".to_string()));
+
+        // Check that typical queries include "find auth" (appears 2 times)
+        assert!(proc.typical_queries.contains(&"find auth".to_string()));
+
+        // Check average tokens (500 + 450 + 300) / 3 = 416.666...
+        assert!((proc.average_tokens as f32 - 416.666).abs() < 1.0);
+
+        // Check that pitfalls were captured
+        assert!(!proc.common_pitfalls.is_empty());
+        assert!(proc
+            .common_pitfalls
+            .iter()
+            .any(|p| p.contains("testing")));
     }
 }

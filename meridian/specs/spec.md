@@ -569,7 +569,7 @@ Meridian использует **собственную production-ready реал
 - **Полный контроль** над реализацией протокола
 - **Нулевые внешние зависимости** для MCP
 - **Оптимизированная производительность** под конкретные нужды
-- **100% совместимость** с MCP 2024-11-05 спецификацией
+- **100% совместимость** с MCP 2025-06-18 спецификацией
 - **Типобезопасность** на уровне Rust
 - **Расширяемость** без ограничений сторонних SDK
 
@@ -2015,7 +2015,7 @@ Meridian представляет собой **полноценную когни
 #### MCP Server (100%)
 - ✅ **Кастомная реализация** MCP протокола (не rmcp SDK)
 - ✅ **Транспорты**: STDIO (Claude Code), HTTP/SSE (multi-project)
-- ✅ **Протокол**: JSON-RPC 2.0, MCP 2024-11-05 spec compliant
+- ✅ **Протокол**: JSON-RPC 2.0, MCP 2025-06-18 spec compliant
 - ✅ **Все 30 MCP инструментов** (100% coverage):
   - ✅ 4 Memory Management Tools (record, find, update, stats)
   - ✅ 3 Context Management Tools (prepare, defragment, compress)

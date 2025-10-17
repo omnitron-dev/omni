@@ -63,7 +63,7 @@ impl MonorepoParser {
         dir: &'a Path,
         projects: &'a mut Vec<Project>,
         visited: &'a mut std::collections::HashSet<PathBuf>,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + 'a>> {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
         Box::pin(async move {
         // Avoid infinite loops
         let canonical = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());

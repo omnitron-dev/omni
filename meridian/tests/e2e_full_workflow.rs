@@ -217,7 +217,7 @@ async fn test_multi_session_workflow() {
         .unwrap();
 
     // Check for conflicts
-    let conflicts = session_manager.detect_conflicts(&session1, &session2).unwrap();
+    let conflicts = session_manager.detect_conflicts(&session1, &session2).await.unwrap();
     assert!(!conflicts.has_conflicts);
 
     // Commit both sessions
@@ -407,7 +407,7 @@ async fn test_parallel_sessions_workflow() {
     }
 
     // Verify all sessions exist
-    assert_eq!(session_manager.list_sessions().len(), 5);
+    assert_eq!(session_manager.list_sessions().await.len(), 5);
 
     // Complete all sessions
     for session_id in session_ids {
@@ -418,7 +418,7 @@ async fn test_parallel_sessions_workflow() {
     }
 
     // All sessions should be cleaned up
-    assert_eq!(session_manager.list_sessions().len(), 0);
+    assert_eq!(session_manager.list_sessions().await.len(), 0);
 }
 
 /// End-to-end test: Complex context defragmentation

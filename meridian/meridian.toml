@@ -72,3 +72,20 @@ socket = "/tmp/meridian.sock"
 
 # Maximum tokens in a single response
 max_token_response = 2000
+
+# HTTP/SSE transport configuration
+[mcp.http]
+# Enable HTTP transport
+enabled = true
+
+# Server host (bind address)
+host = "127.0.0.1"
+
+# Server port
+port = 3000
+
+# CORS allowed origins (use ["*"] for all origins in development)
+cors_origins = ["*"]
+
+# Maximum concurrent connections
+max_connections = 100

@@ -1,8 +1,10 @@
 mod compressor;
 mod defragmenter;
+mod attention_retriever;
 
 pub use compressor::*;
 pub use defragmenter::*;
+pub use attention_retriever::*;
 
 use crate::types::{
     CodeSymbol, CompressionStrategy, ContextFragment, ContextRequest, LLMAdapter,
@@ -328,7 +330,7 @@ impl ContextManager {
             .collect()
     }
 
-    fn count_tokens(&self, content: &str) -> u32 {
+    pub fn count_tokens(&self, content: &str) -> u32 {
         // Rough estimation: ~4 chars per token
         (content.len() / 4) as u32
     }

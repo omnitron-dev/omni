@@ -132,6 +132,27 @@ impl MeridianServer {
         Ok(())
     }
 
+    /// Serve via HTTP/SSE transport
+    pub async fn serve_http(&mut self) -> Result<()> {
+        info!("Starting MCP server with HTTP/SSE transport");
+
+        let http_config = self
+            .config
+            .mcp
+            .http
+            .clone()
+            .unwrap_or_else(|| crate::config::HttpConfig::default());
+
+        if !http_config.enabled {
+            anyhow::bail!("HTTP transport is not enabled in configuration");
+        }
+
+        let handlers = self.init_handlers();
+        let transport = super::http_transport::HttpTransport::new(handlers, http_config);
+
+        transport.serve().await
+    }
+
     /// Handle a JSON-RPC request
     async fn handle_request(
         &self,
@@ -306,7 +327,7 @@ impl MeridianServer {
                 })
             }
             "meridian://sessions/active" => {
-                let sessions = self.session_manager.list_sessions();
+                let sessions = self.session_manager.list_sessions().await;
                 json!({
                     "uri": uri,
                     "mimeType": "application/json",

@@ -10,7 +10,7 @@ async fn test_session_manager_initialization() {
     let (storage, _temp) = create_test_storage();
     let manager = SessionManager::with_storage(storage);
 
-    assert_eq!(manager.list_sessions().len(), 0);
+    assert_eq!(manager.list_sessions().await.len(), 0);
 }
 
 #[tokio::test]
@@ -27,7 +27,7 @@ async fn test_session_begin() {
         .await
         .unwrap();
 
-    let session = manager.get_session(&session_id).unwrap();
+    let session = manager.get_session(&session_id).await.unwrap();
     assert_eq!(session.task_description, "Implement feature X");
     assert_eq!(session.scope.len(), 1);
     assert_eq!(session.base_commit, Some("main".to_string()));
@@ -85,7 +85,7 @@ async fn test_session_update_multiple_files() {
         .await
         .unwrap();
 
-    let summary = manager.get_changes_summary(&session_id).unwrap();
+    let summary = manager.get_changes_summary(&session_id).await.unwrap();
     assert_eq!(summary.total_deltas, 2);
     assert_eq!(summary.files_modified, 2);
 }
@@ -134,7 +134,7 @@ async fn test_session_commit() {
 
     assert_eq!(result.changes_summary.total_deltas, 1);
     // Session should be removed after commit
-    assert!(manager.get_session(&session_id).is_none());
+    assert!(manager.get_session(&session_id).await.is_none());
 }
 
 #[tokio::test]
@@ -163,7 +163,7 @@ async fn test_session_discard() {
         .unwrap();
 
     assert_eq!(result.changes_summary.total_deltas, 1);
-    assert!(manager.get_session(&session_id).is_none());
+    assert!(manager.get_session(&session_id).await.is_none());
 }
 
 #[tokio::test]
@@ -219,7 +219,7 @@ async fn test_multiple_concurrent_sessions() {
         .await
         .unwrap();
 
-    let sessions = manager.list_sessions();
+    let sessions = manager.list_sessions().await;
     assert_eq!(sessions.len(), 3);
 
     // Clean up
@@ -255,7 +255,7 @@ async fn test_session_conflict_detection() {
         .await
         .unwrap();
 
-    let conflicts = manager.detect_conflicts(&session1, &session2).unwrap();
+    let conflicts = manager.detect_conflicts(&session1, &session2).await.unwrap();
 
     assert!(conflicts.has_conflicts);
     assert_eq!(conflicts.file_conflicts.len(), 1);
@@ -292,7 +292,7 @@ async fn test_session_no_conflict() {
         .await
         .unwrap();
 
-    let conflicts = manager.detect_conflicts(&session1, &session2).unwrap();
+    let conflicts = manager.detect_conflicts(&session1, &session2).await.unwrap();
 
     assert!(!conflicts.has_conflicts);
 
@@ -328,9 +328,9 @@ async fn test_session_max_sessions_eviction() {
         .unwrap();
 
     // session1 should be evicted
-    assert!(manager.get_session(&session1).is_none());
-    assert!(manager.get_session(&session2).is_some());
-    assert!(manager.get_session(&session3).is_some());
+    assert!(manager.get_session(&session1).await.is_none());
+    assert!(manager.get_session(&session2).await.is_some());
+    assert!(manager.get_session(&session3).await.is_some());
 
     // Clean up
     manager.complete(&session2, SessionAction::Discard).await.unwrap();
@@ -359,7 +359,7 @@ async fn test_session_timeout_cleanup() {
     let cleaned = manager.cleanup_timed_out_sessions().await.unwrap();
 
     assert_eq!(cleaned, 1);
-    assert!(manager.get_session(&session_id).is_none());
+    assert!(manager.get_session(&session_id).await.is_none());
 }
 
 #[tokio::test]
@@ -385,7 +385,7 @@ async fn test_session_changes_summary() {
             .unwrap();
     }
 
-    let summary = manager.get_changes_summary(&session_id).unwrap();
+    let summary = manager.get_changes_summary(&session_id).await.unwrap();
 
     assert_eq!(summary.total_deltas, 5);
     assert_eq!(summary.files_modified, 5);
@@ -408,7 +408,7 @@ async fn test_session_scope_filtering() {
         .await
         .unwrap();
 
-    let session = manager.get_session(&session_id).unwrap();
+    let session = manager.get_session(&session_id).await.unwrap();
 
     assert_eq!(session.scope.len(), 1);
     assert_eq!(session.scope[0], PathBuf::from("src/modules/"));
@@ -427,7 +427,7 @@ async fn test_session_updated_timestamp() {
         .await
         .unwrap();
 
-    let session1 = manager.get_session(&session_id).unwrap();
+    let session1 = manager.get_session(&session_id).await.unwrap();
     let initial_updated = session1.updated_at;
 
     // Small delay
@@ -444,7 +444,7 @@ async fn test_session_updated_timestamp() {
         .await
         .unwrap();
 
-    let session2 = manager.get_session(&session_id).unwrap();
+    let session2 = manager.get_session(&session_id).await.unwrap();
     let new_updated = session2.updated_at;
 
     // Updated timestamp should be newer

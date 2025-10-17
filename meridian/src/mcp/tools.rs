@@ -440,6 +440,10 @@ pub fn get_all_tools() -> Vec<Tool> {
                     "token_budget": {
                         "type": "integer",
                         "description": "Token budget for retrieval"
+                    },
+                    "project_path": {
+                        "type": "string",
+                        "description": "Optional project path for multi-project support"
                     }
                 },
                 "required": ["attention_pattern", "token_budget"]
@@ -458,9 +462,291 @@ pub fn get_all_tools() -> Vec<Tool> {
                     "window": {
                         "type": "integer",
                         "description": "Number of recent queries to analyze"
+                    },
+                    "project_path": {
+                        "type": "string",
+                        "description": "Optional project path for multi-project support"
                     }
                 },
                 "required": ["session_id"]
+            }),
+        },
+
+        // === Documentation Tools ===
+        Tool {
+            name: "docs.search".to_string(),
+            description: Some("Search through documentation and markdown files".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query for documentation"
+                    },
+                    "scope": {
+                        "type": "string",
+                        "description": "Path to limit documentation search scope"
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Maximum number of results to return"
+                    },
+                    "project_path": {
+                        "type": "string",
+                        "description": "Optional project path for multi-project support"
+                    }
+                },
+                "required": ["query"]
+            }),
+        },
+        Tool {
+            name: "docs.get_for_symbol".to_string(),
+            description: Some("Get documentation for a specific code symbol".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "symbol_id": {
+                        "type": "string",
+                        "description": "Symbol ID to get documentation for"
+                    },
+                    "include_examples": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Include usage examples if available"
+                    },
+                    "project_path": {
+                        "type": "string",
+                        "description": "Optional project path for multi-project support"
+                    }
+                },
+                "required": ["symbol_id"]
+            }),
+        },
+
+        // === History Tools ===
+        Tool {
+            name: "history.get_evolution".to_string(),
+            description: Some("Get evolution history of a file or symbol from git".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "File path or symbol ID to track"
+                    },
+                    "max_commits": {
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Maximum number of commits to retrieve"
+                    },
+                    "include_diffs": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Include diffs for each commit"
+                    },
+                    "project_path": {
+                        "type": "string",
+                        "description": "Optional project path for multi-project support"
+                    }
+                },
+                "required": ["path"]
+            }),
+        },
+        Tool {
+            name: "history.blame".to_string(),
+            description: Some("Get git blame information for a file".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "File path to get blame for"
+                    },
+                    "line_start": {
+                        "type": "integer",
+                        "description": "Starting line number (optional)"
+                    },
+                    "line_end": {
+                        "type": "integer",
+                        "description": "Ending line number (optional)"
+                    },
+                    "project_path": {
+                        "type": "string",
+                        "description": "Optional project path for multi-project support"
+                    }
+                },
+                "required": ["path"]
+            }),
+        },
+
+        // === Analysis Tools ===
+        Tool {
+            name: "analyze.complexity".to_string(),
+            description: Some("Analyze code complexity metrics for files or symbols".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "target": {
+                        "type": "string",
+                        "description": "File path or symbol ID to analyze"
+                    },
+                    "include_metrics": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": ["cyclomatic", "cognitive", "lines", "dependencies"]
+                        },
+                        "description": "Metrics to include in analysis"
+                    },
+                    "project_path": {
+                        "type": "string",
+                        "description": "Optional project path for multi-project support"
+                    }
+                },
+                "required": ["target"]
+            }),
+        },
+        Tool {
+            name: "analyze.token_cost".to_string(),
+            description: Some("Estimate token cost for context items".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "type": {"type": "string", "enum": ["file", "symbol", "text"]},
+                                "identifier": {"type": "string"}
+                            }
+                        },
+                        "description": "Items to estimate token cost for"
+                    },
+                    "model": {
+                        "type": "string",
+                        "enum": ["claude-3", "gpt-4", "gemini"],
+                        "default": "claude-3",
+                        "description": "Model to use for token estimation"
+                    },
+                    "project_path": {
+                        "type": "string",
+                        "description": "Optional project path for multi-project support"
+                    }
+                },
+                "required": ["items"]
+            }),
+        },
+
+        // === Monorepo Tools ===
+        Tool {
+            name: "monorepo.list_projects".to_string(),
+            description: Some("List all projects detected in a monorepo workspace".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "root_path": {
+                        "type": "string",
+                        "description": "Root path of the monorepo (optional, uses indexed path if not provided)"
+                    },
+                    "include_dependencies": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Include dependency graph between projects"
+                    }
+                },
+                "required": []
+            }),
+        },
+        Tool {
+            name: "monorepo.set_context".to_string(),
+            description: Some("Set current working context to a specific project in monorepo".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "project_name": {
+                        "type": "string",
+                        "description": "Name of the project to set as context"
+                    },
+                    "session_id": {
+                        "type": "string",
+                        "description": "Session ID to update context for"
+                    }
+                },
+                "required": ["project_name", "session_id"]
+            }),
+        },
+        Tool {
+            name: "monorepo.find_cross_references".to_string(),
+            description: Some("Find cross-references between projects in a monorepo".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "source_project": {
+                        "type": "string",
+                        "description": "Source project name"
+                    },
+                    "target_project": {
+                        "type": "string",
+                        "description": "Target project name (optional, finds all if not provided)"
+                    },
+                    "reference_type": {
+                        "type": "string",
+                        "enum": ["imports", "exports", "both"],
+                        "default": "both",
+                        "description": "Type of references to find"
+                    }
+                },
+                "required": ["source_project"]
+            }),
+        },
+
+        // === Memory Tools (new) ===
+        Tool {
+            name: "memory.get_statistics".to_string(),
+            description: Some("Get memory system statistics and usage information".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "include_details": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Include detailed breakdown by component"
+                    },
+                    "project_path": {
+                        "type": "string",
+                        "description": "Optional project path for multi-project support"
+                    }
+                },
+                "required": []
+            }),
+        },
+        Tool {
+            name: "context.compress".to_string(),
+            description: Some("Compress context using specified strategy".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "content": {
+                        "type": "string",
+                        "description": "Content to compress"
+                    },
+                    "strategy": {
+                        "type": "string",
+                        "enum": ["remove_comments", "remove_whitespace", "skeleton", "summary", "extract_key_points", "tree_shaking", "hybrid", "ultra_compact"],
+                        "description": "Compression strategy to use"
+                    },
+                    "target_ratio": {
+                        "type": "number",
+                        "description": "Target compression ratio (0.0-1.0)"
+                    },
+                    "project_path": {
+                        "type": "string",
+                        "description": "Optional project path for multi-project support"
+                    }
+                },
+                "required": ["content", "strategy"]
             }),
         },
     ]

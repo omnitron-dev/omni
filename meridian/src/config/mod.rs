@@ -127,6 +127,7 @@ impl Default for LearningConfig {
 pub struct McpConfig {
     pub socket: Option<PathBuf>,
     pub max_token_response: u32,
+    pub http: Option<HttpConfig>,
 }
 
 impl Default for McpConfig {
@@ -134,6 +135,28 @@ impl Default for McpConfig {
         Self {
             socket: Some(PathBuf::from("/tmp/meridian.sock")),
             max_token_response: 2000,
+            http: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HttpConfig {
+    pub enabled: bool,
+    pub host: String,
+    pub port: u16,
+    pub cors_origins: Vec<String>,
+    pub max_connections: usize,
+}
+
+impl Default for HttpConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            host: "127.0.0.1".to_string(),
+            port: 3000,
+            cors_origins: vec!["*".to_string()],
+            max_connections: 100,
         }
     }
 }

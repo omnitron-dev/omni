@@ -8,7 +8,7 @@ use dashmap::DashMap;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
-use parking_lot::RwLock;
+use tokio::sync::RwLock;
 
 /// Session manager for isolated work sessions with copy-on-write
 pub struct SessionManager {
@@ -149,31 +149,44 @@ impl SessionManager {
             .ok_or_else(|| anyhow!("Session not found: {}", session_id.0))?
             .clone();
 
-        let mut state = state_lock.write();
+        // Check if file exists in base (before acquiring write lock)
+        let file_key = format!("file:{}", path.to_string_lossy());
+        let snapshot = {
+            let state = state_lock.read().await;
+            state.base_snapshot.clone()
+            // Lock is automatically dropped here
+        };
+        let file_exists_in_base = snapshot.get(file_key.as_bytes()).await?.is_some();
+
+        let mut state = state_lock.write().await;
         state.last_access = Utc::now();
 
         // Detect change type
         let change_type = if state.file_overlay.contains_key(&path) {
             ChangeType::FileModified { path: path.to_string_lossy().to_string() }
+        } else if file_exists_in_base {
+            ChangeType::FileModified { path: path.to_string_lossy().to_string() }
         } else {
-            // Check if file exists in base
-            let file_key = format!("file:{}", path.to_string_lossy());
-            let exists = state.base_snapshot.get(file_key.as_bytes()).await?.is_some();
-
-            if exists {
-                ChangeType::FileModified { path: path.to_string_lossy().to_string() }
-            } else {
-                ChangeType::FileAdded { path: path.to_string_lossy().to_string() }
-            }
+            ChangeType::FileAdded { path: path.to_string_lossy().to_string() }
         };
 
         // Store file content in overlay
         state.file_overlay.insert(path.clone(), OverlayEntry::Modified(content.clone()));
 
-        // If reindex is requested, parse and update symbols
-        let affected_symbols = if reindex {
-            // Parse symbols from content
-            let symbols = self.parse_file_symbols(&path, &content).await?;
+        // Drop write lock before async operation
+        drop(state);
+
+        // If reindex is requested, parse and update symbols (without holding lock)
+        let symbols = if reindex {
+            self.parse_file_symbols(&path, &content).await?
+        } else {
+            Vec::new()
+        };
+
+        // Re-acquire lock to update state
+        let mut state = state_lock.write().await;
+
+        let affected_symbols = if !symbols.is_empty() {
             let symbol_ids: Vec<SymbolId> = symbols.iter().map(|s| s.id.clone()).collect();
 
             // Update symbol overlay
@@ -226,7 +239,7 @@ impl SessionManager {
             .ok_or_else(|| anyhow!("Session not found: {}", session_id.0))?
             .clone();
 
-        let mut state = state_lock.write();
+        let mut state = state_lock.write().await;
         state.last_access = Utc::now();
 
         let mut from_session = 0;
@@ -324,7 +337,7 @@ impl SessionManager {
             .ok_or_else(|| anyhow!("Session not found: {}", session_id.0))?
             .1;
 
-        let state = state_lock.write();
+        let state = state_lock.write().await;
 
         let changes_summary = ChangesSummary {
             total_deltas: state.deltas.len(),
@@ -366,32 +379,43 @@ impl SessionManager {
     }
 
     /// Get session information
-    pub fn get_session(&self, session_id: &SessionId) -> Option<Session> {
-        self.sessions.get(session_id)
-            .map(|s| s.read().session.clone())
+    pub async fn get_session(&self, session_id: &SessionId) -> Option<Session> {
+        match self.sessions.get(session_id) {
+            Some(s) => {
+                let state = s.read().await;
+                Some(state.session.clone())
+            }
+            None => None,
+        }
     }
 
     /// List all active sessions
-    pub fn list_sessions(&self) -> Vec<Session> {
-        self.sessions.iter()
-            .map(|entry| entry.value().read().session.clone())
-            .collect()
+    pub async fn list_sessions(&self) -> Vec<Session> {
+        let mut sessions = Vec::new();
+        for entry in self.sessions.iter() {
+            let state = entry.value().read().await;
+            sessions.push(state.session.clone());
+        }
+        sessions
     }
 
     /// Get session changes summary
-    pub fn get_changes_summary(&self, session_id: &SessionId) -> Option<ChangesSummary> {
-        self.sessions.get(session_id).map(|s| {
-            let state = s.read();
-            ChangesSummary {
-                total_deltas: state.deltas.len(),
-                affected_symbols: state.affected_symbols.len(),
-                files_modified: state.file_overlay.len(),
+    pub async fn get_changes_summary(&self, session_id: &SessionId) -> Option<ChangesSummary> {
+        match self.sessions.get(session_id) {
+            Some(s) => {
+                let state = s.read().await;
+                Some(ChangesSummary {
+                    total_deltas: state.deltas.len(),
+                    affected_symbols: state.affected_symbols.len(),
+                    files_modified: state.file_overlay.len(),
+                })
             }
-        })
+            None => None,
+        }
     }
 
     /// Check for conflicts between sessions
-    pub fn detect_conflicts(
+    pub async fn detect_conflicts(
         &self,
         session_id1: &SessionId,
         session_id2: &SessionId,
@@ -401,8 +425,8 @@ impl SessionManager {
         let state2 = self.sessions.get(session_id2)
             .ok_or_else(|| anyhow!("Session not found: {}", session_id2.0))?;
 
-        let s1 = state1.read();
-        let s2 = state2.read();
+        let s1 = state1.read().await;
+        let s2 = state2.read().await;
 
         // Find overlapping symbols
         let symbol_conflicts: Vec<_> = s1.affected_symbols
@@ -431,16 +455,13 @@ impl SessionManager {
         let timeout = self.config.timeout;
         let mut cleaned = 0;
 
-        let timed_out: Vec<SessionId> = self.sessions.iter()
-            .filter_map(|entry| {
-                let state = entry.value().read();
-                if now.signed_duration_since(state.last_access) > timeout {
-                    Some(entry.key().clone())
-                } else {
-                    None
-                }
-            })
-            .collect();
+        let mut timed_out = Vec::new();
+        for entry in self.sessions.iter() {
+            let state = entry.value().read().await;
+            if now.signed_duration_since(state.last_access) > timeout {
+                timed_out.push(entry.key().clone());
+            }
+        }
 
         for session_id in timed_out {
             tracing::warn!(
@@ -458,9 +479,21 @@ impl SessionManager {
 
     /// Evict oldest session
     async fn evict_oldest_session(&self) -> Result<()> {
-        let oldest = self.sessions.iter()
-            .min_by_key(|entry| entry.value().read().session.started_at)
-            .map(|entry| entry.key().clone());
+        let mut oldest: Option<(SessionId, DateTime<Utc>)> = None;
+        for entry in self.sessions.iter() {
+            let state = entry.value().read().await;
+            let started_at = state.session.started_at;
+            match &oldest {
+                None => oldest = Some((entry.key().clone(), started_at)),
+                Some((_, current_oldest)) => {
+                    if started_at < *current_oldest {
+                        oldest = Some((entry.key().clone(), started_at));
+                    }
+                }
+            }
+        }
+
+        let oldest = oldest.map(|(id, _)| id);
 
         if let Some(session_id) = oldest {
             tracing::warn!(
@@ -760,7 +793,7 @@ mod tests {
             None,
         ).await.unwrap();
 
-        let session = manager.get_session(&session_id).unwrap();
+        let session = manager.get_session(&session_id).await.unwrap();
         assert_eq!(session.task_description, "Test task");
         assert_eq!(session.scope.len(), 1);
     }
@@ -825,7 +858,7 @@ mod tests {
         let result = manager.complete(&session_id, SessionAction::Commit).await.unwrap();
 
         assert_eq!(result.changes_summary.total_deltas, 1);
-        assert!(manager.get_session(&session_id).is_none());
+        assert!(manager.get_session(&session_id).await.is_none());
     }
 
     #[tokio::test]
@@ -849,7 +882,7 @@ mod tests {
         let result = manager.complete(&session_id, SessionAction::Discard).await.unwrap();
 
         assert_eq!(result.changes_summary.total_deltas, 1);
-        assert!(manager.get_session(&session_id).is_none());
+        assert!(manager.get_session(&session_id).await.is_none());
     }
 
     #[tokio::test]
@@ -897,7 +930,7 @@ mod tests {
             None,
         ).await.unwrap();
 
-        let sessions = manager.list_sessions();
+        let sessions = manager.list_sessions().await;
         assert_eq!(sessions.len(), 2);
 
         manager.complete(&session1, SessionAction::Discard).await.unwrap();
@@ -926,7 +959,7 @@ mod tests {
         manager.update(&session1, path.clone(), "content1".to_string(), false).await.unwrap();
         manager.update(&session2, path.clone(), "content2".to_string(), false).await.unwrap();
 
-        let conflicts = manager.detect_conflicts(&session1, &session2).unwrap();
+        let conflicts = manager.detect_conflicts(&session1, &session2).await.unwrap();
         assert!(conflicts.has_conflicts);
         assert_eq!(conflicts.file_conflicts.len(), 1);
 
@@ -950,9 +983,9 @@ mod tests {
         let session3 = manager.begin("Task 3".to_string(), vec![], None).await.unwrap();
 
         // session1 should be evicted (stashed)
-        assert!(manager.get_session(&session1).is_none());
-        assert!(manager.get_session(&session2).is_some());
-        assert!(manager.get_session(&session3).is_some());
+        assert!(manager.get_session(&session1).await.is_none());
+        assert!(manager.get_session(&session2).await.is_some());
+        assert!(manager.get_session(&session3).await.is_some());
 
         manager.complete(&session2, SessionAction::Discard).await.unwrap();
         manager.complete(&session3, SessionAction::Discard).await.unwrap();
@@ -982,7 +1015,7 @@ mod tests {
         assert_eq!(cleaned, 1);
 
         // Session should be gone
-        assert!(manager.get_session(&session_id).is_none());
+        assert!(manager.get_session(&session_id).await.is_none());
     }
 
     #[tokio::test]
@@ -1010,7 +1043,7 @@ mod tests {
             false,
         ).await.unwrap();
 
-        let summary = manager.get_changes_summary(&session_id).unwrap();
+        let summary = manager.get_changes_summary(&session_id).await.unwrap();
         assert_eq!(summary.total_deltas, 2);
         assert_eq!(summary.files_modified, 2);
 

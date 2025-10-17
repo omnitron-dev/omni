@@ -159,3 +159,29 @@ pub struct DefragmentedContext {
     pub narrative: String,
     pub token_count: TokenCount,
 }
+
+/// Attention history entry
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AttentionHistoryEntry {
+    pub timestamp: u64,
+    pub pattern: AttentionPattern,
+    pub query_context: String,
+}
+
+/// Predicted focus areas with probabilities
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PredictedFocus {
+    pub high_probability: Vec<SymbolId>,
+    pub medium_probability: Vec<SymbolId>,
+    pub context: Vec<SymbolId>,
+    pub confidence: f32,
+}
+
+/// Query with metadata for attention analysis
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContextQuery {
+    pub text: String,
+    pub symbols: Vec<SymbolId>,
+    pub context_size: TokenCount,
+    pub timestamp: u64,
+}

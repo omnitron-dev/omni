@@ -32,6 +32,10 @@ enum Commands {
         /// Unix socket path
         #[arg(long)]
         socket: Option<PathBuf>,
+
+        /// Use HTTP/SSE transport
+        #[arg(long)]
+        http: bool,
     },
 
     /// Index a project
@@ -89,9 +93,9 @@ async fn main() -> Result<()> {
     let config = Config::from_file(&cli.config)?;
 
     match cli.command {
-        Commands::Serve { stdio, socket } => {
+        Commands::Serve { stdio, socket, http } => {
             info!("Starting MCP server...");
-            serve_mcp(config, stdio, socket).await?;
+            serve_mcp(config, stdio, socket, http).await?;
         }
         Commands::Index { path, force } => {
             info!("Indexing project at {:?}", path);
@@ -113,11 +117,14 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn serve_mcp(config: Config, stdio: bool, socket: Option<PathBuf>) -> Result<()> {
+async fn serve_mcp(config: Config, stdio: bool, socket: Option<PathBuf>, http: bool) -> Result<()> {
     // Create Meridian server instance
     let mut server = MeridianServer::new(config).await?;
 
-    if stdio || socket.is_none() {
+    if http {
+        info!("Starting MCP server with HTTP/SSE transport");
+        server.serve_http().await?;
+    } else if stdio || socket.is_none() {
         info!("Starting MCP server with stdio transport");
         server.serve_stdio().await?;
     } else if let Some(socket_path) = socket {

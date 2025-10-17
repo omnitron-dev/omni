@@ -1,7 +1,9 @@
 use super::handlers::ToolHandlers;
+use super::project_handlers::ProjectToolHandlers;
 use super::transport::{JsonRpcError, JsonRpcRequest, JsonRpcResponse};
 use crate::config::HttpConfig;
-use anyhow::{Context, Result};
+use crate::project::ProjectManager;
+use anyhow::{Context as AnyhowContext, Result};
 use axum::{
     extract::{Path, State},
     http::{header, Method},
@@ -34,11 +36,23 @@ pub struct McpHttpRequest {
     pub request: JsonRpcRequest,
 }
 
+/// Transport mode
+enum TransportMode {
+    /// Single-project mode with dedicated handlers
+    SingleProject {
+        handlers: Arc<ToolHandlers>,
+    },
+    /// Multi-project mode with project manager
+    MultiProject {
+        project_handlers: Arc<ProjectToolHandlers>,
+    },
+}
+
 /// HTTP Transport state shared across handlers
 #[derive(Clone)]
 pub struct HttpTransportState {
-    /// Tool handlers for processing MCP requests
-    handlers: Arc<ToolHandlers>,
+    /// Transport mode
+    mode: Arc<TransportMode>,
 
     /// Broadcast channel for SSE notifications
     notification_tx: broadcast::Sender<SseNotification>,
@@ -70,12 +84,29 @@ pub struct SseNotification {
 }
 
 impl HttpTransportState {
-    /// Create new transport state
+    /// Create new transport state for single-project mode
     pub fn new(handlers: Arc<ToolHandlers>, config: HttpConfig) -> Self {
         let (notification_tx, _) = broadcast::channel(100);
 
         Self {
-            handlers,
+            mode: Arc::new(TransportMode::SingleProject { handlers }),
+            notification_tx,
+            project_channels: Arc::new(DashMap::new()),
+            sessions: Arc::new(DashMap::new()),
+            config,
+        }
+    }
+
+    /// Create new transport state for multi-project mode
+    pub fn new_with_project_manager(
+        project_manager: Arc<ProjectManager>,
+        config: HttpConfig,
+    ) -> Self {
+        let (notification_tx, _) = broadcast::channel(100);
+        let project_handlers = Arc::new(ProjectToolHandlers::new(project_manager));
+
+        Self {
+            mode: Arc::new(TransportMode::MultiProject { project_handlers }),
             notification_tx,
             project_channels: Arc::new(DashMap::new()),
             sessions: Arc::new(DashMap::new()),
@@ -106,6 +137,27 @@ impl HttpTransportState {
             })
             .clone()
     }
+
+    /// Handle tool call with project context
+    async fn handle_tool_call_with_project(
+        &self,
+        tool_name: &str,
+        arguments: Value,
+        project_path: Option<&std::path::Path>,
+    ) -> Result<Value> {
+        match self.mode.as_ref() {
+            TransportMode::SingleProject { handlers } => {
+                handlers.handle_tool_call(tool_name, arguments).await
+            }
+            TransportMode::MultiProject { project_handlers } => {
+                project_handlers.handle_tool_call_for_project(
+                    tool_name,
+                    arguments,
+                    project_path
+                ).await
+            }
+        }
+    }
 }
 
 /// HTTP Transport for MCP server
@@ -115,9 +167,19 @@ pub struct HttpTransport {
 }
 
 impl HttpTransport {
-    /// Create a new HTTP transport
+    /// Create a new HTTP transport for single-project mode
     pub fn new(handlers: Arc<ToolHandlers>, config: HttpConfig) -> Self {
         let state = HttpTransportState::new(handlers, config.clone());
+
+        Self { state, config }
+    }
+
+    /// Create a new HTTP transport for multi-project mode
+    pub fn new_with_project_manager(
+        project_manager: Arc<ProjectManager>,
+        config: HttpConfig,
+    ) -> Self {
+        let state = HttpTransportState::new_with_project_manager(project_manager, config.clone());
 
         Self { state, config }
     }
@@ -237,7 +299,7 @@ fn handle_mcp_request(
         "initialize" => handle_initialize(request_id, req.request.params),
         "tools/list" => handle_list_tools(request_id),
         "tools/call" => {
-            handle_call_tool(request_id, req.request.params, &state.handlers).await
+            handle_call_tool_with_state(request_id, req.request.params, req.project_path.as_deref(), &state).await
         }
         "resources/list" => handle_list_resources(request_id),
         "resources/read" => handle_read_resource(request_id, req.request.params).await,
@@ -356,10 +418,11 @@ fn handle_list_tools(id: Option<Value>) -> JsonRpcResponse {
     JsonRpcResponse::success(id, result)
 }
 
-async fn handle_call_tool(
+async fn handle_call_tool_with_state(
     id: Option<Value>,
     params: Option<Value>,
-    handlers: &Arc<ToolHandlers>,
+    project_path: Option<&std::path::Path>,
+    state: &HttpTransportState,
 ) -> JsonRpcResponse {
     let params = match params {
         Some(p) => p,
@@ -384,10 +447,10 @@ async fn handle_call_tool(
 
     let arguments = params.get("arguments").cloned().unwrap_or(json!({}));
 
-    info!("Calling tool: {} (HTTP)", tool_name);
+    info!("Calling tool: {} (HTTP) for project: {:?}", tool_name, project_path);
 
-    // Call the tool handler
-    match handlers.handle_tool_call(tool_name, arguments).await {
+    // Call the tool handler with project context
+    match state.handle_tool_call_with_project(tool_name, arguments, project_path).await {
         Ok(result) => {
             let response = json!({
                 "content": [

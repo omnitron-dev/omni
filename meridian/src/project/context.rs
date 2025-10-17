@@ -1,0 +1,89 @@
+use crate::config::Config;
+use crate::context::ContextManager;
+use crate::indexer::CodeIndexer;
+use crate::memory::MemorySystem;
+use crate::session::SessionManager;
+use crate::storage::{RocksDBStorage, Storage};
+use crate::types::LLMAdapter;
+use anyhow::Result;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::SystemTime;
+use tracing::info;
+
+/// Components for a single project context
+pub struct ProjectContext {
+    pub project_path: PathBuf,
+    pub storage: Arc<dyn Storage>,
+    pub memory_system: Arc<tokio::sync::RwLock<MemorySystem>>,
+    pub context_manager: Arc<tokio::sync::RwLock<ContextManager>>,
+    pub indexer: Arc<tokio::sync::RwLock<CodeIndexer>>,
+    pub session_manager: Arc<SessionManager>,
+    pub last_access: SystemTime,
+}
+
+impl ProjectContext {
+    /// Create a new project context
+    pub async fn new(project_path: PathBuf, config: Config) -> Result<Self> {
+        info!("Initializing project context for {:?}", project_path);
+
+        // Create database path based on project path hash
+        let db_path = Self::get_db_path(&project_path)?;
+
+        // Initialize storage with project-specific path
+        let storage = Arc::new(RocksDBStorage::new(&db_path)?);
+
+        // Initialize memory system
+        let mut memory_system = MemorySystem::new(storage.clone(), config.memory.clone())?;
+        memory_system.init().await?;
+
+        // Initialize context manager
+        let context_manager = ContextManager::new(LLMAdapter::claude3());
+
+        // Initialize indexer
+        let mut indexer = CodeIndexer::new(storage.clone(), config.index.clone())?;
+        indexer.load().await?;
+
+        // Initialize session manager
+        let session_config = crate::session::SessionConfig {
+            max_sessions: config.session.max_sessions,
+            timeout: chrono::Duration::hours(1),
+            auto_cleanup: true,
+        };
+        let session_manager = SessionManager::new(storage.clone(), session_config);
+
+        Ok(Self {
+            project_path,
+            storage,
+            memory_system: Arc::new(tokio::sync::RwLock::new(memory_system)),
+            context_manager: Arc::new(tokio::sync::RwLock::new(context_manager)),
+            indexer: Arc::new(tokio::sync::RwLock::new(indexer)),
+            session_manager: Arc::new(session_manager),
+            last_access: SystemTime::now(),
+        })
+    }
+
+    /// Update last access time
+    pub fn update_access(&mut self) {
+        self.last_access = SystemTime::now();
+    }
+
+    /// Get database path for a project
+    fn get_db_path(project_path: &PathBuf) -> Result<PathBuf> {
+        // Hash the project path to create a unique database directory
+        let path_str = project_path.to_string_lossy();
+        let hash = blake3::hash(path_str.as_bytes());
+        let hash_str = hash.to_hex();
+
+        // Create .meridian/{hash}/index directory
+        let db_path = std::env::current_dir()?
+            .join(".meridian")
+            .join(&hash_str[..16]) // Use first 16 chars of hash
+            .join("index");
+
+        // Ensure the directory exists
+        std::fs::create_dir_all(&db_path)?;
+
+        Ok(db_path)
+    }
+}

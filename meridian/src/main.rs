@@ -118,18 +118,22 @@ async fn main() -> Result<()> {
 }
 
 async fn serve_mcp(config: Config, stdio: bool, socket: Option<PathBuf>, http: bool) -> Result<()> {
-    // Create Meridian server instance
-    let mut server = MeridianServer::new(config).await?;
-
     if http {
+        // Create Meridian server in multi-project mode for HTTP
         info!("Starting MCP server with HTTP/SSE transport");
+        let mut server = MeridianServer::new_for_http(config)?;
         server.serve_http().await?;
-    } else if stdio || socket.is_none() {
-        info!("Starting MCP server with stdio transport");
-        server.serve_stdio().await?;
-    } else if let Some(socket_path) = socket {
-        info!("Starting MCP server with socket transport at {:?}", socket_path);
-        server.serve_socket(socket_path).await?;
+    } else {
+        // Create Meridian server in single-project mode for stdio/socket
+        let mut server = MeridianServer::new(config).await?;
+
+        if stdio || socket.is_none() {
+            info!("Starting MCP server with stdio transport");
+            server.serve_stdio().await?;
+        } else if let Some(socket_path) = socket {
+            info!("Starting MCP server with socket transport at {:?}", socket_path);
+            server.serve_socket(socket_path).await?;
+        }
     }
 
     Ok(())

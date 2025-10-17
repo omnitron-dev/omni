@@ -3,6 +3,7 @@ pub mod context;
 pub mod indexer;
 pub mod mcp;
 pub mod memory;
+pub mod project;
 pub mod session;
 pub mod storage;
 pub mod types;

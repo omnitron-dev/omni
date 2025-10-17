@@ -19,16 +19,16 @@ pub struct ToolHandlers {
 
 impl ToolHandlers {
     pub fn new(
-        memory_system: MemorySystem,
-        context_manager: ContextManager,
-        indexer: CodeIndexer,
-        session_manager: SessionManager,
+        memory_system: std::sync::Arc<tokio::sync::RwLock<MemorySystem>>,
+        context_manager: std::sync::Arc<tokio::sync::RwLock<ContextManager>>,
+        indexer: std::sync::Arc<tokio::sync::RwLock<CodeIndexer>>,
+        session_manager: std::sync::Arc<SessionManager>,
     ) -> Self {
         Self {
-            memory_system: std::sync::Arc::new(tokio::sync::RwLock::new(memory_system)),
-            context_manager: std::sync::Arc::new(tokio::sync::RwLock::new(context_manager)),
-            indexer: std::sync::Arc::new(tokio::sync::RwLock::new(indexer)),
-            session_manager: std::sync::Arc::new(session_manager),
+            memory_system,
+            context_manager,
+            indexer,
+            session_manager,
         }
     }
 

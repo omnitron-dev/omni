@@ -5,6 +5,7 @@ use crate::config::Config;
 use crate::context::ContextManager;
 use crate::indexer::{CodeIndexer, Indexer};
 use crate::memory::MemorySystem;
+use crate::project::ProjectManager;
 use crate::session::SessionManager;
 use crate::storage::RocksDBStorage;
 use crate::types::{LLMAdapter, Query};
@@ -15,22 +16,32 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::{error, info, warn};
 
+/// Server mode - single project or multi-project
+enum ServerMode {
+    /// Single project mode (stdio, socket)
+    SingleProject {
+        memory_system: MemorySystem,
+        context_manager: ContextManager,
+        indexer: CodeIndexer,
+        session_manager: SessionManager,
+        handlers: Option<Arc<ToolHandlers>>,
+    },
+    /// Multi-project mode (HTTP)
+    MultiProject {
+        project_manager: Arc<ProjectManager>,
+    },
+}
+
 /// Main Meridian MCP server
 pub struct MeridianServer {
-    #[allow(dead_code)]
-    memory_system: MemorySystem,
-    #[allow(dead_code)]
-    context_manager: ContextManager,
-    indexer: CodeIndexer,
-    session_manager: SessionManager,
+    mode: ServerMode,
     config: Config,
-    handlers: Option<Arc<ToolHandlers>>,
 }
 
 impl MeridianServer {
-    /// Create a new Meridian server instance
+    /// Create a new Meridian server instance in single-project mode
     pub async fn new(config: Config) -> Result<Self> {
-        info!("Initializing Meridian server");
+        info!("Initializing Meridian server in single-project mode");
 
         // Initialize storage
         let storage = Arc::new(RocksDBStorage::new(&config.storage.path)?);
@@ -55,52 +66,86 @@ impl MeridianServer {
         let session_manager = SessionManager::new(storage.clone(), session_config);
 
         Ok(Self {
-            memory_system,
-            context_manager,
-            indexer,
-            session_manager,
+            mode: ServerMode::SingleProject {
+                memory_system,
+                context_manager,
+                indexer,
+                session_manager,
+                handlers: None,
+            },
             config,
-            handlers: None,
         })
     }
 
-    /// Initialize tool handlers
+    /// Create a new Meridian server instance in multi-project mode for HTTP
+    pub fn new_for_http(config: Config) -> Result<Self> {
+        info!("Initializing Meridian server in multi-project mode for HTTP");
+
+        let max_projects = config
+            .mcp
+            .http
+            .as_ref()
+            .and_then(|h| Some(h.max_connections))
+            .unwrap_or(10);
+
+        let project_manager = Arc::new(ProjectManager::new(config.clone(), max_projects));
+
+        Ok(Self {
+            mode: ServerMode::MultiProject { project_manager },
+            config,
+        })
+    }
+
+    /// Initialize tool handlers (only for single-project mode)
     fn init_handlers(&mut self) -> Arc<ToolHandlers> {
-        if let Some(handlers) = &self.handlers {
-            return handlers.clone();
+        match &mut self.mode {
+            ServerMode::SingleProject {
+                handlers,
+                memory_system: _,
+                context_manager: _,
+                indexer: _,
+                session_manager: _,
+            } => {
+                if let Some(h) = handlers {
+                    return h.clone();
+                }
+
+                // Create new storage and components for handlers
+                let storage = Arc::new(
+                    RocksDBStorage::new(&self.config.storage.path)
+                        .expect("Failed to create storage"),
+                );
+
+                let new_memory_system =
+                    MemorySystem::new(storage.clone(), self.config.memory.clone())
+                        .expect("Failed to create memory system");
+
+                let new_context_manager = ContextManager::new(LLMAdapter::claude3());
+
+                let new_indexer = CodeIndexer::new(storage.clone(), self.config.index.clone())
+                    .expect("Failed to create indexer");
+
+                let session_config = crate::session::SessionConfig {
+                    max_sessions: self.config.session.max_sessions,
+                    timeout: chrono::Duration::hours(1),
+                    auto_cleanup: true,
+                };
+                let new_session_manager = SessionManager::new(storage, session_config);
+
+                let new_handlers = Arc::new(ToolHandlers::new(
+                    Arc::new(tokio::sync::RwLock::new(new_memory_system)),
+                    Arc::new(tokio::sync::RwLock::new(new_context_manager)),
+                    Arc::new(tokio::sync::RwLock::new(new_indexer)),
+                    Arc::new(new_session_manager),
+                ));
+
+                *handlers = Some(new_handlers.clone());
+                new_handlers
+            }
+            ServerMode::MultiProject { .. } => {
+                panic!("init_handlers should not be called in multi-project mode")
+            }
         }
-
-        // Move components to create handlers
-        // We need to clone the config first
-        let storage = Arc::new(
-            RocksDBStorage::new(&self.config.storage.path)
-                .expect("Failed to create storage"),
-        );
-
-        let memory_system = MemorySystem::new(storage.clone(), self.config.memory.clone())
-            .expect("Failed to create memory system");
-
-        let context_manager = ContextManager::new(LLMAdapter::claude3());
-
-        let indexer = CodeIndexer::new(storage.clone(), self.config.index.clone())
-            .expect("Failed to create indexer");
-
-        let session_config = crate::session::SessionConfig {
-            max_sessions: self.config.session.max_sessions,
-            timeout: chrono::Duration::hours(1),
-            auto_cleanup: true,
-        };
-        let session_manager = SessionManager::new(storage, session_config);
-
-        let handlers = Arc::new(ToolHandlers::new(
-            memory_system,
-            context_manager,
-            indexer,
-            session_manager,
-        ));
-
-        self.handlers = Some(handlers.clone());
-        handlers
     }
 
     /// Serve via stdio transport
@@ -147,10 +192,22 @@ impl MeridianServer {
             anyhow::bail!("HTTP transport is not enabled in configuration");
         }
 
-        let handlers = self.init_handlers();
-        let transport = super::http_transport::HttpTransport::new(handlers, http_config);
-
-        transport.serve().await
+        match &self.mode {
+            ServerMode::MultiProject { project_manager } => {
+                // Use project manager for multi-project mode
+                let transport = super::http_transport::HttpTransport::new_with_project_manager(
+                    project_manager.clone(),
+                    http_config,
+                );
+                transport.serve().await
+            }
+            ServerMode::SingleProject { .. } => {
+                // Fallback to single-project mode
+                let handlers = self.init_handlers();
+                let transport = super::http_transport::HttpTransport::new(handlers, http_config);
+                transport.serve().await
+            }
+        }
     }
 
     /// Handle a JSON-RPC request
@@ -327,20 +384,36 @@ impl MeridianServer {
                 })
             }
             "meridian://sessions/active" => {
-                let sessions = self.session_manager.list_sessions().await;
-                json!({
-                    "uri": uri,
-                    "mimeType": "application/json",
-                    "text": json!({
-                        "sessions": sessions.iter().map(|s| {
-                            json!({
-                                "id": s.id.0,
-                                "task": s.task_description,
-                                "started_at": s.started_at.to_rfc3339()
-                            })
-                        }).collect::<Vec<_>>()
-                    }).to_string()
-                })
+                match &self.mode {
+                    ServerMode::SingleProject {
+                        session_manager, ..
+                    } => {
+                        let sessions = session_manager.list_sessions().await;
+                        json!({
+                            "uri": uri,
+                            "mimeType": "application/json",
+                            "text": json!({
+                                "sessions": sessions.iter().map(|s| {
+                                    json!({
+                                        "id": s.id.0,
+                                        "task": s.task_description,
+                                        "started_at": s.started_at.to_rfc3339()
+                                    })
+                                }).collect::<Vec<_>>()
+                            }).to_string()
+                        })
+                    }
+                    ServerMode::MultiProject { .. } => {
+                        json!({
+                            "uri": uri,
+                            "mimeType": "application/json",
+                            "text": json!({
+                                "sessions": [],
+                                "note": "Multi-project mode: specify project_path to query sessions"
+                            }).to_string()
+                        })
+                    }
+                }
             }
             _ => {
                 return JsonRpcResponse::error(
@@ -355,22 +428,36 @@ impl MeridianServer {
 
     // === Non-MCP utility methods ===
 
-    /// Index a project
+    /// Index a project (only works in single-project mode)
     pub async fn index_project(&mut self, path: PathBuf, force: bool) -> Result<()> {
-        self.indexer.index_project(&path, force).await
+        match &mut self.mode {
+            ServerMode::SingleProject { indexer, .. } => {
+                indexer.index_project(&path, force).await
+            }
+            ServerMode::MultiProject { .. } => {
+                anyhow::bail!("index_project not supported in multi-project mode")
+            }
+        }
     }
 
-    /// Query the index
+    /// Query the index (only works in single-project mode)
     pub async fn query(&self, query_text: &str, limit: usize) -> Result<Vec<String>> {
-        let query = Query::new(query_text.to_string());
-        let results = self.indexer.search_symbols(&query).await?;
+        match &self.mode {
+            ServerMode::SingleProject { indexer, .. } => {
+                let query = Query::new(query_text.to_string());
+                let results = indexer.search_symbols(&query).await?;
 
-        Ok(results
-            .symbols
-            .iter()
-            .take(limit)
-            .map(|s| format!("{} ({})", s.name, s.kind.as_str()))
-            .collect())
+                Ok(results
+                    .symbols
+                    .iter()
+                    .take(limit)
+                    .map(|s| format!("{} ({})", s.name, s.kind.as_str()))
+                    .collect())
+            }
+            ServerMode::MultiProject { .. } => {
+                anyhow::bail!("query not supported in multi-project mode")
+            }
+        }
     }
 
     /// Get statistics
@@ -384,6 +471,14 @@ impl MeridianServer {
         info!("Initializing new index");
         // TODO: Create index structure
         Ok(())
+    }
+
+    /// Get project manager (only for multi-project mode)
+    pub fn get_project_manager(&self) -> Option<Arc<ProjectManager>> {
+        match &self.mode {
+            ServerMode::MultiProject { project_manager } => Some(project_manager.clone()),
+            ServerMode::SingleProject { .. } => None,
+        }
     }
 }
 
@@ -499,10 +594,10 @@ mod tests {
         };
         let session_manager = SessionManager::new(storage, session_config);
         let handlers = Arc::new(ToolHandlers::new(
-            memory_system,
-            context_manager,
-            indexer,
-            session_manager,
+            Arc::new(tokio::sync::RwLock::new(memory_system)),
+            Arc::new(tokio::sync::RwLock::new(context_manager)),
+            Arc::new(tokio::sync::RwLock::new(indexer)),
+            Arc::new(session_manager),
         ));
 
         let request = JsonRpcRequest {

@@ -43,3 +43,5 @@ CLAUDE.md
 GEMINI.md
 
 experiments/
+.fastembed_cache
+.meridian

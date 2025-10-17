@@ -148,9 +148,13 @@ impl MeridianServer {
         // Main event loop
         while let Some(request) = transport.recv().await {
             let response = self.handle_request(request.clone(), &handlers).await;
-            if let Err(e) = transport.send(response) {
-                error!("Failed to send response: {}", e);
-                break;
+
+            // Don't send response for notifications (no id)
+            if response.id.is_some() || response.result.is_some() || response.error.is_some() {
+                if let Err(e) = transport.send(response) {
+                    error!("Failed to send response: {}", e);
+                    break;
+                }
             }
         }
 
@@ -208,6 +212,23 @@ impl MeridianServer {
 
         match request.method.as_str() {
             "initialize" => self.handle_initialize(request_id, request.params),
+            "initialized" | "notifications/initialized" => {
+                // MCP initialization notification - no response needed for notifications (no id)
+                info!("Received initialized notification - handshake complete");
+                // For notifications, we don't send a response
+                // But if it has an ID (non-standard), acknowledge it
+                if request_id.is_some() {
+                    JsonRpcResponse::success(request_id, json!({}))
+                } else {
+                    // No response for notifications
+                    return JsonRpcResponse {
+                        jsonrpc: "2.0".to_string(),
+                        id: None,
+                        result: None,
+                        error: None,
+                    };
+                }
+            }
             "tools/list" => self.handle_list_tools(request_id),
             "tools/call" => self.handle_call_tool(request_id, request.params, handlers).await,
             "resources/list" => self.handle_list_resources(request_id),

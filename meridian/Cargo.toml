@@ -87,7 +87,7 @@ lz4 = "1.28.1"
 regex = "1.11.1"
 
 # Markdown parsing
-pulldown-cmark = "0.12.2"
+pulldown-cmark = "0.13.0"
 
 [dev-dependencies]
 tempfile = "3.23.0"

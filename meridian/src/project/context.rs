@@ -6,7 +6,7 @@ use crate::session::SessionManager;
 use crate::storage::{RocksDBStorage, Storage};
 use crate::types::LLMAdapter;
 use anyhow::Result;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::SystemTime;
 use tracing::info;
@@ -74,7 +74,7 @@ impl ProjectContext {
     }
 
     /// Get database path for a project
-    fn get_db_path(project_path: &PathBuf) -> Result<PathBuf> {
+    fn get_db_path(project_path: &Path) -> Result<PathBuf> {
         // Hash the project path to create a unique database directory
         let path_str = project_path.to_string_lossy();
         let hash = blake3::hash(path_str.as_bytes());

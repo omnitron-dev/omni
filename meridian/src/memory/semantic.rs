@@ -44,12 +44,12 @@ impl KnowledgeGraph {
     fn add_relationship(&mut self, rel: SymbolRelationship) {
         self.edges
             .entry(rel.from.clone())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(rel.clone());
 
         self.reverse_edges
             .entry(rel.to.clone())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(rel);
     }
 
@@ -185,7 +185,7 @@ impl SemanticMemory {
                 let key = self.pattern_key(&pattern);
                 extracted_patterns
                     .entry(key)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(pattern);
             }
         }

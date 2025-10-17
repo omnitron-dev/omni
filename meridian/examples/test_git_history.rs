@@ -1,6 +1,5 @@
 /// Standalone test for GitHistory functionality
 /// Run with: cargo run --example test_git_history
-
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use git2::{BlameOptions, DiffOptions, Repository};
@@ -126,7 +125,7 @@ impl GitHistory {
 
                 let author = commit.author();
                 let timestamp = commit.time().seconds();
-                let date = DateTime::from_timestamp(timestamp, 0).unwrap_or_else(|| Utc::now());
+                let date = DateTime::from_timestamp(timestamp, 0).unwrap_or_else(Utc::now);
 
                 blame_infos.push(BlameInfo {
                     line: line_num,
@@ -172,7 +171,7 @@ impl GitHistory {
     fn extract_commit_info(&self, commit: &git2::Commit, file_path: &Path) -> Result<CommitInfo> {
         let author = commit.author();
         let timestamp = commit.time().seconds();
-        let date = DateTime::from_timestamp(timestamp, 0).unwrap_or_else(|| Utc::now());
+        let date = DateTime::from_timestamp(timestamp, 0).unwrap_or_else(Utc::now);
 
         let sha = format!("{}", commit.id());
         let author_name = author.name().unwrap_or("Unknown").to_string();
@@ -234,12 +233,12 @@ fn create_test_repo() -> Result<(TempDir, std::path::PathBuf)> {
     Repository::init(&repo_path)?;
 
     Command::new("git")
-        .args(&["config", "user.name", "Test User"])
+        .args(["config", "user.name", "Test User"])
         .current_dir(&repo_path)
         .output()?;
 
     Command::new("git")
-        .args(&["config", "user.email", "test@example.com"])
+        .args(["config", "user.email", "test@example.com"])
         .current_dir(&repo_path)
         .output()?;
 
@@ -251,12 +250,12 @@ fn commit_file(repo_path: &Path, filename: &str, content: &str, message: &str) -
     fs::write(&file_path, content)?;
 
     Command::new("git")
-        .args(&["add", filename])
+        .args(["add", filename])
         .current_dir(repo_path)
         .output()?;
 
     Command::new("git")
-        .args(&["commit", "-m", message])
+        .args(["commit", "-m", message])
         .current_dir(repo_path)
         .output()?;
 

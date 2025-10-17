@@ -53,7 +53,7 @@ impl SymbolKind {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn from_string(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "function" | "fn" => Some(SymbolKind::Function),
             "method" => Some(SymbolKind::Method),

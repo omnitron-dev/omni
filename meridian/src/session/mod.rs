@@ -168,9 +168,7 @@ impl SessionManager {
         state.last_access = Utc::now();
 
         // Detect change type
-        let change_type = if state.file_overlay.contains_key(&path) {
-            ChangeType::FileModified { path: path.to_string_lossy().to_string() }
-        } else if file_exists_in_base {
+        let change_type = if state.file_overlay.contains_key(&path) || file_exists_in_base {
             ChangeType::FileModified { path: path.to_string_lossy().to_string() }
         } else {
             ChangeType::FileAdded { path: path.to_string_lossy().to_string() }
@@ -255,7 +253,7 @@ impl SessionManager {
 
         // Search in session overlay first if prefer_session is true
         if prefer_session {
-            for (_symbol_id, entry) in &state.symbol_overlay {
+            for entry in state.symbol_overlay.values() {
                 match entry {
                     OverlayEntry::Added(symbol) | OverlayEntry::Modified(symbol) => {
                         if self.matches_query(symbol, &query) {

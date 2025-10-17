@@ -1,7 +1,7 @@
 mod common;
 
 use common::{create_test_storage, fixtures::*};
-use meridian::config::{Config, IndexConfig, MemoryConfig, StorageConfig};
+use meridian::config::MemoryConfig;
 use meridian::context::ContextManager;
 use meridian::memory::MemorySystem;
 use meridian::session::{SessionAction, SessionManager};
@@ -74,8 +74,6 @@ async fn test_complete_developer_workflow() {
         .query(&session_id, query, true)
         .await
         .unwrap();
-
-    assert!(query_result.result.symbols.len() >= 0);
 
     // Step 6: Prepare context for LLM
     let context_request = ContextRequest {

@@ -158,7 +158,7 @@ async fn test_doc_indexer_markdown() {
     let search_results = indexer.search_docs("section", 10).await;
     assert!(search_results.is_ok());
     let results = search_results.unwrap();
-    assert!(results.len() > 0);
+    assert!(!results.is_empty());
 }
 
 #[tokio::test]
@@ -188,7 +188,7 @@ async fn test_search_relevance() {
     let results = indexer.search_docs("section 1", 10).await.unwrap();
 
     // Should find results
-    assert!(results.len() > 0);
+    assert!(!results.is_empty());
 
     // First result should have highest relevance
     if results.len() > 1 {
@@ -211,7 +211,7 @@ async fn test_symbol_to_docs_linking() {
     // Test 1: get_docs_for_symbol with search fallback (no explicit link)
     // The word "calculate" appears in the doc comment title
     let docs = indexer.get_docs_for_symbol("calculate").await.unwrap();
-    assert!(docs.len() > 0, "Should find docs via search fallback for 'calculate'");
+    assert!(!docs.is_empty(), "Should find docs via search fallback for 'calculate'");
     assert!(docs[0].title.to_lowercase().contains("calculate") ||
             docs[0].content.to_lowercase().contains("calculate"));
 
@@ -221,10 +221,10 @@ async fn test_symbol_to_docs_linking() {
 
     // Test 3: Test fallback with different search terms
     let sum_docs = indexer.get_docs_for_symbol("sum").await.unwrap();
-    assert!(sum_docs.len() > 0, "Should find docs containing 'sum'");
+    assert!(!sum_docs.is_empty(), "Should find docs containing 'sum'");
 
     let main_docs = indexer.get_docs_for_symbol("main").await.unwrap();
-    assert!(main_docs.len() > 0, "Should find docs containing 'main'");
+    assert!(!main_docs.is_empty(), "Should find docs containing 'main'");
 }
 
 #[tokio::test]

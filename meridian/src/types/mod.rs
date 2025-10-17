@@ -95,22 +95,17 @@ impl Location {
 }
 
 /// Level of detail for code representation
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum DetailLevel {
     /// Only structure: names and signatures (100-500 tokens)
     Skeleton,
     /// + public interfaces (500-1500 tokens)
+    #[default]
     Interface,
     /// + private implementation (2000+ tokens)
     Implementation,
     /// Full code with comments
     Full,
-}
-
-impl Default for DetailLevel {
-    fn default() -> Self {
-        DetailLevel::Interface
-    }
 }
 
 /// Task outcome

@@ -392,7 +392,7 @@ impl ContextCompressor {
         let parts: Vec<&str> = line.split_whitespace().collect();
         for (i, part) in parts.iter().enumerate() {
             if *part == keyword && i + 1 < parts.len() {
-                let name = parts[i + 1].trim_end_matches(|c| c == '{' || c == '(' || c == '<');
+                let name = parts[i + 1].trim_end_matches(['{', '(', '<']);
                 return Some(name.to_string());
             }
         }

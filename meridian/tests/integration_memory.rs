@@ -2,7 +2,7 @@ mod common;
 
 use common::{create_test_storage, fixtures::*};
 use meridian::config::MemoryConfig;
-use meridian::memory::{EpisodicMemory, MemorySystem, ProceduralMemory, SemanticMemory, WorkingMemory};
+use meridian::memory::{EpisodicMemory, MemorySystem, WorkingMemory};
 use meridian::types::{AttentionPattern, ContextSnapshot, EpisodeId, Outcome, TaskEpisode, TokenCount};
 use std::collections::HashMap;
 

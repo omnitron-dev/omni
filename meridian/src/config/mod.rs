@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     pub index: IndexConfig,
     pub storage: StorageConfig,
@@ -161,19 +161,6 @@ impl Default for HttpConfig {
     }
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            index: IndexConfig::default(),
-            storage: StorageConfig::default(),
-            memory: MemoryConfig::default(),
-            session: SessionConfig::default(),
-            monorepo: MonorepoConfig::default(),
-            learning: LearningConfig::default(),
-            mcp: McpConfig::default(),
-        }
-    }
-}
 
 impl Config {
     pub fn from_file(path: &Path) -> Result<Self> {

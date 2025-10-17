@@ -6,5 +6,5 @@
 async fn test_mcp_server_placeholder() {
     // MCP server tests are integrated into the server module itself
     // See src/mcp/server.rs for comprehensive unit tests
-    assert!(true);
+    
 }

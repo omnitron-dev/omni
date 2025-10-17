@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 use tempfile::TempDir;
 
@@ -34,14 +34,14 @@ fn test_create_temp_git_repo() -> anyhow::Result<()> {
 
     // Configure git
     let status = Command::new("git")
-        .args(&["config", "user.name", "Test User"])
+        .args(["config", "user.name", "Test User"])
         .current_dir(repo_path)
         .status()?;
 
     assert!(status.success(), "Failed to configure git user.name");
 
     let status = Command::new("git")
-        .args(&["config", "user.email", "test@example.com"])
+        .args(["config", "user.email", "test@example.com"])
         .current_dir(repo_path)
         .status()?;
 
@@ -53,14 +53,14 @@ fn test_create_temp_git_repo() -> anyhow::Result<()> {
 
     // Add and commit
     let status = Command::new("git")
-        .args(&["add", "test.txt"])
+        .args(["add", "test.txt"])
         .current_dir(repo_path)
         .status()?;
 
     assert!(status.success(), "Failed to add file");
 
     let status = Command::new("git")
-        .args(&["commit", "-m", "Initial commit"])
+        .args(["commit", "-m", "Initial commit"])
         .current_dir(repo_path)
         .status()?;
 
@@ -89,12 +89,12 @@ fn test_git_blame_functionality() -> anyhow::Result<()> {
 
     // Configure git
     Command::new("git")
-        .args(&["config", "user.name", "Test User"])
+        .args(["config", "user.name", "Test User"])
         .current_dir(repo_path)
         .status()?;
 
     Command::new("git")
-        .args(&["config", "user.email", "test@example.com"])
+        .args(["config", "user.email", "test@example.com"])
         .current_dir(repo_path)
         .status()?;
 
@@ -103,12 +103,12 @@ fn test_git_blame_functionality() -> anyhow::Result<()> {
     fs::write(&test_file, "Line 1\nLine 2\nLine 3\n")?;
 
     Command::new("git")
-        .args(&["add", "test.txt"])
+        .args(["add", "test.txt"])
         .current_dir(repo_path)
         .status()?;
 
     Command::new("git")
-        .args(&["commit", "-m", "Initial commit"])
+        .args(["commit", "-m", "Initial commit"])
         .current_dir(repo_path)
         .status()?;
 
@@ -116,8 +116,10 @@ fn test_git_blame_functionality() -> anyhow::Result<()> {
     let repo = git2::Repository::open(repo_path)?;
     let blame = repo.blame_file(Path::new("test.txt"), None)?;
 
-    assert_eq!(blame.len(), 3, "Should have blame for 3 lines");
+    // All 3 lines were added in one commit, so we should have 1 hunk
+    assert!(!blame.is_empty(), "Should have at least 1 blame hunk");
 
+    // Test each line (1-indexed in git blame)
     for i in 1..=3 {
         let hunk = blame.get_line(i).expect("Should have hunk for line");
         let commit = repo.find_commit(hunk.final_commit_id())?;
@@ -140,12 +142,12 @@ fn test_git_diff_stats() -> anyhow::Result<()> {
 
     // Configure git
     Command::new("git")
-        .args(&["config", "user.name", "Test User"])
+        .args(["config", "user.name", "Test User"])
         .current_dir(repo_path)
         .status()?;
 
     Command::new("git")
-        .args(&["config", "user.email", "test@example.com"])
+        .args(["config", "user.email", "test@example.com"])
         .current_dir(repo_path)
         .status()?;
 
@@ -154,12 +156,12 @@ fn test_git_diff_stats() -> anyhow::Result<()> {
     fs::write(&test_file, "Line 1\nLine 2\nLine 3\n")?;
 
     Command::new("git")
-        .args(&["add", "test.txt"])
+        .args(["add", "test.txt"])
         .current_dir(repo_path)
         .status()?;
 
     Command::new("git")
-        .args(&["commit", "-m", "Initial commit"])
+        .args(["commit", "-m", "Initial commit"])
         .current_dir(repo_path)
         .status()?;
 
@@ -167,12 +169,12 @@ fn test_git_diff_stats() -> anyhow::Result<()> {
     fs::write(&test_file, "Line 1\nLine 2\nLine 3\nLine 4\nLine 5\n")?;
 
     Command::new("git")
-        .args(&["add", "test.txt"])
+        .args(["add", "test.txt"])
         .current_dir(repo_path)
         .status()?;
 
     Command::new("git")
-        .args(&["commit", "-m", "Add 2 lines"])
+        .args(["commit", "-m", "Add 2 lines"])
         .current_dir(repo_path)
         .status()?;
 

@@ -192,7 +192,7 @@ async fn test_learn_from_frequently_accessed() {
         queries_made: accessed_episode.queries_made.clone(),
         files_touched: accessed_episode.files_touched.clone(),
         solution_path: accessed_episode.solution_path.clone(),
-        outcome: accessed_episode.outcome.clone(),
+        outcome: accessed_episode.outcome,
         tokens_used: accessed_episode.tokens_used,
         access_count: 15, // High access count
         pattern_value: accessed_episode.pattern_value,

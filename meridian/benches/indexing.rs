@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use meridian::storage::RocksDBStorage;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -37,7 +37,7 @@ fn benchmark_storage_operations(c: &mut Criterion) {
             runtime.block_on(async {
                 for i in 0..100 {
                     let key = format!("key_{}", i);
-                    let _ = black_box(storage.get(key.as_bytes()).await.unwrap());
+                    let _ = std::hint::black_box(storage.get(key.as_bytes()).await.unwrap());
                 }
             })
         })

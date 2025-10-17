@@ -159,7 +159,7 @@ impl GitHistory {
 
                 // Convert to DateTime<Utc>
                 let date = DateTime::from_timestamp(timestamp, 0)
-                    .unwrap_or_else(|| Utc::now());
+                    .unwrap_or_else(Utc::now);
 
                 blame_infos.push(BlameInfo {
                     line: line_num,
@@ -210,7 +210,7 @@ impl GitHistory {
         let author = commit.author();
         let timestamp = commit.time().seconds();
         let date = DateTime::from_timestamp(timestamp, 0)
-            .unwrap_or_else(|| Utc::now());
+            .unwrap_or_else(Utc::now);
 
         let sha = format!("{}", commit.id());
         let author_name = author.name().unwrap_or("Unknown").to_string();
@@ -290,7 +290,7 @@ mod tests {
 
         // Configure git
         let output = Command::new("git")
-            .args(&["config", "user.name", "Test User"])
+            .args(["config", "user.name", "Test User"])
             .current_dir(&repo_path)
             .output()?;
 
@@ -299,7 +299,7 @@ mod tests {
         }
 
         let output = Command::new("git")
-            .args(&["config", "user.email", "test@example.com"])
+            .args(["config", "user.email", "test@example.com"])
             .current_dir(&repo_path)
             .output()?;
 
@@ -316,7 +316,7 @@ mod tests {
         fs::write(&file_path, content)?;
 
         let output = Command::new("git")
-            .args(&["add", filename])
+            .args(["add", filename])
             .current_dir(repo_path)
             .output()?;
 
@@ -325,7 +325,7 @@ mod tests {
         }
 
         let output = Command::new("git")
-            .args(&["commit", "-m", message])
+            .args(["commit", "-m", message])
             .current_dir(repo_path)
             .output()?;
 

@@ -332,7 +332,7 @@ impl DocIndexer {
         for term in terms {
             self.search_index
                 .entry(term)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(entry.id.clone());
         }
     }

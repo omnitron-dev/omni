@@ -299,7 +299,7 @@ impl ToolHandlers {
         let types = params.symbol_types.map(|types| {
             types
                 .iter()
-                .filter_map(|t| SymbolKind::from_str(t))
+                .filter_map(|t| SymbolKind::from_string(t))
                 .collect()
         });
 
@@ -520,7 +520,7 @@ impl ToolHandlers {
         let params: UpdateSessionParams = serde_json::from_value(args)
             .context("Invalid parameters for session.update")?;
 
-        let session_id = SessionId { 0: params.session_id };
+        let session_id = SessionId(params.session_id);
         let path = PathBuf::from(params.path);
 
         let status = self
@@ -545,7 +545,7 @@ impl ToolHandlers {
         let params: SessionQueryParams = serde_json::from_value(args)
             .context("Invalid parameters for session.query")?;
 
-        let session_id = SessionId { 0: params.session_id };
+        let session_id = SessionId(params.session_id);
         let query = Query::new(params.query);
 
         let results = self
@@ -572,7 +572,7 @@ impl ToolHandlers {
         let params: CompleteSessionParams = serde_json::from_value(args)
             .context("Invalid parameters for session.complete")?;
 
-        let session_id = SessionId { 0: params.session_id };
+        let session_id = SessionId(params.session_id);
         let action = match params.action.as_str() {
             "commit" => SessionAction::Commit,
             "discard" => SessionAction::Discard,
@@ -702,7 +702,7 @@ impl ToolHandlers {
         // Get task type or infer from context
         let task_desc = params.current_context.get("task")
             .and_then(|v| v.as_str())
-            .or_else(|| params.task_type.as_deref())
+            .or(params.task_type.as_deref())
             .unwrap_or("Unknown task");
 
         // Get procedure for task type

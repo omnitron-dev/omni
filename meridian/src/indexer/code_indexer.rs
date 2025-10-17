@@ -79,20 +79,20 @@ impl CodeIndexer {
                 // Add to name index
                 self.name_index
                     .entry(symbol_name)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(symbol_id.clone());
 
                 // Add to file index
                 self.file_index
                     .entry(symbol_file)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(symbol_id.clone());
 
                 // Build dependency graph
                 for dep in &symbol.dependencies {
                     self.dependencies
                         .entry(symbol_id.clone())
-                        .or_insert_with(Vec::new)
+                        .or_default()
                         .push(Dependency {
                             from: symbol_id.clone(),
                             to: dep.clone(),
@@ -160,12 +160,12 @@ impl CodeIndexer {
 
             self.name_index
                 .entry(symbol.name.clone())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(symbol.id.clone());
 
             self.file_index
                 .entry(path.to_path_buf())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(symbol.id.clone());
         }
 
@@ -185,21 +185,21 @@ impl CodeIndexer {
             .map(|s| (s.name.clone(), s.id.clone()))
             .collect();
 
-        for i in 0..symbols.len() {
+        for symbol in symbols.iter_mut() {
             let mut deps = Vec::new();
 
             // Check references to other symbols
-            for reference in &symbols[i].references.clone() {
+            for reference in &symbol.references.clone() {
                 if let Some(name) = id_to_name.get(&reference.symbol_id) {
                     if let Some(target_id) = name_to_id.get(name) {
                         deps.push(target_id.clone());
 
                         // Also add to dependency graph
                         self.dependencies
-                            .entry(symbols[i].id.clone())
-                            .or_insert_with(Vec::new)
+                            .entry(symbol.id.clone())
+                            .or_default()
                             .push(Dependency {
-                                from: symbols[i].id.clone(),
+                                from: symbol.id.clone(),
                                 to: target_id.clone(),
                                 kind: reference.kind,
                             });
@@ -207,7 +207,7 @@ impl CodeIndexer {
                 }
             }
 
-            symbols[i].dependencies = deps;
+            symbol.dependencies = deps;
         }
     }
 
@@ -371,7 +371,7 @@ impl CodeIndexer {
                     // Follow reverse dependencies (what uses this symbol)
                     for entry in self.dependencies.iter() {
                         for dep in entry.value().iter() {
-                            if &dep.to == &current_id {
+                            if dep.to == current_id {
                                 edges.push((dep.from.clone(), dep.to.clone(), dep.kind));
                                 queue.push((dep.from.clone(), current_depth + 1));
                             }
@@ -389,7 +389,7 @@ impl CodeIndexer {
 
                     for entry in self.dependencies.iter() {
                         for dep in entry.value().iter() {
-                            if &dep.to == &current_id {
+                            if dep.to == current_id {
                                 edges.push((dep.from.clone(), dep.to.clone(), dep.kind));
                                 queue.push((dep.from.clone(), current_depth + 1));
                             }
@@ -546,7 +546,7 @@ impl CodeIndexer {
             }
         }
 
-        let truncated = query.max_tokens.map_or(false, |max| total_tokens > max)
+        let truncated = query.max_tokens.is_some_and(|max| total_tokens > max)
             || combined_symbols.len() >= limit;
 
         Ok(QueryResult {
@@ -604,6 +604,7 @@ impl Indexer for CodeIndexer {
                     }
 
                     // Apply detail level
+                    #[allow(clippy::needless_borrow)]
                     let filtered = self.apply_detail_level(&symbol, query.detail_level);
 
                     // Check token budget
@@ -654,6 +655,7 @@ impl Indexer for CodeIndexer {
                 }
 
                 // Apply detail level
+                #[allow(clippy::needless_borrow)]
                 let filtered = self.apply_detail_level(&symbol, query.detail_level);
 
                 // Check token budget
@@ -674,10 +676,10 @@ impl Indexer for CodeIndexer {
             }
         }
 
-        let truncated = query.max_tokens.map_or(false, |max| total_tokens > max)
+        let truncated = query.max_tokens.is_some_and(|max| total_tokens > max)
             || query
                 .max_results
-                .map_or(false, |max| matching_symbols.len() >= max);
+                .is_some_and(|max| matching_symbols.len() >= max);
 
         Ok(QueryResult {
             symbols: matching_symbols,

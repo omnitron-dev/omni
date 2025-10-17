@@ -30,7 +30,7 @@ impl PatternIndex {
         for keyword in keywords {
             self.keyword_index
                 .entry(keyword.to_lowercase())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(episode.id.0.clone());
         }
 
@@ -230,7 +230,7 @@ impl EpisodicMemory {
             let episode_patterns = PatternIndex::extract_patterns(episode);
             for pattern in episode_patterns {
                 let key = pattern.context_markers.join("_");
-                pattern_groups.entry(key).or_insert_with(Vec::new).push(pattern);
+                pattern_groups.entry(key).or_default().push(pattern);
             }
         }
 

@@ -122,7 +122,7 @@ impl ProceduralMemory {
 
         for episode in episodes {
             let task_type = TaskType::infer(&episode.task_description);
-            grouped.entry(task_type).or_insert_with(Vec::new).push(episode);
+            grouped.entry(task_type).or_default().push(episode);
         }
 
         // Extract procedures from groups

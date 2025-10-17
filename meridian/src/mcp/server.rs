@@ -90,8 +90,7 @@ impl MeridianServer {
         let max_projects = config
             .mcp
             .http
-            .as_ref()
-            .and_then(|h| Some(h.max_connections))
+            .as_ref().map(|h| h.max_connections)
             .unwrap_or(10);
 
         let project_manager = Arc::new(ProjectManager::new(config.clone(), max_projects));
@@ -178,7 +177,7 @@ impl MeridianServer {
             .mcp
             .http
             .clone()
-            .unwrap_or_else(|| crate::config::HttpConfig::default());
+            .unwrap_or_default();
 
         if !http_config.enabled {
             anyhow::bail!("HTTP transport is not enabled in configuration");
@@ -221,12 +220,12 @@ impl MeridianServer {
                     JsonRpcResponse::success(request_id, json!({}))
                 } else {
                     // No response for notifications
-                    return JsonRpcResponse {
+                    JsonRpcResponse {
                         jsonrpc: "2.0".to_string(),
                         id: None,
                         result: None,
                         error: None,
-                    };
+                    }
                 }
             }
             "tools/list" => self.handle_list_tools(request_id),
@@ -582,7 +581,7 @@ mod tests {
 
         let result = response.result.unwrap();
         let tools = result.get("tools").unwrap().as_array().unwrap();
-        assert!(tools.len() > 0);
+        assert!(!tools.is_empty());
     }
 
     #[tokio::test]

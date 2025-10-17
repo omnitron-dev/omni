@@ -311,7 +311,7 @@ impl ContextManager {
     }
 
     fn extract_filename(&self, path: &str) -> String {
-        path.split('/').last().unwrap_or("module")
+        path.split('/').next_back().unwrap_or("module")
             .trim_end_matches(".rs")
             .replace('-', "_")
     }

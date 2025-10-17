@@ -207,21 +207,12 @@ impl AttentionHistory {
 }
 
 /// Attention predictor model
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AttentionPredictorModel {
     /// Transition probabilities: symbol -> (next_symbol, probability)
     transitions: HashMap<SymbolId, Vec<(SymbolId, f32)>>,
     /// Global symbol importance
     importance: HashMap<SymbolId, f32>,
-}
-
-impl Default for AttentionPredictorModel {
-    fn default() -> Self {
-        Self {
-            transitions: HashMap::new(),
-            importance: HashMap::new(),
-        }
-    }
 }
 
 pub struct AttentionPredictor {
@@ -250,7 +241,7 @@ impl AttentionPredictor {
             for current_symbol in current.focused_symbols.keys() {
                 let transitions = self.model.transitions
                     .entry(current_symbol.clone())
-                    .or_insert_with(Vec::new);
+                    .or_default();
 
                 for next_symbol in next.focused_symbols.keys() {
                     if let Some((_sym, prob)) = transitions.iter_mut()
@@ -453,6 +444,8 @@ pub struct AttentionBasedRetriever {
     attention_history: Arc<RwLock<AttentionHistory>>,
     prediction_model: Arc<RwLock<AttentionPredictor>>,
     cache: Arc<RwLock<PredictiveCache>>,
+    /// Storage reference kept for potential future direct operations
+    #[allow(dead_code)]
     storage: Arc<dyn Storage>,
 }
 

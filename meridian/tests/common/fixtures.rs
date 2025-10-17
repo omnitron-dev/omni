@@ -1,7 +1,6 @@
 use chrono::Utc;
 use meridian::types::{
-    ChangeType, CodeSymbol, ContextFragment, Delta, Hash, Location, Query,
-    Reference, SymbolId, SymbolKind, SymbolMetadata, TokenCount,
+    ChangeType, CodeSymbol, ContextFragment, Delta, Hash, Location, Query, SymbolId, SymbolKind, SymbolMetadata, TokenCount,
 };
 use uuid::Uuid;
 
@@ -52,6 +51,7 @@ pub fn test_query(text: &str) -> Query {
 
 
 /// Create a test delta
+#[allow(dead_code)]
 pub fn test_delta(change_type: ChangeType) -> Delta {
     Delta {
         id: Uuid::new_v4().to_string(),

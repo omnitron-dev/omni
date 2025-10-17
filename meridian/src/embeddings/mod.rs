@@ -83,7 +83,7 @@ impl EmbeddingEngine {
         }
 
         // Unwrap all results (they should all be Some now)
-        Ok(results.into_iter().filter_map(|r| r).collect())
+        Ok(results.into_iter().flatten().collect())
     }
 
     /// Clear the cache

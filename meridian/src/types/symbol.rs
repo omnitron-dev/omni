@@ -14,6 +14,9 @@ pub struct CodeSymbol {
     pub references: Vec<Reference>,
     pub dependencies: Vec<SymbolId>,
     pub metadata: SymbolMetadata,
+    /// Vector embedding for semantic search (384-dimensional for AllMiniLML6V2)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embedding: Option<Vec<f32>>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

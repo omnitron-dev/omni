@@ -19,6 +19,7 @@ pub struct ProjectContext {
     pub context_manager: Arc<tokio::sync::RwLock<ContextManager>>,
     pub indexer: Arc<tokio::sync::RwLock<CodeIndexer>>,
     pub session_manager: Arc<SessionManager>,
+    pub doc_indexer: Arc<crate::docs::DocIndexer>,
     pub last_access: SystemTime,
 }
 
@@ -50,7 +51,10 @@ impl ProjectContext {
             timeout: chrono::Duration::hours(1),
             auto_cleanup: true,
         };
-        let session_manager = SessionManager::new(storage.clone(), session_config);
+        let session_manager = SessionManager::new(storage.clone(), session_config)?;
+
+        // Initialize documentation indexer
+        let doc_indexer = Arc::new(crate::docs::DocIndexer::new());
 
         Ok(Self {
             project_path,
@@ -59,6 +63,7 @@ impl ProjectContext {
             context_manager: Arc::new(tokio::sync::RwLock::new(context_manager)),
             indexer: Arc::new(tokio::sync::RwLock::new(indexer)),
             session_manager: Arc::new(session_manager),
+            doc_indexer,
             last_access: SystemTime::now(),
         })
     }

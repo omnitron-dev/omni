@@ -17,6 +17,7 @@ pub fn test_symbol(name: &str, kind: SymbolKind) -> CodeSymbol {
         references: Vec::new(),
         dependencies: Vec::new(),
         metadata: test_metadata(),
+        embedding: None,
     }
 }
 

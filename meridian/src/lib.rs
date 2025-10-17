@@ -1,5 +1,8 @@
 pub mod config;
 pub mod context;
+pub mod docs;
+pub mod embeddings;
+pub mod git;
 pub mod indexer;
 pub mod mcp;
 pub mod memory;

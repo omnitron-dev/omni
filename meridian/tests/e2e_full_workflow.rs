@@ -29,7 +29,7 @@ async fn test_complete_developer_workflow() {
     let mut memory = MemorySystem::new(storage.clone(), memory_config).unwrap();
     memory.init().await.unwrap();
 
-    let session_manager = SessionManager::with_storage(storage.clone());
+    let session_manager = SessionManager::with_storage(storage.clone()).unwrap();
     let context_manager = ContextManager::new(LLMAdapter::claude3());
 
     // Step 1: Start a new coding session
@@ -182,7 +182,7 @@ async fn test_learning_workflow() {
 #[tokio::test]
 async fn test_multi_session_workflow() {
     let (storage, _temp) = create_test_storage();
-    let session_manager = SessionManager::with_storage(storage);
+    let session_manager = SessionManager::with_storage(storage).unwrap();
 
     // Start two parallel sessions
     let session1 = session_manager
@@ -349,7 +349,7 @@ async fn test_working_memory_eviction_workflow() {
 #[tokio::test]
 async fn test_session_stash_recovery_workflow() {
     let (storage, _temp) = create_test_storage();
-    let session_manager = SessionManager::with_storage(storage.clone());
+    let session_manager = SessionManager::with_storage(storage.clone()).unwrap();
 
     // Create and stash a session
     let session_id = session_manager
@@ -382,7 +382,7 @@ async fn test_session_stash_recovery_workflow() {
 #[tokio::test]
 async fn test_parallel_sessions_workflow() {
     let (storage, _temp) = create_test_storage();
-    let session_manager = SessionManager::with_storage(storage);
+    let session_manager = SessionManager::with_storage(storage).unwrap();
 
     // Create multiple parallel sessions
     let mut session_ids = Vec::new();

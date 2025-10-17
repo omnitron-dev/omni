@@ -8,7 +8,7 @@ use std::path::PathBuf;
 #[tokio::test]
 async fn test_session_manager_initialization() {
     let (storage, _temp) = create_test_storage();
-    let manager = SessionManager::with_storage(storage);
+    let manager = SessionManager::with_storage(storage).unwrap();
 
     assert_eq!(manager.list_sessions().await.len(), 0);
 }
@@ -16,7 +16,7 @@ async fn test_session_manager_initialization() {
 #[tokio::test]
 async fn test_session_begin() {
     let (storage, _temp) = create_test_storage();
-    let manager = SessionManager::with_storage(storage);
+    let manager = SessionManager::with_storage(storage).unwrap();
 
     let session_id = manager
         .begin(
@@ -36,7 +36,7 @@ async fn test_session_begin() {
 #[tokio::test]
 async fn test_session_update_file() {
     let (storage, _temp) = create_test_storage();
-    let manager = SessionManager::with_storage(storage);
+    let manager = SessionManager::with_storage(storage).unwrap();
 
     let session_id = manager
         .begin("Update module".to_string(), vec![], None)
@@ -57,7 +57,7 @@ async fn test_session_update_file() {
 #[tokio::test]
 async fn test_session_update_multiple_files() {
     let (storage, _temp) = create_test_storage();
-    let manager = SessionManager::with_storage(storage);
+    let manager = SessionManager::with_storage(storage).unwrap();
 
     let session_id = manager
         .begin("Multi-file update".to_string(), vec![], None)
@@ -93,7 +93,7 @@ async fn test_session_update_multiple_files() {
 #[tokio::test]
 async fn test_session_query() {
     let (storage, _temp) = create_test_storage();
-    let manager = SessionManager::with_storage(storage);
+    let manager = SessionManager::with_storage(storage).unwrap();
 
     let session_id = manager
         .begin("Query test".to_string(), vec![], None)
@@ -110,7 +110,7 @@ async fn test_session_query() {
 #[tokio::test]
 async fn test_session_commit() {
     let (storage, _temp) = create_test_storage();
-    let manager = SessionManager::with_storage(storage.clone());
+    let manager = SessionManager::with_storage(storage.clone()).unwrap();
 
     let session_id = manager
         .begin("Commit test".to_string(), vec![], None)
@@ -140,7 +140,7 @@ async fn test_session_commit() {
 #[tokio::test]
 async fn test_session_discard() {
     let (storage, _temp) = create_test_storage();
-    let manager = SessionManager::with_storage(storage);
+    let manager = SessionManager::with_storage(storage).unwrap();
 
     let session_id = manager
         .begin("Discard test".to_string(), vec![], None)
@@ -169,7 +169,7 @@ async fn test_session_discard() {
 #[tokio::test]
 async fn test_session_stash() {
     let (storage, _temp) = create_test_storage();
-    let manager = SessionManager::with_storage(storage.clone());
+    let manager = SessionManager::with_storage(storage.clone()).unwrap();
 
     let session_id = manager
         .begin("Stash test".to_string(), vec![], None)
@@ -202,7 +202,7 @@ async fn test_session_stash() {
 #[tokio::test]
 async fn test_multiple_concurrent_sessions() {
     let (storage, _temp) = create_test_storage();
-    let manager = SessionManager::with_storage(storage);
+    let manager = SessionManager::with_storage(storage).unwrap();
 
     let session1 = manager
         .begin("Task 1".to_string(), vec![], None)
@@ -231,7 +231,7 @@ async fn test_multiple_concurrent_sessions() {
 #[tokio::test]
 async fn test_session_conflict_detection() {
     let (storage, _temp) = create_test_storage();
-    let manager = SessionManager::with_storage(storage);
+    let manager = SessionManager::with_storage(storage).unwrap();
 
     let session1 = manager
         .begin("Session 1".to_string(), vec![], None)
@@ -269,7 +269,7 @@ async fn test_session_conflict_detection() {
 #[tokio::test]
 async fn test_session_no_conflict() {
     let (storage, _temp) = create_test_storage();
-    let manager = SessionManager::with_storage(storage);
+    let manager = SessionManager::with_storage(storage).unwrap();
 
     let session1 = manager
         .begin("Session 1".to_string(), vec![], None)
@@ -309,7 +309,7 @@ async fn test_session_max_sessions_eviction() {
         timeout: chrono::Duration::hours(1),
         auto_cleanup: false,
     };
-    let manager = SessionManager::new(storage, config);
+    let manager = SessionManager::new(storage, config).unwrap();
 
     let session1 = manager
         .begin("Task 1".to_string(), vec![], None)
@@ -345,7 +345,7 @@ async fn test_session_timeout_cleanup() {
         timeout: chrono::Duration::milliseconds(100),
         auto_cleanup: true,
     };
-    let manager = SessionManager::new(storage, config);
+    let manager = SessionManager::new(storage, config).unwrap();
 
     let session_id = manager
         .begin("Timeout test".to_string(), vec![], None)
@@ -365,7 +365,7 @@ async fn test_session_timeout_cleanup() {
 #[tokio::test]
 async fn test_session_changes_summary() {
     let (storage, _temp) = create_test_storage();
-    let manager = SessionManager::with_storage(storage);
+    let manager = SessionManager::with_storage(storage).unwrap();
 
     let session_id = manager
         .begin("Summary test".to_string(), vec![], None)
@@ -397,7 +397,7 @@ async fn test_session_changes_summary() {
 #[tokio::test]
 async fn test_session_scope_filtering() {
     let (storage, _temp) = create_test_storage();
-    let manager = SessionManager::with_storage(storage);
+    let manager = SessionManager::with_storage(storage).unwrap();
 
     let session_id = manager
         .begin(
@@ -420,7 +420,7 @@ async fn test_session_scope_filtering() {
 #[tokio::test]
 async fn test_session_updated_timestamp() {
     let (storage, _temp) = create_test_storage();
-    let manager = SessionManager::with_storage(storage);
+    let manager = SessionManager::with_storage(storage).unwrap();
 
     let session_id = manager
         .begin("Timestamp test".to_string(), vec![], None)
@@ -457,7 +457,7 @@ async fn test_session_updated_timestamp() {
 #[tokio::test]
 async fn test_session_query_prefer_session() {
     let (storage, _temp) = create_test_storage();
-    let manager = SessionManager::with_storage(storage);
+    let manager = SessionManager::with_storage(storage).unwrap();
 
     let session_id = manager
         .begin("Query preference test".to_string(), vec![], None)
@@ -482,7 +482,7 @@ async fn test_session_query_prefer_session() {
 #[tokio::test]
 async fn test_session_persistence_after_commit() {
     let (storage, _temp) = create_test_storage();
-    let manager = SessionManager::with_storage(storage.clone());
+    let manager = SessionManager::with_storage(storage.clone()).unwrap();
 
     let session_id = manager
         .begin("Persistence test".to_string(), vec![], None)

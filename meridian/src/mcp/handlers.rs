@@ -1,4 +1,6 @@
 use crate::context::ContextManager;
+use crate::docs::DocIndexer;
+use crate::git::GitHistory;
 use crate::indexer::CodeIndexer;
 use crate::memory::MemorySystem;
 use crate::session::{SessionAction, SessionManager};
@@ -7,28 +9,32 @@ use anyhow::{Context as _, Result, anyhow};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::path::PathBuf;
+use std::sync::Arc;
 use tracing::{debug, info};
 
 /// Handler for all MCP tool calls
 pub struct ToolHandlers {
-    memory_system: std::sync::Arc<tokio::sync::RwLock<MemorySystem>>,
-    context_manager: std::sync::Arc<tokio::sync::RwLock<ContextManager>>,
-    indexer: std::sync::Arc<tokio::sync::RwLock<CodeIndexer>>,
-    session_manager: std::sync::Arc<SessionManager>,
+    memory_system: Arc<tokio::sync::RwLock<MemorySystem>>,
+    context_manager: Arc<tokio::sync::RwLock<ContextManager>>,
+    indexer: Arc<tokio::sync::RwLock<CodeIndexer>>,
+    session_manager: Arc<SessionManager>,
+    doc_indexer: Arc<DocIndexer>,
 }
 
 impl ToolHandlers {
     pub fn new(
-        memory_system: std::sync::Arc<tokio::sync::RwLock<MemorySystem>>,
-        context_manager: std::sync::Arc<tokio::sync::RwLock<ContextManager>>,
-        indexer: std::sync::Arc<tokio::sync::RwLock<CodeIndexer>>,
-        session_manager: std::sync::Arc<SessionManager>,
+        memory_system: Arc<tokio::sync::RwLock<MemorySystem>>,
+        context_manager: Arc<tokio::sync::RwLock<ContextManager>>,
+        indexer: Arc<tokio::sync::RwLock<CodeIndexer>>,
+        session_manager: Arc<SessionManager>,
+        doc_indexer: Arc<DocIndexer>,
     ) -> Self {
         Self {
             memory_system,
             context_manager,
             indexer,
             session_manager,
+            doc_indexer,
         }
     }
 
@@ -859,12 +865,14 @@ impl ToolHandlers {
         let params: DocsSearchParams = serde_json::from_value(args)
             .context("Invalid parameters for docs.search")?;
 
-        // Search for markdown and documentation files
-        use crate::indexer::Indexer;
-        let indexer = self.indexer.read().await;
         let max_results = params.max_results.unwrap_or(10);
 
-        // Create a query for documentation files
+        // Search using DocIndexer for markdown/doc comments
+        let doc_results = self.doc_indexer.search_docs(&params.query, max_results).await?;
+
+        // Also search symbols with doc comments
+        use crate::indexer::Indexer;
+        let indexer = self.indexer.read().await;
         let query = Query {
             text: params.query.clone(),
             symbol_types: None,
@@ -873,23 +881,47 @@ impl ToolHandlers {
             max_results: Some(max_results),
             max_tokens: None,
         };
+        let symbol_results = indexer.search_symbols(&query).await?;
 
-        // Search symbols that might have doc comments
-        let results = indexer.search_symbols(&query).await?;
+        // Combine results
+        let mut all_results: Vec<Value> = Vec::new();
 
-        let docs_results: Vec<Value> = results.symbols.iter()
-            .filter(|s| s.metadata.doc_comment.is_some())
-            .map(|s| json!({
-                "symbol": s.name,
-                "file": s.location.file,
-                "doc": s.metadata.doc_comment,
-                "relevance": 0.8
-            }))
-            .collect();
+        // Add documentation results
+        for doc in &doc_results {
+            all_results.push(json!({
+                "title": doc.title,
+                "content": doc.content,
+                "file": doc.file,
+                "line_start": doc.line_start,
+                "line_end": doc.line_end,
+                "section_path": doc.section_path,
+                "relevance": doc.relevance,
+                "type": match doc.doc_type {
+                    crate::docs::DocType::Markdown => "markdown",
+                    crate::docs::DocType::DocComment => "doc_comment",
+                    crate::docs::DocType::InlineComment => "inline_comment",
+                    crate::docs::DocType::CodeBlock => "code_block",
+                }
+            }));
+        }
+
+        // Add symbol doc comments (if not already included)
+        for symbol in symbol_results.symbols.iter().filter(|s| s.metadata.doc_comment.is_some()).take(max_results - doc_results.len()) {
+            all_results.push(json!({
+                "title": symbol.name.clone(),
+                "content": symbol.metadata.doc_comment.clone().unwrap_or_default(),
+                "file": symbol.location.file.clone(),
+                "line_start": symbol.location.line_start,
+                "line_end": symbol.location.line_end,
+                "section_path": [],
+                "relevance": 0.7,
+                "type": "symbol_doc"
+            }));
+        }
 
         Ok(json!({
-            "results": docs_results,
-            "total_found": docs_results.len(),
+            "results": all_results,
+            "total_found": all_results.len(),
             "query": params.query
         }))
     }
@@ -907,10 +939,33 @@ impl ToolHandlers {
         let params: DocsForSymbolParams = serde_json::from_value(args)
             .context("Invalid parameters for docs.get_for_symbol")?;
 
+        // First, get symbol information
         use crate::indexer::Indexer;
         let indexer = self.indexer.read().await;
         let symbol = indexer.get_symbol(&params.symbol_id).await?
             .ok_or_else(|| anyhow!("Symbol not found"))?;
+
+        // Get documentation from DocIndexer
+        let docs = self.doc_indexer.get_docs_for_symbol(&symbol.name).await?;
+
+        let examples: Vec<Value> = Vec::new();
+        let mut related_docs = Vec::new();
+
+        // Extract code examples and related documentation
+        for doc in docs {
+            related_docs.push(json!({
+                "title": doc.title,
+                "content": doc.content,
+                "file": doc.file,
+                "line_start": doc.line_start,
+                "type": match doc.doc_type {
+                    crate::docs::DocType::Markdown => "markdown",
+                    crate::docs::DocType::DocComment => "doc_comment",
+                    crate::docs::DocType::InlineComment => "inline_comment",
+                    crate::docs::DocType::CodeBlock => "code_block",
+                }
+            }));
+        }
 
         Ok(json!({
             "symbol_id": symbol.id.0,
@@ -918,7 +973,8 @@ impl ToolHandlers {
             "documentation": symbol.metadata.doc_comment,
             "signature": symbol.signature,
             "file": symbol.location.file,
-            "examples": []
+            "examples": examples,
+            "related_docs": related_docs
         }))
     }
 
@@ -938,35 +994,54 @@ impl ToolHandlers {
         let params: HistoryEvolutionParams = serde_json::from_value(args)
             .context("Invalid parameters for history.get_evolution")?;
 
-        // Try to use git2 to get file history
         let max_commits = params.max_commits.unwrap_or(10);
         let path = PathBuf::from(&params.path);
 
-        // Placeholder implementation - would require git2 integration
-        let commits = vec![
-            json!({
-                "sha": "abc123",
-                "author": "Developer",
-                "date": "2024-01-01",
-                "message": "Initial commit",
-                "changes": "+10 -0"
-            })
-        ];
+        // Try to use GitHistory to get file evolution
+        match GitHistory::new(&path) {
+            Ok(git_history) => {
+                let commits = git_history.get_file_evolution(&path, max_commits)?;
 
-        Ok(json!({
-            "path": path.display().to_string(),
-            "commits": commits,
-            "total_commits": max_commits
-        }))
+                let commits_json: Vec<Value> = commits
+                    .iter()
+                    .map(|c| {
+                        json!({
+                            "sha": c.sha,
+                            "author": c.author,
+                            "author_email": c.author_email,
+                            "date": c.date.to_rfc3339(),
+                            "message": c.message,
+                            "changes": c.changes,
+                            "insertions": c.insertions,
+                            "deletions": c.deletions
+                        })
+                    })
+                    .collect();
+
+                Ok(json!({
+                    "path": path.display().to_string(),
+                    "commits": commits_json,
+                    "total_commits": commits.len()
+                }))
+            }
+            Err(e) => {
+                // Not a git repository or git error
+                debug!("Git error for path {:?}: {}", path, e);
+                Ok(json!({
+                    "path": path.display().to_string(),
+                    "commits": [],
+                    "total_commits": 0,
+                    "error": format!("Not a git repository or git error: {}", e)
+                }))
+            }
+        }
     }
 
     async fn handle_history_blame(&self, args: Value) -> Result<Value> {
         #[derive(Deserialize)]
         struct HistoryBlameParams {
             path: String,
-            #[allow(dead_code)]
             line_start: Option<usize>,
-            #[allow(dead_code)]
             line_end: Option<usize>,
             #[allow(dead_code)]
             project_path: Option<String>,
@@ -975,22 +1050,44 @@ impl ToolHandlers {
         let params: HistoryBlameParams = serde_json::from_value(args)
             .context("Invalid parameters for history.blame")?;
 
-        // Placeholder implementation - would require git2 integration
-        let blame_lines = vec![
-            json!({
-                "line": 1,
-                "author": "Developer",
-                "sha": "abc123",
-                "date": "2024-01-01",
-                "content": "fn main() {"
-            })
-        ];
+        let path = PathBuf::from(&params.path);
 
-        Ok(json!({
-            "path": params.path,
-            "blame": blame_lines,
-            "total_lines": blame_lines.len()
-        }))
+        // Try to use GitHistory to get blame information
+        match GitHistory::new(&path) {
+            Ok(git_history) => {
+                let blame_info = git_history.get_blame(&path, params.line_start, params.line_end)?;
+
+                let blame_json: Vec<Value> = blame_info
+                    .iter()
+                    .map(|b| {
+                        json!({
+                            "line": b.line,
+                            "author": b.author,
+                            "author_email": b.author_email,
+                            "sha": b.sha,
+                            "date": b.date.to_rfc3339(),
+                            "content": b.content
+                        })
+                    })
+                    .collect();
+
+                Ok(json!({
+                    "path": params.path,
+                    "blame": blame_json,
+                    "total_lines": blame_info.len()
+                }))
+            }
+            Err(e) => {
+                // Not a git repository or git error
+                debug!("Git error for path {:?}: {}", path, e);
+                Ok(json!({
+                    "path": params.path,
+                    "blame": [],
+                    "total_lines": 0,
+                    "error": format!("Not a git repository or git error: {}", e)
+                }))
+            }
+        }
     }
 
     // === Analysis Tools ===

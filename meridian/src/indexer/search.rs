@@ -250,6 +250,7 @@ mod tests {
                 test_coverage: 0.0,
                 usage_frequency: 0,
             },
+            embedding: None,
         }
     }
 

@@ -30,6 +30,7 @@ tantivy = "0.25.0"
 # ML/Embeddings
 candle-core = "0.9.1"
 candle-nn = "0.9.1"
+fastembed = "5.2.0"
 
 # Serialization
 serde = { version = "1.0.228", features = ["derive"] }
@@ -84,6 +85,9 @@ lz4 = "1.28.1"
 
 # Regex
 regex = "1.11.1"
+
+# Markdown parsing
+pulldown-cmark = "0.12.2"
 
 [dev-dependencies]
 tempfile = "3.23.0"

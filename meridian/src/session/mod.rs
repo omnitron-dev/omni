@@ -2,6 +2,7 @@ use crate::storage::{Storage, Snapshot, WriteOp, serialize, deserialize};
 use crate::types::{
     CodeSymbol, Delta, Query, QueryResult, Session, SessionId, SymbolId, TokenCount, ChangeType,
 };
+use crate::indexer::TreeSitterParser;
 use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Duration, Utc};
 use dashmap::DashMap;
@@ -15,6 +16,7 @@ pub struct SessionManager {
     storage: Arc<dyn Storage>,
     sessions: Arc<DashMap<SessionId, Arc<RwLock<SessionState>>>>,
     config: SessionConfig,
+    parser: Arc<RwLock<TreeSitterParser>>,
 }
 
 /// Session configuration
@@ -69,16 +71,20 @@ enum OverlayEntry<T> {
 
 impl SessionManager {
     /// Create a new session manager
-    pub fn new(storage: Arc<dyn Storage>, config: SessionConfig) -> Self {
-        Self {
+    pub fn new(storage: Arc<dyn Storage>, config: SessionConfig) -> Result<Self> {
+        let parser = TreeSitterParser::new()
+            .context("Failed to create TreeSitterParser")?;
+
+        Ok(Self {
             storage,
             sessions: Arc::new(DashMap::new()),
             config,
-        }
+            parser: Arc::new(RwLock::new(parser)),
+        })
     }
 
     /// Create with default configuration
-    pub fn with_storage(storage: Arc<dyn Storage>) -> Self {
+    pub fn with_storage(storage: Arc<dyn Storage>) -> Result<Self> {
         Self::new(storage, SessionConfig::default())
     }
 
@@ -626,11 +632,21 @@ impl SessionManager {
             || symbol.signature.to_lowercase().contains(&query_lower)
     }
 
-    /// Parse symbols from file content (simplified version)
-    async fn parse_file_symbols(&self, _path: &PathBuf, _content: &str) -> Result<Vec<CodeSymbol>> {
-        // TODO: Integrate with actual parser
-        // For now return empty vec
-        Ok(Vec::new())
+    /// Parse symbols from file content using TreeSitterParser
+    async fn parse_file_symbols(&self, path: &PathBuf, content: &str) -> Result<Vec<CodeSymbol>> {
+        let mut parser = self.parser.write().await;
+
+        // Parse the file using TreeSitter
+        let symbols = parser.parse_file(path, content)
+            .with_context(|| format!("Failed to parse file: {:?}", path))?;
+
+        tracing::debug!(
+            "Parsed {} symbols from {}",
+            symbols.len(),
+            path.display()
+        );
+
+        Ok(symbols)
     }
 }
 
@@ -785,7 +801,7 @@ mod tests {
     #[tokio::test]
     async fn test_begin_session() {
         let (storage, _temp) = create_test_storage().await;
-        let manager = SessionManager::with_storage(storage);
+        let manager = SessionManager::with_storage(storage).unwrap();
 
         let session_id = manager.begin(
             "Test task".to_string(),
@@ -801,7 +817,7 @@ mod tests {
     #[tokio::test]
     async fn test_session_update() {
         let (storage, _temp) = create_test_storage().await;
-        let manager = SessionManager::with_storage(storage);
+        let manager = SessionManager::with_storage(storage).unwrap();
 
         let session_id = manager.begin(
             "Test task".to_string(),
@@ -822,7 +838,7 @@ mod tests {
     #[tokio::test]
     async fn test_session_query() {
         let (storage, _temp) = create_test_storage().await;
-        let manager = SessionManager::with_storage(storage);
+        let manager = SessionManager::with_storage(storage).unwrap();
 
         let session_id = manager.begin(
             "Test task".to_string(),
@@ -840,7 +856,7 @@ mod tests {
     #[tokio::test]
     async fn test_session_commit() {
         let (storage, _temp) = create_test_storage().await;
-        let manager = SessionManager::with_storage(storage);
+        let manager = SessionManager::with_storage(storage).unwrap();
 
         let session_id = manager.begin(
             "Test task".to_string(),
@@ -864,7 +880,7 @@ mod tests {
     #[tokio::test]
     async fn test_session_discard() {
         let (storage, _temp) = create_test_storage().await;
-        let manager = SessionManager::with_storage(storage);
+        let manager = SessionManager::with_storage(storage).unwrap();
 
         let session_id = manager.begin(
             "Test task".to_string(),
@@ -888,7 +904,7 @@ mod tests {
     #[tokio::test]
     async fn test_session_stash() {
         let (storage, _temp) = create_test_storage().await;
-        let manager = SessionManager::with_storage(storage.clone());
+        let manager = SessionManager::with_storage(storage.clone()).unwrap();
 
         let session_id = manager.begin(
             "Test task".to_string(),
@@ -916,7 +932,7 @@ mod tests {
     #[tokio::test]
     async fn test_multiple_sessions() {
         let (storage, _temp) = create_test_storage().await;
-        let manager = SessionManager::with_storage(storage);
+        let manager = SessionManager::with_storage(storage).unwrap();
 
         let session1 = manager.begin(
             "Task 1".to_string(),
@@ -940,7 +956,7 @@ mod tests {
     #[tokio::test]
     async fn test_detect_conflicts() {
         let (storage, _temp) = create_test_storage().await;
-        let manager = SessionManager::with_storage(storage);
+        let manager = SessionManager::with_storage(storage).unwrap();
 
         let session1 = manager.begin(
             "Task 1".to_string(),
@@ -974,7 +990,7 @@ mod tests {
             max_sessions: 2,
             ..Default::default()
         };
-        let manager = SessionManager::new(storage, config);
+        let manager = SessionManager::new(storage, config).unwrap();
 
         let session1 = manager.begin("Task 1".to_string(), vec![], None).await.unwrap();
         let session2 = manager.begin("Task 2".to_string(), vec![], None).await.unwrap();
@@ -999,7 +1015,7 @@ mod tests {
             timeout: Duration::milliseconds(100),
             auto_cleanup: true,
         };
-        let manager = SessionManager::new(storage, config);
+        let manager = SessionManager::new(storage, config).unwrap();
 
         let session_id = manager.begin(
             "Test task".to_string(),
@@ -1021,7 +1037,7 @@ mod tests {
     #[tokio::test]
     async fn test_changes_summary() {
         let (storage, _temp) = create_test_storage().await;
-        let manager = SessionManager::with_storage(storage);
+        let manager = SessionManager::with_storage(storage).unwrap();
 
         let session_id = manager.begin(
             "Test task".to_string(),

@@ -24,6 +24,7 @@ enum ServerMode {
         context_manager: Arc<tokio::sync::RwLock<ContextManager>>,
         indexer: Arc<tokio::sync::RwLock<CodeIndexer>>,
         session_manager: Arc<SessionManager>,
+        doc_indexer: Arc<crate::docs::DocIndexer>,
         handlers: Option<Arc<ToolHandlers>>,
     },
     /// Multi-project mode (HTTP)
@@ -57,13 +58,16 @@ impl MeridianServer {
         let mut indexer = CodeIndexer::new(storage.clone(), config.index.clone())?;
         indexer.load().await?;
 
+        // Initialize documentation indexer
+        let doc_indexer = Arc::new(crate::docs::DocIndexer::new());
+
         // Initialize session manager
         let session_config = crate::session::SessionConfig {
             max_sessions: config.session.max_sessions,
             timeout: chrono::Duration::hours(1),
             auto_cleanup: true,
         };
-        let session_manager = SessionManager::new(storage.clone(), session_config);
+        let session_manager = SessionManager::new(storage.clone(), session_config)?;
 
         // Wrap components in Arc<RwLock<>> for shared access
         Ok(Self {
@@ -72,6 +76,7 @@ impl MeridianServer {
                 context_manager: Arc::new(tokio::sync::RwLock::new(context_manager)),
                 indexer: Arc::new(tokio::sync::RwLock::new(indexer)),
                 session_manager: Arc::new(session_manager),
+                doc_indexer,
                 handlers: None,
             },
             config,
@@ -107,6 +112,7 @@ impl MeridianServer {
                 context_manager,
                 indexer,
                 session_manager,
+                doc_indexer,
             } => {
                 if let Some(h) = handlers {
                     return Ok(h.clone());
@@ -118,6 +124,7 @@ impl MeridianServer {
                     context_manager.clone(),
                     indexer.clone(),
                     session_manager.clone(),
+                    doc_indexer.clone(),
                 ));
 
                 *handlers = Some(new_handlers.clone());
@@ -575,12 +582,14 @@ mod tests {
             timeout: chrono::Duration::hours(1),
             auto_cleanup: true,
         };
-        let session_manager = SessionManager::new(storage, session_config);
+        let session_manager = SessionManager::new(storage, session_config).unwrap();
+        let doc_indexer = Arc::new(crate::docs::DocIndexer::new());
         let handlers = Arc::new(ToolHandlers::new(
             Arc::new(tokio::sync::RwLock::new(memory_system)),
             Arc::new(tokio::sync::RwLock::new(context_manager)),
             Arc::new(tokio::sync::RwLock::new(indexer)),
             Arc::new(session_manager),
+            doc_indexer,
         ));
 
         let request = JsonRpcRequest {

@@ -1,5 +1,6 @@
 use super::{Indexer, TreeSitterParser};
 use crate::config::IndexConfig;
+use crate::embeddings::EmbeddingEngine;
 use crate::storage::{deserialize, serialize, Storage};
 use crate::types::{
     CodeSymbol, DetailLevel, Query, QueryResult, Reference, ReferenceKind,
@@ -9,7 +10,7 @@ use anyhow::{Context, Result};
 use dashmap::DashMap;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// Dependency graph edge
 #[derive(Debug, Clone)]
@@ -40,10 +41,14 @@ pub struct CodeIndexer {
     dependencies: DashMap<SymbolId, Vec<Dependency>>,
     // Source code cache for getting full definitions
     source_cache: DashMap<PathBuf, String>,
+    // Embedding engine for semantic search
+    embedding_engine: Arc<Mutex<EmbeddingEngine>>,
 }
 
 impl CodeIndexer {
     pub fn new(storage: Arc<dyn Storage>, config: IndexConfig) -> Result<Self> {
+        let embedding_engine = Arc::new(Mutex::new(EmbeddingEngine::new()?));
+
         Ok(Self {
             storage,
             config,
@@ -53,6 +58,7 @@ impl CodeIndexer {
             file_index: DashMap::new(),
             dependencies: DashMap::new(),
             source_cache: DashMap::new(),
+            embedding_engine,
         })
     }
 
@@ -121,6 +127,27 @@ impl CodeIndexer {
 
         // Build dependencies between symbols in this file
         self.build_local_dependencies(&mut symbols);
+
+        // Generate embeddings for each symbol
+        for symbol in &mut symbols {
+            // Create embedding text from symbol name, signature, and doc comment
+            let embedding_text = format!(
+                "{} {} {}",
+                symbol.name,
+                symbol.signature,
+                symbol.metadata.doc_comment.as_deref().unwrap_or("")
+            );
+
+            // Generate embedding
+            match self.embedding_engine.lock().unwrap().generate_embedding(&embedding_text) {
+                Ok(embedding) => {
+                    symbol.embedding = Some(embedding);
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to generate embedding for symbol {}: {}", symbol.name, e);
+                }
+            }
+        }
 
         // Store symbols
         for symbol in &symbols {
@@ -401,6 +428,132 @@ impl CodeIndexer {
         }
 
         filtered
+    }
+
+    /// Perform semantic search using vector embeddings
+    pub async fn semantic_search(&self, query: &str, limit: usize) -> Result<Vec<CodeSymbol>> {
+        // Generate embedding for the query
+        let query_embedding = self.embedding_engine.lock().unwrap().generate_embedding(query)?;
+
+        // Calculate cosine similarity for all symbols with embeddings
+        let mut scored_symbols: Vec<(CodeSymbol, f32)> = Vec::new();
+
+        for entry in self.symbols.iter() {
+            let symbol = entry.value();
+
+            if let Some(ref embedding) = symbol.embedding {
+                let similarity = EmbeddingEngine::cosine_similarity(&query_embedding, embedding);
+                scored_symbols.push((symbol.clone(), similarity));
+            }
+        }
+
+        // Sort by similarity score (highest first)
+        scored_symbols.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Take top N results
+        let results: Vec<CodeSymbol> = scored_symbols
+            .into_iter()
+            .take(limit)
+            .map(|(symbol, _score)| symbol)
+            .collect();
+
+        Ok(results)
+    }
+
+    /// Hybrid search combining text-based and semantic search
+    pub async fn hybrid_search(&self, query: &Query) -> Result<QueryResult> {
+        let limit = query.max_results.unwrap_or(10);
+
+        // Get text-based search results
+        let text_results = self.search_symbols(query).await?;
+
+        // Get semantic search results
+        let semantic_results = self.semantic_search(&query.text, limit).await?;
+
+        // Combine and deduplicate results
+        let mut seen_ids = HashSet::new();
+        let mut combined_symbols = Vec::new();
+        let mut total_tokens = TokenCount::zero();
+
+        // Add text results first (they are more precise)
+        for symbol in text_results.symbols {
+            if !seen_ids.contains(&symbol.id) {
+                seen_ids.insert(symbol.id.clone());
+
+                // Apply filters
+                if let Some(ref types) = query.symbol_types {
+                    if !types.contains(&symbol.kind) {
+                        continue;
+                    }
+                }
+
+                if let Some(ref scope) = query.scope {
+                    if !symbol.location.file.starts_with(scope) {
+                        continue;
+                    }
+                }
+
+                // Check token budget
+                if let Some(max_tokens) = query.max_tokens {
+                    if total_tokens.0 + symbol.metadata.token_cost.0 > max_tokens.0 {
+                        break;
+                    }
+                }
+
+                total_tokens.add(symbol.metadata.token_cost);
+                combined_symbols.push(symbol);
+
+                if combined_symbols.len() >= limit {
+                    break;
+                }
+            }
+        }
+
+        // Add semantic results to fill remaining slots
+        for symbol in semantic_results {
+            if combined_symbols.len() >= limit {
+                break;
+            }
+
+            if !seen_ids.contains(&symbol.id) {
+                seen_ids.insert(symbol.id.clone());
+
+                // Apply filters
+                if let Some(ref types) = query.symbol_types {
+                    if !types.contains(&symbol.kind) {
+                        continue;
+                    }
+                }
+
+                if let Some(ref scope) = query.scope {
+                    if !symbol.location.file.starts_with(scope) {
+                        continue;
+                    }
+                }
+
+                // Apply detail level
+                let filtered = self.apply_detail_level(&symbol, query.detail_level);
+
+                // Check token budget
+                if let Some(max_tokens) = query.max_tokens {
+                    if total_tokens.0 + filtered.metadata.token_cost.0 > max_tokens.0 {
+                        break;
+                    }
+                }
+
+                total_tokens.add(filtered.metadata.token_cost);
+                combined_symbols.push(filtered);
+            }
+        }
+
+        let truncated = query.max_tokens.map_or(false, |max| total_tokens > max)
+            || combined_symbols.len() >= limit;
+
+        Ok(QueryResult {
+            symbols: combined_symbols,
+            total_tokens,
+            truncated,
+        })
     }
 }
 

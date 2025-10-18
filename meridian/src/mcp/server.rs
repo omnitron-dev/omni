@@ -6,7 +6,9 @@ use super::local_cache::{LocalCache, CacheConfig};
 use crate::config::Config;
 use crate::context::ContextManager;
 use crate::indexer::{CodeIndexer, Indexer};
+use crate::links::{LinksStorage, RocksDBLinksStorage};
 use crate::memory::MemorySystem;
+use crate::progress::{ProgressManager, ProgressStorage};
 use crate::project::ProjectManager;
 use crate::global::registry::MonorepoContext as ProjectMonorepoContext;
 use crate::session::SessionManager;
@@ -31,6 +33,8 @@ enum ServerMode {
         session_manager: Arc<SessionManager>,
         doc_indexer: Arc<crate::docs::DocIndexer>,
         spec_manager: Arc<tokio::sync::RwLock<SpecificationManager>>,
+        progress_manager: Arc<tokio::sync::RwLock<ProgressManager>>,
+        links_storage: Arc<tokio::sync::RwLock<dyn LinksStorage>>,
         handlers: Option<Arc<ToolHandlers>>,
         // Global architecture support
         global_client: Option<Arc<GlobalServerClient>>,
@@ -156,6 +160,13 @@ impl MeridianServer {
         };
         let session_manager = SessionManager::new(storage.clone(), session_config)?;
 
+        // Initialize progress manager
+        let progress_storage = Arc::new(ProgressStorage::new(storage.clone()));
+        let progress_manager = ProgressManager::new(progress_storage);
+
+        // Initialize links storage
+        let links_storage = RocksDBLinksStorage::new(storage.clone());
+
         // Determine offline mode based on global client availability
         let offline = if let Some(ref client) = global_client {
             !client.is_available().await
@@ -172,6 +183,8 @@ impl MeridianServer {
                 session_manager: Arc::new(session_manager),
                 doc_indexer,
                 spec_manager: Arc::new(tokio::sync::RwLock::new(spec_manager)),
+                progress_manager: Arc::new(tokio::sync::RwLock::new(progress_manager)),
+                links_storage: Arc::new(tokio::sync::RwLock::new(links_storage)),
                 handlers: None,
                 global_client,
                 local_cache,
@@ -257,6 +270,8 @@ impl MeridianServer {
                 session_manager,
                 doc_indexer,
                 spec_manager,
+                progress_manager,
+                links_storage,
                 ..
             } => {
                 if let Some(h) = handlers {
@@ -271,6 +286,8 @@ impl MeridianServer {
                     session_manager.clone(),
                     doc_indexer.clone(),
                     spec_manager.clone(),
+                    progress_manager.clone(),
+                    links_storage.clone(),
                 ));
 
                 *handlers = Some(new_handlers.clone());
@@ -800,10 +817,16 @@ mod tests {
             timeout: chrono::Duration::hours(1),
             auto_cleanup: true,
         };
-        let session_manager = SessionManager::new(storage, session_config).unwrap();
+        let session_manager = SessionManager::new(storage.clone(), session_config).unwrap();
         let doc_indexer = Arc::new(crate::docs::DocIndexer::new());
         let specs_path = _temp.path().join("specs");
         let spec_manager = SpecificationManager::new(specs_path);
+
+        // Initialize progress manager and links storage for tests
+        let progress_storage = Arc::new(ProgressStorage::new(storage.clone()));
+        let progress_manager = ProgressManager::new(progress_storage);
+        let links_storage = RocksDBLinksStorage::new(storage.clone());
+
         let handlers = Arc::new(ToolHandlers::new(
             Arc::new(tokio::sync::RwLock::new(memory_system)),
             Arc::new(tokio::sync::RwLock::new(context_manager)),
@@ -811,6 +834,8 @@ mod tests {
             Arc::new(session_manager),
             doc_indexer,
             Arc::new(tokio::sync::RwLock::new(spec_manager)),
+            Arc::new(tokio::sync::RwLock::new(progress_manager)),
+            Arc::new(tokio::sync::RwLock::new(links_storage)),
         ));
 
         let request = JsonRpcRequest {

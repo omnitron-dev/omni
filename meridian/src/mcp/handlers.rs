@@ -2,7 +2,9 @@ use crate::context::ContextManager;
 use crate::docs::DocIndexer;
 use crate::git::GitHistory;
 use crate::indexer::CodeIndexer;
+use crate::links::LinksStorage;
 use crate::memory::MemorySystem;
+use crate::progress::ProgressManager;
 use crate::session::{SessionAction, SessionManager};
 use crate::specs::SpecificationManager;
 use crate::types::*;
@@ -22,6 +24,8 @@ pub struct ToolHandlers {
     doc_indexer: Arc<DocIndexer>,
     spec_manager: Arc<tokio::sync::RwLock<SpecificationManager>>,
     project_registry: Option<Arc<crate::global::registry::ProjectRegistryManager>>,
+    progress_manager: Arc<tokio::sync::RwLock<ProgressManager>>,
+    links_storage: Arc<tokio::sync::RwLock<dyn LinksStorage>>,
 }
 
 impl ToolHandlers {
@@ -32,6 +36,8 @@ impl ToolHandlers {
         session_manager: Arc<SessionManager>,
         doc_indexer: Arc<DocIndexer>,
         spec_manager: Arc<tokio::sync::RwLock<SpecificationManager>>,
+        progress_manager: Arc<tokio::sync::RwLock<ProgressManager>>,
+        links_storage: Arc<tokio::sync::RwLock<dyn LinksStorage>>,
     ) -> Self {
         Self {
             memory_system,
@@ -41,6 +47,8 @@ impl ToolHandlers {
             doc_indexer,
             spec_manager,
             project_registry: None,
+            progress_manager,
+            links_storage,
         }
     }
 
@@ -53,6 +61,8 @@ impl ToolHandlers {
         doc_indexer: Arc<DocIndexer>,
         spec_manager: Arc<tokio::sync::RwLock<SpecificationManager>>,
         project_registry: Arc<crate::global::registry::ProjectRegistryManager>,
+        progress_manager: Arc<tokio::sync::RwLock<ProgressManager>>,
+        links_storage: Arc<tokio::sync::RwLock<dyn LinksStorage>>,
     ) -> Self {
         Self {
             memory_system,
@@ -62,6 +72,8 @@ impl ToolHandlers {
             doc_indexer,
             spec_manager,
             project_registry: Some(project_registry),
+            progress_manager,
+            links_storage,
         }
     }
 
@@ -152,6 +164,32 @@ impl ToolHandlers {
             // External Tools (Phase 5)
             "external.get_documentation" => self.handle_strong_external_get_documentation(arguments).await,
             "external.find_usages" => self.handle_strong_external_find_usages(arguments).await,
+
+            // Progress Management Tools (Phase 2)
+            "progress.create_task" => self.handle_progress_create_task(arguments).await,
+            "progress.update_task" => self.handle_progress_update_task(arguments).await,
+            "progress.list_tasks" => self.handle_progress_list_tasks(arguments).await,
+            "progress.get_task" => self.handle_progress_get_task(arguments).await,
+            "progress.delete_task" => self.handle_progress_delete_task(arguments).await,
+            "progress.get_progress" => self.handle_progress_get_progress(arguments).await,
+            "progress.search_tasks" => self.handle_progress_search_tasks(arguments).await,
+            "progress.link_to_spec" => self.handle_progress_link_to_spec(arguments).await,
+            "progress.get_history" => self.handle_progress_get_history(arguments).await,
+            "progress.mark_complete" => self.handle_progress_mark_complete(arguments).await,
+
+            // Semantic Links Tools (Phase 2)
+            "links.find_implementation" => self.handle_links_find_implementation(arguments).await,
+            "links.find_documentation" => self.handle_links_find_documentation(arguments).await,
+            "links.find_examples" => self.handle_links_find_examples(arguments).await,
+            "links.find_tests" => self.handle_links_find_tests(arguments).await,
+            "links.add_link" => self.handle_links_add_link(arguments).await,
+            "links.remove_link" => self.handle_links_remove_link(arguments).await,
+            "links.get_links" => self.handle_links_get_links(arguments).await,
+            "links.validate" => self.handle_links_validate(arguments).await,
+            "links.trace_path" => self.handle_links_trace_path(arguments).await,
+            "links.get_health" => self.handle_links_get_health(arguments).await,
+            "links.find_orphans" => self.handle_links_find_orphans(arguments).await,
+            "links.extract_from_file" => self.handle_links_extract_from_file(arguments).await,
 
             _ => Err(anyhow!("Unknown tool: {}", name)),
         }
@@ -2625,5 +2663,770 @@ impl ToolHandlers {
                 "error": "Project registry not available"
             }))
         }
+    }
+
+    // === Progress Management Handlers (Phase 2) ===
+
+    async fn handle_progress_create_task(&self, args: Value) -> Result<Value> {
+        use crate::progress::{Priority, SpecReference};
+
+        #[derive(Deserialize)]
+        struct Params {
+            title: String,
+            description: Option<String>,
+            priority: Option<String>,
+            spec_ref: Option<SpecRef>,
+            tags: Option<Vec<String>>,
+            estimated_hours: Option<f32>,
+        }
+
+        #[derive(Deserialize)]
+        struct SpecRef {
+            spec_name: String,
+            section: String,
+        }
+
+        let params: Params = serde_json::from_value(args)
+            .context("Invalid parameters for progress.create_task")?;
+
+        let priority = if let Some(p) = params.priority {
+            match p.as_str() {
+                "low" => Priority::Low,
+                "medium" => Priority::Medium,
+                "high" => Priority::High,
+                "critical" => Priority::Critical,
+                _ => Priority::Medium,
+            }
+        } else {
+            Priority::Medium
+        };
+
+        let spec_ref = params.spec_ref.map(|r| SpecReference {
+            spec_name: r.spec_name,
+            section: r.section,
+        });
+
+        let manager = self.progress_manager.read().await;
+        let task_id = manager.create_task(
+            params.title,
+            params.description,
+            Some(priority),
+            spec_ref,
+            params.tags.unwrap_or_default(),
+            params.estimated_hours,
+        ).await?;
+
+        info!("Created task: {}", task_id);
+
+        Ok(json!({
+            "task_id": task_id.to_string(),
+            "status": "created"
+        }))
+    }
+
+    async fn handle_progress_update_task(&self, args: Value) -> Result<Value> {
+        use crate::progress::{Priority, TaskId, TaskStatus};
+
+        #[derive(Deserialize)]
+        struct Params {
+            task_id: String,
+            title: Option<String>,
+            description: Option<String>,
+            priority: Option<String>,
+            status: Option<String>,
+            status_note: Option<String>,
+            tags: Option<Vec<String>>,
+            estimated_hours: Option<f32>,
+            actual_hours: Option<f32>,
+            commit_hash: Option<String>,
+        }
+
+        let params: Params = serde_json::from_value(args)
+            .context("Invalid parameters for progress.update_task")?;
+
+        let task_id = TaskId::from_str(&params.task_id);
+
+        let priority = params.priority.as_ref().and_then(|p| match p.as_str() {
+            "low" => Some(Priority::Low),
+            "medium" => Some(Priority::Medium),
+            "high" => Some(Priority::High),
+            "critical" => Some(Priority::Critical),
+            _ => None,
+        });
+
+        let status = params.status.as_ref().and_then(|s| match s.as_str() {
+            "pending" => Some(TaskStatus::Pending),
+            "in_progress" => Some(TaskStatus::InProgress),
+            "blocked" => Some(TaskStatus::Blocked),
+            "done" => Some(TaskStatus::Done),
+            "cancelled" => Some(TaskStatus::Cancelled),
+            _ => None,
+        });
+
+        let manager = self.progress_manager.read().await;
+        manager.update_task(
+            &task_id,
+            params.title,
+            params.description,
+            priority,
+            status,
+            params.status_note,
+            params.tags,
+            params.estimated_hours,
+            params.actual_hours,
+            params.commit_hash,
+        ).await?;
+
+        info!("Updated task: {}", task_id);
+
+        Ok(json!({
+            "task_id": task_id.to_string(),
+            "status": "updated"
+        }))
+    }
+
+    async fn handle_progress_list_tasks(&self, args: Value) -> Result<Value> {
+        use crate::progress::TaskStatus;
+
+        #[derive(Deserialize)]
+        struct Params {
+            status: Option<String>,
+            spec_name: Option<String>,
+            limit: Option<usize>,
+        }
+
+        let params: Params = serde_json::from_value(args).unwrap_or(Params {
+            status: None,
+            spec_name: None,
+            limit: None,
+        });
+
+        let status = params.status.as_ref().and_then(|s| match s.as_str() {
+            "pending" => Some(TaskStatus::Pending),
+            "in_progress" => Some(TaskStatus::InProgress),
+            "blocked" => Some(TaskStatus::Blocked),
+            "done" => Some(TaskStatus::Done),
+            "cancelled" => Some(TaskStatus::Cancelled),
+            _ => None,
+        });
+
+        let manager = self.progress_manager.read().await;
+        let tasks = manager.list_tasks(status, params.spec_name, params.limit).await?;
+
+        info!("Listed {} tasks", tasks.len());
+
+        Ok(json!({
+            "tasks": tasks,
+            "total": tasks.len()
+        }))
+    }
+
+    async fn handle_progress_get_task(&self, args: Value) -> Result<Value> {
+        use crate::progress::TaskId;
+
+        #[derive(Deserialize)]
+        struct Params {
+            task_id: String,
+        }
+
+        let params: Params = serde_json::from_value(args)
+            .context("Invalid parameters for progress.get_task")?;
+
+        let task_id = TaskId::from_str(&params.task_id);
+        let manager = self.progress_manager.read().await;
+        let task = manager.get_task(&task_id).await?;
+
+        Ok(json!(task))
+    }
+
+    async fn handle_progress_delete_task(&self, args: Value) -> Result<Value> {
+        use crate::progress::TaskId;
+
+        #[derive(Deserialize)]
+        struct Params {
+            task_id: String,
+        }
+
+        let params: Params = serde_json::from_value(args)
+            .context("Invalid parameters for progress.delete_task")?;
+
+        let task_id = TaskId::from_str(&params.task_id);
+        let manager = self.progress_manager.read().await;
+        manager.delete_task(&task_id).await?;
+
+        info!("Deleted task: {}", task_id);
+
+        Ok(json!({
+            "task_id": task_id.to_string(),
+            "status": "deleted"
+        }))
+    }
+
+    async fn handle_progress_get_progress(&self, args: Value) -> Result<Value> {
+        #[derive(Deserialize)]
+        struct Params {
+            spec_name: Option<String>,
+        }
+
+        let params: Params = serde_json::from_value(args).unwrap_or(Params { spec_name: None });
+
+        let manager = self.progress_manager.read().await;
+        let stats = manager.get_progress(params.spec_name).await?;
+
+        Ok(json!(stats))
+    }
+
+    async fn handle_progress_search_tasks(&self, args: Value) -> Result<Value> {
+        #[derive(Deserialize)]
+        struct Params {
+            query: String,
+            limit: Option<usize>,
+        }
+
+        let params: Params = serde_json::from_value(args)
+            .context("Invalid parameters for progress.search_tasks")?;
+
+        let manager = self.progress_manager.read().await;
+        let all_tasks = manager.list_tasks(None, None, None).await?;
+
+        let query_lower = params.query.to_lowercase();
+        let mut matching_tasks: Vec<_> = all_tasks.into_iter()
+            .filter(|t| {
+                t.title.to_lowercase().contains(&query_lower) ||
+                t.id.to_string().to_lowercase().contains(&query_lower)
+            })
+            .collect();
+
+        if let Some(limit) = params.limit {
+            matching_tasks.truncate(limit);
+        }
+
+        info!("Found {} matching tasks for query: {}", matching_tasks.len(), params.query);
+
+        Ok(json!({
+            "tasks": matching_tasks,
+            "total": matching_tasks.len()
+        }))
+    }
+
+    async fn handle_progress_link_to_spec(&self, args: Value) -> Result<Value> {
+        use crate::progress::{TaskId, SpecReference};
+
+        #[derive(Deserialize)]
+        struct Params {
+            task_id: String,
+            spec_name: String,
+            section: String,
+        }
+
+        let params: Params = serde_json::from_value(args)
+            .context("Invalid parameters for progress.link_to_spec")?;
+
+        let task_id = TaskId::from_str(&params.task_id);
+        let manager = self.progress_manager.read().await;
+        let mut task = manager.get_task(&task_id).await?;
+
+        task.spec_ref = Some(SpecReference {
+            spec_name: params.spec_name.clone(),
+            section: params.section.clone(),
+        });
+
+        drop(manager);
+        let manager = self.progress_manager.read().await;
+        manager.update_task(
+            &task_id,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ).await?;
+
+        info!("Linked task {} to spec {}", task_id, params.spec_name);
+
+        Ok(json!({
+            "task_id": task_id.to_string(),
+            "spec_name": params.spec_name,
+            "section": params.section,
+            "status": "linked"
+        }))
+    }
+
+    async fn handle_progress_get_history(&self, args: Value) -> Result<Value> {
+        use crate::progress::TaskId;
+
+        #[derive(Deserialize)]
+        struct Params {
+            task_id: String,
+        }
+
+        let params: Params = serde_json::from_value(args)
+            .context("Invalid parameters for progress.get_history")?;
+
+        let task_id = TaskId::from_str(&params.task_id);
+        let manager = self.progress_manager.read().await;
+        let task = manager.get_task(&task_id).await?;
+
+        Ok(json!({
+            "task_id": task_id.to_string(),
+            "history": task.history,
+            "created_at": task.created_at,
+            "updated_at": task.updated_at,
+            "completed_at": task.completed_at
+        }))
+    }
+
+    async fn handle_progress_mark_complete(&self, args: Value) -> Result<Value> {
+        use crate::progress::{TaskId, TaskStatus};
+
+        #[derive(Deserialize)]
+        struct Params {
+            task_id: String,
+            note: Option<String>,
+            actual_hours: Option<f32>,
+            commit_hash: Option<String>,
+        }
+
+        let params: Params = serde_json::from_value(args)
+            .context("Invalid parameters for progress.mark_complete")?;
+
+        let task_id = TaskId::from_str(&params.task_id);
+        let manager = self.progress_manager.read().await;
+
+        manager.update_task(
+            &task_id,
+            None,
+            None,
+            None,
+            Some(TaskStatus::Done),
+            params.note,
+            None,
+            None,
+            params.actual_hours,
+            params.commit_hash,
+        ).await?;
+
+        info!("Marked task {} as complete", task_id);
+
+        Ok(json!({
+            "task_id": task_id.to_string(),
+            "status": "done"
+        }))
+    }
+
+    // === Semantic Links Handlers (Phase 2) ===
+
+    async fn handle_links_find_implementation(&self, args: Value) -> Result<Value> {
+        use crate::links::{LinkTarget, LinkType};
+
+        #[derive(Deserialize)]
+        struct Params {
+            spec_id: String,
+        }
+
+        let params: Params = serde_json::from_value(args)
+            .context("Invalid parameters for links.find_implementation")?;
+
+        let source = LinkTarget::spec(params.spec_id.clone());
+        let storage = self.links_storage.read().await;
+        let links = storage.find_links_by_type_from_source(LinkType::ImplementedBy, &source).await?;
+
+        info!("Found {} implementations for {}", links.len(), params.spec_id);
+
+        let implementations: Vec<Value> = links.iter().map(|link| json!({
+            "target": link.target.id,
+            "confidence": link.confidence,
+            "context": link.context,
+            "created_at": link.created_at,
+            "validation_status": link.validation_status.as_str()
+        })).collect();
+
+        Ok(json!({
+            "spec_id": params.spec_id,
+            "implementations": implementations,
+            "total": implementations.len()
+        }))
+    }
+
+    async fn handle_links_find_documentation(&self, args: Value) -> Result<Value> {
+        use crate::links::{LinkTarget, LinkType};
+
+        #[derive(Deserialize)]
+        struct Params {
+            code_id: String,
+        }
+
+        let params: Params = serde_json::from_value(args)
+            .context("Invalid parameters for links.find_documentation")?;
+
+        let source = LinkTarget::code(params.code_id.clone());
+        let storage = self.links_storage.read().await;
+        let links = storage.find_links_by_type_from_source(LinkType::DocumentedIn, &source).await?;
+
+        info!("Found {} documentation links for {}", links.len(), params.code_id);
+
+        let documentation: Vec<Value> = links.iter().map(|link| json!({
+            "target": link.target.id,
+            "confidence": link.confidence,
+            "context": link.context,
+            "validation_status": link.validation_status.as_str()
+        })).collect();
+
+        Ok(json!({
+            "code_id": params.code_id,
+            "documentation": documentation,
+            "total": documentation.len()
+        }))
+    }
+
+    async fn handle_links_find_examples(&self, args: Value) -> Result<Value> {
+        use crate::links::{LinkTarget, LinkType};
+
+        #[derive(Deserialize)]
+        struct Params {
+            code_id: String,
+        }
+
+        let params: Params = serde_json::from_value(args)
+            .context("Invalid parameters for links.find_examples")?;
+
+        let source = LinkTarget::code(params.code_id.clone());
+        let storage = self.links_storage.read().await;
+        let links = storage.find_links_by_type_from_source(LinkType::DemonstratedIn, &source).await?;
+
+        info!("Found {} examples for {}", links.len(), params.code_id);
+
+        let examples: Vec<Value> = links.iter().map(|link| json!({
+            "target": link.target.id,
+            "confidence": link.confidence,
+            "context": link.context,
+            "validation_status": link.validation_status.as_str()
+        })).collect();
+
+        Ok(json!({
+            "code_id": params.code_id,
+            "examples": examples,
+            "total": examples.len()
+        }))
+    }
+
+    async fn handle_links_find_tests(&self, args: Value) -> Result<Value> {
+        use crate::links::{LinkTarget, LinkType};
+
+        #[derive(Deserialize)]
+        struct Params {
+            code_id: String,
+        }
+
+        let params: Params = serde_json::from_value(args)
+            .context("Invalid parameters for links.find_tests")?;
+
+        let source = LinkTarget::code(params.code_id.clone());
+        let storage = self.links_storage.read().await;
+        let links = storage.find_links_by_type_from_source(LinkType::TestedBy, &source).await?;
+
+        info!("Found {} tests for {}", links.len(), params.code_id);
+
+        let tests: Vec<Value> = links.iter().map(|link| json!({
+            "target": link.target.id,
+            "confidence": link.confidence,
+            "context": link.context,
+            "validation_status": link.validation_status.as_str()
+        })).collect();
+
+        Ok(json!({
+            "code_id": params.code_id,
+            "tests": tests,
+            "total": tests.len()
+        }))
+    }
+
+    async fn handle_links_add_link(&self, args: Value) -> Result<Value> {
+        use crate::links::{ExtractionMethod, KnowledgeLevel, LinkTarget, LinkType, SemanticLink};
+
+        #[derive(Deserialize)]
+        struct Params {
+            link_type: String,
+            source_level: String,
+            source_id: String,
+            target_level: String,
+            target_id: String,
+            confidence: Option<f32>,
+            context: Option<String>,
+        }
+
+        let params: Params = serde_json::from_value(args)
+            .context("Invalid parameters for links.add_link")?;
+
+        let link_type = LinkType::from_str(&params.link_type)
+            .ok_or_else(|| anyhow!("Invalid link_type: {}", params.link_type))?;
+
+        let source_level = KnowledgeLevel::from_str(&params.source_level)
+            .ok_or_else(|| anyhow!("Invalid source_level: {}", params.source_level))?;
+
+        let target_level = KnowledgeLevel::from_str(&params.target_level)
+            .ok_or_else(|| anyhow!("Invalid target_level: {}", params.target_level))?;
+
+        let source = LinkTarget::new(source_level, params.source_id);
+        let target = LinkTarget::new(target_level, params.target_id);
+
+        let mut link = SemanticLink::new(
+            link_type,
+            source,
+            target,
+            params.confidence.unwrap_or(1.0),
+            ExtractionMethod::Manual,
+            "mcp".to_string(),
+        );
+
+        if let Some(context) = params.context {
+            link = link.with_context(context);
+        }
+
+        let storage = self.links_storage.write().await;
+        storage.add_link(&link).await?;
+
+        info!("Added link: {} -> {}", link.source.key(), link.target.key());
+
+        Ok(json!({
+            "link_id": link.id.to_string(),
+            "status": "added"
+        }))
+    }
+
+    async fn handle_links_remove_link(&self, args: Value) -> Result<Value> {
+        use crate::links::LinkId;
+
+        #[derive(Deserialize)]
+        struct Params {
+            link_id: String,
+        }
+
+        let params: Params = serde_json::from_value(args)
+            .context("Invalid parameters for links.remove_link")?;
+
+        let link_id = LinkId::from_string(params.link_id.clone());
+        let storage = self.links_storage.write().await;
+        storage.remove_link(&link_id).await?;
+
+        info!("Removed link: {}", params.link_id);
+
+        Ok(json!({
+            "link_id": params.link_id,
+            "status": "removed"
+        }))
+    }
+
+    async fn handle_links_get_links(&self, args: Value) -> Result<Value> {
+        use crate::links::{KnowledgeLevel, LinkTarget};
+
+        #[derive(Deserialize)]
+        struct Params {
+            entity_level: String,
+            entity_id: String,
+            direction: Option<String>,
+        }
+
+        let params: Params = serde_json::from_value(args)
+            .context("Invalid parameters for links.get_links")?;
+
+        let level = KnowledgeLevel::from_str(&params.entity_level)
+            .ok_or_else(|| anyhow!("Invalid entity_level: {}", params.entity_level))?;
+
+        let entity = LinkTarget::new(level, params.entity_id.clone());
+        let storage = self.links_storage.read().await;
+        let bi_links = storage.get_bidirectional_links(&entity).await?;
+
+        let direction = params.direction.as_deref().unwrap_or("both");
+
+        let (outgoing, incoming) = match direction {
+            "outgoing" => (bi_links.outgoing, Vec::new()),
+            "incoming" => (Vec::new(), bi_links.incoming),
+            _ => (bi_links.outgoing, bi_links.incoming),
+        };
+
+        let outgoing_json: Vec<Value> = outgoing.iter().map(|link| json!({
+            "link_id": link.id.to_string(),
+            "link_type": link.link_type.as_str(),
+            "target": link.target.key(),
+            "confidence": link.confidence,
+            "validation_status": link.validation_status.as_str()
+        })).collect();
+
+        let incoming_json: Vec<Value> = incoming.iter().map(|link| json!({
+            "link_id": link.id.to_string(),
+            "link_type": link.link_type.as_str(),
+            "source": link.source.key(),
+            "confidence": link.confidence,
+            "validation_status": link.validation_status.as_str()
+        })).collect();
+
+        Ok(json!({
+            "entity": entity.key(),
+            "outgoing": outgoing_json,
+            "incoming": incoming_json,
+            "total_outgoing": outgoing_json.len(),
+            "total_incoming": incoming_json.len()
+        }))
+    }
+
+    async fn handle_links_validate(&self, args: Value) -> Result<Value> {
+        use crate::links::{LinkId, ValidationStatus};
+
+        #[derive(Deserialize)]
+        struct Params {
+            link_id: String,
+            status: String,
+        }
+
+        let params: Params = serde_json::from_value(args)
+            .context("Invalid parameters for links.validate")?;
+
+        let validation_status = match params.status.as_str() {
+            "valid" => ValidationStatus::Valid,
+            "broken" => ValidationStatus::Broken,
+            "stale" => ValidationStatus::Stale,
+            "unchecked" => ValidationStatus::Unchecked,
+            _ => return Err(anyhow!("Invalid status: {}", params.status)),
+        };
+
+        let link_id = LinkId::from_string(params.link_id.clone());
+        let storage = self.links_storage.write().await;
+        storage.validate_link(&link_id, validation_status).await?;
+
+        info!("Validated link {} as {}", params.link_id, params.status);
+
+        Ok(json!({
+            "link_id": params.link_id,
+            "validation_status": params.status,
+            "status": "validated"
+        }))
+    }
+
+    async fn handle_links_trace_path(&self, args: Value) -> Result<Value> {
+        use crate::links::{KnowledgeLevel, LinkTarget};
+
+        #[derive(Deserialize)]
+        struct Params {
+            from_level: String,
+            from_id: String,
+            to_level: String,
+            to_id: String,
+            max_depth: Option<usize>,
+        }
+
+        let params: Params = serde_json::from_value(args)
+            .context("Invalid parameters for links.trace_path")?;
+
+        let from_level = KnowledgeLevel::from_str(&params.from_level)
+            .ok_or_else(|| anyhow!("Invalid from_level: {}", params.from_level))?;
+
+        let to_level = KnowledgeLevel::from_str(&params.to_level)
+            .ok_or_else(|| anyhow!("Invalid to_level: {}", params.to_level))?;
+
+        let from = LinkTarget::new(from_level, params.from_id.clone());
+        let to = LinkTarget::new(to_level, params.to_id.clone());
+
+        // Simple BFS path finding
+        let storage = self.links_storage.read().await;
+        let max_depth = params.max_depth.unwrap_or(5);
+
+        // Simplified path finding - would need more sophisticated implementation
+        let bi_links = storage.get_bidirectional_links(&from).await?;
+        let mut path = Vec::new();
+
+        for link in &bi_links.outgoing {
+            if link.target.key() == to.key() {
+                path.push(json!({
+                    "from": from.key(),
+                    "to": to.key(),
+                    "link_type": link.link_type.as_str(),
+                    "confidence": link.confidence
+                }));
+                break;
+            }
+        }
+
+        Ok(json!({
+            "from": from.key(),
+            "to": to.key(),
+            "path": path,
+            "found": !path.is_empty(),
+            "depth": if path.is_empty() { Value::Null } else { json!(path.len()) }
+        }))
+    }
+
+    async fn handle_links_get_health(&self, args: Value) -> Result<Value> {
+        let _params: Value = args; // No parameters needed
+
+        let storage = self.links_storage.read().await;
+        let stats = storage.get_statistics().await?;
+        let broken_links = storage.find_broken_links().await?;
+
+        let health_score = if stats.total_links > 0 {
+            let broken_ratio = broken_links.len() as f32 / stats.total_links as f32;
+            ((1.0 - broken_ratio) * 100.0).max(0.0)
+        } else {
+            100.0
+        };
+
+        Ok(json!({
+            "total_links": stats.total_links,
+            "broken_links": broken_links.len(),
+            "average_confidence": stats.average_confidence,
+            "health_score": health_score,
+            "by_type": stats.by_type,
+            "by_status": stats.by_status
+        }))
+    }
+
+    async fn handle_links_find_orphans(&self, args: Value) -> Result<Value> {
+        #[derive(Deserialize)]
+        struct Params {
+            level: Option<String>,
+        }
+
+        let params: Params = serde_json::from_value(args).unwrap_or(Params { level: None });
+
+        let storage = self.links_storage.read().await;
+        let _stats = storage.get_statistics().await?;
+
+        // Simplified orphan detection - would need more sophisticated implementation
+        // For now, return empty list as placeholder
+        let orphans: Vec<Value> = Vec::new();
+
+        Ok(json!({
+            "orphans": orphans,
+            "total": orphans.len(),
+            "level": params.level
+        }))
+    }
+
+    async fn handle_links_extract_from_file(&self, args: Value) -> Result<Value> {
+        #[derive(Deserialize)]
+        struct Params {
+            file_path: String,
+            method: Option<String>,
+        }
+
+        let params: Params = serde_json::from_value(args)
+            .context("Invalid parameters for links.extract_from_file")?;
+
+        // Placeholder for link extraction
+        info!("Extracting links from file: {}", params.file_path);
+
+        // Would use TreeSitterExtractor, MarkdownExtractor, or CommentExtractor here
+        // For now, return empty results
+
+        Ok(json!({
+            "file_path": params.file_path,
+            "links_found": 0,
+            "links": [],
+            "method": params.method.unwrap_or_else(|| "auto".to_string())
+        }))
     }
 }

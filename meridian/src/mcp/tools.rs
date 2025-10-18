@@ -818,6 +818,8 @@ pub fn get_all_tools() -> Vec<Tool> {
     .chain(get_docs_generation_tools())
     .chain(get_global_tools())
     .chain(get_specification_tools())
+    .chain(get_progress_tools())
+    .chain(get_links_tools())
     .collect()
 }
 
@@ -1558,6 +1560,348 @@ fn get_specification_tools() -> Vec<Tool> {
                 }
             })),
             _meta: Some(json!({"category": "specifications"})),
+        },
+    ]
+}
+
+// ============================================================================
+// Progress Management Tools (Phase 2)
+// ============================================================================
+
+/// Get progress management tools
+fn get_progress_tools() -> Vec<Tool> {
+    vec![
+        Tool {
+            name: "progress.create_task".to_string(),
+            description: Some("Create a new task for tracking progress".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "Task title"},
+                    "description": {"type": "string", "description": "Detailed description"},
+                    "priority": {"type": "string", "enum": ["low", "medium", "high", "critical"]},
+                    "spec_ref": {
+                        "type": "object",
+                        "properties": {
+                            "spec_name": {"type": "string"},
+                            "section": {"type": "string"}
+                        }
+                    },
+                    "tags": {"type": "array", "items": {"type": "string"}},
+                    "estimated_hours": {"type": "number"}
+                },
+                "required": ["title"]
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "progress"})),
+        },
+        Tool {
+            name: "progress.update_task".to_string(),
+            description: Some("Update an existing task".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string"},
+                    "title": {"type": "string"},
+                    "description": {"type": "string"},
+                    "priority": {"type": "string", "enum": ["low", "medium", "high", "critical"]},
+                    "status": {"type": "string", "enum": ["pending", "in_progress", "blocked", "done", "cancelled"]},
+                    "status_note": {"type": "string"},
+                    "tags": {"type": "array", "items": {"type": "string"}},
+                    "estimated_hours": {"type": "number"},
+                    "actual_hours": {"type": "number"},
+                    "commit_hash": {"type": "string"}
+                },
+                "required": ["task_id"]
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "progress"})),
+        },
+        Tool {
+            name: "progress.list_tasks".to_string(),
+            description: Some("List tasks with optional filtering".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "status": {"type": "string", "enum": ["pending", "in_progress", "blocked", "done", "cancelled"]},
+                    "spec_name": {"type": "string"},
+                    "limit": {"type": "integer"}
+                }
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "progress"})),
+        },
+        Tool {
+            name: "progress.get_task".to_string(),
+            description: Some("Get detailed information about a specific task".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string"}
+                },
+                "required": ["task_id"]
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "progress"})),
+        },
+        Tool {
+            name: "progress.delete_task".to_string(),
+            description: Some("Delete a task".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string"}
+                },
+                "required": ["task_id"]
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "progress"})),
+        },
+        Tool {
+            name: "progress.get_progress".to_string(),
+            description: Some("Get progress statistics for all tasks or a specific spec".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "spec_name": {"type": "string"}
+                }
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "progress"})),
+        },
+        Tool {
+            name: "progress.search_tasks".to_string(),
+            description: Some("Search tasks by title or ID".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "limit": {"type": "integer"}
+                },
+                "required": ["query"]
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "progress"})),
+        },
+        Tool {
+            name: "progress.link_to_spec".to_string(),
+            description: Some("Link a task to a specification section".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string"},
+                    "spec_name": {"type": "string"},
+                    "section": {"type": "string"}
+                },
+                "required": ["task_id", "spec_name", "section"]
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "progress"})),
+        },
+        Tool {
+            name: "progress.get_history".to_string(),
+            description: Some("Get the complete history of status changes for a task".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string"}
+                },
+                "required": ["task_id"]
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "progress"})),
+        },
+        Tool {
+            name: "progress.mark_complete".to_string(),
+            description: Some("Mark a task as complete".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string"},
+                    "note": {"type": "string"},
+                    "actual_hours": {"type": "number"},
+                    "commit_hash": {"type": "string"}
+                },
+                "required": ["task_id"]
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "progress"})),
+        },
+    ]
+}
+
+// ============================================================================
+// Semantic Links Tools (Phase 2)
+// ============================================================================
+
+/// Get semantic links tools
+fn get_links_tools() -> Vec<Tool> {
+    vec![
+        Tool {
+            name: "links.find_implementation".to_string(),
+            description: Some("Find code that implements a specification".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "spec_id": {"type": "string", "description": "Specification identifier"}
+                },
+                "required": ["spec_id"]
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "links"})),
+        },
+        Tool {
+            name: "links.find_documentation".to_string(),
+            description: Some("Find documentation for code".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "code_id": {"type": "string", "description": "Code identifier"}
+                },
+                "required": ["code_id"]
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "links"})),
+        },
+        Tool {
+            name: "links.find_examples".to_string(),
+            description: Some("Find examples that demonstrate code usage".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "code_id": {"type": "string", "description": "Code identifier"}
+                },
+                "required": ["code_id"]
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "links"})),
+        },
+        Tool {
+            name: "links.find_tests".to_string(),
+            description: Some("Find tests that verify code".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "code_id": {"type": "string", "description": "Code identifier"}
+                },
+                "required": ["code_id"]
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "links"})),
+        },
+        Tool {
+            name: "links.add_link".to_string(),
+            description: Some("Add a new semantic link between entities".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "link_type": {"type": "string"},
+                    "source_level": {"type": "string", "enum": ["spec", "code", "docs", "examples", "tests"]},
+                    "source_id": {"type": "string"},
+                    "target_level": {"type": "string", "enum": ["spec", "code", "docs", "examples", "tests"]},
+                    "target_id": {"type": "string"},
+                    "confidence": {"type": "number"},
+                    "context": {"type": "string"}
+                },
+                "required": ["link_type", "source_level", "source_id", "target_level", "target_id"]
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "links"})),
+        },
+        Tool {
+            name: "links.remove_link".to_string(),
+            description: Some("Remove a semantic link".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "link_id": {"type": "string"}
+                },
+                "required": ["link_id"]
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "links"})),
+        },
+        Tool {
+            name: "links.get_links".to_string(),
+            description: Some("Get all links for an entity".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "entity_level": {"type": "string", "enum": ["spec", "code", "docs", "examples", "tests"]},
+                    "entity_id": {"type": "string"},
+                    "direction": {"type": "string", "enum": ["outgoing", "incoming", "both"]}
+                },
+                "required": ["entity_level", "entity_id"]
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "links"})),
+        },
+        Tool {
+            name: "links.validate".to_string(),
+            description: Some("Validate and update link status".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "link_id": {"type": "string"},
+                    "status": {"type": "string", "enum": ["valid", "broken", "stale", "unchecked"]}
+                },
+                "required": ["link_id", "status"]
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "links"})),
+        },
+        Tool {
+            name: "links.trace_path".to_string(),
+            description: Some("Find the path between two entities through links".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "from_level": {"type": "string", "enum": ["spec", "code", "docs", "examples", "tests"]},
+                    "from_id": {"type": "string"},
+                    "to_level": {"type": "string", "enum": ["spec", "code", "docs", "examples", "tests"]},
+                    "to_id": {"type": "string"},
+                    "max_depth": {"type": "integer"}
+                },
+                "required": ["from_level", "from_id", "to_level", "to_id"]
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "links"})),
+        },
+        Tool {
+            name: "links.get_health".to_string(),
+            description: Some("Get health metrics for the links system".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {}
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "links"})),
+        },
+        Tool {
+            name: "links.find_orphans".to_string(),
+            description: Some("Find entities with no links".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "level": {"type": "string", "enum": ["spec", "code", "docs", "examples", "tests"]}
+                }
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "links"})),
+        },
+        Tool {
+            name: "links.extract_from_file".to_string(),
+            description: Some("Extract semantic links from a file".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "file_path": {"type": "string"},
+                    "method": {"type": "string"}
+                },
+                "required": ["file_path"]
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "links"})),
         },
     ]
 }

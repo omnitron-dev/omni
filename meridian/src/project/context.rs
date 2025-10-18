@@ -1,7 +1,9 @@
 use crate::config::Config;
 use crate::context::ContextManager;
 use crate::indexer::CodeIndexer;
+use crate::links::{LinksStorage, RocksDBLinksStorage};
 use crate::memory::MemorySystem;
+use crate::progress::{ProgressManager, ProgressStorage};
 use crate::session::SessionManager;
 use crate::storage::{RocksDBStorage, Storage};
 use crate::types::LLMAdapter;
@@ -21,6 +23,8 @@ pub struct ProjectContext {
     pub session_manager: Arc<SessionManager>,
     pub doc_indexer: Arc<crate::docs::DocIndexer>,
     pub spec_manager: Arc<tokio::sync::RwLock<crate::specs::SpecificationManager>>,
+    pub progress_manager: Arc<tokio::sync::RwLock<ProgressManager>>,
+    pub links_storage: Arc<tokio::sync::RwLock<dyn LinksStorage>>,
     pub last_access: SystemTime,
 }
 
@@ -99,6 +103,13 @@ impl ProjectContext {
         info!("Initializing SpecificationManager with path: {:?}", specs_path);
         let spec_manager = crate::specs::SpecificationManager::new(specs_path);
 
+        // Initialize progress manager
+        let progress_storage = Arc::new(ProgressStorage::new(storage.clone()));
+        let progress_manager = ProgressManager::new(progress_storage);
+
+        // Initialize links storage
+        let links_storage = RocksDBLinksStorage::new(storage.clone());
+
         Ok(Self {
             project_path,
             storage,
@@ -108,6 +119,8 @@ impl ProjectContext {
             session_manager: Arc::new(session_manager),
             doc_indexer,
             spec_manager: Arc::new(tokio::sync::RwLock::new(spec_manager)),
+            progress_manager: Arc::new(tokio::sync::RwLock::new(progress_manager)),
+            links_storage: Arc::new(tokio::sync::RwLock::new(links_storage)),
             last_access: SystemTime::now(),
         })
     }

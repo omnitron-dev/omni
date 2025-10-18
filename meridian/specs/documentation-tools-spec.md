@@ -1,4 +1,4 @@
-# Meridian Strong Tools Specification
+# Meridian Documentation Tools Specification
 # Structured Documentation & Knowledge Management System
 
 **Version**: 1.0.0
@@ -6,11 +6,11 @@
 **Status**: Design Specification
 **Compatibility**: Meridian MCP Server v1.0.0+
 
-**Language**: 🇬🇧 English | [🇷🇺 Русский](./strong-tools-spec.md)
+**Language**: 🇬🇧 English | [🇷🇺 Русский](./documentation-tools-spec.md)
 
 > **⚠️ IMPORTANT: Architecture Update**
 >
-> This specification describes Strong Tools functionality (documentation generation, examples, tests, agent integration).
+> This specification describes Documentation Tools functionality (documentation generation, examples, tests, agent integration).
 >
 > For the complete system picture, **please review the [Global Architecture Specification](./global-architecture-spec-en.md)**, which describes:
 > - Global two-tier architecture (global server + local MCP servers)
@@ -18,7 +18,7 @@
 > - Movement-resistant ID system
 > - Project Registry for all monorepos on the developer's machine
 >
-> **Strong Tools** (this document) operates **on top of** Global Architecture and uses its capabilities for documentation generation and management.
+> **Documentation Tools** (this document) operates **on top of** Global Architecture and uses its capabilities for documentation generation and management.
 
 ---
 
@@ -1508,7 +1508,7 @@ async function getDocumentation(symbolId: string): Promise<string> {
 
 ### Global Catalog Tools
 
-#### `strong.catalog.list_projects`
+#### `catalog.list_projects`
 
 **Description**: Returns list of all projects in global catalog.
 
@@ -1547,7 +1547,7 @@ async function getDocumentation(symbolId: string): Promise<string> {
 
 ---
 
-#### `strong.catalog.get_project`
+#### `catalog.get_project`
 
 **Description**: Gets detailed information about a project.
 
@@ -1580,7 +1580,7 @@ async function getDocumentation(symbolId: string): Promise<string> {
 
 ---
 
-#### `strong.catalog.search_documentation`
+#### `catalog.search_documentation`
 
 **Description**: Search documentation across all projects.
 
@@ -1616,7 +1616,7 @@ async function getDocumentation(symbolId: string): Promise<string> {
 
 ### Documentation Generation Tools
 
-#### `strong.docs.generate`
+#### `docs.generate`
 
 **Description**: Generates documentation for a symbol or file.
 
@@ -1647,7 +1647,7 @@ async function getDocumentation(symbolId: string): Promise<string> {
 
 ---
 
-#### `strong.docs.validate`
+#### `docs.validate`
 
 **Description**: Validates documentation quality.
 
@@ -1678,7 +1678,7 @@ async function getDocumentation(symbolId: string): Promise<string> {
 
 ---
 
-#### `strong.docs.transform`
+#### `docs.transform`
 
 **Description**: Transforms unstructured documentation into standardized format.
 
@@ -1709,7 +1709,7 @@ async function getDocumentation(symbolId: string): Promise<string> {
 
 ### Example Generation Tools
 
-#### `strong.examples.generate`
+#### `examples.generate`
 
 **Description**: Generates code examples for a symbol.
 
@@ -1740,7 +1740,7 @@ async function getDocumentation(symbolId: string): Promise<string> {
 
 ---
 
-#### `strong.examples.validate`
+#### `examples.validate`
 
 **Description**: Validates existing examples (compilation, type-checking).
 
@@ -1771,7 +1771,7 @@ async function getDocumentation(symbolId: string): Promise<string> {
 
 ### Test Generation Tools
 
-#### `strong.tests.generate`
+#### `tests.generate`
 
 **Description**: Generates tests for a symbol or module.
 
@@ -1797,7 +1797,7 @@ async function getDocumentation(symbolId: string): Promise<string> {
 
 ---
 
-#### `strong.tests.validate`
+#### `tests.validate`
 
 **Description**: Runs generated tests and validates results.
 
@@ -2245,9 +2245,9 @@ export interface FileChangeEvent {
    - Dependency graph builder
    - Metadata extraction
 4. **Basic MCP Tools**:
-   - `strong.catalog.list_projects`
-   - `strong.catalog.get_project`
-   - `strong.catalog.search_documentation`
+   - `catalog.list_projects`
+   - `catalog.get_project`
+   - `catalog.search_documentation`
 
 **Deliverables**:
 - Global catalog functional
@@ -2269,9 +2269,9 @@ export interface FileChangeEvent {
    - Restructure to standard format
    - Enhancement logic
 3. **MCP Tools**:
-   - `strong.docs.generate`
-   - `strong.docs.validate`
-   - `strong.docs.transform`
+   - `docs.generate`
+   - `docs.validate`
+   - `docs.transform`
 
 **Deliverables**:
 - Can generate high-quality documentation
@@ -2292,10 +2292,10 @@ export interface FileChangeEvent {
    - Framework adapters (Jest/Vitest/Bun/Cargo)
    - Coverage estimation
 3. **MCP Tools**:
-   - `strong.examples.generate`
-   - `strong.examples.validate`
-   - `strong.tests.generate`
-   - `strong.tests.validate`
+   - `examples.generate`
+   - `examples.validate`
+   - `tests.generate`
+   - `tests.validate`
 
 **Deliverables**:
 - Can generate working examples

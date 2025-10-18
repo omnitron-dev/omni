@@ -13,13 +13,13 @@
 This roadmap unifies three specifications into a coherent implementation plan:
 
 1. **spec.md** (Meridian Core) - ✅ **Production-Ready** (431/431 tests passing)
-2. **strong-tools-spec.md** (Documentation & Knowledge Management) - 🚧 **To Implement**
+2. **documentation-tools-spec.md** (Documentation & Knowledge Management) - 🚧 **To Implement**
 3. **global-architecture-spec.md** (Multi-Monorepo System) - 🚧 **To Implement**
 
 **Goal**: Expand Meridian from a single-monorepo cognitive memory system into a **global multi-monorepo knowledge management platform** with automated documentation generation, cross-repository access, and agent-driven workflows.
 
 **Total Implementation**: 7 Phases over 16 weeks
-**Total MCP Tools**: 29 (existing) + 23 (strong tools) + 5 (global tools) = **57 tools**
+**Total MCP Tools**: 29 (existing) + 23 (documentation tools) + 5 (global tools) = **57 tools**
 **Testing Requirements**: 100% test coverage, 100% success rate, no compromises
 
 ---
@@ -49,7 +49,7 @@ This roadmap unifies three specifications into a coherent implementation plan:
 - ✅ In-memory caching
 - ✅ Session isolation
 
-### 🚧 To Implement (strong-tools-spec.md)
+### 🚧 To Implement (documentation-tools-spec.md)
 
 **Documentation System**:
 - ❌ Global documentation catalog

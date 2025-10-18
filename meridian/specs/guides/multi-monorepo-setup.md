@@ -367,7 +367,7 @@ meridian projects info frontend-app
 ```
 User: Show me documentation for @external/auth-lib's authenticate function
 
-Claude (uses): strong.external.get_documentation
+Claude (uses): external.get_documentation
 {
   projectId: "@external/auth-lib",
   symbolName: "authenticate",
@@ -377,11 +377,11 @@ Claude (uses): strong.external.get_documentation
 Result: Documentation from backend-monorepo, cached locally
 ```
 
-### MCP Tool: `strong.external.get_documentation`
+### MCP Tool: `external.get_documentation`
 
 ```typescript
 // Automatic cross-repo access
-const docs = await mcp.call('strong.external.get_documentation', {
+const docs = await mcp.call('external.get_documentation', {
   projectId: '@external/auth-lib',
   symbolName: 'authenticate',
   includeExamples: true,
@@ -456,9 +456,9 @@ meridian projects search "auth"
 #    Type: TypeScript
 ```
 
-**MCP Tool**: `strong.global.search_all_projects`
+**MCP Tool**: `global.search_all_projects`
 ```typescript
-const results = await mcp.call('strong.global.search_all_projects', {
+const results = await mcp.call('global.search_all_projects', {
   query: 'auth',
   type: 'typescript'
 });
@@ -478,9 +478,9 @@ meridian deps graph @company/ui-kit
 #   C --> E[external-package-from-npm]
 ```
 
-**MCP Tool**: `strong.global.get_dependency_graph`
+**MCP Tool**: `global.get_dependency_graph`
 ```typescript
-const graph = await mcp.call('strong.global.get_dependency_graph', {
+const graph = await mcp.call('global.get_dependency_graph', {
   projectId: '@company/ui-kit',
   depth: 3,
   direction: 'both',  // incoming + outgoing
@@ -511,9 +511,9 @@ meridian usages "@external/auth-lib:authenticate"
 #   - @personal/backend/src/routes.ts:55
 ```
 
-**MCP Tool**: `strong.external.find_usages`
+**MCP Tool**: `external.find_usages`
 ```typescript
-const usages = await mcp.call('strong.external.find_usages', {
+const usages = await mcp.call('external.find_usages', {
   projectId: '@external/auth-lib',
   symbolName: 'authenticate',
   includeTests: false

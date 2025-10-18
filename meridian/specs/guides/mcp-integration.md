@@ -39,7 +39,7 @@
 
 **Capabilities**:
 - 29 core tools (production-ready)
-- 10 strong tools (documentation, examples, tests)
+- 10 documentation tools (catalog, docs, examples, tests)
 - 10 specification tools
 - Custom memory system integration
 - Adaptive context management
@@ -557,16 +557,16 @@ await mcp.call('session.complete', {
 }
 ```
 
-### Category 6: Strong Tools (Cross-Monorepo)
+### Category 6: Global Tools (Cross-Monorepo)
 
-#### `strong.global.search_all_projects`
+#### `global.search_all_projects`
 
 **Example**:
 ```json
 {
   "method": "tools/call",
   "params": {
-    "name": "strong.global.search_all_projects",
+    "name": "global.search_all_projects",
     "arguments": {
       "query": "authentication",
       "type": "typescript"
@@ -575,14 +575,14 @@ await mcp.call('session.complete', {
 }
 ```
 
-#### `strong.external.get_documentation`
+#### `external.get_documentation`
 
 **Example**:
 ```json
 {
   "method": "tools/call",
   "params": {
-    "name": "strong.external.get_documentation",
+    "name": "external.get_documentation",
     "arguments": {
       "projectId": "@external/auth-lib",
       "symbolName": "authenticate",

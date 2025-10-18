@@ -58,7 +58,45 @@ impl ProjectContext {
         let doc_indexer = Arc::new(crate::docs::DocIndexer::new());
 
         // Initialize specification manager
-        let specs_path = project_path.join("specs");
+        // Try multiple locations to find specs directory:
+        // 1. Environment variable MERIDIAN_SPECS_PATH
+        // 2. Project path/specs
+        // 3. Current working directory/specs (fallback for stdio mode)
+        let specs_path = std::env::var("MERIDIAN_SPECS_PATH")
+            .ok()
+            .map(PathBuf::from)
+            .or_else(|| {
+                // Try project path first
+                let project_specs = project_path.join("specs");
+                if project_specs.exists() && project_specs.is_dir() {
+                    info!("Using specs directory from project path: {:?}", project_specs);
+                    Some(project_specs)
+                } else {
+                    None
+                }
+            })
+            .or_else(|| {
+                // Try current working directory as fallback
+                std::env::current_dir()
+                    .ok()
+                    .and_then(|cwd| {
+                        let cwd_specs = cwd.join("specs");
+                        if cwd_specs.exists() && cwd_specs.is_dir() {
+                            info!("Using specs directory from current working directory: {:?}", cwd_specs);
+                            Some(cwd_specs)
+                        } else {
+                            None
+                        }
+                    })
+            })
+            .unwrap_or_else(|| {
+                // Fallback to project path (will create if needed)
+                let fallback = project_path.join("specs");
+                info!("Using specs directory fallback: {:?}", fallback);
+                fallback
+            });
+
+        info!("Initializing SpecificationManager with path: {:?}", specs_path);
         let spec_manager = crate::specs::SpecificationManager::new(specs_path);
 
         Ok(Self {

@@ -114,9 +114,37 @@ impl MeridianServer {
         let doc_indexer = Arc::new(crate::docs::DocIndexer::new());
 
         // Initialize specification manager
-        let specs_path = config.storage.path.parent()
-            .unwrap_or_else(|| std::path::Path::new("."))
-            .join("specs");
+        // Try multiple locations to find specs directory:
+        // 1. Environment variable MERIDIAN_SPECS_PATH
+        // 2. Current working directory/specs
+        // 3. Meridian installation directory/specs (fallback)
+        let specs_path = std::env::var("MERIDIAN_SPECS_PATH")
+            .ok()
+            .map(PathBuf::from)
+            .or_else(|| {
+                // Try current working directory
+                std::env::current_dir()
+                    .ok()
+                    .and_then(|cwd| {
+                        let cwd_specs = cwd.join("specs");
+                        if cwd_specs.exists() && cwd_specs.is_dir() {
+                            info!("Using specs directory from current working directory: {:?}", cwd_specs);
+                            Some(cwd_specs)
+                        } else {
+                            None
+                        }
+                    })
+            })
+            .unwrap_or_else(|| {
+                // Fallback to storage path parent (legacy behavior)
+                let fallback = config.storage.path.parent()
+                    .unwrap_or_else(|| std::path::Path::new("."))
+                    .join("specs");
+                info!("Using specs directory fallback: {:?}", fallback);
+                fallback
+            });
+
+        info!("Initializing SpecificationManager with path: {:?}", specs_path);
         let spec_manager = SpecificationManager::new(specs_path);
 
         // Initialize session manager

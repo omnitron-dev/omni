@@ -33,7 +33,7 @@
    - **Test Coverage**: 431/431 tests passing (100%)
    - **Key Topics**: Cognitive memory system, MCP protocol, core tools, session management
 
-3. **[Strong Tools Specification](./strong-tools-spec.md)** - v1.0.0
+3. **[Documentation Tools Specification](./documentation-tools-spec.md)** - v1.0.0
    - **Status**: ⚠️ **Design (Partially Implemented)**
    - **Lines**: 2,519
    - **MCP Tools**: 23 (documentation, examples, tests, agents)

@@ -814,9 +814,9 @@ pub fn get_all_tools() -> Vec<Tool> {
         },
     ]
     .into_iter()
-    .chain(get_strong_catalog_tools())
-    .chain(get_strong_docs_tools())
-    .chain(get_phase5_cross_monorepo_tools())
+    .chain(get_catalog_tools())
+    .chain(get_docs_generation_tools())
+    .chain(get_global_tools())
     .chain(get_specification_tools())
     .collect()
 }
@@ -900,14 +900,14 @@ impl Default for ServerCapabilities {
 }
 
 // ============================================================================
-// Strong Tools (Phase 3) - Documentation Generation & Catalog
+// Catalog Tools (Phase 3) - Documentation Generation & Catalog
 // ============================================================================
 
-/// Get strong catalog tools for Phase 3
-fn get_strong_catalog_tools() -> Vec<Tool> {
+/// Get catalog tools for Phase 3
+fn get_catalog_tools() -> Vec<Tool> {
     vec![
         Tool {
-            name: "strong.catalog.list_projects".to_string(),
+            name: "catalog.list_projects".to_string(),
             description: Some("Lists all projects in the global documentation catalog with metadata and statistics".to_string()),
             input_schema: json!({"type": "object", "properties": {}, "additionalProperties": false}),
             output_schema: Some(json!({
@@ -919,10 +919,10 @@ fn get_strong_catalog_tools() -> Vec<Tool> {
                     "averageCoverage": {"type": "number"}
                 }
             })),
-            _meta: Some(json!({"phase": "Phase 3", "category": "documentation"})),
+            _meta: Some(json!({"category": "catalog"})),
         },
         Tool {
-            name: "strong.catalog.get_project".to_string(),
+            name: "catalog.get_project".to_string(),
             description: Some("Gets detailed information about a specific project".to_string()),
             input_schema: json!({
                 "type": "object",
@@ -932,10 +932,10 @@ fn get_strong_catalog_tools() -> Vec<Tool> {
                 "required": ["projectId"]
             }),
             output_schema: Some(json!({"type": "object", "properties": {"project": {"type": "object"}}})),
-            _meta: Some(json!({"phase": "Phase 3", "category": "documentation"})),
+            _meta: Some(json!({"category": "catalog"})),
         },
         Tool {
-            name: "strong.catalog.search_documentation".to_string(),
+            name: "catalog.search_documentation".to_string(),
             description: Some("Searches documentation across all projects with filtering".to_string()),
             input_schema: json!({
                 "type": "object",
@@ -953,16 +953,16 @@ fn get_strong_catalog_tools() -> Vec<Tool> {
                     "totalResults": {"type": "number"}
                 }
             })),
-            _meta: Some(json!({"phase": "Phase 3", "category": "documentation"})),
+            _meta: Some(json!({"category": "catalog"})),
         },
     ]
 }
 
-/// Get Phase 5 cross-monorepo tools
-fn get_phase5_cross_monorepo_tools() -> Vec<Tool> {
+/// Get global cross-monorepo tools
+fn get_global_tools() -> Vec<Tool> {
     vec![
         Tool {
-            name: "strong.global.list_monorepos".to_string(),
+            name: "global.list_monorepos".to_string(),
             description: Some("List all registered monorepos in the global registry".to_string()),
             input_schema: json!({
                 "type": "object",
@@ -992,10 +992,10 @@ fn get_phase5_cross_monorepo_tools() -> Vec<Tool> {
                     }
                 }
             })),
-            _meta: Some(json!({"phase": "Phase 5", "category": "cross-monorepo"})),
+            _meta: Some(json!({"category": "global"})),
         },
         Tool {
-            name: "strong.global.search_all_projects".to_string(),
+            name: "global.search_all_projects".to_string(),
             description: Some("Search for projects across all monorepos in the global registry".to_string()),
             input_schema: json!({
                 "type": "object",
@@ -1035,10 +1035,10 @@ fn get_phase5_cross_monorepo_tools() -> Vec<Tool> {
                     "totalResults": {"type": "number"}
                 }
             })),
-            _meta: Some(json!({"phase": "Phase 5", "category": "cross-monorepo"})),
+            _meta: Some(json!({"category": "global"})),
         },
         Tool {
-            name: "strong.global.get_dependency_graph".to_string(),
+            name: "global.get_dependency_graph".to_string(),
             description: Some("Get dependency graph for a project with configurable depth and direction".to_string()),
             input_schema: json!({
                 "type": "object",
@@ -1080,10 +1080,10 @@ fn get_phase5_cross_monorepo_tools() -> Vec<Tool> {
                     "cycles": {"type": "array", "description": "Detected circular dependencies"}
                 }
             })),
-            _meta: Some(json!({"phase": "Phase 5", "category": "cross-monorepo"})),
+            _meta: Some(json!({"category": "global"})),
         },
         Tool {
-            name: "strong.external.get_documentation".to_string(),
+            name: "external.get_documentation".to_string(),
             description: Some("Get documentation from an external project (read-only access)".to_string()),
             input_schema: json!({
                 "type": "object",
@@ -1119,10 +1119,10 @@ fn get_phase5_cross_monorepo_tools() -> Vec<Tool> {
                     "accessGranted": {"type": "boolean"}
                 }
             })),
-            _meta: Some(json!({"phase": "Phase 5", "category": "cross-monorepo", "security": "read-only"})),
+            _meta: Some(json!({"category": "external", "security": "read-only"})),
         },
         Tool {
-            name: "strong.external.find_usages".to_string(),
+            name: "external.find_usages".to_string(),
             description: Some("Find usages of a symbol across all accessible monorepos".to_string()),
             input_schema: json!({
                 "type": "object",
@@ -1168,16 +1168,16 @@ fn get_phase5_cross_monorepo_tools() -> Vec<Tool> {
                     "projectsSearched": {"type": "number"}
                 }
             })),
-            _meta: Some(json!({"phase": "Phase 5", "category": "cross-monorepo", "security": "read-only"})),
+            _meta: Some(json!({"category": "external", "security": "read-only"})),
         },
     ]
 }
 
-/// Get strong documentation generation tools for Phase 3
-fn get_strong_docs_tools() -> Vec<Tool> {
+/// Get documentation generation tools (Phase 3)
+fn get_docs_generation_tools() -> Vec<Tool> {
     vec![
         Tool {
-            name: "strong.docs.generate".to_string(),
+            name: "docs.generate".to_string(),
             description: Some("Generates high-quality documentation for symbols with examples".to_string()),
             input_schema: json!({
                 "type": "object",
@@ -1195,10 +1195,10 @@ fn get_strong_docs_tools() -> Vec<Tool> {
                     "quality": {"type": "object"}
                 }
             })),
-            _meta: Some(json!({"phase": "Phase 3", "category": "documentation"})),
+            _meta: Some(json!({"category": "documentation"})),
         },
         Tool {
-            name: "strong.docs.validate".to_string(),
+            name: "docs.validate".to_string(),
             description: Some("Validates documentation quality with scoring and suggestions".to_string()),
             input_schema: json!({
                 "type": "object",
@@ -1215,10 +1215,10 @@ fn get_strong_docs_tools() -> Vec<Tool> {
                     "symbolScores": {"type": "array"}
                 }
             })),
-            _meta: Some(json!({"phase": "Phase 3", "category": "documentation"})),
+            _meta: Some(json!({"category": "documentation"})),
         },
         Tool {
-            name: "strong.docs.transform".to_string(),
+            name: "docs.transform".to_string(),
             description: Some("Transforms documentation into standardized format".to_string()),
             input_schema: json!({
                 "type": "object",
@@ -1235,12 +1235,12 @@ fn get_strong_docs_tools() -> Vec<Tool> {
                     "totalTransformed": {"type": "number"}
                 }
             })),
-            _meta: Some(json!({"phase": "Phase 3", "category": "documentation"})),
+            _meta: Some(json!({"category": "documentation"})),
         },
 
         // === Example & Test Generation Tools (Phase 4) ===
         Tool {
-            name: "strong.examples.generate".to_string(),
+            name: "examples.generate".to_string(),
             description: Some("Generate code examples from symbols with configurable complexity".to_string()),
             input_schema: json!({
                 "type": "object",
@@ -1280,10 +1280,10 @@ fn get_strong_docs_tools() -> Vec<Tool> {
                     }
                 }
             })),
-            _meta: Some(json!({"phase": "Phase 4", "category": "examples"})),
+            _meta: Some(json!({"category": "examples"})),
         },
         Tool {
-            name: "strong.examples.validate".to_string(),
+            name: "examples.validate".to_string(),
             description: Some("Validate code examples for syntax and compilation errors".to_string()),
             input_schema: json!({
                 "type": "object",
@@ -1316,10 +1316,10 @@ fn get_strong_docs_tools() -> Vec<Tool> {
                     }
                 }
             })),
-            _meta: Some(json!({"phase": "Phase 4", "category": "examples"})),
+            _meta: Some(json!({"category": "examples"})),
         },
         Tool {
-            name: "strong.tests.generate".to_string(),
+            name: "tests.generate".to_string(),
             description: Some("Generate unit and integration tests for symbols".to_string()),
             input_schema: json!({
                 "type": "object",
@@ -1360,10 +1360,10 @@ fn get_strong_docs_tools() -> Vec<Tool> {
                     }
                 }
             })),
-            _meta: Some(json!({"phase": "Phase 4", "category": "testing"})),
+            _meta: Some(json!({"category": "testing"})),
         },
         Tool {
-            name: "strong.tests.validate".to_string(),
+            name: "tests.validate".to_string(),
             description: Some("Validate generated tests and estimate coverage".to_string()),
             input_schema: json!({
                 "type": "object",
@@ -1393,7 +1393,7 @@ fn get_strong_docs_tools() -> Vec<Tool> {
                     }
                 }
             })),
-            _meta: Some(json!({"phase": "Phase 4", "category": "testing"})),
+            _meta: Some(json!({"category": "testing"})),
         },
     ]
 }

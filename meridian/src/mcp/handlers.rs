@@ -103,32 +103,32 @@ impl ToolHandlers {
             "specs.search" => self.handle_specs_search(arguments).await,
             "specs.validate" => self.handle_specs_validate(arguments).await,
 
-            // Strong Catalog Tools (Phase 3)
-            "strong.catalog.list_projects" => self.handle_strong_catalog_list_projects(arguments).await,
-            "strong.catalog.get_project" => self.handle_strong_catalog_get_project(arguments).await,
-            "strong.catalog.search_documentation" => self.handle_strong_catalog_search_documentation(arguments).await,
+            // Catalog Tools (Phase 3)
+            "catalog.list_projects" => self.handle_strong_catalog_list_projects(arguments).await,
+            "catalog.get_project" => self.handle_strong_catalog_get_project(arguments).await,
+            "catalog.search_documentation" => self.handle_strong_catalog_search_documentation(arguments).await,
 
-            // Strong Documentation Tools (Phase 3)
-            "strong.docs.generate" => self.handle_strong_docs_generate(arguments).await,
-            "strong.docs.validate" => self.handle_strong_docs_validate(arguments).await,
-            "strong.docs.transform" => self.handle_strong_docs_transform(arguments).await,
+            // Documentation Generation Tools (Phase 3)
+            "docs.generate" => self.handle_strong_docs_generate(arguments).await,
+            "docs.validate" => self.handle_strong_docs_validate(arguments).await,
+            "docs.transform" => self.handle_strong_docs_transform(arguments).await,
 
-            // Strong Example Tools (Phase 4)
-            "strong.examples.generate" => self.handle_strong_examples_generate(arguments).await,
-            "strong.examples.validate" => self.handle_strong_examples_validate(arguments).await,
+            // Example Tools (Phase 4)
+            "examples.generate" => self.handle_strong_examples_generate(arguments).await,
+            "examples.validate" => self.handle_strong_examples_validate(arguments).await,
 
-            // Strong Test Tools (Phase 4)
-            "strong.tests.generate" => self.handle_strong_tests_generate(arguments).await,
-            "strong.tests.validate" => self.handle_strong_tests_validate(arguments).await,
+            // Test Tools (Phase 4)
+            "tests.generate" => self.handle_strong_tests_generate(arguments).await,
+            "tests.validate" => self.handle_strong_tests_validate(arguments).await,
 
-            // Strong Global Tools (Phase 5)
-            "strong.global.list_monorepos" => self.handle_strong_global_list_monorepos(arguments).await,
-            "strong.global.search_all_projects" => self.handle_strong_global_search_all_projects(arguments).await,
-            "strong.global.get_dependency_graph" => self.handle_strong_global_get_dependency_graph(arguments).await,
+            // Global Tools (Phase 5)
+            "global.list_monorepos" => self.handle_strong_global_list_monorepos(arguments).await,
+            "global.search_all_projects" => self.handle_strong_global_search_all_projects(arguments).await,
+            "global.get_dependency_graph" => self.handle_strong_global_get_dependency_graph(arguments).await,
 
-            // Strong External Tools (Phase 5)
-            "strong.external.get_documentation" => self.handle_strong_external_get_documentation(arguments).await,
-            "strong.external.find_usages" => self.handle_strong_external_find_usages(arguments).await,
+            // External Tools (Phase 5)
+            "external.get_documentation" => self.handle_strong_external_get_documentation(arguments).await,
+            "external.find_usages" => self.handle_strong_external_find_usages(arguments).await,
 
             _ => Err(anyhow!("Unknown tool: {}", name)),
         }
@@ -1839,7 +1839,7 @@ impl ToolHandlers {
         }))
     }
 
-    // === Strong Catalog Handlers (Phase 3) ===
+    // === Catalog Handlers (Phase 3) ===
 
     async fn handle_strong_catalog_list_projects(&self, _args: Value) -> Result<Value> {
         use crate::strong::GlobalCatalog;
@@ -1950,7 +1950,7 @@ impl ToolHandlers {
         }))
     }
 
-    // === Strong Documentation Handlers (Phase 3) ===
+    // === Documentation Generation Handlers (Phase 3) ===
 
     async fn handle_strong_docs_generate(&self, args: Value) -> Result<Value> {
         #[derive(Deserialize)]
@@ -2091,7 +2091,7 @@ impl ToolHandlers {
         }))
     }
 
-    // === Strong Example Handlers (Phase 4) ===
+    // === Example Handlers (Phase 4) ===
 
     async fn handle_strong_examples_generate(&self, args: Value) -> Result<Value> {
         #[derive(Deserialize)]
@@ -2165,7 +2165,7 @@ impl ToolHandlers {
         }))
     }
 
-    // === Strong Test Handlers (Phase 4) ===
+    // === Test Handlers (Phase 4) ===
 
     async fn handle_strong_tests_generate(&self, args: Value) -> Result<Value> {
         #[derive(Deserialize)]
@@ -2260,7 +2260,7 @@ impl ToolHandlers {
         }))
     }
 
-    // === Strong Global Handlers (Phase 5) ===
+    // === Global Handlers (Phase 5) ===
 
     async fn handle_strong_global_list_monorepos(&self, args: Value) -> Result<Value> {
         #[derive(Deserialize)]
@@ -2340,7 +2340,7 @@ impl ToolHandlers {
         }))
     }
 
-    // === Strong External Handlers (Phase 5) ===
+    // === External Handlers (Phase 5) ===
 
     async fn handle_strong_external_get_documentation(&self, args: Value) -> Result<Value> {
         #[derive(Deserialize)]

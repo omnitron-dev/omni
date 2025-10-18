@@ -28,7 +28,7 @@ The MCP server is configured in `.claude/mcp_config.json`:
 ### Usage in Claude Code
 
 1. **Automatic**: Claude Code will automatically start the Meridian MCP server when you use this project
-2. **Tools Available**: 35 MCP tools are exposed (29 core + 6 Strong Tools)
+2. **Tools Available**: 35 MCP tools are exposed (29 core + 6 Documentation Tools)
 3. **Live Debugging**: Changes to code are reflected after `cargo build --release`
 
 ### Available MCP Tools
@@ -43,13 +43,13 @@ The MCP server is configured in `.claude/mcp_config.json`:
 - `memory.feedback` - Provide feedback on memory operations
 - And 22 more core tools...
 
-#### Strong Tools (6 tools)
-- `strong.catalog.list_projects` - List all projects
-- `strong.catalog.get_project` - Get project details
-- `strong.catalog.search_documentation` - Search documentation
-- `strong.docs.generate` - Generate documentation
-- `strong.docs.validate` - Validate documentation quality
-- `strong.docs.transform` - Transform documentation formats
+#### Documentation Tools (6 tools)
+- `catalog.list_projects` - List all projects
+- `catalog.get_project` - Get project details
+- `catalog.search_documentation` - Search documentation
+- `docs.generate` - Generate documentation
+- `docs.validate` - Validate documentation quality
+- `docs.transform` - Transform documentation formats
 
 ### Manual Testing
 
@@ -100,7 +100,7 @@ echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | cargo run --release -- s
 ✅ **Phases 1-3 Complete**:
 - Global Architecture (Phase 1)
 - MCP Integration (Phase 2)
-- Strong Tools (Phase 3)
+- Documentation Tools (Phase 3)
 
 ✅ **Test Coverage**: 250 tests passing (100% success rate)
 

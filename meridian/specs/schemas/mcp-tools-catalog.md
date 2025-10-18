@@ -15,7 +15,7 @@ Complete catalog of all MCP tools available in Meridian v2.0.0. This is the **si
 **Total Tools**: 49
 - **Core Tools**: 29 (100% implemented)
 - **Specification Tools**: 10 (spec.md reference)
-- **Strong Tools**: 10 (strong-tools-spec.md)
+- **Documentation Tools**: 10 (documentation-tools-spec.md)
 
 ---
 
@@ -859,31 +859,31 @@ Complete catalog of all MCP tools available in Meridian v2.0.0. This is the **si
 
 ---
 
-## Strong Tools (10 tools)
+## Documentation Tools (10 tools)
 
 ### Global Catalog (3 tools)
 
-#### `strong.catalog.list_projects`
+#### `catalog.list_projects`
 
 **Status**: 📋 Specified (Not Implemented)
 
 **Description**: Lists all projects in the global documentation catalog
 
-**Reference**: strong-tools-spec.md
+**Reference**: documentation-tools-spec.md
 
 ---
 
-#### `strong.catalog.get_project`
+#### `catalog.get_project`
 
 **Status**: 📋 Specified (Not Implemented)
 
 **Description**: Gets detailed information about a specific project
 
-**Reference**: strong-tools-spec.md
+**Reference**: documentation-tools-spec.md
 
 ---
 
-#### `strong.catalog.search_documentation`
+#### `catalog.search_documentation`
 
 **Status**: 📋 Specified (Not Implemented)
 
@@ -891,81 +891,81 @@ Complete catalog of all MCP tools available in Meridian v2.0.0. This is the **si
 
 **Input**: `{ query: string; scope?: "local" | "dependencies" | "global"; limit?: number }`
 
-**Reference**: strong-tools-spec.md
+**Reference**: documentation-tools-spec.md
 
 ---
 
 ### Documentation Generation (3 tools)
 
-#### `strong.docs.generate`
+#### `docs.generate`
 
 **Status**: 📋 Specified (Not Implemented)
 
 **Description**: Generates high-quality documentation for symbols with examples
 
-**Reference**: strong-tools-spec.md
+**Reference**: documentation-tools-spec.md
 
 ---
 
-#### `strong.docs.validate`
+#### `docs.validate`
 
 **Status**: 📋 Specified (Not Implemented)
 
 **Description**: Validates documentation quality with scoring and suggestions
 
-**Reference**: strong-tools-spec.md
+**Reference**: documentation-tools-spec.md
 
 ---
 
-#### `strong.docs.transform`
+#### `docs.transform`
 
 **Status**: 📋 Specified (Not Implemented)
 
 **Description**: Transforms documentation into standardized format
 
-**Reference**: strong-tools-spec.md
+**Reference**: documentation-tools-spec.md
 
 ---
 
 ### Example & Test Generation (4 tools)
 
-#### `strong.examples.generate`
+#### `examples.generate`
 
 **Status**: 📋 Specified (Not Implemented)
 
 **Description**: Generate code examples from symbols with configurable complexity
 
-**Reference**: strong-tools-spec.md
+**Reference**: documentation-tools-spec.md
 
 ---
 
-#### `strong.examples.validate`
+#### `examples.validate`
 
 **Status**: 📋 Specified (Not Implemented)
 
 **Description**: Validate code examples for syntax and compilation errors
 
-**Reference**: strong-tools-spec.md
+**Reference**: documentation-tools-spec.md
 
 ---
 
-#### `strong.tests.generate`
+#### `tests.generate`
 
 **Status**: 📋 Specified (Not Implemented)
 
 **Description**: Generate unit and integration tests for symbols
 
-**Reference**: strong-tools-spec.md
+**Reference**: documentation-tools-spec.md
 
 ---
 
-#### `strong.tests.validate`
+#### `tests.validate`
 
 **Status**: 📋 Specified (Not Implemented)
 
 **Description**: Validate generated tests and estimate coverage
 
-**Reference**: strong-tools-spec.md
+**Reference**: documentation-tools-spec.md
 
 ---
 
@@ -1013,7 +1013,7 @@ All specification tools are defined in the specification system (specs/). Refere
 
 | Category | Count | Status |
 |----------|-------|--------|
-| Strong Tools | 10 | 📋 Specified |
+| Documentation Tools | 10 | 📋 Specified |
 | Specification Tools | 10 | 📋 Specified |
 | **TOTAL** | **20** | **📋 Specified** |
 
@@ -1048,7 +1048,9 @@ All specification tools are defined in the specification system (specs/). Refere
 | `session` | Session management | `session.begin` |
 | `analyze` | Analytics | `analyze.complexity` |
 | `monorepo` | Monorepo operations | `monorepo.list_projects` |
-| `strong` | Strong tools | `strong.docs.generate` |
+| `catalog` | Documentation catalog | `catalog.list_projects` |
+| `examples` | Code examples | `examples.generate` |
+| `tests` | Test generation | `tests.generate` |
 | `specs` | Specification tools | `specs.list` |
 
 ---
@@ -1059,7 +1061,7 @@ All specification tools are defined in the specification system (specs/). Refere
 
 **Added**:
 - All 29 core MCP tools (100% implemented)
-- 10 Strong Tools (specified)
+- 10 Documentation Tools (specified)
 - 10 Specification Tools (specified)
 
 **Protocol**: MCP 2025-03-26
@@ -1166,7 +1168,7 @@ All 29 core tools have comprehensive test coverage:
 ## References
 
 - **Core Spec**: [spec.md](../spec.md) - Lines 852-1239 (tool definitions)
-- **Strong Tools Spec**: [strong-tools-spec.md](../strong-tools-spec.md) - Strong tools details
+- **Documentation Tools Spec**: [documentation-tools-spec.md](../documentation-tools-spec.md) - Documentation tools details
 - **Global Arch Spec**: [global-architecture-spec.md](../global-architecture-spec.md) - Multi-monorepo tools
 - **Roadmap**: [roadmap.md](../roadmap.md) - Implementation status
 

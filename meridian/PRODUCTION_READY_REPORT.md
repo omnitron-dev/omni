@@ -124,38 +124,38 @@ Registered Projects: 1
 
 ---
 
-### 5. Strong Tools Integration: 15 MCP Handlers
+### 5. Documentation & Global Tools Integration: 15 MCP Handlers
 
-**Commit:** `3e181aba` - feat(mcp): implement all 15 Strong tools MCP handlers
+**Commit:** `3e181aba` - feat(mcp): implement all 15 Documentation & Global tools MCP handlers
 
 **Handlers Implemented (15/15):**
 
 **Catalog Tools (3):**
-- `strong.catalog.list_projects` - Lists all projects with metadata
-- `strong.catalog.get_project` - Gets detailed project information
-- `strong.catalog.search_documentation` - Global documentation search
+- `catalog.list_projects` - Lists all projects with metadata
+- `catalog.get_project` - Gets detailed project information
+- `catalog.search_documentation` - Global documentation search
 
 **Documentation Tools (3):**
-- `strong.docs.generate` - Generates TSDoc/JSDoc/RustDoc/Markdown
-- `strong.docs.validate` - Quality scoring with suggestions
-- `strong.docs.transform` - Format transformation
+- `docs.generate` - Generates TSDoc/JSDoc/RustDoc/Markdown
+- `docs.validate` - Quality scoring with suggestions
+- `docs.transform` - Format transformation
 
 **Example Tools (2):**
-- `strong.examples.generate` - Multi-language examples (TS/JS/Rust/Python)
-- `strong.examples.validate` - Syntax validation
+- `examples.generate` - Multi-language examples (TS/JS/Rust/Python)
+- `examples.validate` - Syntax validation
 
 **Test Tools (2):**
-- `strong.tests.generate` - Unit/integration tests (Jest/Vitest/Bun/Rust)
-- `strong.tests.validate` - Coverage estimation
+- `tests.generate` - Unit/integration tests (Jest/Vitest/Bun/Rust)
+- `tests.validate` - Coverage estimation
 
 **Global Tools (3):**
-- `strong.global.list_monorepos` - Registered monorepos
-- `strong.global.search_all_projects` - Cross-monorepo search
-- `strong.global.get_dependency_graph` - Dependency graphs
+- `global.list_monorepos` - Registered monorepos
+- `global.search_all_projects` - Cross-monorepo search
+- `global.get_dependency_graph` - Dependency graphs
 
 **External Tools (2):**
-- `strong.external.get_documentation` - External project docs
-- `strong.external.find_usages` - Cross-monorepo symbol search
+- `external.get_documentation` - External project docs
+- `external.find_usages` - Cross-monorepo symbol search
 
 **Integration:**
 - Full integration with src/strong/ implementations (2,313 lines)
@@ -178,7 +178,7 @@ Registered Projects: 1
 **Test Categories:**
 - ✅ Markdown analyzer tests: 6/6
 - ✅ Spec manager tests: 7/7
-- ✅ Strong tools tests: 140+/140+
+- ✅ Documentation & Global tools tests: 140+/140+
 - ✅ MCP handler tests: All passing
 - ✅ Integration tests: All passing
 

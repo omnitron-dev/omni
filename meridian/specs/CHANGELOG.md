@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Cross-repository documentation access
   - Project registry for multiple monorepos
 
-- **Strong Tools Specification** (strong-tools-spec.md) - v1.0.0
+- **Documentation Tools Specification** (documentation-tools-spec.md) - v1.0.0
   - Global documentation catalog system
   - Automated documentation generation (TSDoc/JSDoc, rustdoc)
   - Code example generation with validation
@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### English Translations
 - **spec-en.md** - English translation of core specification
-- **strong-tools-spec-en.md** - English translation of Strong Tools spec
+- **documentation-tools-spec-en.md** - English translation of Documentation Tools spec
 - **global-architecture-spec-en.md** - English translation of Global Architecture spec
 
 #### User Guides
@@ -63,19 +63,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### MCP Tools (28 new tools)
 
-**Strong Tools (10 tools)**:
-- `strong.catalog.list_projects` - List all projects in global catalog
-- `strong.catalog.get_project` - Get detailed project information
-- `strong.catalog.search_documentation` - Search docs across all projects
-- `strong.docs.generate` - Generate high-quality documentation
-- `strong.docs.validate` - Validate documentation quality
-- `strong.docs.transform` - Transform docs to standard formats
-- `strong.examples.generate` - Generate code examples
-- `strong.examples.validate` - Validate code examples
-- `strong.tests.generate` - Generate unit/integration tests
-- `strong.tests.validate` - Validate generated tests
+**Documentation Tools (10 tools)**:
+- `catalog.list_projects` - List all projects in global catalog
+- `catalog.get_project` - Get detailed project information
+- `catalog.search_documentation` - Search docs across all projects
+- `docs.generate` - Generate high-quality documentation
+- `docs.validate` - Validate documentation quality
+- `docs.transform` - Transform docs to standard formats
+- `examples.generate` - Generate code examples
+- `examples.validate` - Validate code examples
+- `tests.generate` - Generate unit/integration tests
+- `tests.validate` - Validate generated tests
 
-**Global Architecture Tools (5 tools)**:
+**Global Tools (5 tools)**:
 - `global.list_monorepos` - List all registered monorepos
 - `global.search_all_projects` - Search across all monorepos
 - `global.get_dependency_graph` - Get cross-monorepo dependency graph

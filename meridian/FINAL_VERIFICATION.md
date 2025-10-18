@@ -58,7 +58,7 @@ src/mcp/
 └── local_cache.rs    ✅ (Local cache)
 ```
 
-### Phase 3: Strong Tools - Documentation
+### Phase 3: Documentation Tools - Core
 **Status**: ✅ **COMPLETED**
 - [x] DocumentationGenerator (TSDoc, JSDoc, rustdoc)
 - [x] QualityValidator (multi-dimensional scoring)
@@ -79,7 +79,7 @@ src/strong/
 └── mod.rs           ✅ (Module exports)
 ```
 
-### Phase 4: Strong Tools - Examples & Tests
+### Phase 4: Documentation Tools - Examples & Tests
 **Status**: ✅ **COMPLETED**
 - [x] ExampleGenerator (multi-language, 3 complexity levels)
 - [x] TestGenerator (Jest, Vitest, Bun, Rust)
@@ -175,32 +175,32 @@ Finished `release` profile [optimized] in 51.10s
 - Git integration (3 tools)
 - Attention & learning (2 tools)
 
-**Strong Tools - Catalog** (3):
-- ✅ `strong.catalog.list_projects`
-- ✅ `strong.catalog.get_project`
-- ✅ `strong.catalog.search_documentation`
+**Documentation Tools - Catalog** (3):
+- ✅ `catalog.list_projects`
+- ✅ `catalog.get_project`
+- ✅ `catalog.search_documentation`
 
-**Strong Tools - Documentation** (3):
-- ✅ `strong.docs.generate`
-- ✅ `strong.docs.validate`
-- ✅ `strong.docs.transform`
+**Documentation Tools - Generation** (3):
+- ✅ `docs.generate`
+- ✅ `docs.validate`
+- ✅ `docs.transform`
 
-**Strong Tools - Examples** (2):
-- ✅ `strong.examples.generate`
-- ✅ `strong.examples.validate`
+**Documentation Tools - Examples** (2):
+- ✅ `examples.generate`
+- ✅ `examples.validate`
 
-**Strong Tools - Tests** (2):
-- ✅ `strong.tests.generate`
-- ✅ `strong.tests.validate`
+**Documentation Tools - Tests** (2):
+- ✅ `tests.generate`
+- ✅ `tests.validate`
 
-**Strong Tools - Global** (3):
-- ✅ `strong.global.list_monorepos`
-- ✅ `strong.global.search_all_projects`
-- ✅ `strong.global.get_dependency_graph`
+**Global Tools** (3):
+- ✅ `global.list_monorepos`
+- ✅ `global.search_all_projects`
+- ✅ `global.get_dependency_graph`
 
-**Strong Tools - External** (2):
-- ✅ `strong.external.get_documentation`
-- ✅ `strong.external.find_usages`
+**External Tools** (2):
+- ✅ `external.get_documentation`
+- ✅ `external.find_usages`
 
 **All 44 tools verified and functional** ✅
 
@@ -214,7 +214,7 @@ meridian/
 │   └── mcp_config.json           ✅ MCP server configured
 ├── specs/
 │   ├── spec.md                   ✅ Core specification
-│   ├── strong-tools-spec.md      ✅ Strong Tools spec
+│   ├── documentation-tools-spec.md      ✅ Documentation Tools spec
 │   ├── global-architecture-spec.md ✅ Global arch spec
 │   └── roadmap.md                ✅ Implementation roadmap
 ├── src/
@@ -274,7 +274,7 @@ meridian/
 
 ### Specification Documentation
 - ✅ `specs/spec.md` - Core system spec
-- ✅ `specs/strong-tools-spec.md` - Strong Tools spec
+- ✅ `specs/documentation-tools-spec.md` - Documentation Tools spec
 - ✅ `specs/global-architecture-spec.md` - Global architecture
 - ✅ `specs/roadmap.md` - Implementation roadmap
 

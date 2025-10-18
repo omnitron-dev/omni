@@ -135,6 +135,10 @@ harness = false
 name = "hnsw_bench"
 harness = false
 
+[[bench]]
+name = "reranking_bench"
+harness = false
+
 [[bin]]
 name = "meridian"
 path = "src/main.rs"

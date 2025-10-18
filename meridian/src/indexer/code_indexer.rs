@@ -406,24 +406,55 @@ impl CodeIndexer {
     }
 
     /// Filter symbols by detail level
-    fn apply_detail_level(&self, symbol: &CodeSymbol, level: DetailLevel) -> CodeSymbol {
+    /// Public for testing purposes
+    pub fn apply_detail_level(&self, symbol: &CodeSymbol, level: DetailLevel) -> CodeSymbol {
         let mut filtered = symbol.clone();
 
         match level {
             DetailLevel::Skeleton => {
-                // Only keep name and signature
+                // Only keep name and signature (no body, no deps, no refs)
+                // Signature is already minimal (just function name + params + return type)
                 filtered.references = Vec::new();
                 filtered.dependencies = Vec::new();
+
+                // Clear doc comment for skeleton
+                filtered.metadata.doc_comment = None;
+
+                // Reduce token cost estimate significantly (skeleton is ~10-20% of full)
+                filtered.metadata.token_cost = TokenCount::new(
+                    (symbol.metadata.token_cost.0 as f32 * 0.15) as u32
+                );
             }
             DetailLevel::Interface => {
-                // Keep public interface
+                // Keep public interface: signature + first line of doc
                 filtered.references = Vec::new();
+
+                // Keep only first line of doc comment (if exists)
+                if let Some(ref doc) = filtered.metadata.doc_comment {
+                    let first_line = doc.lines().next().unwrap_or("");
+                    if !first_line.is_empty() {
+                        filtered.metadata.doc_comment = Some(first_line.to_string());
+                    }
+                }
+
+                // Interface level is ~30-40% of full token cost
+                filtered.metadata.token_cost = TokenCount::new(
+                    (symbol.metadata.token_cost.0 as f32 * 0.35) as u32
+                );
             }
             DetailLevel::Implementation => {
-                // Keep most things
+                // Keep implementation but not all metadata
+                // Signature + full doc + body (but no references)
+                filtered.references = Vec::new();
+
+                // Implementation is ~60-70% of full
+                filtered.metadata.token_cost = TokenCount::new(
+                    (symbol.metadata.token_cost.0 as f32 * 0.65) as u32
+                );
             }
             DetailLevel::Full => {
-                // Keep everything
+                // Keep everything as-is
+                // No modifications needed
             }
         }
 

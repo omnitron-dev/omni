@@ -237,25 +237,38 @@ mod tests {
     use std::sync::Mutex;
     use tempfile::TempDir;
 
-    // Test synchronization mutex to prevent parallel test execution
-    // that modifies shared environment variables
-    static TEST_MUTEX: Mutex<()> = Mutex::new(());
+    // Mutex to serialize tests that modify MERIDIAN_HOME environment variable
+    // This prevents race conditions when tests run in parallel
+    static ENV_MUTEX: Mutex<()> = Mutex::new(());
+
+    /// Test helper: Create isolated test environment with unique temp directory
+    /// Returns both the lock guard and temp dir to ensure proper cleanup order
+    fn setup_test_env() -> (std::sync::MutexGuard<'static, ()>, TempDir) {
+        let guard = ENV_MUTEX.lock().unwrap_or_else(|poisoned| {
+            // If mutex is poisoned, clear the poison and continue
+            // This allows tests to recover from previous panics
+            poisoned.into_inner()
+        });
+        let temp_dir = TempDir::new().unwrap();
+        std::env::set_var("MERIDIAN_HOME", temp_dir.path());
+        (guard, temp_dir)
+    }
+
+    /// Test helper: Clean up environment after test
+    fn cleanup_test_env() {
+        std::env::remove_var("MERIDIAN_HOME");
+    }
 
     #[test]
     fn test_pid_file_operations() {
-        let _lock = TEST_MUTEX.lock().unwrap();
-        let temp_dir = TempDir::new().unwrap();
-
-        // Override PID file path for testing
-        std::env::set_var("MERIDIAN_HOME", temp_dir.path());
+        let (_guard, _temp_dir) = setup_test_env();
 
         // Test save and read
         save_global_pid(12345).unwrap();
         assert_eq!(read_global_pid(), Some(12345));
 
         // Clean up
-        let _ = fs::remove_file(get_global_pid_file());
-        std::env::remove_var("MERIDIAN_HOME");
+        cleanup_test_env();
     }
 
     #[test]
@@ -271,9 +284,7 @@ mod tests {
     // Comprehensive daemon tests
     #[test]
     fn test_pid_file_read_write_cycle() {
-        let _lock = TEST_MUTEX.lock().unwrap();
-        let temp_dir = TempDir::new().unwrap();
-        std::env::set_var("MERIDIAN_HOME", temp_dir.path());
+        let (_guard, _temp_dir) = setup_test_env();
 
         // Write PID
         let test_pid = 54321u32;
@@ -289,27 +300,23 @@ mod tests {
         assert_eq!(content, "54321");
 
         // Clean up
-        std::env::remove_var("MERIDIAN_HOME");
+        cleanup_test_env();
     }
 
     #[test]
     fn test_read_nonexistent_pid_file() {
-        let _lock = TEST_MUTEX.lock().unwrap();
-        let temp_dir = TempDir::new().unwrap();
-        std::env::set_var("MERIDIAN_HOME", temp_dir.path());
+        let (_guard, _temp_dir) = setup_test_env();
 
         let pid = read_global_pid();
         assert_eq!(pid, None);
 
         // Clean up
-        std::env::remove_var("MERIDIAN_HOME");
+        cleanup_test_env();
     }
 
     #[test]
     fn test_read_invalid_pid_file() {
-        let _lock = TEST_MUTEX.lock().unwrap();
-        let temp_dir = TempDir::new().unwrap();
-        std::env::set_var("MERIDIAN_HOME", temp_dir.path());
+        let (_guard, _temp_dir) = setup_test_env();
 
         // Write invalid content
         let pid_file = get_global_pid_file();
@@ -320,14 +327,12 @@ mod tests {
         assert_eq!(pid, None);
 
         // Clean up
-        std::env::remove_var("MERIDIAN_HOME");
+        cleanup_test_env();
     }
 
     #[test]
     fn test_pid_file_cleanup() {
-        let _lock = TEST_MUTEX.lock().unwrap();
-        let temp_dir = TempDir::new().unwrap();
-        std::env::set_var("MERIDIAN_HOME", temp_dir.path());
+        let (_guard, _temp_dir) = setup_test_env();
 
         save_global_pid(12345).unwrap();
         let pid_file = get_global_pid_file();
@@ -337,28 +342,24 @@ mod tests {
         assert!(!pid_file.exists());
 
         // Clean up
-        std::env::remove_var("MERIDIAN_HOME");
+        cleanup_test_env();
     }
 
     #[test]
     fn test_get_global_status_not_running() {
-        let _lock = TEST_MUTEX.lock().unwrap();
-        let temp_dir = TempDir::new().unwrap();
-        std::env::set_var("MERIDIAN_HOME", temp_dir.path());
+        let (_guard, _temp_dir) = setup_test_env();
 
         let status = get_global_status();
         assert!(!status.running);
         assert_eq!(status.pid, None);
 
         // Clean up
-        std::env::remove_var("MERIDIAN_HOME");
+        cleanup_test_env();
     }
 
     #[test]
     fn test_get_global_status_with_stale_pid() {
-        let _lock = TEST_MUTEX.lock().unwrap();
-        let temp_dir = TempDir::new().unwrap();
-        std::env::set_var("MERIDIAN_HOME", temp_dir.path());
+        let (_guard, _temp_dir) = setup_test_env();
 
         // Write a PID that definitely doesn't exist
         save_global_pid(999999).unwrap();
@@ -368,14 +369,12 @@ mod tests {
         assert_eq!(status.pid, Some(999999));
 
         // Clean up
-        std::env::remove_var("MERIDIAN_HOME");
+        cleanup_test_env();
     }
 
     #[test]
     fn test_get_global_status_with_running_process() {
-        let _lock = TEST_MUTEX.lock().unwrap();
-        let temp_dir = TempDir::new().unwrap();
-        std::env::set_var("MERIDIAN_HOME", temp_dir.path());
+        let (_guard, _temp_dir) = setup_test_env();
 
         // Use current process PID
         let current_pid = std::process::id();
@@ -386,25 +385,23 @@ mod tests {
         assert_eq!(status.pid, Some(current_pid));
 
         // Clean up
-        std::env::remove_var("MERIDIAN_HOME");
+        cleanup_test_env();
     }
 
     #[test]
     fn test_log_file_path() {
-        let _lock = TEST_MUTEX.lock().unwrap();
-        let temp_dir = TempDir::new().unwrap();
-        std::env::set_var("MERIDIAN_HOME", temp_dir.path());
+        let (_guard, _temp_dir) = setup_test_env();
 
         let log_file = get_global_log_file();
         assert!(log_file.to_str().unwrap().contains("global-server.log"));
 
         // Clean up
-        std::env::remove_var("MERIDIAN_HOME");
+        cleanup_test_env();
     }
 
     #[test]
     fn test_pid_file_directory_creation() {
-        let _lock = TEST_MUTEX.lock().unwrap();
+        let guard = ENV_MUTEX.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let temp_dir = TempDir::new().unwrap();
         let meridian_home = temp_dir.path().join("custom_home");
         std::env::set_var("MERIDIAN_HOME", &meridian_home);
@@ -412,18 +409,14 @@ mod tests {
         let pid_file = get_global_pid_file();
 
         // Parent directory should not exist initially
-        if pid_file.parent().unwrap().exists() {
-            // Clean up if it exists from previous test
-            let _ = fs::remove_dir_all(pid_file.parent().unwrap());
-        }
-
         assert!(!pid_file.parent().unwrap().exists());
 
         save_global_pid(12345).unwrap();
         assert!(pid_file.parent().unwrap().exists());
 
         // Clean up
-        std::env::remove_var("MERIDIAN_HOME");
+        cleanup_test_env();
+        drop(guard);
     }
 
     #[test]
@@ -449,23 +442,19 @@ mod tests {
 
     #[tokio::test]
     async fn test_stop_daemon_not_running() {
-        let _lock = TEST_MUTEX.lock().unwrap();
-        let temp_dir = TempDir::new().unwrap();
-        std::env::set_var("MERIDIAN_HOME", temp_dir.path());
+        let (_guard, _temp_dir) = setup_test_env();
 
         let result = stop_global_daemon(false);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("not running"));
 
         // Clean up
-        std::env::remove_var("MERIDIAN_HOME");
+        cleanup_test_env();
     }
 
     #[tokio::test]
     async fn test_stop_daemon_stale_pid() {
-        let _lock = TEST_MUTEX.lock().unwrap();
-        let temp_dir = TempDir::new().unwrap();
-        std::env::set_var("MERIDIAN_HOME", temp_dir.path());
+        let (_guard, _temp_dir) = setup_test_env();
 
         // Write stale PID
         save_global_pid(999999).unwrap();
@@ -477,7 +466,7 @@ mod tests {
         assert!(!get_global_pid_file().exists());
 
         // Clean up
-        std::env::remove_var("MERIDIAN_HOME");
+        cleanup_test_env();
     }
 
     #[test]

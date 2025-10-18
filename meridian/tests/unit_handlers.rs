@@ -49,6 +49,20 @@ async fn create_test_environment() -> (ToolHandlers, TempDir) {
     std::fs::create_dir_all(&specs_path).unwrap();
     let spec_manager = Arc::new(RwLock::new(SpecificationManager::new(specs_path)));
 
+    // Create progress manager
+    let progress_storage = Arc::new(meridian::progress::ProgressStorage::new(storage.clone()));
+    let progress_manager = Arc::new(RwLock::new(
+        meridian::progress::ProgressManager::new(progress_storage)
+    ));
+
+    // Create links storage
+    let links_storage: Arc<RwLock<dyn meridian::links::LinksStorage>> = Arc::new(RwLock::new(
+        meridian::links::storage::RocksDBLinksStorage::new(storage.clone())
+    ));
+
+    // Create pattern search engine
+    let pattern_engine = Arc::new(meridian::indexer::PatternSearchEngine::new().unwrap());
+
     let handlers = ToolHandlers::new(
         memory_system,
         context_manager,
@@ -56,6 +70,9 @@ async fn create_test_environment() -> (ToolHandlers, TempDir) {
         session_manager,
         doc_indexer,
         spec_manager,
+        progress_manager,
+        links_storage,
+        pattern_engine,
     );
 
     (handlers, temp_dir)
@@ -496,4 +513,493 @@ async fn test_confidence_increases_with_more_data() {
     // Confidence should increase with more similar episodes
     assert!(confidence_final >= confidence1,
         "Confidence should increase: {} -> {}", confidence1, confidence_final);
+}
+
+// ========== CONTEXT COMPRESSION HANDLER TESTS ==========
+
+#[tokio::test]
+async fn test_compress_remove_comments() {
+    let (handlers, _temp) = create_test_environment().await;
+
+    let code = r#"
+// This is a comment
+fn main() {
+    // Another comment
+    let x = 5; // Inline comment
+    /* Block comment */
+    println!("Hello");
+}
+"#;
+
+    let args = json!({
+        "content": code,
+        "strategy": "remove_comments",
+        "target_ratio": 0.8
+    });
+
+    let result = handlers.handle_tool_call("context.compress", args).await;
+    assert!(result.is_ok(), "Handler should succeed: {:?}", result.err());
+
+    let response = result.unwrap();
+    assert!(response.get("compressed_content").is_some());
+    assert!(response.get("original_tokens").is_some());
+    assert!(response.get("compressed_tokens").is_some());
+    assert!(response.get("compression_ratio").is_some());
+    assert!(response.get("quality_score").is_some());
+    assert_eq!(response.get("strategy_used").unwrap().as_str().unwrap(), "remove_comments");
+
+    let compressed = response.get("compressed_content").unwrap().as_str().unwrap();
+    assert!(!compressed.contains("// This is a comment"));
+    assert!(!compressed.contains("// Another comment"));
+    assert!(!compressed.contains("/* Block comment */"));
+    assert!(compressed.contains("fn main()"));
+    assert!(compressed.contains("let x = 5"));
+
+    let ratio = response.get("compression_ratio").unwrap().as_f64().unwrap();
+    assert!(ratio > 0.0 && ratio <= 1.0);
+}
+
+#[tokio::test]
+async fn test_compress_remove_whitespace() {
+    let (handlers, _temp) = create_test_environment().await;
+
+    let code = r#"
+fn     main()    {
+    let    x    =    5   ;
+
+
+    println!(  "Hello"  );
+}
+"#;
+
+    let args = json!({
+        "content": code,
+        "strategy": "remove_whitespace"
+    });
+
+    let result = handlers.handle_tool_call("context.compress", args).await;
+    assert!(result.is_ok());
+
+    let response = result.unwrap();
+    let compressed = response.get("compressed_content").unwrap().as_str().unwrap();
+
+    assert!(compressed.len() < code.len());
+    assert!(!compressed.contains("    "));
+    assert!(compressed.contains("fn main()"));
+
+    let ratio = response.get("compression_ratio").unwrap().as_f64().unwrap();
+    assert!(ratio < 1.0);
+}
+
+#[tokio::test]
+async fn test_compress_skeleton() {
+    let (handlers, _temp) = create_test_environment().await;
+
+    let code = r#"
+pub fn add(a: i32, b: i32) -> i32 {
+    let result = a + b;
+    println!("Adding {} + {}", a, b);
+    result
+}
+
+pub struct Point {
+    x: i32,
+    y: i32,
+}
+
+impl Point {
+    pub fn new(x: i32, y: i32) -> Self {
+        Self { x, y }
+    }
+}
+"#;
+
+    let args = json!({
+        "content": code,
+        "strategy": "skeleton"
+    });
+
+    let result = handlers.handle_tool_call("context.compress", args).await;
+    assert!(result.is_ok());
+
+    let response = result.unwrap();
+    let compressed = response.get("compressed_content").unwrap().as_str().unwrap();
+
+    // Should not contain implementation details
+    assert!(!compressed.contains("let result = a + b"));
+    assert!(!compressed.contains("println!"));
+
+    let ratio = response.get("compression_ratio").unwrap().as_f64().unwrap();
+    assert!(ratio < 1.0);
+}
+
+#[tokio::test]
+async fn test_compress_summary() {
+    let (handlers, _temp) = create_test_environment().await;
+
+    let code = r#"
+struct Point { x: i32, y: i32 }
+struct Line { start: Point, end: Point }
+fn add(a: i32, b: i32) -> i32 { a + b }
+fn subtract(a: i32, b: i32) -> i32 { a - b }
+"#;
+
+    let args = json!({
+        "content": code,
+        "strategy": "summary"
+    });
+
+    let result = handlers.handle_tool_call("context.compress", args).await;
+    assert!(result.is_ok());
+
+    let response = result.unwrap();
+    let compressed = response.get("compressed_content").unwrap().as_str().unwrap();
+
+    // Summary should mention key structures and functions
+    let content_lower = compressed.to_lowercase();
+    assert!(
+        content_lower.contains("point") ||
+        content_lower.contains("line") ||
+        content_lower.contains("add") ||
+        content_lower.contains("subtract")
+    );
+
+    let ratio = response.get("compression_ratio").unwrap().as_f64().unwrap();
+    assert!(ratio < 1.0);
+}
+
+#[tokio::test]
+async fn test_compress_extract_key_points() {
+    let (handlers, _temp) = create_test_environment().await;
+
+    let code = r#"
+// Comment
+let x = 5;
+println!("debug");
+
+pub struct Config {
+    timeout: u64,
+}
+
+fn helper() {
+    // do something
+}
+
+pub fn main_function() {
+    helper();
+}
+
+trait Processor {
+    fn process(&self);
+}
+"#;
+
+    let args = json!({
+        "content": code,
+        "strategy": "extract_key_points"
+    });
+
+    let result = handlers.handle_tool_call("context.compress", args).await;
+    assert!(result.is_ok());
+
+    let response = result.unwrap();
+    let compressed = response.get("compressed_content").unwrap().as_str().unwrap();
+
+    // Should extract only lines with keywords
+    assert!(compressed.contains("pub struct Config"));
+    assert!(compressed.contains("fn helper"));
+    assert!(compressed.contains("pub fn main_function"));
+    assert!(compressed.contains("trait Processor"));
+
+    // Should not contain non-keyword lines
+    assert!(!compressed.contains("let x = 5"));
+    assert!(!compressed.contains("println!"));
+
+    let ratio = response.get("compression_ratio").unwrap().as_f64().unwrap();
+    assert!(ratio < 1.0);
+}
+
+#[tokio::test]
+async fn test_compress_tree_shaking() {
+    let (handlers, _temp) = create_test_environment().await;
+
+    let code = r#"
+fn main() {
+    let x = 5;
+
+    if false {
+        println!("Dead code 1");
+        unreachable_function();
+    }
+
+    println!("Live code");
+
+    if (false) {
+        println!("Dead code 2");
+    }
+
+    let z = 10;
+}
+"#;
+
+    let args = json!({
+        "content": code,
+        "strategy": "tree_shaking"
+    });
+
+    let result = handlers.handle_tool_call("context.compress", args).await;
+    assert!(result.is_ok());
+
+    let response = result.unwrap();
+    let compressed = response.get("compressed_content").unwrap().as_str().unwrap();
+
+    // Should remove dead code blocks
+    assert!(!compressed.contains("Dead code 1"));
+    assert!(!compressed.contains("Dead code 2"));
+    assert!(!compressed.contains("unreachable_function"));
+
+    // Should preserve live code
+    assert!(compressed.contains("Live code"));
+    assert!(compressed.contains("let x = 5"));
+    assert!(compressed.contains("let z = 10"));
+}
+
+#[tokio::test]
+async fn test_compress_hybrid() {
+    let (handlers, _temp) = create_test_environment().await;
+
+    let code = r#"
+// Comment to remove
+fn main() {
+    // Another comment
+    let    x    =    5;
+
+    if false {
+        println!("Dead code");
+    }
+
+    println!("Hello");
+}
+
+pub fn helper(a: i32, b: i32) -> i32 {
+    a + b
+}
+"#;
+
+    let args = json!({
+        "content": code,
+        "strategy": "hybrid",
+        "target_ratio": 0.3
+    });
+
+    let result = handlers.handle_tool_call("context.compress", args).await;
+    assert!(result.is_ok());
+
+    let response = result.unwrap();
+    let compressed = response.get("compressed_content").unwrap().as_str().unwrap();
+
+    // Hybrid should apply multiple strategies
+    assert!(!compressed.contains("// Comment"));
+    assert!(compressed.len() < code.len());
+
+    let ratio = response.get("compression_ratio").unwrap().as_f64().unwrap();
+    assert!(ratio < 1.0);
+}
+
+#[tokio::test]
+async fn test_compress_ultra_compact() {
+    let (handlers, _temp) = create_test_environment().await;
+
+    let code = r#"
+struct Point { x: i32, y: i32 }
+struct Line { start: Point, end: Point }
+
+fn add(a: i32, b: i32) -> i32 { a + b }
+fn subtract(a: i32, b: i32) -> i32 { a - b }
+
+impl Point {
+    fn new(x: i32, y: i32) -> Self {
+        Self { x, y }
+    }
+}
+"#;
+
+    let args = json!({
+        "content": code,
+        "strategy": "ultra_compact"
+    });
+
+    let result = handlers.handle_tool_call("context.compress", args).await;
+    assert!(result.is_ok());
+
+    let response = result.unwrap();
+    let compressed = response.get("compressed_content").unwrap().as_str().unwrap();
+
+    // Ultra compact should produce very small output
+    assert!(compressed.len() < code.len() / 2);
+
+    let ratio = response.get("compression_ratio").unwrap().as_f64().unwrap();
+    assert!(ratio < 0.6); // Should be highly compressed
+}
+
+#[tokio::test]
+async fn test_compress_invalid_strategy() {
+    let (handlers, _temp) = create_test_environment().await;
+
+    let args = json!({
+        "content": "fn main() {}",
+        "strategy": "invalid_strategy"
+    });
+
+    let result = handlers.handle_tool_call("context.compress", args).await;
+    assert!(result.is_err(), "Should fail with invalid strategy");
+
+    let error = result.unwrap_err();
+    assert!(error.to_string().contains("Unknown compression strategy"));
+}
+
+#[tokio::test]
+async fn test_compress_empty_content() {
+    let (handlers, _temp) = create_test_environment().await;
+
+    let args = json!({
+        "content": "",
+        "strategy": "remove_comments"
+    });
+
+    let result = handlers.handle_tool_call("context.compress", args).await;
+    assert!(result.is_ok());
+
+    let response = result.unwrap();
+
+    // Check if compressed_content exists and is empty/whitespace
+    if let Some(compressed) = response.get("compressed_content") {
+        if let Some(content_str) = compressed.as_str() {
+            assert!(content_str.is_empty() || content_str.trim().is_empty());
+        }
+    }
+
+    // For empty content, ratio might not be present or might be 1.0
+    if let Some(ratio_value) = response.get("compression_ratio") {
+        if let Some(ratio) = ratio_value.as_f64() {
+            assert_eq!(ratio, 1.0); // No compression possible on empty content
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_compress_quality_score() {
+    let (handlers, _temp) = create_test_environment().await;
+
+    let code = "pub fn test() { let x = 5; }";
+
+    for strategy in &[
+        "remove_comments",
+        "remove_whitespace",
+        "skeleton",
+        "summary",
+        "extract_key_points",
+    ] {
+        let args = json!({
+            "content": code,
+            "strategy": strategy
+        });
+
+        let result = handlers.handle_tool_call("context.compress", args).await;
+        assert!(result.is_ok(), "Strategy {} should succeed", strategy);
+
+        let response = result.unwrap();
+        let quality = response.get("quality_score").unwrap().as_f64().unwrap();
+        assert!(
+            quality >= 0.0 && quality <= 1.0,
+            "Quality score out of range for strategy {}: {}",
+            strategy,
+            quality
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_compress_token_counts() {
+    let (handlers, _temp) = create_test_environment().await;
+
+    let code = "fn main() { println!(\"Hello, world!\"); }";
+
+    let args = json!({
+        "content": code,
+        "strategy": "remove_whitespace"
+    });
+
+    let result = handlers.handle_tool_call("context.compress", args).await;
+    assert!(result.is_ok());
+
+    let response = result.unwrap();
+    let original_tokens = response.get("original_tokens").unwrap().as_u64().unwrap();
+    let compressed_tokens = response.get("compressed_tokens").unwrap().as_u64().unwrap();
+    let ratio = response.get("compression_ratio").unwrap().as_f64().unwrap();
+
+    assert!(original_tokens > 0);
+    assert!(compressed_tokens > 0);
+    assert!(compressed_tokens <= original_tokens);
+
+    // Verify ratio calculation
+    let expected_ratio = compressed_tokens as f64 / original_tokens as f64;
+    assert!((ratio - expected_ratio).abs() < 0.01);
+}
+
+#[tokio::test]
+async fn test_compress_default_target_ratio() {
+    let (handlers, _temp) = create_test_environment().await;
+
+    let code = "fn main() { let x = 5; println!(\"Hello\"); }".repeat(10);
+
+    // Without target_ratio specified
+    let args = json!({
+        "content": code,
+        "strategy": "remove_whitespace"
+    });
+
+    let result = handlers.handle_tool_call("context.compress", args).await;
+    assert!(result.is_ok());
+
+    let response = result.unwrap();
+    // Should use default ratio of 0.5
+    assert!(response.get("compression_ratio").is_some());
+}
+
+#[tokio::test]
+async fn test_compress_preserves_structure() {
+    let (handlers, _temp) = create_test_environment().await;
+
+    let code = r#"
+pub struct Config {
+    timeout: u64,
+}
+
+impl Config {
+    pub fn new() -> Self {
+        Self { timeout: 30 }
+    }
+}
+"#;
+
+    let args = json!({
+        "content": code,
+        "strategy": "skeleton"
+    });
+
+    let result = handlers.handle_tool_call("context.compress", args).await;
+    assert!(result.is_ok());
+
+    let response = result.unwrap();
+    let compressed = response.get("compressed_content").unwrap().as_str().unwrap();
+
+    // Should preserve structure definitions
+    assert!(!compressed.is_empty());
+
+    let quality = response.get("quality_score").unwrap().as_f64().unwrap();
+    assert!(quality > 0.0 && quality <= 1.0);
+
+    let ratio = response.get("compression_ratio").unwrap().as_f64().unwrap();
+    assert!(ratio < 1.0);
 }

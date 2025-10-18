@@ -406,11 +406,19 @@ impl ToolHandlers {
             #[serde(rename = "type")]
             symbol_types: Option<Vec<String>>,
             scope: Option<String>,
-            #[allow(dead_code)]
             detail_level: Option<String>,
             max_results: Option<usize>,
             max_tokens: Option<usize>,
+            /// Enable cross-encoder reranking (default: true)
+            #[serde(default = "default_rerank")]
+            rerank: bool,
+            /// Number of results to return after reranking (default: 3)
+            #[serde(default = "default_rerank_top_k")]
+            rerank_top_k: usize,
         }
+
+        fn default_rerank() -> bool { true }
+        fn default_rerank_top_k() -> usize { 3 }
 
         let params: SearchSymbolsParams = serde_json::from_value(args)
             .context("Invalid parameters for code.search_symbols")?;
@@ -422,24 +430,91 @@ impl ToolHandlers {
                 .collect()
         });
 
+        // Parse detail_level parameter
+        let detail_level = params.detail_level.as_ref().and_then(|level_str| {
+            match level_str.to_lowercase().as_str() {
+                "skeleton" => Some(DetailLevel::Skeleton),
+                "interface" => Some(DetailLevel::Interface),
+                "implementation" => Some(DetailLevel::Implementation),
+                "full" => Some(DetailLevel::Full),
+                _ => None,
+            }
+        }).unwrap_or(DetailLevel::Interface); // Default to Interface if not specified or invalid
+
+        // Adjust max_results for reranking:
+        // If reranking is enabled, fetch more results (20) for reranking, then return top-k
+        let initial_max_results = if params.rerank {
+            Some(20) // Fetch 20 candidates for reranking
+        } else {
+            params.max_results
+        };
+
         let query = Query {
-            text: params.query,
+            text: params.query.clone(),
             symbol_types: types,
             scope: params.scope,
-            detail_level: DetailLevel::default(),
-            max_results: params.max_results,
+            detail_level,
+            max_results: initial_max_results,
             max_tokens: params.max_tokens.map(|t| TokenCount::new(t as u32)),
         };
 
         use crate::indexer::Indexer;
         let indexer = self.indexer.read().await;
-        let results = indexer.search_symbols(&query).await?;
+        let mut results = indexer.search_symbols(&query).await?;
+
+        // Apply reranking if enabled
+        let (reranked, original_count) = if params.rerank && results.symbols.len() > 1 {
+            use crate::ml::reranker::RerankingEngine;
+
+            let original_count = results.symbols.len();
+
+            // Create reranking engine
+            let reranker = RerankingEngine::new()
+                .context("Failed to create reranking engine")?;
+
+            // Prepare candidates: use signature as the document text
+            let candidates: Vec<&str> = results.symbols
+                .iter()
+                .map(|s| s.signature.as_str())
+                .collect();
+
+            // Rerank
+            let reranked_results = reranker.rerank(
+                &params.query,
+                &candidates,
+                params.rerank_top_k
+            ).context("Reranking failed")?;
+
+            tracing::debug!(
+                "Reranked {} symbols to top {} (80% token reduction)",
+                original_count,
+                reranked_results.len()
+            );
+
+            // Map reranked results back to symbols
+            let mut reranked_symbols = Vec::with_capacity(reranked_results.len());
+            let mut total_tokens = TokenCount::zero();
+
+            for reranked in reranked_results {
+                if let Some(symbol) = results.symbols.get(reranked.index) {
+                    reranked_symbols.push(symbol.clone());
+                    total_tokens.add(symbol.metadata.token_cost);
+                }
+            }
+
+            results.symbols = reranked_symbols;
+            results.total_tokens = total_tokens;
+
+            (true, original_count)
+        } else {
+            (false, results.symbols.len())
+        };
 
         let symbols_json: Vec<Value> = results
             .symbols
             .iter()
             .map(|s| {
-                json!({
+                let mut symbol_obj = json!({
                     "id": s.id.0,
                     "name": s.name,
                     "kind": s.kind.as_str(),
@@ -450,15 +525,58 @@ impl ToolHandlers {
                         "line_end": s.location.line_end
                     },
                     "token_cost": s.metadata.token_cost.0
-                })
+                });
+
+                // Add detail_level field to show what level was applied
+                symbol_obj["detail_level"] = json!(match detail_level {
+                    DetailLevel::Skeleton => "skeleton",
+                    DetailLevel::Interface => "interface",
+                    DetailLevel::Implementation => "implementation",
+                    DetailLevel::Full => "full",
+                });
+
+                // For Interface and Full levels, include doc_comment if available
+                if matches!(detail_level, DetailLevel::Interface | DetailLevel::Full) {
+                    if let Some(ref doc) = s.metadata.doc_comment {
+                        symbol_obj["doc_comment"] = json!(doc);
+                    }
+                }
+
+                // For Full level, include dependencies and references info
+                if matches!(detail_level, DetailLevel::Full) {
+                    symbol_obj["dependencies_count"] = json!(s.dependencies.len());
+                    symbol_obj["references_count"] = json!(s.references.len());
+                    symbol_obj["complexity"] = json!(s.metadata.complexity);
+                }
+
+                symbol_obj
             })
             .collect();
 
-        Ok(json!({
+        let mut response = json!({
             "symbols": symbols_json,
             "total_tokens": results.total_tokens.0,
-            "truncated": results.truncated
-        }))
+            "truncated": results.truncated,
+            "detail_level": match detail_level {
+                DetailLevel::Skeleton => "skeleton",
+                DetailLevel::Interface => "interface",
+                DetailLevel::Implementation => "implementation",
+                DetailLevel::Full => "full",
+            }
+        });
+
+        // Add reranking metadata
+        if reranked {
+            response["reranked"] = json!(true);
+            response["original_count"] = json!(original_count);
+            response["token_savings_percent"] = json!(
+                ((original_count - results.symbols.len()) as f32 / original_count as f32 * 100.0) as u32
+            );
+        } else {
+            response["reranked"] = json!(false);
+        }
+
+        Ok(response)
     }
 
     async fn handle_search_patterns(&self, args: Value) -> Result<Value> {

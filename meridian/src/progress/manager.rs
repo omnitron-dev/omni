@@ -133,6 +133,18 @@ impl ProgressManager {
         Ok(())
     }
 
+    /// Find tasks by commit hash
+    pub async fn find_tasks_by_commit(&self, commit_hash: &str) -> Result<Vec<Task>> {
+        let all_tasks = self.storage.list_all().await?;
+        let matching_tasks: Vec<Task> = all_tasks
+            .into_iter()
+            .filter(|t| t.commit_hash.as_deref() == Some(commit_hash))
+            .collect();
+
+        tracing::info!("Found {} tasks for commit {}", matching_tasks.len(), commit_hash);
+        Ok(matching_tasks)
+    }
+
     /// Delete a task
     pub async fn delete_task(&self, task_id: &TaskId) -> Result<()> {
         // Remove from storage
@@ -759,5 +771,34 @@ mod tests {
         let similar = mem.episodic.find_similar("feature X", 5).await;
         assert_eq!(similar.len(), 1);
         assert_eq!(similar[0].id.0, episode_id.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_find_tasks_by_commit() {
+        let (manager, _temp_dir) = create_test_manager().await;
+
+        // Create multiple tasks with different commits
+        let id1 = manager.create_task("Task 1".to_string(), None, None, None, vec![], None).await.unwrap();
+        let id2 = manager.create_task("Task 2".to_string(), None, None, None, vec![], None).await.unwrap();
+        let id3 = manager.create_task("Task 3".to_string(), None, None, None, vec![], None).await.unwrap();
+
+        // Mark tasks as done with commit hashes
+        manager.update_task(&id1, None, None, None, Some(TaskStatus::Done), None, None, None, None, Some("abc123".to_string())).await.unwrap();
+        manager.update_task(&id2, None, None, None, Some(TaskStatus::Done), None, None, None, None, Some("abc123".to_string())).await.unwrap();
+        manager.update_task(&id3, None, None, None, Some(TaskStatus::Done), None, None, None, None, Some("def456".to_string())).await.unwrap();
+
+        // Find tasks by commit hash
+        let tasks_abc = manager.find_tasks_by_commit("abc123").await.unwrap();
+        assert_eq!(tasks_abc.len(), 2);
+        assert!(tasks_abc.iter().any(|t| t.id == id1));
+        assert!(tasks_abc.iter().any(|t| t.id == id2));
+
+        let tasks_def = manager.find_tasks_by_commit("def456").await.unwrap();
+        assert_eq!(tasks_def.len(), 1);
+        assert_eq!(tasks_def[0].id, id3);
+
+        // Query non-existent commit
+        let tasks_none = manager.find_tasks_by_commit("xyz789").await.unwrap();
+        assert_eq!(tasks_none.len(), 0);
     }
 }

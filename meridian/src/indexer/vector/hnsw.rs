@@ -40,9 +40,9 @@ impl Default for HnswConfig {
 }
 
 /// HNSW-based vector index for fast approximate nearest neighbor search
-pub struct HnswIndex {
+pub struct HnswIndex<'a> {
     /// The HNSW graph structure
-    index: Arc<RwLock<Hnsw<'static, f32, DistCosine>>>,
+    index: Arc<RwLock<Hnsw<'a, f32, DistCosine>>>,
     /// Mapping from HNSW internal ID to external ID (symbol/episode ID)
     id_map: Arc<RwLock<HashMap<usize, String>>>,
     /// Reverse mapping from external ID to HNSW internal ID
@@ -55,7 +55,7 @@ pub struct HnswIndex {
     dim: usize,
 }
 
-impl HnswIndex {
+impl<'a> HnswIndex<'a> {
     /// Create a new HNSW index with default configuration
     pub fn new(dim: usize, max_elements: usize) -> Self {
         let config = HnswConfig {
@@ -67,7 +67,7 @@ impl HnswIndex {
 
     /// Create a new HNSW index with custom configuration
     pub fn with_config(dim: usize, config: HnswConfig) -> Self {
-        let hnsw = Hnsw::<'static, f32, DistCosine>::new(
+        let hnsw = Hnsw::<'a, f32, DistCosine>::new(
             config.max_connections,
             config.max_elements,
             config.ef_construction,
@@ -101,7 +101,7 @@ impl HnswIndex {
     }
 }
 
-impl VectorIndex for HnswIndex {
+impl<'a> VectorIndex for HnswIndex<'a> {
     fn add_vector(&mut self, id: &str, vector: &[f32]) -> Result<()> {
         if vector.len() != self.dim {
             anyhow::bail!(
@@ -257,7 +257,7 @@ impl VectorIndex for HnswIndex {
         // Create a new HNSW index with the saved configuration
         // Note: hnsw_rs 0.3.2 doesn't support direct file loading
         // We need to recreate the index structure
-        let index = Hnsw::<'static, f32, DistCosine>::new(
+        let index = Hnsw::<'a, f32, DistCosine>::new(
             metadata.config.max_connections,
             metadata.config.max_elements,
             metadata.config.ef_construction,

@@ -3,7 +3,14 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 /// Get the Meridian home directory (~/.meridian)
+/// Can be overridden with MERIDIAN_HOME environment variable
 pub fn get_meridian_home() -> PathBuf {
+    // First check for explicit MERIDIAN_HOME override (useful for testing)
+    if let Ok(meridian_home) = std::env::var("MERIDIAN_HOME") {
+        return PathBuf::from(meridian_home);
+    }
+
+    // Otherwise use default: $HOME/.meridian or $USERPROFILE/.meridian
     let home = std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
         .unwrap_or_else(|_| ".".to_string());

@@ -4,11 +4,12 @@
 
 **A production-ready MCP server providing cognitive memory capabilities for LLMs working with codebases**
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
+[![CI](https://github.com/omnitron-dev/meridian/actions/workflows/ci.yml/badge.svg)](https://github.com/omnitron-dev/meridian/actions/workflows/ci.yml)
+[![Security](https://github.com/omnitron-dev/meridian/actions/workflows/security.yml/badge.svg)](https://github.com/omnitron-dev/meridian/actions/workflows/security.yml)
+[![codecov](https://codecov.io/gh/omnitron-dev/meridian/branch/main/graph/badge.svg)](https://codecov.io/gh/omnitron-dev/meridian)
 [![Tests](https://img.shields.io/badge/tests-330%2B%20passing-brightgreen)]()
-[![Coverage](https://img.shields.io/badge/implementation-100%25-brightgreen)]()
-[![MCP Tools](https://img.shields.io/badge/MCP%20tools-30-blue)]()
-[![License](https://img.shields.io/badge/license-MIT-blue)]()
+[![MCP Tools](https://img.shields.io/badge/MCP%20tools-72%2B-blue)]()
+[![License](https://img.shields.io/badge/license-MIT-blue)](https://github.com/omnitron-dev/meridian/blob/main/LICENSE)
 
 [Quick Start](#-quick-start) • [Features](#-features) • [Documentation](#-documentation)
 

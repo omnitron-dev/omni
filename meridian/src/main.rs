@@ -6,6 +6,39 @@ use tracing::info;
 use meridian::{MeridianServer, Config};
 use meridian::global::{GlobalServer, GlobalServerConfig};
 
+// Helper functions for status command
+fn calculate_dir_size(path: &std::path::Path) -> std::io::Result<u64> {
+    let mut total = 0;
+    if path.is_dir() {
+        for entry in std::fs::read_dir(path)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                total += calculate_dir_size(&path)?;
+            } else {
+                total += entry.metadata()?.len();
+            }
+        }
+    }
+    Ok(total)
+}
+
+fn format_size(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+    const GB: u64 = MB * 1024;
+
+    if bytes >= GB {
+        format!("{:.2} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.2} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.2} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{} bytes", bytes)
+    }
+}
+
 #[derive(Parser)]
 #[command(name = "meridian")]
 #[command(about = "Cognitive memory system for LLM codebase interaction", long_about = None)]
@@ -247,8 +280,91 @@ async fn handle_server_command(command: ServerCommands) -> Result<()> {
             println!("Global server stop requested");
         }
         ServerCommands::Status => {
-            // TODO: Connect to running server and get status
-            println!("Global server status check not yet implemented");
+            use meridian::config::get_meridian_home;
+            use std::fs;
+
+            println!("Meridian Global Server Status");
+            println!("============================");
+            println!();
+
+            // Check data directory
+            let data_dir = get_meridian_home().join("data");
+            let data_exists = data_dir.exists();
+
+            println!("Data Directory: {}", data_dir.display());
+            println!("  Status: {}", if data_exists { "✓ Exists" } else { "✗ Not initialized" });
+
+            if data_exists {
+                if let Ok(metadata) = fs::metadata(&data_dir) {
+                    println!("  Created: {:?}", metadata.created().ok());
+                    println!("  Modified: {:?}", metadata.modified().ok());
+                }
+            }
+            println!();
+
+            // Check cache directory
+            let cache_dir = get_meridian_home().join("cache");
+            println!("Cache Directory: {}", cache_dir.display());
+            println!("  Status: {}", if cache_dir.exists() { "✓ Exists" } else { "✗ Not initialized" });
+            if cache_dir.exists() {
+                // Calculate cache size
+                if let Ok(size) = calculate_dir_size(&cache_dir) {
+                    println!("  Size: {}", format_size(size));
+                }
+            }
+            println!();
+
+            // Check database directory
+            let db_dir = get_meridian_home().join("db");
+            println!("Database Directory: {}", db_dir.display());
+            println!("  Status: {}", if db_dir.exists() { "✓ Exists" } else { "✗ Not initialized" });
+            if db_dir.exists() {
+                // Count databases
+                if let Ok(entries) = fs::read_dir(&db_dir) {
+                    let count = entries.filter_map(|e| e.ok()).count();
+                    println!("  Databases: {}", count);
+                }
+                // Calculate DB size
+                if let Ok(size) = calculate_dir_size(&db_dir) {
+                    println!("  Size: {}", format_size(size));
+                }
+            }
+            println!();
+
+            // Check for registered projects
+            if data_exists {
+                use meridian::global::{GlobalStorage, ProjectRegistryManager};
+                use std::sync::Arc;
+
+                if let Ok(storage) = GlobalStorage::new(&data_dir).await {
+                    let storage = Arc::new(storage);
+                    let manager = Arc::new(ProjectRegistryManager::new(storage));
+
+                    if let Ok(projects) = manager.list_all().await {
+                        println!("Registered Projects: {}", projects.len());
+                        for project in projects.iter().take(5) {
+                            println!("  • {} ({:?})", project.identity.id, project.identity.project_type);
+                        }
+                        if projects.len() > 5 {
+                            println!("  ... and {} more", projects.len() - 5);
+                        }
+                    } else {
+                        println!("Registered Projects: Unable to read registry");
+                    }
+                } else {
+                    println!("Registered Projects: Unable to access storage");
+                }
+            }
+            println!();
+
+            // Summary
+            if !data_exists {
+                println!("⚠ Global server not initialized.");
+                println!("Run 'meridian server start' to initialize and start the server.");
+            } else {
+                println!("✓ Global server infrastructure is present.");
+                println!("Note: Daemon status checking not yet implemented.");
+            }
         }
     }
     Ok(())

@@ -506,4 +506,188 @@ mod integration_tests {
             assert_eq!(task.title, "Persistent task");
         }
     }
+
+    #[tokio::test]
+    async fn test_performance_create_1000_tasks() {
+        let (manager, _temp_dir) = create_test_setup().await;
+
+        let start = std::time::Instant::now();
+
+        // Create 1000 tasks
+        for i in 0..1000 {
+            manager
+                .create_task(
+                    format!("Task {}", i),
+                    Some(format!("Description for task {}", i)),
+                    Some(Priority::Medium),
+                    None,
+                    vec![format!("tag{}", i % 10)],
+                    None,
+                )
+                .await
+                .unwrap();
+        }
+
+        let duration = start.elapsed();
+        println!("Created 1000 tasks in {:?}", duration);
+
+        // Should complete in reasonable time (< 5 seconds)
+        assert!(duration.as_secs() < 5);
+
+        // Verify all created
+        let all_tasks = manager.list_tasks(None, None, None).await.unwrap();
+        assert_eq!(all_tasks.len(), 1000);
+    }
+
+    #[tokio::test]
+    async fn test_performance_list_100_tasks() {
+        let (manager, _temp_dir) = create_test_setup().await;
+
+        // Create 1000 tasks with different statuses
+        for i in 0..1000 {
+            let task_id = manager
+                .create_task(format!("Task {}", i), None, None, None, vec![], None)
+                .await
+                .unwrap();
+
+            // Mark some as in-progress
+            if i % 5 == 0 {
+                manager
+                    .update_task(
+                        &task_id,
+                        None,
+                        None,
+                        None,
+                        Some(TaskStatus::InProgress),
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                    )
+                    .await
+                    .unwrap();
+            }
+        }
+
+        let start = std::time::Instant::now();
+
+        // List 100 tasks
+        let tasks = manager.list_tasks(None, None, Some(100)).await.unwrap();
+
+        let duration = start.elapsed();
+        println!("Listed 100 tasks (from 1000) in {:?}", duration);
+
+        // Should complete very fast (< 100ms)
+        assert!(duration.as_millis() < 100);
+        assert_eq!(tasks.len(), 100);
+    }
+
+    #[tokio::test]
+    async fn test_performance_get_task_cached() {
+        let (manager, _temp_dir) = create_test_setup().await;
+
+        let task_id = manager
+            .create_task("Test task".to_string(), None, None, None, vec![], None)
+            .await
+            .unwrap();
+
+        // First get (from storage)
+        let _ = manager.get_task(&task_id).await.unwrap();
+
+        // Subsequent gets (from cache)
+        let start = std::time::Instant::now();
+        for _ in 0..100 {
+            let _ = manager.get_task(&task_id).await.unwrap();
+        }
+        let duration = start.elapsed();
+
+        println!("100 cached gets in {:?}", duration);
+
+        // Should be very fast with cache (< 10ms)
+        assert!(duration.as_millis() < 10);
+    }
+
+    #[tokio::test]
+    async fn test_performance_progress_calculation() {
+        let (manager, _temp_dir) = create_test_setup().await;
+
+        // Create 1000 tasks with various specs and statuses
+        for i in 0..1000 {
+            let spec_ref = if i % 2 == 0 {
+                Some(SpecReference {
+                    spec_name: format!("spec{}", i % 5),
+                    section: "Phase 1".to_string(),
+                })
+            } else {
+                None
+            };
+
+            let task_id = manager
+                .create_task(format!("Task {}", i), None, None, spec_ref, vec![], None)
+                .await
+                .unwrap();
+
+            // Mark some as done
+            if i % 3 == 0 {
+                manager
+                    .update_task(
+                        &task_id,
+                        None,
+                        None,
+                        None,
+                        Some(TaskStatus::Done),
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                    )
+                    .await
+                    .unwrap();
+            }
+        }
+
+        let start = std::time::Instant::now();
+        let stats = manager.get_progress(None).await.unwrap();
+        let duration = start.elapsed();
+
+        println!("Progress calculation for 1000 tasks in {:?}", duration);
+
+        // Should complete in reasonable time (< 200ms)
+        assert!(duration.as_millis() < 200);
+        assert_eq!(stats.total_tasks, 1000);
+        assert!(stats.by_spec.len() > 0);
+        assert!(stats.by_priority.len() > 0);
+    }
+
+    #[tokio::test]
+    async fn test_performance_search_in_large_dataset() {
+        let (manager, _temp_dir) = create_test_setup().await;
+
+        // Create 1000 tasks with various titles
+        for i in 0..1000 {
+            manager
+                .create_task(
+                    format!("Task {} - {}", i, if i % 10 == 0 { "special" } else { "normal" }),
+                    Some(format!("Description for task {}", i)),
+                    None,
+                    None,
+                    vec![],
+                    None,
+                )
+                .await
+                .unwrap();
+        }
+
+        let start = std::time::Instant::now();
+        let results = manager.search_tasks("special", None).await.unwrap();
+        let duration = start.elapsed();
+
+        println!("Searched 1000 tasks for 'special' in {:?}", duration);
+
+        // Should complete in reasonable time (< 100ms)
+        assert!(duration.as_millis() < 100);
+        assert_eq!(results.len(), 100); // Should find 100 "special" tasks
+    }
 }

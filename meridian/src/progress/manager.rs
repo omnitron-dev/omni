@@ -173,6 +173,9 @@ impl ProgressManager {
 
     /// Get progress statistics
     pub async fn get_progress(&self, spec_name: Option<String>) -> Result<ProgressStats> {
+        use std::collections::HashMap;
+        use super::types::{SpecProgress, PriorityProgress};
+
         let tasks = if let Some(spec) = spec_name {
             self.storage.list_by_spec(&spec).await?
         } else {
@@ -192,6 +195,54 @@ impl ProgressManager {
             0.0
         };
 
+        // Group by spec
+        let mut spec_map: HashMap<String, (usize, usize)> = HashMap::new();
+        for task in &tasks {
+            if let Some(ref spec_ref) = task.spec_ref {
+                let entry = spec_map.entry(spec_ref.spec_name.clone()).or_insert((0, 0));
+                entry.0 += 1; // total
+                if task.status == TaskStatus::Done {
+                    entry.1 += 1; // done
+                }
+            }
+        }
+
+        let by_spec: Vec<SpecProgress> = spec_map
+            .into_iter()
+            .map(|(spec_name, (total, done))| {
+                let percentage = if total > 0 {
+                    (done as f32 / total as f32) * 100.0
+                } else {
+                    0.0
+                };
+                SpecProgress {
+                    spec_name,
+                    total,
+                    done,
+                    percentage,
+                }
+            })
+            .collect();
+
+        // Group by priority
+        let mut priority_map: HashMap<Priority, (usize, usize)> = HashMap::new();
+        for task in &tasks {
+            let entry = priority_map.entry(task.priority).or_insert((0, 0));
+            entry.0 += 1; // total
+            if task.status == TaskStatus::Done {
+                entry.1 += 1; // done
+            }
+        }
+
+        let by_priority: Vec<PriorityProgress> = priority_map
+            .into_iter()
+            .map(|(priority, (total, done))| PriorityProgress {
+                priority,
+                total,
+                done,
+            })
+            .collect();
+
         Ok(ProgressStats {
             total_tasks: total,
             pending,
@@ -200,8 +251,8 @@ impl ProgressManager {
             done,
             cancelled,
             completion_percentage,
-            by_spec: Vec::new(), // TODO: Implement in Phase 3
-            by_priority: Vec::new(), // TODO: Implement in Phase 3
+            by_spec,
+            by_priority,
         })
     }
 
@@ -483,6 +534,86 @@ mod tests {
         assert_eq!(stats.done, 2);
         assert_eq!(stats.pending, 3);
         assert_eq!(stats.completion_percentage, 40.0);
+    }
+
+    #[tokio::test]
+    async fn test_get_progress_with_spec_grouping() {
+        use crate::progress::SpecReference;
+
+        let (manager, _temp_dir) = create_test_manager().await;
+
+        // Create tasks for different specs
+        let spec1_ref = Some(SpecReference {
+            spec_name: "spec1".to_string(),
+            section: "Phase 1".to_string(),
+        });
+        let spec2_ref = Some(SpecReference {
+            spec_name: "spec2".to_string(),
+            section: "Phase 1".to_string(),
+        });
+
+        // Spec1: 3 tasks (2 done)
+        for i in 0..3 {
+            let id = manager.create_task(format!("Spec1 Task {}", i), None, None, spec1_ref.clone(), vec![], None).await.unwrap();
+            if i < 2 {
+                manager.update_task(&id, None, None, None, Some(TaskStatus::Done), None, None, None, None, None).await.unwrap();
+            }
+        }
+
+        // Spec2: 2 tasks (1 done)
+        for i in 0..2 {
+            let id = manager.create_task(format!("Spec2 Task {}", i), None, None, spec2_ref.clone(), vec![], None).await.unwrap();
+            if i == 0 {
+                manager.update_task(&id, None, None, None, Some(TaskStatus::Done), None, None, None, None, None).await.unwrap();
+            }
+        }
+
+        let stats = manager.get_progress(None).await.unwrap();
+        assert_eq!(stats.total_tasks, 5);
+        assert_eq!(stats.by_spec.len(), 2);
+
+        // Find spec1 stats
+        let spec1_stats = stats.by_spec.iter().find(|s| s.spec_name == "spec1").unwrap();
+        assert_eq!(spec1_stats.total, 3);
+        assert_eq!(spec1_stats.done, 2);
+        assert!((spec1_stats.percentage - 66.666).abs() < 0.1);
+
+        // Find spec2 stats
+        let spec2_stats = stats.by_spec.iter().find(|s| s.spec_name == "spec2").unwrap();
+        assert_eq!(spec2_stats.total, 2);
+        assert_eq!(spec2_stats.done, 1);
+        assert_eq!(spec2_stats.percentage, 50.0);
+    }
+
+    #[tokio::test]
+    async fn test_get_progress_with_priority_grouping() {
+        let (manager, _temp_dir) = create_test_manager().await;
+
+        // Create tasks with different priorities
+        for i in 0..6 {
+            let priority = match i % 3 {
+                0 => Priority::High,
+                1 => Priority::Medium,
+                _ => Priority::Low,
+            };
+            let id = manager.create_task(format!("Task {}", i), None, Some(priority), None, vec![], None).await.unwrap();
+            if i < 3 {
+                manager.update_task(&id, None, None, None, Some(TaskStatus::Done), None, None, None, None, None).await.unwrap();
+            }
+        }
+
+        let stats = manager.get_progress(None).await.unwrap();
+        assert_eq!(stats.total_tasks, 6);
+        assert_eq!(stats.by_priority.len(), 3);
+
+        // Check that all priorities are represented
+        let high_count = stats.by_priority.iter().filter(|p| p.priority == Priority::High).count();
+        let medium_count = stats.by_priority.iter().filter(|p| p.priority == Priority::Medium).count();
+        let low_count = stats.by_priority.iter().filter(|p| p.priority == Priority::Low).count();
+
+        assert_eq!(high_count, 1);
+        assert_eq!(medium_count, 1);
+        assert_eq!(low_count, 1);
     }
 
     #[tokio::test]

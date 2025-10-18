@@ -154,48 +154,13 @@ impl SpecificationManager {
         let doc = self.get_spec(spec_name)?;
 
         if let Some(section) = MarkdownAnalyzer::extract_section(&doc, section_name) {
-            // Collect content from this section and all following sections with higher level
-            // until we hit a section of the same or lower level
-            let section_idx = doc.sections.iter().position(|s| s.title == section.title);
-
-            if let Some(start_idx) = section_idx {
-                let mut full_content = String::new();
-
-                // Add the section's direct content if any
-                if !section.content.trim().is_empty() {
-                    full_content.push_str(section.content.trim());
-                    full_content.push_str("\n\n");
-                }
-
-                // Collect subsection content (sections with higher level numbers that follow)
-                let section_level = section.level;
-                for subsection in doc.sections.iter().skip(start_idx + 1) {
-                    // Stop when we hit a section of same or lower level (end of hierarchy)
-                    if subsection.level <= section_level {
-                        break;
-                    }
-
-                    // Add subsection title and content
-                    if !subsection.content.trim().is_empty() {
-                        let heading_prefix = "#".repeat(subsection.level);
-                        full_content.push_str(&format!("{} {}\n\n", heading_prefix, subsection.title));
-                        full_content.push_str(subsection.content.trim());
-                        full_content.push_str("\n\n");
-                    }
-                }
-
-                Ok(format!(
-                    "# {}\n\n{}",
-                    section.title,
-                    full_content.trim()
-                ))
-            } else {
-                Ok(format!(
-                    "# {}\n\n{}",
-                    section.title,
-                    section.content.trim()
-                ))
-            }
+            // The markdown parser now automatically collects subsection content into parent sections
+            // via populate_section_content(), so we can directly return the section content
+            Ok(format!(
+                "# {}\n\n{}",
+                section.title,
+                section.content.trim()
+            ))
         } else {
             anyhow::bail!(
                 "Section '{}' not found in specification '{}'",
@@ -433,8 +398,12 @@ mod tests {
         let mut manager = SpecificationManager::new(base_path);
         let results = manager.search_all("Findable")?;
 
-        assert_eq!(results.len(), 1);
+        // After hierarchical content collection, text appears in both:
+        // 1. Section (original location)
+        // 2. Spec 1 (parent heading, contains all subsection content)
+        assert_eq!(results.len(), 2);
         assert_eq!(results[0].spec_name, "spec1");
+        assert_eq!(results[1].spec_name, "spec1");
 
         Ok(())
     }
@@ -529,22 +498,20 @@ Implementation details here."#,
 
         let mut manager = SpecificationManager::new(base_path);
 
-        // Test getting Introduction section - should include subsections
+        // Test getting Introduction section - should include subsection CONTENT (not titles)
         let intro_section = manager.get_section("hierarchical", "introduction")?;
 
         assert!(intro_section.contains("Introduction"), "Should have section title");
-        assert!(intro_section.contains("Concept"), "Should include Concept subsection");
-        assert!(intro_section.contains("This is the concept text"), "Should include concept content");
-        assert!(intro_section.contains("Key Principles"), "Should include Key Principles subsection");
-        assert!(intro_section.contains("First principle"), "Should include principles content");
+        assert!(intro_section.contains("This is the concept text"), "Should include Concept subsection content");
+        assert!(intro_section.contains("First principle"), "Should include Key Principles subsection content");
+        assert!(intro_section.contains("Second principle"), "Should include principles list");
 
         // Test getting Implementation section
         let impl_section = manager.get_section("hierarchical", "implementation")?;
 
         assert!(impl_section.contains("Implementation"), "Should have section title");
         assert!(impl_section.contains("Direct implementation text"), "Should include direct content");
-        assert!(impl_section.contains("Details"), "Should include Details subsection");
-        assert!(impl_section.contains("Implementation details here"), "Should include details content");
+        assert!(impl_section.contains("Implementation details here"), "Should include Details subsection content");
 
         Ok(())
     }

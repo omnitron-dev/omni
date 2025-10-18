@@ -164,6 +164,9 @@ impl MarkdownAnalyzer {
             sections.push(section);
         }
 
+        // Build hierarchical structure and populate parent sections with subsection content
+        Self::populate_section_content(&mut sections);
+
         // Extract title from first heading level 1
         let title = sections
             .iter()
@@ -193,6 +196,47 @@ impl MarkdownAnalyzer {
             links,
             code_blocks,
         })
+    }
+
+    /// Populate parent sections with content from their subsections
+    /// This modifies sections in-place to include subsection content
+    fn populate_section_content(sections: &mut [Section]) {
+        if sections.is_empty() {
+            return;
+        }
+
+        // Process in reverse order to collect content from deepest levels first
+        for i in (0..sections.len()).rev() {
+            let current_level = sections[i].level;
+            let mut additional_content = String::new();
+
+            // Find all following sections with higher level (subsections)
+            for j in (i + 1)..sections.len() {
+                if sections[j].level <= current_level {
+                    // Reached next section at same or lower level - stop
+                    break;
+                }
+
+                // This is a subsection - collect its content
+                if sections[j].level == current_level + 1 {
+                    // Direct child
+                    if !sections[j].content.is_empty() {
+                        if !additional_content.is_empty() {
+                            additional_content.push_str("\n\n");
+                        }
+                        additional_content.push_str(&sections[j].content);
+                    }
+                }
+            }
+
+            // Add collected content to current section
+            if !additional_content.is_empty() {
+                if !sections[i].content.is_empty() {
+                    sections[i].content.push_str("\n\n");
+                }
+                sections[i].content.push_str(&additional_content);
+            }
+        }
     }
 
     /// Extract metadata from sections (version, status, date, authors)
@@ -446,8 +490,15 @@ Other content.
         let doc = MarkdownAnalyzer::parse("test.md", content).unwrap();
         let results = MarkdownAnalyzer::search(&doc, "Finding");
 
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].section_title, "Section A");
+        // After hierarchical content collection, text appears in:
+        // 1. Section A (original location)
+        // 2. Test (parent section, contains all subsection content)
+        assert_eq!(results.len(), 2);
+
+        // Verify both results are found
+        let titles: Vec<&str> = results.iter().map(|r| r.section_title.as_str()).collect();
+        assert!(titles.contains(&"Section A"), "Should find in Section A");
+        assert!(titles.contains(&"Test"), "Should find in parent Test section");
     }
 
     #[test]

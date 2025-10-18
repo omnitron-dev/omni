@@ -75,6 +75,7 @@ impl MarkdownAnalyzer {
         let mut current_code_language: Option<String> = None;
         let mut current_code_content = String::new();
         let mut code_block_start = 0;
+        let mut in_heading = false;
 
         for (event, range) in parser.into_offset_iter() {
             // Estimate line number from byte offset
@@ -84,8 +85,12 @@ impl MarkdownAnalyzer {
             match event {
                 Event::Start(Tag::Heading { level, .. }) => {
                     current_level = level as usize;
+                    in_heading = true;
                 }
-                Event::Text(text) if current_level > 0 => {
+                Event::End(TagEnd::Heading(_)) => {
+                    in_heading = false;
+                }
+                Event::Text(text) if in_heading && current_level > 0 => {
                     let title = text.to_string();
 
                     // Save previous section
@@ -134,12 +139,20 @@ impl MarkdownAnalyzer {
                     // For now, just store the URL
                     // Link extraction is deferred to future enhancement
                 }
-                Event::Text(text) => {
-                    // Add text to current section content
+                Event::Text(text) if !in_heading => {
+                    // Add text to current section content (only if not in heading)
                     if let Some(ref mut section) = current_section {
+                        if !section.content.is_empty() {
+                            section.content.push(' ');
+                        }
                         section.content.push_str(&text);
-                        section.content.push('\n');
                         section.line_end = line_num;
+                    }
+                }
+                Event::SoftBreak | Event::HardBreak => {
+                    // Preserve line breaks in section content
+                    if let Some(ref mut section) = current_section {
+                        section.content.push('\n');
                     }
                 }
                 _ => {}
@@ -455,5 +468,85 @@ Details here.
         assert_eq!(doc.metadata.version, Some("1.0.0".to_string()));
         assert_eq!(doc.metadata.status, Some("Draft".to_string()));
         assert_eq!(doc.metadata.date, Some("2025-10-18".to_string()));
+    }
+
+    #[test]
+    fn test_multi_paragraph_sections() {
+        let content = r#"# Document Title
+
+## Executive Summary
+
+This is the first paragraph of the executive summary.
+It contains important information.
+
+This is the second paragraph with more details.
+And another line here.
+
+### Subsection
+
+Subsection content here.
+
+## Another Section
+
+More content in this section.
+"#;
+
+        let doc = MarkdownAnalyzer::parse("test.md", content).unwrap();
+
+        // Find Executive Summary section
+        let exec_summary = doc.sections.iter()
+            .find(|s| s.title == "Executive Summary")
+            .expect("Executive Summary section should exist");
+
+        // The content should NOT be empty
+        assert!(!exec_summary.content.trim().is_empty(),
+                "Section content should not be empty");
+
+        // Should contain text from both paragraphs
+        assert!(exec_summary.content.contains("first paragraph"),
+                "Should contain first paragraph text");
+        assert!(exec_summary.content.contains("second paragraph"),
+                "Should contain second paragraph text");
+
+        // Find Another Section
+        let another = doc.sections.iter()
+            .find(|s| s.title == "Another Section")
+            .expect("Another Section should exist");
+
+        assert!(!another.content.trim().is_empty(),
+                "Another Section content should not be empty");
+        assert!(another.content.contains("More content"),
+                "Should contain section text");
+    }
+
+    #[test]
+    fn test_section_with_lists_and_formatting() {
+        let content = r#"# Test
+
+## Features
+
+This section has:
+
+- First item
+- Second item
+- Third item
+
+And then more text after the list.
+
+Some **bold** and *italic* text here.
+"#;
+
+        let doc = MarkdownAnalyzer::parse("test.md", content).unwrap();
+
+        let features = doc.sections.iter()
+            .find(|s| s.title == "Features")
+            .expect("Features section should exist");
+
+        assert!(!features.content.trim().is_empty(),
+                "Section with lists should not be empty");
+        assert!(features.content.contains("First item"),
+                "Should contain list items");
+        assert!(features.content.contains("bold"),
+                "Should contain formatted text");
     }
 }

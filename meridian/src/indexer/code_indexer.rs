@@ -13,6 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
 
 /// Dependency graph edge
 #[derive(Debug, Clone)]
@@ -73,6 +74,8 @@ pub struct CodeIndexer {
     embedding_engine: Arc<Mutex<EmbeddingEngine>>,
     // LRU cache for search results (capacity: 1000)
     search_cache: Arc<Mutex<LruCache<SearchCacheKey, QueryResult>>>,
+    // File modification time tracking for incremental indexing
+    file_mtimes: DashMap<PathBuf, SystemTime>,
 }
 
 impl CodeIndexer {
@@ -92,6 +95,7 @@ impl CodeIndexer {
             source_cache: DashMap::new(),
             embedding_engine,
             search_cache,
+            file_mtimes: DashMap::new(),
         })
     }
 
@@ -139,6 +143,57 @@ impl CodeIndexer {
         Ok(())
     }
 
+    /// Check if file has been modified since last index
+    fn has_file_changed(&self, path: &Path) -> Result<bool> {
+        let metadata = std::fs::metadata(path)?;
+        let current_mtime = metadata.modified()?;
+
+        if let Some(cached_mtime) = self.file_mtimes.get(path) {
+            Ok(current_mtime > *cached_mtime)
+        } else {
+            Ok(true) // File not indexed yet
+        }
+    }
+
+    /// Index a file incrementally - only if it has changed
+    pub async fn index_file_incremental(&mut self, path: &Path) -> Result<bool> {
+        // Check if file has changed
+        match self.has_file_changed(path) {
+            Ok(false) => {
+                tracing::debug!("Skipping unchanged file: {:?}", path);
+                return Ok(false); // File not changed
+            }
+            Ok(true) => {
+                tracing::debug!("Re-indexing changed file: {:?}", path);
+            }
+            Err(e) => {
+                tracing::warn!("Failed to check file modification time for {:?}: {}", path, e);
+                // On error, re-index the file to be safe
+            }
+        }
+
+        // Remove old symbols for this file
+        if let Some(old_symbols) = self.file_index.get(path) {
+            for symbol_id in old_symbols.iter() {
+                self.symbols.remove(symbol_id);
+
+                // Remove from name index
+                for mut entry in self.name_index.iter_mut() {
+                    entry.value_mut().retain(|id| id != symbol_id);
+                }
+
+                // Remove from dependencies
+                self.dependencies.remove(symbol_id);
+            }
+        }
+        self.file_index.remove(path);
+
+        // Re-index the file
+        self.index_file(path).await?;
+
+        Ok(true) // File was re-indexed
+    }
+
     /// Index a single file
     async fn index_file(&mut self, path: &Path) -> Result<Vec<CodeSymbol>> {
         // Check if file should be ignored
@@ -150,6 +205,13 @@ impl CodeIndexer {
         let content = tokio::fs::read_to_string(path)
             .await
             .with_context(|| format!("Failed to read file: {:?}", path))?;
+
+        // Store modification time for incremental indexing
+        if let Ok(metadata) = std::fs::metadata(path) {
+            if let Ok(mtime) = metadata.modified() {
+                self.file_mtimes.insert(path.to_path_buf(), mtime);
+            }
+        }
 
         // Cache the source
         self.source_cache
@@ -295,6 +357,57 @@ impl CodeIndexer {
         }
 
         Ok(())
+    }
+
+    /// Walk directory and index only changed files (incremental)
+    pub async fn walk_and_index_incremental(&mut self, root: &Path) -> Result<(usize, usize)> {
+        use tokio::fs;
+
+        let mut total_files = 0;
+        let mut indexed_files = 0;
+
+        let mut entries = fs::read_dir(root).await?;
+
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+
+            if path.is_dir() {
+                if !self.should_ignore(&path) {
+                    let (sub_total, sub_indexed) = Box::pin(self.walk_and_index_incremental(&path)).await?;
+                    total_files += sub_total;
+                    indexed_files += sub_indexed;
+                }
+            } else if path.is_file() {
+                // Check if file has supported extension
+                if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+                    if self.config.languages.iter().any(|lang| {
+                        matches!(
+                            (lang.as_str(), ext),
+                            ("rust", "rs")
+                                | ("typescript", "ts" | "tsx")
+                                | ("javascript", "js" | "jsx")
+                                | ("python", "py")
+                                | ("go", "go")
+                        )
+                    }) {
+                        total_files += 1;
+                        match self.index_file_incremental(&path).await {
+                            Ok(true) => {
+                                indexed_files += 1;
+                            }
+                            Ok(false) => {
+                                // File unchanged, skipped
+                            }
+                            Err(e) => {
+                                tracing::warn!("Failed to index {:?}: {}", path, e);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok((total_files, indexed_files))
     }
 
     /// Get full definition of a symbol including body

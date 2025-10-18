@@ -1,5 +1,6 @@
 pub mod rocksdb_storage;
 pub mod resilient;
+pub mod db_pool;
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -7,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 pub use rocksdb_storage::RocksDBStorage;
 pub use resilient::ResilientStorage;
+pub use db_pool::{get_or_create_db, get_db, remove_db, get_pool_stats, PoolStats};
 
 /// Storage backend trait
 #[async_trait]

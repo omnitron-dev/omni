@@ -1713,14 +1713,25 @@ fn get_progress_tools() -> Vec<Tool> {
         },
         Tool {
             name: "progress.mark_complete".to_string(),
-            description: Some("Mark a task as complete".to_string()),
+            description: Some("Mark a task as complete and automatically record an episode in the memory system".to_string()),
             input_schema: json!({
                 "type": "object",
                 "properties": {
-                    "task_id": {"type": "string"},
-                    "note": {"type": "string"},
-                    "actual_hours": {"type": "number"},
-                    "commit_hash": {"type": "string"}
+                    "task_id": {"type": "string", "description": "Task ID to mark complete"},
+                    "note": {"type": "string", "description": "Optional completion note"},
+                    "actual_hours": {"type": "number", "description": "Actual hours spent on task"},
+                    "commit_hash": {"type": "string", "description": "Git commit hash (if committed)"},
+                    "solution_summary": {"type": "string", "description": "Summary of the solution or approach taken"},
+                    "files_touched": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Files modified during task completion"
+                    },
+                    "queries_made": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Queries executed during the task (e.g., code.search, specs.get_section)"
+                    }
                 },
                 "required": ["task_id"]
             }),

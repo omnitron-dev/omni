@@ -27,3 +27,8 @@ Thumbs.db
 /tmp/
 *.tmp
 /.fastembed_cache
+
+# Meridian local directories (moved to ~/.meridian)
+.meridian/
+.fastembed_cache/
+.claude/

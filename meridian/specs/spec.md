@@ -1999,9 +1999,10 @@ Meridian представляет собой **полноценную когни
 
 ## 🎯 СТАТУС РЕАЛИЗАЦИИ: Production-Ready
 
-**Последнее обновление**: 18 октября 2025 (Test Count Verification)
-**Версия протокола**: MCP 2025-06-18
+**Последнее обновление**: 18 октября 2025 (Claude CLI Integration Fixed)
+**Версия протокола**: MCP 2025-03-26 (stable, with 2024-11-05 backward compat)
 **Статус тестов**: ✅ 431/431 passing (100%)
+**Claude CLI**: ✅ Connected and verified
 
 ### ✅ Сводка по реализации
 
@@ -2053,6 +2054,14 @@ Meridian представляет собой **полноценную когни
   - ✅ 3 Monorepo (list, set_context, cross_refs)
 
 #### Критические улучшения (18 Oct 2025)
+
+**Claude CLI Integration (Latest - CRITICAL FIX)**:
+- ✅ **Protocol Version Negotiation**: Automatic version negotiation (2024-11-05 ↔ 2025-03-26)
+- ✅ **Capabilities Format Fix**: Objects instead of booleans per MCP spec
+- ✅ **Notification Handling Fix**: JSON-RPC 2.0 compliant (no responses to notifications)
+- ✅ **Claude CLI Connection**: Now connects successfully (was: ✗ Failed → now: ✓ Connected)
+
+**ML-Based Prediction**:
 - ✅ **handle_predict_next_action**: Dual-strategy prediction (procedure + similarity)
 - ✅ **handle_train_on_success**: Multi-layer learning (episodic + semantic + procedural)
 - ✅ **handle_attention_retrieve**: Boosting + Prefetching + Eviction tracking
@@ -2090,10 +2099,10 @@ Meridian полностью готов к production использованию 
 - ✅ **431 comprehensive tests** с 100% success rate
 - ✅ **Real ML prediction** - SimpleAttentionPredictorModel с frequency-based learning
 - ✅ **Кастомная MCP реализация** (не SDK) - полностью самостоятельная
-- ✅ **MCP 2025-06-18** full specification compliance
+- ✅ **MCP 2025-03-26** full specification compliance (backward compat with 2024-11-05)
 - ✅ **Thread-safe** concurrent архитектура на tokio
 - ✅ **Два транспорта**: STDIO + HTTP/SSE с полной поддержкой
-- ✅ **Claude Code интеграция** - сервер проверен и функционален
+- ✅ **Claude CLI интеграция** - ✓ Connected (fixed protocol version negotiation)
 - ✅ **29 MCP инструментов** - все production-ready
 
 **Проверенная работа**:

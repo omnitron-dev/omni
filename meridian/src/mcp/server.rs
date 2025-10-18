@@ -8,6 +8,7 @@ use crate::context::ContextManager;
 use crate::indexer::{CodeIndexer, Indexer};
 use crate::links::{LinksStorage, RocksDBLinksStorage};
 use crate::memory::MemorySystem;
+use crate::metrics::{MetricsCollector, MetricsStorage};
 use crate::progress::{ProgressManager, ProgressStorage};
 use crate::project::ProjectManager;
 use crate::global::registry::MonorepoContext as ProjectMonorepoContext;
@@ -21,6 +22,7 @@ use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
 /// Server mode - single project or multi-project
@@ -42,6 +44,10 @@ enum ServerMode {
         #[allow(dead_code)]
         monorepo_context: Option<ProjectMonorepoContext>,
         offline_mode: Arc<AtomicBool>,
+        // Metrics collection
+        metrics_collector: Arc<MetricsCollector>,
+        metrics_storage: Arc<MetricsStorage>,
+        snapshot_task: Option<JoinHandle<()>>,
     },
     /// Multi-project mode (HTTP)
     MultiProject {
@@ -200,6 +206,17 @@ impl MeridianServer {
             false // Legacy mode doesn't have offline concept
         };
 
+        // Initialize metrics system
+        let metrics_collector = Arc::new(MetricsCollector::new());
+        let metrics_path = config.storage.path.join("metrics");
+        let metrics_storage = Arc::new(MetricsStorage::new(&metrics_path, Some(30))?);
+
+        // Start background snapshot writer
+        let snapshot_task = Some(Self::start_snapshot_writer(
+            metrics_collector.clone(),
+            metrics_storage.clone(),
+        ));
+
         // Wrap components in Arc<RwLock<>> for shared access
         Ok(Self {
             mode: ServerMode::SingleProject {
@@ -216,8 +233,30 @@ impl MeridianServer {
                 local_cache,
                 monorepo_context: None, // TODO: Detect monorepo context
                 offline_mode: Arc::new(AtomicBool::new(offline)),
+                metrics_collector,
+                metrics_storage,
+                snapshot_task,
             },
             config,
+        })
+    }
+
+    /// Start background snapshot writer task
+    ///
+    /// This task runs every 60 seconds and saves a metrics snapshot to storage
+    fn start_snapshot_writer(
+        collector: Arc<MetricsCollector>,
+        storage: Arc<MetricsStorage>,
+    ) -> JoinHandle<()> {
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+            loop {
+                interval.tick().await;
+                let snapshot = collector.take_snapshot();
+                if let Err(e) = storage.save_snapshot(&snapshot).await {
+                    error!("Failed to save metrics snapshot: {}", e);
+                }
+            }
         })
     }
 
@@ -298,6 +337,7 @@ impl MeridianServer {
                 spec_manager,
                 progress_manager,
                 links_storage,
+                metrics_collector,
                 ..
             } => {
                 if let Some(h) = handlers {
@@ -309,7 +349,7 @@ impl MeridianServer {
                 let pattern_engine = Arc::new(crate::indexer::PatternSearchEngine::new()
                     .expect("Failed to initialize pattern search engine"));
 
-                let new_handlers = Arc::new(ToolHandlers::new(
+                let mut new_handlers = ToolHandlers::new(
                     memory_system.clone(),
                     context_manager.clone(),
                     indexer.clone(),
@@ -319,7 +359,12 @@ impl MeridianServer {
                     progress_manager.clone(),
                     links_storage.clone(),
                     pattern_engine,
-                ));
+                );
+
+                // Set metrics collector
+                new_handlers.set_metrics_collector(metrics_collector.clone());
+
+                let new_handlers = Arc::new(new_handlers);
 
                 *handlers = Some(new_handlers.clone());
                 Ok(new_handlers)
@@ -734,6 +779,59 @@ impl MeridianServer {
         match &self.mode {
             ServerMode::MultiProject { project_manager } => Some(project_manager.clone()),
             ServerMode::SingleProject { .. } => None,
+        }
+    }
+
+    /// Get metrics collector (only for single-project mode)
+    pub fn get_metrics_collector(&self) -> Option<Arc<MetricsCollector>> {
+        match &self.mode {
+            ServerMode::SingleProject { metrics_collector, .. } => Some(metrics_collector.clone()),
+            ServerMode::MultiProject { .. } => None,
+        }
+    }
+}
+
+/// Implement Drop for graceful shutdown
+impl Drop for MeridianServer {
+    fn drop(&mut self) {
+        if let ServerMode::SingleProject {
+            snapshot_task,
+            metrics_collector,
+            metrics_storage,
+            ..
+        } = &mut self.mode
+        {
+            info!("Gracefully shutting down Meridian server...");
+
+            // Cancel background snapshot task
+            if let Some(task) = snapshot_task.take() {
+                task.abort();
+                info!("Cancelled background snapshot writer");
+            }
+
+            // Take final snapshot
+            let snapshot = metrics_collector.take_snapshot();
+            info!("Taking final metrics snapshot with {} tools tracked", snapshot.tools.len());
+
+            // Try to save final snapshot using spawn_blocking to avoid nested runtime issues
+            let storage = Arc::clone(metrics_storage);
+            let snapshot_clone = snapshot.clone();
+
+            // Try to spawn a task to save the snapshot
+            if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                // Spawn a blocking task that won't block the current thread
+                let _ = handle.spawn(async move {
+                    if let Err(e) = storage.save_snapshot(&snapshot_clone).await {
+                        error!("Failed to save final metrics snapshot: {}", e);
+                    } else {
+                        info!("Final metrics snapshot saved successfully");
+                    }
+                });
+                // Note: We can't wait for this to complete in Drop
+                // The snapshot will be saved eventually by the runtime
+            } else {
+                warn!("No tokio runtime available for final snapshot save");
+            }
         }
     }
 }

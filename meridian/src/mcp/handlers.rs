@@ -4,6 +4,7 @@ use crate::git::GitHistory;
 use crate::indexer::{CodeIndexer, DeltaIndexer};
 use crate::links::LinksStorage;
 use crate::memory::MemorySystem;
+use crate::metrics::MetricsCollector;
 use crate::progress::ProgressManager;
 use crate::session::{SessionAction, SessionManager};
 use crate::specs::SpecificationManager;
@@ -13,6 +14,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Instant;
 use tracing::{debug, info};
 
 /// Handler for all MCP tool calls
@@ -28,6 +30,7 @@ pub struct ToolHandlers {
     progress_manager: Arc<tokio::sync::RwLock<ProgressManager>>,
     links_storage: Arc<tokio::sync::RwLock<dyn LinksStorage>>,
     pattern_engine: Arc<crate::indexer::PatternSearchEngine>,
+    metrics_collector: Option<Arc<MetricsCollector>>,
 }
 
 impl ToolHandlers {
@@ -54,7 +57,13 @@ impl ToolHandlers {
             progress_manager,
             links_storage,
             pattern_engine,
+            metrics_collector: None,
         }
+    }
+
+    /// Set the metrics collector
+    pub fn set_metrics_collector(&mut self, collector: Arc<MetricsCollector>) {
+        self.metrics_collector = Some(collector);
     }
 
     /// Set the delta indexer for real-time file watching
@@ -87,13 +96,50 @@ impl ToolHandlers {
             progress_manager,
             links_storage,
             pattern_engine,
+            metrics_collector: None,
         }
     }
 
-    /// Route tool call to appropriate handler
+    /// Estimate token count from JSON value (simple heuristic: ~4 chars per token)
+    fn estimate_tokens(value: &Value) -> u64 {
+        (serde_json::to_string(value).unwrap_or_default().len() / 4) as u64
+    }
+
+    /// Route tool call to appropriate handler with metrics instrumentation
     pub async fn handle_tool_call(&self, name: &str, arguments: Value) -> Result<Value> {
         debug!("Handling tool call: {}", name);
 
+        // Start timing
+        let start = Instant::now();
+
+        // Count input tokens
+        let input_tokens = Self::estimate_tokens(&arguments);
+
+        // Call the actual handler
+        let result = self.handle_tool_call_inner(name, arguments).await;
+
+        // Record metrics if collector is available
+        if let Some(ref collector) = self.metrics_collector {
+            let latency_ms = start.elapsed().as_secs_f64() * 1000.0;
+            let success = result.is_ok();
+
+            collector.record_tool_call(name, latency_ms, success);
+
+            if let Ok(ref value) = result {
+                let output_tokens = Self::estimate_tokens(value);
+                collector.record_tokens(name, input_tokens, output_tokens);
+            } else if let Err(ref e) = result {
+                let error_type = format!("{:?}", e);
+                let error_category = error_type.split_whitespace().next().unwrap_or("unknown");
+                collector.record_tool_error(name, latency_ms, error_category);
+            }
+        }
+
+        result
+    }
+
+    /// Internal handler without metrics (to avoid double-instrumentation)
+    async fn handle_tool_call_inner(&self, name: &str, arguments: Value) -> Result<Value> {
         match name {
             // Memory Management Tools
             "memory.record_episode" => self.handle_record_episode(arguments).await,

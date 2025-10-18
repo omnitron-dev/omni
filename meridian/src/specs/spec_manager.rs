@@ -154,11 +154,48 @@ impl SpecificationManager {
         let doc = self.get_spec(spec_name)?;
 
         if let Some(section) = MarkdownAnalyzer::extract_section(&doc, section_name) {
-            Ok(format!(
-                "# {}\n\n{}",
-                section.title,
-                section.content.trim()
-            ))
+            // Collect content from this section and all following sections with higher level
+            // until we hit a section of the same or lower level
+            let section_idx = doc.sections.iter().position(|s| s.title == section.title);
+
+            if let Some(start_idx) = section_idx {
+                let mut full_content = String::new();
+
+                // Add the section's direct content if any
+                if !section.content.trim().is_empty() {
+                    full_content.push_str(section.content.trim());
+                    full_content.push_str("\n\n");
+                }
+
+                // Collect subsection content (sections with higher level numbers that follow)
+                let section_level = section.level;
+                for subsection in doc.sections.iter().skip(start_idx + 1) {
+                    // Stop when we hit a section of same or lower level (end of hierarchy)
+                    if subsection.level <= section_level {
+                        break;
+                    }
+
+                    // Add subsection title and content
+                    if !subsection.content.trim().is_empty() {
+                        let heading_prefix = "#".repeat(subsection.level);
+                        full_content.push_str(&format!("{} {}\n\n", heading_prefix, subsection.title));
+                        full_content.push_str(subsection.content.trim());
+                        full_content.push_str("\n\n");
+                    }
+                }
+
+                Ok(format!(
+                    "# {}\n\n{}",
+                    section.title,
+                    full_content.trim()
+                ))
+            } else {
+                Ok(format!(
+                    "# {}\n\n{}",
+                    section.title,
+                    section.content.trim()
+                ))
+            }
         } else {
             anyhow::bail!(
                 "Section '{}' not found in specification '{}'",
@@ -455,6 +492,59 @@ mod tests {
 
         manager.clear_cache();
         assert_eq!(manager.cache_size(), 0);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_section_with_hierarchical_structure() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let base_path = temp_dir.path().to_path_buf();
+
+        // Create spec with hierarchical structure (mimics real spec.md)
+        create_test_spec(
+            &base_path,
+            "hierarchical",
+            r#"# Test Spec
+
+## Introduction
+
+### Concept
+
+This is the concept text.
+
+### Key Principles
+
+1. First principle
+2. Second principle
+
+## Implementation
+
+Direct implementation text.
+
+### Details
+
+Implementation details here."#,
+        )?;
+
+        let mut manager = SpecificationManager::new(base_path);
+
+        // Test getting Introduction section - should include subsections
+        let intro_section = manager.get_section("hierarchical", "introduction")?;
+
+        assert!(intro_section.contains("Introduction"), "Should have section title");
+        assert!(intro_section.contains("Concept"), "Should include Concept subsection");
+        assert!(intro_section.contains("This is the concept text"), "Should include concept content");
+        assert!(intro_section.contains("Key Principles"), "Should include Key Principles subsection");
+        assert!(intro_section.contains("First principle"), "Should include principles content");
+
+        // Test getting Implementation section
+        let impl_section = manager.get_section("hierarchical", "implementation")?;
+
+        assert!(impl_section.contains("Implementation"), "Should have section title");
+        assert!(impl_section.contains("Direct implementation text"), "Should include direct content");
+        assert!(impl_section.contains("Details"), "Should include Details subsection");
+        assert!(impl_section.contains("Implementation details here"), "Should include details content");
 
         Ok(())
     }

@@ -155,14 +155,15 @@ impl MeridianServer {
 
     /// Get cache path for a project
     fn get_cache_path(project_path: &Path) -> Result<PathBuf> {
+        use crate::config::get_meridian_home;
+
         let path_str = project_path.to_string_lossy();
         let hash = blake3::hash(path_str.as_bytes());
         let hash_str = hash.to_hex();
 
-        let cache_path = std::env::current_dir()?
-            .join(".meridian")
-            .join(&hash_str[..16])
-            .join("cache");
+        let cache_path = get_meridian_home()
+            .join("cache")
+            .join(&hash_str[..16]);
 
         std::fs::create_dir_all(&cache_path)?;
         Ok(cache_path)

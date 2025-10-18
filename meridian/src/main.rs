@@ -150,10 +150,11 @@ async fn main() -> Result<()> {
         // In STDIO mode, redirect logs to file to avoid interfering with JSON-RPC protocol
         use tracing_subscriber::fmt::writer::MakeWriterExt;
         use std::fs::{create_dir_all, OpenOptions};
+        use meridian::config::get_meridian_home;
 
         // Create log directory
-        let log_dir = std::path::Path::new(".meridian/logs");
-        create_dir_all(log_dir).ok();
+        let log_dir = get_meridian_home().join("logs");
+        create_dir_all(&log_dir).ok();
 
         // Create log file
         if let Ok(log_file) = OpenOptions::new()
@@ -255,11 +256,11 @@ async fn handle_server_command(command: ServerCommands) -> Result<()> {
 
 async fn handle_projects_command(command: ProjectsCommands) -> Result<()> {
     use meridian::global::{GlobalStorage, ProjectRegistryManager};
+    use meridian::config::get_meridian_home;
     use std::sync::Arc;
 
     // Get global storage path
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    let data_dir = PathBuf::from(home).join(".meridian/data");
+    let data_dir = get_meridian_home().join("data");
 
     std::fs::create_dir_all(&data_dir)?;
 

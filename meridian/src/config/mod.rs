@@ -2,6 +2,14 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+/// Get the Meridian home directory (~/.meridian)
+pub fn get_meridian_home() -> PathBuf {
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .unwrap_or_else(|_| ".".to_string());
+    PathBuf::from(home).join(".meridian")
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     pub index: IndexConfig,
@@ -50,7 +58,7 @@ pub struct StorageConfig {
 impl Default for StorageConfig {
     fn default() -> Self {
         Self {
-            path: PathBuf::from(".meridian/index"),
+            path: get_meridian_home().join("db").join("current").join("index"),
             cache_size: "256MB".to_string(),
         }
     }
@@ -214,7 +222,10 @@ mod tests {
     #[test]
     fn test_storage_config_default() {
         let config = StorageConfig::default();
-        assert_eq!(config.path, PathBuf::from(".meridian/index"));
+        // Verify path ends with db/current/index
+        assert!(config.path.ends_with("db/current/index"));
+        // Verify path contains .meridian
+        assert!(config.path.to_string_lossy().contains(".meridian"));
         assert_eq!(config.cache_size, "256MB");
     }
 

@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use dashmap::DashMap;
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 /// Embedding engine for generating vector embeddings of code symbols
@@ -10,14 +11,30 @@ pub struct EmbeddingEngine {
 }
 
 impl EmbeddingEngine {
-    /// Create a new embedding engine with default model
+    /// Create a new embedding engine with default model and cache directory
     pub fn new() -> Result<Self> {
-        Self::with_model(EmbeddingModel::AllMiniLML6V2)
+        use crate::config::get_meridian_home;
+        let cache_dir = get_meridian_home().join("cache").join("embeddings");
+        Self::with_model_and_cache(EmbeddingModel::AllMiniLML6V2, Some(cache_dir))
     }
 
     /// Create embedding engine with specific model
     pub fn with_model(model: EmbeddingModel) -> Result<Self> {
-        let init_options = InitOptions::new(model);
+        use crate::config::get_meridian_home;
+        let cache_dir = get_meridian_home().join("cache").join("embeddings");
+        Self::with_model_and_cache(model, Some(cache_dir))
+    }
+
+    /// Create embedding engine with specific model and cache directory
+    pub fn with_model_and_cache(model: EmbeddingModel, cache_dir: Option<PathBuf>) -> Result<Self> {
+        let mut init_options = InitOptions::new(model);
+
+        // Set cache directory if provided
+        if let Some(dir) = cache_dir {
+            std::fs::create_dir_all(&dir).ok();
+            init_options = init_options.with_cache_dir(dir);
+        }
+
         let embedding_model = TextEmbedding::try_new(init_options)
             .context("Failed to initialize embedding model")?;
 

@@ -81,14 +81,16 @@ impl ProjectContext {
 
     /// Get database path for a project
     fn get_db_path(project_path: &Path) -> Result<PathBuf> {
+        use crate::config::get_meridian_home;
+
         // Hash the project path to create a unique database directory
         let path_str = project_path.to_string_lossy();
         let hash = blake3::hash(path_str.as_bytes());
         let hash_str = hash.to_hex();
 
-        // Create .meridian/{hash}/index directory
-        let db_path = std::env::current_dir()?
-            .join(".meridian")
+        // Create ~/.meridian/db/{hash}/index directory
+        let db_path = get_meridian_home()
+            .join("db")
             .join(&hash_str[..16]) // Use first 16 chars of hash
             .join("index");
 

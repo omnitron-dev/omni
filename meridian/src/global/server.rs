@@ -43,8 +43,8 @@ pub struct GlobalServerConfig {
 
 impl Default for GlobalServerConfig {
     fn default() -> Self {
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        let data_dir = PathBuf::from(home).join(".meridian/data");
+        use crate::config::get_meridian_home;
+        let data_dir = get_meridian_home().join("data");
 
         Self {
             data_dir,

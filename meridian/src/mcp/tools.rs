@@ -816,6 +816,7 @@ pub fn get_all_tools() -> Vec<Tool> {
     .into_iter()
     .chain(get_strong_catalog_tools())
     .chain(get_strong_docs_tools())
+    .chain(get_phase5_cross_monorepo_tools())
     .collect()
 }
 
@@ -956,6 +957,221 @@ fn get_strong_catalog_tools() -> Vec<Tool> {
     ]
 }
 
+/// Get Phase 5 cross-monorepo tools
+fn get_phase5_cross_monorepo_tools() -> Vec<Tool> {
+    vec![
+        Tool {
+            name: "strong.global.list_monorepos".to_string(),
+            description: Some("List all registered monorepos in the global registry".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "includeInactive": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Include inactive/deleted monorepos"
+                    }
+                }
+            }),
+            output_schema: Some(json!({
+                "type": "object",
+                "properties": {
+                    "monorepos": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {"type": "string"},
+                                "name": {"type": "string"},
+                                "path": {"type": "string"},
+                                "status": {"type": "string"},
+                                "projectCount": {"type": "number"}
+                            }
+                        }
+                    }
+                }
+            })),
+            _meta: Some(json!({"phase": "Phase 5", "category": "cross-monorepo"})),
+        },
+        Tool {
+            name: "strong.global.search_all_projects".to_string(),
+            description: Some("Search for projects across all monorepos in the global registry".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query (project name, symbol, etc.)"
+                    },
+                    "monorepoId": {
+                        "type": "string",
+                        "description": "Limit search to specific monorepo"
+                    },
+                    "maxResults": {
+                        "type": "integer",
+                        "default": 50,
+                        "description": "Maximum number of results to return"
+                    }
+                },
+                "required": ["query"]
+            }),
+            output_schema: Some(json!({
+                "type": "object",
+                "properties": {
+                    "projects": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "projectId": {"type": "string"},
+                                "projectName": {"type": "string"},
+                                "monorepoId": {"type": "string"},
+                                "matchType": {"type": "string"},
+                                "relevance": {"type": "number"}
+                            }
+                        }
+                    },
+                    "totalResults": {"type": "number"}
+                }
+            })),
+            _meta: Some(json!({"phase": "Phase 5", "category": "cross-monorepo"})),
+        },
+        Tool {
+            name: "strong.global.get_dependency_graph".to_string(),
+            description: Some("Get dependency graph for a project with configurable depth and direction".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "projectId": {
+                        "type": "string",
+                        "description": "Project ID to get dependencies for"
+                    },
+                    "depth": {
+                        "type": "integer",
+                        "default": 3,
+                        "description": "Maximum depth for transitive dependencies"
+                    },
+                    "direction": {
+                        "type": "string",
+                        "enum": ["incoming", "outgoing", "both"],
+                        "default": "outgoing",
+                        "description": "Direction: incoming (dependents), outgoing (dependencies), or both"
+                    },
+                    "includeTypes": {
+                        "type": "array",
+                        "items": {"type": "string", "enum": ["runtime", "dev", "peer"]},
+                        "description": "Filter by dependency types"
+                    }
+                },
+                "required": ["projectId"]
+            }),
+            output_schema: Some(json!({
+                "type": "object",
+                "properties": {
+                    "graph": {
+                        "type": "object",
+                        "properties": {
+                            "nodes": {"type": "array"},
+                            "edges": {"type": "array"}
+                        }
+                    },
+                    "visualization": {"type": "string", "description": "Graph in DOT format"},
+                    "cycles": {"type": "array", "description": "Detected circular dependencies"}
+                }
+            })),
+            _meta: Some(json!({"phase": "Phase 5", "category": "cross-monorepo"})),
+        },
+        Tool {
+            name: "strong.external.get_documentation".to_string(),
+            description: Some("Get documentation from an external project (read-only access)".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "projectId": {
+                        "type": "string",
+                        "description": "External project ID to fetch documentation from"
+                    },
+                    "symbolName": {
+                        "type": "string",
+                        "description": "Specific symbol to get documentation for (optional)"
+                    },
+                    "includeExamples": {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Include code examples in documentation"
+                    }
+                },
+                "required": ["projectId"]
+            }),
+            output_schema: Some(json!({
+                "type": "object",
+                "properties": {
+                    "documentation": {
+                        "type": "object",
+                        "properties": {
+                            "projectId": {"type": "string"},
+                            "symbols": {"type": "array"},
+                            "fromCache": {"type": "boolean"},
+                            "fetchedAt": {"type": "string"}
+                        }
+                    },
+                    "accessGranted": {"type": "boolean"}
+                }
+            })),
+            _meta: Some(json!({"phase": "Phase 5", "category": "cross-monorepo", "security": "read-only"})),
+        },
+        Tool {
+            name: "strong.external.find_usages".to_string(),
+            description: Some("Find usages of a symbol across all accessible monorepos".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "symbolId": {
+                        "type": "string",
+                        "description": "Symbol ID to find usages for"
+                    },
+                    "includeTests": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Include test files in search"
+                    },
+                    "maxResults": {
+                        "type": "integer",
+                        "default": 100,
+                        "description": "Maximum number of usages to return"
+                    },
+                    "monorepoId": {
+                        "type": "string",
+                        "description": "Limit search to specific monorepo"
+                    }
+                },
+                "required": ["symbolId"]
+            }),
+            output_schema: Some(json!({
+                "type": "object",
+                "properties": {
+                    "usages": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "projectId": {"type": "string"},
+                                "filePath": {"type": "string"},
+                                "line": {"type": "number"},
+                                "context": {"type": "string"},
+                                "usageType": {"type": "string"}
+                            }
+                        }
+                    },
+                    "totalUsages": {"type": "number"},
+                    "projectsSearched": {"type": "number"}
+                }
+            })),
+            _meta: Some(json!({"phase": "Phase 5", "category": "cross-monorepo", "security": "read-only"})),
+        },
+    ]
+}
+
 /// Get strong documentation generation tools for Phase 3
 fn get_strong_docs_tools() -> Vec<Tool> {
     vec![
@@ -1019,6 +1235,164 @@ fn get_strong_docs_tools() -> Vec<Tool> {
                 }
             })),
             _meta: Some(json!({"phase": "Phase 3", "category": "documentation"})),
+        },
+
+        // === Example & Test Generation Tools (Phase 4) ===
+        Tool {
+            name: "strong.examples.generate".to_string(),
+            description: Some("Generate code examples from symbols with configurable complexity".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "symbol_id": {
+                        "type": "string",
+                        "description": "Unique symbol identifier"
+                    },
+                    "complexity": {
+                        "type": "string",
+                        "enum": ["basic", "intermediate", "advanced"],
+                        "default": "basic",
+                        "description": "Example complexity level"
+                    },
+                    "language": {
+                        "type": "string",
+                        "enum": ["typescript", "javascript", "rust", "python"],
+                        "description": "Target language for examples"
+                    }
+                },
+                "required": ["symbol_id"]
+            }),
+            output_schema: Some(json!({
+                "type": "object",
+                "properties": {
+                    "examples": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "code": {"type": "string"},
+                                "description": {"type": "string"},
+                                "language": {"type": "string"},
+                                "complexity": {"type": "string"}
+                            }
+                        }
+                    }
+                }
+            })),
+            _meta: Some(json!({"phase": "Phase 4", "category": "examples"})),
+        },
+        Tool {
+            name: "strong.examples.validate".to_string(),
+            description: Some("Validate code examples for syntax and compilation errors".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "example": {
+                        "type": "object",
+                        "properties": {
+                            "code": {"type": "string"},
+                            "description": {"type": "string"},
+                            "language": {"type": "string"},
+                            "complexity": {"type": "string"}
+                        },
+                        "required": ["code", "language"],
+                        "description": "Example object to validate"
+                    }
+                },
+                "required": ["example"]
+            }),
+            output_schema: Some(json!({
+                "type": "object",
+                "properties": {
+                    "valid": {"type": "boolean"},
+                    "errors": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    },
+                    "warnings": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    }
+                }
+            })),
+            _meta: Some(json!({"phase": "Phase 4", "category": "examples"})),
+        },
+        Tool {
+            name: "strong.tests.generate".to_string(),
+            description: Some("Generate unit and integration tests for symbols".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "symbol_id": {
+                        "type": "string",
+                        "description": "Symbol ID to generate tests for"
+                    },
+                    "framework": {
+                        "type": "string",
+                        "enum": ["jest", "vitest", "bun", "rust"],
+                        "default": "jest",
+                        "description": "Test framework to use"
+                    },
+                    "test_type": {
+                        "type": "string",
+                        "enum": ["unit", "integration", "e2e"],
+                        "default": "unit",
+                        "description": "Type of tests to generate"
+                    }
+                },
+                "required": ["symbol_id"]
+            }),
+            output_schema: Some(json!({
+                "type": "object",
+                "properties": {
+                    "tests": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "code": {"type": "string"},
+                                "framework": {"type": "string"},
+                                "test_type": {"type": "string"}
+                            }
+                        }
+                    }
+                }
+            })),
+            _meta: Some(json!({"phase": "Phase 4", "category": "testing"})),
+        },
+        Tool {
+            name: "strong.tests.validate".to_string(),
+            description: Some("Validate generated tests and estimate coverage".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "test": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "code": {"type": "string"},
+                            "framework": {"type": "string"},
+                            "test_type": {"type": "string"}
+                        },
+                        "required": ["code", "framework"],
+                        "description": "Test object to validate"
+                    }
+                },
+                "required": ["test"]
+            }),
+            output_schema: Some(json!({
+                "type": "object",
+                "properties": {
+                    "valid": {"type": "boolean"},
+                    "coverage_estimate": {"type": "number"},
+                    "errors": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    }
+                }
+            })),
+            _meta: Some(json!({"phase": "Phase 4", "category": "testing"})),
         },
     ]
 }

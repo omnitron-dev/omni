@@ -234,10 +234,16 @@ pub struct GlobalDaemonStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
     use tempfile::TempDir;
+
+    // Test synchronization mutex to prevent parallel test execution
+    // that modifies shared environment variables
+    static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_pid_file_operations() {
+        let _lock = TEST_MUTEX.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
 
         // Override PID file path for testing
@@ -249,6 +255,7 @@ mod tests {
 
         // Clean up
         let _ = fs::remove_file(get_global_pid_file());
+        std::env::remove_var("MERIDIAN_HOME");
     }
 
     #[test]
@@ -264,6 +271,7 @@ mod tests {
     // Comprehensive daemon tests
     #[test]
     fn test_pid_file_read_write_cycle() {
+        let _lock = TEST_MUTEX.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
         std::env::set_var("MERIDIAN_HOME", temp_dir.path());
 
@@ -279,19 +287,27 @@ mod tests {
         let pid_file = get_global_pid_file();
         let content = fs::read_to_string(&pid_file).unwrap();
         assert_eq!(content, "54321");
+
+        // Clean up
+        std::env::remove_var("MERIDIAN_HOME");
     }
 
     #[test]
     fn test_read_nonexistent_pid_file() {
+        let _lock = TEST_MUTEX.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
         std::env::set_var("MERIDIAN_HOME", temp_dir.path());
 
         let pid = read_global_pid();
         assert_eq!(pid, None);
+
+        // Clean up
+        std::env::remove_var("MERIDIAN_HOME");
     }
 
     #[test]
     fn test_read_invalid_pid_file() {
+        let _lock = TEST_MUTEX.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
         std::env::set_var("MERIDIAN_HOME", temp_dir.path());
 
@@ -302,10 +318,14 @@ mod tests {
 
         let pid = read_global_pid();
         assert_eq!(pid, None);
+
+        // Clean up
+        std::env::remove_var("MERIDIAN_HOME");
     }
 
     #[test]
     fn test_pid_file_cleanup() {
+        let _lock = TEST_MUTEX.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
         std::env::set_var("MERIDIAN_HOME", temp_dir.path());
 
@@ -315,20 +335,28 @@ mod tests {
 
         fs::remove_file(&pid_file).unwrap();
         assert!(!pid_file.exists());
+
+        // Clean up
+        std::env::remove_var("MERIDIAN_HOME");
     }
 
     #[test]
     fn test_get_global_status_not_running() {
+        let _lock = TEST_MUTEX.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
         std::env::set_var("MERIDIAN_HOME", temp_dir.path());
 
         let status = get_global_status();
         assert!(!status.running);
         assert_eq!(status.pid, None);
+
+        // Clean up
+        std::env::remove_var("MERIDIAN_HOME");
     }
 
     #[test]
     fn test_get_global_status_with_stale_pid() {
+        let _lock = TEST_MUTEX.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
         std::env::set_var("MERIDIAN_HOME", temp_dir.path());
 
@@ -338,10 +366,14 @@ mod tests {
         let status = get_global_status();
         assert!(!status.running);
         assert_eq!(status.pid, Some(999999));
+
+        // Clean up
+        std::env::remove_var("MERIDIAN_HOME");
     }
 
     #[test]
     fn test_get_global_status_with_running_process() {
+        let _lock = TEST_MUTEX.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
         std::env::set_var("MERIDIAN_HOME", temp_dir.path());
 
@@ -352,19 +384,27 @@ mod tests {
         let status = get_global_status();
         assert!(status.running);
         assert_eq!(status.pid, Some(current_pid));
+
+        // Clean up
+        std::env::remove_var("MERIDIAN_HOME");
     }
 
     #[test]
     fn test_log_file_path() {
+        let _lock = TEST_MUTEX.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
         std::env::set_var("MERIDIAN_HOME", temp_dir.path());
 
         let log_file = get_global_log_file();
         assert!(log_file.to_str().unwrap().contains("global-server.log"));
+
+        // Clean up
+        std::env::remove_var("MERIDIAN_HOME");
     }
 
     #[test]
     fn test_pid_file_directory_creation() {
+        let _lock = TEST_MUTEX.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
         let meridian_home = temp_dir.path().join("custom_home");
         std::env::set_var("MERIDIAN_HOME", &meridian_home);
@@ -381,6 +421,9 @@ mod tests {
 
         save_global_pid(12345).unwrap();
         assert!(pid_file.parent().unwrap().exists());
+
+        // Clean up
+        std::env::remove_var("MERIDIAN_HOME");
     }
 
     #[test]
@@ -406,16 +449,21 @@ mod tests {
 
     #[tokio::test]
     async fn test_stop_daemon_not_running() {
+        let _lock = TEST_MUTEX.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
         std::env::set_var("MERIDIAN_HOME", temp_dir.path());
 
         let result = stop_global_daemon(false);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("not running"));
+
+        // Clean up
+        std::env::remove_var("MERIDIAN_HOME");
     }
 
     #[tokio::test]
     async fn test_stop_daemon_stale_pid() {
+        let _lock = TEST_MUTEX.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
         std::env::set_var("MERIDIAN_HOME", temp_dir.path());
 
@@ -427,6 +475,9 @@ mod tests {
 
         // PID file should be cleaned up
         assert!(!get_global_pid_file().exists());
+
+        // Clean up
+        std::env::remove_var("MERIDIAN_HOME");
     }
 
     #[test]

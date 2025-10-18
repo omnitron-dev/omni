@@ -59,7 +59,7 @@ impl RustPatternMatcher {
 
     /// Convert pattern syntax to tree-sitter query
     fn pattern_to_query(&self, pattern: &str) -> Result<(String, Vec<String>)> {
-        let mut query = String::new();
+        let query;
         let mut metavars = Vec::new();
 
         // Parse pattern and convert to tree-sitter query syntax
@@ -237,7 +237,7 @@ impl TypeScriptPatternMatcher {
     }
 
     fn pattern_to_query(&self, pattern: &str) -> Result<(String, Vec<String>)> {
-        let mut query = String::new();
+        let query;
         let mut metavars = Vec::new();
 
         if pattern.contains("try {") && pattern.contains("catch") {
@@ -420,7 +420,7 @@ impl JavaScriptPatternMatcher {
 
     fn pattern_to_query(&self, pattern: &str) -> Result<(String, Vec<String>)> {
         // Similar to TypeScript but without type annotations
-        let mut query = String::new();
+        let query;
         let mut metavars = Vec::new();
 
         if pattern.contains("try {") && pattern.contains("catch") {
@@ -561,7 +561,7 @@ impl PythonPatternMatcher {
     }
 
     fn pattern_to_query(&self, pattern: &str) -> Result<(String, Vec<String>)> {
-        let mut query = String::new();
+        let query;
         let mut metavars = Vec::new();
 
         if pattern.contains("try:") && pattern.contains("except") {
@@ -711,7 +711,7 @@ impl GoPatternMatcher {
     }
 
     fn pattern_to_query(&self, pattern: &str) -> Result<(String, Vec<String>)> {
-        let mut query = String::new();
+        let query;
         let mut metavars = Vec::new();
 
         if pattern.contains("func $name(") {

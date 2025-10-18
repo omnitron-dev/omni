@@ -382,7 +382,6 @@ fn should_ignore(
 mod tests {
     use super::*;
     use crate::global::storage::GlobalStorage;
-    use crate::global::identity::ProjectIdentity;
     use tempfile::TempDir;
     use std::fs;
 

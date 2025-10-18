@@ -2497,7 +2497,7 @@ impl ToolHandlers {
 
         use crate::codegen::TestFramework;
 
-        let framework = match params.test.framework.as_str() {
+        let _framework = match params.test.framework.as_str() {
             "vitest" => TestFramework::Vitest,
             "bun" | "bun:test" => TestFramework::BunTest,
             "rust" => TestFramework::RustNative,
@@ -3523,7 +3523,7 @@ impl ToolHandlers {
 
         // Simple BFS path finding
         let storage = self.links_storage.read().await;
-        let max_depth = params.max_depth.unwrap_or(5);
+        let _max_depth = params.max_depth.unwrap_or(5);
 
         // Simplified path finding - would need more sophisticated implementation
         let bi_links = storage.get_bidirectional_links(&from).await?;

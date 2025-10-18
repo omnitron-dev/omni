@@ -222,7 +222,7 @@ impl DeltaIndexer {
 
         for path in modified_files.iter().chain(created_files.iter()) {
             // Write WAL entry
-            if let Some(ref wal_path) = self.wal_path {
+            if let Some(ref _wal_path) = self.wal_path {
                 if let Err(e) = self.write_wal_entry(path, "update").await {
                     warn!("Failed to write WAL entry: {}", e);
                 }
@@ -236,7 +236,7 @@ impl DeltaIndexer {
                     debug!("Updated file: {:?}", path);
 
                     // Mark WAL entry as complete
-                    if let Some(ref wal_path) = self.wal_path {
+                    if let Some(ref _wal_path) = self.wal_path {
                         if let Err(e) = self.mark_wal_complete(path).await {
                             warn!("Failed to mark WAL entry complete: {}", e);
                         }
@@ -276,7 +276,7 @@ impl DeltaIndexer {
     /// Process file deletion
     async fn process_deletion(&self, path: &Path) -> Result<()> {
         // Write WAL entry
-        if let Some(ref wal_path) = self.wal_path {
+        if let Some(ref _wal_path) = self.wal_path {
             self.write_wal_entry(path, "delete").await?;
         }
 
@@ -296,7 +296,7 @@ impl DeltaIndexer {
         debug!("Processed deletion for {:?}", path);
 
         // Mark WAL entry as complete
-        if let Some(ref wal_path) = self.wal_path {
+        if let Some(ref _wal_path) = self.wal_path {
             self.mark_wal_complete(path).await?;
         }
 

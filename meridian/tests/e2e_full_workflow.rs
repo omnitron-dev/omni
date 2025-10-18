@@ -494,3 +494,285 @@ async fn test_pattern_extraction_reuse_workflow() {
     // Should identify REST endpoint pattern
     assert!(!patterns.is_empty());
 }
+
+/// END-TO-END TEST: Complete spec → code → docs → examples → tests workflow
+/// This test validates the entire knowledge chain through MCP tools:
+/// 1. Read specification from specs system
+/// 2. Create semantic links (spec → code)
+/// 3. Generate documentation from code
+/// 4. Generate examples from code
+/// 5. Generate tests from code
+/// 6. Validate all links and transformations
+#[tokio::test]
+async fn test_spec_to_tests_complete_workflow() {
+    use meridian::codegen::{DocumentationGenerator, DocFormat, ExampleGenerator, TestGenerator, TestFramework, ExampleComplexity};
+    use meridian::links::{LinksStorage, RocksDBLinksStorage, SemanticLink, LinkTarget, LinkType, ExtractionMethod, KnowledgeLevel};
+    use meridian::specs::SpecificationManager;
+    use meridian::storage::RocksDBStorage;
+    use std::sync::Arc;
+
+    let temp_dir = TempDir::new().unwrap();
+    let (storage, _temp) = create_test_storage();
+
+    // Initialize components
+    let _spec_manager = SpecificationManager::new(temp_dir.path().join("specs"));
+    let links_storage = {
+        let rocks_storage = RocksDBStorage::new(&temp_dir.path().join("links")).unwrap();
+        Arc::new(RocksDBLinksStorage::new(Arc::new(rocks_storage)))
+    };
+
+    // === STEP 1: Read Specification ===
+    // In a real workflow, specs would be loaded from the specs directory
+    // For this test, we simulate a spec section
+    let spec_id = "test-spec.md#authentication-feature";
+    let spec_content = r#"
+    # Authentication Feature
+
+    The authentication system shall provide a function to authenticate users
+    based on username and password. The function should return a session token
+    on success and throw an error on failure.
+    "#;
+
+    // === STEP 2: Create Code Implementation (simulated) ===
+    // In real workflow, this would be actual code from the indexer
+    let code_symbol = test_symbol("authenticate_user", meridian::types::SymbolKind::Function);
+    let code_id = format!("code::{}", code_symbol.name);
+
+    // === STEP 3: Create Semantic Link (Spec → Code) ===
+    let spec_target = LinkTarget::spec(spec_id.to_string());
+    let code_target = LinkTarget::code(code_id.clone());
+
+    let spec_to_code_link = SemanticLink::new(
+        LinkType::ImplementedBy,
+        spec_target.clone(),
+        code_target.clone(),
+        0.95,
+        ExtractionMethod::Annotation,
+        "test-workflow".to_string(),
+    );
+
+    links_storage.add_link(&spec_to_code_link).await.unwrap();
+
+    // Verify the spec→code link exists
+    let spec_links = links_storage.find_links_from_source(&spec_target).await.unwrap();
+    assert_eq!(spec_links.len(), 1);
+    assert_eq!(spec_links[0].target, code_target);
+    assert_eq!(spec_links[0].link_type, LinkType::ImplementedBy);
+
+    // === STEP 4: Generate Documentation ===
+    let doc_generator = DocumentationGenerator::new(DocFormat::TSDoc);
+    let generated_doc = doc_generator.generate(&code_symbol).unwrap();
+
+    assert!(!generated_doc.content.is_empty());
+    // Note: is_enhanced may be false for symbols without detailed metadata
+    // The important thing is that documentation was generated
+
+    // Create Code → Docs semantic link
+    let docs_target = LinkTarget::docs(format!("docs/{}.md", code_symbol.name));
+    let code_to_docs_link = SemanticLink::new(
+        LinkType::DocumentedIn,
+        code_target.clone(),
+        docs_target.clone(),
+        0.90,
+        ExtractionMethod::Annotation,
+        "test-workflow".to_string(),
+    );
+
+    links_storage.add_link(&code_to_docs_link).await.unwrap();
+
+    // Verify the code→docs link exists
+    let code_links = links_storage.get_bidirectional_links(&code_target).await.unwrap();
+    assert!(code_links.incoming.len() >= 1); // From spec
+    assert!(code_links.outgoing.iter().any(|l| l.target == docs_target));
+
+    // === STEP 5: Generate Examples ===
+    let example_generator = ExampleGenerator::new("typescript".to_string());
+    let basic_example = example_generator.generate_basic(&code_symbol).unwrap();
+
+    assert!(!basic_example.code.is_empty());
+    assert_eq!(basic_example.language, "typescript");
+    assert_eq!(basic_example.complexity, ExampleComplexity::Basic);
+
+    // Create Docs → Examples semantic link
+    let examples_target = LinkTarget::examples(format!("examples/{}_example.ts", code_symbol.name));
+    let docs_to_examples_link = SemanticLink::new(
+        LinkType::ShowsExample,
+        docs_target.clone(),
+        examples_target.clone(),
+        0.85,
+        ExtractionMethod::Annotation,
+        "test-workflow".to_string(),
+    );
+
+    links_storage.add_link(&docs_to_examples_link).await.unwrap();
+
+    // === STEP 6: Generate Tests ===
+    let test_generator = TestGenerator::new(TestFramework::Jest);
+    let generated_tests = test_generator.generate_unit_tests(&code_symbol).unwrap();
+
+    assert!(!generated_tests.is_empty());
+    let first_test = &generated_tests[0];
+    assert_eq!(first_test.framework, TestFramework::Jest);
+    assert!(!first_test.code.is_empty());
+
+    // Create Code → Tests semantic link
+    let tests_target = LinkTarget::tests(format!("tests/{}.spec.ts", code_symbol.name));
+    let code_to_tests_link = SemanticLink::new(
+        LinkType::TestedBy,
+        code_target.clone(),
+        tests_target.clone(),
+        0.95,
+        ExtractionMethod::Annotation,
+        "test-workflow".to_string(),
+    );
+
+    links_storage.add_link(&code_to_tests_link).await.unwrap();
+
+    // === STEP 7: Validate Complete Link Chain ===
+    // Verify we can traverse from spec all the way to tests
+
+    // Spec → Code
+    let spec_to_code = links_storage
+        .find_cross_level_links(KnowledgeLevel::Spec, KnowledgeLevel::Code)
+        .await
+        .unwrap();
+    assert!(!spec_to_code.is_empty());
+
+    // Code → Docs
+    let code_to_docs = links_storage
+        .find_cross_level_links(KnowledgeLevel::Code, KnowledgeLevel::Docs)
+        .await
+        .unwrap();
+    assert!(!code_to_docs.is_empty());
+
+    // Docs → Examples
+    let docs_to_examples = links_storage
+        .find_cross_level_links(KnowledgeLevel::Docs, KnowledgeLevel::Examples)
+        .await
+        .unwrap();
+    assert!(!docs_to_examples.is_empty());
+
+    // Code → Tests
+    let code_to_tests = links_storage
+        .find_links_by_type_from_source(LinkType::TestedBy, &code_target)
+        .await
+        .unwrap();
+    assert!(!code_to_tests.is_empty());
+
+    // === STEP 8: Verify Link Statistics ===
+    let stats = links_storage.get_statistics().await.unwrap();
+    println!("Total links: {}, Expected: >= 4", stats.total_links);
+    assert!(stats.total_links >= 4); // spec→code, code→docs, docs→examples, code→tests
+    assert!(stats.average_confidence > 0.8);
+
+    // Verify all expected link types exist
+    assert!(stats.by_type.contains_key("implemented_by"));
+    assert!(stats.by_type.contains_key("documented_in"));
+    assert!(stats.by_type.contains_key("shows_example"));
+    assert!(stats.by_type.contains_key("tested_by"));
+
+    // === STEP 9: Test Bidirectional Navigation ===
+    // From code, we should be able to find:
+    // - Which spec it implements (incoming)
+    // - What docs describe it (outgoing)
+    // - What tests verify it (outgoing)
+    let code_bi_links = links_storage.get_bidirectional_links(&code_target).await.unwrap();
+
+    assert!(code_bi_links.incoming.iter().any(|l| l.source.level == KnowledgeLevel::Spec));
+    assert!(code_bi_links.outgoing.iter().any(|l| l.target.level == KnowledgeLevel::Docs));
+    assert!(code_bi_links.outgoing.iter().any(|l| l.target.level == KnowledgeLevel::Tests));
+
+    println!("✅ Complete workflow validated:");
+    println!("   Spec → Code → Docs → Examples");
+    println!("             ↓");
+    println!("           Tests");
+    println!("   Total links: {}", stats.total_links);
+    println!("   Avg confidence: {:.2}", stats.average_confidence);
+}
+
+/// END-TO-END TEST: Multi-feature workflow with link validation
+/// Tests multiple features going through the workflow simultaneously
+#[tokio::test]
+async fn test_parallel_spec_to_code_workflows() {
+    use meridian::links::{LinksStorage, RocksDBLinksStorage, SemanticLink, LinkTarget, LinkType, ExtractionMethod, ValidationStatus};
+    use meridian::storage::RocksDBStorage;
+    use std::sync::Arc;
+
+    let temp_dir = TempDir::new().unwrap();
+    let rocks_storage = RocksDBStorage::new(temp_dir.path()).unwrap();
+    let links_storage = Arc::new(RocksDBLinksStorage::new(Arc::new(rocks_storage)));
+
+    // Create 5 parallel workflows
+    let features = vec![
+        ("user-management", "UserService", "createUser"),
+        ("authentication", "AuthService", "login"),
+        ("authorization", "AuthzService", "checkPermission"),
+        ("session-management", "SessionService", "createSession"),
+        ("token-validation", "TokenService", "validateToken"),
+    ];
+
+    let features_count = features.len();
+
+    for (spec_name, service_name, method_name) in &features {
+        let spec_target = LinkTarget::spec(format!("spec.md#{}", spec_name));
+        let code_target = LinkTarget::code(format!("{}::{}", service_name, method_name));
+        let docs_target = LinkTarget::docs(format!("docs/{}.md", service_name));
+        let tests_target = LinkTarget::tests(format!("tests/{}.spec.ts", service_name));
+
+        // Create complete link chain
+        let links = vec![
+            SemanticLink::new(
+                LinkType::ImplementedBy,
+                spec_target.clone(),
+                code_target.clone(),
+                0.95,
+                ExtractionMethod::Annotation,
+                "parallel-test".to_string(),
+            ),
+            SemanticLink::new(
+                LinkType::DocumentedIn,
+                code_target.clone(),
+                docs_target.clone(),
+                0.90,
+                ExtractionMethod::Annotation,
+                "parallel-test".to_string(),
+            ),
+            SemanticLink::new(
+                LinkType::TestedBy,
+                code_target.clone(),
+                tests_target.clone(),
+                0.95,
+                ExtractionMethod::Annotation,
+                "parallel-test".to_string(),
+            ),
+        ];
+
+        for link in links {
+            links_storage.add_link(&link).await.unwrap();
+        }
+    }
+
+    // Verify all workflows are tracked
+    let stats = links_storage.get_statistics().await.unwrap();
+    assert_eq!(stats.total_links, 15); // 5 features × 3 links each
+
+    // Validate some links
+    let all_links = links_storage
+        .find_links_by_type(LinkType::ImplementedBy)
+        .await
+        .unwrap();
+
+    for link in all_links.iter().take(2) {
+        links_storage
+            .validate_link(&link.id, ValidationStatus::Valid)
+            .await
+            .unwrap();
+    }
+
+    // Check broken links (should be none)
+    let broken = links_storage.find_broken_links().await.unwrap();
+    assert_eq!(broken.len(), 0);
+
+    println!("✅ Parallel workflows validated: {} features, {} links",
+             features_count, stats.total_links);
+}

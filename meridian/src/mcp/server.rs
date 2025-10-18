@@ -14,7 +14,7 @@ use anyhow::Result;
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::sync::Arc;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 /// Server mode - single project or multi-project
 enum ServerMode {
@@ -148,12 +148,15 @@ impl MeridianServer {
         while let Some(request) = transport.recv().await {
             let response = self.handle_request(request.clone(), &handlers).await;
 
-            // Don't send response for notifications (no id)
-            if response.id.is_some() || response.result.is_some() || response.error.is_some() {
+            // JSON-RPC 2.0: Only send response if request had an id (not a notification)
+            // Notifications (no id) MUST NOT receive responses
+            if response.id.is_some() {
                 if let Err(e) = transport.send(response) {
                     error!("Failed to send response: {}", e);
                     break;
                 }
+            } else {
+                debug!("Skipping response for notification (no id)");
             }
         }
 
@@ -212,20 +215,14 @@ impl MeridianServer {
         match request.method.as_str() {
             "initialize" => self.handle_initialize(request_id, request.params),
             "initialized" | "notifications/initialized" => {
-                // MCP initialization notification - no response needed for notifications (no id)
+                // MCP initialization notification - JSON-RPC 2.0: notifications MUST NOT receive responses
                 info!("Received initialized notification - handshake complete");
-                // For notifications, we don't send a response
-                // But if it has an ID (non-standard), acknowledge it
-                if request_id.is_some() {
-                    JsonRpcResponse::success(request_id, json!({}))
-                } else {
-                    // No response for notifications
-                    JsonRpcResponse {
-                        jsonrpc: "2.0".to_string(),
-                        id: None,
-                        result: None,
-                        error: None,
-                    }
+                // Return empty response with no id (will be filtered out in main loop)
+                JsonRpcResponse {
+                    jsonrpc: "2.0".to_string(),
+                    id: None,  // No id = no response will be sent
+                    result: None,
+                    error: None,
                 }
             }
             "tools/list" => self.handle_list_tools(request_id),
@@ -240,12 +237,42 @@ impl MeridianServer {
         }
     }
 
-    /// Handle initialize request
-    pub fn handle_initialize(&self, id: Option<Value>, _params: Option<Value>) -> JsonRpcResponse {
+    /// Handle initialize request with protocol version negotiation
+    pub fn handle_initialize(&self, id: Option<Value>, params: Option<Value>) -> JsonRpcResponse {
         info!("Handling initialize request");
 
+        // Extract client's requested protocol version
+        let client_version = params
+            .as_ref()
+            .and_then(|p| p.get("protocolVersion"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("2024-11-05");
+
+        // Negotiate protocol version (use minimum of client and server versions)
+        // Server supports: 2024-11-05, 2025-03-26, 2025-06-18
+        // Use LATEST stable: 2025-03-26 (matching official SDK)
+        let server_latest = "2025-03-26";
+
+        let negotiated_version = match client_version {
+            // If client supports newer or equal version, use server's latest stable
+            v if v >= server_latest => server_latest,
+            // If client supports older version, use client's version (backward compat)
+            v if ["2024-11-05", "2025-03-26"].contains(&v) => v,
+            // Unknown version, fallback to oldest stable
+            _ => {
+                warn!(
+                    "Unknown client protocol version: {}, using fallback",
+                    client_version
+                );
+                "2024-11-05"
+            }
+        };
+
+        info!("Client requested protocol version: {}", client_version);
+        info!("Server negotiated protocol version: {}", negotiated_version);
+
         let result = json!({
-            "protocolVersion": "2025-06-18",
+            "protocolVersion": negotiated_version,  // Now uses negotiated version
             "capabilities": ServerCapabilities::default(),
             "serverInfo": {
                 "name": "meridian",

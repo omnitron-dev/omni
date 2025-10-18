@@ -77,11 +77,17 @@ async fn test_mcp_protocol_version_2025_06_18() {
 
     let result = response.result.unwrap();
 
-    // Verify protocol version is 2025-06-18
+    // Verify protocol version negotiation (server negotiates to stable version)
     let protocol_version = result.get("protocolVersion").unwrap().as_str().unwrap();
+    assert!(
+        ["2024-11-05", "2025-03-26", "2025-06-18"].contains(&protocol_version),
+        "Protocol version must be valid MCP version, got: {}",
+        protocol_version
+    );
+    // Server should negotiate to 2025-03-26 (latest stable) when no client version specified
     assert_eq!(
-        protocol_version, "2025-06-18",
-        "Protocol version must be 2025-06-18"
+        protocol_version, "2025-03-26",
+        "Protocol version should be 2025-03-26 (latest stable)"
     );
 
     // Verify serverInfo is present
@@ -112,26 +118,22 @@ async fn test_mcp_server_capabilities_2025_06_18() {
     let result = response.result.unwrap();
     let capabilities = result.get("capabilities").unwrap();
 
-    // Verify required capabilities (MCP 2025-06-18)
-    assert_eq!(
-        capabilities.get("tools"),
-        Some(&json!(true)),
-        "Server must advertise tools capability"
+    // Verify required capabilities are objects (MCP 2025-03-26 compliant)
+    assert!(
+        capabilities.get("tools").unwrap().is_object(),
+        "Tools capability must be an object"
     );
-    assert_eq!(
-        capabilities.get("resources"),
-        Some(&json!(true)),
-        "Server must advertise resources capability"
+    assert!(
+        capabilities.get("resources").unwrap().is_object(),
+        "Resources capability must be an object"
     );
-    assert_eq!(
-        capabilities.get("prompts"),
-        Some(&json!(true)),
-        "Server must advertise prompts capability"
+    assert!(
+        capabilities.get("prompts").unwrap().is_object(),
+        "Prompts capability must be an object"
     );
-    assert_eq!(
-        capabilities.get("logging"),
-        Some(&json!(true)),
-        "Server must advertise logging capability"
+    assert!(
+        capabilities.get("logging").unwrap().is_object(),
+        "Logging capability must be an object"
     );
 
     // Optional capabilities may be present
@@ -284,11 +286,13 @@ async fn test_mcp_prompts_schema_2025_06_18() {
     let result = response.result.unwrap();
     let capabilities = result.get("capabilities").unwrap();
 
-    // Verify prompts capability is advertised
-    assert_eq!(
-        capabilities.get("prompts"),
-        Some(&json!(true)),
-        "Server must advertise prompts capability"
+    // Verify prompts capability is advertised as object (not boolean)
+    let prompts_cap = capabilities.get("prompts");
+    assert!(prompts_cap.is_some(), "Server must advertise prompts capability");
+    assert!(
+        prompts_cap.unwrap().is_object(),
+        "Prompts capability must be an object (per MCP spec), got: {:?}",
+        prompts_cap
     );
 }
 
@@ -509,11 +513,14 @@ async fn test_mcp_backward_compatibility() {
         serde_json::from_value(old_protocol_request).unwrap();
     let response = server.handle_initialize(request.id, request.params);
 
-    // Server should respond with its own protocol version
+    // Server should negotiate protocol version with client
     assert!(response.error.is_none());
     let result = response.result.unwrap();
     let protocol_version = result.get("protocolVersion").unwrap().as_str().unwrap();
 
-    // Server always responds with 2025-06-18
-    assert_eq!(protocol_version, "2025-06-18");
+    // Server should negotiate to client's version for backward compatibility
+    assert_eq!(
+        protocol_version, "2024-11-05",
+        "Server should negotiate to client's older version (2024-11-05)"
+    );
 }

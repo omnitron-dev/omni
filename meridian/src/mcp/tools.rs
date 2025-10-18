@@ -867,15 +867,15 @@ pub fn get_all_resources() -> Vec<Resource> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerCapabilities {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tools: Option<bool>,
+    pub tools: Option<serde_json::Map<String, Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub resources: Option<bool>,
+    pub resources: Option<serde_json::Map<String, Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub prompts: Option<bool>,
+    pub prompts: Option<serde_json::Map<String, Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub logging: Option<bool>,
+    pub logging: Option<serde_json::Map<String, Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub completions: Option<bool>,
+    pub completions: Option<serde_json::Map<String, Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub experimental: Option<serde_json::Value>,
 }
@@ -883,10 +883,10 @@ pub struct ServerCapabilities {
 impl Default for ServerCapabilities {
     fn default() -> Self {
         Self {
-            tools: Some(true),
-            resources: Some(true),
-            prompts: Some(true),
-            logging: Some(true),
+            tools: Some(serde_json::Map::new()),       // Empty object
+            resources: Some(serde_json::Map::new()),   // Empty object
+            prompts: Some(serde_json::Map::new()),     // Empty object
+            logging: Some(serde_json::Map::new()),     // Empty object
             completions: None,
             experimental: None,
         }

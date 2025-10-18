@@ -4,7 +4,7 @@
 //! from CodeSymbol definitions, supporting multiple languages.
 
 use crate::types::CodeSymbol;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 /// Generated code example with metadata

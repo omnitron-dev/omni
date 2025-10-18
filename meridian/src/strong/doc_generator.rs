@@ -1,6 +1,6 @@
 //! Documentation generation engine
 
-use crate::types::{CodeSymbol, SymbolKind, Hash, SymbolId, Location, SymbolMetadata};
+use crate::types::{CodeSymbol, SymbolKind};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
@@ -74,7 +74,8 @@ impl DocumentationGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+    use crate::types::{SymbolId, Hash, Location, SymbolMetadata, SymbolKind};
+
     fn create_test_symbol(name: &str, kind: SymbolKind, sig: &str) -> CodeSymbol {
         CodeSymbol { id: SymbolId::new(format!("test::{}", name)), name: name.to_string(), kind, signature: sig.to_string(),
             body_hash: Hash("test".to_string()), location: Location { file: "/t.ts".to_string(), line_start: 1, line_end: 10, column_start: 0, column_end: 0 },

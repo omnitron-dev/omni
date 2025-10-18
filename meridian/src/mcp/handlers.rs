@@ -940,9 +940,11 @@ impl ToolHandlers {
 
     async fn handle_attention_retrieve(&self, args: Value) -> Result<Value> {
         #[derive(Deserialize)]
+        #[allow(dead_code)]
         struct AttentionRetrieveParams {
             attention_pattern: Value,
             token_budget: usize,
+            #[allow(dead_code)]
             project_path: Option<String>,
         }
 

@@ -1,5 +1,5 @@
 //! Documentation quality validation
-use crate::types::{CodeSymbol, SymbolKind, Hash, SymbolId, Location, SymbolMetadata};
+use crate::types::CodeSymbol;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -26,7 +26,7 @@ impl QualityScore {
 pub struct QualityValidator;
 impl QualityValidator {
     pub fn new() -> Self { Self }
-    pub fn assess(&self, doc: &str, symbol: &CodeSymbol) -> QualityScore {
+    pub fn assess(&self, doc: &str, _symbol: &CodeSymbol) -> QualityScore {
         let mut score = 1.0f32;
         let mut issues = vec![];
         if doc.trim().is_empty() { score -= 0.5; issues.push(QualityIssue { severity: Severity::Error, category: "completeness".to_string(), message: "Missing description".to_string(), line: None }); }
@@ -39,6 +39,7 @@ impl Default for QualityValidator { fn default() -> Self { Self::new() } }
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::{SymbolId, Hash, Location, SymbolMetadata, SymbolKind};
     fn cs(n: &str, k: SymbolKind, s: &str) -> CodeSymbol { CodeSymbol { id: SymbolId::new(format!("t::{}", n)), name: n.to_string(), kind: k, signature: s.to_string(), body_hash: Hash("t".to_string()), location: Location { file: "/t.ts".to_string(), line_start: 1, line_end: 10, column_start: 0, column_end: 0 }, references: vec![], dependencies: vec![], metadata: SymbolMetadata::default(), embedding: None } }
     #[test] fn test_empty_documentation_score() { let v = QualityValidator::new(); let s = v.assess("", &cs("f", SymbolKind::Function, "f()")); assert!(!s.is_acceptable()); }
     #[test] fn test_complete_documentation_score() { let v = QualityValidator::new(); let s = v.assess("/** Complete doc */", &cs("f", SymbolKind::Function, "f()")); assert!(s.is_acceptable()); }

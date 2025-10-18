@@ -4,7 +4,7 @@
 //! other monorepos in the global registry, with proper security isolation.
 
 use crate::global::registry::{ProjectRegistry, ProjectRegistryManager};
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -311,10 +311,8 @@ pub enum MatchType {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::global::identity::ProjectIdentity;
     use crate::global::registry::ProjectRegistry;
     use crate::global::storage::GlobalStorage;
-    use std::path::PathBuf;
     use tempfile::TempDir;
 
     async fn create_test_setup() -> (Arc<ProjectRegistryManager>, TempDir) {

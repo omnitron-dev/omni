@@ -1,5 +1,5 @@
 //! Documentation templates
-use crate::types::{CodeSymbol, SymbolKind, Hash, SymbolId, Location, SymbolMetadata};
+use crate::types::{CodeSymbol, SymbolKind};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -33,6 +33,7 @@ impl Default for TemplateEngine { fn default() -> Self { Self::new() } }
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::{SymbolId, Hash, Location, SymbolMetadata};
     fn cs(n: &str, k: SymbolKind, s: &str) -> CodeSymbol { CodeSymbol { id: SymbolId::new(format!("t::{}", n)), name: n.to_string(), kind: k, signature: s.to_string(), body_hash: Hash("t".to_string()), location: Location { file: "/t.ts".to_string(), line_start: 1, line_end: 10, column_start: 0, column_end: 0 }, references: vec![], dependencies: vec![], metadata: SymbolMetadata::default(), embedding: None } }
     #[test] fn test_template_rendering() { let t = DocTemplate { name: "t".to_string(), format: "t".to_string(), template: "{{name}}".to_string(), description: "t".to_string() }; let mut c = HashMap::new(); c.insert("name".to_string(), "test".to_string()); assert_eq!(t.render(&c), "test"); }
     #[test] fn test_template_engine_has_builtin_templates() { let e = TemplateEngine::new(); assert!(e.get_template("tsdoc_function").is_some()); }

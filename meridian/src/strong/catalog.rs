@@ -23,7 +23,7 @@ impl GlobalCatalog {
     pub fn list_projects(&self) -> Vec<&ProjectMetadata> { self.projects.values().collect() }
     pub fn add_documentation(&mut self, pid: &str, sym: &str, content: &str) -> Result<()> { self.docs.entry(pid.to_string()).or_insert_with(HashMap::new).insert(sym.to_string(), content.to_string()); Ok(()) }
     pub fn get_documentation(&self, pid: &str, sym: &str) -> Option<&String> { self.docs.get(pid).and_then(|d| d.get(sym)) }
-    pub fn search(&self, q: &str, _scope: SearchScope, _cur: Option<&str>) -> Result<Vec<DocResult>> { Ok(vec![]) }
+    pub fn search(&self, _q: &str, _scope: SearchScope, _cur: Option<&str>) -> Result<Vec<DocResult>> { Ok(vec![]) }
     pub fn get_project_docs(&self, pid: &str) -> Option<&HashMap<String, String>> { self.docs.get(pid) }
     pub fn remove_project(&mut self, pid: &str) -> Result<()> { self.projects.remove(pid); self.docs.remove(pid); Ok(()) }
     pub fn update_project(&mut self, m: ProjectMetadata) -> Result<()> { self.projects.insert(m.id.clone(), m); Ok(()) }

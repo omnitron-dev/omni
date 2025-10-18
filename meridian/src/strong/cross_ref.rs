@@ -1,7 +1,6 @@
 //! Cross-reference tracking
-use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ReferenceType { Import, Extends, Implements, Uses, Calls }

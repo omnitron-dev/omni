@@ -4,7 +4,7 @@
 //! including Jest, Vitest, Bun Test, and Rust native tests.
 
 use crate::types::CodeSymbol;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 /// Generated test case

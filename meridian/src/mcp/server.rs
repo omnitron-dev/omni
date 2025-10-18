@@ -33,6 +33,7 @@ enum ServerMode {
         // Global architecture support
         global_client: Option<Arc<GlobalServerClient>>,
         local_cache: Option<Arc<LocalCache>>,
+        #[allow(dead_code)]
         monorepo_context: Option<ProjectMonorepoContext>,
         offline_mode: Arc<AtomicBool>,
     },

@@ -1,11 +1,13 @@
 {
   "mcpServers": {
     "meridian": {
-      "command": "meridian",
-      "args": ["serve", "--stdio"],
+      "command": "cargo",
+      "args": ["run", "--release", "--quiet", "--", "serve", "--stdio"],
+      "cwd": "/Users/taaliman/projects/luxquant/omnitron-dev/omni/meridian",
       "env": {
-        "RUST_LOG": "info",
-        "MERIDIAN_CONFIG": "./meridian.toml"
+        "RUST_LOG": "meridian=debug",
+        "RUST_BACKTRACE": "1",
+        "PATH": "/Users/taaliman/.cargo/bin:/usr/local/bin:/bin:/usr/bin"
       }
     }
   }

@@ -18,6 +18,18 @@ pub struct ProjectMetadata {
     pub coverage: f32,
     pub dependencies: Vec<String>,
     pub description: Option<String>,
+    // Enhanced metadata
+    pub total_modules: usize,
+    pub total_functions: usize,
+    pub total_classes: usize,
+    pub total_interfaces: usize,
+    pub total_types: usize,
+    pub documented_symbols: usize,
+    pub documentation_coverage: f32,
+    pub examples_count: usize,
+    pub tests_count: usize,
+    pub last_indexed: Option<i64>,
+    pub last_modified: Option<i64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -34,6 +46,8 @@ pub struct DocResult {
     pub content: String,
     pub file_path: String,
     pub relevance: f32,
+    pub symbol_type: Option<String>,
+    pub quality_score: Option<f32>,
 }
 
 /// Search schema for Tantivy
@@ -278,6 +292,8 @@ impl GlobalCatalog {
                 content,
                 file_path,
                 relevance: score,
+                symbol_type: None, // TODO: Extract from metadata
+                quality_score: None, // TODO: Calculate from content
             });
         }
 
@@ -350,6 +366,8 @@ impl GlobalCatalog {
                             content: content.clone(),
                             file_path: file_path.clone(),
                             relevance,
+                            symbol_type: None, // TODO: Extract from metadata
+                            quality_score: None, // TODO: Calculate from content
                         });
                     }
                 }
@@ -398,6 +416,17 @@ mod tests {
             coverage: 0.0,
             dependencies: vec![],
             description: None,
+            total_modules: 0,
+            total_functions: 0,
+            total_classes: 0,
+            total_interfaces: 0,
+            total_types: 0,
+            documented_symbols: 0,
+            documentation_coverage: 0.0,
+            examples_count: 0,
+            tests_count: 0,
+            last_indexed: None,
+            last_modified: None,
         }
     }
 

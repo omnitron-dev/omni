@@ -2094,7 +2094,18 @@ impl ToolHandlers {
                 "symbolCount": p.symbol_count,
                 "coverage": p.coverage,
                 "dependencies": p.dependencies,
-                "description": p.description
+                "description": p.description,
+                "totalModules": p.total_modules,
+                "totalFunctions": p.total_functions,
+                "totalClasses": p.total_classes,
+                "totalInterfaces": p.total_interfaces,
+                "totalTypes": p.total_types,
+                "documentedSymbols": p.documented_symbols,
+                "documentationCoverage": p.documentation_coverage,
+                "examplesCount": p.examples_count,
+                "testsCount": p.tests_count,
+                "lastIndexed": p.last_indexed,
+                "lastModified": p.last_modified
             })
         }).collect();
 
@@ -2138,7 +2149,18 @@ impl ToolHandlers {
                 "symbolCount": project.symbol_count,
                 "coverage": project.coverage,
                 "dependencies": project.dependencies,
-                "description": project.description
+                "description": project.description,
+                "totalModules": project.total_modules,
+                "totalFunctions": project.total_functions,
+                "totalClasses": project.total_classes,
+                "totalInterfaces": project.total_interfaces,
+                "totalTypes": project.total_types,
+                "documentedSymbols": project.documented_symbols,
+                "documentationCoverage": project.documentation_coverage,
+                "examplesCount": project.examples_count,
+                "testsCount": project.tests_count,
+                "lastIndexed": project.last_indexed,
+                "lastModified": project.last_modified
             }
         }))
     }
@@ -2177,7 +2199,9 @@ impl ToolHandlers {
                 "symbolName": r.symbol_name,
                 "content": r.content,
                 "filePath": r.file_path,
-                "relevance": r.relevance
+                "relevance": r.relevance,
+                "symbolType": r.symbol_type,
+                "qualityScore": r.quality_score
             })
         }).collect();
 

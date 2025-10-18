@@ -34,6 +34,9 @@ pub struct CachedItem {
 
     /// Item version
     pub version: u64,
+
+    /// Whether the item is stale (needs refresh)
+    pub stale: bool,
 }
 
 impl CachedItem {
@@ -98,7 +101,7 @@ impl Default for CacheConfig {
     fn default() -> Self {
         Self {
             max_size: 100 * 1024 * 1024, // 100 MB
-            default_ttl: Some(Duration::from_secs(3600)), // 1 hour
+            default_ttl: Some(Duration::from_secs(86400)), // 24 hours
             auto_cleanup: true,
             cleanup_interval: Duration::from_secs(300), // 5 minutes
         }
@@ -184,6 +187,7 @@ impl LocalCache {
             expires_at,
             key: key.to_string(),
             version: 1,
+            stale: false,
         };
 
         let bytes = serde_json::to_vec(&item)
@@ -374,6 +378,38 @@ impl LocalCache {
         }
 
         key == pattern
+    }
+
+    /// Mark cache items as stale by pattern
+    pub async fn mark_stale(&self, pattern: &str) -> Result<usize> {
+        debug!("Marking cache items as stale: {}", pattern);
+
+        let mut count = 0;
+        let iter = self.db.iterator(rocksdb::IteratorMode::Start);
+
+        for item in iter {
+            let (key, value) = item?;
+            let key_str = String::from_utf8_lossy(&key);
+
+            // Check if pattern matches
+            if Self::matches_pattern(&key_str, pattern) {
+                if let Ok(mut cached_item) = serde_json::from_slice::<CachedItem>(&value) {
+                    cached_item.stale = true;
+
+                    // Re-serialize and store
+                    let bytes = serde_json::to_vec(&cached_item)
+                        .context("Failed to serialize cache item")?;
+
+                    self.db.put(&key, &bytes)
+                        .context("Failed to update cache item")?;
+
+                    count += 1;
+                }
+            }
+        }
+
+        debug!("Marked {} items as stale", count);
+        Ok(count)
     }
 
     /// Cleanup expired items

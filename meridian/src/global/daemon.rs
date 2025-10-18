@@ -260,4 +260,183 @@ mod tests {
         // Test with non-existent PID (very unlikely to exist)
         assert!(!is_process_running(999999));
     }
+
+    // Comprehensive daemon tests
+    #[test]
+    fn test_pid_file_read_write_cycle() {
+        let temp_dir = TempDir::new().unwrap();
+        std::env::set_var("MERIDIAN_HOME", temp_dir.path());
+
+        // Write PID
+        let test_pid = 54321u32;
+        save_global_pid(test_pid).unwrap();
+
+        // Read it back
+        let read_pid = read_global_pid();
+        assert_eq!(read_pid, Some(test_pid));
+
+        // Verify file content
+        let pid_file = get_global_pid_file();
+        let content = fs::read_to_string(&pid_file).unwrap();
+        assert_eq!(content, "54321");
+    }
+
+    #[test]
+    fn test_read_nonexistent_pid_file() {
+        let temp_dir = TempDir::new().unwrap();
+        std::env::set_var("MERIDIAN_HOME", temp_dir.path());
+
+        let pid = read_global_pid();
+        assert_eq!(pid, None);
+    }
+
+    #[test]
+    fn test_read_invalid_pid_file() {
+        let temp_dir = TempDir::new().unwrap();
+        std::env::set_var("MERIDIAN_HOME", temp_dir.path());
+
+        // Write invalid content
+        let pid_file = get_global_pid_file();
+        fs::create_dir_all(pid_file.parent().unwrap()).unwrap();
+        fs::write(&pid_file, "not a number").unwrap();
+
+        let pid = read_global_pid();
+        assert_eq!(pid, None);
+    }
+
+    #[test]
+    fn test_pid_file_cleanup() {
+        let temp_dir = TempDir::new().unwrap();
+        std::env::set_var("MERIDIAN_HOME", temp_dir.path());
+
+        save_global_pid(12345).unwrap();
+        let pid_file = get_global_pid_file();
+        assert!(pid_file.exists());
+
+        fs::remove_file(&pid_file).unwrap();
+        assert!(!pid_file.exists());
+    }
+
+    #[test]
+    fn test_get_global_status_not_running() {
+        let temp_dir = TempDir::new().unwrap();
+        std::env::set_var("MERIDIAN_HOME", temp_dir.path());
+
+        let status = get_global_status();
+        assert!(!status.running);
+        assert_eq!(status.pid, None);
+    }
+
+    #[test]
+    fn test_get_global_status_with_stale_pid() {
+        let temp_dir = TempDir::new().unwrap();
+        std::env::set_var("MERIDIAN_HOME", temp_dir.path());
+
+        // Write a PID that definitely doesn't exist
+        save_global_pid(999999).unwrap();
+
+        let status = get_global_status();
+        assert!(!status.running);
+        assert_eq!(status.pid, Some(999999));
+    }
+
+    #[test]
+    fn test_get_global_status_with_running_process() {
+        let temp_dir = TempDir::new().unwrap();
+        std::env::set_var("MERIDIAN_HOME", temp_dir.path());
+
+        // Use current process PID
+        let current_pid = std::process::id();
+        save_global_pid(current_pid).unwrap();
+
+        let status = get_global_status();
+        assert!(status.running);
+        assert_eq!(status.pid, Some(current_pid));
+    }
+
+    #[test]
+    fn test_log_file_path() {
+        let temp_dir = TempDir::new().unwrap();
+        std::env::set_var("MERIDIAN_HOME", temp_dir.path());
+
+        let log_file = get_global_log_file();
+        assert!(log_file.to_str().unwrap().contains("global-server.log"));
+    }
+
+    #[test]
+    fn test_pid_file_directory_creation() {
+        let temp_dir = TempDir::new().unwrap();
+        let meridian_home = temp_dir.path().join("custom_home");
+        std::env::set_var("MERIDIAN_HOME", &meridian_home);
+
+        let pid_file = get_global_pid_file();
+
+        // Parent directory should not exist initially
+        if pid_file.parent().unwrap().exists() {
+            // Clean up if it exists from previous test
+            let _ = fs::remove_dir_all(pid_file.parent().unwrap());
+        }
+
+        assert!(!pid_file.parent().unwrap().exists());
+
+        save_global_pid(12345).unwrap();
+        assert!(pid_file.parent().unwrap().exists());
+    }
+
+    #[test]
+    fn test_is_process_running_edge_cases() {
+        // PID 0 - behavior depends on system
+        // On some systems, kill(0, signal) has special meaning
+        // Just verify it doesn't panic
+        let _ = is_process_running(0);
+
+        // PID 1 - init process (should exist on Unix)
+        #[cfg(unix)]
+        {
+            // PID 1 typically exists on Unix systems
+            let result = is_process_running(1);
+            // Don't assert true/false as it depends on the system
+            // Just verify the function doesn't panic
+            let _ = result;
+        }
+
+        // Current process
+        assert!(is_process_running(std::process::id()));
+    }
+
+    #[tokio::test]
+    async fn test_stop_daemon_not_running() {
+        let temp_dir = TempDir::new().unwrap();
+        std::env::set_var("MERIDIAN_HOME", temp_dir.path());
+
+        let result = stop_global_daemon(false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not running"));
+    }
+
+    #[tokio::test]
+    async fn test_stop_daemon_stale_pid() {
+        let temp_dir = TempDir::new().unwrap();
+        std::env::set_var("MERIDIAN_HOME", temp_dir.path());
+
+        // Write stale PID
+        save_global_pid(999999).unwrap();
+
+        let result = stop_global_daemon(false);
+        assert!(result.is_ok());
+
+        // PID file should be cleaned up
+        assert!(!get_global_pid_file().exists());
+    }
+
+    #[test]
+    fn test_daemon_status_struct() {
+        let status = GlobalDaemonStatus {
+            running: true,
+            pid: Some(12345),
+        };
+
+        assert!(status.running);
+        assert_eq!(status.pid.unwrap(), 12345);
+    }
 }

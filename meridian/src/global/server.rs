@@ -10,12 +10,13 @@
 use super::ipc::IpcServer;
 use super::registry::ProjectRegistryManager;
 use super::storage::GlobalStorage;
+use super::sync::SyncManager;
 use super::watcher::{GlobalFileWatcher, WatcherConfig};
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{info, warn, debug};
+use tracing::{debug, info, warn};
 
 /// Server status
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,7 +71,8 @@ pub struct GlobalServer {
     storage: Arc<GlobalStorage>,
     registry_manager: Arc<ProjectRegistryManager>,
     ipc_server: Arc<RwLock<Option<IpcServer>>>,
-    file_watcher: Arc<RwLock<Option<GlobalFileWatcher>>>,
+    file_watcher: Arc<RwLock<Option<Arc<GlobalFileWatcher>>>>,
+    sync_manager: Arc<RwLock<Option<Arc<SyncManager>>>>,
     status: Arc<RwLock<ServerStatus>>,
 }
 
@@ -97,6 +99,7 @@ impl GlobalServer {
             registry_manager,
             ipc_server: Arc::new(RwLock::new(None)),
             file_watcher: Arc::new(RwLock::new(None)),
+            sync_manager: Arc::new(RwLock::new(None)),
             status: Arc::new(RwLock::new(ServerStatus::Stopped)),
         })
     }
@@ -133,27 +136,40 @@ impl GlobalServer {
             *ipc_server = Some(ipc);
         }
 
-        // Start file watcher if enabled
+        // Start file watcher and sync manager if enabled
         if self.config.watch_enabled {
             let watcher_config = self.config.watcher_config.clone()
                 .unwrap_or_default();
 
             info!("Starting file watcher...");
-            let watcher = GlobalFileWatcher::new(
+            let watcher = Arc::new(GlobalFileWatcher::new(
                 watcher_config,
                 Arc::clone(&self.registry_manager),
-            );
+            ));
 
-            // Set up change callback
-            // TODO: Implement actual re-indexing logic
+            // Initialize sync manager
+            let sync_manager = Arc::new(SyncManager::new(
+                Arc::clone(&self.registry_manager),
+                Arc::clone(&self.storage),
+                Arc::clone(&watcher),
+            ));
+
+            // Set up change callback to sync manager
+            let sync_manager_clone = Arc::clone(&sync_manager);
             watcher
                 .set_change_callback(Arc::new(move |event| {
                     debug!(
                         "File changed: {:?} (kind: {:?})",
                         event.path, event.kind
                     );
-                    // In the future, trigger re-indexing here
-                    // For now, just log the change
+
+                    // Handle the file change asynchronously
+                    let sync_manager = Arc::clone(&sync_manager_clone);
+                    tokio::spawn(async move {
+                        if let Err(e) = sync_manager.handle_file_change(event).await {
+                            warn!("Failed to handle file change: {}", e);
+                        }
+                    });
                 }))
                 .await;
 
@@ -164,8 +180,22 @@ impl GlobalServer {
                 info!("File watcher started");
             }
 
-            let mut file_watcher = self.file_watcher.write().await;
-            *file_watcher = Some(watcher);
+            // Start periodic sync
+            if let Err(e) = sync_manager.start_periodic_sync().await {
+                warn!("Failed to start periodic sync: {}", e);
+            } else {
+                info!("Periodic sync started");
+            }
+
+            // Store references to watcher and sync manager
+            {
+                let mut file_watcher = self.file_watcher.write().await;
+                *file_watcher = Some(watcher);
+            }
+            {
+                let mut sync = self.sync_manager.write().await;
+                *sync = Some(sync_manager);
+            }
         }
 
         {
@@ -193,6 +223,12 @@ impl GlobalServer {
         drop(status);
 
         info!("Stopping global server...");
+
+        // Stop sync manager
+        if let Some(sync) = self.sync_manager.write().await.take() {
+            info!("Stopping sync manager...");
+            sync.stop().await?;
+        }
 
         // Stop file watcher
         if let Some(watcher) = self.file_watcher.write().await.take() {
@@ -247,6 +283,16 @@ impl GlobalServer {
         let watcher = self.file_watcher.read().await;
         if let Some(ref w) = *watcher {
             Some(w.get_stats().await)
+        } else {
+            None
+        }
+    }
+
+    /// Get sync manager statistics
+    pub async fn get_sync_stats(&self) -> Option<super::sync::SyncStats> {
+        let sync = self.sync_manager.read().await;
+        if let Some(ref s) = *sync {
+            Some(s.get_stats().await)
         } else {
             None
         }
@@ -337,5 +383,162 @@ mod tests {
         // Should be able to use the manager
         let projects = manager.list_all().await.unwrap();
         assert_eq!(projects.len(), 0);
+    }
+
+    // Comprehensive global server daemon tests
+    #[tokio::test]
+    async fn test_server_start_stop_multiple_times() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = GlobalServerConfig {
+            data_dir: temp_dir.path().to_path_buf(),
+            host: "127.0.0.1".to_string(),
+            port: 17882,
+            auto_start: false,
+            watch_enabled: false,
+            watcher_config: None,
+        };
+
+        let server = GlobalServer::new(config).await.unwrap();
+
+        // Start-stop cycle 1
+        server.start().await.unwrap();
+        assert_eq!(server.status().await, ServerStatus::Running);
+        server.stop().await.unwrap();
+        assert_eq!(server.status().await, ServerStatus::Stopped);
+
+        // Start-stop cycle 2
+        server.start().await.unwrap();
+        assert_eq!(server.status().await, ServerStatus::Running);
+        server.stop().await.unwrap();
+        assert_eq!(server.status().await, ServerStatus::Stopped);
+    }
+
+    #[tokio::test]
+    async fn test_server_with_file_watcher_enabled() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = GlobalServerConfig {
+            data_dir: temp_dir.path().to_path_buf(),
+            host: "127.0.0.1".to_string(),
+            port: 17883,
+            auto_start: false,
+            watch_enabled: true,
+            watcher_config: Some(WatcherConfig::default()),
+        };
+
+        let server = GlobalServer::new(config).await.unwrap();
+        server.start().await.unwrap();
+
+        // Give watcher time to start
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        let stats = server.get_watcher_stats().await;
+        assert!(stats.is_some());
+
+        server.stop().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_server_graceful_shutdown() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = GlobalServerConfig {
+            data_dir: temp_dir.path().to_path_buf(),
+            host: "127.0.0.1".to_string(),
+            port: 17884,
+            auto_start: false,
+            watch_enabled: true,
+            watcher_config: Some(WatcherConfig::default()),
+        };
+
+        let server = GlobalServer::new(config).await.unwrap();
+        server.start().await.unwrap();
+
+        // Give systems time to start
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        // Graceful stop should clean up everything
+        server.stop().await.unwrap();
+        assert_eq!(server.status().await, ServerStatus::Stopped);
+    }
+
+    #[tokio::test]
+    async fn test_server_wait_for_stop() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = GlobalServerConfig {
+            data_dir: temp_dir.path().to_path_buf(),
+            host: "127.0.0.1".to_string(),
+            port: 17885,
+            auto_start: false,
+            watch_enabled: false,
+            watcher_config: None,
+        };
+
+        let server = Arc::new(GlobalServer::new(config).await.unwrap());
+
+        // Start server
+        server.start().await.unwrap();
+
+        // Spawn task to wait
+        let server_clone = Arc::clone(&server);
+        let wait_handle = tokio::spawn(async move {
+            server_clone.wait().await
+        });
+
+        // Stop server from another task
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+        server.stop().await.unwrap();
+
+        // Wait should complete
+        let result = tokio::time::timeout(
+            tokio::time::Duration::from_secs(1),
+            wait_handle
+        ).await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_server_status_transitions() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = GlobalServerConfig {
+            data_dir: temp_dir.path().to_path_buf(),
+            host: "127.0.0.1".to_string(),
+            port: 17886,
+            auto_start: false,
+            watch_enabled: false,
+            watcher_config: None,
+        };
+
+        let server = GlobalServer::new(config).await.unwrap();
+
+        // Initial state
+        assert_eq!(server.status().await, ServerStatus::Stopped);
+
+        // Start
+        server.start().await.unwrap();
+        assert_eq!(server.status().await, ServerStatus::Running);
+
+        // Stop
+        server.stop().await.unwrap();
+        assert_eq!(server.status().await, ServerStatus::Stopped);
+    }
+
+    #[tokio::test]
+    async fn test_server_storage_access() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = GlobalServerConfig {
+            data_dir: temp_dir.path().to_path_buf(),
+            ..Default::default()
+        };
+
+        let server = GlobalServer::new(config).await.unwrap();
+        let storage = server.storage();
+
+        // Storage should be usable
+        let result = storage.put_raw("test_key", b"test_value").await;
+        assert!(result.is_ok());
+
+        let value = storage.get_raw("test_key").await.unwrap();
+        assert!(value.is_some());
+        assert_eq!(value.unwrap(), b"test_value");
     }
 }

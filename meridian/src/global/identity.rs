@@ -276,4 +276,314 @@ version = "2.0.0"
         assert!(identity.verify_content(content));
         assert!(!identity.verify_content("different content"));
     }
+
+    // Edge case tests for npm package.json parsing
+    #[test]
+    fn test_npm_missing_version() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(
+            temp_dir.path().join("package.json"),
+            r#"{"name": "test-no-version"}"#,
+        )
+        .unwrap();
+
+        let identity = ProjectIdentity::from_npm(temp_dir.path()).unwrap();
+        assert_eq!(identity.version, "0.0.0"); // Default version
+    }
+
+    #[test]
+    fn test_npm_missing_name() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(
+            temp_dir.path().join("package.json"),
+            r#"{"version": "1.0.0"}"#,
+        )
+        .unwrap();
+
+        let result = ProjectIdentity::from_npm(temp_dir.path());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("missing 'name'"));
+    }
+
+    #[test]
+    fn test_npm_invalid_json() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(
+            temp_dir.path().join("package.json"),
+            r#"{"name": "broken", invalid json}"#,
+        )
+        .unwrap();
+
+        let result = ProjectIdentity::from_npm(temp_dir.path());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_npm_scoped_package() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(
+            temp_dir.path().join("package.json"),
+            r#"{"name": "@scope/package", "version": "1.2.3"}"#,
+        )
+        .unwrap();
+
+        let identity = ProjectIdentity::from_npm(temp_dir.path()).unwrap();
+        assert_eq!(identity.id, "@scope/package");
+        assert_eq!(identity.full_id, "@scope/package@1.2.3");
+    }
+
+    #[test]
+    fn test_npm_no_package_json() {
+        let temp_dir = TempDir::new().unwrap();
+        let result = ProjectIdentity::from_npm(temp_dir.path());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not found"));
+    }
+
+    // Edge case tests for Cargo.toml parsing
+    #[test]
+    fn test_cargo_missing_version() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(
+            temp_dir.path().join("Cargo.toml"),
+            r#"[package]
+name = "test-no-version"
+"#,
+        )
+        .unwrap();
+
+        let identity = ProjectIdentity::from_cargo(temp_dir.path()).unwrap();
+        assert_eq!(identity.version, "0.0.0"); // Default version
+    }
+
+    #[test]
+    fn test_cargo_missing_package_section() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(
+            temp_dir.path().join("Cargo.toml"),
+            r#"[dependencies]
+serde = "1.0"
+"#,
+        )
+        .unwrap();
+
+        let result = ProjectIdentity::from_cargo(temp_dir.path());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("missing [package]"));
+    }
+
+    #[test]
+    fn test_cargo_missing_name() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(
+            temp_dir.path().join("Cargo.toml"),
+            r#"[package]
+version = "1.0.0"
+"#,
+        )
+        .unwrap();
+
+        let result = ProjectIdentity::from_cargo(temp_dir.path());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("missing package.name"));
+    }
+
+    #[test]
+    fn test_cargo_invalid_toml() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(
+            temp_dir.path().join("Cargo.toml"),
+            r#"[package
+name = "broken"
+"#,
+        )
+        .unwrap();
+
+        let result = ProjectIdentity::from_cargo(temp_dir.path());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cargo_no_cargo_toml() {
+        let temp_dir = TempDir::new().unwrap();
+        let result = ProjectIdentity::from_cargo(temp_dir.path());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not found"));
+    }
+
+    // Content hash stability tests
+    #[test]
+    fn test_content_hash_stable_across_file_moves() {
+        let temp_dir1 = TempDir::new().unwrap();
+        let temp_dir2 = TempDir::new().unwrap();
+
+        let content = r#"{"name": "stable-hash-test", "version": "1.0.0"}"#;
+
+        fs::write(temp_dir1.path().join("package.json"), content).unwrap();
+        fs::write(temp_dir2.path().join("package.json"), content).unwrap();
+
+        let identity1 = ProjectIdentity::from_npm(temp_dir1.path()).unwrap();
+        let identity2 = ProjectIdentity::from_npm(temp_dir2.path()).unwrap();
+
+        // Content hash should be identical even in different directories
+        assert_eq!(identity1.content_hash, identity2.content_hash);
+        assert_eq!(identity1.id, identity2.id);
+        assert_eq!(identity1.version, identity2.version);
+    }
+
+    #[test]
+    fn test_content_hash_changes_with_content() {
+        let temp_dir = TempDir::new().unwrap();
+
+        let content1 = r#"{"name": "test", "version": "1.0.0"}"#;
+        let content2 = r#"{"name": "test", "version": "2.0.0"}"#;
+
+        fs::write(temp_dir.path().join("package.json"), content1).unwrap();
+        let identity1 = ProjectIdentity::from_npm(temp_dir.path()).unwrap();
+
+        fs::write(temp_dir.path().join("package.json"), content2).unwrap();
+        let identity2 = ProjectIdentity::from_npm(temp_dir.path()).unwrap();
+
+        // Content hash should differ when content changes
+        assert_ne!(identity1.content_hash, identity2.content_hash);
+    }
+
+    #[test]
+    fn test_content_hash_whitespace_sensitive() {
+        let temp_dir1 = TempDir::new().unwrap();
+        let temp_dir2 = TempDir::new().unwrap();
+
+        let content1 = r#"{"name":"test","version":"1.0.0"}"#;
+        let content2 = r#"{"name": "test", "version": "1.0.0"}"#;
+
+        fs::write(temp_dir1.path().join("package.json"), content1).unwrap();
+        fs::write(temp_dir2.path().join("package.json"), content2).unwrap();
+
+        let identity1 = ProjectIdentity::from_npm(temp_dir1.path()).unwrap();
+        let identity2 = ProjectIdentity::from_npm(temp_dir2.path()).unwrap();
+
+        // Hash should differ due to whitespace differences
+        assert_ne!(identity1.content_hash, identity2.content_hash);
+    }
+
+    // ID uniqueness and collision detection
+    #[test]
+    fn test_id_uniqueness_same_name_different_version() {
+        let temp_dir1 = TempDir::new().unwrap();
+        let temp_dir2 = TempDir::new().unwrap();
+
+        fs::write(
+            temp_dir1.path().join("package.json"),
+            r#"{"name": "test", "version": "1.0.0"}"#,
+        )
+        .unwrap();
+
+        fs::write(
+            temp_dir2.path().join("package.json"),
+            r#"{"name": "test", "version": "2.0.0"}"#,
+        )
+        .unwrap();
+
+        let identity1 = ProjectIdentity::from_npm(temp_dir1.path()).unwrap();
+        let identity2 = ProjectIdentity::from_npm(temp_dir2.path()).unwrap();
+
+        // Same name but different versions = different full_id
+        assert_eq!(identity1.id, identity2.id);
+        assert_ne!(identity1.full_id, identity2.full_id);
+        assert_eq!(identity1.full_id, "test@1.0.0");
+        assert_eq!(identity2.full_id, "test@2.0.0");
+    }
+
+    #[test]
+    fn test_path_changes_dont_affect_id() {
+        let temp_dir1 = TempDir::new().unwrap();
+        let temp_dir2 = TempDir::new().unwrap();
+
+        let content = r#"{"name": "path-independent", "version": "1.0.0"}"#;
+
+        fs::write(temp_dir1.path().join("package.json"), content).unwrap();
+        fs::write(temp_dir2.path().join("package.json"), content).unwrap();
+
+        let identity1 = ProjectIdentity::from_npm(temp_dir1.path()).unwrap();
+        let identity2 = ProjectIdentity::from_npm(temp_dir2.path()).unwrap();
+
+        // Moving files shouldn't change the identity
+        assert_eq!(identity1.id, identity2.id);
+        assert_eq!(identity1.full_id, identity2.full_id);
+        assert_eq!(identity1.content_hash, identity2.content_hash);
+    }
+
+    #[test]
+    fn test_generic_identity_hash_based() {
+        let temp_dir = TempDir::new().unwrap();
+        let identity = ProjectIdentity::from_generic(temp_dir.path()).unwrap();
+
+        assert!(identity.id.starts_with("generic-"));
+        assert_eq!(identity.version, "0.0.1");
+        assert_eq!(identity.project_type, ProjectType::Generic);
+        assert!(!identity.content_hash.is_empty());
+    }
+
+    #[test]
+    fn test_auto_detect_priority() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create both package.json and Cargo.toml
+        fs::write(
+            temp_dir.path().join("package.json"),
+            r#"{"name": "npm-project", "version": "1.0.0"}"#,
+        )
+        .unwrap();
+        fs::write(
+            temp_dir.path().join("Cargo.toml"),
+            r#"[package]
+name = "cargo-project"
+version = "2.0.0"
+"#,
+        )
+        .unwrap();
+
+        let identity = ProjectIdentity::from_path(temp_dir.path()).unwrap();
+
+        // npm should take priority over cargo
+        assert_eq!(identity.project_type, ProjectType::Npm);
+        assert_eq!(identity.id, "npm-project");
+    }
+
+    #[test]
+    fn test_auto_detect_fallback_to_generic() {
+        let temp_dir = TempDir::new().unwrap();
+        // No package.json or Cargo.toml
+
+        let identity = ProjectIdentity::from_path(temp_dir.path()).unwrap();
+        assert_eq!(identity.project_type, ProjectType::Generic);
+    }
+
+    #[test]
+    fn test_hash_computation_deterministic() {
+        let content = "test content for hashing";
+        let hash1 = ProjectIdentity::compute_hash(content);
+        let hash2 = ProjectIdentity::compute_hash(content);
+        let hash3 = ProjectIdentity::compute_hash(content);
+
+        assert_eq!(hash1, hash2);
+        assert_eq!(hash2, hash3);
+        assert_eq!(hash1.len(), 64); // blake3 produces 256-bit (64 hex chars) hash
+    }
+
+    #[test]
+    fn test_verify_content_with_modified_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let original_content = r#"{"name": "test", "version": "1.0.0"}"#;
+        let modified_content = r#"{"name": "test", "version": "2.0.0"}"#;
+
+        fs::write(temp_dir.path().join("package.json"), original_content).unwrap();
+        let identity = ProjectIdentity::from_npm(temp_dir.path()).unwrap();
+
+        // Original content should verify
+        assert!(identity.verify_content(original_content));
+
+        // Modified content should not verify
+        assert!(!identity.verify_content(modified_content));
+    }
 }

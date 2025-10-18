@@ -467,4 +467,406 @@ mod tests {
         let deleted = manager.get(&project_id).await.unwrap().unwrap();
         assert_eq!(deleted.status, ProjectStatus::Deleted);
     }
+
+    // Comprehensive project registry tests
+    #[tokio::test]
+    async fn test_register_with_all_metadata() {
+        let storage = create_test_storage().await;
+        let manager = ProjectRegistryManager::new(storage);
+
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create project with specs directory
+        let specs_dir = temp_dir.path().join("specs");
+        std::fs::create_dir_all(&specs_dir).unwrap();
+        std::fs::write(
+            specs_dir.join("test-spec.md"),
+            "# Test Specification",
+        )
+        .unwrap();
+
+        std::fs::write(
+            temp_dir.path().join("package.json"),
+            r#"{"name": "full-metadata-project", "version": "1.5.0"}"#,
+        )
+        .unwrap();
+
+        let registry = manager.register(temp_dir.path().to_path_buf()).await.unwrap();
+
+        // Verify all metadata
+        assert_eq!(registry.identity.id, "full-metadata-project");
+        assert_eq!(registry.identity.version, "1.5.0");
+        assert_eq!(registry.status, ProjectStatus::Active);
+        assert!(registry.specs_path.is_some());
+        assert_eq!(registry.path_history.len(), 1);
+        assert_eq!(registry.path_history[0].reason, "discovered");
+        assert!(registry.monorepo.is_none());
+        assert_eq!(registry.indexing.status, IndexingStatus::Pending);
+    }
+
+    #[tokio::test]
+    async fn test_duplicate_registration_detection() {
+        let storage = create_test_storage().await;
+        let manager = ProjectRegistryManager::new(storage);
+
+        let temp_dir = TempDir::new().unwrap();
+        std::fs::write(
+            temp_dir.path().join("package.json"),
+            r#"{"name": "duplicate-test", "version": "1.0.0"}"#,
+        )
+        .unwrap();
+
+        // Register first time
+        let registry1 = manager.register(temp_dir.path().to_path_buf()).await.unwrap();
+
+        // Register again - should return existing
+        let registry2 = manager.register(temp_dir.path().to_path_buf()).await.unwrap();
+
+        assert_eq!(registry1.identity.full_id, registry2.identity.full_id);
+        assert_eq!(registry1.created_at, registry2.created_at);
+    }
+
+    #[tokio::test]
+    async fn test_path_relocation_workflow() {
+        let storage = create_test_storage().await;
+        let manager = ProjectRegistryManager::new(storage);
+
+        let temp_dir1 = TempDir::new().unwrap();
+        std::fs::write(
+            temp_dir1.path().join("Cargo.toml"),
+            r#"[package]
+name = "relocatable-crate"
+version = "3.0.0"
+"#,
+        )
+        .unwrap();
+
+        let registry = manager.register(temp_dir1.path().to_path_buf()).await.unwrap();
+        let project_id = registry.identity.full_id.clone();
+        let old_path = registry.current_path.clone();
+
+        let temp_dir2 = TempDir::new().unwrap();
+
+        // Relocate with custom reason
+        manager
+            .relocate_project(&project_id, temp_dir2.path().to_path_buf(), "moved to new server".to_string())
+            .await
+            .unwrap();
+
+        let relocated = manager.get(&project_id).await.unwrap().unwrap();
+
+        assert_eq!(relocated.current_path, temp_dir2.path());
+        assert_eq!(relocated.path_history.len(), 2);
+        assert_eq!(relocated.path_history[0].path, old_path.display().to_string());
+        assert_eq!(relocated.path_history[1].reason, "moved to new server");
+        assert!(relocated.path_history[1].initiated_by.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_registry_persistence_across_restarts() {
+        let temp_storage_dir = TempDir::new().unwrap();
+
+        // Create and register project
+        {
+            let storage = Arc::new(GlobalStorage::new(temp_storage_dir.path()).await.unwrap());
+            let manager = ProjectRegistryManager::new(storage);
+
+            let temp_project = TempDir::new().unwrap();
+            std::fs::write(
+                temp_project.path().join("package.json"),
+                r#"{"name": "persistent-project", "version": "1.0.0"}"#,
+            )
+            .unwrap();
+
+            manager.register(temp_project.path().to_path_buf()).await.unwrap();
+            std::mem::forget(temp_project); // Keep directory alive
+        }
+
+        // Restart storage and verify project still exists
+        {
+            let storage = Arc::new(GlobalStorage::new(temp_storage_dir.path()).await.unwrap());
+            let manager = ProjectRegistryManager::new(storage);
+
+            let projects = manager.list_all().await.unwrap();
+            assert_eq!(projects.len(), 1);
+            assert_eq!(projects[0].identity.id, "persistent-project");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_access() {
+        use tokio::task;
+
+        let storage = create_test_storage().await;
+        let manager = Arc::new(ProjectRegistryManager::new(storage));
+
+        // Create multiple projects concurrently
+        let mut handles = vec![];
+
+        for i in 0..5 {
+            let manager_clone = Arc::clone(&manager);
+            let handle = task::spawn(async move {
+                let temp_dir = TempDir::new().unwrap();
+                std::fs::write(
+                    temp_dir.path().join("package.json"),
+                    format!(r#"{{"name": "concurrent-{}", "version": "1.0.0"}}"#, i),
+                )
+                .unwrap();
+
+                let result = manager_clone.register(temp_dir.path().to_path_buf()).await;
+                std::mem::forget(temp_dir);
+                result
+            });
+            handles.push(handle);
+        }
+
+        // Wait for all to complete
+        for handle in handles {
+            handle.await.unwrap().unwrap();
+        }
+
+        // Verify all projects registered
+        let all_projects = manager.list_all().await.unwrap();
+        assert_eq!(all_projects.len(), 5);
+    }
+
+    #[tokio::test]
+    async fn test_find_by_path() {
+        let storage = create_test_storage().await;
+        let manager = ProjectRegistryManager::new(storage);
+
+        let temp_dir = TempDir::new().unwrap();
+        std::fs::write(
+            temp_dir.path().join("package.json"),
+            r#"{"name": "find-by-path", "version": "1.0.0"}"#,
+        )
+        .unwrap();
+
+        let registry = manager.register(temp_dir.path().to_path_buf()).await.unwrap();
+
+        // Find by exact path
+        let found = manager.find_by_path(temp_dir.path()).await.unwrap();
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().identity.full_id, registry.identity.full_id);
+
+        // Find by non-existent path
+        let temp_dir2 = TempDir::new().unwrap();
+        let not_found = manager.find_by_path(temp_dir2.path()).await.unwrap();
+        assert!(not_found.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_current_project_management() {
+        let storage = create_test_storage().await;
+        let manager = Arc::new(ProjectRegistryManager::new(storage));
+
+        let temp_dir1 = TempDir::new().unwrap();
+        let temp_dir2 = TempDir::new().unwrap();
+
+        std::fs::write(
+            temp_dir1.path().join("package.json"),
+            r#"{"name": "project-one", "version": "1.0.0"}"#,
+        )
+        .unwrap();
+
+        std::fs::write(
+            temp_dir2.path().join("package.json"),
+            r#"{"name": "project-two", "version": "1.0.0"}"#,
+        )
+        .unwrap();
+
+        let registry1 = manager.register(temp_dir1.path().to_path_buf()).await.unwrap();
+        let registry2 = manager.register(temp_dir2.path().to_path_buf()).await.unwrap();
+
+        // Set first as current
+        manager.set_current_project(&registry1.identity.full_id).await.unwrap();
+        let current = manager.get_current_project().await.unwrap();
+        assert_eq!(current.unwrap(), registry1.identity.full_id);
+
+        // Switch to second
+        manager.set_current_project(&registry2.identity.full_id).await.unwrap();
+        let current = manager.get_current_project().await.unwrap();
+        assert_eq!(current.unwrap(), registry2.identity.full_id);
+
+        // Get current registry
+        let current_reg = manager.get_current_project_registry().await.unwrap().unwrap();
+        assert_eq!(current_reg.identity.id, "project-two");
+    }
+
+    #[tokio::test]
+    async fn test_set_current_project_nonexistent() {
+        let storage = create_test_storage().await;
+        let manager = ProjectRegistryManager::new(storage);
+
+        let result = manager.set_current_project("nonexistent@1.0.0").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_registry_touch_updates_access_time() {
+        let storage = create_test_storage().await;
+        let manager = ProjectRegistryManager::new(storage);
+
+        let temp_dir = TempDir::new().unwrap();
+        std::fs::write(
+            temp_dir.path().join("package.json"),
+            r#"{"name": "touch-test", "version": "1.0.0"}"#,
+        )
+        .unwrap();
+
+        let mut registry = manager.register(temp_dir.path().to_path_buf()).await.unwrap();
+        let initial_access = registry.last_accessed_at;
+
+        // Wait a bit
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Touch the registry
+        registry.touch();
+        manager.update(registry.clone()).await.unwrap();
+
+        let updated = manager.get(&registry.identity.full_id).await.unwrap().unwrap();
+        assert!(updated.last_accessed_at > initial_access);
+    }
+
+    #[tokio::test]
+    async fn test_registry_with_specs_directory() {
+        let storage = create_test_storage().await;
+        let manager = ProjectRegistryManager::new(storage);
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().join("specs");
+        std::fs::create_dir_all(&specs_dir).unwrap();
+
+        std::fs::write(
+            temp_dir.path().join("package.json"),
+            r#"{"name": "with-specs", "version": "1.0.0"}"#,
+        )
+        .unwrap();
+
+        let registry = manager.register(temp_dir.path().to_path_buf()).await.unwrap();
+        assert!(registry.specs_path.is_some());
+        assert_eq!(registry.specs_path.unwrap(), specs_dir);
+    }
+
+    #[tokio::test]
+    async fn test_registry_without_specs_directory() {
+        let storage = create_test_storage().await;
+        let manager = ProjectRegistryManager::new(storage);
+
+        let temp_dir = TempDir::new().unwrap();
+        std::fs::write(
+            temp_dir.path().join("package.json"),
+            r#"{"name": "no-specs", "version": "1.0.0"}"#,
+        )
+        .unwrap();
+
+        let registry = manager.register(temp_dir.path().to_path_buf()).await.unwrap();
+        assert!(registry.specs_path.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_multiple_relocations() {
+        let storage = create_test_storage().await;
+        let manager = ProjectRegistryManager::new(storage);
+
+        let temp_dir1 = TempDir::new().unwrap();
+        std::fs::write(
+            temp_dir1.path().join("package.json"),
+            r#"{"name": "multi-relocate", "version": "1.0.0"}"#,
+        )
+        .unwrap();
+
+        let registry = manager.register(temp_dir1.path().to_path_buf()).await.unwrap();
+        let project_id = registry.identity.full_id.clone();
+
+        // Relocate multiple times
+        for i in 0..3 {
+            let temp_dir = TempDir::new().unwrap();
+            manager
+                .relocate_project(
+                    &project_id,
+                    temp_dir.path().to_path_buf(),
+                    format!("relocation {}", i + 1),
+                )
+                .await
+                .unwrap();
+            std::mem::forget(temp_dir);
+        }
+
+        let final_registry = manager.get(&project_id).await.unwrap().unwrap();
+        assert_eq!(final_registry.path_history.len(), 4); // Initial + 3 relocations
+        assert_eq!(final_registry.path_history[3].reason, "relocation 3");
+    }
+
+    #[tokio::test]
+    async fn test_delete_nonexistent_project() {
+        let storage = create_test_storage().await;
+        let manager = ProjectRegistryManager::new(storage);
+
+        // Deleting non-existent project should succeed silently
+        let result = manager.delete("nonexistent@1.0.0").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_registry_update_timestamps() {
+        let storage = create_test_storage().await;
+        let manager = ProjectRegistryManager::new(storage);
+
+        let temp_dir = TempDir::new().unwrap();
+        std::fs::write(
+            temp_dir.path().join("package.json"),
+            r#"{"name": "timestamp-test", "version": "1.0.0"}"#,
+        )
+        .unwrap();
+
+        let registry = manager.register(temp_dir.path().to_path_buf()).await.unwrap();
+        let created_at = registry.created_at;
+        let updated_at = registry.updated_at;
+
+        // Wait a bit
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Update should change updated_at but not created_at
+        manager.update(registry.clone()).await.unwrap();
+        let updated = manager.get(&registry.identity.full_id).await.unwrap().unwrap();
+
+        assert_eq!(updated.created_at, created_at);
+        assert!(updated.updated_at > updated_at);
+    }
+
+    #[tokio::test]
+    async fn test_find_by_name_partial_match() {
+        let storage = create_test_storage().await;
+        let manager = ProjectRegistryManager::new(storage);
+
+        let temp_dir1 = TempDir::new().unwrap();
+        let temp_dir2 = TempDir::new().unwrap();
+        let temp_dir3 = TempDir::new().unwrap();
+
+        std::fs::write(
+            temp_dir1.path().join("package.json"),
+            r#"{"name": "awesome-project", "version": "1.0.0"}"#,
+        )
+        .unwrap();
+
+        std::fs::write(
+            temp_dir2.path().join("package.json"),
+            r#"{"name": "another-awesome-lib", "version": "1.0.0"}"#,
+        )
+        .unwrap();
+
+        std::fs::write(
+            temp_dir3.path().join("package.json"),
+            r#"{"name": "unrelated-project", "version": "1.0.0"}"#,
+        )
+        .unwrap();
+
+        manager.register(temp_dir1.path().to_path_buf()).await.unwrap();
+        manager.register(temp_dir2.path().to_path_buf()).await.unwrap();
+        manager.register(temp_dir3.path().to_path_buf()).await.unwrap();
+
+        let results = manager.find_by_name("awesome").await.unwrap();
+        assert_eq!(results.len(), 2);
+    }
 }

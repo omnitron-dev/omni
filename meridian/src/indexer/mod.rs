@@ -3,6 +3,7 @@ pub mod parser;
 pub mod pattern_matcher;
 pub mod search;
 pub mod tree_sitter_parser;
+pub mod vector;
 pub mod watcher;
 pub mod delta_indexer;
 
@@ -18,6 +19,7 @@ pub use pattern_matcher::{
 };
 pub use search::SearchEngine;
 pub use tree_sitter_parser::TreeSitterParser;
+pub use vector::{HnswConfig, HnswIndex, VectorIndex, VECTOR_DIM};
 pub use watcher::{FileWatcher, WatcherConfig, FileChangeEvent, FileChangeKind};
 pub use delta_indexer::{DeltaIndexer, WatchStatus, ApplyResult};
 

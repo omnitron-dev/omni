@@ -26,11 +26,23 @@ tree-sitter-go = "0.25.0"
 
 # Search and indexing
 tantivy = "0.25.0"
+hnsw_rs = "0.3.2"
 
-# ML/Embeddings
+# ML/Embeddings - Burn framework
+burn = "0.18.0"
+burn-ndarray = { version = "0.18.0", optional = true }
+burn-wgpu = { version = "0.18.0", optional = true }
+burn-import = "0.18.0"
+burn-tch = { version = "0.18.0", optional = true }
+
+# ML/Embeddings - Legacy (being replaced by Burn)
 candle-core = "0.9.1"
 candle-nn = "0.9.1"
 fastembed = "5.2.0"
+
+# NLP utilities
+tokenizers = "0.22.1"
+hf-hub = "0.4.3"
 
 # Serialization
 serde = { version = "1.0.228", features = ["derive"] }
@@ -115,9 +127,23 @@ criterion = "0.7.0"
 name = "indexing"
 harness = false
 
+[[bench]]
+name = "ml_inference"
+harness = false
+
+[[bench]]
+name = "hnsw_bench"
+harness = false
+
 [[bin]]
 name = "meridian"
 path = "src/main.rs"
+
+[features]
+default = ["burn-cpu"]
+burn-cpu = ["burn-ndarray"]
+burn-gpu = ["burn-wgpu"]
+burn-torch = ["burn-tch"]
 
 [profile.release]
 opt-level = 3

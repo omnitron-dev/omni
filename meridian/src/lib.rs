@@ -10,6 +10,7 @@ pub mod indexer;
 pub mod links;
 pub mod mcp;
 pub mod memory;
+pub mod ml;
 pub mod progress;
 pub mod project;
 pub mod session;

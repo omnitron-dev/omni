@@ -188,3 +188,148 @@ impl Config {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_default_config() {
+        let config = Config::default();
+        assert_eq!(config.index.languages.len(), 4);
+        assert!(config.index.languages.contains(&"rust".to_string()));
+        assert_eq!(config.session.max_sessions, 10);
+        assert_eq!(config.learning.min_episodes_for_pattern, 3);
+    }
+
+    #[test]
+    fn test_index_config_default() {
+        let config = IndexConfig::default();
+        assert_eq!(config.max_file_size, "1MB");
+        assert!(config.ignore.contains(&"node_modules".to_string()));
+        assert!(config.ignore.contains(&"target".to_string()));
+    }
+
+    #[test]
+    fn test_storage_config_default() {
+        let config = StorageConfig::default();
+        assert_eq!(config.path, PathBuf::from(".meridian/index"));
+        assert_eq!(config.cache_size, "256MB");
+    }
+
+    #[test]
+    fn test_memory_config_default() {
+        let config = MemoryConfig::default();
+        assert_eq!(config.episodic_retention_days, 30);
+        assert_eq!(config.working_memory_size, "10MB");
+        assert_eq!(config.consolidation_interval, "1h");
+    }
+
+    #[test]
+    fn test_session_config_default() {
+        let config = SessionConfig::default();
+        assert_eq!(config.max_sessions, 10);
+        assert_eq!(config.session_timeout, "1h");
+    }
+
+    #[test]
+    fn test_monorepo_config_default() {
+        let config = MonorepoConfig::default();
+        assert!(config.detect_projects);
+        assert_eq!(config.project_markers.len(), 4);
+        assert!(config.project_markers.contains(&"package.json".to_string()));
+    }
+
+    #[test]
+    fn test_learning_config_default() {
+        let config = LearningConfig::default();
+        assert_eq!(config.min_episodes_for_pattern, 3);
+        assert_eq!(config.confidence_threshold, 0.7);
+    }
+
+    #[test]
+    fn test_mcp_config_default() {
+        let config = McpConfig::default();
+        assert_eq!(config.max_token_response, 2000);
+        assert!(config.socket.is_some());
+    }
+
+    #[test]
+    fn test_http_config_default() {
+        let config = HttpConfig::default();
+        assert!(config.enabled);
+        assert_eq!(config.host, "127.0.0.1");
+        assert_eq!(config.port, 3000);
+        assert_eq!(config.max_connections, 100);
+    }
+
+    #[test]
+    fn test_save_and_load_config() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.toml");
+
+        let mut config = Config::default();
+        config.session.max_sessions = 20;
+        config.learning.confidence_threshold = 0.8;
+
+        config.save(&config_path).unwrap();
+        assert!(config_path.exists());
+
+        let loaded = Config::from_file(&config_path).unwrap();
+        assert_eq!(loaded.session.max_sessions, 20);
+        assert_eq!(loaded.learning.confidence_threshold, 0.8);
+    }
+
+    #[test]
+    fn test_load_nonexistent_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("nonexistent.toml");
+
+        let config = Config::from_file(&config_path).unwrap();
+        // Should return default config
+        assert_eq!(config.session.max_sessions, 10);
+    }
+
+    #[test]
+    fn test_load_invalid_toml() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("invalid.toml");
+        std::fs::write(&config_path, "invalid toml {{{}").unwrap();
+
+        let result = Config::from_file(&config_path);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_config_serialization() {
+        let config = Config::default();
+        let toml_str = toml::to_string(&config).unwrap();
+        assert!(toml_str.contains("[index]"));
+        assert!(toml_str.contains("[storage]"));
+        assert!(toml_str.contains("[memory]"));
+        assert!(toml_str.contains("[session]"));
+    }
+
+    #[test]
+    fn test_config_round_trip() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("roundtrip.toml");
+
+        // Create a default config, modify some values
+        let mut config = Config::default();
+        config.session.max_sessions = 5;
+        config.session.session_timeout = "2h".to_string();
+        config.learning.confidence_threshold = 0.85;
+
+        // Save and reload
+        config.save(&config_path).unwrap();
+        let loaded = Config::from_file(&config_path).unwrap();
+
+        assert_eq!(loaded.session.max_sessions, 5);
+        assert_eq!(loaded.session.session_timeout, "2h");
+        assert_eq!(loaded.learning.confidence_threshold, 0.85);
+        // Other fields should match defaults
+        assert_eq!(loaded.learning.min_episodes_for_pattern, 3);
+    }
+}

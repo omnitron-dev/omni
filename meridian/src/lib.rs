@@ -10,6 +10,7 @@ pub mod memory;
 pub mod project;
 pub mod session;
 pub mod storage;
+pub mod strong;
 pub mod types;
 
 pub use config::Config;

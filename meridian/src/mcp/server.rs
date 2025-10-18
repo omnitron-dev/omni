@@ -1,24 +1,28 @@
 use super::handlers::ToolHandlers;
 use super::tools::{get_all_resources, get_all_tools, ServerCapabilities};
 use super::transport::{JsonRpcError, JsonRpcRequest, JsonRpcResponse, StdioTransport};
+use super::global_client::GlobalServerClient;
+use super::local_cache::{LocalCache, CacheConfig};
 use crate::config::Config;
 use crate::context::ContextManager;
 use crate::indexer::{CodeIndexer, Indexer};
 use crate::memory::MemorySystem;
 use crate::project::ProjectManager;
+use crate::global::registry::MonorepoContext as ProjectMonorepoContext;
 use crate::session::SessionManager;
 use crate::storage::RocksDBStorage;
 use crate::types::{LLMAdapter, Query};
 use crate::IndexStats;
 use anyhow::Result;
 use serde_json::{json, Value};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tracing::{debug, error, info, warn};
 
 /// Server mode - single project or multi-project
 enum ServerMode {
-    /// Single project mode (stdio, socket)
+    /// Single project mode (stdio, socket) - legacy mode
     SingleProject {
         memory_system: Arc<tokio::sync::RwLock<MemorySystem>>,
         context_manager: Arc<tokio::sync::RwLock<ContextManager>>,
@@ -26,6 +30,11 @@ enum ServerMode {
         session_manager: Arc<SessionManager>,
         doc_indexer: Arc<crate::docs::DocIndexer>,
         handlers: Option<Arc<ToolHandlers>>,
+        // Global architecture support
+        global_client: Option<Arc<GlobalServerClient>>,
+        local_cache: Option<Arc<LocalCache>>,
+        monorepo_context: Option<ProjectMonorepoContext>,
+        offline_mode: Arc<AtomicBool>,
     },
     /// Multi-project mode (HTTP)
     MultiProject {
@@ -40,9 +49,49 @@ pub struct MeridianServer {
 }
 
 impl MeridianServer {
-    /// Create a new Meridian server instance in single-project mode
+    /// Create a new Meridian server instance in legacy mode (single-project, no global server)
+    pub async fn new_legacy(config: Config) -> Result<Self> {
+        Self::new_internal(config, None, None).await
+    }
+
+    /// Create a new Meridian server instance with global server support
+    pub async fn new_global(config: Config, global_url: String, project_path: PathBuf) -> Result<Self> {
+        info!("Initializing Meridian server in global mode");
+
+        // Create global server client
+        let global_client = Arc::new(GlobalServerClient::new(global_url)?);
+
+        // Check if global server is available
+        let available = global_client.is_available().await;
+        if !available {
+            warn!("Global server not available, will start in offline mode");
+        }
+
+        // Create local cache
+        let cache_path = Self::get_cache_path(&project_path)?;
+        let cache_config = CacheConfig::default();
+        let local_cache = Arc::new(LocalCache::new(cache_path, cache_config)?);
+
+        Self::new_internal(
+            config,
+            Some(global_client),
+            Some(local_cache),
+        ).await
+    }
+
+    /// Create a new Meridian server instance in single-project mode (legacy compatibility)
     pub async fn new(config: Config) -> Result<Self> {
-        info!("Initializing Meridian server in single-project mode");
+        Self::new_legacy(config).await
+    }
+
+    /// Internal constructor with optional global components
+    async fn new_internal(
+        config: Config,
+        global_client: Option<Arc<GlobalServerClient>>,
+        local_cache: Option<Arc<LocalCache>>,
+    ) -> Result<Self> {
+        let mode_str = if global_client.is_some() { "global" } else { "legacy" };
+        info!("Initializing Meridian server in {} mode", mode_str);
 
         // Initialize storage
         let storage = Arc::new(RocksDBStorage::new(&config.storage.path)?);
@@ -69,6 +118,13 @@ impl MeridianServer {
         };
         let session_manager = SessionManager::new(storage.clone(), session_config)?;
 
+        // Determine offline mode based on global client availability
+        let offline = if let Some(ref client) = global_client {
+            !client.is_available().await
+        } else {
+            false // Legacy mode doesn't have offline concept
+        };
+
         // Wrap components in Arc<RwLock<>> for shared access
         Ok(Self {
             mode: ServerMode::SingleProject {
@@ -78,9 +134,28 @@ impl MeridianServer {
                 session_manager: Arc::new(session_manager),
                 doc_indexer,
                 handlers: None,
+                global_client,
+                local_cache,
+                monorepo_context: None, // TODO: Detect monorepo context
+                offline_mode: Arc::new(AtomicBool::new(offline)),
             },
             config,
         })
+    }
+
+    /// Get cache path for a project
+    fn get_cache_path(project_path: &Path) -> Result<PathBuf> {
+        let path_str = project_path.to_string_lossy();
+        let hash = blake3::hash(path_str.as_bytes());
+        let hash_str = hash.to_hex();
+
+        let cache_path = std::env::current_dir()?
+            .join(".meridian")
+            .join(&hash_str[..16])
+            .join("cache");
+
+        std::fs::create_dir_all(&cache_path)?;
+        Ok(cache_path)
     }
 
     /// Create a new Meridian server instance in multi-project mode for HTTP
@@ -112,6 +187,7 @@ impl MeridianServer {
                 indexer,
                 session_manager,
                 doc_indexer,
+                ..
             } => {
                 if let Some(h) = handlers {
                     return Ok(h.clone());
@@ -132,6 +208,30 @@ impl MeridianServer {
             ServerMode::MultiProject { .. } => {
                 anyhow::bail!("init_handlers should not be called in multi-project mode")
             }
+        }
+    }
+
+    /// Check if server is in offline mode
+    pub fn is_offline(&self) -> bool {
+        match &self.mode {
+            ServerMode::SingleProject { offline_mode, .. } => offline_mode.load(Ordering::SeqCst),
+            ServerMode::MultiProject { .. } => false,
+        }
+    }
+
+    /// Get global client if available
+    pub fn get_global_client(&self) -> Option<Arc<GlobalServerClient>> {
+        match &self.mode {
+            ServerMode::SingleProject { global_client, .. } => global_client.clone(),
+            ServerMode::MultiProject { .. } => None,
+        }
+    }
+
+    /// Get local cache if available
+    pub fn get_local_cache(&self) -> Option<Arc<LocalCache>> {
+        match &self.mode {
+            ServerMode::SingleProject { local_cache, .. } => local_cache.clone(),
+            ServerMode::MultiProject { .. } => None,
         }
     }
 

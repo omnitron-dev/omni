@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use meridian::storage::RocksDBStorage;
+use meridian::storage::{RocksDBStorage, Storage};
 use std::sync::Arc;
 use tempfile::TempDir;
 

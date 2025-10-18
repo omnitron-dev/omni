@@ -67,6 +67,9 @@ axum = { version = "0.8.6", features = ["macros"] }
 tower = "0.5.2"
 tower-http = { version = "0.6.6", features = ["cors", "trace"] }
 
+# HTTP client (reqwest)
+reqwest = { version = "0.12.13", features = ["json"] }
+
 # Data structures
 dashmap = "6.1.0"
 parking_lot = "0.12.5"

@@ -6,216 +6,439 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a TypeScript monorepo for the Omnitron ecosystem - a collection of minimalist, high-performance libraries for building distributed systems. At its core is **Titan**, a lightweight framework designed for distributed, runtime-agnostic applications with enterprise reliability. The monorepo uses Turborepo for build orchestration and pnpm 9.15.0 for package management.
 
-### Runtime Support
-- **Node.js**: >=22.0.0 (primary runtime)
-- **Bun**: >=1.2.0 (fully supported with test coverage)
-- **Deno**: Experimental support in some packages
-- All packages work in both Node.js and Bun environments
+**Runtime Support**: Node.js >=22.0.0 (primary), Bun >=1.2.0 (fully supported), Deno (experimental)
+
+## ⚡ Meridian MCP Integration - CRITICAL WORKFLOW
+
+**The `/meridian` subdirectory contains a production-ready Rust MCP server with 72+ tools for code analysis, progress tracking, and memory management. This is the PRIMARY workflow for all development tasks.**
+
+### 🚫 NEVER CREATE REPORT FILES
+
+**ABSOLUTE RULE**: Do NOT create .md files for summaries, implementation reports, session reports, or progress tracking.
+
+❌ **PROHIBITED**:
+- Creating `IMPLEMENTATION_REPORT.md`
+- Creating `SESSION_SUMMARY.md`
+- Creating `PROGRESS.md` or similar tracking files
+- Writing manual TODO lists to markdown files
+- Any form of manual documentation of progress
+
+✅ **REQUIRED INSTEAD**:
+- Use `progress.*` MCP tools for ALL task tracking
+- Use `memory.record_episode` to capture completed work
+- Use `specs.*` tools to reference specifications
+- All reports live in the progress tracking system (SQLite database)
+
+### Core Principles
+
+**1. Always Use MCP Tools First**
+
+Before using traditional tools, check if an MCP tool exists:
+
+| Traditional Tool | MCP Alternative | Why Better |
+|-----------------|-----------------|------------|
+| `Read` file | `code.get_definition` | Returns only relevant symbol, not entire file |
+| `Grep` search | `code.search_symbols` | Semantic search with type filtering |
+| Manual search | `specs.search` | Spec-aware search with context |
+| `TodoWrite` | `progress.list_tasks` | Persistent, queryable, linkable to specs |
+| File browsing | `code.get_dependencies` | Shows actual code relationships |
+
+**2. Complete Progress Tracking Workflow**
+
+Every development task follows this workflow:
+
+```typescript
+// STEP 1: Create task at the start
+const task = await mcp__meridian__progress_create_task({
+  title: "Implement feature X",
+  description: "Detailed description of what needs to be done",
+  spec_ref: {
+    spec_name: "progress-tracking-spec",  // Reference to spec
+    section: "Section 3.2"                // Specific section
+  },
+  priority: "high",                       // low | medium | high | critical
+  estimated_hours: 4,
+  tags: ["backend", "api", "rust"]
+});
+
+// STEP 2: Start working (updates status to in_progress)
+await mcp__meridian__progress_update_task({
+  task_id: task.task_id,
+  status: "in_progress",
+  status_note: "Starting implementation"
+});
+
+// STEP 3: During work - update as needed
+await mcp__meridian__progress_update_task({
+  task_id: task.task_id,
+  status_note: "Completed API endpoints, working on tests"
+});
+
+// STEP 4: Complete the task (auto-creates episode in memory system)
+await mcp__meridian__progress_mark_complete({
+  task_id: task.task_id,
+  actual_hours: 3.5,
+  commit_hash: "abc123...",  // Current git commit
+  note: "Implementation complete with full test coverage",
+  // Optional but recommended:
+  solution_summary: "Used dependency injection pattern with async handlers",
+  files_touched: ["src/api/handler.rs", "tests/api_test.rs"],
+  queries_made: ["code.search_symbols handler", "specs.get_section API"]
+});
+// This automatically records an episode in the memory system!
+```
+
+**3. Task Status Lifecycle**
+
+Tasks flow through these states:
+- `pending` → Just created, not started
+- `in_progress` → Currently being worked on
+- `blocked` → Waiting on external dependency (add status_note explaining blocker)
+- `done` → Completed successfully
+- `cancelled` → No longer needed
+
+**4. Querying and Linking**
+
+```typescript
+// List all tasks for a spec
+await mcp__meridian__progress_list_tasks({
+  spec_name: "progress-tracking-spec",
+  status: "in_progress",
+  limit: 20
+});
+
+// Search tasks by title or content
+await mcp__meridian__progress_search_tasks({
+  query: "API implementation",
+  limit: 10
+});
+
+// Get progress statistics
+await mcp__meridian__progress_get_progress({
+  spec_name: "progress-tracking-spec"  // or omit for all specs
+});
+
+// Link task to spec section (if not done at creation)
+await mcp__meridian__progress_link_to_spec({
+  task_id: "abc123",
+  spec_name: "progress-tracking-spec",
+  section: "Section 3.2"
+});
+
+// View complete history of a task
+await mcp__meridian__progress_get_history({
+  task_id: "abc123"
+});
+```
+
+### Complete MCP Tools Catalog (72+ Tools)
+
+**Memory Management (3 tools)**
+- `memory_record_episode` - Record completed work for future learning
+- `memory_find_similar_episodes` - Find similar past tasks to guide current work
+- `memory_update_working_set` - Update working memory with attention weights
+
+**Code Analysis (4 tools)**
+- `code_search_symbols` - Search for functions, classes, interfaces with filters
+  - Params: `query`, `type` (function|class|interface), `scope`, `detail_level`, `max_tokens`
+- `code_get_definition` - Get full definition of a specific symbol
+  - Params: `symbol_id`, `include_body`, `include_dependencies`, `include_references`
+- `code_find_references` - Find all references to a symbol
+  - Params: `symbol_id`, `group_by_file`, `include_context`
+- `code_get_dependencies` - Get dependency graph for symbol or file
+  - Params: `entry_point`, `depth` (1-5), `direction` (imports|exports|both)
+
+**Progress Tracking (10 tools)**
+- `progress_create_task` - Create new task
+- `progress_update_task` - Update task status, priority, estimates
+- `progress_list_tasks` - List tasks with filters (status, spec, limit)
+- `progress_get_task` - Get detailed task information
+- `progress_delete_task` - Delete a task
+- `progress_search_tasks` - Search tasks by title/content
+- `progress_link_to_spec` - Link task to specification section
+- `progress_get_history` - Get complete status change history
+- `progress_get_progress` - Get statistics and progress metrics
+- `progress_mark_complete` - Mark complete with auto-episode creation ⭐
+
+**Specifications (5 tools)**
+- `specs_list` - List all available specifications
+- `specs_get_structure` - Get TOC and metadata for a spec
+- `specs_get_section` - Get content of specific section
+- `specs_search` - Search across all specifications
+- `specs_validate` - Validate spec completeness and quality
+
+**Session Management (4 tools)**
+- `session_begin` - Start isolated work session with copy-on-write
+- `session_update` - Update files in session with reindexing
+- `session_query` - Query within session context
+- `session_complete` - Complete session (commit|discard|stash)
+
+**Context Optimization (4 tools)**
+- `context_prepare_adaptive` - Prepare context for specific LLM and token budget
+- `context_defragment` - Unify scattered context fragments
+- `context_compress` - Compress using strategies (skeleton|summary|tree_shaking|ultra_compact)
+- `analyze_token_cost` - Estimate token cost for context items
+
+**Documentation (6 tools)**
+- `docs_search` - Search through documentation and markdown files
+- `docs_get_for_symbol` - Get documentation for specific symbol
+- `docs_generate` - Generate high-quality docs with examples
+- `docs_validate` - Validate documentation quality with scoring
+- `docs_transform` - Transform docs to standardized format
+- `catalog_*` - Catalog search and project listing (3 tools)
+
+**Code Generation (4 tools)**
+- `examples_generate` - Generate code examples (basic|intermediate|advanced)
+- `examples_validate` - Validate examples for syntax/compilation
+- `tests_generate` - Generate unit/integration/e2e tests
+- `tests_validate` - Validate generated tests and estimate coverage
+
+**Semantic Links (12 tools)**
+- `links_find_implementation` - Find code implementing a spec
+- `links_find_documentation` - Find docs for code
+- `links_find_examples` - Find examples demonstrating usage
+- `links_find_tests` - Find tests verifying code
+- `links_add_link` - Add semantic link between entities
+- `links_remove_link` - Remove a link
+- `links_get_links` - Get all links for an entity
+- `links_validate` - Validate and update link status
+- `links_trace_path` - Find path between entities through links
+- `links_get_health` - Get health metrics for links system
+- `links_find_orphans` - Find entities with no links
+- `links_extract_from_file` - Extract semantic links from file
+
+**Global Registry (8 tools)**
+- `global_list_monorepos` - List all registered monorepos
+- `global_search_all_projects` - Search across all monorepos
+- `global_get_dependency_graph` - Get project dependencies
+- `external_get_documentation` - Get docs from external project
+- `external_find_usages` - Find symbol usages across monorepos
+- `monorepo_list_projects` - List projects in current monorepo
+- `monorepo_set_context` - Set working context to specific project
+- `monorepo_find_cross_references` - Find cross-project references
+
+**Analysis & Statistics (6+ tools)**
+- `analyze_complexity` - Analyze code complexity metrics
+- `analyze_token_cost` - Estimate token costs
+- `memory_get_statistics` - Memory system statistics
+- `attention_retrieve` - Retrieve based on attention patterns
+- `attention_analyze_patterns` - Analyze attention and drift
+- `predict_next_action` - Predict next likely action from context
+
+### Token Efficiency Benefits
+
+**Progress System vs TodoWrite:**
+- **70% fewer tokens** - Structured data vs markdown parsing
+- **Progressive loading** - Fetch summaries first, details on demand
+- **Server-side filtering** - Only relevant data returned
+- **Detail level control** - skeleton|interface|implementation|full
+
+**Code Tools vs Read/Grep:**
+- **90% reduction** - Get single symbol vs entire file
+- **Semantic awareness** - Type-aware searches
+- **Relationship mapping** - See dependencies without reading files
+- **Context-aware** - Prioritized results based on usage
+
+### Git Commit Message Format
+
+When committing, reference tasks and specs:
+
+```bash
+# Format: <type>: <description> (task:<task_id>)
+feat: implement progress tracking API (task:550e8400-e29b-41d4-a716-446655440000)
+
+- Implemented complete CRUD operations for tasks
+- Added auto-episode creation on task completion
+- Created 12 integration tests (all passing)
+- Added SQLite indexes for query performance
+
+Closes: task:550e8400-e29b-41d4-a716-446655440000
+Episode: ep_20251018_142530_abc123
+Spec: progress-tracking-spec#3.2
+Files: src/progress/api.rs, src/progress/db.rs, tests/progress_test.rs
+```
+
+**Commit types**: feat, fix, refactor, docs, test, chore, perf, style, ci
+
+### Environment Setup
+
+**CRITICAL**: Run this at the start of EVERY session to ensure all tools are available:
+
+```bash
+# Set complete PATH with all required binaries
+export PATH="/Users/taaliman/.cargo/bin:/Users/taaliman/.bun/bin:/Users/taaliman/.deno/bin:/opt/homebrew/bin:/usr/local/bin:/bin:/usr/bin:$PATH"
+
+# Verify tools are available
+which cargo  # Should output: /Users/taaliman/.cargo/bin/cargo
+which bun    # Should output: /Users/taaliman/.bun/bin/bun
+which deno   # Should output: /Users/taaliman/.deno/bin/deno
+
+# Build Meridian MCP server (if not already built)
+cd /Users/taaliman/projects/luxquant/omnitron-dev/omni/meridian
+cargo build --release
+
+# MCP server auto-starts via Claude Code configuration
+# Server location: meridian/target/release/meridian-mcp
+# Config location: ~/.config/claude-code/mcp.json
+```
+
+### Example: Complete Task Workflow
+
+```typescript
+// 1. Search for similar past work
+const episodes = await mcp__meridian__memory_find_similar_episodes({
+  task_description: "Implement REST API endpoints",
+  limit: 5
+});
+// Review episodes to see what approaches worked before
+
+// 2. Check spec for requirements
+const specSection = await mcp__meridian__specs_get_section({
+  spec_name: "api-spec",
+  section_name: "REST Endpoints"
+});
+
+// 3. Create task
+const task = await mcp__meridian__progress_create_task({
+  title: "Implement REST API endpoints",
+  description: "Create GET/POST/PUT/DELETE endpoints for user resource",
+  spec_ref: { spec_name: "api-spec", section: "REST Endpoints" },
+  priority: "high",
+  estimated_hours: 6,
+  tags: ["api", "backend", "rest"]
+});
+
+// 4. Start work
+await mcp__meridian__progress_update_task({
+  task_id: task.task_id,
+  status: "in_progress"
+});
+
+// 5. Search for existing patterns
+const symbols = await mcp__meridian__code_search_symbols({
+  query: "api handler",
+  type: ["function", "class"],
+  detail_level: "interface"
+});
+
+// 6. Get dependencies to understand integration points
+const deps = await mcp__meridian__code_get_dependencies({
+  entry_point: "src/api/mod.rs",
+  depth: 2,
+  direction: "both"
+});
+
+// 7. During implementation - update status
+await mcp__meridian__progress_update_task({
+  task_id: task.task_id,
+  status_note: "Completed GET/POST endpoints, working on PUT/DELETE"
+});
+
+// 8. Generate tests
+const tests = await mcp__meridian__tests_generate({
+  symbol_id: "api::UserHandler::get",
+  test_type: "integration",
+  framework: "jest"
+});
+
+// 9. Complete task (auto-creates episode)
+await mcp__meridian__progress_mark_complete({
+  task_id: task.task_id,
+  actual_hours: 5.5,
+  commit_hash: "a1b2c3d4...",
+  note: "All endpoints implemented with full test coverage",
+  solution_summary: "Used dependency injection for database access, implemented middleware for auth",
+  files_touched: [
+    "src/api/user_handler.rs",
+    "src/api/middleware.rs",
+    "tests/api_integration_test.rs"
+  ],
+  queries_made: [
+    "code.search_symbols handler",
+    "code.get_dependencies src/api/mod.rs",
+    "specs.get_section REST Endpoints"
+  ]
+});
+
+// Episode is automatically recorded with all context!
+```
 
 ## Key Commands
 
 ### Development Workflow
 ```bash
-# Install dependencies
-pnpm install
-
-# Build all packages
-pnpm build
-
-# Run development mode
-pnpm dev
-
-# Run tests
-pnpm test
-
-# Fix linting and formatting issues before committing
-pnpm fix:all
-
-# Run linting only
-pnpm lint
-pnpm lint:fix
-
-# Run formatting only
-pnpm fm:check
-pnpm fm:fix
-
-# Create changesets for version management
-pnpm changeset
-
-# Clean up all node_modules
-pnpm cleanup
+pnpm install          # Install dependencies
+pnpm build            # Build all packages
+pnpm dev              # Development mode
+pnpm test             # Run all tests
+pnpm fix:all          # Fix linting and formatting before committing
+pnpm changeset        # Create changesets for version management
+pnpm cleanup          # Clean up all node_modules
 ```
 
 ### Testing Commands
 ```bash
-# Run all tests
-pnpm test
-
-# Run tests for a specific package
-pnpm --filter @omnitron-dev/[package-name] test
-
-# Run a single test file
-pnpm --filter @omnitron-dev/[package-name] test path/to/test.spec.ts
-
-# Run Bun tests for compatible packages
-pnpm --filter @omnitron-dev/[package-name] test:bun
-
-# Run Deno tests (experimental)
-pnpm --filter @omnitron-dev/[package-name] test:deno
+pnpm test                                              # Run all tests
+pnpm --filter @omnitron-dev/[package] test             # Test specific package
+pnpm --filter @omnitron-dev/[package] test:bun         # Run Bun tests
 ```
 
-## Architecture Overview
+## Omnitron Packages
 
-### Monorepo Structure
-- `/packages/*` - Reusable libraries
-- `/scripts` - Build and utility scripts
-- No `/apps` directory currently (referenced in package.json but not present)
+### Core Packages
 
-### Current Packages
+**@omnitron-dev/titan** - Minimalist framework for distributed, runtime-agnostic applications
+- Integrated: Nexus DI, Netron RPC, Rotif messaging
+- Modules: Config, Events, Scheduler, Redis, Logger
+- Decorator-based API with lifecycle management
+- ✅ Node.js 22+, Bun 1.2+, 🚧 Deno (experimental)
 
-**@omnitron-dev/common** - Essential utilities and helper functions
+**@omnitron-dev/rotif** - Redis-based reliable messaging
+- Exactly-once processing with deduplication
+- Retry with exponential backoff, DLQ for failures
+- Consumer groups for horizontal scaling
+
+**@omnitron-dev/common** - Essential utilities
 - Promise utilities (defer, delay, retry, timeout)
-- Object manipulation (omit, entries, keys, values)
-- Type predicates and guards
 - Data structures (ListBuffer, TimedMap)
-- ✅ Full Bun runtime support
-- ✅ Node.js 22+ support
+- Type predicates and guards
 
-**@omnitron-dev/eventemitter** - Universal event emitter with sync and async patterns
-- Standard EventEmitter API (on, off, emit, once)
-- Parallel and sequential async event execution
-- Reduce patterns for event accumulation
-- Concurrency control with p-limit
-- Promise-based event handling
-- ✅ Works in Node.js, Bun, and browsers
-- ✅ Full test coverage for all runtimes
+**@omnitron-dev/eventemitter** - Universal event emitter
+- Sync/async patterns, parallel/sequential execution
+- Works in Node.js, Bun, browsers
 
 **@omnitron-dev/smartbuffer** - Enhanced binary data manipulation
-- Efficient buffer operations
-- Support for various data types (int8-64, float, double, varint)
-- Big-endian and little-endian support
-- String encoding/decoding utilities
-- ✅ Bun runtime support
-- ✅ Node.js support
-
 **@omnitron-dev/messagepack** - High-performance MessagePack serialization
-- Full MessagePack specification support
-- Custom type extensions
-- Efficient binary serialization
-- Stream processing capabilities
-- ✅ Bun runtime support
-- ✅ Node.js support
-
-**@omnitron-dev/titan** - A minimalist TypeScript framework for building distributed, runtime-agnostic applications with enterprise reliability
-- **Core Philosophy**: Essential features without bloat, designed for distributed systems
-- **Integrated Components**:
-  - Nexus DI: Full dependency injection container built-in
-  - Netron: WebSocket RPC framework integrated
-  - Rotif: Reliable messaging system support
-- **Built-in Modules**:
-  - Config: Multi-source configuration management
-  - Events: Async event bus with decorators
-  - Scheduler: Cron and interval task scheduling
-  - Redis: Redis integration module
-  - Logger: Pino-based structured logging
-- **Key Features**:
-  - Minimalist decorator-based API
-  - Application lifecycle management
-  - Graceful shutdown with timeout control
-  - Modular architecture with dependency resolution
-  - Concurrent operation handling (start/stop)
-  - Process signal handling
-  - Health checks and metrics
-- **Runtime Support**:
-  - ✅ Node.js 22+ (full support)
-  - ✅ Bun 1.2+ (full support with tests)
-  - 🚧 Deno 2.0+ (experimental)
-
-**@omnitron-dev/rotif** - Redis-based reliable notification and messaging system
-- Exactly-once processing with deduplication
-- Configurable retry mechanisms with exponential backoff
-- Delayed message delivery and scheduling
-- Dead Letter Queue (DLQ) for failed messages
-- Built-in statistics and monitoring
-- Extensible middleware system
-- Consumer groups for horizontal scaling
-- Full TypeScript support
-
 **@omnitron-dev/cuid** - Collision-resistant unique identifiers
-- Secure random ID generation
-- Timestamp-based ordering
-- URL-safe characters
-- ✅ Bun runtime support
-- ✅ Node.js support
-
 **@omnitron-dev/testing** - Testing utilities and helpers
-- Mock factories
-- Test fixtures
-- Async test utilities
-- Container testing helpers
-- Redis test utilities
 
-**@omnitron-dev/titan-module-template** - Template for creating Titan modules
-- Boilerplate for new modules
-- Example implementations
-- Best practices guide
+### Frontend Framework (In Development)
 
-### Frontend Framework
+**Aether** - Minimalist, high-performance frontend framework
+- Fine-grained reactivity with signals (inspired by SolidJS)
+- File-based routing, Islands architecture, SSR/SSG
+- Contract-based Titan integration via Netron RPC
+- Separate DI system (lightweight, tree-shakeable)
+- ~6KB gzipped core runtime
+- 📋 Specs complete in `specs/frontend/`
 
-**Aether** - Minimalist, high-performance frontend framework (in development)
-- **Philosophy**: Clean architecture, maximum developer freedom, low cognitive load
-- **Core Features**:
-  - Fine-grained reactivity with signals (inspired by SolidJS)
-  - Function-based components with `defineComponent()`
-  - File-based routing with loaders and actions
-  - Islands architecture for partial hydration
-  - SSR/SSG support out of the box
-- **Integration**:
-  - Contract-based Titan integration via Netron RPC
-  - Separate DI system (lightweight, tree-shakeable)
-  - Type-safe backend communication
-  - Role-based interface projection
-- **Bundle Size**: ~6KB gzipped core runtime
-- **Status**: 📋 Specifications complete, implementation planned
-- **Documentation**: See `specs/frontend/` for complete specifications
+**Key Decision**: Aether and Titan use **separate DI systems** connected via TypeScript interface contracts for security and optimization.
 
-**Key Architectural Decision**: Aether and Titan use **separate DI systems** connected via TypeScript interface contracts, not shared service instances. This ensures:
-- Each side optimized for its use case (frontend vs backend)
-- Clean separation of concerns
-- Security via Netron's role-based interface projection
-- Maximum flexibility and developer freedom
-
-### Integrated into Titan
-
-The following packages have been integrated directly into @omnitron-dev/titan:
-- **nexus** - Dependency injection container (now at `titan/src/nexus`)
-- **netron** - WebSocket RPC framework (now at `titan/src/netron`)
-- These are accessible via exports: `@omnitron-dev/titan/nexus` and `@omnitron-dev/titan/netron`
-
-### Removed Packages
-
-The following packages have been removed from the monorepo:
-- **priceverse** - Crypto price aggregation (moved to separate repo)
-- **vibra** - Vitest-based testing framework (removed)
-- **bitcoin-core** - Bitcoin Core RPC client (moved to separate repo)
-- **onix** - Infrastructure orchestration (removed)
-- **rotif-nest** - NestJS integration for Rotif (removed)
-- **netron-nest** - NestJS integration for Netron (functionality merged into Titan)
+## Development Guidelines
 
 ### Technology Stack
-- **Language**: TypeScript 5.8.3 - 5.9.2 with strict mode
-- **Runtime**: Node.js 22+ and Bun 1.2+ (both fully supported)
-- **Build**: Turborepo for orchestration, TSC for compilation
-- **Package Manager**: pnpm 9.15.0 with workspaces
-- **Testing**: Jest 30.x with ts-jest (Node.js), Bun test (Bun runtime)
-- **Linting**: ESLint v9 with flat config
-- **Formatting**: Prettier with consistent style
-- **Serialization**: MessagePack for efficient data transfer
-- **Messaging**: Redis for service discovery and reliable messaging
+- **Language**: TypeScript 5.8.3-5.9.2 with strict mode
+- **Runtime**: Node.js 22+, Bun 1.2+ (both fully supported)
+- **Build**: Turborepo + TSC
+- **Package Manager**: pnpm 9.15.0
+- **Testing**: Jest 30.x (Node.js), Bun test (Bun)
+- **Linting**: ESLint v9 flat config
+- **Serialization**: MessagePack
+- **Messaging**: Redis
 
-### Development Patterns
+### Titan Development Patterns
 
-**Titan Application Structure**:
+**Application Structure**:
 ```typescript
 import { Application, Module, Injectable } from '@omnitron-dev/titan';
 
@@ -234,7 +457,7 @@ const app = await Application.create(MyModule);
 await app.start();
 ```
 
-**Service Definition with Decorators**:
+**Service with Decorators**:
 ```typescript
 @Service('calculator@1.0.0')
 export class CalculatorService {
@@ -245,7 +468,7 @@ export class CalculatorService {
 }
 ```
 
-**Event-Driven Architecture**: Titan provides built-in event handling
+**Event Handling**:
 ```typescript
 @OnEvent('user.created')
 async handleUserCreated(data: any) {
@@ -253,7 +476,7 @@ async handleUserCreated(data: any) {
 }
 ```
 
-**Message Handler with Rotif**:
+**Message Handler**:
 ```typescript
 @Injectable()
 export class OrderService {
@@ -265,57 +488,12 @@ export class OrderService {
 }
 ```
 
-**Type Safety**: All packages maintain strict TypeScript types with proper exports
+### Module Import/Export Rules
 
-**Dependency Management**: Internal packages use workspace protocol:
-```json
-"@omnitron-dev/common": "workspace:*"
-```
+**CRITICAL**: Never re-export modules from `packages/titan/src/index.ts` - causes circular dependencies and breaks tree-shaking.
 
-### Important Configuration
-
-**TypeScript**: Each package has:
-- `tsconfig.json` - Base configuration
-- `tsconfig.build.json` - Build-specific config
-- Some packages also have `tsconfig.esm.json` for ESM builds
-
-**Jest**: Each package has its own `jest.config.ts` with coverage enabled
-- Note: Jest 30.x requires ES module compatibility for config files
-
-**Turbo Pipeline**: Defined in `turbo.json` with proper task dependencies and caching
-
-**Runtime Support Configuration**:
-- `bunfig.toml` - Bun-specific configuration
-- Runtime detection in code for compatibility
-- Separate test files for Bun compatibility testing
-
-### Code Quality Standards
-
-- ESLint enforces import sorting and unused import removal
-- Prettier enforces consistent formatting (2 spaces, single quotes, semicolons)
-- All code must pass linting and formatting checks before committing
-- Tests should be written for new functionality
-- Use existing patterns and utilities from `@omnitron-dev/common`
-- Ensure Bun compatibility when adding new features
-
-### Working with the Monorepo
-
-1. When adding dependencies, add them to the specific package, not the root
-2. Use `pnpm --filter @omnitron-dev/[package-name] add [dependency]`
-3. Follow existing package structure when creating new packages
-4. Ensure all packages build successfully before committing
-5. Use changesets for version management when making changes
-6. Test with both Node.js and Bun runtimes when possible
-
-### Module Import/Export Guidelines
-
-**CRITICAL: Module Export Rules for Titan**
-
-1. **NO RE-EXPORTS OF MODULES from index.ts** - Never re-export modules from `packages/titan/src/index.ts`. This causes circular dependencies and breaks tree-shaking.
-
-2. **Use Package.json Exports** - All Titan modules must be imported via the package.json export paths:
 ```typescript
-// ✅ CORRECT - Use package.json exports for tree-shaking
+// ✅ CORRECT - Use package.json exports
 import { ConfigModule } from '@omnitron-dev/titan/module/config';
 import { LoggerModule } from '@omnitron-dev/titan/module/logger';
 import { EventsModule } from '@omnitron-dev/titan/module/events';
@@ -323,196 +501,108 @@ import { SchedulerModule } from '@omnitron-dev/titan/module/scheduler';
 import { TitanRedisModule } from '@omnitron-dev/titan/module/redis';
 
 // ❌ WRONG - Don't import modules from root
-import { ConfigModule } from '@omnitron-dev/titan';  // NEVER DO THIS
+import { ConfigModule } from '@omnitron-dev/titan';
 ```
 
-3. **Unified Module System** - Nexus DI is integrated directly into Titan. Use the single `IModule` interface from `nexus/types.ts` for all modules. No need for additional abstractions or adaptations.
+**Module System**:
+- All modules implement unified `IModule` interface from `nexus/types.ts`
+- No wrappers or adapters needed
+- Each module's exports defined ONLY in package.json
 
-4. **Single Source of Truth** - Each module's exports are defined ONLY in package.json. No duplicate export paths.
+### Code Quality Standards
 
-5. **Module Structure** - All modules implement the unified `IModule` interface and can be used directly with Application.use() without any wrappers or adapters
+- ESLint enforces import sorting and unused import removal
+- Prettier: 2 spaces, single quotes, semicolons
+- All code must pass linting and formatting before committing
+- Write tests for new functionality
+- Use existing patterns from `@omnitron-dev/common`
+- Ensure Bun compatibility
+
+### Working with Monorepo
+
+1. Add dependencies to specific packages: `pnpm --filter @omnitron-dev/[package] add [dep]`
+2. Internal packages use workspace protocol: `"@omnitron-dev/common": "workspace:*"`
+3. Follow existing package structure for new packages
+4. Ensure all packages build successfully before committing
+5. Use changesets for version management
+6. Test with both Node.js and Bun when possible
 
 ### Recent Breaking Changes
 
-**Pino Logger v9.9.x**: The logger methods now require object parameters first, then message string:
+**Pino Logger v9.9.x** - Object parameter comes first:
 ```typescript
-// Old (v9.7.x and below)
+// Old (v9.7.x)
 logger.info('message', { data });
 
 // New (v9.9.x)
 logger.info({ data }, 'message');
 ```
 
-### Titan-Specific Notes
+## Testing
 
-**Application State Management**:
-- Application has strict state transitions (Created → Starting → Started → Stopping → Stopped)
-- Concurrent start/stop operations are properly queued
-- Force shutdown is supported with timeout options
-
-**Module System**:
-- Modules can have dependencies on other modules
-- Lifecycle hooks: onRegister, onStart, onStop, onDestroy
-- Modules are started in dependency order, stopped in reverse
-
-**Error Handling**:
-- Graceful error handling in event handlers
-- Module stop failures don't prevent cleanup by default
-- Timeout errors are treated as critical
-
-### Notes for AI Assistants
-
-- The repository has transitioned from @devgrid to @omnitron-dev namespace
-- **Nexus** is the DI system inside Titan (backend), **Aether** is the frontend framework
-- Nexus DI and Netron are now integrated into Titan, not separate packages
-- Focus is on runtime compatibility (Node.js and Bun)
-- Titan is the backend framework, Aether is the frontend framework
-- When working with Titan tests, be aware of state management quirks
-- TypeScript versions may vary slightly between packages (5.8.3 - 5.9.2)
-- Always check for breaking changes in dependencies (especially Pino logger)
-
-### Meridian MCP Integration
-
-**CRITICAL: Use Meridian MCP Tools - NO Report Files**
-
-The `/meridian` subdirectory contains a production-ready MCP server with 72 tools for code analysis, progress tracking, and memory management. When working with meridian:
-
-1. **NEVER Create Report Files** (.md summaries, implementation reports, session reports)
-   - Use `progress.*` MCP tools to track tasks and progress
-   - Use `memory.record_episode` to capture completed work
-   - Use `specs.*` tools to reference specifications
-   - Reports should live in the progress system, not markdown files
-
-2. **Always Use MCP Tools First**:
-   - `code.search_symbols` - Find symbols instead of grep
-   - `code.get_definition` - Read code instead of cat/Read tool
-   - `specs.get_section` - Read specs efficiently
-   - `progress.list_tasks` - View current work instead of todo lists
-   - `progress.mark_complete` - Auto-creates memory episodes
-
-3. **Progress Tracking Workflow**:
-   ```typescript
-   // Create task
-   const task = await progress.create_task({
-     title: "Implement feature X",
-     spec_name: "spec",
-     section: "Features",
-     priority: "high"
-   });
-
-   // Update status
-   await progress.update_task({
-     task_id: task.task_id,
-     status: "in_progress"
-   });
-
-   // Complete with auto-episode
-   await progress.mark_complete({
-     task_id: task.task_id,
-     solution_summary: "Implemented using approach Y",
-     files_touched: ["src/feature.rs"],
-     queries_made: ["code.search feature"]
-   });
-   // Episode automatically recorded in memory system!
-   ```
-
-4. **Token Efficiency**:
-   - Progress system is 70% more token-efficient than TodoWrite
-   - MCP tools return only requested data (no full files)
-   - Use detail_level parameters to control verbosity
-
-5. **Commit Messages**:
-   - Reference task IDs: "feat: implement X (task:550e8400)"
-   - Link to specs: "fix: resolve Y per progress-tracking-spec section 3.2"
-   - Include episode ID if relevant
-
-6. **Environment Setup**:
-   ```bash
-   export PATH="/Users/taaliman/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/bin:/usr/bin:$PATH"
-   cd meridian && cargo build --release
-   # MCP server auto-starts via Claude Code config
-   ```
-
-**Available MCP Tool Categories (72 total):**
-- Memory (3): record_episode, find_similar_episodes, update_working_set
-- Code Analysis (4): search_symbols, get_definition, find_references, get_dependencies
-- Progress Tracking (10): create, update, list, get, delete, search, link_to_spec, get_history, get_progress, mark_complete
-- Specs (5): list, get_structure, get_section, search, validate
-- Session (4): begin, update, query, complete
-- Context (4): prepare_adaptive, defragment, compress, analyze_token_cost
-- + 42 more (docs, codegen, links, global, etc.)
-
-**Remember:** Meridian tools replace manual workflows. Use them!
-
-### Environment Setup
-
-Execute these commands each time for session to ensure all tools are available:
-```bash
-export PATH="/Users/taaliman/.bun/bin:/Users/taaliman/.deno/bin:/Users/taaliman/.cargo/bin:/opt/homebrew/bin:$PATH"
-```
-
-### Testing Best Practices
-
-1. **Runtime Testing**: Always test with both Node.js and Bun
+### Best Practices
+1. **Runtime Testing**: Test with both Node.js and Bun
 2. **State Management**: Use `disableGracefulShutdown: true` in tests
-3. **Module Testing**: Use `disableCoreModules: true` for isolated testing
-4. **Async Operations**: Properly await all promises to avoid hanging tests
+3. **Module Testing**: Use `disableCoreModules: true` for isolation
+4. **Async Operations**: Properly await all promises
 5. **Cleanup**: Ensure proper cleanup in afterEach blocks
 
 ### Docker Redis Testing
 
-For running Redis tests in the Titan package, use Docker with these specific paths and configurations:
-
 **Important Paths**:
 - Docker binary: `/usr/local/bin/docker`
-- Docker Compose syntax: Use `docker compose` (v2, not `docker-compose`)
-- Test utilities location: `packages/titan/test/utils/`
-  - `redis-test-manager.ts` - Manages Docker Redis containers for testing
-  - `redis-fallback.ts` - Provides fallback to local Redis if Docker unavailable
-- Docker compose file: `packages/titan/test/docker/docker-compose.test.yml`
+- Docker Compose: Use `docker compose` (v2)
+- Test utilities: `packages/titan/test/utils/`
+  - `redis-test-manager.ts` - Docker container management
+  - `redis-fallback.ts` - Fallback to local Redis
+- Compose file: `packages/titan/test/docker/docker-compose.test.yml`
 
 **Running Redis Tests**:
 ```bash
-# Start Redis container for tests
 cd packages/titan
-npm test -- test/modules/redis/
+npm test -- test/modules/redis/                        # Run Redis tests
+npm test -- test/modules/redis/redis.service.spec.ts   # Specific test
+USE_REAL_REDIS=true npm test -- test/modules/redis/    # Use real Redis
 
-# Run specific test file
-npm test -- test/modules/redis/redis.service.spec.ts
-
-# Run with real Redis (Docker or local)
-USE_REAL_REDIS=true npm test -- test/modules/redis/
-
-# Manual Redis management
-npm run redis:start   # Start test Redis container
-npm run redis:stop    # Stop test Redis container
-npm run redis:cleanup # Clean up all test containers
+# Manual container management
+npm run redis:start    # Start test container
+npm run redis:stop     # Stop test container
+npm run redis:cleanup  # Cleanup all containers
 ```
 
-**Test Configuration**:
-- Tests use ioredis (not redis package)
-- Dynamic port allocation for parallel test runs
-- Automatic cleanup of containers after tests
+**Configuration**:
+- Uses ioredis (not redis package)
+- Dynamic port allocation for parallel runs
+- Automatic cleanup after tests
 - Fallback to local Redis if Docker unavailable
 
-### Current Focus Areas
+## Notes for AI Assistants
 
-- ✅ Full Bun runtime support across all packages
-- ✅ Titan framework stabilization and testing
-- 🚧 Deno support (experimental)
-- 🚧 Documentation improvements
-- 🚧 Performance optimizations
-- 🚧 Decorator cleanup and minimization
+**Critical Workflows**:
+1. **NEVER create report files** - Use Meridian MCP progress tracking
+2. **Always use MCP tools first** - More efficient than traditional file operations
+3. **Record episodes on completion** - Use `progress.mark_complete` for auto-episode creation
+4. **Reference specs and tasks in commits** - Include task IDs and spec sections
 
-### Planned Projects
+**Architecture**:
+- Namespace: @omnitron-dev (transitioned from @devgrid)
+- **Nexus** = DI system inside Titan (backend)
+- **Aether** = Frontend framework (separate from Titan)
+- Nexus DI and Netron are integrated into Titan
+- Titan = backend framework, Aether = frontend framework
+
+**Key Points**:
+- Focus on runtime compatibility (Node.js and Bun)
+- State management quirks in Titan tests
+- TypeScript versions vary: 5.8.3 - 5.9.2
+- Watch for breaking changes (especially Pino logger)
+- Meridian MCP server has 72+ tools - use them!
+
+## Planned Projects
 
 **Tron** (apps/tron) - Process manager for Titan applications
-- Deep integration with Titan architecture
-- Multi-process orchestration
-- Health monitoring and auto-restart
-- Load balancing and scaling
-- Configuration management
-- Log aggregation and monitoring
+- Deep Titan integration with multi-process orchestration
+- Health monitoring, auto-restart, load balancing
+- Configuration management, log aggregation
 - Zero-downtime deployments
-
-This will complement Titan as the operational layer, similar to how PM2 complements Node.js applications but with native Titan integration.
+- Similar to PM2 but with native Titan integration

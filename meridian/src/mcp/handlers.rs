@@ -32,6 +32,7 @@ pub struct ToolHandlers {
     pattern_engine: Arc<crate::indexer::PatternSearchEngine>,
     metrics_collector: Option<Arc<MetricsCollector>>,
     start_time: std::time::Instant,
+    backup_manager: Option<Arc<tokio::sync::RwLock<crate::storage::BackupManager>>>,
 }
 
 impl ToolHandlers {
@@ -60,6 +61,7 @@ impl ToolHandlers {
             pattern_engine,
             metrics_collector: None,
             start_time: std::time::Instant::now(),
+            backup_manager: None,
         }
     }
 
@@ -71,6 +73,11 @@ impl ToolHandlers {
     /// Set the delta indexer for real-time file watching
     pub fn set_delta_indexer(&mut self, delta_indexer: Arc<DeltaIndexer>) {
         self.delta_indexer = Some(delta_indexer);
+    }
+
+    /// Set the backup manager
+    pub fn set_backup_manager(&mut self, backup_manager: Arc<tokio::sync::RwLock<crate::storage::BackupManager>>) {
+        self.backup_manager = Some(backup_manager);
     }
 
     /// Create handlers with project registry for cross-monorepo support
@@ -100,6 +107,7 @@ impl ToolHandlers {
             pattern_engine,
             metrics_collector: None,
             start_time: std::time::Instant::now(),
+            backup_manager: None,
         }
     }
 
@@ -241,6 +249,11 @@ impl ToolHandlers {
             "progress.mark_complete" => self.handle_progress_mark_complete(arguments).await,
             "progress.check_timeouts" => self.handle_progress_check_timeouts(arguments).await,
             "progress.recover_orphaned" => self.handle_progress_recover_orphaned(arguments).await,
+            "progress.add_dependency" => self.handle_progress_add_dependency(arguments).await,
+            "progress.remove_dependency" => self.handle_progress_remove_dependency(arguments).await,
+            "progress.get_dependencies" => self.handle_progress_get_dependencies(arguments).await,
+            "progress.get_dependents" => self.handle_progress_get_dependents(arguments).await,
+            "progress.can_start_task" => self.handle_progress_can_start_task(arguments).await,
 
             // Semantic Links Tools (Phase 2)
             "links.find_implementation" => self.handle_links_find_implementation(arguments).await,
@@ -264,6 +277,16 @@ impl ToolHandlers {
 
             // System Health Tools
             "system.health" => self.handle_system_health(arguments).await,
+
+            // Backup Tools
+            "backup.create" => self.handle_backup_create(arguments).await,
+            "backup.list" => self.handle_backup_list(arguments).await,
+            "backup.restore" => self.handle_backup_restore(arguments).await,
+            "backup.verify" => self.handle_backup_verify(arguments).await,
+            "backup.delete" => self.handle_backup_delete(arguments).await,
+            "backup.get_stats" => self.handle_backup_get_stats(arguments).await,
+            "backup.create_scheduled" => self.handle_backup_create_scheduled(arguments).await,
+            "backup.create_pre_migration" => self.handle_backup_create_pre_migration(arguments).await,
 
             _ => Err(anyhow!("Unknown tool: {}", name)),
         }
@@ -292,6 +315,7 @@ impl ToolHandlers {
         };
 
         let episode = TaskEpisode {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: chrono::Utc::now(),
             task_description: params.task,
@@ -1142,6 +1166,7 @@ impl ToolHandlers {
 
         // Create a rich episode from this successful task
         let episode = TaskEpisode {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: chrono::Utc::now(),
             task_description: task_desc.clone(),
@@ -3432,6 +3457,173 @@ impl ToolHandlers {
         }))
     }
 
+
+    async fn handle_progress_add_dependency(&self, args: Value) -> Result<Value> {
+        use crate::progress::TaskId;
+
+        #[derive(Deserialize)]
+        struct Params {
+            task_id: String,
+            depends_on: String,
+        }
+
+        let params: Params = serde_json::from_value(args)
+            .context("Invalid parameters for progress.add_dependency")?;
+
+        let task_id = TaskId::from_str(&params.task_id);
+        let depends_on = TaskId::from_str(&params.depends_on);
+        let manager = self.progress_manager.read().await;
+
+        manager.add_dependency(&task_id, &depends_on).await?;
+
+        info!("Added dependency: {} depends on {}", task_id, depends_on);
+
+        Ok(json!({
+            "task_id": task_id.to_string(),
+            "depends_on": depends_on.to_string(),
+            "status": "added"
+        }))
+    }
+
+    async fn handle_progress_remove_dependency(&self, args: Value) -> Result<Value> {
+        use crate::progress::TaskId;
+
+        #[derive(Deserialize)]
+        struct Params {
+            task_id: String,
+            depends_on: String,
+        }
+
+        let params: Params = serde_json::from_value(args)
+            .context("Invalid parameters for progress.remove_dependency")?;
+
+        let task_id = TaskId::from_str(&params.task_id);
+        let depends_on = TaskId::from_str(&params.depends_on);
+        let manager = self.progress_manager.read().await;
+
+        manager.remove_dependency(&task_id, &depends_on).await?;
+
+        info!("Removed dependency: {} no longer depends on {}", task_id, depends_on);
+
+        Ok(json!({
+            "task_id": task_id.to_string(),
+            "depends_on": depends_on.to_string(),
+            "status": "removed"
+        }))
+    }
+
+    async fn handle_progress_get_dependencies(&self, args: Value) -> Result<Value> {
+        use crate::progress::TaskId;
+
+        #[derive(Deserialize)]
+        struct Params {
+            task_id: String,
+        }
+
+        let params: Params = serde_json::from_value(args)
+            .context("Invalid parameters for progress.get_dependencies")?;
+
+        let task_id = TaskId::from_str(&params.task_id);
+        let manager = self.progress_manager.read().await;
+
+        let dependencies = manager.get_dependencies(&task_id).await?;
+        let unmet = manager.get_unmet_dependencies(&task_id).await?;
+
+        let dependencies_list: Vec<Value> = dependencies.iter().map(|t| json!({
+            "id": t.id.to_string(),
+            "title": t.title,
+            "status": t.status.to_string(),
+            "priority": t.priority.to_string()
+        })).collect();
+
+        let unmet_ids: Vec<String> = unmet.iter().map(|t| t.id.to_string()).collect();
+
+        Ok(json!({
+            "task_id": task_id.to_string(),
+            "dependencies": dependencies_list,
+            "total_dependencies": dependencies.len(),
+            "unmet_dependencies": unmet_ids,
+            "all_met": unmet.is_empty()
+        }))
+    }
+
+    async fn handle_progress_get_dependents(&self, args: Value) -> Result<Value> {
+        use crate::progress::TaskId;
+
+        #[derive(Deserialize)]
+        struct Params {
+            task_id: String,
+        }
+
+        let params: Params = serde_json::from_value(args)
+            .context("Invalid parameters for progress.get_dependents")?;
+
+        let task_id = TaskId::from_str(&params.task_id);
+        let manager = self.progress_manager.read().await;
+
+        let dependents = manager.get_dependents(&task_id).await?;
+
+        let dependents_list: Vec<Value> = dependents.iter().map(|t| json!({
+            "id": t.id.to_string(),
+            "title": t.title,
+            "status": t.status.to_string(),
+            "priority": t.priority.to_string(),
+            "blocked": t.status.to_string() == "blocked"
+        })).collect();
+
+        Ok(json!({
+            "task_id": task_id.to_string(),
+            "dependents": dependents_list,
+            "total_dependents": dependents.len(),
+            "blocks": dependents.iter().map(|t| t.id.to_string()).collect::<Vec<_>>()
+        }))
+    }
+
+    async fn handle_progress_can_start_task(&self, args: Value) -> Result<Value> {
+        use crate::progress::TaskId;
+
+        #[derive(Deserialize)]
+        struct Params {
+            task_id: String,
+        }
+
+        let params: Params = serde_json::from_value(args)
+            .context("Invalid parameters for progress.can_start_task")?;
+
+        let task_id = TaskId::from_str(&params.task_id);
+        let manager = self.progress_manager.read().await;
+
+        let can_start = manager.can_start_task(&task_id).await?;
+        let task = manager.get_task(&task_id).await?;
+        let unmet = if !can_start {
+            manager.get_unmet_dependencies(&task_id).await?
+        } else {
+            Vec::new()
+        };
+
+        let blockers: Vec<Value> = unmet.iter().map(|t| json!({
+            "id": t.id.to_string(),
+            "title": t.title,
+            "status": t.status.to_string()
+        })).collect();
+
+        Ok(json!({
+            "task_id": task_id.to_string(),
+            "can_start": can_start,
+            "current_status": task.status.to_string(),
+            "blockers": blockers,
+            "reason": if !can_start {
+                if !task.can_start() {
+                    format!("Task status is {} (must be pending or blocked)", task.status)
+                } else {
+                    format!("{} unmet dependencies", unmet.len())
+                }
+            } else {
+                "All dependencies met".to_string()
+            }
+        }))
+    }
+
     // === Semantic Links Handlers (Phase 2) ===
 
     async fn handle_links_find_implementation(&self, args: Value) -> Result<Value> {
@@ -4026,6 +4218,221 @@ impl ToolHandlers {
             "sessions": {
                 "active": session_count,
             },
+        }))
+    }
+
+    // === Backup Management Handlers ===
+
+    async fn handle_backup_create(&self, args: Value) -> Result<Value> {
+        #[derive(Deserialize)]
+        struct BackupCreateParams {
+            description: Option<String>,
+            tags: Option<Vec<String>>,
+        }
+
+        let params: BackupCreateParams = serde_json::from_value(args)
+            .context("Invalid parameters for backup.create")?;
+
+        let backup_manager = self.backup_manager.as_ref()
+            .ok_or_else(|| anyhow!("Backup manager not initialized"))?;
+
+        let metadata = backup_manager.write().await.create_backup(
+            crate::storage::BackupType::Manual,
+            params.description,
+            params.tags.unwrap_or_default(),
+        ).await?;
+
+        info!("Manual backup created: {}", metadata.id);
+
+        Ok(json!({
+            "backup_id": metadata.id,
+            "created_at": metadata.created_at.to_rfc3339(),
+            "size_bytes": metadata.size_bytes,
+            "file_count": metadata.file_count,
+            "verified": metadata.verified
+        }))
+    }
+
+    async fn handle_backup_list(&self, args: Value) -> Result<Value> {
+        #[derive(Deserialize)]
+        struct BackupListParams {
+            backup_type: Option<String>,
+            verified_only: Option<bool>,
+        }
+
+        let params: BackupListParams = serde_json::from_value(args)
+            .context("Invalid parameters for backup.list")?;
+
+        let backup_manager = self.backup_manager.as_ref()
+            .ok_or_else(|| anyhow!("Backup manager not initialized"))?;
+
+        let mut backups = backup_manager.read().await.list_backups().await?;
+
+        // Filter by type if specified
+        if let Some(backup_type_str) = params.backup_type {
+            let filter_type = match backup_type_str.as_str() {
+                "manual" => crate::storage::BackupType::Manual,
+                "scheduled" => crate::storage::BackupType::Scheduled,
+                "pre_migration" => crate::storage::BackupType::PreMigration,
+                "incremental" => crate::storage::BackupType::Incremental,
+                _ => return Err(anyhow!("Invalid backup type")),
+            };
+            backups.retain(|b| b.backup_type == filter_type);
+        }
+
+        // Filter by verification status if specified
+        if params.verified_only.unwrap_or(false) {
+            backups.retain(|b| b.verified);
+        }
+
+        let total_count = backups.len();
+
+        let backup_list: Vec<Value> = backups.iter().map(|b| {
+            json!({
+                "id": b.id,
+                "backup_type": b.backup_type.as_str(),
+                "created_at": b.created_at.to_rfc3339(),
+                "size_bytes": b.size_bytes,
+                "file_count": b.file_count,
+                "verified": b.verified,
+                "description": b.description
+            })
+        }).collect();
+
+        Ok(json!({
+            "backups": backup_list,
+            "total_count": total_count
+        }))
+    }
+
+    async fn handle_backup_restore(&self, args: Value) -> Result<Value> {
+        #[derive(Deserialize)]
+        struct BackupRestoreParams {
+            backup_id: String,
+            target_path: Option<String>,
+        }
+
+        let params: BackupRestoreParams = serde_json::from_value(args)
+            .context("Invalid parameters for backup.restore")?;
+
+        let backup_manager = self.backup_manager.as_ref()
+            .ok_or_else(|| anyhow!("Backup manager not initialized"))?;
+
+        let target_path = params.target_path.map(PathBuf::from);
+
+        info!("Restoring backup: {}", params.backup_id);
+
+        backup_manager.write().await.restore_backup(&params.backup_id, target_path).await?;
+
+        info!("Backup restored successfully: {}", params.backup_id);
+
+        Ok(json!({
+            "success": true,
+            "restored_from": params.backup_id
+        }))
+    }
+
+    async fn handle_backup_verify(&self, args: Value) -> Result<Value> {
+        #[derive(Deserialize)]
+        struct BackupVerifyParams {
+            backup_id: String,
+        }
+
+        let params: BackupVerifyParams = serde_json::from_value(args)
+            .context("Invalid parameters for backup.verify")?;
+
+        let backup_manager = self.backup_manager.as_ref()
+            .ok_or_else(|| anyhow!("Backup manager not initialized"))?;
+
+        info!("Verifying backup: {}", params.backup_id);
+
+        backup_manager.write().await.verify_backup(&params.backup_id).await?;
+
+        let metadata = backup_manager.read().await.get_backup(&params.backup_id).await?;
+
+        Ok(json!({
+            "verified": metadata.verified,
+            "verified_at": metadata.verified_at.map(|t| t.to_rfc3339()),
+            "checksum_valid": true
+        }))
+    }
+
+    async fn handle_backup_delete(&self, args: Value) -> Result<Value> {
+        #[derive(Deserialize)]
+        struct BackupDeleteParams {
+            backup_id: String,
+        }
+
+        let params: BackupDeleteParams = serde_json::from_value(args)
+            .context("Invalid parameters for backup.delete")?;
+
+        let backup_manager = self.backup_manager.as_ref()
+            .ok_or_else(|| anyhow!("Backup manager not initialized"))?;
+
+        info!("Deleting backup: {}", params.backup_id);
+
+        backup_manager.write().await.delete_backup(&params.backup_id).await?;
+
+        Ok(json!({
+            "success": true,
+            "deleted_backup_id": params.backup_id
+        }))
+    }
+
+    async fn handle_backup_get_stats(&self, _args: Value) -> Result<Value> {
+        let backup_manager = self.backup_manager.as_ref()
+            .ok_or_else(|| anyhow!("Backup manager not initialized"))?;
+
+        let stats = backup_manager.read().await.get_stats().await?;
+
+        Ok(json!({
+            "total_backups": stats.total_backups,
+            "total_size_bytes": stats.total_size_bytes,
+            "by_type": stats.by_type,
+            "oldest_backup": stats.oldest_backup.map(|t| t.to_rfc3339()),
+            "newest_backup": stats.newest_backup.map(|t| t.to_rfc3339()),
+            "verified_count": stats.verified_count,
+            "unverified_count": stats.unverified_count
+        }))
+    }
+
+    async fn handle_backup_create_scheduled(&self, _args: Value) -> Result<Value> {
+        let backup_manager = self.backup_manager.as_ref()
+            .ok_or_else(|| anyhow!("Backup manager not initialized"))?;
+
+        let metadata = backup_manager.write().await.create_scheduled_backup().await?;
+
+        info!("Scheduled backup created: {}", metadata.id);
+
+        Ok(json!({
+            "backup_id": metadata.id,
+            "created_at": metadata.created_at.to_rfc3339()
+        }))
+    }
+
+    async fn handle_backup_create_pre_migration(&self, args: Value) -> Result<Value> {
+        #[derive(Deserialize)]
+        struct BackupPreMigrationParams {
+            schema_version: u32,
+            description: Option<String>,
+        }
+
+        let params: BackupPreMigrationParams = serde_json::from_value(args)
+            .context("Invalid parameters for backup.create_pre_migration")?;
+
+        let backup_manager = self.backup_manager.as_ref()
+            .ok_or_else(|| anyhow!("Backup manager not initialized"))?;
+
+        let metadata = backup_manager.write().await.create_pre_migration_backup(
+            params.schema_version,
+            params.description,
+        ).await?;
+
+        info!("Pre-migration backup created: {} for schema version {}", metadata.id, params.schema_version);
+
+        Ok(json!({
+            "backup_id": metadata.id,
+            "schema_version": params.schema_version
         }))
     }
 }

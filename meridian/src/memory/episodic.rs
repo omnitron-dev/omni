@@ -367,6 +367,7 @@ mod tests {
         let mut memory = EpisodicMemory::new(storage.clone(), 30).unwrap();
 
         let episode = TaskEpisode {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: Utc::now(),
             task_description: "Add authentication middleware".to_string(),
@@ -401,6 +402,7 @@ mod tests {
 
         // Add multiple episodes
         let episode1 = TaskEpisode {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: Utc::now(),
             task_description: "Add authentication middleware".to_string(),
@@ -415,6 +417,7 @@ mod tests {
         };
 
         let episode2 = TaskEpisode {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: Utc::now(),
             task_description: "Fix authentication bug".to_string(),
@@ -442,6 +445,7 @@ mod tests {
         let memory = EpisodicMemory::new(storage, 30).unwrap();
 
         let episode = TaskEpisode {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: Utc::now(),
             task_description: "Add authentication".to_string(),
@@ -467,6 +471,7 @@ mod tests {
 
         // Add old episode
         let old_episode = TaskEpisode {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: Utc::now() - chrono::Duration::days(40),
             task_description: "Old task".to_string(),
@@ -494,6 +499,7 @@ mod tests {
         let mut memory = EpisodicMemory::new(storage, 30).unwrap();
 
         let episode = TaskEpisode {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: Utc::now(),
             task_description: "Test task".to_string(),

@@ -10,9 +10,17 @@ pub struct ContextSnapshot {
     pub working_directory: Option<String>,
 }
 
+/// Default schema version for episodes
+fn default_episode_schema_version() -> u32 {
+    1
+}
+
 /// Task episode - a record of working on a specific task
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskEpisode {
+    /// Schema version for migration support
+    #[serde(default = "default_episode_schema_version")]
+    pub schema_version: u32,
     pub id: EpisodeId,
     pub timestamp: DateTime<Utc>,
     pub task_description: String,
@@ -31,6 +39,7 @@ pub struct TaskEpisode {
 impl TaskEpisode {
     pub fn new(task_description: String) -> Self {
         Self {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: Utc::now(),
             task_description,

@@ -1,14 +1,27 @@
+pub mod backup;
+pub mod migration;
+pub mod migrations;
 pub mod rocksdb_storage;
 pub mod resilient;
 pub mod db_pool;
+pub mod startup;
+
+#[cfg(test)]
+mod migration_tests;
 
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
+pub use backup::{BackupConfig, BackupManager, BackupMetadata, BackupStats, BackupType};
+pub use migration::{
+    Migration, MigrationHistory, MigrationManager, MigrationResult, SchemaVersion,
+    CURRENT_SCHEMA_VERSION,
+};
 pub use rocksdb_storage::RocksDBStorage;
 pub use resilient::ResilientStorage;
 pub use db_pool::{get_or_create_db, get_db, remove_db, get_pool_stats, PoolStats};
+pub use startup::{check_and_migrate, print_migration_status};
 
 /// Storage backend trait
 #[async_trait]

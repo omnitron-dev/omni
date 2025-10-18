@@ -109,6 +109,11 @@ impl MeridianServer {
         // Initialize storage
         let storage = Arc::new(RocksDBStorage::new(&config.storage.path)?);
 
+        // Check schema version and run migrations if needed
+        info!("Checking schema version and running migrations if needed...");
+        crate::storage::check_and_migrate(storage.clone() as Arc<dyn crate::storage::Storage>)
+            .await?;
+
         // Initialize memory system
         let mut memory_system = MemorySystem::new(storage.clone(), config.memory.clone())?;
         memory_system.init().await?;

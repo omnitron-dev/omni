@@ -290,14 +290,17 @@ impl ProgressManager {
         let mut task = self.get_task(task_id).await?;
 
         // 2. Update to Done status
+        let now = chrono::Utc::now();
         task.update_status(TaskStatus::Done, Some("Task completed".to_string()))
             .map_err(|e| anyhow!(e))?;
         task.actual_hours = actual_hours;
         task.commit_hash = commit_hash.clone();
-        task.updated_at = chrono::Utc::now();
+        task.updated_at = now;
+        task.last_activity = now;
 
         // 3. Build episode data
         let episode = TaskEpisode {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: chrono::Utc::now(),
             task_description: format!("{}: {}", task.title, task.description.clone().unwrap_or_default()),
@@ -445,6 +448,8 @@ impl ProgressManager {
         self.cache.write().await.clear();
     }
 
+    // ========== Timeout and Recovery Methods ==========
+
     /// Check for timed-out tasks and revert them to pending
     /// Returns the list of recovered task IDs
     pub async fn check_timeouts(&self) -> Result<Vec<TaskId>> {
@@ -467,6 +472,7 @@ impl ProgressManager {
                         timeout_hours
                     ))
                 ).map_err(|e| anyhow!(e))?;
+                updated.last_activity = chrono::Utc::now();
 
                 // Save updated task
                 self.storage.save_task(&updated).await?;
@@ -520,6 +526,7 @@ impl ProgressManager {
 
                 updated.update_status(TaskStatus::Pending, Some(reason))
                     .map_err(|e| anyhow!(e))?;
+                updated.last_activity = chrono::Utc::now();
 
                 // Save updated task
                 self.storage.save_task(&updated).await?;
@@ -542,6 +549,190 @@ impl ProgressManager {
     /// Count all tasks
     pub async fn count_all(&self) -> Result<usize> {
         self.storage.count_all_tasks().await
+    }
+
+    // ========== Dependency Management Methods ==========
+
+    /// Add a dependency relationship between tasks
+    /// Returns error if this would create a circular dependency
+    pub async fn add_dependency(&self, task_id: &TaskId, depends_on: &TaskId) -> Result<()> {
+        // Validate both tasks exist
+        let mut task = self.get_task(task_id).await?;
+        self.get_task(depends_on).await?; // Ensure dependency exists
+
+        // Check for circular dependency
+        if self.would_create_cycle(task_id, depends_on).await? {
+            return Err(anyhow!(
+                "Cannot add dependency: would create circular dependency"
+            ));
+        }
+
+        // Add dependency
+        task.add_dependency(depends_on.clone());
+        task.last_activity = chrono::Utc::now();
+
+        // Save
+        self.storage.save_task(&task).await?;
+        self.cache.write().await.put(task_id.clone(), task);
+
+        Ok(())
+    }
+
+    /// Remove a dependency relationship
+    pub async fn remove_dependency(&self, task_id: &TaskId, depends_on: &TaskId) -> Result<()> {
+        let mut task = self.get_task(task_id).await?;
+
+        if task.remove_dependency(depends_on) {
+            task.last_activity = chrono::Utc::now();
+            self.storage.save_task(&task).await?;
+            self.cache.write().await.put(task_id.clone(), task);
+        }
+
+        Ok(())
+    }
+
+    /// Get all tasks that this task depends on
+    pub async fn get_dependencies(&self, task_id: &TaskId) -> Result<Vec<Task>> {
+        let task = self.get_task(task_id).await?;
+        let mut dependencies = Vec::new();
+
+        for dep_id in &task.depends_on {
+            if let Ok(dep_task) = self.get_task(dep_id).await {
+                dependencies.push(dep_task);
+            }
+        }
+
+        Ok(dependencies)
+    }
+
+    /// Get all tasks that depend on this task (blocked by this task)
+    pub async fn get_dependents(&self, task_id: &TaskId) -> Result<Vec<Task>> {
+        let all_tasks = self.storage.list_all().await?;
+        let dependents: Vec<Task> = all_tasks
+            .into_iter()
+            .filter(|t| t.depends_on.contains(task_id))
+            .collect();
+
+        Ok(dependents)
+    }
+
+    /// Check if task can be started (all dependencies are Done)
+    pub async fn can_start_task(&self, task_id: &TaskId) -> Result<bool> {
+        let task = self.get_task(task_id).await?;
+
+        // If not in a startable state, return false
+        if !task.can_start() {
+            return Ok(false);
+        }
+
+        // Check all dependencies
+        for dep_id in &task.depends_on {
+            if let Ok(dep_task) = self.get_task(dep_id).await {
+                if dep_task.status != TaskStatus::Done {
+                    return Ok(false);
+                }
+            } else {
+                // Dependency doesn't exist - treat as unmet
+                return Ok(false);
+            }
+        }
+
+        Ok(true)
+    }
+
+    /// Get unmet dependencies for a task
+    pub async fn get_unmet_dependencies(&self, task_id: &TaskId) -> Result<Vec<Task>> {
+        let task = self.get_task(task_id).await?;
+        let mut unmet = Vec::new();
+
+        for dep_id in &task.depends_on {
+            if let Ok(dep_task) = self.get_task(dep_id).await {
+                if dep_task.status != TaskStatus::Done {
+                    unmet.push(dep_task);
+                }
+            }
+        }
+
+        Ok(unmet)
+    }
+
+    /// Check if adding a dependency would create a cycle
+    async fn would_create_cycle(&self, task_id: &TaskId, new_dep: &TaskId) -> Result<bool> {
+        // If task depends on itself, that's a cycle
+        if task_id == new_dep {
+            return Ok(true);
+        }
+
+        // Check if new_dep transitively depends on task_id
+        // This would create a cycle: task_id -> new_dep -> ... -> task_id
+        self.has_transitive_dependency(new_dep, task_id, &mut std::collections::HashSet::new()).await
+    }
+
+    /// Recursively check if 'from' task transitively depends on 'target' task
+    #[async_recursion::async_recursion]
+    async fn has_transitive_dependency(
+        &self,
+        from: &TaskId,
+        target: &TaskId,
+        visited: &mut std::collections::HashSet<TaskId>,
+    ) -> Result<bool> {
+        // Avoid infinite loops
+        if visited.contains(from) {
+            return Ok(false);
+        }
+        visited.insert(from.clone());
+
+        // Get dependencies of 'from' task
+        let task = self.get_task(from).await?;
+
+        for dep_id in &task.depends_on {
+            // If we find the target, there's a path
+            if dep_id == target {
+                return Ok(true);
+            }
+
+            // Recursively check this dependency
+            if self.has_transitive_dependency(dep_id, target, visited).await? {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
+
+    /// Auto-update blocked tasks when a dependency completes
+    /// Call this after marking a task as done
+    pub async fn update_dependent_tasks(&self, completed_task_id: &TaskId) -> Result<Vec<TaskId>> {
+        let dependents = self.get_dependents(completed_task_id).await?;
+        let mut unblocked = Vec::new();
+
+        for dep_task in dependents {
+            // Check if this task can now start
+            if dep_task.status == TaskStatus::Blocked {
+                // Check if ALL dependencies are met
+                let can_start = self.can_start_task(&dep_task.id).await?;
+
+                if can_start {
+                    // Update status from Blocked to Pending
+                    self.update_task(
+                        &dep_task.id,
+                        None,
+                        None,
+                        None,
+                        Some(TaskStatus::Pending),
+                        Some(format!("Unblocked: dependency {} completed", completed_task_id)),
+                        None,
+                        None,
+                        None,
+                        None,
+                    ).await?;
+
+                    unblocked.push(dep_task.id);
+                }
+            }
+        }
+
+        Ok(unblocked)
     }
 }
 

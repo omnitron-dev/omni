@@ -196,6 +196,34 @@ pub fn get_all_tools() -> Vec<Tool> {
             _meta: None,
         },
         Tool {
+            name: "code.search_patterns".to_string(),
+            description: Some("Search for structural code patterns using tree-sitter AST matching. More precise than text search.".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "pattern": {
+                        "type": "string",
+                        "description": "Pattern to search for (can be regex or AST pattern)"
+                    },
+                    "language": {
+                        "type": "string",
+                        "description": "Programming language (rust, typescript, javascript, python, go)"
+                    },
+                    "scope": {
+                        "type": "string",
+                        "description": "File or directory path to limit search scope"
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Maximum number of results to return"
+                    }
+                },
+                "required": ["pattern"]
+            }),
+            output_schema: None,
+            _meta: None,
+        },
+        Tool {
             name: "code.get_definition".to_string(),
             description: Some("Get full definition of a specific code symbol".to_string()),
             input_schema: json!({
@@ -820,6 +848,7 @@ pub fn get_all_tools() -> Vec<Tool> {
     .chain(get_specification_tools())
     .chain(get_progress_tools())
     .chain(get_links_tools())
+    .chain(get_backup_tools())
     .collect()
 }
 
@@ -1738,6 +1767,73 @@ fn get_progress_tools() -> Vec<Tool> {
             output_schema: None,
             _meta: Some(json!({"category": "progress"})),
         },
+        Tool {
+            name: "progress.add_dependency".to_string(),
+            description: Some("Add a dependency relationship between tasks. Returns error if this would create a circular dependency.".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string", "description": "Task ID that depends on another task"},
+                    "depends_on": {"type": "string", "description": "Task ID that must be completed first"}
+                },
+                "required": ["task_id", "depends_on"]
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "progress"})),
+        },
+        Tool {
+            name: "progress.remove_dependency".to_string(),
+            description: Some("Remove a dependency relationship between tasks".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string", "description": "Task ID"},
+                    "depends_on": {"type": "string", "description": "Dependency task ID to remove"}
+                },
+                "required": ["task_id", "depends_on"]
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "progress"})),
+        },
+        Tool {
+            name: "progress.get_dependencies".to_string(),
+            description: Some("Get all tasks that this task depends on, including which dependencies are unmet".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string", "description": "Task ID"}
+                },
+                "required": ["task_id"]
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "progress"})),
+        },
+        Tool {
+            name: "progress.get_dependents".to_string(),
+            description: Some("Get all tasks that depend on this task (tasks blocked by this task)".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string", "description": "Task ID"}
+                },
+                "required": ["task_id"]
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "progress"})),
+        },
+        Tool {
+            name: "progress.can_start_task".to_string(),
+            description: Some("Check if a task can be started based on its dependencies and current status. Returns details about blockers if any.".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string", "description": "Task ID to check"}
+                },
+                "required": ["task_id"]
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "progress"})),
+        },
     ]
 }
 
@@ -1982,6 +2078,219 @@ fn get_links_tools() -> Vec<Tool> {
             }),
             output_schema: None,
             _meta: Some(json!({"category": "system"})),
+        },
+    ]
+}
+
+// ============================================================================
+// Backup Tools - Automatic backup and recovery system
+// ============================================================================
+
+/// Get backup and recovery tools
+fn get_backup_tools() -> Vec<Tool> {
+    vec![
+        Tool {
+            name: "backup.create".to_string(),
+            description: Some("Create a manual backup of the Meridian database".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "description": {
+                        "type": "string",
+                        "description": "Optional description of the backup"
+                    },
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional tags for categorization"
+                    }
+                }
+            }),
+            output_schema: Some(json!({
+                "type": "object",
+                "properties": {
+                    "backup_id": {"type": "string"},
+                    "created_at": {"type": "string"},
+                    "size_bytes": {"type": "number"},
+                    "file_count": {"type": "number"},
+                    "verified": {"type": "boolean"}
+                }
+            })),
+            _meta: Some(json!({"category": "backup"})),
+        },
+        Tool {
+            name: "backup.list".to_string(),
+            description: Some("List all available backups with metadata".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "backup_type": {
+                        "type": "string",
+                        "enum": ["manual", "scheduled", "pre_migration", "incremental"],
+                        "description": "Filter by backup type"
+                    },
+                    "verified_only": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Only show verified backups"
+                    }
+                }
+            }),
+            output_schema: Some(json!({
+                "type": "object",
+                "properties": {
+                    "backups": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {"type": "string"},
+                                "backup_type": {"type": "string"},
+                                "created_at": {"type": "string"},
+                                "size_bytes": {"type": "number"},
+                                "verified": {"type": "boolean"}
+                            }
+                        }
+                    },
+                    "total_count": {"type": "number"}
+                }
+            })),
+            _meta: Some(json!({"category": "backup"})),
+        },
+        Tool {
+            name: "backup.restore".to_string(),
+            description: Some("Restore the database from a backup".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "backup_id": {
+                        "type": "string",
+                        "description": "ID of the backup to restore"
+                    },
+                    "target_path": {
+                        "type": "string",
+                        "description": "Optional target path for restoration (defaults to current DB path)"
+                    }
+                },
+                "required": ["backup_id"]
+            }),
+            output_schema: Some(json!({
+                "type": "object",
+                "properties": {
+                    "success": {"type": "boolean"},
+                    "restored_from": {"type": "string"},
+                    "safety_backup_id": {"type": "string"}
+                }
+            })),
+            _meta: Some(json!({"category": "backup"})),
+        },
+        Tool {
+            name: "backup.verify".to_string(),
+            description: Some("Verify the integrity of a backup".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "backup_id": {
+                        "type": "string",
+                        "description": "ID of the backup to verify"
+                    }
+                },
+                "required": ["backup_id"]
+            }),
+            output_schema: Some(json!({
+                "type": "object",
+                "properties": {
+                    "verified": {"type": "boolean"},
+                    "verified_at": {"type": "string"},
+                    "checksum_valid": {"type": "boolean"}
+                }
+            })),
+            _meta: Some(json!({"category": "backup"})),
+        },
+        Tool {
+            name: "backup.delete".to_string(),
+            description: Some("Delete a backup".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "backup_id": {
+                        "type": "string",
+                        "description": "ID of the backup to delete"
+                    }
+                },
+                "required": ["backup_id"]
+            }),
+            output_schema: Some(json!({
+                "type": "object",
+                "properties": {
+                    "success": {"type": "boolean"},
+                    "deleted_backup_id": {"type": "string"}
+                }
+            })),
+            _meta: Some(json!({"category": "backup"})),
+        },
+        Tool {
+            name: "backup.get_stats".to_string(),
+            description: Some("Get backup system statistics and health information".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {}
+            }),
+            output_schema: Some(json!({
+                "type": "object",
+                "properties": {
+                    "total_backups": {"type": "number"},
+                    "total_size_bytes": {"type": "number"},
+                    "by_type": {"type": "object"},
+                    "oldest_backup": {"type": "string"},
+                    "newest_backup": {"type": "string"},
+                    "verified_count": {"type": "number"},
+                    "unverified_count": {"type": "number"}
+                }
+            })),
+            _meta: Some(json!({"category": "backup"})),
+        },
+        Tool {
+            name: "backup.create_scheduled".to_string(),
+            description: Some("Create a scheduled backup (typically called by cron/scheduler)".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {}
+            }),
+            output_schema: Some(json!({
+                "type": "object",
+                "properties": {
+                    "backup_id": {"type": "string"},
+                    "created_at": {"type": "string"}
+                }
+            })),
+            _meta: Some(json!({"category": "backup", "internal": true})),
+        },
+        Tool {
+            name: "backup.create_pre_migration".to_string(),
+            description: Some("Create a pre-migration backup before schema changes".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "schema_version": {
+                        "type": "integer",
+                        "description": "Current schema version before migration"
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Optional migration description"
+                    }
+                },
+                "required": ["schema_version"]
+            }),
+            output_schema: Some(json!({
+                "type": "object",
+                "properties": {
+                    "backup_id": {"type": "string"},
+                    "schema_version": {"type": "number"}
+                }
+            })),
+            _meta: Some(json!({"category": "backup", "internal": true})),
         },
     ]
 }

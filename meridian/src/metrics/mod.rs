@@ -4,7 +4,7 @@ pub mod storage;
 
 pub use types::*;
 pub use collector::MetricsCollector;
-pub use storage::MetricsStorage;
+pub use storage::{MetricsStorage, MetricsStorageStats, get_default_metrics_path, DEFAULT_METRICS_DB_PATH};
 
 #[cfg(test)]
 mod tests;

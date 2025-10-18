@@ -455,6 +455,7 @@ mod tests {
         let mut memory = SemanticMemory::new(storage).unwrap();
 
         let episode = TaskEpisode {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: Utc::now(),
             task_description: "Add authentication middleware".to_string(),

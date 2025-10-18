@@ -520,6 +520,7 @@ mod tests {
         let mut memory = ProceduralMemory::new(storage).unwrap();
 
         let episode1 = TaskEpisode {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: Utc::now(),
             task_description: "Fix authentication bug".to_string(),
@@ -534,6 +535,7 @@ mod tests {
         };
 
         let episode2 = TaskEpisode {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: Utc::now(),
             task_description: "Fix login bug".to_string(),
@@ -650,6 +652,7 @@ mod tests {
         let memory = ProceduralMemory::new(storage).unwrap();
 
         let failed_episode = TaskEpisode {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: Utc::now(),
             task_description: "Fix bug".to_string(),
@@ -670,6 +673,7 @@ mod tests {
     #[test]
     fn test_calculate_success_rate() {
         let episode1 = TaskEpisode {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: Utc::now(),
             task_description: "Task 1".to_string(),
@@ -684,6 +688,7 @@ mod tests {
         };
 
         let episode2 = TaskEpisode {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: Utc::now(),
             task_description: "Task 2".to_string(),
@@ -698,6 +703,7 @@ mod tests {
         };
 
         let episode3 = TaskEpisode {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: Utc::now(),
             task_description: "Task 3".to_string(),
@@ -725,6 +731,7 @@ mod tests {
     #[test]
     fn test_extract_common_steps() {
         let episode1 = TaskEpisode {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: Utc::now(),
             task_description: "Task 1".to_string(),
@@ -739,6 +746,7 @@ mod tests {
         };
 
         let episode2 = TaskEpisode {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: Utc::now(),
             task_description: "Task 2".to_string(),
@@ -753,6 +761,7 @@ mod tests {
         };
 
         let episode3 = TaskEpisode {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: Utc::now(),
             task_description: "Task 3".to_string(),
@@ -785,6 +794,7 @@ mod tests {
     #[test]
     fn test_extract_minimal_context() {
         let episode1 = TaskEpisode {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: Utc::now(),
             task_description: "Task 1".to_string(),
@@ -799,6 +809,7 @@ mod tests {
         };
 
         let episode2 = TaskEpisode {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: Utc::now(),
             task_description: "Task 2".to_string(),
@@ -813,6 +824,7 @@ mod tests {
         };
 
         let episode3 = TaskEpisode {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: Utc::now(),
             task_description: "Task 3".to_string(),
@@ -842,6 +854,7 @@ mod tests {
     #[test]
     fn test_extract_query_patterns() {
         let episode1 = TaskEpisode {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: Utc::now(),
             task_description: "Task 1".to_string(),
@@ -859,6 +872,7 @@ mod tests {
         };
 
         let episode2 = TaskEpisode {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: Utc::now(),
             task_description: "Task 2".to_string(),
@@ -876,6 +890,7 @@ mod tests {
         };
 
         let episode3 = TaskEpisode {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: Utc::now(),
             task_description: "Task 3".to_string(),
@@ -911,6 +926,7 @@ mod tests {
     #[test]
     fn test_calculate_average_tokens() {
         let episode1 = TaskEpisode {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: Utc::now(),
             task_description: "Task 1".to_string(),
@@ -925,6 +941,7 @@ mod tests {
         };
 
         let episode2 = TaskEpisode {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: Utc::now(),
             task_description: "Task 2".to_string(),
@@ -939,6 +956,7 @@ mod tests {
         };
 
         let episode3 = TaskEpisode {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: Utc::now(),
             task_description: "Task 3".to_string(),
@@ -966,6 +984,7 @@ mod tests {
     #[test]
     fn test_extract_common_pitfalls() {
         let episode1 = TaskEpisode {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: Utc::now(),
             task_description: "Task 1".to_string(),
@@ -980,6 +999,7 @@ mod tests {
         };
 
         let episode2 = TaskEpisode {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: Utc::now(),
             task_description: "Task 2".to_string(),
@@ -994,6 +1014,7 @@ mod tests {
         };
 
         let episode3 = TaskEpisode {
+            schema_version: 1,
             id: EpisodeId::new(),
             timestamp: Utc::now(),
             task_description: "Task 3".to_string(),
@@ -1054,6 +1075,7 @@ mod tests {
         // Create episodes with varying outcomes
         let episodes = vec![
             TaskEpisode {
+                schema_version: 1,
                 id: EpisodeId::new(),
                 timestamp: Utc::now(),
                 task_description: "Fix auth bug".to_string(),
@@ -1067,6 +1089,7 @@ mod tests {
                 pattern_value: 0.9,
             },
             TaskEpisode {
+                schema_version: 1,
                 id: EpisodeId::new(),
                 timestamp: Utc::now(),
                 task_description: "Fix login bug".to_string(),
@@ -1080,6 +1103,7 @@ mod tests {
                 pattern_value: 0.8,
             },
             TaskEpisode {
+                schema_version: 1,
                 id: EpisodeId::new(),
                 timestamp: Utc::now(),
                 task_description: "Fix validation bug".to_string(),

@@ -4,6 +4,11 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+/// Default schema version for new tasks
+fn default_schema_version() -> u32 {
+    crate::storage::CURRENT_SCHEMA_VERSION
+}
+
 /// Unique identifier for tasks
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TaskId(pub String);
@@ -125,6 +130,10 @@ pub struct StatusTransition {
 /// Task metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {
+    /// Schema version for migration support
+    #[serde(default = "default_schema_version")]
+    pub schema_version: u32,
+
     /// Unique identifier
     pub id: TaskId,
 
@@ -181,7 +190,11 @@ pub struct Task {
     /// Actual effort (in hours, tracked when done)
     pub actual_hours: Option<f32>,
 
-    /// Related task IDs (dependencies, blockers)
+    /// Task IDs that must be completed before this task can start
+    #[serde(default)]
+    pub depends_on: Vec<TaskId>,
+
+    /// Related task IDs (for general relationships)
     #[serde(default)]
     pub related_tasks: Vec<TaskId>,
 
@@ -197,6 +210,7 @@ impl Task {
     pub fn new(title: String) -> Self {
         let now = Utc::now();
         Self {
+            schema_version: crate::storage::CURRENT_SCHEMA_VERSION,
             id: TaskId::new(),
             title,
             description: None,
@@ -220,6 +234,7 @@ impl Task {
             tags: Vec::new(),
             estimated_hours: None,
             actual_hours: None,
+            depends_on: Vec::new(),
             related_tasks: Vec::new(),
             commit_hash: None,
             episode_id: None,
@@ -288,6 +303,37 @@ impl Task {
         let elapsed = Utc::now() - self.last_activity;
 
         elapsed > timeout_duration
+    }
+
+    /// Check if task can be started based on dependencies
+    pub fn can_start(&self) -> bool {
+        matches!(self.status, TaskStatus::Pending | TaskStatus::Blocked)
+    }
+
+    /// Check if this task has unmet dependencies
+    pub fn has_unmet_dependencies(&self) -> bool {
+        !self.depends_on.is_empty()
+    }
+
+    /// Add a dependency (does not check for cycles - use manager for that)
+    pub fn add_dependency(&mut self, task_id: TaskId) {
+        if !self.depends_on.contains(&task_id) {
+            self.depends_on.push(task_id);
+            self.updated_at = Utc::now();
+            self.last_activity = Utc::now();
+        }
+    }
+
+    /// Remove a dependency
+    pub fn remove_dependency(&mut self, task_id: &TaskId) -> bool {
+        if let Some(pos) = self.depends_on.iter().position(|id| id == task_id) {
+            self.depends_on.remove(pos);
+            self.updated_at = Utc::now();
+            self.last_activity = Utc::now();
+            true
+        } else {
+            false
+        }
     }
 }
 

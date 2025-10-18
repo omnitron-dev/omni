@@ -241,7 +241,7 @@ async fn test_storage_retention() {
     }
 
     // Cleanup old snapshots
-    let deleted = storage.cleanup_old(Some(7)).await.unwrap();
+    let deleted = storage.cleanup_old_snapshots(Some(7)).await.unwrap();
     assert_eq!(deleted, 5);
 
     let count = storage.count_snapshots().await.unwrap();

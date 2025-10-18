@@ -1,16 +1,25 @@
 pub mod code_indexer;
-pub mod tree_sitter_parser;
-pub mod search;
 pub mod parser;
+pub mod pattern_matcher;
+pub mod search;
+pub mod tree_sitter_parser;
+pub mod watcher;
+pub mod delta_indexer;
 
 use crate::types::{CodeSymbol, Query, QueryResult};
 use anyhow::Result;
 use std::path::Path;
 
 pub use code_indexer::{CodeIndexer, DependencyDirection, DependencyGraph};
-pub use tree_sitter_parser::TreeSitterParser;
-pub use search::SearchEngine;
 pub use parser::MonorepoParser;
+pub use pattern_matcher::{
+    CompiledPattern, GoPatternMatcher, JavaScriptPatternMatcher, PatternMatch, PatternMatcher,
+    PatternSearchEngine, PythonPatternMatcher, RustPatternMatcher, TypeScriptPatternMatcher,
+};
+pub use search::SearchEngine;
+pub use tree_sitter_parser::TreeSitterParser;
+pub use watcher::{FileWatcher, WatcherConfig, FileChangeEvent, FileChangeKind};
+pub use delta_indexer::{DeltaIndexer, WatchStatus, ApplyResult};
 
 /// Main indexer interface
 #[async_trait::async_trait]

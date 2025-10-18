@@ -1,7 +1,7 @@
 use crate::context::ContextManager;
 use crate::docs::DocIndexer;
 use crate::git::GitHistory;
-use crate::indexer::CodeIndexer;
+use crate::indexer::{CodeIndexer, DeltaIndexer};
 use crate::links::LinksStorage;
 use crate::memory::MemorySystem;
 use crate::progress::ProgressManager;
@@ -20,12 +20,14 @@ pub struct ToolHandlers {
     memory_system: Arc<tokio::sync::RwLock<MemorySystem>>,
     context_manager: Arc<tokio::sync::RwLock<ContextManager>>,
     indexer: Arc<tokio::sync::RwLock<CodeIndexer>>,
+    delta_indexer: Option<Arc<DeltaIndexer>>,
     session_manager: Arc<SessionManager>,
     doc_indexer: Arc<DocIndexer>,
     spec_manager: Arc<tokio::sync::RwLock<SpecificationManager>>,
     project_registry: Option<Arc<crate::global::registry::ProjectRegistryManager>>,
     progress_manager: Arc<tokio::sync::RwLock<ProgressManager>>,
     links_storage: Arc<tokio::sync::RwLock<dyn LinksStorage>>,
+    pattern_engine: Arc<crate::indexer::PatternSearchEngine>,
 }
 
 impl ToolHandlers {
@@ -38,18 +40,26 @@ impl ToolHandlers {
         spec_manager: Arc<tokio::sync::RwLock<SpecificationManager>>,
         progress_manager: Arc<tokio::sync::RwLock<ProgressManager>>,
         links_storage: Arc<tokio::sync::RwLock<dyn LinksStorage>>,
+        pattern_engine: Arc<crate::indexer::PatternSearchEngine>,
     ) -> Self {
         Self {
             memory_system,
             context_manager,
             indexer,
+            delta_indexer: None,
             session_manager,
             doc_indexer,
             spec_manager,
             project_registry: None,
             progress_manager,
             links_storage,
+            pattern_engine,
         }
+    }
+
+    /// Set the delta indexer for real-time file watching
+    pub fn set_delta_indexer(&mut self, delta_indexer: Arc<DeltaIndexer>) {
+        self.delta_indexer = Some(delta_indexer);
     }
 
     /// Create handlers with project registry for cross-monorepo support
@@ -63,17 +73,20 @@ impl ToolHandlers {
         project_registry: Arc<crate::global::registry::ProjectRegistryManager>,
         progress_manager: Arc<tokio::sync::RwLock<ProgressManager>>,
         links_storage: Arc<tokio::sync::RwLock<dyn LinksStorage>>,
+        pattern_engine: Arc<crate::indexer::PatternSearchEngine>,
     ) -> Self {
         Self {
             memory_system,
             context_manager,
             indexer,
+            delta_indexer: None,
             session_manager,
             doc_indexer,
             spec_manager,
             project_registry: Some(project_registry),
             progress_manager,
             links_storage,
+            pattern_engine,
         }
     }
 
@@ -95,6 +108,7 @@ impl ToolHandlers {
 
             // Code Navigation Tools
             "code.search_symbols" => self.handle_search_symbols(arguments).await,
+            "code.search_patterns" => self.handle_search_patterns(arguments).await,
             "code.get_definition" => self.handle_get_definition(arguments).await,
             "code.find_references" => self.handle_find_references(arguments).await,
             "code.get_dependencies" => self.handle_get_dependencies(arguments).await,
@@ -190,6 +204,12 @@ impl ToolHandlers {
             "links.get_health" => self.handle_links_get_health(arguments).await,
             "links.find_orphans" => self.handle_links_find_orphans(arguments).await,
             "links.extract_from_file" => self.handle_links_extract_from_file(arguments).await,
+
+            // Indexer Watch Control Tools
+            "indexer.enable_watching" => self.handle_indexer_enable_watching(arguments).await,
+            "indexer.disable_watching" => self.handle_indexer_disable_watching(arguments).await,
+            "indexer.get_watch_status" => self.handle_indexer_get_watch_status(arguments).await,
+            "indexer.poll_changes" => self.handle_indexer_poll_changes(arguments).await,
 
             _ => Err(anyhow!("Unknown tool: {}", name)),
         }
@@ -438,6 +458,162 @@ impl ToolHandlers {
             "symbols": symbols_json,
             "total_tokens": results.total_tokens.0,
             "truncated": results.truncated
+        }))
+    }
+
+    async fn handle_search_patterns(&self, args: Value) -> Result<Value> {
+        #[derive(Deserialize)]
+        struct SearchPatternsParams {
+            pattern: String,
+            language: Option<String>,
+            scope: Option<String>,
+            max_results: Option<usize>,
+        }
+
+        let params: SearchPatternsParams = serde_json::from_value(args)
+            .context("Invalid parameters for code.search_patterns")?;
+
+        // Determine scope (files to search)
+        let scope_path = if let Some(scope) = params.scope {
+            std::path::Path::new(&scope).to_path_buf()
+        } else {
+            // Use current working directory as default
+            std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+        };
+
+        // Find all relevant files
+        let mut files_to_search = Vec::new();
+
+        if scope_path.is_file() {
+            files_to_search.push(scope_path);
+        } else if scope_path.is_dir() {
+            // Walk directory and find files matching the language
+            use std::fs;
+            fn walk_dir(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>, lang: Option<&str>) -> Result<()> {
+                if dir.is_dir() {
+                    for entry in fs::read_dir(dir)? {
+                        let entry = entry?;
+                        let path = entry.path();
+
+                        // Skip hidden directories and common ignore patterns
+                        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                            if name.starts_with('.') || name == "node_modules" || name == "target" || name == "dist" {
+                                continue;
+                            }
+                        }
+
+                        if path.is_dir() {
+                            walk_dir(&path, files, lang)?;
+                        } else if path.is_file() {
+                            // Filter by language if specified
+                            if let Some(lang) = lang {
+                                if let Ok(detected) = crate::indexer::PatternSearchEngine::detect_language(&path) {
+                                    if detected == lang {
+                                        files.push(path);
+                                    }
+                                }
+                            } else {
+                                // Try to detect language, skip if unsupported
+                                if crate::indexer::PatternSearchEngine::detect_language(&path).is_ok() {
+                                    files.push(path);
+                                }
+                            }
+                        }
+                    }
+                }
+                Ok(())
+            }
+
+            walk_dir(&scope_path, &mut files_to_search, params.language.as_deref())?;
+        }
+
+        // Limit number of files to search for performance
+        let max_files = 10_000;
+        if files_to_search.len() > max_files {
+            files_to_search.truncate(max_files);
+        }
+
+        // Search in files
+        let mut all_matches = Vec::new();
+        let max_results = params.max_results.unwrap_or(100);
+
+        for file_path in &files_to_search {
+            if all_matches.len() >= max_results {
+                break;
+            }
+
+            // Read file content
+            let content = match std::fs::read_to_string(file_path) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+
+            // Detect language
+            let language = match params.language.clone().or_else(|| {
+                crate::indexer::PatternSearchEngine::detect_language(file_path)
+                    .ok()
+                    .map(|s| s.to_string())
+            }) {
+                Some(lang) => lang,
+                None => continue,
+            };
+
+            // Search for pattern
+            match self.pattern_engine.search_in_file(
+                &params.pattern,
+                &language,
+                &content,
+                file_path,
+            ) {
+                Ok(matches) => {
+                    for m in matches {
+                        if all_matches.len() >= max_results {
+                            break;
+                        }
+                        all_matches.push(m);
+                    }
+                }
+                Err(e) => {
+                    debug!("Pattern search failed for {}: {}", file_path.display(), e);
+                    continue;
+                }
+            }
+        }
+
+        // Convert matches to JSON
+        let matches_json: Vec<Value> = all_matches
+            .iter()
+            .map(|m| {
+                json!({
+                    "location": {
+                        "file": m.location.file,
+                        "line_start": m.location.line_start,
+                        "line_end": m.location.line_end,
+                        "column_start": m.location.column_start,
+                        "column_end": m.location.column_end
+                    },
+                    "matched_text": m.matched_text,
+                    "captures": m.captures,
+                    "score": m.score
+                })
+            })
+            .collect();
+
+        // Get cache stats
+        let (cache_used, cache_capacity) = self.pattern_engine.cache_stats();
+
+        Ok(json!({
+            "matches": matches_json,
+            "summary": {
+                "total_matches": all_matches.len(),
+                "files_searched": files_to_search.len(),
+                "pattern": params.pattern,
+                "language": params.language
+            },
+            "cache_stats": {
+                "used": cache_used,
+                "capacity": cache_capacity
+            }
         }))
     }
 
@@ -3417,6 +3593,106 @@ impl ToolHandlers {
             "links_found": 0,
             "links": [],
             "method": params.method.unwrap_or_else(|| "auto".to_string())
+        }))
+    }
+
+    // === Indexer Watch Control Handlers ===
+
+    async fn handle_indexer_enable_watching(&self, args: Value) -> Result<Value> {
+        #[derive(Deserialize)]
+        struct Params {
+            scope: String,
+            debounce_ms: Option<u64>,
+        }
+
+        let params: Params = serde_json::from_value(args)
+            .context("Invalid parameters for indexer.enable_watching")?;
+
+        let delta_indexer = self.delta_indexer.as_ref()
+            .ok_or_else(|| anyhow!("Delta indexer not initialized"))?;
+
+        // Determine the path to watch
+        let path = if params.scope == "project" {
+            // Get project root from config or current directory
+            std::env::current_dir()?
+        } else {
+            PathBuf::from(params.scope)
+        };
+
+        // Enable watching
+        delta_indexer.enable_watching(&path).await?;
+
+        info!("File watching enabled for: {:?}", path);
+
+        Ok(json!({
+            "status": "enabled",
+            "path": path.to_string_lossy(),
+            "debounce_ms": params.debounce_ms.unwrap_or(50)
+        }))
+    }
+
+    async fn handle_indexer_disable_watching(&self, args: Value) -> Result<Value> {
+        #[derive(Deserialize)]
+        struct Params {
+            scope: String,
+        }
+
+        let params: Params = serde_json::from_value(args)
+            .context("Invalid parameters for indexer.disable_watching")?;
+
+        let delta_indexer = self.delta_indexer.as_ref()
+            .ok_or_else(|| anyhow!("Delta indexer not initialized"))?;
+
+        // Determine the path to stop watching
+        let path = if params.scope == "project" {
+            std::env::current_dir()?
+        } else {
+            PathBuf::from(params.scope)
+        };
+
+        // Disable watching
+        delta_indexer.disable_watching(&path).await?;
+
+        info!("File watching disabled for: {:?}", path);
+
+        Ok(json!({
+            "status": "disabled",
+            "path": path.to_string_lossy()
+        }))
+    }
+
+    async fn handle_indexer_get_watch_status(&self, _args: Value) -> Result<Value> {
+        let delta_indexer = self.delta_indexer.as_ref()
+            .ok_or_else(|| anyhow!("Delta indexer not initialized"))?;
+
+        let status = delta_indexer.get_watch_status().await;
+
+        Ok(json!({
+            "enabled": status.enabled,
+            "watched_paths": status.watched_paths.iter()
+                .map(|p| p.to_string_lossy().to_string())
+                .collect::<Vec<_>>(),
+            "pending_changes": status.pending_changes,
+            "queue_size": status.queue_size
+        }))
+    }
+
+    async fn handle_indexer_poll_changes(&self, _args: Value) -> Result<Value> {
+        let delta_indexer = self.delta_indexer.as_ref()
+            .ok_or_else(|| anyhow!("Delta indexer not initialized"))?;
+
+        let result = delta_indexer.poll_and_apply().await?;
+
+        info!(
+            "Polled and applied changes: {} files updated in {}ms",
+            result.files_updated, result.duration_ms
+        );
+
+        Ok(json!({
+            "files_updated": result.files_updated,
+            "symbols_updated": result.symbols_updated,
+            "symbols_deleted": result.symbols_deleted,
+            "duration_ms": result.duration_ms
         }))
     }
 }

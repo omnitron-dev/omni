@@ -75,6 +75,9 @@ impl ProjectToolHandlers {
 
         // Create handlers from project context
         // Note: Components are already wrapped in Arc<RwLock<>>, so we can clone the Arc pointers
+        let pattern_engine = Arc::new(crate::indexer::PatternSearchEngine::new()
+            .expect("Failed to initialize pattern search engine"));
+
         let handlers = Arc::new(ToolHandlers::new(
             context.memory_system.clone(),
             context.context_manager.clone(),
@@ -84,6 +87,7 @@ impl ProjectToolHandlers {
             context.spec_manager.clone(),
             context.progress_manager.clone(),
             context.links_storage.clone(),
+            pattern_engine,
         ));
 
         // Cache the handlers

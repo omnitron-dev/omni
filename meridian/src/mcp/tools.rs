@@ -1903,5 +1903,64 @@ fn get_links_tools() -> Vec<Tool> {
             output_schema: None,
             _meta: Some(json!({"category": "links"})),
         },
+
+        // === Indexer Watch Control Tools ===
+        Tool {
+            name: "indexer.enable_watching".to_string(),
+            description: Some("Enable real-time file watching for incremental indexing".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "scope": {
+                        "type": "string",
+                        "description": "Scope to watch: 'project' or a specific directory path"
+                    },
+                    "debounce_ms": {
+                        "type": "integer",
+                        "default": 50,
+                        "description": "Debounce duration in milliseconds (coalesce rapid changes)"
+                    }
+                },
+                "required": ["scope"]
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "indexer"})),
+        },
+        Tool {
+            name: "indexer.disable_watching".to_string(),
+            description: Some("Disable real-time file watching".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "scope": {
+                        "type": "string",
+                        "description": "Scope to stop watching: 'project' or a specific directory path"
+                    }
+                },
+                "required": ["scope"]
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "indexer"})),
+        },
+        Tool {
+            name: "indexer.get_watch_status".to_string(),
+            description: Some("Get current file watching status".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {}
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "indexer"})),
+        },
+        Tool {
+            name: "indexer.poll_changes".to_string(),
+            description: Some("Poll for file changes and apply them incrementally".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {}
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "indexer"})),
+        },
     ]
 }

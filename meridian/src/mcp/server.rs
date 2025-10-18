@@ -305,6 +305,10 @@ impl MeridianServer {
                 }
 
                 // Clone Arc pointers (cheap operation)
+                // Initialize pattern search engine
+                let pattern_engine = Arc::new(crate::indexer::PatternSearchEngine::new()
+                    .expect("Failed to initialize pattern search engine"));
+
                 let new_handlers = Arc::new(ToolHandlers::new(
                     memory_system.clone(),
                     context_manager.clone(),
@@ -314,6 +318,7 @@ impl MeridianServer {
                     spec_manager.clone(),
                     progress_manager.clone(),
                     links_storage.clone(),
+                    pattern_engine,
                 ));
 
                 *handlers = Some(new_handlers.clone());
@@ -853,6 +858,8 @@ mod tests {
         let progress_manager = ProgressManager::new(progress_storage);
         let links_storage = RocksDBLinksStorage::new(storage.clone());
 
+        let pattern_engine = Arc::new(crate::indexer::PatternSearchEngine::new().unwrap());
+
         let handlers = Arc::new(ToolHandlers::new(
             Arc::new(tokio::sync::RwLock::new(memory_system)),
             Arc::new(tokio::sync::RwLock::new(context_manager)),
@@ -862,6 +869,7 @@ mod tests {
             Arc::new(tokio::sync::RwLock::new(spec_manager)),
             Arc::new(tokio::sync::RwLock::new(progress_manager)),
             Arc::new(tokio::sync::RwLock::new(links_storage)),
+            pattern_engine,
         ));
 
         let request = JsonRpcRequest {

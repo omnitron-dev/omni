@@ -813,6 +813,10 @@ pub fn get_all_tools() -> Vec<Tool> {
             _meta: None,
         },
     ]
+    .into_iter()
+    .chain(get_strong_catalog_tools())
+    .chain(get_strong_docs_tools())
+    .collect()
 }
 
 /// MCP Resource definition (MCP spec 2025-06-18 compliant)
@@ -891,4 +895,130 @@ impl Default for ServerCapabilities {
             experimental: None,
         }
     }
+}
+
+// ============================================================================
+// Strong Tools (Phase 3) - Documentation Generation & Catalog
+// ============================================================================
+
+/// Get strong catalog tools for Phase 3
+fn get_strong_catalog_tools() -> Vec<Tool> {
+    vec![
+        Tool {
+            name: "strong.catalog.list_projects".to_string(),
+            description: Some("Lists all projects in the global documentation catalog with metadata and statistics".to_string()),
+            input_schema: json!({"type": "object", "properties": {}, "additionalProperties": false}),
+            output_schema: Some(json!({
+                "type": "object",
+                "properties": {
+                    "projects": {"type": "array"},
+                    "totalProjects": {"type": "number"},
+                    "totalDocumented": {"type": "number"},
+                    "averageCoverage": {"type": "number"}
+                }
+            })),
+            _meta: Some(json!({"phase": "Phase 3", "category": "documentation"})),
+        },
+        Tool {
+            name: "strong.catalog.get_project".to_string(),
+            description: Some("Gets detailed information about a specific project".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "projectId": {"type": "string", "description": "Project identifier or path"}
+                },
+                "required": ["projectId"]
+            }),
+            output_schema: Some(json!({"type": "object", "properties": {"project": {"type": "object"}}})),
+            _meta: Some(json!({"phase": "Phase 3", "category": "documentation"})),
+        },
+        Tool {
+            name: "strong.catalog.search_documentation".to_string(),
+            description: Some("Searches documentation across all projects with filtering".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "scope": {"type": "string", "enum": ["local", "dependencies", "global"], "default": "global"},
+                    "limit": {"type": "number", "default": 20}
+                },
+                "required": ["query"]
+            }),
+            output_schema: Some(json!({
+                "type": "object",
+                "properties": {
+                    "results": {"type": "array"},
+                    "totalResults": {"type": "number"}
+                }
+            })),
+            _meta: Some(json!({"phase": "Phase 3", "category": "documentation"})),
+        },
+    ]
+}
+
+/// Get strong documentation generation tools for Phase 3
+fn get_strong_docs_tools() -> Vec<Tool> {
+    vec![
+        Tool {
+            name: "strong.docs.generate".to_string(),
+            description: Some("Generates high-quality documentation for symbols with examples".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "targetPath": {"type": "string"},
+                    "format": {"type": "string", "enum": ["tsdoc", "jsdoc", "rustdoc"]},
+                    "includeExamples": {"type": "boolean", "default": true}
+                },
+                "required": ["targetPath"]
+            }),
+            output_schema: Some(json!({
+                "type": "object",
+                "properties": {
+                    "documentation": {"type": "string"},
+                    "quality": {"type": "object"}
+                }
+            })),
+            _meta: Some(json!({"phase": "Phase 3", "category": "documentation"})),
+        },
+        Tool {
+            name: "strong.docs.validate".to_string(),
+            description: Some("Validates documentation quality with scoring and suggestions".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "targetPath": {"type": "string"},
+                    "standards": {"type": "string", "enum": ["strict", "recommended", "minimal"], "default": "recommended"}
+                },
+                "required": ["targetPath"]
+            }),
+            output_schema: Some(json!({
+                "type": "object",
+                "properties": {
+                    "overallScore": {"type": "number"},
+                    "symbolScores": {"type": "array"}
+                }
+            })),
+            _meta: Some(json!({"phase": "Phase 3", "category": "documentation"})),
+        },
+        Tool {
+            name: "strong.docs.transform".to_string(),
+            description: Some("Transforms documentation into standardized format".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "targetPath": {"type": "string"},
+                    "targetFormat": {"type": "string", "enum": ["tsdoc", "jsdoc", "rustdoc"]}
+                },
+                "required": ["targetPath", "targetFormat"]
+            }),
+            output_schema: Some(json!({
+                "type": "object",
+                "properties": {
+                    "transformedDocs": {"type": "array"},
+                    "totalTransformed": {"type": "number"}
+                }
+            })),
+            _meta: Some(json!({"phase": "Phase 3", "category": "documentation"})),
+        },
+    ]
 }

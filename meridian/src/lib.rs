@@ -3,6 +3,7 @@ pub mod context;
 pub mod docs;
 pub mod embeddings;
 pub mod git;
+pub mod global;
 pub mod indexer;
 pub mod mcp;
 pub mod memory;

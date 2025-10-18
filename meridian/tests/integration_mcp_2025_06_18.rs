@@ -451,7 +451,7 @@ async fn test_mcp_initialize_params_validation() {
 }
 
 #[tokio::test]
-async fn test_mcp_29_tools_available() {
+async fn test_mcp_35_tools_available() {
     let (server, _temp) = create_test_server().await;
 
     let request = json!({
@@ -467,12 +467,13 @@ async fn test_mcp_29_tools_available() {
     let result = response.result.unwrap();
     let tools = result.get("tools").unwrap().as_array().unwrap();
 
-    // Verify we have 29 tools as implemented
-    // (Memory:4 + Context:3 + Learning:3 + Attention:2 + Code:4 + Docs:2 + History:2 + Session:4 + Analysis:2 + Monorepo:3)
+    // Verify we have 35 tools as implemented
+    // Original 29: (Memory:4 + Context:3 + Learning:3 + Attention:2 + Code:4 + Docs:2 + History:2 + Session:4 + Analysis:2 + Monorepo:3)
+    // Phase 3 Strong Tools: +6 (Catalog:3 + Docs:3)
     assert_eq!(
         tools.len(),
-        29,
-        "Meridian should provide exactly 29 MCP tools"
+        35,
+        "Meridian should provide exactly 35 MCP tools (29 original + 6 strong tools)"
     );
 
     // Verify each tool is unique

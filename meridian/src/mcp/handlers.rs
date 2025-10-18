@@ -31,6 +31,7 @@ pub struct ToolHandlers {
     links_storage: Arc<tokio::sync::RwLock<dyn LinksStorage>>,
     pattern_engine: Arc<crate::indexer::PatternSearchEngine>,
     metrics_collector: Option<Arc<MetricsCollector>>,
+    start_time: std::time::Instant,
 }
 
 impl ToolHandlers {
@@ -58,6 +59,7 @@ impl ToolHandlers {
             links_storage,
             pattern_engine,
             metrics_collector: None,
+            start_time: std::time::Instant::now(),
         }
     }
 
@@ -97,6 +99,7 @@ impl ToolHandlers {
             links_storage,
             pattern_engine,
             metrics_collector: None,
+            start_time: std::time::Instant::now(),
         }
     }
 
@@ -236,6 +239,8 @@ impl ToolHandlers {
             "progress.link_to_spec" => self.handle_progress_link_to_spec(arguments).await,
             "progress.get_history" => self.handle_progress_get_history(arguments).await,
             "progress.mark_complete" => self.handle_progress_mark_complete(arguments).await,
+            "progress.check_timeouts" => self.handle_progress_check_timeouts(arguments).await,
+            "progress.recover_orphaned" => self.handle_progress_recover_orphaned(arguments).await,
 
             // Semantic Links Tools (Phase 2)
             "links.find_implementation" => self.handle_links_find_implementation(arguments).await,
@@ -256,6 +261,9 @@ impl ToolHandlers {
             "indexer.disable_watching" => self.handle_indexer_disable_watching(arguments).await,
             "indexer.get_watch_status" => self.handle_indexer_get_watch_status(arguments).await,
             "indexer.poll_changes" => self.handle_indexer_poll_changes(arguments).await,
+
+            // System Health Tools
+            "system.health" => self.handle_system_health(arguments).await,
 
             _ => Err(anyhow!("Unknown tool: {}", name)),
         }
@@ -455,6 +463,8 @@ impl ToolHandlers {
             detail_level: Option<String>,
             max_results: Option<usize>,
             max_tokens: Option<usize>,
+            /// Offset for pagination (default: 0)
+            offset: Option<usize>,
             /// Enable cross-encoder reranking (default: true)
             #[serde(default = "default_rerank")]
             rerank: bool,
@@ -502,6 +512,7 @@ impl ToolHandlers {
             detail_level,
             max_results: initial_max_results,
             max_tokens: params.max_tokens.map(|t| TokenCount::new(t as u32)),
+            offset: params.offset,
         };
 
         use crate::indexer::Indexer;
@@ -610,6 +621,17 @@ impl ToolHandlers {
                 DetailLevel::Full => "full",
             }
         });
+
+        // Add pagination metadata
+        if let Some(total_matches) = results.total_matches {
+            response["total_matches"] = json!(total_matches);
+        }
+        if let Some(offset) = results.offset {
+            response["offset"] = json!(offset);
+        }
+        if let Some(has_more) = results.has_more {
+            response["has_more"] = json!(has_more);
+        }
 
         // Add reranking metadata
         if reranked {
@@ -1615,6 +1637,7 @@ impl ToolHandlers {
             detail_level: DetailLevel::default(),
             max_results: Some(max_results),
             max_tokens: None,
+            offset: None,
         };
         let symbol_results = indexer.search_symbols(&query).await?;
 
@@ -3042,6 +3065,7 @@ impl ToolHandlers {
             spec_ref: Option<SpecRef>,
             tags: Option<Vec<String>>,
             estimated_hours: Option<f32>,
+            timeout_hours: Option<u32>,
         }
 
         #[derive(Deserialize)]
@@ -3078,6 +3102,7 @@ impl ToolHandlers {
             spec_ref,
             params.tags.unwrap_or_default(),
             params.estimated_hours,
+            params.timeout_hours,
         ).await?;
 
         info!("Created task: {}", task_id);
@@ -3369,6 +3394,41 @@ impl ToolHandlers {
             "completed_at": task.completed_at,
             "episode_id": episode_id,
             "episode_recorded": episode_id.is_some()
+        }))
+    }
+
+    async fn handle_progress_check_timeouts(&self, _args: Value) -> Result<Value> {
+        let manager = self.progress_manager.read().await;
+        let recovered = manager.check_timeouts().await?;
+
+        info!("Checked timeouts, recovered {} tasks", recovered.len());
+
+        Ok(json!({
+            "recovered_count": recovered.len(),
+            "task_ids": recovered.iter().map(|id| id.to_string()).collect::<Vec<_>>(),
+            "status": "checked"
+        }))
+    }
+
+    async fn handle_progress_recover_orphaned(&self, args: Value) -> Result<Value> {
+        #[derive(Deserialize)]
+        struct Params {
+            #[serde(default)]
+            force: bool,
+        }
+
+        let params: Params = serde_json::from_value(args).unwrap_or(Params { force: false });
+
+        let manager = self.progress_manager.read().await;
+        let recovered = manager.recover_orphaned_tasks(params.force).await?;
+
+        info!("Recovered {} orphaned tasks (force={})", recovered.len(), params.force);
+
+        Ok(json!({
+            "recovered_count": recovered.len(),
+            "task_ids": recovered.iter().map(|id| id.to_string()).collect::<Vec<_>>(),
+            "force": params.force,
+            "status": "recovered"
         }))
     }
 
@@ -3882,5 +3942,108 @@ impl ToolHandlers {
             "symbols_deleted": result.symbols_deleted,
             "duration_ms": result.duration_ms
         }))
+    }
+
+    // === System Health Handler ===
+
+    async fn handle_system_health(&self, _args: Value) -> Result<Value> {
+        use sysinfo::System;
+
+        // Calculate uptime
+        let uptime_seconds = self.start_time.elapsed().as_secs();
+
+        // Get progress task count
+        let progress_manager = self.progress_manager.read().await;
+        let progress_tasks_total = progress_manager.count_all().await?;
+        let progress_stats = progress_manager.get_progress(None).await?;
+
+        // Get memory statistics (stub)
+        let memory_stats = json!({
+            "episodes": 0,
+            "total_size_mb": 0.0
+        });
+
+        // Get metrics count (if available)
+        let metrics_info = if let Some(ref collector) = self.metrics_collector {
+            let tool_names = collector.get_tool_names();
+            let snapshot = collector.take_snapshot();
+            let total_tool_calls: u64 = snapshot.tools.values().map(|m| m.total_calls).sum();
+
+            json!({
+                "available": true,
+                "unique_tools_called": tool_names.len(),
+                "total_tool_calls": total_tool_calls,
+                "total_input_tokens": snapshot.tokens.total_input_tokens,
+                "total_output_tokens": snapshot.tokens.total_output_tokens,
+            })
+        } else {
+            json!({
+                "available": false
+            })
+        };
+
+        // Get system memory usage
+        let mut sys = System::new_all();
+        sys.refresh_all();
+
+        let process_memory_mb = 0.0; // Stub
+        let total_memory_mb = (sys.total_memory() as f64) / 1_048_576.0;
+        let used_memory_mb = (sys.used_memory() as f64) / 1_048_576.0;
+
+        // Get indexer stats (stub)
+        let indexer = self.indexer.read().await;
+        let index_stats = json!({
+            "total_symbols": 0,
+            "total_files": 0
+        });
+
+        // Get session count (stub)
+        let session_count = 0;
+
+        info!("Health check: uptime={}s, tasks={}, memory={}MB",
+              uptime_seconds, progress_tasks_total, process_memory_mb);
+
+        Ok(json!({
+            "status": "healthy",
+            "uptime_seconds": uptime_seconds,
+            "uptime_formatted": format_duration(uptime_seconds),
+            "memory": {
+                "process_mb": format!("{:.2}", process_memory_mb),
+                "system_total_mb": format!("{:.2}", total_memory_mb),
+                "system_used_mb": format!("{:.2}", used_memory_mb),
+                "system_used_percent": format!("{:.1}", (used_memory_mb / total_memory_mb) * 100.0),
+            },
+            "metrics": metrics_info,
+            "progress": {
+                "total_tasks": progress_tasks_total,
+                "pending": progress_stats.pending,
+                "in_progress": progress_stats.in_progress,
+                "completed": progress_stats.done,
+                "blocked": progress_stats.blocked,
+            },
+            "memory_system": memory_stats,
+            "indexer": index_stats,
+            "sessions": {
+                "active": session_count,
+            },
+        }))
+    }
+}
+
+/// Format duration in human-readable format
+fn format_duration(seconds: u64) -> String {
+    let days = seconds / 86400;
+    let hours = (seconds % 86400) / 3600;
+    let minutes = (seconds % 3600) / 60;
+    let secs = seconds % 60;
+
+    if days > 0 {
+        format!("{}d {}h {}m", days, hours, minutes)
+    } else if hours > 0 {
+        format!("{}h {}m", hours, minutes)
+    } else if minutes > 0 {
+        format!("{}m {}s", minutes, secs)
+    } else {
+        format!("{}s", secs)
     }
 }

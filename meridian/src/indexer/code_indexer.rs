@@ -8,7 +8,9 @@ use crate::types::{
 };
 use anyhow::{Context, Result};
 use dashmap::DashMap;
+use lru::LruCache;
 use std::collections::{HashMap, HashSet};
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -27,6 +29,32 @@ pub struct DependencyGraph {
     pub edges: Vec<(SymbolId, SymbolId, ReferenceKind)>,
 }
 
+/// Cache key for search results
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct SearchCacheKey {
+    text: String,
+    symbol_types: Option<Vec<String>>,
+    scope: Option<String>,
+    detail_level: String,
+    max_results: Option<usize>,
+    offset: Option<usize>,
+}
+
+impl SearchCacheKey {
+    fn from_query(query: &Query) -> Self {
+        Self {
+            text: query.text.clone(),
+            symbol_types: query.symbol_types.as_ref().map(|types| {
+                types.iter().map(|t| t.as_str().to_string()).collect()
+            }),
+            scope: query.scope.clone(),
+            detail_level: format!("{:?}", query.detail_level),
+            max_results: query.max_results,
+            offset: query.offset,
+        }
+    }
+}
+
 pub struct CodeIndexer {
     storage: Arc<dyn Storage>,
     config: IndexConfig,
@@ -43,11 +71,15 @@ pub struct CodeIndexer {
     source_cache: DashMap<PathBuf, String>,
     // Embedding engine for semantic search
     embedding_engine: Arc<Mutex<EmbeddingEngine>>,
+    // LRU cache for search results (capacity: 1000)
+    search_cache: Arc<Mutex<LruCache<SearchCacheKey, QueryResult>>>,
 }
 
 impl CodeIndexer {
     pub fn new(storage: Arc<dyn Storage>, config: IndexConfig) -> Result<Self> {
         let embedding_engine = Arc::new(Mutex::new(EmbeddingEngine::new()?));
+        let cache_capacity = NonZeroUsize::new(1000).unwrap();
+        let search_cache = Arc::new(Mutex::new(LruCache::new(cache_capacity)));
 
         Ok(Self {
             storage,
@@ -59,6 +91,7 @@ impl CodeIndexer {
             dependencies: DashMap::new(),
             source_cache: DashMap::new(),
             embedding_engine,
+            search_cache,
         })
     }
 
@@ -584,6 +617,9 @@ impl CodeIndexer {
             symbols: combined_symbols,
             total_tokens,
             truncated,
+            total_matches: None,
+            offset: None,
+            has_more: None,
         })
     }
 }
@@ -614,8 +650,20 @@ impl Indexer for CodeIndexer {
     }
 
     async fn search_symbols(&self, query: &Query) -> Result<QueryResult> {
-        let mut matching_symbols = Vec::new();
-        let mut total_tokens = TokenCount::zero();
+        // Check cache first (skip cache for token budget queries as results vary)
+        if query.max_tokens.is_none() {
+            let cache_key = SearchCacheKey::from_query(query);
+
+            // Try to get from cache
+            if let Ok(mut cache) = self.search_cache.lock() {
+                if let Some(cached_result) = cache.get(&cache_key) {
+                    tracing::debug!("Cache hit for query: {}", query.text);
+                    return Ok(cached_result.clone());
+                }
+            }
+        }
+
+        let mut all_matches = Vec::new();
 
         // First, try exact name match
         if let Some(symbol_ids) = self.name_index.get(&query.text) {
@@ -637,28 +685,13 @@ impl Indexer for CodeIndexer {
                     // Apply detail level
                     #[allow(clippy::needless_borrow)]
                     let filtered = self.apply_detail_level(&symbol, query.detail_level);
-
-                    // Check token budget
-                    if let Some(max_tokens) = query.max_tokens {
-                        if total_tokens.0 + filtered.metadata.token_cost.0 > max_tokens.0 {
-                            break;
-                        }
-                    }
-
-                    total_tokens.add(filtered.metadata.token_cost);
-                    matching_symbols.push(filtered);
-
-                    if let Some(max_results) = query.max_results {
-                        if matching_symbols.len() >= max_results {
-                            break;
-                        }
-                    }
+                    all_matches.push(filtered);
                 }
             }
         }
 
         // If no exact matches, do fuzzy search
-        if matching_symbols.is_empty() {
+        if all_matches.is_empty() {
             let query_lower = query.text.to_lowercase();
 
             for entry in self.symbols.iter() {
@@ -688,35 +721,60 @@ impl Indexer for CodeIndexer {
                 // Apply detail level
                 #[allow(clippy::needless_borrow)]
                 let filtered = self.apply_detail_level(&symbol, query.detail_level);
-
-                // Check token budget
-                if let Some(max_tokens) = query.max_tokens {
-                    if total_tokens.0 + filtered.metadata.token_cost.0 > max_tokens.0 {
-                        break;
-                    }
-                }
-
-                total_tokens.add(filtered.metadata.token_cost);
-                matching_symbols.push(filtered);
-
-                if let Some(max_results) = query.max_results {
-                    if matching_symbols.len() >= max_results {
-                        break;
-                    }
-                }
+                all_matches.push(filtered);
             }
         }
 
-        let truncated = query.max_tokens.is_some_and(|max| total_tokens > max)
-            || query
-                .max_results
-                .is_some_and(|max| matching_symbols.len() >= max);
+        // Store total count before pagination
+        let total_matches = all_matches.len();
+        let offset = query.offset.unwrap_or(0);
 
-        Ok(QueryResult {
-            symbols: matching_symbols,
+        // Apply pagination
+        let paginated_symbols: Vec<CodeSymbol> = all_matches
+            .into_iter()
+            .skip(offset)
+            .take(query.max_results.unwrap_or(20))
+            .collect();
+
+        // Apply token budget if specified
+        let mut final_symbols = Vec::new();
+        let mut total_tokens = TokenCount::zero();
+        let mut truncated_by_tokens = false;
+
+        for symbol in paginated_symbols {
+            if let Some(max_tokens) = query.max_tokens {
+                if total_tokens.0 + symbol.metadata.token_cost.0 > max_tokens.0 {
+                    truncated_by_tokens = true;
+                    break;
+                }
+            }
+
+            total_tokens.add(symbol.metadata.token_cost);
+            final_symbols.push(symbol);
+        }
+
+        let has_more = offset + final_symbols.len() < total_matches;
+        let truncated = truncated_by_tokens || has_more;
+
+        let result = QueryResult {
+            symbols: final_symbols,
             total_tokens,
             truncated,
-        })
+            total_matches: Some(total_matches),
+            offset: Some(offset),
+            has_more: Some(has_more),
+        };
+
+        // Store in cache (skip if token budget was used as results vary)
+        if query.max_tokens.is_none() {
+            let cache_key = SearchCacheKey::from_query(query);
+            if let Ok(mut cache) = self.search_cache.lock() {
+                cache.put(cache_key, result.clone());
+                tracing::debug!("Cached search result for query: {}", query.text);
+            }
+        }
+
+        Ok(result)
     }
 
     async fn get_symbol(&self, id: &str) -> Result<Option<CodeSymbol>> {
@@ -743,6 +801,12 @@ impl Indexer for CodeIndexer {
 
         // Clear source cache
         self.source_cache.remove(path);
+
+        // Invalidate search cache on file changes
+        if let Ok(mut cache) = self.search_cache.lock() {
+            cache.clear();
+            tracing::debug!("Search cache invalidated due to file update: {:?}", path);
+        }
 
         // Re-index the file
         self.index_file(path).await?;

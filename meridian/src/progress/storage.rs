@@ -226,6 +226,13 @@ impl ProgressStorage {
 
         Ok(())
     }
+
+    /// Count all tasks
+    pub async fn count_all_tasks(&self) -> Result<usize> {
+        let prefix = b"task:";
+        let keys = self.storage.get_keys_with_prefix(prefix).await?;
+        Ok(keys.len())
+    }
 }
 
 #[cfg(test)]

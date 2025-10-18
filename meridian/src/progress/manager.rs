@@ -33,6 +33,7 @@ impl ProgressManager {
         spec_ref: Option<SpecReference>,
         tags: Vec<String>,
         estimated_hours: Option<f32>,
+        timeout_hours: Option<u32>,
     ) -> Result<TaskId> {
         let mut task = Task::new(title);
 
@@ -41,6 +42,7 @@ impl ProgressManager {
         task.spec_ref = spec_ref;
         task.tags = tags;
         task.estimated_hours = estimated_hours;
+        task.timeout_hours = timeout_hours;
 
         // Save to storage
         self.storage.save_task(&task).await?;
@@ -87,6 +89,7 @@ impl ProgressManager {
     ) -> Result<()> {
         let mut task = self.get_task(task_id).await?;
         let old_status = task.status;
+        let now = chrono::Utc::now();
 
         // Update fields
         if let Some(t) = title {
@@ -115,7 +118,9 @@ impl ProgressManager {
             task.commit_hash = Some(c);
         }
 
-        task.updated_at = chrono::Utc::now();
+        // Update timestamps - ANY update counts as activity
+        task.updated_at = now;
+        task.last_activity = now;
 
         // Save to storage
         self.storage.save_task(&task).await?;
@@ -439,6 +444,105 @@ impl ProgressManager {
     pub async fn clear_cache(&self) {
         self.cache.write().await.clear();
     }
+
+    /// Check for timed-out tasks and revert them to pending
+    /// Returns the list of recovered task IDs
+    pub async fn check_timeouts(&self) -> Result<Vec<TaskId>> {
+        let in_progress = self.storage.list_by_status(TaskStatus::InProgress).await?;
+        let mut recovered = Vec::new();
+
+        for task in in_progress {
+            if task.is_timed_out() {
+                let timeout_hours = task.timeout_hours.unwrap();
+                tracing::warn!(
+                    "Task {} timed out after {} hours, reverting to pending",
+                    task.id, timeout_hours
+                );
+
+                let mut updated = task.clone();
+                updated.update_status(
+                    TaskStatus::Pending,
+                    Some(format!(
+                        "Auto-reverted: timeout after {} hours of inactivity",
+                        timeout_hours
+                    ))
+                ).map_err(|e| anyhow!(e))?;
+
+                // Save updated task
+                self.storage.save_task(&updated).await?;
+
+                // Update status index
+                self.storage.update_status_index(&updated.id, TaskStatus::InProgress, TaskStatus::Pending).await?;
+
+                // Update cache
+                self.cache.write().await.put(updated.id.clone(), updated.clone());
+
+                recovered.push(updated.id);
+            }
+        }
+
+        if !recovered.is_empty() {
+            tracing::info!("Recovered {} timed-out tasks", recovered.len());
+        }
+
+        Ok(recovered)
+    }
+
+    /// Manually recover all orphaned tasks (tasks stuck in InProgress)
+    /// If force=true, ignores timeout settings and recovers all InProgress tasks
+    /// Returns the list of recovered task IDs
+    pub async fn recover_orphaned_tasks(&self, force: bool) -> Result<Vec<TaskId>> {
+        let in_progress = self.storage.list_by_status(TaskStatus::InProgress).await?;
+        let mut recovered = Vec::new();
+
+        for task in in_progress {
+            let should_recover = if force {
+                true
+            } else {
+                task.is_timed_out()
+            };
+
+            if should_recover {
+                tracing::warn!(
+                    "Recovering orphaned task {} (force={})",
+                    task.id, force
+                );
+
+                let mut updated = task.clone();
+                let reason = if force {
+                    "Manual recovery: forced revert to pending".to_string()
+                } else {
+                    format!(
+                        "Manual recovery: timeout after {} hours",
+                        task.timeout_hours.unwrap_or(0)
+                    )
+                };
+
+                updated.update_status(TaskStatus::Pending, Some(reason))
+                    .map_err(|e| anyhow!(e))?;
+
+                // Save updated task
+                self.storage.save_task(&updated).await?;
+
+                // Update status index
+                self.storage.update_status_index(&updated.id, TaskStatus::InProgress, TaskStatus::Pending).await?;
+
+                // Update cache
+                self.cache.write().await.put(updated.id.clone(), updated.clone());
+
+                recovered.push(updated.id);
+            }
+        }
+
+        tracing::info!("Recovered {} orphaned tasks (force={})", recovered.len(), force);
+
+        Ok(recovered)
+    }
+
+    /// Count all tasks
+    pub async fn count_all(&self) -> Result<usize> {
+        self.storage.count_all_tasks().await
+    }
 }
 
 #[cfg(test)]
@@ -466,6 +570,7 @@ mod tests {
             None,
             vec!["test".to_string()],
             Some(2.0),
+            None,
         ).await.unwrap();
 
         let task = manager.get_task(&task_id).await.unwrap();
@@ -484,6 +589,7 @@ mod tests {
             None,
             None,
             vec![],
+            None,
             None,
         ).await.unwrap();
 
@@ -511,8 +617,8 @@ mod tests {
         let (manager, _temp_dir) = create_test_manager().await;
 
         // Create tasks
-        let id1 = manager.create_task("Task 1".to_string(), None, None, None, vec![], None).await.unwrap();
-        let id2 = manager.create_task("Task 2".to_string(), None, None, None, vec![], None).await.unwrap();
+        let id1 = manager.create_task("Task 1".to_string(), None, None, None, vec![], None, None).await.unwrap();
+        let id2 = manager.create_task("Task 2".to_string(), None, None, None, vec![], None, None).await.unwrap();
 
         // Update one to InProgress
         manager.update_task(&id1, None, None, None, Some(TaskStatus::InProgress), None, None, None, None, None).await.unwrap();
@@ -534,7 +640,7 @@ mod tests {
 
         // Create 5 tasks
         for i in 0..5 {
-            let id = manager.create_task(format!("Task {}", i), None, None, None, vec![], None).await.unwrap();
+            let id = manager.create_task(format!("Task {}", i), None, None, None, vec![], None, None).await.unwrap();
             if i < 2 {
                 // Mark first 2 as done
                 manager.update_task(&id, None, None, None, Some(TaskStatus::Done), None, None, None, None, None).await.unwrap();
@@ -566,7 +672,7 @@ mod tests {
 
         // Spec1: 3 tasks (2 done)
         for i in 0..3 {
-            let id = manager.create_task(format!("Spec1 Task {}", i), None, None, spec1_ref.clone(), vec![], None).await.unwrap();
+            let id = manager.create_task(format!("Spec1 Task {}", i), None, None, spec1_ref.clone(), vec![], None, None).await.unwrap();
             if i < 2 {
                 manager.update_task(&id, None, None, None, Some(TaskStatus::Done), None, None, None, None, None).await.unwrap();
             }
@@ -574,7 +680,7 @@ mod tests {
 
         // Spec2: 2 tasks (1 done)
         for i in 0..2 {
-            let id = manager.create_task(format!("Spec2 Task {}", i), None, None, spec2_ref.clone(), vec![], None).await.unwrap();
+            let id = manager.create_task(format!("Spec2 Task {}", i), None, None, spec2_ref.clone(), vec![], None, None).await.unwrap();
             if i == 0 {
                 manager.update_task(&id, None, None, None, Some(TaskStatus::Done), None, None, None, None, None).await.unwrap();
             }
@@ -608,7 +714,7 @@ mod tests {
                 1 => Priority::Medium,
                 _ => Priority::Low,
             };
-            let id = manager.create_task(format!("Task {}", i), None, Some(priority), None, vec![], None).await.unwrap();
+            let id = manager.create_task(format!("Task {}", i), None, Some(priority), None, vec![], None, None).await.unwrap();
             if i < 3 {
                 manager.update_task(&id, None, None, None, Some(TaskStatus::Done), None, None, None, None, None).await.unwrap();
             }
@@ -632,7 +738,7 @@ mod tests {
     async fn test_cache() {
         let (manager, _temp_dir) = create_test_manager().await;
 
-        let task_id = manager.create_task("Cached".to_string(), None, None, None, vec![], None).await.unwrap();
+        let task_id = manager.create_task("Cached".to_string(), None, None, None, vec![], None, None).await.unwrap();
 
         // First get (from storage)
         let _task1 = manager.get_task(&task_id).await.unwrap();
@@ -641,7 +747,7 @@ mod tests {
         manager.clear_cache().await;
 
         // Second get (should still work from cache before clear)
-        let task_id2 = manager.create_task("Test2".to_string(), None, None, None, vec![], None).await.unwrap();
+        let task_id2 = manager.create_task("Test2".to_string(), None, None, None, vec![], None, None).await.unwrap();
         let _task2 = manager.get_task(&task_id2).await.unwrap();
     }
 
@@ -657,6 +763,7 @@ mod tests {
             None,
             vec![],
             None,
+            None,
         ).await.unwrap();
 
         manager.create_task(
@@ -666,6 +773,7 @@ mod tests {
             None,
             vec![],
             None,
+            None,
         ).await.unwrap();
 
         manager.create_task(
@@ -674,6 +782,7 @@ mod tests {
             None,
             None,
             vec![],
+            None,
             None,
         ).await.unwrap();
 
@@ -695,7 +804,7 @@ mod tests {
     async fn test_get_history() {
         let (manager, _temp_dir) = create_test_manager().await;
 
-        let task_id = manager.create_task("Test task".to_string(), None, None, None, vec![], None).await.unwrap();
+        let task_id = manager.create_task("Test task".to_string(), None, None, None, vec![], None, None).await.unwrap();
 
         // Update status a few times
         manager.update_task(&task_id, None, None, None, Some(TaskStatus::InProgress), Some("Starting".to_string()), None, None, None, None).await.unwrap();
@@ -741,6 +850,7 @@ mod tests {
             None,
             vec![],
             None,
+            None,
         ).await.unwrap();
 
         // Mark as in progress first
@@ -778,9 +888,9 @@ mod tests {
         let (manager, _temp_dir) = create_test_manager().await;
 
         // Create multiple tasks with different commits
-        let id1 = manager.create_task("Task 1".to_string(), None, None, None, vec![], None).await.unwrap();
-        let id2 = manager.create_task("Task 2".to_string(), None, None, None, vec![], None).await.unwrap();
-        let id3 = manager.create_task("Task 3".to_string(), None, None, None, vec![], None).await.unwrap();
+        let id1 = manager.create_task("Task 1".to_string(), None, None, None, vec![], None, None).await.unwrap();
+        let id2 = manager.create_task("Task 2".to_string(), None, None, None, vec![], None, None).await.unwrap();
+        let id3 = manager.create_task("Task 3".to_string(), None, None, None, vec![], None, None).await.unwrap();
 
         // Mark tasks as done with commit hashes
         manager.update_task(&id1, None, None, None, Some(TaskStatus::Done), None, None, None, None, Some("abc123".to_string())).await.unwrap();
@@ -800,5 +910,252 @@ mod tests {
         // Query non-existent commit
         let tasks_none = manager.find_tasks_by_commit("xyz789").await.unwrap();
         assert_eq!(tasks_none.len(), 0);
+    }
+
+    // === Timeout and Recovery Tests ===
+
+    #[tokio::test]
+    async fn test_task_timeout_detection() {
+        use std::time::Duration;
+
+        let (manager, _temp_dir) = create_test_manager().await;
+
+        // Create task with 1 hour timeout
+        let task_id = manager.create_task(
+            "Task with timeout".to_string(),
+            None,
+            None,
+            None,
+            vec![],
+            None,
+            Some(1), // 1 hour timeout
+        ).await.unwrap();
+
+        // Mark as in progress
+        manager.update_task(&task_id, None, None, None, Some(TaskStatus::InProgress), None, None, None, None, None).await.unwrap();
+
+        // Verify task is not timed out yet
+        let task = manager.get_task(&task_id).await.unwrap();
+        assert_eq!(task.status, TaskStatus::InProgress);
+        assert!(task.started_at.is_some());
+        assert!(!task.is_timed_out());
+
+        // Manually set last_activity to past time to simulate timeout
+        let mut task = manager.get_task(&task_id).await.unwrap();
+        task.last_activity = chrono::Utc::now() - chrono::Duration::hours(2);
+        manager.storage.save_task(&task).await.unwrap();
+        manager.cache.write().await.put(task_id.clone(), task.clone());
+
+        // Now task should be timed out
+        let task = manager.get_task(&task_id).await.unwrap();
+        assert!(task.is_timed_out());
+    }
+
+    #[tokio::test]
+    async fn test_timeout_recovery() {
+        let (manager, _temp_dir) = create_test_manager().await;
+
+        // Create task with 1 hour timeout
+        let task_id = manager.create_task(
+            "Task to recover".to_string(),
+            None,
+            None,
+            None,
+            vec![],
+            None,
+            Some(1),
+        ).await.unwrap();
+
+        // Mark as in progress
+        manager.update_task(&task_id, None, None, None, Some(TaskStatus::InProgress), None, None, None, None, None).await.unwrap();
+
+        // Simulate timeout by setting last_activity to past
+        let mut task = manager.get_task(&task_id).await.unwrap();
+        task.last_activity = chrono::Utc::now() - chrono::Duration::hours(2);
+        manager.storage.save_task(&task).await.unwrap();
+        manager.cache.write().await.put(task_id.clone(), task.clone());
+
+        // Check timeouts - should recover the task
+        let recovered = manager.check_timeouts().await.unwrap();
+        assert_eq!(recovered.len(), 1);
+        assert_eq!(recovered[0], task_id);
+
+        // Verify task is now pending
+        let task = manager.get_task(&task_id).await.unwrap();
+        assert_eq!(task.status, TaskStatus::Pending);
+
+        // Verify history records the auto-revert
+        assert!(task.history.iter().any(|h|
+            h.to == TaskStatus::Pending &&
+            h.note.as_ref().map(|n| n.contains("Auto-reverted")).unwrap_or(false)
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_no_timeout_when_active() {
+        let (manager, _temp_dir) = create_test_manager().await;
+
+        // Create task with timeout
+        let task_id = manager.create_task(
+            "Active task".to_string(),
+            None,
+            None,
+            None,
+            vec![],
+            None,
+            Some(2), // 2 hour timeout
+        ).await.unwrap();
+
+        // Mark as in progress
+        manager.update_task(&task_id, None, None, None, Some(TaskStatus::InProgress), None, None, None, None, None).await.unwrap();
+
+        // Update task (simulates activity)
+        manager.update_task(&task_id, None, Some("Still working on it".to_string()), None, None, None, None, None, None, None).await.unwrap();
+
+        // Check timeouts - should not recover anything
+        let recovered = manager.check_timeouts().await.unwrap();
+        assert_eq!(recovered.len(), 0);
+
+        // Task should still be in progress
+        let task = manager.get_task(&task_id).await.unwrap();
+        assert_eq!(task.status, TaskStatus::InProgress);
+    }
+
+    #[tokio::test]
+    async fn test_no_timeout_without_config() {
+        let (manager, _temp_dir) = create_test_manager().await;
+
+        // Create task WITHOUT timeout
+        let task_id = manager.create_task(
+            "Task without timeout".to_string(),
+            None,
+            None,
+            None,
+            vec![],
+            None,
+            None, // No timeout
+        ).await.unwrap();
+
+        // Mark as in progress
+        manager.update_task(&task_id, None, None, None, Some(TaskStatus::InProgress), None, None, None, None, None).await.unwrap();
+
+        // Simulate long inactivity
+        let mut task = manager.get_task(&task_id).await.unwrap();
+        task.last_activity = chrono::Utc::now() - chrono::Duration::hours(100);
+        manager.storage.save_task(&task).await.unwrap();
+        manager.cache.write().await.put(task_id.clone(), task.clone());
+
+        // Check timeouts - should not recover (no timeout configured)
+        let recovered = manager.check_timeouts().await.unwrap();
+        assert_eq!(recovered.len(), 0);
+
+        // Task should still be in progress
+        let task = manager.get_task(&task_id).await.unwrap();
+        assert_eq!(task.status, TaskStatus::InProgress);
+        assert!(!task.is_timed_out());
+    }
+
+    #[tokio::test]
+    async fn test_manual_recovery_with_force() {
+        let (manager, _temp_dir) = create_test_manager().await;
+
+        // Create multiple in-progress tasks without timeouts
+        let id1 = manager.create_task("Task 1".to_string(), None, None, None, vec![], None, None).await.unwrap();
+        let id2 = manager.create_task("Task 2".to_string(), None, None, None, vec![], None, None).await.unwrap();
+
+        manager.update_task(&id1, None, None, None, Some(TaskStatus::InProgress), None, None, None, None, None).await.unwrap();
+        manager.update_task(&id2, None, None, None, Some(TaskStatus::InProgress), None, None, None, None, None).await.unwrap();
+
+        // Force recovery should recover all in-progress tasks
+        let recovered = manager.recover_orphaned_tasks(true).await.unwrap();
+        assert_eq!(recovered.len(), 2);
+        assert!(recovered.contains(&id1));
+        assert!(recovered.contains(&id2));
+
+        // Both should be pending now
+        let task1 = manager.get_task(&id1).await.unwrap();
+        let task2 = manager.get_task(&id2).await.unwrap();
+        assert_eq!(task1.status, TaskStatus::Pending);
+        assert_eq!(task2.status, TaskStatus::Pending);
+    }
+
+    #[tokio::test]
+    async fn test_manual_recovery_without_force() {
+        let (manager, _temp_dir) = create_test_manager().await;
+
+        // Create tasks: one with timeout expired, one without
+        let id_timeout = manager.create_task("With timeout".to_string(), None, None, None, vec![], None, Some(1)).await.unwrap();
+        let id_no_timeout = manager.create_task("No timeout".to_string(), None, None, None, vec![], None, None).await.unwrap();
+
+        manager.update_task(&id_timeout, None, None, None, Some(TaskStatus::InProgress), None, None, None, None, None).await.unwrap();
+        manager.update_task(&id_no_timeout, None, None, None, Some(TaskStatus::InProgress), None, None, None, None, None).await.unwrap();
+
+        // Simulate timeout for first task
+        let mut task = manager.get_task(&id_timeout).await.unwrap();
+        task.last_activity = chrono::Utc::now() - chrono::Duration::hours(2);
+        manager.storage.save_task(&task).await.unwrap();
+        manager.cache.write().await.put(id_timeout.clone(), task.clone());
+
+        // Non-force recovery should only recover timed-out task
+        let recovered = manager.recover_orphaned_tasks(false).await.unwrap();
+        assert_eq!(recovered.len(), 1);
+        assert_eq!(recovered[0], id_timeout);
+
+        // Only timed-out task should be pending
+        let task1 = manager.get_task(&id_timeout).await.unwrap();
+        let task2 = manager.get_task(&id_no_timeout).await.unwrap();
+        assert_eq!(task1.status, TaskStatus::Pending);
+        assert_eq!(task2.status, TaskStatus::InProgress);
+    }
+
+    #[tokio::test]
+    async fn test_started_at_tracking() {
+        let (manager, _temp_dir) = create_test_manager().await;
+
+        let task_id = manager.create_task("Test".to_string(), None, None, None, vec![], None, None).await.unwrap();
+
+        // Initially no started_at
+        let task = manager.get_task(&task_id).await.unwrap();
+        assert!(task.started_at.is_none());
+
+        // Transition to InProgress sets started_at
+        manager.update_task(&task_id, None, None, None, Some(TaskStatus::InProgress), None, None, None, None, None).await.unwrap();
+        let task = manager.get_task(&task_id).await.unwrap();
+        assert!(task.started_at.is_some());
+        let first_started = task.started_at.unwrap();
+
+        // Transition to Blocked keeps started_at
+        manager.update_task(&task_id, None, None, None, Some(TaskStatus::Blocked), None, None, None, None, None).await.unwrap();
+        let task = manager.get_task(&task_id).await.unwrap();
+        assert_eq!(task.started_at, Some(first_started));
+
+        // Back to InProgress keeps original started_at
+        manager.update_task(&task_id, None, None, None, Some(TaskStatus::InProgress), None, None, None, None, None).await.unwrap();
+        let task = manager.get_task(&task_id).await.unwrap();
+        assert_eq!(task.started_at, Some(first_started));
+
+        // Transition to Done clears started_at
+        manager.update_task(&task_id, None, None, None, Some(TaskStatus::Done), None, None, None, None, None).await.unwrap();
+        let task = manager.get_task(&task_id).await.unwrap();
+        assert!(task.started_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_last_activity_updates() {
+        let (manager, _temp_dir) = create_test_manager().await;
+
+        let task_id = manager.create_task("Test".to_string(), None, None, None, vec![], None, None).await.unwrap();
+
+        let task = manager.get_task(&task_id).await.unwrap();
+        let initial_activity = task.last_activity;
+
+        // Wait a bit to ensure timestamp difference
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Any update should update last_activity
+        manager.update_task(&task_id, None, Some("Updated description".to_string()), None, None, None, None, None, None, None).await.unwrap();
+
+        let task = manager.get_task(&task_id).await.unwrap();
+        assert!(task.last_activity > initial_activity);
     }
 }

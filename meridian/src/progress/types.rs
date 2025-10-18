@@ -155,6 +155,15 @@ pub struct Task {
     /// When task was last updated
     pub updated_at: DateTime<Utc>,
 
+    /// When task was started (set when transitioning to InProgress)
+    pub started_at: Option<DateTime<Utc>>,
+
+    /// Last activity timestamp (updated on any task modification)
+    pub last_activity: DateTime<Utc>,
+
+    /// Timeout in hours for InProgress tasks (None = no timeout)
+    pub timeout_hours: Option<u32>,
+
     /// When task was completed (if done)
     pub completed_at: Option<DateTime<Utc>>,
 
@@ -198,6 +207,9 @@ impl Task {
             active_session_id: None,
             created_at: now,
             updated_at: now,
+            started_at: None,
+            last_activity: now,
+            timeout_hours: None,
             completed_at: None,
             history: vec![StatusTransition {
                 timestamp: now,
@@ -223,23 +235,59 @@ impl Task {
             ));
         }
 
+        let now = Utc::now();
+        let old_status = self.status;
+
         // Record transition
         self.history.push(StatusTransition {
-            timestamp: Utc::now(),
-            from: Some(self.status),
+            timestamp: now,
+            from: Some(old_status),
             to: new_status,
             note,
         });
 
         self.status = new_status;
-        self.updated_at = Utc::now();
+        self.updated_at = now;
+        self.last_activity = now;
+
+        // Set started_at when transitioning to InProgress for the first time
+        if new_status == TaskStatus::InProgress && old_status != TaskStatus::InProgress {
+            if self.started_at.is_none() {
+                self.started_at = Some(now);
+            }
+        }
+
+        // Clear started_at when leaving InProgress to a terminal state
+        if old_status == TaskStatus::InProgress
+            && (new_status == TaskStatus::Done || new_status == TaskStatus::Cancelled) {
+            self.started_at = None;
+        }
 
         // Set completed_at if transitioning to Done
         if new_status == TaskStatus::Done {
-            self.completed_at = Some(Utc::now());
+            self.completed_at = Some(now);
         }
 
         Ok(())
+    }
+
+    /// Check if this task has timed out
+    pub fn is_timed_out(&self) -> bool {
+        // Only check tasks that are in progress
+        if self.status != TaskStatus::InProgress {
+            return false;
+        }
+
+        // No timeout configured
+        let Some(timeout_hours) = self.timeout_hours else {
+            return false;
+        };
+
+        // Calculate elapsed time since last activity
+        let timeout_duration = chrono::Duration::hours(timeout_hours as i64);
+        let elapsed = Utc::now() - self.last_activity;
+
+        elapsed > timeout_duration
     }
 }
 

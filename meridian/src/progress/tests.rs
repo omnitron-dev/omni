@@ -128,28 +128,28 @@ mod integration_tests {
 
         // Create tasks with different statuses
         let id1 = manager
-            .create_task("Task 1".to_string(), None, Some(Priority::High), None, vec![], None)
+            .create_task("Task 1".to_string(), None, Some(Priority::High), None, vec![], None, None, None)
             .await
             .unwrap();
 
         let id2 = manager
-            .create_task("Task 2".to_string(), None, Some(Priority::Medium), None, vec![], None)
+            .create_task("Task 2".to_string(), None, Some(Priority::Medium), None, vec![], None, None, None)
             .await
             .unwrap();
 
         let id3 = manager
-            .create_task("Task 3".to_string(), None, Some(Priority::Low), None, vec![], None)
+            .create_task("Task 3".to_string(), None, Some(Priority::Low), None, vec![], None, None, None)
             .await
             .unwrap();
 
         // Update statuses
         manager
-            .update_task(&id1, None, None, None, Some(TaskStatus::InProgress), None, None, None, None, None)
+            .update_task(&id1, None, None, None, Some(TaskStatus::InProgress), None, None, None, None, None, None)
             .await
             .unwrap();
 
         manager
-            .update_task(&id2, None, None, None, Some(TaskStatus::Done), None, None, None, None, None)
+            .update_task(&id2, None, None, None, Some(TaskStatus::Done), None, None, None, None, None, None)
             .await
             .unwrap();
 
@@ -238,30 +238,30 @@ mod integration_tests {
         // Create 10 tasks with various statuses
         for i in 0..10 {
             let id = manager
-                .create_task(format!("Task {}", i), None, None, None, vec![], None)
+                .create_task(format!("Task {}", i), None, None, None, vec![], None, None, None)
                 .await
                 .unwrap();
 
             if i < 4 {
                 // 4 done
                 manager
-                    .update_task(&id, None, None, None, Some(TaskStatus::Done), None, None, None, None, None)
+                    .update_task(&id, None, None, None, Some(TaskStatus::Done), None, None, None, None, None, None)
                     .await
                     .unwrap();
             } else if i < 6 {
                 // 2 in progress
                 manager
-                    .update_task(&id, None, None, None, Some(TaskStatus::InProgress), None, None, None, None, None)
+                    .update_task(&id, None, None, None, Some(TaskStatus::InProgress), None, None, None, None, None, None)
                     .await
                     .unwrap();
             } else if i < 7 {
                 // 1 blocked (must go through InProgress first)
                 manager
-                    .update_task(&id, None, None, None, Some(TaskStatus::InProgress), None, None, None, None, None)
+                    .update_task(&id, None, None, None, Some(TaskStatus::InProgress), None, None, None, None, None, None)
                     .await
                     .unwrap();
                 manager
-                    .update_task(&id, None, None, None, Some(TaskStatus::Blocked), None, None, None, None, None)
+                    .update_task(&id, None, None, None, Some(TaskStatus::Blocked), None, None, None, None, None, None)
                     .await
                     .unwrap();
             }
@@ -282,19 +282,19 @@ mod integration_tests {
         let (manager, _temp_dir) = create_test_setup().await;
 
         let task_id = manager
-            .create_task("Test".to_string(), None, None, None, vec![], None)
+            .create_task("Test".to_string(), None, None, None, vec![], None, None, None)
             .await
             .unwrap();
 
         // Mark as done
         manager
-            .update_task(&task_id, None, None, None, Some(TaskStatus::Done), None, None, None, None, None)
+            .update_task(&task_id, None, None, None, Some(TaskStatus::Done), None, None, None, None, None, None)
             .await
             .unwrap();
 
         // Try to transition from done (should fail)
         let result = manager
-            .update_task(&task_id, None, None, None, Some(TaskStatus::InProgress), None, None, None, None, None)
+            .update_task(&task_id, None, None, None, Some(TaskStatus::InProgress), None, None, None, None, None, None)
             .await;
 
         assert!(result.is_err());
@@ -309,7 +309,7 @@ mod integration_tests {
         let (manager, _temp_dir) = create_test_setup().await;
 
         let task_id = manager
-            .create_task("To be deleted".to_string(), None, None, None, vec![], None)
+            .create_task("To be deleted".to_string(), None, None, None, vec![], None, None, None)
             .await
             .unwrap();
 
@@ -329,7 +329,7 @@ mod integration_tests {
         let (manager, _temp_dir) = create_test_setup().await;
 
         let task_id = manager
-            .create_task("Cached task".to_string(), None, None, None, vec![], None)
+            .create_task("Cached task".to_string(), None, None, None, vec![], None, None, None)
             .await
             .unwrap();
 
@@ -371,7 +371,7 @@ mod integration_tests {
         // Create 20 tasks
         for i in 0..20 {
             manager
-                .create_task(format!("Task {}", i), None, None, None, vec![], None)
+                .create_task(format!("Task {}", i), None, None, None, vec![], None, None, None)
                 .await
                 .unwrap();
         }
@@ -390,7 +390,7 @@ mod integration_tests {
         let (manager, _temp_dir) = create_test_setup().await;
 
         let task_id = manager
-            .create_task("History test".to_string(), None, None, None, vec![], None)
+            .create_task("History test".to_string(), None, None, None, vec![], None, None, None)
             .await
             .unwrap();
 
@@ -490,7 +490,7 @@ mod integration_tests {
             let manager = ProgressManager::new(storage);
 
             manager
-                .create_task("Persistent task".to_string(), None, None, None, vec![], None)
+                .create_task("Persistent task".to_string(), None, None, None, vec![], None, None, None)
                 .await
                 .unwrap()
         };
@@ -546,7 +546,7 @@ mod integration_tests {
         // Create 1000 tasks with different statuses
         for i in 0..1000 {
             let task_id = manager
-                .create_task(format!("Task {}", i), None, None, None, vec![], None)
+                .create_task(format!("Task {}", i), None, None, None, vec![], None, None, None)
                 .await
                 .unwrap();
 
@@ -588,7 +588,7 @@ mod integration_tests {
         let (manager, _temp_dir) = create_test_setup().await;
 
         let task_id = manager
-            .create_task("Test task".to_string(), None, None, None, vec![], None)
+            .create_task("Test task".to_string(), None, None, None, vec![], None, None, None)
             .await
             .unwrap();
 
@@ -624,7 +624,7 @@ mod integration_tests {
             };
 
             let task_id = manager
-                .create_task(format!("Task {}", i), None, None, spec_ref, vec![], None)
+                .create_task(format!("Task {}", i), None, None, spec_ref, vec![], None, None, None)
                 .await
                 .unwrap();
 

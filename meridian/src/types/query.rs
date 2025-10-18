@@ -10,6 +10,8 @@ pub struct Query {
     pub detail_level: DetailLevel,
     pub max_results: Option<usize>,
     pub max_tokens: Option<TokenCount>,
+    /// Offset for pagination (default: 0)
+    pub offset: Option<usize>,
 }
 
 impl Query {
@@ -21,6 +23,7 @@ impl Query {
             detail_level: DetailLevel::default(),
             max_results: Some(10),
             max_tokens: None,
+            offset: None,
         }
     }
 
@@ -41,6 +44,15 @@ pub struct QueryResult {
     pub symbols: Vec<CodeSymbol>,
     pub total_tokens: TokenCount,
     pub truncated: bool,
+    /// Total number of matching symbols (before pagination)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_matches: Option<usize>,
+    /// Current offset
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset: Option<usize>,
+    /// Whether there are more results available
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub has_more: Option<bool>,
 }
 
 impl QueryResult {
@@ -49,6 +61,9 @@ impl QueryResult {
             symbols: Vec::new(),
             total_tokens: TokenCount::zero(),
             truncated: false,
+            total_matches: None,
+            offset: None,
+            has_more: None,
         }
     }
 }

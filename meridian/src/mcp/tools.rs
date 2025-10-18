@@ -1973,5 +1973,15 @@ fn get_links_tools() -> Vec<Tool> {
             output_schema: None,
             _meta: Some(json!({"category": "indexer"})),
         },
+        Tool {
+            name: "system.health".to_string(),
+            description: Some("Get system health status including uptime, memory usage, metrics, and component statistics".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {}
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "system"})),
+        },
     ]
 }

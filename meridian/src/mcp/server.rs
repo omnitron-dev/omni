@@ -241,22 +241,30 @@ impl MeridianServer {
         })
     }
 
-    /// Start background snapshot writer task
+    /// Start background snapshot writer task with error recovery
     ///
-    /// This task runs every 60 seconds and saves a metrics snapshot to storage
+    /// This task runs every 60 seconds and saves a metrics snapshot to storage.
+    /// Uses error recovery to handle transient failures without crashing.
     fn start_snapshot_writer(
         collector: Arc<MetricsCollector>,
         storage: Arc<MetricsStorage>,
     ) -> JoinHandle<()> {
+        use crate::error_recovery::{run_background_task_with_recovery, RetryConfig};
+
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
-            loop {
-                interval.tick().await;
-                let snapshot = collector.take_snapshot();
-                if let Err(e) = storage.save_snapshot(&snapshot).await {
-                    error!("Failed to save metrics snapshot: {}", e);
-                }
-            }
+            run_background_task_with_recovery(
+                "metrics_snapshot_writer",
+                std::time::Duration::from_secs(60),
+                || {
+                    let collector = collector.clone();
+                    let storage = storage.clone();
+                    async move {
+                        let snapshot = collector.take_snapshot();
+                        storage.save_snapshot(&snapshot).await
+                    }
+                },
+            )
+            .await
         })
     }
 

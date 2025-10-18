@@ -81,6 +81,7 @@ impl ProjectToolHandlers {
             context.indexer.clone(),
             context.session_manager.clone(),
             context.doc_indexer.clone(),
+            context.spec_manager.clone(),
         ));
 
         // Cache the handlers

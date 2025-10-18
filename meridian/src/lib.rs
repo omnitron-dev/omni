@@ -9,6 +9,7 @@ pub mod mcp;
 pub mod memory;
 pub mod project;
 pub mod session;
+pub mod specs;
 pub mod storage;
 pub mod strong;
 pub mod types;

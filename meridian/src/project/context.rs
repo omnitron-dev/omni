@@ -20,6 +20,7 @@ pub struct ProjectContext {
     pub indexer: Arc<tokio::sync::RwLock<CodeIndexer>>,
     pub session_manager: Arc<SessionManager>,
     pub doc_indexer: Arc<crate::docs::DocIndexer>,
+    pub spec_manager: Arc<tokio::sync::RwLock<crate::specs::SpecificationManager>>,
     pub last_access: SystemTime,
 }
 
@@ -56,6 +57,10 @@ impl ProjectContext {
         // Initialize documentation indexer
         let doc_indexer = Arc::new(crate::docs::DocIndexer::new());
 
+        // Initialize specification manager
+        let specs_path = project_path.join("specs");
+        let spec_manager = crate::specs::SpecificationManager::new(specs_path);
+
         Ok(Self {
             project_path,
             storage,
@@ -64,6 +69,7 @@ impl ProjectContext {
             indexer: Arc::new(tokio::sync::RwLock::new(indexer)),
             session_manager: Arc::new(session_manager),
             doc_indexer,
+            spec_manager: Arc::new(tokio::sync::RwLock::new(spec_manager)),
             last_access: SystemTime::now(),
         })
     }

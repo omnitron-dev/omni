@@ -10,6 +10,7 @@ use crate::memory::MemorySystem;
 use crate::project::ProjectManager;
 use crate::global::registry::MonorepoContext as ProjectMonorepoContext;
 use crate::session::SessionManager;
+use crate::specs::SpecificationManager;
 use crate::storage::RocksDBStorage;
 use crate::types::{LLMAdapter, Query};
 use crate::IndexStats;
@@ -29,6 +30,7 @@ enum ServerMode {
         indexer: Arc<tokio::sync::RwLock<CodeIndexer>>,
         session_manager: Arc<SessionManager>,
         doc_indexer: Arc<crate::docs::DocIndexer>,
+        spec_manager: Arc<tokio::sync::RwLock<SpecificationManager>>,
         handlers: Option<Arc<ToolHandlers>>,
         // Global architecture support
         global_client: Option<Arc<GlobalServerClient>>,
@@ -111,6 +113,12 @@ impl MeridianServer {
         // Initialize documentation indexer
         let doc_indexer = Arc::new(crate::docs::DocIndexer::new());
 
+        // Initialize specification manager
+        let specs_path = config.storage.path.parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .join("specs");
+        let spec_manager = SpecificationManager::new(specs_path);
+
         // Initialize session manager
         let session_config = crate::session::SessionConfig {
             max_sessions: config.session.max_sessions,
@@ -134,6 +142,7 @@ impl MeridianServer {
                 indexer: Arc::new(tokio::sync::RwLock::new(indexer)),
                 session_manager: Arc::new(session_manager),
                 doc_indexer,
+                spec_manager: Arc::new(tokio::sync::RwLock::new(spec_manager)),
                 handlers: None,
                 global_client,
                 local_cache,
@@ -188,6 +197,7 @@ impl MeridianServer {
                 indexer,
                 session_manager,
                 doc_indexer,
+                spec_manager,
                 ..
             } => {
                 if let Some(h) = handlers {
@@ -201,6 +211,7 @@ impl MeridianServer {
                     indexer.clone(),
                     session_manager.clone(),
                     doc_indexer.clone(),
+                    spec_manager.clone(),
                 ));
 
                 *handlers = Some(new_handlers.clone());
@@ -732,12 +743,15 @@ mod tests {
         };
         let session_manager = SessionManager::new(storage, session_config).unwrap();
         let doc_indexer = Arc::new(crate::docs::DocIndexer::new());
+        let specs_path = _temp.path().join("specs");
+        let spec_manager = SpecificationManager::new(specs_path);
         let handlers = Arc::new(ToolHandlers::new(
             Arc::new(tokio::sync::RwLock::new(memory_system)),
             Arc::new(tokio::sync::RwLock::new(context_manager)),
             Arc::new(tokio::sync::RwLock::new(indexer)),
             Arc::new(session_manager),
             doc_indexer,
+            Arc::new(tokio::sync::RwLock::new(spec_manager)),
         ));
 
         let request = JsonRpcRequest {

@@ -817,6 +817,7 @@ pub fn get_all_tools() -> Vec<Tool> {
     .chain(get_strong_catalog_tools())
     .chain(get_strong_docs_tools())
     .chain(get_phase5_cross_monorepo_tools())
+    .chain(get_specification_tools())
     .collect()
 }
 
@@ -1393,6 +1394,170 @@ fn get_strong_docs_tools() -> Vec<Tool> {
                 }
             })),
             _meta: Some(json!({"phase": "Phase 4", "category": "testing"})),
+        },
+    ]
+}
+
+// ============================================================================
+// Specification Management Tools
+// ============================================================================
+
+/// Get specification management tools
+fn get_specification_tools() -> Vec<Tool> {
+    vec![
+        Tool {
+            name: "specs.list".to_string(),
+            description: Some("List all specifications in the specs directory".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }),
+            output_schema: Some(json!({
+                "type": "object",
+                "properties": {
+                    "specs": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "path": {"type": "string"},
+                                "version": {"type": "string"},
+                                "status": {"type": "string"},
+                                "sections": {"type": "array", "items": {"type": "string"}},
+                                "size_bytes": {"type": "number"},
+                                "last_modified": {"type": "string"}
+                            }
+                        }
+                    },
+                    "total_specs": {"type": "number"}
+                }
+            })),
+            _meta: Some(json!({"category": "specifications"})),
+        },
+        Tool {
+            name: "specs.get_structure".to_string(),
+            description: Some("Get structure of a specification (TOC, sections, metadata)".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "spec_name": {
+                        "type": "string",
+                        "description": "Name of the specification (without .md extension)"
+                    }
+                },
+                "required": ["spec_name"]
+            }),
+            output_schema: Some(json!({
+                "type": "object",
+                "properties": {
+                    "structure": {"type": "string"},
+                    "title": {"type": "string"},
+                    "sections": {"type": "array"},
+                    "metadata": {"type": "object"}
+                }
+            })),
+            _meta: Some(json!({"category": "specifications"})),
+        },
+        Tool {
+            name: "specs.get_section".to_string(),
+            description: Some("Get content of a specific section from a specification".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "spec_name": {
+                        "type": "string",
+                        "description": "Name of the specification (without .md extension)"
+                    },
+                    "section_name": {
+                        "type": "string",
+                        "description": "Name or partial name of the section to retrieve"
+                    }
+                },
+                "required": ["spec_name", "section_name"]
+            }),
+            output_schema: Some(json!({
+                "type": "object",
+                "properties": {
+                    "content": {"type": "string"},
+                    "section_title": {"type": "string"}
+                }
+            })),
+            _meta: Some(json!({"category": "specifications"})),
+        },
+        Tool {
+            name: "specs.search".to_string(),
+            description: Some("Search for text across all specifications".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query text"
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Maximum number of results to return"
+                    }
+                },
+                "required": ["query"]
+            }),
+            output_schema: Some(json!({
+                "type": "object",
+                "properties": {
+                    "results": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "spec_name": {"type": "string"},
+                                "spec_path": {"type": "string"},
+                                "section_title": {"type": "string"},
+                                "snippet": {"type": "string"},
+                                "line_start": {"type": "number"},
+                                "line_end": {"type": "number"}
+                            }
+                        }
+                    },
+                    "total_results": {"type": "number"}
+                }
+            })),
+            _meta: Some(json!({"category": "specifications"})),
+        },
+        Tool {
+            name: "specs.validate".to_string(),
+            description: Some("Validate specification completeness and quality".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "spec_name": {
+                        "type": "string",
+                        "description": "Name of the specification to validate (without .md extension)"
+                    }
+                },
+                "required": ["spec_name"]
+            }),
+            output_schema: Some(json!({
+                "type": "object",
+                "properties": {
+                    "valid": {"type": "boolean"},
+                    "completeness_score": {"type": "number"},
+                    "issues": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "severity": {"type": "string", "enum": ["Error", "Warning", "Info"]},
+                                "message": {"type": "string"},
+                                "section": {"type": "string"}
+                            }
+                        }
+                    }
+                }
+            })),
+            _meta: Some(json!({"category": "specifications"})),
         },
     ]
 }

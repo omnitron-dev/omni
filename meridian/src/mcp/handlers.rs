@@ -4,6 +4,7 @@ use crate::git::GitHistory;
 use crate::indexer::CodeIndexer;
 use crate::memory::MemorySystem;
 use crate::session::{SessionAction, SessionManager};
+use crate::specs::SpecificationManager;
 use crate::types::*;
 use anyhow::{Context as _, Result, anyhow};
 use serde::Deserialize;
@@ -19,6 +20,7 @@ pub struct ToolHandlers {
     indexer: Arc<tokio::sync::RwLock<CodeIndexer>>,
     session_manager: Arc<SessionManager>,
     doc_indexer: Arc<DocIndexer>,
+    spec_manager: Arc<tokio::sync::RwLock<SpecificationManager>>,
 }
 
 impl ToolHandlers {
@@ -28,6 +30,7 @@ impl ToolHandlers {
         indexer: Arc<tokio::sync::RwLock<CodeIndexer>>,
         session_manager: Arc<SessionManager>,
         doc_indexer: Arc<DocIndexer>,
+        spec_manager: Arc<tokio::sync::RwLock<SpecificationManager>>,
     ) -> Self {
         Self {
             memory_system,
@@ -35,6 +38,7 @@ impl ToolHandlers {
             indexer,
             session_manager,
             doc_indexer,
+            spec_manager,
         }
     }
 
@@ -91,6 +95,13 @@ impl ToolHandlers {
             "monorepo.list_projects" => self.handle_monorepo_list_projects(arguments).await,
             "monorepo.set_context" => self.handle_monorepo_set_context(arguments).await,
             "monorepo.find_cross_references" => self.handle_monorepo_find_cross_references(arguments).await,
+
+            // Specification Tools
+            "specs.list" => self.handle_specs_list(arguments).await,
+            "specs.get_structure" => self.handle_specs_get_structure(arguments).await,
+            "specs.get_section" => self.handle_specs_get_section(arguments).await,
+            "specs.search" => self.handle_specs_search(arguments).await,
+            "specs.validate" => self.handle_specs_validate(arguments).await,
 
             _ => Err(anyhow!("Unknown tool: {}", name)),
         }
@@ -1681,6 +1692,123 @@ impl ToolHandlers {
             "compression_ratio": actual_ratio,
             "quality_score": compressed.quality_score,
             "strategy_used": params.strategy
+        }))
+    }
+
+    // === Specification Management Handlers ===
+
+    async fn handle_specs_list(&self, _args: Value) -> Result<Value> {
+        info!("Listing all specifications");
+
+        let spec_manager = self.spec_manager.read().await;
+        let registry = spec_manager.discover_specs()?;
+
+        Ok(json!({
+            "specs": registry.specs,
+            "total_specs": registry.specs.len()
+        }))
+    }
+
+    async fn handle_specs_get_structure(&self, args: Value) -> Result<Value> {
+        #[derive(Deserialize)]
+        struct Params {
+            spec_name: String,
+        }
+
+        let params: Params = serde_json::from_value(args)?;
+        info!("Getting structure for specification: {}", params.spec_name);
+
+        let mut spec_manager = self.spec_manager.write().await;
+        let doc = spec_manager.get_spec(&params.spec_name)?;
+        let structure = crate::specs::MarkdownAnalyzer::get_structure_summary(&doc);
+
+        Ok(json!({
+            "structure": structure,
+            "title": doc.title,
+            "sections": doc.sections.iter().map(|s| s.title.clone()).collect::<Vec<_>>(),
+            "metadata": {
+                "version": doc.metadata.version,
+                "status": doc.metadata.status,
+                "date": doc.metadata.date,
+                "authors": doc.metadata.authors
+            }
+        }))
+    }
+
+    async fn handle_specs_get_section(&self, args: Value) -> Result<Value> {
+        #[derive(Deserialize)]
+        struct Params {
+            spec_name: String,
+            section_name: String,
+        }
+
+        let params: Params = serde_json::from_value(args)?;
+        info!(
+            "Getting section '{}' from specification '{}'",
+            params.section_name, params.spec_name
+        );
+
+        let mut spec_manager = self.spec_manager.write().await;
+        let content = spec_manager.get_section(&params.spec_name, &params.section_name)?;
+
+        Ok(json!({
+            "content": content,
+            "section_name": params.section_name
+        }))
+    }
+
+    async fn handle_specs_search(&self, args: Value) -> Result<Value> {
+        #[derive(Deserialize)]
+        struct Params {
+            query: String,
+            #[serde(default)]
+            max_results: Option<usize>,
+        }
+
+        let params: Params = serde_json::from_value(args)?;
+        info!("Searching specifications for: {}", params.query);
+
+        let mut spec_manager = self.spec_manager.write().await;
+        let mut results = spec_manager.search_all(&params.query)?;
+
+        // Limit results if specified
+        if let Some(max) = params.max_results {
+            results.truncate(max);
+        }
+
+        Ok(json!({
+            "results": results.iter().map(|r| json!({
+                "spec_name": r.spec_name,
+                "spec_path": r.spec_path,
+                "section_title": r.section_title,
+                "snippet": r.snippet,
+                "line_start": r.line_start,
+                "line_end": r.line_end
+            })).collect::<Vec<_>>(),
+            "total_results": results.len()
+        }))
+    }
+
+    async fn handle_specs_validate(&self, args: Value) -> Result<Value> {
+        #[derive(Deserialize)]
+        struct Params {
+            spec_name: String,
+        }
+
+        let params: Params = serde_json::from_value(args)?;
+        info!("Validating specification: {}", params.spec_name);
+
+        let mut spec_manager = self.spec_manager.write().await;
+        let validation = spec_manager.validate(&params.spec_name)?;
+
+        Ok(json!({
+            "valid": validation.valid,
+            "completeness_score": validation.completeness_score,
+            "issues": validation.issues.iter().map(|issue| json!({
+                "severity": format!("{:?}", issue.severity),
+                "message": issue.message,
+                "section": issue.section
+            })).collect::<Vec<_>>()
         }))
     }
 }

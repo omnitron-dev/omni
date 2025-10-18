@@ -12,13 +12,15 @@ pub mod example_generator;
 pub mod test_generator;
 pub mod example_validator;
 pub mod cross_monorepo;
+pub mod dependency_parser;
 
 pub use doc_generator::{DocumentationGenerator, GeneratedDoc, DocFormat, DocTransformOptions};
 pub use doc_quality::{QualityValidator, QualityScore, QualityIssue, Suggestion};
 pub use templates::{TemplateEngine, DocTemplate};
 pub use catalog::{GlobalCatalog, ProjectMetadata, SearchScope, DocResult};
-pub use cross_ref::{CrossReferenceManager, CrossReference, ReferenceType, DependencyGraph};
+pub use cross_ref::{CrossReferenceManager, CrossReference, ReferenceType, DependencyGraph, DependencyNode, DependencyEdge};
 pub use example_generator::{ExampleGenerator, Example, ExampleComplexity, ValidationResult};
 pub use test_generator::{TestGenerator, GeneratedTest, TestFramework, TestType};
-pub use example_validator::ExampleValidator;
+pub use example_validator::{ExampleValidator, QualityScore as ExampleQualityScore};
 pub use cross_monorepo::{CrossMonorepoAccess, ExternalDocs, Usage, UsageType, AccessControl, SearchResult, MatchType};
+pub use dependency_parser::{DependencyParser, Dependency, DependencyType, ManifestDependencies};

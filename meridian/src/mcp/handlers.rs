@@ -21,6 +21,7 @@ pub struct ToolHandlers {
     session_manager: Arc<SessionManager>,
     doc_indexer: Arc<DocIndexer>,
     spec_manager: Arc<tokio::sync::RwLock<SpecificationManager>>,
+    project_registry: Option<Arc<crate::global::registry::ProjectRegistryManager>>,
 }
 
 impl ToolHandlers {
@@ -39,6 +40,28 @@ impl ToolHandlers {
             session_manager,
             doc_indexer,
             spec_manager,
+            project_registry: None,
+        }
+    }
+
+    /// Create handlers with project registry for cross-monorepo support
+    pub fn new_with_registry(
+        memory_system: Arc<tokio::sync::RwLock<MemorySystem>>,
+        context_manager: Arc<tokio::sync::RwLock<ContextManager>>,
+        indexer: Arc<tokio::sync::RwLock<CodeIndexer>>,
+        session_manager: Arc<SessionManager>,
+        doc_indexer: Arc<DocIndexer>,
+        spec_manager: Arc<tokio::sync::RwLock<SpecificationManager>>,
+        project_registry: Arc<crate::global::registry::ProjectRegistryManager>,
+    ) -> Self {
+        Self {
+            memory_system,
+            context_manager,
+            indexer,
+            session_manager,
+            doc_indexer,
+            spec_manager,
+            project_registry: Some(project_registry),
         }
     }
 
@@ -2234,7 +2257,7 @@ impl ToolHandlers {
         let params: Params = serde_json::from_value(args)?;
         info!("Validating test with framework: {}", params.test.framework);
 
-        use crate::strong::{TestGenerator, TestFramework};
+        use crate::strong::TestFramework;
 
         let framework = match params.test.framework.as_str() {
             "vitest" => TestFramework::Vitest,
@@ -2272,10 +2295,47 @@ impl ToolHandlers {
         let params: Params = serde_json::from_value(args)?;
         info!("Listing monorepos, includeInactive={:?}", params.include_inactive);
 
-        // Placeholder implementation - would need global registry
-        Ok(json!({
-            "monorepos": []
-        }))
+        if let Some(registry) = &self.project_registry {
+            let projects = registry.list_all().await?;
+
+            // Group projects by monorepo
+            let mut monorepo_map: std::collections::HashMap<String, Vec<_>> = std::collections::HashMap::new();
+
+            for project in projects {
+                if let Some(ref mono) = project.monorepo {
+                    monorepo_map.entry(mono.id.clone())
+                        .or_insert_with(Vec::new)
+                        .push(project);
+                }
+            }
+
+            let monorepos: Vec<Value> = monorepo_map.into_iter().map(|(id, projects)| {
+                let first_proj = &projects[0];
+                let monorepo_path = first_proj.monorepo.as_ref().map(|m| m.path.clone()).unwrap_or_default();
+
+                json!({
+                    "id": id,
+                    "name": id.clone(),
+                    "path": monorepo_path,
+                    "type": "mixed",
+                    "projectCount": projects.len(),
+                    "lastIndexed": projects.iter()
+                        .filter_map(|p| p.indexing.last_indexed.as_ref())
+                        .max()
+                        .map(|dt| dt.to_rfc3339())
+                })
+            }).collect();
+
+            Ok(json!({
+                "monorepos": monorepos
+            }))
+        } else {
+            // No registry available
+            Ok(json!({
+                "monorepos": [],
+                "error": "Project registry not available - global architecture not initialized"
+            }))
+        }
     }
 
     async fn handle_strong_global_search_all_projects(&self, args: Value) -> Result<Value> {
@@ -2291,11 +2351,42 @@ impl ToolHandlers {
         let params: Params = serde_json::from_value(args)?;
         info!("Searching all projects: query='{}', monorepoId={:?}", params.query, params.monorepo_id);
 
-        // Placeholder implementation
-        Ok(json!({
-            "projects": [],
-            "totalResults": 0
-        }))
+        if let Some(registry) = &self.project_registry {
+            use crate::strong::CrossMonorepoAccess;
+
+            let access = CrossMonorepoAccess::new(registry.clone());
+            let mut results = access.search_all_projects(&params.query).await?;
+
+            // Filter by monorepo if specified
+            if let Some(ref monorepo_id) = params.monorepo_id {
+                results.retain(|r| {
+                    r.project_id.contains(monorepo_id)
+                });
+            }
+
+            // Apply limit
+            if let Some(max) = params.max_results {
+                results.truncate(max);
+            }
+
+            let projects_json: Vec<Value> = results.iter().map(|r| json!({
+                "projectId": r.project_id,
+                "name": r.project_name,
+                "matchType": format!("{:?}", r.match_type),
+                "relevance": r.relevance
+            })).collect();
+
+            Ok(json!({
+                "results": projects_json,
+                "totalResults": projects_json.len()
+            }))
+        } else {
+            Ok(json!({
+                "results": [],
+                "totalResults": 0,
+                "error": "Project registry not available"
+            }))
+        }
     }
 
     async fn handle_strong_global_get_dependency_graph(&self, args: Value) -> Result<Value> {
@@ -2312,32 +2403,92 @@ impl ToolHandlers {
         let params: Params = serde_json::from_value(args)?;
         info!("Getting dependency graph for project: {}", params.project_id);
 
-        use crate::strong::CrossReferenceManager;
+        if let Some(registry) = &self.project_registry {
+            use crate::strong::{DependencyParser, DependencyGraph, DependencyNode, DependencyEdge, ReferenceType};
 
-        let manager = CrossReferenceManager::new();
-        let graph = manager.build_dependency_graph();
+            // Get the project
+            let project = registry.get(&params.project_id).await?
+                .ok_or_else(|| anyhow!("Project not found: {}", params.project_id))?;
 
-        // Convert nodes HashMap to array
-        let nodes_json: Vec<Value> = graph.nodes.values().map(|n| json!({
-            "id": n.id,
-            "name": n.name,
-            "projectId": n.project_id
-        })).collect();
+            // Parse dependencies from manifest
+            let manifest_result = DependencyParser::parse_manifest(&project.current_path);
 
-        let edges_json: Vec<Value> = graph.edges.iter().map(|e| json!({
-            "from": e.from,
-            "to": e.to,
-            "type": format!("{:?}", e.ref_type)
-        })).collect();
+            let mut graph = DependencyGraph::new();
 
-        Ok(json!({
-            "graph": {
-                "nodes": nodes_json,
-                "edges": edges_json
-            },
-            "visualization": "digraph G {}",
-            "cycles": []
-        }))
+            // Add root node
+            graph.add_node(DependencyNode {
+                id: project.identity.full_id.clone(),
+                project_id: project.identity.full_id.clone(),
+                name: project.identity.id.clone(),
+            });
+
+            if let Ok(manifest) = manifest_result {
+                // Build dependency graph
+                for dep in &manifest.dependencies {
+                    // Try to find this dependency in our registry
+                    let dep_projects = registry.find_by_name(&dep.name).await?;
+
+                    for dep_project in dep_projects {
+                        // Add node for dependency
+                        graph.add_node(DependencyNode {
+                            id: dep_project.identity.full_id.clone(),
+                            project_id: dep_project.identity.full_id.clone(),
+                            name: dep_project.identity.id.clone(),
+                        });
+
+                        // Add edge
+                        graph.add_edge(DependencyEdge {
+                            from: project.identity.full_id.clone(),
+                            to: dep_project.identity.full_id.clone(),
+                            ref_type: ReferenceType::Import,
+                        });
+                    }
+                }
+            }
+
+            // Convert to JSON
+            let nodes_json: Vec<Value> = graph.nodes.values().map(|n| json!({
+                "id": n.id,
+                "name": n.name,
+                "type": if n.id == params.project_id { "project" } else { "external" }
+            })).collect();
+
+            let edges_json: Vec<Value> = graph.edges.iter().map(|e| json!({
+                "from": e.from,
+                "to": e.to,
+                "type": "dependency",
+                "version": "*"
+            })).collect();
+
+            // Generate simple Mermaid diagram
+            let mut mermaid = String::from("graph TD\n");
+            for edge in &graph.edges {
+                mermaid.push_str(&format!("  {}[{}] --> {}[{}]\n",
+                    edge.from.replace('@', "").replace('/', "_").replace("-", "_"),
+                    edge.from,
+                    edge.to.replace('@', "").replace('/', "_").replace("-", "_"),
+                    edge.to
+                ));
+            }
+
+            Ok(json!({
+                "graph": {
+                    "nodes": nodes_json,
+                    "edges": edges_json
+                },
+                "visualization": mermaid,
+                "cycles": []
+            }))
+        } else {
+            Ok(json!({
+                "graph": {
+                    "nodes": [],
+                    "edges": []
+                },
+                "visualization": "graph TD",
+                "error": "Project registry not available"
+            }))
+        }
     }
 
     // === External Handlers (Phase 5) ===
@@ -2356,21 +2507,52 @@ impl ToolHandlers {
         let params: Params = serde_json::from_value(args)?;
         info!("Getting external documentation: projectId={}, symbolName={:?}", params.project_id, params.symbol_name);
 
-        // Placeholder implementation - would need ProjectRegistryManager
-        // In a real implementation, this would:
-        // 1. Create CrossMonorepoAccess with registry
-        // 2. Call get_external_docs
-        // 3. Return the results
+        if let Some(registry) = &self.project_registry {
+            use crate::strong::CrossMonorepoAccess;
 
-        Ok(json!({
-            "documentation": {
-                "projectId": params.project_id,
-                "symbols": [],
-                "fromCache": false,
-                "fetchedAt": chrono::Utc::now().to_rfc3339()
-            },
-            "accessGranted": true
-        }))
+            let access = CrossMonorepoAccess::new(registry.clone());
+
+            match access.get_external_docs(&params.project_id, params.symbol_name.as_deref()).await {
+                Ok(docs) => {
+                    let symbols_json: Vec<Value> = docs.symbols.iter().map(|s| json!({
+                        "name": s.name,
+                        "type": s.symbol_type,
+                        "documentation": s.documentation,
+                        "filePath": s.file_path,
+                        "line": s.line
+                    })).collect();
+
+                    Ok(json!({
+                        "project": {
+                            "id": docs.project_id,
+                            "version": "latest"
+                        },
+                        "documentation": {
+                            "symbols": symbols_json
+                        },
+                        "fromCache": docs.from_cache,
+                        "fetchedAt": docs.fetched_at.to_rfc3339()
+                    }))
+                }
+                Err(e) => {
+                    Ok(json!({
+                        "documentation": {
+                            "symbols": []
+                        },
+                        "error": format!("Failed to get documentation: {}", e),
+                        "accessGranted": false
+                    }))
+                }
+            }
+        } else {
+            Ok(json!({
+                "documentation": {
+                    "symbols": []
+                },
+                "error": "Project registry not available",
+                "accessGranted": false
+            }))
+        }
     }
 
     async fn handle_strong_external_find_usages(&self, args: Value) -> Result<Value> {
@@ -2389,16 +2571,59 @@ impl ToolHandlers {
         let params: Params = serde_json::from_value(args)?;
         info!("Finding usages: symbolId={}, monorepoId={:?}", params.symbol_id, params.monorepo_id);
 
-        // Placeholder implementation - would need ProjectRegistryManager
-        // In a real implementation, this would:
-        // 1. Create CrossMonorepoAccess with registry
-        // 2. Call find_usages (which is async)
-        // 3. Return the results
+        if let Some(registry) = &self.project_registry {
+            use crate::strong::CrossMonorepoAccess;
 
-        Ok(json!({
-            "usages": [],
-            "totalUsages": 0,
-            "projectsSearched": 0
-        }))
+            let access = CrossMonorepoAccess::new(registry.clone());
+            let include_tests = params.include_tests.unwrap_or(false);
+
+            match access.find_usages(&params.symbol_id, include_tests).await {
+                Ok(mut usages) => {
+                    // Filter by monorepo if specified
+                    if let Some(ref monorepo_id) = params.monorepo_id {
+                        usages.retain(|u| u.project_id.contains(monorepo_id));
+                    }
+
+                    // Apply limit
+                    if let Some(max) = params.max_results {
+                        usages.truncate(max);
+                    }
+
+                    let projects_searched = usages.iter()
+                        .map(|u| u.project_id.as_str())
+                        .collect::<std::collections::HashSet<_>>()
+                        .len();
+
+                    let usages_json: Vec<Value> = usages.iter().map(|u| json!({
+                        "projectId": u.project_id,
+                        "filePath": u.file_path,
+                        "line": u.line,
+                        "context": u.context,
+                        "usageType": format!("{:?}", u.usage_type).to_lowercase()
+                    })).collect();
+
+                    Ok(json!({
+                        "usages": usages_json,
+                        "totalUsages": usages.len(),
+                        "projectsSearched": projects_searched
+                    }))
+                }
+                Err(e) => {
+                    Ok(json!({
+                        "usages": [],
+                        "totalUsages": 0,
+                        "projectsSearched": 0,
+                        "error": format!("Failed to find usages: {}", e)
+                    }))
+                }
+            }
+        } else {
+            Ok(json!({
+                "usages": [],
+                "totalUsages": 0,
+                "projectsSearched": 0,
+                "error": "Project registry not available"
+            }))
+        }
     }
 }

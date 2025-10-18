@@ -4,6 +4,7 @@
 //! including Jest, Vitest, Bun Test, and Rust native tests.
 
 use crate::types::CodeSymbol;
+use crate::strong::ValidationResult;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
@@ -110,24 +111,124 @@ impl TestGenerator {
             return 0.0;
         }
 
-        // Calculate coverage based on test types
+        // Calculate coverage based on test types and content
         let mut coverage = 0.0;
         let mut weight_sum = 0.0;
 
         for test in tests {
-            let weight = match test.test_type {
+            let base_weight = match test.test_type {
                 TestType::Unit => 1.0,
                 TestType::Integration => 1.5,
                 TestType::E2E => 2.0,
             };
 
-            coverage += weight * 20.0; // Each test contributes to coverage
+            // Bonus for comprehensive tests
+            let mut multiplier = 1.0;
+            if test.code.contains("expect") || test.code.contains("assert") {
+                multiplier += 0.2;
+            }
+            if test.code.contains("mock") || test.code.contains("spy") {
+                multiplier += 0.15;
+            }
+            if test.code.contains("async") || test.code.contains("await") {
+                multiplier += 0.1;
+            }
+
+            let weight = base_weight * multiplier;
+            coverage += weight * 15.0; // Each test contributes to coverage
             weight_sum += weight;
         }
 
         // Normalize and cap at 100%
-        let estimated: f32 = coverage / weight_sum;
-        f32::min(estimated, 100.0)
+        let estimated = (coverage / weight_sum) as f32;
+        estimated.min(100.0)
+    }
+
+    /// Validate a test for syntax and best practices
+    pub fn validate_test(&self, test: &GeneratedTest) -> ValidationResult {
+        let mut result = ValidationResult::success();
+
+        // Check for essential test elements
+        match self.framework {
+            TestFramework::Jest | TestFramework::Vitest | TestFramework::BunTest => {
+                if !test.code.contains("expect") && !test.code.contains("assert") {
+                    result.valid = false;
+                    result.errors.push("Test must contain assertions (expect/assert)".to_string());
+                }
+                if !test.code.contains("it") && !test.code.contains("test") {
+                    result.valid = false;
+                    result.errors.push("Test must be wrapped in it() or test() block".to_string());
+                }
+            }
+            TestFramework::RustNative => {
+                if !test.code.contains("#[test]") {
+                    result.valid = false;
+                    result.errors.push("Test must have #[test] attribute".to_string());
+                }
+                if !test.code.contains("assert") {
+                    result.valid = false;
+                    result.errors.push("Test must contain assertions".to_string());
+                }
+            }
+        }
+
+        // Check for test type appropriateness
+        match test.test_type {
+            TestType::Unit => {
+                if test.code.contains("http") || test.code.contains("database") {
+                    result = result.with_warning("Unit test appears to have external dependencies".to_string());
+                }
+            }
+            TestType::Integration => {
+                if test.code.lines().count() < 5 {
+                    result = result.with_warning("Integration test seems too simple".to_string());
+                }
+            }
+            TestType::E2E => {
+                if !test.code.contains("async") && self.framework != TestFramework::RustNative {
+                    result = result.with_warning("E2E tests usually involve async operations".to_string());
+                }
+            }
+        }
+
+        result
+    }
+
+    /// Calculate quality score for a test
+    pub fn calculate_test_quality(&self, test: &GeneratedTest) -> f32 {
+        let mut score: f32 = 100.0;
+
+        // Check for assertions
+        let assertion_count = test.code.matches("expect").count()
+            + test.code.matches("assert").count();
+
+        if assertion_count == 0 {
+            score -= 50.0;
+        } else if assertion_count == 1 {
+            score -= 10.0;
+        }
+
+        // Check for test structure
+        if !test.code.contains("describe") && !test.code.contains("mod tests") {
+            score -= 15.0;
+        }
+
+        // Check for setup/teardown
+        if test.code.contains("beforeEach") || test.code.contains("afterEach") {
+            score += 10.0;
+        }
+
+        // Check for mocking/stubbing
+        if test.code.contains("mock") || test.code.contains("spy") || test.code.contains("stub") {
+            score += 15.0;
+        }
+
+        // Check for descriptive test name
+        if test.name.len() < 10 {
+            score -= 10.0;
+        }
+
+        score.max(0.0).min(100.0)
     }
 
     // JavaScript/TypeScript test generation
@@ -141,44 +242,56 @@ impl TestGenerator {
             SymbolKind::Function | SymbolKind::Method => {
                 // Happy path test
                 tests.push(GeneratedTest {
-                    name: format!("{} - should work with valid input", symbol.name),
+                    name: format!("{} - should return expected result with valid input", symbol.name),
                     code: format!(
-                        "{}\n\ndescribe('{}', () => {{\n  it('should work with valid input', () => {{\n    const result = {}();\n    expect(result).toBeDefined();\n  }});\n}});",
-                        import_stmt, symbol.name, symbol.name
+                        "{}\nimport {{ {} }} from './{}';  \n\ndescribe('{}', () => {{\n  it('should return expected result with valid input', () => {{\n    const result = {}();\n    expect(result).toBeDefined();\n    expect(result).not.toBeNull();\n  }});\n}});",
+                        import_stmt, symbol.name, symbol.name.to_lowercase(), symbol.name, symbol.name
                     ),
                     framework: self.framework,
                     test_type: TestType::Unit,
                 });
 
-                // Error handling test
+                // Error handling test with specific error types
                 tests.push(GeneratedTest {
-                    name: format!("{} - should handle errors gracefully", symbol.name),
+                    name: format!("{} - should throw error with invalid input", symbol.name),
                     code: format!(
-                        "{}\n\ndescribe('{}', () => {{\n  it('should handle errors gracefully', () => {{\n    expect(() => {}(null)).toThrow();\n  }});\n}});",
-                        import_stmt, symbol.name, symbol.name
+                        "{}\nimport {{ {} }} from './{}';  \n\ndescribe('{}', () => {{\n  it('should throw error with invalid input', () => {{\n    expect(() => {}(null)).toThrow();\n    expect(() => {}(undefined)).toThrow(TypeError);\n  }});\n}});",
+                        import_stmt, symbol.name, symbol.name.to_lowercase(), symbol.name, symbol.name, symbol.name
+                    ),
+                    framework: self.framework,
+                    test_type: TestType::Unit,
+                });
+
+                // Async test if applicable
+                tests.push(GeneratedTest {
+                    name: format!("{} - should handle async operations", symbol.name),
+                    code: format!(
+                        "{}\nimport {{ {} }} from './{}';  \n\ndescribe('{}', () => {{\n  it('should handle async operations', async () => {{\n    const result = await {}();\n    expect(result).toBeDefined();\n  }});\n}});",
+                        import_stmt, symbol.name, symbol.name.to_lowercase(), symbol.name, symbol.name
                     ),
                     framework: self.framework,
                     test_type: TestType::Unit,
                 });
             }
             SymbolKind::Class => {
-                // Constructor test
+                // Constructor test with setup
                 tests.push(GeneratedTest {
-                    name: format!("{} - should instantiate correctly", symbol.name),
+                    name: format!("{} - should instantiate with valid configuration", symbol.name),
                     code: format!(
-                        "{}\n\ndescribe('{}', () => {{\n  it('should instantiate correctly', () => {{\n    const instance = new {}();\n    expect(instance).toBeInstanceOf({});\n  }});\n}});",
-                        import_stmt, symbol.name, symbol.name, symbol.name
+                        "{}\nimport {{ {} }} from './{}';  \n\ndescribe('{}', () => {{\n  let instance: {};\n\n  beforeEach(() => {{\n    instance = new {}();\n  }});\n\n  afterEach(() => {{\n    // Cleanup\n  }});\n\n  it('should instantiate with valid configuration', () => {{\n    expect(instance).toBeInstanceOf({});\n    expect(instance).toBeDefined();\n  }});\n}});",
+                        import_stmt, symbol.name, symbol.name.to_lowercase(), symbol.name,
+                        symbol.name, symbol.name, symbol.name
                     ),
                     framework: self.framework,
                     test_type: TestType::Unit,
                 });
 
-                // Method test
+                // Method test with mocking
                 tests.push(GeneratedTest {
-                    name: format!("{} - should call methods correctly", symbol.name),
+                    name: format!("{} - should call methods with correct arguments", symbol.name),
                     code: format!(
-                        "{}\n\ndescribe('{}', () => {{\n  it('should call methods correctly', () => {{\n    const instance = new {}();\n    // Test method calls\n  }});\n}});",
-                        import_stmt, symbol.name, symbol.name
+                        "{}\nimport {{ {} }} from './{}';  \n\ndescribe('{}', () => {{\n  it('should call methods with correct arguments', () => {{\n    const instance = new {}();\n    const spy = jest.spyOn(instance, 'method');\n    \n    instance.method();\n    \n    expect(spy).toHaveBeenCalled();\n    expect(spy).toHaveBeenCalledTimes(1);\n  }});\n}});",
+                        import_stmt, symbol.name, symbol.name.to_lowercase(), symbol.name, symbol.name
                     ),
                     framework: self.framework,
                     test_type: TestType::Unit,
@@ -187,10 +300,10 @@ impl TestGenerator {
             _ => {
                 // Generic test
                 tests.push(GeneratedTest {
-                    name: format!("{} - basic test", symbol.name),
+                    name: format!("{} - should be defined and exportable", symbol.name),
                     code: format!(
-                        "{}\n\ndescribe('{}', () => {{\n  it('should exist', () => {{\n    expect({}).toBeDefined();\n  }});\n}});",
-                        import_stmt, symbol.name, symbol.name
+                        "{}\nimport {{ {} }} from './{}';  \n\ndescribe('{}', () => {{\n  it('should be defined and exportable', () => {{\n    expect({}).toBeDefined();\n    expect(typeof {}).not.toBe('undefined');\n  }});\n}});",
+                        import_stmt, symbol.name, symbol.name.to_lowercase(), symbol.name, symbol.name, symbol.name
                     ),
                     framework: self.framework,
                     test_type: TestType::Unit,

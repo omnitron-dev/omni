@@ -7,6 +7,7 @@ use meridian::indexer::CodeIndexer;
 use meridian::mcp::handlers::ToolHandlers;
 use meridian::memory::MemorySystem;
 use meridian::session::SessionManager;
+use meridian::specs::SpecificationManager;
 use meridian::storage::rocksdb_storage::RocksDBStorage;
 use serde_json::json;
 use std::sync::Arc;
@@ -43,12 +44,18 @@ async fn create_test_environment() -> (ToolHandlers, TempDir) {
     // Create doc indexer
     let doc_indexer = Arc::new(DocIndexer::new());
 
+    // Create spec manager
+    let specs_path = temp_dir.path().join("specs");
+    std::fs::create_dir_all(&specs_path).unwrap();
+    let spec_manager = Arc::new(RwLock::new(SpecificationManager::new(specs_path)));
+
     let handlers = ToolHandlers::new(
         memory_system,
         context_manager,
         indexer,
         session_manager,
         doc_indexer,
+        spec_manager,
     );
 
     (handlers, temp_dir)

@@ -10,6 +10,7 @@ use meridian::indexer::CodeIndexer;
 use meridian::memory::MemorySystem;
 use meridian::mcp::ToolHandlers;
 use meridian::session::SessionManager;
+use meridian::specs::SpecificationManager;
 use meridian::types::*;
 use serde_json::json;
 use std::sync::Arc;
@@ -37,8 +38,12 @@ fn create_test_handlers(storage: std::sync::Arc<dyn meridian::storage::Storage>)
     let memory_system = MemorySystem::new(storage.clone(), memory_config).unwrap();
     let context_manager = ContextManager::new(LLMAdapter::claude3());
     let indexer = CodeIndexer::new(storage.clone(), index_config).unwrap();
-    let session_manager = SessionManager::new(storage, session_config).unwrap();
+    let session_manager = SessionManager::new(storage.clone(), session_config).unwrap();
     let doc_indexer = DocIndexer::new();
+    // Create a temporary specs directory for testing
+    let specs_path = std::env::temp_dir().join("meridian_test_specs");
+    std::fs::create_dir_all(&specs_path).unwrap();
+    let spec_manager = SpecificationManager::new(specs_path);
 
     ToolHandlers::new(
         Arc::new(tokio::sync::RwLock::new(memory_system)),
@@ -46,6 +51,7 @@ fn create_test_handlers(storage: std::sync::Arc<dyn meridian::storage::Storage>)
         Arc::new(tokio::sync::RwLock::new(indexer)),
         Arc::new(session_manager),
         Arc::new(doc_indexer),
+        Arc::new(tokio::sync::RwLock::new(spec_manager)),
     )
 }
 

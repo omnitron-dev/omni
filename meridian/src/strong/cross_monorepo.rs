@@ -176,16 +176,20 @@ impl CrossMonorepoAccess {
         project: &ProjectRegistry,
         symbol_filter: Option<&str>,
     ) -> Result<Vec<SymbolDoc>> {
-        // This is a simplified implementation
-        // In a real implementation, this would use the indexer to extract symbols
+        // This is a simplified implementation that uses placeholder data
+        // In a full implementation, this would:
+        // 1. Create a proper CodeIndexer with storage and config
+        // 2. Index the project
+        // 3. Search for symbols
+        // For now, we return basic placeholder data
+
         let mut symbols = Vec::new();
 
-        // For now, return a placeholder
         if let Some(symbol_name) = symbol_filter {
             symbols.push(SymbolDoc {
                 name: symbol_name.to_string(),
                 symbol_type: "unknown".to_string(),
-                documentation: format!("Documentation for {}", symbol_name),
+                documentation: format!("Documentation for {} (from project {})", symbol_name, project.identity.id),
                 file_path: project.current_path.display().to_string(),
                 line: 1,
             });
@@ -228,11 +232,10 @@ impl CrossMonorepoAccess {
         symbol_id: &str,
         include_tests: bool,
     ) -> Result<Vec<Usage>> {
-        // This is a simplified implementation
-        // In a real implementation, this would use the indexer and search
+        // Simplified implementation - returns placeholder data
+        // In a full implementation, this would use the indexer
         let mut usages = Vec::new();
 
-        // Placeholder implementation
         if include_tests {
             usages.push(Usage {
                 project_id: project.identity.full_id.clone(),

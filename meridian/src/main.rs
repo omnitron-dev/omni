@@ -387,103 +387,70 @@ async fn main() -> Result<()> {
 
 
 async fn handle_server_command(command: ServerCommands) -> Result<()> {
-    use meridian::daemon::{
-        start_daemon, stop_daemon, restart_daemon, show_logs,
-        DaemonOptions,
+    use meridian::global::{
+        start_global_daemon, stop_global_daemon, restart_global_daemon,
+        get_global_status, GlobalServerConfig,
     };
 
     match command {
         ServerCommands::Start {
-            transport,
-            http_port,
-            log_level,
-            project,
+            transport: _,
+            http_port: _,
+            log_level: _,
+            project: _,
             foreground,
         } => {
-            let opts = DaemonOptions {
-                transport,
-                http_port,
-                log_level,
-                project,
-            };
+            // Global server doesn't use transport/http_port/log_level/project from MCP daemon
+            // It has its own configuration
+            let config = GlobalServerConfig::default();
 
-            if foreground {
-                info!("Starting MCP server in foreground mode...");
-                println!("✓ Starting MCP server in foreground mode");
-                println!("Press Ctrl+C to stop");
-                println!("\nNote: For foreground mode, please use: meridian serve --stdio");
-                return Ok(());
-            } else {
-                start_daemon(opts)?;
+            start_global_daemon(config, foreground).await?;
+
+            if !foreground {
+                println!("✓ Global server started successfully");
+                println!("  IPC endpoint: http://{}:{}", "localhost", 7878);
+                println!("  Log file: {:?}", meridian::global::daemon::get_global_log_file());
             }
         }
         ServerCommands::Stop { force } => {
-            stop_daemon(force)?;
+            stop_global_daemon(force)?;
         }
         ServerCommands::Restart {
-            transport,
-            http_port,
-            log_level,
-            project,
+            transport: _,
+            http_port: _,
+            log_level: _,
+            project: _,
         } => {
-            let opts = if transport.is_some() || http_port.is_some() || log_level.is_some() || project.is_some() {
-                Some(DaemonOptions {
-                    transport: transport.unwrap_or_else(|| "stdio".to_string()),
-                    http_port,
-                    log_level,
-                    project,
-                })
-            } else {
-                None
-            };
-
-            restart_daemon(opts)?;
+            restart_global_daemon(None).await?;
+            println!("✓ Global server restarted successfully");
         }
         ServerCommands::Logs { follow, lines, level } => {
+            // Show global server logs
+            use meridian::daemon::show_logs;
             show_logs(follow, lines, level)?;
         }
         ServerCommands::Status => {
             use meridian::config::get_meridian_home;
             use std::fs;
 
-            println!("Meridian MCP Server Status");
-            println!("============================");
+            println!("Meridian Global Server Status");
+            println!("==============================");
             println!();
 
-            let daemon_status = check_daemon_status();
+            let global_status = get_global_status();
 
-            println!("Daemon Status:");
-            if daemon_status.running {
-                println!("  Status: ✓ Running ({} process{})",
-                    daemon_status.processes.len(),
-                    if daemon_status.processes.len() > 1 { "es" } else { "" }
-                );
+            println!("Global Server:");
+            if global_status.running {
+                println!("  Status: ✓ Running (PID: {})", global_status.pid.unwrap_or(0));
 
-                for (i, proc) in daemon_status.processes.iter().enumerate() {
-                    if i > 0 {
-                        println!();
-                    }
-                    println!("  Process #{}:", i + 1);
-                    println!("    PID: {}", proc.pid);
-                    println!("    Uptime: {}", format_uptime(proc.start_time));
-                    println!("    Memory: {:.2} MB", proc.memory_kb as f64 / 1024.0);
-                    println!("    CPU: {:.1}%", proc.cpu_usage);
-
-                    if proc.command.len() > 80 {
-                        println!("    Command: {}...", &proc.command[..77]);
-                    } else {
-                        println!("    Command: {}", proc.command);
-                    }
-                }
-
-                let log_file = get_meridian_home().join("logs").join("meridian.log");
-                println!();
+                let log_file = meridian::global::daemon::get_global_log_file();
                 println!("  Log File: {}", log_file.display());
                 if log_file.exists() {
                     if let Ok(metadata) = fs::metadata(&log_file) {
                         println!("  Log Size: {}", format_size(metadata.len()));
                     }
                 }
+                println!("  IPC Endpoint: http://localhost:7878");
             } else {
                 println!("  Status: ✗ Not running");
             }
@@ -555,8 +522,8 @@ async fn handle_server_command(command: ServerCommands) -> Result<()> {
             if !data_exists {
                 println!("⚠ Server not initialized.");
                 println!("Run 'meridian server start' to initialize and start the server.");
-            } else if daemon_status.running {
-                println!("✓ Server is running and operational.");
+            } else if global_status.running {
+                println!("✓ Global server is running and operational.");
             } else {
                 println!("⚠ Server infrastructure is present but daemon is not running.");
                 println!("Run 'meridian server start' to start the daemon.");

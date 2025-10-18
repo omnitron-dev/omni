@@ -5,16 +5,17 @@
 //! - Project registry management
 //! - Global indexing
 //! - IPC server for local MCP servers
-//! - File watching (future)
+//! - File watching for auto-reindexing
 
 use super::ipc::IpcServer;
 use super::registry::ProjectRegistryManager;
 use super::storage::GlobalStorage;
+use super::watcher::{GlobalFileWatcher, WatcherConfig};
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{info, warn};
+use tracing::{info, warn, debug};
 
 /// Server status
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,6 +40,12 @@ pub struct GlobalServerConfig {
 
     /// Auto-start on first request
     pub auto_start: bool,
+
+    /// Enable file watching
+    pub watch_enabled: bool,
+
+    /// File watcher configuration (optional)
+    pub watcher_config: Option<WatcherConfig>,
 }
 
 impl Default for GlobalServerConfig {
@@ -51,6 +58,8 @@ impl Default for GlobalServerConfig {
             host: "localhost".to_string(),
             port: 7878,
             auto_start: true,
+            watch_enabled: true,
+            watcher_config: Some(WatcherConfig::default()),
         }
     }
 }
@@ -61,6 +70,7 @@ pub struct GlobalServer {
     storage: Arc<GlobalStorage>,
     registry_manager: Arc<ProjectRegistryManager>,
     ipc_server: Arc<RwLock<Option<IpcServer>>>,
+    file_watcher: Arc<RwLock<Option<GlobalFileWatcher>>>,
     status: Arc<RwLock<ServerStatus>>,
 }
 
@@ -86,6 +96,7 @@ impl GlobalServer {
             storage,
             registry_manager,
             ipc_server: Arc::new(RwLock::new(None)),
+            file_watcher: Arc::new(RwLock::new(None)),
             status: Arc::new(RwLock::new(ServerStatus::Stopped)),
         })
     }
@@ -122,6 +133,41 @@ impl GlobalServer {
             *ipc_server = Some(ipc);
         }
 
+        // Start file watcher if enabled
+        if self.config.watch_enabled {
+            let watcher_config = self.config.watcher_config.clone()
+                .unwrap_or_default();
+
+            info!("Starting file watcher...");
+            let watcher = GlobalFileWatcher::new(
+                watcher_config,
+                Arc::clone(&self.registry_manager),
+            );
+
+            // Set up change callback
+            // TODO: Implement actual re-indexing logic
+            watcher
+                .set_change_callback(Arc::new(move |event| {
+                    debug!(
+                        "File changed: {:?} (kind: {:?})",
+                        event.path, event.kind
+                    );
+                    // In the future, trigger re-indexing here
+                    // For now, just log the change
+                }))
+                .await;
+
+            // Start watching
+            if let Err(e) = watcher.start().await {
+                warn!("Failed to start file watcher: {}", e);
+            } else {
+                info!("File watcher started");
+            }
+
+            let mut file_watcher = self.file_watcher.write().await;
+            *file_watcher = Some(watcher);
+        }
+
         {
             let mut status = self.status.write().await;
             *status = ServerStatus::Running;
@@ -147,6 +193,12 @@ impl GlobalServer {
         drop(status);
 
         info!("Stopping global server...");
+
+        // Stop file watcher
+        if let Some(watcher) = self.file_watcher.write().await.take() {
+            info!("Stopping file watcher...");
+            watcher.stop().await?;
+        }
 
         // Stop IPC server
         if let Some(ipc) = self.ipc_server.write().await.take() {
@@ -189,6 +241,17 @@ impl GlobalServer {
     pub fn storage(&self) -> Arc<GlobalStorage> {
         Arc::clone(&self.storage)
     }
+
+    /// Get file watcher statistics
+    pub async fn get_watcher_stats(&self) -> Option<super::watcher::WatcherStats> {
+        let watcher = self.file_watcher.read().await;
+        if let Some(ref w) = *watcher {
+            Some(w.get_stats().await)
+        } else {
+            None
+        }
+    }
+
 }
 
 #[cfg(test)]
@@ -204,6 +267,8 @@ mod tests {
             host: "127.0.0.1".to_string(),
             port: 7879, // Different port for testing
             auto_start: false,
+            watch_enabled: false,
+            watcher_config: None,
         };
 
         let server = GlobalServer::new(config).await.unwrap();
@@ -225,6 +290,8 @@ mod tests {
             host: "127.0.0.1".to_string(),
             port: 7880,
             auto_start: false,
+            watch_enabled: false,
+            watcher_config: None,
         };
 
         let server = GlobalServer::new(config).await.unwrap();
@@ -244,6 +311,8 @@ mod tests {
             host: "127.0.0.1".to_string(),
             port: 7881,
             auto_start: false,
+            watch_enabled: false,
+            watcher_config: None,
         };
 
         let server = GlobalServer::new(config).await.unwrap();

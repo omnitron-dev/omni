@@ -467,13 +467,14 @@ async fn test_mcp_35_tools_available() {
     let result = response.result.unwrap();
     let tools = result.get("tools").unwrap().as_array().unwrap();
 
-    // Verify we have 35 tools as implemented
+    // Verify we have 49 tools as implemented
     // Original 29: (Memory:4 + Context:3 + Learning:3 + Attention:2 + Code:4 + Docs:2 + History:2 + Session:4 + Analysis:2 + Monorepo:3)
-    // Phase 3 Strong Tools: +6 (Catalog:3 + Docs:3)
+    // Specification Tools: +5 (specs.list, specs.get_structure, specs.get_section, specs.search, specs.validate)
+    // Phase 3-5 Strong Tools: +15 (Catalog:3 + Docs:3 + Examples:2 + Tests:2 + Global:3 + External:2)
     assert_eq!(
         tools.len(),
-        35,
-        "Meridian should provide exactly 35 MCP tools (29 original + 6 strong tools)"
+        49,
+        "Meridian should provide exactly 49 MCP tools (29 core + 5 specs + 15 strong tools)"
     );
 
     // Verify each tool is unique

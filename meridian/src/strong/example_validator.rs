@@ -3,8 +3,46 @@
 //! This module provides validation capabilities for code examples,
 //! checking syntax and attempting compilation/interpretation validation.
 
-use crate::strong::example_generator::ValidationResult;
+use crate::strong::example_generator::{Example, ValidationResult};
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
+
+/// Quality score for code examples
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QualityScore {
+    pub overall_score: f32,
+    pub syntax_score: f32,
+    pub completeness_score: f32,
+    pub best_practices_score: f32,
+    pub documentation_score: f32,
+}
+
+impl QualityScore {
+    pub fn new() -> Self {
+        Self {
+            overall_score: 0.0,
+            syntax_score: 0.0,
+            completeness_score: 0.0,
+            best_practices_score: 0.0,
+            documentation_score: 0.0,
+        }
+    }
+
+    pub fn calculate_overall(&mut self) {
+        self.overall_score = (
+            self.syntax_score * 0.4 +
+            self.completeness_score * 0.3 +
+            self.best_practices_score * 0.2 +
+            self.documentation_score * 0.1
+        ).min(100.0).max(0.0);
+    }
+}
+
+impl Default for QualityScore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// Validator for code examples
 pub struct ExampleValidator {
@@ -53,6 +91,151 @@ impl ExampleValidator {
                 self.language
             ))),
         }
+    }
+
+    /// Comprehensive validation with quality scoring
+    pub fn validate_with_quality(&self, example: &Example) -> Result<(ValidationResult, QualityScore)> {
+        let syntax_result = self.validate_syntax(&example.code)?;
+        let compilation_result = self.validate_compilation(&example.code)?;
+
+        // Merge results
+        let mut result = syntax_result;
+        result.errors.extend(compilation_result.errors);
+        result.warnings.extend(compilation_result.warnings);
+        result.valid = result.valid && compilation_result.valid;
+
+        // Calculate quality score
+        let quality = self.calculate_quality_score(example, &result);
+
+        Ok((result, quality))
+    }
+
+    /// Calculate comprehensive quality score
+    fn calculate_quality_score(&self, example: &Example, validation: &ValidationResult) -> QualityScore {
+        let mut score = QualityScore::new();
+
+        // Syntax score (40%)
+        score.syntax_score = if validation.valid {
+            100.0
+        } else {
+            let error_penalty = (validation.errors.len() as f32 * 20.0).min(100.0);
+            (100.0 - error_penalty).max(0.0)
+        };
+
+        // Completeness score (30%)
+        score.completeness_score = self.calculate_completeness_score(&example.code);
+
+        // Best practices score (20%)
+        score.best_practices_score = self.calculate_best_practices_score(&example.code);
+
+        // Documentation score (10%)
+        score.documentation_score = self.calculate_documentation_score(example);
+
+        score.calculate_overall();
+        score
+    }
+
+    fn calculate_completeness_score(&self, code: &str) -> f32 {
+        let mut score: f32 = 100.0;
+        let lines = code.lines().count();
+
+        // Too short
+        if lines < 3 {
+            score -= 50.0;
+        } else if lines < 5 {
+            score -= 25.0;
+        }
+
+        // Check for essential elements
+        match self.language.as_str() {
+            "typescript" | "javascript" => {
+                if !code.contains("const") && !code.contains("let") && !code.contains("var") {
+                    score -= 15.0;
+                }
+                if code.contains("function") && !code.contains("return") && !code.contains("void") {
+                    score -= 10.0;
+                }
+            }
+            "rust" => {
+                if code.contains("fn ") && !code.contains("let") && code.lines().count() > 2 {
+                    score -= 10.0;
+                }
+            }
+            "python" => {
+                if code.contains("def ") && !code.contains("return") && code.lines().count() > 3 {
+                    score -= 10.0;
+                }
+            }
+            _ => {}
+        }
+
+        score.max(0.0_f32)
+    }
+
+    fn calculate_best_practices_score(&self, code: &str) -> f32 {
+        let mut score: f32 = 100.0;
+
+        match self.language.as_str() {
+            "typescript" | "javascript" => {
+                // Prefer const over let/var
+                if code.contains("var ") {
+                    score -= 15.0;
+                }
+                // Check for proper async/await usage
+                if code.contains("await ") && !code.contains("async ") {
+                    score -= 30.0;
+                }
+                // Arrow functions are modern
+                if code.contains("function(") {
+                    score -= 5.0;
+                }
+            }
+            "rust" => {
+                // Avoid unwrap() in production code
+                if code.contains("unwrap()") {
+                    score -= 20.0;
+                }
+                // Prefer ? operator
+                if code.contains("Result") && !code.contains('?') {
+                    score -= 10.0;
+                }
+            }
+            "python" => {
+                // Use context managers
+                if code.contains("open(") && !code.contains("with ") {
+                    score -= 15.0;
+                }
+                // Type hints are good
+                if code.contains("def ") && !code.contains(':') {
+                    score -= 10.0;
+                }
+            }
+            _ => {}
+        }
+
+        score.max(0.0_f32)
+    }
+
+    fn calculate_documentation_score(&self, example: &Example) -> f32 {
+        let mut score: f32 = 100.0;
+
+        // Check description quality
+        if example.description.is_empty() {
+            score -= 50.0;
+        } else if example.description.len() < 20 {
+            score -= 25.0;
+        }
+
+        // Check for code comments
+        let has_comments = example.code.contains("//")
+            || example.code.contains("/*")
+            || example.code.contains('#');
+
+        if !has_comments {
+            score -= 30.0;
+        }
+
+        score.max(0.0_f32)
     }
 
     // JavaScript/TypeScript validation

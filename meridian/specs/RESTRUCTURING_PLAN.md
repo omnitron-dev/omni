@@ -113,13 +113,10 @@ specs/
 │   │   └── phase-8-production.md
 │   └── TESTING.md                     # NEW - Testing strategy details
 │
-├── schemas/                           # NEW - Single source of truth
-│   ├── rocksdb-schema.md             # NEW - Consolidated schema
-│   ├── mcp-tools-catalog.md          # NEW - All 57 tools
-│   └── data-structures.md            # NEW - Type definitions
-│
-└── archive/                           # NEW - Old versions
-    └── v1.0/                          # If needed for migration
+└── schemas/                           # NEW - Single source of truth
+    ├── rocksdb-schema.md             # NEW - Consolidated schema
+    ├── mcp-tools-catalog.md          # NEW - All 57 tools
+    └── data-structures.md            # NEW - Type definitions
 ```
 
 **Pros**:
@@ -158,9 +155,7 @@ specs/
 │
 ├── schema-rocksdb.md                  # NEW
 ├── schema-mcp-tools.md                # NEW
-├── schema-data-structures.md          # NEW
-│
-└── archive-v1/                        # Old versions
+└── schema-data-structures.md          # NEW
 ```
 
 **Pros**:

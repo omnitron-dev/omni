@@ -1,80 +1,135 @@
 # Meridian Specifications Index
 
 **Last Updated**: October 18, 2025
-**Total Specifications**: 4
-**Total Lines**: 8,397
-**Total MCP Tools**: 57
+**Total Specifications**: 4 core + 6 schemas + 5 guides + 2 master specs = 17
+**Total Lines**: 17,189 (all specifications)
+**Total MCP Tools**: 89 (57 core + 12 semantic links + 20 spec management)
 
 ---
 
 ## Quick Navigation
 
+### Master Specifications
+
+1. **[Specs/Docs Separation & Semantic Links](./SPECS_DOCS_SEPARATION.md)** - v1.0.0
+   - **Status**: 📋 **Master Design Specification**
+   - **Lines**: 1,526
+   - **Purpose**: Unified system for specifications, documentation, and semantic linking
+   - **MCP Tools**: 32 total (20 spec management + 12 semantic links)
+   - **Key Topics**: Specs vs docs separation, task management, progress tracking, semantic links, token efficiency (90-95% reduction)
+   - **Components**:
+     - Directory reorganization (specs/ and docs/)
+     - Spec management tools (20 MCP tools)
+     - Semantic linking system (12 MCP tools)
+     - Self-improvement process
+   - **Quick Summary**: [SEMANTIC_LINKS_SUMMARY.md](./SEMANTIC_LINKS_SUMMARY.md)
+
 ### Core Specifications
 
-1. **[Core Specification](./spec.md)** - Production Specification
+2. **[Core Specification](./spec.md)** - Production Specification
    - **Status**: ✅ **100% Implemented**
    - **Lines**: 2,134
-   - **Language**: Russian | **English**: [spec-en.md](./spec-en.md)
    - **MCP Tools**: 29 (all production-ready)
    - **Test Coverage**: 431/431 tests passing (100%)
    - **Key Topics**: Cognitive memory system, MCP protocol, core tools, session management
 
-2. **[Strong Tools Specification](./strong-tools-spec.md)** - v1.0.0
+3. **[Strong Tools Specification](./strong-tools-spec.md)** - v1.0.0
    - **Status**: ⚠️ **Design (Partially Implemented)**
    - **Lines**: 2,519
-   - **Language**: Russian | **English**: [strong-tools-spec-en.md](./strong-tools-spec-en.md)
    - **MCP Tools**: 23 (documentation, examples, tests, agents)
    - **Key Topics**: Documentation generation, example/test generation, agent system, auto-update
 
-3. **[Global Architecture Specification](./global-architecture-spec.md)** - v2.0.0
+4. **[Global Architecture Specification](./global-architecture-spec.md)** - v2.0.0
    - **Status**: ⚠️ **Design (Partially Implemented)**
    - **Lines**: 2,140
-   - **Language**: Russian | **English**: [global-architecture-spec-en.md](./global-architecture-spec-en.md)
    - **MCP Tools**: 5 (global operations)
    - **Key Topics**: Multi-monorepo, project registry, cross-repo access, two-tier storage
 
-4. **[Implementation Roadmap](./roadmap.md)** - v1.0.0
+5. **[Implementation Roadmap](./roadmap.md)** - v1.0.0
    - **Status**: ✅ **Active Development Tracking**
    - **Lines**: 1,264
-   - **Language**: English
    - **Timeline**: 16 weeks (78% complete)
    - **Key Topics**: Phased implementation, testing strategy, progress tracking
 
 ### Supporting Documents
 
-5. **[Specification Analysis](./SPEC_ANALYSIS.md)** - Current
+6. **[Specification Analysis](./SPEC_ANALYSIS.md)** - Current
    - **Status**: ✅ **Analysis Complete**
    - **Purpose**: Comprehensive analysis of all specifications
    - **Key Findings**: Quality score 94/100, recommendations for improvement
 
-6. **[Changelog](./CHANGELOG.md)** - Current
+7. **[Semantic Links Summary](./SEMANTIC_LINKS_SUMMARY.md)** - v1.0.0
+   - **Status**: 📋 **Quick Reference**
+   - **Lines**: 583
+   - **Purpose**: Quick reference for semantic linking system
+   - **Full Spec**: [SPECS_DOCS_SEPARATION.md](./SPECS_DOCS_SEPARATION.md)
+   - **Key Topics**: Link types, MCP tools overview, token efficiency, usage examples
+
+8. **[Changelog](./CHANGELOG.md)** - Current
    - **Status**: ✅ **Active Tracking**
    - **Purpose**: Version history and release notes
    - **Latest**: v2.0.0 (October 18, 2025)
 
-7. **[Restructuring Plan](./RESTRUCTURING_PLAN.md)** - Planned
+9. **[Restructuring Plan](./RESTRUCTURING_PLAN.md)** - Planned
    - **Status**: ⏳ **To Be Created**
    - **Purpose**: Plan for reorganizing specification structure (if needed)
 
+### Schema Documents
+
+10. **[RocksDB Schema](./schemas/rocksdb-schema.md)** - v2.0.0
+    - **Status**: ✅ **Production**
+    - **Purpose**: Single source of truth for all RocksDB schemas
+    - **Key Topics**: Global DB schema, local cache, v1.0→v2.0 migration
+
+11. **[Semantic Links Specification](./schemas/semantic-links-spec.md)** - v1.0.0
+    - **Status**: 📋 **Design Specification (Consolidated in SPECS_DOCS_SEPARATION.md)**
+    - **Purpose**: Semantic linking system across knowledge levels
+    - **MCP Tools**: 12 (links.*)
+    - **Key Topics**: Link types, RocksDB storage, extraction, annotation syntax, token efficiency
+    - **Note**: See [SPECS_DOCS_SEPARATION.md](./SPECS_DOCS_SEPARATION.md) for master specification
+
+12. **[MCP Tools Catalog](./schemas/mcp-tools-catalog.md)** - Current
+    - **Status**: ✅ **Active Tracking**
+    - **Purpose**: Complete catalog of all MCP tools
+    - **Total Tools**: 57 core + 12 links + 20 spec management = 89 tools
+
+13. **[Type Definitions](./schemas/type-definitions.md)** - Current
+    - **Status**: ✅ **Reference**
+    - **Purpose**: TypeScript/Rust type definitions for all data structures
+
+14. **[MCP Tools for Specification Management](./MCP_TOOLS_SPEC_MANAGEMENT.md)** - v1.0.0
+    - **Status**: 📋 **Design Specification (Consolidated in SPECS_DOCS_SEPARATION.md)**
+    - **Purpose**: Comprehensive MCP tools for working with specifications
+    - **MCP Tools**: 20 (task management, progress tracking, modification, querying)
+    - **Key Topics**: Task extraction, progress tracking, spec modification, duplicate detection
+    - **Token Efficiency**: 85-95% reduction vs manual spec reading
+    - **Quick Summary**: [MCP_TOOLS_SUMMARY.md](./MCP_TOOLS_SUMMARY.md)
+    - **Note**: See [SPECS_DOCS_SEPARATION.md](./SPECS_DOCS_SEPARATION.md) for master specification
+
+15. **[MCP Tools Summary](./MCP_TOOLS_SUMMARY.md)** - v1.0.0
+    - **Status**: 📋 **Quick Reference**
+    - **Purpose**: Quick overview of spec management tools
+    - **Full Spec**: [MCP_TOOLS_SPEC_MANAGEMENT.md](./MCP_TOOLS_SPEC_MANAGEMENT.md)
+
 ### User Guides
 
-8. **[Getting Started Guide](./guides/getting-started.md)**
-   - **Purpose**: Introduction to Meridian setup and basic usage
-   - **Topics**: Installation, configuration, first steps
+16. **[Getting Started Guide](./guides/getting-started.md)**
+    - **Purpose**: Introduction to Meridian setup and basic usage
+    - **Topics**: Installation, configuration, first steps
 
-9. **[Multi-Monorepo Setup Guide](./guides/multi-monorepo-setup.md)**
-   - **Purpose**: Configure Meridian for multiple codebases
-   - **Topics**: Project registration, global catalog, cross-repo access
+17. **[Multi-Monorepo Setup Guide](./guides/multi-monorepo-setup.md)**
+    - **Purpose**: Configure Meridian for multiple codebases
+    - **Topics**: Project registration, global catalog, cross-repo access
 
-10. **[MCP Integration Guide](./guides/mcp-integration.md)**
+18. **[MCP Integration Guide](./guides/mcp-integration.md)**
     - **Purpose**: Integrate Meridian with Claude Desktop
     - **Topics**: MCP setup, tool usage, troubleshooting
 
-11. **[Testing Guide](./guides/testing-guide.md)**
+19. **[Testing Guide](./guides/testing-guide.md)**
     - **Purpose**: Testing best practices and utilities
     - **Topics**: Test generation, validation, coverage
 
-12. **[Guides Overview](./guides/README.md)**
+20. **[Guides Overview](./guides/README.md)**
     - **Purpose**: Index of all user guides
     - **Topics**: Navigation and guide selection
 
@@ -110,11 +165,13 @@ graph TD
 
 | Specification | Current Version | Last Updated | Status | Test Coverage |
 |--------------|----------------|--------------|---------|---------------|
+| SPECS_DOCS_SEPARATION.md | v1.0.0 | Oct 18, 2025 | 📋 Master Design | N/A (master spec) |
 | spec.md | Production (≈v2.0.0) | Oct 18, 2025 | ✅ Implemented | 431/431 (100%) |
 | strong-tools-spec.md | v1.0.0 | Oct 18, 2025 | ⚠️ Design | Partial |
 | global-architecture-spec.md | v2.0.0 | Oct 18, 2025 | ⚠️ Design | Partial |
 | roadmap.md | v1.0.0 | Oct 18, 2025 | ✅ Active | N/A (tracking doc) |
 | SPEC_ANALYSIS.md | Current | Oct 18, 2025 | ✅ Complete | N/A (analysis doc) |
+| SEMANTIC_LINKS_SUMMARY.md | v1.0.0 | Oct 18, 2025 | 📋 Quick Reference | N/A (summary doc) |
 
 ---
 
@@ -150,6 +207,22 @@ graph TD
 **Cross-Monorepo Access**:
 - [global-architecture-spec.md](./global-architecture-spec.md) - Lines 923-1034: Cross-repo documentation
 - [global-architecture-spec.md](./global-architecture-spec.md) - Lines 1513-1711: Global MCP tools
+
+### 🔗 Semantic Linking System
+
+**Link Types & Storage**:
+- [schemas/semantic-links-spec.md](./schemas/semantic-links-spec.md) - Lines 1-200: Overview, link types, metadata
+- [schemas/semantic-links-spec.md](./schemas/semantic-links-spec.md) - Lines 200-350: RocksDB storage schema
+
+**Link Extraction**:
+- [schemas/semantic-links-spec.md](./schemas/semantic-links-spec.md) - Lines 350-500: Extraction methods, pipeline, parsers
+- [schemas/semantic-links-spec.md](./schemas/semantic-links-spec.md) - Lines 500-850: Annotation syntax (specs, code, docs, tests)
+
+**MCP Tools**:
+- [schemas/semantic-links-spec.md](./schemas/semantic-links-spec.md) - Lines 850-1300: 12 MCP tools for semantic links
+
+**Token Efficiency**:
+- [schemas/semantic-links-spec.md](./schemas/semantic-links-spec.md) - Lines 1300-1600: Token reduction strategies, progressive loading
 
 ### 📚 Documentation & Knowledge Management
 
@@ -300,7 +373,27 @@ graph TD
 55. `strong.external.get_documentation` - Get external docs
 56. `strong.external.find_usages` - Find usages across monorepos
 
-**Total**: 57 tools (29 implemented, 28 design/partial)
+### Semantic Links Tools (12) - 📋 Design
+
+**Link Discovery & Navigation (4)**:
+57. `links.find_implementation` - Find code implementing spec section
+58. `links.find_documentation` - Find documentation for code symbol
+59. `links.find_examples` - Find examples demonstrating feature
+60. `links.find_tests` - Find tests verifying code
+
+**Link Management (4)**:
+61. `links.create` - Create new semantic link
+62. `links.update` - Update existing link
+63. `links.delete` - Delete semantic link
+64. `links.validate` - Validate links are not broken
+
+**Link Analysis (4)**:
+65. `links.get_trace` - Trace spec → code → docs → examples → tests
+66. `links.find_orphans` - Find unlinked entities
+67. `links.search` - Search for links matching criteria
+68. `links.get_statistics` - Get semantic link statistics
+
+**Total**: 69 tools (29 implemented, 40 design/partial)
 
 ---
 
@@ -383,24 +476,24 @@ Knowledge management capabilities:
 **Getting Started**:
 1. [Getting Started Guide](./guides/getting-started.md) - Installation and basic setup
 2. [MCP Integration Guide](./guides/mcp-integration.md) - Connect with Claude Desktop
-3. [spec-en.md](./spec-en.md) or [spec.md](./spec.md) - Core concepts
+3. [spec.md](./spec.md) - Core concepts
 4. [roadmap.md](./roadmap.md) - Current implementation status
 
 ### For Multi-Monorepo Users
 
 **Advanced Setup**:
 1. [Multi-Monorepo Setup Guide](./guides/multi-monorepo-setup.md) - Configure multiple codebases
-2. [global-architecture-spec-en.md](./global-architecture-spec-en.md) or [global-architecture-spec.md](./global-architecture-spec.md) - Architecture details
+2. [global-architecture-spec.md](./global-architecture-spec.md) - Architecture details
 3. [MCP Integration Guide](./guides/mcp-integration.md) - Tool usage and troubleshooting
 
 ### For Developers
 
 **Reading Order**:
 1. Start with [roadmap.md](./roadmap.md) for current status
-2. Read [spec-en.md](./spec-en.md) or [spec.md](./spec.md) for core concepts
+2. Read [spec.md](./spec.md) for core concepts
 3. Check [SPEC_ANALYSIS.md](./SPEC_ANALYSIS.md) for quality insights
 4. Review [Testing Guide](./guides/testing-guide.md) for best practices
-5. Deep dive into [strong-tools-spec-en.md](./strong-tools-spec-en.md) or [global-architecture-spec-en.md](./global-architecture-spec-en.md) as needed
+5. Deep dive into [strong-tools-spec.md](./strong-tools-spec.md) as needed
 
 ### For Contributors
 
@@ -424,14 +517,14 @@ Knowledge management capabilities:
 
 | Metric | Value |
 |--------|-------|
-| Total Specifications | 4 core + 3 supporting + 5 guides |
-| Core Specs (Russian) | spec.md, strong-tools-spec.md, global-architecture-spec.md |
-| Core Specs (English) | spec-en.md, strong-tools-spec-en.md, global-architecture-spec-en.md |
-| Total Lines | 8,397 (Russian) + translations + guides |
-| Code Examples | 181 |
-| Diagrams | 4 |
-| MCP Tools Specified | 57 |
-| Languages | Russian (3 specs), English (3 specs + 1 roadmap + 2 docs + 5 guides) |
+| Total Specifications | 1 master + 4 core + 4 supporting + 5 schemas + 5 guides = 20 |
+| Master Specs | SPECS_DOCS_SEPARATION.md (unifies specs/docs separation + semantic links) |
+| Core Specs | spec.md, strong-tools-spec.md, global-architecture-spec.md, roadmap.md |
+| Total Lines | 17,189 (all specifications) |
+| Code Examples | 181+ |
+| Diagrams | 4+ |
+| MCP Tools Specified | 89 (57 core + 12 semantic links + 20 spec management) |
+| Languages | Russian (3 specs), English (all other specs, roadmap, docs, guides) |
 | Average Quality Score | 94/100 |
 
 ### Implementation Metrics
@@ -449,14 +542,13 @@ Knowledge management capabilities:
 
 | Specification | Lines | Sections | Code Examples | MCP Tools | Implementation |
 |--------------|-------|----------|---------------|-----------|----------------|
-| spec.md (Russian) | 2,134 | 11 | 42 | 29 | 100% ✅ |
-| spec-en.md (English) | ~2,134 | 11 | 42 | 29 | Translation ✅ |
-| strong-tools-spec.md (Russian) | 2,519 | 13 | 87 | 23 | Partial ⚠️ |
-| strong-tools-spec-en.md (English) | ~2,519 | 13 | 87 | 23 | Translation ✅ |
-| global-architecture-spec.md (Russian) | 2,140 | 17 | 52 | 5 | Partial ⚠️ |
-| global-architecture-spec-en.md (English) | ~2,140 | 17 | 52 | 5 | Translation ✅ |
+| SPECS_DOCS_SEPARATION.md | 1,526 | 15+ | 30+ | 32 | Master Design 📋 |
+| spec.md | ~2,134 | 11 | 42 | 29 | Translation ✅ |
+| strong-tools-spec.md | ~2,519 | 13 | 87 | 23 | Translation ✅ |
+| global-architecture-spec.md | ~2,140 | 17 | 52 | 5 | Translation ✅ |
 | roadmap.md | 1,264 | 11 | 0 | 57 | Active ✅ |
 | SPEC_ANALYSIS.md | 1,340 | 9 | 0 | 0 | Complete ✅ |
+| SEMANTIC_LINKS_SUMMARY.md | 583 | 8 | 15+ | 12 | Quick Ref 📋 |
 | CHANGELOG.md | - | - | 0 | 0 | Active ✅ |
 | guides/ (5 files) | - | - | - | - | Complete ✅ |
 
@@ -467,9 +559,9 @@ Knowledge management capabilities:
 ### Last Updated
 
 - **INDEX.md**: October 18, 2025 (updated with translations and guides)
-- **spec.md / spec-en.md**: October 18, 2025 (production status update)
-- **strong-tools-spec.md / strong-tools-spec-en.md**: October 18, 2025 (initial creation)
-- **global-architecture-spec.md / global-architecture-spec-en.md**: October 18, 2025 (initial creation)
+- **spec.md**: October 18, 2025 (production status update)
+- **strong-tools-spec.md**: October 18, 2025 (initial creation)
+- **global-architecture-spec.md.md**: October 18, 2025 (initial creation)
 - **roadmap.md**: October 18, 2025 (Phase 2 completion update)
 - **SPEC_ANALYSIS.md**: October 18, 2025 (analysis complete)
 - **CHANGELOG.md**: October 18, 2025 (created)
@@ -478,7 +570,6 @@ Knowledge management capabilities:
 ### Change Log
 
 **October 18, 2025**:
-- ✅ Added English translations for all core specs (spec-en.md, strong-tools-spec-en.md, global-architecture-spec-en.md)
 - ✅ Created CHANGELOG.md for version tracking
 - ✅ Created 5 user guides (getting-started, multi-monorepo-setup, mcp-integration, testing, guides/README)
 - ✅ Updated INDEX.md and README.md with new content

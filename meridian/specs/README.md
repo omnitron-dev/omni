@@ -9,21 +9,17 @@ Welcome to Meridian's specification ecosystem!
 
 ## Core Documents
 
-### Russian Specifications
+- **[SPECS_DOCS_SEPARATION.md](./SPECS_DOCS_SEPARATION.md)** - Master specification for specs/docs separation & semantic linking - v1.0.0 ⭐
 - **[spec.md](./spec.md)** - Core system specification - v2.0.0
 - **[strong-tools-spec.md](./strong-tools-spec.md)** - Documentation & knowledge management - v1.0.0
 - **[global-architecture-spec.md](./global-architecture-spec.md)** - Multi-monorepo architecture - v2.0.0
-
-### English Translations
-- **[spec-en.md](./spec-en.md)** - Core system specification (English) - v2.0.0
-- **[strong-tools-spec-en.md](./strong-tools-spec-en.md)** - Documentation & knowledge management (English) - v1.0.0
-- **[global-architecture-spec-en.md](./global-architecture-spec-en.md)** - Multi-monorepo architecture (English) - v2.0.0
-- **[roadmap.md](./roadmap.md)** - Implementation roadmap (English) - v1.0.0
+- **[roadmap.md](./roadmap.md)** - Implementation roadmap - v1.0.0
 
 ## Navigation
 
 - **[INDEX.md](./INDEX.md)** - Master index with quick navigation
 - **[SPEC_ANALYSIS.md](./SPEC_ANALYSIS.md)** - Quality analysis (94/100 overall)
+- **[SEMANTIC_LINKS_SUMMARY.md](./SEMANTIC_LINKS_SUMMARY.md)** - Quick reference for semantic linking
 - **[CHANGELOG.md](./CHANGELOG.md)** - Version history and release notes
 - **[RESTRUCTURING_PLAN.md](./RESTRUCTURING_PLAN.md)** - Organization plan
 
@@ -38,16 +34,19 @@ Welcome to Meridian's specification ecosystem!
 ## Quick Links
 
 ### By Topic
+- **Master Specifications**: [SPECS_DOCS_SEPARATION.md](./SPECS_DOCS_SEPARATION.md) (specs/docs separation + semantic links)
 - **Architecture**: [spec-en.md](./spec-en.md), [global-architecture-spec-en.md](./global-architecture-spec-en.md)
 - **Features**: [strong-tools-spec-en.md](./strong-tools-spec-en.md)
 - **Implementation**: [roadmap.md](./roadmap.md)
 - **Quality**: [SPEC_ANALYSIS.md](./SPEC_ANALYSIS.md)
+- **Semantic Links**: [SEMANTIC_LINKS_SUMMARY.md](./SEMANTIC_LINKS_SUMMARY.md) (quick reference)
 - **Getting Started**: [guides/getting-started.md](./guides/getting-started.md)
 - **MCP Integration**: [guides/mcp-integration.md](./guides/mcp-integration.md)
 - **Multi-Monorepo**: [guides/multi-monorepo-setup.md](./guides/multi-monorepo-setup.md)
 - **Testing**: [guides/testing-guide.md](./guides/testing-guide.md)
 
 ### By Status
+- 📋 **Master Design**: SPECS_DOCS_SEPARATION.md (v1.0.0), SEMANTIC_LINKS_SUMMARY.md (v1.0.0)
 - ✅ **Production-Ready**: spec.md/spec-en.md (v2.0.0), roadmap.md (phases 0-5, 8)
 - 📋 **Design**: strong-tools-spec.md/strong-tools-spec-en.md (v1.0.0), global-architecture-spec.md/global-architecture-spec-en.md (v2.0.0)
 - ✅ **User Guides**: All guides complete and available
@@ -63,7 +62,7 @@ Welcome to Meridian's specification ecosystem!
 ## Test Coverage
 
 - **Total Tests**: 319 (100% passing)
-- **MCP Tools**: 49 (29 core + 10 spec + 10 strong tools)
+- **MCP Tools**: 89 (57 core + 12 semantic links + 20 spec management)
 - **Implementation**: 78% complete (6 of 8 phases)
 
 ## Contributing
@@ -77,7 +76,7 @@ Welcome to Meridian's specification ecosystem!
 
 | Version | Date | Changes |
 |---------|------|---------|
-| v2.0.0 | Oct 18, 2025 | Global architecture, Strong Tools, 28 new MCP tools, English translations, User guides |
+| v2.0.0 | Oct 18, 2025 | Global architecture, Strong Tools, 89 MCP tools total, Specs/Docs Separation, Semantic Links, English translations, User guides |
 | v1.0.0 | Previous | Initial production release |
 
 **See [CHANGELOG.md](./CHANGELOG.md)** for detailed version history.

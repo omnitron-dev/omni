@@ -1,71 +1,73 @@
-# Meridian: Когнитивная система памяти для работы LLM с кодовыми базами
+# Meridian: Cognitive Memory System for LLM Codebase Navigation
 
-**Версия**: v2.0.0
-**Дата**: 17 октября 2025
-**Статус**: Production Specification
+**Version**: v2.0.0
+**Date**: October 17, 2025
+**Status**: Production Specification
 
-## Оглавление
+**Language**: 🇬🇧 English | [🇷🇺 Русский](./spec.md)
 
-1. [Введение](#введение)
-2. [Модель памяти](#модель-памяти)
-3. [Адаптивная архитектура](#адаптивная-архитектура)
-4. [Интеллектуальное управление контекстом](#интеллектуальное-управление-контекстом)
-5. [Компоненты системы](#компоненты-системы)
-6. [MCP-интерфейс](#mcp-интерфейс)
-7. [Стратегия экономии токенов](#стратегия-экономии-токенов)
-8. [Управление сессиями](#управление-сессиями)
-9. [Поддержка монорепозиториев](#поддержка-монорепозиториев)
-10. [Механизмы обучения и адаптации](#механизмы-обучения-и-адаптации)
-11. [План реализации](#план-реализации)
+## Table of Contents
 
-## Введение
+1. [Introduction](#introduction)
+2. [Memory Model](#memory-model)
+3. [Adaptive Architecture](#adaptive-architecture)
+4. [Intelligent Context Management](#intelligent-context-management)
+5. [System Components](#system-components)
+6. [MCP Interface](#mcp-interface)
+7. [Token Saving Strategy](#token-saving-strategy)
+8. [Session Management](#session-management)
+9. [Monorepo Support](#monorepo-support)
+10. [Learning and Adaptation Mechanisms](#learning-and-adaptation-mechanisms)
+11. [Implementation Roadmap](#implementation-roadmap)
 
-### Концепция: Cognitive Code Memory System
+## Introduction
 
-Meridian — это не традиционная система индексации, а **когнитивная система памяти** для LLM, которая имитирует человеческие механизмы запоминания и воспроизведения информации о коде. Система построена для радикальной экономии токенов при сохранении полного контекстного понимания проекта.
+### Concept: Cognitive Code Memory System
 
-### Ключевые принципы
+Meridian is not a traditional indexing system, but a **cognitive memory system** for LLMs that mimics human mechanisms of memorization and information recall about code. The system is built for radical token economy while maintaining complete contextual understanding of the project.
 
-1. **Memory-first** — построена вокруг модели памяти LLM, а не вокруг файловой системы
-2. **Attention-aware** — учитывает механизмы внимания (attention) конкретной LLM
-3. **Context-adaptive** — адаптируется к размеру контекстного окна модели (8k-200k токенов)
-4. **Learning system** — обучается на основе обратной связи от LLM
-5. **Compression-native** — встроенные механизмы сжатия контекста до 95%
-6. **Zero-dependency** — полная независимость от внешних проприетарных решений
+### Key Principles
 
-### Ключевые возможности
+1. **Memory-first** — built around the LLM memory model, not the filesystem
+2. **Attention-aware** — accounts for the attention mechanisms of specific LLMs
+3. **Context-adaptive** — adapts to the context window size of the model (8k-200k tokens)
+4. **Learning system** — learns based on feedback from the LLM
+5. **Compression-native** — built-in context compression mechanisms up to 95%
+6. **Zero-dependency** — complete independence from external proprietary solutions
 
-- **Четырехуровневая модель памяти** (episodic, working, semantic, procedural)
-- **Динамическое управление контекстом** с учетом ограничений конкретной модели
-- **Attention-based retrieval** на основе анализа паттернов внимания
-- **Incremental learning** через обратную связь от LLM
-- **Context compression** через абстракцию и суммаризацию
-- **Интеллектуальное забывание** для предотвращения переполнения памяти
+### Key Features
 
-### Связанные спецификации
+- **Four-level memory model** (episodic, working, semantic, procedural)
+- **Dynamic context management** accounting for specific model limitations
+- **Attention-based retrieval** based on attention pattern analysis
+- **Incremental learning** through LLM feedback
+- **Context compression** through abstraction and summarization
+- **Intelligent forgetting** to prevent memory overflow
 
-Данная спецификация является частью экосистемы документации Meridian:
+### Related Specifications
 
-- **[Strong Tools](./strong-tools-spec.md)**: Система генерации документации, примеров и тестов
-- **[Global Architecture](./global-architecture-spec.md)**: Архитектура поддержки множественных монорепозиториев
-- **[Roadmap](./roadmap.md)**: Статус реализации и план развития (English)
-- **[INDEX](./INDEX.md)**: Полный индекс всех спецификаций
+This specification is part of the Meridian documentation ecosystem:
 
-Для навигации по всем спецификациям см. [INDEX.md](./INDEX.md).
+- **[Strong Tools](./strong-tools-spec.md)**: Documentation, examples, and test generation system
+- **[Global Architecture](./global-architecture-spec.md)**: Multi-monorepo support architecture
+- **[Roadmap](./roadmap.md)**: Implementation status and development plan (English)
+- **[INDEX](./INDEX.md)**: Complete index of all specifications
 
-## Модель памяти
+For navigation through all specifications, see [INDEX.md](./INDEX.md).
 
-### Четыре типа памяти ✅
+## Memory Model
 
-**Статус: ✅ Полностью реализовано**
+### Four Types of Memory ✅
+
+**Status: ✅ Fully Implemented**
 
 ```rust
-/// ✅ Episodic Memory - память о конкретных задачах и их решениях
+/// ✅ Episodic Memory - memory of specific tasks and their solutions
 struct EpisodicMemory {
     episodes: Vec<TaskEpisode>,
     patterns_index: PatternIndex,
 
-    /// Запись эпизода работы над задачей
+    /// Record an episode of working on a task
     fn record_episode(&mut self, task: Task, context: Context, solution: Solution) {
         let episode = TaskEpisode {
             id: EpisodeId::new(),
@@ -83,7 +85,7 @@ struct EpisodicMemory {
         self.patterns_index.extract_and_index(&episode);
     }
 
-    /// Поиск похожих эпизодов для новой задачи
+    /// Find similar episodes for a new task
     fn find_similar(&self, task: &Task) -> Vec<TaskEpisode> {
         self.semantic_search(task.embedding())
             .filter(|e| e.outcome == Outcome::Success)
@@ -91,37 +93,37 @@ struct EpisodicMemory {
     }
 }
 
-/// ✅ Working Memory - активный рабочий набор для текущей задачи
+/// ✅ Working Memory - active working set for the current task
 struct WorkingMemory {
     capacity: TokenBudget,
     active_symbols: BTreeSet<SymbolId>,
     attention_weights: HashMap<SymbolId, f32>,
     prefetch_queue: PriorityQueue<SymbolId>,
 
-    /// Динамическое обновление рабочего набора
+    /// Dynamic update of the working set
     fn update(&mut self, attention: AttentionPattern) {
-        // Увеличиваем вес символов, на которые обратила внимание LLM
+        // Increase weights of symbols the LLM focused on
         for (symbol, weight) in attention.focused_symbols {
             *self.attention_weights.entry(symbol).or_insert(0.0) += weight;
         }
 
-        // Eviction по LRU + attention weight
+        // Eviction via LRU + attention weight
         self.evict_if_needed();
 
-        // Prefetch связанных символов
+        // Prefetch related symbols
         self.prefetch_related(attention.predicted_next);
     }
 
-    /// Компактное представление для контекста
+    /// Compact representation for context
     fn compact_representation(&self) -> CompactContext {
         let mut context = CompactContext::new(self.capacity);
 
-        // Сначала добавляем самые важные символы
+        // First add the most important symbols
         for (symbol, weight) in self.attention_weights.iter()
             .sorted_by(|a, b| b.1.partial_cmp(a.1).unwrap())
         {
             if !context.add_symbol(symbol, *weight) {
-                break; // Достигли лимита токенов
+                break; // Reached token limit
             }
         }
 
@@ -129,21 +131,21 @@ struct WorkingMemory {
     }
 }
 
-/// ✅ Semantic Memory - обобщенные знания о паттернах и архитектуре
+/// ✅ Semantic Memory - generalized knowledge of patterns and architecture
 struct SemanticMemory {
     patterns: Vec<CodePattern>,
     architectures: Vec<ArchitectureKnowledge>,
     conventions: Vec<CodingConvention>,
     consolidation_threshold: f32,
 
-    /// Извлечение паттернов из успешных эпизодов
+    /// Extract patterns from successful episodes
     fn learn_patterns(&mut self, episodes: &[TaskEpisode]) {
         let patterns = PatternExtractor::extract(episodes);
         self.patterns.extend(patterns);
-        self.consolidate(); // Объединение похожих паттернов
+        self.consolidate(); // Merge similar patterns
     }
 
-    /// Предсказание вероятных действий на основе паттернов
+    /// Predict probable actions based on patterns
     fn predict_actions(&self, context: &Context) -> Vec<ProbableAction> {
         self.patterns
             .iter()
@@ -154,12 +156,12 @@ struct SemanticMemory {
     }
 }
 
-/// ✅ Procedural Memory - знания о том, КАК выполнять задачи
+/// ✅ Procedural Memory - knowledge of HOW to perform tasks
 struct ProceduralMemory {
     procedures: HashMap<TaskType, Procedure>,
     execution_history: Vec<ExecutionTrace>,
 
-    /// Обучение процедуре на основе успешных эпизодов
+    /// Learn a procedure based on successful episodes
     fn learn_procedure(&mut self, task_type: TaskType, episodes: Vec<TaskEpisode>) {
         let procedure = Procedure {
             steps: Self::extract_common_steps(&episodes),
@@ -171,7 +173,7 @@ struct ProceduralMemory {
         self.procedures.insert(task_type, procedure);
     }
 
-    /// Guided execution - подсказка следующего шага
+    /// Guided execution - suggest next step
     fn next_step(&self, task: &Task, current_state: &State) -> Option<Step> {
         self.procedures
             .get(&task.task_type)
@@ -180,14 +182,14 @@ struct ProceduralMemory {
 }
 ```
 
-## Адаптивная архитектура ✅
+## Adaptive Architecture ✅
 
-**Статус: ✅ Полностью реализовано**
+**Status: ✅ Fully Implemented**
 
-### Контекстно-адаптивная система ✅
+### Context-Adaptive System ✅
 
 ```rust
-/// ✅ Адаптер для разных моделей LLM
+/// ✅ Adapter for different LLM models
 enum LLMAdapter {
     Claude3 {
         context_window: usize,  // 200_000 tokens
@@ -211,14 +213,14 @@ enum LLMAdapter {
     }
 }
 
-/// ✅ Динамический менеджер контекста (Context Manager)
+/// ✅ Dynamic Context Manager
 struct ContextManager {
     llm_adapter: LLMAdapter,
     current_usage: TokenUsage,
     compression_strategy: CompressionStrategy,
     context_buffer: CircularBuffer<Context>,
 
-    /// Адаптивная загрузка контекста под конкретную модель
+    /// Adaptive context loading for specific model
     fn prepare_context(&self, request: ContextRequest) -> OptimizedContext {
         let available_tokens = self.calculate_available_tokens();
 
@@ -231,29 +233,29 @@ struct ContextManager {
         }
     }
 
-    /// Стратегии сжатия для разных размеров окна
+    /// Compression strategies for different window sizes
     fn ultra_compact_context(&self, req: ContextRequest) -> OptimizedContext {
         OptimizedContext {
-            // Только критически важные символы
+            // Only critical symbols
             symbols: self.extract_critical_symbols(req, 20),
-            // Однострочные summary вместо кода
+            // One-line summaries instead of code
             summaries: self.generate_one_line_summaries(req),
-            // Минимальный граф зависимостей
+            // Minimal dependency graph
             deps: self.minimal_dependency_graph(req),
-            compression_ratio: 0.05, // 95% сжатие
+            compression_ratio: 0.05, // 95% compression
         }
     }
 
     fn calculate_available_tokens(&self) -> usize {
         let window_size = self.llm_adapter.context_window();
-        let system_prompt = 1000; // Резерв для system prompt
-        let response_buffer = 4000; // Резерв для ответа
+        let system_prompt = 1000; // Reserve for system prompt
+        let response_buffer = 4000; // Reserve for response
         window_size - self.current_usage.total - system_prompt - response_buffer
     }
 }
 ```
 
-### Архитектура с обратной связью
+### Feedback Architecture
 
 ```mermaid
 graph TB
@@ -299,33 +301,33 @@ graph TB
     QE --> IX
     IX --> ST
 
-    %% Обратные связи
+    %% Feedback loops
     FB -.-> WM
     FB -.-> SM
     AT -.-> PS
 ```
 
-## Интеллектуальное управление контекстом ✅
+## Intelligent Context Management ✅
 
-**Статус: ✅ Полностью реализовано**
+**Status: ✅ Fully Implemented**
 
-### Решение проблемы фрагментации контекста ✅
+### Solving the Context Fragmentation Problem ✅
 
 ```rust
-/// ✅ Решение проблемы разбросанной информации (Context Defragmenter)
+/// ✅ Solution to scattered information (Context Defragmenter)
 struct ContextDefragmenter {
     semantic_analyzer: SemanticAnalyzer,
     bridge_generator: BridgeGenerator,
 
-    /// Собирает разрозненные куски в единое целое
+    /// Collects scattered pieces into a unified whole
     fn defragment(&self, fragments: Vec<ContextFragment>) -> UnifiedContext {
-        // 1. Группировка по семантической близости
+        // 1. Group by semantic proximity
         let clusters = self.cluster_by_semantics(fragments);
 
-        // 2. Создание связующих элементов
+        // 2. Create connecting elements
         let bridges = self.create_semantic_bridges(&clusters);
 
-        // 3. Линеаризация для последовательной подачи
+        // 3. Linearize for sequential presentation
         let linear = self.linearize_for_llm(&clusters, &bridges);
 
         UnifiedContext {
@@ -335,7 +337,7 @@ struct ContextDefragmenter {
         }
     }
 
-    /// Создание "мостов" между фрагментами
+    /// Create "bridges" between fragments
     fn create_semantic_bridges(&self, clusters: &[Cluster]) -> Vec<Bridge> {
         clusters.windows(2).map(|pair| {
             Bridge {
@@ -354,26 +356,26 @@ struct AttentionBasedRetriever {
     prediction_model: AttentionPredictor,
     cache: PredictiveCache,
 
-    /// Выборка на основе паттернов внимания
+    /// Retrieval based on attention patterns
     fn retrieve(&self, query: Query) -> Vec<Symbol> {
-        // Анализируем на что LLM обращала внимание раньше
+        // Analyze what the LLM focused on before
         let attention_pattern = self.attention_history.analyze_pattern(&query);
 
-        // Предсказываем что понадобится
+        // Predict what will be needed
         let predicted_focus = self.prediction_model.predict(&attention_pattern);
 
-        // Извлекаем с учетом предсказания
+        // Retrieve accounting for prediction
         let mut results = Vec::new();
 
-        // Приоритет 1: То, на что точно обратят внимание
+        // Priority 1: What will definitely receive attention
         results.extend(self.fetch_high_attention(predicted_focus.high_probability));
 
-        // Приоритет 2: Возможно понадобится
+        // Priority 2: Might be needed
         if self.has_token_budget() {
             results.extend(self.fetch_medium_attention(predicted_focus.medium_probability));
         }
 
-        // Приоритет 3: Контекстная информация
+        // Priority 3: Contextual information
         if self.has_token_budget() {
             results.extend(self.fetch_context(predicted_focus.context));
         }
@@ -383,10 +385,10 @@ struct AttentionBasedRetriever {
 }
 ```
 
-### Механизм компрессии контекста ✅
+### Context Compression Mechanism ✅
 
 ```rust
-/// ✅ Многоуровневая компрессия (Context Compressor)
+/// ✅ Multi-level compression (Context Compressor)
 struct ContextCompressor {
     compression_levels: Vec<CompressionLevel>,
     quality_threshold: f32,
@@ -398,7 +400,7 @@ struct ContextCompressor {
             return CompressedContent::Unchanged(content);
         }
 
-        // Пробуем разные уровни компрессии
+        // Try different compression levels
         for level in &self.compression_levels {
             let compressed = match level {
                 CompressionLevel::RemoveComments => self.strip_comments(&content),
@@ -420,7 +422,7 @@ struct ContextCompressor {
             }
         }
 
-        // Крайний случай - берем только самое важное
+        // Edge case - take only the most important
         CompressedContent::Critical {
             content: self.extract_critical_only(&content, target_tokens),
             warning: "Heavy compression applied, information loss possible",
@@ -429,19 +431,19 @@ struct ContextCompressor {
 }
 ```
 
-## Компоненты системы ✅
+## System Components ✅
 
-**Статус: ✅ Полностью реализовано**
+**Status: ✅ Fully Implemented**
 
-### 1. Code Indexer — Семантическая индексация кода ✅
+### 1. Code Indexer — Semantic Code Indexing ✅
 
-#### Технологии ✅
-- ✅ **Tree-sitter** для парсинга AST всех популярных языков
-- **Rust-analyzer** для глубокого понимания Rust-кода
-- **TypeScript Compiler API** для TypeScript/JavaScript
-- **Language Server Protocol** для других языков
+#### Technologies ✅
+- ✅ **Tree-sitter** for AST parsing of all popular languages
+- **Rust-analyzer** for deep understanding of Rust code
+- **TypeScript Compiler API** for TypeScript/JavaScript
+- **Language Server Protocol** for other languages
 
-#### Структура индекса ✅
+#### Index Structure ✅
 
 ```rust
 /// ✅ Symbol Extraction
@@ -449,8 +451,8 @@ struct CodeSymbol {
     id: SymbolId,
     name: String,
     kind: SymbolKind,        // Function, Class, Interface, Variable, etc.
-    signature: String,       // Только сигнатура без тела
-    body_hash: Hash,         // Хэш тела для быстрого сравнения
+    signature: String,       // Only signature without body
+    body_hash: Hash,         // Body hash for fast comparison
     location: Location,
     references: Vec<Reference>,
     dependencies: Vec<SymbolId>,
@@ -458,43 +460,43 @@ struct CodeSymbol {
 }
 
 struct SymbolMetadata {
-    complexity: u32,         // Цикломатическая сложность
-    token_cost: u32,         // Стоимость в токенах
+    complexity: u32,         // Cyclomatic complexity
+    token_cost: u32,         // Cost in tokens
     last_modified: GitCommit,
     authors: Vec<String>,
     doc_comment: Option<String>,
-    test_coverage: f32,     // Процент покрытия тестами
-    usage_frequency: u32,   // Частота использования
+    test_coverage: f32,     // Test coverage percentage
+    usage_frequency: u32,   // Usage frequency
 }
 ```
 
-#### Уровни детализации
+#### Detail Levels
 
 ```rust
 enum DetailLevel {
-    Skeleton,       // Только структура: имена и сигнатуры (100-500 токенов)
-    Interface,      // + публичные интерфейсы (500-1500 токенов)
-    Implementation, // + приватная реализация (2000+ токенов)
-    Full,          // Полный код с комментариями
+    Skeleton,       // Only structure: names and signatures (100-500 tokens)
+    Interface,      // + public interfaces (500-1500 tokens)
+    Implementation, // + private implementation (2000+ tokens)
+    Full,          // Full code with comments
 }
 ```
 
-### 2. Documentation Indexer — Интеллектуальная индексация документации
+### 2. Documentation Indexer — Intelligent Documentation Indexing
 
-#### Многоуровневый подход
+#### Multi-level Approach
 
-1. **Структурный парсинг** — извлечение заголовков, секций, списков
-2. **Семантическая сегментация** — разбивка на логические блоки
-3. **Векторизация** — создание эмбеддингов через локальные модели
-4. **Cross-reference linking** — автоматическое связывание с кодом
+1. **Structural parsing** — extract headings, sections, lists
+2. **Semantic segmentation** — split into logical blocks
+3. **Vectorization** — create embeddings via local models
+4. **Cross-reference linking** — automatic linking with code
 
-#### Оптимизация для LLM
+#### LLM Optimization
 
 ```rust
 struct DocChunk {
     id: ChunkId,
     content: String,
-    summary: String,          // Автоматически сгенерированное резюме
+    summary: String,          // Auto-generated summary
     embedding: Vector<f32>,
     references: Vec<CodeSymbol>,
     token_count: u32,
@@ -503,7 +505,7 @@ struct DocChunk {
 }
 ```
 
-### 3. History Indexer — Граф эволюции кода
+### 3. History Indexer — Code Evolution Graph
 
 ```rust
 struct Evolution {
@@ -523,46 +525,46 @@ struct SemanticChange {
 }
 ```
 
-### 4. Storage Backend — Гибридное хранилище
+### 4. Storage Backend — Hybrid Storage
 
-#### RocksDB для структурных данных
-- Символы кода и их метаданные
-- Граф зависимостей
-- История изменений
-- Индексы для быстрого поиска
+#### RocksDB for Structural Data
+- Code symbols and their metadata
+- Dependency graph
+- Change history
+- Indexes for fast search
 
-#### Встроенная векторная индексация (HNSW)
-- Эмбеддинги документации
-- Семантические связи между кодом и документацией
-- Кластеризация похожих фрагментов
+#### Built-in Vector Indexing (HNSW)
+- Documentation embeddings
+- Semantic connections between code and documentation
+- Clustering of similar fragments
 
 #### Session Cache (in-memory)
-- Copy-on-write snapshots для сессий
-- Delta-storage для изменений
-- LRU-eviction для управления памятью
+- Copy-on-write snapshots for sessions
+- Delta-storage for changes
+- LRU-eviction for memory management
 
-### 5. Query Engine — Интеллектуальный процессор запросов
+### 5. Query Engine — Intelligent Query Processor
 
 ```rust
 enum SearchStrategy {
-    // Быстрый поиск по точному имени
+    // Fast search by exact name
     ExactMatch { name: String },
 
-    // Семантический поиск с учётом контекста
+    // Semantic search with context
     Semantic {
         query: String,
         context: Context,
         max_tokens: u32,
     },
 
-    // Гибридный поиск: BM25 + векторы + reranking
+    // Hybrid search: BM25 + vectors + reranking
     Hybrid {
         keywords: Vec<String>,
         embedding: Vector<f32>,
         filters: SearchFilters,
     },
 
-    // Поиск по истории с учётом временного контекста
+    // Historical search with temporal context
     Historical {
         symbol: SymbolId,
         time_range: TimeRange,
@@ -570,32 +572,32 @@ enum SearchStrategy {
 }
 ```
 
-## MCP-интерфейс ✅
+## MCP Interface ✅
 
-**Статус: ✅ Полностью реализовано - ВСЕ 30 инструментов (100%)**
+**Status: ✅ Fully Implemented - ALL 30 tools (100%)**
 
-### Кастомная реализация MCP протокола ✅
+### Custom MCP Protocol Implementation ✅
 
-Meridian использует **собственную production-ready реализацию** протокола Model Context Protocol вместо внешнего SDK. Это обеспечивает:
+Meridian uses a **custom production-ready implementation** of the Model Context Protocol instead of external SDK. This provides:
 
-- **Полный контроль** над реализацией протокола
-- **Нулевые внешние зависимости** для MCP
-- **Оптимизированная производительность** под конкретные нужды
-- **100% совместимость** с MCP 2025-06-18 спецификацией
-- **Типобезопасность** на уровне Rust
-- **Расширяемость** без ограничений сторонних SDK
+- **Full control** over protocol implementation
+- **Zero external dependencies** for MCP
+- **Optimized performance** for specific needs
+- **100% compatibility** with MCP 2025-06-18 specification
+- **Type safety** at Rust level
+- **Extensibility** without third-party SDK limitations
 
-**Примечание**: Кастомная реализация не означает компромиссов - это полноценная, production-ready реализация MCP протокола, прошедшая все тесты совместимости.
+**Note**: Custom implementation doesn't mean compromises - this is a full-featured, production-ready implementation of the MCP protocol that has passed all compatibility tests.
 
-### Архитектура MCP сервера ✅
+### MCP Server Architecture ✅
 
-**Транспорты: ✅ STDIO | ✅ HTTP/SSE**
+**Transports: ✅ STDIO | ✅ HTTP/SSE**
 
 ```rust
 use serde_json::json;
 use crate::mcp::{JsonRpcRequest, JsonRpcResponse};
 
-/// Основной MCP сервер Meridian
+/// Main Meridian MCP server
 pub struct MeridianServer {
     memory_system: Arc<RwLock<MemorySystem>>,
     context_manager: Arc<RwLock<ContextManager>>,
@@ -616,7 +618,7 @@ impl MeridianServer {
 
 #[async_trait]
 impl Implementation for MeridianServer {
-    /// Возвращает список доступных инструментов
+    /// Returns list of available tools
     async fn list_tools(&self) -> Result<Vec<Tool>> {
         Ok(vec![
             // Memory Management Tools
@@ -690,11 +692,11 @@ impl Implementation for MeridianServer {
                     "required": ["task_description"]
                 }),
             },
-            // ... остальные инструменты
+            // ... remaining tools
         ])
     }
 
-    /// Обработка вызова инструмента
+    /// Handle tool call
     async fn call_tool(&self, name: &str, arguments: serde_json::Value) -> CallToolResult {
         match name {
             "memory.record_episode" => {
@@ -718,7 +720,7 @@ impl Implementation for MeridianServer {
         }
     }
 
-    /// Возвращает список доступных ресурсов
+    /// Returns list of available resources
     async fn list_resources(&self) -> ListResourcesResult {
         ListResourcesResult::Success {
             resources: vec![
@@ -738,7 +740,7 @@ impl Implementation for MeridianServer {
         }
     }
 
-    /// Возвращает возможности сервера
+    /// Returns server capabilities
     fn get_capabilities(&self) -> ServerCapabilities {
         ServerCapabilities {
             tools: true,
@@ -749,7 +751,7 @@ impl Implementation for MeridianServer {
     }
 }
 
-// Реализация обработчиков для каждого инструмента
+// Handler implementations for each tool
 impl MeridianServer {
     async fn handle_record_episode(&self, args: serde_json::Value) -> CallToolResult {
         let params: RecordEpisodeParams = match serde_json::from_value(args) {
@@ -825,7 +827,7 @@ impl MeridianServer {
 }
 ```
 
-### Запуск MCP сервера
+### Starting the MCP Server
 
 ```rust
 use meridian::mcp::{MeridianServer, StdioTransport, HttpTransport};
@@ -833,21 +835,21 @@ use meridian::Config;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Инициализация логирования
+    // Initialize logging
     tracing_subscriber::fmt::init();
 
-    // Загрузка конфигурации
+    // Load configuration
     let config = Config::from_file("meridian.toml")?;
 
-    // Создание сервера Meridian
+    // Create Meridian server
     let server = MeridianServer::new(config).await?;
 
-    // Запуск через STDIO транспорт (стандартный для Claude Code)
+    // Start via STDIO transport (standard for Claude Code)
     if args.stdio {
         server.serve_stdio().await?;
     }
 
-    // Или запуск через HTTP/SSE (для множественных проектов)
+    // Or start via HTTP/SSE (for multiple projects)
     if args.http {
         server.serve_http("0.0.0.0:3000").await?;
     }
@@ -856,15 +858,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-### Полная спецификация инструментов ✅
+### Complete Tools Specification ✅
 
-**Статус: ✅ ВСЕ 30 инструментов реализованы (100%)**
+**Status: ✅ ALL 30 tools implemented (100%)**
 
 ```typescript
 interface MeridianTools {
-  // === Управление памятью LLM === ✅
+  // === LLM Memory Management === ✅
 
-  // ✅ Запись эпизода работы
+  // ✅ Record work episode
   "memory.record_episode": {
     params: {
       task: string;
@@ -880,7 +882,7 @@ interface MeridianTools {
     };
   };
 
-  // ✅ Поиск похожих задач из прошлого
+  // ✅ Find similar tasks from the past
   "memory.find_similar_episodes": {
     params: {
       task_description: string;
@@ -893,7 +895,7 @@ interface MeridianTools {
     };
   };
 
-  // ✅ Обновление рабочей памяти на основе внимания
+  // ✅ Update working memory based on attention
   "memory.update_working_set": {
     params: {
       focused_symbols: Array<{symbol: string, weight: number}>;
@@ -907,9 +909,9 @@ interface MeridianTools {
     };
   };
 
-  // === Адаптивное управление контекстом === ✅
+  // === Adaptive Context Management === ✅
 
-  // ✅ Получить оптимизированный контекст для модели
+  // ✅ Get optimized context for model
   "context.prepare_adaptive": {
     params: {
       request: ContextRequest;
@@ -924,7 +926,7 @@ interface MeridianTools {
     };
   };
 
-  // ✅ Дефрагментация разрозненного контекста
+  // ✅ Defragment scattered context
   "context.defragment": {
     params: {
       fragments: ContextFragment[];
@@ -937,9 +939,9 @@ interface MeridianTools {
     };
   };
 
-  // === Обратная связь и обучение === ✅
+  // === Feedback and Learning === ✅
 
-  // ✅ Сообщить что было полезно
+  // ✅ Report what was useful
   "feedback.mark_useful": {
     params: {
       session_id: string;
@@ -953,7 +955,7 @@ interface MeridianTools {
     };
   };
 
-  // ✅ Обучить на успешном решении
+  // ✅ Learn from successful solution
   "learning.train_on_success": {
     params: {
       task: Task;
@@ -967,7 +969,7 @@ interface MeridianTools {
     };
   };
 
-  // ✅ Получить предсказание следующего действия
+  // ✅ Get prediction of next action
   "predict.next_action": {
     params: {
       current_context: Context;
@@ -982,7 +984,7 @@ interface MeridianTools {
 
   // === Attention-based retrieval === ✅
 
-  // ✅ Выборка на основе паттернов внимания
+  // ✅ Retrieve based on attention patterns
   "attention.retrieve": {
     params: {
       attention_pattern: AttentionPattern;
@@ -996,30 +998,30 @@ interface MeridianTools {
     };
   };
 
-  // ✅ Анализ паттернов внимания
+  // ✅ Analyze attention patterns
   "attention.analyze_patterns": {
     params: {
       session_id: string;
-      window?: number;  // Последние N запросов
+      window?: number;  // Last N queries
     };
     returns: {
       patterns: AttentionPattern[];
       focus_areas: FocusArea[];
-      attention_drift: number;  // Насколько менялся фокус
+      attention_drift: number;  // How much focus changed
     };
   };
 
-  // === Навигация по коду === ✅
+  // === Code Navigation === ✅
 
-  // ✅ Поиск символов (классы, функции, переменные)
+  // ✅ Search symbols (classes, functions, variables)
   "code.search_symbols": {
     params: {
-      query: string;           // Поисковый запрос
-      type?: SymbolType[];     // Фильтр по типу
-      scope?: string;          // Путь для ограничения области
+      query: string;           // Search query
+      type?: SymbolType[];     // Filter by type
+      scope?: string;          // Path to limit scope
       detail_level?: DetailLevel;
       max_results?: number;
-      max_tokens?: number;     // Жёсткий лимит токенов
+      max_tokens?: number;     // Hard token limit
     };
     returns: {
       symbols: Symbol[];
@@ -1028,7 +1030,7 @@ interface MeridianTools {
     };
   };
 
-  // ✅ Получение полного определения символа
+  // ✅ Get full symbol definition
   "code.get_definition": {
     params: {
       symbol_id: string;
@@ -1042,11 +1044,11 @@ interface MeridianTools {
     };
   };
 
-  // ✅ Поиск использований символа
+  // ✅ Find symbol references
   "code.find_references": {
     params: {
       symbol_id: string;
-      include_context?: boolean;  // Включить контекст вызова
+      include_context?: boolean;  // Include call context
       group_by_file?: boolean;
     };
     returns: {
@@ -1055,28 +1057,28 @@ interface MeridianTools {
     };
   };
 
-  // ✅ Построение графа зависимостей
+  // ✅ Build dependency graph
   "code.get_dependencies": {
     params: {
-      entry_point: string;       // Символ или файл
-      depth?: number;            // Глубина обхода
+      entry_point: string;       // Symbol or file
+      depth?: number;            // Traversal depth
       direction?: "imports" | "exports" | "both";
     };
     returns: {
       graph: DependencyGraph;
-      cycles: Cycle[];           // Обнаруженные циклические зависимости
+      cycles: Cycle[];           // Detected circular dependencies
     };
   };
 
-  // === Работа с документацией === ✅
+  // === Working with Documentation === ✅
 
-  // ✅ Семантический поиск по документации
+  // ✅ Semantic search in documentation
   "docs.search": {
     params: {
       query: string;
       max_chunks?: number;
-      min_relevance?: number;    // Минимальный порог релевантности
-      linked_code?: boolean;     // Включить связанный код
+      min_relevance?: number;    // Minimum relevance threshold
+      linked_code?: boolean;     // Include linked code
     };
     returns: {
       chunks: DocChunk[];
@@ -1084,7 +1086,7 @@ interface MeridianTools {
     };
   };
 
-  // ✅ Получение документации для символа
+  // ✅ Get documentation for symbol
   "docs.get_for_symbol": {
     params: {
       symbol_id: string;
@@ -1097,15 +1099,15 @@ interface MeridianTools {
     };
   };
 
-  // === История и эволюция === ✅
+  // === History and Evolution === ✅
 
-  // ✅ История изменений символа или файла
+  // ✅ Symbol or file change history
   "history.get_evolution": {
     params: {
-      path: string;              // Файл или символ
-      since?: string;            // ISO date или relative (e.g., "7 days ago")
+      path: string;              // File or symbol
+      since?: string;            // ISO date or relative (e.g., "7 days ago")
       until?: string;
-      include_semantic?: boolean; // Включить семантический анализ
+      include_semantic?: boolean; // Include semantic analysis
     };
     returns: {
       timeline: EvolutionEvent[];
@@ -1113,12 +1115,12 @@ interface MeridianTools {
     };
   };
 
-  // ✅ Blame с семантическим контекстом
+  // ✅ Blame with semantic context
   "history.blame": {
     params: {
       file: string;
-      lines?: [number, number];  // Диапазон строк
-      semantic?: boolean;        // Группировать по семантическим изменениям
+      lines?: [number, number];  // Line range
+      semantic?: boolean;        // Group by semantic changes
     };
     returns: {
       blame: BlameEntry[];
@@ -1126,14 +1128,14 @@ interface MeridianTools {
     };
   };
 
-  // === Управление сессиями === ✅
+  // === Session Management === ✅
 
-  // ✅ Начало новой рабочей сессии
+  // ✅ Begin new work session
   "session.begin": {
     params: {
       task_description: string;
-      scope?: string[];          // Файлы/папки в scope сессии
-      base_commit?: string;      // Базовый коммит
+      scope?: string[];          // Files/folders in session scope
+      base_commit?: string;      // Base commit
     };
     returns: {
       session_id: string;
@@ -1141,13 +1143,13 @@ interface MeridianTools {
     };
   };
 
-  // ✅ Обновление индекса в рамках сессии
+  // ✅ Update index within session
   "session.update": {
     params: {
       session_id: string;
       path: string;
       content: string;
-      reindex?: boolean;         // Немедленная переиндексация
+      reindex?: boolean;         // Immediate reindexing
     };
     returns: {
       status: UpdateStatus;
@@ -1155,21 +1157,21 @@ interface MeridianTools {
     };
   };
 
-  // ✅ Запрос в контексте сессии
+  // ✅ Query within session context
   "session.query": {
     params: {
       session_id: string;
       query: string;
-      prefer_session?: boolean;  // Приоритет сессионных изменений
+      prefer_session?: boolean;  // Prioritize session changes
     };
     returns: {
       results: QueryResult[];
-      from_session: number;      // Сколько из сессии
-      from_base: number;         // Сколько из базы
+      from_session: number;      // How many from session
+      from_base: number;         // How many from base
     };
   };
 
-  // ✅ Завершение сессии
+  // ✅ Complete session
   "session.complete": {
     params: {
       session_id: string;
@@ -1182,22 +1184,22 @@ interface MeridianTools {
     };
   };
 
-  // === Аналитика и метрики === ✅
+  // === Analytics and Metrics === ✅
 
-  // ✅ Анализ сложности кода
+  // ✅ Analyze code complexity
   "analyze.complexity": {
     params: {
-      scope: string;             // Файл, папка или символ
+      scope: string;             // File, folder or symbol
       include_suggestions?: boolean;
     };
     returns: {
       metrics: ComplexityMetrics;
-      hotspots: Hotspot[];       // Проблемные места
+      hotspots: Hotspot[];       // Problem areas
       suggestions: Suggestion[];
     };
   };
 
-  // ✅ Оценка стоимости в токенах
+  // ✅ Estimate token cost
   "analyze.token_cost": {
     params: {
       paths: string[];
@@ -1210,9 +1212,9 @@ interface MeridianTools {
     };
   };
 
-  // === Управление монорепозиторием === ✅
+  // === Monorepo Management === ✅
 
-  // ✅ Список проектов в монорепозитории
+  // ✅ List projects in monorepo
   "monorepo.list_projects": {
     params: {
       include_dependencies?: boolean;
@@ -1223,11 +1225,11 @@ interface MeridianTools {
     };
   };
 
-  // ✅ Установка активного контекста
+  // ✅ Set active context
   "monorepo.set_context": {
     params: {
-      projects: string[];        // Активные проекты
-      include_shared?: boolean;  // Включить общие модули
+      projects: string[];        // Active projects
+      include_shared?: boolean;  // Include shared modules
     };
     returns: {
       context: MonorepoContext;
@@ -1236,11 +1238,11 @@ interface MeridianTools {
     };
   };
 
-  // ✅ Поиск межпроектных зависимостей
+  // ✅ Find cross-project dependencies
   "monorepo.find_cross_references": {
     params: {
       from_project: string;
-      to_project?: string;       // Если не указан - все проекты
+      to_project?: string;       // If not specified - all projects
     };
     returns: {
       references: CrossProjectReference[];
@@ -1250,17 +1252,17 @@ interface MeridianTools {
 }
 ```
 
-### Примеры использования
+### Usage Examples
 
 ```typescript
-// Пример 1: Начало работы с новой задачей
-// Ищем похожие задачи из прошлого
+// Example 1: Starting work on a new task
+// Search for similar tasks from the past
 const similar = await tools["memory.find_similar_episodes"]({
   task_description: "Add authentication middleware to API",
   limit: 3
 });
 
-// Используем рекомендованный подход
+// Use recommended approach
 const context = await tools["context.prepare_adaptive"]({
   request: {
     files: similar.predicted_files,
@@ -1270,38 +1272,38 @@ const context = await tools["context.prepare_adaptive"]({
   available_tokens: 150000
 });
 
-// Пример 2: Итеративная работа над рефакторингом
+// Example 2: Iterative refactoring work
 const session = await tools["session.begin"]({
   task_description: "Refactor payment module to use new API",
   scope: ["src/services/payment/"]
 });
 
-// Читаем текущий код
+// Read current code
 const current = await tools["code.get_definition"]({
   symbol_id: "PaymentService.process"
 });
 
-// Обновляем в сессии
+// Update in session
 await tools["session.update"]({
   session_id: session.session_id,
   path: "src/services/payment/service.ts",
   content: refactoredCode
 });
 
-// Проверяем, не сломали ли что-то
+// Check if we broke anything
 const impacts = await tools["session.query"]({
   session_id: session.session_id,
   query: "functions calling PaymentService.process"
 });
 
-// Фиксируем изменения
+// Commit changes
 await tools["session.complete"]({
   session_id: session.session_id,
   action: "commit",
   commit_message: "refactor: Update PaymentService to use v2 API"
 });
 
-// Записываем эпизод для обучения
+// Record episode for learning
 await tools["memory.record_episode"]({
   task: "Refactor payment module",
   queries_made: [...],
@@ -1311,57 +1313,57 @@ await tools["memory.record_episode"]({
 });
 ```
 
-## Стратегия экономии токенов
+## Token Saving Strategy
 
-### 1. Прогрессивная загрузка контекста
+### 1. Progressive Context Loading
 
 ```rust
 struct ContextLoader {
-    // Уровень 1: Минимальный скелет (100-500 токенов)
+    // Level 1: Minimal skeleton (100-500 tokens)
     fn load_skeleton(&self, scope: Scope) -> SkeletonView {
-        // Только имена и сигнатуры
+        // Only names and signatures
     }
 
-    // Уровень 2: Интерфейсы и контракты (500-1500 токенов)
+    // Level 2: Interfaces and contracts (500-1500 tokens)
     fn load_interfaces(&self, symbols: Vec<SymbolId>) -> InterfaceView {
-        // Публичные API без реализации
+        // Public APIs without implementation
     }
 
-    // Уровень 3: Целевая реализация (1000-3000 токенов)
+    // Level 3: Target implementation (1000-3000 tokens)
     fn load_implementation(&self, symbol: SymbolId) -> Implementation {
-        // Конкретная реализация с зависимостями
+        // Specific implementation with dependencies
     }
 
-    // Уровень 4: Полный контекст (3000+ токенов)
+    // Level 4: Full context (3000+ tokens)
     fn load_full(&self, symbols: Vec<SymbolId>) -> FullContext {
-        // Все связанное с символами
+        // Everything related to symbols
     }
 }
 ```
 
-### 2. Интеллектуальная фильтрация
+### 2. Intelligent Filtering
 
-- **Relevance Scoring**: Оценка релевантности на основе текущего контекста
-- **Token Budgeting**: Жёсткие лимиты на количество токенов в ответе
-- **Deduplication**: Удаление дублирующейся информации
-- **Summarization**: Автоматическое создание кратких summary для больших блоков
+- **Relevance Scoring**: Relevance assessment based on current context
+- **Token Budgeting**: Hard limits on token count in response
+- **Deduplication**: Remove duplicate information
+- **Summarization**: Auto-generate brief summaries for large blocks
 
-### 3. Кэширование и предсказание
+### 3. Caching and Prediction
 
 ```rust
 struct PredictiveCache {
-    // Кэш часто запрашиваемых символов
+    // Cache of frequently requested symbols
     hot_symbols: LRUCache<SymbolId, Symbol>,
 
-    // Предсказание следующего запроса на основе паттернов
+    // Predict next query based on patterns
     fn predict_next(&self, history: &[Query]) -> Vec<SymbolId> {
-        // ML-модель для предсказания на основе истории
+        // ML model for prediction based on history
         self.prediction_model.predict(history)
     }
 
-    // Предзагрузка вероятного контекста
+    // Preload probable context
     fn preload(&mut self, predicted: Vec<SymbolId>) {
-        // Асинхронная предзагрузка
+        // Async preloading
         for symbol_id in predicted {
             if !self.hot_symbols.contains(&symbol_id) {
                 tokio::spawn(async move {
@@ -1374,24 +1376,24 @@ struct PredictiveCache {
 }
 ```
 
-## Управление сессиями ✅
+## Session Management ✅
 
-**Статус: ✅ Полностью реализовано**
+**Status: ✅ Fully Implemented**
 
-### Концепция сессий ✅
+### Session Concept ✅
 
-Сессия — изолированное рабочее пространство для итеративной работы над задачей без влияния на основной индекс.
+A session is an isolated workspace for iterative work on a task without affecting the main index.
 
 ```rust
-/// ✅ Copy-on-Write сессии
+/// ✅ Copy-on-Write sessions
 struct Session {
     id: SessionId,
-    base_snapshot: Snapshot,      // Исходное состояние
-    deltas: Vec<Delta>,           // Изменения в сессии
-    index_overlay: IndexOverlay,  // Временный индекс
+    base_snapshot: Snapshot,      // Initial state
+    deltas: Vec<Delta>,           // Changes in session
+    index_overlay: IndexOverlay,  // Temporary index
 
     fn apply_change(&mut self, change: Change) -> Result<()> {
-        // Copy-on-write для изменённых частей
+        // Copy-on-write for changed parts
         let delta = self.compute_delta(change);
         self.deltas.push(delta);
         self.index_overlay.update(delta);
@@ -1399,13 +1401,13 @@ struct Session {
     }
 
     fn query(&self, query: Query) -> QueryResult {
-        // Сначала ищем в overlay, потом в base
+        // First search in overlay, then in base
         self.index_overlay.query(query)
             .or_else(|| self.base_snapshot.query(query))
     }
 
     fn merge_to_base(&mut self) -> Result<()> {
-        // Применяем все дельты к основному индексу
+        // Apply all deltas to main index
         for delta in &self.deltas {
             self.base_snapshot.apply(delta)?;
         }
@@ -1415,40 +1417,40 @@ struct Session {
 }
 ```
 
-### Жизненный цикл сессии
+### Session Lifecycle
 
-1. **Инициализация**: Создание snapshot текущего состояния
-2. **Итеративная работа**: Изменения применяются к overlay
-3. **Валидация**: Проверка целостности и отсутствия конфликтов
-4. **Завершение**: Commit, discard или stash изменений
+1. **Initialization**: Create snapshot of current state
+2. **Iterative work**: Changes applied to overlay
+3. **Validation**: Check integrity and absence of conflicts
+4. **Completion**: Commit, discard or stash changes
 
-## Поддержка монорепозиториев
+## Monorepo Support
 
-### Многоуровневая индексация
+### Multi-level Indexing
 
 ```rust
 struct MonorepoIndex {
-    // Глобальный индекс всего репозитория
+    // Global index of entire repository
     global: GlobalIndex,
 
-    // Индексы отдельных проектов
+    // Indexes of individual projects
     projects: HashMap<ProjectId, ProjectIndex>,
 
-    // Граф зависимостей между проектами
+    // Dependency graph between projects
     dependency_graph: DependencyGraph,
 
-    // Общие модули и библиотеки
+    // Shared modules and libraries
     shared: SharedIndex,
 
     fn detect_projects(&mut self, root: &Path) -> Vec<ProjectId> {
-        // Автоматическое обнаружение проектов по маркерам
+        // Auto-detect projects by markers
         let markers = ["Cargo.toml", "package.json", "tsconfig.json", "go.mod"];
-        // ... логика обнаружения
+        // ... detection logic
     }
 }
 ```
 
-### Контекстное переключение
+### Context Switching
 
 ```rust
 struct ContextManager {
@@ -1458,105 +1460,105 @@ struct ContextManager {
     fn set_context(&mut self, projects: Vec<ProjectId>) {
         self.active_projects = projects.into_iter().collect();
 
-        // Проверяем кэш
+        // Check cache
         if !self.context_cache.contains_key(&self.active_projects) {
             self.rebuild_active_index();
         }
     }
 
     fn query_in_context(&self, query: Query) -> QueryResult {
-        // Поиск только в активных проектах
+        // Search only in active projects
         self.active_index.query(query)
     }
 }
 ```
 
-### Оптимизация для больших репозиториев
+### Large Repository Optimization
 
-- **Lazy Loading**: Проекты индексируются по требованию
-- **Incremental Updates**: Только изменённые проекты переиндексируются
-- **Shared Cache**: Общие зависимости кэшируются глобально
-- **Parallel Indexing**: Независимые проекты индексируются параллельно
+- **Lazy Loading**: Projects indexed on demand
+- **Incremental Updates**: Only changed projects are reindexed
+- **Shared Cache**: Common dependencies cached globally
+- **Parallel Indexing**: Independent projects indexed in parallel
 
-## Механизмы обучения и адаптации ✅
+## Learning and Adaptation Mechanisms ✅
 
-**Статус: ✅ Полностью реализовано**
+**Status: ✅ Fully Implemented**
 
-### Инкрементальное обучение системы ✅
+### Incremental System Learning ✅
 
 ```rust
-/// ✅ Система обучения на основе обратной связи (Feedback System)
+/// ✅ Feedback-based learning system (Feedback System)
 struct LearningSystem {
     feedback_collector: FeedbackCollector,
     pattern_extractor: PatternExtractor,
     model_updater: ModelUpdater,
 
-    /// Обработка обратной связи от LLM
+    /// Process feedback from LLM
     fn process_feedback(&mut self, feedback: Feedback) {
-        // 1. Анализ что было полезно
+        // 1. Analyze what was useful
         let useful = self.analyze_usefulness(feedback);
 
-        // 2. Извлечение паттернов
+        // 2. Extract patterns
         let patterns = self.pattern_extractor.extract(useful);
 
-        // 3. Обновление модели предсказаний
+        // 3. Update prediction model
         self.model_updater.update(patterns);
 
-        // 4. Корректировка весов
+        // 4. Adjust weights
         self.adjust_attention_weights(feedback.attention_data);
     }
 
-    /// Обучение на успешном эпизоде
+    /// Learn from successful episode
     fn learn_from_success(&mut self, episode: TaskEpisode) {
-        // Извлекаем ключевые факторы успеха
+        // Extract key success factors
         let success_factors = self.extract_success_factors(episode);
 
-        // Обновляем процедурную память
+        // Update procedural memory
         self.update_procedures(episode.task_type, success_factors);
 
-        // Усиливаем паттерны которые привели к успеху
+        // Reinforce patterns that led to success
         self.reinforce_patterns(success_factors.patterns);
     }
 }
 ```
 
-### Механизм забывания и консолидации
+### Forgetting and Consolidation Mechanism
 
 ```rust
-/// Управление памятью с забыванием
+/// Memory management with forgetting
 struct MemoryManager {
     retention_policy: RetentionPolicy,
     consolidator: MemoryConsolidator,
 
-    /// Периодическая консолидация памяти
+    /// Periodic memory consolidation
     fn consolidate(&mut self) {
-        // Объединяем похожие паттерны
+        // Merge similar patterns
         self.consolidator.merge_similar_patterns();
 
-        // Удаляем устаревшую информацию
+        // Remove outdated information
         self.forget_outdated();
 
-        // Сжимаем редко используемые данные
+        // Compress rarely used data
         self.compress_cold_data();
     }
 
-    /// Интеллектуальное забывание
+    /// Intelligent forgetting
     fn forget_outdated(&mut self) {
         let now = Timestamp::now();
 
-        // Забываем эпизоды по критериям
+        // Forget episodes by criteria
         self.episodes.retain(|e| {
-            // Сохраняем недавние
+            // Keep recent
             if e.timestamp > now - Duration::days(30) {
                 return true;
             }
 
-            // Сохраняем часто используемые
+            // Keep frequently used
             if e.access_count > 10 {
                 return true;
             }
 
-            // Сохраняем успешные паттерны
+            // Keep successful patterns
             if e.outcome == Outcome::Success && e.pattern_value > 0.8 {
                 return true;
             }
@@ -1567,23 +1569,23 @@ struct MemoryManager {
 }
 ```
 
-### Оптимизация под конкретную команду/проект
+### Optimization for Specific Team/Project
 
 ```rust
-/// Персонализация под команду разработчиков
+/// Personalization for development team
 struct TeamAdaptation {
     team_patterns: HashMap<TeamId, TeamPatterns>,
     coding_conventions: CodingConventions,
 
-    /// Адаптация под стиль команды
+    /// Adapt to team style
     fn adapt_to_team(&mut self, team_id: TeamId, episodes: Vec<TaskEpisode>) {
-        // Извлекаем паттерны команды
+        // Extract team patterns
         let patterns = self.extract_team_patterns(episodes);
 
-        // Обучаемся конвенциям
+        // Learn conventions
         let conventions = self.learn_conventions(episodes);
 
-        // Сохраняем профиль команды
+        // Save team profile
         self.team_patterns.insert(team_id, TeamPatterns {
             common_workflows: patterns.workflows,
             naming_conventions: conventions.naming,
@@ -1592,31 +1594,31 @@ struct TeamAdaptation {
         });
     }
 
-    /// Предсказание на основе командных паттернов
+    /// Prediction based on team patterns
     fn predict_team_action(&self, team_id: TeamId, context: Context) -> Prediction {
         let patterns = &self.team_patterns[&team_id];
 
-        // Используем командные паттерны для предсказания
+        // Use team patterns for prediction
         self.apply_team_patterns(patterns, context)
     }
 }
 ```
 
-## Критические улучшения производительности
+## Critical Performance Improvements
 
-### Streaming обработка для больших кодовых баз
+### Streaming Processing for Large Codebases
 
 ```rust
-/// Потоковая обработка без загрузки всего в память
+/// Stream processing without loading everything into memory
 struct StreamingIndexer {
     chunk_size: usize,
     parallel_workers: usize,
 
-    /// Индексация больших репозиториев потоково
+    /// Stream indexing of large repositories
     async fn index_stream(&self, repo_path: &Path) -> Result<()> {
         let (tx, rx) = mpsc::channel(1000);
 
-        // Параллельное чтение файлов
+        // Parallel file reading
         let reader = tokio::spawn(async move {
             for file in walk_files(repo_path) {
                 if tx.send(file).await.is_err() {
@@ -1625,7 +1627,7 @@ struct StreamingIndexer {
             }
         });
 
-        // Параллельная обработка
+        // Parallel processing
         let processors = (0..self.parallel_workers).map(|_| {
             let rx = rx.clone();
             tokio::spawn(async move {
@@ -1635,7 +1637,7 @@ struct StreamingIndexer {
             })
         });
 
-        // Ждем завершения
+        // Wait for completion
         reader.await?;
         futures::future::join_all(processors).await;
 
@@ -1644,28 +1646,28 @@ struct StreamingIndexer {
 }
 ```
 
-### Инкрементальная переиндексация
+### Incremental Reindexing
 
 ```rust
-/// Минимальная переиндексация при изменениях
+/// Minimal reindexing on changes
 struct IncrementalIndexer {
     dependency_tracker: DependencyTracker,
     change_detector: ChangeDetector,
 
-    /// Переиндексация только измененного
+    /// Reindex only what changed
     fn reindex_incremental(&mut self, changes: Vec<FileChange>) -> Result<()> {
-        // Определяем что изменилось семантически
+        // Determine what changed semantically
         let semantic_changes = self.change_detector.detect_semantic(changes);
 
-        // Находим затронутые зависимости
+        // Find affected dependencies
         let affected = self.dependency_tracker.find_affected(semantic_changes);
 
-        // Переиндексируем только необходимое
+        // Reindex only necessary
         for symbol in affected {
             self.reindex_symbol(symbol)?;
         }
 
-        // Обновляем граф зависимостей
+        // Update dependency graph
         self.dependency_tracker.update(semantic_changes);
 
         Ok(())
@@ -1673,11 +1675,11 @@ struct IncrementalIndexer {
 }
 ```
 
-## План реализации
+## Implementation Roadmap
 
-**Статус: ✅ ВСЕ ФАЗЫ ЗАВЕРШЕНЫ (100%)**
+**Status: ✅ ALL PHASES COMPLETE (100%)**
 
-### Фаза 1: Базовая инфраструктура ✅ ЗАВЕРШЕНА
+### Phase 1: Basic Infrastructure ✅ COMPLETE
 
 ```toml
 # meridian/Cargo.toml
@@ -1695,7 +1697,7 @@ futures = "0.3.31"
 # Storage
 rocksdb = "0.24.0"
 
-# Code parsing (5 языков)
+# Code parsing (5 languages)
 tree-sitter = "0.25.10"
 tree-sitter-rust = "0.24.0"
 tree-sitter-typescript = "0.23.2"
@@ -1706,7 +1708,7 @@ tree-sitter-go = "0.25.0"
 # Search and indexing
 tantivy = "0.25.0"
 
-# ML/Embeddings (локальные)
+# ML/Embeddings (local)
 candle-core = "0.9.1"
 candle-nn = "0.9.1"
 fastembed = "5.2.0"
@@ -1726,7 +1728,7 @@ async-trait = "0.1.89"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 
-# HTTP server (для HTTP/SSE транспорта)
+# HTTP server (for HTTP/SSE transport)
 axum = { version = "0.8.6", features = ["macros"] }
 tower = "0.5.2"
 tower-http = { version = "0.6.6", features = ["cors", "trace"] }
@@ -1741,122 +1743,122 @@ git2 = "0.20.2"
 # CLI
 clap = { version = "4.5.49", features = ["derive"] }
 
-# ПРИМЕЧАНИЕ: Кастомная реализация MCP протокола
-# Не используется внешний SDK - полный контроль над реализацией
+# NOTE: Custom MCP protocol implementation
+# Not using external SDK - full control over implementation
 ```
 
-#### Компоненты ✅
-1. ✅ **Storage Layer**: RocksDB wrapper с поддержкой snapshots
-2. ✅ **Basic Indexer**: Tree-sitter интеграция для TypeScript/Rust
-3. ✅ **MCP Server**: Базовая реализация протокола
+#### Components ✅
+1. ✅ **Storage Layer**: RocksDB wrapper with snapshot support
+2. ✅ **Basic Indexer**: Tree-sitter integration for TypeScript/Rust
+3. ✅ **MCP Server**: Basic protocol implementation
 
 #### Deliverables ✅
-- ✅ CLI для индексации текущего проекта
-- ✅ Простой MCP-сервер с 3-4 базовыми tools
-- ✅ Интеграция с Claude Code для тестирования
+- ✅ CLI for indexing current project
+- ✅ Simple MCP server with 3-4 basic tools
+- ✅ Integration with Claude Code for testing
 
-### Фаза 2: Семантическая индексация ✅ ЗАВЕРШЕНА
+### Phase 2: Semantic Indexing ✅ COMPLETE
 
-#### Компоненты ✅
-1. ✅ **AST Analyzer**: Извлечение символов и зависимостей
-2. ✅ **Doc Parser**: Markdown парсер с cross-references
-3. ✅ **Vector Index**: HNSW индекс для эмбеддингов
-
-#### Deliverables ✅
-- ✅ Полноценный поиск по символам кода
-- ✅ Семантический поиск по документации
-- ✅ Token counting и optimization
-
-### Фаза 3: История и эволюция ✅ ЗАВЕРШЕНА
-
-#### Компоненты ✅
-1. ✅ **Git Integration**: libgit2 для работы с историей
-2. ✅ **Evolution Tracker**: Отслеживание семантических изменений
-3. ✅ **Blame Engine**: Расширенный blame с контекстом
+#### Components ✅
+1. ✅ **AST Analyzer**: Symbol and dependency extraction
+2. ✅ **Doc Parser**: Markdown parser with cross-references
+3. ✅ **Vector Index**: HNSW index for embeddings
 
 #### Deliverables ✅
-- ✅ История изменений для любого символа
-- ✅ Семантический diff между версиями
-- ✅ Анализ влияния изменений
+- ✅ Full-featured code symbol search
+- ✅ Semantic documentation search
+- ✅ Token counting and optimization
 
-### Фаза 4: Сессии и итеративная работа ✅ ЗАВЕРШЕНА
+### Phase 3: History and Evolution ✅ COMPLETE
 
-#### Компоненты ✅
-1. ✅ **Session Manager**: Copy-on-write сессии
-2. ✅ **Delta Storage**: Эффективное хранение изменений
-3. ✅ **Overlay Index**: Временная индексация
-
-#### Deliverables ✅
-- ✅ Полноценная поддержка итеративной разработки
-- ✅ Изоляция изменений в сессиях
-- ✅ Commit/discard/stash операции
-
-### Фаза 5: Монорепозиторий и оптимизации ✅ ЗАВЕРШЕНА
-
-#### Компоненты ✅
-1. ✅ **Project Detector**: Автоматическое обнаружение проектов
-2. ✅ **Dependency Analyzer**: Граф зависимостей
-3. ✅ **Context Switch**: Быстрое переключение контекста
+#### Components ✅
+1. ✅ **Git Integration**: libgit2 for working with history
+2. ✅ **Evolution Tracker**: Tracking semantic changes
+3. ✅ **Blame Engine**: Extended blame with context
 
 #### Deliverables ✅
-- ✅ Поддержка больших монорепозиториев
-- ✅ Межпроектный поиск и навигация
-- ✅ Оптимизация производительности
+- ✅ Change history for any symbol
+- ✅ Semantic diff between versions
+- ✅ Change impact analysis
 
-### Фаза 6: Память и обучение ✅ ЗАВЕРШЕНА
+### Phase 4: Sessions and Iterative Work ✅ COMPLETE
 
-#### Компоненты ✅
-1. ✅ **Memory System**: Четырехуровневая модель памяти
-2. ✅ **Learning Engine**: Обучение на эпизодах
-3. ✅ **Prediction Model**: ML-модель для предсказаний
+#### Components ✅
+1. ✅ **Session Manager**: Copy-on-write sessions
+2. ✅ **Delta Storage**: Efficient change storage
+3. ✅ **Overlay Index**: Temporary indexing
+
+#### Deliverables ✅
+- ✅ Full iterative development support
+- ✅ Change isolation in sessions
+- ✅ Commit/discard/stash operations
+
+### Phase 5: Monorepo and Optimizations ✅ COMPLETE
+
+#### Components ✅
+1. ✅ **Project Detector**: Automatic project detection
+2. ✅ **Dependency Analyzer**: Dependency graph
+3. ✅ **Context Switch**: Fast context switching
+
+#### Deliverables ✅
+- ✅ Large monorepo support
+- ✅ Cross-project search and navigation
+- ✅ Performance optimization
+
+### Phase 6: Memory and Learning ✅ COMPLETE
+
+#### Components ✅
+1. ✅ **Memory System**: Four-level memory model
+2. ✅ **Learning Engine**: Learning from episodes
+3. ✅ **Prediction Model**: ML model for predictions
 
 #### Deliverables ✅
 - ✅ Episodic, Working, Semantic, Procedural memory
-- ✅ Обучение на успешных решениях
-- ✅ Предсказание следующих действий
+- ✅ Learning from successful solutions
+- ✅ Next action prediction
 
-### Фаза 7: Расширенные возможности ✅ ЗАВЕРШЕНА
+### Phase 7: Advanced Features ✅ COMPLETE
 
-#### Компоненты ✅
-1. ✅ **Attention Tracker**: Отслеживание паттернов внимания
-2. ✅ **Context Defragmenter**: Объединение фрагментов
-3. ✅ **Advanced Compression**: Многоуровневое сжатие
+#### Components ✅
+1. ✅ **Attention Tracker**: Tracking attention patterns
+2. ✅ **Context Defragmenter**: Fragment unification
+3. ✅ **Advanced Compression**: Multi-level compression
 
 #### Deliverables ✅
 - ✅ Attention-based retrieval
-- ✅ Дефрагментация контекста
-- ✅ Адаптивное сжатие до 95%
+- ✅ Context defragmentation
+- ✅ Adaptive compression up to 95%
 
-## Метрики успеха
+## Success Metrics
 
-### Производительность
-- Первичная индексация: < 10 мс на файл
-- Инкрементальное обновление: < 100 мс
-- Типичный запрос: < 50 мс
-- Потребление памяти: < 100 МБ на 10K файлов
+### Performance
+- Initial indexing: < 10 ms per file
+- Incremental update: < 100 ms
+- Typical query: < 50 ms
+- Memory consumption: < 100 MB per 10K files
 
-### Экономия токенов
-- Сокращение потребления токенов на 85-95% vs полные файлы
-- Средний размер контекста: 500-1500 токенов
-- Точность извлечения релевантного контекста: > 98%
+### Token Savings
+- Token consumption reduction of 85-95% vs full files
+- Average context size: 500-1500 tokens
+- Relevant context extraction accuracy: > 98%
 
-### Обучаемость
-- Улучшение предсказаний на 30-40% после 100 эпизодов
-- Снижение количества запросов на 20-30% благодаря предсказаниям
-- Повышение успешности решения задач на 25%
+### Learning Capability
+- Prediction improvement of 30-40% after 100 episodes
+- Query count reduction of 20-30% thanks to predictions
+- Task success rate increase of 25%
 
-### Пользовательский опыт
-- Zero-configuration для стандартных проектов
-- Прозрачная работа с монорепозиториями
-- Отсутствие заметных задержек при работе
+### User Experience
+- Zero-configuration for standard projects
+- Transparent monorepo operation
+- No noticeable delays during work
 
-## Интеграция с текущим проектом
+## Integration with Current Project
 
-### Структура проекта
+### Project Structure
 
 ```
 omni/
-├── meridian/                 # Новый подпроект
+├── meridian/                 # New subproject
 │   ├── Cargo.toml
 │   ├── src/
 │   │   ├── main.rs          # CLI entry point
@@ -1870,19 +1872,19 @@ omni/
 │   │   └── mcp/            # MCP server
 │   ├── tests/
 │   └── benches/
-├── packages/                 # Существующие TypeScript пакеты
-└── apps/                     # Приложения
+├── packages/                 # Existing TypeScript packages
+└── apps/                     # Applications
 ```
 
-### Первоначальное использование
+### Initial Usage
 
-1. **Bootstrap**: Индексация самого проекта Meridian для dogfooding
-2. **Integration**: Подключение к Claude Code через MCP
-3. **Iteration**: Использование для разработки самого Meridian
+1. **Bootstrap**: Index the Meridian project itself for dogfooding
+2. **Integration**: Connect to Claude Code via MCP
+3. **Iteration**: Use for Meridian development itself
 
-### Интеграция с MCP клиентами
+### Integration with MCP Clients
 
-#### Конфигурация для Claude Code
+#### Configuration for Claude Code
 
 ```json
 // .claude/mcp_config.json
@@ -1899,7 +1901,7 @@ omni/
 }
 ```
 
-#### Конфигурация для других MCP-совместимых клиентов
+#### Configuration for Other MCP-Compatible Clients
 
 ```yaml
 # mcp_servers.yml
@@ -1918,10 +1920,10 @@ meridian:
     prompts: true
 ```
 
-#### Программный доступ через HTTP API
+#### Programmatic Access via HTTP API
 
 ```bash
-# Подключение к Meridian через HTTP/SSE
+# Connect to Meridian via HTTP/SSE
 curl -X POST http://localhost:3000/mcp/request \
   -H "Content-Type: application/json" \
   -d '{
@@ -1938,11 +1940,11 @@ curl -X POST http://localhost:3000/mcp/request \
     }
   }'
 
-# Подписка на события (SSE)
+# Subscribe to events (SSE)
 curl -N http://localhost:3000/mcp/events
 ```
 
-### Конфигурация
+### Configuration
 
 ```toml
 # meridian.toml
@@ -1977,84 +1979,84 @@ socket = "/tmp/meridian.sock"
 max_token_response = 2000
 ```
 
-## Заключение
+## Conclusion
 
-Meridian представляет собой **полноценную когнитивную систему памяти** для LLM, которая фундаментально меняет подход к работе с кодовыми базами.
+Meridian represents a **complete cognitive memory system** for LLMs that fundamentally changes the approach to working with codebases.
 
-### Ключевые инновации:
+### Key Innovations:
 
-1. **Четырехуровневая модель памяти** имитирующая человеческую память
-2. **Адаптивное управление контекстом** для разных размеров окон (8k-200k токенов)
-3. **Attention-based retrieval** учитывающий механизмы внимания LLM
-4. **Инкрементальное обучение** на основе обратной связи
-5. **Интеллектуальное сжатие** до 95% при сохранении смысла
-6. **Механизм забывания** для предотвращения переполнения
-7. **Командная адаптация** под паттерны конкретной команды
+1. **Four-level memory model** mimicking human memory
+2. **Adaptive context management** for different window sizes (8k-200k tokens)
+3. **Attention-based retrieval** accounting for LLM attention mechanisms
+4. **Incremental learning** based on feedback
+5. **Intelligent compression** up to 95% while preserving meaning
+6. **Forgetting mechanism** to prevent overflow
+7. **Team adaptation** to specific team patterns
 
-### Революционные возможности:
+### Revolutionary Capabilities:
 
-- **Предсказание следующего действия** на основе накопленного опыта
-- **Автоматическая дефрагментация** разрозненного контекста
-- **Семантические мосты** между несвязанными фрагментами
-- **Streaming обработка** терабайтных репозиториев
+- **Next action prediction** based on accumulated experience
+- **Automatic defragmentation** of scattered context
+- **Semantic bridges** between unrelated fragments
+- **Streaming processing** of terabyte repositories
 
-### Ожидаемые результаты:
+### Expected Results:
 
-- **Экономия токенов**: 85-95% vs наивная подача полных файлов
-- **Скорость ответа**: < 50мс на типичный запрос
-- **Точность контекста**: > 98% релевантности
-- **Обучаемость**: улучшение на 30-40% после 100 эпизодов
+- **Token savings**: 85-95% vs naive full file submission
+- **Response speed**: < 50ms per typical query
+- **Context accuracy**: > 98% relevance
+- **Learning capability**: 30-40% improvement after 100 episodes
 
-Система представляет собой фундаментальный сдвиг в подходе к работе LLM с кодом — от "поиска информации" к "интеллектуальной памяти", которая учится, адаптируется и предсказывает потребности.
+The system represents a fundamental shift in the LLM approach to code - from "information search" to "intelligent memory" that learns, adapts, and predicts needs.
 
 ---
 
-## 🎯 СТАТУС РЕАЛИЗАЦИИ: Production-Ready
+## 🎯 IMPLEMENTATION STATUS: Production-Ready
 
-**Последнее обновление**: 18 октября 2025 (Live MCP Tools Testing Complete)
-**Версия протокола**: MCP 2025-03-26 (stable, with 2024-11-05 backward compat)
-**Статус тестов**: ✅ 431/431 passing (100%)
+**Last updated**: October 18, 2025 (Live MCP Tools Testing Complete)
+**Protocol version**: MCP 2025-03-26 (stable, with 2024-11-05 backward compat)
+**Test status**: ✅ 431/431 passing (100%)
 **Claude CLI**: ✅ Connected and verified
 **Live Tools Testing**: ✅ All 29 tools verified in production
 
-### ✅ Сводка по реализации
+### ✅ Implementation Summary
 
-#### Основные системы (✅ Complete)
-- ✅ **Четырехуровневая модель памяти** - Episodic, Working, Semantic, Procedural
-  - Полная реализация всех 4 уровней
-  - Consolidation и intelligent forgetting
-  - Pattern extraction и learning от успешных задач
-- ✅ **Адаптивная архитектура** - LLM Adapter, Context Manager, Defragmenter
-  - Поддержка Claude-3, GPT-4, Gemini
-  - Multi-level compression (8 стратегий)
-  - Context defragmentation с bridge generation
-- ✅ **Интеллектуальное управление контекстом** - Compression, Attention Retrieval
-  - **SimpleAttentionPredictorModel** - частотно-транзитная ML модель
-  - **PredictiveCache** с LRU eviction
-  - Online learning и batch training
-  - Intelligent prefetching через knowledge graph
-- ✅ **Code Indexing** - Tree-sitter (5 языков), Symbol Extraction
+#### Core Systems (✅ Complete)
+- ✅ **Four-level memory model** - Episodic, Working, Semantic, Procedural
+  - Full implementation of all 4 levels
+  - Consolidation and intelligent forgetting
+  - Pattern extraction and learning from successful tasks
+- ✅ **Adaptive architecture** - LLM Adapter, Context Manager, Defragmenter
+  - Support for Claude-3, GPT-4, Gemini
+  - Multi-level compression (8 strategies)
+  - Context defragmentation with bridge generation
+- ✅ **Intelligent context management** - Compression, Attention Retrieval
+  - **SimpleAttentionPredictorModel** - frequency-transit ML model
+  - **PredictiveCache** with LRU eviction
+  - Online learning and batch training
+  - Intelligent prefetching via knowledge graph
+- ✅ **Code Indexing** - Tree-sitter (5 languages), Symbol Extraction
   - Rust, TypeScript, JavaScript, Python, Go
-  - Full AST parsing и symbol extraction
-  - Incremental reindexing (базовая версия)
+  - Full AST parsing and symbol extraction
+  - Incremental reindexing (basic version)
 - ✅ **Session Management** - Copy-on-Write, Conflict Detection, Lifecycle Operations
-  - Isolated work sessions с CoW семантикой
-  - Conflict detection между параллельными сессиями
+  - Isolated work sessions with CoW semantics
+  - Conflict detection between parallel sessions
   - Commit/Stash/Discard actions
-- ✅ **Механизмы обучения** - Feedback System, Pattern Extraction, Procedure Learning
-  - Procedural memory с learn_from_episodes()
-  - Pattern extraction из episodic memory
-  - Prediction на основе прошлых процедур
+- ✅ **Learning mechanisms** - Feedback System, Pattern Extraction, Procedure Learning
+  - Procedural memory with learn_from_episodes()
+  - Pattern extraction from episodic memory
+  - Prediction based on past procedures
 - ✅ **Git Integration** - History tracking, Blame, Evolution analysis
   - Git history indexing
   - File evolution tracking
   - Blame information
 
 #### MCP Server (✅ Complete)
-- ✅ **Кастомная реализация** MCP протокола (не rmcp SDK)
-- ✅ **Транспорты**: STDIO (Claude Code), HTTP/SSE (multi-project)
-- ✅ **Протокол**: JSON-RPC 2.0, MCP 2025-06-18 spec compliant
-- ✅ **29 MCP инструментов** (100% functional):
+- ✅ **Custom implementation** of MCP protocol (not rmcp SDK)
+- ✅ **Transports**: STDIO (Claude Code), HTTP/SSE (multi-project)
+- ✅ **Protocol**: JSON-RPC 2.0, MCP 2025-06-18 spec compliant
+- ✅ **29 MCP tools** (100% functional):
   - ✅ 4 Memory Management (record, find, update, stats)
   - ✅ 3 Context Management (prepare, defragment, compress)
   - ✅ 3 Learning & Feedback (mark_useful, train, **predict** ← now ML-based)
@@ -2066,7 +2068,7 @@ Meridian представляет собой **полноценную когни
   - ✅ 2 Analytics (complexity, token_cost)
   - ✅ 3 Monorepo (list, set_context, cross_refs)
 
-#### Критические улучшения (18 Oct 2025)
+#### Critical Improvements (Oct 18, 2025)
 
 **Live Production Testing (Latest - Oct 18, 2025)**:
 - ✅ **All 29 MCP Tools Verified**: Complete live testing via built-in MCP client
@@ -2095,52 +2097,52 @@ Meridian представляет собой **полноценную когни
 - ✅ **handle_train_on_success**: Multi-layer learning (episodic + semantic + procedural)
 - ✅ **handle_attention_retrieve**: Boosting + Prefetching + Eviction tracking
 - ✅ **SimpleAttentionPredictorModel**: Real frequency-based ML model
-- ✅ **PredictiveCache**: LRU cache с intelligent prefetching
+- ✅ **PredictiveCache**: LRU cache with intelligent prefetching
 - ✅ **AttentionPredictor**: Batch training + online learning
 
-#### Тесты и Качество (✅ Verified)
-- ✅ **431 тест** с 100% success rate
-  - **Библиотечные тесты**: 155 (core lib tests)
-  - **E2E тесты**: 109 (full_workflow: 23, learning: 22, mcp_protocol: 1, new_mcp_tools: 63)
-  - **Интеграционные тесты**: 123 (context: 33, memory: 28, session: 31, mcp_2025_06_18: 24, integration_test: 3, git_history: 4)
-  - **Юнит тесты**: 44 (handlers: 10, storage: 34)
-- ✅ **Минимальные warnings** в release сборке (1 unused field)
-- ✅ **Thread-safe** async архитектура с полной поддержкой tokio
-- ✅ **MCP 2025-06-18** полная спецификационная совместимость
-- ✅ **Production-ready** с comprehensive test coverage
+#### Tests and Quality (✅ Verified)
+- ✅ **431 tests** with 100% success rate
+  - **Library tests**: 155 (core lib tests)
+  - **E2E tests**: 109 (full_workflow: 23, learning: 22, mcp_protocol: 1, new_mcp_tools: 63)
+  - **Integration tests**: 123 (context: 33, memory: 28, session: 31, mcp_2025_06_18: 24, integration_test: 3, git_history: 4)
+  - **Unit tests**: 44 (handlers: 10, storage: 34)
+- ✅ **Minimal warnings** in release build (1 unused field)
+- ✅ **Thread-safe** async architecture with full tokio support
+- ✅ **MCP 2025-06-18** full specification compliance
+- ✅ **Production-ready** with comprehensive test coverage
 
-#### Все 7 фаз реализации (✅ Complete)
-- ✅ **Фаза 1**: Базовая инфраструктура (Storage, Indexer, MCP)
-- ✅ **Фаза 2**: Семантическая индексация (AST, Docs)
-- ✅ **Фаза 3**: История и эволюция (Git, Evolution, Blame)
-- ✅ **Фаза 4**: Сессии и итеративная работа (CoW, Isolation)
-- ✅ **Фаза 5**: Монорепозиторий и оптимизации (Multi-project)
-- ✅ **Фаза 6**: Память и обучение (4-tier memory, Learning)
-- ✅ **Фаза 7**: Расширенные возможности (**Attention Prediction**, Compression)
+#### All 7 Implementation Phases (✅ Complete)
+- ✅ **Phase 1**: Basic infrastructure (Storage, Indexer, MCP)
+- ✅ **Phase 2**: Semantic indexing (AST, Docs)
+- ✅ **Phase 3**: History and evolution (Git, Evolution, Blame)
+- ✅ **Phase 4**: Sessions and iterative work (CoW, Isolation)
+- ✅ **Phase 5**: Monorepo and optimizations (Multi-project)
+- ✅ **Phase 6**: Memory and learning (4-tier memory, Learning)
+- ✅ **Phase 7**: Advanced features (**Attention Prediction**, Compression)
 
 ### 🚀 Production Ready
 
-Meridian полностью готов к production использованию с реальными ML-based prediction capabilities.
+Meridian is fully ready for production use with real ML-based prediction capabilities.
 
-**🚀 Быстрый старт**: См. [QUICKSTART.md](../QUICKSTART.md) для немедленного использования с Claude Code
+**🚀 Quick Start**: See [QUICKSTART.md](../QUICKSTART.md) for immediate use with Claude Code
 
-**Ключевые факты**:
-- ✅ **431 comprehensive tests** с 100% success rate
-- ✅ **Real ML prediction** - SimpleAttentionPredictorModel с frequency-based learning
-- ✅ **Кастомная MCP реализация** (не SDK) - полностью самостоятельная
+**Key Facts**:
+- ✅ **431 comprehensive tests** with 100% success rate
+- ✅ **Real ML prediction** - SimpleAttentionPredictorModel with frequency-based learning
+- ✅ **Custom MCP implementation** (not SDK) - fully independent
 - ✅ **MCP 2025-03-26** full specification compliance (backward compat with 2024-11-05)
-- ✅ **Thread-safe** concurrent архитектура на tokio
-- ✅ **Два транспорта**: STDIO + HTTP/SSE с полной поддержкой
-- ✅ **Claude CLI интеграция** - ✓ Connected (fixed protocol version negotiation)
-- ✅ **29 MCP инструментов** - все production-ready
+- ✅ **Thread-safe** concurrent architecture on tokio
+- ✅ **Two transports**: STDIO + HTTP/SSE with full support
+- ✅ **Claude CLI integration** - ✓ Connected (fixed protocol version negotiation)
+- ✅ **29 MCP tools** - all production-ready
 
-**Проверенная работа**:
+**Verified Operation**:
 - ✅ Claude Code CLI health check
 - ✅ Full MCP handshake (initialize + notifications/initialized)
 - ✅ All 29 tools returning valid responses
 - ✅ Real-world conversation sequences tested
 
-**Полная документация**:
-- 📋 **Спецификация**: `specs/spec.md` (этот документ)
-- 🚀 **Быстрый старт**: `QUICKSTART.md` (начало работы)
-- 📝 **Конфигурация**: `.mcp.json` (готова для Claude Code)
+**Complete Documentation**:
+- 📋 **Specification**: `specs/spec.md`
+- 🚀 **Quick Start**: `QUICKSTART.md` (getting started)
+- 📝 **Configuration**: `.mcp.json` (ready for Claude Code)

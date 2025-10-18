@@ -1,117 +1,119 @@
 # Meridian Global Architecture Specification
 # Multi-Monorepo Knowledge Management System
 
-**Версия**: 2.0.0
-**Дата создания**: 18 октября 2025
-**Статус**: Design Specification
-**Совместимость**: Meridian MCP Server v1.0.0+, Strong Tools v1.0.0+
+**Version**: 2.0.0
+**Created**: October 18, 2025
+**Status**: Design Specification
+**Compatibility**: Meridian MCP Server v1.0.0+, Strong Tools v1.0.0+
+
+**Language**: 🇬🇧 English | [🇷🇺 Русский](./global-architecture-spec.md)
 
 ---
 
-## Оглавление
+## Table of Contents
 
-1. [Обзор и Мотивация](#обзор-и-мотивация)
-2. [Архитектурные Принципы](#архитектурные-принципы)
-3. [Структура Хранилища](#структура-хранилища)
-4. [Система Уникальных ID](#система-уникальных-id)
+1. [Overview and Motivation](#overview-and-motivation)
+2. [Architectural Principles](#architectural-principles)
+3. [Storage Structure](#storage-structure)
+4. [Unique ID System](#unique-id-system)
 5. [Project Registry](#project-registry)
-6. [Двухуровневая Архитектура](#двухуровневая-архитектура)
-7. [Глобальный Сервер](#глобальный-сервер)
-8. [Локальный MCP Сервер](#локальный-mcp-сервер)
-9. [Кросс-Монорепозиторная Документация](#кросс-монорепозиторная-документация)
-10. [Синхронизация и Кеширование](#синхронизация-и-кеширование)
+6. [Two-Tier Architecture](#two-tier-architecture)
+7. [Global Server](#global-server)
+8. [Local MCP Server](#local-mcp-server)
+9. [Cross-Monorepo Documentation](#cross-monorepo-documentation)
+10. [Synchronization and Caching](#synchronization-and-caching)
 11. [RocksDB Schema](#rocksdb-schema)
-12. [Конфигурация](#конфигурация)
+12. [Configuration](#configuration)
 13. [CLI Commands](#cli-commands)
 14. [MCP Tools](#mcp-tools)
-15. [Workflows и Use Cases](#workflows-и-use-cases)
-16. [Миграция и Совместимость](#миграция-и-совместимость)
-17. [План Реализации](#план-реализации)
+15. [Workflows and Use Cases](#workflows-and-use-cases)
+16. [Migration and Compatibility](#migration-and-compatibility)
+17. [Implementation Plan](#implementation-plan)
 
 ---
 
-## Обзор и Мотивация
+## Overview and Motivation
 
-### Связанные спецификации
+### Related Specifications
 
-- **[Core Specification](./spec.md)**: Базовая система Meridian (v2.0.0)
-- **[Strong Tools](./strong-tools-spec.md)**: Генерация документации, примеров и тестов (v1.0.0)
-- **[Roadmap](./roadmap.md)**: Статус реализации и планирование
-- **[INDEX](./INDEX.md)**: Полный индекс спецификаций
+- **[Core Specification](./spec-en.md)**: Meridian base system (v2.0.0)
+- **[Strong Tools](./strong-tools-spec-en.md)**: Documentation, example, and test generation (v1.0.0)
+- **[Roadmap](./roadmap.md)**: Implementation status and planning
+- **[INDEX](./INDEX.md)**: Complete specification index
 
-### Проблема
+### Problem
 
-**Текущая архитектура** Meridian работает на уровне одного монорепозитория:
-- Локальная RocksDB база в корне монорепозитория
-- Изоляция данных между разными монорепозиториями
-- Невозможность получить документацию из зависимостей в других монорепозиториях
-- Потеря данных при перемещении проекта
-- Нет глобального обзора всех проектов разработчика
+**Current architecture** of Meridian operates at the single monorepo level:
+- Local RocksDB database in the monorepo root
+- Data isolation between different monorepos
+- Unable to access documentation from dependencies in other monorepos
+- Data loss when moving a project
+- No global overview of all developer projects
 
-### Реальный Сценарий
+### Real-World Scenario
 
-Разработчик работает над несколькими монорепозиториями:
+A developer works across multiple monorepos:
 
 ```
 /Users/dev/
   ├── work/
-  │   ├── frontend-monorepo/         # Монорепозиторий A
+  │   ├── frontend-monorepo/         # Monorepo A
   │   │   └── packages/
-  │   │       └── ui-kit/            # Зависит от auth-lib
-  │   └── backend-monorepo/          # Монорепозиторий B
+  │   │       └── ui-kit/            # Depends on auth-lib
+  │   └── backend-monorepo/          # Monorepo B
   │       └── packages/
-  │           └── auth-lib/          # Используется в ui-kit
+  │           └── auth-lib/          # Used in ui-kit
   └── personal/
-      └── side-project-monorepo/     # Монорепозиторий C
+      └── side-project-monorepo/     # Monorepo C
           └── packages/
-              └── analytics/         # Зависит от ui-kit
+              └── analytics/         # Depends on ui-kit
 ```
 
-**Текущая проблема:**
-- При работе над `ui-kit` в монорепозитории A, Claude Code не может получить документацию для `auth-lib` из монорепозитория B
-- При перемещении `backend-monorepo` из `/Users/dev/work` в `/Users/dev/projects`, индекс теряется
-- Нет единого места для поиска по документации всех проектов
+**Current problem:**
+- When working on `ui-kit` in monorepo A, Claude Code cannot access documentation for `auth-lib` from monorepo B
+- When moving `backend-monorepo` from `/Users/dev/work` to `/Users/dev/projects`, the index is lost
+- No unified place to search documentation across all projects
 
-### Решение: Глобальная Архитектура
+### Solution: Global Architecture
 
-**Meridian Global Architecture** решает эти проблемы:
+**Meridian Global Architecture** solves these problems:
 
-1. ✅ **Глобальный реестр проектов** - единая база всех проектов на машине разработчика
-2. ✅ **Устойчивые к перемещению ID** - проекты можно переносить без потери данных
-3. ✅ **Кросс-монорепозиторная документация** - доступ к документации из любого проекта
-4. ✅ **Двухуровневое хранилище** - глобальная БД + локальные кеши
-5. ✅ **Клиент-серверная архитектура** - глобальный сервер + локальные MCP серверы
-6. ✅ **Глобальный поиск** - поиск по документации всех проектов
-7. ✅ **Отслеживание зависимостей** - граф зависимостей между проектами из разных монорепозиториев
+1. ✅ **Global project registry** - unified database of all projects on the developer's machine
+2. ✅ **Move-resistant IDs** - projects can be relocated without data loss
+3. ✅ **Cross-monorepo documentation** - access documentation from any project
+4. ✅ **Two-tier storage** - global DB + local caches
+5. ✅ **Client-server architecture** - global server + local MCP servers
+6. ✅ **Global search** - search documentation across all projects
+7. ✅ **Dependency tracking** - dependency graph between projects from different monorepos
 
 ---
 
-## Архитектурные Принципы
+## Architectural Principles
 
 ### 1. Global-First, Local-Cache
 
-**Приоритет глобального хранилища:**
+**Global storage priority:**
 ```
 Source Code → Tree-sitter AST → Analysis → Global DB (~/.meridian/data/)
                                                 ↓
                                          Local Cache ([monorepo]/.meridian/)
 ```
 
-**Локальный кеш** используется для:
-- Быстрого доступа к часто используемым данным
-- Оффлайн работы (когда глобальный сервер недоступен)
-- Минимизации latency при работе с локальным монорепозиторием
+**Local cache** is used for:
+- Fast access to frequently used data
+- Offline work (when global server is unavailable)
+- Minimizing latency when working with local monorepo
 
 ### 2. Identity-Based, Not Path-Based
 
-**Устойчивые идентификаторы:**
-- Проект идентифицируется по `@scope/name`, а не по пути
-- Путь - это **изменяемая метадата**, а не идентификатор
-- История перемещений сохраняется для аудита
+**Stable identifiers:**
+- Project is identified by `@scope/name`, not by path
+- Path is **mutable metadata**, not an identifier
+- Relocation history is preserved for audit
 
 ### 3. Layered Architecture
 
-**Три уровня:**
+**Three layers:**
 
 ```
 ┌─────────────────────────────────────────┐
@@ -136,188 +138,188 @@ Source Code → Tree-sitter AST → Analysis → Global DB (~/.meridian/data/)
 
 ### 4. Eventual Consistency
 
-**Синхронизация:**
-- Изменения в коде → глобальная БД (автоматически)
-- Глобальная БД → локальный кеш (по запросу)
-- Eventual consistency модель для кросс-монорепозиторных ссылок
+**Synchronization:**
+- Code changes → global DB (automatically)
+- Global DB → local cache (on request)
+- Eventual consistency model for cross-monorepo references
 
 ### 5. Security and Isolation
 
-**Безопасность:**
-- MCP сервер работает в контексте конкретного монорепозитория
-- Доступ к другим проектам - только для чтения (документация, примеры)
-- Запись возможна только в текущий монорепозиторий
-- Role-based access control (будущее расширение)
+**Security:**
+- MCP server runs in the context of a specific monorepo
+- Access to other projects - read-only (documentation, examples)
+- Write access only to current monorepo
+- Role-based access control (future extension)
 
 ---
 
-## Структура Хранилища
+## Storage Structure
 
-### Глобальное Хранилище
-
-```
-~/.meridian/                           # Глобальная директория Meridian
-  ├── meridian.toml                    # Глобальный конфиг
-  ├── data/                            # Глобальная RocksDB
-  │   ├── registry/                    # Реестр проектов и монорепозиториев
-  │   ├── symbols/                     # Все символы из всех проектов
-  │   ├── docs/                        # Документация
-  │   ├── examples/                    # Примеры кода
-  │   ├── tests/                       # Тесты
-  │   └── xref/                        # Кросс-ссылки между проектами
-  ├── cache/                           # Глобальный кеш
-  │   └── compiled/                    # Скомпилированные примеры
-  ├── logs/                            # Логи сервера
-  │   ├── server.log                   # Основной лог
-  │   ├── indexing.log                 # Логи индексации
-  │   └── errors.log                   # Ошибки
-  ├── server.pid                       # PID глобального сервера
-  └── state.json                       # Глобальное состояние
-
-# Дополнительно (опционально)
-~/.meridian/plugins/                   # Плагины для расширения функциональности
-~/.meridian/backups/                   # Бэкапы БД
-```
-
-### Локальное Хранилище (Монорепозиторий)
+### Global Storage
 
 ```
-[monorepo-path]/.meridian/             # Локальная директория монорепозитория
-  ├── meridian.toml                    # Локальный конфиг
-  ├── cache.db/                        # Локальный RocksDB кеш
-  │   ├── symbols/                     # Кеш символов этого монорепозитория
-  │   ├── docs/                        # Кеш документации
-  │   └── external/                    # Кеш внешних зависимостей
-  ├── state.json                       # Локальное состояние
-  │                                    # - последняя синхронизация
+~/.meridian/                           # Global Meridian directory
+  ├── meridian.toml                    # Global config
+  ├── data/                            # Global RocksDB
+  │   ├── registry/                    # Project and monorepo registry
+  │   ├── symbols/                     # All symbols from all projects
+  │   ├── docs/                        # Documentation
+  │   ├── examples/                    # Code examples
+  │   ├── tests/                       # Tests
+  │   └── xref/                        # Cross-project references
+  ├── cache/                           # Global cache
+  │   └── compiled/                    # Compiled examples
+  ├── logs/                            # Server logs
+  │   ├── server.log                   # Main log
+  │   ├── indexing.log                 # Indexing logs
+  │   └── errors.log                   # Errors
+  ├── server.pid                       # Global server PID
+  └── state.json                       # Global state
+
+# Additional (optional)
+~/.meridian/plugins/                   # Plugins for extended functionality
+~/.meridian/backups/                   # DB backups
+```
+
+### Local Storage (Monorepo)
+
+```
+[monorepo-path]/.meridian/             # Local monorepo directory
+  ├── meridian.toml                    # Local config
+  ├── cache.db/                        # Local RocksDB cache
+  │   ├── symbols/                     # Symbol cache for this monorepo
+  │   ├── docs/                        # Documentation cache
+  │   └── external/                    # External dependency cache
+  ├── state.json                       # Local state
+  │                                    # - last sync
   │                                    # - pending changes
-  ├── .gitignore                       # Игнорируем cache.db/
-  └── README.md                        # Документация для разработчиков
+  ├── .gitignore                       # Ignore cache.db/
+  └── README.md                        # Developer documentation
 
-# .gitignore содержимое:
+# .gitignore content:
 cache.db/
 state.json
 *.log
 ```
 
-### Размещение Данных
+### Data Placement
 
-**Что хранится в глобальной БД:**
-- ✅ Реестр всех проектов
-- ✅ Полный индекс символов
-- ✅ Документация для всех проектов
-- ✅ Кросс-проектные ссылки
+**What's stored in global DB:**
+- ✅ Registry of all projects
+- ✅ Complete symbol index
+- ✅ Documentation for all projects
+- ✅ Cross-project references
 - ✅ Dependency graph
-- ✅ История индексации
+- ✅ Indexing history
 
-**Что хранится в локальном кеше:**
-- ✅ Быстрый доступ к символам текущего монорепозитория
-- ✅ Кеш часто используемых внешних зависимостей
-- ✅ Pending changes (не синхронизированные изменения)
-- ✅ Локальная конфигурация
+**What's stored in local cache:**
+- ✅ Fast access to current monorepo symbols
+- ✅ Cache of frequently used external dependencies
+- ✅ Pending changes (not synchronized)
+- ✅ Local configuration
 
 ---
 
-## Система Уникальных ID
+## Unique ID System
 
-**Определения типов см. в [schemas/type-definitions.md](./schemas/type-definitions.md).**
+**See type definitions in [schemas/type-definitions.md](./schemas/type-definitions.md).**
 
-### Проблема
+### Problem
 
-Путь к проекту может изменяться (переименование, перемещение), но идентичность проекта должна сохраняться.
+Project path can change (rename, move), but project identity should persist.
 
-### Решение: Content-Based Identity
+### Solution: Content-Based Identity
 
-**Основа идентификации** - содержимое манифеста, а не путь:
+**Identification basis** - manifest content, not path:
 
 ```typescript
 interface ProjectIdentity {
-  // Основной ID (без версии)
+  // Primary ID (without version)
   id: string;                          // "@omnitron-dev/titan"
 
-  // Версия (для множественных версий одного проекта)
+  // Version (for multiple versions of same project)
   version: string;                     // "1.0.0"
 
-  // Полный уникальный ID
+  // Full unique ID
   fullId: string;                      // "@omnitron-dev/titan@1.0.0"
 
-  // Контентный hash (для верификации)
-  contentHash: string;                 // SHA256 от package.json/Cargo.toml
+  // Content hash (for verification)
+  contentHash: string;                 // SHA256 of package.json/Cargo.toml
 
-  // Тип проекта
+  // Project type
   type: "npm" | "cargo" | "generic";
 }
 ```
 
-### Генерация ID
+### ID Generation
 
 **TypeScript/JavaScript (npm packages):**
 ```typescript
-// Из package.json
+// From package.json
 {
   "name": "@omnitron-dev/titan",  // → id
   "version": "1.0.0"              // → version
 }
 
-// Полный ID: "@omnitron-dev/titan@1.0.0"
+// Full ID: "@omnitron-dev/titan@1.0.0"
 ```
 
 **Rust (Cargo crates):**
 ```toml
-# Из Cargo.toml
+# From Cargo.toml
 [package]
 name = "meridian-core"  # → id
 version = "1.0.0"       # → version
 
-# Полный ID: "meridian-core@1.0.0"
+# Full ID: "meridian-core@1.0.0"
 ```
 
-**Generic Projects (без package manager):**
+**Generic Projects (without package manager):**
 ```typescript
-// Генерация ID из содержимого
+// ID generation from content
 const contentHash = sha256(manifestContent);
 const id = `generic-${contentHash.slice(0, 12)}`;
 
-// Полный ID: "generic-a1b2c3d4e5f6@0.0.1"
+// Full ID: "generic-a1b2c3d4e5f6@0.0.1"
 ```
 
 ### Monorepo ID
 
-**Монорепозиторий** также имеет уникальный ID:
+**Monorepo** also has a unique ID:
 
 ```typescript
 interface MonorepoIdentity {
-  // ID монорепозитория
-  id: string;                          // "omnitron-dev" или auto-generated
+  // Monorepo ID
+  id: string;                          // "omnitron-dev" or auto-generated
 
-  // Название (опционально)
+  // Name (optional)
   name?: string;                       // "Omnitron Development"
 
-  // Контентный hash (root package.json или workspace manifest)
+  // Content hash (root package.json or workspace manifest)
   contentHash: string;
 
-  // Тип workspace
+  // Workspace type
   type: "pnpm" | "npm" | "yarn" | "cargo" | "mixed";
 }
 ```
 
-**Определение Monorepo ID:**
-1. Проверить `[monorepo]/.meridian/meridian.toml` → `monorepo.id`
-2. Если нет, извлечь из root `package.json` → `name`
-3. Если нет, сгенерировать из hash root manifest
-4. Сохранить в `[monorepo]/.meridian/meridian.toml`
+**Determining Monorepo ID:**
+1. Check `[monorepo]/.meridian/meridian.toml` → `monorepo.id`
+2. If not found, extract from root `package.json` → `name`
+3. If not found, generate from hash of root manifest
+4. Save to `[monorepo]/.meridian/meridian.toml`
 
 ---
 
 ## Project Registry
 
-**Определения типов см. в [schemas/type-definitions.md](./schemas/type-definitions.md).**
+**See type definitions in [schemas/type-definitions.md](./schemas/type-definitions.md).**
 
-### Концепция
+### Concept
 
-**Project Registry** - глобальный реестр всех проектов на машине разработчика.
+**Project Registry** - global registry of all projects on the developer's machine.
 
-### Структура
+### Structure
 
 ```typescript
 interface ProjectRegistry {
@@ -325,23 +327,23 @@ interface ProjectRegistry {
   identity: ProjectIdentity;
 
   // Location tracking
-  currentPath: string;                 // Текущий абсолютный путь
-  pathHistory: ProjectPathHistory[];   // История перемещений
+  currentPath: string;                 // Current absolute path
+  pathHistory: ProjectPathHistory[];   // Relocation history
 
   // Monorepo context
   monorepo?: {
-    id: string;                        // ID монорепозитория
-    path: string;                      // Путь к корню монорепозитория
-    relativePath: string;              // Относительный путь внутри монорепозитория
+    id: string;                        // Monorepo ID
+    path: string;                      // Path to monorepo root
+    relativePath: string;              // Relative path inside monorepo
   };
 
   // Project metadata
-  metadata: ProjectMetadata;           // Из strong-tools-spec.md
+  metadata: ProjectMetadata;           // From strong-tools-spec.md
 
   // Indexing state
   indexing: {
     lastIndexed: Date;
-    indexVersion: string;              // Версия индексатора
+    indexVersion: string;              // Indexer version
     status: "indexed" | "indexing" | "error" | "pending";
     errorMessage?: string;
   };
@@ -356,36 +358,36 @@ interface ProjectRegistry {
 }
 
 interface ProjectPathHistory {
-  path: string;                        // Предыдущий путь
+  path: string;                        // Previous path
   timestamp: Date;
   reason: "discovered" | "relocated" | "auto-detected";
   initiatedBy?: string;                // "user" | "auto-scan" | "migration"
 }
 ```
 
-### Операции с Registry
+### Registry Operations
 
-**1. Регистрация проекта:**
+**1. Register project:**
 ```typescript
 async function registerProject(path: string): Promise<ProjectRegistry> {
-  // 1. Парсим манифест (package.json / Cargo.toml)
+  // 1. Parse manifest (package.json / Cargo.toml)
   const manifest = await parseManifest(path);
 
-  // 2. Генерируем identity
+  // 2. Generate identity
   const identity = generateIdentity(manifest);
 
-  // 3. Проверяем, существует ли уже
+  // 3. Check if already exists
   const existing = await findByIdentity(identity);
 
   if (existing) {
-    // Обновляем путь, если изменился
+    // Update path if changed
     if (existing.currentPath !== path) {
       return await relocateProject(existing, path);
     }
     return existing;
   }
 
-  // 4. Создаем новую запись
+  // 4. Create new entry
   const registry: ProjectRegistry = {
     identity,
     currentPath: path,
@@ -406,17 +408,17 @@ async function registerProject(path: string): Promise<ProjectRegistry> {
     lastAccessedAt: new Date()
   };
 
-  // 5. Сохраняем в глобальной БД
+  // 5. Save to global DB
   await saveToRegistry(registry);
 
-  // 6. Запускаем индексацию
+  // 6. Queue indexing
   await enqueueIndexing(registry.identity.fullId);
 
   return registry;
 }
 ```
 
-**2. Перемещение проекта:**
+**2. Relocate project:**
 ```typescript
 async function relocateProject(
   projectId: string,
@@ -425,54 +427,54 @@ async function relocateProject(
 ): Promise<void> {
   const registry = await getFromRegistry(projectId);
 
-  // Обновляем историю
+  // Update history
   registry.pathHistory.push({
     path: registry.currentPath,
     timestamp: new Date(),
     reason
   });
 
-  // Обновляем текущий путь
+  // Update current path
   registry.currentPath = newPath;
   registry.updatedAt = new Date();
 
-  // Переиндексация не требуется (ID остается тот же)
-  // Только если изменилось содержимое, что определяется contentHash
+  // Re-indexing not required (ID remains the same)
+  // Only if content changes, which is determined by contentHash
 
   await updateRegistry(registry);
 }
 ```
 
-**3. Поиск проекта:**
+**3. Find project:**
 ```typescript
-// По ID
+// By ID
 async function findByIdentity(identity: ProjectIdentity): Promise<ProjectRegistry | null>
 
-// По пути
+// By path
 async function findByPath(path: string): Promise<ProjectRegistry | null>
 
-// По имени
+// By name
 async function findByName(name: string): Promise<ProjectRegistry[]>
 
-// Все проекты монорепозитория
+// All projects in monorepo
 async function findByMonorepo(monorepoId: string): Promise<ProjectRegistry[]>
 ```
 
 ### Auto-Discovery
 
-**Автоматическое обнаружение проектов:**
+**Automatic project discovery:**
 
 ```typescript
 async function discoverProjects(rootPath: string): Promise<ProjectRegistry[]> {
   const discovered: ProjectRegistry[] = [];
 
-  // 1. Определяем тип workspace
+  // 1. Determine workspace type
   const workspaceType = await detectWorkspace(rootPath);
 
-  // 2. Ищем проекты
+  // 2. Find projects
   const projectPaths = await findProjectsInWorkspace(rootPath, workspaceType);
 
-  // 3. Регистрируем каждый проект
+  // 3. Register each project
   for (const projectPath of projectPaths) {
     const registry = await registerProject(projectPath);
     discovered.push(registry);
@@ -505,9 +507,9 @@ async function detectWorkspace(rootPath: string): Promise<WorkspaceType> {
 
 ---
 
-## Двухуровневая Архитектура
+## Two-Tier Architecture
 
-### Обзор
+### Overview
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -560,29 +562,29 @@ async function detectWorkspace(rootPath: string): Promise<WorkspaceType> {
 └──────────────────────────────────────────────────────────────┘
 ```
 
-### Уровни
+### Layers
 
 **1. MCP Layer**
-- Интеграция с Claude Code
-- STDIO транспорт
+- Claude Code integration
+- STDIO transport
 - MCP Protocol 2025-03-26
 
 **2. Global Server Layer**
-- Daemon процесс
-- Управление всеми проектами
-- Глобальная индексация
+- Daemon process
+- Management of all projects
+- Global indexing
 - File watching
 
 **3. Storage Layer**
-- Глобальная RocksDB
-- Локальные кеши
-- Синхронизация
+- Global RocksDB
+- Local caches
+- Synchronization
 
 ---
 
-## Глобальный Сервер
+## Global Server
 
-### Архитектура
+### Architecture
 
 ```typescript
 class MeridianGlobalServer {
@@ -590,22 +592,22 @@ class MeridianGlobalServer {
   private projectRegistry: ProjectRegistryManager;
   private indexManager: GlobalIndexManager;
   private fileWatcher: GlobalFileWatcher;
-  private mcpClients: Map<string, MCPClient>;  // Подключенные MCP серверы
+  private mcpClients: Map<string, MCPClient>;  // Connected MCP servers
 
-  // IPC/HTTP сервер для communication с локальными MCP серверами
+  // IPC/HTTP server for communication with local MCP servers
   private ipcServer: IPCServer;
 
   async start(): Promise<void> {
-    // 1. Загрузить глобальную БД
+    // 1. Load global DB
     await this.loadGlobalDB();
 
-    // 2. Загрузить project registry
+    // 2. Load project registry
     await this.projectRegistry.load();
 
-    // 3. Запустить file watcher для всех монорепозиториев
+    // 3. Start file watcher for all monorepos
     await this.startFileWatcher();
 
-    // 4. Запустить IPC сервер
+    // 4. Start IPC server
     await this.startIPCServer();
 
     console.log('Meridian Global Server started');
@@ -620,7 +622,7 @@ class MeridianGlobalServer {
 }
 ```
 
-### Компоненты
+### Components
 
 #### 1. Project Registry Manager
 
@@ -686,13 +688,13 @@ class GlobalFileWatcher {
   }
 
   private async handleFileChange(monorepoId: string, event: FileChangeEvent) {
-    // 1. Определить, какой проект затронут
+    // 1. Determine which project is affected
     const project = await this.findProjectByFile(event.path);
 
-    // 2. Запустить инкрементальную переиндексацию
+    // 2. Start incremental re-indexing
     await this.indexManager.reindexFile(project.identity.fullId, event.path);
 
-    // 3. Уведомить подключенные MCP серверы
+    // 3. Notify connected MCP servers
     await this.notifyMCPClients(project.identity.fullId, event);
   }
 }
@@ -702,7 +704,7 @@ class GlobalFileWatcher {
 
 ```typescript
 class IPCServer {
-  private server: HTTPServer;  // или Unix socket
+  private server: HTTPServer;  // or Unix socket
 
   async start(): Promise<void> {
     this.server = createServer((req, res) => {
@@ -731,56 +733,56 @@ class IPCServer {
 }
 ```
 
-### Запуск и Управление
+### Startup and Management
 
-**Запуск сервера:**
+**Starting server:**
 ```bash
-# Запуск в daemon режиме
+# Start in daemon mode
 meridian server --daemon
 
-# Запуск в foreground (для отладки)
+# Start in foreground (for debugging)
 meridian server
 
-# Проверка статуса
+# Check status
 meridian server status
 
-# Остановка
+# Stop
 meridian server stop
 ```
 
-**Управление проектами:**
+**Managing projects:**
 ```bash
-# Добавить монорепозиторий
+# Add monorepo
 meridian projects add /path/to/monorepo
 
-# Список всех проектов
+# List all projects
 meridian projects list
 
-# Поиск проекта
+# Search for project
 meridian projects search "@omnitron-dev/titan"
 
-# Перемещение монорепозитория
+# Relocate monorepo
 meridian projects relocate frontend-app /new/path
 
-# Удаление проекта
+# Remove project
 meridian projects remove "@omnitron-dev/old-project"
 
-# Переиндексация
+# Re-index
 meridian index --all
 meridian index --project "@omnitron-dev/titan"
 ```
 
 ---
 
-## Локальный MCP Сервер
+## Local MCP Server
 
-### Архитектура
+### Architecture
 
 ```typescript
 class MeridianMCPServer {
-  private globalClient: GlobalServerClient;   // Клиент к глобальному серверу
-  private localCache: LocalCache;             // Локальный RocksDB кеш
-  private monorepoContext: MonorepoContext;   // Контекст текущего монорепозитория
+  private globalClient: GlobalServerClient;   // Client to global server
+  private localCache: LocalCache;             // Local RocksDB cache
+  private monorepoContext: MonorepoContext;   // Current monorepo context
 
   constructor(monorepoPath: string) {
     this.monorepoContext = {
@@ -791,10 +793,10 @@ class MeridianMCPServer {
   }
 
   async handleToolCall(tool: string, args: any): Promise<any> {
-    // Двухуровневая стратегия:
-    // 1. Проверить локальный кеш
-    // 2. Если нет - запросить у глобального сервера
-    // 3. Кешировать результат локально
+    // Two-tier strategy:
+    // 1. Check local cache
+    // 2. If not found - request from global server
+    // 3. Cache result locally
 
     switch (tool) {
       case 'code.search_symbols':
@@ -811,20 +813,20 @@ class MeridianMCPServer {
   }
 
   private async searchSymbols(args: any): Promise<any> {
-    // 1. Проверить локальный кеш
+    // 1. Check local cache
     const cached = await this.localCache.get(`symbols:search:${args.query}`);
     if (cached && !cached.isStale) {
       return cached.value;
     }
 
-    // 2. Запросить у глобального сервера
+    // 2. Request from global server
     const result = await this.globalClient.request('searchSymbols', {
       query: args.query,
-      monorepoId: this.monorepoContext.monorepoId,  // Контекст
+      monorepoId: this.monorepoContext.monorepoId,  // Context
       includeExternal: args.includeExternal ?? false
     });
 
-    // 3. Кешировать
+    // 3. Cache
     await this.localCache.set(`symbols:search:${args.query}`, result, {
       ttl: 3600  // 1 hour
     });
@@ -833,19 +835,19 @@ class MeridianMCPServer {
   }
 
   private async searchDocumentation(args: any): Promise<any> {
-    // Поиск может быть:
-    // - Локальный (только этот монорепозиторий)
-    // - Глобальный (все монорепозитории)
-    // - По зависимостям (только проекты, от которых зависим)
+    // Search can be:
+    // - Local (only this monorepo)
+    // - Global (all monorepos)
+    // - Dependencies (only projects we depend on)
 
     const scope = args.scope ?? 'dependencies';  // 'local' | 'dependencies' | 'global'
 
     if (scope === 'local') {
-      // Только локальный кеш
+      // Local cache only
       return await this.localCache.searchDocs(args.query);
     }
 
-    // Запрос к глобальному серверу
+    // Request to global server
     return await this.globalClient.request('searchDocumentation', {
       query: args.query,
       scope,
@@ -855,7 +857,7 @@ class MeridianMCPServer {
 }
 ```
 
-### Локальный Кеш
+### Local Cache
 
 ```typescript
 class LocalCache {
@@ -899,9 +901,9 @@ interface SyncState {
 }
 ```
 
-### Запуск MCP Сервера
+### Starting MCP Server
 
-**Для Claude Code** (в `.claude.json`):
+**For Claude Code** (in `.claude.json`):
 ```json
 {
   "mcpServers": {
@@ -917,43 +919,43 @@ interface SyncState {
 }
 ```
 
-**Процесс запуска:**
+**Startup process:**
 ```bash
 cd /path/to/monorepo
 meridian serve --stdio
 
-# Это:
-# 1. Определяет monorepoId
-# 2. Подключается к глобальному серверу
-# 3. Загружает локальный кеш
-# 4. Запускает MCP сервер
-# 5. Готов к запросам от Claude Code
+# This:
+# 1. Determines monorepoId
+# 2. Connects to global server
+# 3. Loads local cache
+# 4. Starts MCP server
+# 5. Ready for requests from Claude Code
 ```
 
 ---
 
-## Кросс-Монорепозиторная Документация
+## Cross-Monorepo Documentation
 
 ### Use Case
 
-**Сценарий:**
+**Scenario:**
 ```
-Монорепозиторий A: frontend-app
+Monorepo A: frontend-app
   └── packages/ui-kit
       └── depends on: @company/auth-lib
 
-Монорепозиторий B: backend-services
+Monorepo B: backend-services
   └── packages/auth-lib
 ```
 
-**Задача:** При работе над `ui-kit`, получить документацию для `auth-lib` из другого монорепозитория.
+**Task:** When working on `ui-kit`, get documentation for `auth-lib` from another monorepo.
 
-### Решение
+### Solution
 
 **1. Dependency Resolution:**
 
 ```typescript
-// В packages/ui-kit/package.json
+// In packages/ui-kit/package.json
 {
   "dependencies": {
     "@company/auth-lib": "^1.0.0"
@@ -961,145 +963,145 @@ meridian serve --stdio
 }
 
 // Meridian:
-// 1. Определяет, что ui-kit зависит от auth-lib
-// 2. Ищет auth-lib в глобальном реестре
-// 3. Находит, что auth-lib в монорепозитории B
-// 4. Загружает документацию из глобальной БД
+// 1. Determines that ui-kit depends on auth-lib
+// 2. Searches for auth-lib in global registry
+// 3. Finds that auth-lib is in monorepo B
+// 4. Loads documentation from global DB
 ```
 
 **2. MCP Tool Usage:**
 
 ```typescript
-// В Claude Code, при работе над ui-kit
+// In Claude Code, when working on ui-kit
 
-// Запрос документации для внешней зависимости
+// Request documentation for external dependency
 const docs = await mcp.request('strong.catalog.get_project', {
   projectId: '@company/auth-lib'
 });
 
-// Результат содержит:
-// - Документацию для всех exported symbols
-// - Примеры использования
+// Result contains:
+// - Documentation for all exported symbols
+// - Usage examples
 // - Cross-references
-// - Местоположение исходного кода (для анализа)
+// - Source code location (for analysis)
 ```
 
 **3. Source Code Analysis:**
 
 ```typescript
-// Опционально: анализ исходного кода зависимости
+// Optional: analyze dependency source code
 const sourceCode = await mcp.request('code.get_definition', {
   projectId: '@company/auth-lib',
   symbolName: 'authenticate'
 });
 
-// Возвращает:
-// - Полный исходный код функции
+// Returns:
+// - Full function source code
 // - Type signature
-// - JSDoc документацию
-// - Location в файловой системе
+// - JSDoc documentation
+// - Location in filesystem
 ```
 
-### Безопасность и Изоляция
+### Security and Isolation
 
-**Ограничения:**
-- ✅ Чтение документации из других монорепозиториев - разрешено
-- ✅ Чтение исходного кода - разрешено (read-only)
-- ❌ Изменение кода в других монорепозиториях - запрещено
-- ❌ Генерация документации для других проектов - запрещено (только для текущего монорепозитория)
+**Restrictions:**
+- ✅ Reading documentation from other monorepos - allowed
+- ✅ Reading source code - allowed (read-only)
+- ❌ Modifying code in other monorepos - prohibited
+- ❌ Generating documentation for other projects - prohibited (only for current monorepo)
 
-**Реализация:**
+**Implementation:**
 ```typescript
 class SecurityContext {
   currentMonorepoId: string;
 
   canRead(projectId: string): boolean {
-    // Можем читать любой проект
+    // Can read any project
     return true;
   }
 
   canWrite(projectId: string): boolean {
-    // Можем писать только в проекты текущего монорепозитория
+    // Can write only to projects in current monorepo
     const project = await this.registry.get(projectId);
     return project.monorepo?.id === this.currentMonorepoId;
   }
 }
 ```
 
-### Кеширование Внешних Зависимостей
+### Caching External Dependencies
 
-**Стратегия:**
+**Strategy:**
 ```typescript
-// При первом обращении к внешней зависимости
+// On first access to external dependency
 const docs = await this.globalClient.getDocumentation('@company/auth-lib');
 
-// Кешируем локально
+// Cache locally
 await this.localCache.set('external:@company/auth-lib:docs', docs, {
   ttl: 86400  // 24 hours
 });
 
-// Последующие обращения - из локального кеша
+// Subsequent accesses - from local cache
 const cached = await this.localCache.get('external:@company/auth-lib:docs');
 ```
 
 ---
 
-## Синхронизация и Кеширование
+## Synchronization and Caching
 
-### Стратегия Синхронизации
+### Synchronization Strategy
 
-**Направления синхронизации:**
+**Synchronization directions:**
 
 ```
-Local Changes (Монорепозиторий)
+Local Changes (Monorepo)
         ↓
-  [Watch файлов]
+  [File watching]
         ↓
   Global Server
         ↓
-  [Индексация]
+  [Indexing]
         ↓
   Global DB
         ↓
-  [Push к другим MCP серверам]
+  [Push to other MCP servers]
         ↓
-  Other Local Caches (при запросе)
+  Other Local Caches (on request)
 ```
 
-### Типы Синхронизации
+### Synchronization Types
 
-**1. Push Sync (от локального к глобальному):**
+**1. Push Sync (local to global):**
 ```typescript
-// При изменении файла в монорепозитории
+// On file change in monorepo
 async function onFileChange(filePath: string) {
-  // 1. Локальная переиндексация
+  // 1. Local re-indexing
   const symbols = await parseFile(filePath);
 
-  // 2. Отправка в глобальный сервер
+  // 2. Send to global server
   await globalClient.updateSymbols(projectId, symbols);
 
-  // 3. Глобальный сервер обновляет БД
+  // 3. Global server updates DB
   await globalDB.put(`symbols:${projectId}:${symbolId}`, symbols);
 
-  // 4. Уведомление других MCP серверов (если они используют этот проект)
+  // 4. Notify other MCP servers (if they use this project)
   await notifyDependents(projectId, symbolId);
 }
 ```
 
-**2. Pull Sync (от глобального к локальному):**
+**2. Pull Sync (global to local):**
 ```typescript
-// При запросе документации для внешнего проекта
+// When requesting documentation for external project
 async function getExternalDocs(projectId: string) {
-  // 1. Проверить локальный кеш
+  // 1. Check local cache
   const cached = await localCache.get(`external:${projectId}:docs`);
   if (cached && !cached.isStale) {
     return cached.value;
   }
 
-  // 2. Запросить у глобального сервера
+  // 2. Request from global server
   const docs = await globalClient.getDocumentation(projectId);
 
-  // 3. Кешировать локально
+  // 3. Cache locally
   await localCache.set(`external:${projectId}:docs`, docs, { ttl: 86400 });
 
   return docs;
@@ -1108,7 +1110,7 @@ async function getExternalDocs(projectId: string) {
 
 **3. Periodic Sync:**
 ```typescript
-// Периодическая синхронизация (каждые 5 минут)
+// Periodic synchronization (every 5 minutes)
 setInterval(async () => {
   await localCache.sync();
 }, 5 * 60 * 1000);
@@ -1116,41 +1118,41 @@ setInterval(async () => {
 
 ### Cache Invalidation
 
-**Триггеры инвалидации:**
+**Invalidation triggers:**
 
 **1. File Change:**
 ```typescript
-// Файл изменился
+// File changed
 onFileChange('packages/titan/src/application.ts') →
   invalidate('symbols:@omnitron-dev/titan:Application')
 ```
 
 **2. Project Re-index:**
 ```typescript
-// Проект переиндексирован
+// Project re-indexed
 onProjectReindex('@omnitron-dev/titan') →
   invalidatePattern('symbols:@omnitron-dev/titan:*')
 ```
 
 **3. TTL Expiration:**
 ```typescript
-// TTL истек для кеша
+// TTL expired for cache
 onTTLExpire('external:@company/auth-lib:docs') →
   markStale('external:@company/auth-lib:docs')
 ```
 
 **4. Manual Invalidation:**
 ```bash
-# Очистка локального кеша
+# Clear local cache
 meridian cache clear
 
-# Очистка для конкретного проекта
+# Clear for specific project
 meridian cache clear --project "@omnitron-dev/titan"
 ```
 
 ### Offline Mode
 
-**Работа без глобального сервера:**
+**Working without global server:**
 
 ```typescript
 class MeridianMCPServer {
@@ -1158,15 +1160,15 @@ class MeridianMCPServer {
 
   async handleToolCall(tool: string, args: any) {
     try {
-      // Попытка обращения к глобальному серверу
+      // Attempt to access global server
       return await this.handleWithGlobalServer(tool, args);
     } catch (error) {
       if (isConnectionError(error)) {
-        // Переключение в offline mode
+        // Switch to offline mode
         this.offlineMode = true;
         console.warn('Global server unavailable, switching to offline mode');
 
-        // Работа только с локальным кешем
+        // Work only with local cache
         return await this.handleWithLocalCache(tool, args);
       }
       throw error;
@@ -1174,10 +1176,10 @@ class MeridianMCPServer {
   }
 
   private async handleWithLocalCache(tool: string, args: any) {
-    // Ограниченная функциональность:
-    // - Только проекты текущего монорепозитория
-    // - Только закешированные внешние зависимости
-    // - Генерация документации работает
+    // Limited functionality:
+    // - Only current monorepo projects
+    // - Only cached external dependencies
+    // - Documentation generation works
 
     const result = await this.localCache.query(tool, args);
 
@@ -1197,68 +1199,68 @@ class MeridianMCPServer {
 
 ## RocksDB Schema
 
-**Подробности схемы RocksDB см. в [schemas/rocksdb-schema.md](./schemas/rocksdb-schema.md). Этот документ является единственным источником истины для всех схем RocksDB.**
+**See detailed RocksDB schema in [schemas/rocksdb-schema.md](./schemas/rocksdb-schema.md). This document is the single source of truth for all RocksDB schemas.**
 
-### Краткий обзор
+### Brief Overview
 
-**Глобальная БД** (`~/.meridian/data/`):
-- `registry:*` - Реестр проектов и монорепозиториев
-- `symbols:*` - Все символы из всех проектов
-- `docs:*` - Документация для всех символов
-- `examples:*` - Сгенерированные примеры кода
-- `tests:*` - Сгенерированные тесты
-- `xref:*` - Кросс-ссылки между проектами
-- `deps:*` - Граф зависимостей
-- `meta:*` - Глобальная метаинформация
+**Global DB** (`~/.meridian/data/`):
+- `registry:*` - Project and monorepo registry
+- `symbols:*` - All symbols from all projects
+- `docs:*` - Documentation for all symbols
+- `examples:*` - Generated code examples
+- `tests:*` - Generated tests
+- `xref:*` - Cross-project references
+- `deps:*` - Dependency graph
+- `meta:*` - Global metadata
 
-**Локальный кеш** (`[monorepo-path]/.meridian/cache.db/`):
-- `cache:symbols:*` - Кеш символов текущего монорепозитория
-- `cache:external:*` - Кеш внешних зависимостей
-- `cache:query:*` - Кеш результатов запросов
-- `sync:*` - Состояние синхронизации
-- `meta:*` - Локальная метаинформация
+**Local cache** (`[monorepo-path]/.meridian/cache.db/`):
+- `cache:symbols:*` - Symbol cache for current monorepo
+- `cache:external:*` - External dependency cache
+- `cache:query:*` - Query result cache
+- `sync:*` - Synchronization state
+- `meta:*` - Local metadata
 
-**Полное описание схем, форматов ключей, типов данных и примеров см. в [schemas/rocksdb-schema.md](./schemas/rocksdb-schema.md).**
+**See complete schema descriptions, key formats, data types, and examples in [schemas/rocksdb-schema.md](./schemas/rocksdb-schema.md).**
 
 ---
 
-## Конфигурация
+## Configuration
 
-### Глобальный Конфиг
+### Global Config
 
-**Расположение:** `~/.meridian/meridian.toml`
+**Location:** `~/.meridian/meridian.toml`
 
 ```toml
 [server]
-# Глобальный сервер
+# Global server
 host = "localhost"
 port = 7878
 daemon = true
-auto_start = true  # Автозапуск при первом обращении
+auto_start = true  # Auto-start on first access
 
 [storage]
-# Хранилище
+# Storage
 data_dir = "~/.meridian/data"
 cache_size_mb = 1024
 max_db_size_mb = 10240
 compression = "zstd"
 
 [indexing]
-# Индексация
+# Indexing
 auto_index_on_add = true
 watch_enabled = true
 debounce_ms = 500
 max_concurrent_indexes = 4
 
 [cross_monorepo]
-# Кросс-монорепозиторная функциональность
+# Cross-monorepo functionality
 enable = true
 cache_external_docs = true
 max_dependency_depth = 3
 auto_discover_dependencies = true
 
 [cache]
-# Глобальный кеш
+# Global cache
 default_ttl_hours = 24
 max_cache_size_mb = 2048
 eviction_policy = "lru"
@@ -1276,60 +1278,60 @@ ignore_patterns = [
 batch_delay_ms = 500
 
 [logging]
-# Логирование
+# Logging
 level = "info"
 file = "~/.meridian/logs/server.log"
 max_size_mb = 100
 max_backups = 5
 
 [security]
-# Безопасность (future)
+# Security (future)
 enable_access_control = false
 allowed_monorepos = []  # Empty = all allowed
 ```
 
-### Локальный Конфиг
+### Local Config
 
-**Расположение:** `[monorepo-path]/.meridian/meridian.toml`
+**Location:** `[monorepo-path]/.meridian/meridian.toml`
 
 ```toml
 [monorepo]
-# Идентификация монорепозитория
+# Monorepo identification
 id = "omnitron-dev"
 name = "Omnitron Development"
 type = "pnpm"  # pnpm | npm | yarn | cargo | mixed
 
 [projects]
-# Проекты (auto-discovery если не указано)
+# Projects (auto-discovery if not specified)
 auto_discover = true
-# Явное указание (опционально):
+# Explicit specification (optional):
 # explicit = [
 #   "packages/titan",
 #   "packages/common"
 # ]
 
 [sync]
-# Синхронизация с глобальной БД
+# Synchronization with global DB
 auto_sync = true
 sync_interval_minutes = 5
 sync_on_file_change = true
-push_immediately = false  # или буферизация
+push_immediately = false  # or buffering
 
 [cache]
-# Локальный кеш
+# Local cache
 enabled = true
 max_size_mb = 512
 ttl_hours = 24
 cache_external_deps = true
 
 [mcp]
-# MCP-специфичные настройки
+# MCP-specific settings
 enable_cross_monorepo_docs = true
 include_external_sources = true
 scope = "dependencies"  # local | dependencies | global
 
 [indexing]
-# Локальная индексация
+# Local indexing
 include_tests = true
 include_examples = true
 exclude_patterns = []
@@ -1339,20 +1341,20 @@ exclude_patterns = []
 
 ## CLI Commands
 
-### Глобальные Команды
+### Global Commands
 
 **Server Management:**
 ```bash
-# Запуск глобального сервера
+# Start global server
 meridian server start [--daemon]
 
-# Остановка
+# Stop
 meridian server stop
 
-# Статус
+# Status
 meridian server status
 
-# Логи
+# Logs
 meridian server logs [--follow]
 
 # Restart
@@ -1361,34 +1363,34 @@ meridian server restart
 
 **Project Management:**
 ```bash
-# Добавить монорепозиторий
+# Add monorepo
 meridian projects add <path>
 
-# Список всех проектов
+# List all projects
 meridian projects list [--monorepo <id>]
 
-# Поиск проекта
+# Search for project
 meridian projects search <query>
 
-# Детали проекта
+# Project details
 meridian projects info <project-id>
 
-# Удаление проекта
+# Remove project
 meridian projects remove <project-id>
 
-# Перемещение монорепозитория
+# Relocate monorepo
 meridian projects relocate <monorepo-id> <new-path>
 ```
 
 **Indexing:**
 ```bash
-# Индексация всех проектов
+# Index all projects
 meridian index --all
 
-# Индексация конкретного проекта
+# Index specific project
 meridian index --project <project-id>
 
-# Индексация монорепозитория
+# Index monorepo
 meridian index --monorepo <monorepo-id>
 
 # Re-index (force)
@@ -1397,25 +1399,25 @@ meridian index --force --project <project-id>
 
 **Cache Management:**
 ```bash
-# Статистика кеша
+# Cache statistics
 meridian cache stats
 
-# Очистка глобального кеша
+# Clear global cache
 meridian cache clear --global
 
-# Очистка для проекта
+# Clear for project
 meridian cache clear --project <project-id>
 
-# Очистка всех локальных кешей
+# Clear all local caches
 meridian cache clear --all-local
 ```
 
 **Diagnostics:**
 ```bash
-# Проверка целостности БД
+# Check DB integrity
 meridian doctor
 
-# Статистика
+# Statistics
 meridian stats
 
 # Dependency graph
@@ -1425,32 +1427,32 @@ meridian deps graph <project-id>
 meridian deps tree <project-id> [--depth <n>]
 ```
 
-### Локальные Команды (в контексте монорепозитория)
+### Local Commands (in monorepo context)
 
 **MCP Server:**
 ```bash
-# Запуск MCP сервера для Claude Code
+# Start MCP server for Claude Code
 meridian serve --stdio
 
-# Запуск с дополнительными опциями
+# Start with additional options
 meridian serve --stdio --verbose --offline
 ```
 
 **Local Operations:**
 ```bash
-# Инициализация .meridian в монорепозитории
+# Initialize .meridian in monorepo
 meridian init
 
-# Локальная индексация
+# Local indexing
 meridian index
 
-# Синхронизация с глобальной БД
+# Sync with global DB
 meridian sync
 
-# Статус локального кеша
+# Local cache status
 meridian cache status
 
-# Очистка локального кеша
+# Clear local cache
 meridian cache clear
 ```
 
@@ -1458,19 +1460,19 @@ meridian cache clear
 
 ## MCP Tools
 
-**Полный каталог MCP инструментов см. в [schemas/mcp-tools-catalog.md](./schemas/mcp-tools-catalog.md).**
+**See complete MCP tools catalog in [schemas/mcp-tools-catalog.md](./schemas/mcp-tools-catalog.md).**
 
-### Обновленные Tools для Кросс-Монорепозиторной Работы
+### Updated Tools for Cross-Monorepo Work
 
-**Новые категории:**
-1. **Global Catalog Tools** - работа с глобальным реестром
-2. **Cross-Monorepo Tools** - кросс-монорепозиторная функциональность
+**New categories:**
+1. **Global Catalog Tools** - working with global registry
+2. **Cross-Monorepo Tools** - cross-monorepo functionality
 
 ### Global Catalog Tools
 
 #### `strong.global.list_monorepos`
 
-**Description**: Список всех зарегистрированных монорепозиториев.
+**Description**: List all registered monorepos.
 
 **Input**: None
 
@@ -1493,7 +1495,7 @@ meridian cache clear
 
 #### `strong.global.search_all_projects`
 
-**Description**: Поиск проектов across all monorepos.
+**Description**: Search projects across all monorepos.
 
 **Input**:
 ```typescript
@@ -1526,7 +1528,7 @@ meridian cache clear
 
 #### `strong.global.get_dependency_graph`
 
-**Description**: Граф зависимостей (кросс-монорепозиторный).
+**Description**: Dependency graph (cross-monorepo).
 
 **Input**:
 ```typescript
@@ -1567,7 +1569,7 @@ meridian cache clear
 
 #### `strong.external.get_documentation`
 
-**Description**: Получить документацию для внешнего проекта (из другого монорепозитория).
+**Description**: Get documentation for external project (from another monorepo).
 
 **Input**:
 ```typescript
@@ -1598,7 +1600,7 @@ meridian cache clear
       source?: string;
     }[];
   };
-  fromCache: boolean;                   // Из локального кеша или глобальной БД
+  fromCache: boolean;                   // From local cache or global DB
 }
 ```
 
@@ -1606,7 +1608,7 @@ meridian cache clear
 
 #### `strong.external.find_usages`
 
-**Description**: Найти использования символа across all monorepos.
+**Description**: Find symbol usage across all monorepos.
 
 **Input**:
 ```typescript
@@ -1636,9 +1638,9 @@ meridian cache clear
 
 ---
 
-### Обновленные Существующие Tools
+### Updated Existing Tools
 
-**`strong.catalog.search_documentation`** - теперь поддерживает scope:
+**`strong.catalog.search_documentation`** - now supports scope:
 
 **Input** (updated):
 ```typescript
@@ -1650,31 +1652,31 @@ meridian cache clear
 }
 ```
 
-- `scope: "local"` - только текущий монорепозиторий
-- `scope: "dependencies"` - текущий монорепозиторий + его зависимости
-- `scope: "global"` - все монорепозитории на машине
+- `scope: "local"` - current monorepo only
+- `scope: "dependencies"` - current monorepo + its dependencies
+- `scope: "global"` - all monorepos on machine
 
 ---
 
-## Workflows и Use Cases
+## Workflows and Use Cases
 
-### Workflow 1: Добавление Нового Монорепозитория
+### Workflow 1: Adding New Monorepo
 
 ```bash
-# 1. Запустить глобальный сервер (если не запущен)
+# 1. Start global server (if not running)
 meridian server start --daemon
 
-# 2. Добавить монорепозиторий
+# 2. Add monorepo
 meridian projects add /Users/dev/work/frontend-monorepo
 
-# Что происходит:
-# - Сканирование workspace
-# - Обнаружение всех проектов (packages/*)
-# - Регистрация в глобальном реестре
-# - Индексация всех проектов
-# - Запуск file watching
+# What happens:
+# - Workspace scanning
+# - Discovery of all projects (packages/*)
+# - Registration in global registry
+# - Indexing all projects
+# - Start file watching
 
-# 3. Проверить статус
+# 3. Check status
 meridian projects list
 
 # Output:
@@ -1688,19 +1690,19 @@ meridian projects list
 #   Last indexed: 2 minutes ago
 ```
 
-### Workflow 2: Работа с Claude Code (Кросс-Монорепозиторная Документация)
+### Workflow 2: Working with Claude Code (Cross-Monorepo Documentation)
 
 ```typescript
-// Пользователь работает над @company/ui-kit в frontend-monorepo
-// ui-kit зависит от @company/auth-lib из backend-monorepo
+// User working on @company/ui-kit in frontend-monorepo
+// ui-kit depends on @company/auth-lib from backend-monorepo
 
-// 1. Claude Code запускает meridian serve --stdio
-//    в контексте frontend-monorepo
+// 1. Claude Code starts meridian serve --stdio
+//    in frontend-monorepo context
 
-// 2. При работе над кодом, который использует auth-lib:
+// 2. When working on code that uses auth-lib:
 import { authenticate } from '@company/auth-lib';
 
-// 3. Claude Code запрашивает документацию через MCP:
+// 3. Claude Code requests documentation via MCP:
 const docs = await mcp.request('strong.external.get_documentation', {
   projectId: '@company/auth-lib',
   symbolName: 'authenticate',
@@ -1708,44 +1710,44 @@ const docs = await mcp.request('strong.external.get_documentation', {
 });
 
 // 4. Meridian MCP Server:
-//    - Проверяет локальный кеш
-//    - Если нет - запрашивает у глобального сервера
-//    - Глобальный сервер находит auth-lib в backend-monorepo
-//    - Возвращает документацию
-//    - MCP Server кеширует локально
+//    - Checks local cache
+//    - If not found - requests from global server
+//    - Global server finds auth-lib in backend-monorepo
+//    - Returns documentation
+//    - MCP Server caches locally
 
-// 5. Claude Code получает:
-//    - Полную документацию функции authenticate
-//    - Примеры использования
-//    - Информацию о типах
-//    - Опционально: исходный код
+// 5. Claude Code receives:
+//    - Full documentation for authenticate function
+//    - Usage examples
+//    - Type information
+//    - Optional: source code
 
-// 6. Claude Code может использовать эту информацию для:
-//    - Правильного использования API
-//    - Генерации корректного кода
-//    - Подсказок пользователю
+// 6. Claude Code can use this information for:
+//    - Correct API usage
+//    - Generating correct code
+//    - Providing hints to user
 ```
 
-### Workflow 3: Перемещение Монорепозитория
+### Workflow 3: Relocating Monorepo
 
 ```bash
-# Исходная ситуация
-/Users/dev/work/frontend-monorepo  # Старый путь
+# Initial situation
+/Users/dev/work/frontend-monorepo  # Old path
 
-# 1. Переместить директорию
+# 1. Move directory
 mv /Users/dev/work/frontend-monorepo /Users/dev/projects/frontend-monorepo
 
-# 2. Обновить реестр
+# 2. Update registry
 meridian projects relocate frontend-app /Users/dev/projects/frontend-monorepo
 
-# Что происходит:
-# - Обновление путей в project registry
-# - Сохранение истории перемещений
-# - Переиндексация НЕ требуется (ID остается тот же)
-# - File watcher обновляет watched paths
-# - Локальные кеши других монорепозиториев не затронуты
+# What happens:
+# - Update paths in project registry
+# - Save relocation history
+# - Re-indexing NOT required (ID stays the same)
+# - File watcher updates watched paths
+# - Local caches of other monorepos not affected
 
-# 3. Проверка
+# 3. Verify
 meridian projects info frontend-app
 
 # Output:
@@ -1756,12 +1758,12 @@ meridian projects info frontend-app
 #     - /Users/dev/projects/frontend-monorepo (2025-10-18, current)
 ```
 
-### Workflow 4: Оффлайн Работа
+### Workflow 4: Offline Work
 
 ```bash
-# Глобальный сервер недоступен (выключен или ошибка)
+# Global server unavailable (stopped or error)
 
-# 1. Запуск MCP сервера
+# 1. Start MCP server
 cd /Users/dev/work/frontend-monorepo
 meridian serve --stdio
 
@@ -1772,135 +1774,135 @@ meridian serve --stdio
 #   - External deps: cached only
 #   - Doc generation: available
 
-# 2. Работа с локальными проектами - полностью функционально
+# 2. Work with local projects - fully functional
 const localDocs = await mcp.request('strong.docs.generate', {
   targetPath: 'packages/ui-kit/src/button.ts'
 });
-// ✅ Работает (локальный проект)
+// ✅ Works (local project)
 
-# 3. Попытка получить документацию для внешнего проекта
+# 3. Attempt to get documentation for external project
 const externalDocs = await mcp.request('strong.external.get_documentation', {
   projectId: '@company/auth-lib'
 });
-// ✅ Работает, если есть в локальном кеше
-// ❌ Ошибка, если не в кеше и глобальный сервер недоступен
+// ✅ Works if in local cache
+// ❌ Error if not cached and global server unavailable
 
-# 4. Когда глобальный сервер снова доступен
-# - Автоматическая синхронизация pending changes
-# - Обновление кеша
-# - Полная функциональность восстановлена
+# 4. When global server becomes available again
+# - Automatic synchronization of pending changes
+# - Cache update
+# - Full functionality restored
 ```
 
 ---
 
-## Миграция и Совместимость
+## Migration and Compatibility
 
-### Миграция от Single-Monorepo к Global Architecture
+### Migration from Single-Monorepo to Global Architecture
 
-**Phase 1: Подготовка**
+**Phase 1: Preparation**
 
 ```bash
-# 1. Установить обновленную версию Meridian
+# 1. Install updated Meridian version
 npm install -g meridian@2.0.0
 
-# 2. Инициализировать глобальную директорию
+# 2. Initialize global directory
 meridian init --global
 
-# Создает:
+# Creates:
 # - ~/.meridian/
-# - ~/.meridian/meridian.toml (с дефолтными настройками)
-# - ~/.meridian/data/ (пустая глобальная БД)
+# - ~/.meridian/meridian.toml (with default settings)
+# - ~/.meridian/data/ (empty global DB)
 ```
 
-**Phase 2: Миграция Существующих Данных**
+**Phase 2: Migrating Existing Data**
 
 ```bash
-# 3. Мигрировать существующий монорепозиторий
+# 3. Migrate existing monorepo
 cd /path/to/existing/monorepo
 meridian migrate --to-global
 
-# Что происходит:
-# - Чтение данных из .meridian/local.db (старый формат)
-# - Конвертация в новый формат
-# - Загрузка в ~/.meridian/data/ (глобальная БД)
-# - Создание .meridian/cache.db (новый локальный кеш)
-# - Регистрация монорепозитория в project registry
-# - Сохранение старой БД как backup (.meridian/local.db.backup)
+# What happens:
+# - Read data from .meridian/local.db (old format)
+# - Convert to new format
+# - Load into ~/.meridian/data/ (global DB)
+# - Create .meridian/cache.db (new local cache)
+# - Register monorepo in project registry
+# - Save old DB as backup (.meridian/local.db.backup)
 
-# 4. Проверка миграции
+# 4. Verify migration
 meridian projects list
 
-# Output должен показать мигрированный монорепозиторий
+# Output should show migrated monorepo
 ```
 
-**Phase 3: Обновление Конфигурации**
+**Phase 3: Update Configuration**
 
 ```bash
-# 5. Обновить .claude.json для Claude Code
-# Старый формат:
+# 5. Update .claude.json for Claude Code
+# Old format:
 {
   "mcpServers": {
     "meridian": {
       "command": "meridian",
-      "args": ["mcp"]  # Старая команда
+      "args": ["mcp"]  # Old command
     }
   }
 }
 
-# Новый формат:
+# New format:
 {
   "mcpServers": {
     "meridian": {
       "command": "meridian",
-      "args": ["serve", "--stdio"]  # Новая команда
+      "args": ["serve", "--stdio"]  # New command
     }
   }
 }
 ```
 
-### Обратная Совместимость
+### Backward Compatibility
 
-**Поддержка Старых Команд:**
+**Support for Old Commands:**
 ```bash
-# Старая команда
+# Old command
 meridian mcp
 
-# Автоматически перенаправляется на:
+# Automatically redirected to:
 meridian serve --stdio --legacy-mode
 
-# С предупреждением:
+# With warning:
 # Warning: 'meridian mcp' is deprecated. Use 'meridian serve --stdio' instead.
 ```
 
-**Поддержка Старого Формата БД:**
-- Meridian 2.0 может читать старые БД (v1.x)
-- Автоматическая миграция при первом запуске
-- Сохранение backup старой БД
+**Support for Old DB Format:**
+- Meridian 2.0 can read old DBs (v1.x)
+- Automatic migration on first run
+- Backup of old DB saved
 
-### Версионирование
+### Versioning
 
 **Semantic Versioning:**
 - `v1.x.x` - Single-monorepo architecture
-- `v2.x.x` - Global architecture (текущая спецификация)
+- `v2.x.x` - Global architecture (current specification)
 
 **Compatibility Matrix:**
 ```
-Meridian v1.x → v2.x: ✅ Автоматическая миграция
-Meridian v2.x → v1.x: ❌ Не поддерживается (breaking changes)
+Meridian v1.x → v2.x: ✅ Automatic migration
+Meridian v2.x → v1.x: ❌ Not supported (breaking changes)
 
 MCP Protocol:
-  v2024-11-05: ✅ Поддерживается (legacy)
-  v2025-03-26: ✅ Поддерживается (current)
+  v2024-11-05: ✅ Supported (legacy)
+  v2025-03-26: ✅ Supported (current)
 ```
 
 ---
 
-## План Реализации
+## Implementation Plan
 
 ### Phase 1: Infrastructure (Weeks 1-2)
 
 **Tasks:**
-1. ✅ **Global Architecture Spec** (этот документ)
+1. ✅ **Global Architecture Spec** (this document)
 2. **Global Server Implementation**:
    - Project registry manager
    - Global RocksDB setup
@@ -2030,7 +2032,7 @@ MCP Protocol:
 **Deliverables:**
 - Production-ready v2.0.0
 - Complete documentation
-- Migration path clear
+- Clear migration path
 
 ---
 
@@ -2052,28 +2054,28 @@ MCP Protocol:
 
 ---
 
-## Заключение
+## Conclusion
 
-**Meridian Global Architecture v2.0** трансформирует Meridian в **полноценную глобальную систему управления знаниями** для разработчиков, работающих с множеством монорепозиториев:
+**Meridian Global Architecture v2.0** transforms Meridian into a **complete global knowledge management system** for developers working with multiple monorepos:
 
-✅ **Глобальный реестр проектов** - единая база всех проектов на машине
-✅ **Устойчивые к перемещению ID** - проекты можно переносить без потери данных
-✅ **Кросс-монорепозиторная документация** - доступ к документации из любого проекта
-✅ **Двухуровневое хранилище** - глобальная БД + локальные кеши
-✅ **Клиент-серверная архитектура** - масштабируемость и эффективность
-✅ **Автоматическая синхронизация** - изменения распространяются автоматически
-✅ **Оффлайн режим** - работа без глобального сервера
-✅ **Полная совместимость** с существующими спецификациями (spec.md, strong-tools-spec.md)
+✅ **Global project registry** - unified database of all projects on machine
+✅ **Move-resistant IDs** - projects can be relocated without data loss
+✅ **Cross-monorepo documentation** - access documentation from any project
+✅ **Two-tier storage** - global DB + local caches
+✅ **Client-server architecture** - scalability and efficiency
+✅ **Automatic synchronization** - changes propagate automatically
+✅ **Offline mode** - work without global server
+✅ **Full compatibility** with existing specifications (spec.md, strong-tools-spec.md)
 
 **Architecture Highlights:**
-- **Local-First, Global-Enhanced** - быстрый локальный доступ + глобальные возможности
-- **Identity-Based, Not Path-Based** - устойчивость к перемещениям
-- **Layered & Modular** - чистая архитектура, легко расширяется
-- **Secure & Isolated** - безопасность через read-only доступ к внешним проектам
+- **Local-First, Global-Enhanced** - fast local access + global capabilities
+- **Identity-Based, Not Path-Based** - resilient to relocations
+- **Layered & Modular** - clean architecture, easily extensible
+- **Secure & Isolated** - security through read-only access to external projects
 
 **Total MCP Tools:** 29 (existing) + 23 (strong tools) + 5 (global tools) = **57 tools**
 
-**Ready for Implementation** → [Plan](#план-реализации)
+**Ready for Implementation** → [Plan](#implementation-plan)
 
 ---
 

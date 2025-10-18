@@ -1,93 +1,95 @@
 # Meridian Strong Tools Specification
 # Structured Documentation & Knowledge Management System
 
-**Версия**: 1.0.0
-**Дата создания**: 18 октября 2025
-**Статус**: Design Specification
-**Совместимость**: Meridian MCP Server v1.0.0+
+**Version**: 1.0.0
+**Creation Date**: October 18, 2025
+**Status**: Design Specification
+**Compatibility**: Meridian MCP Server v1.0.0+
 
-> **⚠️ ВАЖНО: Архитектурное Обновление**
+**Language**: 🇬🇧 English | [🇷🇺 Русский](./strong-tools-spec.md)
+
+> **⚠️ IMPORTANT: Architecture Update**
 >
-> Эта спецификация описывает функциональность Strong Tools (генерация документации, примеров, тестов, agent integration).
+> This specification describes Strong Tools functionality (documentation generation, examples, tests, agent integration).
 >
-> Для полной картины системы, **обязательно ознакомьтесь с [Global Architecture Specification](./global-architecture-spec.md)**, которая описывает:
-> - Глобальную двухуровневую архитектуру (global server + local MCP servers)
-> - Кросс-монорепозиторную документацию
-> - Систему устойчивых к перемещению ID
-> - Project Registry для всех монорепозиториев на машине разработчика
+> For the complete system picture, **please review the [Global Architecture Specification](./global-architecture-spec-en.md)**, which describes:
+> - Global two-tier architecture (global server + local MCP servers)
+> - Cross-monorepo documentation
+> - Movement-resistant ID system
+> - Project Registry for all monorepos on the developer's machine
 >
-> **Strong Tools** (этот документ) работает **поверх** Global Architecture и использует ее возможности для генерации и управления документацией.
+> **Strong Tools** (this document) operates **on top of** Global Architecture and uses its capabilities for documentation generation and management.
 
 ---
 
-## Оглавление
+## Table of Contents
 
-1. [Обзор и Философия](#обзор-и-философия)
-2. [Архитектурные Принципы](#архитектурные-принципы)
-3. [Анализ Context7](#анализ-context7)
-4. [Глобальный Каталог Документации](#глобальный-каталог-документации)
-5. [Система Генерации Документации](#система-генерации-документации)
-6. [Генерация Примеров Кода](#генерация-примеров-кода)
-7. [Генерация Тестов](#генерация-тестов)
-8. [Интеграция с Агентами](#интеграция-с-агентами)
-9. [Система Авто-Обновления](#система-авто-обновления)
+1. [Overview and Philosophy](#overview-and-philosophy)
+2. [Architectural Principles](#architectural-principles)
+3. [Context7 Analysis](#context7-analysis)
+4. [Global Documentation Catalog](#global-documentation-catalog)
+5. [Documentation Generation System](#documentation-generation-system)
+6. [Code Example Generation](#code-example-generation)
+7. [Test Generation](#test-generation)
+8. [Agent Integration](#agent-integration)
+9. [Auto-Update System](#auto-update-system)
 10. [MCP Tools Specification](#mcp-tools-specification)
-11. [Структуры Данных](#структуры-данных)
-12. [План Реализации](#план-реализации)
-13. [Совместимость с spec.md](#совместимость-с-specmd)
+11. [Data Structures](#data-structures)
+12. [Implementation Plan](#implementation-plan)
+13. [Compatibility with spec.md](#compatibility-with-specmd)
 
 ---
 
-## Обзор и Философия
+## Overview and Philosophy
 
-### Связанные спецификации
+### Related Specifications
 
-- **[Core Specification](./spec.md)**: Базовая система Meridian (v2.0.0)
-- **[Global Architecture](./global-architecture-spec.md)**: Поддержка множественных монорепозиториев (v2.0.0)
-- **[Roadmap](./roadmap.md)**: Статус реализации и планирование
-- **[INDEX](./INDEX.md)**: Полный индекс спецификаций
+- **[Core Specification](./spec-en.md)**: Base Meridian system (v2.0.0)
+- **[Global Architecture](./global-architecture-spec-en.md)**: Multiple monorepo support (v2.0.0)
+- **[Roadmap](./roadmap.md)**: Implementation status and planning
+- **[INDEX](./INDEX.md)**: Complete specification index
 
-### Видение
+### Vision
 
-Meridian Strong Tools трансформирует Meridian из системы индексации кода в **полноценную систему управления знаниями** с возможностями:
+Meridian Strong Tools transforms Meridian from a code indexing system into a **comprehensive knowledge management system** with capabilities for:
 
-1. **Автоматической генерации** структурированной документации высокого качества
-2. **Создания практических примеров** на основе анализа типов и сигнатур
-3. **Генерации тестов** (unit/integration/e2e) для TypeScript и Rust проектов
-4. **Глобального каталога** документации для всех проектов в monorepo
-5. **Кроссплатформенного доступа** к документации между проектами
-6. **Автоматического обновления** при изменении кода
-7. **Поддержки agent-архитектуры** (architect, developer, tester)
+1. **Automatic generation** of high-quality structured documentation
+2. **Creating practical examples** based on type and signature analysis
+3. **Generating tests** (unit/integration/e2e) for TypeScript and Rust projects
+4. **Global catalog** of documentation for all projects in monorepo
+5. **Cross-platform access** to documentation between projects
+6. **Automatic updates** when code changes
+7. **Agent architecture support** (architect, developer, tester)
 
-### Отличия от Context7
+### Differences from Context7
 
-**Context7** - это **прокси-сервер** к внешнему API (context7.com):
-- Ретранслирует запросы к централизованному сервису
-- Не хранит документацию локально
-- Не генерирует контент, только извлекает готовый
-- Зависит от внешней инфраструктуры
+**Context7** is a **proxy server** to an external API (context7.com):
+- Relays requests to centralized service
+- Does not store documentation locally
+- Does not generate content, only retrieves pre-made
+- Depends on external infrastructure
 
-**Meridian Strong Tools** - это **самодостаточная система**:
-- Генерирует документацию из исходного кода локально
-- Хранит все данные в RocksDB
-- Создает примеры и тесты на основе анализа кода
-- Работает полностью offline
-- Интегрирована с tree-sitter для глубокого анализа
+**Meridian Strong Tools** is a **self-sufficient system**:
+- Generates documentation from source code locally
+- Stores all data in RocksDB
+- Creates examples and tests based on code analysis
+- Works completely offline
+- Integrated with tree-sitter for deep analysis
 
-### Целевая Аудитория
+### Target Audience
 
-1. **AI-агенты** (Architect, Developer, Tester) - основные потребители
-2. **Разработчики** - через Claude Code и другие MCP-клиенты
-3. **CI/CD системы** - автоматическая генерация документации
-4. **Системы качества** - валидация документации и тестов
+1. **AI agents** (Architect, Developer, Tester) - primary consumers
+2. **Developers** - through Claude Code and other MCP clients
+3. **CI/CD systems** - automatic documentation generation
+4. **Quality systems** - documentation and test validation
 
 ---
 
-## Архитектурные Принципы
+## Architectural Principles
 
 ### 1. Local-First Architecture
 
-Вся генерация и хранение происходит локально:
+All generation and storage happens locally:
 ```
 Source Code → Tree-sitter AST → Analysis → Generation → RocksDB Storage
 ```
@@ -107,15 +109,15 @@ Source Code → Tree-sitter AST → Analysis → Generation → RocksDB Storage
 
 ### 3. Quality Standards
 
-Вся генерируемая документация должна соответствовать:
+All generated documentation must comply with:
 - **TypeScript**: TSDoc/JSDoc standards, TypeScript ESLint rules
 - **Rust**: rustdoc conventions, clippy documentation lints
-- **Examples**: Компилируются и проходят type checking
-- **Tests**: Выполняются успешно (или помечены как TODO)
+- **Examples**: Compile and pass type checking
+- **Tests**: Execute successfully (or marked as TODO)
 
 ### 4. Cross-Reference Graph
 
-Документация образует граф знаний:
+Documentation forms a knowledge graph:
 ```
 Project A (Package) → Exports Interface I
   ↓
@@ -126,65 +128,65 @@ Documentation → Cross-references both locations
 
 ### 5. Incremental Updates
 
-При изменении кода:
-1. Обнаружение изменений через file watching
-2. Инкрементальная переиндексация только измененных файлов
-3. Обновление cross-references
-4. Инвалидация кэша документации
-5. Регенерация затронутых примеров и тестов
+When code changes:
+1. Change detection through file watching
+2. Incremental re-indexing of changed files only
+3. Update cross-references
+4. Invalidate documentation cache
+5. Regenerate affected examples and tests
 
 ---
 
-## Анализ Context7
+## Context7 Analysis
 
-### Архитектура Context7
+### Context7 Architecture
 
-**Компоненты**:
+**Components**:
 ```typescript
-// Две основные функции
+// Two main functions
 searchLibraries(query, clientIp?, apiKey?) → SearchResponse
 fetchLibraryDocumentation(libraryId, {tokens, topic}, clientIp?, apiKey?) → string
 
-// Типы данных
+// Data types
 interface SearchResult {
   id: string;              // "/mongodb/docs"
   title: string;           // "MongoDB Node.js Driver"
-  description: string;     // Краткое описание
-  totalSnippets: number;   // Количество примеров кода
-  trustScore: number;      // 0-10, авторитетность
-  versions: string[];      // Доступные версии
+  description: string;     // Brief description
+  totalSnippets: number;   // Number of code examples
+  trustScore: number;      // 0-10, authority
+  versions: string[];      // Available versions
 }
 ```
 
 **MCP Tools**:
-1. `resolve-library-id`: Поиск библиотеки → получение ID
-2. `get-library-docs`: Получение документации по ID
+1. `resolve-library-id`: Search library → get ID
+2. `get-library-docs`: Get documentation by ID
 
 **Transport**:
-- STDIO: для локального использования (Claude Code)
-- HTTP/SSE: для remote сервера (multi-client)
+- STDIO: for local use (Claude Code)
+- HTTP/SSE: for remote server (multi-client)
 
 **Authentication**:
-- API keys (формат: `ctx7sk*`)
+- API keys (format: `ctx7sk*`)
 - Header-based auth
-- Client IP tracking для rate limiting
+- Client IP tracking for rate limiting
 
-### Применимые Паттерны для Meridian
+### Applicable Patterns for Meridian
 
-✅ **Использовать**:
-1. Двухэтапный подход: resolve → fetch
-2. Token-based chunking для больших документов
-3. Topic filtering для фокусированной выдачи
+✅ **Use**:
+1. Two-step approach: resolve → fetch
+2. Token-based chunking for large documents
+3. Topic filtering for focused output
 4. Error handling (404, 429, 401)
-5. Metadata в SearchResult (scores, versions, counts)
+5. Metadata in SearchResult (scores, versions, counts)
 
-❌ **Не использовать**:
+❌ **Don't use**:
 1. External API dependency
 2. Centralized storage
 3. Proxy architecture
-4. Remote rate limiting (заменить на local quotas)
+4. Remote rate limiting (replace with local quotas)
 
-### Адаптация для Meridian
+### Adaptation for Meridian
 
 ```
 Context7                          Meridian Strong Tools
@@ -199,21 +201,21 @@ No auto-update                →   File watching + re-index
 
 ---
 
-## Глобальный Каталог Документации
+## Global Documentation Catalog
 
-> **📖 Смотрите также:** [Global Architecture Specification](./global-architecture-spec.md) для детального описания глобальной архитектуры, кросс-монорепозиторной документации и Project Registry.
+> **📖 See also:** [Global Architecture Specification](./global-architecture-spec-en.md) for detailed description of global architecture, cross-monorepo documentation, and Project Registry.
 
-### Концепция
+### Concept
 
-**В контексте Strong Tools:** Глобальный каталог предоставляет структурированный доступ к документации всех проектов.
+**In Strong Tools context:** Global catalog provides structured access to documentation for all projects.
 
-**Два уровня:**
-1. **Внутри монорепозитория** - быстрый доступ к документации проектов этого монорепозитория
-2. **Кросс-монорепозиторный** - доступ к документации проектов из других монорепозиториев (см. [Global Architecture](./global-architecture-spec.md))
+**Two levels:**
+1. **Within monorepo** - fast access to this monorepo's project documentation
+2. **Cross-monorepo** - access to documentation from other monorepos (see [Global Architecture](./global-architecture-spec-en.md))
 
-Эта секция описывает **структуру метаданных** и **API для доступа к документации**, независимо от того, локальный это проект или внешний.
+This section describes the **metadata structure** and **API for accessing documentation**, regardless of whether the project is local or external.
 
-### Структура Каталога
+### Catalog Structure
 
 ```typescript
 interface GlobalCatalog {
@@ -238,14 +240,14 @@ interface ProjectMetadata {
   totalTypes: number;
 
   // Quality metrics
-  documentedSymbols: number;     // Символов с документацией
+  documentedSymbols: number;     // Symbols with documentation
   documentationCoverage: number; // 0-100%
   examplesCount: number;
   testsCount: number;
 
   // Cross-references
-  dependencies: string[];        // IDs других проектов
-  dependents: string[];          // Кто зависит от этого проекта
+  dependencies: string[];        // IDs of other projects
+  dependents: string[];          // Who depends on this project
 
   // Timestamps
   lastIndexed: Date;
@@ -266,9 +268,9 @@ interface CrossReference {
 }
 ```
 
-### Storage Schema в RocksDB
+### Storage Schema in RocksDB
 
-> **📋 См. также:** Подробности схемы RocksDB см. в [schemas/rocksdb-schema.md](./schemas/rocksdb-schema.md)
+> **📋 See also:** See [schemas/rocksdb-schema.md](./schemas/rocksdb-schema.md) for RocksDB schema details
 
 ```
 Prefixes:
@@ -285,43 +287,43 @@ catalog:index:name:titan → "@omnitron-dev/titan"
 catalog:index:path:packages/titan → "@omnitron-dev/titan"
 ```
 
-### Индексация Проектов
+### Project Indexing
 
-**Автоматическое обнаружение**:
-1. Сканирование workspace для поиска:
-   - TypeScript: `package.json` с `name` field
-   - Rust: `Cargo.toml` с `[package]` section
-2. Извлечение метаданных из манифестов
-3. Анализ dependency graph
-4. Построение cross-reference map
+**Automatic discovery**:
+1. Scan workspace to find:
+   - TypeScript: `package.json` with `name` field
+   - Rust: `Cargo.toml` with `[package]` section
+2. Extract metadata from manifests
+3. Analyze dependency graph
+4. Build cross-reference map
 
-**Поддержка Monorepo**:
-- Обнаружение workspace root (наличие `pnpm-workspace.yaml`, `lerna.json`, или workspace в `Cargo.toml`)
-- Рекурсивное сканирование packages/apps директорий
-- Уважение `.gitignore` и custom ignore patterns
+**Monorepo Support**:
+- Detect workspace root (presence of `pnpm-workspace.yaml`, `lerna.json`, or workspace in `Cargo.toml`)
+- Recursive scan of packages/apps directories
+- Respect `.gitignore` and custom ignore patterns
 
 ---
 
-## Система Генерации Документации
+## Documentation Generation System
 
-### Анализ Кода
+### Code Analysis
 
 **TypeScript AST Analysis**:
 ```typescript
-// Извлечение информации из tree-sitter AST
+// Extract information from tree-sitter AST
 interface ExtractedSymbol {
   kind: "function" | "class" | "interface" | "type" | "variable" | "enum";
   name: string;
   location: SourceLocation;
 
   // Type information
-  signature?: string;           // Полная сигнатура
+  signature?: string;           // Full signature
   parameters?: Parameter[];
   returnType?: string;
   typeParameters?: string[];
 
   // Documentation
-  jsDocComment?: string;        // Существующий JSDoc
+  jsDocComment?: string;        // Existing JSDoc
   visibility: "public" | "private" | "protected";
   isExported: boolean;
 
@@ -331,13 +333,13 @@ interface ExtractedSymbol {
   decorators?: string[];
 
   // Source
-  sourceCode: string;           // Полный исходный код символа
+  sourceCode: string;           // Complete source code of symbol
 }
 ```
 
 **Rust AST Analysis**:
 ```rust
-// Аналогично для Rust
+// Similar for Rust
 struct ExtractedSymbol {
     kind: SymbolKind,              // Fn, Struct, Trait, Enum, etc.
     name: String,
@@ -350,7 +352,7 @@ struct ExtractedSymbol {
     generics: Vec<String>,
 
     // Documentation
-    doc_comment: Option<String>,   // Существующий /// doc comment
+    doc_comment: Option<String>,   // Existing /// doc comment
     visibility: Visibility,        // pub, pub(crate), private
 
     // Traits
@@ -362,14 +364,14 @@ struct ExtractedSymbol {
 }
 ```
 
-### Генерация Документации
+### Documentation Generation
 
-**Процесс**:
+**Process**:
 1. **Extraction**: AST → ExtractedSymbol
-2. **Analysis**: Анализ типов, отношений, паттернов
-3. **Generation**: Создание структурированной документации
-4. **Validation**: Проверка на соответствие стандартам
-5. **Enhancement**: Дополнение примерами и cross-links
+2. **Analysis**: Analyze types, relationships, patterns
+3. **Generation**: Create structured documentation
+4. **Validation**: Check compliance with standards
+5. **Enhancement**: Augment with examples and cross-links
 
 **TypeScript Doc Generation**:
 ```typescript
@@ -470,23 +472,23 @@ pub fn new(config: Config) -> Result<Self, Error>
 
 ### Quality Validation
 
-**Критерии качества**:
+**Quality criteria**:
 1. **Completeness**:
-   - Description присутствует
+   - Description present
    - Parameters documented
    - Return value documented
    - Errors/Exceptions documented
    - Examples provided
 
 2. **Clarity**:
-   - Описание начинается с глагола (TypeScript) или noun phrase (Rust)
-   - Конкретные детали, не общие фразы
-   - Правильная грамматика и пунктуация
+   - Description starts with verb (TypeScript) or noun phrase (Rust)
+   - Specific details, not generic phrases
+   - Correct grammar and punctuation
 
 3. **Accuracy**:
-   - Type information совпадает с signature
-   - Examples компилируются
-   - Cross-references корректны
+   - Type information matches signature
+   - Examples compile
+   - Cross-references correct
 
 4. **Standards Compliance**:
    - TypeScript: TSDoc tags (@param, @returns, @example, etc.)
@@ -514,16 +516,16 @@ interface QualityIssue {
 }
 ```
 
-### Трансформация Документации
+### Documentation Transformation
 
-**Цель**: Преобразовать существующую неструктурированную документацию в стандартизированный формат.
+**Goal**: Transform existing unstructured documentation into standardized format.
 
-**Процесс**:
-1. **Parse existing docs**: Извлечь текущую документацию
-2. **Analyze content**: Определить описание, параметры, примеры
-3. **Restructure**: Распределить по стандартным секциям
-4. **Enhance**: Добавить недостающие элементы
-5. **Validate**: Проверить качество
+**Process**:
+1. **Parse existing docs**: Extract current documentation
+2. **Analyze content**: Identify description, parameters, examples
+3. **Restructure**: Distribute into standard sections
+4. **Enhance**: Add missing elements
+5. **Validate**: Check quality
 
 **Example Transformation**:
 ```typescript
@@ -569,9 +571,9 @@ export function defer<T>(): Deferred<T>
 
 ---
 
-## Генерация Примеров Кода
+## Code Example Generation
 
-### Анализ Сигнатур
+### Signature Analysis
 
 **TypeScript Example Generation**:
 ```typescript
@@ -602,13 +604,13 @@ interface GeneratedExample {
 
 **Generation Strategy**:
 
-1. **Basic Example** (всегда генерируется):
-   - Минимальный код для демонстрации основного use case
-   - Все необходимые imports
+1. **Basic Example** (always generated):
+   - Minimal code to demonstrate main use case
+   - All necessary imports
    - Type-safe usage
-   - Expected output в комментариях
+   - Expected output in comments
 
-2. **Advanced Examples** (опционально):
+2. **Advanced Examples** (optional):
    - Error handling
    - Edge cases
    - Complex scenarios
@@ -727,7 +729,7 @@ const result = await deferred.promise;
 
 ---
 
-## Генерация Тестов
+## Test Generation
 
 ### TypeScript Test Generation
 
@@ -926,7 +928,7 @@ pub fn add(a: i32, b: i32) -> i32 {
 
 ### Test Generation Strategy
 
-**Анализ кода для определения test cases**:
+**Code analysis to determine test cases**:
 
 1. **Function signature analysis**:
    - Parameters → test different input combinations
@@ -952,19 +954,19 @@ pub fn add(a: i32, b: i32) -> i32 {
 
 ---
 
-## Интеграция с Агентами
+## Agent Integration
 
 ### Agent Architecture
 
-**Специализированные агенты** (определены в `.claude/agents/`):
+**Specialized agents** (defined in `.claude/agents/`):
 
-1. **Architect Agent** - создает спецификации и архитектурные решения
-2. **Developer Agent** - реализует функциональность по спецификациям
-3. **Tester Agent** - пишет документацию, примеры и тесты
+1. **Architect Agent** - creates specifications and architectural solutions
+2. **Developer Agent** - implements functionality according to specifications
+3. **Tester Agent** - writes documentation, examples, and tests
 
 ### Architect Agent Tools
 
-**Цель**: Создание структурированных спецификаций для разработки.
+**Goal**: Creating structured specifications for development.
 
 **MCP Tool: `architect.create_specification`**
 
@@ -1128,7 +1130,7 @@ enum AuthError {
 
 ### Developer Agent Tools
 
-**Цель**: Реализация функциональности согласно спецификациям.
+**Goal**: Implementing functionality according to specifications.
 
 **MCP Tool: `developer.get_implementation_context`**
 
@@ -1180,7 +1182,7 @@ enum AuthError {
 
 ### Tester Agent Tools
 
-**Цель**: Создание документации, примеров и тестов.
+**Goal**: Creating documentation, examples, and tests.
 
 **MCP Tool: `tester.generate_comprehensive_tests`**
 
@@ -1258,7 +1260,7 @@ enum AuthError {
 
 ### Agent Workflow Example
 
-**Сценарий: Создание нового модуля**
+**Scenario: Creating a new module**
 
 ```mermaid
 sequenceDiagram
@@ -1294,11 +1296,11 @@ sequenceDiagram
 
 ---
 
-## Система Авто-Обновления
+## Auto-Update System
 
 ### File Watching
 
-**Механизм**:
+**Mechanism**:
 ```typescript
 import { watch } from 'fs/promises';
 
@@ -1396,7 +1398,7 @@ function computeSymbolDiff(
 
 ### Cross-Reference Updates
 
-**Challenge**: Когда символ изменяется, нужно обновить все ссылки на него.
+**Challenge**: When a symbol changes, all references to it need updating.
 
 **Solution**:
 
@@ -1472,7 +1474,7 @@ interface CacheManager {
 
 ### Lazy Regeneration
 
-**Strategy**: Не регенерировать все сразу, а по требованию.
+**Strategy**: Don't regenerate everything immediately, do it on-demand.
 
 ```typescript
 async function getDocumentation(symbolId: string): Promise<string> {
@@ -1502,13 +1504,13 @@ async function getDocumentation(symbolId: string): Promise<string> {
 
 ## MCP Tools Specification
 
-> **📋 См. также:** Полный каталог MCP инструментов см. в [schemas/mcp-tools-catalog.md](./schemas/mcp-tools-catalog.md)
+> **📋 See also:** See [schemas/mcp-tools-catalog.md](./schemas/mcp-tools-catalog.md) for complete MCP tools catalog
 
 ### Global Catalog Tools
 
 #### `strong.catalog.list_projects`
 
-**Description**: Возвращает список всех проектов в global catalog.
+**Description**: Returns list of all projects in global catalog.
 
 **Input**: None
 
@@ -1547,7 +1549,7 @@ async function getDocumentation(symbolId: string): Promise<string> {
 
 #### `strong.catalog.get_project`
 
-**Description**: Получает детальную информацию о проекте.
+**Description**: Gets detailed information about a project.
 
 **Input**:
 ```typescript
@@ -1580,7 +1582,7 @@ async function getDocumentation(symbolId: string): Promise<string> {
 
 #### `strong.catalog.search_documentation`
 
-**Description**: Поиск документации across all projects.
+**Description**: Search documentation across all projects.
 
 **Input**:
 ```typescript
@@ -1616,7 +1618,7 @@ async function getDocumentation(symbolId: string): Promise<string> {
 
 #### `strong.docs.generate`
 
-**Description**: Генерирует документацию для символа или файла.
+**Description**: Generates documentation for a symbol or file.
 
 **Input**:
 ```typescript
@@ -1647,7 +1649,7 @@ async function getDocumentation(symbolId: string): Promise<string> {
 
 #### `strong.docs.validate`
 
-**Description**: Валидирует качество документации.
+**Description**: Validates documentation quality.
 
 **Input**:
 ```typescript
@@ -1678,7 +1680,7 @@ async function getDocumentation(symbolId: string): Promise<string> {
 
 #### `strong.docs.transform`
 
-**Description**: Трансформирует неструктурированную документацию в стандартизированный формат.
+**Description**: Transforms unstructured documentation into standardized format.
 
 **Input**:
 ```typescript
@@ -1709,7 +1711,7 @@ async function getDocumentation(symbolId: string): Promise<string> {
 
 #### `strong.examples.generate`
 
-**Description**: Генерирует примеры кода для символа.
+**Description**: Generates code examples for a symbol.
 
 **Input**:
 ```typescript
@@ -1740,7 +1742,7 @@ async function getDocumentation(symbolId: string): Promise<string> {
 
 #### `strong.examples.validate`
 
-**Description**: Валидирует существующие примеры (компиляция, type-checking).
+**Description**: Validates existing examples (compilation, type-checking).
 
 **Input**:
 ```typescript
@@ -1771,7 +1773,7 @@ async function getDocumentation(symbolId: string): Promise<string> {
 
 #### `strong.tests.generate`
 
-**Description**: Генерирует тесты для символа или модуля.
+**Description**: Generates tests for a symbol or module.
 
 **Input**:
 ```typescript
@@ -1797,7 +1799,7 @@ async function getDocumentation(symbolId: string): Promise<string> {
 
 #### `strong.tests.validate`
 
-**Description**: Запускает сгенерированные тесты и валидирует результаты.
+**Description**: Runs generated tests and validates results.
 
 **Input**:
 ```typescript
@@ -1833,43 +1835,43 @@ async function getDocumentation(symbolId: string): Promise<string> {
 
 #### `strong.architect.create_specification`
 
-(Описан в разделе [Architect Agent Tools](#architect-agent-tools))
+(Described in [Architect Agent Tools](#architect-agent-tools) section)
 
 ---
 
 #### `strong.architect.validate_implementation`
 
-(Описан в разделе [Architect Agent Tools](#architect-agent-tools))
+(Described in [Architect Agent Tools](#architect-agent-tools) section)
 
 ---
 
 #### `strong.developer.get_implementation_context`
 
-(Описан в разделе [Developer Agent Tools](#developer-agent-tools))
+(Described in [Developer Agent Tools](#developer-agent-tools) section)
 
 ---
 
 #### `strong.developer.generate_boilerplate`
 
-(Описан в разделе [Developer Agent Tools](#developer-agent-tools))
+(Described in [Developer Agent Tools](#developer-agent-tools) section)
 
 ---
 
 #### `strong.tester.generate_comprehensive_tests`
 
-(Описан в разделе [Tester Agent Tools](#tester-agent-tools))
+(Described in [Tester Agent Tools](#tester-agent-tools) section)
 
 ---
 
 #### `strong.tester.validate_examples`
 
-(Описан в разделе [Tester Agent Tools](#tester-agent-tools))
+(Described in [Tester Agent Tools](#tester-agent-tools) section)
 
 ---
 
 #### `strong.tester.enhance_documentation`
 
-(Описан в разделе [Tester Agent Tools](#tester-agent-tools))
+(Described in [Tester Agent Tools](#tester-agent-tools) section)
 
 ---
 
@@ -1877,7 +1879,7 @@ async function getDocumentation(symbolId: string): Promise<string> {
 
 #### `strong.xref.find_usages`
 
-**Description**: Находит все использования символа across all projects.
+**Description**: Finds all usages of a symbol across all projects.
 
 **Input**:
 ```typescript
@@ -1908,7 +1910,7 @@ async function getDocumentation(symbolId: string): Promise<string> {
 
 #### `strong.xref.get_dependency_graph`
 
-**Description**: Возвращает граф зависимостей для проекта или символа.
+**Description**: Returns dependency graph for a project or symbol.
 
 **Input**:
 ```typescript
@@ -1944,7 +1946,7 @@ async function getDocumentation(symbolId: string): Promise<string> {
 
 #### `strong.watch.start`
 
-**Description**: Запускает file watching для проекта.
+**Description**: Starts file watching for a project.
 
 **Input**:
 ```typescript
@@ -1968,7 +1970,7 @@ async function getDocumentation(symbolId: string): Promise<string> {
 
 #### `strong.watch.stop`
 
-**Description**: Останавливает file watching.
+**Description**: Stops file watching.
 
 **Input**:
 ```typescript
@@ -1993,7 +1995,7 @@ async function getDocumentation(symbolId: string): Promise<string> {
 
 #### `strong.watch.status`
 
-**Description**: Получает статус file watching.
+**Description**: Gets file watching status.
 
 **Input**: None
 
@@ -2012,13 +2014,13 @@ async function getDocumentation(symbolId: string): Promise<string> {
 
 ---
 
-## Структуры Данных
+## Data Structures
 
-> **📋 См. также:** Определения типов см. в [schemas/type-definitions.md](./schemas/type-definitions.md)
+> **📋 See also:** See [schemas/type-definitions.md](./schemas/type-definitions.md) for type definitions
 
 ### RocksDB Schema
 
-> **📋 См. также:** Подробности схемы RocksDB см. в [schemas/rocksdb-schema.md](./schemas/rocksdb-schema.md)
+> **📋 See also:** See [schemas/rocksdb-schema.md](./schemas/rocksdb-schema.md) for RocksDB schema details
 
 **Prefixes Summary**:
 
@@ -2060,7 +2062,7 @@ watch:changes:{projectId}                 → FileChange[]
 
 ### TypeScript Type Definitions
 
-**Full type definitions** (для использования в коде):
+**Full type definitions** (for use in code):
 
 ```typescript
 // meridian/src/strong-tools/types.ts
@@ -2228,7 +2230,7 @@ export interface FileChangeEvent {
 
 ---
 
-## План Реализации
+## Implementation Plan
 
 ### Phase 1: Infrastructure (Week 1-2)
 
@@ -2403,70 +2405,70 @@ export interface FileChangeEvent {
 
 ---
 
-## Совместимость с spec.md
+## Compatibility with spec.md
 
-### Интеграция с Существующей Архитектурой
+### Integration with Existing Architecture
 
-**Meridian Strong Tools** является **расширением** существующей системы Meridian, а не заменой.
+**Meridian Strong Tools** is an **extension** of the existing Meridian system, not a replacement.
 
-### Использование Существующих Компонентов
+### Using Existing Components
 
 1. **Tree-sitter Integration** (spec.md: lines 308-409):
-   - ✅ Используем существующие parsers (TypeScript, Rust, Go, Python, Java)
-   - ✅ Расширяем extractors для более детального анализа
-   - ✅ Добавляем extraction documentation comments
+   - ✅ Use existing parsers (TypeScript, Rust, Go, Python, Java)
+   - ✅ Extend extractors for more detailed analysis
+   - ✅ Add extraction of documentation comments
 
 2. **RocksDB Storage** (spec.md: lines 169-237):
-   - ✅ Используем существующую RocksDB инфраструктуру
-   - ✅ Добавляем новые prefixes для strong tools
-   - ✅ Сохраняем совместимость с существующими prefixes
+   - ✅ Use existing RocksDB infrastructure
+   - ✅ Add new prefixes for strong tools
+   - ✅ Maintain compatibility with existing prefixes
 
 3. **Code Navigation Tools** (spec.md: lines 986-1055):
-   - ✅ `code.search_symbols` → используется в strong tools для поиска
-   - ✅ `code.get_definition` → используется для извлечения символов
-   - ✅ `code.find_references` → основа для cross-reference tracking
-   - ✅ `code.get_dependencies` → используется для dependency graph
+   - ✅ `code.search_symbols` → used in strong tools for search
+   - ✅ `code.get_definition` → used for extracting symbols
+   - ✅ `code.find_references` → foundation for cross-reference tracking
+   - ✅ `code.get_dependencies` → used for dependency graph
 
 4. **Documentation Tools** (spec.md: lines 1056-1091):
-   - ✅ Существующие `docs.search` и `docs.get_for_symbol` остаются
-   - ✅ Strong tools **расширяют** их возможностями генерации
-   - ✅ Обратная совместимость полностью сохранена
+   - ✅ Existing `docs.search` and `docs.get_for_symbol` remain
+   - ✅ Strong tools **extend** them with generation capabilities
+   - ✅ Full backward compatibility maintained
 
 5. **Session Management** (spec.md: lines 1130-1215):
-   - ✅ Strong tools используют session isolation
-   - ✅ Copy-on-write semantics для безопасности
-   - ✅ Регенерация документации в рамках сессии
+   - ✅ Strong tools use session isolation
+   - ✅ Copy-on-write semantics for safety
+   - ✅ Documentation regeneration within session
 
 6. **Monorepo Support** (spec.md: lines 1253-1335):
-   - ✅ `monorepo.list_projects` → основа для global catalog
-   - ✅ `monorepo.set_context` → используется strong tools
-   - ✅ `monorepo.find_cross_references` → расширен в strong tools
+   - ✅ `monorepo.list_projects` → foundation for global catalog
+   - ✅ `monorepo.set_context` → used by strong tools
+   - ✅ `monorepo.find_cross_references` → extended in strong tools
 
-### Новые Компоненты
+### New Components
 
-**Strong Tools добавляет**:
+**Strong Tools adds**:
 
 1. **Global Documentation Catalog**:
-   - Надстройка над `monorepo.list_projects`
-   - Добавляет documentation metadata
-   - Добавляет quality metrics
+   - Built on top of `monorepo.list_projects`
+   - Adds documentation metadata
+   - Adds quality metrics
 
 2. **Generation Engines**:
    - Documentation generator
    - Example generator
    - Test generator
-   - Полностью новый функционал
+   - Completely new functionality
 
 3. **Agent Integration**:
    - Architect/Developer/Tester workflows
    - Specification management
-   - Полностью новый функционал
+   - Completely new functionality
 
 4. **Auto-Update System**:
    - File watching
    - Incremental re-indexing
    - Cache invalidation
-   - Расширение существующего session management
+   - Extension of existing session management
 
 ### Mapping: Existing Tools → Strong Tools
 
@@ -2479,9 +2481,9 @@ export interface FileChangeEvent {
 | `monorepo.list_projects` | Foundation for `strong.catalog.list_projects` |
 | `monorepo.find_cross_references` | Extended by `strong.xref.*` tools |
 
-### Версионирование
+### Versioning
 
-**MCP Protocol Version**: 2025-03-26 (совместимость с spec.md)
+**MCP Protocol Version**: 2025-03-26 (compatible with spec.md)
 
 **Strong Tools Version**: 1.0.0
 
@@ -2496,38 +2498,38 @@ MCP Clients: ✅ Compatible (all supporting MCP 2025-03-26)
 
 ### Migration Path
 
-**Existing installations** обновляются безболезненно:
+**Existing installations** update seamlessly:
 
-1. **Phase 1**: Установка strong tools (дополнительные 23 MCP tools)
-2. **Phase 2**: Индексация проектов (background task)
-3. **Phase 3**: Генерация документации (lazy, on-demand)
+1. **Phase 1**: Install strong tools (additional 23 MCP tools)
+2. **Phase 2**: Index projects (background task)
+3. **Phase 3**: Generate documentation (lazy, on-demand)
 4. **Phase 4**: Enable auto-update (optional)
 
-**Нет Breaking Changes**:
-- Существующие 29 MCP tools работают как прежде
-- Новые 23 strong tools добавляются без конфликтов
-- RocksDB schema расширяется, не ломается
-- Обратная совместимость гарантирована
+**No Breaking Changes**:
+- Existing 29 MCP tools work as before
+- New 23 strong tools added without conflicts
+- RocksDB schema extended, not broken
+- Backward compatibility guaranteed
 
 ---
 
-## Заключение
+## Conclusion
 
-**Meridian Strong Tools** трансформирует Meridian в полноценную **систему управления знаниями**:
+**Meridian Strong Tools** transforms Meridian into a comprehensive **knowledge management system**:
 
-✅ **Генерация документации** высокого качества
-✅ **Создание практических примеров** на основе анализа кода
-✅ **Генерация тестов** для TypeScript и Rust
-✅ **Глобальный каталог** для всех проектов monorepo
-✅ **Кроссплатформенный доступ** к документации
-✅ **Автоматическое обновление** при изменениях кода
-✅ **Интеграция с agent-архитектурой** (architect, developer, tester)
-✅ **Полная совместимость** с существующей спецификацией
+✅ **Documentation generation** of high quality
+✅ **Creating practical examples** based on code analysis
+✅ **Test generation** for TypeScript and Rust
+✅ **Global catalog** for all monorepo projects
+✅ **Cross-platform access** to documentation
+✅ **Automatic updates** on code changes
+✅ **Agent architecture integration** (architect, developer, tester)
+✅ **Full compatibility** with existing specification
 
 **Total MCP Tools**: 29 (existing) + 23 (strong tools) = **52 tools**
 
-**Готово к реализации**: Спецификация полная, детальная, внутренне согласованная.
+**Ready for implementation**: Specification is complete, detailed, internally consistent.
 
 ---
 
-**Next Steps**: Начать реализацию согласно [плану](#план-реализации) →
+**Next Steps**: Begin implementation according to [implementation plan](#implementation-plan) →

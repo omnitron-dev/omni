@@ -32,6 +32,13 @@
 
 ## Обзор и Мотивация
 
+### Связанные спецификации
+
+- **[Core Specification](./spec.md)**: Базовая система Meridian (v2.0.0)
+- **[Strong Tools](./strong-tools-spec.md)**: Генерация документации, примеров и тестов (v1.0.0)
+- **[Roadmap](./roadmap.md)**: Статус реализации и планирование
+- **[INDEX](./INDEX.md)**: Полный индекс спецификаций
+
 ### Проблема
 
 **Текущая архитектура** Meridian работает на уровне одного монорепозитория:
@@ -213,6 +220,8 @@ state.json
 
 ## Система Уникальных ID
 
+**Определения типов см. в [schemas/type-definitions.md](./schemas/type-definitions.md).**
+
 ### Проблема
 
 Путь к проекту может изменяться (переименование, перемещение), но идентичность проекта должна сохраняться.
@@ -301,6 +310,8 @@ interface MonorepoIdentity {
 ---
 
 ## Project Registry
+
+**Определения типов см. в [schemas/type-definitions.md](./schemas/type-definitions.md).**
 
 ### Концепция
 
@@ -1186,94 +1197,28 @@ class MeridianMCPServer {
 
 ## RocksDB Schema
 
-### Глобальная БД Schema
+**Подробности схемы RocksDB см. в [schemas/rocksdb-schema.md](./schemas/rocksdb-schema.md). Этот документ является единственным источником истины для всех схем RocksDB.**
 
-**Расположение:** `~/.meridian/data/`
+### Краткий обзор
 
-```
-# Project Registry
-registry:projects:{fullId}                    → ProjectRegistry (JSON)
-registry:index:name:{projectName}             → fullId[]
-registry:index:monorepo:{monorepoId}          → fullId[]
-registry:index:path:{pathHash}                → fullId
+**Глобальная БД** (`~/.meridian/data/`):
+- `registry:*` - Реестр проектов и монорепозиториев
+- `symbols:*` - Все символы из всех проектов
+- `docs:*` - Документация для всех символов
+- `examples:*` - Сгенерированные примеры кода
+- `tests:*` - Сгенерированные тесты
+- `xref:*` - Кросс-ссылки между проектами
+- `deps:*` - Граф зависимостей
+- `meta:*` - Глобальная метаинформация
 
-# Monorepo Registry
-registry:monorepos:{monorepoId}               → MonorepoInfo (JSON)
-registry:monorepos:index:path:{pathHash}      → monorepoId
+**Локальный кеш** (`[monorepo-path]/.meridian/cache.db/`):
+- `cache:symbols:*` - Кеш символов текущего монорепозитория
+- `cache:external:*` - Кеш внешних зависимостей
+- `cache:query:*` - Кеш результатов запросов
+- `sync:*` - Состояние синхронизации
+- `meta:*` - Локальная метаинформация
 
-# Symbols (все символы из всех проектов)
-symbols:{projectFullId}:{symbolId}            → ExtractedSymbol (JSON)
-symbols:index:name:{symbolName}               → {projectFullId:symbolId}[]
-symbols:index:kind:{kind}:{projectFullId}     → symbolId[]
-
-# Documentation
-docs:{projectFullId}:{symbolId}               → GeneratedDocumentation (JSON)
-docs:quality:{projectFullId}:{symbolId}       → DocumentationQuality (JSON)
-
-# Examples
-examples:{projectFullId}:{symbolId}           → GeneratedExample[] (JSON)
-examples:validation:{projectFullId}:{symbolId}→ ExampleValidation (JSON)
-
-# Tests
-tests:{projectFullId}:{symbolId}              → GeneratedTest[] (JSON)
-tests:validation:{projectFullId}:{symbolId}   → TestValidation (JSON)
-
-# Cross-References (кросс-монорепозиторные ссылки)
-xref:{sourceFullId}:{targetFullId}            → CrossReference[] (JSON)
-xref:incoming:{targetFullId}                  → IncomingReference[] (JSON)
-xref:outgoing:{sourceFullId}                  → OutgoingReference[] (JSON)
-
-# Dependencies (граф зависимостей)
-deps:incoming:{projectFullId}                 → DependentProject[] (JSON)
-deps:outgoing:{projectFullId}                 → DependencyProject[] (JSON)
-deps:graph                                    → GlobalDependencyGraph (JSON)
-
-# Metadata
-meta:index_version                            → string
-meta:last_global_sync                         → timestamp
-meta:statistics                               → GlobalStatistics (JSON)
-```
-
-### Локальная БД Schema
-
-**Расположение:** `[monorepo-path]/.meridian/cache.db/`
-
-```
-# Local Cache (символы текущего монорепозитория)
-cache:symbols:{projectId}:{symbolId}          → CachedSymbol (JSON)
-cache:docs:{projectId}:{symbolId}             → CachedDocumentation (JSON)
-
-# External Cache (кеш внешних зависимостей)
-cache:external:{externalProjectId}:docs       → ExternalDocs (JSON)
-cache:external:{externalProjectId}:symbols    → ExternalSymbols (JSON)
-
-# Query Cache (кеш результатов запросов)
-cache:query:search:{queryHash}                → SearchResult (JSON)
-cache:query:xref:{symbolId}                   → CrossReference[] (JSON)
-
-# Sync State
-sync:last_sync                                → timestamp
-sync:pending_changes                          → PendingChange[] (JSON)
-
-# Metadata
-meta:monorepo_id                              → string
-meta:cache_version                            → string
-```
-
-### Примеры Ключей
-
-```
-# Global DB
-registry:projects:@omnitron-dev/titan@1.0.0   → {...}
-symbols:@omnitron-dev/titan@1.0.0:Application → {...}
-docs:@omnitron-dev/titan@1.0.0:Application    → {...}
-xref:@omnitron-dev/titan@1.0.0:@omnitron-dev/common@1.0.0 → [...]
-
-# Local Cache
-cache:symbols:titan:Application               → {...}
-cache:external:@company/auth-lib@1.0.0:docs   → {...}
-sync:last_sync                                → "2025-10-18T12:30:00Z"
-```
+**Полное описание схем, форматов ключей, типов данных и примеров см. в [schemas/rocksdb-schema.md](./schemas/rocksdb-schema.md).**
 
 ---
 
@@ -1512,6 +1457,8 @@ meridian cache clear
 ---
 
 ## MCP Tools
+
+**Полный каталог MCP инструментов см. в [schemas/mcp-tools-catalog.md](./schemas/mcp-tools-catalog.md).**
 
 ### Обновленные Tools для Кросс-Монорепозиторной Работы
 

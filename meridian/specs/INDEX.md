@@ -14,7 +14,7 @@
 1. **[Core Specification](./spec.md)** - Production Specification
    - **Status**: ✅ **100% Implemented**
    - **Lines**: 2,134
-   - **Language**: Russian
+   - **Language**: Russian | **English**: [spec-en.md](./spec-en.md)
    - **MCP Tools**: 29 (all production-ready)
    - **Test Coverage**: 431/431 tests passing (100%)
    - **Key Topics**: Cognitive memory system, MCP protocol, core tools, session management
@@ -22,14 +22,14 @@
 2. **[Strong Tools Specification](./strong-tools-spec.md)** - v1.0.0
    - **Status**: ⚠️ **Design (Partially Implemented)**
    - **Lines**: 2,519
-   - **Language**: Russian
+   - **Language**: Russian | **English**: [strong-tools-spec-en.md](./strong-tools-spec-en.md)
    - **MCP Tools**: 23 (documentation, examples, tests, agents)
    - **Key Topics**: Documentation generation, example/test generation, agent system, auto-update
 
 3. **[Global Architecture Specification](./global-architecture-spec.md)** - v2.0.0
    - **Status**: ⚠️ **Design (Partially Implemented)**
    - **Lines**: 2,140
-   - **Language**: Russian
+   - **Language**: Russian | **English**: [global-architecture-spec-en.md](./global-architecture-spec-en.md)
    - **MCP Tools**: 5 (global operations)
    - **Key Topics**: Multi-monorepo, project registry, cross-repo access, two-tier storage
 
@@ -47,9 +47,36 @@
    - **Purpose**: Comprehensive analysis of all specifications
    - **Key Findings**: Quality score 94/100, recommendations for improvement
 
-6. **[Restructuring Plan](./RESTRUCTURING_PLAN.md)** - Planned
+6. **[Changelog](./CHANGELOG.md)** - Current
+   - **Status**: ✅ **Active Tracking**
+   - **Purpose**: Version history and release notes
+   - **Latest**: v2.0.0 (October 18, 2025)
+
+7. **[Restructuring Plan](./RESTRUCTURING_PLAN.md)** - Planned
    - **Status**: ⏳ **To Be Created**
    - **Purpose**: Plan for reorganizing specification structure (if needed)
+
+### User Guides
+
+8. **[Getting Started Guide](./guides/getting-started.md)**
+   - **Purpose**: Introduction to Meridian setup and basic usage
+   - **Topics**: Installation, configuration, first steps
+
+9. **[Multi-Monorepo Setup Guide](./guides/multi-monorepo-setup.md)**
+   - **Purpose**: Configure Meridian for multiple codebases
+   - **Topics**: Project registration, global catalog, cross-repo access
+
+10. **[MCP Integration Guide](./guides/mcp-integration.md)**
+    - **Purpose**: Integrate Meridian with Claude Desktop
+    - **Topics**: MCP setup, tool usage, troubleshooting
+
+11. **[Testing Guide](./guides/testing-guide.md)**
+    - **Purpose**: Testing best practices and utilities
+    - **Topics**: Test generation, validation, coverage
+
+12. **[Guides Overview](./guides/README.md)**
+    - **Purpose**: Index of all user guides
+    - **Topics**: Navigation and guide selection
 
 ---
 
@@ -351,13 +378,29 @@ Knowledge management capabilities:
 
 ## Usage Guides
 
+### For New Users
+
+**Getting Started**:
+1. [Getting Started Guide](./guides/getting-started.md) - Installation and basic setup
+2. [MCP Integration Guide](./guides/mcp-integration.md) - Connect with Claude Desktop
+3. [spec-en.md](./spec-en.md) or [spec.md](./spec.md) - Core concepts
+4. [roadmap.md](./roadmap.md) - Current implementation status
+
+### For Multi-Monorepo Users
+
+**Advanced Setup**:
+1. [Multi-Monorepo Setup Guide](./guides/multi-monorepo-setup.md) - Configure multiple codebases
+2. [global-architecture-spec-en.md](./global-architecture-spec-en.md) or [global-architecture-spec.md](./global-architecture-spec.md) - Architecture details
+3. [MCP Integration Guide](./guides/mcp-integration.md) - Tool usage and troubleshooting
+
 ### For Developers
 
 **Reading Order**:
 1. Start with [roadmap.md](./roadmap.md) for current status
-2. Read [spec.md](./spec.md) for core concepts
+2. Read [spec-en.md](./spec-en.md) or [spec.md](./spec.md) for core concepts
 3. Check [SPEC_ANALYSIS.md](./SPEC_ANALYSIS.md) for quality insights
-4. Deep dive into [strong-tools-spec.md](./strong-tools-spec.md) or [global-architecture-spec.md](./global-architecture-spec.md) as needed
+4. Review [Testing Guide](./guides/testing-guide.md) for best practices
+5. Deep dive into [strong-tools-spec-en.md](./strong-tools-spec-en.md) or [global-architecture-spec-en.md](./global-architecture-spec-en.md) as needed
 
 ### For Contributors
 
@@ -366,15 +409,12 @@ Knowledge management capabilities:
 2. Follow existing structure and style
 3. Add cross-references when linking to other specs
 4. Update version history in INDEX.md
-5. Run `meridian spec validate` (future tool)
+5. Update [CHANGELOG.md](./CHANGELOG.md) with changes
+6. Run `meridian spec validate` (future tool)
 
-### For Users
+### Quick Reference
 
-**Understanding Meridian**:
-1. [spec.md](./spec.md) - What Meridian does (cognitive memory)
-2. [global-architecture-spec.md](./global-architecture-spec.md) - How multi-monorepo works
-3. [strong-tools-spec.md](./strong-tools-spec.md) - Documentation features
-4. [roadmap.md](./roadmap.md) - What's implemented vs. planned
+**All Guides**: See [guides/README.md](./guides/README.md) for complete guide index
 
 ---
 
@@ -384,12 +424,14 @@ Knowledge management capabilities:
 
 | Metric | Value |
 |--------|-------|
-| Total Specifications | 4 core + 2 supporting |
-| Total Lines | 8,397 |
+| Total Specifications | 4 core + 3 supporting + 5 guides |
+| Core Specs (Russian) | spec.md, strong-tools-spec.md, global-architecture-spec.md |
+| Core Specs (English) | spec-en.md, strong-tools-spec-en.md, global-architecture-spec-en.md |
+| Total Lines | 8,397 (Russian) + translations + guides |
 | Code Examples | 181 |
 | Diagrams | 4 |
 | MCP Tools Specified | 57 |
-| Languages | Russian (3), English (1) |
+| Languages | Russian (3 specs), English (3 specs + 1 roadmap + 2 docs + 5 guides) |
 | Average Quality Score | 94/100 |
 
 ### Implementation Metrics
@@ -407,11 +449,16 @@ Knowledge management capabilities:
 
 | Specification | Lines | Sections | Code Examples | MCP Tools | Implementation |
 |--------------|-------|----------|---------------|-----------|----------------|
-| spec.md | 2,134 | 11 | 42 | 29 | 100% ✅ |
-| strong-tools-spec.md | 2,519 | 13 | 87 | 23 | Partial ⚠️ |
-| global-architecture-spec.md | 2,140 | 17 | 52 | 5 | Partial ⚠️ |
+| spec.md (Russian) | 2,134 | 11 | 42 | 29 | 100% ✅ |
+| spec-en.md (English) | ~2,134 | 11 | 42 | 29 | Translation ✅ |
+| strong-tools-spec.md (Russian) | 2,519 | 13 | 87 | 23 | Partial ⚠️ |
+| strong-tools-spec-en.md (English) | ~2,519 | 13 | 87 | 23 | Translation ✅ |
+| global-architecture-spec.md (Russian) | 2,140 | 17 | 52 | 5 | Partial ⚠️ |
+| global-architecture-spec-en.md (English) | ~2,140 | 17 | 52 | 5 | Translation ✅ |
 | roadmap.md | 1,264 | 11 | 0 | 57 | Active ✅ |
 | SPEC_ANALYSIS.md | 1,340 | 9 | 0 | 0 | Complete ✅ |
+| CHANGELOG.md | - | - | 0 | 0 | Active ✅ |
+| guides/ (5 files) | - | - | - | - | Complete ✅ |
 
 ---
 
@@ -419,33 +466,42 @@ Knowledge management capabilities:
 
 ### Last Updated
 
-- **INDEX.md**: October 18, 2025 (created)
-- **spec.md**: October 18, 2025 (production status update)
-- **strong-tools-spec.md**: October 18, 2025 (initial creation)
-- **global-architecture-spec.md**: October 18, 2025 (initial creation)
+- **INDEX.md**: October 18, 2025 (updated with translations and guides)
+- **spec.md / spec-en.md**: October 18, 2025 (production status update)
+- **strong-tools-spec.md / strong-tools-spec-en.md**: October 18, 2025 (initial creation)
+- **global-architecture-spec.md / global-architecture-spec-en.md**: October 18, 2025 (initial creation)
 - **roadmap.md**: October 18, 2025 (Phase 2 completion update)
 - **SPEC_ANALYSIS.md**: October 18, 2025 (analysis complete)
+- **CHANGELOG.md**: October 18, 2025 (created)
+- **guides/**: October 18, 2025 (all guides created)
 
 ### Change Log
 
 **October 18, 2025**:
+- ✅ Added English translations for all core specs (spec-en.md, strong-tools-spec-en.md, global-architecture-spec-en.md)
+- ✅ Created CHANGELOG.md for version tracking
+- ✅ Created 5 user guides (getting-started, multi-monorepo-setup, mcp-integration, testing, guides/README)
+- ✅ Updated INDEX.md and README.md with new content
 - Created INDEX.md (this file)
 - Created SPEC_ANALYSIS.md (quality analysis)
 - Updated roadmap.md (Phase 2 completion)
 - All specs current as of this date
 
+**See [CHANGELOG.md](./CHANGELOG.md)** for detailed version history.
+
 ### Future Updates
 
 **Planned**:
 - Add RESTRUCTURING_PLAN.md (if needed)
-- Add English translations for Russian specs
 - Consolidate RocksDB schema definitions
 - Add version numbers to all specs
+- Add schemas/ directory documentation
 
 **Ongoing**:
 - Update implementation status as phases complete
 - Track test coverage progress
 - Maintain cross-references
+- Update CHANGELOG.md with changes
 
 ---
 

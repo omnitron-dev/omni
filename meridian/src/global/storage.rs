@@ -145,6 +145,19 @@ impl GlobalStorage {
     pub fn db(&self) -> Arc<DB> {
         Arc::clone(&self.db)
     }
+
+    /// Put raw key-value pair
+    pub async fn put_raw(&self, key: &str, value: &[u8]) -> Result<()> {
+        self.db
+            .put(key, value)
+            .with_context(|| format!("Failed to store raw key {}", key))?;
+        Ok(())
+    }
+
+    /// Get raw value by key
+    pub async fn get_raw(&self, key: &str) -> Result<Option<Vec<u8>>> {
+        Ok(self.db.get(key)?)
+    }
 }
 
 #[cfg(test)]

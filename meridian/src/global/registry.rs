@@ -89,6 +89,9 @@ pub struct ProjectRegistry {
     /// Current absolute path
     pub current_path: PathBuf,
 
+    /// Specs directory path (for specifications)
+    pub specs_path: Option<PathBuf>,
+
     /// History of path changes
     pub path_history: Vec<PathHistoryEntry>,
 
@@ -117,9 +120,28 @@ impl ProjectRegistry {
         let now = Utc::now();
         let path_str = path.display().to_string();
 
+        // Ensure path is absolute
+        let absolute_path = if path.is_absolute() {
+            path
+        } else {
+            std::env::current_dir()
+                .ok()
+                .and_then(|cwd| cwd.join(&path).canonicalize().ok())
+                .unwrap_or(path)
+        };
+
+        // Check for specs directory (must be absolute)
+        let specs_path = absolute_path.join("specs");
+        let specs_path = if specs_path.exists() && specs_path.is_dir() {
+            Some(specs_path)
+        } else {
+            None
+        };
+
         Self {
             identity,
-            current_path: path,
+            current_path: absolute_path,
+            specs_path,
             path_history: vec![PathHistoryEntry {
                 path: path_str,
                 timestamp: now,
@@ -143,7 +165,16 @@ impl ProjectRegistry {
     /// Update the path and add to history
     pub fn relocate(&mut self, new_path: PathBuf, reason: String) {
         let old_path = self.current_path.display().to_string();
-        self.current_path = new_path;
+        self.current_path = new_path.clone();
+
+        // Update specs path if it exists
+        let specs_path = new_path.join("specs");
+        self.specs_path = if specs_path.exists() && specs_path.is_dir() {
+            Some(specs_path)
+        } else {
+            None
+        };
+
         self.path_history.push(PathHistoryEntry {
             path: old_path,
             timestamp: Utc::now(),
@@ -163,6 +194,8 @@ impl ProjectRegistry {
 pub struct ProjectRegistryManager {
     storage: Arc<GlobalStorage>,
 }
+
+const CURRENT_PROJECT_KEY: &str = "current_project";
 
 impl ProjectRegistryManager {
     /// Create a new registry manager
@@ -250,6 +283,34 @@ impl ProjectRegistryManager {
 
         registry.relocate(new_path, reason);
         self.update(registry).await
+    }
+
+    /// Set the current project (used by MCP server)
+    pub async fn set_current_project(&self, project_id: &str) -> Result<()> {
+        // Verify project exists
+        if self.get(project_id).await?.is_none() {
+            anyhow::bail!("Project not found: {}", project_id);
+        }
+
+        // Store in a simple key-value manner
+        self.storage.put_raw(CURRENT_PROJECT_KEY, project_id.as_bytes()).await
+    }
+
+    /// Get the current project ID
+    pub async fn get_current_project(&self) -> Result<Option<String>> {
+        match self.storage.get_raw(CURRENT_PROJECT_KEY).await? {
+            Some(bytes) => Ok(Some(String::from_utf8(bytes)?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Get the current project registry
+    pub async fn get_current_project_registry(&self) -> Result<Option<ProjectRegistry>> {
+        if let Some(project_id) = self.get_current_project().await? {
+            self.get(&project_id).await
+        } else {
+            Ok(None)
+        }
     }
 }
 

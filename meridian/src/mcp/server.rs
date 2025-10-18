@@ -116,33 +116,34 @@ impl MeridianServer {
         // Initialize specification manager
         // Try multiple locations to find specs directory:
         // 1. Environment variable MERIDIAN_SPECS_PATH
-        // 2. Current working directory/specs
-        // 3. Meridian installation directory/specs (fallback)
-        let specs_path = std::env::var("MERIDIAN_SPECS_PATH")
-            .ok()
-            .map(PathBuf::from)
-            .or_else(|| {
-                // Try current working directory
-                std::env::current_dir()
-                    .ok()
-                    .and_then(|cwd| {
-                        let cwd_specs = cwd.join("specs");
-                        if cwd_specs.exists() && cwd_specs.is_dir() {
-                            info!("Using specs directory from current working directory: {:?}", cwd_specs);
-                            Some(cwd_specs)
-                        } else {
-                            None
-                        }
-                    })
-            })
-            .unwrap_or_else(|| {
+        // 2. Global project registry (current project)
+        // 3. Current working directory/specs
+        // 4. Meridian installation directory/specs (fallback)
+        let specs_path = if let Ok(path) = std::env::var("MERIDIAN_SPECS_PATH") {
+            PathBuf::from(path)
+        } else if let Some(path) = Self::get_specs_path_from_registry_async().await {
+            path
+        } else if let Ok(cwd) = std::env::current_dir() {
+            let cwd_specs = cwd.join("specs");
+            if cwd_specs.exists() && cwd_specs.is_dir() {
+                info!("Using specs directory from current working directory: {:?}", cwd_specs);
+                cwd_specs
+            } else {
                 // Fallback to storage path parent (legacy behavior)
                 let fallback = config.storage.path.parent()
                     .unwrap_or_else(|| std::path::Path::new("."))
                     .join("specs");
-                info!("Using specs directory fallback: {:?}", fallback);
+                warn!("Using specs directory fallback: {:?}", fallback);
                 fallback
-            });
+            }
+        } else {
+            // Fallback to storage path parent (legacy behavior)
+            let fallback = config.storage.path.parent()
+                .unwrap_or_else(|| std::path::Path::new("."))
+                .join("specs");
+            warn!("Using specs directory fallback: {:?}", fallback);
+            fallback
+        };
 
         info!("Initializing SpecificationManager with path: {:?}", specs_path);
         let spec_manager = SpecificationManager::new(specs_path);
@@ -195,6 +196,35 @@ impl MeridianServer {
 
         std::fs::create_dir_all(&cache_path)?;
         Ok(cache_path)
+    }
+
+    /// Get specs path from global registry (async helper)
+    async fn get_specs_path_from_registry_async() -> Option<PathBuf> {
+        use crate::config::get_meridian_home;
+        use crate::global::{GlobalStorage, ProjectRegistryManager};
+
+        let data_dir = get_meridian_home().join("data");
+        if !data_dir.exists() {
+            return None;
+        }
+
+        let storage = Arc::new(GlobalStorage::new(&data_dir).await.ok()?);
+        let manager = Arc::new(ProjectRegistryManager::new(storage));
+
+        // Get current project
+        let current_project = manager.get_current_project_registry().await.ok()??;
+
+        if let Some(specs_path) = current_project.specs_path {
+            if specs_path.exists() {
+                info!("Using specs directory from project registry: {:?}", specs_path);
+                Some(specs_path)
+            } else {
+                warn!("Specs path in registry doesn't exist: {:?}", specs_path);
+                None
+            }
+        } else {
+            None
+        }
     }
 
     /// Create a new Meridian server instance in multi-project mode for HTTP

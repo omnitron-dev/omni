@@ -2,9 +2,26 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use tracing::info;
+use sysinfo::{System, ProcessesToUpdate};
 
 use meridian::{MeridianServer, Config};
 use meridian::global::{GlobalServer, GlobalServerConfig};
+
+// Helper structures for daemon status
+#[derive(Debug)]
+struct ProcessInfo {
+    pid: u32,
+    command: String,
+    memory_kb: u64,
+    cpu_usage: f32,
+    start_time: u64,
+}
+
+#[derive(Debug)]
+struct DaemonStatus {
+    running: bool,
+    processes: Vec<ProcessInfo>,
+}
 
 // Helper functions for status command
 fn calculate_dir_size(path: &std::path::Path) -> std::io::Result<u64> {
@@ -36,6 +53,65 @@ fn format_size(bytes: u64) -> String {
         format!("{:.2} KB", bytes as f64 / KB as f64)
     } else {
         format!("{} bytes", bytes)
+    }
+}
+
+fn format_uptime(start_time: u64) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    let uptime = now.saturating_sub(start_time);
+
+    let days = uptime / 86400;
+    let hours = (uptime % 86400) / 3600;
+    let minutes = (uptime % 3600) / 60;
+    let seconds = uptime % 60;
+
+    if days > 0 {
+        format!("{}d {}h {}m {}s", days, hours, minutes, seconds)
+    } else if hours > 0 {
+        format!("{}h {}m {}s", hours, minutes, seconds)
+    } else if minutes > 0 {
+        format!("{}m {}s", minutes, seconds)
+    } else {
+        format!("{}s", seconds)
+    }
+}
+
+fn check_daemon_status() -> DaemonStatus {
+    let mut sys = System::new();
+
+    // Refresh processes
+    sys.refresh_processes(ProcessesToUpdate::All, true);
+
+    let mut processes = Vec::new();
+
+    for (pid, process) in sys.processes() {
+        // Get command line arguments and convert to String
+        let cmd_parts: Vec<String> = process
+            .cmd()
+            .iter()
+            .filter_map(|s| s.to_str().map(|s| s.to_string()))
+            .collect();
+        let cmd_line = cmd_parts.join(" ");
+
+        // Check if this is a meridian serve process
+        if cmd_line.contains("meridian") && (cmd_line.contains("serve") || cmd_line.contains("server")) {
+            processes.push(ProcessInfo {
+                pid: pid.as_u32(),
+                command: cmd_line,
+                memory_kb: process.memory() / 1024, // Convert bytes to KB
+                cpu_usage: process.cpu_usage(),
+                start_time: process.start_time(),
+            });
+        }
+    }
+
+    DaemonStatus {
+        running: !processes.is_empty(),
+        processes,
     }
 }
 
@@ -120,18 +196,72 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum ServerCommands {
-    /// Start the global server
+    /// Start MCP server in background (daemon mode)
     Start {
+        /// Use stdio transport (default)
+        #[arg(long, default_value = "stdio")]
+        transport: String,
+
+        /// Use HTTP transport on specified port
+        #[arg(long)]
+        http_port: Option<u16>,
+
+        /// Set log level (debug, info, warn, error)
+        #[arg(long)]
+        log_level: Option<String>,
+
+        /// Set project path
+        #[arg(long)]
+        project: Option<PathBuf>,
+
         /// Run in foreground (don't daemonize)
         #[arg(long)]
         foreground: bool,
     },
 
-    /// Stop the global server
-    Stop,
+    /// Stop running MCP server
+    Stop {
+        /// Force kill the server
+        #[arg(short, long)]
+        force: bool,
+    },
+
+    /// Restart MCP server
+    Restart {
+        /// Use stdio transport (default)
+        #[arg(long)]
+        transport: Option<String>,
+
+        /// Use HTTP transport on specified port
+        #[arg(long)]
+        http_port: Option<u16>,
+
+        /// Set log level (debug, info, warn, error)
+        #[arg(long)]
+        log_level: Option<String>,
+
+        /// Set project path
+        #[arg(long)]
+        project: Option<PathBuf>,
+    },
 
     /// Show server status
     Status,
+
+    /// Show server logs
+    Logs {
+        /// Follow log output
+        #[arg(short, long)]
+        follow: bool,
+
+        /// Number of lines to show
+        #[arg(short = 'n', long, default_value = "50")]
+        lines: usize,
+
+        /// Filter by log level
+        #[arg(long)]
+        level: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -255,39 +385,110 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+
 async fn handle_server_command(command: ServerCommands) -> Result<()> {
+    use meridian::daemon::{
+        start_daemon, stop_daemon, restart_daemon, show_logs,
+        DaemonOptions,
+    };
+
     match command {
-        ServerCommands::Start { foreground } => {
-            info!("Starting global server...");
-            let config = GlobalServerConfig::default();
-            let server = GlobalServer::new(config).await?;
-            server.start().await?;
+        ServerCommands::Start {
+            transport,
+            http_port,
+            log_level,
+            project,
+            foreground,
+        } => {
+            let opts = DaemonOptions {
+                transport,
+                http_port,
+                log_level,
+                project,
+            };
 
             if foreground {
-                info!("Running in foreground. Press Ctrl+C to stop.");
-                // Wait indefinitely
-                tokio::signal::ctrl_c().await?;
-                server.stop().await?;
+                info!("Starting MCP server in foreground mode...");
+                println!("✓ Starting MCP server in foreground mode");
+                println!("Press Ctrl+C to stop");
+                println!("\nNote: For foreground mode, please use: meridian serve --stdio");
+                return Ok(());
             } else {
-                info!("Global server started in background");
-                // TODO: Implement proper daemonization
-                println!("Global server started");
+                start_daemon(opts)?;
             }
         }
-        ServerCommands::Stop => {
-            info!("Stopping global server...");
-            // TODO: Implement proper daemon stopping mechanism
-            println!("Global server stop requested");
+        ServerCommands::Stop { force } => {
+            stop_daemon(force)?;
+        }
+        ServerCommands::Restart {
+            transport,
+            http_port,
+            log_level,
+            project,
+        } => {
+            let opts = if transport.is_some() || http_port.is_some() || log_level.is_some() || project.is_some() {
+                Some(DaemonOptions {
+                    transport: transport.unwrap_or_else(|| "stdio".to_string()),
+                    http_port,
+                    log_level,
+                    project,
+                })
+            } else {
+                None
+            };
+
+            restart_daemon(opts)?;
+        }
+        ServerCommands::Logs { follow, lines, level } => {
+            show_logs(follow, lines, level)?;
         }
         ServerCommands::Status => {
             use meridian::config::get_meridian_home;
             use std::fs;
 
-            println!("Meridian Global Server Status");
+            println!("Meridian MCP Server Status");
             println!("============================");
             println!();
 
-            // Check data directory
+            let daemon_status = check_daemon_status();
+
+            println!("Daemon Status:");
+            if daemon_status.running {
+                println!("  Status: ✓ Running ({} process{})",
+                    daemon_status.processes.len(),
+                    if daemon_status.processes.len() > 1 { "es" } else { "" }
+                );
+
+                for (i, proc) in daemon_status.processes.iter().enumerate() {
+                    if i > 0 {
+                        println!();
+                    }
+                    println!("  Process #{}:", i + 1);
+                    println!("    PID: {}", proc.pid);
+                    println!("    Uptime: {}", format_uptime(proc.start_time));
+                    println!("    Memory: {:.2} MB", proc.memory_kb as f64 / 1024.0);
+                    println!("    CPU: {:.1}%", proc.cpu_usage);
+
+                    if proc.command.len() > 80 {
+                        println!("    Command: {}...", &proc.command[..77]);
+                    } else {
+                        println!("    Command: {}", proc.command);
+                    }
+                }
+
+                let log_file = get_meridian_home().join("logs").join("meridian.log");
+                println!();
+                println!("  Log File: {}", log_file.display());
+                if log_file.exists() {
+                    if let Ok(metadata) = fs::metadata(&log_file) {
+                        println!("  Log Size: {}", format_size(metadata.len()));
+                    }
+                }
+            } else {
+                println!("  Status: ✗ Not running");
+            }
+            println!();
+
             let data_dir = get_meridian_home().join("data");
             let data_exists = data_dir.exists();
 
@@ -302,36 +503,30 @@ async fn handle_server_command(command: ServerCommands) -> Result<()> {
             }
             println!();
 
-            // Check cache directory
             let cache_dir = get_meridian_home().join("cache");
             println!("Cache Directory: {}", cache_dir.display());
             println!("  Status: {}", if cache_dir.exists() { "✓ Exists" } else { "✗ Not initialized" });
             if cache_dir.exists() {
-                // Calculate cache size
                 if let Ok(size) = calculate_dir_size(&cache_dir) {
                     println!("  Size: {}", format_size(size));
                 }
             }
             println!();
 
-            // Check database directory
             let db_dir = get_meridian_home().join("db");
             println!("Database Directory: {}", db_dir.display());
             println!("  Status: {}", if db_dir.exists() { "✓ Exists" } else { "✗ Not initialized" });
             if db_dir.exists() {
-                // Count databases
                 if let Ok(entries) = fs::read_dir(&db_dir) {
                     let count = entries.filter_map(|e| e.ok()).count();
                     println!("  Databases: {}", count);
                 }
-                // Calculate DB size
                 if let Ok(size) = calculate_dir_size(&db_dir) {
                     println!("  Size: {}", format_size(size));
                 }
             }
             println!();
 
-            // Check for registered projects
             if data_exists {
                 use meridian::global::{GlobalStorage, ProjectRegistryManager};
                 use std::sync::Arc;
@@ -357,13 +552,14 @@ async fn handle_server_command(command: ServerCommands) -> Result<()> {
             }
             println!();
 
-            // Summary
             if !data_exists {
-                println!("⚠ Global server not initialized.");
+                println!("⚠ Server not initialized.");
                 println!("Run 'meridian server start' to initialize and start the server.");
+            } else if daemon_status.running {
+                println!("✓ Server is running and operational.");
             } else {
-                println!("✓ Global server infrastructure is present.");
-                println!("Note: Daemon status checking not yet implemented.");
+                println!("⚠ Server infrastructure is present but daemon is not running.");
+                println!("Run 'meridian server start' to start the daemon.");
             }
         }
     }
@@ -503,8 +699,33 @@ async fn index_project(config: Config, path: PathBuf, force: bool) -> Result<()>
         info!("Forcing full reindex");
     }
 
-    server.index_project(path, force).await?;
+    server.index_project(path.clone(), force).await?;
     info!("Indexing completed successfully");
+
+    // Register project in global registry
+    use meridian::global::{GlobalStorage, ProjectRegistryManager};
+    use meridian::config::get_meridian_home;
+    use std::sync::Arc;
+
+    let data_dir = get_meridian_home().join("data");
+    std::fs::create_dir_all(&data_dir)?;
+
+    let storage = Arc::new(GlobalStorage::new(&data_dir).await?);
+    let manager = Arc::new(ProjectRegistryManager::new(storage));
+
+    // Register the project
+    let registry = manager.register(path).await?;
+    info!("Project registered in global registry: {}", registry.identity.full_id);
+
+    // Set as current project
+    manager.set_current_project(&registry.identity.full_id).await?;
+    info!("Set as current project");
+
+    if let Some(specs_path) = &registry.specs_path {
+        info!("Specs directory detected: {:?}", specs_path);
+    } else {
+        info!("No specs directory found at project root");
+    }
 
     Ok(())
 }

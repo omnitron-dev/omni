@@ -893,8 +893,8 @@ impl Default for ServerCapabilities {
         Self {
             tools: Some(serde_json::Map::new()),       // Empty object
             resources: Some(serde_json::Map::new()),   // Empty object
-            prompts: Some(serde_json::Map::new()),     // Empty object
-            logging: Some(serde_json::Map::new()),     // Empty object
+            prompts: None,                             // Not implemented
+            logging: None,                             // Not implemented
             completions: None,
             experimental: None,
         }

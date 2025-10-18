@@ -4,7 +4,7 @@
 //! including Jest, Vitest, Bun Test, and Rust native tests.
 
 use crate::types::CodeSymbol;
-use crate::strong::ValidationResult;
+use crate::codegen::ValidationResult;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 

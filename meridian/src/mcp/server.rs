@@ -122,30 +122,56 @@ impl MeridianServer {
         // 1. Environment variable MERIDIAN_SPECS_PATH
         // 2. Global project registry (current project)
         // 3. Current working directory/specs
-        // 4. Meridian installation directory/specs (fallback)
+        // 4. Current working directory/meridian/specs (for monorepo setups)
+        // 5. Executable directory/../specs
+        // 6. Storage path parent/specs (fallback - creates if needed)
         let specs_path = if let Ok(path) = std::env::var("MERIDIAN_SPECS_PATH") {
+            info!("Using specs directory from MERIDIAN_SPECS_PATH: {:?}", path);
             PathBuf::from(path)
         } else if let Some(path) = Self::get_specs_path_from_registry_async().await {
             path
         } else if let Ok(cwd) = std::env::current_dir() {
+            // Try direct cwd/specs first
             let cwd_specs = cwd.join("specs");
             if cwd_specs.exists() && cwd_specs.is_dir() {
                 info!("Using specs directory from current working directory: {:?}", cwd_specs);
                 cwd_specs
             } else {
-                // Fallback to storage path parent (legacy behavior)
-                let fallback = config.storage.path.parent()
-                    .unwrap_or_else(|| std::path::Path::new("."))
-                    .join("specs");
-                warn!("Using specs directory fallback: {:?}", fallback);
-                fallback
+                // Try cwd/meridian/specs (for monorepo setups like omni/meridian)
+                let meridian_specs = cwd.join("meridian").join("specs");
+                if meridian_specs.exists() && meridian_specs.is_dir() {
+                    info!("Using specs directory from meridian subdirectory: {:?}", meridian_specs);
+                    meridian_specs
+                } else {
+                    // Try to find specs relative to executable
+                    let exe_specs_result = std::env::current_exe()
+                        .ok()
+                        .and_then(|exe_path| exe_path.parent().map(|p| p.to_path_buf()))
+                        .and_then(|exe_parent| {
+                            let exe_specs = exe_parent.join("..").join("specs");
+                            exe_specs.canonicalize().ok()
+                        })
+                        .filter(|p| p.exists() && p.is_dir());
+
+                    if let Some(exe_specs) = exe_specs_result {
+                        info!("Using specs directory relative to executable: {:?}", exe_specs);
+                        exe_specs
+                    } else {
+                        // Final fallback to storage path parent (legacy behavior)
+                        let fallback = config.storage.path.parent()
+                            .unwrap_or_else(|| std::path::Path::new("."))
+                            .join("specs");
+                        warn!("No specs directory found, using fallback: {:?}", fallback);
+                        fallback
+                    }
+                }
             }
         } else {
             // Fallback to storage path parent (legacy behavior)
             let fallback = config.storage.path.parent()
                 .unwrap_or_else(|| std::path::Path::new("."))
                 .join("specs");
-            warn!("Using specs directory fallback: {:?}", fallback);
+            warn!("Could not determine current directory, using fallback: {:?}", fallback);
             fallback
         };
 

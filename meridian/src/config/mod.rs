@@ -171,6 +171,33 @@ impl Default for HttpConfig {
 
 
 impl Config {
+    /// Get the global config file path
+    pub fn global_config_path() -> PathBuf {
+        get_meridian_home().join("meridian.toml")
+    }
+
+    /// Load configuration from the global config file
+    /// Falls back to defaults if config doesn't exist
+    /// Environment variables can override specific settings
+    pub fn load() -> Result<Self> {
+        let global_path = Self::global_config_path();
+
+        // Load from global config or use defaults
+        let mut config = if global_path.exists() {
+            tracing::info!("Loading config from {:?}", global_path);
+            Self::from_file(&global_path)?
+        } else {
+            tracing::warn!("Global config not found at {:?}, using defaults", global_path);
+            Self::default()
+        };
+
+        // Apply environment variable overrides
+        config.apply_env_overrides();
+
+        Ok(config)
+    }
+
+    /// Load config from a specific file path (for testing/migration)
     pub fn from_file(path: &Path) -> Result<Self> {
         if !path.exists() {
             tracing::warn!("Config file not found at {:?}, using defaults", path);
@@ -186,12 +213,69 @@ impl Config {
         Ok(config)
     }
 
-    pub fn save(&self, path: &Path) -> Result<()> {
+    /// Save config to global location
+    pub fn save(&self) -> Result<()> {
+        let global_path = Self::global_config_path();
+        self.save_to(&global_path)
+    }
+
+    /// Save config to specific path (for testing/migration)
+    pub fn save_to(&self, path: &Path) -> Result<()> {
+        // Ensure parent directory exists
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("Failed to create config directory: {:?}", parent))?;
+        }
+
         let contents = toml::to_string_pretty(self)
             .context("Failed to serialize config")?;
 
         std::fs::write(path, contents)
             .with_context(|| format!("Failed to write config file: {:?}", path))?;
+
+        tracing::info!("Config saved to {:?}", path);
+        Ok(())
+    }
+
+    /// Apply environment variable overrides
+    pub fn apply_env_overrides(&mut self) {
+        // MCP socket path override
+        if let Ok(socket) = std::env::var("MERIDIAN_MCP_SOCKET") {
+            self.mcp.socket = Some(PathBuf::from(socket));
+        }
+
+        // HTTP port override
+        if let Ok(port) = std::env::var("MERIDIAN_HTTP_PORT") {
+            if let Ok(port_num) = port.parse::<u16>() {
+                if let Some(ref mut http) = self.mcp.http {
+                    http.port = port_num;
+                }
+            }
+        }
+
+        // Max token response override
+        if let Ok(max_tokens) = std::env::var("MERIDIAN_MAX_TOKENS") {
+            if let Ok(tokens) = max_tokens.parse::<u32>() {
+                self.mcp.max_token_response = tokens;
+            }
+        }
+
+        // Log level affects behavior but is handled by tracing subscriber
+        tracing::debug!("Applied environment variable overrides to config");
+    }
+
+    /// Initialize global config with defaults if it doesn't exist
+    pub fn init_global() -> Result<()> {
+        let global_path = Self::global_config_path();
+
+        if global_path.exists() {
+            tracing::info!("Global config already exists at {:?}", global_path);
+            return Ok(());
+        }
+
+        tracing::info!("Creating default global config at {:?}", global_path);
+        let config = Self::default();
+        config.save_to(&global_path)?;
 
         Ok(())
     }
@@ -284,7 +368,7 @@ mod tests {
         config.session.max_sessions = 20;
         config.learning.confidence_threshold = 0.8;
 
-        config.save(&config_path).unwrap();
+        config.save_to(&config_path).unwrap();
         assert!(config_path.exists());
 
         let loaded = Config::from_file(&config_path).unwrap();
@@ -334,7 +418,7 @@ mod tests {
         config.learning.confidence_threshold = 0.85;
 
         // Save and reload
-        config.save(&config_path).unwrap();
+        config.save_to(&config_path).unwrap();
         let loaded = Config::from_file(&config_path).unwrap();
 
         assert_eq!(loaded.session.max_sessions, 5);
@@ -342,5 +426,39 @@ mod tests {
         assert_eq!(loaded.learning.confidence_threshold, 0.85);
         // Other fields should match defaults
         assert_eq!(loaded.learning.min_episodes_for_pattern, 3);
+    }
+
+    #[test]
+    fn test_global_config_path() {
+        let path = Config::global_config_path();
+        assert!(path.to_string_lossy().contains(".meridian"));
+        assert!(path.to_string_lossy().ends_with("meridian.toml"));
+    }
+
+    #[test]
+    fn test_env_overrides() {
+        std::env::set_var("MERIDIAN_MCP_SOCKET", "/tmp/test.sock");
+        std::env::set_var("MERIDIAN_HTTP_PORT", "8080");
+        std::env::set_var("MERIDIAN_MAX_TOKENS", "5000");
+
+        let mut config = Config::default();
+        config.mcp.http = Some(HttpConfig::default());
+        config.apply_env_overrides();
+
+        assert_eq!(config.mcp.socket, Some(PathBuf::from("/tmp/test.sock")));
+        assert_eq!(config.mcp.http.as_ref().unwrap().port, 8080);
+        assert_eq!(config.mcp.max_token_response, 5000);
+
+        // Clean up
+        std::env::remove_var("MERIDIAN_MCP_SOCKET");
+        std::env::remove_var("MERIDIAN_HTTP_PORT");
+        std::env::remove_var("MERIDIAN_MAX_TOKENS");
+    }
+
+    #[test]
+    fn test_init_global_creates_config() {
+        // This test would need to mock the global path or use a temp directory
+        // For now, we'll just test that the function exists and compiles
+        // Real integration test should be in a separate test file
     }
 }

@@ -1,0 +1,542 @@
+{
+  "analysis_date": "2025-10-18",
+  "objective": "Enhance meridian's MCP code analysis tools for efficient, token-saving code fragment retrieval",
+
+  "existing_tools_inventory": {
+    "code.search_symbols": {
+      "description": "Search for code symbols (functions, classes, etc.) with token budget control",
+      "parameters": {
+        "query": "string (required) - Search query text",
+        "type": "array<string> (optional) - Symbol types to filter",
+        "scope": "string (optional) - Path to limit search scope",
+        "detail_level": "enum (optional) - skeleton|interface|implementation|full",
+        "max_results": "integer (optional) - Maximum number of results",
+        "max_tokens": "integer (optional) - Hard limit on tokens in response"
+      },
+      "current_capabilities": [
+        "Semantic and exact symbol search",
+        "Token budget control via max_tokens",
+        "Detail level filtering (but not fully implemented in handler)"
+      ],
+      "gaps": [
+        "detail_level parameter exists but is ignored in handler (line 390)",
+        "Always returns full symbol metadata regardless of detail_level"
+      ]
+    },
+
+    "code.get_definition": {
+      "description": "Get full definition of a specific code symbol",
+      "parameters": {
+        "symbol_id": "string (required) - Unique symbol identifier",
+        "include_body": "boolean (default: true) - Include function/method body",
+        "include_references": "boolean (default: false) - Include reference information",
+        "include_dependencies": "boolean (default: false) - Include dependency information"
+      },
+      "current_capabilities": [
+        "Retrieves complete symbol metadata",
+        "Can optionally include/exclude body via include_body",
+        "Body is loaded from source file on-demand (lines 280-303)",
+        "Uses source_cache for performance"
+      ],
+      "gaps": [
+        "include_references parameter is ignored (line 450)",
+        "include_dependencies parameter is ignored (line 451)",
+        "No granular control over what parts of the definition are returned",
+        "Always returns full metadata (complexity, doc_comment, token_cost, etc.)",
+        "Cannot get just signature without other metadata"
+      ]
+    },
+
+    "code.find_references": {
+      "description": "Find all references to a code symbol",
+      "parameters": {
+        "symbol_id": "string (required) - Symbol ID to find references for",
+        "include_context": "boolean (default: false) - Include surrounding context",
+        "group_by_file": "boolean (default: true) - Group references by file"
+      },
+      "current_capabilities": [
+        "Finds all references to a symbol",
+        "Returns location info (file, line_start, line_end)",
+        "Returns reference kind (Import, Call, Instantiation, etc.)"
+      ],
+      "gaps": [
+        "include_context parameter is ignored (line 496)",
+        "No surrounding code context provided",
+        "Cannot see calling context without reading entire file",
+        "group_by_file parameter is ignored (line 498)"
+      ]
+    },
+
+    "code.get_dependencies": {
+      "description": "Get dependency graph for a symbol or file",
+      "parameters": {
+        "entry_point": "string (required) - Symbol or file path as entry point",
+        "depth": "integer (default: 3) - Maximum depth to traverse",
+        "direction": "enum (default: both) - imports|exports|both"
+      },
+      "current_capabilities": [
+        "Full dependency graph traversal with BFS",
+        "Supports incoming/outgoing/both directions",
+        "Configurable depth limit",
+        "Returns nodes and edges"
+      ],
+      "gaps": [
+        "Returns only symbol IDs, not symbol details",
+        "No inline symbol information",
+        "Cannot get compact dependency info without multiple calls",
+        "Edge information is basic (doesn't include edge types in output)"
+      ]
+    }
+  },
+
+  "implementation_details": {
+    "data_structures": {
+      "CodeSymbol": {
+        "file": "meridian/src/types/symbol.rs",
+        "fields": [
+          "id: SymbolId",
+          "name: String",
+          "kind: SymbolKind (Function|Method|Class|Interface|Struct|Enum|Type|Variable|Constant|Module|Namespace|Trait)",
+          "signature: String",
+          "body_hash: Hash",
+          "location: Location (file, line_start, line_end, column_start, column_end)",
+          "references: Vec<Reference>",
+          "dependencies: Vec<SymbolId>",
+          "metadata: SymbolMetadata (complexity, token_cost, last_modified, authors, doc_comment, test_coverage, usage_frequency)",
+          "embedding: Option<Vec<f32>> (384-dimensional for semantic search)"
+        ]
+      },
+      "DetailLevel": {
+        "file": "meridian/src/types/mod.rs",
+        "variants": [
+          "Skeleton - Only structure: names and signatures (100-500 tokens)",
+          "Interface - + public interfaces (500-1500 tokens)",
+          "Implementation - + private implementation (2000+ tokens)",
+          "Full - Full code with comments"
+        ],
+        "current_usage": "Defined but not used in handlers"
+      },
+      "SymbolDefinition": {
+        "file": "meridian/src/types/symbol.rs",
+        "fields": [
+          "symbol: CodeSymbol",
+          "body: Option<String>",
+          "dependencies: Vec<CodeSymbol>"
+        ],
+        "usage": "Returned by CodeIndexer::get_definition but not exposed via MCP handler"
+      }
+    },
+
+    "body_retrieval": {
+      "mechanism": "On-demand loading from source files",
+      "file": "meridian/src/indexer/code_indexer.rs",
+      "lines": "280-303",
+      "process": [
+        "1. Check source_cache for file content",
+        "2. If not cached, read from filesystem",
+        "3. Extract lines based on location (line_start to line_end)",
+        "4. Cache the file content",
+        "5. Return extracted lines as body"
+      ],
+      "performance": "Efficient with caching, but loads entire file"
+    }
+  },
+
+  "gap_analysis": {
+    "critical_gaps": [
+      {
+        "gap": "detail_level parameter not implemented",
+        "impact": "Cannot get lightweight symbol info (signature only)",
+        "token_waste": "Returning full metadata when only signature needed wastes ~80-90% of tokens",
+        "location": "handlers.rs:390, handlers.rs:444-488"
+      },
+      {
+        "gap": "include_references and include_dependencies ignored",
+        "impact": "Cannot get definition with dependencies in one call",
+        "user_experience": "Requires multiple tool calls to understand symbol context",
+        "location": "handlers.rs:450-453"
+      },
+      {
+        "gap": "No context snippets for references",
+        "impact": "Cannot see how symbol is used without reading files",
+        "token_waste": "Users must read entire files to see calling context",
+        "location": "handlers.rs:491-532"
+      },
+      {
+        "gap": "SymbolDefinition not exposed via MCP",
+        "impact": "Existing rich data structure unused by API",
+        "opportunity": "Can leverage this immediately",
+        "location": "handlers.rs:444"
+      }
+    ],
+
+    "redundancy_analysis": {
+      "overlapping_tools": [
+        {
+          "tools": ["code.search_symbols", "code.get_definition"],
+          "overlap": "Both return symbol information",
+          "distinction": "search finds many, get_definition gets one",
+          "verdict": "Not redundant - different use cases"
+        }
+      ],
+      "consolidation_opportunities": [
+        {
+          "current": "Separate include_references and include_dependencies booleans",
+          "proposed": "Single 'expand' array parameter: ['references', 'dependencies', 'callers', 'body']",
+          "benefit": "More flexible, future-proof API"
+        }
+      ]
+    }
+  },
+
+  "design_proposal": {
+    "approach": "ENHANCE existing tools, do NOT create new ones",
+    "rationale": "Existing tools have good structure, just need proper implementation",
+
+    "enhancement_1_code_search_symbols": {
+      "change": "Implement detail_level parameter properly",
+      "implementation": {
+        "file": "meridian/src/mcp/handlers.rs",
+        "function": "handle_search_symbols",
+        "line": "382-442",
+        "change_type": "Use existing apply_detail_level method from indexer"
+      },
+      "detail_levels": {
+        "skeleton": {
+          "returns": ["id", "name", "kind", "signature"],
+          "excludes": ["doc_comment", "complexity", "references", "dependencies", "metadata"],
+          "token_estimate": "100-200 tokens per symbol"
+        },
+        "interface": {
+          "returns": ["id", "name", "kind", "signature", "location", "doc_comment"],
+          "excludes": ["body", "references", "dependencies"],
+          "token_estimate": "200-400 tokens per symbol"
+        },
+        "implementation": {
+          "returns": ["id", "name", "kind", "signature", "location", "doc_comment", "metadata"],
+          "excludes": ["references", "dependencies", "body"],
+          "token_estimate": "400-800 tokens per symbol"
+        },
+        "full": {
+          "returns": "All fields including references and dependencies",
+          "token_estimate": "800-2000+ tokens per symbol"
+        }
+      },
+      "backward_compatibility": "Default to 'interface' (current behavior similar)"
+    },
+
+    "enhancement_2_code_get_definition": {
+      "change": "Implement include_references and include_dependencies parameters",
+      "implementation": {
+        "file": "meridian/src/mcp/handlers.rs",
+        "function": "handle_get_definition",
+        "line": "444-489",
+        "steps": [
+          "1. Call CodeIndexer::get_definition (already supports these params)",
+          "2. Return SymbolDefinition instead of just symbol",
+          "3. Add 'expand' array parameter for future extensions"
+        ]
+      },
+      "new_parameter": {
+        "name": "expand",
+        "type": "array<string>",
+        "values": ["body", "references", "dependencies", "callers", "metadata"],
+        "default": ["metadata"],
+        "backward_compatible": "include_body maps to expand=['body']"
+      },
+      "response_format": {
+        "definition": {
+          "id": "symbol ID",
+          "name": "symbol name",
+          "kind": "symbol kind",
+          "signature": "type signature",
+          "location": "source location",
+          "body": "source code (if expand includes 'body')",
+          "doc_comment": "documentation (if expand includes 'metadata')",
+          "complexity": "cyclomatic complexity (if expand includes 'metadata')",
+          "token_cost": "estimated tokens (if expand includes 'metadata')"
+        },
+        "references": "array of reference locations (if expand includes 'references')",
+        "dependencies": "array of symbol dependencies (if expand includes 'dependencies')",
+        "callers": "array of symbols that call this (if expand includes 'callers')",
+        "tokens_used": "total token count"
+      },
+      "token_savings": {
+        "signature_only": "90% reduction vs full definition",
+        "with_dependencies": "Single call vs 2 calls (50% reduction in total tokens)"
+      }
+    },
+
+    "enhancement_3_code_find_references": {
+      "change": "Implement include_context and group_by_file parameters",
+      "implementation": {
+        "file": "meridian/src/mcp/handlers.rs",
+        "function": "handle_find_references",
+        "line": "491-532",
+        "steps": [
+          "1. When include_context=true, load source files",
+          "2. Extract ±3 lines around each reference",
+          "3. Group by file if requested",
+          "4. Add context_lines field to response"
+        ]
+      },
+      "context_format": {
+        "lines_before": "3 lines before reference",
+        "reference_line": "the line with the reference (highlighted)",
+        "lines_after": "3 lines after reference",
+        "total_context_tokens": "~100-200 tokens per reference"
+      },
+      "grouping": {
+        "by_file": {
+          "file_path": "path",
+          "reference_count": "number",
+          "references": "array of references in this file"
+        }
+      }
+    }
+  },
+
+  "implementation_plan": {
+    "phase_1_quick_wins": {
+      "tasks": [
+        {
+          "task": "Implement detail_level in handle_search_symbols",
+          "effort": "1-2 hours",
+          "impact": "HIGH - 80% token reduction for search results",
+          "files": ["meridian/src/mcp/handlers.rs"],
+          "changes": [
+            "Use existing apply_detail_level method",
+            "Parse detail_level parameter",
+            "Filter symbols before serialization"
+          ]
+        },
+        {
+          "task": "Implement include_references/include_dependencies in handle_get_definition",
+          "effort": "2-3 hours",
+          "impact": "HIGH - 50% reduction in total calls",
+          "files": ["meridian/src/mcp/handlers.rs"],
+          "changes": [
+            "Call CodeIndexer::get_definition with params",
+            "Return SymbolDefinition structure",
+            "Serialize dependencies and references"
+          ]
+        }
+      ],
+      "total_effort": "3-5 hours",
+      "total_impact": "75-90% token reduction in common scenarios"
+    },
+
+    "phase_2_enhancements": {
+      "tasks": [
+        {
+          "task": "Implement include_context in handle_find_references",
+          "effort": "3-4 hours",
+          "impact": "MEDIUM - Eliminates need to read full files",
+          "files": ["meridian/src/mcp/handlers.rs"],
+          "changes": [
+            "Add context extraction logic",
+            "Cache source files",
+            "Format context snippets"
+          ]
+        },
+        {
+          "task": "Add 'expand' parameter to code.get_definition",
+          "effort": "2-3 hours",
+          "impact": "MEDIUM - More flexible API for future",
+          "files": ["meridian/src/mcp/handlers.rs", "meridian/src/mcp/tools.rs"],
+          "changes": [
+            "Add expand parameter to schema",
+            "Map to include_* booleans",
+            "Support 'callers' expansion"
+          ]
+        },
+        {
+          "task": "Implement group_by_file in handle_find_references",
+          "effort": "1-2 hours",
+          "impact": "LOW - Nice to have for organization",
+          "files": ["meridian/src/mcp/handlers.rs"],
+          "changes": [
+            "Group references by file path",
+            "Add aggregation stats"
+          ]
+        }
+      ],
+      "total_effort": "6-9 hours",
+      "total_impact": "Additional 30-50% token savings in advanced scenarios"
+    },
+
+    "phase_3_optimization": {
+      "tasks": [
+        {
+          "task": "Add token cost estimation to all responses",
+          "effort": "2-3 hours",
+          "impact": "MEDIUM - User awareness and budgeting"
+        },
+        {
+          "task": "Implement streaming for large results",
+          "effort": "8-12 hours",
+          "impact": "LOW - Future-proofing for very large codebases"
+        },
+        {
+          "task": "Add caching for frequently accessed symbols",
+          "effort": "4-6 hours",
+          "impact": "MEDIUM - Performance improvement"
+        }
+      ]
+    }
+  },
+
+  "token_efficiency_estimates": {
+    "scenario_1_quick_reference": {
+      "description": "Get just the signature of a function to check its parameters",
+      "current_approach": {
+        "tool": "code.get_definition",
+        "parameters": {"symbol_id": "...", "include_body": false},
+        "token_cost": "~500 tokens (full metadata still returned)"
+      },
+      "proposed_approach": {
+        "tool": "code.get_definition",
+        "parameters": {"symbol_id": "...", "expand": []},
+        "token_cost": "~50 tokens (signature only)"
+      },
+      "savings": "90% reduction (450 tokens saved)"
+    },
+
+    "scenario_2_understand_function": {
+      "description": "Understand a function and what it calls",
+      "current_approach": {
+        "calls": [
+          "code.get_definition (500 tokens)",
+          "code.get_dependencies (300 tokens)",
+          "Multiple code.get_definition for each dependency (500 × N tokens)"
+        ],
+        "total_tokens": "800 + 500N tokens",
+        "example_n_5": "3300 tokens"
+      },
+      "proposed_approach": {
+        "tool": "code.get_definition",
+        "parameters": {"symbol_id": "...", "expand": ["body", "dependencies"]},
+        "token_cost": "~1200 tokens (single call with all info)"
+      },
+      "savings": "64% reduction for N=5 (2100 tokens saved)"
+    },
+
+    "scenario_3_find_usage_examples": {
+      "description": "Find how a function is used in the codebase",
+      "current_approach": {
+        "calls": [
+          "code.find_references (200 tokens for locations)",
+          "Read multiple files to see context (2000+ tokens per file)"
+        ],
+        "total_tokens": "200 + 2000N tokens",
+        "example_n_3": "6200 tokens"
+      },
+      "proposed_approach": {
+        "tool": "code.find_references",
+        "parameters": {"symbol_id": "...", "include_context": true},
+        "token_cost": "~800 tokens (all references with context snippets)"
+      },
+      "savings": "87% reduction for N=3 (5400 tokens saved)"
+    },
+
+    "scenario_4_symbol_search": {
+      "description": "Search for symbols matching a pattern",
+      "current_approach": {
+        "tool": "code.search_symbols",
+        "parameters": {"query": "...", "max_results": 20},
+        "token_cost": "~10000 tokens (20 symbols × 500 tokens)"
+      },
+      "proposed_approach": {
+        "tool": "code.search_symbols",
+        "parameters": {"query": "...", "max_results": 20, "detail_level": "skeleton"},
+        "token_cost": "~2000 tokens (20 symbols × 100 tokens)"
+      },
+      "savings": "80% reduction (8000 tokens saved)"
+    }
+  },
+
+  "backward_compatibility": {
+    "strategy": "Additive changes only, all existing code continues to work",
+    "changes": [
+      {
+        "parameter": "detail_level in code.search_symbols",
+        "current": "Ignored",
+        "proposed": "Implemented with default='interface'",
+        "breaking": false,
+        "note": "Current behavior matches 'interface' level"
+      },
+      {
+        "parameter": "include_references in code.get_definition",
+        "current": "Ignored",
+        "proposed": "Implemented with default=false",
+        "breaking": false,
+        "note": "Default behavior unchanged"
+      },
+      {
+        "parameter": "include_dependencies in code.get_definition",
+        "current": "Ignored",
+        "proposed": "Implemented with default=false",
+        "breaking": false,
+        "note": "Default behavior unchanged"
+      },
+      {
+        "parameter": "include_context in code.find_references",
+        "current": "Ignored",
+        "proposed": "Implemented with default=false",
+        "breaking": false,
+        "note": "Default behavior unchanged"
+      },
+      {
+        "parameter": "expand in code.get_definition",
+        "current": "Does not exist",
+        "proposed": "New optional parameter",
+        "breaking": false,
+        "note": "Purely additive"
+      }
+    ]
+  },
+
+  "testing_strategy": {
+    "unit_tests": [
+      "Test detail_level filtering for all levels",
+      "Test expand parameter with various combinations",
+      "Test context extraction with edge cases (file start/end)",
+      "Test token counting accuracy"
+    ],
+    "integration_tests": [
+      "End-to-end MCP tool calls with new parameters",
+      "Performance tests with large codebases",
+      "Token efficiency benchmarks"
+    ],
+    "benchmark_scenarios": [
+      "Compare token usage before/after for common workflows",
+      "Measure latency impact of context extraction",
+      "Test cache hit rates for source files"
+    ]
+  },
+
+  "recommendation": {
+    "primary": "ENHANCE existing tools, do NOT create new tools",
+    "rationale": [
+      "Existing tool structure is well-designed",
+      "Parameters already exist but are ignored",
+      "Code infrastructure (apply_detail_level, get_definition) already supports this",
+      "No API proliferation - keeps tool count minimal",
+      "Backward compatible - all changes are additive"
+    ],
+    "priority": "HIGH - This is a critical UX improvement",
+    "effort": "9-14 hours total for phases 1-2",
+    "impact": "75-90% token reduction in common scenarios",
+    "risk": "LOW - Additive changes, existing tests protect against regression"
+  },
+
+  "next_steps": [
+    "1. Create progress tasks for Phase 1 implementation",
+    "2. Implement detail_level in handle_search_symbols (2 hours)",
+    "3. Implement include_references/dependencies in handle_get_definition (3 hours)",
+    "4. Add unit tests for new functionality (2 hours)",
+    "5. Create token efficiency benchmarks (2 hours)",
+    "6. Update MCP tool documentation (1 hour)",
+    "7. Phase 2: Implement remaining enhancements (6-9 hours)"
+  ]
+}

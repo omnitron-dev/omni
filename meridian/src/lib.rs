@@ -1,3 +1,4 @@
+pub mod codegen;
 pub mod config;
 pub mod context;
 pub mod daemon;
@@ -14,7 +15,6 @@ pub mod project;
 pub mod session;
 pub mod specs;
 pub mod storage;
-pub mod strong;
 pub mod types;
 
 pub use config::Config;

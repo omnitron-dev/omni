@@ -122,10 +122,6 @@ struct Cli {
     #[command(subcommand)]
     command: Commands,
 
-    /// Path to configuration file
-    #[arg(short, long, default_value = "meridian.toml")]
-    config: PathBuf,
-
     /// Enable verbose logging
     #[arg(short, long)]
     verbose: bool,
@@ -133,6 +129,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Initialize global configuration
+    InitConfig,
+
     /// Global server management
     Server {
         #[command(subcommand)]
@@ -351,10 +350,15 @@ async fn main() -> Result<()> {
 
     info!("Meridian cognitive memory system starting...");
 
-    // Load configuration
-    let config = Config::from_file(&cli.config)?;
+    // Load configuration from global location
+    let config = Config::load()?;
 
     match cli.command {
+        Commands::InitConfig => {
+            Config::init_global()?;
+            println!("✓ Global configuration initialized at {:?}", Config::global_config_path());
+            println!("Edit this file to customize Meridian settings.");
+        }
         Commands::Server { command } => {
             handle_server_command(command).await?;
         }

@@ -1,7 +1,7 @@
-//! Strong Tools - Documentation Generation and Knowledge Management
+//! Code Generation Tools - Documentation, Examples, and Tests
 //!
-//! This module implements the documentation generation and knowledge management
-//! features as specified in strong-tools-spec.md.
+//! This module provides code generation capabilities including documentation,
+//! code examples, and test generation for TypeScript, JavaScript, Rust, and Python.
 
 pub mod doc_generator;
 pub mod doc_quality;

@@ -205,6 +205,173 @@ impl ProgressManager {
         })
     }
 
+    /// Mark task as complete with memory integration (auto-episode recording)
+    pub async fn mark_complete(
+        &self,
+        task_id: &TaskId,
+        actual_hours: Option<f32>,
+        commit_hash: Option<String>,
+        solution_summary: Option<String>,
+        files_touched: Vec<String>,
+        queries_made: Vec<String>,
+        memory_system: Arc<tokio::sync::RwLock<crate::memory::MemorySystem>>,
+    ) -> Result<Option<String>> {
+        use crate::types::{EpisodeId, Outcome, TaskEpisode, TokenCount, ContextSnapshot};
+
+        // 1. Load task
+        let mut task = self.get_task(task_id).await?;
+
+        // 2. Update to Done status
+        task.update_status(TaskStatus::Done, Some("Task completed".to_string()))
+            .map_err(|e| anyhow!(e))?;
+        task.actual_hours = actual_hours;
+        task.commit_hash = commit_hash.clone();
+        task.updated_at = chrono::Utc::now();
+
+        // 3. Build episode data
+        let episode = TaskEpisode {
+            id: EpisodeId::new(),
+            timestamp: chrono::Utc::now(),
+            task_description: format!("{}: {}", task.title, task.description.clone().unwrap_or_default()),
+            initial_context: ContextSnapshot::default(),
+            queries_made,
+            files_touched,
+            solution_path: solution_summary.unwrap_or_else(|| task.title.clone()),
+            outcome: Outcome::Success,
+            tokens_used: TokenCount::zero(),
+            access_count: 0,
+            pattern_value: 0.0,
+        };
+
+        let episode_id = episode.id.0.clone();
+
+        // 4. Record episode in memory system
+        let mut mem_system = memory_system.write().await;
+        mem_system.episodic.record_episode(episode).await?;
+        drop(mem_system);
+
+        tracing::info!("Recorded episode {} for task {}", episode_id, task_id);
+
+        // 5. Store episode_id in task
+        task.episode_id = Some(episode_id.clone());
+
+        // 6. Save task
+        self.storage.save_task(&task).await?;
+
+        // Update status index
+        self.storage.update_status_index(task_id, TaskStatus::InProgress, TaskStatus::Done).await?;
+
+        // Update cache
+        self.cache.write().await.put(task_id.clone(), task);
+
+        tracing::info!("Marked task {} as complete with episode {}", task_id, episode_id);
+
+        // 7. Return episode_id
+        Ok(Some(episode_id))
+    }
+
+    /// Search tasks by title or description (full-text search)
+    pub async fn search_tasks(&self, query: &str, limit: Option<usize>) -> Result<Vec<TaskSummary>> {
+        let all_tasks = self.storage.list_all().await?;
+
+        let query_lower = query.to_lowercase();
+        let mut matching_tasks: Vec<Task> = all_tasks
+            .into_iter()
+            .filter(|t| {
+                t.title.to_lowercase().contains(&query_lower)
+                    || t.description
+                        .as_ref()
+                        .map(|d| d.to_lowercase().contains(&query_lower))
+                        .unwrap_or(false)
+                    || t.id.to_string().to_lowercase().contains(&query_lower)
+            })
+            .collect();
+
+        // Sort by relevance (title matches first, then updated_at)
+        matching_tasks.sort_by(|a, b| {
+            let a_title_match = a.title.to_lowercase().contains(&query_lower);
+            let b_title_match = b.title.to_lowercase().contains(&query_lower);
+
+            match (a_title_match, b_title_match) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => b.updated_at.cmp(&a.updated_at),
+            }
+        });
+
+        // Apply limit
+        if let Some(limit) = limit {
+            matching_tasks.truncate(limit);
+        }
+
+        tracing::info!("Found {} tasks matching query: {}", matching_tasks.len(), query);
+
+        Ok(matching_tasks.iter().map(TaskSummary::from).collect())
+    }
+
+    /// Link task to a specification section with validation
+    pub async fn link_to_spec(
+        &self,
+        task_id: &TaskId,
+        spec_name: String,
+        section: String,
+        validate: bool,
+        spec_manager: Arc<tokio::sync::RwLock<crate::specs::SpecificationManager>>,
+    ) -> Result<()> {
+        // 1. Load task
+        let mut task = self.get_task(task_id).await?;
+
+        // 2. Validate spec and section if requested
+        if validate {
+            let mut spec_mgr = spec_manager.write().await;
+
+            // Check if spec exists
+            spec_mgr.get_spec(&spec_name)
+                .map_err(|e| anyhow!("Spec '{}' not found: {}", spec_name, e))?;
+
+            // Check if section exists
+            let sections = spec_mgr.list_sections(&spec_name)?;
+            let section_exists = sections.iter().any(|s| {
+                s.to_lowercase().contains(&section.to_lowercase())
+                    || section.to_lowercase().contains(&s.to_lowercase())
+            });
+
+            if !section_exists {
+                return Err(anyhow!(
+                    "Section '{}' not found in spec '{}'. Available sections: {}",
+                    section,
+                    spec_name,
+                    sections.join(", ")
+                ));
+            }
+
+            tracing::info!("Validated spec reference: {} - {}", spec_name, section);
+        }
+
+        // 3. Set task.spec_ref
+        task.spec_ref = Some(SpecReference {
+            spec_name: spec_name.clone(),
+            section: section.clone(),
+        });
+        task.updated_at = chrono::Utc::now();
+
+        // 4. Save task
+        self.storage.save_task(&task).await?;
+
+        // Update cache
+        self.cache.write().await.put(task_id.clone(), task);
+
+        tracing::info!("Linked task {} to spec {} - {}", task_id, spec_name, section);
+
+        Ok(())
+    }
+
+    /// Get status transition history for a task
+    pub async fn get_history(&self, task_id: &TaskId) -> Result<Vec<crate::progress::types::StatusTransition>> {
+        let task = self.get_task(task_id).await?;
+        Ok(task.history)
+    }
+
     /// Clear cache (useful for testing)
     pub async fn clear_cache(&self) {
         self.cache.write().await.clear();
@@ -333,5 +500,133 @@ mod tests {
         // Second get (should still work from cache before clear)
         let task_id2 = manager.create_task("Test2".to_string(), None, None, None, vec![], None).await.unwrap();
         let _task2 = manager.get_task(&task_id2).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_search_tasks() {
+        let (manager, _temp_dir) = create_test_manager().await;
+
+        // Create tasks with different titles and descriptions
+        manager.create_task(
+            "Implement search feature".to_string(),
+            Some("Add full-text search to the API".to_string()),
+            None,
+            None,
+            vec![],
+            None,
+        ).await.unwrap();
+
+        manager.create_task(
+            "Fix bug in search".to_string(),
+            Some("The search is returning wrong results".to_string()),
+            None,
+            None,
+            vec![],
+            None,
+        ).await.unwrap();
+
+        manager.create_task(
+            "Add pagination".to_string(),
+            Some("Implement pagination for lists".to_string()),
+            None,
+            None,
+            vec![],
+            None,
+        ).await.unwrap();
+
+        // Search by title
+        let results = manager.search_tasks("search", None).await.unwrap();
+        assert_eq!(results.len(), 2);
+
+        // Search by description
+        let results = manager.search_tasks("pagination", None).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].title, "Add pagination");
+
+        // Search with limit
+        let results = manager.search_tasks("search", Some(1)).await.unwrap();
+        assert_eq!(results.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_get_history() {
+        let (manager, _temp_dir) = create_test_manager().await;
+
+        let task_id = manager.create_task("Test task".to_string(), None, None, None, vec![], None).await.unwrap();
+
+        // Update status a few times
+        manager.update_task(&task_id, None, None, None, Some(TaskStatus::InProgress), Some("Starting".to_string()), None, None, None, None).await.unwrap();
+        manager.update_task(&task_id, None, None, None, Some(TaskStatus::Blocked), Some("Waiting for review".to_string()), None, None, None, None).await.unwrap();
+        manager.update_task(&task_id, None, None, None, Some(TaskStatus::InProgress), Some("Resuming".to_string()), None, None, None, None).await.unwrap();
+
+        let history = manager.get_history(&task_id).await.unwrap();
+        assert_eq!(history.len(), 4); // Created + 3 updates
+        assert_eq!(history[0].to, TaskStatus::Pending);
+        assert_eq!(history[1].to, TaskStatus::InProgress);
+        assert_eq!(history[2].to, TaskStatus::Blocked);
+        assert_eq!(history[3].to, TaskStatus::InProgress);
+    }
+
+    #[tokio::test]
+    async fn test_mark_complete_with_memory() {
+        use crate::config::MemoryConfig;
+        use crate::memory::MemorySystem;
+        use crate::storage::rocksdb_storage::RocksDBStorage;
+
+        let temp_dir = TempDir::new().unwrap();
+        let db = Arc::new(RocksDBStorage::new(temp_dir.path()).unwrap());
+
+        // Create memory system
+        let memory_config = MemoryConfig {
+            working_memory_size: "10MB".to_string(),
+            episodic_retention_days: 90,
+            consolidation_interval: "1h".to_string(),
+        };
+        let mut memory_system = MemorySystem::new(db.clone(), memory_config).unwrap();
+        memory_system.init().await.unwrap();
+        let memory_system = Arc::new(tokio::sync::RwLock::new(memory_system));
+
+        // Create progress manager
+        let storage = Arc::new(ProgressStorage::new(db));
+        let manager = ProgressManager::new(storage);
+
+        // Create and complete a task
+        let task_id = manager.create_task(
+            "Implement feature X".to_string(),
+            Some("Add feature X to the system".to_string()),
+            None,
+            None,
+            vec![],
+            None,
+        ).await.unwrap();
+
+        // Mark as in progress first
+        manager.update_task(&task_id, None, None, None, Some(TaskStatus::InProgress), None, None, None, None, None).await.unwrap();
+
+        // Mark complete with episode data
+        let episode_id = manager.mark_complete(
+            &task_id,
+            Some(2.5),
+            Some("abc123".to_string()),
+            Some("Implemented feature X using approach Y".to_string()),
+            vec!["src/feature.rs".to_string(), "src/tests.rs".to_string()],
+            vec!["code.search feature".to_string(), "code.get_definition FeatureX".to_string()],
+            memory_system.clone(),
+        ).await.unwrap();
+
+        // Verify task is marked as done
+        let task = manager.get_task(&task_id).await.unwrap();
+        assert_eq!(task.status, TaskStatus::Done);
+        assert_eq!(task.actual_hours, Some(2.5));
+        assert_eq!(task.commit_hash, Some("abc123".to_string()));
+        assert!(task.completed_at.is_some());
+        assert!(task.episode_id.is_some());
+        assert_eq!(task.episode_id, episode_id);
+
+        // Verify episode was recorded in memory system
+        let mem = memory_system.read().await;
+        let similar = mem.episodic.find_similar("feature X", 5).await;
+        assert_eq!(similar.len(), 1);
+        assert_eq!(similar[0].id.0, episode_id.unwrap());
     }
 }

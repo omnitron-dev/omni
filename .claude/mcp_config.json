@@ -1,13 +1,13 @@
 {
   "mcpServers": {
     "meridian": {
-      "command": "cargo",
-      "args": ["run", "--release", "--quiet", "--", "serve", "--stdio"],
+      "command": "/Users/taaliman/projects/luxquant/omnitron-dev/omni/meridian/target/release/meridian",
+      "args": ["serve", "--stdio"],
       "cwd": "/Users/taaliman/projects/luxquant/omnitron-dev/omni/meridian",
       "env": {
-        "RUST_LOG": "meridian=debug",
-        "RUST_BACKTRACE": "1",
-        "PATH": "/Users/taaliman/.cargo/bin:/usr/local/bin:/bin:/usr/bin"
+        "RUST_LOG": "meridian=info",
+        "PATH": "/Users/taaliman/.cargo/bin:/usr/local/bin:/bin:/usr/bin",
+        "MERIDIAN_SPECS_PATH": "/Users/taaliman/projects/luxquant/omnitron-dev/omni/meridian/specs"
       }
     }
   }

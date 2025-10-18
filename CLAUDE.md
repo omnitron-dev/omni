@@ -371,6 +371,79 @@ logger.info({ data }, 'message');
 - TypeScript versions may vary slightly between packages (5.8.3 - 5.9.2)
 - Always check for breaking changes in dependencies (especially Pino logger)
 
+### Meridian MCP Integration
+
+**CRITICAL: Use Meridian MCP Tools - NO Report Files**
+
+The `/meridian` subdirectory contains a production-ready MCP server with 72 tools for code analysis, progress tracking, and memory management. When working with meridian:
+
+1. **NEVER Create Report Files** (.md summaries, implementation reports, session reports)
+   - Use `progress.*` MCP tools to track tasks and progress
+   - Use `memory.record_episode` to capture completed work
+   - Use `specs.*` tools to reference specifications
+   - Reports should live in the progress system, not markdown files
+
+2. **Always Use MCP Tools First**:
+   - `code.search_symbols` - Find symbols instead of grep
+   - `code.get_definition` - Read code instead of cat/Read tool
+   - `specs.get_section` - Read specs efficiently
+   - `progress.list_tasks` - View current work instead of todo lists
+   - `progress.mark_complete` - Auto-creates memory episodes
+
+3. **Progress Tracking Workflow**:
+   ```typescript
+   // Create task
+   const task = await progress.create_task({
+     title: "Implement feature X",
+     spec_name: "spec",
+     section: "Features",
+     priority: "high"
+   });
+
+   // Update status
+   await progress.update_task({
+     task_id: task.task_id,
+     status: "in_progress"
+   });
+
+   // Complete with auto-episode
+   await progress.mark_complete({
+     task_id: task.task_id,
+     solution_summary: "Implemented using approach Y",
+     files_touched: ["src/feature.rs"],
+     queries_made: ["code.search feature"]
+   });
+   // Episode automatically recorded in memory system!
+   ```
+
+4. **Token Efficiency**:
+   - Progress system is 70% more token-efficient than TodoWrite
+   - MCP tools return only requested data (no full files)
+   - Use detail_level parameters to control verbosity
+
+5. **Commit Messages**:
+   - Reference task IDs: "feat: implement X (task:550e8400)"
+   - Link to specs: "fix: resolve Y per progress-tracking-spec section 3.2"
+   - Include episode ID if relevant
+
+6. **Environment Setup**:
+   ```bash
+   export PATH="/Users/taaliman/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/bin:/usr/bin:$PATH"
+   cd meridian && cargo build --release
+   # MCP server auto-starts via Claude Code config
+   ```
+
+**Available MCP Tool Categories (72 total):**
+- Memory (3): record_episode, find_similar_episodes, update_working_set
+- Code Analysis (4): search_symbols, get_definition, find_references, get_dependencies
+- Progress Tracking (10): create, update, list, get, delete, search, link_to_spec, get_history, get_progress, mark_complete
+- Specs (5): list, get_structure, get_section, search, validate
+- Session (4): begin, update, query, complete
+- Context (4): prepare_adaptive, defragment, compress, analyze_token_cost
+- + 42 more (docs, codegen, links, global, etc.)
+
+**Remember:** Meridian tools replace manual workflows. Use them!
+
 ### Environment Setup
 
 Execute these commands each time for session to ensure all tools are available:

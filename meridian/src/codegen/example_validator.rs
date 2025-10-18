@@ -3,7 +3,7 @@
 //! This module provides validation capabilities for code examples,
 //! checking syntax and attempting compilation/interpretation validation.
 
-use crate::strong::example_generator::{Example, ValidationResult};
+use crate::codegen::example_generator::{Example, ValidationResult};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 

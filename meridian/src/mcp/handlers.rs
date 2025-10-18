@@ -139,31 +139,31 @@ impl ToolHandlers {
             "specs.validate" => self.handle_specs_validate(arguments).await,
 
             // Catalog Tools (Phase 3)
-            "catalog.list_projects" => self.handle_strong_catalog_list_projects(arguments).await,
-            "catalog.get_project" => self.handle_strong_catalog_get_project(arguments).await,
-            "catalog.search_documentation" => self.handle_strong_catalog_search_documentation(arguments).await,
+            "catalog.list_projects" => self.handle_catalog_list_projects(arguments).await,
+            "catalog.get_project" => self.handle_catalog_get_project(arguments).await,
+            "catalog.search_documentation" => self.handle_catalog_search_documentation(arguments).await,
 
             // Documentation Generation Tools (Phase 3)
-            "docs.generate" => self.handle_strong_docs_generate(arguments).await,
-            "docs.validate" => self.handle_strong_docs_validate(arguments).await,
-            "docs.transform" => self.handle_strong_docs_transform(arguments).await,
+            "docs.generate" => self.handle_docs_generate(arguments).await,
+            "docs.validate" => self.handle_docs_validate(arguments).await,
+            "docs.transform" => self.handle_docs_transform(arguments).await,
 
             // Example Tools (Phase 4)
-            "examples.generate" => self.handle_strong_examples_generate(arguments).await,
-            "examples.validate" => self.handle_strong_examples_validate(arguments).await,
+            "examples.generate" => self.handle_examples_generate(arguments).await,
+            "examples.validate" => self.handle_examples_validate(arguments).await,
 
             // Test Tools (Phase 4)
-            "tests.generate" => self.handle_strong_tests_generate(arguments).await,
-            "tests.validate" => self.handle_strong_tests_validate(arguments).await,
+            "tests.generate" => self.handle_tests_generate(arguments).await,
+            "tests.validate" => self.handle_tests_validate(arguments).await,
 
             // Global Tools (Phase 5)
-            "global.list_monorepos" => self.handle_strong_global_list_monorepos(arguments).await,
-            "global.search_all_projects" => self.handle_strong_global_search_all_projects(arguments).await,
-            "global.get_dependency_graph" => self.handle_strong_global_get_dependency_graph(arguments).await,
+            "global.list_monorepos" => self.handle_global_list_monorepos(arguments).await,
+            "global.search_all_projects" => self.handle_global_search_all_projects(arguments).await,
+            "global.get_dependency_graph" => self.handle_global_get_dependency_graph(arguments).await,
 
             // External Tools (Phase 5)
-            "external.get_documentation" => self.handle_strong_external_get_documentation(arguments).await,
-            "external.find_usages" => self.handle_strong_external_find_usages(arguments).await,
+            "external.get_documentation" => self.handle_external_get_documentation(arguments).await,
+            "external.find_usages" => self.handle_external_find_usages(arguments).await,
 
             // Progress Management Tools (Phase 2)
             "progress.create_task" => self.handle_progress_create_task(arguments).await,
@@ -1902,8 +1902,8 @@ impl ToolHandlers {
 
     // === Catalog Handlers (Phase 3) ===
 
-    async fn handle_strong_catalog_list_projects(&self, _args: Value) -> Result<Value> {
-        use crate::strong::GlobalCatalog;
+    async fn handle_catalog_list_projects(&self, _args: Value) -> Result<Value> {
+        use crate::codegen::GlobalCatalog;
 
         info!("Listing all projects in global catalog");
 
@@ -1937,7 +1937,7 @@ impl ToolHandlers {
         }))
     }
 
-    async fn handle_strong_catalog_get_project(&self, args: Value) -> Result<Value> {
+    async fn handle_catalog_get_project(&self, args: Value) -> Result<Value> {
         #[derive(Deserialize)]
         struct Params {
             #[serde(rename = "projectId")]
@@ -1947,7 +1947,7 @@ impl ToolHandlers {
         let params: Params = serde_json::from_value(args)?;
         info!("Getting project: {}", params.project_id);
 
-        use crate::strong::GlobalCatalog;
+        use crate::codegen::GlobalCatalog;
         let catalog = GlobalCatalog::new();
 
         let project = catalog.get_project(&params.project_id)
@@ -1967,7 +1967,7 @@ impl ToolHandlers {
         }))
     }
 
-    async fn handle_strong_catalog_search_documentation(&self, args: Value) -> Result<Value> {
+    async fn handle_catalog_search_documentation(&self, args: Value) -> Result<Value> {
         #[derive(Deserialize)]
         struct Params {
             query: String,
@@ -1980,7 +1980,7 @@ impl ToolHandlers {
         let params: Params = serde_json::from_value(args)?;
         info!("Searching documentation: query='{}', scope={:?}", params.query, params.scope);
 
-        use crate::strong::{GlobalCatalog, SearchScope};
+        use crate::codegen::{GlobalCatalog, SearchScope};
 
         let scope = match params.scope.as_deref() {
             Some("local") => SearchScope::Local,
@@ -2013,7 +2013,7 @@ impl ToolHandlers {
 
     // === Documentation Generation Handlers (Phase 3) ===
 
-    async fn handle_strong_docs_generate(&self, args: Value) -> Result<Value> {
+    async fn handle_docs_generate(&self, args: Value) -> Result<Value> {
         #[derive(Deserialize)]
         struct Params {
             #[serde(rename = "targetPath")]
@@ -2026,7 +2026,7 @@ impl ToolHandlers {
         let params: Params = serde_json::from_value(args)?;
         info!("Generating documentation for: {}", params.target_path);
 
-        use crate::strong::{DocumentationGenerator, DocFormat};
+        use crate::codegen::{DocumentationGenerator, DocFormat};
         use crate::indexer::Indexer;
 
         let format = match params.format.as_deref() {
@@ -2057,7 +2057,7 @@ impl ToolHandlers {
         }))
     }
 
-    async fn handle_strong_docs_validate(&self, args: Value) -> Result<Value> {
+    async fn handle_docs_validate(&self, args: Value) -> Result<Value> {
         #[derive(Deserialize)]
         struct Params {
             #[serde(rename = "targetPath")]
@@ -2069,7 +2069,7 @@ impl ToolHandlers {
         let params: Params = serde_json::from_value(args)?;
         info!("Validating documentation for: {}", params.target_path);
 
-        use crate::strong::QualityValidator;
+        use crate::codegen::QualityValidator;
         use crate::indexer::Indexer;
 
         let indexer = self.indexer.read().await;
@@ -2104,7 +2104,7 @@ impl ToolHandlers {
         }))
     }
 
-    async fn handle_strong_docs_transform(&self, args: Value) -> Result<Value> {
+    async fn handle_docs_transform(&self, args: Value) -> Result<Value> {
         #[derive(Deserialize)]
         struct Params {
             #[serde(rename = "targetPath")]
@@ -2116,7 +2116,7 @@ impl ToolHandlers {
         let params: Params = serde_json::from_value(args)?;
         info!("Transforming documentation for: {} to {}", params.target_path, params.target_format);
 
-        use crate::strong::{DocumentationGenerator, DocFormat, DocTransformOptions};
+        use crate::codegen::{DocumentationGenerator, DocFormat, DocTransformOptions};
         use crate::indexer::Indexer;
 
         let target_fmt = match params.target_format.as_str() {
@@ -2154,7 +2154,7 @@ impl ToolHandlers {
 
     // === Example Handlers (Phase 4) ===
 
-    async fn handle_strong_examples_generate(&self, args: Value) -> Result<Value> {
+    async fn handle_examples_generate(&self, args: Value) -> Result<Value> {
         #[derive(Deserialize)]
         struct Params {
             symbol_id: String,
@@ -2165,7 +2165,7 @@ impl ToolHandlers {
         let params: Params = serde_json::from_value(args)?;
         info!("Generating examples for symbol: {}", params.symbol_id);
 
-        use crate::strong::ExampleGenerator;
+        use crate::codegen::ExampleGenerator;
         use crate::indexer::Indexer;
 
         let indexer = self.indexer.read().await;
@@ -2195,7 +2195,7 @@ impl ToolHandlers {
         }))
     }
 
-    async fn handle_strong_examples_validate(&self, args: Value) -> Result<Value> {
+    async fn handle_examples_validate(&self, args: Value) -> Result<Value> {
         #[derive(Deserialize)]
         struct Params {
             example: ExampleInput,
@@ -2214,7 +2214,7 @@ impl ToolHandlers {
         let params: Params = serde_json::from_value(args)?;
         info!("Validating example in language: {}", params.example.language);
 
-        use crate::strong::ExampleValidator;
+        use crate::codegen::ExampleValidator;
 
         let validator = ExampleValidator::new(params.example.language.clone());
         let result = validator.validate_syntax(&params.example.code)?;
@@ -2228,7 +2228,7 @@ impl ToolHandlers {
 
     // === Test Handlers (Phase 4) ===
 
-    async fn handle_strong_tests_generate(&self, args: Value) -> Result<Value> {
+    async fn handle_tests_generate(&self, args: Value) -> Result<Value> {
         #[derive(Deserialize)]
         struct Params {
             symbol_id: String,
@@ -2239,7 +2239,7 @@ impl ToolHandlers {
         let params: Params = serde_json::from_value(args)?;
         info!("Generating tests for symbol: {}", params.symbol_id);
 
-        use crate::strong::{TestGenerator, TestFramework, TestType};
+        use crate::codegen::{TestGenerator, TestFramework, TestType};
         use crate::indexer::Indexer;
 
         let indexer = self.indexer.read().await;
@@ -2276,7 +2276,7 @@ impl ToolHandlers {
         }))
     }
 
-    async fn handle_strong_tests_validate(&self, args: Value) -> Result<Value> {
+    async fn handle_tests_validate(&self, args: Value) -> Result<Value> {
         #[derive(Deserialize)]
         struct Params {
             test: TestInput,
@@ -2295,7 +2295,7 @@ impl ToolHandlers {
         let params: Params = serde_json::from_value(args)?;
         info!("Validating test with framework: {}", params.test.framework);
 
-        use crate::strong::TestFramework;
+        use crate::codegen::TestFramework;
 
         let framework = match params.test.framework.as_str() {
             "vitest" => TestFramework::Vitest,
@@ -2323,7 +2323,7 @@ impl ToolHandlers {
 
     // === Global Handlers (Phase 5) ===
 
-    async fn handle_strong_global_list_monorepos(&self, args: Value) -> Result<Value> {
+    async fn handle_global_list_monorepos(&self, args: Value) -> Result<Value> {
         #[derive(Deserialize)]
         struct Params {
             #[serde(rename = "includeInactive", default)]
@@ -2376,7 +2376,7 @@ impl ToolHandlers {
         }
     }
 
-    async fn handle_strong_global_search_all_projects(&self, args: Value) -> Result<Value> {
+    async fn handle_global_search_all_projects(&self, args: Value) -> Result<Value> {
         #[derive(Deserialize)]
         struct Params {
             query: String,
@@ -2390,7 +2390,7 @@ impl ToolHandlers {
         info!("Searching all projects: query='{}', monorepoId={:?}", params.query, params.monorepo_id);
 
         if let Some(registry) = &self.project_registry {
-            use crate::strong::CrossMonorepoAccess;
+            use crate::codegen::CrossMonorepoAccess;
 
             let access = CrossMonorepoAccess::new(registry.clone());
             let mut results = access.search_all_projects(&params.query).await?;
@@ -2427,7 +2427,7 @@ impl ToolHandlers {
         }
     }
 
-    async fn handle_strong_global_get_dependency_graph(&self, args: Value) -> Result<Value> {
+    async fn handle_global_get_dependency_graph(&self, args: Value) -> Result<Value> {
         #[derive(Deserialize)]
         struct Params {
             #[serde(rename = "projectId")]
@@ -2442,7 +2442,7 @@ impl ToolHandlers {
         info!("Getting dependency graph for project: {}", params.project_id);
 
         if let Some(registry) = &self.project_registry {
-            use crate::strong::{DependencyParser, DependencyGraph, DependencyNode, DependencyEdge, ReferenceType};
+            use crate::codegen::{DependencyParser, DependencyGraph, DependencyNode, DependencyEdge, ReferenceType};
 
             // Get the project
             let project = registry.get(&params.project_id).await?
@@ -2531,7 +2531,7 @@ impl ToolHandlers {
 
     // === External Handlers (Phase 5) ===
 
-    async fn handle_strong_external_get_documentation(&self, args: Value) -> Result<Value> {
+    async fn handle_external_get_documentation(&self, args: Value) -> Result<Value> {
         #[derive(Deserialize)]
         struct Params {
             #[serde(rename = "projectId")]
@@ -2546,7 +2546,7 @@ impl ToolHandlers {
         info!("Getting external documentation: projectId={}, symbolName={:?}", params.project_id, params.symbol_name);
 
         if let Some(registry) = &self.project_registry {
-            use crate::strong::CrossMonorepoAccess;
+            use crate::codegen::CrossMonorepoAccess;
 
             let access = CrossMonorepoAccess::new(registry.clone());
 
@@ -2593,7 +2593,7 @@ impl ToolHandlers {
         }
     }
 
-    async fn handle_strong_external_find_usages(&self, args: Value) -> Result<Value> {
+    async fn handle_external_find_usages(&self, args: Value) -> Result<Value> {
         #[derive(Deserialize)]
         struct Params {
             #[serde(rename = "symbolId")]
@@ -2610,7 +2610,7 @@ impl ToolHandlers {
         info!("Finding usages: symbolId={}, monorepoId={:?}", params.symbol_id, params.monorepo_id);
 
         if let Some(registry) = &self.project_registry {
-            use crate::strong::CrossMonorepoAccess;
+            use crate::codegen::CrossMonorepoAccess;
 
             let access = CrossMonorepoAccess::new(registry.clone());
             let include_tests = params.include_tests.unwrap_or(false);
@@ -2887,19 +2887,7 @@ impl ToolHandlers {
             .context("Invalid parameters for progress.search_tasks")?;
 
         let manager = self.progress_manager.read().await;
-        let all_tasks = manager.list_tasks(None, None, None).await?;
-
-        let query_lower = params.query.to_lowercase();
-        let mut matching_tasks: Vec<_> = all_tasks.into_iter()
-            .filter(|t| {
-                t.title.to_lowercase().contains(&query_lower) ||
-                t.id.to_string().to_lowercase().contains(&query_lower)
-            })
-            .collect();
-
-        if let Some(limit) = params.limit {
-            matching_tasks.truncate(limit);
-        }
+        let matching_tasks = manager.search_tasks(&params.query, params.limit).await?;
 
         info!("Found {} matching tasks for query: {}", matching_tasks.len(), params.query);
 
@@ -2910,13 +2898,19 @@ impl ToolHandlers {
     }
 
     async fn handle_progress_link_to_spec(&self, args: Value) -> Result<Value> {
-        use crate::progress::{TaskId, SpecReference};
+        use crate::progress::TaskId;
 
         #[derive(Deserialize)]
         struct Params {
             task_id: String,
             spec_name: String,
             section: String,
+            #[serde(default = "default_validate")]
+            validate: bool,
+        }
+
+        fn default_validate() -> bool {
+            true
         }
 
         let params: Params = serde_json::from_value(args)
@@ -2924,26 +2918,13 @@ impl ToolHandlers {
 
         let task_id = TaskId::from_str(&params.task_id);
         let manager = self.progress_manager.read().await;
-        let mut task = manager.get_task(&task_id).await?;
 
-        task.spec_ref = Some(SpecReference {
-            spec_name: params.spec_name.clone(),
-            section: params.section.clone(),
-        });
-
-        drop(manager);
-        let manager = self.progress_manager.read().await;
-        manager.update_task(
+        manager.link_to_spec(
             &task_id,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
+            params.spec_name.clone(),
+            params.section.clone(),
+            params.validate,
+            self.spec_manager.clone(),
         ).await?;
 
         info!("Linked task {} to spec {}", task_id, params.spec_name);
@@ -2969,11 +2950,12 @@ impl ToolHandlers {
 
         let task_id = TaskId::from_str(&params.task_id);
         let manager = self.progress_manager.read().await;
+        let history = manager.get_history(&task_id).await?;
         let task = manager.get_task(&task_id).await?;
 
         Ok(json!({
             "task_id": task_id.to_string(),
-            "history": task.history,
+            "history": history,
             "created_at": task.created_at,
             "updated_at": task.updated_at,
             "completed_at": task.completed_at
@@ -2981,7 +2963,7 @@ impl ToolHandlers {
     }
 
     async fn handle_progress_mark_complete(&self, args: Value) -> Result<Value> {
-        use crate::progress::{TaskId, TaskStatus};
+        use crate::progress::TaskId;
 
         #[derive(Deserialize)]
         struct Params {
@@ -2989,6 +2971,11 @@ impl ToolHandlers {
             note: Option<String>,
             actual_hours: Option<f32>,
             commit_hash: Option<String>,
+            solution_summary: Option<String>,
+            #[serde(default)]
+            files_touched: Vec<String>,
+            #[serde(default)]
+            queries_made: Vec<String>,
         }
 
         let params: Params = serde_json::from_value(args)
@@ -2997,24 +2984,27 @@ impl ToolHandlers {
         let task_id = TaskId::from_str(&params.task_id);
         let manager = self.progress_manager.read().await;
 
-        manager.update_task(
+        // Use the new mark_complete method with memory integration
+        let episode_id = manager.mark_complete(
             &task_id,
-            None,
-            None,
-            None,
-            Some(TaskStatus::Done),
-            params.note,
-            None,
-            None,
             params.actual_hours,
             params.commit_hash,
+            params.solution_summary,
+            params.files_touched,
+            params.queries_made,
+            self.memory_system.clone(),
         ).await?;
 
-        info!("Marked task {} as complete", task_id);
+        let task = manager.get_task(&task_id).await?;
+
+        info!("Marked task {} as complete with episode {:?}", task_id, episode_id);
 
         Ok(json!({
             "task_id": task_id.to_string(),
-            "status": "done"
+            "status": "done",
+            "completed_at": task.completed_at,
+            "episode_id": episode_id,
+            "episode_recorded": episode_id.is_some()
         }))
     }
 

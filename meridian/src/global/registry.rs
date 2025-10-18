@@ -124,10 +124,15 @@ impl ProjectRegistry {
         let absolute_path = if path.is_absolute() {
             path
         } else {
-            std::env::current_dir()
-                .ok()
-                .and_then(|cwd| cwd.join(&path).canonicalize().ok())
-                .unwrap_or(path)
+            // Try to canonicalize first (resolves symlinks and makes absolute)
+            if let Ok(canonical) = path.canonicalize() {
+                canonical
+            } else {
+                // Fallback: manually construct absolute path without canonicalize
+                std::env::current_dir()
+                    .map(|cwd| cwd.join(&path))
+                    .unwrap_or(path)
+            }
         };
 
         // Check for specs directory (must be absolute)

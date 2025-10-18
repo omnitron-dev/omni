@@ -5,7 +5,6 @@ use tracing::info;
 use sysinfo::{System, ProcessesToUpdate};
 
 use meridian::{MeridianServer, Config};
-use meridian::global::{GlobalServer, GlobalServerConfig};
 
 // Helper structures for daemon status
 #[derive(Debug)]
@@ -118,6 +117,7 @@ fn check_daemon_status() -> DaemonStatus {
 #[derive(Parser)]
 #[command(name = "meridian")]
 #[command(about = "Cognitive memory system for LLM codebase interaction", long_about = None)]
+#[command(version = env!("CARGO_PKG_VERSION"))]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -693,13 +693,26 @@ async fn serve_mcp(config: Config, stdio: bool, socket: Option<PathBuf>, http: b
 }
 
 async fn index_project(config: Config, path: PathBuf, force: bool) -> Result<()> {
+    // Convert to absolute path first
+    let absolute_path = if path.is_absolute() {
+        path
+    } else {
+        // Try to canonicalize first (resolves symlinks and makes absolute)
+        path.canonicalize()
+            .or_else(|_| {
+                // Fallback: manually construct absolute path
+                std::env::current_dir()
+                    .map(|cwd| cwd.join(&path))
+            })?
+    };
+
     let mut server = MeridianServer::new(config).await?;
 
     if force {
         info!("Forcing full reindex");
     }
 
-    server.index_project(path.clone(), force).await?;
+    server.index_project(absolute_path.clone(), force).await?;
     info!("Indexing completed successfully");
 
     // Register project in global registry
@@ -713,8 +726,8 @@ async fn index_project(config: Config, path: PathBuf, force: bool) -> Result<()>
     let storage = Arc::new(GlobalStorage::new(&data_dir).await?);
     let manager = Arc::new(ProjectRegistryManager::new(storage));
 
-    // Register the project
-    let registry = manager.register(path).await?;
+    // Register the project with absolute path
+    let registry = manager.register(absolute_path).await?;
     info!("Project registered in global registry: {}", registry.identity.full_id);
 
     // Set as current project

@@ -88,6 +88,7 @@ dashmap = "6.1.0"
 parking_lot = "0.12.5"
 lru = "0.16.2"
 bincode = "2.0.1"
+petgraph = "0.6.5"  # In-memory graph for fast traversals
 
 # Time
 chrono = { version = "0.4.42", features = ["serde"] }

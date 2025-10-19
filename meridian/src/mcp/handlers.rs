@@ -675,7 +675,7 @@ impl ToolHandlers {
     }
 
     async fn handle_search_patterns(&self, args: Value) -> Result<Value> {
-        #[derive(Deserialize)]
+        #[derive(Deserialize, serde::Serialize)]
         struct SearchPatternsParams {
             pattern: String,
             language: Option<String>,
@@ -688,184 +688,40 @@ impl ToolHandlers {
         let params: SearchPatternsParams = serde_json::from_value(args)
             .context("Invalid parameters for code.search_patterns")?;
 
-        // Enforce hard limit to prevent memory explosion
-        const MAX_RESULTS_HARD_LIMIT: usize = 1000;
-        const DEFAULT_PAGE_SIZE: usize = 100;
+        // Build search configuration
+        let config = Self::build_pattern_search_config(&params);
+        
+        // Collect files to search
+        let files_to_search = Self::collect_pattern_search_files(
+            &config.scope_path,
+            params.language.as_deref(),
+        )?;
 
-        // page_size takes precedence over max_results for clarity
-        let page_size = params.page_size
-            .or(params.max_results)
-            .unwrap_or(DEFAULT_PAGE_SIZE)
-            .min(MAX_RESULTS_HARD_LIMIT);
-        let offset = params.offset.unwrap_or(0);
-
-        // Determine scope (files to search)
-        let scope_path = if let Some(scope) = params.scope {
-            std::path::Path::new(&scope).to_path_buf()
-        } else {
-            // Use current working directory as default
-            std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-        };
-
-        // Find all relevant files
-        let mut files_to_search = Vec::new();
-
-        if scope_path.is_file() {
-            files_to_search.push(scope_path);
-        } else if scope_path.is_dir() {
-            // Walk directory and find files matching the language
-            use std::fs;
-            fn walk_dir(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>, lang: Option<&str>) -> Result<()> {
-                if dir.is_dir() {
-                    for entry in fs::read_dir(dir)? {
-                        let entry = entry?;
-                        let path = entry.path();
-
-                        // Skip hidden directories and common ignore patterns
-                        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                            if name.starts_with('.') || name == "node_modules" || name == "target" || name == "dist" {
-                                continue;
-                            }
-                        }
-
-                        if path.is_dir() {
-                            walk_dir(&path, files, lang)?;
-                        } else if path.is_file() {
-                            // Filter by language if specified
-                            if let Some(lang) = lang {
-                                if let Ok(detected) = crate::indexer::PatternSearchEngine::detect_language(&path) {
-                                    if detected == lang {
-                                        files.push(path);
-                                    }
-                                }
-                            } else {
-                                // Try to detect language, skip if unsupported
-                                if crate::indexer::PatternSearchEngine::detect_language(&path).is_ok() {
-                                    files.push(path);
-                                }
-                            }
-                        }
-                    }
-                }
-                Ok(())
-            }
-
-            walk_dir(&scope_path, &mut files_to_search, params.language.as_deref())?;
-        }
-
-        // Limit number of files to search for performance
-        let max_files = 10_000;
-        if files_to_search.len() > max_files {
-            files_to_search.truncate(max_files);
-        }
-
-        // Search in files - we need to collect enough matches to satisfy the pagination
-        // To prevent memory exhaustion, we'll implement a smart early-stop strategy:
-        // 1. If we've collected offset + page_size matches, we stop
-        // 2. But we track whether we searched all files to know if has_more is accurate
-        let mut all_matches = Vec::new();
-        let target_matches = offset.saturating_add(page_size); // Prevent overflow
-        let mut searched_all_files = true;
-
-        for file_path in &files_to_search {
-            // Early exit optimization: stop when we have enough matches
-            if all_matches.len() >= target_matches {
-                searched_all_files = false;
-                break;
-            }
-
-            // Read file content
-            let content = match std::fs::read_to_string(file_path) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-
-            // Detect language
-            let language = match params.language.clone().or_else(|| {
-                crate::indexer::PatternSearchEngine::detect_language(file_path)
-                    .ok()
-                    .map(|s| s.to_string())
-            }) {
-                Some(lang) => lang,
-                None => continue,
-            };
-
-            // Search for pattern
-            match self.pattern_engine.search_in_file(
-                &params.pattern,
-                &language,
-                &content,
-                file_path,
-            ) {
-                Ok(matches) => {
-                    all_matches.extend(matches);
-                }
-                Err(e) => {
-                    debug!("Pattern search failed for {}: {}", file_path.display(), e);
-                    continue;
-                }
-            }
-        }
+        // Execute pattern searches with early-exit optimization
+        let search_result = self.execute_pattern_search(
+            &files_to_search,
+            &params.pattern,
+            params.language.as_deref(),
+            config.target_matches,
+        )?;
 
         // Apply pagination
-        let total_matches_found = all_matches.len();
-        let paginated_matches: Vec<_> = all_matches
-            .into_iter()
-            .skip(offset)
-            .take(page_size)
-            .collect();
+        let paginated = Self::apply_pattern_pagination(
+            search_result.matches,
+            search_result.searched_all_files,
+            config.offset,
+            config.page_size,
+        );
 
-        // Calculate has_more accurately:
-        // - If we searched all files, has_more = total > offset + page_size
-        // - If we stopped early, has_more = true (there might be more)
-        let has_more = if searched_all_files {
-            total_matches_found > offset + paginated_matches.len()
-        } else {
-            // We stopped early, so there are definitely more matches possible
-            true
-        };
-
-        // Convert matches to JSON
-        let matches_json: Vec<Value> = paginated_matches
-            .iter()
-            .map(|m| {
-                json!({
-                    "location": {
-                        "file": m.location.file,
-                        "line_start": m.location.line_start,
-                        "line_end": m.location.line_end,
-                        "column_start": m.location.column_start,
-                        "column_end": m.location.column_end
-                    },
-                    "matched_text": m.matched_text,
-                    "captures": m.captures,
-                    "score": m.score
-                })
-            })
-            .collect();
-
-        // Get cache stats
-        let (cache_used, cache_capacity) = self.pattern_engine.cache_stats();
-
-        Ok(json!({
-            "matches": matches_json,
-            "pagination": {
-                "offset": offset,
-                "page_size": paginated_matches.len(),
-                "has_more": has_more,
-                "total_found": total_matches_found,
-                "searched_all_files": searched_all_files
-            },
-            "summary": {
-                "files_searched": files_to_search.len(),
-                "pattern": params.pattern,
-                "language": params.language
-            },
-            "cache_stats": {
-                "used": cache_used,
-                "capacity": cache_capacity
-            }
-        }))
+        // Build response
+        Ok(Self::build_pattern_search_response(
+            paginated,
+            files_to_search.len(),
+            &params.pattern,
+            params.language,
+            config.offset,
+            self.pattern_engine.cache_stats(),
+        ))
     }
 
     async fn handle_get_definition(&self, args: Value) -> Result<Value> {
@@ -5706,6 +5562,271 @@ impl ToolHandlers {
         }))
     }
 }
+
+
+// ==================== Pattern Search Helper Functions ====================
+
+/// Configuration for pattern search operation
+struct PatternSearchConfig {
+    scope_path: PathBuf,
+    page_size: usize,
+    offset: usize,
+    target_matches: usize,
+}
+
+/// Result of pattern search execution
+struct PatternSearchResult {
+    matches: Vec<crate::indexer::PatternMatch>,
+    searched_all_files: bool,
+}
+
+/// Paginated pattern search results
+struct PaginatedPatternResults {
+    matches: Vec<crate::indexer::PatternMatch>,
+    total_found: usize,
+    has_more: bool,
+    searched_all_files: bool,
+}
+
+impl ToolHandlers {
+    /// Build search configuration from parameters
+    fn build_pattern_search_config<T>(params: &T) -> PatternSearchConfig 
+    where
+        T: serde::de::DeserializeOwned + serde::Serialize,
+    {
+        const MAX_RESULTS_HARD_LIMIT: usize = 1000;
+        const DEFAULT_PAGE_SIZE: usize = 100;
+
+        // Extract parameters via JSON round-trip (simple but works)
+        let json = serde_json::to_value(params).unwrap();
+        
+        let page_size = json.get("page_size")
+            .and_then(|v| v.as_u64().map(|n| n as usize))
+            .or_else(|| json.get("max_results").and_then(|v| v.as_u64().map(|n| n as usize)))
+            .unwrap_or(DEFAULT_PAGE_SIZE)
+            .min(MAX_RESULTS_HARD_LIMIT);
+            
+        let offset = json.get("offset")
+            .and_then(|v| v.as_u64().map(|n| n as usize))
+            .unwrap_or(0);
+            
+        let scope_path = json.get("scope")
+            .and_then(|v| v.as_str())
+            .map(|s| std::path::Path::new(s).to_path_buf())
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+
+        PatternSearchConfig {
+            scope_path,
+            page_size,
+            offset,
+            target_matches: offset.saturating_add(page_size),
+        }
+    }
+
+    /// Collect files to search based on scope and language filter
+    fn collect_pattern_search_files(
+        scope_path: &PathBuf,
+        language: Option<&str>,
+    ) -> Result<Vec<PathBuf>> {
+        const MAX_FILES: usize = 10_000;
+        let mut files_to_search = Vec::new();
+
+        if scope_path.is_file() {
+            files_to_search.push(scope_path.clone());
+        } else if scope_path.is_dir() {
+            Self::walk_directory_for_patterns(scope_path, &mut files_to_search, language)?;
+        }
+
+        // Limit number of files to search for performance
+        if files_to_search.len() > MAX_FILES {
+            files_to_search.truncate(MAX_FILES);
+        }
+
+        Ok(files_to_search)
+    }
+
+    /// Recursively walk directory and collect files matching language filter
+    fn walk_directory_for_patterns(
+        dir: &std::path::Path,
+        files: &mut Vec<PathBuf>,
+        lang: Option<&str>,
+    ) -> Result<()> {
+        use std::fs;
+        
+        if !dir.is_dir() {
+            return Ok(());
+        }
+
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            // Skip hidden directories and common ignore patterns
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if name.starts_with('.') || name == "node_modules" || name == "target" || name == "dist" {
+                    continue;
+                }
+            }
+
+            if path.is_dir() {
+                Self::walk_directory_for_patterns(&path, files, lang)?;
+            } else if path.is_file() {
+                // Filter by language if specified
+                if let Some(lang_filter) = lang {
+                    if let Ok(detected) = crate::indexer::PatternSearchEngine::detect_language(&path) {
+                        if detected == lang_filter {
+                            files.push(path);
+                        }
+                    }
+                } else {
+                    // Try to detect language, skip if unsupported
+                    if crate::indexer::PatternSearchEngine::detect_language(&path).is_ok() {
+                        files.push(path);
+                    }
+                }
+            }
+        }
+        
+        Ok(())
+    }
+
+    /// Execute pattern searches across files with early-exit optimization
+    fn execute_pattern_search(
+        &self,
+        files: &[PathBuf],
+        pattern: &str,
+        language: Option<&str>,
+        target_matches: usize,
+    ) -> Result<PatternSearchResult> {
+        let mut all_matches = Vec::new();
+        let mut searched_all_files = true;
+
+        for file_path in files {
+            // Early exit optimization: stop when we have enough matches
+            if all_matches.len() >= target_matches {
+                searched_all_files = false;
+                break;
+            }
+
+            // Read file content
+            let content = match std::fs::read_to_string(file_path) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+
+            // Detect language
+            let file_language = match language.map(|s| s.to_string()).or_else(|| {
+                crate::indexer::PatternSearchEngine::detect_language(file_path)
+                    .ok()
+                    .map(|s| s.to_string())
+            }) {
+                Some(lang) => lang,
+                None => continue,
+            };
+
+            // Search for pattern
+            match self.pattern_engine.search_in_file(pattern, &file_language, &content, file_path) {
+                Ok(matches) => {
+                    all_matches.extend(matches);
+                }
+                Err(e) => {
+                    debug!("Pattern search failed for {}: {}", file_path.display(), e);
+                    continue;
+                }
+            }
+        }
+
+        Ok(PatternSearchResult {
+            matches: all_matches,
+            searched_all_files,
+        })
+    }
+
+    /// Apply pagination to search results
+    fn apply_pattern_pagination(
+        all_matches: Vec<crate::indexer::PatternMatch>,
+        searched_all_files: bool,
+        offset: usize,
+        page_size: usize,
+    ) -> PaginatedPatternResults {
+        let total_found = all_matches.len();
+        
+        let paginated_matches: Vec<_> = all_matches
+            .into_iter()
+            .skip(offset)
+            .take(page_size)
+            .collect();
+
+        // Calculate has_more accurately:
+        // - If we searched all files, has_more = total > offset + page_size
+        // - If we stopped early, has_more = true (there might be more)
+        let has_more = if searched_all_files {
+            total_found > offset + paginated_matches.len()
+        } else {
+            // We stopped early, so there are definitely more matches possible
+            true
+        };
+
+        PaginatedPatternResults {
+            matches: paginated_matches,
+            total_found,
+            has_more,
+            searched_all_files,
+        }
+    }
+
+    /// Build JSON response for pattern search
+    fn build_pattern_search_response(
+        paginated: PaginatedPatternResults,
+        files_searched: usize,
+        pattern: &str,
+        language: Option<String>,
+        offset: usize,
+        cache_stats: (usize, usize),
+    ) -> Value {
+        let matches_json: Vec<Value> = paginated
+            .matches
+            .iter()
+            .map(|m| {
+                json!({
+                    "location": {
+                        "file": m.location.file,
+                        "line_start": m.location.line_start,
+                        "line_end": m.location.line_end,
+                        "column_start": m.location.column_start,
+                        "column_end": m.location.column_end
+                    },
+                    "matched_text": m.matched_text,
+                    "captures": m.captures,
+                    "score": m.score
+                })
+            })
+            .collect();
+
+        let (cache_used, cache_capacity) = cache_stats;
+
+        json!({
+            "matches": matches_json,
+            "pagination": {
+                "offset": offset,
+                "page_size": paginated.matches.len(),
+                "has_more": paginated.has_more,
+                "total_found": paginated.total_found,
+                "searched_all_files": paginated.searched_all_files
+            },
+            "summary": {
+                "files_searched": files_searched,
+                "pattern": pattern,
+                "language": language
+            },
+            "cache_stats": {
+                "used": cache_used,
+                "capacity": cache_capacity
+            }
+        })
+    }
+}
+
 
 /// Format duration in human-readable format
 fn format_duration(seconds: u64) -> String {

@@ -139,6 +139,18 @@ pub struct EpisodicMemory {
     hnsw_index_path: Option<PathBuf>,
 }
 
+impl std::fmt::Debug for EpisodicMemory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EpisodicMemory")
+            .field("episodes_count", &self.episodes.len())
+            .field("retention_days", &self.retention_days)
+            .field("has_vector_index", &self.vector_index.is_some())
+            .field("has_embedding_engine", &self.embedding_engine.is_some())
+            .field("hnsw_index_path", &self.hnsw_index_path)
+            .finish()
+    }
+}
+
 impl EpisodicMemory {
     pub fn new(storage: Arc<dyn Storage>, retention_days: u32) -> Result<Self> {
         Self::with_index_path(storage, retention_days, None)
@@ -251,23 +263,42 @@ impl EpisodicMemory {
 
     /// Find similar episodes - HNSW vector search (O(log n)) or fallback to keyword (O(n))
     pub async fn find_similar(&self, task_description: &str, limit: usize) -> Vec<TaskEpisode> {
-        // Try HNSW vector search first (100-500x faster!)
+        let search_start = std::time::Instant::now();
+
+        // Try HNSW vector search first (10-50x faster than linear!)
         if let (Some(ref vi), Some(ref eng)) = (&self.vector_index, &self.embedding_engine) {
+            let emb_start = std::time::Instant::now();
             match eng.generate_embedding(task_description) {
                 Ok(query_emb) => {
-                    match vi.search(&query_emb, limit * 2) {
+                    let emb_time = emb_start.elapsed();
+                    let search_hnsw_start = std::time::Instant::now();
+
+                    // Search for more candidates to filter by outcome
+                    match vi.search(&query_emb, limit * 3) {
                         Ok(sim_ids) => {
+                            let search_time = search_hnsw_start.elapsed();
                             let mut results = Vec::new();
-                            for (id, _score) in sim_ids {
+
+                            for (id, score) in sim_ids {
                                 if let Some(ep) = self.episodes.iter().find(|e| e.id.0 == id) {
-                                    if ep.outcome == Outcome::Success {
+                                    // Only return successful episodes with good similarity
+                                    if ep.outcome == Outcome::Success && score > 0.3 {
                                         results.push(ep.clone());
                                         if results.len() >= limit { break; }
                                     }
                                 }
                             }
+
                             if !results.is_empty() {
-                                tracing::debug!("HNSW found {} similar episodes", results.len());
+                                let total_time = search_start.elapsed();
+                                tracing::info!(
+                                    "HNSW search: found {} episodes in {:.2}ms (embed: {:.2}ms, search: {:.2}ms, index_size: {})",
+                                    results.len(),
+                                    total_time.as_secs_f64() * 1000.0,
+                                    emb_time.as_secs_f64() * 1000.0,
+                                    search_time.as_secs_f64() * 1000.0,
+                                    vi.len()
+                                );
                                 return results;
                             }
                         }
@@ -279,7 +310,7 @@ impl EpisodicMemory {
         }
 
         // Fallback: keyword search (slower but always works)
-        tracing::debug!("Using keyword-based episode search");
+        tracing::info!("Using keyword-based episode search (HNSW not available)");
         let keywords = PatternIndex::extract_keywords(task_description);
         let matching_ids = self.pattern_index.find_matching_episodes(&keywords);
 

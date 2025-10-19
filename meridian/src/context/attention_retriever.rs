@@ -932,8 +932,7 @@ mod tests {
 
     async fn create_test_storage() -> (Arc<dyn Storage>, TempDir) {
         let temp_dir = TempDir::new().unwrap();
-        let storage = MemoryStorage::new()
-            .unwrap();
+        let storage = MemoryStorage::new();
         (Arc::new(storage), temp_dir)
     }
 

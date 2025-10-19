@@ -319,3 +319,193 @@ fn test_system_metrics() {
     assert_eq!(snapshot.cpu_usage_percent, 45.5);
     assert_eq!(snapshot.memory_usage_mb, 512.0);
 }
+
+// ============================================================================
+// Self-Improvement Metrics Tests
+// ============================================================================
+
+#[test]
+fn test_self_improvement_metrics_new() {
+    use super::self_improvement::SelfImprovementMetrics;
+
+    let metrics = SelfImprovementMetrics::new();
+
+    assert_eq!(metrics.health_score, 0.0);
+    assert_eq!(metrics.code_quality_score, 0.0);
+    assert_eq!(metrics.test_coverage_percent, 0.0);
+    assert_eq!(metrics.circular_dependencies_count, 0);
+    assert!(metrics.language_breakdown.is_empty());
+}
+
+#[test]
+fn test_health_score_calculation() {
+    use super::self_improvement::SelfImprovementMetrics;
+
+    let mut metrics = SelfImprovementMetrics::new();
+
+    // Perfect scores should give health score of 1.0
+    metrics.code_quality_score = 1.0;
+    metrics.test_coverage_percent = 100.0;
+    metrics.technical_debt_score = 0.0;
+    metrics.avg_cyclomatic_complexity = 3.0;
+
+    metrics.calculate_health_score();
+    assert!((metrics.health_score - 1.0).abs() < 0.01, "Health score should be ~1.0, got {}", metrics.health_score);
+}
+
+#[test]
+fn test_health_score_poor_quality() {
+    use super::self_improvement::SelfImprovementMetrics;
+
+    let mut metrics = SelfImprovementMetrics::new();
+
+    // Poor scores
+    metrics.code_quality_score = 0.3;
+    metrics.test_coverage_percent = 20.0;
+    metrics.technical_debt_score = 0.8;
+    metrics.avg_cyclomatic_complexity = 15.0;
+
+    metrics.calculate_health_score();
+    assert!(metrics.health_score < 0.5, "Health score should be low, got {}", metrics.health_score);
+}
+
+#[test]
+fn test_technical_debt_score_calculation() {
+    use super::self_improvement::SelfImprovementMetrics;
+
+    let mut metrics = SelfImprovementMetrics::new();
+
+    metrics.untested_symbols_count = 50;
+    metrics.undocumented_symbols_count = 30;
+    metrics.high_complexity_symbols_count = 20;
+    metrics.circular_dependencies_count = 5;
+
+    let total_symbols = 100;
+    metrics.calculate_technical_debt(total_symbols);
+    assert!(metrics.technical_debt_score > 0.0 && metrics.technical_debt_score <= 1.0,
+            "Technical debt should be in range [0,1], got {}", metrics.technical_debt_score);
+}
+
+#[test]
+fn test_trend_analysis() {
+    use super::self_improvement::{SelfImprovementMetrics, TrendDirection};
+
+    let current = SelfImprovementMetrics::new();
+
+    // Improving case
+    let mut previous = SelfImprovementMetrics::new();
+    previous.health_score = 0.5;
+    let mut improving = current.clone();
+    improving.health_score = 0.7;
+    improving.calculate_trend(Some(&previous));
+    assert_eq!(improving.trend_direction, TrendDirection::Improving);
+
+    // Degrading case
+    let mut degrading = current.clone();
+    degrading.health_score = 0.3;
+    degrading.calculate_trend(Some(&previous));
+    assert_eq!(degrading.trend_direction, TrendDirection::Degrading);
+
+    // Stable case
+    let mut stable = previous.clone();
+    stable.calculate_trend(Some(&previous));
+    assert_eq!(stable.trend_direction, TrendDirection::Stable);
+}
+
+#[test]
+fn test_language_metrics() {
+    use super::self_improvement::{LanguageMetrics, SelfImprovementMetrics};
+    use std::collections::HashMap;
+
+    let mut metrics = SelfImprovementMetrics::new();
+
+    let rust_metrics = LanguageMetrics {
+        language: "rust".to_string(),
+        symbol_count: 1000,
+        avg_complexity: 4.5,
+        test_coverage_percent: 75.0,
+        health_score: 0.85,
+    };
+
+    let ts_metrics = LanguageMetrics {
+        language: "typescript".to_string(),
+        symbol_count: 500,
+        avg_complexity: 6.2,
+        test_coverage_percent: 60.0,
+        health_score: 0.70,
+    };
+
+    let mut breakdown = HashMap::new();
+    breakdown.insert("rust".to_string(), rust_metrics);
+    breakdown.insert("typescript".to_string(), ts_metrics);
+
+    metrics.language_breakdown = breakdown;
+
+    assert_eq!(metrics.language_breakdown.len(), 2);
+    assert_eq!(metrics.language_breakdown.get("rust").unwrap().symbol_count, 1000);
+    assert_eq!(metrics.language_breakdown.get("typescript").unwrap().symbol_count, 500);
+}
+
+#[test]
+fn test_code_quality_score_components() {
+    use super::self_improvement::SelfImprovementMetrics;
+
+    let mut metrics = SelfImprovementMetrics::new();
+    let total_symbols = 100;
+
+    // Low complexity, good documentation, no circular deps
+    metrics.avg_cyclomatic_complexity = 3.0;
+    metrics.undocumented_symbols_count = 5;
+    metrics.high_complexity_symbols_count = 2;
+    metrics.circular_dependencies_count = 0;
+
+    metrics.calculate_code_quality(total_symbols);
+    assert!(metrics.code_quality_score > 0.7, "Quality should be high with good metrics, got {}", metrics.code_quality_score);
+
+    // High complexity, poor documentation, circular deps
+    metrics.avg_cyclomatic_complexity = 15.0;
+    metrics.undocumented_symbols_count = 80;
+    metrics.high_complexity_symbols_count = 60;
+    metrics.circular_dependencies_count = 10;
+
+    metrics.calculate_code_quality(total_symbols);
+    assert!(metrics.code_quality_score < 0.5, "Quality should be low with poor metrics, got {}", metrics.code_quality_score);
+}
+
+#[test]
+fn test_improvement_velocity() {
+    use super::self_improvement::SelfImprovementMetrics;
+
+    let mut metrics = SelfImprovementMetrics::new();
+
+    // Test improvements tracking
+    metrics.improvements_per_week = 10;
+    metrics.avg_improvement_time_hours = 4.0;
+
+    // Velocity formula: improvements / time
+    let velocity = metrics.improvements_per_week as f64 / metrics.avg_improvement_time_hours;
+    assert!(velocity > 0.0, "Velocity should be positive");
+
+    // More improvements with less time = higher velocity
+    metrics.improvements_per_week = 20;
+    metrics.avg_improvement_time_hours = 2.0;
+
+    let higher_velocity = metrics.improvements_per_week as f64 / metrics.avg_improvement_time_hours;
+    assert!(higher_velocity > velocity, "More improvements faster should increase velocity");
+}
+
+#[test]
+fn test_metrics_serialization() {
+    use super::self_improvement::SelfImprovementMetrics;
+
+    let metrics = SelfImprovementMetrics::new();
+
+    // Serialize to JSON
+    let json = serde_json::to_string(&metrics).unwrap();
+    assert!(!json.is_empty());
+
+    // Deserialize back
+    let deserialized: SelfImprovementMetrics = serde_json::from_str(&json).unwrap();
+    assert_eq!(deserialized.health_score, metrics.health_score);
+    assert_eq!(deserialized.test_coverage_percent, metrics.test_coverage_percent);
+}

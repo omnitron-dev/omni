@@ -141,6 +141,10 @@ harness = false
 name = "reranking_bench"
 harness = false
 
+[[bench]]
+name = "episodic_memory_bench"
+harness = false
+
 [[bin]]
 name = "meridian"
 path = "src/main.rs"

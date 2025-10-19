@@ -10,7 +10,14 @@ This is a TypeScript monorepo for the Omnitron ecosystem - a collection of minim
 
 ## ⚡ Meridian MCP Integration - CRITICAL WORKFLOW
 
-**The `/meridian` subdirectory contains a production-ready Rust MCP server with 72+ tools for code analysis, progress tracking, and memory management. This is the PRIMARY workflow for all development tasks.**
+**The `/meridian` subdirectory contains a production-ready Rust MCP server with 91+ tools for code analysis, progress tracking, and memory management. This is the PRIMARY and ONLY workflow for all development tasks.**
+
+### 🚫 ABSOLUTE RULES
+
+**NEVER USE TodoWrite** - Use `progress.*` MCP tools instead
+**NEVER CREATE .md REPORTS** - All data goes into Progress System (SQLite DB)
+**NEVER USE grep/Read FOR CODE SEARCH** - Use `code.search_symbols`, `code.get_definition`
+**ALWAYS START WITH**: `memory.find_similar_episodes` for past solutions
 
 ### 🚫 NEVER CREATE REPORT FILES
 
@@ -31,17 +38,70 @@ This is a TypeScript monorepo for the Omnitron ecosystem - a collection of minim
 
 ### Core Principles
 
-**1. Always Use MCP Tools First**
+**1. Always Use MCP Tools First - Complete Catalog (91 tools)**
 
-Before using traditional tools, check if an MCP tool exists:
+**Code Analysis** (10 tools):
+- `code.search_symbols` - Semantic search with type filtering (NOT grep!)
+- `code.get_definition` - Get symbol definition with body (NOT Read!)
+- `code.find_references` - Find all references to symbol
+- `code.get_dependencies` - Dependency graph analysis
+- `code.search_patterns` - AST-based pattern search
+- `analyze.complexity` - Code complexity metrics
+- `analyze.token_cost` - Estimate token usage
 
-| Traditional Tool | MCP Alternative | Why Better |
-|-----------------|-----------------|------------|
-| `Read` file | `code.get_definition` | Returns only relevant symbol, not entire file |
-| `Grep` search | `code.search_symbols` | Semantic search with type filtering |
-| Manual search | `specs.search` | Spec-aware search with context |
-| `TodoWrite` | `progress.list_tasks` | Persistent, queryable, linkable to specs |
-| File browsing | `code.get_dependencies` | Shows actual code relationships |
+**Progress & Tasks** (10 tools):
+- `progress.create_task`, `progress.update_task`, `progress.mark_complete`
+- `progress.list_tasks`, `progress.get_task`, `progress.delete_task`
+- `progress.search_tasks`, `progress.get_progress`, `progress.get_history`
+- `progress.add_dependency`, `progress.remove_dependency`, `progress.can_start_task`
+
+**Memory System** (3 tools):
+- `memory.find_similar_episodes` - Find past solutions (START HERE!)
+- `memory.record_episode` - Auto-called by progress.mark_complete
+- `memory.get_statistics` - Memory usage stats
+
+**Specs** (5 tools):
+- `specs.list`, `specs.get_structure`, `specs.get_section`, `specs.search`, `specs.validate`
+
+**Session** (4 tools):
+- `session.begin`, `session.update`, `session.query`, `session.complete`
+
+**Context** (3 tools):
+- `context.prepare_adaptive`, `context.defragment`, `context.compress`
+
+**Documentation** (6 tools):
+- `docs.search`, `docs.get_for_symbol`, `docs.generate`, `docs.validate`, `docs.transform`
+- `catalog.search_documentation`
+
+**Examples & Tests** (4 tools):
+- `examples.generate`, `examples.validate`
+- `tests.generate`, `tests.validate`
+
+**Links** (12 tools):
+- `links.find_implementation`, `links.find_documentation`, `links.find_examples`, `links.find_tests`
+- `links.add_link`, `links.remove_link`, `links.get_links`, `links.validate`
+- `links.trace_path`, `links.get_health`, `links.find_orphans`, `links.extract_from_file`
+
+**Monorepo** (8 tools):
+- `monorepo.list_projects`, `monorepo.set_context`, `monorepo.find_cross_references`
+- `global.list_monorepos`, `global.search_all_projects`, `global.get_dependency_graph`
+- `external.get_documentation`, `external.find_usages`
+
+**Attention & Learning** (4 tools):
+- `attention.retrieve`, `attention.analyze_patterns`
+- `learning.train_on_success`, `predict.next_action`
+
+**History** (2 tools):
+- `history.get_evolution`, `history.blame`
+
+**Backup** (7 tools):
+- `backup.create`, `backup.list`, `backup.restore`, `backup.verify`, `backup.delete`, `backup.get_stats`
+
+**Anti-Patterns** (NEVER DO):
+- ❌ `Read` entire file → Use `code.get_definition`
+- ❌ `Grep` for code → Use `code.search_symbols`
+- ❌ `TodoWrite` → Use `progress.*` tools
+- ❌ Manual search → Use `specs.search` or `docs.search`
 
 **2. Complete Progress Tracking Workflow**
 

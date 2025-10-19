@@ -2070,6 +2070,27 @@ fn get_links_tools() -> Vec<Tool> {
             _meta: Some(json!({"category": "indexer"})),
         },
         Tool {
+            name: "indexer.index_project".to_string(),
+            description: Some("Manually index a project directory. Use this to index the entire codebase or specific directories.".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Path to the project directory to index (e.g., /path/to/project or /path/to/project/packages)"
+                    },
+                    "force": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Force re-indexing even if files haven't changed"
+                    }
+                },
+                "required": ["path"]
+            }),
+            output_schema: None,
+            _meta: Some(json!({"category": "indexer"})),
+        },
+        Tool {
             name: "system.health".to_string(),
             description: Some("Get system health status including uptime, memory usage, metrics, and component statistics".to_string()),
             input_schema: json!({

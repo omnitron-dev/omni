@@ -143,6 +143,11 @@ impl CodeIndexer {
         Ok(())
     }
 
+    /// Get the total number of indexed symbols
+    pub fn symbol_count(&self) -> usize {
+        self.symbols.len()
+    }
+
     /// Check if file has been modified since last index
     fn has_file_changed(&self, path: &Path) -> Result<bool> {
         let metadata = std::fs::metadata(path)?;

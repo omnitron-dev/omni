@@ -1,7 +1,7 @@
 use crate::context::ContextManager;
 use crate::docs::DocIndexer;
 use crate::git::GitHistory;
-use crate::indexer::{CodeIndexer, DeltaIndexer};
+use crate::indexer::{CodeIndexer, DeltaIndexer, Indexer};
 use crate::links::LinksStorage;
 use crate::memory::MemorySystem;
 use crate::metrics::MetricsCollector;
@@ -274,6 +274,7 @@ impl ToolHandlers {
             "indexer.disable_watching" => self.handle_indexer_disable_watching(arguments).await,
             "indexer.get_watch_status" => self.handle_indexer_get_watch_status(arguments).await,
             "indexer.poll_changes" => self.handle_indexer_poll_changes(arguments).await,
+            "indexer.index_project" => self.handle_indexer_index_project(arguments).await,
 
             // System Health Tools
             "system.health" => self.handle_system_health(arguments).await,
@@ -4140,6 +4141,43 @@ impl ToolHandlers {
             "symbols_updated": result.symbols_updated,
             "symbols_deleted": result.symbols_deleted,
             "duration_ms": result.duration_ms
+        }))
+    }
+
+    async fn handle_indexer_index_project(&self, args: Value) -> Result<Value> {
+        #[derive(Deserialize)]
+        struct Params {
+            path: String,
+            #[serde(default)]
+            force: bool,
+        }
+
+        let params: Params = serde_json::from_value(args)
+            .context("Invalid parameters for indexer.index_project")?;
+
+        let path = PathBuf::from(params.path);
+        if !path.exists() {
+            anyhow::bail!("Path does not exist: {:?}", path);
+        }
+
+        info!("Starting indexing of project at: {:?}", path);
+        let start = std::time::Instant::now();
+
+        // Get indexer and perform indexing
+        let mut indexer = self.indexer.write().await;
+        indexer.index_project(&path, params.force).await?;
+
+        let duration_ms = start.elapsed().as_millis() as u64;
+        let symbol_count = indexer.symbol_count();
+
+        info!("Indexing completed in {}ms. Total symbols: {}", duration_ms, symbol_count);
+
+        Ok(json!({
+            "status": "completed",
+            "path": path.to_string_lossy(),
+            "symbols_indexed": symbol_count,
+            "duration_ms": duration_ms,
+            "forced": params.force
         }))
     }
 

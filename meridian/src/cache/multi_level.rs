@@ -139,17 +139,20 @@ where
     /// - L2 hit: value promoted to L1 if auto_promote=true (~2.5ms)
     /// - L3 hit: value promoted to L2 (and L1) if auto_promote=true (~10ms)
     pub async fn get(&self, key: &K) -> Result<Option<V>> {
-        let mut stats = self.stats.lock();
-        stats.total_gets += 1;
-        drop(stats);
+        {
+            let mut stats = self.stats.lock();
+            stats.total_gets += 1;
+        }
 
         // L1 check (hot cache)
         {
             let mut l1 = self.l1.lock();
             if let Some(value) = l1.get(key) {
                 debug!("L1 cache hit for key: {:?}", key);
-                let mut stats = self.stats.lock();
-                stats.l1_hits += 1;
+                {
+                    let mut stats = self.stats.lock();
+                    stats.l1_hits += 1;
+                }
                 return Ok(Some(value.clone()));
             }
         }
@@ -162,9 +165,10 @@ where
 
         if let Some(value) = l2_value {
             debug!("L2 cache hit for key: {:?}", key);
-            let mut stats = self.stats.lock();
-            stats.l2_hits += 1;
-            drop(stats);
+            {
+                let mut stats = self.stats.lock();
+                stats.l2_hits += 1;
+            }
 
             // Promote to L1
             if self.config.auto_promote {
@@ -183,9 +187,10 @@ where
                 .context("Failed to deserialize L3 cache value")?;
 
             debug!("L3 cache hit for key: {:?}", key);
-            let mut stats = self.stats.lock();
-            stats.l3_hits += 1;
-            drop(stats);
+            {
+                let mut stats = self.stats.lock();
+                stats.l3_hits += 1;
+            }
 
             // Promote to L2 (and possibly L1)
             if self.config.auto_promote {
@@ -208,8 +213,10 @@ where
 
         // Cache miss
         debug!("Cache miss for key: {:?}", key);
-        let mut stats = self.stats.lock();
-        stats.misses += 1;
+        {
+            let mut stats = self.stats.lock();
+            stats.misses += 1;
+        }
 
         Ok(None)
     }
@@ -221,9 +228,10 @@ where
     /// - If L1 evicts, cascade to L2
     /// - If L2 evicts, cascade to L3
     pub async fn put(&self, key: K, value: V) -> Result<()> {
-        let mut stats = self.stats.lock();
-        stats.total_puts += 1;
-        drop(stats);
+        {
+            let mut stats = self.stats.lock();
+            stats.total_puts += 1;
+        }
 
         debug!("Putting key into cache: {:?}", key);
 
@@ -259,9 +267,10 @@ where
 
     /// Invalidate a key from all cache levels
     pub async fn invalidate(&self, key: &K) -> Result<()> {
-        let mut stats = self.stats.lock();
-        stats.total_invalidations += 1;
-        drop(stats);
+        {
+            let mut stats = self.stats.lock();
+            stats.total_invalidations += 1;
+        }
 
         debug!("Invalidating key from all cache levels: {:?}", key);
 

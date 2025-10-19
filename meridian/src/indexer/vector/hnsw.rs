@@ -261,7 +261,7 @@ impl<'a> VectorIndex for HnswIndex<'a> {
         let metadata_path = path.with_extension("meta");
         let data = std::fs::read(&metadata_path)
             .context("Failed to read metadata file")?;
-        let (metadata, _): (IndexMetadata, _) = bincode::serde::decode_from_slice(&data, bincode::config::standard())
+        let (_metadata, _): (IndexMetadata, _) = bincode::serde::decode_from_slice(&data, bincode::config::standard())
             .context("Failed to deserialize metadata")?;
 
         // Determine directory and basename for hnsw_rs load

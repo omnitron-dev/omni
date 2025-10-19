@@ -43,6 +43,7 @@ enum ServerMode {
         // Global architecture support
         global_client: Option<Arc<GlobalServerClient>>,
         local_cache: Option<Arc<LocalCache>>,
+        global_registry: Option<Arc<crate::global::registry::ProjectRegistryManager>>,
         #[allow(dead_code)]
         monorepo_context: Option<ProjectMonorepoContext>,
         offline_mode: Arc<AtomicBool>,
@@ -169,6 +170,53 @@ impl MeridianServer {
         // Initialize documentation indexer
         let doc_indexer = Arc::new(crate::docs::DocIndexer::new());
 
+        // Initialize global project registry for cross-monorepo support
+        // This enables global.* and external.* MCP tools
+        let (global_registry, current_project_specs) = {
+            use crate::config::get_meridian_home;
+            use crate::global::{GlobalStorage, ProjectRegistryManager};
+
+            let data_dir = get_meridian_home().join("data");
+
+            match GlobalStorage::new(&data_dir).await {
+                Ok(storage) => {
+                    info!("Initialized global project registry at {:?}", data_dir);
+                    let storage_arc = Arc::new(storage);
+                    let manager = Arc::new(ProjectRegistryManager::new(storage_arc));
+
+                    // Auto-register current project if cwd is a valid project
+                    if let Ok(cwd) = std::env::current_dir() {
+                        match manager.register(cwd.clone()).await {
+                            Ok(registry) => {
+                                info!("Auto-registered project: {} at {:?}", registry.identity.full_id, cwd);
+                                // Set as current project
+                                if let Err(e) = manager.set_current_project(&registry.identity.full_id).await {
+                                    warn!("Failed to set current project: {}", e);
+                                }
+                            }
+                            Err(e) => {
+                                warn!("Failed to auto-register project: {}", e);
+                            }
+                        }
+                    }
+
+                    // Try to get current project's specs path
+                    let specs_path = manager.get_current_project_registry()
+                        .await
+                        .ok()
+                        .flatten()
+                        .and_then(|proj| proj.specs_path)
+                        .filter(|p| p.exists());
+
+                    (Some(manager), specs_path)
+                }
+                Err(e) => {
+                    warn!("Failed to initialize global project registry: {}. Global tools will be unavailable.", e);
+                    (None, None)
+                }
+            }
+        };
+
         // Initialize specification manager
         // Try multiple locations to find specs directory:
         // 1. Environment variable MERIDIAN_SPECS_PATH
@@ -180,7 +228,8 @@ impl MeridianServer {
         let specs_path = if let Ok(path) = std::env::var("MERIDIAN_SPECS_PATH") {
             info!("Using specs directory from MERIDIAN_SPECS_PATH: {:?}", path);
             PathBuf::from(path)
-        } else if let Some(path) = Self::get_specs_path_from_registry_async().await {
+        } else if let Some(path) = current_project_specs {
+            info!("Using specs directory from project registry: {:?}", path);
             path
         } else if let Ok(cwd) = std::env::current_dir() {
             // Try direct cwd/specs first
@@ -279,6 +328,7 @@ impl MeridianServer {
                 handlers: None,
                 global_client,
                 local_cache,
+                global_registry,
                 monorepo_context: None, // TODO: Detect monorepo context
                 offline_mode: Arc::new(AtomicBool::new(offline)),
                 metrics_collector,
@@ -332,34 +382,7 @@ impl MeridianServer {
         Ok(cache_path)
     }
 
-    /// Get specs path from global registry (async helper)
-    async fn get_specs_path_from_registry_async() -> Option<PathBuf> {
-        use crate::config::get_meridian_home;
-        use crate::global::{GlobalStorage, ProjectRegistryManager};
-
-        let data_dir = get_meridian_home().join("data");
-        if !data_dir.exists() {
-            return None;
-        }
-
-        let storage = Arc::new(GlobalStorage::new(&data_dir).await.ok()?);
-        let manager = Arc::new(ProjectRegistryManager::new(storage));
-
-        // Get current project
-        let current_project = manager.get_current_project_registry().await.ok()??;
-
-        if let Some(specs_path) = current_project.specs_path {
-            if specs_path.exists() {
-                info!("Using specs directory from project registry: {:?}", specs_path);
-                Some(specs_path)
-            } else {
-                warn!("Specs path in registry doesn't exist: {:?}", specs_path);
-                None
-            }
-        } else {
-            None
-        }
-    }
+    // Removed get_specs_path_from_registry_async() - now handled directly in new_internal()
 
     /// Create a new Meridian server instance in multi-project mode for HTTP
     pub fn new_for_http(config: Config) -> Result<Self> {
@@ -394,6 +417,7 @@ impl MeridianServer {
                 spec_manager,
                 progress_manager,
                 links_storage,
+                global_registry,
                 metrics_collector,
                 ..
             } => {
@@ -406,17 +430,35 @@ impl MeridianServer {
                 let pattern_engine = Arc::new(crate::indexer::PatternSearchEngine::new()
                     .expect("Failed to initialize pattern search engine"));
 
-                let mut new_handlers = ToolHandlers::new(
-                    memory_system.clone(),
-                    context_manager.clone(),
-                    indexer.clone(),
-                    session_manager.clone(),
-                    doc_indexer.clone(),
-                    spec_manager.clone(),
-                    progress_manager.clone(),
-                    links_storage.clone(),
-                    pattern_engine,
-                );
+                // Create handlers with or without global registry
+                let mut new_handlers = if let Some(registry) = global_registry {
+                    info!("Creating ToolHandlers with global project registry support");
+                    ToolHandlers::new_with_registry(
+                        memory_system.clone(),
+                        context_manager.clone(),
+                        indexer.clone(),
+                        session_manager.clone(),
+                        doc_indexer.clone(),
+                        spec_manager.clone(),
+                        registry.clone(),
+                        progress_manager.clone(),
+                        links_storage.clone(),
+                        pattern_engine,
+                    )
+                } else {
+                    warn!("Creating ToolHandlers without global registry - cross-monorepo features disabled");
+                    ToolHandlers::new(
+                        memory_system.clone(),
+                        context_manager.clone(),
+                        indexer.clone(),
+                        session_manager.clone(),
+                        doc_indexer.clone(),
+                        spec_manager.clone(),
+                        progress_manager.clone(),
+                        links_storage.clone(),
+                        pattern_engine,
+                    )
+                };
 
                 // Set delta indexer if available
                 if let Some(di) = delta_indexer {

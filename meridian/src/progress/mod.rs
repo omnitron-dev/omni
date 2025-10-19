@@ -3,13 +3,15 @@
 // Provides MCP-native task management with RocksDB persistence,
 // memory integration, and specification linking.
 
-pub mod types;
+pub mod dependency_resolver;
 pub mod manager;
 pub mod storage;
+pub mod types;
 
 #[cfg(test)]
 mod tests;
 
-pub use types::*;
+pub use dependency_resolver::{DependencyResolver, ExecutionPlan};
 pub use manager::ProgressManager;
 pub use storage::ProgressStorage;
+pub use types::*;

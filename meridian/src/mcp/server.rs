@@ -1053,7 +1053,7 @@ mod tests {
 
         // Create a dummy handler just for testing unknown method
         use crate::storage::MemoryStorage;
-        let storage = Arc::new(MemoryStorage::new()) as Arc<dyn Storage>;
+        let storage = Arc::new(MemoryStorage::new()) as Arc<dyn crate::storage::Storage>;
         let memory_system = MemorySystem::new(storage.clone(), server.config.memory.clone()).unwrap();
         let context_manager = ContextManager::new(LLMAdapter::claude3());
         let indexer = CodeIndexer::new(storage.clone(), server.config.index.clone()).unwrap();

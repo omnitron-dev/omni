@@ -279,6 +279,11 @@ impl CognitiveMemoryManager {
         let similar_episodes = self.episodic_memory.find_similar(query, limit).await;
 
         for episode in similar_episodes {
+            // Calculate relevance score based on semantic similarity and recency
+            let recency_score = Self::calculate_recency_score(episode.timestamp);
+            let keyword_overlap = Self::calculate_keyword_overlap(query, &episode.task_description);
+            let relevance = (keyword_overlap * 0.7) + (recency_score * 0.3);
+
             memories.push(Memory {
                 id: episode.id.0.clone(),
                 content: format!(
@@ -286,7 +291,7 @@ impl CognitiveMemoryManager {
                     episode.task_description, episode.solution_path, episode.files_touched
                 ),
                 memory_type: MemoryType::Episodic,
-                relevance_score: 1.0, // TODO: Calculate actual relevance
+                relevance_score: relevance,
                 timestamp: episode.timestamp,
             });
         }
@@ -587,6 +592,43 @@ impl CognitiveMemoryManager {
 
         tracing::info!("Memory consolidation complete");
         Ok(())
+    }
+
+    /// Calculate recency score (0.0 to 1.0, higher = more recent)
+    fn calculate_recency_score(timestamp: DateTime<Utc>) -> f32 {
+        let now = Utc::now();
+        let age = now.signed_duration_since(timestamp);
+        let age_hours = age.num_hours() as f32;
+
+        // Exponential decay: half-life of 7 days (168 hours)
+        let half_life_hours = 168.0;
+        let decay_rate = 0.693 / half_life_hours; // ln(2) / half_life
+
+        (-decay_rate * age_hours).exp()
+    }
+
+    /// Calculate keyword overlap score (0.0 to 1.0)
+    fn calculate_keyword_overlap(query: &str, text: &str) -> f32 {
+        let query_lower = query.to_lowercase();
+        let query_words: std::collections::HashSet<_> = query_lower
+            .split_whitespace()
+            .filter(|w| w.len() > 2)
+            .collect();
+
+        let text_lower = text.to_lowercase();
+        let text_words: std::collections::HashSet<_> = text_lower
+            .split_whitespace()
+            .filter(|w| w.len() > 2)
+            .collect();
+
+        if query_words.is_empty() || text_words.is_empty() {
+            return 0.0;
+        }
+
+        let intersection = query_words.intersection(&text_words).count();
+        let union = query_words.union(&text_words).count();
+
+        intersection as f32 / union as f32
     }
 }
 

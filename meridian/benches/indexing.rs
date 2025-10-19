@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use meridian::storage::{RocksDBStorage, Storage};
+use meridian::storage::{SurrealDBStorage, Storage};
 use std::sync::Arc;
 use tempfile::TempDir;
 
@@ -10,7 +10,7 @@ fn benchmark_storage_operations(c: &mut Criterion) {
         b.iter(|| {
             runtime.block_on(async {
                 let temp_dir = TempDir::new().unwrap();
-                let storage = Arc::new(RocksDBStorage::new(temp_dir.path()).unwrap());
+                let storage = Arc::new(SurrealDBStorage::new(temp_dir.path()).await.unwrap());
 
                 for i in 0..100 {
                     let key = format!("key_{}", i);
@@ -23,7 +23,9 @@ fn benchmark_storage_operations(c: &mut Criterion) {
 
     c.bench_function("storage_get", |b| {
         let temp_dir = TempDir::new().unwrap();
-        let storage = Arc::new(RocksDBStorage::new(temp_dir.path()).unwrap());
+        let storage = runtime.block_on(async {
+            Arc::new(SurrealDBStorage::new(temp_dir.path()).await.unwrap())
+        });
 
         runtime.block_on(async {
             for i in 0..100 {

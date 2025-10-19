@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context as AnyhowContext, Result};
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -144,20 +144,14 @@ impl MemoryCompressor {
             if group.len() > 1 {
                 let summary = self.summarize_episode_group(&group)?;
 
-                // TODO: Create semantic memory from summary
-                // For now, we skip this as it requires interior mutability
-                // The semantic memory update would require refactoring to use interior mutability
-                // or changing the signature to take &mut self
-                tracing::debug!(
-                    "Skipping semantic memory creation for: {}",
-                    summary.title
-                );
+                // Store summary as compressed semantic memory in SurrealDB
+                self.store_summary(&summary).await?;
 
                 compressed_size += summary.title.len() + summary.content.len();
                 stats.episodes_compressed += group.len();
                 stats.semantic_memories_created += 1;
 
-                tracing::debug!(
+                tracing::info!(
                     "Compressed {} episodes into semantic memory: {}",
                     group.len(),
                     summary.title
@@ -522,6 +516,51 @@ impl MemoryCompressor {
         } else {
             outcomes.join("\n")
         }
+    }
+
+    /// Store a summary as semantic memory in SurrealDB
+    async fn store_summary(&self, summary: &Summary) -> Result<()> {
+        #[derive(Serialize, Deserialize)]
+        struct SummaryRecord {
+            id: String,
+            title: String,
+            content: String,
+            source_count: usize,
+            created_at: DateTime<Utc>,
+            metadata: HashMap<String, String>,
+            summary_type: String,
+        }
+
+        let record = SummaryRecord {
+            id: summary.id.clone(),
+            title: summary.title.clone(),
+            content: summary.content.clone(),
+            source_count: summary.source_count,
+            created_at: summary.created_at,
+            metadata: summary.metadata.clone(),
+            summary_type: "episode_compression".to_string(),
+        };
+
+        // Store in SurrealDB
+        let _: Option<SummaryRecord> = self
+            .db
+            .create(("semantic_memory", &summary.id))
+            .content(record)
+            .await
+            .with_context(|| "Failed to store summary in SurrealDB")?;
+
+        // Also store in key-value storage for compatibility
+        let key = format!("summary:{}", summary.id);
+        let value = serialize(summary)?;
+        self.storage.put(key.as_bytes(), &value).await?;
+
+        tracing::debug!(
+            summary_id = %summary.id,
+            title = %summary.title,
+            "Stored summary in semantic memory"
+        );
+
+        Ok(())
     }
 }
 

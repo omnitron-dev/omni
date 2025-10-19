@@ -170,13 +170,21 @@ DEFINE FIELD IF NOT EXISTS created_at ON TABLE task_depends_on TYPE datetime DEF
 -- Vector Indexes for Semantic Search
 -- ============================================================================
 
--- Vector index for code symbol embeddings
--- Note: SurrealDB vector search uses specific syntax depending on version
--- This is a placeholder - actual vector index creation may vary by version
+-- Vector index for code symbol embeddings (384 dimensions for MiniLM, 768 for BERT)
+-- MTREE is used for efficient k-NN search
+-- Note: Uncomment when SurrealDB version supports vector indexes (2.0+)
+-- Current SurrealDB embedded version may not support MTREE syntax yet
+-- For now, vector similarity is computed via vector::similarity::cosine() function
 
--- DEFINE INDEX IF NOT EXISTS idx_symbol_embedding ON TABLE code_symbol FIELDS embedding MTREE DIMENSION 384;
--- DEFINE INDEX IF NOT EXISTS idx_doc_embedding ON TABLE documentation FIELDS embedding MTREE DIMENSION 384;
--- DEFINE INDEX IF NOT EXISTS idx_episode_embedding ON TABLE episode FIELDS embedding MTREE DIMENSION 384;
+-- TODO: Enable when upgrading to SurrealDB 2.0+
+-- DEFINE INDEX IF NOT EXISTS idx_symbol_embedding ON TABLE code_symbol FIELDS embedding MTREE DIMENSION 384 DIST COSINE;
+-- DEFINE INDEX IF NOT EXISTS idx_doc_embedding ON TABLE documentation FIELDS embedding MTREE DIMENSION 384 DIST COSINE;
+-- DEFINE INDEX IF NOT EXISTS idx_episode_embedding ON TABLE episode FIELDS embedding MTREE DIMENSION 384 DIST COSINE;
+
+-- Alternative: Use HNSW index for better performance (if supported)
+-- DEFINE INDEX IF NOT EXISTS idx_symbol_embedding_hnsw ON TABLE code_symbol FIELDS embedding HNSW DIMENSION 384 DIST COSINE;
+-- DEFINE INDEX IF NOT EXISTS idx_doc_embedding_hnsw ON TABLE documentation FIELDS embedding HNSW DIMENSION 384 DIST COSINE;
+-- DEFINE INDEX IF NOT EXISTS idx_episode_embedding_hnsw ON TABLE episode FIELDS embedding HNSW DIMENSION 384 DIST COSINE;
 
 -- ============================================================================
 -- Utility Functions
@@ -226,3 +234,14 @@ DEFINE EVENT IF NOT EXISTS update_task_timestamp ON TABLE task WHEN $event = "UP
 DEFINE INDEX IF NOT EXISTS idx_symbol_file_type ON TABLE code_symbol COLUMNS file_path, symbol_type;
 DEFINE INDEX IF NOT EXISTS idx_task_status_priority ON TABLE task COLUMNS status, priority;
 DEFINE INDEX IF NOT EXISTS idx_episode_score_date ON TABLE episode COLUMNS success_score, created_at;
+
+-- Indexes for graph edge tables (improve traversal performance)
+DEFINE INDEX IF NOT EXISTS idx_depends_on_in ON TABLE depends_on COLUMNS in;
+DEFINE INDEX IF NOT EXISTS idx_depends_on_out ON TABLE depends_on COLUMNS out;
+DEFINE INDEX IF NOT EXISTS idx_calls_in ON TABLE calls COLUMNS in;
+DEFINE INDEX IF NOT EXISTS idx_calls_out ON TABLE calls COLUMNS out;
+DEFINE INDEX IF NOT EXISTS idx_documents_out ON TABLE documents COLUMNS out;
+
+-- Indexes for relationship queries
+DEFINE INDEX IF NOT EXISTS idx_task_depends_in ON TABLE task_depends_on COLUMNS in;
+DEFINE INDEX IF NOT EXISTS idx_task_depends_out ON TABLE task_depends_on COLUMNS out;

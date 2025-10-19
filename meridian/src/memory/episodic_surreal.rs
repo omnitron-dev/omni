@@ -437,24 +437,35 @@ impl EpisodicMemorySurreal {
     }
 
     /// Link episode to code symbols (graph relationship)
+    /// Optimized to use batch operations instead of individual queries
     pub async fn link_to_symbols(&self, episode_id: &str, symbol_ids: &[String]) -> Result<()> {
-        for symbol_id in symbol_ids {
-            let query = r#"
-                RELATE $episode->references_symbol->$symbol
-                SET reference_type = 'used_in_solution',
-                    created_at = time::now()
-            "#;
-
-            let ep_record = ("episode", episode_id.to_string());
-            let sym_record = ("code_symbol", symbol_id.clone());
-
-            self.db
-                .query(query)
-                .bind(("episode", ep_record))
-                .bind(("symbol", sym_record))
-                .await
-                .context("Failed to link episode to symbol")?;
+        if symbol_ids.is_empty() {
+            return Ok(());
         }
+
+        // Build a single batch query for all symbol links
+        let mut query_parts = vec!["BEGIN TRANSACTION;".to_string()];
+
+        for symbol_id in symbol_ids {
+            query_parts.push(format!(
+                r#"RELATE episode:{}->references_symbol->code_symbol:{} SET reference_type = 'used_in_solution', created_at = time::now();"#,
+                episode_id, symbol_id
+            ));
+        }
+
+        query_parts.push("COMMIT TRANSACTION;".to_string());
+        let batch_query = query_parts.join("\n");
+
+        self.db
+            .query(batch_query)
+            .await
+            .context("Failed to batch link episode to symbols")?;
+
+        tracing::debug!(
+            episode_id,
+            symbol_count = symbol_ids.len(),
+            "Batch linked episode to symbols in single transaction"
+        );
 
         Ok(())
     }

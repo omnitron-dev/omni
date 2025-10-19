@@ -513,7 +513,7 @@ async fn test_spec_to_tests_complete_workflow() {
     use meridian::codegen::{DocumentationGenerator, DocFormat, ExampleGenerator, TestGenerator, TestFramework, ExampleComplexity};
     use meridian::links::{LinksStorage, RocksDBLinksStorage, SemanticLink, LinkTarget, LinkType, ExtractionMethod, KnowledgeLevel};
     use meridian::specs::SpecificationManager;
-    use meridian::storage::RocksDBStorage;
+    use meridian::storage::MemoryStorage;
     use std::sync::Arc;
 
     let temp_dir = TempDir::new().unwrap();
@@ -522,8 +522,8 @@ async fn test_spec_to_tests_complete_workflow() {
     // Initialize components
     let _spec_manager = SpecificationManager::new(temp_dir.path().join("specs"));
     let links_storage = {
-        let rocks_storage = RocksDBStorage::new(&temp_dir.path().join("links")).unwrap();
-        Arc::new(RocksDBLinksStorage::new(Arc::new(rocks_storage)))
+        let storage = Arc::new(MemoryStorage::new()) as Arc<dyn meridian::storage::Storage>;
+        Arc::new(RocksDBLinksStorage::new(storage))
     };
 
     // === STEP 1: Read Specification ===
@@ -700,12 +700,12 @@ async fn test_spec_to_tests_complete_workflow() {
 #[tokio::test]
 async fn test_parallel_spec_to_code_workflows() {
     use meridian::links::{LinksStorage, RocksDBLinksStorage, SemanticLink, LinkTarget, LinkType, ExtractionMethod, ValidationStatus};
-    use meridian::storage::RocksDBStorage;
+    use meridian::storage::MemoryStorage;
     use std::sync::Arc;
 
     let temp_dir = TempDir::new().unwrap();
-    let rocks_storage = RocksDBStorage::new(temp_dir.path()).unwrap();
-    let links_storage = Arc::new(RocksDBLinksStorage::new(Arc::new(rocks_storage)));
+    let storage = Arc::new(MemoryStorage::new()) as Arc<dyn meridian::storage::Storage>;
+    let links_storage = Arc::new(RocksDBLinksStorage::new(storage));
 
     // Create 5 parallel workflows
     let features = vec![

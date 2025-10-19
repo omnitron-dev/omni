@@ -13,6 +13,7 @@
 pub mod cache;
 pub mod code_analyzer;
 pub mod queries;
+pub mod query_cache;
 
 pub use cache::{GraphCache, GraphCacheConfig};
 pub use code_analyzer::{
@@ -20,3 +21,4 @@ pub use code_analyzer::{
     SearchResult, Pattern, ImpactReport, GraphStats, HubSymbol, SymbolFull,
 };
 pub use queries::QueryBuilder;
+pub use query_cache::{QueryCache, CacheStats};

@@ -476,7 +476,7 @@ mod tests {
             version: super::super::PROTOCOL_VERSION,
             id: 1,
             tool: "test.tool".to_string(),
-            params: rmpv::Value::Nil,
+            params: serde_json::Value::Null,
             stream: false,
             max_size: None,
             timeout_ms: Some(5000),

@@ -3,11 +3,13 @@
 /// This module contains reusable query templates for graph traversal,
 /// semantic search, and relationship analysis.
 
-/// Find all dependencies of a symbol (recursive)
+/// Find all dependencies of a symbol (recursive with depth control)
+/// Optimized to use graph traversal with FETCH for better performance
 pub const FIND_DEPENDENCIES: &str = r#"
-    LET $symbol = code_symbol:$symbol_id;
-    LET $deps = SELECT ->depends_on->code_symbol.* FROM $symbol;
-    RETURN $deps;
+    SELECT id, name, symbol_type, file_path,
+           ->depends_on->code_symbol AS dependencies
+    FROM code_symbol:$symbol_id
+    FETCH dependencies
 "#;
 
 /// Find all symbols that depend on this symbol (reverse dependencies)
@@ -113,17 +115,14 @@ pub const FIND_CODE_LINEAGE: &str = r#"
 "#;
 
 /// Get dependency graph with depth limit
+/// Optimized with proper graph traversal and aggregation
 pub const GET_DEPENDENCY_GRAPH: &str = r#"
-    LET $root = code_symbol:$symbol_id;
-
-    LET $level1 = SELECT id, name, symbol_type, file_path,
-                         ->depends_on->code_symbol.id as deps
-                  FROM $root;
-
-    RETURN {
-        root: $root,
-        dependencies: $level1
-    };
+    SELECT id, name, symbol_type, file_path, metadata,
+           ->depends_on->code_symbol.{id, name, symbol_type, file_path} AS direct_deps,
+           count(->depends_on) AS out_degree,
+           count(<-depends_on) AS in_degree
+    FROM code_symbol:$symbol_id
+    FETCH direct_deps
 "#;
 
 /// Find circular dependencies

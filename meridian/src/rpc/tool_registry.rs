@@ -370,7 +370,7 @@ mod tests {
 
         let handler: ToolHandler = Arc::new(move |req, _ctx| {
             Box::pin(async move {
-                Ok(RpcResponse::success(req.id, rmpv::Value::Nil))
+                Ok(RpcResponse::success(req.id, serde_json::Value::Null))
             })
         });
 
@@ -398,7 +398,7 @@ mod tests {
 
         let handler: ToolHandler = Arc::new(move |req, _ctx| {
             Box::pin(async move {
-                Ok(RpcResponse::success(req.id, rmpv::Value::Nil))
+                Ok(RpcResponse::success(req.id, serde_json::Value::Null))
             })
         });
 

@@ -7,11 +7,18 @@ use std::sync::Arc;
 use surrealdb::engine::local::{Db, RocksDb};
 use surrealdb::Surreal;
 
-/// SurrealDB storage implementation with graph capabilities
+/// SurrealDB storage implementation with graph capabilities and query optimization
 pub struct SurrealDBStorage {
     db: Arc<Surreal<Db>>,
     namespace: String,
     database: String,
+}
+
+/// Commonly used prepared queries for better performance
+mod prepared_queries {
+    pub const GET_BY_ID: &str = "SELECT * FROM kv_store:$id";
+    pub const GET_BY_PREFIX: &str = "SELECT * FROM kv_store WHERE key >= $prefix AND key < $prefix_end";
+    pub const DELETE_BY_ID: &str = "DELETE kv_store:$id";
 }
 
 impl Drop for SurrealDBStorage {
@@ -247,17 +254,46 @@ impl Storage for SurrealDBStorage {
     }
 
     async fn batch_write(&self, operations: Vec<WriteOp>) -> Result<()> {
-        // SurrealDB doesn't have traditional batching, but transactions are atomic
-        for op in operations {
+        // Optimize batch writes using SurrealDB transactions
+        // This provides atomicity and better performance than individual operations
+        if operations.is_empty() {
+            return Ok(());
+        }
+
+        // Build a single transaction query for all operations
+        let mut query_parts = vec!["BEGIN TRANSACTION;".to_string()];
+
+        for op in &operations {
             match op {
                 WriteOp::Put { key, value } => {
-                    self.put(&key, &value).await?;
+                    let id = Self::key_to_id(key);
+                    use base64::Engine;
+                    let value_b64 = base64::engine::general_purpose::STANDARD.encode(value);
+                    query_parts.push(format!(
+                        "CREATE kv_store:{} CONTENT {{ key: '{}', value: '{}' }};",
+                        id, id, value_b64
+                    ));
                 }
                 WriteOp::Delete { key } => {
-                    self.delete(&key).await?;
+                    let id = Self::key_to_id(key);
+                    query_parts.push(format!("DELETE kv_store:{};", id));
                 }
             }
         }
+
+        query_parts.push("COMMIT TRANSACTION;".to_string());
+        let transaction_query = query_parts.join("\n");
+
+        // Execute entire transaction in one DB call
+        self.db
+            .query(transaction_query)
+            .await
+            .context("Failed to execute batch write transaction")?;
+
+        tracing::debug!(
+            operation_count = operations.len(),
+            "Batch write completed in single transaction"
+        );
 
         Ok(())
     }

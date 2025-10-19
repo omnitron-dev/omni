@@ -9,7 +9,7 @@ use meridian::rpc::{
     RequestDispatcher, DispatcherConfig, PerformanceMonitor, MonitorConfig,
     RpcRequest, Priority,
 };
-use meridian::storage::RocksDBStorage;
+use meridian::storage::{MemoryStorage, Storage};
 use std::sync::Arc;
 use std::time::Duration;
 use tempfile::TempDir;
@@ -18,7 +18,7 @@ use tokio::runtime::Runtime;
 /// Create test storage and connection pool
 fn setup_pool() -> (TempDir, Arc<ConnectionPoolManager>) {
     let temp_dir = TempDir::new().unwrap();
-    let storage = Arc::new(RocksDBStorage::new(temp_dir.path()).unwrap());
+    let storage = Arc::new(MemoryStorage::new());
 
     let config = ConnectionPoolConfig {
         min_size: 4,

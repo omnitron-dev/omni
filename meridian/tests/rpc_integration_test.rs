@@ -90,9 +90,7 @@ async fn setup_test_env() -> (TempDir, Arc<ToolHandlers>, Arc<DatabasePool>) {
     ));
 
     // Create database pool from shared storage
-    let pool_storage = Arc::new(
-        RocksDBStorage::new(&temp_dir.path().join("pool_storage")).unwrap()
-    );
+    let pool_storage = Arc::new(MemoryStorage::new()) as Arc<dyn meridian::storage::Storage>;
 
     let db_pool = Arc::new(
         DatabasePool::from_storage(pool_storage)

@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use meridian::memory::episodic::EpisodicMemory;
-use meridian::storage::rocksdb_storage::RocksDBStorage;
+use meridian::storage::{SurrealDBStorage, Storage};
 use meridian::types::{ContextSnapshot, EpisodeId, Outcome, TaskEpisode, TokenCount};
 use std::sync::Arc;
 use tempfile::TempDir;

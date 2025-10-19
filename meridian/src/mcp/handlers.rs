@@ -293,6 +293,16 @@ impl ToolHandlers {
             // System Health Tools
             "system.health" => self.handle_system_health(arguments).await,
 
+            // Metrics Tools
+            "metrics.get_summary" => self.handle_metrics_get_summary(arguments).await,
+            "metrics.get_tool_stats" => self.handle_metrics_get_tool_stats(arguments).await,
+            "metrics.get_time_range" => self.handle_metrics_get_time_range(arguments).await,
+            "metrics.list_slow_tools" => self.handle_metrics_list_slow_tools(arguments).await,
+            "metrics.get_token_efficiency" => self.handle_metrics_get_token_efficiency(arguments).await,
+            "metrics.export_prometheus" => self.handle_metrics_export_prometheus(arguments).await,
+            "metrics.analyze_trends" => self.handle_metrics_analyze_trends(arguments).await,
+            "metrics.get_health" => self.handle_metrics_get_health(arguments).await,
+
             // Backup Tools
             "backup.create" => self.handle_backup_create(arguments).await,
             "backup.list" => self.handle_backup_list(arguments).await,
@@ -4304,6 +4314,452 @@ impl ToolHandlers {
             "sessions": {
                 "active": session_count,
             },
+        }))
+    }
+
+    // === Metrics Handlers ===
+
+    async fn handle_metrics_get_summary(&self, _args: Value) -> Result<Value> {
+        let collector = self.metrics_collector.as_ref()
+            .ok_or_else(|| anyhow!("Metrics collector not initialized"))?;
+
+        let snapshot = collector.take_snapshot();
+
+        // Calculate aggregate statistics
+        let total_tool_calls: u64 = snapshot.tools.values().map(|m| m.total_calls).sum();
+        let total_errors: u64 = snapshot.tools.values().map(|m| m.error_count).sum();
+        let total_input_tokens: u64 = snapshot.tools.values().map(|m| m.total_input_tokens).sum();
+        let total_output_tokens: u64 = snapshot.tools.values().map(|m| m.total_output_tokens).sum();
+
+        let success_rate = if total_tool_calls > 0 {
+            ((total_tool_calls - total_errors) as f64 / total_tool_calls as f64) * 100.0
+        } else {
+            100.0
+        };
+
+        info!("Metrics summary: {} tool calls, {:.2}% success rate",
+              total_tool_calls, success_rate);
+
+        Ok(json!({
+            "timestamp": snapshot.timestamp.to_rfc3339(),
+            "summary": {
+                "total_tool_calls": total_tool_calls,
+                "total_errors": total_errors,
+                "success_rate_percent": format!("{:.2}", success_rate),
+                "unique_tools_used": snapshot.tools.len(),
+            },
+            "tokens": {
+                "total_input_tokens": total_input_tokens,
+                "total_output_tokens": total_output_tokens,
+                "total_tokens": total_input_tokens + total_output_tokens,
+                "avg_tokens_per_call": if total_tool_calls > 0 {
+                    (total_input_tokens + total_output_tokens) as f64 / total_tool_calls as f64
+                } else {
+                    0.0
+                }
+            },
+            "memory": snapshot.memory,
+            "search": snapshot.search,
+            "sessions": snapshot.sessions,
+            "system": snapshot.system,
+        }))
+    }
+
+    async fn handle_metrics_get_tool_stats(&self, args: Value) -> Result<Value> {
+        #[derive(Deserialize)]
+        struct Params {
+            tool_name: Option<String>,
+            top_n: Option<usize>,
+        }
+
+        let params: Params = serde_json::from_value(args)
+            .context("Invalid parameters for metrics.get_tool_stats")?;
+
+        let collector = self.metrics_collector.as_ref()
+            .ok_or_else(|| anyhow!("Metrics collector not initialized"))?;
+
+        if let Some(tool_name) = params.tool_name {
+            // Get stats for specific tool
+            let metrics = collector.get_tool_metrics(&tool_name)
+                .ok_or_else(|| anyhow!("No metrics found for tool: {}", tool_name))?;
+
+            info!("Retrieved metrics for tool: {}", tool_name);
+
+            Ok(json!({
+                "tool_name": tool_name,
+                "metrics": {
+                    "total_calls": metrics.total_calls,
+                    "success_count": metrics.success_count,
+                    "error_count": metrics.error_count,
+                    "success_rate_percent": format!("{:.2}", metrics.success_rate * 100.0),
+                    "latency": {
+                        "mean_ms": format!("{:.2}", metrics.latency_histogram.mean()),
+                        "p50_ms": metrics.latency_histogram.p50(),
+                        "p95_ms": metrics.latency_histogram.p95(),
+                        "p99_ms": metrics.latency_histogram.p99(),
+                    },
+                    "tokens": {
+                        "total_input_tokens": metrics.total_input_tokens,
+                        "total_output_tokens": metrics.total_output_tokens,
+                        "avg_input_per_call": if metrics.total_calls > 0 {
+                            metrics.total_input_tokens as f64 / metrics.total_calls as f64
+                        } else {
+                            0.0
+                        },
+                        "avg_output_per_call": if metrics.total_calls > 0 {
+                            metrics.total_output_tokens as f64 / metrics.total_calls as f64
+                        } else {
+                            0.0
+                        }
+                    },
+                    "errors": metrics.error_breakdown,
+                    "last_24h_calls": metrics.last_24h_calls,
+                }
+            }))
+        } else {
+            // Get stats for all tools, optionally limited to top N
+            let snapshot = collector.take_snapshot();
+            let mut tool_stats: Vec<_> = snapshot.tools.into_iter().collect();
+
+            // Sort by total calls descending
+            tool_stats.sort_by(|a, b| b.1.total_calls.cmp(&a.1.total_calls));
+
+            // Limit to top N if specified
+            if let Some(n) = params.top_n {
+                tool_stats.truncate(n);
+            }
+
+            let stats: Vec<Value> = tool_stats.into_iter().map(|(name, metrics)| {
+                json!({
+                    "tool_name": name,
+                    "total_calls": metrics.total_calls,
+                    "success_rate_percent": format!("{:.2}", metrics.success_rate * 100.0),
+                    "mean_latency_ms": format!("{:.2}", metrics.latency_histogram.mean()),
+                    "p95_latency_ms": metrics.latency_histogram.p95(),
+                    "total_tokens": metrics.total_input_tokens + metrics.total_output_tokens,
+                })
+            }).collect();
+
+            info!("Retrieved metrics for {} tools", stats.len());
+
+            Ok(json!({
+                "tools": stats
+            }))
+        }
+    }
+
+    async fn handle_metrics_get_time_range(&self, _args: Value) -> Result<Value> {
+        // Note: This feature requires metrics storage which is not yet integrated into ToolHandlers
+        // For now, return current snapshot only
+        let collector = self.metrics_collector.as_ref()
+            .ok_or_else(|| anyhow!("Metrics collector not initialized"))?;
+
+        let snapshot = collector.take_snapshot();
+
+        info!("Retrieved current metric snapshot (historical storage not yet available)");
+
+        let total_calls: u64 = snapshot.tools.values().map(|m| m.total_calls).sum();
+        let total_tokens: u64 = snapshot.tools.values()
+            .map(|m| m.total_input_tokens + m.total_output_tokens).sum();
+
+        Ok(json!({
+            "note": "Historical metrics storage not yet integrated. Showing current snapshot only.",
+            "timestamp": snapshot.timestamp.to_rfc3339(),
+            "snapshot": {
+                "total_tool_calls": total_calls,
+                "total_tokens": total_tokens,
+                "unique_tools": snapshot.tools.len(),
+            }
+        }))
+    }
+
+    async fn handle_metrics_list_slow_tools(&self, args: Value) -> Result<Value> {
+        #[derive(Deserialize)]
+        struct Params {
+            threshold_ms: Option<f64>,
+            min_calls: Option<u64>,
+        }
+
+        let params: Params = serde_json::from_value(args)
+            .context("Invalid parameters for metrics.list_slow_tools")?;
+
+        let threshold_ms = params.threshold_ms.unwrap_or(500.0);
+        let min_calls = params.min_calls.unwrap_or(1);
+
+        let collector = self.metrics_collector.as_ref()
+            .ok_or_else(|| anyhow!("Metrics collector not initialized"))?;
+
+        let snapshot = collector.take_snapshot();
+
+        let mut slow_tools: Vec<_> = snapshot.tools.into_iter()
+            .filter(|(_, metrics)| {
+                metrics.total_calls >= min_calls && metrics.latency_histogram.p95() > threshold_ms
+            })
+            .map(|(name, metrics)| {
+                (name, metrics.latency_histogram.p95(), metrics)
+            })
+            .collect();
+
+        // Sort by p95 latency descending
+        slow_tools.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        let slow_tool_list: Vec<Value> = slow_tools.into_iter().map(|(name, p95, metrics)| {
+            json!({
+                "tool_name": name,
+                "p95_latency_ms": p95,
+                "p99_latency_ms": metrics.latency_histogram.p99(),
+                "mean_latency_ms": format!("{:.2}", metrics.latency_histogram.mean()),
+                "total_calls": metrics.total_calls,
+                "success_rate_percent": format!("{:.2}", metrics.success_rate * 100.0),
+            })
+        }).collect();
+
+        info!("Found {} slow tools (p95 > {}ms, min {} calls)",
+              slow_tool_list.len(), threshold_ms, min_calls);
+
+        Ok(json!({
+            "threshold_ms": threshold_ms,
+            "min_calls": min_calls,
+            "slow_tools": slow_tool_list
+        }))
+    }
+
+    async fn handle_metrics_get_token_efficiency(&self, _args: Value) -> Result<Value> {
+        let collector = self.metrics_collector.as_ref()
+            .ok_or_else(|| anyhow!("Metrics collector not initialized"))?;
+
+        let snapshot = collector.take_snapshot();
+
+        // Calculate token efficiency per tool
+        let mut tool_efficiency: Vec<_> = snapshot.tools.iter()
+            .map(|(name, metrics)| {
+                let total_tokens = metrics.total_input_tokens + metrics.total_output_tokens;
+                let tokens_per_call = if metrics.total_calls > 0 {
+                    total_tokens as f64 / metrics.total_calls as f64
+                } else {
+                    0.0
+                };
+                let tokens_per_ms = if metrics.latency_histogram.mean() > 0.0 {
+                    total_tokens as f64 / (metrics.latency_histogram.mean() * metrics.total_calls as f64)
+                } else {
+                    0.0
+                };
+
+                (name.clone(), total_tokens, tokens_per_call, tokens_per_ms, metrics.total_calls)
+            })
+            .collect();
+
+        // Sort by total tokens descending
+        tool_efficiency.sort_by(|a, b| b.1.cmp(&a.1));
+
+        let efficiency_list: Vec<Value> = tool_efficiency.into_iter().map(|(name, total, per_call, per_ms, calls)| {
+            json!({
+                "tool_name": name,
+                "total_tokens": total,
+                "tokens_per_call": format!("{:.2}", per_call),
+                "tokens_per_ms": format!("{:.4}", per_ms),
+                "total_calls": calls,
+            })
+        }).collect();
+
+        let total_tokens = snapshot.tokens.total_input_tokens + snapshot.tokens.total_output_tokens;
+
+        info!("Token efficiency analysis: {} total tokens across {} tools",
+              total_tokens, efficiency_list.len());
+
+        Ok(json!({
+            "summary": {
+                "total_input_tokens": snapshot.tokens.total_input_tokens,
+                "total_output_tokens": snapshot.tokens.total_output_tokens,
+                "total_tokens": total_tokens,
+                "avg_compression_ratio": snapshot.tokens.avg_compression_ratio,
+                "tokens_saved_compression": snapshot.tokens.tokens_saved_compression,
+                "tokens_saved_deduplication": snapshot.tokens.tokens_saved_deduplication,
+            },
+            "by_tool": efficiency_list
+        }))
+    }
+
+    async fn handle_metrics_export_prometheus(&self, _args: Value) -> Result<Value> {
+        let collector = self.metrics_collector.as_ref()
+            .ok_or_else(|| anyhow!("Metrics collector not initialized"))?;
+
+        let snapshot = collector.take_snapshot();
+        let mut prometheus_text = String::new();
+
+        // Export tool metrics
+        for (tool_name, metrics) in &snapshot.tools {
+            let _safe_name = tool_name.replace(".", "_");
+
+            prometheus_text.push_str(&format!(
+                "# HELP meridian_tool_calls_total Total number of calls to {}\n", tool_name
+            ));
+            prometheus_text.push_str(&format!(
+                "# TYPE meridian_tool_calls_total counter\n"
+            ));
+            prometheus_text.push_str(&format!(
+                "meridian_tool_calls_total{{tool=\"{}\"}} {}\n", tool_name, metrics.total_calls
+            ));
+
+            prometheus_text.push_str(&format!(
+                "# HELP meridian_tool_errors_total Total number of errors for {}\n", tool_name
+            ));
+            prometheus_text.push_str(&format!(
+                "# TYPE meridian_tool_errors_total counter\n"
+            ));
+            prometheus_text.push_str(&format!(
+                "meridian_tool_errors_total{{tool=\"{}\"}} {}\n", tool_name, metrics.error_count
+            ));
+
+            prometheus_text.push_str(&format!(
+                "# HELP meridian_tool_latency_seconds Latency histogram for {}\n", tool_name
+            ));
+            prometheus_text.push_str(&format!(
+                "# TYPE meridian_tool_latency_seconds histogram\n"
+            ));
+
+            let histogram = &metrics.latency_histogram;
+            let mut cumulative = 0u64;
+            for (i, &bucket) in histogram.buckets.iter().enumerate() {
+                cumulative += histogram.counts[i];
+                prometheus_text.push_str(&format!(
+                    "meridian_tool_latency_seconds_bucket{{tool=\"{}\",le=\"{}\"}} {}\n",
+                    tool_name, bucket / 1000.0, cumulative
+                ));
+            }
+            prometheus_text.push_str(&format!(
+                "meridian_tool_latency_seconds_bucket{{tool=\"{}\",le=\"+Inf\"}} {}\n",
+                tool_name, histogram.count
+            ));
+            prometheus_text.push_str(&format!(
+                "meridian_tool_latency_seconds_sum{{tool=\"{}\"}} {}\n",
+                tool_name, histogram.sum / 1000.0
+            ));
+            prometheus_text.push_str(&format!(
+                "meridian_tool_latency_seconds_count{{tool=\"{}\"}} {}\n",
+                tool_name, histogram.count
+            ));
+
+            prometheus_text.push_str(&format!(
+                "# HELP meridian_tool_tokens_total Total tokens used by {}\n", tool_name
+            ));
+            prometheus_text.push_str(&format!(
+                "# TYPE meridian_tool_tokens_total counter\n"
+            ));
+            prometheus_text.push_str(&format!(
+                "meridian_tool_tokens_total{{tool=\"{}\",direction=\"input\"}} {}\n",
+                tool_name, metrics.total_input_tokens
+            ));
+            prometheus_text.push_str(&format!(
+                "meridian_tool_tokens_total{{tool=\"{}\",direction=\"output\"}} {}\n",
+                tool_name, metrics.total_output_tokens
+            ));
+        }
+
+        info!("Exported Prometheus metrics for {} tools ({} bytes)",
+              snapshot.tools.len(), prometheus_text.len());
+
+        Ok(json!({
+            "format": "prometheus",
+            "timestamp": snapshot.timestamp.to_rfc3339(),
+            "metrics": prometheus_text,
+            "tool_count": snapshot.tools.len(),
+        }))
+    }
+
+    async fn handle_metrics_analyze_trends(&self, _args: Value) -> Result<Value> {
+        // Note: This feature requires metrics storage which is not yet integrated into ToolHandlers
+        // For now, return current snapshot only
+        let collector = self.metrics_collector.as_ref()
+            .ok_or_else(|| anyhow!("Metrics collector not initialized"))?;
+
+        let snapshot = collector.take_snapshot();
+
+        info!("Trend analysis not yet available (requires historical storage). Showing current stats.");
+
+        let total_calls: u64 = snapshot.tools.values().map(|m| m.total_calls).sum();
+        let total_tokens: u64 = snapshot.tools.values()
+            .map(|m| m.total_input_tokens + m.total_output_tokens).sum();
+
+        Ok(json!({
+            "note": "Historical metrics storage not yet integrated. Trend analysis not available.",
+            "current_snapshot": {
+                "timestamp": snapshot.timestamp.to_rfc3339(),
+                "total_calls": total_calls,
+                "total_tokens": total_tokens,
+                "unique_tools": snapshot.tools.len(),
+            }
+        }))
+    }
+
+    async fn handle_metrics_get_health(&self, _args: Value) -> Result<Value> {
+        let collector = self.metrics_collector.as_ref()
+            .ok_or_else(|| anyhow!("Metrics collector not initialized"))?;
+
+        let snapshot = collector.take_snapshot();
+
+        // Calculate health indicators
+        let total_calls: u64 = snapshot.tools.values().map(|m| m.total_calls).sum();
+        let total_errors: u64 = snapshot.tools.values().map(|m| m.error_count).sum();
+        let overall_success_rate = if total_calls > 0 {
+            ((total_calls - total_errors) as f64 / total_calls as f64) * 100.0
+        } else {
+            100.0
+        };
+
+        // Find tools with high error rates
+        let error_tools: Vec<_> = snapshot.tools.iter()
+            .filter(|(_, m)| m.total_calls > 10 && m.success_rate < 0.95)
+            .map(|(name, m)| {
+                json!({
+                    "tool_name": name,
+                    "success_rate_percent": format!("{:.2}", m.success_rate * 100.0),
+                    "error_count": m.error_count,
+                    "total_calls": m.total_calls,
+                })
+            })
+            .collect();
+
+        // Find tools with high latency
+        let slow_tools: Vec<_> = snapshot.tools.iter()
+            .filter(|(_, m)| m.total_calls > 5 && m.latency_histogram.p95() > 1000.0)
+            .map(|(name, m)| {
+                json!({
+                    "tool_name": name,
+                    "p95_latency_ms": m.latency_histogram.p95(),
+                    "mean_latency_ms": format!("{:.2}", m.latency_histogram.mean()),
+                })
+            })
+            .collect();
+
+        let health_status = if overall_success_rate >= 99.0 && slow_tools.is_empty() {
+            "healthy"
+        } else if overall_success_rate >= 95.0 {
+            "degraded"
+        } else {
+            "unhealthy"
+        };
+
+        info!("Metrics health check: status={}, success_rate={:.2}%",
+              health_status, overall_success_rate);
+
+        Ok(json!({
+            "status": health_status,
+            "timestamp": snapshot.timestamp.to_rfc3339(),
+            "metrics": {
+                "total_tool_calls": total_calls,
+                "total_errors": total_errors,
+                "overall_success_rate_percent": format!("{:.2}", overall_success_rate),
+                "unique_tools": snapshot.tools.len(),
+            },
+            "storage": {
+                "note": "Metrics storage not yet integrated into ToolHandlers",
+                "in_memory_only": true,
+            },
+            "issues": {
+                "high_error_rate_tools": error_tools,
+                "high_latency_tools": slow_tools,
+            }
         }))
     }
 

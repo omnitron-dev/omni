@@ -350,9 +350,9 @@ mod tests {
     async fn test_graph_cache_basic() {
         let cache = GraphCache::new(GraphCacheConfig::default());
 
-        let id1 = SymbolId::from("symbol1".to_string());
-        let id2 = SymbolId::from("symbol2".to_string());
-        let id3 = SymbolId::from("symbol3".to_string());
+        let id1 = SymbolId::new("symbol1");
+        let id2 = SymbolId::new("symbol2");
+        let id3 = SymbolId::new("symbol3");
 
         // Add nodes
         cache.add_node(id1.clone()).await.unwrap();
@@ -381,9 +381,9 @@ mod tests {
     async fn test_get_dependents() {
         let cache = GraphCache::new(GraphCacheConfig::default());
 
-        let id1 = SymbolId::from("symbol1".to_string());
-        let id2 = SymbolId::from("symbol2".to_string());
-        let id3 = SymbolId::from("symbol3".to_string());
+        let id1 = SymbolId::new("symbol1");
+        let id2 = SymbolId::new("symbol2");
+        let id3 = SymbolId::new("symbol3");
 
         cache.add_node(id1.clone()).await.unwrap();
         cache.add_node(id2.clone()).await.unwrap();

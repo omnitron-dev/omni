@@ -13,7 +13,7 @@
 /// // plan = [prerequisite_1, prerequisite_2, main_task, dependent_1]
 /// ```
 
-use crate::progress::{ProgressManager, Task, TaskId, TaskStatus};
+use crate::progress::{ProgressManager, TaskId, TaskStatus};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
@@ -53,8 +53,8 @@ impl DependencyResolver {
     pub async fn create_execution_plan(&self, target_id: &TaskId) -> Result<ExecutionPlan> {
         let manager = self.progress_manager.read().await;
 
-        // Get target task
-        let target = manager.get_task(target_id).await?;
+        // Get target task (validates it exists)
+        let _target = manager.get_task(target_id).await?;
 
         // Build complete dependency graph
         let mut graph = HashMap::new();
@@ -157,7 +157,7 @@ impl DependencyResolver {
     fn topological_sort(
         &self,
         graph: &HashMap<TaskId, Vec<TaskId>>,
-        target_id: &TaskId,
+        _target_id: &TaskId,
     ) -> Result<Vec<TaskId>> {
         // Build in-degree map
         let mut in_degree: HashMap<TaskId, usize> = HashMap::new();
@@ -296,7 +296,7 @@ impl DependencyResolver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::progress::{Priority, ProgressStorage};
+    use crate::progress::ProgressStorage;
     use crate::storage::RocksDBStorage;
     use tempfile::TempDir;
 

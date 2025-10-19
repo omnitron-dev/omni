@@ -145,6 +145,7 @@ mod tests {
             storage: crate::config::StorageConfig {
                 path: db_path,
                 cache_size: "256MB".to_string(),
+                hnsw_index_path: None,
             },
             memory: crate::config::MemoryConfig {
                 episodic_retention_days: 30,

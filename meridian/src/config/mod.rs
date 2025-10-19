@@ -4,17 +4,27 @@ use std::path::{Path, PathBuf};
 
 /// Get the Meridian home directory (~/.meridian)
 /// Can be overridden with MERIDIAN_HOME environment variable
+///
+/// # Panics
+/// Panics if neither MERIDIAN_HOME, HOME, nor USERPROFILE environment variables are set.
+/// This is intentional to prevent creating .meridian in arbitrary directories.
 pub fn get_meridian_home() -> PathBuf {
     // First check for explicit MERIDIAN_HOME override (useful for testing)
     if let Ok(meridian_home) = std::env::var("MERIDIAN_HOME") {
         return PathBuf::from(meridian_home);
     }
 
-    // Otherwise use default: $HOME/.meridian or $USERPROFILE/.meridian
-    let home = std::env::var("HOME")
-        .or_else(|_| std::env::var("USERPROFILE"))
-        .unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(home).join(".meridian")
+    // Use dirs crate for reliable home directory detection
+    // This handles platform-specific differences correctly
+    dirs::home_dir()
+        .map(|home| home.join(".meridian"))
+        .unwrap_or_else(|| {
+            // Final fallback: check environment variables
+            let home = std::env::var("HOME")
+                .or_else(|_| std::env::var("USERPROFILE"))
+                .expect("Cannot determine home directory: HOME, USERPROFILE, and dirs::home_dir() all failed. Set MERIDIAN_HOME explicitly.");
+            PathBuf::from(home).join(".meridian")
+        })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -471,5 +481,36 @@ mod tests {
         // This test would need to mock the global path or use a temp directory
         // For now, we'll just test that the function exists and compiles
         // Real integration test should be in a separate test file
+    }
+
+    #[test]
+    fn test_get_meridian_home_never_returns_current_dir() {
+        // Critical test: ensure get_meridian_home() NEVER returns "." or current directory
+        // This prevents creating .meridian in arbitrary project directories
+        let meridian_home = get_meridian_home();
+
+        // Should not be current directory
+        assert_ne!(meridian_home, PathBuf::from("."));
+        assert_ne!(meridian_home, PathBuf::from("./"));
+
+        // Should be absolute path
+        assert!(meridian_home.is_absolute(),
+            "Meridian home must be absolute path, got: {:?}", meridian_home);
+
+        // Should end with .meridian
+        assert!(meridian_home.ends_with(".meridian"),
+            "Meridian home must end with .meridian, got: {:?}", meridian_home);
+
+        // Should not be in current working directory (unless HOME happens to be there)
+        if let Ok(cwd) = std::env::current_dir() {
+            // If meridian_home is under cwd, it's only OK if HOME is also under cwd
+            // (e.g., testing scenario where HOME=/tmp/test)
+            if meridian_home.starts_with(&cwd) {
+                // This should only happen in test scenarios with custom MERIDIAN_HOME
+                let is_test_override = std::env::var("MERIDIAN_HOME").is_ok();
+                assert!(is_test_override,
+                    "Meridian home should not be under current working directory unless MERIDIAN_HOME is set");
+            }
+        }
     }
 }

@@ -111,11 +111,12 @@ pub struct BackupConfig {
 
 impl Default for BackupConfig {
     fn default() -> Self {
-        let home_dir = dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("."));
+        // Use get_meridian_home() for consistency - ensures we always use ~/.meridian
+        // Never fallback to current directory
+        let meridian_home = crate::config::get_meridian_home();
 
         Self {
-            backup_dir: home_dir.join(".meridian").join("backups"),
+            backup_dir: meridian_home.join("backups"),
             max_scheduled_backups: 7,
             max_incremental_backups: 10,
             auto_verify: true,

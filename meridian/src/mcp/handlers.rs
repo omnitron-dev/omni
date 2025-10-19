@@ -1293,13 +1293,12 @@ impl ToolHandlers {
 
         let memory = self.memory_system.read().await;
 
-        // Get task description from context
+        // Extract task description and completed steps
         let task_desc = params.current_context.get("task")
             .and_then(|v| v.as_str())
             .or(params.task_type.as_deref())
             .unwrap_or("Unknown task");
 
-        // Extract completed steps if available
         let completed_steps: Vec<String> = params.current_context.get("completed_steps")
             .and_then(|v| v.as_array())
             .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
@@ -1307,154 +1306,14 @@ impl ToolHandlers {
 
         debug!("Predicting next actions for task: '{}', completed steps: {:?}", task_desc, completed_steps);
 
-        // Get procedure for task type using ProceduralMemory
         let procedure = memory.procedural.get_procedure_for_task(task_desc);
 
-        let (predicted_actions, suggested_queries, confidence_scores, predicted_files) = if let Some(proc) = procedure {
-            info!(
-                "Found procedure for task with {} steps, success_rate: {:.2}",
-                proc.steps.len(),
-                proc.success_rate
-            );
-
-            // Get next steps that haven't been completed yet
-            let mut next_steps = Vec::new();
-            let mut step_confidences = Vec::new();
-
-            for step in &proc.steps {
-                // Check if step was completed
-                let is_completed = completed_steps.iter().any(|completed| {
-                    step.description.to_lowercase().contains(&completed.to_lowercase())
-                        || completed.to_lowercase().contains(&step.description.to_lowercase())
-                });
-
-                if !is_completed {
-                    // Calculate confidence for this step
-                    let step_confidence = if step.optional {
-                        proc.success_rate * 0.7 // Lower confidence for optional steps
-                    } else {
-                        proc.success_rate
-                    };
-
-                    next_steps.push(json!({
-                        "description": step.description,
-                        "typical_actions": step.typical_actions,
-                        "expected_files": step.expected_files,
-                        "optional": step.optional,
-                        "order": step.order
-                    }));
-
-                    step_confidences.push(step_confidence);
-
-                    // Return top 3 most likely next actions
-                    if next_steps.len() >= 3 {
-                        break;
-                    }
-                }
-            }
-
-            // If all steps completed, check for optional steps
-            if next_steps.is_empty() {
-                for step in proc.steps.iter().filter(|s| s.optional) {
-                    next_steps.push(json!({
-                        "description": step.description,
-                        "typical_actions": step.typical_actions,
-                        "expected_files": step.expected_files,
-                        "optional": true,
-                        "order": step.order
-                    }));
-                    step_confidences.push(proc.success_rate * 0.5);
-
-                    if next_steps.len() >= 3 {
-                        break;
-                    }
-                }
-            }
-
-            // Get top 5 typical queries for this task type
-            let queries: Vec<String> = proc.typical_queries.iter().take(5).cloned().collect();
-
-            // Get predicted files from required context
-            let files: Vec<String> = proc.required_context.iter().take(5).cloned().collect();
-
-            (next_steps, queries, step_confidences, files)
-        } else {
-            // No procedure found - try to find similar episodes
-            debug!("No procedure found, searching for similar episodes");
-
-            let similar_episodes = memory.episodic.find_similar(task_desc, 5).await;
-
-            if !similar_episodes.is_empty() {
-                // Extract common actions from similar episodes
-                let mut action_frequency = std::collections::HashMap::<String, usize>::new();
-                let mut query_frequency = std::collections::HashMap::<String, usize>::new();
-                let mut file_frequency = std::collections::HashMap::<String, usize>::new();
-
-                for episode in &similar_episodes {
-                    // Count solution path steps
-                    for step in episode.solution_path.split(['.', ',', ';']) {
-                        let trimmed = step.trim();
-                        if !trimmed.is_empty() {
-                            *action_frequency.entry(trimmed.to_string()).or_insert(0) += 1;
-                        }
-                    }
-
-                    // Count queries
-                    for query in &episode.queries_made {
-                        *query_frequency.entry(query.clone()).or_insert(0) += 1;
-                    }
-
-                    // Count files
-                    for file in &episode.files_touched {
-                        *file_frequency.entry(file.clone()).or_insert(0) += 1;
-                    }
-                }
-
-                // Get top 3 actions by frequency
-                let mut actions: Vec<(String, usize)> = action_frequency.into_iter().collect();
-                actions.sort_by(|a, b| b.1.cmp(&a.1));
-
-                let predicted_actions: Vec<Value> = actions.iter().take(3)
-                    .map(|(action, freq)| json!({
-                        "description": action,
-                        "frequency": freq,
-                        "source": "similar_episodes"
-                    }))
-                    .collect();
-
-                // Get top 5 queries
-                let mut queries: Vec<(String, usize)> = query_frequency.into_iter().collect();
-                queries.sort_by(|a, b| b.1.cmp(&a.1));
-                let suggested_queries: Vec<String> = queries.iter().take(5)
-                    .map(|(q, _)| q.clone())
-                    .collect();
-
-                // Get top 5 files
-                let mut files: Vec<(String, usize)> = file_frequency.into_iter().collect();
-                files.sort_by(|a, b| b.1.cmp(&a.1));
-                let predicted_files: Vec<String> = files.iter().take(5)
-                    .map(|(f, _)| f.clone())
-                    .collect();
-
-                // Calculate confidence based on episode count and consistency
-                let avg_frequency = if !actions.is_empty() {
-                    actions.iter().map(|(_, f)| *f as f32).sum::<f32>() / actions.len() as f32
-                } else {
-                    0.0
-                };
-                let confidence = (avg_frequency / similar_episodes.len() as f32).min(1.0);
-                let confidences = vec![confidence; predicted_actions.len()];
-
-                info!("Predicted {} actions from {} similar episodes (confidence: {:.2})",
-                    predicted_actions.len(), similar_episodes.len(), confidence);
-
-                (predicted_actions, suggested_queries, confidences, predicted_files)
+        let (predicted_actions, suggested_queries, confidence_scores, predicted_files) =
+            if let Some(proc) = &procedure {
+                Self::predict_from_procedure(proc, &completed_steps)
             } else {
-                // No similar episodes found
-                info!("No similar episodes found for task: '{}'", task_desc);
-                (vec![], vec![], vec![], vec![])
-            }
-        };
+                Self::predict_from_episodes(&memory.episodic, task_desc).await
+            };
 
         Ok(json!({
             "predicted_actions": predicted_actions,
@@ -1463,6 +1322,184 @@ impl ToolHandlers {
             "predicted_files": predicted_files,
             "has_procedure": procedure.is_some()
         }))
+    }
+
+    fn predict_from_procedure(
+        proc: &crate::memory::procedural::Procedure,
+        completed_steps: &[String],
+    ) -> (Vec<Value>, Vec<String>, Vec<f32>, Vec<String>) {
+        info!(
+            "Found procedure for task with {} steps, success_rate: {:.2}",
+            proc.steps.len(),
+            proc.success_rate
+        );
+
+        let (next_steps, step_confidences) = Self::extract_next_steps(proc, completed_steps);
+        let queries: Vec<String> = proc.typical_queries.iter().take(5).cloned().collect();
+        let files: Vec<String> = proc.required_context.iter().take(5).cloned().collect();
+
+        (next_steps, queries, step_confidences, files)
+    }
+
+    fn extract_next_steps(
+        proc: &crate::memory::procedural::Procedure,
+        completed_steps: &[String],
+    ) -> (Vec<Value>, Vec<f32>) {
+        let mut next_steps = Vec::new();
+        let mut step_confidences = Vec::new();
+
+        // Extract pending required steps
+        for step in &proc.steps {
+            if Self::is_step_completed(step, completed_steps) {
+                continue;
+            }
+
+            let step_confidence = if step.optional {
+                proc.success_rate * 0.7
+            } else {
+                proc.success_rate
+            };
+
+            next_steps.push(Self::step_to_json(step));
+            step_confidences.push(step_confidence);
+
+            if next_steps.len() >= 3 {
+                break;
+            }
+        }
+
+        // If all required steps completed, suggest optional steps
+        if next_steps.is_empty() {
+            for step in proc.steps.iter().filter(|s| s.optional) {
+                next_steps.push(Self::step_to_json(step));
+                step_confidences.push(proc.success_rate * 0.5);
+
+                if next_steps.len() >= 3 {
+                    break;
+                }
+            }
+        }
+
+        (next_steps, step_confidences)
+    }
+
+    fn is_step_completed(
+        step: &crate::memory::procedural::ProcedureStep,
+        completed_steps: &[String],
+    ) -> bool {
+        completed_steps.iter().any(|completed| {
+            step.description.to_lowercase().contains(&completed.to_lowercase())
+                || completed.to_lowercase().contains(&step.description.to_lowercase())
+        })
+    }
+
+    fn step_to_json(step: &crate::memory::procedural::ProcedureStep) -> Value {
+        json!({
+            "description": step.description,
+            "typical_actions": step.typical_actions,
+            "expected_files": step.expected_files,
+            "optional": step.optional,
+            "order": step.order
+        })
+    }
+
+    async fn predict_from_episodes(
+        episodic: &crate::memory::episodic::EpisodicMemory,
+        task_desc: &str,
+    ) -> (Vec<Value>, Vec<String>, Vec<f32>, Vec<String>) {
+        debug!("No procedure found, searching for similar episodes");
+
+        let similar_episodes = episodic.find_similar(task_desc, 5).await;
+
+        if similar_episodes.is_empty() {
+            info!("No similar episodes found for task: '{}'", task_desc);
+            return (vec![], vec![], vec![], vec![]);
+        }
+
+        let (action_freq, query_freq, file_freq) = Self::build_frequency_maps(&similar_episodes);
+
+        let (predicted_actions, confidence) = Self::extract_top_actions(action_freq, similar_episodes.len());
+        let suggested_queries = Self::extract_top_items(query_freq, 5);
+        let predicted_files = Self::extract_top_items(file_freq, 5);
+        let confidences = vec![confidence; predicted_actions.len()];
+
+        info!(
+            "Predicted {} actions from {} similar episodes (confidence: {:.2})",
+            predicted_actions.len(),
+            similar_episodes.len(),
+            confidence
+        );
+
+        (predicted_actions, suggested_queries, confidences, predicted_files)
+    }
+
+    fn build_frequency_maps(
+        episodes: &[crate::types::episode::TaskEpisode],
+    ) -> (
+        std::collections::HashMap<String, usize>,
+        std::collections::HashMap<String, usize>,
+        std::collections::HashMap<String, usize>,
+    ) {
+        let mut action_frequency = std::collections::HashMap::new();
+        let mut query_frequency = std::collections::HashMap::new();
+        let mut file_frequency = std::collections::HashMap::new();
+
+        for episode in episodes {
+            for step in episode.solution_path.split(['.', ',', ';']) {
+                let trimmed = step.trim();
+                if !trimmed.is_empty() {
+                    *action_frequency.entry(trimmed.to_string()).or_insert(0) += 1;
+                }
+            }
+
+            for query in &episode.queries_made {
+                *query_frequency.entry(query.clone()).or_insert(0) += 1;
+            }
+
+            for file in &episode.files_touched {
+                *file_frequency.entry(file.clone()).or_insert(0) += 1;
+            }
+        }
+
+        (action_frequency, query_frequency, file_frequency)
+    }
+
+    fn extract_top_actions(
+        action_frequency: std::collections::HashMap<String, usize>,
+        episode_count: usize,
+    ) -> (Vec<Value>, f32) {
+        let mut actions: Vec<(String, usize)> = action_frequency.into_iter().collect();
+        actions.sort_by(|a, b| b.1.cmp(&a.1));
+
+        let predicted_actions: Vec<Value> = actions
+            .iter()
+            .take(3)
+            .map(|(action, freq)| {
+                json!({
+                    "description": action,
+                    "frequency": freq,
+                    "source": "similar_episodes"
+                })
+            })
+            .collect();
+
+        let avg_frequency = if !actions.is_empty() {
+            actions.iter().map(|(_, f)| *f as f32).sum::<f32>() / actions.len() as f32
+        } else {
+            0.0
+        };
+        let confidence = (avg_frequency / episode_count as f32).min(1.0);
+
+        (predicted_actions, confidence)
+    }
+
+    fn extract_top_items(
+        frequency_map: std::collections::HashMap<String, usize>,
+        limit: usize,
+    ) -> Vec<String> {
+        let mut items: Vec<(String, usize)> = frequency_map.into_iter().collect();
+        items.sort_by(|a, b| b.1.cmp(&a.1));
+        items.iter().take(limit).map(|(item, _)| item.clone()).collect()
     }
 
     async fn handle_attention_retrieve(&self, args: Value) -> Result<Value> {

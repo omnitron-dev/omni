@@ -3,7 +3,6 @@
 //! This module provides real-time performance metrics, latency tracking,
 //! and automatic performance reporting for the RPC server.
 
-use anyhow::Result;
 use parking_lot::RwLock;
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -169,7 +168,9 @@ pub struct PerformanceMonitor {
 impl PerformanceMonitor {
     /// Create a new performance monitor
     pub fn new(config: MonitorConfig) -> Self {
-        let monitor = Self {
+        
+
+        Self {
             config,
             latency_samples: Arc::new(RwLock::new(VecDeque::new())),
             request_count: Arc::new(RwLock::new(0)),
@@ -179,9 +180,7 @@ impl PerformanceMonitor {
             failed_query_count: Arc::new(RwLock::new(0)),
             last_report: Arc::new(RwLock::new(Instant::now())),
             system: Arc::new(RwLock::new(System::new_all())),
-        };
-
-        monitor
+        }
     }
 
     /// Record request latency

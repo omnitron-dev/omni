@@ -6,10 +6,10 @@
 use super::protocol::{RpcRequest, RpcResponse, RpcError, ErrorCode, ResponseMetrics};
 use super::tool_registry::{ToolRegistry, ToolContext, AuthInfo};
 use super::db_pool::DatabasePool;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::sync::Arc;
 use std::time::Instant;
-use tracing::{debug, warn, error, info};
+use tracing::{debug, warn, error};
 
 /// Request middleware trait
 #[async_trait::async_trait]
@@ -47,6 +47,12 @@ impl Middleware for LoggingMiddleware {
 /// Authentication middleware
 pub struct AuthMiddleware {
     required_tokens: Arc<tokio::sync::RwLock<Vec<String>>>,
+}
+
+impl Default for AuthMiddleware {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AuthMiddleware {
@@ -327,7 +333,7 @@ mod tests {
         use crate::session::SessionManager;
         use crate::docs::DocIndexer;
         use crate::specs::SpecificationManager;
-        use crate::progress::ProgressManager;
+        use crate::tasks::TaskManager;
         use crate::indexer::PatternSearchEngine;
 
         let temp_dir = TempDir::new().unwrap();
@@ -351,7 +357,7 @@ mod tests {
             SpecificationManager::new(temp_dir.path().join("specs"))
         ));
         let progress = Arc::new(tokio::sync::RwLock::new(
-            ProgressManager::new(temp_dir.path().join("progress.db")).unwrap()
+            TaskManager::new(temp_dir.path().join("progress.db")).unwrap()
         ));
         let links = Arc::new(tokio::sync::RwLock::new(
             crate::links::RocksDBLinksStorage::new(temp_dir.path().join("links")).unwrap()
@@ -404,7 +410,7 @@ mod tests {
             crate::specs::SpecificationManager::new(temp_dir.path().join("specs"))
         ));
         let progress = Arc::new(tokio::sync::RwLock::new(
-            crate::progress::ProgressManager::new(temp_dir.path().join("progress.db")).unwrap()
+            crate::tasks::TaskManager::new(temp_dir.path().join("progress.db")).unwrap()
         ));
         let links = Arc::new(tokio::sync::RwLock::new(
             crate::links::RocksDBLinksStorage::new(temp_dir.path().join("links")).unwrap()
@@ -450,7 +456,7 @@ mod tests {
             crate::specs::SpecificationManager::new(temp_dir.path().join("specs"))
         ));
         let progress = Arc::new(tokio::sync::RwLock::new(
-            crate::progress::ProgressManager::new(temp_dir.path().join("progress.db")).unwrap()
+            crate::tasks::TaskManager::new(temp_dir.path().join("progress.db")).unwrap()
         ));
         let links = Arc::new(tokio::sync::RwLock::new(
             crate::links::RocksDBLinksStorage::new(temp_dir.path().join("links")).unwrap()

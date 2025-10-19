@@ -1,7 +1,7 @@
 use crate::storage::{deserialize, serialize, Storage};
 use crate::types::{CodePattern, Outcome, TaskEpisode};
 use crate::indexer::vector::{HnswIndex, VectorIndex};
-use crate::ml::embeddings::EmbeddingEngine;
+use crate::embeddings::EmbeddingEngine;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -152,8 +152,7 @@ impl EpisodicMemory {
     ) -> Result<Self> {
         // Initialize embedding engine
         let embedding_engine = match EmbeddingEngine::new() {
-            Ok(mut engine) => {
-                let _ = engine.warmup(); // Best effort warmup
+            Ok(engine) => {
                 tracing::info!("Episodic memory: embedding engine initialized ({})", engine.model_name());
                 Some(engine)
             }
@@ -210,7 +209,7 @@ impl EpisodicMemory {
                 // Generate embedding and add to HNSW (only if not loaded from disk)
                 if !loaded_from_disk {
                     if let (Some(ref mut vi), Some(ref eng)) = (&mut self.vector_index, &self.embedding_engine) {
-                        if let Ok(emb) = eng.embed(&episode.task_description) {
+                        if let Ok(emb) = eng.generate_embedding(&episode.task_description) {
                             let _ = vi.add_vector(&episode.id.0, &emb);
                         }
                     }
@@ -236,7 +235,7 @@ impl EpisodicMemory {
 
         // Generate embedding and add to HNSW for fast similarity search
         if let (Some(ref mut vi), Some(ref eng)) = (&mut self.vector_index, &self.embedding_engine) {
-            match eng.embed(&episode.task_description) {
+            match eng.generate_embedding(&episode.task_description) {
                 Ok(emb) => {
                     if let Err(e) = vi.add_vector(&episode.id.0, &emb) {
                         tracing::warn!("Failed to index episode {} in HNSW: {}", episode.id.0, e);
@@ -254,7 +253,7 @@ impl EpisodicMemory {
     pub async fn find_similar(&self, task_description: &str, limit: usize) -> Vec<TaskEpisode> {
         // Try HNSW vector search first (100-500x faster!)
         if let (Some(ref vi), Some(ref eng)) = (&self.vector_index, &self.embedding_engine) {
-            match eng.embed(task_description) {
+            match eng.generate_embedding(task_description) {
                 Ok(query_emb) => {
                     match vi.search(&query_emb, limit * 2) {
                         Ok(sim_ids) => {
@@ -468,14 +467,14 @@ impl EpisodicMemory {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::rocksdb_storage::RocksDBStorage;
+    use crate::storage::MemoryStorage;
     use crate::types::EpisodeId;
     use chrono::Utc;
     use tempfile::TempDir;
 
     async fn create_test_storage() -> (Arc<dyn Storage>, TempDir) {
         let temp_dir = TempDir::new().unwrap();
-        let storage = RocksDBStorage::new(temp_dir.path()).unwrap();
+        let storage = MemoryStorage::new();
         (Arc::new(storage), temp_dir)
     }
 

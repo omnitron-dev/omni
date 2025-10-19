@@ -1,8 +1,7 @@
 mod common;
 
 use common::{create_test_storage, create_test_storage_at};
-use meridian::storage::{RocksDBStorage, WriteOp};
-use tempfile::TempDir;
+use meridian::storage::WriteOp;
 
 #[tokio::test]
 async fn test_storage_put_get() {
@@ -293,10 +292,12 @@ async fn test_storage_multiple_operations() {
 }
 
 #[tokio::test]
-async fn test_rocksdb_storage_new() {
-    let temp_dir = TempDir::new().unwrap();
-    let result = RocksDBStorage::new(temp_dir.path());
-    assert!(result.is_ok());
+async fn test_memory_storage_new() {
+    use meridian::storage::MemoryStorage;
+    let storage = MemoryStorage::new();
+    // Test basic operation to verify it works
+    storage.put(b"test", b"value").await.unwrap();
+    assert_eq!(storage.get(b"test").await.unwrap(), Some(b"value".to_vec()));
 }
 
 #[tokio::test]

@@ -3,11 +3,9 @@
 //! This module routes requests to available worker threads using configurable
 //! load balancing strategies with overload protection.
 
-use anyhow::{Context, Result};
 use parking_lot::RwLock;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::oneshot;
 use tracing::{debug, warn, error};
 
 use super::executor::{Priority, ThreadPoolExecutor};

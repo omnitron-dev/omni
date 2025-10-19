@@ -271,11 +271,10 @@ impl ExampleValidator {
             result = result.with_warning("Function declaration without parentheses".to_string());
         }
 
-        if code.contains("const ") || code.contains("let ") || code.contains("var ") {
-            if !code.contains("=") {
+        if (code.contains("const ") || code.contains("let ") || code.contains("var "))
+            && !code.contains("=") {
                 result = result.with_warning("Variable declaration without assignment".to_string());
             }
-        }
 
         Ok(result)
     }
@@ -333,7 +332,7 @@ impl ExampleValidator {
         // Check for lifetime issues
         if code.contains("'") && code.contains("fn ") {
             let single_quotes = code.matches('\'').count();
-            if single_quotes % 2 != 0 && !code.contains("'static") {
+            if !single_quotes.is_multiple_of(2) && !code.contains("'static") {
                 result = result.with_warning("Possible lifetime syntax issue".to_string());
             }
         }
@@ -393,8 +392,8 @@ impl ExampleValidator {
         // Check for indentation issues (basic check)
         let lines: Vec<&str> = code.lines().collect();
         for (i, line) in lines.iter().enumerate() {
-            if line.trim_start().starts_with("def ") || line.trim_start().starts_with("class ") {
-                if i + 1 < lines.len() {
+            if (line.trim_start().starts_with("def ") || line.trim_start().starts_with("class "))
+                && i + 1 < lines.len() {
                     let current_indent = line.len() - line.trim_start().len();
                     let next_indent = lines[i + 1].len() - lines[i + 1].trim_start().len();
 
@@ -402,7 +401,6 @@ impl ExampleValidator {
                         result = result.with_warning("Possible indentation issue after definition".to_string());
                     }
                 }
-            }
         }
 
         Ok(result)

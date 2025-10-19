@@ -60,6 +60,7 @@ impl CachedItem {
 
 /// Synchronization state with global server
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct SyncState {
     /// Last sync time
     pub last_sync: Option<DateTime<Utc>>,
@@ -71,15 +72,6 @@ pub struct SyncState {
     pub sync_errors: u64,
 }
 
-impl Default for SyncState {
-    fn default() -> Self {
-        Self {
-            last_sync: None,
-            items_synced: 0,
-            sync_errors: 0,
-        }
-    }
-}
 
 /// Local cache configuration
 #[derive(Debug, Clone)]
@@ -296,14 +288,12 @@ impl LocalCache {
 
         let iter = self.db.iterator(rocksdb::IteratorMode::Start);
 
-        for item in iter {
-            if let Ok((_, value)) = item {
-                total_items += 1;
+        for (_, value) in iter.flatten() {
+            total_items += 1;
 
-                if let Ok(cached_item) = serde_json::from_slice::<CachedItem>(&value) {
-                    if cached_item.is_expired() {
-                        expired_items += 1;
-                    }
+            if let Ok(cached_item) = serde_json::from_slice::<CachedItem>(&value) {
+                if cached_item.is_expired() {
+                    expired_items += 1;
                 }
             }
         }

@@ -8,7 +8,7 @@ use std::path::Path;
 use std::sync::{Arc, RwLock};
 
 /// HNSW index configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, bincode::Encode, bincode::Decode)]
 pub struct HnswConfig {
     /// Maximum number of connections per element (M parameter)
     /// Higher values = better recall but more memory
@@ -248,7 +248,7 @@ impl<'a> VectorIndex for HnswIndex<'a> {
             dim: self.dim,
         };
 
-        let encoded = bincode::serde::encode_to_vec(&metadata, bincode::config::standard())
+        let encoded = bincode::encode_to_vec(&metadata, bincode::config::standard())
             .context("Failed to serialize metadata")?;
         std::fs::write(&metadata_path, &encoded)
             .context("Failed to write metadata file")?;
@@ -261,7 +261,7 @@ impl<'a> VectorIndex for HnswIndex<'a> {
         let metadata_path = path.with_extension("meta");
         let data = std::fs::read(&metadata_path)
             .context("Failed to read metadata file")?;
-        let (_metadata, _): (IndexMetadata, _) = bincode::serde::decode_from_slice(&data, bincode::config::standard())
+        let (_metadata, _): (IndexMetadata, _) = bincode::decode_from_slice(&data, bincode::config::standard())
             .context("Failed to deserialize metadata")?;
 
         // Determine directory and basename for hnsw_rs load
@@ -290,7 +290,7 @@ impl<'a> VectorIndex for HnswIndex<'a> {
 }
 
 /// Metadata for HNSW index persistence
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, bincode::Encode, bincode::Decode)]
 struct IndexMetadata {
     id_map: HashMap<usize, String>,
     reverse_map: HashMap<String, usize>,

@@ -425,7 +425,7 @@ pub struct ApplyResult {
 mod tests {
     use super::*;
     use crate::config::IndexConfig;
-    use crate::storage::RocksDBStorage;
+    use crate::storage::MemoryStorage;
     use tempfile::TempDir;
     use tokio::time::sleep;
     use std::time::Duration;
@@ -434,7 +434,7 @@ mod tests {
         let storage_dir = TempDir::new().unwrap();
         let test_dir = TempDir::new().unwrap();
 
-        let storage = Arc::new(RocksDBStorage::new(storage_dir.path()).unwrap());
+        let storage = Arc::new(MemoryStorage::new());
         let config = IndexConfig {
             languages: vec!["rust".to_string()],
             ignore: vec!["target".to_string()],

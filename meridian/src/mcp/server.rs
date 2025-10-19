@@ -10,12 +10,12 @@ use crate::indexer::watcher::WatcherConfig;
 use crate::links::{LinksStorage, RocksDBLinksStorage};
 use crate::memory::MemorySystem;
 use crate::metrics::{MetricsCollector, MetricsStorage};
-use crate::progress::{ProgressManager, ProgressStorage};
+use crate::tasks::{TaskManager, TaskStorage};
 use crate::project::ProjectManager;
 use crate::global::registry::MonorepoContext as ProjectMonorepoContext;
 use crate::session::SessionManager;
 use crate::specs::SpecificationManager;
-use crate::storage::RocksDBStorage;
+use crate::storage::create_default_storage;
 use crate::types::{LLMAdapter, Query};
 use crate::IndexStats;
 use anyhow::Result;
@@ -37,7 +37,7 @@ enum ServerMode {
         session_manager: Arc<SessionManager>,
         doc_indexer: Arc<crate::docs::DocIndexer>,
         spec_manager: Arc<tokio::sync::RwLock<SpecificationManager>>,
-        progress_manager: Arc<tokio::sync::RwLock<ProgressManager>>,
+        progress_manager: Arc<tokio::sync::RwLock<TaskManager>>,
         links_storage: Arc<tokio::sync::RwLock<dyn LinksStorage>>,
         handlers: Option<Arc<ToolHandlers>>,
         // Global architecture support
@@ -109,13 +109,8 @@ impl MeridianServer {
         let mode_str = if global_client.is_some() { "global" } else { "legacy" };
         info!("Initializing Meridian server in {} mode", mode_str);
 
-        // Initialize storage
-        let storage = Arc::new(RocksDBStorage::new(&config.storage.path)?);
-
-        // Check schema version and run migrations if needed
-        info!("Checking schema version and running migrations if needed...");
-        crate::storage::check_and_migrate(storage.clone() as Arc<dyn crate::storage::Storage>)
-            .await?;
+        // Initialize storage (uses SurrealDB by default)
+        let storage = create_default_storage(&config.storage.path).await?;
 
         // Initialize memory system with HNSW index path
         let hnsw_index_path = config.storage.hnsw_index_path.clone()
@@ -288,8 +283,8 @@ impl MeridianServer {
         let session_manager = SessionManager::new(storage.clone(), session_config)?;
 
         // Initialize progress manager
-        let progress_storage = Arc::new(ProgressStorage::new(storage.clone()));
-        let progress_manager = ProgressManager::new(progress_storage);
+        let progress_storage = Arc::new(TaskStorage::new(storage.clone()));
+        let progress_manager = TaskManager::new(progress_storage);
 
         // Initialize links storage
         let links_storage = RocksDBLinksStorage::new(storage.clone());
@@ -1057,11 +1052,8 @@ mod tests {
         let (server, _temp) = create_test_server().await;
 
         // Create a dummy handler just for testing unknown method
-        // We use a minimal config with a different path to avoid RocksDB conflicts
-        let temp_handlers_dir = _temp.path().join("handlers");
-        std::fs::create_dir_all(&temp_handlers_dir).unwrap();
-
-        let storage = Arc::new(RocksDBStorage::new(&temp_handlers_dir).unwrap());
+        use crate::storage::MemoryStorage;
+        let storage = Arc::new(MemoryStorage::new()) as Arc<dyn Storage>;
         let memory_system = MemorySystem::new(storage.clone(), server.config.memory.clone()).unwrap();
         let context_manager = ContextManager::new(LLMAdapter::claude3());
         let indexer = CodeIndexer::new(storage.clone(), server.config.index.clone()).unwrap();
@@ -1076,8 +1068,8 @@ mod tests {
         let spec_manager = SpecificationManager::new(specs_path);
 
         // Initialize progress manager and links storage for tests
-        let progress_storage = Arc::new(ProgressStorage::new(storage.clone()));
-        let progress_manager = ProgressManager::new(progress_storage);
+        let progress_storage = Arc::new(TaskStorage::new(storage.clone()));
+        let progress_manager = TaskManager::new(progress_storage);
         let links_storage = RocksDBLinksStorage::new(storage.clone());
 
         let pattern_engine = Arc::new(crate::indexer::PatternSearchEngine::new().unwrap());

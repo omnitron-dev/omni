@@ -1,12 +1,10 @@
 use meridian::cache::{MultiLevelCache, MultiLevelCacheConfig};
-use meridian::storage::RocksDBStorage;
+use meridian::storage::MemoryStorage;
 use std::sync::Arc;
-use tempfile::TempDir;
 
 #[tokio::test]
 async fn test_multi_level_cache_basic() {
-    let temp_dir = TempDir::new().unwrap();
-    let storage = Arc::new(RocksDBStorage::new(temp_dir.path()).unwrap());
+    let storage = Arc::new(MemoryStorage::new());
 
     let config = MultiLevelCacheConfig {
         l1_capacity: 2,
@@ -32,8 +30,7 @@ async fn test_multi_level_cache_basic() {
 
 #[tokio::test]
 async fn test_cache_promotion() {
-    let temp_dir = TempDir::new().unwrap();
-    let storage = Arc::new(RocksDBStorage::new(temp_dir.path()).unwrap());
+    let storage = Arc::new(MemoryStorage::new());
 
     let config = MultiLevelCacheConfig {
         l1_capacity: 2,
@@ -69,8 +66,7 @@ async fn test_cache_promotion() {
 
 #[tokio::test]
 async fn test_cascade_to_l3() {
-    let temp_dir = TempDir::new().unwrap();
-    let storage = Arc::new(RocksDBStorage::new(temp_dir.path()).unwrap());
+    let storage = Arc::new(MemoryStorage::new());
 
     let config = MultiLevelCacheConfig {
         l1_capacity: 2,
@@ -104,8 +100,7 @@ async fn test_cascade_to_l3() {
 
 #[tokio::test]
 async fn test_cache_invalidation() {
-    let temp_dir = TempDir::new().unwrap();
-    let storage = Arc::new(RocksDBStorage::new(temp_dir.path()).unwrap());
+    let storage = Arc::new(MemoryStorage::new());
 
     let config = MultiLevelCacheConfig::default();
     let cache = MultiLevelCache::<String, String>::new(storage, config).unwrap();
@@ -123,8 +118,7 @@ async fn test_cache_invalidation() {
 
 #[tokio::test]
 async fn test_hit_rate_calculation() {
-    let temp_dir = TempDir::new().unwrap();
-    let storage = Arc::new(RocksDBStorage::new(temp_dir.path()).unwrap());
+    let storage = Arc::new(MemoryStorage::new());
 
     let config = MultiLevelCacheConfig::default();
     let cache = MultiLevelCache::<String, i32>::new(storage, config).unwrap();

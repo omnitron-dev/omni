@@ -3,9 +3,9 @@ use crate::context::ContextManager;
 use crate::indexer::CodeIndexer;
 use crate::links::{LinksStorage, RocksDBLinksStorage};
 use crate::memory::MemorySystem;
-use crate::progress::{ProgressManager, ProgressStorage};
+use crate::tasks::{TaskManager, TaskStorage};
 use crate::session::SessionManager;
-use crate::storage::{RocksDBStorage, Storage};
+use crate::storage::{Storage, create_default_storage};
 use crate::types::LLMAdapter;
 use anyhow::Result;
 use std::path::{Path, PathBuf};
@@ -23,7 +23,7 @@ pub struct ProjectContext {
     pub session_manager: Arc<SessionManager>,
     pub doc_indexer: Arc<crate::docs::DocIndexer>,
     pub spec_manager: Arc<tokio::sync::RwLock<crate::specs::SpecificationManager>>,
-    pub progress_manager: Arc<tokio::sync::RwLock<ProgressManager>>,
+    pub progress_manager: Arc<tokio::sync::RwLock<TaskManager>>,
     pub links_storage: Arc<tokio::sync::RwLock<dyn LinksStorage>>,
     pub last_access: SystemTime,
 }
@@ -36,8 +36,8 @@ impl ProjectContext {
         // Create database path based on project path hash
         let db_path = Self::get_db_path(&project_path)?;
 
-        // Initialize storage with project-specific path
-        let storage = Arc::new(RocksDBStorage::new(&db_path)?);
+        // Initialize storage with project-specific path (uses SurrealDB by default)
+        let storage = create_default_storage(&db_path).await?;
 
         // Initialize memory system
         let mut memory_system = MemorySystem::new(storage.clone(), config.memory.clone())?;
@@ -104,8 +104,8 @@ impl ProjectContext {
         let spec_manager = crate::specs::SpecificationManager::new(specs_path);
 
         // Initialize progress manager
-        let progress_storage = Arc::new(ProgressStorage::new(storage.clone()));
-        let progress_manager = ProgressManager::new(progress_storage);
+        let progress_storage = Arc::new(TaskStorage::new(storage.clone()));
+        let progress_manager = TaskManager::new(progress_storage);
 
         // Initialize links storage
         let links_storage = RocksDBLinksStorage::new(storage.clone());

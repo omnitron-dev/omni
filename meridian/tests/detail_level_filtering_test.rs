@@ -3,10 +3,9 @@
 
 use meridian::config::IndexConfig;
 use meridian::indexer::CodeIndexer;
-use meridian::storage::rocksdb_storage::RocksDBStorage;
+use meridian::storage::MemoryStorage;
 use meridian::types::{CodeSymbol, DetailLevel, Hash, Location, SymbolId, SymbolKind, SymbolMetadata, TokenCount};
 use std::sync::Arc;
-use tempfile::TempDir;
 
 /// Helper function to create a test symbol
 fn create_test_symbol(name: &str, doc: Option<String>, token_cost: u32) -> CodeSymbol {
@@ -35,8 +34,7 @@ fn create_test_symbol(name: &str, doc: Option<String>, token_cost: u32) -> CodeS
 #[tokio::test]
 async fn test_apply_detail_level_token_reduction() {
     // Create indexer
-    let temp_dir = TempDir::new().unwrap();
-    let storage = Arc::new(RocksDBStorage::new(temp_dir.path()).unwrap());
+    let storage = Arc::new(MemoryStorage::new());
     let config = IndexConfig::default();
     let indexer = CodeIndexer::new(storage, config).unwrap();
 
@@ -118,8 +116,7 @@ async fn test_apply_detail_level_token_reduction() {
 
 #[tokio::test]
 async fn test_detail_level_doc_comment_filtering() {
-    let temp_dir = TempDir::new().unwrap();
-    let storage = Arc::new(RocksDBStorage::new(temp_dir.path()).unwrap());
+    let storage = Arc::new(MemoryStorage::new());
     let config = IndexConfig::default();
     let indexer = CodeIndexer::new(storage, config).unwrap();
 
@@ -151,8 +148,7 @@ async fn test_detail_level_doc_comment_filtering() {
 
 #[tokio::test]
 async fn test_detail_level_empty_doc_comment() {
-    let temp_dir = TempDir::new().unwrap();
-    let storage = Arc::new(RocksDBStorage::new(temp_dir.path()).unwrap());
+    let storage = Arc::new(MemoryStorage::new());
     let config = IndexConfig::default();
     let indexer = CodeIndexer::new(storage, config).unwrap();
 
@@ -168,8 +164,7 @@ async fn test_detail_level_empty_doc_comment() {
 
 #[tokio::test]
 async fn test_detail_level_preserves_essential_fields() {
-    let temp_dir = TempDir::new().unwrap();
-    let storage = Arc::new(RocksDBStorage::new(temp_dir.path()).unwrap());
+    let storage = Arc::new(MemoryStorage::new());
     let config = IndexConfig::default();
     let indexer = CodeIndexer::new(storage, config).unwrap();
 

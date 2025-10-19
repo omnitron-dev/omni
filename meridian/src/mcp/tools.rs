@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use crate::mcp::graph_tools::get_graph_tools;
 
 /// MCP Tool definition (MCP spec 2025-06-18 compliant)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -17,7 +18,7 @@ pub struct Tool {
 
 /// Get all available tools for Meridian MCP server
 pub fn get_all_tools() -> Vec<Tool> {
-    vec![
+    let tools = vec![
         // === Memory Management Tools ===
         Tool {
             name: "memory.record_episode".to_string(),
@@ -844,16 +845,18 @@ pub fn get_all_tools() -> Vec<Tool> {
             output_schema: None,
             _meta: None,
         },
-    ]
-    .into_iter()
-    .chain(get_catalog_tools())
-    .chain(get_docs_generation_tools())
-    .chain(get_global_tools())
-    .chain(get_specification_tools())
-    .chain(get_progress_tools())
-    .chain(get_links_tools())
-    .chain(get_backup_tools())
-    .collect()
+    ];
+
+    tools.into_iter()
+        .chain(get_catalog_tools())
+        .chain(get_docs_generation_tools())
+        .chain(get_global_tools())
+        .chain(get_specification_tools())
+        .chain(get_task_tools())
+        .chain(get_links_tools())
+        .chain(get_backup_tools())
+        .chain(get_graph_tools())
+        .collect()
 }
 
 /// MCP Resource definition (MCP spec 2025-06-18 compliant)
@@ -1602,10 +1605,10 @@ fn get_specification_tools() -> Vec<Tool> {
 // ============================================================================
 
 /// Get progress management tools
-fn get_progress_tools() -> Vec<Tool> {
+fn get_task_tools() -> Vec<Tool> {
     vec![
         Tool {
-            name: "progress.create_task".to_string(),
+            name: "task.create_task".to_string(),
             description: Some("Create a new task for tracking progress".to_string()),
             input_schema: json!({
                 "type": "object",
@@ -1629,7 +1632,7 @@ fn get_progress_tools() -> Vec<Tool> {
             _meta: Some(json!({"category": "progress"})),
         },
         Tool {
-            name: "progress.update_task".to_string(),
+            name: "task.update_task".to_string(),
             description: Some("Update an existing task".to_string()),
             input_schema: json!({
                 "type": "object",
@@ -1651,7 +1654,7 @@ fn get_progress_tools() -> Vec<Tool> {
             _meta: Some(json!({"category": "progress"})),
         },
         Tool {
-            name: "progress.list_tasks".to_string(),
+            name: "task.list_tasks".to_string(),
             description: Some("List tasks with optional filtering".to_string()),
             input_schema: json!({
                 "type": "object",
@@ -1665,7 +1668,7 @@ fn get_progress_tools() -> Vec<Tool> {
             _meta: Some(json!({"category": "progress"})),
         },
         Tool {
-            name: "progress.get_task".to_string(),
+            name: "task.get_task".to_string(),
             description: Some("Get detailed information about a specific task".to_string()),
             input_schema: json!({
                 "type": "object",
@@ -1678,7 +1681,7 @@ fn get_progress_tools() -> Vec<Tool> {
             _meta: Some(json!({"category": "progress"})),
         },
         Tool {
-            name: "progress.delete_task".to_string(),
+            name: "task.delete_task".to_string(),
             description: Some("Delete a task".to_string()),
             input_schema: json!({
                 "type": "object",
@@ -1691,7 +1694,7 @@ fn get_progress_tools() -> Vec<Tool> {
             _meta: Some(json!({"category": "progress"})),
         },
         Tool {
-            name: "progress.get_progress".to_string(),
+            name: "task.get_progress".to_string(),
             description: Some("Get progress statistics for all tasks or a specific spec".to_string()),
             input_schema: json!({
                 "type": "object",
@@ -1703,7 +1706,7 @@ fn get_progress_tools() -> Vec<Tool> {
             _meta: Some(json!({"category": "progress"})),
         },
         Tool {
-            name: "progress.search_tasks".to_string(),
+            name: "task.search_tasks".to_string(),
             description: Some("Search tasks by title or ID".to_string()),
             input_schema: json!({
                 "type": "object",
@@ -1717,7 +1720,7 @@ fn get_progress_tools() -> Vec<Tool> {
             _meta: Some(json!({"category": "progress"})),
         },
         Tool {
-            name: "progress.link_to_spec".to_string(),
+            name: "task.link_to_spec".to_string(),
             description: Some("Link a task to a specification section".to_string()),
             input_schema: json!({
                 "type": "object",
@@ -1732,7 +1735,7 @@ fn get_progress_tools() -> Vec<Tool> {
             _meta: Some(json!({"category": "progress"})),
         },
         Tool {
-            name: "progress.get_history".to_string(),
+            name: "task.get_history".to_string(),
             description: Some("Get the complete history of status changes for a task".to_string()),
             input_schema: json!({
                 "type": "object",
@@ -1745,7 +1748,7 @@ fn get_progress_tools() -> Vec<Tool> {
             _meta: Some(json!({"category": "progress"})),
         },
         Tool {
-            name: "progress.mark_complete".to_string(),
+            name: "task.mark_complete".to_string(),
             description: Some("Mark a task as complete and automatically record an episode in the memory system".to_string()),
             input_schema: json!({
                 "type": "object",
@@ -1772,7 +1775,7 @@ fn get_progress_tools() -> Vec<Tool> {
             _meta: Some(json!({"category": "progress"})),
         },
         Tool {
-            name: "progress.add_dependency".to_string(),
+            name: "task.add_dependency".to_string(),
             description: Some("Add a dependency relationship between tasks. Returns error if this would create a circular dependency.".to_string()),
             input_schema: json!({
                 "type": "object",
@@ -1786,7 +1789,7 @@ fn get_progress_tools() -> Vec<Tool> {
             _meta: Some(json!({"category": "progress"})),
         },
         Tool {
-            name: "progress.remove_dependency".to_string(),
+            name: "task.remove_dependency".to_string(),
             description: Some("Remove a dependency relationship between tasks".to_string()),
             input_schema: json!({
                 "type": "object",
@@ -1800,7 +1803,7 @@ fn get_progress_tools() -> Vec<Tool> {
             _meta: Some(json!({"category": "progress"})),
         },
         Tool {
-            name: "progress.get_dependencies".to_string(),
+            name: "task.get_dependencies".to_string(),
             description: Some("Get all tasks that this task depends on, including which dependencies are unmet".to_string()),
             input_schema: json!({
                 "type": "object",
@@ -1813,7 +1816,7 @@ fn get_progress_tools() -> Vec<Tool> {
             _meta: Some(json!({"category": "progress"})),
         },
         Tool {
-            name: "progress.get_dependents".to_string(),
+            name: "task.get_dependents".to_string(),
             description: Some("Get all tasks that depend on this task (tasks blocked by this task)".to_string()),
             input_schema: json!({
                 "type": "object",
@@ -1826,7 +1829,7 @@ fn get_progress_tools() -> Vec<Tool> {
             _meta: Some(json!({"category": "progress"})),
         },
         Tool {
-            name: "progress.can_start_task".to_string(),
+            name: "task.can_start_task".to_string(),
             description: Some("Check if a task can be started based on its dependencies and current status. Returns details about blockers if any.".to_string()),
             input_schema: json!({
                 "type": "object",

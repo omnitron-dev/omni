@@ -7,6 +7,7 @@ pub mod transport;
 pub mod global_client;
 pub mod local_cache;
 pub mod thin_client;
+pub mod graph_tools;
 
 pub use handlers::ToolHandlers;
 pub use http_transport::{HttpTransport, HttpTransportState, McpHttpRequest, SseNotification};

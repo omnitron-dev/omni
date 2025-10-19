@@ -29,7 +29,7 @@ impl Default for PoolConfig {
 
 /// Database pool wrapping existing storage
 pub struct DatabasePool {
-    storage: Arc<crate::storage::RocksDBStorage>,
+    storage: Arc<dyn crate::storage::Storage>,
     stats: Arc<RwLock<PoolStats>>,
 }
 
@@ -43,7 +43,7 @@ pub struct PoolStats {
 
 impl DatabasePool {
     /// Create a new database pool from existing storage
-    pub fn from_storage(storage: Arc<crate::storage::RocksDBStorage>) -> Self {
+    pub fn from_storage(storage: Arc<dyn crate::storage::Storage>) -> Self {
         Self {
             storage,
             stats: Arc::new(RwLock::new(PoolStats::default())),
@@ -51,7 +51,7 @@ impl DatabasePool {
     }
 
     /// Get reference to the underlying storage
-    pub fn storage(&self) -> &Arc<crate::storage::RocksDBStorage> {
+    pub fn storage(&self) -> &Arc<dyn crate::storage::Storage> {
         &self.storage
     }
 
@@ -90,10 +90,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_pool_creation() {
-        let temp_dir = TempDir::new().unwrap();
-        let storage = Arc::new(
-            crate::storage::RocksDBStorage::new(temp_dir.path()).unwrap()
-        );
+        let storage = Arc::new(crate::storage::MemoryStorage::new()) as Arc<dyn crate::storage::Storage>;
 
         let pool = DatabasePool::from_storage(storage);
 
@@ -104,10 +101,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_request_tracking() {
-        let temp_dir = TempDir::new().unwrap();
-        let storage = Arc::new(
-            crate::storage::RocksDBStorage::new(temp_dir.path()).unwrap()
-        );
+        let storage = Arc::new(crate::storage::MemoryStorage::new()) as Arc<dyn crate::storage::Storage>;
 
         let pool = DatabasePool::from_storage(storage);
 

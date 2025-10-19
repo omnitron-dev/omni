@@ -8,11 +8,10 @@
 //! - 100K episodes: 5s → 10ms (500x faster)
 
 use meridian::memory::episodic::EpisodicMemory;
-use meridian::storage::rocksdb_storage::RocksDBStorage;
+use meridian::storage::MemoryStorage;
 use meridian::types::{ContextSnapshot, EpisodeId, Outcome, TaskEpisode, TokenCount};
 use std::sync::Arc;
 use std::time::Instant;
-use tempfile::TempDir;
 use chrono::Utc;
 
 /// Create a test episode
@@ -58,10 +57,8 @@ async fn main() -> anyhow::Result<()> {
         println!("📊 Testing with {} episodes...", size);
 
         // Create storage and episodic memory
-        let temp_dir = TempDir::new()?;
-        let storage = Arc::new(RocksDBStorage::new(temp_dir.path())?);
-        let hnsw_path = temp_dir.path().join("hnsw_index");
-        let mut memory = EpisodicMemory::with_index_path(storage, 30, Some(hnsw_path))?;
+        let storage = Arc::new(MemoryStorage::new());
+        let mut memory = EpisodicMemory::new(storage, 30)?;
 
         // Populate episodes
         println!("   Indexing {} episodes...", size);

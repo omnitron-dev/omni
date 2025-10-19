@@ -394,6 +394,7 @@ async fn test_episodic_memory_persistence() {
     {
         let mut episodic = EpisodicMemory::new(storage.clone(), 30).unwrap();
         let episode = TaskEpisode {
+            schema_version: 1,
             id: episode_id.clone(),
             timestamp: chrono::Utc::now(),
             task_description: task.to_string(),

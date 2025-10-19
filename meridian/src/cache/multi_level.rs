@@ -347,13 +347,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::RocksDBStorage;
-    use tempfile::TempDir;
+    use crate::storage::MemoryStorage;
 
     #[tokio::test]
     async fn test_multi_level_cache_basic() {
-        let temp_dir = TempDir::new().unwrap();
-        let storage = Arc::new(RocksDBStorage::new(temp_dir.path()).unwrap());
+        let storage = Arc::new(MemoryStorage::new());
 
         let config = MultiLevelCacheConfig {
             l1_capacity: 2,
@@ -378,8 +376,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_cache_promotion() {
-        let temp_dir = TempDir::new().unwrap();
-        let storage = Arc::new(RocksDBStorage::new(temp_dir.path()).unwrap());
+        let storage = Arc::new(MemoryStorage::new());
 
         let config = MultiLevelCacheConfig {
             l1_capacity: 2,
@@ -410,8 +407,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_cascade_to_l3() {
-        let temp_dir = TempDir::new().unwrap();
-        let storage = Arc::new(RocksDBStorage::new(temp_dir.path()).unwrap());
+        let storage = Arc::new(MemoryStorage::new());
 
         let config = MultiLevelCacheConfig {
             l1_capacity: 2,
@@ -442,8 +438,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_cache_invalidation() {
-        let temp_dir = TempDir::new().unwrap();
-        let storage = Arc::new(RocksDBStorage::new(temp_dir.path()).unwrap());
+        let storage = Arc::new(MemoryStorage::new());
 
         let config = MultiLevelCacheConfig::default();
         let cache = MultiLevelCache::<String, String>::new(storage, config).unwrap();
@@ -461,8 +456,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_hit_rate_calculation() {
-        let temp_dir = TempDir::new().unwrap();
-        let storage = Arc::new(RocksDBStorage::new(temp_dir.path()).unwrap());
+        let storage = Arc::new(MemoryStorage::new());
 
         let config = MultiLevelCacheConfig::default();
         let cache = MultiLevelCache::<String, i32>::new(storage, config).unwrap();

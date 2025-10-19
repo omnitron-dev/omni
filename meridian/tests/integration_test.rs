@@ -20,11 +20,10 @@ async fn test_config_load() {
 
 #[tokio::test]
 async fn test_storage_operations() {
-    use meridian::storage::{RocksDBStorage, Storage};
+    use meridian::storage::{MemoryStorage, Storage};
     use std::sync::Arc;
 
-    let temp_dir = TempDir::new().unwrap();
-    let storage = Arc::new(RocksDBStorage::new(temp_dir.path()).unwrap());
+    let storage = Arc::new(MemoryStorage::new());
 
     // Test put and get
     storage.put(b"test_key", b"test_value").await.unwrap();

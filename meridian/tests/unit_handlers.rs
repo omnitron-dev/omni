@@ -8,16 +8,14 @@ use meridian::mcp::handlers::ToolHandlers;
 use meridian::memory::MemorySystem;
 use meridian::session::SessionManager;
 use meridian::specs::SpecificationManager;
-use meridian::storage::rocksdb_storage::RocksDBStorage;
+use meridian::storage::MemoryStorage;
 use serde_json::json;
 use std::sync::Arc;
-use tempfile::TempDir;
 use tokio::sync::RwLock;
 
 /// Create test environment with all dependencies
-async fn create_test_environment() -> (ToolHandlers, TempDir) {
-    let temp_dir = TempDir::new().unwrap();
-    let storage = Arc::new(RocksDBStorage::new(temp_dir.path()).unwrap());
+async fn create_test_environment() -> ToolHandlers {
+    let storage = Arc::new(MemoryStorage::new());
 
     // Create memory system with config
     let memory_config = MemoryConfig {
@@ -45,14 +43,14 @@ async fn create_test_environment() -> (ToolHandlers, TempDir) {
     let doc_indexer = Arc::new(DocIndexer::new());
 
     // Create spec manager
-    let specs_path = temp_dir.path().join("specs");
+    let specs_path = std::env::temp_dir().join("meridian_test_specs");
     std::fs::create_dir_all(&specs_path).unwrap();
     let spec_manager = Arc::new(RwLock::new(SpecificationManager::new(specs_path)));
 
     // Create progress manager
-    let progress_storage = Arc::new(meridian::progress::ProgressStorage::new(storage.clone()));
+    let progress_storage = Arc::new(meridian::tasks::TaskStorage::new(storage.clone()));
     let progress_manager = Arc::new(RwLock::new(
-        meridian::progress::ProgressManager::new(progress_storage)
+        meridian::tasks::TaskManager::new(progress_storage)
     ));
 
     // Create links storage
@@ -75,12 +73,12 @@ async fn create_test_environment() -> (ToolHandlers, TempDir) {
         pattern_engine,
     );
 
-    (handlers, temp_dir)
+    handlers
 }
 
 #[tokio::test]
 async fn test_train_on_success_creates_episode() {
-    let (handlers, _temp) = create_test_environment().await;
+    let handlers = create_test_environment().await;
 
     let args = json!({
         "task": {
@@ -111,7 +109,7 @@ async fn test_train_on_success_creates_episode() {
 
 #[tokio::test]
 async fn test_train_on_success_learns_from_similar_episodes() {
-    let (handlers, _temp) = create_test_environment().await;
+    let handlers = create_test_environment().await;
 
     // Train on first episode
     let args1 = json!({
@@ -152,7 +150,7 @@ async fn test_train_on_success_learns_from_similar_episodes() {
 
 #[tokio::test]
 async fn test_predict_next_action_with_procedure() {
-    let (handlers, _temp) = create_test_environment().await;
+    let handlers = create_test_environment().await;
 
     // First, train on successful episodes to build a procedure
     let training_args = json!({
@@ -211,7 +209,7 @@ async fn test_predict_next_action_with_procedure() {
 
 #[tokio::test]
 async fn test_predict_next_action_with_completed_steps() {
-    let (handlers, _temp) = create_test_environment().await;
+    let handlers = create_test_environment().await;
 
     // Train procedure
     let training_args = json!({
@@ -265,7 +263,7 @@ async fn test_predict_next_action_with_completed_steps() {
 
 #[tokio::test]
 async fn test_predict_next_action_without_procedure() {
-    let (handlers, _temp) = create_test_environment().await;
+    let handlers = create_test_environment().await;
 
     // Train on a unique task (won't create procedure with just 1 episode)
     let training_args = json!({
@@ -299,7 +297,7 @@ async fn test_predict_next_action_without_procedure() {
 
 #[tokio::test]
 async fn test_attention_retrieve_categorizes_symbols() {
-    let (handlers, _temp) = create_test_environment().await;
+    let handlers = create_test_environment().await;
 
     let args = json!({
         "attention_pattern": {
@@ -329,7 +327,7 @@ async fn test_attention_retrieve_categorizes_symbols() {
 
 #[tokio::test]
 async fn test_attention_retrieve_respects_budget() {
-    let (handlers, _temp) = create_test_environment().await;
+    let handlers = create_test_environment().await;
 
     let args = json!({
         "attention_pattern": {
@@ -350,7 +348,7 @@ async fn test_attention_retrieve_respects_budget() {
 
 #[tokio::test]
 async fn test_attention_retrieve_boosts_focused_symbols() {
-    let (handlers, _temp) = create_test_environment().await;
+    let handlers = create_test_environment().await;
 
     // Retrieve without focused symbols
     let args1 = json!({
@@ -381,7 +379,7 @@ async fn test_attention_retrieve_boosts_focused_symbols() {
 
 #[tokio::test]
 async fn test_full_learning_cycle() {
-    let (handlers, _temp) = create_test_environment().await;
+    let handlers = create_test_environment().await;
 
     // 1. Train on multiple similar tasks
     let tasks = vec![
@@ -462,7 +460,7 @@ async fn test_full_learning_cycle() {
 
 #[tokio::test]
 async fn test_confidence_increases_with_more_data() {
-    let (handlers, _temp) = create_test_environment().await;
+    let handlers = create_test_environment().await;
 
     // Train first episode
     let task1 = json!({
@@ -519,7 +517,7 @@ async fn test_confidence_increases_with_more_data() {
 
 #[tokio::test]
 async fn test_compress_remove_comments() {
-    let (handlers, _temp) = create_test_environment().await;
+    let handlers = create_test_environment().await;
 
     let code = r#"
 // This is a comment
@@ -561,7 +559,7 @@ fn main() {
 
 #[tokio::test]
 async fn test_compress_remove_whitespace() {
-    let (handlers, _temp) = create_test_environment().await;
+    let handlers = create_test_environment().await;
 
     let code = r#"
 fn     main()    {
@@ -593,7 +591,7 @@ fn     main()    {
 
 #[tokio::test]
 async fn test_compress_skeleton() {
-    let (handlers, _temp) = create_test_environment().await;
+    let handlers = create_test_environment().await;
 
     let code = r#"
 pub fn add(a: i32, b: i32) -> i32 {
@@ -635,7 +633,7 @@ impl Point {
 
 #[tokio::test]
 async fn test_compress_summary() {
-    let (handlers, _temp) = create_test_environment().await;
+    let handlers = create_test_environment().await;
 
     let code = r#"
 struct Point { x: i32, y: i32 }
@@ -670,7 +668,7 @@ fn subtract(a: i32, b: i32) -> i32 { a - b }
 
 #[tokio::test]
 async fn test_compress_extract_key_points() {
-    let (handlers, _temp) = create_test_environment().await;
+    let handlers = create_test_environment().await;
 
     let code = r#"
 // Comment
@@ -721,7 +719,7 @@ trait Processor {
 
 #[tokio::test]
 async fn test_compress_tree_shaking() {
-    let (handlers, _temp) = create_test_environment().await;
+    let handlers = create_test_environment().await;
 
     let code = r#"
 fn main() {
@@ -766,7 +764,7 @@ fn main() {
 
 #[tokio::test]
 async fn test_compress_hybrid() {
-    let (handlers, _temp) = create_test_environment().await;
+    let handlers = create_test_environment().await;
 
     let code = r#"
 // Comment to remove
@@ -808,7 +806,7 @@ pub fn helper(a: i32, b: i32) -> i32 {
 
 #[tokio::test]
 async fn test_compress_ultra_compact() {
-    let (handlers, _temp) = create_test_environment().await;
+    let handlers = create_test_environment().await;
 
     let code = r#"
 struct Point { x: i32, y: i32 }
@@ -844,7 +842,7 @@ impl Point {
 
 #[tokio::test]
 async fn test_compress_invalid_strategy() {
-    let (handlers, _temp) = create_test_environment().await;
+    let handlers = create_test_environment().await;
 
     let args = json!({
         "content": "fn main() {}",
@@ -860,7 +858,7 @@ async fn test_compress_invalid_strategy() {
 
 #[tokio::test]
 async fn test_compress_empty_content() {
-    let (handlers, _temp) = create_test_environment().await;
+    let handlers = create_test_environment().await;
 
     let args = json!({
         "content": "",
@@ -889,7 +887,7 @@ async fn test_compress_empty_content() {
 
 #[tokio::test]
 async fn test_compress_quality_score() {
-    let (handlers, _temp) = create_test_environment().await;
+    let handlers = create_test_environment().await;
 
     let code = "pub fn test() { let x = 5; }";
 
@@ -921,7 +919,7 @@ async fn test_compress_quality_score() {
 
 #[tokio::test]
 async fn test_compress_token_counts() {
-    let (handlers, _temp) = create_test_environment().await;
+    let handlers = create_test_environment().await;
 
     let code = "fn main() { println!(\"Hello, world!\"); }";
 
@@ -949,7 +947,7 @@ async fn test_compress_token_counts() {
 
 #[tokio::test]
 async fn test_compress_default_target_ratio() {
-    let (handlers, _temp) = create_test_environment().await;
+    let handlers = create_test_environment().await;
 
     let code = "fn main() { let x = 5; println!(\"Hello\"); }".repeat(10);
 
@@ -969,7 +967,7 @@ async fn test_compress_default_target_ratio() {
 
 #[tokio::test]
 async fn test_compress_preserves_structure() {
-    let (handlers, _temp) = create_test_environment().await;
+    let handlers = create_test_environment().await;
 
     let code = r#"
 pub struct Config {

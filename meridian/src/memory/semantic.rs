@@ -3,6 +3,8 @@ use crate::types::{ArchitectureKnowledge, CodePattern, CodingConvention, Outcome
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use surrealdb::engine::local::Db;
+use surrealdb::Surreal;
 
 /// Symbol relationship in the knowledge graph
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -103,6 +105,8 @@ pub struct SemanticMemory {
     conventions: Vec<CodingConvention>,
     knowledge_graph: KnowledgeGraph,
     consolidation_threshold: f32,
+    /// Optional SurrealDB connection for graph operations
+    surrealdb: Option<Arc<Surreal<Db>>>,
 }
 
 impl SemanticMemory {
@@ -114,6 +118,20 @@ impl SemanticMemory {
             conventions: Vec::new(),
             knowledge_graph: KnowledgeGraph::new(),
             consolidation_threshold: 0.8,
+            surrealdb: None,
+        })
+    }
+
+    /// Create with SurrealDB support for enhanced graph operations
+    pub fn with_surrealdb(storage: Arc<dyn Storage>, db: Arc<Surreal<Db>>) -> Result<Self> {
+        Ok(Self {
+            storage,
+            patterns: Vec::new(),
+            architectures: Vec::new(),
+            conventions: Vec::new(),
+            knowledge_graph: KnowledgeGraph::new(),
+            consolidation_threshold: 0.8,
+            surrealdb: Some(db),
         })
     }
 
@@ -358,17 +376,139 @@ impl SemanticMemory {
 
     /// Add a relationship to the knowledge graph
     pub async fn add_relationship(&mut self, rel: SymbolRelationship) -> Result<()> {
+        // Store in primary storage for backward compatibility
         let key = format!("relationship:{}:{}", rel.from.0, rel.to.0);
         let value = serialize(&rel)?;
         self.storage.put(key.as_bytes(), &value).await?;
 
-        self.knowledge_graph.add_relationship(rel);
+        self.knowledge_graph.add_relationship(rel.clone());
+
+        // If SurrealDB is available, create graph edge
+        if let Some(ref db) = self.surrealdb {
+            let edge_type = match rel.relationship_type {
+                RelationshipType::Imports => "depends_on",
+                RelationshipType::Calls => "calls",
+                RelationshipType::Implements => "implements_spec",
+                RelationshipType::Extends => "depends_on",
+                RelationshipType::Uses => "depends_on",
+                RelationshipType::DependsOn => "depends_on",
+            };
+
+            let query = format!(
+                r#"
+                RELATE $from->{}->$to
+                SET
+                    dependency_type = $dep_type,
+                    strength = $strength,
+                    frequency = $frequency,
+                    created_at = time::now()
+                "#,
+                edge_type
+            );
+
+            let from_record = ("code_symbol", rel.from.0.clone());
+            let to_record = ("code_symbol", rel.to.0.clone());
+            let dep_type = format!("{:?}", rel.relationship_type);
+
+            let _ = db
+                .query(&query)
+                .bind(("from", from_record))
+                .bind(("to", to_record))
+                .bind(("dep_type", dep_type))
+                .bind(("strength", rel.strength))
+                .bind(("frequency", rel.frequency))
+                .await;
+
+            tracing::debug!(
+                "Created graph edge: {} -[{}]-> {}",
+                rel.from.0,
+                edge_type,
+                rel.to.0
+            );
+        }
+
         Ok(())
     }
 
-    /// Find related symbols
+    /// Find related symbols using SurrealDB graph traversal if available
+    pub async fn find_related_symbols_async(&self, symbol: &SymbolId) -> Result<Vec<SymbolRelationship>> {
+        // Try SurrealDB graph traversal first
+        if let Some(ref db) = self.surrealdb {
+            let symbol_id = symbol.0.clone();
+            if let Ok(results) = self.find_related_surreal(db, &symbol_id).await {
+                if !results.is_empty() {
+                    return Ok(results);
+                }
+            }
+        }
+
+        // Fallback to in-memory graph
+        Ok(self
+            .knowledge_graph
+            .get_related(symbol)
+            .into_iter()
+            .cloned()
+            .collect())
+    }
+
+    /// Find related symbols (synchronous version for backward compatibility)
     pub fn find_related_symbols(&self, symbol: &SymbolId) -> Vec<&SymbolRelationship> {
         self.knowledge_graph.get_related(symbol)
+    }
+
+    /// Find related symbols using SurrealDB
+    async fn find_related_surreal(
+        &self,
+        db: &Surreal<Db>,
+        symbol_id: &str,
+    ) -> Result<Vec<SymbolRelationship>> {
+        use serde::Deserialize;
+
+        #[derive(Deserialize)]
+        struct RelationResult {
+            out: String,
+            dependency_type: Option<String>,
+            strength: Option<f32>,
+            frequency: Option<u32>,
+        }
+
+        let query = r#"
+            SELECT out, dependency_type, strength, frequency
+            FROM depends_on, calls
+            WHERE in = $symbol_id
+        "#;
+
+        let symbol_record = ("code_symbol", symbol_id.to_string());
+        let mut response = db
+            .query(query)
+            .bind(("symbol_id", symbol_record))
+            .await?;
+
+        let results: Vec<RelationResult> = response.take(0).unwrap_or_default();
+
+        let from_id = SymbolId(symbol_id.to_string());
+        let relationships = results
+            .into_iter()
+            .map(|r| {
+                let rel_type = match r.dependency_type.as_deref() {
+                    Some("Calls") => RelationshipType::Calls,
+                    Some("Implements") => RelationshipType::Implements,
+                    Some("Extends") => RelationshipType::Extends,
+                    Some("Uses") => RelationshipType::Uses,
+                    _ => RelationshipType::DependsOn,
+                };
+
+                SymbolRelationship {
+                    from: from_id.clone(),
+                    to: SymbolId(r.out),
+                    relationship_type: rel_type,
+                    strength: r.strength.unwrap_or(0.5),
+                    frequency: r.frequency.unwrap_or(1),
+                }
+            })
+            .collect();
+
+        Ok(relationships)
     }
 
     /// Find symbols that depend on this symbol
@@ -376,7 +516,7 @@ impl SemanticMemory {
         self.knowledge_graph.get_dependents(symbol)
     }
 
-    /// Find connection path between two symbols
+    /// Find connection path between two symbols (synchronous version)
     pub fn find_connection_path(
         &self,
         from: &SymbolId,
@@ -384,6 +524,74 @@ impl SemanticMemory {
         max_depth: usize,
     ) -> Option<Vec<SymbolId>> {
         self.knowledge_graph.find_path(from, to, max_depth)
+    }
+
+    /// Find connection path using SurrealDB graph if available (async version)
+    pub async fn find_connection_path_async(
+        &self,
+        from: &SymbolId,
+        to: &SymbolId,
+        max_depth: usize,
+    ) -> Result<Option<Vec<SymbolId>>> {
+        // Try SurrealDB graph traversal first
+        if let Some(ref db) = self.surrealdb {
+            let from_id = from.0.clone();
+            let to_id = to.0.clone();
+            if let Ok(Some(path)) = self.find_path_surreal(db, &from_id, &to_id, max_depth).await {
+                return Ok(Some(path));
+            }
+        }
+
+        // Fallback to in-memory graph
+        Ok(self.knowledge_graph.find_path(from, to, max_depth))
+    }
+
+    /// Find path using SurrealDB recursive graph traversal
+    async fn find_path_surreal(
+        &self,
+        db: &Surreal<Db>,
+        from_id: &str,
+        to_id: &str,
+        max_depth: usize,
+    ) -> Result<Option<Vec<SymbolId>>> {
+        use serde::Deserialize;
+
+        #[derive(Deserialize)]
+        struct PathNode {
+            id: String,
+        }
+
+        // Use SurrealDB's recursive graph traversal
+        let query = format!(
+            r#"
+            SELECT ->depends_on->code_symbol.id AS id
+            FROM code_symbol:$from
+            WHERE id = $to
+            RECURSIVE {}
+            "#,
+            max_depth
+        );
+
+        let from_owned = from_id.to_string();
+        let to_owned = to_id.to_string();
+
+        let mut response = db
+            .query(&query)
+            .bind(("from", from_owned.clone()))
+            .bind(("to", to_owned))
+            .await?;
+
+        let nodes: Vec<PathNode> = response.take(0).unwrap_or_default();
+
+        if nodes.is_empty() {
+            return Ok(None);
+        }
+
+        let path = std::iter::once(SymbolId(from_owned))
+            .chain(nodes.into_iter().map(|n| SymbolId(n.id)))
+            .collect();
+
+        Ok(Some(path))
     }
 
     /// Get all patterns
@@ -433,19 +641,78 @@ impl SemanticMemory {
         self.conventions.push(conv);
         Ok(())
     }
+
+    /// Add general knowledge to semantic memory
+    pub async fn add_knowledge(&mut self, title: String, content: String) -> Result<()> {
+        let arch = ArchitectureKnowledge {
+            pattern_type: title,
+            description: content,
+            components: Vec::new(),
+            relationships: Vec::new(),
+        };
+        self.add_architecture(arch).await
+    }
+
+    /// Get count of semantic knowledge items
+    pub fn knowledge_count(&self) -> usize {
+        self.patterns.len() + self.architectures.len() + self.conventions.len()
+    }
+
+    /// Find relevant semantic knowledge for a query
+    pub async fn find_relevant(&self, query: &str, limit: usize) -> Vec<SemanticItem> {
+        let query_lower = query.to_lowercase();
+        let mut items = Vec::new();
+
+        // Search patterns
+        for pattern in &self.patterns {
+            if pattern.description.to_lowercase().contains(&query_lower)
+                || pattern.name.to_lowercase().contains(&query_lower)
+            {
+                items.push(SemanticItem {
+                    id: pattern.id.clone(),
+                    content: format!("{}: {}", pattern.name, pattern.description),
+                    created_at: chrono::Utc::now(), // Would ideally track this
+                });
+            }
+        }
+
+        // Search architectures
+        for arch in &self.architectures {
+            if arch.description.to_lowercase().contains(&query_lower)
+                || arch.pattern_type.to_lowercase().contains(&query_lower)
+            {
+                items.push(SemanticItem {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    content: format!("{}: {}", arch.pattern_type, arch.description),
+                    created_at: chrono::Utc::now(),
+                });
+            }
+        }
+
+        items.truncate(limit);
+        items
+    }
+}
+
+/// Item returned from semantic memory search
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SemanticItem {
+    pub id: String,
+    pub content: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::rocksdb_storage::RocksDBStorage;
+    use crate::storage::MemoryStorage;
     use crate::types::{EpisodeId, TokenCount};
     use chrono::Utc;
     use tempfile::TempDir;
 
     async fn create_test_storage() -> (Arc<dyn Storage>, TempDir) {
         let temp_dir = TempDir::new().unwrap();
-        let storage = RocksDBStorage::new(temp_dir.path()).unwrap();
+        let storage = MemoryStorage::new();
         (Arc::new(storage), temp_dir)
     }
 

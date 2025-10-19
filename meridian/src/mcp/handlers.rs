@@ -5,7 +5,7 @@ use crate::indexer::{CodeIndexer, DeltaIndexer, Indexer};
 use crate::links::LinksStorage;
 use crate::memory::MemorySystem;
 use crate::metrics::MetricsCollector;
-use crate::progress::ProgressManager;
+use crate::tasks::TaskManager;
 use crate::session::{SessionAction, SessionManager};
 use crate::specs::SpecificationManager;
 use crate::types::*;
@@ -27,12 +27,13 @@ pub struct ToolHandlers {
     doc_indexer: Arc<DocIndexer>,
     spec_manager: Arc<tokio::sync::RwLock<SpecificationManager>>,
     project_registry: Option<Arc<crate::global::registry::ProjectRegistryManager>>,
-    progress_manager: Arc<tokio::sync::RwLock<ProgressManager>>,
+    progress_manager: Arc<tokio::sync::RwLock<TaskManager>>,
     links_storage: Arc<tokio::sync::RwLock<dyn LinksStorage>>,
     pattern_engine: Arc<crate::indexer::PatternSearchEngine>,
     metrics_collector: Option<Arc<MetricsCollector>>,
     start_time: std::time::Instant,
     backup_manager: Option<Arc<tokio::sync::RwLock<crate::storage::BackupManager>>>,
+    graph_analyzer: Option<Arc<crate::graph::CodeGraphAnalyzer>>,
 }
 
 impl ToolHandlers {
@@ -43,7 +44,7 @@ impl ToolHandlers {
         session_manager: Arc<SessionManager>,
         doc_indexer: Arc<DocIndexer>,
         spec_manager: Arc<tokio::sync::RwLock<SpecificationManager>>,
-        progress_manager: Arc<tokio::sync::RwLock<ProgressManager>>,
+        progress_manager: Arc<tokio::sync::RwLock<TaskManager>>,
         links_storage: Arc<tokio::sync::RwLock<dyn LinksStorage>>,
         pattern_engine: Arc<crate::indexer::PatternSearchEngine>,
     ) -> Self {
@@ -62,6 +63,7 @@ impl ToolHandlers {
             metrics_collector: None,
             start_time: std::time::Instant::now(),
             backup_manager: None,
+            graph_analyzer: None,
         }
     }
 
@@ -82,6 +84,11 @@ impl ToolHandlers {
         self.backup_manager = Some(backup_manager);
     }
 
+    /// Set the graph analyzer
+    pub fn set_graph_analyzer(&mut self, graph_analyzer: Arc<crate::graph::CodeGraphAnalyzer>) {
+        self.graph_analyzer = Some(graph_analyzer);
+    }
+
     /// Create handlers with project registry for cross-monorepo support
     pub fn new_with_registry(
         memory_system: Arc<tokio::sync::RwLock<MemorySystem>>,
@@ -91,7 +98,7 @@ impl ToolHandlers {
         doc_indexer: Arc<DocIndexer>,
         spec_manager: Arc<tokio::sync::RwLock<SpecificationManager>>,
         project_registry: Arc<crate::global::registry::ProjectRegistryManager>,
-        progress_manager: Arc<tokio::sync::RwLock<ProgressManager>>,
+        progress_manager: Arc<tokio::sync::RwLock<TaskManager>>,
         links_storage: Arc<tokio::sync::RwLock<dyn LinksStorage>>,
         pattern_engine: Arc<crate::indexer::PatternSearchEngine>,
     ) -> Self {
@@ -110,6 +117,7 @@ impl ToolHandlers {
             metrics_collector: None,
             start_time: std::time::Instant::now(),
             backup_manager: None,
+            graph_analyzer: None,
         }
     }
 
@@ -251,23 +259,23 @@ impl ToolHandlers {
             "external.find_usages" => self.handle_external_find_usages(arguments).await,
 
             // Progress Management Tools (Phase 2)
-            "progress.create_task" => self.handle_progress_create_task(arguments).await,
-            "progress.update_task" => self.handle_progress_update_task(arguments).await,
-            "progress.list_tasks" => self.handle_progress_list_tasks(arguments).await,
-            "progress.get_task" => self.handle_progress_get_task(arguments).await,
-            "progress.delete_task" => self.handle_progress_delete_task(arguments).await,
-            "progress.get_progress" => self.handle_progress_get_progress(arguments).await,
-            "progress.search_tasks" => self.handle_progress_search_tasks(arguments).await,
-            "progress.link_to_spec" => self.handle_progress_link_to_spec(arguments).await,
-            "progress.get_history" => self.handle_progress_get_history(arguments).await,
-            "progress.mark_complete" => self.handle_progress_mark_complete(arguments).await,
-            "progress.check_timeouts" => self.handle_progress_check_timeouts(arguments).await,
-            "progress.recover_orphaned" => self.handle_progress_recover_orphaned(arguments).await,
-            "progress.add_dependency" => self.handle_progress_add_dependency(arguments).await,
-            "progress.remove_dependency" => self.handle_progress_remove_dependency(arguments).await,
-            "progress.get_dependencies" => self.handle_progress_get_dependencies(arguments).await,
-            "progress.get_dependents" => self.handle_progress_get_dependents(arguments).await,
-            "progress.can_start_task" => self.handle_progress_can_start_task(arguments).await,
+            "task.create_task" => self.handle_task_create_task(arguments).await,
+            "task.update_task" => self.handle_task_update_task(arguments).await,
+            "task.list_tasks" => self.handle_task_list_tasks(arguments).await,
+            "task.get_task" => self.handle_task_get_task(arguments).await,
+            "task.delete_task" => self.handle_task_delete_task(arguments).await,
+            "task.get_progress" => self.handle_task_get_progress(arguments).await,
+            "task.search_tasks" => self.handle_task_search_tasks(arguments).await,
+            "task.link_to_spec" => self.handle_task_link_to_spec(arguments).await,
+            "task.get_history" => self.handle_task_get_history(arguments).await,
+            "task.mark_complete" => self.handle_task_mark_complete(arguments).await,
+            "task.check_timeouts" => self.handle_task_check_timeouts(arguments).await,
+            "task.recover_orphaned" => self.handle_task_recover_orphaned(arguments).await,
+            "task.add_dependency" => self.handle_task_add_dependency(arguments).await,
+            "task.remove_dependency" => self.handle_task_remove_dependency(arguments).await,
+            "task.get_dependencies" => self.handle_task_get_dependencies(arguments).await,
+            "task.get_dependents" => self.handle_task_get_dependents(arguments).await,
+            "task.can_start_task" => self.handle_task_can_start_task(arguments).await,
 
             // Semantic Links Tools (Phase 2)
             "links.find_implementation" => self.handle_links_find_implementation(arguments).await,
@@ -312,6 +320,20 @@ impl ToolHandlers {
             "backup.get_stats" => self.handle_backup_get_stats(arguments).await,
             "backup.create_scheduled" => self.handle_backup_create_scheduled(arguments).await,
             "backup.create_pre_migration" => self.handle_backup_create_pre_migration(arguments).await,
+
+            // Graph Analysis Tools
+            "graph.find_dependencies" => self.handle_graph_find_dependencies(arguments).await,
+            "graph.find_dependents" => self.handle_graph_find_dependents(arguments).await,
+            "graph.semantic_search" => self.handle_graph_semantic_search(arguments).await,
+            "graph.find_similar_patterns" => self.handle_graph_find_similar_patterns(arguments).await,
+            "graph.impact_analysis" => self.handle_graph_impact_analysis(arguments).await,
+            "graph.code_lineage" => self.handle_graph_code_lineage(arguments).await,
+            "graph.get_call_graph" => self.handle_graph_get_call_graph(arguments).await,
+            "graph.get_callers" => self.handle_graph_get_callers(arguments).await,
+            "graph.get_stats" => self.handle_graph_get_stats(arguments).await,
+            "graph.find_hubs" => self.handle_graph_find_hubs(arguments).await,
+            "graph.find_circular_dependencies" => self.handle_graph_find_circular_dependencies(arguments).await,
+            "graph.get_symbol_full" => self.handle_graph_get_symbol_full(arguments).await,
 
             _ => Err(anyhow!("Unknown tool: {}", name)),
         }
@@ -566,55 +588,11 @@ impl ToolHandlers {
 
         use crate::indexer::Indexer;
         let indexer = self.indexer.read().await;
-        let mut results = indexer.search_symbols(&query).await?;
+        let results = indexer.search_symbols(&query).await?;
 
-        // Apply reranking if enabled
-        let (reranked, original_count) = if params.rerank && results.symbols.len() > 1 {
-            use crate::ml::reranker::RerankingEngine;
-
-            let original_count = results.symbols.len();
-
-            // Create reranking engine
-            let reranker = RerankingEngine::new()
-                .context("Failed to create reranking engine")?;
-
-            // Prepare candidates: use signature as the document text
-            let candidates: Vec<&str> = results.symbols
-                .iter()
-                .map(|s| s.signature.as_str())
-                .collect();
-
-            // Rerank
-            let reranked_results = reranker.rerank(
-                &params.query,
-                &candidates,
-                params.rerank_top_k
-            ).context("Reranking failed")?;
-
-            tracing::debug!(
-                "Reranked {} symbols to top {} (80% token reduction)",
-                original_count,
-                reranked_results.len()
-            );
-
-            // Map reranked results back to symbols
-            let mut reranked_symbols = Vec::with_capacity(reranked_results.len());
-            let mut total_tokens = TokenCount::zero();
-
-            for reranked in reranked_results {
-                if let Some(symbol) = results.symbols.get(reranked.index) {
-                    reranked_symbols.push(symbol.clone());
-                    total_tokens.add(symbol.metadata.token_cost);
-                }
-            }
-
-            results.symbols = reranked_symbols;
-            results.total_tokens = total_tokens;
-
-            (true, original_count)
-        } else {
-            (false, results.symbols.len())
-        };
+        // Reranking is temporarily disabled (ml module removed)
+        // TODO: Re-implement reranking using SurrealDB vector similarity
+        let (reranked, original_count) = (false, results.symbols.len());
 
         let symbols_json: Vec<Value> = results
             .symbols
@@ -3141,8 +3119,8 @@ impl ToolHandlers {
 
     // === Progress Management Handlers (Phase 2) ===
 
-    async fn handle_progress_create_task(&self, args: Value) -> Result<Value> {
-        use crate::progress::{Priority, SpecReference};
+    async fn handle_task_create_task(&self, args: Value) -> Result<Value> {
+        use crate::tasks::{Priority, SpecReference};
 
         #[derive(Deserialize)]
         struct Params {
@@ -3200,8 +3178,8 @@ impl ToolHandlers {
         }))
     }
 
-    async fn handle_progress_update_task(&self, args: Value) -> Result<Value> {
-        use crate::progress::{Priority, TaskId, TaskStatus};
+    async fn handle_task_update_task(&self, args: Value) -> Result<Value> {
+        use crate::tasks::{Priority, TaskId, TaskStatus};
 
         #[derive(Deserialize)]
         struct Params {
@@ -3261,8 +3239,8 @@ impl ToolHandlers {
         }))
     }
 
-    async fn handle_progress_list_tasks(&self, args: Value) -> Result<Value> {
-        use crate::progress::TaskStatus;
+    async fn handle_task_list_tasks(&self, args: Value) -> Result<Value> {
+        use crate::tasks::TaskStatus;
 
         #[derive(Deserialize)]
         struct Params {
@@ -3297,8 +3275,8 @@ impl ToolHandlers {
         }))
     }
 
-    async fn handle_progress_get_task(&self, args: Value) -> Result<Value> {
-        use crate::progress::TaskId;
+    async fn handle_task_get_task(&self, args: Value) -> Result<Value> {
+        use crate::tasks::TaskId;
 
         #[derive(Deserialize)]
         struct Params {
@@ -3315,8 +3293,8 @@ impl ToolHandlers {
         Ok(json!(task))
     }
 
-    async fn handle_progress_delete_task(&self, args: Value) -> Result<Value> {
-        use crate::progress::TaskId;
+    async fn handle_task_delete_task(&self, args: Value) -> Result<Value> {
+        use crate::tasks::TaskId;
 
         #[derive(Deserialize)]
         struct Params {
@@ -3338,7 +3316,7 @@ impl ToolHandlers {
         }))
     }
 
-    async fn handle_progress_get_progress(&self, args: Value) -> Result<Value> {
+    async fn handle_task_get_progress(&self, args: Value) -> Result<Value> {
         #[derive(Deserialize)]
         struct Params {
             spec_name: Option<String>,
@@ -3352,7 +3330,7 @@ impl ToolHandlers {
         Ok(json!(stats))
     }
 
-    async fn handle_progress_search_tasks(&self, args: Value) -> Result<Value> {
+    async fn handle_task_search_tasks(&self, args: Value) -> Result<Value> {
         #[derive(Deserialize)]
         struct Params {
             query: String,
@@ -3373,8 +3351,8 @@ impl ToolHandlers {
         }))
     }
 
-    async fn handle_progress_link_to_spec(&self, args: Value) -> Result<Value> {
-        use crate::progress::TaskId;
+    async fn handle_task_link_to_spec(&self, args: Value) -> Result<Value> {
+        use crate::tasks::TaskId;
 
         #[derive(Deserialize)]
         struct Params {
@@ -3413,8 +3391,8 @@ impl ToolHandlers {
         }))
     }
 
-    async fn handle_progress_get_history(&self, args: Value) -> Result<Value> {
-        use crate::progress::TaskId;
+    async fn handle_task_get_history(&self, args: Value) -> Result<Value> {
+        use crate::tasks::TaskId;
 
         #[derive(Deserialize)]
         struct Params {
@@ -3438,8 +3416,8 @@ impl ToolHandlers {
         }))
     }
 
-    async fn handle_progress_mark_complete(&self, args: Value) -> Result<Value> {
-        use crate::progress::TaskId;
+    async fn handle_task_mark_complete(&self, args: Value) -> Result<Value> {
+        use crate::tasks::TaskId;
 
         #[derive(Deserialize)]
         struct Params {
@@ -3485,7 +3463,7 @@ impl ToolHandlers {
         }))
     }
 
-    async fn handle_progress_check_timeouts(&self, _args: Value) -> Result<Value> {
+    async fn handle_task_check_timeouts(&self, _args: Value) -> Result<Value> {
         let manager = self.progress_manager.read().await;
         let recovered = manager.check_timeouts().await?;
 
@@ -3498,7 +3476,7 @@ impl ToolHandlers {
         }))
     }
 
-    async fn handle_progress_recover_orphaned(&self, args: Value) -> Result<Value> {
+    async fn handle_task_recover_orphaned(&self, args: Value) -> Result<Value> {
         #[derive(Deserialize)]
         struct Params {
             #[serde(default)]
@@ -3521,8 +3499,8 @@ impl ToolHandlers {
     }
 
 
-    async fn handle_progress_add_dependency(&self, args: Value) -> Result<Value> {
-        use crate::progress::TaskId;
+    async fn handle_task_add_dependency(&self, args: Value) -> Result<Value> {
+        use crate::tasks::TaskId;
 
         #[derive(Deserialize)]
         struct Params {
@@ -3548,8 +3526,8 @@ impl ToolHandlers {
         }))
     }
 
-    async fn handle_progress_remove_dependency(&self, args: Value) -> Result<Value> {
-        use crate::progress::TaskId;
+    async fn handle_task_remove_dependency(&self, args: Value) -> Result<Value> {
+        use crate::tasks::TaskId;
 
         #[derive(Deserialize)]
         struct Params {
@@ -3575,8 +3553,8 @@ impl ToolHandlers {
         }))
     }
 
-    async fn handle_progress_get_dependencies(&self, args: Value) -> Result<Value> {
-        use crate::progress::TaskId;
+    async fn handle_task_get_dependencies(&self, args: Value) -> Result<Value> {
+        use crate::tasks::TaskId;
 
         #[derive(Deserialize)]
         struct Params {
@@ -3610,8 +3588,8 @@ impl ToolHandlers {
         }))
     }
 
-    async fn handle_progress_get_dependents(&self, args: Value) -> Result<Value> {
-        use crate::progress::TaskId;
+    async fn handle_task_get_dependents(&self, args: Value) -> Result<Value> {
+        use crate::tasks::TaskId;
 
         #[derive(Deserialize)]
         struct Params {
@@ -3642,8 +3620,8 @@ impl ToolHandlers {
         }))
     }
 
-    async fn handle_progress_can_start_task(&self, args: Value) -> Result<Value> {
-        use crate::progress::TaskId;
+    async fn handle_task_can_start_task(&self, args: Value) -> Result<Value> {
+        use crate::tasks::TaskId;
 
         #[derive(Deserialize)]
         struct Params {
@@ -4617,9 +4595,7 @@ impl ToolHandlers {
             prometheus_text.push_str(&format!(
                 "# HELP meridian_tool_calls_total Total number of calls to {}\n", tool_name
             ));
-            prometheus_text.push_str(&format!(
-                "# TYPE meridian_tool_calls_total counter\n"
-            ));
+            prometheus_text.push_str(&"# TYPE meridian_tool_calls_total counter\n".to_string());
             prometheus_text.push_str(&format!(
                 "meridian_tool_calls_total{{tool=\"{}\"}} {}\n", tool_name, metrics.total_calls
             ));
@@ -4627,9 +4603,7 @@ impl ToolHandlers {
             prometheus_text.push_str(&format!(
                 "# HELP meridian_tool_errors_total Total number of errors for {}\n", tool_name
             ));
-            prometheus_text.push_str(&format!(
-                "# TYPE meridian_tool_errors_total counter\n"
-            ));
+            prometheus_text.push_str(&"# TYPE meridian_tool_errors_total counter\n".to_string());
             prometheus_text.push_str(&format!(
                 "meridian_tool_errors_total{{tool=\"{}\"}} {}\n", tool_name, metrics.error_count
             ));
@@ -4637,9 +4611,7 @@ impl ToolHandlers {
             prometheus_text.push_str(&format!(
                 "# HELP meridian_tool_latency_seconds Latency histogram for {}\n", tool_name
             ));
-            prometheus_text.push_str(&format!(
-                "# TYPE meridian_tool_latency_seconds histogram\n"
-            ));
+            prometheus_text.push_str(&"# TYPE meridian_tool_latency_seconds histogram\n".to_string());
 
             let histogram = &metrics.latency_histogram;
             let mut cumulative = 0u64;
@@ -4666,9 +4638,7 @@ impl ToolHandlers {
             prometheus_text.push_str(&format!(
                 "# HELP meridian_tool_tokens_total Total tokens used by {}\n", tool_name
             ));
-            prometheus_text.push_str(&format!(
-                "# TYPE meridian_tool_tokens_total counter\n"
-            ));
+            prometheus_text.push_str(&"# TYPE meridian_tool_tokens_total counter\n".to_string());
             prometheus_text.push_str(&format!(
                 "meridian_tool_tokens_total{{tool=\"{}\",direction=\"input\"}} {}\n",
                 tool_name, metrics.total_input_tokens
@@ -4998,6 +4968,258 @@ impl ToolHandlers {
         Ok(json!({
             "backup_id": metadata.id,
             "schema_version": params.schema_version
+        }))
+    }
+
+    // === Graph Analysis Handlers ===
+
+    async fn handle_graph_find_dependencies(&self, args: Value) -> Result<Value> {
+        #[derive(Deserialize)]
+        struct FindDependenciesParams {
+            symbol_id: String,
+            #[serde(default = "default_depth")]
+            depth: u32,
+        }
+        fn default_depth() -> u32 { 3 }
+
+        let params: FindDependenciesParams = serde_json::from_value(args)
+            .context("Invalid parameters for graph.find_dependencies")?;
+
+        let analyzer = self.graph_analyzer.as_ref()
+            .ok_or_else(|| anyhow!("Graph analyzer not initialized"))?;
+
+        let graph = analyzer.find_dependencies(&params.symbol_id, params.depth).await?;
+
+        Ok(json!({
+            "root": graph.root,
+            "nodes": graph.nodes,
+            "edges": graph.edges,
+            "total_dependencies": graph.count()
+        }))
+    }
+
+    async fn handle_graph_find_dependents(&self, args: Value) -> Result<Value> {
+        #[derive(Deserialize)]
+        struct FindDependentsParams {
+            symbol_id: String,
+        }
+
+        let params: FindDependentsParams = serde_json::from_value(args)
+            .context("Invalid parameters for graph.find_dependents")?;
+
+        let analyzer = self.graph_analyzer.as_ref()
+            .ok_or_else(|| anyhow!("Graph analyzer not initialized"))?;
+
+        let dependents = analyzer.find_dependents(&params.symbol_id).await?;
+
+        Ok(json!({
+            "symbol_id": params.symbol_id,
+            "dependents": dependents,
+            "count": dependents.len()
+        }))
+    }
+
+    async fn handle_graph_semantic_search(&self, args: Value) -> Result<Value> {
+        #[derive(Deserialize)]
+        struct SemanticSearchParams {
+            query: String,
+            #[serde(default = "default_limit")]
+            limit: usize,
+        }
+        fn default_limit() -> usize { 10 }
+
+        let params: SemanticSearchParams = serde_json::from_value(args)
+            .context("Invalid parameters for graph.semantic_search")?;
+
+        let _analyzer = self.graph_analyzer.as_ref()
+            .ok_or_else(|| anyhow!("Graph analyzer not initialized"))?;
+
+        // Semantic search requires embedder which may not be configured
+        // For now, return a helpful message
+        Err(anyhow!("Semantic search requires embedder configuration (not yet implemented)"))
+    }
+
+    async fn handle_graph_find_similar_patterns(&self, args: Value) -> Result<Value> {
+        #[derive(Deserialize)]
+        struct FindSimilarPatternsParams {
+            symbol_id: String,
+            #[serde(default = "default_limit")]
+            limit: usize,
+        }
+        fn default_limit() -> usize { 20 }
+
+        let params: FindSimilarPatternsParams = serde_json::from_value(args)
+            .context("Invalid parameters for graph.find_similar_patterns")?;
+
+        let analyzer = self.graph_analyzer.as_ref()
+            .ok_or_else(|| anyhow!("Graph analyzer not initialized"))?;
+
+        let patterns = analyzer.find_similar_patterns(&params.symbol_id, params.limit).await?;
+
+        Ok(json!({
+            "symbol_id": params.symbol_id,
+            "patterns": patterns,
+            "count": patterns.len()
+        }))
+    }
+
+    async fn handle_graph_impact_analysis(&self, args: Value) -> Result<Value> {
+        #[derive(Deserialize)]
+        struct ImpactAnalysisParams {
+            changed_symbols: Vec<String>,
+        }
+
+        let params: ImpactAnalysisParams = serde_json::from_value(args)
+            .context("Invalid parameters for graph.impact_analysis")?;
+
+        let analyzer = self.graph_analyzer.as_ref()
+            .ok_or_else(|| anyhow!("Graph analyzer not initialized"))?;
+
+        let report = analyzer.impact_analysis(params.changed_symbols).await?;
+
+        Ok(json!({
+            "changed_symbols": report.changed_symbols,
+            "affected_symbols": report.affected_symbols,
+            "affected_files": report.affected_files,
+            "total_affected": report.total_affected,
+            "impact_depth": report.impact_depth
+        }))
+    }
+
+    async fn handle_graph_code_lineage(&self, args: Value) -> Result<Value> {
+        #[derive(Deserialize)]
+        struct CodeLineageParams {
+            symbol_id: String,
+            #[serde(default = "default_limit")]
+            limit: usize,
+        }
+        fn default_limit() -> usize { 10 }
+
+        let params: CodeLineageParams = serde_json::from_value(args)
+            .context("Invalid parameters for graph.code_lineage")?;
+
+        let analyzer = self.graph_analyzer.as_ref()
+            .ok_or_else(|| anyhow!("Graph analyzer not initialized"))?;
+
+        let lineage = analyzer.find_code_lineage(&params.symbol_id, params.limit).await?;
+
+        Ok(json!({
+            "symbol_id": params.symbol_id,
+            "lineage": lineage,
+            "count": lineage.len()
+        }))
+    }
+
+    async fn handle_graph_get_call_graph(&self, args: Value) -> Result<Value> {
+        #[derive(Deserialize)]
+        struct GetCallGraphParams {
+            symbol_id: String,
+        }
+
+        let params: GetCallGraphParams = serde_json::from_value(args)
+            .context("Invalid parameters for graph.get_call_graph")?;
+
+        let analyzer = self.graph_analyzer.as_ref()
+            .ok_or_else(|| anyhow!("Graph analyzer not initialized"))?;
+
+        let calls = analyzer.get_call_graph(&params.symbol_id).await?;
+
+        Ok(json!({
+            "symbol_id": params.symbol_id,
+            "calls": calls,
+            "count": calls.len()
+        }))
+    }
+
+    async fn handle_graph_get_callers(&self, args: Value) -> Result<Value> {
+        #[derive(Deserialize)]
+        struct GetCallersParams {
+            symbol_id: String,
+        }
+
+        let params: GetCallersParams = serde_json::from_value(args)
+            .context("Invalid parameters for graph.get_callers")?;
+
+        let analyzer = self.graph_analyzer.as_ref()
+            .ok_or_else(|| anyhow!("Graph analyzer not initialized"))?;
+
+        let callers = analyzer.get_callers(&params.symbol_id).await?;
+
+        Ok(json!({
+            "symbol_id": params.symbol_id,
+            "callers": callers,
+            "count": callers.len()
+        }))
+    }
+
+    async fn handle_graph_get_stats(&self, _args: Value) -> Result<Value> {
+        let analyzer = self.graph_analyzer.as_ref()
+            .ok_or_else(|| anyhow!("Graph analyzer not initialized"))?;
+
+        let stats = analyzer.get_graph_stats().await?;
+
+        Ok(json!({
+            "total_symbols": stats.total_symbols,
+            "total_dependencies": stats.total_dependencies,
+            "avg_out_degree": stats.avg_out_degree,
+            "avg_in_degree": stats.avg_in_degree
+        }))
+    }
+
+    async fn handle_graph_find_hubs(&self, args: Value) -> Result<Value> {
+        #[derive(Deserialize)]
+        struct FindHubsParams {
+            #[serde(default = "default_limit")]
+            limit: usize,
+        }
+        fn default_limit() -> usize { 20 }
+
+        let params: FindHubsParams = serde_json::from_value(args)
+            .context("Invalid parameters for graph.find_hubs")?;
+
+        let analyzer = self.graph_analyzer.as_ref()
+            .ok_or_else(|| anyhow!("Graph analyzer not initialized"))?;
+
+        let hubs = analyzer.find_hubs(params.limit).await?;
+
+        Ok(json!({
+            "hubs": hubs,
+            "count": hubs.len()
+        }))
+    }
+
+    async fn handle_graph_find_circular_dependencies(&self, _args: Value) -> Result<Value> {
+        let analyzer = self.graph_analyzer.as_ref()
+            .ok_or_else(|| anyhow!("Graph analyzer not initialized"))?;
+
+        let cycles = analyzer.find_circular_dependencies().await?;
+
+        Ok(json!({
+            "circular_dependencies": cycles,
+            "count": cycles.len()
+        }))
+    }
+
+    async fn handle_graph_get_symbol_full(&self, args: Value) -> Result<Value> {
+        #[derive(Deserialize)]
+        struct GetSymbolFullParams {
+            symbol_id: String,
+        }
+
+        let params: GetSymbolFullParams = serde_json::from_value(args)
+            .context("Invalid parameters for graph.get_symbol_full")?;
+
+        let analyzer = self.graph_analyzer.as_ref()
+            .ok_or_else(|| anyhow!("Graph analyzer not initialized"))?;
+
+        let symbol_full = analyzer.get_symbol_full(&params.symbol_id).await?;
+
+        Ok(json!({
+            "symbol": symbol_full.symbol,
+            "dependencies": symbol_full.dependencies,
+            "dependents": symbol_full.dependents,
+            "calls": symbol_full.calls,
+            "called_by": symbol_full.called_by
         }))
     }
 }

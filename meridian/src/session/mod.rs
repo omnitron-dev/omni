@@ -796,12 +796,12 @@ impl<'de, T: serde::Deserialize<'de>> serde::Deserialize<'de> for OverlayEntry<T
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::rocksdb_storage::RocksDBStorage;
+    use crate::storage::MemoryStorage;
     use tempfile::TempDir;
 
     async fn create_test_storage() -> (Arc<dyn Storage>, TempDir) {
         let temp_dir = TempDir::new().unwrap();
-        let storage = RocksDBStorage::new(temp_dir.path()).unwrap();
+        let storage = MemoryStorage::new();
         (Arc::new(storage) as Arc<dyn Storage>, temp_dir)
     }
 

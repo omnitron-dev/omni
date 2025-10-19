@@ -33,8 +33,8 @@ fn parse_timestamp_from_key(key: &str) -> Result<DateTime<Utc>> {
     }
 
     let millis: i64 = parts[parts.len() - 1].parse()?;
-    Ok(DateTime::from_timestamp_millis(millis)
-        .ok_or_else(|| anyhow::anyhow!("Invalid timestamp: {}", millis))?)
+    DateTime::from_timestamp_millis(millis)
+        .ok_or_else(|| anyhow::anyhow!("Invalid timestamp: {}", millis))
 }
 
 /// Get default metrics database path

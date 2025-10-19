@@ -102,7 +102,7 @@ impl StreamingResponse {
 
         // Calculate total chunks if known
         let total_chunks = self.total_size.map(|total| {
-            ((total + self.chunk_size - 1) / self.chunk_size) as u64
+            total.div_ceil(self.chunk_size) as u64
         });
 
         // Create chunk
@@ -125,7 +125,7 @@ impl StreamingResponse {
 
         // Check if we should send progress update
         let elapsed = self.last_progress_time.elapsed();
-        if self.sequence % PROGRESS_UPDATE_INTERVAL == 0
+        if self.sequence.is_multiple_of(PROGRESS_UPDATE_INTERVAL)
             || elapsed.as_millis() as u64 >= PROGRESS_UPDATE_INTERVAL_MS {
             self.last_progress_time = std::time::Instant::now();
             debug!(
@@ -155,10 +155,10 @@ impl StreamingResponse {
     }
 
     /// Finish streaming and send final chunk
-    pub async fn finish(mut self) -> Result<()> {
+    pub async fn finish(self) -> Result<()> {
         // Send final empty chunk to signal completion
         let total_chunks = self.total_size.map(|total| {
-            ((total + self.chunk_size - 1) / self.chunk_size) as u64
+            total.div_ceil(self.chunk_size) as u64
         });
 
         let mut final_chunk = StreamChunk::new(self.sequence, Vec::new(), true);

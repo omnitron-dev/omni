@@ -303,7 +303,7 @@ impl SimpleAttentionPredictorModel {
         self.total_observations += 1;
 
         // Normalize periodically (every 100 observations)
-        if self.total_observations % 100 == 0 {
+        if self.total_observations.is_multiple_of(100) {
             self.normalize();
         }
     }
@@ -926,13 +926,13 @@ pub struct RetrievalStats {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::rocksdb_storage::RocksDBStorage;
+    use crate::storage::MemoryStorage;
     use crate::types::symbol::{CodeSymbol, SymbolKind, SymbolMetadata};
     use tempfile::TempDir;
 
     async fn create_test_storage() -> (Arc<dyn Storage>, TempDir) {
         let temp_dir = TempDir::new().unwrap();
-        let storage = RocksDBStorage::new(temp_dir.path())
+        let storage = MemoryStorage::new()
             .unwrap();
         (Arc::new(storage), temp_dir)
     }

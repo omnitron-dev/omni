@@ -14,8 +14,7 @@ pub mod links;
 pub mod mcp;
 pub mod memory;
 pub mod metrics;
-pub mod ml;
-pub mod progress;
+pub mod tasks;
 pub mod project;
 pub mod rpc;  // RPC infrastructure for client-server communication
 pub mod session;

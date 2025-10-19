@@ -1159,13 +1159,13 @@ impl Indexer for CodeIndexer {
 mod tests {
     use super::*;
     use crate::config::IndexConfig;
-    use crate::storage::RocksDBStorage;
+    use crate::storage::MemoryStorage;
     use crate::types::SymbolKind;
     use tempfile::TempDir;
 
     async fn setup_test_indexer() -> (CodeIndexer, TempDir) {
         let temp_dir = TempDir::new().unwrap();
-        let storage = Arc::new(RocksDBStorage::new(temp_dir.path()).unwrap());
+        let storage = Arc::new(MemoryStorage::new());
         let config = IndexConfig {
             languages: vec!["rust".to_string(), "typescript".to_string()],
             ignore: vec!["target".to_string(), "node_modules".to_string()],

@@ -45,6 +45,18 @@ fn create_test_handlers(storage: std::sync::Arc<dyn meridian::storage::Storage>)
     std::fs::create_dir_all(&specs_path).unwrap();
     let spec_manager = SpecificationManager::new(specs_path);
 
+    // Create progress manager
+    let progress_storage = Arc::new(meridian::tasks::TaskStorage::new(storage.clone()));
+    let progress_manager = meridian::tasks::TaskManager::new(progress_storage);
+
+    // Create links storage
+    let links_storage: Arc<tokio::sync::RwLock<dyn meridian::links::LinksStorage>> = Arc::new(tokio::sync::RwLock::new(
+        meridian::links::storage::RocksDBLinksStorage::new(storage.clone())
+    ));
+
+    // Create pattern engine
+    let pattern_engine = Arc::new(meridian::indexer::PatternSearchEngine::new().unwrap());
+
     ToolHandlers::new(
         Arc::new(tokio::sync::RwLock::new(memory_system)),
         Arc::new(tokio::sync::RwLock::new(context_manager)),
@@ -52,6 +64,9 @@ fn create_test_handlers(storage: std::sync::Arc<dyn meridian::storage::Storage>)
         Arc::new(session_manager),
         Arc::new(doc_indexer),
         Arc::new(tokio::sync::RwLock::new(spec_manager)),
+        Arc::new(tokio::sync::RwLock::new(progress_manager)),
+        links_storage,
+        pattern_engine,
     )
 }
 

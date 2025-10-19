@@ -3,11 +3,11 @@
 //! This module provides a configurable worker thread pool with work stealing,
 //! priority support, and graceful shutdown for efficient request handling.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use parking_lot::RwLock;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{mpsc, oneshot, Semaphore};
+use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, error, info, warn};
 
 /// Priority level for requests

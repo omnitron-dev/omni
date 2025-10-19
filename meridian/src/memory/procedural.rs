@@ -489,19 +489,71 @@ impl ProceduralMemory {
     pub fn get_estimated_cost(&self, task_type: &TaskType) -> Option<u32> {
         self.procedures.get(task_type).map(|p| p.average_tokens)
     }
+
+    /// Record a solution for learning
+    pub async fn record_solution(&mut self, task_description: &str, solution_path: &str) -> Result<()> {
+        let task_type = TaskType::infer(task_description);
+
+        // Parse solution path into steps
+        let steps: Vec<String> = solution_path
+            .split(&[',', ';', '\n'][..])
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        // Create or update procedure
+        let procedure = self.procedures.entry(task_type.clone()).or_insert(Procedure {
+            steps: Vec::new(),
+            required_context: Vec::new(),
+            typical_queries: Vec::new(),
+            success_rate: 0.0,
+            execution_count: 0,
+            average_tokens: 0,
+            common_pitfalls: Vec::new(),
+        });
+
+        // Update steps if this is a new or better solution
+        if procedure.steps.is_empty() {
+            procedure.steps = steps
+                .iter()
+                .enumerate()
+                .map(|(i, desc)| ProcedureStep {
+                    order: i,
+                    description: desc.clone(),
+                    typical_actions: Vec::new(),
+                    expected_files: Vec::new(),
+                    optional: false,
+                })
+                .collect();
+        }
+
+        procedure.execution_count += 1;
+
+        // Save to storage
+        let key = format!("procedure:{:?}", task_type);
+        let value = serialize(&(task_type, procedure.clone()))?;
+        self.storage.put(key.as_bytes(), &value).await?;
+
+        Ok(())
+    }
+
+    /// Get count of stored procedures
+    pub fn procedure_count(&self) -> usize {
+        self.procedures.len()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::rocksdb_storage::RocksDBStorage;
+    use crate::storage::MemoryStorage;
     use crate::types::{EpisodeId, TokenCount};
     use chrono::Utc;
     use tempfile::TempDir;
 
     async fn create_test_storage() -> (Arc<dyn Storage>, TempDir) {
         let temp_dir = TempDir::new().unwrap();
-        let storage = RocksDBStorage::new(temp_dir.path()).unwrap();
+        let storage = MemoryStorage::new();
         (Arc::new(storage), temp_dir)
     }
 

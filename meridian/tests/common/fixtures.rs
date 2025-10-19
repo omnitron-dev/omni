@@ -94,6 +94,7 @@ pub fn test_query_filtered(text: &str, symbol_types: Vec<SymbolKind>) -> Query {
         detail_level: meridian::types::DetailLevel::default(),
         max_results: Some(10),
         max_tokens: Some(TokenCount::new(1000)),
+        offset: None,
     }
 }
 

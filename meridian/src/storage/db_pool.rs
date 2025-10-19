@@ -71,7 +71,7 @@ pub fn get_pool_stats() -> PoolStats {
     let pool = get_pool().lock().unwrap();
     PoolStats {
         active_connections: pool.len(),
-        paths: pool.keys().map(|p| p.clone()).collect(),
+        paths: pool.keys().cloned().collect(),
     }
 }
 

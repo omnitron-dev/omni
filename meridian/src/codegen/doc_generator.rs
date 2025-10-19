@@ -361,7 +361,7 @@ impl DocumentationGenerator {
         if let Some(pos) = signature.rfind("): ") {
             let after = &signature[pos + 3..];
             let type_str = after
-                .split(|c: char| c == '{' || c == ';')
+                .split(['{', ';'])
                 .next()
                 .unwrap_or("")
                 .trim();
@@ -377,7 +377,7 @@ impl DocumentationGenerator {
         if let Some(pos) = signature.rfind("-> ") {
             let after = &signature[pos + 3..];
             let type_str = after
-                .split(|c: char| c == '{' || c == ';' || c == ' ')
+                .split(['{', ';', ' '])
                 .next()
                 .unwrap_or("")
                 .trim();
@@ -498,7 +498,7 @@ impl DocumentationGenerator {
                     SymbolKind::Class => {
                         format!("@example\nconst instance = new {}()", symbol.name)
                     }
-                    _ => format!("@example\n// Example usage"),
+                    _ => "@example\n// Example usage".to_string(),
                 }
             }
             DocFormat::RustDoc => {
@@ -519,7 +519,7 @@ impl DocumentationGenerator {
                 )
             }
             DocFormat::Markdown => {
-                format!("## Example\n```\n// Example usage\n```")
+                "## Example\n```\n// Example usage\n```".to_string()
             }
         }
     }

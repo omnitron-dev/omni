@@ -467,12 +467,12 @@ impl LinksStorage for RocksDBLinksStorage {
 mod tests {
     use super::*;
     use crate::links::ExtractionMethod;
-    use crate::storage::RocksDBStorage;
+    use crate::storage::MemoryStorage;
     use tempfile::TempDir;
 
     async fn create_test_storage() -> (RocksDBLinksStorage, TempDir) {
         let temp_dir = TempDir::new().unwrap();
-        let storage = Arc::new(RocksDBStorage::new(temp_dir.path()).unwrap());
+        let storage = Arc::new(MemoryStorage::new());
         let links_storage = RocksDBLinksStorage::new(storage);
         (links_storage, temp_dir)
     }

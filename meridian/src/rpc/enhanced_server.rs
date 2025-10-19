@@ -135,7 +135,7 @@ impl EnhancedRpcServer {
         socket_path: impl AsRef<Path>,
         config: EnhancedServerConfig,
         registry: Arc<ToolRegistry>,
-        storage: Arc<crate::storage::RocksDBStorage>,
+        storage: Arc<dyn crate::storage::Storage>,
         mcp_handlers: Arc<crate::mcp::handlers::ToolHandlers>,
     ) -> Result<Self> {
         let socket_path = socket_path.as_ref();

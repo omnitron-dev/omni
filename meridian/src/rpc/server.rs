@@ -4,7 +4,7 @@
 //! It integrates the tool registry, router, and database connection pool for efficient
 //! request handling.
 
-use super::protocol::{RpcRequest, RpcResponse, RpcError, ErrorCode, CompressionType};
+use super::protocol::{RpcRequest, RpcResponse, CompressionType};
 use super::codec;
 use super::router::RpcRouter;
 use super::tool_registry::ToolRegistry;
@@ -15,7 +15,7 @@ use tokio::net::{UnixListener, UnixStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use std::sync::Arc;
 use std::path::Path;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 /// RPC server for handling client connections with integrated routing
 pub struct RpcServer {

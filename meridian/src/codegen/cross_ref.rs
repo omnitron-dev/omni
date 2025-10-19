@@ -30,7 +30,7 @@ impl Default for DependencyGraph { fn default() -> Self { Self::new() } }
 pub struct CrossReferenceManager { references: Vec<CrossReference>, incoming: HashMap<String, Vec<usize>>, outgoing: HashMap<String, Vec<usize>> }
 impl CrossReferenceManager {
     pub fn new() -> Self { Self { references: vec![], incoming: HashMap::new(), outgoing: HashMap::new() } }
-    pub fn add_reference(&mut self, r: CrossReference) { let i = self.references.len(); self.incoming.entry(r.target.clone()).or_insert_with(Vec::new).push(i); self.outgoing.entry(r.source.clone()).or_insert_with(Vec::new).push(i); self.references.push(r); }
+    pub fn add_reference(&mut self, r: CrossReference) { let i = self.references.len(); self.incoming.entry(r.target.clone()).or_default().push(i); self.outgoing.entry(r.source.clone()).or_default().push(i); self.references.push(r); }
     pub fn get_outgoing_references(&self, id: &str) -> Vec<&CrossReference> { self.outgoing.get(id).map(|is| is.iter().map(|&i| &self.references[i]).collect()).unwrap_or_default() }
     pub fn get_incoming_references(&self, id: &str) -> Vec<&CrossReference> { self.incoming.get(id).map(|is| is.iter().map(|&i| &self.references[i]).collect()).unwrap_or_default() }
     pub fn get_references_by_type(&self, id: &str, t: ReferenceType) -> Vec<&CrossReference> { self.get_outgoing_references(id).into_iter().filter(|r| r.ref_type == t).collect() }

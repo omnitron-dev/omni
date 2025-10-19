@@ -9,7 +9,7 @@ use std::os::unix::net::UnixListener as StdUnixListener;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
-use tracing::{error, info, warn};
+use tracing::info;
 
 use super::hot_reload::ServerState;
 

@@ -26,8 +26,8 @@
 //!   |                                        |
 //! ```
 
-use super::protocol::{RpcError, ErrorCode};
-use anyhow::{Context, Result, bail};
+use super::protocol::RpcError;
+use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tracing::{debug, info, warn};

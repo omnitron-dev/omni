@@ -86,7 +86,7 @@ impl GraphCache {
         let keys = storage.get_keys_with_prefix(b"symbol:").await?;
 
         let mut loaded_nodes = 0;
-        let loaded_edges;
+        
 
         // First pass: create all nodes
         for key in &keys {
@@ -116,7 +116,7 @@ impl GraphCache {
 
         // Re-acquire locks for stats
         let graph = self.graph.read().await;
-        loaded_edges = graph.edge_count();
+        let loaded_edges = graph.edge_count();
 
         info!(
             "Graph cache loaded: {} nodes, {} edges ({}MB estimated)",

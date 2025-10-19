@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
-use tracing::{info, warn, error};
+use tracing::{info, warn};
 
 use crate::config::get_meridian_home;
 
@@ -84,7 +84,7 @@ pub fn read_daemon_opts() -> Option<DaemonOptions> {
 pub fn is_process_running(pid: u32) -> bool {
     // Send signal 0 to check if process exists
     // If it succeeds, process exists; if it fails, it doesn't
-    matches!(signal::kill(Pid::from_raw(pid as i32), None), Ok(_))
+    signal::kill(Pid::from_raw(pid as i32), None).is_ok()
 }
 
 /// Start the daemon
@@ -314,11 +314,9 @@ pub fn show_logs(follow: bool, lines: usize, level_filter: Option<String>) -> Re
 
         if let Some(stdout) = child.stdout.take() {
             let reader = BufReader::new(stdout);
-            for line in reader.lines() {
-                if let Ok(line) = line {
-                    if should_show_line(&line, &level_filter) {
-                        println!("{}", line);
-                    }
+            for line in reader.lines().flatten() {
+                if should_show_line(&line, &level_filter) {
+                    println!("{}", line);
                 }
             }
         }

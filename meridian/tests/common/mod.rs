@@ -1,21 +1,23 @@
 pub mod fixtures;
 pub mod mocks;
 
-use meridian::storage::{RocksDBStorage, Storage};
+use meridian::storage::{MemoryStorage, Storage};
 use std::path::Path;
 use std::sync::Arc;
 use tempfile::TempDir;
 
 /// Create a test storage instance with temporary directory
+/// Note: TempDir is kept for API compatibility but not used with MemoryStorage
 pub fn create_test_storage() -> (Arc<dyn Storage>, TempDir) {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let storage = RocksDBStorage::new(temp_dir.path()).expect("Failed to create storage");
+    let storage = MemoryStorage::new();
     (Arc::new(storage) as Arc<dyn Storage>, temp_dir)
 }
 
 /// Create test storage at a specific path
-pub fn create_test_storage_at(path: &Path) -> Arc<dyn Storage> {
-    let storage = RocksDBStorage::new(path).expect("Failed to create storage");
+/// Note: Path parameter is kept for API compatibility but not used with MemoryStorage
+pub fn create_test_storage_at(_path: &Path) -> Arc<dyn Storage> {
+    let storage = MemoryStorage::new();
     Arc::new(storage) as Arc<dyn Storage>
 }
 

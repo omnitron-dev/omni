@@ -73,8 +73,8 @@ impl DependencyGraph {
     pub fn add_node(&mut self, node: ProjectNode) {
         let id = node.id.clone();
         self.nodes.insert(id.clone(), node);
-        self.adjacency.entry(id.clone()).or_insert_with(Vec::new);
-        self.reverse_adjacency.entry(id).or_insert_with(Vec::new);
+        self.adjacency.entry(id.clone()).or_default();
+        self.reverse_adjacency.entry(id).or_default();
     }
 
     /// Add a dependency edge to the graph
@@ -87,12 +87,12 @@ impl DependencyGraph {
         // Add to adjacency lists
         self.adjacency
             .entry(edge.from.clone())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(edge.to.clone());
 
         self.reverse_adjacency
             .entry(edge.to.clone())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(edge.from.clone());
 
         // Add edge

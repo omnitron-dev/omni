@@ -16,9 +16,9 @@ use meridian::indexer::{CodeIndexer, PatternSearchEngine};
 use meridian::session::SessionManager;
 use meridian::docs::DocIndexer;
 use meridian::specs::SpecificationManager;
-use meridian::progress::ProgressManager;
+use meridian::tasks::TaskManager;
 use meridian::links::RocksDBLinksStorage;
-use meridian::storage::RocksDBStorage;
+use meridian::storage::MemoryStorage;
 use meridian::config::{MemoryConfig, IndexConfig};
 use meridian::types::context::LLMAdapter;
 use std::sync::Arc;
@@ -30,9 +30,7 @@ async fn setup_test_env() -> (TempDir, Arc<ToolHandlers>, Arc<DatabasePool>) {
     let temp_dir = TempDir::new().unwrap();
 
     // Create storage for memory system
-    let storage = Arc::new(
-        RocksDBStorage::new(&temp_dir.path().join("memory_storage")).unwrap()
-    ) as Arc<dyn meridian::storage::Storage>;
+    let storage = Arc::new(MemoryStorage::new()) as Arc<dyn meridian::storage::Storage>;
 
     // Create all required components
     let memory = Arc::new(tokio::sync::RwLock::new(
@@ -43,17 +41,13 @@ async fn setup_test_env() -> (TempDir, Arc<ToolHandlers>, Arc<DatabasePool>) {
         ContextManager::new(LLMAdapter::Claude3 { context_window: 200000 })
     ));
 
-    let indexer_storage = Arc::new(
-        RocksDBStorage::new(&temp_dir.path().join("indexer_storage")).unwrap()
-    ) as Arc<dyn meridian::storage::Storage>;
+    let indexer_storage = Arc::new(MemoryStorage::new()) as Arc<dyn meridian::storage::Storage>;
 
     let indexer = Arc::new(tokio::sync::RwLock::new(
         CodeIndexer::new(indexer_storage, IndexConfig::default()).unwrap()
     ));
 
-    let session_storage = Arc::new(
-        RocksDBStorage::new(&temp_dir.path().join("session_storage")).unwrap()
-    ) as Arc<dyn meridian::storage::Storage>;
+    let session_storage = Arc::new(MemoryStorage::new()) as Arc<dyn meridian::storage::Storage>;
 
     let session = Arc::new(
         SessionManager::new(session_storage, meridian::session::SessionConfig::default()).unwrap()
@@ -67,17 +61,13 @@ async fn setup_test_env() -> (TempDir, Arc<ToolHandlers>, Arc<DatabasePool>) {
         SpecificationManager::new(temp_dir.path().join("specs"))
     ));
 
-    let progress_storage = Arc::new(
-        RocksDBStorage::new(&temp_dir.path().join("progress_storage")).unwrap()
-    ) as Arc<dyn meridian::storage::Storage>;
+    let progress_storage = Arc::new(MemoryStorage::new()) as Arc<dyn meridian::storage::Storage>;
 
     let progress = Arc::new(tokio::sync::RwLock::new(
-        ProgressManager::new(Arc::new(meridian::progress::ProgressStorage::new(progress_storage)))
+        TaskManager::new(Arc::new(meridian::tasks::TaskStorage::new(progress_storage)))
     ));
 
-    let links_storage = Arc::new(
-        RocksDBStorage::new(&temp_dir.path().join("links_storage")).unwrap()
-    ) as Arc<dyn meridian::storage::Storage>;
+    let links_storage = Arc::new(MemoryStorage::new()) as Arc<dyn meridian::storage::Storage>;
 
     let links = Arc::new(tokio::sync::RwLock::new(
         RocksDBLinksStorage::new(links_storage)

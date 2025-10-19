@@ -3,7 +3,7 @@
 //! This module provides the client-side RPC implementation for connecting
 //! to the Meridian server daemon.
 
-use super::protocol::{RpcRequest, RpcResponse, RpcError, ErrorCode, HandshakeRequest, HandshakeResponse, StreamChunk};
+use super::protocol::{RpcRequest, RpcResponse, HandshakeRequest, HandshakeResponse};
 use super::codec;
 use super::streaming::StreamingClient;
 use anyhow::{Context, Result, bail};
@@ -11,7 +11,6 @@ use tokio::net::UnixStream;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use std::time::Duration;
 use tracing::{debug, warn};
 
 /// RPC client for communicating with Meridian server

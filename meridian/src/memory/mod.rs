@@ -1,5 +1,11 @@
+pub mod cognitive_manager;
+pub mod compression;
+pub mod episode_recorder;
 pub mod episodic;
+pub mod episodic_surreal;
+pub mod learning_extractor;
 pub mod procedural;
+pub mod retrieval;
 pub mod semantic;
 pub mod working;
 
@@ -9,8 +15,14 @@ use anyhow::Result;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+pub use cognitive_manager::{CognitiveMemoryManager, CoreMemory, Memory, MemoryType};
+pub use compression::{Checkpoint, CheckpointId, CompressionStats, MemoryCompressor, Summary};
+pub use episode_recorder::{Action, ActionType, Episode, EpisodeHandle, EpisodeRecorder, Pattern};
 pub use episodic::EpisodicMemory;
+pub use episodic_surreal::{EpisodicMemorySurreal, EpisodeSearchResult, EpisodeStatistics};
+pub use learning_extractor::{Learning, LearningCategory, LearningExtractor, Suggestion};
 pub use procedural::ProceduralMemory;
+pub use retrieval::{MemoryRetrieval, RetrievalStrategy, ScoredMemory};
 pub use semantic::SemanticMemory;
 pub use working::WorkingMemory;
 

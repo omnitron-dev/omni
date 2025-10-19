@@ -6,9 +6,8 @@
 //! Run with: cargo run --release --example multi_level_cache_demo
 
 use meridian::cache::{MultiLevelCache, MultiLevelCacheConfig};
-use meridian::storage::RocksDBStorage;
+use meridian::storage::MemoryStorage;
 use std::sync::Arc;
-use tempfile::TempDir;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -16,9 +15,8 @@ async fn main() -> anyhow::Result<()> {
 
     println!("=== Multi-Level Cache Demo ===\n");
 
-    // Create temporary storage
-    let temp_dir = TempDir::new()?;
-    let storage = Arc::new(RocksDBStorage::new(temp_dir.path())?);
+    // Create storage
+    let storage = Arc::new(MemoryStorage::new());
 
     // Configure cache with small sizes for demonstration
     let config = MultiLevelCacheConfig {

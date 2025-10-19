@@ -126,7 +126,7 @@ impl GlobalCatalog {
     pub fn index_project(&mut self, m: ProjectMetadata) -> Result<()> {
         let id = m.id.clone();
         self.projects.insert(id.clone(), m);
-        self.docs.entry(id).or_insert_with(HashMap::new);
+        self.docs.entry(id).or_default();
         Ok(())
     }
 
@@ -150,14 +150,13 @@ impl GlobalCatalog {
         // Add to in-memory docs
         self.docs
             .entry(pid.to_string())
-            .or_insert_with(HashMap::new)
+            .or_default()
             .insert(sym.to_string(), content.to_string());
 
         // Index in Tantivy if available
         if let (Some(writer), Some(schema)) = (&self.writer, &self.schema) {
             let project = self.projects.get(pid);
-            let file_path = project
-                .and_then(|p| Some(p.path.display().to_string()))
+            let file_path = project.map(|p| p.path.display().to_string())
                 .unwrap_or_default();
 
             let doc = doc!(
@@ -228,11 +227,7 @@ impl GlobalCatalog {
         // Determine which projects to search based on scope
         let project_filter = match scope {
             SearchScope::Local => {
-                if let Some(pid) = current_project {
-                    Some(HashSet::from([pid.to_string()]))
-                } else {
-                    None
-                }
+                current_project.map(|pid| HashSet::from([pid.to_string()]))
             }
             SearchScope::Dependencies => {
                 if let Some(pid) = current_project {

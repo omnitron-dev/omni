@@ -3,12 +3,12 @@
 //! This module provides a registry system that maps tool names to handler functions,
 //! supporting dynamic registration, versioning, and capability metadata.
 
-use super::protocol::{RpcRequest, RpcResponse, RpcError, ErrorCode, ResponseMetrics};
+use super::protocol::{RpcRequest, RpcResponse};
 use anyhow::Result;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, warn};
+use tracing::debug;
 
 /// Tool handler function signature
 pub type ToolHandler = Arc<
@@ -229,7 +229,7 @@ impl ToolRegistry {
                 optional_capabilities: vec![],
                 supports_streaming: false,
                 avg_execution_time_ms: 30,
-                max_result_size: Some(1 * 1024 * 1024), // 1MB
+                max_result_size: Some(1024 * 1024), // 1MB
             },
             Arc::new(move |req, ctx| {
                 Box::pin(async move {

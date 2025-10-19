@@ -3,21 +3,19 @@ use meridian::links::{
     LinkType, LinksStorage, MarkdownExtractor, RocksDBLinksStorage, SemanticLink,
     TreeSitterExtractor, ValidationStatus,
 };
-use meridian::storage::RocksDBStorage;
+use meridian::storage::MemoryStorage;
 use std::path::PathBuf;
-use tempfile::TempDir;
 
 // Helper to create test storage
-async fn create_test_storage() -> (RocksDBLinksStorage, TempDir) {
-    let temp_dir = TempDir::new().unwrap();
-    let storage = RocksDBStorage::new(temp_dir.path()).unwrap();
+async fn create_test_storage() -> RocksDBLinksStorage {
+    let storage = MemoryStorage::new();
     let links_storage = RocksDBLinksStorage::new(Box::new(storage));
-    (links_storage, temp_dir)
+    links_storage
 }
 
 #[tokio::test]
 async fn test_semantic_link_creation_and_retrieval() {
-    let (storage, _temp) = create_test_storage().await;
+    let storage = create_test_storage().await;
 
     let source = LinkTarget::spec("spec.md#memory-model".to_string());
     let target = LinkTarget::code("MemorySystem".to_string());
@@ -48,7 +46,7 @@ async fn test_semantic_link_creation_and_retrieval() {
 
 #[tokio::test]
 async fn test_bidirectional_link_queries() {
-    let (storage, _temp) = create_test_storage().await;
+    let storage = create_test_storage().await;
 
     let entity = LinkTarget::code("Application".to_string());
 
@@ -86,7 +84,7 @@ async fn test_bidirectional_link_queries() {
 
 #[tokio::test]
 async fn test_find_links_by_type() {
-    let (storage, _temp) = create_test_storage().await;
+    let storage = create_test_storage().await;
 
     // Create multiple implementation links
     let link1 = SemanticLink::new(
@@ -133,7 +131,7 @@ async fn test_find_links_by_type() {
 
 #[tokio::test]
 async fn test_find_links_by_type_and_source() {
-    let (storage, _temp) = create_test_storage().await;
+    let storage = create_test_storage().await;
 
     let source = LinkTarget::code("MyClass".to_string());
 
@@ -181,7 +179,7 @@ async fn test_find_links_by_type_and_source() {
 
 #[tokio::test]
 async fn test_cross_level_links() {
-    let (storage, _temp) = create_test_storage().await;
+    let storage = create_test_storage().await;
 
     // Spec -> Code links
     let link1 = SemanticLink::new(
@@ -229,7 +227,7 @@ async fn test_cross_level_links() {
 
 #[tokio::test]
 async fn test_link_validation() {
-    let (storage, _temp) = create_test_storage().await;
+    let storage = create_test_storage().await;
 
     let link = SemanticLink::new(
         LinkType::ImplementedBy,
@@ -268,7 +266,7 @@ async fn test_link_validation() {
 
 #[tokio::test]
 async fn test_find_broken_links() {
-    let (storage, _temp) = create_test_storage().await;
+    let storage = create_test_storage().await;
 
     let link1 = SemanticLink::new(
         LinkType::ImplementedBy,
@@ -305,7 +303,7 @@ async fn test_find_broken_links() {
 
 #[tokio::test]
 async fn test_link_removal() {
-    let (storage, _temp) = create_test_storage().await;
+    let storage = create_test_storage().await;
 
     let source = LinkTarget::code("MyClass".to_string());
     let target = LinkTarget::docs("docs/myclass.md".to_string());
@@ -341,7 +339,7 @@ async fn test_link_removal() {
 
 #[tokio::test]
 async fn test_link_statistics() {
-    let (storage, _temp) = create_test_storage().await;
+    let storage = create_test_storage().await;
 
     let link1 = SemanticLink::new(
         LinkType::ImplementedBy,
@@ -530,7 +528,7 @@ async fn test_inverse_links() {
 
 #[tokio::test]
 async fn test_link_update() {
-    let (storage, _temp) = create_test_storage().await;
+    let storage = create_test_storage().await;
 
     let mut link = SemanticLink::new(
         LinkType::ImplementedBy,
@@ -553,7 +551,7 @@ async fn test_link_update() {
 
 #[tokio::test]
 async fn test_complex_link_graph() {
-    let (storage, _temp) = create_test_storage().await;
+    let storage = create_test_storage().await;
 
     // Create a complex link graph: Spec -> Code -> Docs -> Examples -> Tests
     let spec = LinkTarget::spec("spec.md#feature".to_string());

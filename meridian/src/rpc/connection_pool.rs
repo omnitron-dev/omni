@@ -8,7 +8,7 @@ use parking_lot::RwLock;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
-use tracing::{debug, warn, error};
+use tracing::{debug, error};
 
 /// Configuration for connection pool
 #[derive(Debug, Clone)]
@@ -47,14 +47,14 @@ impl Default for ConnectionPoolConfig {
 
 /// A pooled database connection
 pub struct PooledConnection {
-    storage: Arc<crate::storage::RocksDBStorage>,
+    storage: Arc<dyn crate::storage::Storage>,
     created_at: Instant,
     last_used: Arc<RwLock<Instant>>,
     id: usize,
 }
 
 impl PooledConnection {
-    fn new(storage: Arc<crate::storage::RocksDBStorage>, id: usize) -> Self {
+    fn new(storage: Arc<dyn crate::storage::Storage>, id: usize) -> Self {
         let now = Instant::now();
         Self {
             storage,
@@ -65,7 +65,7 @@ impl PooledConnection {
     }
 
     /// Get reference to underlying storage
-    pub fn storage(&self) -> &Arc<crate::storage::RocksDBStorage> {
+    pub fn storage(&self) -> &Arc<dyn crate::storage::Storage> {
         &self.storage
     }
 
@@ -115,7 +115,7 @@ pub struct PoolStatistics {
 
 /// Thread-safe connection pool manager
 pub struct ConnectionPoolManager {
-    storage: Arc<crate::storage::RocksDBStorage>,
+    storage: Arc<dyn crate::storage::Storage>,
     config: ConnectionPoolConfig,
     available: Arc<RwLock<Vec<PooledConnection>>>,
     stats: Arc<RwLock<PoolStatistics>>,
@@ -126,7 +126,7 @@ pub struct ConnectionPoolManager {
 impl ConnectionPoolManager {
     /// Create a new connection pool manager
     pub fn new(
-        storage: Arc<crate::storage::RocksDBStorage>,
+        storage: Arc<dyn crate::storage::Storage>,
         config: ConnectionPoolConfig,
     ) -> Result<Self> {
         let mut available = Vec::with_capacity(config.min_size);
@@ -178,7 +178,7 @@ impl ConnectionPoolManager {
         };
 
         let conn = match conn {
-            Some(mut conn) => {
+            Some(conn) => {
                 // Reuse existing connection
                 conn.touch();
                 debug!("Reused connection {} from pool", conn.id);
@@ -304,7 +304,7 @@ pub struct PooledConnectionGuard<'a> {
 
 impl<'a> PooledConnectionGuard<'a> {
     /// Get reference to underlying storage
-    pub fn storage(&self) -> &Arc<crate::storage::RocksDBStorage> {
+    pub fn storage(&self) -> &Arc<dyn crate::storage::Storage> {
         self.conn.as_ref().unwrap().storage()
     }
 }
@@ -330,9 +330,7 @@ mod tests {
 
     fn create_test_pool() -> (TempDir, Arc<ConnectionPoolManager>) {
         let temp_dir = TempDir::new().unwrap();
-        let storage = Arc::new(
-            crate::storage::RocksDBStorage::new(temp_dir.path()).unwrap()
-        );
+        let storage = Arc::new(crate::storage::MemoryStorage::new()) as Arc<dyn crate::storage::Storage>;
 
         let config = ConnectionPoolConfig {
             min_size: 2,

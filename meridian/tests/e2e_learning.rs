@@ -189,6 +189,7 @@ async fn test_learn_from_frequently_accessed() {
     // During consolidation, frequently accessed episodes should be retained
     // even if they're old
     let modified_episode = TaskEpisode {
+        schema_version: 1,
         id: accessed_episode.id.clone(),
         timestamp: chrono::Utc::now() - chrono::Duration::days(40),
         task_description: accessed_episode.task_description.clone(),

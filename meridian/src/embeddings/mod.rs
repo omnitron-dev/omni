@@ -1,12 +1,16 @@
+pub mod code_embedder;
+
 use anyhow::{Context, Result};
 use dashmap::DashMap;
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+pub use code_embedder::{CodeEmbedder, LocalCodeEmbedder};
+
 /// Embedding engine for generating vector embeddings of code symbols
 pub struct EmbeddingEngine {
-    model: TextEmbedding,
+    model: parking_lot::Mutex<TextEmbedding>,
     cache: Arc<DashMap<String, Vec<f32>>>,
 }
 
@@ -39,13 +43,13 @@ impl EmbeddingEngine {
             .context("Failed to initialize embedding model")?;
 
         Ok(Self {
-            model: embedding_model,
+            model: parking_lot::Mutex::new(embedding_model),
             cache: Arc::new(DashMap::new()),
         })
     }
 
     /// Generate embedding for a single text
-    pub fn generate_embedding(&mut self, text: &str) -> Result<Vec<f32>> {
+    pub fn generate_embedding(&self, text: &str) -> Result<Vec<f32>> {
         // Check cache first
         if let Some(cached) = self.cache.get(text) {
             return Ok(cached.clone());
@@ -54,6 +58,7 @@ impl EmbeddingEngine {
         // Generate embedding
         let embeddings = self
             .model
+            .lock()
             .embed(vec![text.to_string()], None)
             .context("Failed to generate embedding")?;
 
@@ -69,7 +74,7 @@ impl EmbeddingEngine {
     }
 
     /// Generate embeddings for multiple texts in batch
-    pub fn batch_generate(&mut self, texts: Vec<&str>) -> Result<Vec<Vec<f32>>> {
+    pub fn batch_generate(&self, texts: Vec<&str>) -> Result<Vec<Vec<f32>>> {
         let mut results = Vec::with_capacity(texts.len());
         let mut uncached_texts = Vec::new();
         let mut uncached_indices = Vec::new();
@@ -89,6 +94,7 @@ impl EmbeddingEngine {
         if !uncached_texts.is_empty() {
             let embeddings = self
                 .model
+                .lock()
                 .embed(uncached_texts.clone(), None)
                 .context("Failed to generate batch embeddings")?;
 
@@ -111,6 +117,16 @@ impl EmbeddingEngine {
     /// Get cache size
     pub fn cache_size(&self) -> usize {
         self.cache.len()
+    }
+
+    /// Get embedding dimension
+    pub fn dimension(&self) -> usize {
+        384 // AllMiniLML6V2 dimension
+    }
+
+    /// Get model name
+    pub fn model_name(&self) -> &str {
+        "all-MiniLM-L6-v2"
     }
 
     /// Compute cosine similarity between two embeddings

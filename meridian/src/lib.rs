@@ -2,7 +2,6 @@ pub mod cache;  // Multi-level caching (L1/L2/L3) for 60% hit rate
 pub mod codegen;
 pub mod config;
 pub mod context;
-pub mod daemon;
 pub mod docs;
 pub mod embeddings;
 pub mod error_recovery;
@@ -16,7 +15,6 @@ pub mod memory;
 pub mod metrics;
 pub mod tasks;
 pub mod project;
-pub mod rpc;  // RPC infrastructure for client-server communication
 pub mod session;
 pub mod shutdown;
 pub mod specs;
@@ -24,7 +22,7 @@ pub mod storage;
 pub mod types;
 
 pub use config::Config;
-pub use mcp::{MeridianServer, ThinMcpClient, ThinClientConfig};
+pub use mcp::MeridianServer;
 pub use types::*;
 
 

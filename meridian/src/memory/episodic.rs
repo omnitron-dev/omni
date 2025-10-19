@@ -4,6 +4,7 @@ use crate::indexer::vector::{HnswIndex, VectorIndex};
 use crate::ml::embeddings::EmbeddingEngine;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 /// Pattern index for fast lookup
@@ -134,10 +135,21 @@ pub struct EpisodicMemory {
     vector_index: Option<HnswIndex<'static>>,
     /// Embedding engine for 384-dim Sentence-BERT embeddings
     embedding_engine: Option<EmbeddingEngine>,
+    /// Path to persist HNSW index for fast startup
+    hnsw_index_path: Option<PathBuf>,
 }
 
 impl EpisodicMemory {
     pub fn new(storage: Arc<dyn Storage>, retention_days: u32) -> Result<Self> {
+        Self::with_index_path(storage, retention_days, None)
+    }
+
+    /// Create with custom HNSW index path for persistence
+    pub fn with_index_path(
+        storage: Arc<dyn Storage>,
+        retention_days: u32,
+        hnsw_index_path: Option<PathBuf>,
+    ) -> Result<Self> {
         // Initialize embedding engine
         let embedding_engine = match EmbeddingEngine::new() {
             Ok(mut engine) => {
@@ -164,11 +176,30 @@ impl EpisodicMemory {
             pattern_index: PatternIndex::new(),
             vector_index,
             embedding_engine,
+            hnsw_index_path,
         })
     }
 
     /// Load episodes from storage
     pub async fn load(&mut self) -> Result<()> {
+        // Try to load persisted HNSW index first for fast startup
+        let mut loaded_from_disk = false;
+        if let Some(ref index_path) = self.hnsw_index_path {
+            if index_path.exists() {
+                tracing::info!("Loading HNSW index from disk: {:?}", index_path);
+                match HnswIndex::load(index_path) {
+                    Ok(loaded_index) => {
+                        tracing::info!("Successfully loaded HNSW index from disk ({} vectors)", loaded_index.len());
+                        self.vector_index = Some(loaded_index);
+                        loaded_from_disk = true;
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to load HNSW index from disk, will rebuild: {}", e);
+                    }
+                }
+            }
+        }
+
         let keys = self.storage.get_keys_with_prefix(b"episode:").await?;
 
         for key in keys {
@@ -176,10 +207,12 @@ impl EpisodicMemory {
                 let episode: TaskEpisode = deserialize(&data)?;
                 self.pattern_index.extract_and_index(&episode);
 
-                // Generate embedding and add to HNSW
-                if let (Some(ref mut vi), Some(ref eng)) = (&mut self.vector_index, &self.embedding_engine) {
-                    if let Ok(emb) = eng.embed(&episode.task_description) {
-                        let _ = vi.add_vector(&episode.id.0, &emb);
+                // Generate embedding and add to HNSW (only if not loaded from disk)
+                if !loaded_from_disk {
+                    if let (Some(ref mut vi), Some(ref eng)) = (&mut self.vector_index, &self.embedding_engine) {
+                        if let Ok(emb) = eng.embed(&episode.task_description) {
+                            let _ = vi.add_vector(&episode.id.0, &emb);
+                        }
                     }
                 }
 
@@ -188,7 +221,8 @@ impl EpisodicMemory {
         }
 
         let with_emb = if self.vector_index.is_some() { self.episodes.len() } else { 0 };
-        tracing::info!("Loaded {} episodes ({} with HNSW embeddings)", self.episodes.len(), with_emb);
+        let load_source = if loaded_from_disk { "from disk" } else { "rebuilt" };
+        tracing::info!("Loaded {} episodes ({} with HNSW embeddings {})", self.episodes.len(), with_emb, load_source);
         Ok(())
     }
 
@@ -414,6 +448,20 @@ impl EpisodicMemory {
             .episode_patterns
             .get(episode_id)
             .map(|v| v.as_slice())
+    }
+
+    /// Save HNSW index to disk for fast startup
+    pub fn save_index(&self) -> Result<()> {
+        if let (Some(ref index_path), Some(ref vi)) = (&self.hnsw_index_path, &self.vector_index) {
+            tracing::info!("Saving HNSW index to disk: {:?} ({} vectors)", index_path, vi.len());
+            vi.save(index_path)?;
+            tracing::info!("HNSW index saved successfully");
+        } else if self.hnsw_index_path.is_none() {
+            tracing::debug!("No HNSW index path configured, skipping save");
+        } else {
+            tracing::debug!("No HNSW vector index to save");
+        }
+        Ok(())
     }
 }
 

@@ -116,8 +116,14 @@ impl MeridianServer {
         crate::storage::check_and_migrate(storage.clone() as Arc<dyn crate::storage::Storage>)
             .await?;
 
-        // Initialize memory system
-        let mut memory_system = MemorySystem::new(storage.clone(), config.memory.clone())?;
+        // Initialize memory system with HNSW index path
+        let hnsw_index_path = config.storage.hnsw_index_path.clone()
+            .unwrap_or_else(|| config.storage.path.join("hnsw_index"));
+        let mut memory_system = MemorySystem::with_index_path(
+            storage.clone(),
+            config.memory.clone(),
+            Some(hnsw_index_path),
+        )?;
         memory_system.init().await?;
 
         // Initialize context manager
@@ -858,6 +864,7 @@ impl Drop for MeridianServer {
             snapshot_task,
             metrics_collector,
             metrics_storage,
+            memory_system,
             ..
         } = &mut self.mode
         {
@@ -867,6 +874,20 @@ impl Drop for MeridianServer {
             if let Some(task) = snapshot_task.take() {
                 task.abort();
                 info!("Cancelled background snapshot writer");
+            }
+
+            // Save HNSW index to disk for fast startup next time
+            // Use blocking call since we're in Drop (no async context)
+            if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                let memory_clone = Arc::clone(memory_system);
+                let _ = handle.spawn(async move {
+                    let memory_guard = memory_clone.read().await;
+                    if let Err(e) = memory_guard.save_index() {
+                        error!("Failed to save HNSW index: {}", e);
+                    } else {
+                        info!("HNSW index saved successfully");
+                    }
+                });
             }
 
             // Take final snapshot

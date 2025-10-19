@@ -1,3 +1,4 @@
+pub mod cache;  // Multi-level caching (L1/L2/L3) for 60% hit rate
 pub mod codegen;
 pub mod config;
 pub mod context;

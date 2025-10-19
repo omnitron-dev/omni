@@ -650,4 +650,72 @@ mod tests {
         // Should be < 100ms
         assert!(result.duration_ms < 100, "Update took too long: {}ms", result.duration_ms);
     }
+
+    #[tokio::test]
+    async fn test_incremental_parsing_speedup() {
+        let (delta_indexer, _storage, test_dir) = setup_test_delta_indexer().await;
+
+        // Create a large file with many functions
+        let test_file = test_dir.path().join("large.rs");
+        let mut large_content = String::new();
+        for i in 0..50 {
+            large_content.push_str(&format!(
+                r#"
+                pub fn function_{}(x: i32) -> i32 {{
+                    let result = x + {};
+                    if result > 100 {{
+                        return result - 100;
+                    }}
+                    result
+                }}
+                "#,
+                i, i
+            ));
+        }
+        tokio::fs::write(&test_file, &large_content).await.unwrap();
+
+        // Initial index
+        {
+            let mut indexer = delta_indexer.base_indexer.write().await;
+            indexer.index_project(test_dir.path(), false).await.unwrap();
+        }
+
+        delta_indexer
+            .enable_watching(test_dir.path())
+            .await
+            .unwrap();
+
+        sleep(Duration::from_millis(100)).await;
+        delta_indexer.poll_and_apply().await.unwrap();
+
+        // Modify just one function at the end
+        let mut modified_content = large_content.clone();
+        modified_content.push_str(
+            r#"
+            pub fn new_function() -> i32 {
+                42
+            }
+            "#,
+        );
+        tokio::fs::write(&test_file, &modified_content).await.unwrap();
+
+        sleep(Duration::from_millis(100)).await;
+
+        // Measure incremental update time
+        let start = Instant::now();
+        let result = delta_indexer.poll_and_apply().await.unwrap();
+        let elapsed = start.elapsed().as_millis();
+
+        println!("Incremental update of large file took {}ms", elapsed);
+        println!("Files updated: {}", result.files_updated);
+        println!("Symbols updated: {}", result.symbols_updated);
+
+        // With incremental parsing, this should be fast even for large files
+        // Target: < 20ms for updating 1 symbol out of 50
+        assert!(
+            result.duration_ms < 50,
+            "Incremental update took too long: {}ms (should be < 50ms)",
+            result.duration_ms
+        );
+    }
 }

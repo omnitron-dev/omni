@@ -1,6 +1,7 @@
 use super::VectorIndex;
 use anyhow::{Context, Result};
 use hnsw_rs::prelude::*;
+use hnsw_rs::hnswio::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
@@ -218,14 +219,18 @@ impl<'a> VectorIndex for HnswIndex<'a> {
                 .context("Failed to create parent directory for HNSW index")?;
         }
 
-        // Save HNSW graph - hnsw_rs file_dump expects a directory path
-        let index_dir = path.with_extension("hnsw");
-        std::fs::create_dir_all(&index_dir)
-            .context("Failed to create HNSW index directory")?;
+        // Determine directory and basename for hnsw_rs dump
+        // If path is "/path/to/hnsw_index", use directory="/path/to" and basename="hnsw_index"
+        let index_dir = path.parent().unwrap_or_else(|| Path::new("."));
+        let basename = path.file_name()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| anyhow::anyhow!("Invalid path for HNSW index"))?;
+
+        // Save HNSW graph using file_dump
         {
             let index = self.index.read().unwrap();
             index
-                .file_dump(&index_dir, "hnsw")
+                .file_dump(index_dir, basename)
                 .context("Failed to save HNSW index")?;
         }
 
@@ -255,16 +260,29 @@ impl<'a> VectorIndex for HnswIndex<'a> {
         let (metadata, _): (IndexMetadata, _) = bincode::serde::decode_from_slice(&data, bincode::config::standard())
             .context("Failed to deserialize metadata")?;
 
-        // Create a new HNSW index with the saved configuration
-        // Note: hnsw_rs 0.3.2 doesn't support direct file loading
-        // We need to recreate the index structure
-        let index = Hnsw::<'a, f32, DistCosine>::new(
-            metadata.config.max_connections,
-            metadata.config.max_elements,
-            metadata.config.ef_construction,
-            metadata.config.ef_construction,
-            DistCosine {},
-        );
+        // Determine directory and basename for hnsw_rs load
+        let index_dir = path.parent().unwrap_or_else(|| Path::new("."));
+        let basename = path.file_name()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| anyhow::anyhow!("Invalid path for HNSW index"))?;
+
+        // Check if index files exist
+        let graph_file = index_dir.join(format!("{}.hnsw.graph", basename));
+        let data_file = index_dir.join(format!("{}.hnsw.data", basename));
+
+        if !graph_file.exists() || !data_file.exists() {
+            anyhow::bail!(
+                "HNSW index files not found: {:?}, {:?}",
+                graph_file,
+                data_file
+            );
+        }
+
+        // Load the HNSW index from disk using HnswIo
+        let mut hnswio = HnswIo::new(index_dir, basename);
+        let index: Hnsw<'a, f32, DistCosine> = hnswio
+            .load_hnsw()
+            .context("Failed to load HNSW index from disk")?;
 
         Ok(Self {
             index: Arc::new(RwLock::new(index)),
@@ -380,7 +398,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // TODO: hnsw_rs 0.3.2 doesn't support file_load - need to implement custom persistence
     fn test_save_and_load() {
         let temp_dir = TempDir::new().unwrap();
         let index_path = temp_dir.path().join("test_index");

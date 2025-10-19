@@ -4,8 +4,8 @@ use crate::types::{
 };
 use anyhow::{anyhow, Result};
 use std::collections::HashMap;
-use std::path::Path;
-use tree_sitter::{Language, Node, Parser, Query, QueryCursor, StreamingIterator, Tree};
+use std::path::{Path, PathBuf};
+use tree_sitter::{Language, Node, Parser, Query, QueryCursor, Range, StreamingIterator, Tree};
 
 /// Language information
 #[derive(Debug, Clone)]
@@ -19,9 +19,20 @@ struct LanguageInfo {
     type_query: &'static str,
 }
 
+/// Result of incremental parsing
+#[derive(Debug)]
+pub struct IncrementalParseResult {
+    /// All symbols in the file
+    pub symbols: Vec<CodeSymbol>,
+    /// Ranges that changed from previous parse
+    pub changed_ranges: Vec<Range>,
+}
+
 pub struct TreeSitterParser {
     parser: Parser,
     languages: HashMap<&'static str, LanguageInfo>,
+    /// Cache of parse trees for incremental parsing
+    tree_cache: HashMap<PathBuf, Tree>,
 }
 
 impl TreeSitterParser {
@@ -200,7 +211,11 @@ impl TreeSitterParser {
             },
         );
 
-        Ok(Self { parser, languages })
+        Ok(Self {
+            parser,
+            languages,
+            tree_cache: HashMap::new(),
+        })
     }
 
     /// Parse a file and extract symbols
@@ -222,6 +237,9 @@ impl TreeSitterParser {
             .parse(content, None)
             .ok_or_else(|| anyhow!("Failed to parse file"))?;
 
+        // Cache the tree for future incremental parsing
+        self.tree_cache.insert(path.to_path_buf(), tree.clone());
+
         // Extract symbols
         let mut symbols = Vec::new();
 
@@ -241,6 +259,102 @@ impl TreeSitterParser {
         self.extract_references(&mut symbols, &tree, content)?;
 
         Ok(symbols)
+    }
+
+    /// Parse a file incrementally using cached tree
+    pub fn parse_file_incremental(&mut self, path: &Path, content: &str) -> Result<IncrementalParseResult> {
+        let language = self.detect_language(path)?;
+        let lang_info = self
+            .languages
+            .get(language)
+            .ok_or_else(|| anyhow!("Unsupported language: {}", language))?;
+
+        // Set parser language
+        self.parser
+            .set_language(&lang_info.language)
+            .map_err(|e| anyhow!("Failed to set language: {}", e))?;
+
+        // Get old tree if available
+        let old_tree = self.tree_cache.get(&path.to_path_buf());
+
+        // Parse incrementally
+        let new_tree = self
+            .parser
+            .parse(content, old_tree)
+            .ok_or_else(|| anyhow!("Failed to parse file"))?;
+
+        // Get changed ranges
+        let changed_ranges = if let Some(old_tree) = old_tree {
+            new_tree.changed_ranges(old_tree).collect::<Vec<_>>()
+        } else {
+            // No old tree, everything is changed
+            vec![Range {
+                start_byte: 0,
+                end_byte: content.len(),
+                start_point: tree_sitter::Point { row: 0, column: 0 },
+                end_point: tree_sitter::Point {
+                    row: content.lines().count(),
+                    column: content.lines().last().map(|l| l.len()).unwrap_or(0),
+                },
+            }]
+        };
+
+        // Cache the new tree
+        self.tree_cache.insert(path.to_path_buf(), new_tree.clone());
+
+        // Extract all symbols (we'll filter in the indexer)
+        let mut symbols = Vec::new();
+
+        // Extract functions
+        symbols.extend(self.extract_functions(&new_tree, content, path, lang_info)?);
+
+        // Extract classes/structs
+        symbols.extend(self.extract_classes(&new_tree, content, path, lang_info)?);
+
+        // Extract interfaces/traits
+        symbols.extend(self.extract_interfaces(&new_tree, content, path, lang_info)?);
+
+        // Extract types
+        symbols.extend(self.extract_types(&new_tree, content, path, lang_info)?);
+
+        // Extract references between symbols
+        self.extract_references(&mut symbols, &new_tree, content)?;
+
+        Ok(IncrementalParseResult {
+            symbols,
+            changed_ranges,
+        })
+    }
+
+    /// Clear cached tree for a file
+    pub fn clear_tree_cache(&mut self, path: &Path) {
+        self.tree_cache.remove(path);
+    }
+
+    /// Clear all cached trees
+    pub fn clear_all_tree_caches(&mut self) {
+        self.tree_cache.clear();
+    }
+
+    /// Get number of cached trees
+    pub fn cached_tree_count(&self) -> usize {
+        self.tree_cache.len()
+    }
+
+    /// Check if a symbol overlaps with any changed range
+    pub fn symbol_in_changed_range(symbol: &CodeSymbol, changed_ranges: &[Range]) -> bool {
+        for range in changed_ranges {
+            let symbol_start_line = symbol.location.line_start;
+            let symbol_end_line = symbol.location.line_end;
+            let range_start_line = range.start_point.row + 1; // tree-sitter uses 0-based
+            let range_end_line = range.end_point.row + 1;
+
+            // Check if ranges overlap
+            if !(symbol_end_line < range_start_line || symbol_start_line > range_end_line) {
+                return true;
+            }
+        }
+        false
     }
 
     /// Detect language from file extension
@@ -712,5 +826,129 @@ mod tests {
         let func = symbols.iter().find(|s| s.name == "complex_function");
         assert!(func.is_some());
         assert!(func.unwrap().metadata.complexity > 1);
+    }
+
+    #[test]
+    fn test_incremental_parsing_no_changes() {
+        let mut parser = TreeSitterParser::new().unwrap();
+
+        let content = r#"
+            pub fn test_function(x: i32) -> i32 {
+                x + 1
+            }
+        "#;
+
+        let path = PathBuf::from("test.rs");
+
+        // First parse - no cached tree
+        let result1 = parser.parse_file_incremental(&path, content).unwrap();
+        assert_eq!(result1.changed_ranges.len(), 1); // Everything changed on first parse
+
+        // Second parse with same content
+        let result2 = parser.parse_file_incremental(&path, content).unwrap();
+        assert_eq!(result2.changed_ranges.len(), 0); // No changes
+        assert_eq!(result1.symbols.len(), result2.symbols.len());
+    }
+
+    #[test]
+    fn test_incremental_parsing_with_changes() {
+        let mut parser = TreeSitterParser::new().unwrap();
+
+        let initial_content = r#"
+            pub fn test_function(x: i32) -> i32 {
+                x + 1
+            }
+        "#;
+
+        let modified_content = r#"
+            pub fn test_function(x: i32) -> i32 {
+                x + 2
+            }
+
+            pub fn new_function() -> i32 {
+                42
+            }
+        "#;
+
+        let path = PathBuf::from("test.rs");
+
+        // First parse
+        let result1 = parser.parse_file_incremental(&path, initial_content).unwrap();
+        assert_eq!(result1.symbols.len(), 1);
+
+        // Second parse with changes
+        let result2 = parser.parse_file_incremental(&path, modified_content).unwrap();
+        assert!(result2.changed_ranges.len() > 0); // Should have changes
+        assert_eq!(result2.symbols.len(), 2); // Now has 2 functions
+    }
+
+    #[test]
+    fn test_symbol_in_changed_range() {
+        use crate::types::{Location, SymbolKind, SymbolMetadata, Hash, TokenCount};
+
+        let symbol = CodeSymbol {
+            id: SymbolId::generate(),
+            name: "test".to_string(),
+            kind: SymbolKind::Function,
+            signature: "test()".to_string(),
+            body_hash: Hash::new(b"test"),
+            location: Location::new("test.rs".to_string(), 5, 10, 0, 0),
+            references: Vec::new(),
+            dependencies: Vec::new(),
+            metadata: SymbolMetadata {
+                complexity: 1,
+                token_cost: TokenCount::new(10),
+                last_modified: None,
+                authors: Vec::new(),
+                doc_comment: None,
+                test_coverage: 0.0,
+                usage_frequency: 0,
+            },
+            embedding: None,
+        };
+
+        // Range that overlaps
+        let overlapping_range = Range {
+            start_byte: 0,
+            end_byte: 100,
+            start_point: tree_sitter::Point { row: 4, column: 0 },
+            end_point: tree_sitter::Point { row: 11, column: 0 },
+        };
+
+        // Range that doesn't overlap
+        let non_overlapping_range = Range {
+            start_byte: 0,
+            end_byte: 50,
+            start_point: tree_sitter::Point { row: 1, column: 0 },
+            end_point: tree_sitter::Point { row: 3, column: 0 },
+        };
+
+        assert!(TreeSitterParser::symbol_in_changed_range(&symbol, &[overlapping_range]));
+        assert!(!TreeSitterParser::symbol_in_changed_range(&symbol, &[non_overlapping_range]));
+    }
+
+    #[test]
+    fn test_tree_cache_management() {
+        let mut parser = TreeSitterParser::new().unwrap();
+
+        let content = r#"
+            pub fn test() {}
+        "#;
+
+        let path = PathBuf::from("test.rs");
+
+        assert_eq!(parser.cached_tree_count(), 0);
+
+        parser.parse_file(&path, content).unwrap();
+        assert_eq!(parser.cached_tree_count(), 1);
+
+        parser.clear_tree_cache(&path);
+        assert_eq!(parser.cached_tree_count(), 0);
+
+        parser.parse_file(&path, content).unwrap();
+        assert_eq!(parser.cached_tree_count(), 1);
+
+        parser.clear_all_tree_caches();
+        assert_eq!(parser.cached_tree_count(), 0);
     }
 }

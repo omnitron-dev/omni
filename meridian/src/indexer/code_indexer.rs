@@ -1,4 +1,5 @@
 use super::{Indexer, TreeSitterParser, IgnoreMatcher};
+use crate::cache::{MultiLevelCache, MultiLevelCacheConfig};
 use crate::config::IndexConfig;
 use crate::embeddings::EmbeddingEngine;
 use crate::storage::{deserialize, serialize, Storage};
@@ -8,11 +9,10 @@ use crate::types::{
 };
 use anyhow::{Context, Result};
 use dashmap::DashMap;
-use lru::LruCache;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex as StdMutex};
+use std::sync::Arc;
 use tokio::sync::Mutex as TokioMutex;
 use std::time::SystemTime;
 
@@ -32,7 +32,7 @@ pub struct DependencyGraph {
 }
 
 /// Cache key for search results
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 struct SearchCacheKey {
     text: String,
     symbol_types: Option<Vec<String>>,
@@ -72,9 +72,9 @@ pub struct CodeIndexer {
     // Source code cache for getting full definitions
     source_cache: DashMap<PathBuf, String>,
     // Embedding engine for semantic search
-    embedding_engine: Arc<StdMutex<EmbeddingEngine>>,
-    // LRU cache for search results (capacity: 1000)
-    search_cache: Arc<StdMutex<LruCache<SearchCacheKey, QueryResult>>>,
+    embedding_engine: Arc<parking_lot::Mutex<EmbeddingEngine>>,
+    // Multi-level cache for search results (L1: 1K, L2: 10K, L3: RocksDB)
+    search_cache: Arc<MultiLevelCache<SearchCacheKey, QueryResult>>,
     // File modification time tracking for incremental indexing
     file_mtimes: DashMap<PathBuf, SystemTime>,
     // Ignore matcher for gitignore support (async mutex for async load_gitignore)
@@ -83,9 +83,16 @@ pub struct CodeIndexer {
 
 impl CodeIndexer {
     pub fn new(storage: Arc<dyn Storage>, config: IndexConfig) -> Result<Self> {
-        let embedding_engine = Arc::new(StdMutex::new(EmbeddingEngine::new()?));
-        let cache_capacity = NonZeroUsize::new(1000).unwrap();
-        let search_cache = Arc::new(StdMutex::new(LruCache::new(cache_capacity)));
+        let embedding_engine = Arc::new(parking_lot::Mutex::new(EmbeddingEngine::new()?));
+
+        // Initialize multi-level cache with optimized configuration
+        let cache_config = MultiLevelCacheConfig {
+            l1_capacity: 1_000,    // Hot: 1K entries, <1ms access
+            l2_capacity: 10_000,   // Warm: 10K entries, 1-5ms access
+            l3_prefix: "search_cache:".to_string(),
+            auto_promote: true,
+        };
+        let search_cache = Arc::new(MultiLevelCache::new(storage.clone(), cache_config)?);
         let ignore_matcher = Arc::new(TokioMutex::new(IgnoreMatcher::new()));
 
         Ok(Self {
@@ -153,6 +160,16 @@ impl CodeIndexer {
         self.symbols.len()
     }
 
+    /// Get multi-level cache statistics
+    pub fn cache_stats(&self) -> crate::cache::CacheStats {
+        self.search_cache.stats()
+    }
+
+    /// Get cache sizes (L1, L2)
+    pub fn cache_sizes(&self) -> (usize, usize) {
+        self.search_cache.sizes()
+    }
+
     /// Check if file has been modified since last index
     fn has_file_changed(&self, path: &Path) -> Result<bool> {
         let metadata = std::fs::metadata(path)?;
@@ -182,26 +199,148 @@ impl CodeIndexer {
             }
         }
 
-        // Remove old symbols for this file
-        if let Some(old_symbols) = self.file_index.get(path) {
-            for symbol_id in old_symbols.iter() {
-                self.symbols.remove(symbol_id);
+        // Use incremental parsing
+        self.index_file_incremental_parse(path).await?;
+
+        Ok(true) // File was re-indexed
+    }
+
+    /// Index a file using incremental parsing (tree-sitter)
+    async fn index_file_incremental_parse(&mut self, path: &Path) -> Result<()> {
+        use super::tree_sitter_parser::TreeSitterParser;
+
+        // Check if file should be ignored
+        if self.should_ignore(path) {
+            return Ok(());
+        }
+
+        // Read file content
+        let content = tokio::fs::read_to_string(path)
+            .await
+            .with_context(|| format!("Failed to read file: {:?}", path))?;
+
+        // Store modification time for incremental indexing
+        if let Ok(metadata) = std::fs::metadata(path) {
+            if let Ok(mtime) = metadata.modified() {
+                self.file_mtimes.insert(path.to_path_buf(), mtime);
+            }
+        }
+
+        // Cache the source
+        self.source_cache
+            .insert(path.to_path_buf(), content.clone());
+
+        // Parse incrementally
+        let parse_result = self.parser.parse_file_incremental(path, &content)?;
+
+        tracing::debug!(
+            "Incremental parse: {} symbols, {} changed ranges",
+            parse_result.symbols.len(),
+            parse_result.changed_ranges.len()
+        );
+
+        // Get old symbols for this file
+        let old_symbol_ids: Vec<SymbolId> = self
+            .file_index
+            .get(path)
+            .map(|ids| ids.clone())
+            .unwrap_or_default();
+
+        // Build set of symbols that need updating
+        let mut symbols_to_update = Vec::new();
+        let mut symbols_to_keep = std::collections::HashSet::new();
+
+        for new_symbol in &parse_result.symbols {
+            // Check if this symbol is in a changed range
+            if TreeSitterParser::symbol_in_changed_range(new_symbol, &parse_result.changed_ranges) {
+                symbols_to_update.push(new_symbol.clone());
+            } else {
+                // Symbol unchanged - see if we have it cached
+                if let Some(old_id) = old_symbol_ids
+                    .iter()
+                    .find(|id| {
+                        if let Some(old_sym) = self.symbols.get(id) {
+                            old_sym.name == new_symbol.name
+                                && old_sym.location.line_start == new_symbol.location.line_start
+                        } else {
+                            false
+                        }
+                    })
+                {
+                    symbols_to_keep.insert(old_id.clone());
+                }
+            }
+        }
+
+        // Remove symbols that are no longer present or changed
+        for old_id in old_symbol_ids {
+            if !symbols_to_keep.contains(&old_id) {
+                self.symbols.remove(&old_id);
 
                 // Remove from name index
                 for mut entry in self.name_index.iter_mut() {
-                    entry.value_mut().retain(|id| id != symbol_id);
+                    entry.value_mut().retain(|id| id != &old_id);
                 }
 
                 // Remove from dependencies
-                self.dependencies.remove(symbol_id);
+                self.dependencies.remove(&old_id);
             }
         }
-        self.file_index.remove(path);
 
-        // Re-index the file
-        self.index_file(path).await?;
+        // Build dependencies for new symbols
+        self.build_local_dependencies(&mut symbols_to_update);
 
-        Ok(true) // File was re-indexed
+        // Generate embeddings for updated symbols only
+        for symbol in &mut symbols_to_update {
+            // Create embedding text from symbol name, signature, and doc comment
+            let embedding_text = format!(
+                "{} {} {}",
+                symbol.name,
+                symbol.signature,
+                symbol.metadata.doc_comment.as_deref().unwrap_or("")
+            );
+
+            // Generate embedding
+            match self.embedding_engine.lock().generate_embedding(&embedding_text) {
+                Ok(embedding) => {
+                    symbol.embedding = Some(embedding);
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to generate embedding for symbol {}: {}", symbol.name, e);
+                }
+            }
+        }
+
+        // Store only updated symbols
+        for symbol in &symbols_to_update {
+            let key = format!("symbol:{}", symbol.id.0);
+            let value = serialize(symbol)?;
+            self.storage.put(key.as_bytes(), &value).await?;
+
+            // Update caches
+            self.symbols.insert(symbol.id.clone(), symbol.clone());
+
+            self.name_index
+                .entry(symbol.name.clone())
+                .or_default()
+                .push(symbol.id.clone());
+        }
+
+        // Rebuild file index
+        let all_symbol_ids: Vec<SymbolId> = symbols_to_keep
+            .into_iter()
+            .chain(symbols_to_update.iter().map(|s| s.id.clone()))
+            .collect();
+
+        self.file_index.insert(path.to_path_buf(), all_symbol_ids);
+
+        tracing::debug!(
+            "Incremental update: {} symbols updated for {:?}",
+            symbols_to_update.len(),
+            path
+        );
+
+        Ok(())
     }
 
     /// Index a single file
@@ -245,7 +384,7 @@ impl CodeIndexer {
             );
 
             // Generate embedding
-            match self.embedding_engine.lock().unwrap().generate_embedding(&embedding_text) {
+            match self.embedding_engine.lock().generate_embedding(&embedding_text) {
                 Ok(embedding) => {
                     symbol.embedding = Some(embedding);
                 }
@@ -630,7 +769,7 @@ impl CodeIndexer {
     /// Perform semantic search using vector embeddings
     pub async fn semantic_search(&self, query: &str, limit: usize) -> Result<Vec<CodeSymbol>> {
         // Generate embedding for the query
-        let query_embedding = self.embedding_engine.lock().unwrap().generate_embedding(query)?;
+        let query_embedding = self.embedding_engine.lock().generate_embedding(query)?;
 
         // Calculate cosine similarity for all symbols with embeddings
         let mut scored_symbols: Vec<(CodeSymbol, f32)> = Vec::new();
@@ -854,12 +993,10 @@ impl Indexer for CodeIndexer {
         if query.max_tokens.is_none() {
             let cache_key = SearchCacheKey::from_query(query);
 
-            // Try to get from cache
-            if let Ok(mut cache) = self.search_cache.lock() {
-                if let Some(cached_result) = cache.get(&cache_key) {
-                    tracing::debug!("Cache hit for query: {}", query.text);
-                    return Ok(cached_result.clone());
-                }
+            // Try to get from multi-level cache (checks L1 → L2 → L3)
+            if let Some(cached_result) = self.search_cache.get(&cache_key).await? {
+                tracing::debug!("Multi-level cache hit for query: {}", query.text);
+                return Ok(cached_result);
             }
         }
 
@@ -965,13 +1102,11 @@ impl Indexer for CodeIndexer {
             has_more: Some(has_more),
         };
 
-        // Store in cache (skip if token budget was used as results vary)
+        // Store in multi-level cache (skip if token budget was used as results vary)
         if query.max_tokens.is_none() {
             let cache_key = SearchCacheKey::from_query(query);
-            if let Ok(mut cache) = self.search_cache.lock() {
-                cache.put(cache_key, result.clone());
-                tracing::debug!("Cached search result for query: {}", query.text);
-            }
+            self.search_cache.put(cache_key, result.clone()).await?;
+            tracing::debug!("Stored search result in multi-level cache for query: {}", query.text);
         }
 
         Ok(result)
@@ -1002,11 +1137,11 @@ impl Indexer for CodeIndexer {
         // Clear source cache
         self.source_cache.remove(path);
 
-        // Invalidate search cache on file changes
-        if let Ok(mut cache) = self.search_cache.lock() {
-            cache.clear();
-            tracing::debug!("Search cache invalidated due to file update: {:?}", path);
-        }
+        // Invalidate multi-level search cache on file changes
+        // Note: We clear the entire cache since we can't efficiently track which
+        // cache entries are affected by this file update
+        self.search_cache.clear().await?;
+        tracing::debug!("Multi-level search cache cleared due to file update: {:?}", path);
 
         // Re-index the file
         self.index_file(path).await?;

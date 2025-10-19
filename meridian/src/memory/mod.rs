@@ -6,6 +6,7 @@ pub mod working;
 use crate::config::MemoryConfig;
 use crate::storage::Storage;
 use anyhow::Result;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 pub use episodic::EpisodicMemory;
@@ -23,8 +24,20 @@ pub struct MemorySystem {
 
 impl MemorySystem {
     pub fn new(storage: Arc<dyn Storage>, config: MemoryConfig) -> Result<Self> {
+        Self::with_index_path(storage, config, None)
+    }
+
+    pub fn with_index_path(
+        storage: Arc<dyn Storage>,
+        config: MemoryConfig,
+        hnsw_index_path: Option<PathBuf>,
+    ) -> Result<Self> {
         Ok(Self {
-            episodic: EpisodicMemory::new(storage.clone(), config.episodic_retention_days)?,
+            episodic: EpisodicMemory::with_index_path(
+                storage.clone(),
+                config.episodic_retention_days,
+                hnsw_index_path,
+            )?,
             working: WorkingMemory::new(config.working_memory_size)?,
             semantic: SemanticMemory::new(storage.clone())?,
             procedural: ProceduralMemory::new(storage.clone())?,
@@ -45,5 +58,10 @@ impl MemorySystem {
         self.episodic.consolidate().await?;
         self.semantic.consolidate().await?;
         Ok(())
+    }
+
+    /// Save HNSW index to disk for fast startup
+    pub fn save_index(&self) -> Result<()> {
+        self.episodic.save_index()
     }
 }

@@ -60,6 +60,9 @@ impl Default for IndexConfig {
 pub struct StorageConfig {
     pub path: PathBuf,
     pub cache_size: String,
+    /// Path to store HNSW vector index (for fast startup)
+    /// If None, defaults to storage.path/hnsw_index
+    pub hnsw_index_path: Option<PathBuf>,
 }
 
 impl Default for StorageConfig {
@@ -67,6 +70,7 @@ impl Default for StorageConfig {
         Self {
             path: get_meridian_home().join("db").join("current").join("index"),
             cache_size: "256MB".to_string(),
+            hnsw_index_path: None, // Will use default path in storage.path/hnsw_index
         }
     }
 }

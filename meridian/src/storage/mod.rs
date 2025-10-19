@@ -23,7 +23,7 @@ pub use db_pool::{get_or_create_db, get_db, remove_db, get_pool_stats, PoolStats
 
 /// Storage backend trait
 #[async_trait]
-pub trait Storage: Send + Sync {
+pub trait Storage: Send + Sync + std::any::Any {
     /// Get a value by key
     async fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>>;
 

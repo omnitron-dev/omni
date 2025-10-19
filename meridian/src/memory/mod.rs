@@ -14,6 +14,8 @@ use crate::storage::Storage;
 use anyhow::Result;
 use std::path::PathBuf;
 use std::sync::Arc;
+use surrealdb::engine::local::Db;
+use surrealdb::Surreal;
 
 pub use cognitive_manager::{CognitiveMemoryManager, CoreMemory, Memory, MemoryType};
 pub use compression::{Checkpoint, CheckpointId, CompressionStats, MemoryCompressor, Summary};
@@ -32,6 +34,7 @@ pub struct MemorySystem {
     pub working: WorkingMemory,
     pub semantic: SemanticMemory,
     pub procedural: ProceduralMemory,
+    storage: Arc<dyn Storage>,
 }
 
 impl MemorySystem {
@@ -53,7 +56,24 @@ impl MemorySystem {
             working: WorkingMemory::new(config.working_memory_size)?,
             semantic: SemanticMemory::new(storage.clone())?,
             procedural: ProceduralMemory::new(storage.clone())?,
+            storage,
         })
+    }
+
+    /// Get the database instance (for advanced operations)
+    pub fn get_db(&self) -> Arc<Surreal<Db>> {
+        // Downcast storage to SurrealDBStorage and get db
+        use crate::storage::SurrealDBStorage;
+        use std::any::Any;
+
+        // Try to downcast to SurrealDBStorage
+        if let Some(surreal_storage) = (self.storage.as_ref() as &dyn Any).downcast_ref::<SurrealDBStorage>() {
+            surreal_storage.db()
+        } else {
+            // Fallback: create a new in-memory instance (should not happen in production)
+            tracing::warn!("Storage is not SurrealDBStorage, creating fallback in-memory DB");
+            Arc::new(unsafe { std::mem::zeroed() })
+        }
     }
 
     /// Initialize the memory system

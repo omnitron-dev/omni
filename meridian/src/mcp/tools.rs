@@ -904,6 +904,13 @@ pub fn get_all_resources() -> Vec<Resource> {
             mime_type: Some("application/json".to_string()),
             _meta: None,
         },
+        Resource {
+            uri: "improvement://dashboard".to_string(),
+            name: Some("Self-Improvement Dashboard".to_string()),
+            description: Some("Current codebase health metrics and improvement recommendations".to_string()),
+            mime_type: Some("application/json".to_string()),
+            _meta: None,
+        },
     ]
 }
 

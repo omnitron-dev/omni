@@ -817,6 +817,81 @@ impl MeridianServer {
                     }
                 }
             }
+            "improvement://dashboard" => {
+                match &self.mode {
+                    ServerMode::SingleProject { memory_system, .. } => {
+                        // Get SurrealDB instance from memory system
+                        let memory = memory_system.read().await;
+                        let db = memory.get_db();
+
+                        // Collect metrics using the self-improvement collector
+                        use crate::metrics::SelfImprovementCollector;
+                        use crate::analysis::CodeHealthAnalyzer;
+
+                        let collector = SelfImprovementCollector::new(db.clone());
+                        let health_analyzer = CodeHealthAnalyzer::new(db.clone());
+
+                        // Collect current metrics
+                        let metrics_result = collector.collect().await;
+                        let health_result = health_analyzer.analyze().await;
+
+                        match (metrics_result, health_result) {
+                            (Ok(metrics), Ok(health)) => {
+                                json!({
+                                    "uri": uri,
+                                    "mimeType": "application/json",
+                                    "text": json!({
+                                        "timestamp": metrics.timestamp.to_rfc3339(),
+                                        "health_score": metrics.health_score,
+                                        "health_rating": metrics.health_rating(),
+                                        "trend": metrics.trend_direction,
+                                        "metrics": {
+                                            "code_quality_score": metrics.code_quality_score,
+                                            "test_coverage_percent": metrics.test_coverage_percent,
+                                            "avg_cyclomatic_complexity": metrics.avg_cyclomatic_complexity,
+                                            "technical_debt_score": metrics.technical_debt_score,
+                                        },
+                                        "issues": {
+                                            "circular_dependencies": metrics.circular_dependencies_count,
+                                            "untested_symbols": metrics.untested_symbols_count,
+                                            "undocumented_symbols": metrics.undocumented_symbols_count,
+                                            "high_complexity_symbols": metrics.high_complexity_symbols_count,
+                                        },
+                                        "improvements": {
+                                            "per_week": metrics.improvements_per_week,
+                                            "avg_time_hours": metrics.avg_improvement_time_hours,
+                                        },
+                                        "language_breakdown": metrics.language_breakdown,
+                                        "summary": health.summary,
+                                        "top_issues": health.issues.iter().take(10).collect::<Vec<_>>(),
+                                        "recommendations": health.recommendations,
+                                    }).to_string()
+                                })
+                            }
+                            (Err(e), _) | (_, Err(e)) => {
+                                json!({
+                                    "uri": uri,
+                                    "mimeType": "application/json",
+                                    "text": json!({
+                                        "error": format!("Failed to collect metrics: {}", e),
+                                        "health_score": 0.0,
+                                        "metrics": {}
+                                    }).to_string()
+                                })
+                            }
+                        }
+                    }
+                    ServerMode::MultiProject { .. } => {
+                        json!({
+                            "uri": uri,
+                            "mimeType": "application/json",
+                            "text": json!({
+                                "error": "Multi-project mode not yet supported for improvement dashboard"
+                            }).to_string()
+                        })
+                    }
+                }
+            }
             _ => {
                 return JsonRpcResponse::error(
                     id,

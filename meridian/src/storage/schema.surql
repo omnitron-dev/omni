@@ -245,3 +245,27 @@ DEFINE INDEX IF NOT EXISTS idx_documents_out ON TABLE documents COLUMNS out;
 -- Indexes for relationship queries
 DEFINE INDEX IF NOT EXISTS idx_task_depends_in ON TABLE task_depends_on COLUMNS in;
 DEFINE INDEX IF NOT EXISTS idx_task_depends_out ON TABLE task_depends_on COLUMNS out;
+
+-- ============================================================================
+-- Self-Improvement Metrics Tables
+-- ============================================================================
+
+-- Self-improvement metrics snapshots
+DEFINE TABLE IF NOT EXISTS improvement_metrics SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS timestamp ON TABLE improvement_metrics TYPE datetime DEFAULT time::now();
+DEFINE FIELD IF NOT EXISTS health_score ON TABLE improvement_metrics TYPE float DEFAULT 0.0;
+DEFINE FIELD IF NOT EXISTS code_quality_score ON TABLE improvement_metrics TYPE float DEFAULT 0.0;
+DEFINE FIELD IF NOT EXISTS test_coverage_percent ON TABLE improvement_metrics TYPE float DEFAULT 0.0;
+DEFINE FIELD IF NOT EXISTS avg_cyclomatic_complexity ON TABLE improvement_metrics TYPE float DEFAULT 0.0;
+DEFINE FIELD IF NOT EXISTS circular_dependencies_count ON TABLE improvement_metrics TYPE int DEFAULT 0;
+DEFINE FIELD IF NOT EXISTS untested_symbols_count ON TABLE improvement_metrics TYPE int DEFAULT 0;
+DEFINE FIELD IF NOT EXISTS undocumented_symbols_count ON TABLE improvement_metrics TYPE int DEFAULT 0;
+DEFINE FIELD IF NOT EXISTS high_complexity_symbols_count ON TABLE improvement_metrics TYPE int DEFAULT 0;
+DEFINE FIELD IF NOT EXISTS improvements_per_week ON TABLE improvement_metrics TYPE int DEFAULT 0;
+DEFINE FIELD IF NOT EXISTS avg_improvement_time_hours ON TABLE improvement_metrics TYPE float DEFAULT 0.0;
+DEFINE FIELD IF NOT EXISTS technical_debt_score ON TABLE improvement_metrics TYPE float DEFAULT 0.0;
+DEFINE FIELD IF NOT EXISTS language_breakdown ON TABLE improvement_metrics TYPE option<object>;
+DEFINE FIELD IF NOT EXISTS trend_direction ON TABLE improvement_metrics TYPE string DEFAULT 'Stable';
+
+DEFINE INDEX IF NOT EXISTS idx_improvement_timestamp ON TABLE improvement_metrics COLUMNS timestamp;
+DEFINE INDEX IF NOT EXISTS idx_improvement_health ON TABLE improvement_metrics COLUMNS health_score;

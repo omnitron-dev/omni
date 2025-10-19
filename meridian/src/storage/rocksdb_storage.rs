@@ -10,14 +10,66 @@ pub struct RocksDBStorage {
     db: Arc<DB>,
 }
 
+impl Drop for RocksDBStorage {
+    fn drop(&mut self) {
+        // Ensure proper cleanup
+        // Arc will handle the actual drop when all references are gone
+        tracing::debug!("RocksDBStorage drop called");
+    }
+}
+
 impl RocksDBStorage {
     pub fn new(path: &Path) -> Result<Self> {
         let mut opts = Options::default();
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
 
-        let db = DB::open(&opts, path)
-            .with_context(|| format!("Failed to open RocksDB at {:?}", path))?;
+        // macOS-specific configuration to avoid file locking issues
+        #[cfg(target_os = "macos")]
+        {
+            tracing::debug!("Applying macOS-specific RocksDB configuration");
+
+            // Disable adaptive mutex which can cause locking issues on macOS
+            opts.set_use_adaptive_mutex(false);
+
+            // Disable memory-mapped I/O which can cause file locking problems on macOS
+            opts.set_allow_mmap_reads(false);
+            opts.set_allow_mmap_writes(false);
+
+            // Use direct I/O to bypass filesystem cache issues
+            // Note: This may not work on all macOS filesystems (e.g., APFS might not support it)
+            // We'll catch the error if it fails
+            opts.set_use_direct_reads(false); // Direct reads often fail on macOS
+            opts.set_use_direct_io_for_flush_and_compaction(false);
+        }
+
+        // General optimizations for development/testing
+        opts.set_max_open_files(256);  // Limit file handles
+        opts.increase_parallelism(2);  // Limit parallelism for development
+
+        // Try to repair database if it's corrupted or locked
+        let db = match DB::open(&opts, path) {
+            Ok(db) => db,
+            Err(e) => {
+                let err_str = e.to_string();
+                if err_str.contains("LOCK") || err_str.contains("lock") {
+                    // Try to remove stale LOCK file
+                    let lock_file = path.join("LOCK");
+                    if lock_file.exists() {
+                        tracing::warn!("Removing stale RocksDB LOCK file: {:?}", lock_file);
+                        let _ = std::fs::remove_file(&lock_file);
+
+                        // Try opening again
+                        DB::open(&opts, path)
+                            .with_context(|| format!("Failed to open RocksDB at {:?} (after lock cleanup)", path))?
+                    } else {
+                        return Err(e).with_context(|| format!("Failed to open RocksDB at {:?}", path));
+                    }
+                } else {
+                    return Err(e).with_context(|| format!("Failed to open RocksDB at {:?}", path));
+                }
+            }
+        };
 
         Ok(Self { db: Arc::new(db) })
     }
@@ -27,6 +79,12 @@ impl RocksDBStorage {
             .with_context(|| format!("Failed to open RocksDB at {:?}", path))?;
 
         Ok(Self { db: Arc::new(db) })
+    }
+
+    /// Create a RocksDBStorage from an existing DB Arc
+    /// This allows sharing a single RocksDB instance across multiple components
+    pub fn from_db(db: Arc<DB>) -> Self {
+        Self { db }
     }
 }
 

@@ -88,7 +88,8 @@ dashmap = "6.1.0"
 parking_lot = "0.12.5"
 lru = "0.16.2"
 bincode = "2.0.1"
-petgraph = "0.6.5"  # In-memory graph for fast traversals
+petgraph = "0.8.3"  # In-memory graph for fast traversals
+num_cpus = "1.17.0"
 
 # Time
 chrono = { version = "0.4.42", features = ["serde"] }
@@ -101,6 +102,7 @@ blake3 = "1.8.2"
 
 # Compression
 lz4 = "1.28.1"
+zstd = "0.13.3"
 
 # Regex
 regex = "1.11.1"
@@ -113,7 +115,6 @@ sysinfo = "0.37.2"
 
 # Process management
 dirs = "6.0.0"
-daemonize = "0.5.0"
 nix = { version = "0.30.1", features = ["signal", "process"] }
 
 # File watching
@@ -143,6 +144,10 @@ harness = false
 
 [[bench]]
 name = "episodic_memory_bench"
+harness = false
+
+[[bench]]
+name = "rpc_bench"
 harness = false
 
 [[bin]]

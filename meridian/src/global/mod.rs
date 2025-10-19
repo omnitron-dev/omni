@@ -25,5 +25,5 @@ pub use server::{GlobalServer, GlobalServerConfig, ServerStatus};
 pub use ipc::IpcServer;
 pub use dependencies::{DependencyGraph, DependencyGraphManager, DependencyType, DependencyEdge, ProjectNode};
 pub use watcher::{GlobalFileWatcher, WatcherConfig, FileChangeEvent, FileChangeKind, WatcherStats};
-pub use daemon::{start_global_daemon, stop_global_daemon, restart_global_daemon, get_global_status, GlobalDaemonStatus};
+pub use daemon::{start_global_daemon, stop_global_daemon, restart_global_daemon, get_global_status, GlobalDaemonStatus, run_daemon_process};
 pub use sync::{SyncManager, SyncResult, SyncDirection, SyncStats};

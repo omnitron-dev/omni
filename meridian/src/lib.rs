@@ -17,6 +17,7 @@ pub mod metrics;
 pub mod ml;
 pub mod progress;
 pub mod project;
+pub mod rpc;  // RPC infrastructure for client-server communication
 pub mod session;
 pub mod shutdown;
 pub mod specs;
@@ -24,7 +25,7 @@ pub mod storage;
 pub mod types;
 
 pub use config::Config;
-pub use mcp::MeridianServer;
+pub use mcp::{MeridianServer, ThinMcpClient, ThinClientConfig};
 pub use types::*;
 
 

@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
-use tracing::info;
+use tracing::{info, warn};
 use sysinfo::{System, ProcessesToUpdate};
 
 use meridian::{MeridianServer, Config};
@@ -157,6 +157,14 @@ enum Commands {
         /// Use HTTP/SSE transport
         #[arg(long)]
         http: bool,
+
+        /// Use thin client mode (forward to global RPC server)
+        #[arg(long)]
+        thin: bool,
+
+        /// Force legacy mode (don't use thin client even if global server is available)
+        #[arg(long)]
+        legacy: bool,
     },
 
     /// Index a project
@@ -261,6 +269,10 @@ enum ServerCommands {
         #[arg(long)]
         level: Option<String>,
     },
+
+    /// Internal command: Run as daemon process (DO NOT USE DIRECTLY)
+    #[command(hide = true)]
+    RunDaemon,
 }
 
 #[derive(Subcommand)]
@@ -305,7 +317,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // Check if we're in stdio mode - if so, disable console logging
-    let is_stdio = matches!(cli.command, Commands::Serve { stdio: true, .. } | Commands::Serve { stdio: false, socket: None, http: false });
+    let is_stdio = matches!(cli.command, Commands::Serve { stdio: true, .. } | Commands::Serve { stdio: false, socket: None, http: false, .. });
 
     // Initialize logging
     if is_stdio {
@@ -365,9 +377,9 @@ async fn main() -> Result<()> {
         Commands::Projects { command } => {
             handle_projects_command(command).await?;
         }
-        Commands::Serve { stdio, socket, http } => {
+        Commands::Serve { stdio, socket, http, thin, legacy } => {
             info!("Starting MCP server...");
-            serve_mcp(config, stdio, socket, http).await?;
+            serve_mcp(config, stdio, socket, http, thin, legacy).await?;
         }
         Commands::Index { path, force } => {
             info!("Indexing project at {:?}", path);
@@ -393,7 +405,7 @@ async fn main() -> Result<()> {
 async fn handle_server_command(command: ServerCommands) -> Result<()> {
     use meridian::global::{
         start_global_daemon, stop_global_daemon, restart_global_daemon,
-        get_global_status, GlobalServerConfig,
+        get_global_status, GlobalServerConfig, run_daemon_process,
     };
 
     match command {
@@ -432,6 +444,11 @@ async fn handle_server_command(command: ServerCommands) -> Result<()> {
             // Show global server logs
             use meridian::daemon::show_logs;
             show_logs(follow, lines, level)?;
+        }
+        ServerCommands::RunDaemon => {
+            // Internal command - run as daemon process
+            let config = GlobalServerConfig::default();
+            run_daemon_process(config).await?;
         }
         ServerCommands::Status => {
             use meridian::config::get_meridian_home;
@@ -641,22 +658,64 @@ async fn handle_projects_command(command: ProjectsCommands) -> Result<()> {
     Ok(())
 }
 
-async fn serve_mcp(config: Config, stdio: bool, socket: Option<PathBuf>, http: bool) -> Result<()> {
-    if http {
-        // Create Meridian server in multi-project mode for HTTP
-        info!("Starting MCP server with HTTP/SSE transport");
-        let mut server = MeridianServer::new_for_http(config)?;
-        server.serve_http().await?;
-    } else {
-        // Create Meridian server in single-project mode for stdio/socket
-        let mut server = MeridianServer::new(config).await?;
+async fn serve_mcp(config: Config, stdio: bool, socket: Option<PathBuf>, http: bool, thin: bool, legacy: bool) -> Result<()> {
+    use meridian::{ThinMcpClient, ThinClientConfig};
+    use meridian::global::daemon::get_global_status;
 
-        if stdio || socket.is_none() {
-            info!("Starting MCP server with stdio transport");
-            server.serve_stdio().await?;
-        } else if let Some(socket_path) = socket {
-            info!("Starting MCP server with socket transport at {:?}", socket_path);
-            server.serve_socket(socket_path).await?;
+    // Determine if we should use thin client mode
+    let use_thin = if legacy {
+        // User explicitly requested legacy mode
+        false
+    } else if thin {
+        // User explicitly requested thin mode
+        true
+    } else {
+        // Auto-detect: use thin mode if global server is running
+        let status = get_global_status();
+        if status.running {
+            info!("Global server detected (PID: {}), using thin client mode", status.pid.unwrap_or(0));
+            true
+        } else {
+            info!("Global server not running, using legacy mode");
+            false
+        }
+    };
+
+    if use_thin {
+        // Use thin client mode - forward to global RPC server
+        info!("Starting thin MCP client (forwarding to global RPC server)");
+
+        let thin_config = ThinClientConfig::default();
+        let thin_client = ThinMcpClient::new(thin_config);
+
+        // Thin client only supports stdio mode currently
+        if !stdio && socket.is_some() {
+            warn!("Socket transport not supported in thin client mode, using stdio");
+        }
+        if http {
+            warn!("HTTP transport not supported in thin client mode, using stdio");
+        }
+
+        thin_client.serve_stdio().await?;
+    } else {
+        // Use legacy mode - full local server
+        if http {
+            // Create Meridian server in multi-project mode for HTTP
+            info!("Starting MCP server with HTTP/SSE transport (legacy mode)");
+            let mut server = MeridianServer::new_for_http(config)?;
+            server.serve_http().await?;
+        } else {
+            // Create Meridian server in single-project mode for stdio/socket
+            info!("Starting MCP server in legacy mode");
+            let mut server = MeridianServer::new(config).await?;
+
+            if stdio || socket.is_none() {
+                info!("Starting MCP server with stdio transport");
+                server.serve_stdio().await?;
+            } else if let Some(socket_path) = socket {
+                info!("Starting MCP server with socket transport at {:?}", socket_path);
+                server.serve_socket(socket_path).await?;
+            }
         }
     }
 

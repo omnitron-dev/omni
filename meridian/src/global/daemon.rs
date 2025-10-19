@@ -66,73 +66,114 @@ pub async fn start_global_daemon(config: GlobalServerConfig, foreground: bool) -
         println!("✓ Starting global server in foreground mode");
         println!("Press Ctrl+C to stop");
 
+        // Save PID immediately in foreground mode
+        save_global_pid(std::process::id())?;
+
         let server = GlobalServer::new(config).await?;
         server.start().await?;
 
         // Wait for server to stop
         server.wait().await?;
     } else {
-        // Run as daemon
+        // Run as daemon - spawn a new process instead of forking
         info!("Starting global server as daemon");
 
         #[cfg(unix)]
         {
-            use daemonize::Daemonize;
+            use std::process::{Command, Stdio};
             use std::fs::File;
+            use std::os::unix::io::{FromRawFd, IntoRawFd};
 
             let log_file = get_global_log_file();
             fs::create_dir_all(log_file.parent().unwrap())?;
 
-            let stdout = File::create(&log_file)
+            // Open log file for stdout/stderr redirection
+            let log_file_handle = File::create(&log_file)
                 .with_context(|| format!("Failed to create log file: {:?}", log_file))?;
-            let stderr = stdout.try_clone()?;
 
-            let daemonize = Daemonize::new()
-                .pid_file(get_global_pid_file())
-                .working_directory(get_meridian_home())
-                .stdout(stdout)
-                .stderr(stderr);
+            // Duplicate for stderr
+            let log_file_handle_stderr = log_file_handle.try_clone()?;
 
-            match daemonize.start() {
-                Ok(_) => {
-                    // We're now in the daemon process
-                    info!("Global server daemon started");
+            // Get current executable path
+            let exe = std::env::current_exe()
+                .context("Failed to get current executable path")?;
 
-                    // Save our PID
-                    save_global_pid(std::process::id())?;
+            // Spawn daemon process with special internal flag
+            let child = Command::new(exe)
+                .arg("server")
+                .arg("run-daemon")  // Internal command that runs the daemon
+                .stdin(Stdio::null())
+                .stdout(unsafe { Stdio::from_raw_fd(log_file_handle.into_raw_fd()) })
+                .stderr(unsafe { Stdio::from_raw_fd(log_file_handle_stderr.into_raw_fd()) })
+                .spawn()
+                .context("Failed to spawn daemon process")?;
 
-                    // Run the server
-                    let server = GlobalServer::new(config).await?;
-                    server.start().await?;
+            // Save the child PID
+            save_global_pid(child.id())?;
 
-                    // Wait forever
-                    server.wait().await?;
-                }
-                Err(e) => {
-                    error!("Failed to daemonize: {}", e);
-                    bail!("Failed to start daemon: {}", e);
-                }
-            }
+            // Don't wait for the child - let it run independently
+            info!("Daemon process spawned with PID: {}", child.id());
         }
 
         #[cfg(not(unix))]
         {
-            // Windows: spawn a detached process
+            use std::process::{Command, Stdio};
+
             warn!("Daemon mode not fully supported on Windows, starting as background process");
 
             let exe = std::env::current_exe()?;
 
-            Command::new(exe)
-                .args(&["server", "start", "--foreground"])
+            let child = Command::new(exe)
+                .args(&["server", "run-daemon"])
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .spawn()?;
 
+            save_global_pid(child.id())?;
             println!("✓ Global server started as background process");
         }
     }
 
+    Ok(())
+}
+
+/// Internal function to run the daemon process
+/// This is called by the spawned child process
+pub async fn run_daemon_process(config: GlobalServerConfig) -> Result<()> {
+    use tracing_subscriber::EnvFilter;
+
+    // Initialize tracing for daemon process (only if not already initialized)
+    // The spawned process starts fresh, so we need to set up tracing
+    let filter = EnvFilter::try_from_default_env()
+        .or_else(|_| EnvFilter::try_new("info"))
+        .unwrap();
+
+    // Use try_init() instead of init() to avoid panic if already initialized
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_writer(std::io::stderr)
+        .try_init();
+
+    info!("Daemon process started with PID: {}", std::process::id());
+
+    // Save PID again in child process (in case parent didn't wait)
+    save_global_pid(std::process::id())?;
+
+    // Create and start the server
+    let server = GlobalServer::new(config).await
+        .context("Failed to create global server")?;
+
+    server.start().await
+        .context("Failed to start global server")?;
+
+    info!("Global server is now running");
+
+    // Wait forever
+    server.wait().await
+        .context("Server stopped unexpectedly")?;
+
+    info!("Daemon process exiting");
     Ok(())
 }
 

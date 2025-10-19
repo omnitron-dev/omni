@@ -4,7 +4,7 @@
 //! It provides:
 //! - Project registry management
 //! - Global indexing
-//! - IPC server for local MCP servers
+//! - RPC server for thin MCP clients
 //! - File watching for auto-reindexing
 
 use super::ipc::IpcServer;
@@ -12,6 +12,7 @@ use super::registry::ProjectRegistryManager;
 use super::storage::GlobalStorage;
 use super::sync::SyncManager;
 use super::watcher::{GlobalFileWatcher, WatcherConfig};
+use crate::rpc::{RpcServer, ServerStats, ToolRegistry, DatabasePool};
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -33,11 +34,14 @@ pub struct GlobalServerConfig {
     /// Directory for global data storage
     pub data_dir: PathBuf,
 
-    /// Host for IPC server
+    /// Host for IPC server (legacy HTTP)
     pub host: String,
 
-    /// Port for IPC server
+    /// Port for IPC server (legacy HTTP, default 7878)
     pub port: u16,
+
+    /// RPC server Unix socket path
+    pub rpc_socket_path: Option<PathBuf>,
 
     /// Auto-start on first request
     pub auto_start: bool,
@@ -53,11 +57,13 @@ impl Default for GlobalServerConfig {
     fn default() -> Self {
         use crate::config::get_meridian_home;
         let data_dir = get_meridian_home().join("data");
+        let rpc_socket_path = get_meridian_home().join("global").join("meridian.sock");
 
         Self {
             data_dir,
             host: "localhost".to_string(),
             port: 7878,
+            rpc_socket_path: Some(rpc_socket_path),
             auto_start: true,
             watch_enabled: true,
             watcher_config: Some(WatcherConfig::default()),
@@ -71,6 +77,7 @@ pub struct GlobalServer {
     storage: Arc<GlobalStorage>,
     registry_manager: Arc<ProjectRegistryManager>,
     ipc_server: Arc<RwLock<Option<IpcServer>>>,
+    rpc_server: Arc<RwLock<Option<Arc<RpcServer>>>>,
     file_watcher: Arc<RwLock<Option<Arc<GlobalFileWatcher>>>>,
     sync_manager: Arc<RwLock<Option<Arc<SyncManager>>>>,
     status: Arc<RwLock<ServerStatus>>,
@@ -98,6 +105,7 @@ impl GlobalServer {
             storage,
             registry_manager,
             ipc_server: Arc::new(RwLock::new(None)),
+            rpc_server: Arc::new(RwLock::new(None)),
             file_watcher: Arc::new(RwLock::new(None)),
             sync_manager: Arc::new(RwLock::new(None)),
             status: Arc::new(RwLock::new(ServerStatus::Stopped)),
@@ -117,7 +125,7 @@ impl GlobalServer {
 
         info!("Starting global server...");
 
-        // Start IPC server
+        // Start legacy IPC server (HTTP on port 7878)
         let ipc = IpcServer::new(
             self.config.host.clone(),
             self.config.port,
@@ -127,13 +135,72 @@ impl GlobalServer {
         let ipc_clone = ipc.clone();
         tokio::spawn(async move {
             if let Err(e) = ipc_clone.start().await {
-                warn!("IPC server error: {}", e);
+                warn!("Legacy IPC server error: {}", e);
             }
         });
 
         {
             let mut ipc_server = self.ipc_server.write().await;
             *ipc_server = Some(ipc);
+        }
+
+        // Start RPC server (Unix socket)
+        if let Some(socket_path) = &self.config.rpc_socket_path {
+            info!("Starting RPC server on {:?}", socket_path);
+
+            // Ensure parent directory exists
+            if let Some(parent) = socket_path.parent() {
+                std::fs::create_dir_all(parent)
+                    .with_context(|| format!("Failed to create RPC socket directory {:?}", parent))?;
+            }
+
+            // Initialize tool registry
+            let registry = Arc::new(ToolRegistry::new());
+
+            // Initialize database pool for RPC handlers
+            // Reuse the global storage's DB to avoid opening the same database twice
+            let storage = Arc::new(crate::storage::RocksDBStorage::from_db(
+                self.storage.db()
+            ));
+            let db_pool = Arc::new(DatabasePool::from_storage(storage));
+
+            // Create MCP handlers for tool execution
+            // NOTE: This is a temporary setup - we'll need to properly initialize
+            // all components (memory system, indexer, etc.) in a future iteration
+            let handlers = self.create_mcp_handlers().await?;
+
+            // Register all MCP tools
+            registry.register_all_mcp_tools(handlers.clone()).await
+                .with_context(|| "Failed to register MCP tools")?;
+
+            info!("Registered {} tools in tool registry", registry.list_tools().await.len());
+
+            // Create and start RPC server
+            let rpc = Arc::new(
+                RpcServer::bind_with_router(
+                    socket_path,
+                    registry,
+                    db_pool,
+                    handlers,
+                )
+                .await
+                .with_context(|| "Failed to bind RPC server")?
+            );
+
+            let rpc_clone = Arc::clone(&rpc);
+            tokio::spawn(async move {
+                // Call serve() on the Arc (serve takes &self, so the Arc deref works)
+                if let Err(e) = rpc_clone.serve().await {
+                    warn!("RPC server error: {}", e);
+                }
+            });
+
+            {
+                let mut rpc_server = self.rpc_server.write().await;
+                *rpc_server = Some(rpc);
+            }
+
+            info!("RPC server started on {:?}", socket_path);
         }
 
         // Start file watcher and sync manager if enabled
@@ -236,8 +303,16 @@ impl GlobalServer {
             watcher.stop().await?;
         }
 
-        // Stop IPC server
+        // Stop RPC server
+        if let Some(_rpc) = self.rpc_server.write().await.take() {
+            info!("Stopping RPC server...");
+            // RPC server will stop when dropped
+            // In future, implement graceful shutdown with client notification
+        }
+
+        // Stop legacy IPC server
         if let Some(ipc) = self.ipc_server.write().await.take() {
+            info!("Stopping legacy IPC server...");
             ipc.stop().await?;
         }
 
@@ -296,6 +371,106 @@ impl GlobalServer {
         } else {
             None
         }
+    }
+
+    /// Get RPC server statistics
+    pub async fn get_rpc_stats(&self) -> Option<ServerStats> {
+        let rpc = self.rpc_server.read().await;
+        if let Some(ref r) = *rpc {
+            Some(r.get_stats())
+        } else {
+            None
+        }
+    }
+
+    /// Create MCP handlers for the global server
+    /// TODO: This is a simplified version - needs proper initialization of all components
+    async fn create_mcp_handlers(&self) -> Result<Arc<crate::mcp::handlers::ToolHandlers>> {
+        use crate::config::{IndexConfig, MemoryConfig};
+        use crate::context::ContextManager;
+        use crate::docs::DocIndexer;
+        use crate::indexer::{CodeIndexer, PatternSearchEngine};
+        use crate::links::RocksDBLinksStorage;
+        use crate::memory::MemorySystem;
+        use crate::progress::ProgressManager;
+        use crate::session::SessionManager;
+        use crate::specs::SpecificationManager;
+        use crate::types::LLMAdapter;
+
+        // Initialize storage (reuse the global storage's DB to avoid opening it twice)
+        // This shares the same RocksDB instance that GlobalStorage uses
+        let storage = Arc::new(crate::storage::RocksDBStorage::from_db(
+            self.storage.db()
+        ));
+
+        // Initialize memory system
+        let hnsw_index_path = self.config.data_dir.join("hnsw_index");
+        let memory_config = MemoryConfig::default();
+        let mut memory_system = MemorySystem::with_index_path(
+            storage.clone(),
+            memory_config,
+            Some(hnsw_index_path),
+        )?;
+        memory_system.init().await?;
+
+        // Initialize context manager
+        let context_manager = ContextManager::new(LLMAdapter::claude3());
+
+        // Initialize indexer
+        let index_config = IndexConfig::default();
+        let mut indexer = CodeIndexer::new(storage.clone(), index_config)?;
+        indexer.load().await?;
+        let indexer = Arc::new(tokio::sync::RwLock::new(indexer));
+
+        // Initialize session manager
+        let session_config = crate::session::SessionConfig::default();
+        let session_manager = Arc::new(SessionManager::new(
+            storage.clone(),
+            session_config,
+        )?);
+
+        // Initialize doc indexer
+        let doc_indexer = Arc::new(DocIndexer::new());
+
+        // Initialize spec manager
+        let specs_path = self.config.data_dir.join("specs");
+        let spec_manager = SpecificationManager::new(specs_path);
+
+        // Initialize progress manager
+        let progress_storage = Arc::new(crate::progress::storage::ProgressStorage::new(storage.clone()));
+        let progress_manager = ProgressManager::new(progress_storage);
+
+        // Initialize links storage
+        let links_storage: Arc<tokio::sync::RwLock<dyn crate::links::LinksStorage>> =
+            Arc::new(tokio::sync::RwLock::new(RocksDBLinksStorage::new(storage.clone())));
+
+        // Initialize pattern engine
+        let pattern_engine = Arc::new(PatternSearchEngine::new()?);
+
+        // Create handlers
+        let mut handlers = crate::mcp::handlers::ToolHandlers::new_with_registry(
+            Arc::new(tokio::sync::RwLock::new(memory_system)),
+            Arc::new(tokio::sync::RwLock::new(context_manager)),
+            indexer,
+            session_manager,
+            doc_indexer,
+            Arc::new(tokio::sync::RwLock::new(spec_manager)),
+            Arc::clone(&self.registry_manager),
+            Arc::new(tokio::sync::RwLock::new(progress_manager)),
+            links_storage,
+            pattern_engine,
+        );
+
+        // Initialize backup manager
+        let sqlite_path = self.config.data_dir.join("meridian.db");
+        let backup_config = crate::storage::BackupConfig::default();
+        let backup_manager = crate::storage::BackupManager::new(
+            sqlite_path,
+            backup_config,
+        )?;
+        handlers.set_backup_manager(Arc::new(tokio::sync::RwLock::new(backup_manager)));
+
+        Ok(Arc::new(handlers))
     }
 
 }

@@ -7,9 +7,7 @@
       "env": {
         "RUST_LOG": "meridian=info",
         "PATH": "/Users/taaliman/.cargo/bin:/usr/local/bin:/bin:/usr/bin",
-        "MERIDIAN_SPECS_PATH": "/Users/taaliman/projects/luxquant/omnitron-dev/omni/meridian/specs",
-        "MERIDIAN_AUTO_DETECT": "1",
-        "MERIDIAN_FALLBACK_LEGACY": "1"
+        "MERIDIAN_SPECS_PATH": "/Users/taaliman/projects/luxquant/omnitron-dev/omni/meridian/specs"
       }
     }
   }

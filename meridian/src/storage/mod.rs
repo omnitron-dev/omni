@@ -2,6 +2,8 @@ pub mod backup;
 pub mod migration;
 pub mod migrations;
 pub mod rocksdb_storage;
+pub mod memory_storage;
+pub mod factory;
 pub mod resilient;
 pub mod db_pool;
 pub mod startup;
@@ -19,6 +21,8 @@ pub use migration::{
     CURRENT_SCHEMA_VERSION,
 };
 pub use rocksdb_storage::RocksDBStorage;
+pub use memory_storage::MemoryStorage;
+pub use factory::{create_storage, create_default_storage, StorageConfig};
 pub use resilient::ResilientStorage;
 pub use db_pool::{get_or_create_db, get_db, remove_db, get_pool_stats, PoolStats};
 pub use startup::{check_and_migrate, print_migration_status};

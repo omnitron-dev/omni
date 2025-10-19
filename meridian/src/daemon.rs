@@ -1,5 +1,4 @@
 use anyhow::{Context, Result, bail};
-use daemonize::Daemonize;
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use std::fs::{self, File, OpenOptions};
@@ -139,34 +138,23 @@ pub fn start_daemon(opts: DaemonOptions) -> Result<()> {
     info!("Arguments: {:?}", args);
     info!("Log file: {:?}", log_file);
 
-    // Daemonize the process
-    let daemonize = Daemonize::new()
-        .pid_file(get_pid_file())
-        .working_directory(std::env::current_dir()?)
+    // Spawn daemon process instead of fork
+    // This avoids tokio runtime issues with fork()
+    let child = Command::new(&exe_path)
+        .args(&args)
+        .stdin(Stdio::null())
         .stdout(stdout_file)
-        .stderr(stderr_file);
+        .stderr(stderr_file)
+        .spawn()
+        .context("Failed to spawn daemon process")?;
 
-    // Fork the process
-    match daemonize.start() {
-        Ok(_) => {
-            // This runs in the daemon process
-            info!("Daemon process started");
+    // Save the child PID
+    save_pid(child.id())?;
 
-            // Execute the serve command
-            let status = Command::new(&exe_path)
-                .args(&args)
-                .status()?;
+    info!("Daemon process spawned with PID: {}", child.id());
 
-            if !status.success() {
-                error!("Server exited with non-zero status: {:?}", status);
-            }
-
-            std::process::exit(status.code().unwrap_or(1));
-        }
-        Err(e) => {
-            bail!("Failed to daemonize: {}", e);
-        }
-    }
+    // Don't wait for the child - let it run independently
+    Ok(())
 }
 
 /// Start the daemon in foreground mode (for testing/debugging)

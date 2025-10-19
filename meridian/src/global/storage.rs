@@ -4,6 +4,7 @@
 //! This is the global database that stores all projects across all monorepos.
 
 use super::registry::ProjectRegistry;
+use crate::storage::StorageConfig;
 use anyhow::{Context, Result};
 use rocksdb::{Options, DB};
 use std::path::Path;
@@ -23,14 +24,124 @@ pub struct GlobalStorage {
 }
 
 impl GlobalStorage {
-    /// Create a new global storage
+    /// Create a new global storage with automatic RocksDB configuration
     pub async fn new(path: &Path) -> Result<Self> {
+        Self::new_with_config(path, StorageConfig::default()).await
+    }
+
+    /// Create a new global storage with custom configuration
+    pub async fn new_with_config(path: &Path, config: StorageConfig) -> Result<Self> {
+        // Check if we should use memory storage based on environment
+        if config.force_memory {
+            tracing::warn!(
+                "MERIDIAN_USE_MEMORY_STORAGE is set. Global storage will use RocksDB but with fallback enabled."
+            );
+        }
+
         let mut opts = Options::default();
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
 
-        let db = DB::open(&opts, path)
-            .with_context(|| format!("Failed to open global database at {:?}", path))?;
+        // macOS-specific configuration to avoid file locking issues
+        #[cfg(target_os = "macos")]
+        {
+            tracing::debug!("Applying macOS-specific RocksDB configuration for global storage");
+            opts.set_use_adaptive_mutex(false);
+            opts.set_allow_mmap_reads(false);
+            opts.set_allow_mmap_writes(false);
+            opts.set_use_direct_reads(false);
+            opts.set_use_direct_io_for_flush_and_compaction(false);
+        }
+
+        // General optimizations
+        opts.set_max_open_files(256);
+        opts.increase_parallelism(2);
+
+        // Try to open the database
+        let db = match DB::open(&opts, path) {
+            Ok(db) => {
+                tracing::info!(path = ?path, "Successfully opened global database");
+                db
+            }
+            Err(e) => {
+                let err_str = e.to_string();
+                tracing::error!(
+                    path = ?path,
+                    error = %err_str,
+                    "Failed to open global database"
+                );
+
+                // Try to handle lock issues
+                if err_str.contains("LOCK") || err_str.contains("lock") {
+                    let lock_file = path.join("LOCK");
+                    if lock_file.exists() {
+                        tracing::warn!("Attempting to remove stale LOCK file: {:?}", lock_file);
+                        let _ = std::fs::remove_file(&lock_file);
+
+                        // Try opening again after removing lock file
+                        match DB::open(&opts, path) {
+                            Ok(db) => {
+                                tracing::info!(path = ?path, "Successfully opened global database after lock cleanup");
+                                db
+                            }
+                            Err(retry_err) => {
+                                tracing::error!(
+                                    path = ?path,
+                                    error = %retry_err.to_string(),
+                                    "Failed to open global database even after lock cleanup"
+                                );
+
+                                // Check if fallback is enabled
+                                if config.fallback_to_memory {
+                                    tracing::warn!(
+                                        "Falling back to in-memory global storage. Data will not persist! \
+                                         This is a temporary workaround for RocksDB lock issues."
+                                    );
+
+                                    #[cfg(target_os = "macos")]
+                                    tracing::warn!(
+                                        "macOS file locking issue detected. To use persistent storage, try:\n\
+                                         1. killall meridian-mcp\n\
+                                         2. rm -f {}/.meridian/data/LOCK\n\
+                                         3. Restart the server",
+                                        std::env::var("HOME").unwrap_or_default()
+                                    );
+
+                                    return Err(retry_err).with_context(|| {
+                                        format!(
+                                            "Failed to open global database at {:?} even after lock cleanup. \
+                                            Fallback to memory storage is not supported for global storage yet.",
+                                            path
+                                        )
+                                    });
+                                } else {
+                                    return Err(retry_err).with_context(|| {
+                                        format!("Failed to open global database at {:?} (after lock cleanup)", path)
+                                    });
+                                }
+                            }
+                        }
+                    } else {
+                        // Lock file doesn't exist, but still getting lock error
+                        if config.fallback_to_memory {
+                            tracing::error!(
+                                "RocksDB lock error without LOCK file. This is unusual. \
+                                 Fallback to memory storage is not yet supported for global storage."
+                            );
+                        }
+
+                        return Err(e).with_context(|| {
+                            format!("Failed to open global database at {:?}. \
+                                    On macOS, consider:\n\
+                                    1. Checking if another meridian process is running: pgrep meridian\n\
+                                    2. Setting MERIDIAN_USE_MEMORY_STORAGE=1 for development", path)
+                        });
+                    }
+                } else {
+                    return Err(e).with_context(|| format!("Failed to open global database at {:?}", path));
+                }
+            }
+        };
 
         Ok(Self { db: Arc::new(db) })
     }

@@ -6,6 +6,8 @@ pub mod tree_sitter_parser;
 pub mod vector;
 pub mod watcher;
 pub mod delta_indexer;
+pub mod monorepo;
+pub mod ignore;
 
 use crate::types::{CodeSymbol, Query, QueryResult};
 use anyhow::Result;
@@ -22,6 +24,8 @@ pub use tree_sitter_parser::TreeSitterParser;
 pub use vector::{HnswConfig, HnswIndex, VectorIndex, VECTOR_DIM};
 pub use watcher::{FileWatcher, WatcherConfig, FileChangeEvent, FileChangeKind};
 pub use delta_indexer::{DeltaIndexer, WatchStatus, ApplyResult};
+pub use monorepo::{MonorepoConfig, MonorepoType};
+pub use ignore::IgnoreMatcher;
 
 /// Main indexer interface
 #[async_trait::async_trait]

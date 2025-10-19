@@ -322,7 +322,7 @@ mod tests {
             multiplier: 2.0,
         };
 
-        let result = retry_with_backoff(config, "test_op", || async {
+        let result: Result<(), _> = retry_with_backoff(config, "test_op", || async {
             anyhow::bail!("Permanent failure")
         })
         .await;
@@ -362,7 +362,7 @@ mod tests {
         let attempts = Arc::new(AtomicU32::new(0));
         let attempts_clone = attempts.clone();
 
-        let _ = retry_with_backoff(config, "test_op", || {
+        let _: Result<(), _> = retry_with_backoff(config, "test_op", || {
             let attempts = attempts_clone.clone();
             async move {
                 attempts.fetch_add(1, Ordering::SeqCst);

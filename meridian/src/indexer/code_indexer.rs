@@ -1,4 +1,4 @@
-use super::{Indexer, TreeSitterParser};
+use super::{Indexer, TreeSitterParser, IgnoreMatcher};
 use crate::config::IndexConfig;
 use crate::embeddings::EmbeddingEngine;
 use crate::storage::{deserialize, serialize, Storage};
@@ -12,7 +12,8 @@ use lru::LruCache;
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex as StdMutex};
+use tokio::sync::Mutex as TokioMutex;
 use std::time::SystemTime;
 
 /// Dependency graph edge
@@ -71,18 +72,21 @@ pub struct CodeIndexer {
     // Source code cache for getting full definitions
     source_cache: DashMap<PathBuf, String>,
     // Embedding engine for semantic search
-    embedding_engine: Arc<Mutex<EmbeddingEngine>>,
+    embedding_engine: Arc<StdMutex<EmbeddingEngine>>,
     // LRU cache for search results (capacity: 1000)
-    search_cache: Arc<Mutex<LruCache<SearchCacheKey, QueryResult>>>,
+    search_cache: Arc<StdMutex<LruCache<SearchCacheKey, QueryResult>>>,
     // File modification time tracking for incremental indexing
     file_mtimes: DashMap<PathBuf, SystemTime>,
+    // Ignore matcher for gitignore support (async mutex for async load_gitignore)
+    ignore_matcher: Arc<TokioMutex<IgnoreMatcher>>,
 }
 
 impl CodeIndexer {
     pub fn new(storage: Arc<dyn Storage>, config: IndexConfig) -> Result<Self> {
-        let embedding_engine = Arc::new(Mutex::new(EmbeddingEngine::new()?));
+        let embedding_engine = Arc::new(StdMutex::new(EmbeddingEngine::new()?));
         let cache_capacity = NonZeroUsize::new(1000).unwrap();
-        let search_cache = Arc::new(Mutex::new(LruCache::new(cache_capacity)));
+        let search_cache = Arc::new(StdMutex::new(LruCache::new(cache_capacity)));
+        let ignore_matcher = Arc::new(TokioMutex::new(IgnoreMatcher::new()));
 
         Ok(Self {
             storage,
@@ -96,6 +100,7 @@ impl CodeIndexer {
             embedding_engine,
             search_cache,
             file_mtimes: DashMap::new(),
+            ignore_matcher,
         })
     }
 
@@ -312,10 +317,19 @@ impl CodeIndexer {
         }
     }
 
-    /// Check if path should be ignored
+    /// Check if path should be ignored (synchronous - uses try_lock to avoid blocking)
     fn should_ignore(&self, path: &Path) -> bool {
-        let path_str = path.to_string_lossy();
+        let is_dir = path.is_dir();
 
+        // Check ignore matcher (gitignore + default patterns) using try_lock
+        if let Ok(matcher) = self.ignore_matcher.try_lock() {
+            if matcher.should_ignore(path, is_dir) {
+                return true;
+            }
+        }
+
+        // Check config ignores
+        let path_str = path.to_string_lossy();
         for ignore in &self.config.ignore {
             if path_str.contains(ignore) {
                 return true;
@@ -753,6 +767,8 @@ pub enum DependencyDirection {
 #[async_trait::async_trait]
 impl Indexer for CodeIndexer {
     async fn index_project(&mut self, path: &Path, force: bool) -> Result<()> {
+        use super::MonorepoConfig;
+
         if force {
             self.symbols.clear();
             self.name_index.clear();
@@ -762,8 +778,73 @@ impl Indexer for CodeIndexer {
         }
 
         tracing::info!("Indexing project at {:?}", path);
-        self.walk_and_index(path).await?;
-        tracing::info!("Indexed {} symbols", self.symbols.len());
+
+        // Load .gitignore if it exists (read file first, then update matcher)
+        let gitignore_path = path.join(".gitignore");
+        if gitignore_path.exists() {
+            match tokio::fs::read_to_string(&gitignore_path).await {
+                Ok(content) => {
+                    let mut matcher = self.ignore_matcher.lock().await;
+                    matcher.load_gitignore_from_string(&content);
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to read .gitignore: {}", e);
+                }
+            }
+        }
+
+        // Detect monorepo configuration
+        let monorepo_config = MonorepoConfig::detect(path).await?;
+
+        let start_time = std::time::Instant::now();
+        let initial_symbols = self.symbols.len();
+
+        match monorepo_config.monorepo_type {
+            super::MonorepoType::None => {
+                // Single project - index normally
+                tracing::info!("Indexing as single project");
+                self.walk_and_index(path).await?;
+            }
+            _ => {
+                // Monorepo - index all workspace directories
+                tracing::info!(
+                    "Detected monorepo ({:?}) with {} workspace(s)",
+                    monorepo_config.monorepo_type,
+                    monorepo_config.workspace_dirs.len()
+                );
+
+                if monorepo_config.workspace_dirs.is_empty() {
+                    tracing::warn!("No workspace directories found, falling back to root indexing");
+                    self.walk_and_index(path).await?;
+                } else {
+                    // Index each workspace directory
+                    for (i, workspace_dir) in monorepo_config.workspace_dirs.iter().enumerate() {
+                        tracing::info!(
+                            "Indexing workspace {}/{}: {:?}",
+                            i + 1,
+                            monorepo_config.workspace_dirs.len(),
+                            workspace_dir
+                        );
+
+                        if workspace_dir.exists() {
+                            self.walk_and_index(workspace_dir).await?;
+                        } else {
+                            tracing::warn!("Workspace directory does not exist: {:?}", workspace_dir);
+                        }
+                    }
+                }
+            }
+        }
+
+        let elapsed = start_time.elapsed();
+        let new_symbols = self.symbols.len() - initial_symbols;
+
+        tracing::info!(
+            "Indexing complete: {} total symbols ({} new) in {:.2}s",
+            self.symbols.len(),
+            new_symbols,
+            elapsed.as_secs_f64()
+        );
 
         Ok(())
     }

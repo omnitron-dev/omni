@@ -391,11 +391,14 @@ impl MeridianServer {
                 );
 
                 // Set metrics collector
+                info!("[METRICS-DEBUG] init_handlers: Setting metrics collector on ToolHandlers");
                 new_handlers.set_metrics_collector(metrics_collector.clone());
+                info!("[METRICS-DEBUG] init_handlers: Metrics collector set, wrapping in Arc");
 
                 let new_handlers = Arc::new(new_handlers);
 
                 *handlers = Some(new_handlers.clone());
+                info!("[METRICS-DEBUG] init_handlers: ToolHandlers initialized and stored");
                 Ok(new_handlers)
             }
             ServerMode::MultiProject { .. } => {

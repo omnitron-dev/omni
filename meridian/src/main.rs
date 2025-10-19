@@ -325,9 +325,9 @@ async fn main() -> Result<()> {
             .open(log_dir.join("meridian.log"))
         {
             tracing_subscriber::fmt()
-                .with_writer(log_file.with_max_level(tracing::Level::INFO))
+                .with_writer(log_file.with_max_level(tracing::Level::DEBUG))
                 .with_ansi(false)
-                .with_env_filter(if cli.verbose { "meridian=debug" } else { "meridian=info" })
+                .with_env_filter("meridian=debug")  // Force DEBUG for metrics debugging
                 .init();
         } else {
             // Fallback: disable logging if we can't create log file

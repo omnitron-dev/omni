@@ -1347,4 +1347,286 @@ mod tests {
         let task = manager.get_task(&task_id).await.unwrap();
         assert!(task.last_activity > initial_activity);
     }
+
+    // === Dependency Management Tests ===
+
+    #[tokio::test]
+    async fn test_add_dependency() {
+        let (manager, _temp_dir) = create_test_manager().await;
+
+        // Create two tasks
+        let task_a_id = manager.create_task("Task A".to_string(), None, None, None, vec![], None, None).await.unwrap();
+        let task_b_id = manager.create_task("Task B".to_string(), None, None, None, vec![], None, None).await.unwrap();
+
+        // Add dependency: A depends on B
+        manager.add_dependency(&task_a_id, &task_b_id).await.unwrap();
+
+        // Verify dependency was added
+        let task_a = manager.get_task(&task_a_id).await.unwrap();
+        assert_eq!(task_a.depends_on.len(), 1);
+        assert_eq!(task_a.depends_on[0], task_b_id);
+
+        // Verify dependencies can be retrieved
+        let dependencies = manager.get_dependencies(&task_a_id).await.unwrap();
+        assert_eq!(dependencies.len(), 1);
+        assert_eq!(dependencies[0].id, task_b_id);
+    }
+
+    #[tokio::test]
+    async fn test_remove_dependency() {
+        let (manager, _temp_dir) = create_test_manager().await;
+
+        let task_a_id = manager.create_task("Task A".to_string(), None, None, None, vec![], None, None).await.unwrap();
+        let task_b_id = manager.create_task("Task B".to_string(), None, None, None, vec![], None, None).await.unwrap();
+
+        // Add then remove dependency
+        manager.add_dependency(&task_a_id, &task_b_id).await.unwrap();
+        manager.remove_dependency(&task_a_id, &task_b_id).await.unwrap();
+
+        // Verify dependency was removed
+        let task_a = manager.get_task(&task_a_id).await.unwrap();
+        assert_eq!(task_a.depends_on.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_circular_dependency_direct() {
+        let (manager, _temp_dir) = create_test_manager().await;
+
+        let task_a_id = manager.create_task("Task A".to_string(), None, None, None, vec![], None, None).await.unwrap();
+        let task_b_id = manager.create_task("Task B".to_string(), None, None, None, vec![], None, None).await.unwrap();
+
+        // A depends on B
+        manager.add_dependency(&task_a_id, &task_b_id).await.unwrap();
+
+        // Try to make B depend on A (should fail - circular)
+        let result = manager.add_dependency(&task_b_id, &task_a_id).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("circular"));
+    }
+
+    #[tokio::test]
+    async fn test_circular_dependency_transitive() {
+        let (manager, _temp_dir) = create_test_manager().await;
+
+        // Create chain: A -> B -> C
+        let task_a_id = manager.create_task("Task A".to_string(), None, None, None, vec![], None, None).await.unwrap();
+        let task_b_id = manager.create_task("Task B".to_string(), None, None, None, vec![], None, None).await.unwrap();
+        let task_c_id = manager.create_task("Task C".to_string(), None, None, None, vec![], None, None).await.unwrap();
+
+        manager.add_dependency(&task_a_id, &task_b_id).await.unwrap();
+        manager.add_dependency(&task_b_id, &task_c_id).await.unwrap();
+
+        // Try to make C depend on A (should fail - creates cycle)
+        let result = manager.add_dependency(&task_c_id, &task_a_id).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("circular"));
+    }
+
+    #[tokio::test]
+    async fn test_self_dependency() {
+        let (manager, _temp_dir) = create_test_manager().await;
+
+        let task_id = manager.create_task("Task".to_string(), None, None, None, vec![], None, None).await.unwrap();
+
+        // Task cannot depend on itself
+        let result = manager.add_dependency(&task_id, &task_id).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("circular"));
+    }
+
+    #[tokio::test]
+    async fn test_get_dependents() {
+        let (manager, _temp_dir) = create_test_manager().await;
+
+        let task_a_id = manager.create_task("Task A".to_string(), None, None, None, vec![], None, None).await.unwrap();
+        let task_b_id = manager.create_task("Task B".to_string(), None, None, None, vec![], None, None).await.unwrap();
+        let task_c_id = manager.create_task("Task C".to_string(), None, None, None, vec![], None, None).await.unwrap();
+
+        // Both B and C depend on A
+        manager.add_dependency(&task_b_id, &task_a_id).await.unwrap();
+        manager.add_dependency(&task_c_id, &task_a_id).await.unwrap();
+
+        // Get dependents of A
+        let dependents = manager.get_dependents(&task_a_id).await.unwrap();
+        assert_eq!(dependents.len(), 2);
+
+        let dependent_ids: Vec<TaskId> = dependents.iter().map(|t| t.id.clone()).collect();
+        assert!(dependent_ids.contains(&task_b_id));
+        assert!(dependent_ids.contains(&task_c_id));
+    }
+
+    #[tokio::test]
+    async fn test_can_start_task_no_dependencies() {
+        let (manager, _temp_dir) = create_test_manager().await;
+
+        let task_id = manager.create_task("Task".to_string(), None, None, None, vec![], None, None).await.unwrap();
+
+        // Task with no dependencies can start
+        let can_start = manager.can_start_task(&task_id).await.unwrap();
+        assert!(can_start);
+    }
+
+    #[tokio::test]
+    async fn test_can_start_task_with_met_dependencies() {
+        let (manager, _temp_dir) = create_test_manager().await;
+
+        let task_a_id = manager.create_task("Task A".to_string(), None, None, None, vec![], None, None).await.unwrap();
+        let task_b_id = manager.create_task("Task B".to_string(), None, None, None, vec![], None, None).await.unwrap();
+
+        // B depends on A
+        manager.add_dependency(&task_b_id, &task_a_id).await.unwrap();
+
+        // Initially B cannot start (A not done)
+        let can_start = manager.can_start_task(&task_b_id).await.unwrap();
+        assert!(!can_start);
+
+        // Mark A as done
+        manager.update_task(&task_a_id, None, None, None, Some(TaskStatus::Done), None, None, None, None, None).await.unwrap();
+
+        // Now B can start
+        let can_start = manager.can_start_task(&task_b_id).await.unwrap();
+        assert!(can_start);
+    }
+
+    #[tokio::test]
+    async fn test_can_start_task_with_unmet_dependencies() {
+        let (manager, _temp_dir) = create_test_manager().await;
+
+        let task_a_id = manager.create_task("Task A".to_string(), None, None, None, vec![], None, None).await.unwrap();
+        let task_b_id = manager.create_task("Task B".to_string(), None, None, None, vec![], None, None).await.unwrap();
+        let task_c_id = manager.create_task("Task C".to_string(), None, None, None, vec![], None, None).await.unwrap();
+
+        // C depends on both A and B
+        manager.add_dependency(&task_c_id, &task_a_id).await.unwrap();
+        manager.add_dependency(&task_c_id, &task_b_id).await.unwrap();
+
+        // Mark only A as done
+        manager.update_task(&task_a_id, None, None, None, Some(TaskStatus::Done), None, None, None, None, None).await.unwrap();
+
+        // C still cannot start (B not done)
+        let can_start = manager.can_start_task(&task_c_id).await.unwrap();
+        assert!(!can_start);
+
+        // Mark B as done
+        manager.update_task(&task_b_id, None, None, None, Some(TaskStatus::Done), None, None, None, None, None).await.unwrap();
+
+        // Now C can start
+        let can_start = manager.can_start_task(&task_c_id).await.unwrap();
+        assert!(can_start);
+    }
+
+    #[tokio::test]
+    async fn test_get_unmet_dependencies() {
+        let (manager, _temp_dir) = create_test_manager().await;
+
+        let task_a_id = manager.create_task("Task A".to_string(), None, None, None, vec![], None, None).await.unwrap();
+        let task_b_id = manager.create_task("Task B".to_string(), None, None, None, vec![], None, None).await.unwrap();
+        let task_c_id = manager.create_task("Task C".to_string(), None, None, None, vec![], None, None).await.unwrap();
+
+        // C depends on A and B
+        manager.add_dependency(&task_c_id, &task_a_id).await.unwrap();
+        manager.add_dependency(&task_c_id, &task_b_id).await.unwrap();
+
+        // All dependencies are unmet
+        let unmet = manager.get_unmet_dependencies(&task_c_id).await.unwrap();
+        assert_eq!(unmet.len(), 2);
+
+        // Mark A as done
+        manager.update_task(&task_a_id, None, None, None, Some(TaskStatus::Done), None, None, None, None, None).await.unwrap();
+
+        // Only B is unmet now
+        let unmet = manager.get_unmet_dependencies(&task_c_id).await.unwrap();
+        assert_eq!(unmet.len(), 1);
+        assert_eq!(unmet[0].id, task_b_id);
+
+        // Mark B as done
+        manager.update_task(&task_b_id, None, None, None, Some(TaskStatus::Done), None, None, None, None, None).await.unwrap();
+
+        // No unmet dependencies
+        let unmet = manager.get_unmet_dependencies(&task_c_id).await.unwrap();
+        assert_eq!(unmet.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_update_dependent_tasks() {
+        let (manager, _temp_dir) = create_test_manager().await;
+
+        let task_a_id = manager.create_task("Task A".to_string(), None, None, None, vec![], None, None).await.unwrap();
+        let task_b_id = manager.create_task("Task B".to_string(), None, None, None, vec![], None, None).await.unwrap();
+
+        // B depends on A
+        manager.add_dependency(&task_b_id, &task_a_id).await.unwrap();
+
+        // Mark B as in-progress first, then blocked (pending->blocked is invalid)
+        manager.update_task(&task_b_id, None, None, None, Some(TaskStatus::InProgress), None, None, None, None, None).await.unwrap();
+        manager.update_task(&task_b_id, None, None, None, Some(TaskStatus::Blocked), None, None, None, None, None).await.unwrap();
+
+        // Complete A
+        manager.update_task(&task_a_id, None, None, None, Some(TaskStatus::Done), None, None, None, None, None).await.unwrap();
+
+        // Update dependent tasks
+        let unblocked = manager.update_dependent_tasks(&task_a_id).await.unwrap();
+
+        // B should be unblocked
+        assert_eq!(unblocked.len(), 1);
+        assert_eq!(unblocked[0], task_b_id);
+
+        // Verify B is now pending
+        let task_b = manager.get_task(&task_b_id).await.unwrap();
+        assert_eq!(task_b.status, TaskStatus::Pending);
+    }
+
+    #[tokio::test]
+    async fn test_multiple_dependencies_chain() {
+        let (manager, _temp_dir) = create_test_manager().await;
+
+        // Create dependency chain: D -> C -> B -> A
+        let task_a_id = manager.create_task("Task A".to_string(), None, None, None, vec![], None, None).await.unwrap();
+        let task_b_id = manager.create_task("Task B".to_string(), None, None, None, vec![], None, None).await.unwrap();
+        let task_c_id = manager.create_task("Task C".to_string(), None, None, None, vec![], None, None).await.unwrap();
+        let task_d_id = manager.create_task("Task D".to_string(), None, None, None, vec![], None, None).await.unwrap();
+
+        manager.add_dependency(&task_b_id, &task_a_id).await.unwrap();
+        manager.add_dependency(&task_c_id, &task_b_id).await.unwrap();
+        manager.add_dependency(&task_d_id, &task_c_id).await.unwrap();
+
+        // D cannot start (depends on C which depends on B which depends on A)
+        assert!(!manager.can_start_task(&task_d_id).await.unwrap());
+
+        // Complete A, B, C in order
+        manager.update_task(&task_a_id, None, None, None, Some(TaskStatus::Done), None, None, None, None, None).await.unwrap();
+        assert!(!manager.can_start_task(&task_d_id).await.unwrap()); // Still can't start
+
+        manager.update_task(&task_b_id, None, None, None, Some(TaskStatus::Done), None, None, None, None, None).await.unwrap();
+        assert!(!manager.can_start_task(&task_d_id).await.unwrap()); // Still can't start
+
+        manager.update_task(&task_c_id, None, None, None, Some(TaskStatus::Done), None, None, None, None, None).await.unwrap();
+        assert!(manager.can_start_task(&task_d_id).await.unwrap()); // Now can start!
+    }
+
+    #[tokio::test]
+    async fn test_cannot_start_task_in_progress() {
+        let (manager, _temp_dir) = create_test_manager().await;
+
+        let task_id = manager.create_task("Task".to_string(), None, None, None, vec![], None, None).await.unwrap();
+
+        // Mark as in progress
+        manager.update_task(&task_id, None, None, None, Some(TaskStatus::InProgress), None, None, None, None, None).await.unwrap();
+
+        // Cannot start a task that's already in progress
+        assert!(!manager.can_start_task(&task_id).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_cannot_start_completed_task() {
+        let (manager, _temp_dir) = create_test_manager().await;
+
+        let task_id = manager.create_task("Task".to_string(), None, None, None, vec![], None, None).await.unwrap();
+
+        // Mark as done
+        manager.update_task(&task_id, None, None, None, Some(TaskStatus::Done), None, None, None, None, None).await.unwrap();
+
+        // Cannot start a completed task
+        assert!(!manager.can_start_task(&task_id).await.unwrap());
+    }
 }

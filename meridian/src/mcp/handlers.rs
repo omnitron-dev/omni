@@ -67,7 +67,9 @@ impl ToolHandlers {
 
     /// Set the metrics collector
     pub fn set_metrics_collector(&mut self, collector: Arc<MetricsCollector>) {
+        debug!("[METRICS-DEBUG] Setting metrics collector in ToolHandlers");
         self.metrics_collector = Some(collector);
+        debug!("[METRICS-DEBUG] Metrics collector set successfully, is_some={}", self.metrics_collector.is_some());
     }
 
     /// Set the delta indexer for real-time file watching
@@ -120,6 +122,13 @@ impl ToolHandlers {
     pub async fn handle_tool_call(&self, name: &str, arguments: Value) -> Result<Value> {
         debug!("Handling tool call: {}", name);
 
+        // DEBUG: Check if metrics_collector is set
+        if self.metrics_collector.is_some() {
+            debug!("[METRICS-DEBUG] metrics_collector is Some for tool: {}", name);
+        } else {
+            debug!("[METRICS-DEBUG] ⚠️ metrics_collector is None for tool: {}", name);
+        }
+
         // Start timing
         let start = Instant::now();
 
@@ -134,16 +143,21 @@ impl ToolHandlers {
             let latency_ms = start.elapsed().as_secs_f64() * 1000.0;
             let success = result.is_ok();
 
+            debug!("[METRICS-DEBUG] Recording tool call: {} (latency: {:.2}ms, success: {})", name, latency_ms, success);
             collector.record_tool_call(name, latency_ms, success);
 
             if let Ok(ref value) = result {
                 let output_tokens = Self::estimate_tokens(value);
+                debug!("[METRICS-DEBUG] Recording tokens for {}: input={}, output={}", name, input_tokens, output_tokens);
                 collector.record_tokens(name, input_tokens, output_tokens);
             } else if let Err(ref e) = result {
                 let error_type = format!("{:?}", e);
                 let error_category = error_type.split_whitespace().next().unwrap_or("unknown");
+                debug!("[METRICS-DEBUG] Recording error for {}: category={}", name, error_category);
                 collector.record_tool_error(name, latency_ms, error_category);
             }
+        } else {
+            debug!("[METRICS-DEBUG] ⚠️ Skipping metrics recording - collector is None");
         }
 
         result

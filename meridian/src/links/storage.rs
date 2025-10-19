@@ -466,6 +466,7 @@ impl LinksStorage for RocksDBLinksStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::links::ExtractionMethod;
     use crate::storage::RocksDBStorage;
     use tempfile::TempDir;
 

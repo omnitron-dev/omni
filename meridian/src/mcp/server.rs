@@ -5,7 +5,8 @@ use super::global_client::GlobalServerClient;
 use super::local_cache::{LocalCache, CacheConfig};
 use crate::config::Config;
 use crate::context::ContextManager;
-use crate::indexer::{CodeIndexer, Indexer};
+use crate::indexer::{CodeIndexer, DeltaIndexer, Indexer};
+use crate::indexer::watcher::WatcherConfig;
 use crate::links::{LinksStorage, RocksDBLinksStorage};
 use crate::memory::MemorySystem;
 use crate::metrics::{MetricsCollector, MetricsStorage};
@@ -32,6 +33,7 @@ enum ServerMode {
         memory_system: Arc<tokio::sync::RwLock<MemorySystem>>,
         context_manager: Arc<tokio::sync::RwLock<ContextManager>>,
         indexer: Arc<tokio::sync::RwLock<CodeIndexer>>,
+        delta_indexer: Option<Arc<DeltaIndexer>>,
         session_manager: Arc<SessionManager>,
         doc_indexer: Arc<crate::docs::DocIndexer>,
         spec_manager: Arc<tokio::sync::RwLock<SpecificationManager>>,
@@ -141,6 +143,23 @@ impl MeridianServer {
             info!("Loaded {} symbols from existing index", indexer.symbol_count());
         }
 
+        // Initialize delta indexer for incremental updates
+        let indexer_arc = Arc::new(tokio::sync::RwLock::new(indexer));
+        let delta_indexer = match DeltaIndexer::new(
+            indexer_arc.clone(),
+            WatcherConfig::default(), // Use default config (50ms debounce, common extensions)
+            None, // No WAL for now
+        ) {
+            Ok(di) => {
+                info!("Delta indexer initialized successfully");
+                Some(Arc::new(di))
+            }
+            Err(e) => {
+                warn!("Failed to initialize delta indexer: {}", e);
+                None
+            }
+        };
+
         // Initialize documentation indexer
         let doc_indexer = Arc::new(crate::docs::DocIndexer::new());
 
@@ -239,11 +258,13 @@ impl MeridianServer {
         ));
 
         // Wrap components in Arc<RwLock<>> for shared access
+        // Note: indexer_arc is already wrapped from delta indexer initialization above
         Ok(Self {
             mode: ServerMode::SingleProject {
                 memory_system: Arc::new(tokio::sync::RwLock::new(memory_system)),
                 context_manager: Arc::new(tokio::sync::RwLock::new(context_manager)),
-                indexer: Arc::new(tokio::sync::RwLock::new(indexer)),
+                indexer: indexer_arc,
+                delta_indexer,
                 session_manager: Arc::new(session_manager),
                 doc_indexer,
                 spec_manager: Arc::new(tokio::sync::RwLock::new(spec_manager)),
@@ -361,6 +382,7 @@ impl MeridianServer {
                 memory_system,
                 context_manager,
                 indexer,
+                delta_indexer,
                 session_manager,
                 doc_indexer,
                 spec_manager,
@@ -389,6 +411,12 @@ impl MeridianServer {
                     links_storage.clone(),
                     pattern_engine,
                 );
+
+                // Set delta indexer if available
+                if let Some(di) = delta_indexer {
+                    info!("Setting delta indexer on ToolHandlers");
+                    new_handlers.set_delta_indexer(di.clone());
+                }
 
                 // Set metrics collector
                 info!("[METRICS-DEBUG] init_handlers: Setting metrics collector on ToolHandlers");

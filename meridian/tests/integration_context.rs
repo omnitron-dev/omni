@@ -8,8 +8,8 @@ use meridian::types::{
 
 #[tokio::test]
 async fn test_context_manager_initialization() {
-    let manager = ContextManager::new(LLMAdapter::claude3());
-    
+    let _manager = ContextManager::new(LLMAdapter::claude3());
+
 }
 
 #[tokio::test]

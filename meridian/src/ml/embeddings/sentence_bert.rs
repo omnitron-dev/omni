@@ -5,7 +5,7 @@
 /// Memory: <500MB
 
 use super::EmbeddingModel;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use dashmap::DashMap;
 use std::sync::Arc;
 

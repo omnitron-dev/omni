@@ -84,6 +84,7 @@ pub struct DeltaIndexer {
     base_indexer: Arc<RwLock<CodeIndexer>>,
     watcher: Arc<RwLock<FileWatcher>>,
     change_tracker: Arc<RwLock<ChangeTracker>>,
+    #[allow(dead_code)]
     config: WatcherConfig,
     wal_path: Option<PathBuf>,
     watching: Arc<RwLock<bool>>,

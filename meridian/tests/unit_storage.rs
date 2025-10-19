@@ -1,7 +1,7 @@
 mod common;
 
 use common::{create_test_storage, create_test_storage_at};
-use meridian::storage::{RocksDBStorage, Storage, WriteOp};
+use meridian::storage::{RocksDBStorage, WriteOp};
 use tempfile::TempDir;
 
 #[tokio::test]

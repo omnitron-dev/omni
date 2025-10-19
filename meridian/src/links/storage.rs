@@ -1,4 +1,4 @@
-use super::types::{ExtractionMethod, KnowledgeLevel, LinkId, LinkTarget, LinkType, SemanticLink, ValidationStatus};
+use super::types::{KnowledgeLevel, LinkId, LinkTarget, LinkType, SemanticLink, ValidationStatus};
 use crate::storage::{serialize, deserialize, Storage};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -126,6 +126,7 @@ impl RocksDBLinksStorage {
     }
 
     /// Generate key prefix for type index
+    #[allow(dead_code)]
     fn type_index_prefix(link_type: LinkType) -> Vec<u8> {
         format!("idx_type:{}:", link_type.as_str()).into_bytes()
     }

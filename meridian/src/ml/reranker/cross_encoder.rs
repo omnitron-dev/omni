@@ -12,7 +12,7 @@
 /// - Trained on MS MARCO passage ranking dataset
 
 use super::{RerankedResult, Reranker};
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Result, anyhow};
 use dashmap::DashMap;
 use std::sync::Arc;
 use std::time::Instant;
@@ -48,6 +48,7 @@ impl Default for CrossEncoderConfig {
 /// Cross-encoder model for reranking search results
 pub struct CrossEncoderReranker {
     /// Model configuration
+    #[allow(dead_code)]
     config: CrossEncoderConfig,
     /// Model name
     name: String,
@@ -124,6 +125,7 @@ impl CrossEncoderReranker {
     }
 
     /// Tokenize a query-document pair
+    #[allow(dead_code)]
     fn tokenize_pair(&self, query: &str, document: &str) -> Result<Vec<u32>> {
         if let Some(ref tokenizer) = self.tokenizer {
             // Format: [CLS] query [SEP] document [SEP]
@@ -215,7 +217,7 @@ impl CrossEncoderReranker {
         let mut last_match_pos = None;
 
         // Score each query word
-        for (q_idx, &query_word) in query_words.iter().enumerate() {
+        for (_q_idx, &query_word) in query_words.iter().enumerate() {
             let mut best_match_score = 0.0;
             let mut best_match_pos = None;
 

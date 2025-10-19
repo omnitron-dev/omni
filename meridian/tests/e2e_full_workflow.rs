@@ -512,7 +512,7 @@ async fn test_spec_to_tests_complete_workflow() {
     use std::sync::Arc;
 
     let temp_dir = TempDir::new().unwrap();
-    let (storage, _temp) = create_test_storage();
+    let (_storage, _temp) = create_test_storage();
 
     // Initialize components
     let _spec_manager = SpecificationManager::new(temp_dir.path().join("specs"));
@@ -525,7 +525,7 @@ async fn test_spec_to_tests_complete_workflow() {
     // In a real workflow, specs would be loaded from the specs directory
     // For this test, we simulate a spec section
     let spec_id = "test-spec.md#authentication-feature";
-    let spec_content = r#"
+    let _spec_content = r#"
     # Authentication Feature
 
     The authentication system shall provide a function to authenticate users

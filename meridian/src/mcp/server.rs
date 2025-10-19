@@ -125,6 +125,22 @@ impl MeridianServer {
         let mut indexer = CodeIndexer::new(storage.clone(), config.index.clone())?;
         indexer.load().await?;
 
+        // Auto-index project on first run if index is empty
+        if indexer.symbol_count() == 0 {
+            if let Ok(cwd) = std::env::current_dir() {
+                let src_path = cwd.join("src");
+                if src_path.exists() {
+                    info!("Index is empty, auto-indexing project at {:?}/src", cwd);
+                    match indexer.index_project(&src_path, false).await {
+                        Ok(_) => info!("Auto-indexing completed successfully"),
+                        Err(e) => warn!("Auto-indexing failed: {}", e),
+                    }
+                }
+            }
+        } else {
+            info!("Loaded {} symbols from existing index", indexer.symbol_count());
+        }
+
         // Initialize documentation indexer
         let doc_indexer = Arc::new(crate::docs::DocIndexer::new());
 
@@ -254,7 +270,7 @@ impl MeridianServer {
         collector: Arc<MetricsCollector>,
         storage: Arc<MetricsStorage>,
     ) -> JoinHandle<()> {
-        use crate::error_recovery::{run_background_task_with_recovery, RetryConfig};
+        use crate::error_recovery::run_background_task_with_recovery;
 
         tokio::spawn(async move {
             run_background_task_with_recovery(

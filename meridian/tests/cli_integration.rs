@@ -8,7 +8,6 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
 use std::fs;
-use std::path::PathBuf;
 use tempfile::TempDir;
 
 fn create_test_npm_project() -> TempDir {

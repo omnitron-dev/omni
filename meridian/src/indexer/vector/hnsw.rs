@@ -50,6 +50,7 @@ pub struct HnswIndex<'a> {
     /// Next available HNSW internal ID
     next_id: Arc<RwLock<usize>>,
     /// Configuration
+    #[allow(dead_code)]
     config: HnswConfig,
     /// Vector dimension
     dim: usize,
@@ -131,7 +132,7 @@ impl<'a> VectorIndex for HnswIndex<'a> {
 
         // Insert into HNSW index
         {
-            let mut index = self.index.write().unwrap();
+            let index = self.index.write().unwrap();
             index.insert((vector, internal_id));
         }
 

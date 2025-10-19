@@ -2432,6 +2432,7 @@ impl ToolHandlers {
             target_path: String,
             format: Option<String>,
             #[serde(rename = "includeExamples", default)]
+            #[allow(dead_code)]
             include_examples: Option<bool>,
         }
 
@@ -2475,6 +2476,7 @@ impl ToolHandlers {
             #[serde(rename = "targetPath")]
             target_path: String,
             #[serde(default)]
+            #[allow(dead_code)]
             standards: Option<String>,
         }
 
@@ -2844,9 +2846,12 @@ impl ToolHandlers {
         struct Params {
             #[serde(rename = "projectId")]
             project_id: String,
+            #[allow(dead_code)]
             depth: Option<usize>,
+            #[allow(dead_code)]
             direction: Option<String>,
             #[serde(rename = "includeTypes")]
+            #[allow(dead_code)]
             include_types: Option<Vec<String>>,
         }
 
@@ -2951,6 +2956,7 @@ impl ToolHandlers {
             #[serde(rename = "symbolName")]
             symbol_name: Option<String>,
             #[serde(rename = "includeExamples", default)]
+            #[allow(dead_code)]
             include_examples: Option<bool>,
         }
 
@@ -3382,6 +3388,7 @@ impl ToolHandlers {
         #[derive(Deserialize)]
         struct Params {
             task_id: String,
+            #[allow(dead_code)]
             note: Option<String>,
             actual_hours: Option<f32>,
             commit_hash: Option<String>,
@@ -4183,7 +4190,7 @@ impl ToolHandlers {
         let used_memory_mb = (sys.used_memory() as f64) / 1_048_576.0;
 
         // Get indexer stats (stub)
-        let indexer = self.indexer.read().await;
+        let _indexer = self.indexer.read().await;
         let index_stats = json!({
             "total_symbols": 0,
             "total_files": 0

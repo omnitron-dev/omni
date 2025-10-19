@@ -126,8 +126,6 @@ impl<S: Storage + Send + Sync + 'static> Storage for ResilientStorage<S> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     // Tests would require a mock Storage implementation
     // In production, ResilientStorage wraps RocksDBStorage
     // Integration tests verify the retry behavior

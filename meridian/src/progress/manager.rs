@@ -1107,8 +1107,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_task_timeout_detection() {
-        use std::time::Duration;
-
         let (manager, _temp_dir) = create_test_manager().await;
 
         // Create task with 1 hour timeout

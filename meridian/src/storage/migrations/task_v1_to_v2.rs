@@ -67,6 +67,9 @@ impl Migration for TaskV1ToV2Migration {
             active_session_id: task_v1.active_session_id,
             created_at: task_v1.created_at,
             updated_at: task_v1.updated_at,
+            started_at: None,  // New in v2: track when task started
+            last_activity: task_v1.updated_at,  // New in v2: initialize to updated_at
+            timeout_hours: None,  // New in v2: no timeout by default
             completed_at: task_v1.completed_at,
             history: task_v1.history,
             tags: task_v1.tags,

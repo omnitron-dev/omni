@@ -195,6 +195,7 @@ impl CodeIndexer {
     }
 
     /// Index a single file
+    #[allow(dead_code)]
     async fn index_file(&mut self, path: &Path) -> Result<Vec<CodeSymbol>> {
         // Check if file should be ignored
         if self.should_ignore(path) {

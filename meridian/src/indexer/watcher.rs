@@ -80,6 +80,7 @@ pub struct FileWatcher {
     config: WatcherConfig,
     watched_paths: Arc<StdMutex<Vec<PathBuf>>>,
     // Debounce state: path -> last event time
+    #[allow(dead_code)]
     debounce_map: Arc<StdMutex<std::collections::HashMap<PathBuf, Instant>>>,
 }
 

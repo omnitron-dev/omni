@@ -9,9 +9,8 @@
 use anyhow::Result;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tokio::sync::RwLock;
 use tokio::signal;
-use tracing::{info, warn, error};
+use tracing::{info, error};
 
 /// Shutdown coordinator
 pub struct ShutdownCoordinator {

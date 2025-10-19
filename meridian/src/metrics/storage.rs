@@ -20,6 +20,7 @@ fn make_snapshot_key(timestamp: &DateTime<Utc>) -> String {
 ///
 /// Key format: "agg:{granularity}:{timestamp}"
 /// Granularity: "hour", "day", "week"
+#[allow(dead_code)]
 fn make_aggregation_key(granularity: &str, timestamp: &DateTime<Utc>) -> String {
     format!("agg:{}:{}", granularity, timestamp.timestamp_millis())
 }

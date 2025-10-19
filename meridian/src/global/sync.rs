@@ -75,6 +75,7 @@ pub struct SyncManager {
     storage: Arc<GlobalStorage>,
 
     /// File watcher
+    #[allow(dead_code)]
     file_watcher: Arc<GlobalFileWatcher>,
 
     /// Pending changes (debounced)

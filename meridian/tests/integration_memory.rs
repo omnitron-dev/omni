@@ -45,6 +45,7 @@ async fn test_episodic_memory_recording() {
 
     let episode = TaskEpisode {
         id: EpisodeId::new(),
+        schema_version: 1,
         timestamp: chrono::Utc::now(),
         task_description: "Implement authentication system".to_string(),
         initial_context: ContextSnapshot {
@@ -76,6 +77,7 @@ async fn test_episodic_memory_find_similar() {
     // Add multiple related episodes
     let episode1 = TaskEpisode {
         id: EpisodeId::new(),
+        schema_version: 1,
         timestamp: chrono::Utc::now(),
         task_description: "Add user authentication".to_string(),
         initial_context: ContextSnapshot::default(),
@@ -90,6 +92,7 @@ async fn test_episodic_memory_find_similar() {
 
     let episode2 = TaskEpisode {
         id: EpisodeId::new(),
+        schema_version: 1,
         timestamp: chrono::Utc::now(),
         task_description: "Fix authentication bug in JWT".to_string(),
         initial_context: ContextSnapshot::default(),
@@ -104,6 +107,7 @@ async fn test_episodic_memory_find_similar() {
 
     let episode3 = TaskEpisode {
         id: EpisodeId::new(),
+        schema_version: 1,
         timestamp: chrono::Utc::now(),
         task_description: "Add database connection".to_string(),
         initial_context: ContextSnapshot::default(),
@@ -135,6 +139,7 @@ async fn test_episodic_memory_pattern_extraction() {
 
     let episode = TaskEpisode {
         id: EpisodeId::new(),
+        schema_version: 1,
         timestamp: chrono::Utc::now(),
         task_description: "Implement API endpoint".to_string(),
         initial_context: ContextSnapshot::default(),
@@ -162,6 +167,7 @@ async fn test_episodic_memory_consolidation() {
     // Add old, low-value episode
     let old_episode = TaskEpisode {
         id: EpisodeId::new(),
+        schema_version: 1,
         timestamp: chrono::Utc::now() - chrono::Duration::days(40),
         task_description: "Old low value task".to_string(),
         initial_context: ContextSnapshot::default(),
@@ -177,6 +183,7 @@ async fn test_episodic_memory_consolidation() {
     // Add recent, high-value episode
     let recent_episode = TaskEpisode {
         id: EpisodeId::new(),
+        schema_version: 1,
         timestamp: chrono::Utc::now(),
         task_description: "Recent high value task".to_string(),
         initial_context: ContextSnapshot::default(),
@@ -318,6 +325,7 @@ async fn test_episodic_memory_increment_access() {
 
     let episode = TaskEpisode {
         id: EpisodeId::new(),
+        schema_version: 1,
         timestamp: chrono::Utc::now(),
         task_description: "Test episode".to_string(),
         initial_context: ContextSnapshot::default(),

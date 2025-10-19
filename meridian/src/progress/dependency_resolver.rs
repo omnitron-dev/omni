@@ -83,33 +83,35 @@ impl DependencyResolver {
     }
 
     /// Build dependency graph recursively
-    async fn build_dependency_graph(
-        &self,
-        manager: &ProgressManager,
-        task_id: &TaskId,
-        graph: &mut HashMap<TaskId, Vec<TaskId>>,
-        visited: &mut HashSet<TaskId>,
-    ) -> Result<()> {
-        if visited.contains(task_id) {
-            return Ok(());
-        }
-        visited.insert(task_id.clone());
+    fn build_dependency_graph<'a>(
+        &'a self,
+        manager: &'a ProgressManager,
+        task_id: &'a TaskId,
+        graph: &'a mut HashMap<TaskId, Vec<TaskId>>,
+        visited: &'a mut HashSet<TaskId>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + 'a>> {
+        Box::pin(async move {
+            if visited.contains(task_id) {
+                return Ok(());
+            }
+            visited.insert(task_id.clone());
 
-        let task = manager.get_task(task_id).await?;
-        graph.insert(task_id.clone(), task.depends_on.clone());
+            let task = manager.get_task(task_id).await?;
+            graph.insert(task_id.clone(), task.depends_on.clone());
 
-        // Recurse into dependencies
-        for dep_id in &task.depends_on {
-            self.build_dependency_graph(manager, dep_id, graph, visited).await?;
-        }
+            // Recurse into dependencies
+            for dep_id in &task.depends_on {
+                self.build_dependency_graph(manager, dep_id, graph, visited).await?;
+            }
 
-        // Recurse into dependents
-        let dependents = manager.get_dependents(task_id).await?;
-        for dep_task in dependents {
-            self.build_dependency_graph(manager, &dep_task.id, graph, visited).await?;
-        }
+            // Recurse into dependents
+            let dependents = manager.get_dependents(task_id).await?;
+            for dep_task in dependents {
+                self.build_dependency_graph(manager, &dep_task.id, graph, visited).await?;
+            }
 
-        Ok(())
+            Ok(())
+        })
     }
 
     /// Get all prerequisites (transitive dependencies) in execution order

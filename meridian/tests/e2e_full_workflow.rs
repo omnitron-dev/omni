@@ -100,6 +100,7 @@ async fn test_complete_developer_workflow() {
     // Step 8: Record the episode
     let episode = TaskEpisode {
         id: EpisodeId::new(),
+        schema_version: 1,
         timestamp: chrono::Utc::now(),
         task_description: "Implement user authentication".to_string(),
         initial_context: ContextSnapshot {
@@ -141,6 +142,7 @@ async fn test_learning_workflow() {
     for i in 0..5 {
         let episode = TaskEpisode {
             id: EpisodeId::new(),
+        schema_version: 1,
             timestamp: chrono::Utc::now(),
             task_description: format!("Implement feature {} for authentication", i),
             initial_context: ContextSnapshot {
@@ -282,6 +284,7 @@ async fn test_memory_consolidation_workflow() {
     // Add mix of old and new episodes
     let old_low_value = TaskEpisode {
         id: EpisodeId::new(),
+        schema_version: 1,
         timestamp: chrono::Utc::now() - chrono::Duration::days(40),
         task_description: "Old low value".to_string(),
         initial_context: ContextSnapshot::default(),
@@ -296,6 +299,7 @@ async fn test_memory_consolidation_workflow() {
 
     let recent_high_value = TaskEpisode {
         id: EpisodeId::new(),
+        schema_version: 1,
         timestamp: chrono::Utc::now(),
         task_description: "Recent high value".to_string(),
         initial_context: ContextSnapshot::default(),
@@ -468,6 +472,7 @@ async fn test_pattern_extraction_reuse_workflow() {
     for desc in task_descriptions {
         let episode = TaskEpisode {
             id: EpisodeId::new(),
+        schema_version: 1,
             timestamp: chrono::Utc::now(),
             task_description: desc.to_string(),
             initial_context: ContextSnapshot {

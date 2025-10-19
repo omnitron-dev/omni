@@ -32,6 +32,7 @@ async fn test_learn_from_successful_patterns() {
     for (task, files, actions) in auth_tasks {
         let episode = TaskEpisode {
             id: EpisodeId::new(),
+        schema_version: 1,
             timestamp: chrono::Utc::now(),
             task_description: task.to_string(),
             initial_context: ContextSnapshot {
@@ -91,6 +92,7 @@ async fn test_filter_failed_approaches() {
     // Record successful episode
     let successful = TaskEpisode {
         id: EpisodeId::new(),
+        schema_version: 1,
         timestamp: chrono::Utc::now(),
         task_description: "Implement caching with Redis".to_string(),
         initial_context: ContextSnapshot {
@@ -110,6 +112,7 @@ async fn test_filter_failed_approaches() {
     // Record failed episode
     let failed = TaskEpisode {
         id: EpisodeId::new(),
+        schema_version: 1,
         timestamp: chrono::Utc::now(),
         task_description: "Implement caching with Memcached".to_string(),
         initial_context: ContextSnapshot {
@@ -154,6 +157,7 @@ async fn test_learn_from_frequently_accessed() {
     // Record episode
     let episode = TaskEpisode {
         id: EpisodeId::new(),
+        schema_version: 1,
         timestamp: chrono::Utc::now(),
         task_description: "Common pattern for API endpoints".to_string(),
         initial_context: ContextSnapshot {
@@ -228,6 +232,7 @@ async fn test_pattern_consolidation() {
     for i in 0..5 {
         let episode = TaskEpisode {
             id: EpisodeId::new(),
+        schema_version: 1,
             timestamp: chrono::Utc::now(),
             task_description: format!("Database migration {}", i),
             initial_context: ContextSnapshot {
@@ -316,6 +321,7 @@ async fn test_learn_from_partial_success() {
     // Record partially successful episode
     let partial = TaskEpisode {
         id: EpisodeId::new(),
+        schema_version: 1,
         timestamp: chrono::Utc::now(),
         task_description: "Implement feature X".to_string(),
         initial_context: ContextSnapshot {
@@ -358,6 +364,7 @@ async fn test_pattern_value_decay() {
     // Add old episode with low pattern value
     let old_episode = TaskEpisode {
         id: EpisodeId::new(),
+        schema_version: 1,
         timestamp: chrono::Utc::now() - chrono::Duration::days(40),
         task_description: "Old pattern".to_string(),
         initial_context: ContextSnapshot::default(),
@@ -394,6 +401,7 @@ async fn test_multi_pattern_extraction() {
     // Create episode with multiple patterns
     let episode = TaskEpisode {
         id: EpisodeId::new(),
+        schema_version: 1,
         timestamp: chrono::Utc::now(),
         task_description: "Complex feature implementation".to_string(),
         initial_context: ContextSnapshot {
@@ -447,6 +455,7 @@ async fn test_learn_optimal_token_usage() {
     // Record episodes with different token usage
     let efficient = TaskEpisode {
         id: EpisodeId::new(),
+        schema_version: 1,
         timestamp: chrono::Utc::now(),
         task_description: "Efficient implementation".to_string(),
         initial_context: ContextSnapshot::default(),
@@ -461,6 +470,7 @@ async fn test_learn_optimal_token_usage() {
 
     let inefficient = TaskEpisode {
         id: EpisodeId::new(),
+        schema_version: 1,
         timestamp: chrono::Utc::now(),
         task_description: "Inefficient implementation".to_string(),
         initial_context: ContextSnapshot::default(),

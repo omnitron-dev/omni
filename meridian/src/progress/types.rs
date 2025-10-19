@@ -9,6 +9,11 @@ fn default_schema_version() -> u32 {
     crate::storage::CURRENT_SCHEMA_VERSION
 }
 
+/// Default last_activity for tasks being migrated (set to current time)
+fn default_last_activity() -> DateTime<Utc> {
+    Utc::now()
+}
+
 /// Unique identifier for tasks
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TaskId(pub String);
@@ -168,6 +173,7 @@ pub struct Task {
     pub started_at: Option<DateTime<Utc>>,
 
     /// Last activity timestamp (updated on any task modification)
+    #[serde(default = "default_last_activity")]
     pub last_activity: DateTime<Utc>,
 
     /// Timeout in hours for InProgress tasks (None = no timeout)

@@ -7,6 +7,7 @@ pub mod embeddings;
 pub mod error_recovery;
 pub mod git;
 pub mod global;
+pub mod graph;  // In-memory graph cache for 10x faster traversals
 pub mod indexer;
 pub mod links;
 pub mod mcp;

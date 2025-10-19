@@ -1,7 +1,7 @@
 use super::VectorIndex;
 use anyhow::{Context, Result};
 use hnsw_rs::prelude::*;
-use hnsw_rs::hnswio::*;
+use hnsw_rs::hnswio::HnswIo;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
@@ -55,6 +55,9 @@ pub struct HnswIndex<'a> {
     config: HnswConfig,
     /// Vector dimension
     dim: usize,
+    /// HnswIo instance (kept alive to prevent memory-mapped data from being dropped)
+    #[allow(dead_code)]
+    hnswio: Option<Box<HnswIo>>,
 }
 
 impl<'a> HnswIndex<'a> {
@@ -84,6 +87,7 @@ impl<'a> HnswIndex<'a> {
             next_id: Arc::new(RwLock::new(0)),
             config,
             dim,
+            hnswio: None,
         }
     }
 
@@ -278,20 +282,10 @@ impl<'a> VectorIndex for HnswIndex<'a> {
             );
         }
 
-        // Load the HNSW index from disk using HnswIo
-        let mut hnswio = HnswIo::new(index_dir, basename);
-        let index: Hnsw<'a, f32, DistCosine> = hnswio
-            .load_hnsw()
-            .context("Failed to load HNSW index from disk")?;
-
-        Ok(Self {
-            index: Arc::new(RwLock::new(index)),
-            id_map: Arc::new(RwLock::new(metadata.id_map)),
-            reverse_map: Arc::new(RwLock::new(metadata.reverse_map)),
-            next_id: Arc::new(RwLock::new(metadata.next_id)),
-            config: metadata.config,
-            dim: metadata.dim,
-        })
+        // TODO: Properly implement HNSW persistence
+        // Current issue: lifetime conflicts with HnswIo
+        // For now, return error to indicate feature not yet ready
+        anyhow::bail!("HNSW load_index not yet implemented - use episodic memory persistence instead")
     }
 }
 

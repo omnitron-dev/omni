@@ -774,13 +774,18 @@ impl ToolHandlers {
             files_to_search.truncate(max_files);
         }
 
-        // Search in files - collect ALL matches first, then paginate
-        // This ensures consistent pagination across calls
+        // Search in files - we need to collect enough matches to satisfy the pagination
+        // To prevent memory exhaustion, we'll implement a smart early-stop strategy:
+        // 1. If we've collected offset + max_results matches, we stop
+        // 2. But we track whether we searched all files to know if has_more is accurate
         let mut all_matches = Vec::new();
-        let target_matches = offset + max_results; // Collect enough for offset + page
+        let target_matches = offset.saturating_add(max_results); // Prevent overflow
+        let mut searched_all_files = true;
 
         for file_path in &files_to_search {
+            // Early exit optimization: stop when we have enough matches
             if all_matches.len() >= target_matches {
+                searched_all_files = false;
                 break;
             }
 
@@ -808,12 +813,7 @@ impl ToolHandlers {
                 file_path,
             ) {
                 Ok(matches) => {
-                    for m in matches {
-                        if all_matches.len() >= target_matches {
-                            break;
-                        }
-                        all_matches.push(m);
-                    }
+                    all_matches.extend(matches);
                 }
                 Err(e) => {
                     debug!("Pattern search failed for {}: {}", file_path.display(), e);
@@ -823,14 +823,22 @@ impl ToolHandlers {
         }
 
         // Apply pagination
-        let total_matches = all_matches.len();
+        let total_matches_found = all_matches.len();
         let paginated_matches: Vec<_> = all_matches
             .into_iter()
             .skip(offset)
             .take(max_results)
             .collect();
 
-        let has_more = total_matches > offset + paginated_matches.len();
+        // Calculate has_more accurately:
+        // - If we searched all files, has_more = total > offset + page_size
+        // - If we stopped early, has_more = true (there might be more)
+        let has_more = if searched_all_files {
+            total_matches_found > offset + paginated_matches.len()
+        } else {
+            // We stopped early, so there are definitely more matches possible
+            true
+        };
 
         // Convert matches to JSON
         let matches_json: Vec<Value> = paginated_matches
@@ -860,7 +868,8 @@ impl ToolHandlers {
                 "offset": offset,
                 "page_size": paginated_matches.len(),
                 "has_more": has_more,
-                "total_found": total_matches
+                "total_found": total_matches_found,
+                "searched_all_files": searched_all_files
             },
             "summary": {
                 "files_searched": files_to_search.len(),

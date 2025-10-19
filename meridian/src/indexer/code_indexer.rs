@@ -160,6 +160,11 @@ impl CodeIndexer {
         self.symbols.len()
     }
 
+    /// Get the total number of indexed files
+    pub fn file_count(&self) -> usize {
+        self.file_index.len()
+    }
+
     /// Get multi-level cache statistics
     pub fn cache_stats(&self) -> crate::cache::CacheStats {
         self.search_cache.stats()

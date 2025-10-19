@@ -4213,10 +4213,9 @@ impl ToolHandlers {
         let mut indexer = self.indexer.write().await;
         indexer.index_project(&path, params.force).await?;
 
-        // CRITICAL FIX: Reload index into memory after indexing
-        // Without this, symbols are in RocksDB but not in-memory cache
-        info!("Reloading index into memory...");
-        indexer.load().await?;
+        // NOTE: No need to call load() here - index_project already populates
+        // in-memory caches via index_file_incremental(). Calling load() would
+        // create duplicates in name_index and other indices.
 
         let duration_ms = start.elapsed().as_millis() as u64;
         let symbol_count = indexer.symbol_count();
@@ -4278,11 +4277,26 @@ impl ToolHandlers {
         let total_memory_mb = (sys.total_memory() as f64) / 1_048_576.0;
         let used_memory_mb = (sys.used_memory() as f64) / 1_048_576.0;
 
-        // Get indexer stats (stub)
-        let _indexer = self.indexer.read().await;
+        // Get indexer stats
+        let indexer = self.indexer.read().await;
+        let total_symbols = indexer.symbol_count();
+        let (l1_size, l2_size) = indexer.cache_sizes();
+        let cache_stats = indexer.cache_stats();
+        let total_hits = cache_stats.l1_hits + cache_stats.l2_hits + cache_stats.l3_hits;
         let index_stats = json!({
-            "total_symbols": 0,
-            "total_files": 0
+            "total_symbols": total_symbols,
+            "total_files": indexer.file_count(),
+            "cache": {
+                "l1_size": l1_size,
+                "l2_size": l2_size,
+                "l1_hits": cache_stats.l1_hits,
+                "l2_hits": cache_stats.l2_hits,
+                "l3_hits": cache_stats.l3_hits,
+                "total_hits": total_hits,
+                "misses": cache_stats.misses,
+                "hit_rate": format!("{:.2}%", cache_stats.hit_rate() * 100.0),
+                "avg_latency_ms": format!("{:.2}", cache_stats.avg_latency_ms())
+            }
         });
 
         // Get session count (stub)

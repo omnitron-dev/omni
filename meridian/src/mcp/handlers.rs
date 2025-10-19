@@ -693,10 +693,16 @@ impl ToolHandlers {
             language: Option<String>,
             scope: Option<String>,
             max_results: Option<usize>,
+            offset: Option<usize>,
         }
 
         let params: SearchPatternsParams = serde_json::from_value(args)
             .context("Invalid parameters for code.search_patterns")?;
+
+        // Enforce hard limit to prevent memory explosion
+        const MAX_RESULTS_HARD_LIMIT: usize = 1000;
+        let max_results = params.max_results.unwrap_or(100).min(MAX_RESULTS_HARD_LIMIT);
+        let offset = params.offset.unwrap_or(0);
 
         // Determine scope (files to search)
         let scope_path = if let Some(scope) = params.scope {
@@ -758,12 +764,13 @@ impl ToolHandlers {
             files_to_search.truncate(max_files);
         }
 
-        // Search in files
+        // Search in files - collect ALL matches first, then paginate
+        // This ensures consistent pagination across calls
         let mut all_matches = Vec::new();
-        let max_results = params.max_results.unwrap_or(100);
+        let target_matches = offset + max_results; // Collect enough for offset + page
 
         for file_path in &files_to_search {
-            if all_matches.len() >= max_results {
+            if all_matches.len() >= target_matches {
                 break;
             }
 
@@ -792,7 +799,7 @@ impl ToolHandlers {
             ) {
                 Ok(matches) => {
                     for m in matches {
-                        if all_matches.len() >= max_results {
+                        if all_matches.len() >= target_matches {
                             break;
                         }
                         all_matches.push(m);
@@ -805,8 +812,18 @@ impl ToolHandlers {
             }
         }
 
+        // Apply pagination
+        let total_matches = all_matches.len();
+        let paginated_matches: Vec<_> = all_matches
+            .into_iter()
+            .skip(offset)
+            .take(max_results)
+            .collect();
+
+        let has_more = total_matches > offset + paginated_matches.len();
+
         // Convert matches to JSON
-        let matches_json: Vec<Value> = all_matches
+        let matches_json: Vec<Value> = paginated_matches
             .iter()
             .map(|m| {
                 json!({
@@ -829,8 +846,13 @@ impl ToolHandlers {
 
         Ok(json!({
             "matches": matches_json,
+            "pagination": {
+                "offset": offset,
+                "page_size": paginated_matches.len(),
+                "has_more": has_more,
+                "total_found": total_matches
+            },
             "summary": {
-                "total_matches": all_matches.len(),
                 "files_searched": files_to_search.len(),
                 "pattern": params.pattern,
                 "language": params.language
@@ -4180,6 +4202,11 @@ impl ToolHandlers {
         // Get indexer and perform indexing
         let mut indexer = self.indexer.write().await;
         indexer.index_project(&path, params.force).await?;
+
+        // CRITICAL FIX: Reload index into memory after indexing
+        // Without this, symbols are in RocksDB but not in-memory cache
+        info!("Reloading index into memory...");
+        indexer.load().await?;
 
         let duration_ms = start.elapsed().as_millis() as u64;
         let symbol_count = indexer.symbol_count();

@@ -216,11 +216,15 @@ pub fn get_all_tools() -> Vec<Tool> {
                     },
                     "max_results": {
                         "type": "integer",
-                        "description": "Maximum number of results to return (max 1000)"
+                        "description": "Maximum number of results to return (max 1000). Alias for page_size."
+                    },
+                    "page_size": {
+                        "type": "integer",
+                        "description": "Number of results per page (default: 100, max: 1000). Preferred over max_results."
                     },
                     "offset": {
                         "type": "integer",
-                        "description": "Offset for pagination (starting index for results)"
+                        "description": "Offset for pagination - starting index for results (default: 0)"
                     }
                 },
                 "required": ["pattern"]

@@ -680,7 +680,8 @@ impl ToolHandlers {
             pattern: String,
             language: Option<String>,
             scope: Option<String>,
-            max_results: Option<usize>,
+            max_results: Option<usize>,  // Legacy, for backwards compatibility
+            page_size: Option<usize>,     // Preferred pagination parameter
             offset: Option<usize>,
         }
 
@@ -689,7 +690,13 @@ impl ToolHandlers {
 
         // Enforce hard limit to prevent memory explosion
         const MAX_RESULTS_HARD_LIMIT: usize = 1000;
-        let max_results = params.max_results.unwrap_or(100).min(MAX_RESULTS_HARD_LIMIT);
+        const DEFAULT_PAGE_SIZE: usize = 100;
+
+        // page_size takes precedence over max_results for clarity
+        let page_size = params.page_size
+            .or(params.max_results)
+            .unwrap_or(DEFAULT_PAGE_SIZE)
+            .min(MAX_RESULTS_HARD_LIMIT);
         let offset = params.offset.unwrap_or(0);
 
         // Determine scope (files to search)
@@ -754,10 +761,10 @@ impl ToolHandlers {
 
         // Search in files - we need to collect enough matches to satisfy the pagination
         // To prevent memory exhaustion, we'll implement a smart early-stop strategy:
-        // 1. If we've collected offset + max_results matches, we stop
+        // 1. If we've collected offset + page_size matches, we stop
         // 2. But we track whether we searched all files to know if has_more is accurate
         let mut all_matches = Vec::new();
-        let target_matches = offset.saturating_add(max_results); // Prevent overflow
+        let target_matches = offset.saturating_add(page_size); // Prevent overflow
         let mut searched_all_files = true;
 
         for file_path in &files_to_search {
@@ -805,7 +812,7 @@ impl ToolHandlers {
         let paginated_matches: Vec<_> = all_matches
             .into_iter()
             .skip(offset)
-            .take(max_results)
+            .take(page_size)
             .collect();
 
         // Calculate has_more accurately:
@@ -2091,28 +2098,136 @@ impl ToolHandlers {
         struct CrossReferencesParams {
             source_project: String,
             target_project: Option<String>,
-            #[allow(dead_code)]
             reference_type: Option<String>,
         }
 
         let params: CrossReferencesParams = serde_json::from_value(args)
             .context("Invalid parameters for monorepo.find_cross_references")?;
 
-        // Placeholder implementation - would need project-aware indexing
-        let references = vec![
-            json!({
-                "from_project": params.source_project,
-                "to_project": params.target_project.clone().unwrap_or_else(|| "unknown".to_string()),
-                "references": [],
-                "count": 0
-            })
-        ];
+        info!("Finding cross-references from project: {}", params.source_project);
+
+        // Use project registry and dependency graph to find cross-references
+        let mut cross_references = Vec::new();
+
+        if let Some(registry) = &self.project_registry {
+            let projects = registry.list_all().await?;
+
+            // Find source project
+            let source_project = projects.iter()
+                .find(|p| p.identity.id == params.source_project ||
+                          p.identity.full_id == params.source_project);
+
+            if let Some(source) = source_project {
+                // Parse dependencies from source project
+                let source_path = &source.current_path;
+
+                // Parse package.json or Cargo.toml for dependencies
+                let deps = Self::parse_project_dependencies(source_path).await?;
+
+                // Filter by target project if specified
+                let filtered_deps: Vec<_> = if let Some(ref target) = params.target_project {
+                    deps.into_iter()
+                        .filter(|(name, _)| name.contains(target) || name == target)
+                        .collect()
+                } else {
+                    deps
+                };
+
+                // Find matching projects in registry for each dependency
+                for (dep_name, dep_type) in filtered_deps {
+                    if let Some(target_proj) = projects.iter().find(|p|
+                        p.identity.id == dep_name ||
+                        p.identity.id.ends_with(&format!("/{}", dep_name))
+                    ) {
+                        // Filter by reference type if specified
+                        let type_matches = params.reference_type.as_ref()
+                            .map(|t| match (t.as_str(), &dep_type) {
+                                ("imports", _) => true,  // All deps are imports
+                                ("exports", _) => false, // Would need code analysis
+                                ("both", _) => true,
+                                _ => true,
+                            })
+                            .unwrap_or(true);
+
+                        if type_matches {
+                            cross_references.push(json!({
+                                "from_project": source.identity.id.clone(),
+                                "to_project": target_proj.identity.id.clone(),
+                                "dependency_type": match dep_type.as_str() {
+                                    "runtime" => "runtime",
+                                    "dev" => "development",
+                                    "peer" => "peer",
+                                    _ => "unknown",
+                                },
+                                "reference_type": "import",
+                                "from_version": source.identity.version.clone(),
+                                "to_version": target_proj.identity.version.clone(),
+                            }));
+                        }
+                    }
+                }
+            }
+        }
 
         Ok(json!({
-            "cross_references": references,
+            "cross_references": cross_references,
             "source_project": params.source_project,
-            "target_project": params.target_project
+            "target_project": params.target_project,
+            "total": cross_references.len()
         }))
+    }
+
+    /// Helper to parse dependencies from package.json or Cargo.toml
+    async fn parse_project_dependencies(path: &std::path::Path) -> Result<Vec<(String, String)>> {
+        let mut deps = Vec::new();
+
+        // Try package.json
+        let package_json = path.join("package.json");
+        if package_json.exists() {
+            let content = tokio::fs::read_to_string(&package_json).await?;
+            if let Ok(pkg) = serde_json::from_str::<serde_json::Value>(&content) {
+                // Runtime dependencies
+                if let Some(dependencies) = pkg["dependencies"].as_object() {
+                    for (name, _) in dependencies {
+                        deps.push((name.clone(), "runtime".to_string()));
+                    }
+                }
+                // Dev dependencies
+                if let Some(dev_deps) = pkg["devDependencies"].as_object() {
+                    for (name, _) in dev_deps {
+                        deps.push((name.clone(), "dev".to_string()));
+                    }
+                }
+                // Peer dependencies
+                if let Some(peer_deps) = pkg["peerDependencies"].as_object() {
+                    for (name, _) in peer_deps {
+                        deps.push((name.clone(), "peer".to_string()));
+                    }
+                }
+            }
+        }
+
+        // Try Cargo.toml
+        let cargo_toml = path.join("Cargo.toml");
+        if cargo_toml.exists() {
+            let content = tokio::fs::read_to_string(&cargo_toml).await?;
+            if let Ok(cargo) = toml::from_str::<toml::Value>(&content) {
+                // Runtime dependencies
+                if let Some(dependencies) = cargo.get("dependencies").and_then(|v| v.as_table()) {
+                    for (name, _) in dependencies {
+                        deps.push((name.clone(), "runtime".to_string()));
+                    }
+                }
+                // Dev dependencies
+                if let Some(dev_deps) = cargo.get("dev-dependencies").and_then(|v| v.as_table()) {
+                    for (name, _) in dev_deps {
+                        deps.push((name.clone(), "dev".to_string()));
+                    }
+                }
+            }
+        }
+
+        Ok(deps)
     }
 
     // === Memory Statistics ===
@@ -2734,9 +2849,7 @@ impl ToolHandlers {
         struct TestInput {
             code: String,
             framework: String,
-            #[allow(dead_code)]
             name: Option<String>,
-            #[allow(dead_code)]
             test_type: Option<String>,
         }
 
@@ -2745,27 +2858,146 @@ impl ToolHandlers {
 
         use crate::codegen::TestFramework;
 
-        let _framework = match params.test.framework.as_str() {
+        let framework = match params.test.framework.as_str() {
             "vitest" => TestFramework::Vitest,
             "bun" | "bun:test" => TestFramework::BunTest,
             "rust" => TestFramework::RustNative,
             _ => TestFramework::Jest,
         };
 
-        // estimate_coverage takes a slice of tests, not a string
-        // For now, we'll just return a placeholder estimate
-        let coverage = 0.8f32;
+        let mut errors = Vec::new();
+        let mut warnings = Vec::new();
 
-        // Basic syntax validation
-        let valid = !params.test.code.is_empty() &&
-                    (params.test.code.contains("test") ||
-                     params.test.code.contains("it(") ||
-                     params.test.code.contains("describe("));
+        // 1. Check if code is not empty
+        if params.test.code.trim().is_empty() {
+            errors.push("Test code cannot be empty".to_string());
+        }
+
+        // 2. Framework-specific validation
+        let has_test_structure = match framework {
+            TestFramework::Jest | TestFramework::Vitest => {
+                let _has_describe = params.test.code.contains("describe(");
+                let has_it = params.test.code.contains("it(") || params.test.code.contains("test(");
+                let has_expect = params.test.code.contains("expect(");
+
+                if !has_it {
+                    errors.push("Missing test case (it() or test())".to_string());
+                }
+                if !has_expect {
+                    warnings.push("No assertions found (expect())".to_string());
+                }
+
+                has_it
+            }
+            TestFramework::BunTest => {
+                let has_test = params.test.code.contains("test(") || params.test.code.contains("it(");
+                let has_expect = params.test.code.contains("expect(");
+
+                if !has_test {
+                    errors.push("Missing test case (test() or it())".to_string());
+                }
+                if !has_expect {
+                    warnings.push("No assertions found (expect())".to_string());
+                }
+
+                has_test
+            }
+            TestFramework::RustNative => {
+                let has_test_attr = params.test.code.contains("#[test]") || params.test.code.contains("#[tokio::test]");
+                let has_assert = params.test.code.contains("assert") || params.test.code.contains("panic!");
+
+                if !has_test_attr {
+                    errors.push("Missing #[test] attribute".to_string());
+                }
+                if !has_assert {
+                    warnings.push("No assertions found (assert/assert_eq/panic!)".to_string());
+                }
+
+                has_test_attr
+            }
+        };
+
+        // 3. Syntax validation (basic checks)
+        let has_balanced_braces = {
+            let open_count = params.test.code.matches('{').count();
+            let close_count = params.test.code.matches('}').count();
+            open_count == close_count
+        };
+
+        if !has_balanced_braces {
+            errors.push("Unbalanced braces - syntax error likely".to_string());
+        }
+
+        let has_balanced_parens = {
+            let open_count = params.test.code.matches('(').count();
+            let close_count = params.test.code.matches(')').count();
+            open_count == close_count
+        };
+
+        if !has_balanced_parens {
+            errors.push("Unbalanced parentheses - syntax error likely".to_string());
+        }
+
+        // 4. Test type validation
+        if let Some(ref test_type) = params.test.test_type {
+            match test_type.as_str() {
+                "unit" => {
+                    // Unit tests should not have network/filesystem calls
+                    if params.test.code.contains("fetch(") || params.test.code.contains("axios") {
+                        warnings.push("Unit test appears to make network calls - consider mocking".to_string());
+                    }
+                }
+                "integration" => {
+                    // Integration tests typically test multiple components
+                    // This is just a heuristic
+                }
+                "e2e" => {
+                    // E2E tests should have browser/API interactions
+                    if !params.test.code.contains("page.") && !params.test.code.contains("request.") {
+                        warnings.push("E2E test should interact with browser or API".to_string());
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // 5. Estimate coverage (heuristic based on test complexity)
+        let coverage_estimate = if errors.is_empty() {
+            let assertion_count = params.test.code.matches("expect(").count()
+                + params.test.code.matches("assert").count();
+            let test_count = params.test.code.matches("it(").count()
+                + params.test.code.matches("test(").count()
+                + params.test.code.matches("#[test]").count();
+
+            // Simple heuristic: more assertions and tests = higher estimated coverage
+            let base_coverage = 0.5f32;
+            let assertion_bonus = (assertion_count as f32 * 0.05).min(0.3);
+            let test_bonus = (test_count as f32 * 0.05).min(0.2);
+
+            (base_coverage + assertion_bonus + test_bonus).min(1.0)
+        } else {
+            0.0
+        };
+
+        let valid = errors.is_empty() && has_test_structure;
 
         Ok(json!({
             "valid": valid,
-            "coverage_estimate": coverage,
-            "errors": if valid { Vec::<String>::new() } else { vec!["Invalid test structure".to_string()] }
+            "coverage_estimate": coverage_estimate,
+            "errors": errors,
+            "warnings": warnings,
+            "framework": params.test.framework,
+            "test_type": params.test.test_type.unwrap_or_else(|| "unknown".to_string()),
+            "metrics": {
+                "has_test_structure": has_test_structure,
+                "has_balanced_braces": has_balanced_braces,
+                "has_balanced_parens": has_balanced_parens,
+                "assertion_count": params.test.code.matches("expect(").count()
+                    + params.test.code.matches("assert").count(),
+                "test_count": params.test.code.matches("it(").count()
+                    + params.test.code.matches("test(").count()
+                    + params.test.code.matches("#[test]").count(),
+            }
         }))
     }
 
@@ -4040,16 +4272,118 @@ impl ToolHandlers {
         let params: Params = serde_json::from_value(args).unwrap_or(Params { level: None });
 
         let storage = self.links_storage.read().await;
-        let _stats = storage.get_statistics().await?;
+        let stats = storage.get_statistics().await?;
 
-        // Simplified orphan detection - would need more sophisticated implementation
-        // For now, return empty list as placeholder
-        let orphans: Vec<Value> = Vec::new();
+        info!("Finding orphan entities with no semantic links (level: {:?})", params.level);
+
+        let mut orphans: Vec<Value> = Vec::new();
+
+        // Parse the level filter if provided
+        use crate::links::types::KnowledgeLevel;
+        let level_filter = params.level.as_ref().and_then(|l| KnowledgeLevel::from_str(l));
+
+        // Strategy: Find entities that have no incoming or outgoing links
+        // We'll check the code indexer for symbols and compare with linked entities
+
+        use crate::links::types::LinkTarget;
+
+        // Get symbols from indexer by querying with semantic search (empty query returns sample)
+        let indexer = self.indexer.read().await;
+
+        // Use hybrid search with a wildcard to get symbols
+        use crate::types::Query;
+        let query = Query {
+            text: "*".to_string(),
+            symbol_types: None,
+            scope: None,
+            detail_level: crate::types::DetailLevel::Skeleton,
+            max_results: Some(1000),
+            max_tokens: None,
+            offset: Some(0),
+        };
+
+        // Try to get symbols via hybrid search
+        let mut checked_symbols = 0;
+        if let Ok(search_result) = indexer.hybrid_search(&query).await {
+            for symbol in search_result.symbols {
+                // Determine the knowledge level for this symbol
+                let knowledge_level = if symbol.location.file.contains("/tests/") || symbol.location.file.contains("_test.") {
+                    KnowledgeLevel::Tests
+                } else if symbol.location.file.contains("/examples/") {
+                    KnowledgeLevel::Examples
+                } else {
+                    KnowledgeLevel::Code
+                };
+
+                // Skip if level filter doesn't match
+                if let Some(filter) = level_filter {
+                    if knowledge_level != filter {
+                        continue;
+                    }
+                }
+
+                // Create LinkTarget for this symbol
+                let target = LinkTarget::new(knowledge_level, symbol.name.clone());
+
+                // Check if this entity has any links
+                if let Ok(bidirectional_links) = storage.get_bidirectional_links(&target).await {
+                    if bidirectional_links.outgoing.is_empty() && bidirectional_links.incoming.is_empty() {
+                        orphans.push(json!({
+                            "entity_id": symbol.name,
+                            "entity_level": knowledge_level.as_str(),
+                            "file_path": symbol.location.file,
+                            "symbol_kind": format!("{:?}", symbol.kind),
+                            "reason": "No semantic links found (neither implements, documents, nor relates to anything)",
+                        }));
+                    }
+                }
+                checked_symbols += 1;
+            }
+        }
+
+        info!("Checked {} symbols for orphan detection", checked_symbols);
+
+        // Also check specs and docs if level filter allows
+        if level_filter.is_none() || level_filter == Some(KnowledgeLevel::Spec) || level_filter == Some(KnowledgeLevel::Docs) {
+            // Check spec files
+            let spec_manager = self.spec_manager.read().await;
+            if let Ok(registry) = spec_manager.discover_specs() {
+                for spec_info in registry.specs {
+                    let spec_level = if spec_info.name.ends_with("-spec") || spec_info.name.contains("specification") {
+                        KnowledgeLevel::Spec
+                    } else {
+                        KnowledgeLevel::Docs
+                    };
+
+                    if let Some(filter) = level_filter {
+                        if spec_level != filter {
+                            continue;
+                        }
+                    }
+
+                    let target = LinkTarget::new(spec_level, spec_info.name.clone());
+                    let bidirectional_links = storage.get_bidirectional_links(&target).await?;
+
+                    if bidirectional_links.outgoing.is_empty() && bidirectional_links.incoming.is_empty() {
+                        orphans.push(json!({
+                            "entity_id": spec_info.name,
+                            "entity_level": spec_level.as_str(),
+                            "file_path": spec_info.path.to_string_lossy(),
+                            "reason": "No semantic links (not referenced by code or other specs)",
+                        }));
+                    }
+                }
+            }
+        }
+
+        info!("Found {} orphan entities out of {} total links", orphans.len(), stats.total_links);
 
         Ok(json!({
             "orphans": orphans,
             "total": orphans.len(),
-            "level": params.level
+            "level": params.level,
+            "total_links_in_system": stats.total_links,
+            "note": "Orphans are entities with no incoming or outgoing semantic links"
         }))
     }
 
@@ -4063,17 +4397,129 @@ impl ToolHandlers {
         let params: Params = serde_json::from_value(args)
             .context("Invalid parameters for links.extract_from_file")?;
 
-        // Placeholder for link extraction
-        info!("Extracting links from file: {}", params.file_path);
+        info!("Extracting links from file: {} (method: {:?})", params.file_path, params.method);
 
-        // Would use TreeSitterExtractor, MarkdownExtractor, or CommentExtractor here
-        // For now, return empty results
+        use crate::links::extractor::{CommentExtractor, TreeSitterExtractor, MarkdownExtractor, LinkExtractor};
+        use crate::links::types::KnowledgeLevel;
+        use std::path::Path;
+
+        let file_path = Path::new(&params.file_path);
+
+        // Check if file exists
+        if !file_path.exists() {
+            return Err(anyhow!("File not found: {}", params.file_path));
+        }
+
+        // Read file content
+        let content = tokio::fs::read_to_string(file_path).await
+            .context("Failed to read file")?;
+
+        // Determine knowledge level from file path
+        let knowledge_level = if file_path.to_string_lossy().contains("/tests/") || file_path.to_string_lossy().contains("_test.") {
+            KnowledgeLevel::Tests
+        } else if file_path.to_string_lossy().contains("/examples/") {
+            KnowledgeLevel::Examples
+        } else if file_path.to_string_lossy().contains("/specs/") || file_path.to_string_lossy().contains("/docs/") {
+            if file_path.extension().and_then(|e| e.to_str()) == Some("md") {
+                if params.file_path.contains("-spec") || params.file_path.contains("specification") {
+                    KnowledgeLevel::Spec
+                } else {
+                    KnowledgeLevel::Docs
+                }
+            } else {
+                KnowledgeLevel::Docs
+            }
+        } else {
+            KnowledgeLevel::Code
+        };
+
+        // Determine extraction method
+        let method = params.method.as_deref().unwrap_or("auto");
+
+        let links = match method {
+            "comment" | "annotation" => {
+                // Use comment extractor
+                let extractor = CommentExtractor::new()?;
+                extractor.extract(file_path, &content, knowledge_level).await?
+            }
+            "tree-sitter" | "code" => {
+                // Use tree-sitter extractor
+                let extractor = TreeSitterExtractor::new()?;
+                extractor.extract(file_path, &content, knowledge_level).await?
+            }
+            "markdown" | "md" => {
+                // Use markdown extractor
+                let extractor = MarkdownExtractor::new()?;
+                extractor.extract(file_path, &content, knowledge_level).await?
+            }
+            "auto" | _ => {
+                // Auto-detect based on file extension
+                let extension = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+
+                match extension {
+                    "md" | "markdown" => {
+                        let extractor = MarkdownExtractor::new()?;
+                        extractor.extract(file_path, &content, knowledge_level).await?
+                    }
+                    "rs" | "ts" | "tsx" | "js" | "jsx" | "py" | "go" => {
+                        // Try both comment and tree-sitter extractors
+                        let comment_extractor = CommentExtractor::new()?;
+                        let mut links = comment_extractor.extract(file_path, &content, knowledge_level).await?;
+
+                        if let Ok(ts_extractor) = TreeSitterExtractor::new() {
+                            if let Ok(mut ts_links) = ts_extractor.extract(file_path, &content, knowledge_level).await {
+                                links.append(&mut ts_links);
+                            }
+                        }
+
+                        links
+                    }
+                    _ => {
+                        // Default to comment extractor for unknown types
+                        let extractor = CommentExtractor::new()?;
+                        extractor.extract(file_path, &content, knowledge_level).await?
+                    }
+                }
+            }
+        };
+
+        // Convert links to JSON
+        let links_json: Vec<Value> = links.iter().map(|link| {
+            json!({
+                "link_id": link.id.as_str(),
+                "link_type": link.link_type.as_str(),
+                "source": {
+                    "level": link.source.level.as_str(),
+                    "id": link.source.id.clone(),
+                },
+                "target": {
+                    "level": link.target.level.as_str(),
+                    "id": link.target.id.clone(),
+                },
+                "confidence": link.confidence,
+                "extraction_method": format!("{:?}", link.extraction_method),
+                "context": link.context,
+            })
+        }).collect();
+
+        info!("Extracted {} links from {}", links.len(), params.file_path);
+
+        // Optionally store the extracted links
+        let storage = self.links_storage.write().await;
+        let mut stored_count = 0;
+        for link in &links {
+            if let Ok(()) = storage.add_link(link).await {
+                stored_count += 1;
+            }
+        }
 
         Ok(json!({
             "file_path": params.file_path,
-            "links_found": 0,
-            "links": [],
-            "method": params.method.unwrap_or_else(|| "auto".to_string())
+            "links_found": links.len(),
+            "links_stored": stored_count,
+            "links": links_json,
+            "method": method,
+            "knowledge_level": knowledge_level.as_str(),
         }))
     }
 

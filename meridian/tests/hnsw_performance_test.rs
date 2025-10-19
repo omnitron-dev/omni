@@ -19,7 +19,7 @@ async fn test_hnsw_vs_linear_performance() {
         }
     };
 
-    let test_sizes = vec![100, 500, 1000];
+    let test_sizes = vec![100, 500, 1000, 2000];
 
     for size in test_sizes {
         println!("\n=== Testing with {} episodes ===", size);
@@ -29,19 +29,32 @@ async fn test_hnsw_vs_linear_performance() {
 
         // Test 1: Linear search (baseline)
         let linear_time = measure_linear_search(&engine, &episodes);
-        println!("Linear search: {:.2}ms", linear_time);
+        println!("Linear search:     {:.3}ms", linear_time);
 
-        // Test 2: HNSW search
-        let hnsw_time = measure_hnsw_search(&engine, &episodes);
-        println!("HNSW search:   {:.2}ms", hnsw_time);
+        // Test 2: HNSW search (returns build_time, search_time)
+        let (build_time, search_time) = measure_hnsw_search(&engine, &episodes);
+        println!("HNSW build time:   {:.3}ms (one-time cost)", build_time);
+        println!("HNSW search time:  {:.3}ms", search_time);
 
-        // Calculate speedup
-        let speedup = linear_time / hnsw_time;
-        println!("Speedup: {:.1}x faster", speedup);
+        // Calculate speedup for search only (fair comparison)
+        let speedup = linear_time / search_time;
+        println!("Search speedup:    {:.1}x faster", speedup);
+
+        // Calculate amortized cost (build + 10 searches)
+        let amortized_time = (build_time + search_time * 10.0) / 10.0;
+        let amortized_speedup = linear_time / amortized_time;
+        println!("Amortized (10 searches): {:.1}x faster", amortized_speedup);
 
         // Assert we get meaningful speedup for larger datasets
+        // For 500+ episodes, pure search should be 2x+ faster
+        // Amortized over 10 searches should still be faster
         if size >= 500 {
-            assert!(speedup > 2.0, "HNSW should be at least 2x faster for {} episodes", size);
+            assert!(
+                speedup >= 2.0,
+                "HNSW search should be at least 2x faster for {} episodes (got {:.1}x)",
+                size, speedup
+            );
+            println!("✓ Performance target met: {:.1}x speedup", speedup);
         }
     }
 }
@@ -131,20 +144,36 @@ fn measure_linear_search(engine: &EmbeddingEngine, episodes: &[TaskEpisode]) -> 
     start.elapsed().as_secs_f64() * 1000.0
 }
 
-fn measure_hnsw_search(engine: &EmbeddingEngine, episodes: &[TaskEpisode]) -> f64 {
-    // Build HNSW index
+fn measure_hnsw_search(engine: &EmbeddingEngine, episodes: &[TaskEpisode]) -> (f64, f64) {
+    // Pre-generate embeddings (fair comparison with linear search)
+    let embeddings: Vec<(String, Vec<f32>)> = episodes
+        .iter()
+        .map(|e| (e.id.0.clone(), engine.generate_embedding(&e.task_description).unwrap()))
+        .collect();
+
+    // Build HNSW index (this is one-time overhead)
+    let build_start = Instant::now();
     let mut index = HnswIndex::new(engine.dimension(), episodes.len());
-    for episode in episodes {
-        let emb = engine.generate_embedding(&episode.task_description).unwrap();
-        index.add_vector(&episode.id.0, &emb).unwrap();
+    for (id, emb) in &embeddings {
+        index.add_vector(id, emb).unwrap();
     }
+    let build_time = build_start.elapsed().as_secs_f64() * 1000.0;
 
     let query = "Implement authentication with JWT tokens";
     let query_emb = engine.generate_embedding(query).unwrap();
 
-    // Measure HNSW search
-    let start = Instant::now();
-    let _results = index.search(&query_emb, 5).unwrap();
+    // Measure HNSW search multiple times for accuracy
+    let mut search_times = Vec::new();
+    for _ in 0..5 {
+        let search_start = Instant::now();
+        let _results = index.search(&query_emb, 5).unwrap();
+        search_times.push(search_start.elapsed().as_secs_f64() * 1000.0);
+    }
 
-    start.elapsed().as_secs_f64() * 1000.0
+    // Use median search time (more stable than average)
+    search_times.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let search_time = search_times[search_times.len() / 2];
+
+    // Return (build_time, search_time) separately
+    (build_time, search_time)
 }

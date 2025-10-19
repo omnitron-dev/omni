@@ -8,6 +8,9 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+
+/// Default cache size for task LRU cache
+const TASK_CACHE_SIZE: usize = 100;
 /// Progress Manager - manages tasks with caching and filtering
 pub struct TaskManager {
     storage: Arc<TaskStorage>,
@@ -17,7 +20,8 @@ pub struct TaskManager {
 impl TaskManager {
     /// Create a new TaskManager
     pub fn new(storage: Arc<TaskStorage>) -> Self {
-        let cache_size = NonZeroUsize::new(100).unwrap();
+        let cache_size = NonZeroUsize::new(TASK_CACHE_SIZE)
+            .expect("TASK_CACHE_SIZE constant must be non-zero");
         Self {
             storage,
             cache: Arc::new(RwLock::new(LruCache::new(cache_size))),
@@ -458,7 +462,8 @@ impl TaskManager {
 
         for task in in_progress {
             if task.is_timed_out() {
-                let timeout_hours = task.timeout_hours.unwrap();
+                let timeout_hours = task.timeout_hours
+                    .expect("is_timed_out() guarantees timeout_hours is Some");
                 tracing::warn!(
                     "Task {} timed out after {} hours, reverting to pending",
                     task.id, timeout_hours

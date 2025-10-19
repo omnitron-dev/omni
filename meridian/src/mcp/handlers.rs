@@ -1371,148 +1371,34 @@ impl ToolHandlers {
         let params: AttentionRetrieveParams = serde_json::from_value(args)
             .context("Invalid parameters for attention.retrieve")?;
 
+        let focused_symbols = extract_focused_symbols(&params.attention_pattern);
+        debug!("Retrieving {} focused symbols, budget {} tokens", focused_symbols.len(), params.token_budget);
+
         let memory = self.memory_system.read().await;
-
-        // Extract focused symbols from attention pattern
-        let focused_symbols: Vec<String> = params.attention_pattern.get("focused_symbols")
-            .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
-            .unwrap_or_default();
-
-        debug!("Retrieving context for {} focused symbols with budget {} tokens", focused_symbols.len(), params.token_budget);
-
-        // Get symbols from working memory sorted by attention weight
-        use crate::indexer::Indexer;
-        let active_ids = memory.working.active_symbols().clone();
         let indexer = self.indexer.read().await;
+        let active_ids = memory.working.active_symbols().clone();
 
-        let mut symbols_with_weights: Vec<(CodeSymbol, f32, bool)> = Vec::new();
+        let mut symbols = load_symbols_with_weights(&memory, &indexer, &focused_symbols).await?;
+        apply_attention_boost(&mut symbols);
 
-        // First pass: load active symbols with their weights
-        for symbol_id in active_ids.iter() {
-            if let Ok(Some(symbol)) = indexer.get_symbol(&symbol_id.0).await {
-                let weight = memory.working.get_attention_weight(symbol_id).unwrap_or(1.0);
-                let is_focused = focused_symbols.contains(&symbol.name);
-                symbols_with_weights.push((symbol, weight, is_focused));
-            }
-        }
-
-        // Boost weights for currently focused symbols
-        for (_, weight, is_focused) in &mut symbols_with_weights {
-            if *is_focused {
-                *weight *= 1.5; // Boost focused symbols
-            }
-        }
-
-        // Sort by weight (descending)
-        symbols_with_weights.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-
-        // Categorize by attention level and fit within token budget
-        let mut high_attention = Vec::new();
-        let mut medium_attention = Vec::new();
-        let mut context_symbols = Vec::new();
-        let mut prefetched_symbols = Vec::new();
-        let mut total_tokens = 0usize;
-
-        // Reserve 20% of budget for prefetching related symbols
         let main_budget = (params.token_budget as f32 * 0.8) as usize;
         let prefetch_budget = params.token_budget - main_budget;
 
-        // First pass: categorize existing symbols within main budget
-        for (symbol, weight, _is_focused) in &symbols_with_weights {
-            if total_tokens + symbol.metadata.token_cost.0 as usize > main_budget {
-                break;
-            }
+        let category = categorize_symbols_by_attention(&symbols, main_budget);
+        let (prefetched, prefetch_tokens) = 
+            prefetch_related_symbols(&symbols, &memory, &indexer, &active_ids, prefetch_budget).await?;
 
-            let symbol_json = json!({
-                "id": symbol.id.0,
-                "name": symbol.name,
-                "kind": symbol.kind.as_str(),
-                "weight": weight,
-                "token_cost": symbol.metadata.token_cost.0,
-                "location": {
-                    "file": symbol.location.file,
-                    "line_start": symbol.location.line_start
-                }
-            });
+        let recently_evicted: Vec<String> = memory.working.eviction_history()
+            .iter().rev().take(5).map(|s| s.0.clone()).collect();
 
-            // Categorize based on attention weight
-            if *weight > 1.5 {
-                high_attention.push(symbol_json);
-            } else if *weight > 0.8 {
-                medium_attention.push(symbol_json);
-            } else {
-                context_symbols.push(symbol_json);
-            }
+        info!("Retrieved {} high, {} med, {} ctx + {} prefetch ({} tokens)",
+            category.high_attention.len(), category.medium_attention.len(),
+            category.context_symbols.len(), prefetched.len(),
+            category.total_tokens + prefetch_tokens);
 
-            total_tokens += symbol.metadata.token_cost.0 as usize;
-        }
-
-        // Second pass: prefetch related symbols for high-attention symbols
-        let mut prefetch_tokens = 0usize;
-        let mut prefetched_ids = std::collections::HashSet::new();
-
-        for (symbol, _weight, _) in symbols_with_weights.iter().filter(|(_, w, _)| *w > 1.5) {
-            if prefetch_tokens >= prefetch_budget {
-                break;
-            }
-
-            // Get related symbols using semantic memory
-            let related = memory.semantic.find_related_symbols(&symbol.id);
-
-            for rel in related.iter().take(3) {
-                // Don't prefetch if already in working memory
-                if active_ids.contains(&rel.to) || prefetched_ids.contains(&rel.to.0) {
-                    continue;
-                }
-
-                if let Ok(Some(related_symbol)) = indexer.get_symbol(&rel.to.0).await {
-                    if prefetch_tokens + related_symbol.metadata.token_cost.0 as usize <= prefetch_budget {
-                        prefetched_symbols.push(json!({
-                            "id": related_symbol.id.0,
-                            "name": related_symbol.name,
-                            "kind": related_symbol.kind.as_str(),
-                            "relationship": format!("{:?}", rel.relationship_type),
-                            "strength": rel.strength,
-                            "token_cost": related_symbol.metadata.token_cost.0
-                        }));
-
-                        prefetched_ids.insert(rel.to.0.clone());
-                        prefetch_tokens += related_symbol.metadata.token_cost.0 as usize;
-                    }
-                }
-            }
-        }
-
-        total_tokens += prefetch_tokens;
-
-        // Get eviction history for recommendations
-        let eviction_history = memory.working.eviction_history();
-        let recently_evicted: Vec<String> = eviction_history.iter()
-            .rev()
-            .take(5)
-            .map(|s| s.0.clone())
-            .collect();
-
-        info!(
-            "Retrieved {} high, {} medium, {} context symbols + {} prefetched (total: {} tokens)",
-            high_attention.len(),
-            medium_attention.len(),
-            context_symbols.len(),
-            prefetched_symbols.len(),
-            total_tokens
-        );
-
-        Ok(json!({
-            "high_attention": high_attention,
-            "medium_attention": medium_attention,
-            "context_symbols": context_symbols,
-            "prefetched_symbols": prefetched_symbols,
-            "total_tokens": total_tokens,
-            "budget_utilization": (total_tokens as f32 / params.token_budget as f32),
-            "recently_evicted": recently_evicted
-        }))
+        Ok(build_attention_response(category, prefetched, prefetch_tokens, recently_evicted, params.token_budget))
     }
+
 
     async fn handle_analyze_attention_patterns(&self, args: Value) -> Result<Value> {
         #[derive(Deserialize)]
@@ -5825,6 +5711,197 @@ impl ToolHandlers {
             }
         })
     }
+}
+
+
+// Helper functions for attention.retrieve handler
+
+/// Represents a symbol with its attention weight and focus status
+struct SymbolWithWeight {
+    symbol: CodeSymbol,
+    weight: f32,
+    is_focused: bool,
+}
+
+/// Represents attention categorization for a symbol
+struct AttentionCategory {
+    high_attention: Vec<Value>,
+    medium_attention: Vec<Value>,
+    context_symbols: Vec<Value>,
+    total_tokens: usize,
+}
+
+/// Extract focused symbol names from attention pattern
+fn extract_focused_symbols(attention_pattern: &Value) -> Vec<String> {
+    attention_pattern
+        .get("focused_symbols")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Load active symbols from memory with their attention weights
+async fn load_symbols_with_weights(
+    memory: &MemorySystem,
+    indexer: &CodeIndexer,
+    focused_symbols: &[String],
+) -> Result<Vec<SymbolWithWeight>> {
+    use crate::indexer::Indexer;
+    let active_ids = memory.working.active_symbols().clone();
+    let mut symbols_with_weights = Vec::new();
+
+    for symbol_id in active_ids.iter() {
+        if let Ok(Some(symbol)) = indexer.get_symbol(&symbol_id.0).await {
+            let weight = memory.working.get_attention_weight(symbol_id).unwrap_or(1.0);
+            let is_focused = focused_symbols.contains(&symbol.name);
+            symbols_with_weights.push(SymbolWithWeight {
+                symbol,
+                weight,
+                is_focused,
+            });
+        }
+    }
+
+    Ok(symbols_with_weights)
+}
+
+/// Apply attention boosts and sort by weight
+fn apply_attention_boost(symbols: &mut [SymbolWithWeight]) {
+    // Boost weights for currently focused symbols
+    for item in symbols.iter_mut() {
+        if item.is_focused {
+            item.weight *= 1.5;
+        }
+    }
+
+    // Sort by weight (descending)
+    symbols.sort_by(|a, b| {
+        b.weight
+            .partial_cmp(&a.weight)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+}
+
+/// Categorize symbols by attention level within token budget
+fn categorize_symbols_by_attention(
+    symbols: &[SymbolWithWeight],
+    main_budget: usize,
+) -> AttentionCategory {
+    let mut high_attention = Vec::new();
+    let mut medium_attention = Vec::new();
+    let mut context_symbols = Vec::new();
+    let mut total_tokens = 0usize;
+
+    for item in symbols {
+        let token_cost = item.symbol.metadata.token_cost.0 as usize;
+        if total_tokens + token_cost > main_budget {
+            break;
+        }
+
+        let symbol_json = json!({
+            "id": item.symbol.id.0,
+            "name": item.symbol.name,
+            "kind": item.symbol.kind.as_str(),
+            "weight": item.weight,
+            "token_cost": token_cost,
+            "location": {
+                "file": item.symbol.location.file,
+                "line_start": item.symbol.location.line_start
+            }
+        });
+
+        // Categorize based on attention weight thresholds
+        if item.weight > 1.5 {
+            high_attention.push(symbol_json);
+        } else if item.weight > 0.8 {
+            medium_attention.push(symbol_json);
+        } else {
+            context_symbols.push(symbol_json);
+        }
+
+        total_tokens += token_cost;
+    }
+
+    AttentionCategory {
+        high_attention,
+        medium_attention,
+        context_symbols,
+        total_tokens,
+    }
+}
+
+/// Prefetch related symbols for high-attention symbols
+async fn prefetch_related_symbols(
+    symbols: &[SymbolWithWeight],
+    memory: &MemorySystem,
+    indexer: &CodeIndexer,
+    active_ids: &std::collections::BTreeSet<crate::types::SymbolId>,
+    prefetch_budget: usize,
+) -> Result<(Vec<Value>, usize)> {
+    let mut prefetched_symbols = Vec::new();
+    let mut prefetch_tokens = 0usize;
+    let mut prefetched_ids = std::collections::HashSet::new();
+
+    // Only prefetch for high-attention symbols (weight > 1.5)
+    for item in symbols.iter().filter(|s| s.weight > 1.5) {
+        if prefetch_tokens >= prefetch_budget {
+            break;
+        }
+
+        // Get related symbols using semantic memory
+        let related = memory.semantic.find_related_symbols(&item.symbol.id);
+
+        for rel in related.iter().take(3) {
+            // Skip if already in working memory or already prefetched
+            if active_ids.contains(&rel.to) || prefetched_ids.contains(&rel.to.0) {
+                continue;
+            }
+
+            if let Ok(Some(related_symbol)) = indexer.get_symbol(&rel.to.0).await {
+                let token_cost = related_symbol.metadata.token_cost.0 as usize;
+                if prefetch_tokens + token_cost <= prefetch_budget {
+                    prefetched_symbols.push(json!({
+                        "id": related_symbol.id.0,
+                        "name": related_symbol.name,
+                        "kind": related_symbol.kind.as_str(),
+                        "relationship": format!("{:?}", rel.relationship_type),
+                        "strength": rel.strength,
+                        "token_cost": token_cost
+                    }));
+
+                    prefetched_ids.insert(rel.to.0.clone());
+                    prefetch_tokens += token_cost;
+                }
+            }
+        }
+    }
+
+    Ok((prefetched_symbols, prefetch_tokens))
+}
+
+/// Build the final attention retrieve response
+fn build_attention_response(
+    category: AttentionCategory,
+    prefetched_symbols: Vec<Value>,
+    prefetch_tokens: usize,
+    recently_evicted: Vec<String>,
+    token_budget: usize,
+) -> Value {
+    let total_tokens = category.total_tokens + prefetch_tokens;
+
+    json!({
+        "high_attention": category.high_attention,
+        "medium_attention": category.medium_attention,
+        "context_symbols": category.context_symbols,
+        "prefetched_symbols": prefetched_symbols,
+        "total_tokens": total_tokens,
+        "budget_utilization": (total_tokens as f32 / token_budget as f32),
+        "recently_evicted": recently_evicted
+    })
 }
 
 

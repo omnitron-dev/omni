@@ -16,7 +16,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 ### 🚫 ABSOLUTE RULES
 
 1. **NEVER USE TodoWrite** - Use `task.*` MCP tools instead
-2. **NEVER CREATE .md REPORTS** - All data goes into Progress System (SQLite DB)
+2. **NEVER CREATE .md REPORTS** - All data goes into Task System (SurrealDB)
 3. **NEVER USE grep/Read FOR CODE SEARCH** - Use `code.search_symbols`, `code.get_definition`
 4. **ALWAYS START WITH**: `memory.find_similar_episodes` for past solutions
 5. **QUERY SPECS FOR DETAILS** - Don't memorize, query on-demand

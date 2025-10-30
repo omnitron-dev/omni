@@ -88,7 +88,13 @@ export class DockerTestManager extends EventEmitter {
   private constructor(options: DockerTestManagerOptions = {}) {
     super();
     this.dockerPath = options.dockerPath || this.findDockerPath();
-    this.basePort = options.basePort || 10000;
+
+    // Worker-aware port allocation to prevent conflicts in parallel test execution
+    // Each jest worker gets its own 10k port range
+    const workerId = parseInt(process.env['JEST_WORKER_ID'] || '1', 10);
+    const basePortOffset = (workerId - 1) * 10000;
+    this.basePort = options.basePort || (10000 + basePortOffset);
+
     this.maxRetries = options.maxRetries || 20;
     this.startupTimeout = options.startupTimeout || 30000;
     this.gracefulShutdownTimeout = options.gracefulShutdownTimeout || 10000;
@@ -96,6 +102,10 @@ export class DockerTestManager extends EventEmitter {
     this.cleanup = options.cleanup !== false;
     this.verbose = options.verbose || false;
     this.defaultNetwork = options.network;
+
+    if (this.verbose) {
+      this.log(`Initialized for Jest worker ${workerId} with port range ${this.basePort}-${this.basePort + 10000}`);
+    }
 
     // Verify Docker is available
     this.verifyDocker();
@@ -363,7 +373,7 @@ export class DockerTestManager extends EventEmitter {
   }
 
   async createContainer(options: ContainerOptions): Promise<DockerContainer> {
-    const id = `test-${randomBytes(4).toString('hex')}`;
+    const id = `test-${randomBytes(8).toString('hex')}`; // 8 bytes for better uniqueness in parallel execution
     const name = options.name || `container-${id}`;
     const host = '127.0.0.1';
 
@@ -1174,7 +1184,7 @@ export class RedisTestManager {
     const replicasPerMaster = options?.replicasPerMaster || 1;
     const basePort = options?.basePort || 7000;
     const password = options?.password;
-    const networkName = options?.network || `redis-cluster-${randomBytes(4).toString('hex')}`;
+    const networkName = options?.network || `redis-cluster-${randomBytes(8).toString('hex')}`;
 
     // Create network
     await RedisTestManager.dockerManager['ensureNetwork'](networkName);
@@ -1313,7 +1323,7 @@ export class RedisTestManager {
     const sentinelCount = options?.sentinelCount || 3;
     const basePort = options?.basePort || 26379;
     const password = options?.password;
-    const networkName = options?.network || `redis-sentinel-${randomBytes(4).toString('hex')}`;
+    const networkName = options?.network || `redis-sentinel-${randomBytes(8).toString('hex')}`;
 
     // Create network
     await RedisTestManager.dockerManager['ensureNetwork'](networkName);

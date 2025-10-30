@@ -39,13 +39,22 @@ export class RedisTestManager {
   private dockerPath: string;
 
   private constructor(options: RedisTestManagerOptions = {}) {
-    this.basePort = options.basePort || 16379; // Start from port 16379 for tests
+    // Worker-aware port allocation to prevent conflicts in parallel test execution
+    // Each jest worker gets its own 1000 port range
+    const workerId = parseInt(process.env['JEST_WORKER_ID'] || '1', 10);
+    const basePortOffset = (workerId - 1) * 1000;
+    this.basePort = options.basePort || (20000 + basePortOffset); // Start at 20000 to avoid overlap with DockerTestManager
+
     this.maxRetries = options.maxRetries || 10;
     this.startupTimeout = options.startupTimeout || 30000;
     this.cleanup = options.cleanup !== false;
     this.verbose = options.verbose || false;
     this.dockerComposeFile = path.join(__dirname, '../docker/docker-compose.test.yml');
     this.dockerPath = this.findDockerPath();
+
+    if (this.verbose) {
+      console.log(`[RedisTestManager] Initialized for Jest worker ${workerId} with port range ${this.basePort}-${this.basePort + 1000}`);
+    }
 
     // Register cleanup on process exit
     if (this.cleanup) {

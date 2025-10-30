@@ -25,6 +25,8 @@ import {
   DATABASE_MODULE_OPTIONS,
   DATABASE_REPOSITORY_FACTORY,
   DATABASE_MIGRATION_SERVICE,
+  DATABASE_MIGRATION_RUNNER,
+  DATABASE_MIGRATION_LOCK,
   DATABASE_TRANSACTION_MANAGER,
   DATABASE_TRANSACTION_SCOPE_FACTORY,
   DATABASE_PLUGIN_MANAGER,
@@ -247,6 +249,24 @@ export class TitanDatabaseModule {
           inject: [DATABASE_REPOSITORY_FACTORY, DATABASE_MANAGER, DATABASE_TRANSACTION_MANAGER],
         },
       ],
+
+      // Migration runner (alias for migration service)
+      [
+        DATABASE_MIGRATION_RUNNER,
+        {
+          useFactory: (service: MigrationRunner) => service,
+          inject: [DATABASE_MIGRATION_SERVICE],
+        },
+      ],
+
+      // Migration lock (alias for migration service lock capability)
+      [
+        DATABASE_MIGRATION_LOCK,
+        {
+          useFactory: (service: MigrationRunner) => service,
+          inject: [DATABASE_MIGRATION_SERVICE],
+        },
+      ],
     ];
 
     // Create connection providers
@@ -265,6 +285,8 @@ export class TitanDatabaseModule {
       DATABASE_PLUGIN_MANAGER,
       DATABASE_REPOSITORY_FACTORY,
       DATABASE_MIGRATION_SERVICE,
+      DATABASE_MIGRATION_RUNNER,
+      DATABASE_MIGRATION_LOCK,
       DATABASE_TRANSACTION_MANAGER,
       DATABASE_TRANSACTION_SCOPE_FACTORY,
       // Also export class constructors as aliases
@@ -440,6 +462,24 @@ export class TitanDatabaseModule {
       },
     ]);
 
+    // Migration runner (alias for migration service)
+    providers.push([
+      DATABASE_MIGRATION_RUNNER,
+      {
+        useFactory: (service: MigrationRunner) => service,
+        inject: [DATABASE_MIGRATION_SERVICE],
+      },
+    ]);
+
+    // Migration lock (alias for migration service lock capability)
+    providers.push([
+      DATABASE_MIGRATION_LOCK,
+      {
+        useFactory: (service: MigrationRunner) => service,
+        inject: [DATABASE_MIGRATION_SERVICE],
+      },
+    ]);
+
     // Dynamic connection providers
     providers.push([
       Symbol.for('DATABASE_CONNECTION_PROVIDERS'),
@@ -466,6 +506,8 @@ export class TitanDatabaseModule {
       DATABASE_PLUGIN_MANAGER,
       DATABASE_REPOSITORY_FACTORY,
       DATABASE_MIGRATION_SERVICE,
+      DATABASE_MIGRATION_RUNNER,
+      DATABASE_MIGRATION_LOCK,
       DATABASE_TRANSACTION_MANAGER,
       DATABASE_TRANSACTION_SCOPE_FACTORY,
     ];

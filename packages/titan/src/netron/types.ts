@@ -84,7 +84,7 @@ export type NetronOptions = {
  * Type definition for event subscriber functions.
  * These functions are called when events are emitted.
  */
-export type EventSubscriber = (...args: any[]) => void;
+export type EventSubscriber = (...args: unknown[]) => void;
 
 /**
  * Interface representing information about a method argument.
@@ -278,12 +278,14 @@ export interface INetron {
   readonly options?: NetronOptions;
 
   /** Services map */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   services: Map<string, any>;
 
   /** Local peer instance */
   peer: ILocalPeer;
 
   /** Remote peers map */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   peers: Map<string, any>;
 
   /**
@@ -299,28 +301,31 @@ export interface INetron {
   findPeer(peerId: string): IPeer | undefined;
 
   /** Track task execution */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   trackTask(task: any): Promise<any>;
 
   /** Run task */
-  runTask?(peer: any, name: string, ...args: any[]): Promise<any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  runTask?(peer: any, name: string, ...args: unknown[]): Promise<any>;
 
   /** Emit special event */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   emitSpecial(eventId: string, eventName: string, data?: any): void;
 
   /** Get service names */
   getServiceNames(): string[];
 
   /** Emit event */
-  emit(event: string | symbol, ...args: any[]): boolean;
+  emit(event: string | symbol, ...args: unknown[]): boolean;
 
   /** Add event listener */
-  on(event: string | symbol, handler: (...args: any[]) => void): this;
+  on(event: string | symbol, handler: (...args: unknown[]) => void): this;
 
   /** Remove event listener */
-  off(event: string | symbol, handler: (...args: any[]) => void): this;
+  off(event: string | symbol, handler: (...args: unknown[]) => void): this;
 
   /** Remove event listener (alias) */
-  removeListener(event: string | symbol, handler: (...args: any[]) => void): this;
+  removeListener(event: string | symbol, handler: (...args: unknown[]) => void): this;
 
   /** Get event name for peer events */
   getPeerEventName?(peerId: string, event: string): string;
@@ -337,7 +342,7 @@ export interface IPeer {
   netron: INetron;
 
   /** Query serivce interface by name */
-  queryInterface<T = any>(name: string | T, version?: string): Promise<T>;
+  queryInterface<T = unknown>(name: string | T, version?: string): Promise<T>;
 
   /** Subscribe to events */
   subscribe(event: string, handler: EventSubscriber): Promise<void> | void;
@@ -346,19 +351,22 @@ export interface IPeer {
   unsubscribe(event: string, handler: EventSubscriber): Promise<void> | void;
 
   /** Emit events */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   emit?(event: string, data?: any): Promise<void>;
 
   /** Close peer connection */
   close?(): Promise<void>;
 
   /** Set property or call method */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   set(defId: string, name: string, value: any): Promise<void>;
 
   /** Get property value */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   get(defId: string, name: string): Promise<any>;
 
   /** Call method with arguments */
-  call(defId: string, name: string, args: any[]): Promise<any>;
+  call(defId: string, name: string, args: unknown[]): Promise<unknown>;
 }
 
 /**
@@ -369,33 +377,42 @@ export interface ILocalPeer extends IPeer {
   logger: ILogger;
 
   /** Map of service stubs */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   stubs: Map<string, any>;
 
   /** Map of service instances */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   serviceInstances: Map<any, any>;
 
   /** Expose a service instance */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   expose(service: any, name?: string): Promise<void>;
 
   /** Unexpose a service */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   unexpose(service: any, name?: string): Promise<void>;
 
   /** Expose remote service - LocalPeer specific method */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   exposeRemoteService(peer: any, meta: any): any;
 
   /** Unexpose remote service - LocalPeer specific method */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   unexposeRemoteService(peer: any, serviceName: string): void;
 
   /** Reference a service */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   refService(instance: any, parentDef: any): any;
 
   /** Unref service */
   unrefService(defId?: string): void;
 
   /** Get stub by definition ID */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getStubByDefinitionId(defId: string): any;
 
   /** Query interface by definition ID */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   queryInterfaceByDefId<T = any>(defId: string, def?: any): T;
 }
 

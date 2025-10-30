@@ -23,21 +23,21 @@ interface ICalculator {
 class CalculatorService implements ICalculator {
   private history: string[] = [];
 
-  @Public()
+  @Method()
   async add(a: number, b: number): Promise<number> {
     const result = a + b;
     this.history.push(`${a} + ${b} = ${result}`);
     return result;
   }
 
-  @Public()
+  @Method()
   async subtract(a: number, b: number): Promise<number> {
     const result = a - b;
     this.history.push(`${a} - ${b} = ${result}`);
     return result;
   }
 
-  @Public()
+  @Method()
   async getHistory(): Promise<string[]> {
     return [...this.history];
   }

@@ -20,20 +20,20 @@ describe('Interface Lifecycle Tests', () => {
 
   @Service('testService@1.0.0')
   class TestService implements ITestService {
-    @Public()
+    @Method()
     data = 'initial';
 
-    @Public()
+    @Method()
     getData() {
       return this.data;
     }
 
-    @Public()
+    @Method()
     setData(value: string) {
       this.data = value;
     }
 
-    @Public()
+    @Method()
     getNestedService() {
       return new NestedService();
     }
@@ -41,10 +41,10 @@ describe('Interface Lifecycle Tests', () => {
 
   @Service('nestedService@1.0.0')
   class NestedService implements INestedService {
-    @Public()
+    @Method()
     value = 42;
 
-    @Public()
+    @Method()
     increment() {
       return ++this.value;
     }

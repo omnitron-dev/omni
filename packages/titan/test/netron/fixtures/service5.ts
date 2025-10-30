@@ -1,4 +1,4 @@
-import { Public, Service } from '../../../src/decorators/core.js';
+import { Method, Service } from '../../../src/decorators/core.js';
 
 export interface IService5 {
   generateError(errorType: string): void;
@@ -29,7 +29,7 @@ export declare class PrismaClientKnownRequestError extends Error {
 
 @Service('service5')
 export class Service5 implements IService5 {
-  @Public()
+  @Method()
   generateError(errorType: string): void {
     switch (errorType) {
       case 'TypeError':
@@ -49,7 +49,7 @@ export class Service5 implements IService5 {
     }
   }
 
-  @Public()
+  @Method()
   generateCustomError(errorType: string, code: number, meta?: object): void {
     const error = new Error('This is a custom error');
     error.name = errorType;

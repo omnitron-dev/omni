@@ -3,7 +3,7 @@
  * Used in resilience pattern tests for retry with exponential backoff
  */
 
-import { Process, Public, HealthCheck } from '../../../../src/modules/pm/decorators.js';
+import { Process, Method, HealthCheck } from '../../../../src/modules/pm/decorators.js';
 import type { IHealthStatus } from '../../../../src/modules/pm/types.js';
 
 @Process({ name: 'database-client', version: '1.0.0' })
@@ -12,7 +12,7 @@ export default class DatabaseClientService {
   private isHealthy = true;
   private connectionAttempts = 0;
 
-  @Public()
+  @Method()
   async executeQuery(
     query: string,
     options?: { maxRetries?: number }
@@ -65,12 +65,12 @@ export default class DatabaseClientService {
     }
   }
 
-  @Public()
+  @Method()
   async getAttemptCount(query: string): Promise<number> {
     return this.attemptCounts.get(query) || 0;
   }
 
-  @Public()
+  @Method()
   async resetStats(): Promise<void> {
     this.attemptCounts.clear();
     this.connectionAttempts = 0;

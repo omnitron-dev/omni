@@ -8,7 +8,7 @@
 import 'reflect-metadata';
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { createTestProcessManager, TestProcessManager } from '../../../src/modules/pm/testing/test-process-manager.js';
-import { Process, Public, Workflow, Stage, Supervisor, Child } from '../../../src/modules/pm/decorators.js';
+import { Process, Method, Workflow, Stage, Supervisor, Child } from '../../../src/modules/pm/decorators.js';
 import { ProcessStatus, SupervisionStrategy } from '../../../src/modules/pm/types.js';
 import { EventEmitter } from 'events';
 
@@ -36,7 +36,7 @@ describe('Complex PM Scenarios', () => {
     it('should handle nested service calls across multiple processes', async () => {
       @Process()
       class DataService {
-        @Public()
+        @Method()
         async fetchData(id: number): Promise<{ id: number; data: string }> {
           await new Promise((resolve) => setTimeout(resolve, 10));
           return { id, data: `data-${id}` };
@@ -47,12 +47,12 @@ describe('Complex PM Scenarios', () => {
       class CacheService {
         private cache = new Map<string, any>();
 
-        @Public()
+        @Method()
         async get(key: string): Promise<any> {
           return this.cache.get(key);
         }
 
-        @Public()
+        @Method()
         async set(key: string, value: any): Promise<void> {
           this.cache.set(key, value);
         }
@@ -63,13 +63,13 @@ describe('Complex PM Scenarios', () => {
         private dataService: any;
         private cacheService: any;
 
-        @Public()
+        @Method()
         async init(dataService: any, cacheService: any): Promise<void> {
           this.dataService = dataService;
           this.cacheService = cacheService;
         }
 
-        @Public()
+        @Method()
         async getData(id: number): Promise<{ id: number; data: string; cached: boolean }> {
           const cacheKey = `data-${id}`;
 
@@ -110,7 +110,7 @@ describe('Complex PM Scenarios', () => {
         private state = { counter: 0, operations: [] as string[] };
         private lock = false;
 
-        @Public()
+        @Method()
         async performOperation(name: string): Promise<number> {
           // Simulate acquiring a lock
           while (this.lock) {
@@ -128,7 +128,7 @@ describe('Complex PM Scenarios', () => {
           }
         }
 
-        @Public()
+        @Method()
         async getState(): Promise<{ counter: number; operations: string[] }> {
           return { ...this.state };
         }
@@ -163,7 +163,7 @@ describe('Complex PM Scenarios', () => {
         private startTime = Date.now();
         private requestCount = 0;
 
-        @Public()
+        @Method()
         async process(): Promise<{ age: number; requests: number }> {
           this.requestCount++;
           return {
@@ -197,7 +197,7 @@ describe('Complex PM Scenarios', () => {
     it('should handle pool with dynamic load patterns', async () => {
       @Process()
       class LoadService {
-        @Public()
+        @Method()
         async handleRequest(duration: number): Promise<number> {
           await new Promise((resolve) => setTimeout(resolve, duration));
           return duration;
@@ -336,7 +336,7 @@ describe('Complex PM Scenarios', () => {
 
       @Process()
       class DependentServiceA {
-        @Public()
+        @Method()
         async work(): Promise<string> {
           if (serviceAFailures++ < 2) {
             throw new Error('ServiceA failure');
@@ -349,7 +349,7 @@ describe('Complex PM Scenarios', () => {
       class DependentServiceB {
         constructor(private serviceA: DependentServiceA) {}
 
-        @Public()
+        @Method()
         async work(): Promise<string> {
           const aResult = await this.serviceA.work();
           if (serviceBFailures++ < 1) {
@@ -392,12 +392,12 @@ describe('Complex PM Scenarios', () => {
       class TimedService {
         private startTime = Date.now();
 
-        @Public()
+        @Method()
         async getUptime(): Promise<number> {
           return Date.now() - this.startTime;
         }
 
-        @Public()
+        @Method()
         async crash(): Promise<void> {
           restartCount++;
           restartTimes.push(Date.now());
@@ -453,7 +453,7 @@ describe('Complex PM Scenarios', () => {
 
       @Process()
       class EventChainService extends EventEmitter {
-        @Public()
+        @Method()
         async triggerChain(data: any): Promise<void> {
           eventLog.push('trigger');
           this.emit('start', data);
@@ -482,7 +482,7 @@ describe('Complex PM Scenarios', () => {
           });
         }
 
-        @Public()
+        @Method()
         async getEventLog(): Promise<string[]> {
           return [...eventLog];
         }
@@ -505,7 +505,7 @@ describe('Complex PM Scenarios', () => {
       class CoordinatedWorker extends EventEmitter {
         private workerId = Math.random().toString(36).slice(2);
 
-        @Public()
+        @Method()
         async doWork(taskId: string): Promise<string> {
           this.emit('work:started', { workerId: this.workerId, taskId });
 
@@ -540,7 +540,7 @@ describe('Complex PM Scenarios', () => {
       class ResourceIntensiveService {
         private resources: any[] = [];
 
-        @Public()
+        @Method()
         async allocateResources(count: number): Promise<number> {
           for (let i = 0; i < count; i++) {
             this.resources.push(Buffer.alloc(1024)); // 1KB each
@@ -548,12 +548,12 @@ describe('Complex PM Scenarios', () => {
           return this.resources.length;
         }
 
-        @Public()
+        @Method()
         async releaseResources(): Promise<void> {
           this.resources = [];
         }
 
-        @Public()
+        @Method()
         async getResourceCount(): Promise<number> {
           return this.resources.length;
         }
@@ -581,7 +581,7 @@ describe('Complex PM Scenarios', () => {
       class EphemeralService {
         private id = Math.random().toString(36).slice(2);
 
-        @Public()
+        @Method()
         async getId(): Promise<string> {
           return this.id;
         }

@@ -1,5 +1,5 @@
 import { Service1 } from './service1.js';
-import { Public, Service } from '../../../src/decorators/core.js';
+import { Method, Service } from '../../../src/decorators/core.js';
 
 export interface IService2 {
   name: string;
@@ -11,24 +11,24 @@ export interface IService2 {
 export class Service2 implements IService2 {
   private service1: Service1 = new Service1();
 
-  @Public()
+  @Method()
   public name: string;
 
   constructor() {
     this.name = 'Context2';
   }
 
-  @Public()
+  @Method()
   getService1(): Service1 {
     return this.service1;
   }
 
-  @Public()
+  @Method()
   getNewService1(name?: string, description?: string): Service1 {
     return new Service1(name, description);
   }
 
-  @Public()
+  @Method()
   public addNumbers(a: number, b: number): number {
     return a + b;
   }

@@ -3,14 +3,14 @@
  * Used in resilience pattern tests for rate limiting
  */
 
-import { Process, Public, RateLimit } from '../../../../src/modules/pm/decorators.js';
+import { Process, Method, RateLimit } from '../../../../src/modules/pm/decorators.js';
 
 @Process({ name: 'api-gateway', version: '1.0.0' })
 export default class ApiGatewayService {
   private requestCounts = new Map<string, number>();
   private lastReset = Date.now();
 
-  @Public()
+  @Method()
   @RateLimit({
     rps: 10, // 10 requests per second
     burst: 15, // Allow burst up to 15 requests
@@ -29,12 +29,12 @@ export default class ApiGatewayService {
     };
   }
 
-  @Public()
+  @Method()
   async getUserRequestCount(userId: string): Promise<number> {
     return this.requestCounts.get(userId) || 0;
   }
 
-  @Public()
+  @Method()
   async resetCounts(): Promise<void> {
     this.requestCounts.clear();
     this.lastReset = Date.now();

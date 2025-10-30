@@ -382,7 +382,30 @@ export class DatabaseManager implements IDatabaseManager {
       }
 
       case 'sqlite': {
-        const database = new BetterSqlite3(connectionConfig.database || ':memory:');
+        const database = new BetterSqlite3(connectionConfig.database || ':memory:', {
+          // Enable verbose mode for debugging if requested
+          verbose: config.debug ? console.log : undefined,
+          // Set busy timeout to handle concurrent access (especially for shared in-memory databases)
+          // This prevents "database is locked" errors by waiting up to 5 seconds
+          timeout: 5000,
+        });
+
+        // Configure pragmas for better performance and concurrency
+        // Use WAL mode for better concurrency (doesn't work for in-memory databases)
+        // For shared in-memory databases, we rely on the busy timeout
+        const isInMemory = !connectionConfig.database ||
+                          connectionConfig.database === ':memory:' ||
+                          connectionConfig.database.includes('mode=memory') ||
+                          connectionConfig.database.includes(':memory:');
+
+        if (!isInMemory) {
+          // WAL mode only works for file-based databases
+          database.pragma('journal_mode = WAL');
+        }
+
+        // Set busy timeout at SQLite level as well (in milliseconds)
+        database.pragma('busy_timeout = 5000');
+
         const dialect = new SqliteDialect({ database });
         const instance = new Kysely<unknown>({
           dialect,
@@ -472,10 +495,8 @@ export class DatabaseManager implements IDatabaseManager {
       setTimeout(() => reject(Errors.timeout('database connection test', timeout)), timeout)
     );
 
-    const testQuery =
-      dialect === 'sqlite'
-        ? (db as unknown as Kysely<Record<string, unknown>>).selectFrom('sqlite_master' as unknown as never).select('name' as unknown as never).limit(1).execute()
-        : sql`SELECT 1`.execute(db);
+    // Use SELECT 1 for all databases - it's simpler and doesn't depend on schema
+    const testQuery = sql`SELECT 1`.execute(db);
 
     await Promise.race([testQuery, timeoutPromise]);
   }
@@ -485,16 +506,18 @@ export class DatabaseManager implements IDatabaseManager {
    */
   private async validateConnectionHealth(db: Kysely<unknown>, dialect: DatabaseDialect): Promise<boolean> {
     try {
-      const timeout = 5000; // 5 second timeout for health check
+      // Use a longer timeout for SQLite in-memory databases as they may need initialization
+      const timeout = dialect === 'sqlite' ? 10000 : 5000;
       const timeoutPromise = new Promise<boolean>((_, reject) =>
         setTimeout(() => reject(new Error('Health check timeout')), timeout)
       );
 
       const healthCheckPromise = (async () => {
-        // Perform a simple query to validate connection
+        // For SQLite, use a simpler query that doesn't depend on schema
+        // For other databases, use SELECT 1
         const testQuery =
           dialect === 'sqlite'
-            ? (db as unknown as Kysely<Record<string, unknown>>).selectFrom('sqlite_master' as unknown as never).select('name' as unknown as never).limit(1).execute()
+            ? sql`SELECT 1 AS health_check`.execute(db)
             : sql`SELECT 1 AS health_check`.execute(db);
 
         await testQuery;

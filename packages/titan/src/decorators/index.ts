@@ -38,7 +38,7 @@ export {
 // Export core decorators
 export {
   // Core DI
-  Module, // TODO: Eventually migrate to Nexus Module
+  Module, // Currently wraps Nexus Module system with decorator syntax for compatibility
   Injectable,
   Singleton,
   Transient,

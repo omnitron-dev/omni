@@ -32,6 +32,7 @@ export const ContextKeys = {
   Request: createContextKey<any>('request'),
   Response: createContextKey<any>('response'),
   User: createContextKey<{ id: string; name: string; roles: string[] }>('user'),
+  AuthContext: createContextKey<{ userId: string; roles: string[]; permissions: string[]; scopes?: string[] }>('authContext'),
   Tenant: createContextKey<{ id: string; name: string }>('tenant'),
   Environment: createContextKey<'development' | 'production' | 'test'>('environment'),
   Features: createContextKey<string[]>('features'),
@@ -449,4 +450,41 @@ export interface ContextAwareProvider<T = any> {
  */
 export function createContextAwareProvider<T>(provider: ContextAwareProvider<T>): ContextAwareProvider<T> {
   return provider;
+}
+
+/**
+ * Global context manager instance
+ */
+let globalContextManager: ContextManager | null = null;
+
+/**
+ * Get or create global context manager
+ */
+export function getContextManager(): ContextManager {
+  if (!globalContextManager) {
+    globalContextManager = new ContextManager();
+  }
+  return globalContextManager;
+}
+
+/**
+ * Get current auth context from the execution context
+ * This allows business logic to access authentication information
+ *
+ * @example
+ * ```typescript
+ * @Method({ auth: { roles: ['admin'] } })
+ * async getProfile(userId: string) {
+ *   const authContext = getCurrentAuthContext();
+ *   if (authContext) {
+ *     console.log(`User ${authContext.userId} is accessing profile ${userId}`);
+ *   }
+ *   return this.users.get(userId);
+ * }
+ * ```
+ */
+export function getCurrentAuthContext(): { userId: string; roles: string[]; permissions: string[]; scopes?: string[] } | undefined {
+  const contextManager = getContextManager();
+  const currentContext = contextManager.getCurrentContext();
+  return currentContext.get(ContextKeys.AuthContext);
 }

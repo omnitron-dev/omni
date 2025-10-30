@@ -8,7 +8,7 @@ import 'reflect-metadata';
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { createTestProcessManager, TestProcessManager } from '../../../src/modules/pm/testing/test-process-manager.js';
 
-import { Process, Public, HealthCheck, Workflow, Stage } from '../../../src/modules/pm/decorators.js';
+import { Process, Method, HealthCheck, Workflow, Stage } from '../../../src/modules/pm/decorators.js';
 
 // ============================================================================
 // Test Services
@@ -23,19 +23,19 @@ class CalculatorService {
   private operations = 0;
   private cache = new Map<number, number>();
 
-  @Public()
+  @Method()
   async add(a: number, b: number): Promise<number> {
     this.operations++;
     return a + b;
   }
 
-  @Public()
+  @Method()
   async multiply(a: number, b: number): Promise<number> {
     this.operations++;
     return a * b;
   }
 
-  @Public()
+  @Method()
   async fibonacci(n: number): Promise<number> {
     // Manual caching for testing
     if (this.cache.has(n)) {
@@ -68,7 +68,7 @@ class CalculatorService {
     };
   }
 
-  @Public()
+  @Method()
   async getOperationCount(): Promise<number> {
     return this.operations;
   }
@@ -76,12 +76,12 @@ class CalculatorService {
 
 @Process()
 class DataProcessorService {
-  @Public()
+  @Method()
   async processData(data: string[]): Promise<string[]> {
     return data.map((item) => item.toUpperCase());
   }
 
-  @Public()
+  @Method()
   async *streamProcess(count: number): AsyncGenerator<number> {
     for (let i = 0; i < count; i++) {
       yield i * 2;
@@ -96,7 +96,7 @@ class NotificationService {
   private requestCount = 0;
   private lastRequestTime = 0;
 
-  @Public()
+  @Method()
   async send(message: string, recipient: string): Promise<void> {
     // Simple rate limiting simulation
     const now = Date.now();
@@ -114,7 +114,7 @@ class NotificationService {
     this.notifications.push({ message, recipient, timestamp: now });
   }
 
-  @Public()
+  @Method()
   async getNotifications(): Promise<any[]> {
     return this.notifications;
   }

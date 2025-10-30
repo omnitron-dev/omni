@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import {
   Process,
-  Public,
+  Method,
   Supervisor,
   Child,
   HealthCheck,
@@ -30,19 +30,19 @@ class DatabaseService {
   private queryCount = 0;
   private restartCount = 0;
 
-  @Public()
+  @Method()
   async connect(): Promise<boolean> {
     await new Promise((resolve) => setTimeout(resolve, 50));
     this.isConnected = true;
     return true;
   }
 
-  @Public()
+  @Method()
   async disconnect(): Promise<void> {
     this.isConnected = false;
   }
 
-  @Public()
+  @Method()
   async query(sql: string): Promise<{ rows: any[]; count: number }> {
     if (!this.isConnected) {
       throw new Error('Database not connected');
@@ -57,18 +57,18 @@ class DatabaseService {
     };
   }
 
-  @Public()
+  @Method()
   async simulateCrash(): Promise<void> {
     this.isConnected = false;
     throw new Error('Database crashed');
   }
 
-  @Public()
+  @Method()
   async getRestartCount(): Promise<number> {
     return this.restartCount;
   }
 
-  @Public()
+  @Method()
   async incrementRestartCount(): Promise<void> {
     this.restartCount++;
   }
@@ -99,7 +99,7 @@ class CacheService {
   private cache = new Map<string, any>();
   private isHealthy = true;
 
-  @Public()
+  @Method()
   async set(key: string, value: any): Promise<void> {
     if (!this.isHealthy) {
       throw new Error('Cache service unhealthy');
@@ -107,7 +107,7 @@ class CacheService {
     this.cache.set(key, value);
   }
 
-  @Public()
+  @Method()
   async get(key: string): Promise<any> {
     if (!this.isHealthy) {
       throw new Error('Cache service unhealthy');
@@ -115,18 +115,18 @@ class CacheService {
     return this.cache.get(key);
   }
 
-  @Public()
+  @Method()
   async clear(): Promise<void> {
     this.cache.clear();
   }
 
-  @Public()
+  @Method()
   async simulateFailure(): Promise<void> {
     this.isHealthy = false;
     throw new Error('Cache service failed');
   }
 
-  @Public()
+  @Method()
   async recover(): Promise<void> {
     this.isHealthy = true;
   }
@@ -152,7 +152,7 @@ class WorkerService {
   private jobCount = 0;
   private failureRate = 0;
 
-  @Public()
+  @Method()
   async processJob(job: any): Promise<{ success: boolean; jobId: string }> {
     this.jobCount++;
 
@@ -169,12 +169,12 @@ class WorkerService {
     };
   }
 
-  @Public()
+  @Method()
   async setFailureRate(rate: number): Promise<void> {
     this.failureRate = Math.max(0, Math.min(1, rate));
   }
 
-  @Public()
+  @Method()
   async getJobCount(): Promise<number> {
     return this.jobCount;
   }
@@ -250,7 +250,7 @@ class HealthMonitorService {
   private healthChecks = new Map<string, IHealthStatus>();
   private unhealthyServices = new Set<string>();
 
-  @Public()
+  @Method()
   async recordHealth(serviceId: string, health: IHealthStatus): Promise<void> {
     this.healthChecks.set(serviceId, health);
 
@@ -261,17 +261,17 @@ class HealthMonitorService {
     }
   }
 
-  @Public()
+  @Method()
   async getServiceHealth(serviceId: string): Promise<IHealthStatus | null> {
     return this.healthChecks.get(serviceId) || null;
   }
 
-  @Public()
+  @Method()
   async getUnhealthyServices(): Promise<string[]> {
     return Array.from(this.unhealthyServices);
   }
 
-  @Public()
+  @Method()
   async getOverallHealth(): Promise<{
     status: 'healthy' | 'degraded' | 'unhealthy';
     totalServices: number;
@@ -302,7 +302,7 @@ class ApiService {
   private primaryAvailable = true;
   private fallbackUsed = 0;
 
-  @Public()
+  @Method()
   async fetchData(
     endpoint: string,
     useFallback: boolean = false
@@ -324,12 +324,12 @@ class ApiService {
     };
   }
 
-  @Public()
+  @Method()
   async setPrimaryAvailability(available: boolean): Promise<void> {
     this.primaryAvailable = available;
   }
 
-  @Public()
+  @Method()
   async getFallbackCount(): Promise<number> {
     return this.fallbackUsed;
   }

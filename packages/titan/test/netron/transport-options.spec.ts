@@ -86,7 +86,7 @@ describe('Transport Options', () => {
 
     @Service('delayService@1.0.0')
     class DelayService {
-      @Public()
+      @Method()
       async delay(ms: number): Promise<void> {
         await delay(ms);
       }
@@ -326,7 +326,7 @@ describe('Transport Options', () => {
 
     @Service('testService@1.0.0')
     class TestService {
-      @Public()
+      @Method()
       async echo(msg: string): Promise<string> {
         return msg;
       }

@@ -5,7 +5,7 @@
 import 'reflect-metadata';
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { ProcessManager } from '../../../src/modules/pm/process-manager.js';
-import { Process, Public } from '../../../src/modules/pm/decorators.js';
+import { Process, Method } from '../../../src/modules/pm/decorators.js';
 import { ProcessStatus } from '../../../src/modules/pm/types.js';
 
 // Simple mock logger
@@ -22,12 +22,12 @@ const mockLogger = {
 class SimpleTestService {
   private value = 0;
 
-  @Public()
+  @Method()
   async getValue(): Promise<number> {
     return this.value;
   }
 
-  @Public()
+  @Method()
   async setValue(v: number): Promise<void> {
     this.value = v;
   }

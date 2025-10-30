@@ -224,24 +224,6 @@ export class Container implements IContainer {
     return this;
   }
 
-  /**
-   * Register an async provider
-   */
-  registerAsync<T>(token: InjectionToken<T>, provider: FactoryProvider<T>, options: RegistrationOptions = {}): this {
-    this.checkDisposed();
-
-    const registration = this.createRegistration(token, provider, options);
-    registration.isAsync = true;
-    this.registrations.set(token, registration);
-
-    // Emit after register event
-    this.lifecycleManager.emitSync(LifecycleEvent.AfterRegister, {
-      token,
-      metadata: { provider, registration },
-    });
-
-    return this;
-  }
 
   /**
    * Register multiple providers for a multi-token

@@ -4,7 +4,7 @@
  * These fixtures provide worker services for testing HTTP transport clustering
  */
 
-import { Process, Public, HealthCheck } from '../../src/modules/pm/decorators.js';
+import { Process, Method, HealthCheck } from '../../src/modules/pm/decorators.js';
 import type { IHealthStatus } from '../../src/modules/pm/types.js';
 
 /**
@@ -18,24 +18,24 @@ import type { IHealthStatus } from '../../src/modules/pm/types.js';
 export class CalculatorWorker {
   private requestCount = 0;
 
-  @Public()
+  @Method()
   add(a: number, b: number): number {
     this.requestCount++;
     return a + b;
   }
 
-  @Public()
+  @Method()
   multiply(a: number, b: number): number {
     this.requestCount++;
     return a * b;
   }
 
-  @Public()
+  @Method()
   getPid(): number {
     return process.pid;
   }
 
-  @Public()
+  @Method()
   getRequestCount(): number {
     return this.requestCount;
   }
@@ -67,37 +67,37 @@ export class StatefulCounterWorker {
   private counter = 0;
   private data = new Map<string, any>();
 
-  @Public()
+  @Method()
   increment(): number {
     return ++this.counter;
   }
 
-  @Public()
+  @Method()
   decrement(): number {
     return --this.counter;
   }
 
-  @Public()
+  @Method()
   getCounter(): number {
     return this.counter;
   }
 
-  @Public()
+  @Method()
   setData(key: string, value: any): void {
     this.data.set(key, value);
   }
 
-  @Public()
+  @Method()
   getData(key: string): any {
     return this.data.get(key);
   }
 
-  @Public()
+  @Method()
   getPid(): number {
     return process.pid;
   }
 
-  @Public()
+  @Method()
   reset(): void {
     this.counter = 0;
     this.data.clear();
@@ -117,7 +117,7 @@ export class CrashableWorker {
   private crashAfterCalls = -1;
   private callCount = 0;
 
-  @Public()
+  @Method()
   async doWork(input: string): Promise<string> {
     this.callCount++;
 
@@ -132,22 +132,22 @@ export class CrashableWorker {
     return `Processed: ${input}`;
   }
 
-  @Public()
+  @Method()
   setCrashMode(enabled: boolean): void {
     this.shouldCrash = enabled;
   }
 
-  @Public()
+  @Method()
   setCrashAfterCalls(count: number): void {
     this.crashAfterCalls = count;
   }
 
-  @Public()
+  @Method()
   getCallCount(): number {
     return this.callCount;
   }
 
-  @Public()
+  @Method()
   getPid(): number {
     return process.pid;
   }
@@ -176,13 +176,13 @@ export class CrashableWorker {
   version: '1.0.0',
 })
 export class HeavyComputeWorker {
-  @Public()
+  @Method()
   async fibonacci(n: number): Promise<number> {
     if (n <= 1) return n;
     return (await this.fibonacci(n - 1)) + (await this.fibonacci(n - 2));
   }
 
-  @Public()
+  @Method()
   async heavyTask(iterations: number): Promise<number> {
     let result = 0;
     for (let i = 0; i < iterations; i++) {
@@ -191,12 +191,12 @@ export class HeavyComputeWorker {
     return result;
   }
 
-  @Public()
+  @Method()
   getPid(): number {
     return process.pid;
   }
 
-  @Public()
+  @Method()
   getMemoryUsage(): NodeJS.MemoryUsage {
     return process.memoryUsage();
   }
@@ -216,7 +216,7 @@ export class MetricsTrackerWorker {
   private latencies = new Map<string, number[]>();
   private errors = new Map<string, number>();
 
-  @Public()
+  @Method()
   async trackOperation(operation: string, duration: number): Promise<void> {
     const count = this.operations.get(operation) || 0;
     this.operations.set(operation, count + 1);
@@ -226,13 +226,13 @@ export class MetricsTrackerWorker {
     this.latencies.set(operation, latencyList);
   }
 
-  @Public()
+  @Method()
   async recordError(operation: string): Promise<void> {
     const count = this.errors.get(operation) || 0;
     this.errors.set(operation, count + 1);
   }
 
-  @Public()
+  @Method()
   async getStats(operation: string): Promise<any> {
     const latencyList = this.latencies.get(operation) || [];
     const avg = latencyList.length > 0 ? latencyList.reduce((a, b) => a + b, 0) / latencyList.length : 0;
@@ -247,7 +247,7 @@ export class MetricsTrackerWorker {
     };
   }
 
-  @Public()
+  @Method()
   getPid(): number {
     return process.pid;
   }

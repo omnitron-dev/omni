@@ -38,7 +38,7 @@ describe('ServiceStub', () => {
     it('should handle AsyncGenerator with no callerPeer by finding first remote peer', async () => {
       @Service('AsyncGenService@1.0.0')
       class AsyncGenService {
-        @Public()
+        @Method()
         async *generateData() {
           yield 1;
           yield 2;
@@ -66,7 +66,7 @@ describe('ServiceStub', () => {
     it('should return AsyncGenerator as-is when no remote peer exists', async () => {
       @Service('AsyncGenNoRemote@1.0.0')
       class AsyncGenNoRemote {
-        @Public()
+        @Method()
         async *generateData() {
           yield 'a';
           yield 'b';
@@ -90,7 +90,7 @@ describe('ServiceStub', () => {
     it('should create stream for AsyncGenerator when remote peer exists', async () => {
       @Service('AsyncGenStream@1.0.0')
       class AsyncGenStream {
-        @Public()
+        @Method()
         async *streamData() {
           yield 1;
           yield 2;
@@ -125,7 +125,7 @@ describe('ServiceStub', () => {
 
       @Service('StreamService@1.0.0')
       class StreamService {
-        @Public()
+        @Method()
         getStream() {
           return mockStream;
         }
@@ -153,7 +153,7 @@ describe('ServiceStub', () => {
 
       @Service('StreamConsumer@1.0.0')
       class StreamConsumer {
-        @Public()
+        @Method()
         consumeStream(stream: any) {
           return { received: stream !== undefined };
         }

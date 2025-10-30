@@ -3,7 +3,7 @@
  * Used in resilience pattern tests for bulkhead pattern
  */
 
-import { Process, Public } from '../../../../src/modules/pm/decorators.js';
+import { Process, Method } from '../../../../src/modules/pm/decorators.js';
 
 interface ResourcePool {
   name: string;
@@ -17,7 +17,7 @@ export default class ResourceManagerService {
   private pools = new Map<string, ResourcePool>();
   private activeRequests = new Map<string, Set<string>>();
 
-  @Public()
+  @Method()
   async createPool(name: string, maxConcurrent: number): Promise<void> {
     this.pools.set(name, {
       name,
@@ -28,7 +28,7 @@ export default class ResourceManagerService {
     this.activeRequests.set(name, new Set());
   }
 
-  @Public()
+  @Method()
   async acquireResource(
     poolName: string,
     requestId: string,
@@ -67,7 +67,7 @@ export default class ResourceManagerService {
     return { acquired: false };
   }
 
-  @Public()
+  @Method()
   async releaseResource(poolName: string, requestId: string): Promise<void> {
     const pool = this.pools.get(poolName);
     if (!pool) return;
@@ -86,7 +86,7 @@ export default class ResourceManagerService {
     }
   }
 
-  @Public()
+  @Method()
   async getPoolStats(poolName: string): Promise<ResourcePool | null> {
     return this.pools.get(poolName) || null;
   }

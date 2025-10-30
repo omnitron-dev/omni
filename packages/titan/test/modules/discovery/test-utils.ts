@@ -10,6 +10,7 @@ import { REDIS_TOKEN, LOGGER_TOKEN, DISCOVERY_OPTIONS_TOKEN } from '../../../src
 import { DiscoveryModule } from '../../../src/modules/discovery/discovery.module.js';
 import type { ILogger } from '../../../src/modules/logger/logger.types.js';
 import type { NodeInfo, ServiceInfo, DiscoveryOptions } from '../../../src/modules/discovery/types.js';
+import { getTestRedisConfig } from '../../utils/redis-test-utils.js';
 
 /**
  * Create a mock logger for testing
@@ -33,10 +34,11 @@ export function createMockLogger(): ILogger {
  * Create a test Redis client
  */
 export function createTestRedisClient(db: number = 0): Redis {
+  const redisConfig = getTestRedisConfig(db);
   return new Redis({
-    host: 'localhost',
-    port: 6379,
-    db,
+    host: redisConfig.host,
+    port: redisConfig.port,
+    db: redisConfig.db,
     lazyConnect: true,
     retryStrategy: () => null, // Disable retries in tests
   });

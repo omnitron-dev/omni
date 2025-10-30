@@ -3,6 +3,7 @@
  * Tests for async providers, lazy loading, and streaming capabilities
  */
 
+import 'reflect-metadata';
 import {
   Container,
   createToken,
@@ -27,8 +28,7 @@ describe('Async Operations', () => {
     it('should register and resolve async provider', async () => {
       const token = createAsyncToken<string>('AsyncService');
 
-      container.registerAsync(token, {
-        useFactory: async () => {
+      container.register(token, { async: true, useFactory: async () => {
           await new Promise((resolve) => setTimeout(resolve, 10));
           return 'async-result';
         },
@@ -42,15 +42,13 @@ describe('Async Operations', () => {
       const configToken = createAsyncToken<{ apiUrl: string }>('Config');
       const serviceToken = createAsyncToken<{ config: any }>('Service');
 
-      container.registerAsync(configToken, {
-        useFactory: async () => {
+      container.register(configToken, { async: true, useFactory: async () => {
           await new Promise((resolve) => setTimeout(resolve, 10));
           return { apiUrl: 'https://api.example.com' };
         },
       });
 
-      container.registerAsync(serviceToken, {
-        useFactory: async (config) => {
+      container.register(serviceToken, { async: true, useFactory: async (config) => {
           await new Promise((resolve) => setTimeout(resolve, 10));
           return { config };
         },
@@ -65,8 +63,7 @@ describe('Async Operations', () => {
       let callCount = 0;
       const token = createAsyncToken<number>('CachedAsync');
 
-      container.registerAsync(token, {
-        useFactory: async () => {
+      container.register(token, { async: true, useFactory: async () => {
           callCount++;
           await new Promise((resolve) => setTimeout(resolve, 10));
           return callCount;
@@ -89,8 +86,7 @@ describe('Async Operations', () => {
     it('should handle async initialization errors', async () => {
       const token = createAsyncToken<any>('FailingAsync');
 
-      container.registerAsync(token, {
-        useFactory: async () => {
+      container.register(token, { async: true, useFactory: async () => {
           await new Promise((resolve) => setTimeout(resolve, 10));
           throw new Error('Async initialization failed');
         },
@@ -116,7 +112,7 @@ describe('Async Operations', () => {
 
       const token = createAsyncToken<AsyncService>('AsyncClass');
 
-      container.registerAsync(token, {
+      container.register(token, {
         useClass: AsyncService,
         async: true,
       });
@@ -131,16 +127,14 @@ describe('Async Operations', () => {
       const tokenA = createAsyncToken<any>('AsyncA');
       const tokenB = createAsyncToken<any>('AsyncB');
 
-      container.registerAsync(tokenA, {
-        useFactory: async (b) => {
+      container.register(tokenA, { async: true, useFactory: async (b) => {
           await new Promise((resolve) => setTimeout(resolve, 10));
           return { b };
         },
         inject: [tokenB],
       });
 
-      container.registerAsync(tokenB, {
-        useFactory: async (a) => {
+      container.register(tokenB, { async: true, useFactory: async (a) => {
           await new Promise((resolve) => setTimeout(resolve, 10));
           return { a };
         },
@@ -153,23 +147,21 @@ describe('Async Operations', () => {
     it('should support timeout for async resolution', async () => {
       const token = createAsyncToken<string>('SlowAsync');
 
-      container.registerAsync(token, {
-        useFactory: async () => {
+      container.register(token, { async: true, useFactory: async () => {
           await new Promise((resolve) => setTimeout(resolve, 1000));
           return 'too-slow';
         },
         timeout: 100,
       });
 
-      await expect(container.resolveAsync(token)).rejects.toThrow('Async resolution timeout');
+      await expect(container.resolveAsync(token)).rejects.toThrow(AsyncResolutionError);
     });
 
     it('should support async resolution with retry', async () => {
       let attempts = 0;
       const token = createAsyncToken<string>('RetryAsync');
 
-      container.registerAsync(token, {
-        useFactory: async () => {
+      container.register(token, { async: true, useFactory: async () => {
           attempts++;
           if (attempts < 3) {
             throw new Error('Temporary failure');
@@ -265,8 +257,7 @@ describe('Async Operations', () => {
     it('should support async lazy loading', async () => {
       const token = createLazyToken<{ value: string }>('AsyncLazy');
 
-      container.registerAsync(token, {
-        useFactory: async () => {
+      container.register(token, { async: true, useFactory: async () => {
           await new Promise((resolve) => setTimeout(resolve, 10));
           return { value: 'async-lazy' };
         },
@@ -505,8 +496,7 @@ describe('Async Operations', () => {
       const tokens = Array.from({ length: 5 }, (_, i) => createAsyncToken<number>(`Parallel${i}`));
 
       tokens.forEach((token, i) => {
-        container.registerAsync(token, {
-          useFactory: async () => {
+        container.register(token, { async: true, useFactory: async () => {
             await new Promise((resolve) => setTimeout(resolve, 50));
             return i;
           },
@@ -525,12 +515,10 @@ describe('Async Operations', () => {
       const successToken = createAsyncToken<string>('Success');
       const failToken = createAsyncToken<string>('Fail');
 
-      container.registerAsync(successToken, {
-        useFactory: async () => 'success',
+      container.register(successToken, { async: true, useFactory: async () => 'success',
       });
 
-      container.registerAsync(failToken, {
-        useFactory: async () => {
+      container.register(failToken, { async: true, useFactory: async () => {
           throw new Error('Failed');
         },
       });
@@ -548,15 +536,13 @@ describe('Async Operations', () => {
       const fastToken = createAsyncToken<string>('Fast');
       const slowToken = createAsyncToken<string>('Slow');
 
-      container.registerAsync(fastToken, {
-        useFactory: async () => {
+      container.register(fastToken, { async: true, useFactory: async () => {
           await new Promise((resolve) => setTimeout(resolve, 10));
           return 'fast';
         },
       });
 
-      container.registerAsync(slowToken, {
-        useFactory: async () => {
+      container.register(slowToken, { async: true, useFactory: async () => {
           await new Promise((resolve) => setTimeout(resolve, 200));
           return 'slow';
         },

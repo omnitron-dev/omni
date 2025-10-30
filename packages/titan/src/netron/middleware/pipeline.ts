@@ -260,12 +260,12 @@ export class MiddlewarePipeline implements IMiddlewareManager {
           (middlewareMetrics.avgTime * (middlewareMetrics.executions - 1) + time) / middlewareMetrics.executions;
 
         ctx.timing.middlewareTimes.set(registration.config.name, time);
-      } catch (error: any) {
+      } catch (error: unknown) {
         middlewareMetrics.errors++;
         this.metrics.errors++;
 
         if (registration.config.onError) {
-          registration.config.onError(error, ctx);
+          registration.config.onError(error instanceof Error ? error : new Error(String(error)), ctx);
         }
 
         throw error;

@@ -8,12 +8,12 @@ import { createMockLogger, createNetronServer, createNetronClient } from './test
 // Example service with async generator methods
 @Service('calculator@1.0.0')
 class CalculatorService {
-  @Public()
+  @Method()
   async add(a: number, b: number): Promise<number> {
     return a + b;
   }
 
-  @Public()
+  @Method()
   async *fibonacci(n: number): AsyncGenerator<number> {
     let [a, b] = [0, 1];
     for (let i = 0; i < n; i++) {
@@ -22,7 +22,7 @@ class CalculatorService {
     }
   }
 
-  @Public()
+  @Method()
   async *streamNumbers(count: number, delayMs: number = 0): AsyncGenerator<number> {
     for (let i = 0; i < count; i++) {
       if (delayMs > 0) {
@@ -32,7 +32,7 @@ class CalculatorService {
     }
   }
 
-  @Public()
+  @Method()
   async *infiniteStream(): AsyncGenerator<number> {
     let i = 0;
     while (true) {
@@ -40,7 +40,7 @@ class CalculatorService {
     }
   }
 
-  @Public()
+  @Method()
   async *errorStream(): AsyncGenerator<number> {
     yield 1;
     yield 2;

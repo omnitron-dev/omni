@@ -24,7 +24,7 @@ describe('HTTP Error Mapping with TitanError', () => {
   // Test service that throws various TitanErrors
   @Service('errortest@1.0.0')
   class ErrorTestService {
-    @Public()
+    @Method()
     throwNotFound(): never {
       throw new TitanError({
         code: ErrorCode.NOT_FOUND,
@@ -37,7 +37,7 @@ describe('HTTP Error Mapping with TitanError', () => {
       });
     }
 
-    @Public()
+    @Method()
     throwUnauthorized(): never {
       throw new TitanError({
         code: ErrorCode.UNAUTHORIZED,
@@ -46,7 +46,7 @@ describe('HTTP Error Mapping with TitanError', () => {
       });
     }
 
-    @Public()
+    @Method()
     throwValidationError(): never {
       throw new TitanError({
         code: ErrorCode.VALIDATION_ERROR,
@@ -58,7 +58,7 @@ describe('HTTP Error Mapping with TitanError', () => {
       });
     }
 
-    @Public()
+    @Method()
     throwRateLimitError(): never {
       throw new TitanError({
         code: ErrorCode.TOO_MANY_REQUESTS,
@@ -67,7 +67,7 @@ describe('HTTP Error Mapping with TitanError', () => {
       });
     }
 
-    @Public()
+    @Method()
     throwInternalError(): never {
       throw new TitanError({
         code: ErrorCode.INTERNAL_ERROR,
@@ -76,7 +76,7 @@ describe('HTTP Error Mapping with TitanError', () => {
       });
     }
 
-    @Public()
+    @Method()
     throwPlainError(): never {
       throw new Error('Plain JavaScript error');
     }
@@ -424,7 +424,7 @@ describe('HTTP Error Mapping with TitanError', () => {
       // Create a custom TitanError with explicit httpStatus
       @Service('customerrortest@1.0.0')
       class CustomErrorTestService {
-        @Public()
+        @Method()
         throwCustomError(): never {
           const error = new TitanError({
             code: ErrorCode.FORBIDDEN,

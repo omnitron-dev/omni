@@ -30,8 +30,7 @@ describe('Nexus Container in Bun', () => {
     const container = new Container();
     const token = createToken<{ data: string }>('AsyncBun');
 
-    container.registerAsync(token, {
-      useFactory: async () => {
+    container.register(token, { async: true, useFactory: async () => {
         // Use Bun's sleep if available, otherwise setTimeout
         await new Promise((resolve) => setTimeout(resolve, 10));
         return { data: 'async-bun-data' };

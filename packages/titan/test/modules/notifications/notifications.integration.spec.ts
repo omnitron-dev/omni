@@ -15,6 +15,7 @@ import { RateLimiter } from '../../../src/modules/notifications/rate-limiter.js'
 import { TemplateEngine } from '../../../src/modules/notifications/template-engine.js';
 import { WorkflowEngine } from '../../../src/modules/notifications/workflow-engine.js';
 import { NotificationAnalytics } from '../../../src/modules/notifications/analytics.js';
+import { getTestRedisConfig } from '../../utils/redis-test-utils.js';
 
 // Only run these tests if INTEGRATION_TESTS env var is set
 const runIntegrationTests = process.env.INTEGRATION_TESTS === 'true' || process.env.CI === 'true';
@@ -34,15 +35,14 @@ testDescribe('Notifications Integration Tests', () => {
   let rotifManager: NotificationManager;
 
   const TEST_PREFIX = 'test:notifications:';
-  const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
-  const REDIS_PORT = parseInt(process.env.REDIS_PORT || '6379', 10);
 
   beforeAll(async () => {
-    // Connect to Redis
+    // Connect to Redis with dynamic port
+    const redisConfig = getTestRedisConfig(15);
     redis = new Redis({
-      host: REDIS_HOST,
-      port: REDIS_PORT,
-      db: 15, // Use a separate DB for tests
+      host: redisConfig.host,
+      port: redisConfig.port,
+      db: redisConfig.db,
       retryStrategy: () => null, // Don't retry on connection failure
     });
 

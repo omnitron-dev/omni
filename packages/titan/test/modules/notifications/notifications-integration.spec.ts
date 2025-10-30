@@ -12,17 +12,19 @@ import type { PreferenceManager } from '../../../src/modules/notifications/prefe
 import type { RateLimiter } from '../../../src/modules/notifications/rate-limiter.js';
 import type { ChannelManager } from '../../../src/modules/notifications/channel-manager.js';
 import { InAppChannel, EmailChannel } from '../../../src/modules/notifications/channel-manager.js';
+import { getTestRedisConfig } from '../../utils/redis-test-utils.js';
 
 describe('Notifications Module Integration', () => {
   let redis: Redis;
   let container: Container;
 
   beforeAll(async () => {
-    // Setup Redis connection
+    // Setup Redis connection with dynamic port
+    const redisConfig = getTestRedisConfig(1);
     redis = new Redis({
-      host: 'localhost',
-      port: 6379,
-      db: 1,
+      host: redisConfig.host,
+      port: redisConfig.port,
+      db: redisConfig.db,
     });
 
     // Clean Redis
@@ -35,11 +37,12 @@ describe('Notifications Module Integration', () => {
 
   describe('Module Initialization', () => {
     it('should create module with default configuration', () => {
+      const redisConfig = getTestRedisConfig(1);
       const module = TitanNotificationsModule.forRoot({
         redis: {
-          host: 'localhost',
-          port: 6379,
-          db: 1,
+          host: redisConfig.host,
+          port: redisConfig.port,
+          db: redisConfig.db,
         },
       });
 
@@ -50,12 +53,13 @@ describe('Notifications Module Integration', () => {
     });
 
     it('should create module with async configuration', () => {
+      const redisConfig = getTestRedisConfig(1);
       const module = TitanNotificationsModule.forRootAsync({
         useFactory: () => ({
           redis: {
-            host: 'localhost',
-            port: 6379,
-            db: 1,
+            host: redisConfig.host,
+            port: redisConfig.port,
+            db: redisConfig.db,
           },
         }),
       });

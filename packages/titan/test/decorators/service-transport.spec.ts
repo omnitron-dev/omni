@@ -4,7 +4,7 @@
 import { describe, it, expect, jest } from '@jest/globals';
 
 import 'reflect-metadata';
-import { Service, Public, Method } from '../../src/decorators/index.js';
+import { Service, Method, Method } from '../../src/decorators/index.js';
 import { SERVICE_ANNOTATION } from '../../src/decorators/core.js';
 import type { ExtendedServiceMetadata } from '../../src/decorators/core.js';
 import { WebSocketTransport, TcpTransport } from '../../src/netron/transport/index.js';
@@ -17,7 +17,7 @@ describe('Service Decorator with Transports', () => {
     it('should work with simple string syntax', () => {
       @Service('auth@1.0.0')
       class AuthService {
-        @Public()
+        @Method()
         async login(username: string, password: string): Promise<string> {
           return 'token';
         }
@@ -35,7 +35,7 @@ describe('Service Decorator with Transports', () => {
     it('should work with options object without transports', () => {
       @Service({ name: 'users@2.0.0' })
       class UserService {
-        @Public()
+        @Method()
         async getUser(id: string): Promise<{ id: string; name: string }> {
           return { id, name: 'Test User' };
         }
@@ -60,7 +60,7 @@ describe('Service Decorator with Transports', () => {
         transports: [wsTransport, tcpTransport],
       })
       class ChatService {
-        @Public()
+        @Method()
         async sendMessage(message: string): Promise<void> {
           // Implementation
         }
@@ -90,7 +90,7 @@ describe('Service Decorator with Transports', () => {
         },
       })
       class ApiService {
-        @Public()
+        @Method()
         async getData(): Promise<any> {
           return { data: 'test' };
         }
@@ -111,7 +111,7 @@ describe('Service Decorator with Transports', () => {
         transports: [],
       })
       class EmptyTransportService {
-        @Public()
+        @Method()
         test(): string {
           return 'test';
         }
@@ -138,7 +138,7 @@ describe('Service Decorator with Transports', () => {
         transports,
       })
       class MultiTransportService {
-        @Public()
+        @Method()
         async process(data: any): Promise<any> {
           return data;
         }
@@ -163,7 +163,7 @@ describe('Service Decorator with Transports', () => {
         transports: [unixTransport],
       })
       class UnixService {
-        @Public()
+        @Method()
         getData(): string {
           return 'unix data';
         }
@@ -188,7 +188,7 @@ describe('Service Decorator with Transports', () => {
         transports: [pipeTransport],
       })
       class PipeService {
-        @Public()
+        @Method()
         getData(): string {
           return 'pipe data';
         }
@@ -228,7 +228,7 @@ describe('Service Decorator with Transports', () => {
         transports: [wsTransport],
       })
       class IntegrationService {
-        @Public()
+        @Method()
         async echo(message: string): Promise<string> {
           return `Echo: ${message}`;
         }
@@ -275,7 +275,7 @@ describe('Service Decorator with Transports', () => {
         },
       })
       class ConfigService {
-        @Public()
+        @Method()
         async getData(): Promise<any> {
           return { test: 'data' };
         }
@@ -304,7 +304,7 @@ describe('Service Decorator with Transports', () => {
           transports: [wsTransport],
         })
         class InvalidService {
-          @Public()
+          @Method()
           test(): void {}
         }
       }).toThrow('Invalid service name');
@@ -319,7 +319,7 @@ describe('Service Decorator with Transports', () => {
           transports: [wsTransport],
         })
         class InvalidVersionService {
-          @Public()
+          @Method()
           test(): void {}
         }
       }).toThrow('Version must follow semver');
@@ -333,7 +333,7 @@ describe('Service Decorator with Transports', () => {
         transports: [wsTransport],
       })
       class NoVersionService {
-        @Public()
+        @Method()
         test(): string {
           return 'ok';
         }
@@ -360,18 +360,18 @@ describe('Service Decorator with Transports', () => {
         },
       })
       class ComplexService {
-        @Public()
+        @Method()
         public status: string = 'ready';
 
-        @Public()
+        @Method()
         public readonly version: string = '1.0.0';
 
-        @Public()
+        @Method()
         async initialize(): Promise<void> {
           // Initialization logic
         }
 
-        @Public()
+        @Method()
         async process(input: any): Promise<any> {
           return { processed: input };
         }
@@ -419,7 +419,7 @@ describe('Service Decorator with Transports', () => {
         transports: createTransports(9000),
       })
       class DynamicTransportService {
-        @Public()
+        @Method()
         getInfo(): string {
           return 'Dynamic transport service';
         }
@@ -443,7 +443,7 @@ describe('Service Decorator with Transports', () => {
         transports: [wsTransport, tcpTransport],
       })
       class DiscoverableService {
-        @Public()
+        @Method()
         ping(): string {
           return 'pong';
         }

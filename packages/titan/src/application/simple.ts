@@ -70,6 +70,9 @@ export async function titan(input?: any | IApplicationOptions): Promise<Applicat
     ...options,
   });
 
+  // Store app globally for simple API auto-registration
+  (global as any).__titanApp = app;
+
   // Auto-start the application
   await app.start();
 
@@ -158,9 +161,10 @@ export function service<T extends object>(
 
   // Auto-register if application exists
   if ((global as any).__titanApp) {
-    // TODO: Implement auto-registration in Application
-    // const app = (global as any).__titanApp as Application;
-    // app.registerProvider(ServiceClass);
+    const app = (global as any).__titanApp as Application;
+    // Create a token for this service based on name or use the class itself
+    const token = options?.name ? createToken<T>(options.name) : (ServiceClass as any);
+    app.register(token, { useClass: ServiceClass });
   }
 
   return new ServiceClass() as T;

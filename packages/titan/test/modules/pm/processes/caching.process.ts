@@ -3,7 +3,7 @@
  * Used in resilience pattern tests for cache pattern with TTL
  */
 
-import { Process, Public, Cache } from '../../../../src/modules/pm/decorators.js';
+import { Process, Method, Cache } from '../../../../src/modules/pm/decorators.js';
 
 @Process({ name: 'caching-service', version: '1.0.0' })
 export default class CachingService {
@@ -11,7 +11,7 @@ export default class CachingService {
   private cacheHits = 0;
   private computations = 0;
 
-  @Public()
+  @Method()
   @Cache({ ttl: 1000 }) // Cache for 1 second
   async expensiveComputation(input: number): Promise<{ result: number; cached: boolean; computationTime: number }> {
     this.computations++;
@@ -29,7 +29,7 @@ export default class CachingService {
     };
   }
 
-  @Public()
+  @Method()
   async getCacheStats(): Promise<{ hits: number; misses: number; computations: number; hitRate: number }> {
     const total = this.cacheHits + this.cacheMisses;
     return {

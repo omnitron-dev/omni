@@ -25,7 +25,7 @@ describe('Interface Edge Cases', () => {
     it('should throw error when accessing unknown property', async () => {
       @Service('TestService@1.0.0')
       class TestService {
-        @Public()
+        @Method()
         knownProp = 'value';
       }
 
@@ -43,7 +43,7 @@ describe('Interface Edge Cases', () => {
     it('should throw error when setting unknown property', async () => {
       @Service('TestService@1.0.0')
       class TestService {
-        @Public()
+        @Method()
         knownProp = 'value';
       }
 
@@ -61,7 +61,7 @@ describe('Interface Edge Cases', () => {
     it('should throw error when setting readonly property', async () => {
       @Service('TestService@1.0.0')
       class TestService {
-        @Public({ readonly: true })
+        @Method({ readonly: true })
         readonlyProp = 'constant';
       }
 
@@ -92,7 +92,7 @@ describe('Interface Edge Cases', () => {
     it('should resolve immediately when no pending promise exists', async () => {
       @Service('TestService@1.0.0')
       class TestService {
-        @Public()
+        @Method()
         prop = 'value';
       }
 
@@ -108,7 +108,7 @@ describe('Interface Edge Cases', () => {
     it('should wait for property assignment to complete', async () => {
       @Service('TestService@1.0.0')
       class TestService {
-        @Public()
+        @Method()
         prop = 'initial';
       }
 
@@ -134,7 +134,7 @@ describe('Interface Edge Cases', () => {
     it('should handle errors during property assignment', async () => {
       @Service('TestService@1.0.0')
       class TestService {
-        @Public()
+        @Method()
         prop = 'value';
       }
 
@@ -158,13 +158,13 @@ describe('Interface Edge Cases', () => {
     it('should process nested service references', async () => {
       @Service('NestedService@1.0.0')
       class NestedService {
-        @Public()
+        @Method()
         value = 42;
       }
 
       @Service('ParentService@1.0.0')
       class ParentService {
-        @Public()
+        @Method()
         nested = new NestedService();
       }
 
@@ -183,7 +183,7 @@ describe('Interface Edge Cases', () => {
     it('should allow access to $def internal property', async () => {
       @Service('TestService@1.0.0')
       class TestService {
-        @Public()
+        @Method()
         prop = 'value';
       }
 
@@ -200,7 +200,7 @@ describe('Interface Edge Cases', () => {
     it('should allow setting internal properties', async () => {
       @Service('TestService@1.0.0')
       class TestService {
-        @Public()
+        @Method()
         prop = 'value';
       }
 

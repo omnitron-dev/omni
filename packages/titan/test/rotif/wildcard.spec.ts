@@ -239,7 +239,7 @@ describe('Rotif Wildcard Subscriptions', () => {
       await manager.stopAll();
 
       // Создание нового manager'а
-      manager = new NotificationManager({ redis: 'redis://localhost:6379/1', blockInterval: 100 });
+      manager = new NotificationManager({ redis: getTestRedisUrl(1), blockInterval: 100 });
 
       await manager.subscribe('sessions.*', async (msg) => {
         received.push(msg.channel);

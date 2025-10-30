@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import {
   Process,
-  Public,
+  Method,
   createTestProcessManager,
   TestProcessManager,
   PoolStrategy,
@@ -35,7 +35,7 @@ interface ReduceTask {
 class MapWorkerService {
   private processingTime = 0;
 
-  @Public()
+  @Method()
   async map(data: any[], mapper: string): Promise<{ results: any[]; processingTime: number }> {
     const startTime = Date.now();
 
@@ -53,7 +53,7 @@ class MapWorkerService {
     };
   }
 
-  @Public()
+  @Method()
   async getProcessingTime(): Promise<number> {
     return this.processingTime;
   }
@@ -74,7 +74,7 @@ class MapWorkerService {
 
 @Process({ name: 'reduce-worker', version: '1.0.0' })
 class ReduceWorkerService {
-  @Public()
+  @Method()
   async reduce(data: any[], reducer: string, initialValue: any): Promise<any> {
     const reducerFn = this.getReducerFunction(reducer);
     return data.reduce(reducerFn, initialValue);
@@ -113,7 +113,7 @@ interface DataChunk {
 class DataProcessorService {
   private processedChunks = 0;
 
-  @Public()
+  @Method()
   async processChunk(chunk: DataChunk): Promise<{ chunkId: string; result: any; itemsProcessed: number }> {
     // Simulate data processing
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -134,12 +134,12 @@ class DataProcessorService {
     };
   }
 
-  @Public()
+  @Method()
   async getProcessedChunks(): Promise<number> {
     return this.processedChunks;
   }
 
-  @Public()
+  @Method()
   async reset(): Promise<void> {
     this.processedChunks = 0;
   }
@@ -166,7 +166,7 @@ class CacheNodeService<T = any> {
     this.nodeId = `node_${Math.random().toString(36).substr(2, 9)}`;
   }
 
-  @Public()
+  @Method()
   async set(key: string, value: T, ttl: number = 60000): Promise<boolean> {
     this.cache.set(key, {
       key,
@@ -179,7 +179,7 @@ class CacheNodeService<T = any> {
     return true;
   }
 
-  @Public()
+  @Method()
   async get(key: string): Promise<{ value: T | null; hit: boolean; nodeId: string }> {
     const entry = this.cache.get(key);
 
@@ -199,17 +199,17 @@ class CacheNodeService<T = any> {
     return { value: entry.value, hit: true, nodeId: this.nodeId };
   }
 
-  @Public()
+  @Method()
   async delete(key: string): Promise<boolean> {
     return this.cache.delete(key);
   }
 
-  @Public()
+  @Method()
   async clear(): Promise<void> {
     this.cache.clear();
   }
 
-  @Public()
+  @Method()
   async getStats(): Promise<{ size: number; nodeId: string; totalHits: number }> {
     let totalHits = 0;
     for (const entry of this.cache.values()) {
@@ -223,7 +223,7 @@ class CacheNodeService<T = any> {
     };
   }
 
-  @Public()
+  @Method()
   async getNodeId(): Promise<string> {
     return this.nodeId;
   }
@@ -255,7 +255,7 @@ class TaskWorkerService {
     this.workerId = `worker_${Math.random().toString(36).substr(2, 9)}`;
   }
 
-  @Public()
+  @Method()
   async processTask(task: Task): Promise<{ success: boolean; workerId: string; result?: any; error?: string }> {
     // Simulate task processing
     await new Promise((resolve) => setTimeout(resolve, 30 + Math.random() * 70));
@@ -279,7 +279,7 @@ class TaskWorkerService {
     };
   }
 
-  @Public()
+  @Method()
   async getStats(): Promise<{ workerId: string; completed: number; failed: number }> {
     return {
       workerId: this.workerId,
@@ -288,7 +288,7 @@ class TaskWorkerService {
     };
   }
 
-  @Public()
+  @Method()
   async getWorkerId(): Promise<string> {
     return this.workerId;
   }
@@ -302,7 +302,7 @@ type Matrix = number[][];
 
 @Process({ name: 'matrix-worker', version: '1.0.0' })
 class MatrixWorkerService {
-  @Public()
+  @Method()
   async multiplyRow(
     rowA: number[],
     matrixB: Matrix,
@@ -324,7 +324,7 @@ class MatrixWorkerService {
     return { rowIndex, result };
   }
 
-  @Public()
+  @Method()
   async addMatrices(matrixA: Matrix, matrixB: Matrix): Promise<Matrix> {
     const result: Matrix = [];
 
@@ -339,7 +339,7 @@ class MatrixWorkerService {
     return result;
   }
 
-  @Public()
+  @Method()
   async transposeMatrix(matrix: Matrix): Promise<Matrix> {
     const rows = matrix.length;
     const cols = matrix[0].length;

@@ -2,16 +2,18 @@ import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { NotificationManager } from '../../src/rotif/rotif.js';
 import { delay } from '@omnitron-dev/common';
 import Redis from 'ioredis';
+import { getTestRedisConfig } from '../utils/redis-test-utils.js';
 
 describe('Rotif Improvements Integration', () => {
   let manager: NotificationManager;
   let redis: Redis;
 
   beforeEach(async () => {
+    const redisConfig = getTestRedisConfig(0);
     redis = new Redis({
-      host: 'localhost',
-      port: 6379,
-      db: 0,
+      host: redisConfig.host,
+      port: redisConfig.port,
+      db: redisConfig.db,
       retryStrategy: () => null,
       maxRetriesPerRequest: 1,
     });
@@ -49,8 +51,9 @@ describe('Rotif Improvements Integration', () => {
       const attempts: { attempt: number; timestamp: number }[] = [];
       let completed = false;
 
+      const redisConfig = getTestRedisConfig(0);
       manager = new NotificationManager({
-        redis: { host: 'localhost', port: 6379, db: 0 },
+        redis: { host: redisConfig.host, port: redisConfig.port, db: redisConfig.db },
         checkDelayInterval: 20, // Fast scheduler for tests
         blockInterval: 100, // Short block time for tests
         scheduledBatchSize: 100, // Process all messages at once
@@ -103,8 +106,9 @@ describe('Rotif Improvements Integration', () => {
       const attempts: { attempt: number; timestamp: number }[] = [];
       let completed = false;
 
+      const redisConfig = getTestRedisConfig(0);
       manager = new NotificationManager({
-        redis: { host: 'localhost', port: 6379, db: 0 },
+        redis: { host: redisConfig.host, port: redisConfig.port, db: redisConfig.db },
         checkDelayInterval: 20, // Fast scheduler for tests
         blockInterval: 100, // Short block time for tests
         scheduledBatchSize: 100, // Process all messages at once
@@ -155,8 +159,9 @@ describe('Rotif Improvements Integration', () => {
       const attempts: number[] = [];
       let completed = false;
 
+      const redisConfig = getTestRedisConfig(0);
       manager = new NotificationManager({
-        redis: { host: 'localhost', port: 6379, db: 0 },
+        redis: { host: redisConfig.host, port: redisConfig.port, db: redisConfig.db },
         checkDelayInterval: 20, // Fast scheduler for tests
         blockInterval: 100, // Short block time for tests
         scheduledBatchSize: 100, // Process all messages at once
@@ -189,8 +194,9 @@ describe('Rotif Improvements Integration', () => {
       const attempts: { attempt: number; timestamp: number }[] = [];
       let completed = false;
 
+      const redisConfig = getTestRedisConfig(0);
       manager = new NotificationManager({
-        redis: { host: 'localhost', port: 6379, db: 0 },
+        redis: { host: redisConfig.host, port: redisConfig.port, db: redisConfig.db },
         checkDelayInterval: 20, // Fast scheduler for tests
         blockInterval: 100, // Short block time for tests
         scheduledBatchSize: 100, // Process all messages at once
@@ -246,8 +252,9 @@ describe('Rotif Improvements Integration', () => {
 
   describe('DLQ Management Integration', () => {
     it('should move messages to DLQ after max retries', async () => {
+      const redisConfig = getTestRedisConfig(0);
       manager = new NotificationManager({
-        redis: { host: 'localhost', port: 6379, db: 0 },
+        redis: { host: redisConfig.host, port: redisConfig.port, db: redisConfig.db },
         checkDelayInterval: 20, // Fast scheduler for tests
         blockInterval: 100, // Short block time for tests
         scheduledBatchSize: 100, // Process all messages at once
@@ -273,8 +280,9 @@ describe('Rotif Improvements Integration', () => {
     });
 
     it('should get DLQ messages with metadata', async () => {
+      const redisConfig = getTestRedisConfig(0);
       manager = new NotificationManager({
-        redis: { host: 'localhost', port: 6379, db: 0 },
+        redis: { host: redisConfig.host, port: redisConfig.port, db: redisConfig.db },
         checkDelayInterval: 20, // Fast scheduler for tests
         blockInterval: 100, // Short block time for tests
         maxRetries: 0,
@@ -299,8 +307,9 @@ describe('Rotif Improvements Integration', () => {
     });
 
     it('should manually cleanup DLQ', async () => {
+      const redisConfig = getTestRedisConfig(0);
       manager = new NotificationManager({
-        redis: { host: 'localhost', port: 6379, db: 0 },
+        redis: { host: redisConfig.host, port: redisConfig.port, db: redisConfig.db },
         checkDelayInterval: 20, // Fast scheduler for tests
         blockInterval: 100, // Short block time for tests
         maxRetries: 0,
@@ -334,8 +343,9 @@ describe('Rotif Improvements Integration', () => {
     });
 
     it('should clear all DLQ messages', async () => {
+      const redisConfig = getTestRedisConfig(0);
       manager = new NotificationManager({
-        redis: { host: 'localhost', port: 6379, db: 0 },
+        redis: { host: redisConfig.host, port: redisConfig.port, db: redisConfig.db },
         checkDelayInterval: 20, // Fast scheduler for tests
         blockInterval: 100, // Short block time for tests
         maxRetries: 0,
@@ -362,8 +372,9 @@ describe('Rotif Improvements Integration', () => {
     });
 
     it('should track DLQ stats by channel', async () => {
+      const redisConfig = getTestRedisConfig(0);
       manager = new NotificationManager({
-        redis: { host: 'localhost', port: 6379, db: 0 },
+        redis: { host: redisConfig.host, port: redisConfig.port, db: redisConfig.db },
         checkDelayInterval: 20, // Fast scheduler for tests
         blockInterval: 100, // Short block time for tests
         maxRetries: 0,
@@ -396,8 +407,9 @@ describe('Rotif Improvements Integration', () => {
     it('should use retry strategies and then move to DLQ', async () => {
       const attempts: number[] = [];
 
+      const redisConfig = getTestRedisConfig(0);
       manager = new NotificationManager({
-        redis: { host: 'localhost', port: 6379, db: 0 },
+        redis: { host: redisConfig.host, port: redisConfig.port, db: redisConfig.db },
         checkDelayInterval: 20, // Fast scheduler for tests
         blockInterval: 100, // Short block time for tests
         scheduledBatchSize: 100, // Process all messages at once

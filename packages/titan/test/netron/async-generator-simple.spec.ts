@@ -6,7 +6,7 @@ import { createNetronServer, createNetronClient } from './test-utils.js';
 // Simple service with async generator
 @Service('test@1.0.0')
 class TestService {
-  @Public()
+  @Method()
   async *generate(): AsyncGenerator<number> {
     yield 1;
     yield 2;

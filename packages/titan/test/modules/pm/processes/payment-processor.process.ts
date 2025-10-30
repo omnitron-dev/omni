@@ -3,7 +3,7 @@
  * Used in real-world scenario tests for e-commerce order processing
  */
 
-import { Process, Public, CircuitBreaker, HealthCheck } from '../../../../src/modules/pm/decorators.js';
+import { Process, Method, CircuitBreaker, HealthCheck } from '../../../../src/modules/pm/decorators.js';
 import type { IHealthStatus } from '../../../../src/modules/pm/types.js';
 
 interface Payment {
@@ -19,7 +19,7 @@ export default class PaymentProcessorService {
   private payments = new Map<string, Payment>();
   private failureCount = 0;
 
-  @Public()
+  @Method()
   @CircuitBreaker({ threshold: 3, timeout: 5000 })
   async processPayment(payment: Payment): Promise<{ success: boolean; transactionId?: string }> {
     // Simulate payment processing
@@ -41,7 +41,7 @@ export default class PaymentProcessorService {
     return { success: true, transactionId };
   }
 
-  @Public()
+  @Method()
   async refundPayment(orderId: string): Promise<boolean> {
     const payment = this.payments.get(orderId);
     if (!payment || payment.status !== 'completed') {
@@ -54,7 +54,7 @@ export default class PaymentProcessorService {
     return true;
   }
 
-  @Public()
+  @Method()
   async getPaymentStatus(orderId: string): Promise<Payment | null> {
     return this.payments.get(orderId) || null;
   }

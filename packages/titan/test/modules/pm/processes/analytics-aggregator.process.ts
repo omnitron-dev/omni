@@ -3,7 +3,7 @@
  * Used in real-world scenario tests for data analytics stream processing
  */
 
-import { Process, Public } from '../../../../src/modules/pm/decorators.js';
+import { Process, Method } from '../../../../src/modules/pm/decorators.js';
 
 interface AnalyticsEvent {
   userId: string;
@@ -28,7 +28,7 @@ export default class AnalyticsAggregatorService {
     timeWindow: { start: Date.now(), end: Date.now() },
   };
 
-  @Public()
+  @Method()
   async *processEventStream(events: AsyncIterable<AnalyticsEvent>): AsyncGenerator<AggregatedStats> {
     for await (const event of events) {
       // Process event
@@ -50,7 +50,7 @@ export default class AnalyticsAggregatorService {
     yield this.stats;
   }
 
-  @Public()
+  @Method()
   async getStats(): Promise<Omit<AggregatedStats, 'uniqueUsers'> & { uniqueUserCount: number }> {
     return {
       totalEvents: this.stats.totalEvents,
@@ -60,7 +60,7 @@ export default class AnalyticsAggregatorService {
     };
   }
 
-  @Public()
+  @Method()
   async resetStats(): Promise<void> {
     this.stats = {
       totalEvents: 0,

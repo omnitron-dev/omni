@@ -4,7 +4,7 @@
 
 import 'reflect-metadata';
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
-import { Process, Public, RateLimit, HealthCheck } from '../../../src/modules/pm/decorators.js';
+import { Process, Method, RateLimit, HealthCheck } from '../../../src/modules/pm/decorators.js';
 import { ProcessManager } from '../../../src/modules/pm/process-manager.js';
 import { ProcessStatus } from '../../../src/modules/pm/types.js';
 
@@ -25,17 +25,17 @@ const mockLogger = {
 class TestService {
   private counter = 0;
 
-  @Public()
+  @Method()
   async increment(): Promise<number> {
     return ++this.counter;
   }
 
-  @Public()
+  @Method()
   async getCount(): Promise<number> {
     return this.counter;
   }
 
-  @Public()
+  @Method()
   @RateLimit({ rps: 10 })
   async limitedMethod(): Promise<string> {
     return 'limited';
@@ -58,7 +58,7 @@ class TestService {
 // Test process with streaming
 @Process()
 class StreamingService {
-  @Public()
+  @Method()
   async *streamNumbers(max: number): AsyncGenerator<number> {
     for (let i = 0; i < max; i++) {
       yield i;

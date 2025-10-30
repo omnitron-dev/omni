@@ -83,9 +83,12 @@ class UserService {
       },
     },
   })
-  async getProfile(userId: string) {
-    // For now, just return the user (auth is checked at framework level)
-    // TODO: Implement context-based authContext access for business logic that needs it
+  async getProfile(userId: string, authContext?: AuthContext) {
+    // Auth is checked at framework level by the middleware
+    // For business logic that needs auth info, you can:
+    // 1. Accept authContext as optional parameter (recommended for Netron services)
+    // 2. Use getCurrentAuthContext() from '@omnitron-dev/titan/nexus/context' (for Nexus DI services)
+    // The middleware stores authContext in ctx.metadata for access by framework code
     return this.users.get(userId);
   }
 }

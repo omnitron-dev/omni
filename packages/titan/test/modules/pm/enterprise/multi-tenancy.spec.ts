@@ -11,7 +11,7 @@ import {
   TenantContext,
   type ITenantContext,
 } from '../../../../src/modules/pm/enterprise/multi-tenancy.js';
-import { Process, Public } from '../../../../src/modules/pm/decorators.js';
+import { Process, Method } from '../../../../src/modules/pm/decorators.js';
 import { ProcessManager } from '../../../../src/modules/pm/process-manager.js';
 
 // Mock logger
@@ -28,7 +28,7 @@ const mockLogger = {
 class TenantDataService {
   private tenantData = new Map<string, Map<string, any>>();
 
-  @Public()
+  @Method()
   @TenantAware()
   async store(tenant: ITenantContext, key: string, value: any): Promise<void> {
     if (!this.tenantData.has(tenant.id)) {
@@ -37,21 +37,21 @@ class TenantDataService {
     this.tenantData.get(tenant.id)!.set(key, value);
   }
 
-  @Public()
+  @Method()
   @TenantAware()
   async get(tenant: ITenantContext, key: string): Promise<any> {
     const data = this.tenantData.get(tenant.id);
     return data?.get(key);
   }
 
-  @Public()
+  @Method()
   @TenantAware()
   async listKeys(tenant: ITenantContext): Promise<string[]> {
     const data = this.tenantData.get(tenant.id);
     return data ? Array.from(data.keys()) : [];
   }
 
-  @Public()
+  @Method()
   async getAllTenantIds(): Promise<string[]> {
     return Array.from(this.tenantData.keys());
   }
@@ -281,12 +281,12 @@ describe('TenantProcessPool', () => {
 describe('Tenant Decorators', () => {
   @Process()
   class DecoratedService {
-    @Public()
+    @Method()
     async normalMethod(data: string): Promise<string> {
       return `normal: ${data}`;
     }
 
-    @Public()
+    @Method()
     @TenantAware()
     async tenantMethod(@TenantContext() tenant: ITenantContext, data: string): Promise<string> {
       return `tenant ${tenant.id}: ${data}`;

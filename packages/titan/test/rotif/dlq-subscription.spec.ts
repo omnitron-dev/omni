@@ -1,16 +1,18 @@
 import { delay } from '@omnitron-dev/common';
 
 import { RotifMessage, NotificationManager } from '../../src/rotif/rotif.js';
+import { getTestRedisConfig } from '../utils/redis-test-utils.js';
 
 describe('NotificationManager - DLQ Subscription', () => {
   let manager: NotificationManager;
 
   beforeAll(async () => {
+    const redisConfig = getTestRedisConfig(1);
     manager = new NotificationManager({
       redis: {
-        host: 'localhost',
-        port: 6379,
-        db: 1,
+        host: redisConfig.host,
+        port: redisConfig.port,
+        db: redisConfig.db,
       },
       blockInterval: 100,
     });

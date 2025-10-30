@@ -6,13 +6,17 @@ import { ContextProvider } from './context.js';
 
 /**
  * Constructor type for creating instances
+ * Note: Uses any[] for args to maintain DI container flexibility
  */
-export type Constructor<T = {}> = new (...args: any[]) => T;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type Constructor<T = {}, Args extends any[] = any[]> = new (...args: Args) => T;
 
 /**
  * Abstract constructor type for interfaces and abstract classes
+ * Note: Uses any[] for args to maintain DI container flexibility
  */
-export type AbstractConstructor<T = {}> = abstract new (...args: any[]) => T;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AbstractConstructor<T = {}, Args extends any[] = any[]> = abstract new (...args: Args) => T;
 
 /**
  * Service identifier that can be a constructor, string, or symbol
@@ -65,13 +69,17 @@ export interface MultiToken<T = any> extends Token<T> {
 
 /**
  * Factory function for creating instances
+ * Note: Uses any[] for args to maintain DI container flexibility
  */
-export type Factory<T = any> = (...args: any[]) => T;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type Factory<T = unknown, Args extends any[] = any[]> = (...args: Args) => T;
 
 /**
  * Async factory function
+ * Note: Uses any[] for args to maintain DI container flexibility
  */
-export type AsyncFactory<T = any> = (...args: any[]) => Promise<T>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AsyncFactory<T = unknown, Args extends any[] = any[]> = (...args: Args) => Promise<T>;
 
 /**
  * Injection token for dependencies
@@ -192,11 +200,6 @@ export interface IContainer {
   register<T>(provider: Provider<T>, options?: RegistrationOptions): this;
   register<T>(token: Constructor<T>): this;
 
-  /**
-   * Register an async provider
-   * @deprecated Use register with async flag in provider
-   */
-  registerAsync<T>(token: InjectionToken<T>, provider: FactoryProvider<T>, options?: RegistrationOptions): this;
 
   /**
    * Resolve a dependency

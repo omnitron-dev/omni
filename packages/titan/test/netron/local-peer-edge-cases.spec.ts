@@ -24,7 +24,7 @@ describe('LocalPeer Edge Cases', () => {
     it('should throw error when exposing same service instance twice', async () => {
       @Service('TestService@1.0.0')
       class TestService {
-        @Public()
+        @Method()
         method() {
           return 'test';
         }
@@ -40,7 +40,7 @@ describe('LocalPeer Edge Cases', () => {
     it('should throw error when exposing service with same qualified name', async () => {
       @Service('DuplicateService@1.0.0')
       class DuplicateService1 {
-        @Public()
+        @Method()
         method1() {
           return 'v1';
         }
@@ -48,7 +48,7 @@ describe('LocalPeer Edge Cases', () => {
 
       @Service('DuplicateService@1.0.0')
       class DuplicateService2 {
-        @Public()
+        @Method()
         method2() {
           return 'v2';
         }
@@ -69,7 +69,7 @@ describe('LocalPeer Edge Cases', () => {
     it('should expose service successfully even without transport server', async () => {
       @Service('NoServerService@1.0.0')
       class NoServerService {
-        @Public()
+        @Method()
         getData() {
           return { data: 'test' };
         }
@@ -89,7 +89,7 @@ describe('LocalPeer Edge Cases', () => {
     it('should return existing interface when queried multiple times', async () => {
       @Service('CachedService@1.0.0')
       class CachedService {
-        @Public()
+        @Method()
         value = 42;
       }
 
@@ -108,7 +108,7 @@ describe('LocalPeer Edge Cases', () => {
     it('should emit service expose event when service is exposed', async () => {
       @Service('EventService@1.0.0')
       class EventService {
-        @Public()
+        @Method()
         test() {
           return 'event';
         }

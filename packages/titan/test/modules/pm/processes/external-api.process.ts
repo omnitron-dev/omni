@@ -3,7 +3,7 @@
  * Used in resilience pattern tests for circuit breaker
  */
 
-import { Process, Public, CircuitBreaker } from '../../../../src/modules/pm/decorators.js';
+import { Process, Method, CircuitBreaker } from '../../../../src/modules/pm/decorators.js';
 
 @Process({ name: 'external-api-service', version: '1.0.0' })
 export default class ExternalApiService {
@@ -11,7 +11,7 @@ export default class ExternalApiService {
   private failureRate = 0.5; // 50% failure rate initially
   private consecutiveFailures = 0;
 
-  @Public()
+  @Method()
   @CircuitBreaker({
     threshold: 5, // Open circuit after 5 failures
     timeout: 1000, // 1 second timeout per call
@@ -36,7 +36,7 @@ export default class ExternalApiService {
     };
   }
 
-  @Public()
+  @Method()
   async getFallbackData(endpoint: string): Promise<{ data: any; source: 'primary' | 'fallback' }> {
     // Return cached or default data
     return {
@@ -45,12 +45,12 @@ export default class ExternalApiService {
     };
   }
 
-  @Public()
+  @Method()
   async setFailureRate(rate: number): Promise<void> {
     this.failureRate = Math.max(0, Math.min(1, rate));
   }
 
-  @Public()
+  @Method()
   async getStats(): Promise<{ callCount: number; consecutiveFailures: number; failureRate: number }> {
     return {
       callCount: this.callCount,
@@ -59,7 +59,7 @@ export default class ExternalApiService {
     };
   }
 
-  @Public()
+  @Method()
   async reset(): Promise<void> {
     this.callCount = 0;
     this.consecutiveFailures = 0;

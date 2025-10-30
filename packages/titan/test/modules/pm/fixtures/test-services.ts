@@ -6,7 +6,7 @@
  */
 
 import 'reflect-metadata';
-import { Process, Public, HealthCheck, RateLimit, Metric } from '../../../../src/modules/pm/decorators.js';
+import { Process, Method, HealthCheck, RateLimit, Metric } from '../../../../src/modules/pm/decorators.js';
 import { EventEmitter } from 'events';
 
 /**
@@ -21,25 +21,25 @@ export class CalculatorService {
   private memory = 0;
   private callCount = 0;
 
-  @Public()
+  @Method()
   async add(a: number, b: number): Promise<number> {
     this.callCount++;
     return a + b;
   }
 
-  @Public()
+  @Method()
   async subtract(a: number, b: number): Promise<number> {
     this.callCount++;
     return a - b;
   }
 
-  @Public()
+  @Method()
   async multiply(a: number, b: number): Promise<number> {
     this.callCount++;
     return a * b;
   }
 
-  @Public()
+  @Method()
   async divide(a: number, b: number): Promise<number> {
     this.callCount++;
     if (b === 0) {
@@ -48,17 +48,17 @@ export class CalculatorService {
     return a / b;
   }
 
-  @Public()
+  @Method()
   async storeInMemory(value: number): Promise<void> {
     this.memory = value;
   }
 
-  @Public()
+  @Method()
   async getMemory(): Promise<number> {
     return this.memory;
   }
 
-  @Public()
+  @Method()
   async getCallCount(): Promise<number> {
     return this.callCount;
   }
@@ -90,37 +90,37 @@ export class CounterService {
   private counter = 0;
   private history: number[] = [];
 
-  @Public()
+  @Method()
   async increment(): Promise<number> {
     this.counter++;
     this.history.push(this.counter);
     return this.counter;
   }
 
-  @Public()
+  @Method()
   async decrement(): Promise<number> {
     this.counter--;
     this.history.push(this.counter);
     return this.counter;
   }
 
-  @Public()
+  @Method()
   async getValue(): Promise<number> {
     return this.counter;
   }
 
-  @Public()
+  @Method()
   async reset(): Promise<void> {
     this.counter = 0;
     this.history = [0];
   }
 
-  @Public()
+  @Method()
   async getHistory(): Promise<number[]> {
     return [...this.history];
   }
 
-  @Public()
+  @Method()
   async setValue(value: number): Promise<void> {
     this.counter = value;
     this.history.push(value);
@@ -136,7 +136,7 @@ export class CounterService {
   version: '1.0.0',
 })
 export class StreamService {
-  @Public()
+  @Method()
   async *streamNumbers(start: number, end: number, delay = 10): AsyncGenerator<number> {
     for (let i = start; i <= end; i++) {
       await new Promise((resolve) => setTimeout(resolve, delay));
@@ -144,7 +144,7 @@ export class StreamService {
     }
   }
 
-  @Public()
+  @Method()
   async *streamFibonacci(n: number): AsyncGenerator<number> {
     let a = 0,
       b = 1;
@@ -156,7 +156,7 @@ export class StreamService {
     }
   }
 
-  @Public()
+  @Method()
   async collectStream(generator: AsyncIterable<number>): Promise<number[]> {
     const results: number[] = [];
     for await (const value of generator) {
@@ -177,13 +177,13 @@ export class StreamService {
 export class ErrorService {
   private errorCount = 0;
 
-  @Public()
+  @Method()
   async throwError(message: string): Promise<void> {
     this.errorCount++;
     throw new Error(message);
   }
 
-  @Public()
+  @Method()
   async throwCustomError(code: string, message: string): Promise<void> {
     this.errorCount++;
     const error = new Error(message) as any;
@@ -191,14 +191,14 @@ export class ErrorService {
     throw error;
   }
 
-  @Public()
+  @Method()
   async throwAfterDelay(delay: number, message: string): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, delay));
     this.errorCount++;
     throw new Error(message);
   }
 
-  @Public()
+  @Method()
   async maybeThrow(probability: number, message: string): Promise<string> {
     if (Math.random() < probability) {
       this.errorCount++;
@@ -207,7 +207,7 @@ export class ErrorService {
     return 'success';
   }
 
-  @Public()
+  @Method()
   async getErrorCount(): Promise<number> {
     return this.errorCount;
   }
@@ -224,7 +224,7 @@ export class ErrorService {
 export class RateLimitedService {
   private callTimestamps: number[] = [];
 
-  @Public()
+  @Method()
   @RateLimit({ rps: 10 })
   async limitedMethod(): Promise<number> {
     const now = Date.now();
@@ -232,18 +232,18 @@ export class RateLimitedService {
     return now;
   }
 
-  @Public()
+  @Method()
   @RateLimit({ rps: 5, burst: 10 })
   async burstMethod(): Promise<string> {
     return 'burst-allowed';
   }
 
-  @Public()
+  @Method()
   async unlimitedMethod(): Promise<string> {
     return 'unlimited';
   }
 
-  @Public()
+  @Method()
   async getCallHistory(): Promise<number[]> {
     return [...this.callTimestamps];
   }
@@ -260,7 +260,7 @@ export class RateLimitedService {
 export class EventService extends EventEmitter {
   private eventHistory: Array<{ event: string; data: any; timestamp: number }> = [];
 
-  @Public()
+  @Method()
   async emitEvent(eventName: string, data: any): Promise<void> {
     this.eventHistory.push({
       event: eventName,
@@ -270,22 +270,22 @@ export class EventService extends EventEmitter {
     this.emit(eventName, data);
   }
 
-  @Public()
+  @Method()
   async onEvent(eventName: string, callback: (data: any) => void): Promise<void> {
     this.on(eventName, callback);
   }
 
-  @Public()
+  @Method()
   async offEvent(eventName: string, callback: (data: any) => void): Promise<void> {
     this.off(eventName, callback);
   }
 
-  @Public()
+  @Method()
   async getEventHistory(): Promise<Array<{ event: string; data: any; timestamp: number }>> {
     return [...this.eventHistory];
   }
 
-  @Public()
+  @Method()
   async clearHistory(): Promise<void> {
     this.eventHistory = [];
   }
@@ -300,7 +300,7 @@ export class EventService extends EventEmitter {
   version: '1.0.0',
 })
 export class CpuIntensiveService {
-  @Public()
+  @Method()
   async fibonacci(n: number): Promise<number> {
     if (n <= 1) return n;
     return this.fibonacciSync(n);
@@ -311,7 +311,7 @@ export class CpuIntensiveService {
     return this.fibonacciSync(n - 1) + this.fibonacciSync(n - 2);
   }
 
-  @Public()
+  @Method()
   async isPrime(n: number): Promise<boolean> {
     if (n <= 1) return false;
     if (n <= 3) return true;
@@ -325,7 +325,7 @@ export class CpuIntensiveService {
     return true;
   }
 
-  @Public()
+  @Method()
   async calculatePrimes(max: number): Promise<number[]> {
     const primes: number[] = [];
     for (let i = 2; i <= max; i++) {
@@ -336,7 +336,7 @@ export class CpuIntensiveService {
     return primes;
   }
 
-  @Public()
+  @Method()
   async sortLargeArray(size: number): Promise<number> {
     const arr = Array.from({ length: size }, () => Math.random());
     const start = Date.now();
@@ -356,14 +356,14 @@ export class CpuIntensiveService {
 export class MemoryIntensiveService {
   private buffers: Buffer[] = [];
 
-  @Public()
+  @Method()
   async allocateMemory(sizeMB: number): Promise<number> {
     const buffer = Buffer.alloc(sizeMB * 1024 * 1024);
     this.buffers.push(buffer);
     return this.buffers.length;
   }
 
-  @Public()
+  @Method()
   async freeMemory(): Promise<void> {
     this.buffers = [];
     if (global.gc) {
@@ -371,12 +371,12 @@ export class MemoryIntensiveService {
     }
   }
 
-  @Public()
+  @Method()
   async getMemoryUsage(): Promise<NodeJS.MemoryUsage> {
     return process.memoryUsage();
   }
 
-  @Public()
+  @Method()
   async createLargeObject(properties: number): Promise<number> {
     const obj: any = {};
     for (let i = 0; i < properties; i++) {
@@ -418,22 +418,22 @@ export class LifecycleService {
     // Cleanup resources
   }
 
-  @Public()
+  @Method()
   async isInitialized(): Promise<boolean> {
     return this.initialized;
   }
 
-  @Public()
+  @Method()
   async isShutdownCalled(): Promise<boolean> {
     return this.shutdownCalled;
   }
 
-  @Public()
+  @Method()
   async getLifecycleEvents(): Promise<string[]> {
     return [...this.events];
   }
 
-  @Public()
+  @Method()
   async doWork(): Promise<string> {
     this.events.push('doWork');
     return 'work-done';
@@ -449,25 +449,25 @@ export class LifecycleService {
   version: '1.0.0',
 })
 export class TimeoutService {
-  @Public()
+  @Method()
   async quickOperation(): Promise<string> {
     return 'quick';
   }
 
-  @Public()
+  @Method()
   async slowOperation(delay: number): Promise<string> {
     await new Promise((resolve) => setTimeout(resolve, delay));
     return 'slow-complete';
   }
 
-  @Public()
+  @Method()
   async neverComplete(): Promise<string> {
     return new Promise(() => {
       // Never resolves
     });
   }
 
-  @Public()
+  @Method()
   async conditionalTimeout(shouldTimeout: boolean, delay: number): Promise<string> {
     if (shouldTimeout) {
       return this.neverComplete();
@@ -492,7 +492,7 @@ export class MetricsService {
     latencies: [] as number[],
   };
 
-  @Public()
+  @Method()
   @Metric('request_count')
   async handleRequest(): Promise<void> {
     const start = Date.now();
@@ -501,14 +501,14 @@ export class MetricsService {
     this.metrics.latencies.push(Date.now() - start);
   }
 
-  @Public()
+  @Method()
   @Metric('error_count')
   async handleError(): Promise<void> {
     this.metrics.errors++;
     throw new Error('Simulated error');
   }
 
-  @Public()
+  @Method()
   async getMetrics(): Promise<any> {
     const latencies = this.metrics.latencies;
     return {
@@ -527,7 +527,7 @@ export class MetricsService {
     return sorted[Math.max(0, index)];
   }
 
-  @Public()
+  @Method()
   async resetMetrics(): Promise<void> {
     this.metrics = {
       requests: 0,

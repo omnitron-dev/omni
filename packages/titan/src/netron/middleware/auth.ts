@@ -354,6 +354,10 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions): Middleware
       );
     }
 
+    // Store authContext in metadata for business logic access
+    // Business logic can retrieve it with: ctx.metadata?.get('authContext')
+    ctx.metadata.set('authContext', authContext);
+
     // All checks passed, proceed to next middleware
     await next();
   };

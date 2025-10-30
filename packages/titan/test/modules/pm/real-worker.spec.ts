@@ -5,7 +5,7 @@
 import 'reflect-metadata';
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { ProcessManager } from '../../../src/modules/pm/process-manager.js';
-import { Process, Public } from '../../../src/modules/pm/decorators.js';
+import { Process, Method } from '../../../src/modules/pm/decorators.js';
 import { ProcessStatus } from '../../../src/modules/pm/types.js';
 import { LoggerService } from '../../../src/modules/logger/logger.service.js';
 
@@ -24,28 +24,28 @@ class RealWorkerService {
   private counter = 0;
   private data: Map<string, any> = new Map();
 
-  @Public()
+  @Method()
   async increment(): Promise<number> {
     this.counter++;
     return this.counter;
   }
 
-  @Public()
+  @Method()
   async getCounter(): Promise<number> {
     return this.counter;
   }
 
-  @Public()
+  @Method()
   async setData(key: string, value: any): Promise<void> {
     this.data.set(key, value);
   }
 
-  @Public()
+  @Method()
   async getData(key: string): Promise<any> {
     return this.data.get(key);
   }
 
-  @Public()
+  @Method()
   async compute(n: number): Promise<number> {
     // CPU intensive operation
     let result = 0;
@@ -55,7 +55,7 @@ class RealWorkerService {
     return result;
   }
 
-  @Public()
+  @Method()
   async throwError(message: string): Promise<void> {
     throw new Error(message);
   }

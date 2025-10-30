@@ -72,7 +72,7 @@ export class UnixSocketServer extends TcpServer {
  * Extends TCP transport since Unix sockets use the same Node.js net module
  */
 export class UnixSocketTransport extends TcpTransport {
-  override readonly name: any = 'unix';
+  override readonly name = 'unix' as 'tcp'; // Satisfy base class type while keeping Unix identity
   override readonly capabilities: TransportCapabilities = {
     streaming: true,
     bidirectional: true,
@@ -110,8 +110,8 @@ export class UnixSocketTransport extends TcpTransport {
       if (!stats.isSocket()) {
         throw Errors.badRequest(`Path ${absolutePath} is not a Unix socket`, { path: absolutePath });
       }
-    } catch (error: any) {
-      if (error.code !== 'ENOENT') {
+    } catch (error: unknown) {
+      if (error && typeof error === 'object' && 'code' in error && error.code !== 'ENOENT') {
         throw error;
       }
       // Socket doesn't exist yet, which is fine for connecting
@@ -166,8 +166,8 @@ export class UnixSocketTransport extends TcpTransport {
     const socketDir = path.dirname(absolutePath);
     try {
       await fs.mkdir(socketDir, { recursive: true });
-    } catch (error: any) {
-      if (error.code !== 'EEXIST') {
+    } catch (error: unknown) {
+      if (error && typeof error === 'object' && 'code' in error && error.code !== 'EEXIST') {
         throw error;
       }
     }
@@ -176,8 +176,8 @@ export class UnixSocketTransport extends TcpTransport {
     if (options.force) {
       try {
         await fs.unlink(absolutePath);
-      } catch (error: any) {
-        if (error.code !== 'ENOENT') {
+      } catch (error: unknown) {
+        if (error && typeof error === 'object' && 'code' in error && error.code !== 'ENOENT') {
           throw error;
         }
       }
@@ -220,7 +220,7 @@ export class UnixSocketTransport extends TcpTransport {
   /**
    * Parse Unix socket address
    */
-  override parseAddress(address: string): any {
+  override parseAddress(address: string): { protocol: string; path?: string; params?: Record<string, string> } {
     if (address.startsWith('unix://')) {
       return {
         protocol: 'unix',
@@ -269,7 +269,7 @@ export class UnixSocketTransport extends TcpTransport {
  * Windows implementation of Unix-like sockets
  */
 export class NamedPipeTransport extends TcpTransport {
-  override readonly name: any = 'pipe';
+  override readonly name = 'pipe' as 'tcp'; // Satisfy base class type while keeping Pipe identity
   override readonly capabilities: TransportCapabilities = {
     streaming: true,
     bidirectional: true,
@@ -363,7 +363,7 @@ export class NamedPipeTransport extends TcpTransport {
   /**
    * Parse named pipe address
    */
-  override parseAddress(address: string): any {
+  override parseAddress(address: string): { protocol: string; path?: string; params?: Record<string, string> } {
     if (address.startsWith('pipe://')) {
       const path = address.substring(7);
       return {

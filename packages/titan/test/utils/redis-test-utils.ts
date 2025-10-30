@@ -4,6 +4,71 @@ import { RedisService } from '../../src/modules/redis/redis.service';
 import { RedisModuleOptions } from '../../src/modules/redis/redis.types';
 
 /**
+ * Redis test configuration
+ */
+export interface RedisTestConfig {
+  url: string;
+  host: string;
+  port: number;
+  db?: number;
+}
+
+/**
+ * Get centralized Redis test configuration
+ *
+ * This function retrieves the dynamic Redis configuration from globalThis.globalRedis
+ * if available (set by vitest.config.ts globalSetup), otherwise falls back to localhost:6379.
+ *
+ * All tests should use this function to get Redis connection details to ensure they use
+ * the correct dynamically-allocated port in CI/parallel test environments.
+ *
+ * @param db Optional database number (defaults to 15 for tests)
+ * @returns Redis configuration object with URL, host, port, and db
+ *
+ * @example
+ * ```typescript
+ * const config = getTestRedisConfig();
+ * const client = new Redis({
+ *   host: config.host,
+ *   port: config.port,
+ *   db: config.db,
+ * });
+ *
+ * // Or use the URL directly
+ * const client = new Redis(config.url);
+ * ```
+ */
+export function getTestRedisConfig(db = 15): RedisTestConfig {
+  // Check if global Redis configuration is available (from vitest global setup)
+  const globalRedis = (globalThis as any).globalRedis;
+
+  if (globalRedis?.host && globalRedis?.port) {
+    const host = globalRedis.host;
+    const port = globalRedis.port;
+    const url = `redis://${host}:${port}/${db}`;
+
+    return {
+      url,
+      host,
+      port,
+      db,
+    };
+  }
+
+  // Fallback to localhost:6379 if global config is not available
+  const host = 'localhost';
+  const port = 6379;
+  const url = `redis://${host}:${port}/${db}`;
+
+  return {
+    url,
+    host,
+    port,
+    db,
+  };
+}
+
+/**
  * Redis test helper for managing Redis connections in tests
  */
 export class RedisTestHelper {
@@ -14,10 +79,11 @@ export class RedisTestHelper {
    * Create a test Redis client
    */
   createClient(namespace = 'default', db?: number): Redis {
+    const config = getTestRedisConfig(db ?? this.testDb);
     const client = new Redis({
-      host: 'localhost',
-      port: 6379,
-      db: db ?? this.testDb,
+      host: config.host,
+      port: config.port,
+      db: config.db,
       lazyConnect: false,
       maxRetriesPerRequest: 1,
       retryStrategy: () => null, // Don't retry in tests
@@ -31,13 +97,14 @@ export class RedisTestHelper {
    * Create a test Redis manager
    */
   createManager(options?: Partial<RedisModuleOptions>): RedisManager {
+    const config = getTestRedisConfig(this.testDb);
     const defaultOptions: RedisModuleOptions = {
       clients: [
         {
           namespace: 'default',
-          host: 'localhost',
-          port: 6379,
-          db: this.testDb,
+          host: config.host,
+          port: config.port,
+          db: config.db,
         },
       ],
       ...options,
@@ -96,9 +163,10 @@ export class RedisTestHelper {
    * Wait for Redis to be ready
    */
   async waitForRedis(timeout = 5000): Promise<void> {
+    const config = getTestRedisConfig();
     const client = new Redis({
-      host: 'localhost',
-      port: 6379,
+      host: config.host,
+      port: config.port,
       maxRetriesPerRequest: 1,
       retryStrategy: () => null,
     });

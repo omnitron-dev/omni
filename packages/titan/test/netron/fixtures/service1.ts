@@ -1,4 +1,4 @@
-import { Public, Service } from '../../../src/decorators/core.js';
+import { Method, Service } from '../../../src/decorators/core.js';
 
 enum Status {
   Active = 'ACTIVE',
@@ -48,13 +48,13 @@ export interface IService1 {
 
 @Service('service1')
 export class Service1 implements IService1 {
-  @Public()
+  @Method()
   public name: string;
-  @Public()
+  @Method()
   public description: string;
-  @Public()
+  @Method()
   public data: any;
-  @Public({ readonly: true })
+  @Method({ readonly: true })
   public readonly isActive: boolean;
 
   private _privateCounter: number;
@@ -70,125 +70,125 @@ export class Service1 implements IService1 {
     this._privateData = {};
   }
 
-  @Public()
+  @Method()
   public greet(): string {
     return `Hello, ${this.name}!`;
   }
 
-  @Public()
+  @Method()
   public echo(value: string): string {
     return value;
   }
 
-  @Public()
+  @Method()
   public addNumbers(a: number, b: number): number {
     return this._privateAdd(a, b);
   }
 
-  @Public()
+  @Method()
   public concatenateStrings(a: string, b: string): string {
     return this._privateConcatenate(a, b);
   }
 
-  @Public()
+  @Method()
   public getBooleanValue(value: boolean): boolean {
     return value;
   }
 
-  @Public()
+  @Method()
   public getObjectProperty(obj: { key: string }): string {
     return obj.key;
   }
 
-  @Public()
+  @Method()
   public getArrayElement(arr: any[], index: number): any {
     return arr[index];
   }
 
-  @Public()
+  @Method()
   public async fetchData(url: string): Promise<any> {
     const response = await fetch(url);
     return response.json();
   }
 
-  @Public()
+  @Method()
   public updateData(key: string, value: any): void {
     this._privateUpdateData(key, value);
   }
 
-  @Public()
+  @Method()
   public getDataKeys(): string[] {
     return Object.keys(this.data);
   }
 
-  @Public()
+  @Method()
   public async delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  @Public()
+  @Method()
   public async fetchDataWithDelay(url: string, delayMs: number): Promise<any> {
     await this.delay(delayMs);
     return this.fetchData(url);
   }
 
-  @Public()
+  @Method()
   public async updateDataWithDelay(key: string, value: any, delayMs: number): Promise<void> {
     await this.delay(delayMs);
     this.updateData(key, value);
   }
 
-  @Public()
+  @Method()
   public getStatus(): Status {
     return Status.Active;
   }
 
-  @Public()
+  @Method()
   public getPriority(): Priority {
     return Priority.High;
   }
 
-  @Public()
+  @Method()
   public getAllStatuses(): Status[] {
     return Object.values(Status);
   }
 
-  @Public()
+  @Method()
   public getAllPriorities(): Priority[] {
     return Object.values(Priority).filter((v) => typeof v === 'number') as Priority[];
   }
 
-  @Public()
+  @Method()
   public getUndefined(): undefined {
     return undefined;
   }
 
-  @Public()
+  @Method()
   public getNull(): null {
     return null;
   }
 
-  @Public()
+  @Method()
   public getSymbol(): symbol {
     return Symbol('test');
   }
 
-  @Public()
+  @Method()
   public getBigInt(): bigint {
     return BigInt(9007199254740991);
   }
 
-  @Public()
+  @Method()
   public getDate(): Date {
     return this._date;
   }
 
-  @Public()
+  @Method()
   public getRegExp(): RegExp {
     return /test/i;
   }
 
-  @Public()
+  @Method()
   public getMap(): Map<string, number> {
     const map = new Map();
     map.set('one', 1);
@@ -196,7 +196,7 @@ export class Service1 implements IService1 {
     return map;
   }
 
-  @Public()
+  @Method()
   public getSet(): Set<string> {
     const set = new Set<string>();
     set.add('first');
@@ -204,7 +204,7 @@ export class Service1 implements IService1 {
     return set;
   }
 
-  @Public()
+  @Method()
   public getPromise(): Promise<string> {
     return Promise.resolve('resolved');
   }

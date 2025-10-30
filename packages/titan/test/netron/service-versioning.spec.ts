@@ -19,7 +19,7 @@ describe('RemotePeer Service Versioning', () => {
 
   @Service('versionedService@1.0.0')
   class VersionedServiceV1 implements IVersionedServiceV1 {
-    @Public()
+    @Method()
     async greet() {
       return 'Hello from V1';
     }
@@ -27,12 +27,12 @@ describe('RemotePeer Service Versioning', () => {
 
   @Service('versionedService@2.0.0')
   class VersionedServiceV2 implements IVersionedServiceV2 {
-    @Public()
+    @Method()
     async greet() {
       return 'Hello from V2';
     }
 
-    @Public()
+    @Method()
     async farewell() {
       return 'Goodbye from V2';
     }
@@ -108,7 +108,7 @@ describe('RemotePeer Service Versioning', () => {
   it('should handle exposing a service version conflict', async () => {
     @Service('versionedService@1.0.0')
     class DuplicateVersionService {
-      @Public()
+      @Method()
       async greet() {
         return 'This should not be exposed';
       }

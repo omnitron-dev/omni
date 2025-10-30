@@ -3,7 +3,7 @@
  * Used in real-world scenario tests for e-commerce order processing
  */
 
-import { Process, Public, Cache } from '../../../../src/modules/pm/decorators.js';
+import { Process, Method, Cache } from '../../../../src/modules/pm/decorators.js';
 
 @Process({ name: 'inventory-service', version: '1.0.0' })
 export default class InventoryService {
@@ -14,14 +14,14 @@ export default class InventoryService {
   ]);
   private reservations = new Map<string, Map<string, number>>();
 
-  @Public()
+  @Method()
   @Cache({ ttl: 5000 })
   async checkAvailability(sku: string, quantity: number): Promise<boolean> {
     const available = this.inventory.get(sku) || 0;
     return available >= quantity;
   }
 
-  @Public()
+  @Method()
   async reserveItems(orderId: string, items: Array<{ sku: string; quantity: number }>): Promise<boolean> {
     // Check all items are available
     for (const item of items) {
@@ -43,7 +43,7 @@ export default class InventoryService {
     return true;
   }
 
-  @Public()
+  @Method()
   async releaseReservation(orderId: string): Promise<void> {
     const reservation = this.reservations.get(orderId);
     if (!reservation) return;
@@ -57,7 +57,7 @@ export default class InventoryService {
     this.reservations.delete(orderId);
   }
 
-  @Public()
+  @Method()
   async getInventoryLevel(sku: string): Promise<number> {
     return this.inventory.get(sku) || 0;
   }

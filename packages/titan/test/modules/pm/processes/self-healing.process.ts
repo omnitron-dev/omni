@@ -3,7 +3,7 @@
  * Used in resilience pattern tests for self-healing mechanism
  */
 
-import { Process, Public, SelfHeal, HealthCheck } from '../../../../src/modules/pm/decorators.js';
+import { Process, Method, SelfHeal, HealthCheck } from '../../../../src/modules/pm/decorators.js';
 import type { IHealthStatus } from '../../../../src/modules/pm/types.js';
 
 @Process({ name: 'self-healing-service', version: '1.0.0' })
@@ -12,7 +12,7 @@ export default class SelfHealingService {
   private isHealthy = true;
   private autoRecoveryAttempts = 0;
 
-  @Public()
+  @Method()
   @SelfHeal({
     maxAttempts: 3,
     healStrategy: async (error: any, context: any) => {
@@ -47,7 +47,7 @@ export default class SelfHealingService {
     };
   }
 
-  @Public()
+  @Method()
   async triggerRecovery(): Promise<{ recovered: boolean }> {
     // Simulate self-recovery mechanism
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -58,7 +58,7 @@ export default class SelfHealingService {
     return { recovered: true };
   }
 
-  @Public()
+  @Method()
   async getErrorCount(): Promise<number> {
     return this.errorCount;
   }

@@ -3,7 +3,7 @@
  * Used in real-world scenario tests for image processing pipeline
  */
 
-import { Process, Public, HealthCheck, OnShutdown } from '../../../../src/modules/pm/decorators.js';
+import { Process, Method, HealthCheck, OnShutdown } from '../../../../src/modules/pm/decorators.js';
 import type { IHealthStatus } from '../../../../src/modules/pm/types.js';
 
 interface ImageJob {
@@ -17,7 +17,7 @@ interface ImageJob {
 export default class ImageProcessorService {
   private processedCount = 0;
 
-  @Public()
+  @Method()
   async processImage(job: ImageJob): Promise<{ success: boolean; outputUrl: string; processingTime: number }> {
     const startTime = Date.now();
 
@@ -34,7 +34,7 @@ export default class ImageProcessorService {
     };
   }
 
-  @Public()
+  @Method()
   async getProcessedCount(): Promise<number> {
     return this.processedCount;
   }

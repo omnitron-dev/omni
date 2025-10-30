@@ -6,7 +6,7 @@ import 'reflect-metadata';
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import {
   Process,
-  Public,
+  Method,
   Supervisor,
   Child,
   Workflow,
@@ -34,17 +34,17 @@ const mockLogger = {
 class StableService {
   private running = true;
 
-  @Public()
+  @Method()
   async doWork(): Promise<string> {
     return 'work done';
   }
 
-  @Public()
+  @Method()
   async stop(): Promise<void> {
     this.running = false;
   }
 
-  @Public()
+  @Method()
   async isRunning(): Promise<boolean> {
     return this.running;
   }
@@ -55,7 +55,7 @@ class UnstableService {
   private failCount = 0;
   private maxFailures = 2;
 
-  @Public()
+  @Method()
   async doWork(): Promise<string> {
     if (this.failCount < this.maxFailures) {
       this.failCount++;
@@ -64,7 +64,7 @@ class UnstableService {
     return 'eventually succeeded';
   }
 
-  @Public()
+  @Method()
   async reset(): Promise<void> {
     this.failCount = 0;
   }

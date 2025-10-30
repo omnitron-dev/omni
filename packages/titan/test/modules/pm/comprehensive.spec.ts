@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import {
   Process,
-  Public,
+  Method,
   Workflow,
   Stage,
   Supervisor,
@@ -39,12 +39,12 @@ import {
 class TestService {
   private data = new Map<string, any>();
 
-  @Public()
+  @Method()
   async getData(key: string): Promise<any> {
     return this.data.get(key);
   }
 
-  @Public()
+  @Method()
   async setData(key: string, value: any): Promise<void> {
     this.data.set(key, value);
   }
@@ -65,7 +65,7 @@ class TestService {
 
 @Process()
 class StreamingService {
-  @Public()
+  @Method()
   async *streamData(count: number): AsyncGenerator<number> {
     for (let i = 0; i < count; i++) {
       yield i;
@@ -73,7 +73,7 @@ class StreamingService {
     }
   }
 
-  @Public()
+  @Method()
   async processStream(stream: AsyncIterable<number>): Promise<number[]> {
     const results: number[] = [];
     for await (const item of stream) {
@@ -561,7 +561,7 @@ describe('Process Manager - Resilience Patterns', () => {
     class ResilientService {
       private callCount = 0;
 
-      @Public()
+      @Method()
       @CircuitBreaker({ threshold: 3, timeout: 100, fallback: 'getFallbackData' })
       async getData(): Promise<string> {
         this.callCount++;
@@ -571,7 +571,7 @@ describe('Process Manager - Resilience Patterns', () => {
         return 'success';
       }
 
-      @Public()
+      @Method()
       async getFallbackData(): Promise<string> {
         return 'fallback';
       }
@@ -679,7 +679,7 @@ describe('Process Manager - Edge Cases', () => {
       class UnstableService {
         private callCount = 0;
 
-        @Public()
+        @Method()
         async doWork(): Promise<string> {
           this.callCount++;
           if (this.callCount % 2 === 0) {

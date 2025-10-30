@@ -404,25 +404,114 @@ export class HttpRemotePeer extends AbstractPeer {
   }
 
   /**
-   * Build request context
+   * Build request context with tracing, user info, etc.
    */
   private buildRequestContext(): HttpRequestContext {
+    // Generate tracing IDs for distributed tracing
+    const traceId = this.generateTraceId();
+    const spanId = this.generateSpanId();
+
+    // Extract user/tenant context from headers
+    const userId = this.extractHeader('x-user-id');
+    const tenantId = this.extractHeader('x-tenant-id');
+
+    // Build metadata from additional headers
+    const metadata: Record<string, any> = {};
+    if (this.defaultOptions.headers) {
+      // Extract custom metadata headers (x-meta-*)
+      for (const [key, value] of Object.entries(this.defaultOptions.headers)) {
+        if (key.toLowerCase().startsWith('x-meta-')) {
+          const metaKey = key.slice(7); // Remove 'x-meta-' prefix
+          metadata[metaKey] = value;
+        }
+      }
+    }
+
     return {
-      // TODO: Add tracing, user context, etc.
+      traceId,
+      spanId,
+      userId,
+      tenantId,
+      metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
     };
   }
 
   /**
-   * Build request hints
+   * Generate unique trace ID for distributed tracing
+   */
+  private generateTraceId(): string {
+    // Use existing trace ID if in continuation of a trace
+    const existingTraceId = this.extractHeader('x-trace-id');
+    if (existingTraceId) {
+      return existingTraceId;
+    }
+
+    // Generate new trace ID (128-bit hex)
+    const timestamp = Date.now().toString(16).padStart(12, '0');
+    const random = Math.random().toString(16).slice(2).padStart(20, '0');
+    return `${timestamp}${random}`;
+  }
+
+  /**
+   * Generate unique span ID for this request
+   */
+  private generateSpanId(): string {
+    // Generate 64-bit hex span ID
+    return Math.random().toString(16).slice(2).padStart(16, '0');
+  }
+
+  /**
+   * Extract header value from default options
+   */
+  private extractHeader(headerName: string): string | undefined {
+    if (!this.defaultOptions.headers) return undefined;
+
+    // Case-insensitive header lookup
+    const lowerName = headerName.toLowerCase();
+    for (const [key, value] of Object.entries(this.defaultOptions.headers)) {
+      if (key.toLowerCase() === lowerName) {
+        return String(value);
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Build request hints based on global configuration
    */
   private buildRequestHints(): HttpRequestHints {
-    return {
-      // TODO: Add caching, retry hints based on configuration
-    };
+    const hints: HttpRequestHints = {};
+
+    // Add cache hints if cache manager is configured
+    if (this.cacheManager) {
+      const cacheConfig = this.globalOptions.cache;
+      if (cacheConfig) {
+        hints.cache = {
+          maxAge: cacheConfig.maxAge,
+          staleWhileRevalidate: cacheConfig.staleWhileRevalidate,
+          tags: cacheConfig.tags,
+        };
+      }
+    }
+
+    // Add retry hints if retry manager is configured
+    if (this.retryManager) {
+      const retryConfig = this.globalOptions.retry;
+      if (retryConfig) {
+        hints.retry = {
+          attempts: retryConfig.attempts,
+          backoff: retryConfig.backoff || 'exponential',
+          maxDelay: retryConfig.maxDelay,
+          initialDelay: retryConfig.initialDelay,
+        };
+      }
+    }
+
+    return hints;
   }
 
   /**
-   * Handle cache hints from response
+   * Handle cache hints from response and store in cache
    */
   private handleCacheHints(
     service: string,
@@ -431,8 +520,48 @@ export class HttpRemotePeer extends AbstractPeer {
     output: any,
     cacheHints: HttpResponseHints['cache']
   ): void {
-    // TODO: Implement cache storage based on hints
-    this.logger.debug({ service, method, cacheHints }, 'Received cache hints');
+    if (!this.cacheManager || !cacheHints) {
+      return;
+    }
+
+    // Generate cache key from service, method, and input
+    const cacheKey = this.generateCacheKey(service, method, input);
+
+    // Store response in cache with TTL from hints
+    if (cacheHints.maxAge && cacheHints.maxAge > 0) {
+      this.cacheManager.set(cacheKey, output, {
+        maxAge: cacheHints.maxAge,
+        tags: cacheHints.tags,
+      });
+
+      this.logger.debug(
+        { service, method, cacheKey, ttl: cacheHints.maxAge, tags: cacheHints.tags },
+        'Cached response based on server hints'
+      );
+    }
+  }
+
+  /**
+   * Generate cache key from service, method, and input
+   */
+  private generateCacheKey(service: string, method: string, input: any): string {
+    // Create deterministic key from service, method, and serialized input
+    const inputStr = JSON.stringify(input || {});
+    const hash = this.simpleHash(inputStr);
+    return `${service}.${method}:${hash}`;
+  }
+
+  /**
+   * Simple hash function for cache keys
+   */
+  private simpleHash(str: string): string {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = (hash << 5) - hash + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return Math.abs(hash).toString(36);
   }
 
   /**

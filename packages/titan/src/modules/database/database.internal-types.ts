@@ -59,9 +59,13 @@ export interface ParsedConnectionConfig {
  * Database query types
  */
 export type AnyQueryBuilder =
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   | SelectQueryBuilder<any, any, any>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   | InsertQueryBuilder<any, any, any>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   | UpdateQueryBuilder<any, any, any, any>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   | DeleteQueryBuilder<any, any, any>;
 
 /**
@@ -134,7 +138,7 @@ export function isDatabaseError(error: unknown): error is DatabaseError {
  * Type guard for transaction
  */
 export function isTransaction(db: Kysely<unknown> | Transaction<unknown>): db is Transaction<unknown> {
-  return 'isTransaction' in db && (db as any).isTransaction === true;
+  return 'isTransaction' in db && (db as { isTransaction?: boolean }).isTransaction === true;
 }
 
 /**
@@ -164,6 +168,6 @@ export function isPluginInstance(value: unknown): value is PluginInstance {
     typeof value === 'object' &&
     value !== null &&
     'name' in value &&
-    typeof (value as any).name === 'string'
+    typeof (value as { name: unknown }).name === 'string'
   );
 }

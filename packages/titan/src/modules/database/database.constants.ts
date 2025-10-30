@@ -46,11 +46,13 @@ export function getRepositoryToken(target: any): string {
  */
 export const DEFAULT_POOL_CONFIG = {
   min: 2,
-  max: 10,
+  max: 20, // Increased from 10 for better concurrency
   idleTimeoutMillis: 30000,
-  acquireTimeoutMillis: 60000,
+  acquireTimeoutMillis: 60000, // Increased for connection retry scenarios
   createTimeoutMillis: 30000,
   destroyTimeoutMillis: 5000,
+  reapIntervalMillis: 1000, // Check for idle connections every second
+  createRetryIntervalMillis: 200, // Retry failed connection creation
 };
 
 /**

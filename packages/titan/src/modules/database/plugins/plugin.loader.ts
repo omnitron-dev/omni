@@ -10,6 +10,8 @@ import { pathToFileURL } from 'url';
 import { Injectable } from '../../../decorators/index.js';
 import { Errors } from '../../../errors/index.js';
 import type { IPluginLoader, ITitanPlugin, PluginFactory } from './plugin.types.js';
+import type { Logger } from '../database.internal-types.js';
+import { createDefaultLogger } from '../utils/logger.factory.js';
 
 /**
  * Plugin Loader
@@ -20,6 +22,11 @@ import type { IPluginLoader, ITitanPlugin, PluginFactory } from './plugin.types.
 export class PluginLoader implements IPluginLoader {
   private readonly loadedPlugins: Map<string, ITitanPlugin> = new Map();
   private readonly pluginFactories: Map<string, PluginFactory> = new Map();
+  private logger: Logger;
+
+  constructor() {
+    this.logger = createDefaultLogger('PluginLoader');
+  }
 
   /**
    * Load plugin from file or package
@@ -200,7 +207,7 @@ export class PluginLoader implements IPluginLoader {
             const plugin = await this.loadFromFile(fullPath);
             plugins.push(plugin);
           } catch (error) {
-            console.warn(`Failed to load plugin from "${fullPath}":`, error);
+            this.logger.warn(`Failed to load plugin from "${fullPath}":`, error);
           }
         }
       } else if (entry.isDirectory()) {
@@ -361,7 +368,7 @@ export class PluginLoader implements IPluginLoader {
         const plugin = await this.loadPlugin(config.plugin);
         registerFn(config.name || plugin.name, plugin, config.options);
       } catch (error) {
-        console.error(`Failed to load plugin "${config.name}":`, error);
+        this.logger.error(`Failed to load plugin "${config.name}":`, error);
       }
     }
   }

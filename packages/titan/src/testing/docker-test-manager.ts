@@ -2,11 +2,20 @@
  * Generic Docker Test Manager for Titan Framework
  *
  * Provides a unified interface for managing Docker containers in tests
+ * with robust lifecycle management, graceful shutdown, and reliable cleanup
  */
 
 import { execSync, execFileSync } from 'child_process';
 import { randomBytes } from 'crypto';
 import * as net from 'net';
+import { EventEmitter } from 'events';
+
+export interface DockerContainerStatus {
+  isRunning: boolean;
+  state?: string;
+  health?: string;
+  exitCode?: number;
+}
 
 export interface DockerContainer {
   id: string;
@@ -18,7 +27,10 @@ export interface DockerContainer {
   environment: Record<string, string>;
   labels: Record<string, string>;
   networks: string[];
+  createdAt: Date;
   cleanup: () => Promise<void>;
+  getStatus: () => Promise<DockerContainerStatus>;
+  isHealthy: () => Promise<boolean>;
 }
 
 export interface DockerTestManagerOptions {
@@ -29,6 +41,8 @@ export interface DockerTestManagerOptions {
   cleanup?: boolean;
   verbose?: boolean;
   network?: string;
+  gracefulShutdownTimeout?: number;
+  maxCleanupRetries?: number;
 }
 
 export interface ContainerOptions {
@@ -54,25 +68,31 @@ export interface ContainerOptions {
   };
 }
 
-export class DockerTestManager {
+export class DockerTestManager extends EventEmitter {
   private static instance: DockerTestManager;
   private containers: Map<string, DockerContainer> = new Map();
   private usedPorts: Set<number> = new Set();
   private networks: Set<string> = new Set();
+  private cleanupInProgress = false;
 
   private dockerPath: string;
   private basePort: number;
   private maxRetries: number;
   private startupTimeout: number;
+  private gracefulShutdownTimeout: number;
+  private maxCleanupRetries: number;
   private cleanup: boolean;
   private verbose: boolean;
   private defaultNetwork?: string;
 
   private constructor(options: DockerTestManagerOptions = {}) {
+    super();
     this.dockerPath = options.dockerPath || this.findDockerPath();
     this.basePort = options.basePort || 10000;
     this.maxRetries = options.maxRetries || 20;
     this.startupTimeout = options.startupTimeout || 30000;
+    this.gracefulShutdownTimeout = options.gracefulShutdownTimeout || 10000;
+    this.maxCleanupRetries = options.maxCleanupRetries || 3;
     this.cleanup = options.cleanup !== false;
     this.verbose = options.verbose || false;
     this.defaultNetwork = options.network;
@@ -80,11 +100,37 @@ export class DockerTestManager {
     // Verify Docker is available
     this.verifyDocker();
 
-    // Register cleanup handlers
+    // Register cleanup handlers with graceful shutdown
     if (this.cleanup) {
+      // Increase max listeners to avoid warnings when multiple test managers are instantiated
+      // This is safe because signal handlers should be idempotent and cleanup is managed by the singleton pattern
+      process.setMaxListeners(Math.max(20, process.getMaxListeners()));
+
       process.on('exit', () => this.cleanupSync());
-      process.on('SIGINT', () => this.cleanupAllAsync().then(() => process.exit(0)));
-      process.on('SIGTERM', () => this.cleanupAllAsync().then(() => process.exit(0)));
+      process.on('SIGINT', () => {
+        this.log('SIGINT received - initiating graceful shutdown');
+        this.cleanupAllAsync()
+          .then(() => {
+            this.log('Cleanup completed, exiting');
+            process.exit(0);
+          })
+          .catch((error) => {
+            this.logError('Cleanup failed during SIGINT', error);
+            process.exit(1);
+          });
+      });
+      process.on('SIGTERM', () => {
+        this.log('SIGTERM received - initiating graceful shutdown');
+        this.cleanupAllAsync()
+          .then(() => {
+            this.log('Cleanup completed, exiting');
+            process.exit(0);
+          })
+          .catch((error) => {
+            this.logError('Cleanup failed during SIGTERM', error);
+            process.exit(1);
+          });
+      });
     }
   }
 
@@ -122,8 +168,7 @@ export class DockerTestManager {
 
       // On Windows, 'where' can return multiple paths (one per line)
       // Take the first one
-      const lines = result.split('\n');
-      const dockerPath = lines.length > 0 ? lines[0]!.trim() : '';
+      const dockerPath = result.split('\n')[0]?.trim();
 
       if (dockerPath && this.testDockerPath(dockerPath)) {
         if (this.verbose) {
@@ -206,7 +251,8 @@ export class DockerTestManager {
    */
   private testDockerPath(dockerPath: string): boolean {
     try {
-      execSync(`"${dockerPath}" version`, {
+      // Use execFileSync to avoid shell quoting issues
+      execFileSync(dockerPath, ['version'], {
         stdio: 'ignore',
         timeout: 5000, // 5 second timeout
       });
@@ -218,7 +264,8 @@ export class DockerTestManager {
 
   private verifyDocker(): void {
     try {
-      execSync(`"${this.dockerPath}" version`, { stdio: 'ignore' });
+      // Use execFileSync to avoid shell quoting issues
+      execFileSync(this.dockerPath, ['version'], { stdio: 'ignore' });
     } catch {
       throw new Error(
         `Docker is not available at path: ${this.dockerPath}\n` +
@@ -251,6 +298,70 @@ export class DockerTestManager {
     });
   }
 
+  private log(message: string, data?: any): void {
+    if (this.verbose) {
+      const timestamp = new Date().toISOString();
+      const msg = data ? `[${timestamp}] ${message}: ${JSON.stringify(data)}` : `[${timestamp}] ${message}`;
+      console.log(msg);
+    }
+  }
+
+  private logError(message: string, error: any): void {
+    const timestamp = new Date().toISOString();
+    const err = error instanceof Error ? error.message : String(error);
+    const msg = `[${timestamp}] ERROR: ${message}: ${err}`;
+    if (this.verbose) {
+      console.error(msg);
+    }
+  }
+
+  private async getContainerStatus(name: string): Promise<DockerContainerStatus> {
+    try {
+      const inspectOutput = execFileSync(
+        this.dockerPath,
+        [
+          'inspect',
+          '--format',
+          '{{.State.Running}}\t{{.State.Status}}\t{{.State.Health.Status}}\t{{.State.ExitCode}}',
+          name,
+        ],
+        {
+          encoding: 'utf8',
+          stdio: ['pipe', 'pipe', 'ignore'],
+        }
+      ).trim();
+
+      const [running, state, health, exitCode] = inspectOutput.split('\t');
+
+      return {
+        isRunning: running === 'true',
+        state: state || undefined,
+        health: health && health !== '<no value>' ? health : undefined,
+        exitCode: exitCode ? parseInt(exitCode) : undefined,
+      };
+    } catch (error) {
+      this.logError(`Failed to get container status for ${name}`, error);
+      return { isRunning: false };
+    }
+  }
+
+  private async isContainerHealthy(name: string): Promise<boolean> {
+    try {
+      const status = await this.getContainerStatus(name);
+      if (!status.isRunning) {
+        return false;
+      }
+      // If container has health check, wait for healthy state
+      if (status.health) {
+        return status.health === 'healthy';
+      }
+      // If no health check defined, just check if running
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async createContainer(options: ContainerOptions): Promise<DockerContainer> {
     const id = `test-${randomBytes(4).toString('hex')}`;
     const name = options.name || `container-${id}`;
@@ -270,9 +381,9 @@ export class DockerTestManager {
     const dockerArgs: string[] = ['run', '-d', '--name', name];
 
     // Add ports
-    for (const [containerPort, hostPort] of portMappings) {
+    portMappings.forEach((hostPort, containerPort) => {
       dockerArgs.push('-p', `${hostPort}:${containerPort}`);
-    }
+    });
 
     // Add environment variables
     const environment = options.environment || {};
@@ -348,16 +459,38 @@ export class DockerTestManager {
 
     // Start container using execFileSync to properly handle arguments with spaces
     try {
+      this.log(`Starting container: ${name}`, { image: options.image });
       execFileSync(this.dockerPath, dockerArgs, {
         stdio: this.verbose ? 'inherit' : 'ignore',
       });
     } catch (error) {
+      // Clean up allocated ports before throwing
+      portMappings.forEach((port) => {
+        this.usedPorts.delete(port);
+      });
       throw new Error(`Failed to start container ${name}: ${error}`);
     }
 
     // Wait for container to be ready
     if (options.waitFor) {
-      await this.waitForContainer(name, options.waitFor);
+      try {
+        await this.waitForContainer(name, options.waitFor);
+        this.log(`Container ready: ${name}`);
+      } catch (error) {
+        // Container failed to start, attempt cleanup
+        this.logError(`Container ${name} failed to become ready, cleaning up`, error);
+        try {
+          execFileSync(this.dockerPath, ['stop', '-t', '5', name], { stdio: 'ignore' });
+          execFileSync(this.dockerPath, ['rm', '-f', name], { stdio: 'ignore' });
+        } catch {
+          // Ignore cleanup errors during rollback
+        }
+        // Clean up allocated ports
+        portMappings.forEach((port) => {
+          this.usedPorts.delete(port);
+        });
+        throw error;
+      }
     }
 
     const container: DockerContainer = {
@@ -370,26 +503,11 @@ export class DockerTestManager {
       environment,
       labels,
       networks,
+      createdAt: new Date(),
+      getStatus: async () => this.getContainerStatus(name),
+      isHealthy: async () => this.isContainerHealthy(name),
       cleanup: async () => {
-        if (this.verbose) {
-          console.log(`Cleaning up container: ${name}`);
-        }
-
-        // Stop and remove container
-        try {
-          execSync(`"${this.dockerPath}" stop ${name}`, { stdio: 'ignore' });
-          execSync(`"${this.dockerPath}" rm ${name}`, { stdio: 'ignore' });
-        } catch (error) {
-          console.warn(`Failed to cleanup container ${name}: ${error}`);
-        }
-
-        // Release ports
-        for (const port of portMappings.values()) {
-          this.usedPorts.delete(port);
-        }
-
-        // Remove from tracking
-        this.containers.delete(id);
+        await this.cleanupContainerWithRetry(name, id, portMappings);
       },
     };
 
@@ -397,10 +515,89 @@ export class DockerTestManager {
     return container;
   }
 
+  private async cleanupContainerWithRetry(
+    name: string,
+    id: string,
+    portMappings: Map<number, number>
+  ): Promise<void> {
+    this.log(`Starting cleanup for container: ${name}`);
+
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= this.maxCleanupRetries; attempt++) {
+      try {
+        // Check if container exists
+        try {
+          const status = await this.getContainerStatus(name);
+          if (!status.isRunning) {
+            this.log(`Container ${name} is not running, force removing`, { attempt });
+          }
+        } catch {
+          // Container doesn't exist, nothing to clean up
+          this.log(`Container ${name} doesn't exist, skipping stop`, { attempt });
+          break;
+        }
+
+        // Gracefully stop the container first
+        try {
+          const stopTimeoutSecs = Math.ceil(this.gracefulShutdownTimeout / 1000).toString();
+          this.log(`Stopping container ${name}`, { attempt, timeout: this.gracefulShutdownTimeout });
+          execFileSync(this.dockerPath, ['stop', '-t', stopTimeoutSecs, name], {
+            stdio: 'ignore',
+            timeout: this.gracefulShutdownTimeout + 5000, // Add buffer to docker timeout
+          });
+          this.log(`Container stopped: ${name}`, { attempt });
+        } catch (error) {
+          this.logError(`Failed to gracefully stop container ${name}`, error);
+          // Continue to force remove
+        }
+
+        // Remove container
+        try {
+          this.log(`Removing container ${name}`, { attempt });
+          execFileSync(this.dockerPath, ['rm', '-f', name], { stdio: 'ignore' });
+          this.log(`Container removed: ${name}`, { attempt });
+          lastError = null; // Clear error on success
+          break;
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+          if (attempt === this.maxCleanupRetries) {
+            throw lastError;
+          }
+          // Wait before retrying
+          await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+        }
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        if (attempt === this.maxCleanupRetries) {
+          this.logError(`Final cleanup attempt failed for container ${name}`, lastError);
+          // Don't throw, continue with port cleanup
+        } else {
+          this.logError(`Cleanup attempt ${attempt} failed for container ${name}, retrying`, lastError);
+          await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+        }
+      }
+    }
+
+    // Always release ports, even if cleanup failed
+    try {
+      portMappings.forEach((port) => {
+        this.usedPorts.delete(port);
+        this.log(`Released port: ${port}`);
+      });
+    } catch (error) {
+      this.logError('Failed to release ports', error);
+    }
+
+    // Remove from tracking
+    this.containers.delete(id);
+    this.log(`Container cleanup completed: ${name}`, { attempts: this.maxCleanupRetries });
+  }
+
   private async ensureNetwork(network: string): Promise<void> {
     if (!this.networks.has(network)) {
       try {
-        execSync(`"${this.dockerPath}" network create ${network} --label test.cleanup=true`, { stdio: 'ignore' });
+        execFileSync(this.dockerPath, ['network', 'create', network, '--label', 'test.cleanup=true'], { stdio: 'ignore' });
         this.networks.add(network);
       } catch {
         // Network might already exist
@@ -413,37 +610,78 @@ export class DockerTestManager {
     const startTime = Date.now();
     const timeout = options?.timeout || this.startupTimeout;
 
+    let lastError: Error | undefined;
+
     while (Date.now() - startTime < timeout) {
-      // Check if container is healthy
-      if (options?.healthcheck) {
-        try {
-          const healthStatus = execSync(`"${this.dockerPath}" inspect --format='{{.State.Health.Status}}' ${name}`, {
-            encoding: 'utf8',
-          }).trim();
+      try {
+        // First check if container is still running
+        const status = await this.getContainerStatus(name);
+        if (!status.isRunning) {
+          throw new Error(
+            `Container exited with status '${status.state}' and exit code ${status.exitCode}. ` +
+              `Check container logs with 'docker logs ${name}'`
+          );
+        }
 
-          if (healthStatus === 'healthy') {
+        // Check if container is healthy (if healthcheck is configured)
+        if (options?.healthcheck) {
+          if (status.health === 'healthy') {
+            this.log(`Container ${name} is healthy`);
             return;
           }
-        } catch {
-          // Container might not have health check
+
+          if (status.health === 'unhealthy') {
+            throw new Error(
+              `Container ${name} health check failed. ` +
+                `Check container logs with 'docker logs ${name}'`
+            );
+          }
+
+          // Health check is still starting
+          if (status.health === 'starting') {
+            this.log(`Waiting for health check on ${name}...`, { elapsed: Date.now() - startTime });
+          }
+        }
+
+        // Check if port is accessible
+        if (options?.port) {
+          const container = this.containers.get(name);
+          if (container) {
+            const hostPort = container.ports.get(options.port);
+            if (hostPort && (await this.isPortListening('127.0.0.1', hostPort))) {
+              this.log(`Port ${hostPort} is listening on ${name}`);
+              return;
+            }
+          }
+        }
+
+        // If no specific wait condition, just check container is running
+        if (!options?.healthcheck && !options?.port) {
+          this.log(`Container ${name} is running`);
+          return;
+        }
+
+        lastError = undefined;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        this.logError(`Error waiting for container ${name}`, lastError);
+
+        // Check if this is a fatal error
+        if (
+          lastError.message.includes('exited') ||
+          lastError.message.includes('unhealthy') ||
+          lastError.message.includes('health check failed')
+        ) {
+          throw lastError;
         }
       }
 
-      // Check if port is accessible
-      if (options?.port) {
-        const containerInfo = this.containers.get(name);
-        if (containerInfo) {
-          const hostPort = containerInfo.ports.get(options.port);
-          if (hostPort && (await this.isPortListening('127.0.0.1', hostPort))) {
-            return;
-          }
-        }
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 200));
     }
 
-    throw new Error(`Container ${name} failed to start within ${timeout}ms`);
+    const elapsed = Date.now() - startTime;
+    const errorMsg = lastError ? `: ${lastError.message}` : '';
+    throw new Error(`Container ${name} failed to start within ${timeout}ms (${elapsed}ms elapsed)${errorMsg}`);
   }
 
   private async isPortListening(host: string, port: number): Promise<boolean> {
@@ -479,83 +717,226 @@ export class DockerTestManager {
   }
 
   async cleanupAll(): Promise<void> {
-    const cleanupPromises = Array.from(this.containers.values()).map((container) => container.cleanup());
-    await Promise.all(cleanupPromises);
-
-    // Cleanup networks
-    for (const network of this.networks) {
-      try {
-        execSync(`"${this.dockerPath}" network rm ${network}`, { stdio: 'ignore' });
-      } catch {
-        // Ignore errors
-      }
+    if (this.cleanupInProgress) {
+      this.log('Cleanup already in progress, skipping');
+      return;
     }
 
-    this.containers.clear();
-    this.usedPorts.clear();
-    this.networks.clear();
+    this.cleanupInProgress = true;
+
+    try {
+      this.log(`Starting cleanup of ${this.containers.size} containers`);
+
+      // Cleanup containers in parallel with Promise.allSettled to handle failures
+      const cleanupPromises = Array.from(this.containers.values()).map((container) =>
+        container
+          .cleanup()
+          .then(() => {
+            this.log(`Cleanup succeeded: ${container.name}`);
+          })
+          .catch((error) => {
+            this.logError(`Cleanup failed for ${container.name}`, error);
+            // Still continue cleaning up other containers
+          })
+      );
+
+      const results = await Promise.allSettled(cleanupPromises);
+
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      if (failed > 0) {
+        this.log(`Cleanup completed with ${failed} failures`);
+      } else {
+        this.log('All containers cleaned up successfully');
+      }
+
+      // Cleanup networks
+      this.log(`Cleaning up ${this.networks.size} networks`);
+      const networkArray = Array.from(this.networks);
+      for (const network of networkArray) {
+        try {
+          this.log(`Removing network: ${network}`);
+          execFileSync(this.dockerPath, ['network', 'rm', network], { stdio: 'ignore' });
+          this.log(`Network removed: ${network}`);
+        } catch (error) {
+          this.logError(`Failed to remove network ${network}`, error);
+          // Continue with other networks
+        }
+      }
+
+      this.containers.clear();
+      this.usedPorts.clear();
+      this.networks.clear();
+
+      this.log('Final cleanup completed');
+    } finally {
+      this.cleanupInProgress = false;
+    }
   }
 
   private async cleanupAllAsync(): Promise<void> {
-    if (this.verbose) {
-      console.log('Cleaning up all test containers...');
-    }
+    this.log('Initiating graceful cleanup of all test containers');
     await this.cleanupAll();
   }
 
   private cleanupSync(): void {
     try {
+      this.log('Performing synchronous cleanup of remaining test containers');
+
       const isWindows = process.platform === 'win32';
-      const xargsCmd = isWindows ? '' : 'xargs -r'; // Windows doesn't have xargs by default
 
       if (isWindows) {
-        // Windows-specific cleanup using PowerShell-style commands
-        try {
-          execSync(
-            `"${this.dockerPath}" ps -a --filter "label=test.cleanup=true" -q --format "{{.ID}}" | ForEach-Object { "${this.dockerPath}" rm -f $_ }`,
-            { stdio: 'ignore', shell: 'powershell.exe' }
-          );
-        } catch {
-          // Fallback: Try getting IDs and removing one by one
-          try {
-            const containerIds = execSync(`"${this.dockerPath}" ps -a --filter "label=test.cleanup=true" -q`, {
-              encoding: 'utf8',
-              stdio: ['pipe', 'pipe', 'ignore'],
-            }).trim();
-            if (containerIds) {
-              containerIds.split('\n').forEach((id) => {
-                try {
-                  execSync(`"${this.dockerPath}" rm -f ${id.trim()}`, { stdio: 'ignore' });
-                } catch {
-                  // Ignore individual failures
-                }
-              });
-            }
-          } catch {
-            // Ignore errors
-          }
-        }
+        // Windows-specific cleanup
+        this.cleanupSyncWindows();
       } else {
         // Unix-like systems
-        execSync(
-          `"${this.dockerPath}" ps -a --filter "label=test.cleanup=true" -q | ${xargsCmd} "${this.dockerPath}" rm -f`,
-          { stdio: 'ignore' }
-        );
-
-        // Remove test networks
-        execSync(
-          `"${this.dockerPath}" network ls --filter "label=test.cleanup=true" -q | ${xargsCmd} "${this.dockerPath}" network rm`,
-          { stdio: 'ignore' }
-        );
-
-        // Remove test volumes
-        execSync(
-          `"${this.dockerPath}" volume ls --filter "label=test.cleanup=true" -q | ${xargsCmd} "${this.dockerPath}" volume rm`,
-          { stdio: 'ignore' }
-        );
+        this.cleanupSyncUnix();
       }
-    } catch {
-      // Ignore errors during cleanup
+
+      this.log('Synchronous cleanup completed');
+    } catch (error) {
+      this.logError('Error during synchronous cleanup', error);
+      // Don't throw during process exit cleanup
+    }
+  }
+
+  private cleanupSyncWindows(): void {
+    try {
+      // Get container IDs with test.cleanup label
+      const containerIds = execFileSync(this.dockerPath, ['ps', '-a', '--filter', 'label=test.cleanup=true', '-q'], {
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'ignore'],
+      }).trim();
+
+      if (containerIds) {
+        const ids = containerIds.split('\n').filter((id) => id.trim());
+        this.log(`Found ${ids.length} test containers to clean up`);
+
+        for (const id of ids) {
+          try {
+            const trimmedId = id.trim();
+            this.log(`Stopping container: ${trimmedId}`);
+            try {
+              execFileSync(this.dockerPath, ['stop', '-t', '5', trimmedId], { stdio: 'ignore' });
+            } catch {
+              // Already stopped
+            }
+
+            this.log(`Removing container: ${trimmedId}`);
+            execFileSync(this.dockerPath, ['rm', '-f', trimmedId], { stdio: 'ignore' });
+            this.log(`Container removed: ${trimmedId}`);
+          } catch (error) {
+            this.logError(`Failed to cleanup container ${id}`, error);
+            // Continue with other containers
+          }
+        }
+      }
+
+      // Remove test networks
+      try {
+        const networkIds = execFileSync(this.dockerPath, ['network', 'ls', '--filter', 'label=test.cleanup=true', '-q'], {
+          encoding: 'utf8',
+          stdio: ['pipe', 'pipe', 'ignore'],
+        }).trim();
+
+        if (networkIds) {
+          const ids = networkIds.split('\n').filter((id) => id.trim());
+          this.log(`Found ${ids.length} test networks to clean up`);
+
+          for (const id of ids) {
+            try {
+              this.log(`Removing network: ${id.trim()}`);
+              execFileSync(this.dockerPath, ['network', 'rm', id.trim()], { stdio: 'ignore' });
+              this.log(`Network removed: ${id.trim()}`);
+            } catch (error) {
+              this.logError(`Failed to cleanup network ${id}`, error);
+            }
+          }
+        }
+      } catch (error) {
+        this.logError('Failed to cleanup networks', error);
+      }
+    } catch (error) {
+      this.logError('Windows cleanup failed', error);
+    }
+  }
+
+  private cleanupSyncUnix(): void {
+    try {
+      // Remove containers
+      const containerCmd = `"${this.dockerPath}" ps -a --filter "label=test.cleanup=true" -q`;
+      try {
+        const ids = execSync(containerCmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
+        if (ids) {
+          const containerIds = ids.split('\n').filter((id) => id.trim());
+          this.log(`Found ${containerIds.length} test containers to clean up`);
+
+          for (const id of containerIds) {
+            try {
+              const trimmedId = id.trim();
+              this.log(`Stopping container: ${trimmedId}`);
+              try {
+                execFileSync(this.dockerPath, ['stop', '-t', '5', trimmedId], { stdio: 'ignore' });
+              } catch {
+                // Already stopped
+              }
+
+              this.log(`Removing container: ${trimmedId}`);
+              execFileSync(this.dockerPath, ['rm', '-f', trimmedId], { stdio: 'ignore' });
+              this.log(`Container removed: ${trimmedId}`);
+            } catch (error) {
+              this.logError(`Failed to cleanup container ${id}`, error);
+            }
+          }
+        }
+      } catch (error) {
+        this.logError('Failed to cleanup containers', error);
+      }
+
+      // Remove test networks
+      try {
+        const networkCmd = `"${this.dockerPath}" network ls --filter "label=test.cleanup=true" -q`;
+        const ids = execSync(networkCmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
+        if (ids) {
+          const networkIds = ids.split('\n').filter((id) => id.trim());
+          this.log(`Found ${networkIds.length} test networks to clean up`);
+
+          for (const id of networkIds) {
+            try {
+              this.log(`Removing network: ${id.trim()}`);
+              execFileSync(this.dockerPath, ['network', 'rm', id.trim()], { stdio: 'ignore' });
+              this.log(`Network removed: ${id.trim()}`);
+            } catch (error) {
+              this.logError(`Failed to cleanup network ${id}`, error);
+            }
+          }
+        }
+      } catch (error) {
+        this.logError('Failed to cleanup networks', error);
+      }
+
+      // Remove test volumes
+      try {
+        const volumeCmd = `"${this.dockerPath}" volume ls --filter "label=test.cleanup=true" -q`;
+        const ids = execSync(volumeCmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
+        if (ids) {
+          const volumeIds = ids.split('\n').filter((id) => id.trim());
+          this.log(`Found ${volumeIds.length} test volumes to clean up`);
+
+          for (const id of volumeIds) {
+            try {
+              this.log(`Removing volume: ${id.trim()}`);
+              execFileSync(this.dockerPath, ['volume', 'rm', '-f', id.trim()], { stdio: 'ignore' });
+              this.log(`Volume removed: ${id.trim()}`);
+            } catch (error) {
+              this.logError(`Failed to cleanup volume ${id}`, error);
+            }
+          }
+        }
+      } catch (error) {
+        this.logError('Failed to cleanup volumes', error);
+      }
+    } catch (error) {
+      this.logError('Unix cleanup failed', error);
     }
   }
 

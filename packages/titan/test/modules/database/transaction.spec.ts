@@ -185,7 +185,7 @@ describe('Transaction Management', () => {
 
       // Create accounts table
       const dbManager = await app.resolveAsync(DATABASE_MANAGER);
-      const db = (dbManager as IDatabaseManager).getConnection();
+      const db = await (dbManager as IDatabaseManager).getConnection();
       await sql`
         CREATE TABLE accounts (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -311,62 +311,75 @@ describe('Transaction Management', () => {
     let app: Application;
     let bankingService: BankingService;
     let transactionManager: TransactionManager;
+    let container: any;
 
     beforeEach(async () => {
-      await DatabaseTestManager.withPostgres(async (container, connectionString) => {
-        const url = new URL(connectionString);
+      // Create PostgreSQL container directly (not using withPostgres to keep it alive)
+      container = await DatabaseTestManager.createPostgresContainer({
+        database: 'test_transactions_db',
+        user: 'testuser',
+        password: 'testpass',
+      });
 
-        app = await Application.create({
-          imports: [
-            TitanDatabaseModule.forRoot({
+      const port = container.ports.get(5432)!;
+      const connectionString = `postgresql://testuser:testpass@localhost:${port}/test_transactions_db`;
+      const url = new URL(connectionString);
+
+      app = await Application.create({
+        imports: [
+          TitanDatabaseModule.forRoot({
+            connection: {
+              dialect: 'postgres',
               connection: {
-                dialect: 'postgres',
                 host: url.hostname,
                 port: parseInt(url.port || '5432'),
                 user: url.username,
                 password: url.password,
                 database: url.pathname.slice(1),
               },
-              transactionOptions: {
-                retryAttempts: 3,
-                useSavepoints: true,
-                defaultIsolationLevel: TransactionIsolationLevel.READ_COMMITTED,
-              },
-              isGlobal: true,
-            }),
-            TestModule,
-          ],
-        });
-
-        await app.start();
-
-        // Get services
-        bankingService = await app.resolveAsync(BankingService);
-        transactionManager = await app.resolveAsync(DATABASE_TRANSACTION_MANAGER);
-
-        // Create accounts table
-        const dbManager = await app.resolveAsync(DATABASE_MANAGER);
-        const db = (dbManager as IDatabaseManager).getConnection();
-        await sql`
-          CREATE TABLE accounts (
-            id SERIAL PRIMARY KEY,
-            name VARCHAR(100) NOT NULL,
-            balance DECIMAL(10,2) DEFAULT 0,
-            version INTEGER DEFAULT 1,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-          )
-        `.execute(db);
-
-        // Create test accounts
-        await bankingService.createAccount('Alice', 1000);
-        await bankingService.createAccount('Bob', 500);
+            },
+            transactionOptions: {
+              retryAttempts: 3,
+              useSavepoints: true,
+              defaultIsolationLevel: TransactionIsolationLevel.READ_COMMITTED,
+            },
+            isGlobal: true,
+          }),
+          TestModule,
+        ],
       });
-    });
+
+      await app.start();
+
+      // Get services
+      bankingService = await app.resolveAsync(BankingService);
+      transactionManager = await app.resolveAsync(DATABASE_TRANSACTION_MANAGER);
+
+      // Create accounts table
+      const dbManager = await app.resolveAsync(DATABASE_MANAGER);
+      const db = await (dbManager as IDatabaseManager).getConnection();
+      await sql`
+        CREATE TABLE accounts (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(100) NOT NULL,
+          balance DECIMAL(10,2) DEFAULT 0,
+          version INTEGER DEFAULT 1,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `.execute(db);
+
+      // Create test accounts
+      await bankingService.createAccount('Alice', 1000);
+      await bankingService.createAccount('Bob', 500);
+    }, 60000);
 
     afterEach(async () => {
       if (app) {
         await app.stop();
+      }
+      if (container) {
+        await container.cleanup();
       }
     });
 

@@ -8,13 +8,18 @@ import { readdirSync } from 'fs';
 import { join, resolve } from 'path';
 import type { IMigration, MigrationMetadata, IMigrationProvider, MigrationConfig } from './migration.types.js';
 import { getMigrationMetadata, isMigration } from '../database.decorators.js';
+import type { Logger } from '../database.internal-types.js';
+import { createDefaultLogger } from '../utils/logger.factory.js';
 
 export class MigrationProvider implements IMigrationProvider {
   private migrations: Map<string, IMigration> = new Map();
   private metadata: Map<string, MigrationMetadata> = new Map();
   private loaded: boolean = false;
+  private logger: Logger;
 
-  constructor(private config: MigrationConfig) {}
+  constructor(private config: MigrationConfig) {
+    this.logger = createDefaultLogger('MigrationProvider');
+  }
 
   /**
    * Get all available migrations
@@ -98,7 +103,7 @@ export class MigrationProvider implements IMigrationProvider {
       if (!fs.existsSync(directory)) {
         // It's valid to have no migrations directory - just log a debug message
         if (this.config.debug) {
-          console.debug(`[MigrationProvider] Migrations directory does not exist: ${directory}`);
+          this.logger.debug(`Migrations directory does not exist: ${directory}`);
         }
         return;
       }
@@ -117,7 +122,7 @@ export class MigrationProvider implements IMigrationProvider {
           // Extract version from filename
           const version = this.extractVersionFromFilename(file);
           if (!version) {
-            console.warn(`Could not extract version from migration file: ${file}`);
+            this.logger.warn(`Could not extract version from migration file: ${file}`);
             continue;
           }
 
@@ -125,7 +130,7 @@ export class MigrationProvider implements IMigrationProvider {
           const module = await this.importMigration(filePath);
 
           if (!module) {
-            console.warn(`Could not import migration from: ${file}`);
+            this.logger.warn(`Could not import migration from: ${file}`);
             continue;
           }
 
@@ -133,7 +138,7 @@ export class MigrationProvider implements IMigrationProvider {
           const migrationClass = this.findMigrationClass(module);
 
           if (!migrationClass) {
-            console.warn(`No migration class found in: ${file}`);
+            this.logger.warn(`No migration class found in: ${file}`);
             continue;
           }
 
@@ -157,11 +162,11 @@ export class MigrationProvider implements IMigrationProvider {
           this.migrations.set(version, instance);
           this.metadata.set(version, metadata);
         } catch (error) {
-          console.error(`Error loading migration from ${file}:`, error);
+          this.logger.error(`Error loading migration from ${file}:`, error);
         }
       }
     } catch (error) {
-      console.error(`Error loading migrations from filesystem:`, error);
+      this.logger.error(`Error loading migrations from filesystem:`, error);
     }
   }
 
@@ -179,14 +184,14 @@ export class MigrationProvider implements IMigrationProvider {
 
         // Ensure it implements IMigration
         if (!this.isValidMigration(instance)) {
-          console.warn(`Registered class ${target.name} does not implement IMigration`);
+          this.logger.warn(`Registered class ${target.name} does not implement IMigration`);
           continue;
         }
 
         this.migrations.set(metadata.version, instance);
         this.metadata.set(metadata.version, metadata);
       } catch (error) {
-        console.error(`Error loading registered migration ${target.name}:`, error);
+        this.logger.error(`Error loading registered migration ${target.name}:`, error);
       }
     }
   }
@@ -194,13 +199,14 @@ export class MigrationProvider implements IMigrationProvider {
   /**
    * Import migration from file path
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async importMigration(filePath: string): Promise<any> {
     try {
       // In ESM environment
       const fileUrl = `file://${filePath}`;
       return await import(fileUrl);
     } catch (error) {
-      console.error(`Error importing migration from ${filePath}:`, error);
+      this.logger.error(`Error importing migration from ${filePath}:`, error);
       return null;
     }
   }
@@ -208,10 +214,11 @@ export class MigrationProvider implements IMigrationProvider {
   /**
    * Find migration class in module exports
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private findMigrationClass(module: any): any {
     // Check default export
-    if (module.default && isMigration(module.default)) {
-      return module.default;
+    if (module['default'] && isMigration(module['default'])) {
+      return module['default'];
     }
 
     // Check named exports
@@ -226,9 +233,14 @@ export class MigrationProvider implements IMigrationProvider {
     for (const key of Object.keys(module)) {
       const exported = module[key];
       if (typeof exported === 'function') {
-        const instance = new exported();
-        if (this.isValidMigration(instance)) {
-          return exported;
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const instance = new (exported as any)();
+          if (this.isValidMigration(instance)) {
+            return exported;
+          }
+        } catch {
+          // Not a valid constructor
         }
       }
     }
@@ -239,8 +251,9 @@ export class MigrationProvider implements IMigrationProvider {
   /**
    * Check if object is a valid migration
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private isValidMigration(obj: any): obj is IMigration {
-    return obj && typeof obj.up === 'function' && typeof obj.down === 'function';
+    return obj && typeof obj['up'] === 'function' && typeof obj['down'] === 'function';
   }
 
   /**

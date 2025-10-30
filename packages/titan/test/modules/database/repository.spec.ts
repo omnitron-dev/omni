@@ -267,55 +267,67 @@ describe('Repository Integration', () => {
     let app: Application;
     let userService: UserService;
     let dbManager: DatabaseManager;
+    let container: any;
 
     beforeEach(async () => {
-      await DatabaseTestManager.withPostgres(async (container, connectionString) => {
-        // Create application with PostgreSQL
-        app = await Application.create({
-          imports: [
-            TitanDatabaseModule.forRoot({
-              connection: {
-                dialect: 'postgres',
-                connection: connectionString,
-              },
-              kysera: {
-                repository: {
-                  defaultOptions: {
-                    softDelete: true,
-                    timestamps: true,
-                  },
+      // Create PostgreSQL container directly (not using withPostgres to keep it alive)
+      container = await DatabaseTestManager.createPostgresContainer({
+        database: 'test_repository_db',
+        user: 'testuser',
+        password: 'testpass',
+      });
+
+      const port = container.ports.get(5432)!;
+      const connectionString = `postgresql://testuser:testpass@localhost:${port}/test_repository_db`;
+
+      // Create application with PostgreSQL
+      app = await Application.create({
+        imports: [
+          TitanDatabaseModule.forRoot({
+            connection: {
+              dialect: 'postgres',
+              connection: connectionString,
+            },
+            kysera: {
+              repository: {
+                defaultOptions: {
+                  softDelete: true,
+                  timestamps: true,
                 },
               },
-              isGlobal: true,
-            }),
-            TestModule,
-          ],
-        });
-
-        await app.start();
-
-        // Get services
-        userService = await app.resolveAsync(UserService);
-        dbManager = (await app.resolveAsync(DATABASE_MANAGER)) as DatabaseManager;
-
-        // Create users table
-        const db = await dbManager.getConnection();
-        await sql`
-          CREATE TABLE users (
-            id SERIAL PRIMARY KEY,
-            email VARCHAR(255) NOT NULL UNIQUE,
-            name VARCHAR(255) NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            deleted_at TIMESTAMP
-          )
-        `.execute(db);
+            },
+            isGlobal: true,
+          }),
+          TestModule,
+        ],
       });
-    });
+
+      await app.start();
+
+      // Get services
+      userService = await app.resolveAsync(UserService);
+      dbManager = (await app.resolveAsync(DATABASE_MANAGER)) as DatabaseManager;
+
+      // Create users table
+      const db = await dbManager.getConnection();
+      await sql`
+        CREATE TABLE users (
+          id SERIAL PRIMARY KEY,
+          email VARCHAR(255) NOT NULL UNIQUE,
+          name VARCHAR(255) NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          deleted_at TIMESTAMP
+        )
+      `.execute(db);
+    }, 60000);
 
     afterEach(async () => {
       if (app) {
         await app.stop();
+      }
+      if (container) {
+        await container.cleanup();
       }
     });
 

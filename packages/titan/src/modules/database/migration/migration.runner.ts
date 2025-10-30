@@ -144,14 +144,14 @@ export class MigrationRunner {
   /**
    * Listen to migration events
    */
-  on(event: string, listener: (...args: any[]) => void): void {
+  on(event: string, listener: (...args: unknown[]) => void): void {
     this.service.on(event, listener);
   }
 
   /**
    * Remove event listener
    */
-  off(event: string, listener: (...args: any[]) => void): void {
+  off(event: string, listener: (...args: unknown[]) => void): void {
     this.service.off(event, listener);
   }
 }

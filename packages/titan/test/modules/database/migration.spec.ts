@@ -153,6 +153,8 @@ describe('Migration System', () => {
       if (app) {
         await app.stop();
       }
+      // Reset static singleton for next test
+      TitanDatabaseModule.resetForTesting();
     });
 
     it('should get migration status', async () => {
@@ -285,84 +287,98 @@ describe('Migration System', () => {
     let app: Application;
     let migrationRunner: MigrationRunner;
     let dbManager: IDatabaseManager;
+    let container: any;
 
     beforeEach(async () => {
-      await DatabaseTestManager.withPostgres(async (container, connectionString) => {
-        // Parse connection string
-        const url = new URL(connectionString);
-
-        // Clear and register migrations
-        Reflect.deleteMetadata('database:migrations', global);
-        Reflect.defineMetadata(
-          'database:migrations',
-          [
-            {
-              target: CreateTestTableMigration,
-              metadata: { version: '001', name: 'CreateTestTableMigration', description: 'Create test table' },
-            },
-            {
-              target: AddColumnMigration,
-              metadata: {
-                version: '002',
-                name: 'AddColumnMigration',
-                description: 'Add column to test table',
-                dependencies: ['001'],
-              },
-            },
-            {
-              target: CreateIndexMigration,
-              metadata: {
-                version: '003',
-                name: 'CreateIndexMigration',
-                description: 'Create index',
-                dependencies: ['001', '002'],
-              },
-            },
-          ],
-          global
-        );
-
-        // Create application with PostgreSQL
-        app = await Application.create({
-          imports: [
-            TitanDatabaseModule.forRoot({
-              connection: {
-                dialect: 'postgres',
-                connection: {
-                  host: url.hostname,
-                  port: parseInt(url.port || '5432'),
-                  user: url.username,
-                  password: url.password,
-                  database: url.pathname.slice(1),
-                },
-              },
-              migrations: {
-                tableName: 'test_migrations',
-                lockTableName: 'test_migration_lock',
-                transactional: true,
-              },
-              autoMigrate: false,
-              isGlobal: true,
-            }),
-            TestModule,
-          ],
-        });
-
-        await app.start();
-
-        // Get services
-        migrationRunner = await app.resolveAsync(DATABASE_MIGRATION_SERVICE);
-        dbManager = await app.resolveAsync(DATABASE_MANAGER);
-
-        // Initialize migration tables
-        await migrationRunner.init();
+      // Create PostgreSQL container directly (not using withPostgres to keep it alive)
+      container = await DatabaseTestManager.createPostgresContainer({
+        database: 'test_migrations_db',
+        user: 'testuser',
+        password: 'testpass',
       });
-    });
+
+      const port = container.ports.get(5432)!;
+      const connectionString = `postgresql://testuser:testpass@localhost:${port}/test_migrations_db`;
+
+      // Parse connection string
+      const url = new URL(connectionString);
+
+      // Clear and register migrations
+      Reflect.deleteMetadata('database:migrations', global);
+      Reflect.defineMetadata(
+        'database:migrations',
+        [
+          {
+            target: CreateTestTableMigration,
+            metadata: { version: '001', name: 'CreateTestTableMigration', description: 'Create test table' },
+          },
+          {
+            target: AddColumnMigration,
+            metadata: {
+              version: '002',
+              name: 'AddColumnMigration',
+              description: 'Add column to test table',
+              dependencies: ['001'],
+            },
+          },
+          {
+            target: CreateIndexMigration,
+            metadata: {
+              version: '003',
+              name: 'CreateIndexMigration',
+              description: 'Create index',
+              dependencies: ['001', '002'],
+            },
+          },
+        ],
+        global
+      );
+
+      // Create application with PostgreSQL
+      app = await Application.create({
+        imports: [
+          TitanDatabaseModule.forRoot({
+            connection: {
+              dialect: 'postgres',
+              connection: {
+                host: url.hostname,
+                port: parseInt(url.port || '5432'),
+                user: url.username,
+                password: url.password,
+                database: url.pathname.slice(1),
+              },
+            },
+            migrations: {
+              tableName: 'test_migrations',
+              lockTableName: 'test_migration_lock',
+              transactional: true,
+            },
+            autoMigrate: false,
+            isGlobal: true,
+          }),
+          TestModule,
+        ],
+      });
+
+      await app.start();
+
+      // Get services
+      migrationRunner = await app.resolveAsync(DATABASE_MIGRATION_SERVICE);
+      dbManager = await app.resolveAsync(DATABASE_MANAGER);
+
+      // Initialize migration tables
+      await migrationRunner.init();
+    }, 60000);
 
     afterEach(async () => {
       if (app) {
         await app.stop();
       }
+      if (container) {
+        await container.cleanup();
+      }
+      // Reset static singleton for next test
+      TitanDatabaseModule.resetForTesting();
     });
 
     it('should handle concurrent migration attempts', async () => {

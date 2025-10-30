@@ -359,6 +359,11 @@ export interface MigrationConfig {
    * Whether to create migration table automatically
    */
   autoCreateTable?: boolean;
+
+  /**
+   * Whether to enable debug logging
+   */
+  debug?: boolean;
 }
 
 /**

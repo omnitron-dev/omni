@@ -10,6 +10,7 @@ import type { z } from 'zod';
 import type { Pool } from 'pg';
 import type * as mysql from 'mysql2';
 import type BetterSqlite3 from 'better-sqlite3';
+import type { Constructor, DynamicModule, InjectionToken, IModule } from './../../nexus/types.js';
 type Database = BetterSqlite3.Database;
 
 /**
@@ -162,7 +163,7 @@ export interface KyseraPluginConfig {
   /**
    * Plugin options
    */
-  options?: Record<string, any>;
+  options?: Record<string, unknown>;
 }
 
 /**
@@ -186,9 +187,9 @@ export interface PluginsConfiguration {
    * Built-in plugins configuration
    */
   builtIn?: {
-    softDelete?: boolean | Record<string, any>;
-    timestamps?: boolean | Record<string, any>;
-    audit?: boolean | Record<string, any>;
+    softDelete?: boolean | Record<string, unknown>;
+    timestamps?: boolean | Record<string, unknown>;
+    audit?: boolean | Record<string, unknown>;
   };
 
   /**
@@ -196,8 +197,8 @@ export interface PluginsConfiguration {
    */
   custom?: Array<{
     name?: string;
-    plugin: string | any;
-    options?: Record<string, any>;
+    plugin: string | KyseraPlugin;
+    options?: Record<string, unknown>;
     enabled?: boolean;
     priority?: number;
     connections?: string[];
@@ -349,11 +350,11 @@ export interface DatabaseModuleOptions {
  * Async options for module initialization
  */
 export interface DatabaseModuleAsyncOptions {
-  imports?: any[];
-  inject?: any[];
-  useFactory?: (...args: any[]) => Promise<DatabaseModuleOptions> | DatabaseModuleOptions;
-  useExisting?: new () => DatabaseOptionsFactory;
-  useClass?: new () => DatabaseOptionsFactory;
+  imports?: Array<Constructor<unknown> | IModule | DynamicModule>;
+  inject?: Array<InjectionToken<unknown>>;
+  useFactory?: (...args: unknown[]) => Promise<DatabaseModuleOptions> | DatabaseModuleOptions;
+  useExisting?: Constructor<DatabaseOptionsFactory>;
+  useClass?: Constructor<DatabaseOptionsFactory>;
   isGlobal?: boolean;
 }
 
@@ -406,7 +407,7 @@ export interface TransactionOptions {
 /**
  * Repository configuration
  */
-export interface RepositoryConfig<Entity = any> {
+export interface RepositoryConfig<Entity = unknown> {
   /**
    * Table name in database
    */
@@ -425,12 +426,12 @@ export interface RepositoryConfig<Entity = any> {
   /**
    * Create schema for validation
    */
-  createSchema?: z.ZodType;
+  createSchema?: z.ZodType<unknown>;
 
   /**
    * Update schema for validation
    */
-  updateSchema?: z.ZodType;
+  updateSchema?: z.ZodType<unknown>;
 
   /**
    * Enable validation
@@ -445,7 +446,7 @@ export interface RepositoryConfig<Entity = any> {
   /**
    * Custom row mapper
    */
-  mapRow?: (row: any) => Entity;
+  mapRow?: (row: Record<string, unknown>) => Entity;
 
   /**
    * Soft delete configuration
@@ -652,7 +653,7 @@ export enum DatabaseEventType {
 /**
  * Database event payload
  */
-export interface DatabaseEvent<T = any> {
+export interface DatabaseEvent<T = unknown> {
   type: DatabaseEventType;
   connection?: string;
   timestamp: Date;
@@ -665,7 +666,7 @@ export interface DatabaseEvent<T = any> {
  */
 export interface QueryContext {
   sql: string;
-  params?: any[];
+  params?: unknown[];
   duration?: number;
   connection?: string;
   transaction?: boolean;
@@ -674,7 +675,7 @@ export interface QueryContext {
 /**
  * Repository base interface
  */
-export interface IRepository<Entity, CreateInput = any, UpdateInput = any> {
+export interface IRepository<Entity, CreateInput = Partial<Entity>, UpdateInput = Partial<Entity>> {
   readonly tableName: string;
   readonly connection: string;
 
@@ -692,25 +693,25 @@ export interface IRepository<Entity, CreateInput = any, UpdateInput = any> {
   deleteMany(conditions: Partial<Entity>): Promise<number>;
 
   // Query builder access
-  query(): any; // Returns Kysely query builder
+  query(): Kysely<unknown>; // Returns Kysely query builder
 
   // Transaction support
-  withTransaction(trx: Transaction<any>): IRepository<Entity, CreateInput, UpdateInput>;
+  withTransaction(trx: Transaction<unknown>): IRepository<Entity, CreateInput, UpdateInput>;
 }
 
 /**
  * Migration interface
  */
 export interface IMigration {
-  up(db: Kysely<any>): Promise<void>;
-  down?(db: Kysely<any>): Promise<void>;
+  up(db: Kysely<unknown>): Promise<void>;
+  down?(db: Kysely<unknown>): Promise<void>;
 }
 
 /**
  * Database manager interface
  */
 export interface IDatabaseManager {
-  getConnection(name?: string): Promise<Kysely<any>>;
+  getConnection(name?: string): Promise<Kysely<unknown>>;
   getPool(name?: string): Pool | mysql.Pool | Database | undefined;
   close(name?: string): Promise<void>;
   closeAll(): Promise<void>;

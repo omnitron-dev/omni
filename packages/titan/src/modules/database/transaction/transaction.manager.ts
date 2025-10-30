@@ -7,7 +7,7 @@
 
 import { Injectable, Inject } from '../../../decorators/index.js';
 import { EventEmitter } from 'events';
-import { Transaction, sql } from 'kysely';
+import { sql } from 'kysely';
 import { v4 as uuidv4 } from 'uuid';
 import { AsyncLocalStorage } from 'async_hooks';
 import { DATABASE_MANAGER } from '../database.constants.js';
@@ -19,6 +19,8 @@ import {
   TransactionPropagation,
   TransactionEventType,
   DEADLOCK_ERROR_CODES,
+  type DatabaseTransaction,
+  type TransactionCallback,
 } from './transaction.types.js';
 import type {
   ITransactionManager,
@@ -32,7 +34,7 @@ import type {
 export class TransactionManager extends EventEmitter implements ITransactionManager {
   private readonly storage = new AsyncLocalStorage<TransactionContext>();
   private readonly transactions = new Map<string, TransactionContext>();
-  private readonly connections = new Map<string, Transaction<any>>();
+  private readonly connections = new Map<string, DatabaseTransaction>();
   private readonly statistics: TransactionStatistics = {
     totalStarted: 0,
     totalCommitted: 0,
@@ -56,7 +58,7 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
   /**
    * Execute function within transaction
    */
-  async executeInTransaction<T>(fn: (trx: Transaction<any>) => Promise<T>, options?: TransactionOptions): Promise<T> {
+  async executeInTransaction<T>(fn: TransactionCallback<T>, options?: TransactionOptions): Promise<T> {
     const opts = { ...this.defaultOptions, ...options };
     const propagation = opts.propagation || TransactionPropagation.REQUIRED;
 
@@ -80,11 +82,11 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
         if (currentContext) {
           return this.executeInExistingTransaction(fn, currentContext, opts);
         }
-        return fn((await this.manager.getConnection(opts.connection)) as any);
+        return fn((await this.manager.getConnection(opts.connection)) as DatabaseTransaction);
 
       case TransactionPropagation.NOT_SUPPORTED:
         // Execute without transaction, suspend current
-        return fn((await this.manager.getConnection(opts.connection)) as any);
+        return fn((await this.manager.getConnection(opts.connection)) as DatabaseTransaction);
 
       case TransactionPropagation.MANDATORY:
         // Must have existing transaction
@@ -104,7 +106,7 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
             message: 'Transaction exists but none allowed',
           });
         }
-        return fn((await this.manager.getConnection(opts.connection)) as any);
+        return fn((await this.manager.getConnection(opts.connection)) as DatabaseTransaction);
 
       case TransactionPropagation.NESTED:
         // Create nested transaction with savepoint
@@ -122,7 +124,7 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
    * Execute in new transaction
    */
   private async executeInNewTransaction<T>(
-    fn: (trx: Transaction<any>) => Promise<T>,
+    fn: TransactionCallback<T>,
     options: TransactionOptions
   ): Promise<T> {
     const connectionName = options.connection || 'default';
@@ -247,7 +249,7 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
    * Execute in existing transaction
    */
   private async executeInExistingTransaction<T>(
-    fn: (trx: Transaction<any>) => Promise<T>,
+    fn: TransactionCallback<T>,
     context: TransactionContext,
     options: TransactionOptions
   ): Promise<T> {
@@ -263,7 +265,7 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
    * Execute in nested transaction with savepoint
    */
   private async executeInNestedTransaction<T>(
-    fn: (trx: Transaction<any>) => Promise<T>,
+    fn: TransactionCallback<T>,
     parentContext: TransactionContext,
     options: TransactionOptions
   ): Promise<T> {
@@ -413,7 +415,7 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
   /**
    * Set transaction isolation level
    */
-  private async setTransactionIsolationLevel(trx: Transaction<any>, level: TransactionIsolationLevel): Promise<void> {
+  private async setTransactionIsolationLevel(trx: DatabaseTransaction, level: TransactionIsolationLevel): Promise<void> {
     const dialect = await this.getDialect();
 
     switch (dialect) {
@@ -435,7 +437,7 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
   /**
    * Set transaction as read-only
    */
-  private async setTransactionReadOnly(trx: Transaction<any>, readOnly: boolean): Promise<void> {
+  private async setTransactionReadOnly(trx: DatabaseTransaction, readOnly: boolean): Promise<void> {
     const dialect = await this.getDialect();
 
     switch (dialect) {
@@ -456,14 +458,14 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
   /**
    * Create savepoint
    */
-  private async createSavepoint(trx: Transaction<any>, name: string): Promise<void> {
+  private async createSavepoint(trx: DatabaseTransaction, name: string): Promise<void> {
     await sql`SAVEPOINT ${sql.ref(name)}`.execute(trx);
   }
 
   /**
    * Release savepoint
    */
-  private async releaseSavepointInternal(trx: Transaction<any>, name: string): Promise<void> {
+  private async releaseSavepointInternal(trx: DatabaseTransaction, name: string): Promise<void> {
     const dialect = await this.getDialect();
 
     // SQLite uses RELEASE instead of RELEASE SAVEPOINT
@@ -477,7 +479,7 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
   /**
    * Rollback to savepoint
    */
-  private async rollbackToSavepointInternal(trx: Transaction<any>, name: string): Promise<void> {
+  private async rollbackToSavepointInternal(trx: DatabaseTransaction, name: string): Promise<void> {
     await sql`ROLLBACK TO SAVEPOINT ${sql.ref(name)}`.execute(trx);
   }
 
@@ -485,7 +487,9 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
    * Check if error is a deadlock error
    */
   private isDeadlockError(error: Error): boolean {
-    const errorCode = (error as any).code || (error as any).errno || '';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const errorObj = error as any;
+    const errorCode = String(errorObj.code || errorObj.errno || '');
     const message = error.message.toLowerCase();
 
     // Check error codes
@@ -503,9 +507,15 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
    * Get database dialect
    */
   private async getDialect(): Promise<DatabaseDialect> {
-    // This would need to be implemented based on your database manager
-    // For now, return a default
-    return 'postgres';
+    // Get the default connection configuration
+    const config = this.manager.getConnectionConfig();
+
+    if (!config) {
+      // If no config is available, default to postgres for backward compatibility
+      return 'postgres';
+    }
+
+    return config.dialect;
   }
 
   /**
@@ -537,7 +547,7 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
     return this.storage.getStore() || null;
   }
 
-  getCurrentTransactionConnection(): Transaction<any> | null {
+  getCurrentTransactionConnection(): DatabaseTransaction | null {
     const context = this.getCurrentTransaction();
     if (!context) return null;
     return this.connections.get(context.id) || null;
@@ -545,7 +555,7 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
 
   async withTransaction<T>(
     connection: string,
-    fn: (trx: Transaction<any>) => Promise<T>,
+    fn: TransactionCallback<T>,
     options?: TransactionOptions
   ): Promise<T> {
     return this.executeInTransaction(fn, { ...options, connection });
@@ -624,7 +634,7 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
           // The commit() or rollback() methods will control the transaction lifecycle
           await new Promise<void>((resolveWait) => {
             // Store the resolver so commit/rollback can call it
-            (context as any)._resolver = resolveWait;
+            (context as unknown as { _resolver: () => void })._resolver = resolveWait;
           });
         })
         .then(() => {
@@ -692,7 +702,7 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
       this.statistics.totalCommitted++;
 
       // Resolve the waiting promise in begin() to let the transaction complete
-      const resolver = (context as any)._resolver;
+      const resolver = (context as unknown as { _resolver?: () => void })._resolver;
       if (resolver) {
         resolver();
       }
@@ -737,7 +747,7 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
       context.state = TransactionState.ROLLED_BACK;
 
       // Reject the waiting promise in begin() to trigger rollback
-      const resolver = (context as any)._resolver;
+      const resolver = (context as unknown as { _resolver?: () => void })._resolver;
       if (resolver) {
         // Throwing an error will cause the transaction to rollback
         throw error || new Error('Transaction manually rolled back');

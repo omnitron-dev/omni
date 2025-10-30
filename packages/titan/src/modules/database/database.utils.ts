@@ -63,6 +63,7 @@ export function getDefaultPort(dialect: DatabaseDialect): number | null {
 /**
  * Check if table exists
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function tableExists(db: Kysely<any>, tableName: string, dialect: DatabaseDialect): Promise<boolean> {
   try {
     switch (dialect) {
@@ -107,6 +108,7 @@ export async function tableExists(db: Kysely<any>, tableName: string, dialect: D
 /**
  * Get table columns
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function getTableColumns(db: Kysely<any>, tableName: string, dialect: DatabaseDialect): Promise<string[]> {
   try {
     switch (dialect) {
@@ -132,7 +134,7 @@ export async function getTableColumns(db: Kysely<any>, tableName: string, dialec
 
       case 'sqlite': {
         const results = await sql.raw(`PRAGMA table_info(${tableName})`).execute(db);
-        return (results.rows as any[]).map((r) => r.name);
+        return (results.rows as Array<{ name: string }>).map((r) => r.name);
       }
 
       default:
@@ -194,9 +196,10 @@ export function formatDate(date: Date, dialect: DatabaseDialect): string {
 /**
  * Check if error is a unique constraint violation
  */
-export function isUniqueConstraintError(error: any, dialect: DatabaseDialect): boolean {
-  const message = error.message?.toLowerCase() || '';
-  const code = error.code || '';
+export function isUniqueConstraintError(error: unknown, dialect: DatabaseDialect): boolean {
+  const errorObj = error as { message?: string; code?: string };
+  const message = errorObj.message?.toLowerCase() || '';
+  const code = errorObj.code || '';
 
   switch (dialect) {
     case 'postgres':
@@ -213,9 +216,10 @@ export function isUniqueConstraintError(error: any, dialect: DatabaseDialect): b
 /**
  * Check if error is a foreign key constraint violation
  */
-export function isForeignKeyError(error: any, dialect: DatabaseDialect): boolean {
-  const message = error.message?.toLowerCase() || '';
-  const code = error.code || '';
+export function isForeignKeyError(error: unknown, dialect: DatabaseDialect): boolean {
+  const errorObj = error as { message?: string; code?: string };
+  const message = errorObj.message?.toLowerCase() || '';
+  const code = errorObj.code || '';
 
   switch (dialect) {
     case 'postgres':
@@ -232,9 +236,10 @@ export function isForeignKeyError(error: any, dialect: DatabaseDialect): boolean
 /**
  * Check if error is a not null constraint violation
  */
-export function isNotNullError(error: any, dialect: DatabaseDialect): boolean {
-  const message = error.message?.toLowerCase() || '';
-  const code = error.code || '';
+export function isNotNullError(error: unknown, dialect: DatabaseDialect): boolean {
+  const errorObj = error as { message?: string; code?: string };
+  const message = errorObj.message?.toLowerCase() || '';
+  const code = errorObj.code || '';
 
   switch (dialect) {
     case 'postgres':
@@ -251,6 +256,7 @@ export function isNotNullError(error: any, dialect: DatabaseDialect): boolean {
 /**
  * Get database size
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function getDatabaseSize(
   db: Kysely<any>,
   dialect: DatabaseDialect,
@@ -263,7 +269,7 @@ export async function getDatabaseSize(
           .raw(`SELECT pg_database_size(${databaseName ? `'${databaseName}'` : 'current_database()'}) as size`)
           .execute(db)
           .then((r) => r.rows?.[0]);
-        return (result as any)?.size || 0;
+        return (result as { size?: number })?.size || 0;
       }
 
       case 'mysql': {
@@ -272,7 +278,7 @@ export async function getDatabaseSize(
           (await sql
             .raw('SELECT DATABASE() as name')
             .execute(db)
-            .then((r) => (r.rows?.[0] as any)?.name));
+            .then((r) => (r.rows?.[0] as { name?: string })?.name));
         const result = await sql
           .raw(
             `
@@ -283,7 +289,7 @@ export async function getDatabaseSize(
           )
           .execute(db)
           .then((r) => r.rows?.[0]);
-        return (result as any)?.size || 0;
+        return (result as { size?: number })?.size || 0;
       }
 
       case 'sqlite': {
@@ -302,6 +308,7 @@ export async function getDatabaseSize(
 /**
  * Truncate all tables (useful for testing)
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function truncateAllTables(
   db: Kysely<any>,
   dialect: DatabaseDialect,
@@ -319,6 +326,7 @@ export async function truncateAllTables(
 /**
  * Get list of tables
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function getTables(db: Kysely<any>, dialect: DatabaseDialect): Promise<string[]> {
   try {
     switch (dialect) {
@@ -363,6 +371,7 @@ async function getTables(db: Kysely<any>, dialect: DatabaseDialect): Promise<str
 /**
  * Truncate a single table
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function truncateTable(db: Kysely<any>, tableName: string, dialect: DatabaseDialect): Promise<void> {
   try {
     switch (dialect) {
@@ -378,6 +387,7 @@ async function truncateTable(db: Kysely<any>, tableName: string, dialect: Databa
         break;
 
       case 'sqlite':
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await db.deleteFrom(tableName as any).execute();
         break;
     }

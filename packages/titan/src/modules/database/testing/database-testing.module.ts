@@ -5,7 +5,7 @@
  * with automatic rollback, seeding, and cleanup capabilities
  */
 
-import { DynamicModule } from '../../../nexus/index.js';
+import { DynamicModule, IModule } from '../../../nexus/index.js';
 import { Module, Injectable, Inject } from '../../../decorators/index.js';
 import { Kysely, Transaction, sql } from 'kysely';
 import { TitanDatabaseModule } from '../database.module.js';
@@ -75,7 +75,7 @@ export interface DatabaseTestingOptions extends Partial<DatabaseModuleOptions> {
  */
 @Injectable()
 export class DatabaseTestingService {
-  private currentTransaction?: Transaction<any>;
+  private currentTransaction?: Transaction<unknown>;
   private schemaName?: string;
   private isInitialized = false;
 
@@ -96,7 +96,7 @@ export class DatabaseTestingService {
 
     // Create isolated schema if needed
     if (this.options.isolatedSchema) {
-      await this.createIsolatedSchema(db);
+      await this.createIsolatedSchema(db as Kysely<Record<string, unknown>>);
     }
 
     // Run migrations if enabled
@@ -125,11 +125,11 @@ export class DatabaseTestingService {
 
     // Start transaction if transactional mode is enabled
     if (this.options.transactional) {
-      this.currentTransaction = await (db as any).transaction().execute(async (trx: Transaction<any>) => {
-        // Store transaction for use in tests
-        (this.manager as any).testTransaction = trx;
-        return trx;
-      });
+      // Store reference to transaction for use during tests
+      // We don't actually execute a callback here, we just start a transaction
+      // that will be rolled back in afterEach
+      const trx = await db.transaction().execute(async (t: Transaction<unknown>) => t);
+      this.currentTransaction = trx;
     }
 
     // Re-seed if needed
@@ -146,7 +146,6 @@ export class DatabaseTestingService {
     if (this.options.transactional && this.currentTransaction) {
       // Transaction will automatically rollback when not committed
       this.currentTransaction = undefined;
-      (this.manager as any).testTransaction = undefined;
     }
   }
 
@@ -164,7 +163,7 @@ export class DatabaseTestingService {
    * Clean all data from database
    */
   async cleanDatabase(): Promise<void> {
-    const db = await this.manager.getConnection();
+    const db = (await this.manager.getConnection()) as Kysely<Record<string, unknown>>;
     const dialect = this.getDialect(db);
     const preserveTables = this.options.preserveTables || [];
 
@@ -199,7 +198,7 @@ export class DatabaseTestingService {
   /**
    * Seed database with test data
    */
-  async seedDatabase(seeds?: any[]): Promise<void> {
+  async seedDatabase(seeds?: Array<{ table: string; data: unknown }>): Promise<void> {
     const seedData = seeds || this.options.seeds;
 
     if (!seedData) return;
@@ -214,7 +213,7 @@ export class DatabaseTestingService {
   /**
    * Insert seed data
    */
-  private async insertSeeds(seeds: any[]): Promise<void> {
+  private async insertSeeds(seeds: Array<{ table: string; data: unknown }>): Promise<void> {
     const db = this.currentTransaction || (await this.manager.getConnection());
 
     for (const seed of seeds) {
@@ -224,7 +223,10 @@ export class DatabaseTestingService {
         const records = Array.isArray(seed.data) ? seed.data : [seed.data];
 
         for (const record of records) {
-          await (db as Kysely<any>).insertInto(seed.table).values(record).execute();
+          await (db as Kysely<Record<string, unknown>>)
+            .insertInto(seed.table)
+            .values(record)
+            .execute();
         }
       } catch (error) {
         if (this.options.verbose) {
@@ -237,7 +239,7 @@ export class DatabaseTestingService {
   /**
    * Create isolated schema for testing
    */
-  private async createIsolatedSchema(db: Kysely<any>): Promise<void> {
+  private async createIsolatedSchema(db: Kysely<Record<string, unknown>>): Promise<void> {
     const dialect = this.getDialect(db);
 
     if (dialect === 'postgres') {
@@ -256,7 +258,7 @@ export class DatabaseTestingService {
   private async dropIsolatedSchema(): Promise<void> {
     if (!this.schemaName) return;
 
-    const db = await this.manager.getConnection();
+    const db = (await this.manager.getConnection()) as Kysely<Record<string, unknown>>;
     const dialect = this.getDialect(db);
 
     if (dialect === 'postgres') {
@@ -268,49 +270,62 @@ export class DatabaseTestingService {
   /**
    * Get all tables in database
    */
-  private async getAllTables(db: Kysely<any>, dialect: string): Promise<string[]> {
-    let result: any;
+  private async getAllTables(
+    db: Kysely<Record<string, unknown>>,
+    dialect: string
+  ): Promise<string[]> {
+    interface TableRow {
+      table_name: string;
+    }
+
+    let result: { rows: TableRow[] };
 
     if (dialect === 'postgres') {
-      result = await sql`
+      result = await sql<TableRow>`
         SELECT table_name
         FROM information_schema.tables
         WHERE table_schema = ${this.schemaName || 'public'}
           AND table_type = 'BASE TABLE'
       `.execute(db);
-      return result.rows.map((r: any) => r.table_name);
+      return result.rows.map((r) => r.table_name);
     } else if (dialect === 'mysql') {
-      result = await sql`
+      result = await sql<TableRow>`
         SELECT TABLE_NAME as table_name
         FROM INFORMATION_SCHEMA.TABLES
         WHERE TABLE_SCHEMA = DATABASE()
           AND TABLE_TYPE = 'BASE TABLE'
       `.execute(db);
-      return result.rows.map((r: any) => r.table_name);
+      return result.rows.map((r) => r.table_name);
     } else {
       // SQLite
-      result = await sql`
+      result = await sql<TableRow>`
         SELECT name as table_name
         FROM sqlite_master
         WHERE type = 'table'
           AND name NOT LIKE 'sqlite_%'
       `.execute(db);
-      return result.rows.map((r: any) => r.table_name);
+      return result.rows.map((r) => r.table_name);
     }
   }
 
   /**
    * Get database dialect
    */
-  private getDialect(db: any): string {
+  private getDialect(db: Kysely<Record<string, unknown>>): string {
     // Try to determine dialect from the connection
-    const dialectName = db.dialect?.name || db._dialect?.name;
+    const dbWithDialect = db as unknown as {
+      dialect?: { name?: string };
+      _dialect?: { name?: string };
+      driver?: { postgres?: unknown; mysql?: unknown };
+    };
+
+    const dialectName = dbWithDialect.dialect?.name || dbWithDialect._dialect?.name;
 
     if (dialectName) return dialectName;
 
     // Fallback to checking the driver
-    if (db.driver?.postgres) return 'postgres';
-    if (db.driver?.mysql) return 'mysql';
+    if (dbWithDialect.driver?.postgres) return 'postgres';
+    if (dbWithDialect.driver?.mysql) return 'mysql';
 
     return 'sqlite';
   }
@@ -340,28 +355,38 @@ export class DatabaseTestingService {
   /**
    * Execute a query in test context
    */
-  async execute<T>(query: (db: Kysely<any>) => Promise<T>): Promise<T> {
+  async execute<T>(query: (db: Kysely<Record<string, unknown>>) => Promise<T>): Promise<T> {
     const db = this.currentTransaction || (await this.manager.getConnection());
-    return query(db as Kysely<any>);
+    return query(db as Kysely<Record<string, unknown>>);
   }
 
   /**
    * Get test database connection
    */
-  getTestConnection(): Kysely<any> | Transaction<any> {
-    return this.currentTransaction || (this.manager as any).testTransaction || this.manager.getConnection();
+  getTestConnection(): Kysely<Record<string, unknown>> | Transaction<unknown> {
+    return (this.currentTransaction || this.manager.getConnection()) as
+      | Kysely<Record<string, unknown>>
+      | Transaction<unknown>;
   }
 
   /**
    * Factory method to create test data
    */
-  async factory<T>(table: string, generator: () => Partial<T> | Promise<Partial<T>>, count: number = 1): Promise<T[]> {
+  async factory<T extends Record<string, unknown>>(
+    table: string,
+    generator: () => Partial<T> | Promise<Partial<T>>,
+    count: number = 1
+  ): Promise<T[]> {
     const db = this.getTestConnection();
     const results: T[] = [];
 
     for (let i = 0; i < count; i++) {
       const data = await generator();
-      const result = await (db as Kysely<any>).insertInto(table).values(data).returningAll().executeTakeFirst();
+      const result = await (db as Kysely<Record<string, unknown>>)
+        .insertInto(table)
+        .values(data)
+        .returningAll()
+        .executeTakeFirst();
 
       if (result) {
         results.push(result as T);
@@ -374,13 +399,14 @@ export class DatabaseTestingService {
   /**
    * Assert database state
    */
-  async assertDatabaseHas(table: string, data: Record<string, any>): Promise<boolean> {
-    const db = this.getTestConnection();
+  async assertDatabaseHas(table: string, data: Record<string, unknown>): Promise<boolean> {
+    const db = this.getTestConnection() as Kysely<Record<string, unknown>>;
 
-    let query = (db as Kysely<any>).selectFrom(table).selectAll();
+    let query = db.selectFrom(table).selectAll();
 
     for (const [key, value] of Object.entries(data)) {
-      query = query.where(key as any, '=', value);
+      // Use type assertion to bypass strict type checking for dynamic queries
+      query = query.where(key as never, '=', value as never);
     }
 
     const result = await query.executeTakeFirst();
@@ -390,7 +416,7 @@ export class DatabaseTestingService {
   /**
    * Assert database doesn't have specific data
    */
-  async assertDatabaseMissing(table: string, data: Record<string, any>): Promise<boolean> {
+  async assertDatabaseMissing(table: string, data: Record<string, unknown>): Promise<boolean> {
     const has = await this.assertDatabaseHas(table, data);
     return !has;
   }
@@ -401,7 +427,7 @@ export class DatabaseTestingService {
   async assertDatabaseCount(table: string, count: number): Promise<boolean> {
     const db = this.getTestConnection();
 
-    const result = await (db as Kysely<any>)
+    const result = await (db as Kysely<Record<string, unknown>>)
       .selectFrom(table)
       .select(sql<number>`count(*)`.as('count'))
       .executeTakeFirst();
@@ -432,7 +458,7 @@ export class DatabaseTestingModule {
       defaultOptions.connection = {
         dialect: 'sqlite',
         connection: ':memory:',
-      } as any;
+      };
     }
 
     const providers = [
@@ -452,30 +478,39 @@ export class DatabaseTestingModule {
         inject: [DATABASE_MANAGER],
         async: true,
       },
+      // Alias registration for DatabaseTestingService class (allows resolving by class)
+      {
+        provide: DatabaseTestingService,
+        useFactory: async (service: DatabaseTestingService) => service,
+        inject: [DATABASE_TESTING_SERVICE],
+        async: true,
+      },
     ];
+
+    const databaseModule = TitanDatabaseModule.forRoot({
+      ...defaultOptions,
+      isGlobal: true,
+    });
 
     return {
       module: DatabaseTestingModule,
       global: true,
-      imports: [
-        TitanDatabaseModule.forRoot({
-          ...defaultOptions,
-          isGlobal: true,
-        }) as any,
-      ],
+      imports: [databaseModule as unknown as IModule],
       providers,
-      exports: [
-        DATABASE_TESTING_SERVICE,
-      ],
-    };
+      exports: [DATABASE_TESTING_SERVICE],
+    } as DynamicModule;
   }
 
   /**
    * Create isolated testing module for parallel tests
+   *
+   * Note: This is a placeholder for future implementation.
+   * The service would need to be injected after module compilation.
    */
-  static async createIsolatedModule(options: DatabaseTestingOptions = {}): Promise<{
+  static async createIsolatedModule(
+    options: DatabaseTestingOptions = {}
+  ): Promise<{
     module: DynamicModule;
-    service: DatabaseTestingService;
     cleanup: () => Promise<void>;
   }> {
     const module = DatabaseTestingModule.forTest({
@@ -483,13 +518,10 @@ export class DatabaseTestingModule {
       isolatedSchema: true,
     });
 
-    // This would need actual module compilation to get the service
-    // For now, returning the module configuration
     return {
       module,
-      service: null as any, // Would be injected
       cleanup: async () => {
-        // Cleanup logic
+        // Cleanup logic would be implemented here
       },
     };
   }

@@ -28,6 +28,8 @@ import type {
   RepositoryTransactionScope,
 } from './repository.types.js';
 import type { RepositoryConstructor } from '../database.internal-types.js';
+import type { Logger } from '../database.internal-types.js';
+import { createDefaultLogger } from '../utils/logger.factory.js';
 
 /**
  * Repository Factory Service
@@ -40,6 +42,7 @@ export class RepositoryFactory implements IRepositoryFactory {
   private metadata: Map<RepositoryConstructor, RepositoryMetadata> = new Map();
   private plugins: Map<string, KyseraPlugin> = new Map();
   private config: RepositoryFactoryConfig;
+  private logger: Logger;
 
   constructor(
     private manager: DatabaseManager,
@@ -47,6 +50,7 @@ export class RepositoryFactory implements IRepositoryFactory {
     private pluginManager?: PluginManager
   ) {
     this.config = config || {};
+    this.logger = createDefaultLogger('RepositoryFactory');
 
     // Only initialize built-in plugins if no plugin manager is provided
     if (!this.pluginManager) {
@@ -401,7 +405,7 @@ export class RepositoryFactory implements IRepositoryFactory {
       const pluginInstance = typeof plugin === 'string' ? this.plugins.get(plugin) : plugin;
 
       if (!pluginInstance) {
-        console.warn(`Plugin "${plugin}" not found`);
+        this.logger.warn(`Plugin "${plugin}" not found`);
         continue;
       }
 

@@ -39,11 +39,19 @@ interface ConnectionInfo {
   connected: boolean;
   connecting: boolean;
   lastError?: Error;
+  retryCount: number;
   metrics: {
     queryCount: number;
     errorCount: number;
     totalQueryTime: number;
   };
+}
+
+interface RetryConfig {
+  maxRetries: number;
+  baseDelayMs: number;
+  maxDelayMs: number;
+  timeoutMs: number;
 }
 
 @Injectable()
@@ -53,6 +61,13 @@ export class DatabaseManager implements IDatabaseManager {
   private logger: Logger;
   private options: DatabaseModuleOptions;
   private shutdownInProgress = false;
+  private initialized = false;
+  private readonly defaultRetryConfig: RetryConfig = {
+    maxRetries: 5,
+    baseDelayMs: 1000,
+    maxDelayMs: 16000,
+    timeoutMs: 30000,
+  };
 
   constructor(options: DatabaseModuleOptions = {}, logger?: Logger) {
     this.options = options;
@@ -64,18 +79,25 @@ export class DatabaseManager implements IDatabaseManager {
    * Initialize the database manager
    */
   async init(): Promise<void> {
+    // Make init idempotent - only initialize once
+    if (this.initialized) {
+      this.logger.debug('Database manager already initialized, skipping');
+      return;
+    }
+
     this.logger.info('Initializing database manager');
 
     // Setup connections from configuration
     const connections = this.getConnectionConfigs();
 
     for (const [name, config] of Object.entries(connections)) {
-      await this.createConnection(name, config);
+      await this.createConnectionWithRetry(name, config);
     }
 
     // Register shutdown handlers
     this.registerShutdownHandlers();
 
+    this.initialized = true;
     this.logger.info({ connectionCount: this.connections.size }, 'Database manager initialized');
   }
 
@@ -113,6 +135,65 @@ export class DatabaseManager implements IDatabaseManager {
   }
 
   /**
+   * Create a database connection with retry logic
+   */
+  private async createConnectionWithRetry(name: string, config: DatabaseConnection): Promise<ConnectionInfo> {
+    const retryConfig = this.defaultRetryConfig;
+    let lastError: Error | undefined;
+
+    for (let attempt = 0; attempt <= retryConfig.maxRetries; attempt++) {
+      try {
+        this.logger.debug(
+          { name, attempt, maxRetries: retryConfig.maxRetries },
+          'Attempting database connection'
+        );
+
+        const info = await this.createConnection(name, config);
+
+        if (attempt > 0) {
+          this.logger.info(
+            { name, attempt, totalRetries: attempt },
+            'Database connection established after retries'
+          );
+        }
+
+        return info;
+      } catch (error) {
+        lastError = error as Error;
+        const isLastAttempt = attempt === retryConfig.maxRetries;
+
+        if (isLastAttempt) {
+          this.logger.error(
+            { name, attempt, error: lastError },
+            'Database connection failed after all retries'
+          );
+          break;
+        }
+
+        // Calculate exponential backoff delay: 1s, 2s, 4s, 8s, 16s
+        const delayMs = Math.min(
+          retryConfig.baseDelayMs * Math.pow(2, attempt),
+          retryConfig.maxDelayMs
+        );
+
+        this.logger.warn(
+          { name, attempt, nextRetryIn: delayMs, error: lastError.message },
+          'Database connection failed, retrying'
+        );
+
+        await this.sleep(delayMs);
+      }
+    }
+
+    // All retries exhausted
+    throw new TitanError({
+      code: ErrorCode.SERVICE_UNAVAILABLE,
+      message: `Database connection ${name} failed after ${retryConfig.maxRetries} retries: ${lastError?.message}`,
+      details: { connection: name, error: lastError?.message, maxRetries: retryConfig.maxRetries },
+    });
+  }
+
+  /**
    * Create a database connection
    */
   private async createConnection(name: string, config: DatabaseConnection): Promise<ConnectionInfo> {
@@ -125,6 +206,7 @@ export class DatabaseManager implements IDatabaseManager {
       pool: undefined,
       connected: false,
       connecting: true,
+      retryCount: 0,
       metrics: {
         queryCount: 0,
         errorCount: 0,
@@ -138,8 +220,14 @@ export class DatabaseManager implements IDatabaseManager {
       info.instance = instance;
       info.pool = pool;
 
-      // Test connection
+      // Test connection with health check
       await this.testConnection(instance, config.dialect);
+
+      // Validate connection health before marking as connected
+      const isHealthy = await this.validateConnectionHealth(instance, config.dialect);
+      if (!isHealthy) {
+        throw new Error('Connection health check failed');
+      }
 
       info.connected = true;
       info.connecting = false;
@@ -202,10 +290,30 @@ export class DatabaseManager implements IDatabaseManager {
           ...config.pool,
         });
 
-        // Add error handler to prevent unhandled promise rejections
-        pool.on('error', (err) => {
+        // Add comprehensive error handlers
+        pool.on('error', (err, client) => {
           // Log the error but don't throw - this handles connection termination errors
-          this.logger.error({ error: err }, 'PostgreSQL pool error');
+          this.logger.error({ error: err, client: client ? 'present' : 'none' }, 'PostgreSQL pool error');
+
+          // Emit error event for monitoring
+          this.emitEvent({
+            type: DATABASE_EVENTS.ERROR as DatabaseEventType,
+            connection: config.name || DATABASE_DEFAULT_CONNECTION,
+            timestamp: new Date(),
+            error: err,
+          });
+        });
+
+        pool.on('connect', (client) => {
+          this.logger.debug('PostgreSQL pool client connected');
+        });
+
+        pool.on('acquire', (client) => {
+          this.logger.debug('PostgreSQL pool client acquired');
+        });
+
+        pool.on('remove', (client) => {
+          this.logger.debug('PostgreSQL pool client removed');
         });
 
         const dialect = new PostgresDialect({ pool });
@@ -224,14 +332,45 @@ export class DatabaseManager implements IDatabaseManager {
           delete mysqlConfig['ssl'];
         }
 
+        // MySQL2 uses different pool parameter names than PostgreSQL
+        // Map PostgreSQL-style pool config to MySQL2 format
+        const mysqlPoolConfig = {
+          connectionLimit: config.pool?.max || DEFAULT_POOL_CONFIG.max,
+          waitForConnections: true,
+          queueLimit: 0,
+          // MySQL2 connection timeout (in milliseconds)
+          connectTimeout: DEFAULT_POOL_CONFIG.createTimeoutMillis,
+        };
+
         const pool = mysql.createPool({
           ...mysqlConfig,
-          ...DEFAULT_POOL_CONFIG,
-          ...config.pool,
-          waitForConnections: true,
-          connectionLimit: config.pool?.max || DEFAULT_POOL_CONFIG.max,
-          queueLimit: 0,
+          ...mysqlPoolConfig,
         } as mysql.PoolOptions);
+
+        // Add error handlers for MySQL pool
+        pool.on('error', (err) => {
+          this.logger.error({ error: err }, 'MySQL pool error');
+
+          // Emit error event for monitoring
+          this.emitEvent({
+            type: DATABASE_EVENTS.ERROR as DatabaseEventType,
+            connection: config.name || DATABASE_DEFAULT_CONNECTION,
+            timestamp: new Date(),
+            error: err,
+          });
+        });
+
+        pool.on('connection', (connection) => {
+          this.logger.debug('MySQL pool connection established');
+        });
+
+        pool.on('acquire', (connection) => {
+          this.logger.debug('MySQL pool connection acquired');
+        });
+
+        pool.on('release', (connection) => {
+          this.logger.debug('MySQL pool connection released');
+        });
 
         const dialect = new MysqlDialect({ pool });
         const instance = new Kysely<unknown>({
@@ -293,9 +432,20 @@ export class DatabaseManager implements IDatabaseManager {
     }
 
     // If connection is not a string, it should be an object
-    const connConfig = config.connection as Partial<ParsedConnectionConfig>;
+    const connConfig = config.connection as Partial<ParsedConnectionConfig> | undefined;
+
+    // Handle undefined connection object
+    if (!connConfig) {
+      // For SQLite, return a default memory database
+      if (config.dialect === 'sqlite') {
+        return { database: ':memory:' };
+      }
+      // For network databases, require at least a database name
+      throw new Error(`Connection configuration is required for ${config.dialect}`);
+    }
+
     return {
-      database: connConfig.database || 'postgres',
+      database: connConfig.database || (config.dialect === 'sqlite' ? ':memory:' : 'postgres'),
       host: connConfig.host,
       port: connConfig.port,
       user: connConfig.user,
@@ -322,6 +472,41 @@ export class DatabaseManager implements IDatabaseManager {
         : sql`SELECT 1`.execute(db);
 
     await Promise.race([testQuery, timeoutPromise]);
+  }
+
+  /**
+   * Validate connection health
+   */
+  private async validateConnectionHealth(db: Kysely<unknown>, dialect: DatabaseDialect): Promise<boolean> {
+    try {
+      const timeout = 5000; // 5 second timeout for health check
+      const timeoutPromise = new Promise<boolean>((_, reject) =>
+        setTimeout(() => reject(new Error('Health check timeout')), timeout)
+      );
+
+      const healthCheckPromise = (async () => {
+        // Perform a simple query to validate connection
+        const testQuery =
+          dialect === 'sqlite'
+            ? (db as unknown as Kysely<Record<string, unknown>>).selectFrom('sqlite_master' as unknown as never).select('name' as unknown as never).limit(1).execute()
+            : sql`SELECT 1 AS health_check`.execute(db);
+
+        await testQuery;
+        return true;
+      })();
+
+      return await Promise.race([healthCheckPromise, timeoutPromise]);
+    } catch (error) {
+      this.logger.error({ error }, 'Connection health check failed');
+      return false;
+    }
+  }
+
+  /**
+   * Sleep utility for retry delays
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**
@@ -364,7 +549,12 @@ export class DatabaseManager implements IDatabaseManager {
     }
 
     this.logger.info({ name }, 'Attempting to reconnect to database');
-    await this.createConnection(name, info.config);
+
+    // Increment retry count
+    info.retryCount++;
+
+    // Use retry logic for reconnection
+    await this.createConnectionWithRetry(name, info.config);
   }
 
   /**

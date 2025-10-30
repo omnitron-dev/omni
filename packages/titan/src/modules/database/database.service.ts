@@ -25,30 +25,26 @@ import type {
   QueryContext,
   DatabaseEventType,
 } from './database.types.js';
+import type { Logger, DatabaseError } from './database.internal-types.js';
+import { isDatabaseError } from './database.internal-types.js';
+import { createDefaultLogger } from './utils/logger.factory.js';
 
 @Injectable()
 export class DatabaseService {
-  private logger: any;
+  private logger: Logger;
 
   constructor(
     @Inject(DATABASE_MANAGER) private manager: DatabaseManager,
     private eventsService?: EventsService
   ) {
     // Create a console logger for proper output
-    this.logger = {
-      info: (...args: any[]) => console.info('[DatabaseService]', ...args),
-      error: (...args: any[]) => console.error('[DatabaseService]', ...args),
-      warn: (...args: any[]) => console.warn('[DatabaseService]', ...args),
-      debug: (...args: any[]) => console.debug('[DatabaseService]', ...args),
-      trace: (...args: any[]) => console.trace('[DatabaseService]', ...args),
-      fatal: (...args: any[]) => console.error('[DatabaseService] FATAL:', ...args),
-    };
+    this.logger = createDefaultLogger('DatabaseService');
   }
 
   /**
    * Get a database connection
    */
-  async getConnection(name?: string): Promise<Kysely<any>> {
+  async getConnection(name?: string): Promise<Kysely<unknown>> {
     return this.manager.getConnection(name);
   }
 
@@ -56,7 +52,7 @@ export class DatabaseService {
    * Execute a query with metrics and event tracking
    */
   async executeQuery<T>(
-    queryFn: (db: Kysely<any>) => Promise<T>,
+    queryFn: (db: Kysely<unknown>) => Promise<T>,
     options: {
       connection?: string;
       timeout?: number;
@@ -95,7 +91,7 @@ export class DatabaseService {
   /**
    * Execute a transaction
    */
-  async transaction<T>(fn: (trx: Transaction<any>) => Promise<T>, options: TransactionOptions = {}): Promise<T> {
+  async transaction<T>(fn: (trx: Transaction<unknown>) => Promise<T>, options: TransactionOptions = {}): Promise<T> {
     const connectionName = options.connection || DATABASE_DEFAULT_CONNECTION;
     const db = await this.getConnection(connectionName);
 
@@ -138,8 +134,8 @@ export class DatabaseService {
 
         // Try to parse as database error only if it looks like a DB error
         // parseDatabaseError can throw for non-database errors
-        let dbError: any = error;
-        if (error && typeof error === 'object' && ('code' in error || 'sqlState' in error || 'errno' in error)) {
+        let dbError: unknown = error;
+        if (isDatabaseError(error)) {
           try {
             dbError = parseDatabaseError(error);
           } catch {
@@ -175,7 +171,8 @@ export class DatabaseService {
    * Paginate query results (offset-based)
    */
   async paginate<T>(
-    query: any, // Kysely SelectQueryBuilder
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    query: any,
     options: PaginationOptions = {}
   ): Promise<PaginatedResult<T>> {
     const paginateOptions: KyseraPaginateOptions = {
@@ -184,15 +181,20 @@ export class DatabaseService {
     };
 
     const result = (await kyseraPaginate(query, paginateOptions)) as KyseraPaginatedResult<T>;
+    const resultData = result as unknown as Record<string, any>;
+    const page = resultData['page'] as number || options.page || 1;
+    const limit = resultData['limit'] as number || options.limit || 20;
+    const total = resultData['total'] as number | undefined;
+    const totalPages = resultData['totalPages'] as number | undefined;
 
     return {
       data: result.data,
       pagination: {
-        page: (result as any).page || options.page || 1,
-        limit: (result as any).limit || options.limit || 20,
-        total: (result as any).total,
-        totalPages: (result as any).totalPages,
-        hasMore: (result as any).page < (result as any).totalPages,
+        page,
+        limit,
+        total,
+        totalPages,
+        hasMore: totalPages ? page < totalPages : false,
       },
     };
   }
@@ -201,27 +203,31 @@ export class DatabaseService {
    * Paginate query results (cursor-based)
    */
   async paginateCursor<T>(
-    query: any, // Kysely SelectQueryBuilder
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    query: any,
     options: PaginationOptions = {}
   ): Promise<PaginatedResult<T>> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const cursorOptions: KyseraCursorOptions<any> = {
       limit: options.limit || 20,
       cursor: options.cursor,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       orderBy: options.orderBy?.map((o) => ({
         column: o.column as any,
         direction: o.direction,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       })) || [{ column: 'id' as any, direction: 'asc' }],
     };
 
-    const result = (await kyseraPaginateCursor(query, cursorOptions)) as any;
+    const result = (await kyseraPaginateCursor(query, cursorOptions)) as unknown as Record<string, unknown>;
 
     return {
-      data: result.data,
+      data: ((result['data'] as T[]) || []),
       pagination: {
-        limit: result.limit,
-        hasMore: result.hasMore,
-        nextCursor: result.nextCursor,
-        prevCursor: result.prevCursor,
+        limit: ((result['limit'] as number) || (options.limit || 20)),
+        hasMore: ((result['hasMore'] as boolean) || false),
+        nextCursor: ((result['nextCursor'] as string | undefined) || undefined),
+        prevCursor: ((result['prevCursor'] as string | undefined) || undefined),
       },
     };
   }
@@ -229,7 +235,7 @@ export class DatabaseService {
   /**
    * Execute raw SQL query
    */
-  async raw<T = any>(sqlString: string, params?: any[], connection?: string): Promise<T> {
+  async raw<T = unknown>(sqlString: string, params?: unknown[], connection?: string): Promise<T> {
     const db = await this.getConnection(connection);
 
     // If no parameters, execute directly
@@ -275,7 +281,8 @@ export class DatabaseService {
     // Build the SQL with bound parameters for MySQL/SQLite
     let boundQuery = sql`${sql.raw(parts[0] || '')}`;
     for (let i = 0; i < params.length; i++) {
-      boundQuery = sql`${boundQuery}${sql.literal(params[i])}${sql.raw(parts[i + 1] || '')}`;
+      const param = params[i];
+      boundQuery = sql`${boundQuery}${sql.literal(param)}${sql.raw(parts[i + 1] || '')}`;
     }
 
     const result = await boundQuery.execute(db);
@@ -285,7 +292,7 @@ export class DatabaseService {
   /**
    * Begin explicit transaction (for manual control)
    */
-  async beginTransaction(connection?: string): Promise<Transaction<any>> {
+  async beginTransaction(connection?: string): Promise<Transaction<unknown>> {
     const db = await this.getConnection(connection);
     return await db.transaction().execute(async (trx) => trx);
   }
@@ -321,14 +328,14 @@ export class DatabaseService {
   /**
    * Get connection metrics
    */
-  getMetrics(connection?: string): Record<string, any> {
+  getMetrics(connection?: string): Record<string, unknown> {
     return this.manager.getMetrics(connection);
   }
 
   /**
    * Set transaction isolation level
    */
-  private async setTransactionIsolationLevel(trx: Transaction<any>, level: string): Promise<void> {
+  private async setTransactionIsolationLevel(trx: Transaction<unknown>, level: string): Promise<void> {
     // This is database-specific
     // PostgreSQL: SET TRANSACTION ISOLATION LEVEL ...
     // MySQL: SET TRANSACTION ISOLATION LEVEL ...
@@ -340,13 +347,17 @@ export class DatabaseService {
   /**
    * Check if error is a deadlock error
    */
-  private isDeadlockError(error: any): boolean {
-    const message = error.message?.toLowerCase() || '';
+  private isDeadlockError(error: unknown): boolean {
+    if (!error || typeof error !== 'object') {
+      return false;
+    }
+    const errorObj = error as Record<string, unknown>;
+    const message = (errorObj['message'] as string)?.toLowerCase() || '';
     return (
       message.includes('deadlock') ||
       message.includes('lock wait timeout') ||
-      error.code === '40P01' || // PostgreSQL deadlock
-      error.code === '1213' // MySQL deadlock
+      errorObj['code'] === '40P01' || // PostgreSQL deadlock
+      errorObj['code'] === '1213' // MySQL deadlock
     );
   }
 
@@ -401,7 +412,7 @@ export class DatabaseService {
   /**
    * Track query error
    */
-  private async trackQueryError(connection: string, error: any, duration: number): Promise<void> {
+  private async trackQueryError(connection: string, error: unknown, duration: number): Promise<void> {
     this.logger.error({ connection, error, duration }, 'Query execution failed');
 
     await this.emitEvent(DATABASE_EVENTS.ERROR as DatabaseEventType, {
@@ -416,7 +427,7 @@ export class DatabaseService {
    */
   private async emitEvent(
     type: DatabaseEventType,
-    data: Partial<Omit<QueryContext, 'type'>> & { error?: any; data?: any }
+    data: Partial<Omit<QueryContext, 'type'>> & { error?: unknown; data?: unknown }
   ): Promise<void> {
     if (this.eventsService) {
       await this.eventsService.emit(type, {

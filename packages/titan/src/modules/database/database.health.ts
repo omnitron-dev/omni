@@ -24,10 +24,12 @@ import type {
   MigrationHealthStatus,
   DatabaseMetrics,
 } from './database.types.js';
+import type { Logger } from './database.internal-types.js';
+import { createDefaultLogger } from './utils/logger.factory.js';
 
 @Injectable()
 export class DatabaseHealthIndicator {
-  private logger: any;
+  private logger: Logger;
   private queryPerformanceMetrics: Map<
     string,
     {
@@ -43,15 +45,8 @@ export class DatabaseHealthIndicator {
     @Inject(DATABASE_MIGRATION_SERVICE) private migrationService?: MigrationService,
     @Inject(DATABASE_TRANSACTION_MANAGER) private transactionManager?: TransactionManager
   ) {
-    // Create a console logger for proper output
-    this.logger = {
-      info: (...args: any[]) => console.info('[DatabaseHealth]', ...args),
-      error: (...args: any[]) => console.error('[DatabaseHealth]', ...args),
-      warn: (...args: any[]) => console.warn('[DatabaseHealth]', ...args),
-      debug: (...args: any[]) => console.debug('[DatabaseHealth]', ...args),
-      trace: (...args: any[]) => console.trace('[DatabaseHealth]', ...args),
-      fatal: (...args: any[]) => console.error('[DatabaseHealth] FATAL:', ...args),
-    };
+    // Initialize logger with proper Logger interface
+    this.logger = createDefaultLogger('DatabaseHealthIndicator');
     this.initializeMetricsCollection();
   }
 
@@ -67,7 +62,7 @@ export class DatabaseHealthIndicator {
   /**
    * Record query performance metrics
    */
-  private recordQueryMetrics(event: { connection: string; duration: number; error?: any }): void {
+  private recordQueryMetrics(event: { connection: string; duration: number; error?: unknown }): void {
     const metrics = this.queryPerformanceMetrics.get(event.connection) || {
       count: 0,
       totalTime: 0,
@@ -183,7 +178,7 @@ export class DatabaseHealthIndicator {
   /**
    * Get pool statistics
    */
-  private async getPoolStatistics(pool: any): Promise<ConnectionHealthStatus['pool'] | undefined> {
+  private async getPoolStatistics(pool: unknown): Promise<ConnectionHealthStatus['pool'] | undefined> {
     if (!pool) {
       return undefined;
     }
@@ -206,12 +201,13 @@ export class DatabaseHealthIndicator {
       }
 
       // MySQL pool
-      if (pool && typeof pool._allConnections !== 'undefined') {
+      if (pool && typeof (pool as { _allConnections?: unknown })._allConnections !== 'undefined') {
         const mysqlPool = pool as mysql.Pool;
         // MySQL pool statistics are not directly accessible
         // This is a simplified version
+        const allConnections = (mysqlPool as unknown as { _allConnections?: unknown[] })._allConnections;
         return {
-          total: (mysqlPool as any)._allConnections?.length || 0,
+          total: allConnections?.length || 0,
           active: 0, // Would need custom tracking
           idle: 0,
           waiting: 0,
@@ -260,9 +256,19 @@ export class DatabaseHealthIndicator {
   /**
    * Get transaction statistics
    */
-  private getTransactionStatistics(): any {
+  private getTransactionStatistics(): {
+    total: number;
+    committed: number;
+    rolledBack: number;
+    active: number;
+    averageDuration: number;
+    maxDuration: number;
+    deadlockRetries: number;
+    errors: number;
+    nested: number;
+  } | undefined {
     if (!this.transactionManager) {
-      return null;
+      return undefined;
     }
 
     try {
@@ -279,7 +285,7 @@ export class DatabaseHealthIndicator {
         nested: stats.nestedTransactions,
       };
     } catch (error) {
-      return null;
+      return undefined;
     }
   }
 
@@ -303,9 +309,10 @@ export class DatabaseHealthIndicator {
 
     // Aggregate base metrics from manager
     for (const metrics of Object.values(allMetrics)) {
-      aggregated.queryCount += metrics.queryCount || 0;
-      aggregated.errorCount += metrics.errorCount || 0;
-      totalQueryTime += metrics.totalQueryTime || 0;
+      const metricsObj = metrics as unknown as Record<string, unknown>;
+      aggregated.queryCount += (metricsObj['queryCount'] as number) || 0;
+      aggregated.errorCount += (metricsObj['errorCount'] as number) || 0;
+      totalQueryTime += (metricsObj['totalQueryTime'] as number) || 0;
     }
 
     // Add performance metrics collected locally

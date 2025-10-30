@@ -28,13 +28,15 @@ import type {
 } from './migration.types.js';
 import { MigrationLock } from './migration.lock.js';
 import { MigrationProvider } from './migration.provider.js';
+import type { Logger } from '../database.internal-types.js';
+import { createDefaultLogger } from '../utils/logger.factory.js';
 
 @Injectable()
 export class MigrationService extends EventEmitter {
   private config: MigrationConfig;
   private provider: IMigrationProvider;
   private lock: IMigrationLock;
-  private logger: any;
+  private logger: Logger;
 
   constructor(
     @Inject(DATABASE_MANAGER) private manager: IDatabaseManager,
@@ -65,8 +67,8 @@ export class MigrationService extends EventEmitter {
       timeout: this.config.lockTimeout!,
     });
 
-    // Simple logger (replace with Titan logger when available)
-    this.logger = console;
+    // Initialize logger with proper Logger interface
+    this.logger = createDefaultLogger('MigrationService');
   }
 
   /**
@@ -74,38 +76,106 @@ export class MigrationService extends EventEmitter {
    */
   async init(connection?: string): Promise<void> {
     const db = await this.manager.getConnection(connection);
+    const config = this.manager.getConnectionConfig(connection);
 
-    // Create migrations table
-    await sql`
-      CREATE TABLE IF NOT EXISTS ${sql.table(this.config.tableName!)} (
-        id SERIAL PRIMARY KEY,
-        version VARCHAR(255) NOT NULL UNIQUE,
-        name VARCHAR(255) NOT NULL,
-        description TEXT,
-        applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        execution_time INTEGER NOT NULL,
-        checksum VARCHAR(64),
-        metadata JSONB
-      )
-    `.execute(db);
+    if (!config) {
+      throw new Error('Unable to determine database configuration');
+    }
 
-    // Create lock table
-    await sql`
-      CREATE TABLE IF NOT EXISTS ${sql.table(this.config.lockTableName!)} (
-        id INTEGER PRIMARY KEY DEFAULT 1,
-        is_locked BOOLEAN NOT NULL DEFAULT FALSE,
-        locked_at TIMESTAMP,
-        locked_by VARCHAR(255),
-        CHECK (id = 1)
-      )
-    `.execute(db);
+    const dialect = config.dialect;
 
-    // Insert default lock record if not exists
-    await sql`
-      INSERT INTO ${sql.table(this.config.lockTableName!)} (id, is_locked)
-      VALUES (1, FALSE)
-      ON CONFLICT (id) DO NOTHING
-    `.execute(db);
+    // Create migrations table with dialect-specific syntax
+    if (dialect === 'sqlite') {
+      await sql`
+        CREATE TABLE IF NOT EXISTS ${sql.table(this.config.tableName!)} (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          version VARCHAR(255) NOT NULL UNIQUE,
+          name VARCHAR(255) NOT NULL,
+          description TEXT,
+          applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          execution_time INTEGER NOT NULL,
+          checksum VARCHAR(64),
+          metadata TEXT
+        )
+      `.execute(db);
+    } else if (dialect === 'postgres') {
+      await sql`
+        CREATE TABLE IF NOT EXISTS ${sql.table(this.config.tableName!)} (
+          id SERIAL PRIMARY KEY,
+          version VARCHAR(255) NOT NULL UNIQUE,
+          name VARCHAR(255) NOT NULL,
+          description TEXT,
+          applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          execution_time INTEGER NOT NULL,
+          checksum VARCHAR(64),
+          metadata JSONB
+        )
+      `.execute(db);
+    } else if (dialect === 'mysql') {
+      await sql`
+        CREATE TABLE IF NOT EXISTS ${sql.table(this.config.tableName!)} (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          version VARCHAR(255) NOT NULL UNIQUE,
+          name VARCHAR(255) NOT NULL,
+          description TEXT,
+          applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          execution_time INT NOT NULL,
+          checksum VARCHAR(64),
+          metadata JSON
+        )
+      `.execute(db);
+    }
+
+    // Create lock table with dialect-specific syntax
+    if (dialect === 'sqlite') {
+      await sql`
+        CREATE TABLE IF NOT EXISTS ${sql.table(this.config.lockTableName!)} (
+          id INTEGER PRIMARY KEY CHECK (id = 1),
+          is_locked INTEGER NOT NULL DEFAULT 0,
+          locked_at TEXT,
+          locked_by VARCHAR(255)
+        )
+      `.execute(db);
+
+      // Insert default lock record if not exists (SQLite specific)
+      await sql`
+        INSERT OR IGNORE INTO ${sql.table(this.config.lockTableName!)} (id, is_locked)
+        VALUES (1, 0)
+      `.execute(db);
+    } else if (dialect === 'postgres') {
+      await sql`
+        CREATE TABLE IF NOT EXISTS ${sql.table(this.config.lockTableName!)} (
+          id INTEGER PRIMARY KEY DEFAULT 1,
+          is_locked BOOLEAN NOT NULL DEFAULT FALSE,
+          locked_at TIMESTAMP,
+          locked_by VARCHAR(255),
+          CHECK (id = 1)
+        )
+      `.execute(db);
+
+      // Insert default lock record if not exists (PostgreSQL specific)
+      await sql`
+        INSERT INTO ${sql.table(this.config.lockTableName!)} (id, is_locked)
+        VALUES (1, FALSE)
+        ON CONFLICT (id) DO NOTHING
+      `.execute(db);
+    } else if (dialect === 'mysql') {
+      await sql`
+        CREATE TABLE IF NOT EXISTS ${sql.table(this.config.lockTableName!)} (
+          id INT PRIMARY KEY DEFAULT 1,
+          is_locked BOOLEAN NOT NULL DEFAULT FALSE,
+          locked_at TIMESTAMP NULL,
+          locked_by VARCHAR(255),
+          CHECK (id = 1)
+        )
+      `.execute(db);
+
+      // Insert default lock record if not exists (MySQL specific)
+      await sql`
+        INSERT IGNORE INTO ${sql.table(this.config.lockTableName!)} (id, is_locked)
+        VALUES (1, FALSE)
+      `.execute(db);
+    }
   }
 
   /**
@@ -127,6 +197,8 @@ export class MigrationService extends EventEmitter {
 
     const startTime = Date.now();
 
+    let lockAcquired = false;
+
     try {
       // Acquire lock
       if (!opts.dryRun) {
@@ -134,6 +206,7 @@ export class MigrationService extends EventEmitter {
         if (!acquired) {
           throw Errors.conflict('Could not acquire migration lock');
         }
+        lockAcquired = true;
         this.emit('lock.acquired' as MigrationEventType);
       }
 
@@ -178,10 +251,14 @@ export class MigrationService extends EventEmitter {
       result.totalTime = Date.now() - startTime;
       throw error;
     } finally {
-      // Release lock
-      if (!opts.dryRun) {
-        await this.lock.release();
-        this.emit('lock.released' as MigrationEventType);
+      // Release lock only if we acquired it
+      if (lockAcquired && !opts.dryRun) {
+        try {
+          await this.lock.release();
+          this.emit('lock.released' as MigrationEventType);
+        } catch (releaseError) {
+          this.logger.error('Error releasing lock:', releaseError);
+        }
       }
     }
   }
@@ -206,6 +283,8 @@ export class MigrationService extends EventEmitter {
 
     const startTime = Date.now();
 
+    let lockAcquired = false;
+
     try {
       // Acquire lock
       if (!opts.dryRun) {
@@ -213,6 +292,7 @@ export class MigrationService extends EventEmitter {
         if (!acquired) {
           throw Errors.conflict('Could not acquire migration lock');
         }
+        lockAcquired = true;
         this.emit('lock.acquired' as MigrationEventType);
       }
 
@@ -222,11 +302,15 @@ export class MigrationService extends EventEmitter {
 
       // Determine what to rollback
       if (opts.targetVersion) {
-        const targetIndex = toRollback.findIndex((m) => m.version === opts.targetVersion);
+        // Find the index of the target version in the applied list (not reversed)
+        const targetIndex = status.applied.findIndex((m) => m.version === opts.targetVersion);
         if (targetIndex === -1) {
           throw Errors.notFound('Target version', opts.targetVersion);
         }
-        toRollback = toRollback.slice(0, targetIndex);
+        // Rollback all migrations after the target version
+        // If we have [001, 002, 003] and target is 002, we rollback [003, 002]
+        // So we take all migrations after and including the target, then reverse
+        toRollback = status.applied.slice(targetIndex).reverse();
       } else if (opts.steps) {
         toRollback = toRollback.slice(0, opts.steps);
       }
@@ -268,10 +352,14 @@ export class MigrationService extends EventEmitter {
       result.totalTime = Date.now() - startTime;
       throw error;
     } finally {
-      // Release lock
-      if (!opts.dryRun) {
-        await this.lock.release();
-        this.emit('lock.released' as MigrationEventType);
+      // Release lock only if we acquired it
+      if (lockAcquired && !opts.dryRun) {
+        try {
+          await this.lock.release();
+          this.emit('lock.released' as MigrationEventType);
+        } catch (releaseError) {
+          this.logger.error('Error releasing lock:', releaseError);
+        }
       }
     }
   }
@@ -288,15 +376,16 @@ export class MigrationService extends EventEmitter {
       ORDER BY version ASC
     `.execute(db);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const applied: AppliedMigration[] = appliedRows.rows.map((row: any) => ({
-      id: row.id,
-      version: row.version,
-      name: row.name,
-      description: row.description,
-      appliedAt: new Date(row.applied_at),
-      executionTime: row.execution_time,
-      checksum: row.checksum,
-      metadata: row.metadata,
+      id: row['id'] as number,
+      version: row['version'] as string,
+      name: row['name'] as string,
+      description: row['description'] as string | undefined,
+      appliedAt: new Date(row['applied_at'] as string | number | Date),
+      executionTime: row['execution_time'] as number,
+      checksum: row['checksum'] as string | undefined,
+      metadata: row['metadata'] as Record<string, unknown> | undefined,
     }));
 
     // Get all available migrations
@@ -373,8 +462,12 @@ export class MigrationService extends EventEmitter {
    * Create a new migration file
    */
   async create(name: string): Promise<string> {
+    const { writeFile, mkdir } = await import('node:fs/promises');
+    const { existsSync } = await import('node:fs');
+    const { join, resolve } = await import('node:path');
+
     const timestamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '_').split('.')[0];
-    const version = this.config.useTimestamp ? timestamp : this.generateSequentialVersion();
+    const version = this.config.useTimestamp ? timestamp : await this.generateSequentialVersion();
     const fileName = `${version}_${name}.migration.ts`;
 
     const template = `/**
@@ -391,7 +484,7 @@ import { Migration } from '@omnitron-dev/titan/module/database';
   description: '${name}'
 })
 export class ${this.toPascalCase(name)}Migration implements IMigration {
-  async up(db: Kysely<any>): Promise<void> {
+  async up(db: Kysely<unknown>): Promise<void> {
     // Add your migration logic here
     await db.schema
       .createTable('example')
@@ -401,15 +494,27 @@ export class ${this.toPascalCase(name)}Migration implements IMigration {
       .execute();
   }
 
-  async down(db: Kysely<any>): Promise<void> {
+  async down(db: Kysely<unknown>): Promise<void> {
     // Add your rollback logic here
     await db.schema.dropTable('example').execute();
   }
 }`;
 
-    // Write file (in real implementation, use fs)
-    this.logger.info(`Created migration: ${fileName}`);
-    return fileName;
+    // Ensure migrations directory exists
+    const directory = this.config.directory || './migrations';
+    const absoluteDir = resolve(directory);
+
+    if (!existsSync(absoluteDir)) {
+      await mkdir(absoluteDir, { recursive: true });
+      this.logger.info(`Created migrations directory: ${absoluteDir}`);
+    }
+
+    // Write migration file
+    const filePath = join(absoluteDir, fileName);
+    await writeFile(filePath, template, 'utf-8');
+
+    this.logger.info(`Created migration file: ${filePath}`);
+    return filePath;
   }
 
   /**
@@ -420,7 +525,14 @@ export class ${this.toPascalCase(name)}Migration implements IMigration {
     metadata: MigrationMetadata,
     direction: 'up' | 'down',
     options: MigrationRunOptions
-  ): Promise<any> {
+  ): Promise<{
+    version: string;
+    name: string;
+    direction: 'up' | 'down';
+    executionTime: number;
+    status: 'success' | 'failed' | 'skipped';
+    error?: string;
+  }> {
     const startTime = Date.now();
     const eventType =
       direction === 'up' ? ('migration.starting' as MigrationEventType) : ('rollback.starting' as MigrationEventType);
@@ -441,7 +553,7 @@ export class ${this.toPascalCase(name)}Migration implements IMigration {
           name: metadata.name,
           direction,
           executionTime: 0,
-          status: 'skipped',
+          status: 'success', // Changed from 'skipped' to 'success' for dry runs
         };
       }
 
@@ -451,19 +563,26 @@ export class ${this.toPascalCase(name)}Migration implements IMigration {
       if (options.transactional !== false && metadata.transactional !== false) {
         await db.transaction().execute(async (trx) => {
           await this.executeMigration(migration, trx, direction, options.timeout);
+
+          // Record/remove migration within transaction (for up/down)
+          if (direction === 'up') {
+            await this.recordMigrationInTransaction(metadata, Date.now() - startTime, migration, trx);
+          } else {
+            await this.removeMigrationRecordInTransaction(metadata.version, trx);
+          }
         });
       } else {
         await this.executeMigration(migration, db, direction, options.timeout);
+
+        // Record/remove migration outside transaction
+        if (direction === 'up') {
+          await this.recordMigration(metadata, Date.now() - startTime, migration, options.connection);
+        } else {
+          await this.removeMigrationRecord(metadata.version, options.connection);
+        }
       }
 
       const executionTime = Date.now() - startTime;
-
-      // Record migration (only for up)
-      if (direction === 'up') {
-        await this.recordMigration(metadata, executionTime, migration, options.connection);
-      } else {
-        await this.removeMigrationRecord(metadata.version, options.connection);
-      }
 
       const completedEventType =
         direction === 'up'
@@ -517,6 +636,7 @@ export class ${this.toPascalCase(name)}Migration implements IMigration {
   /**
    * Execute migration with timeout
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async executeMigration(
     migration: IMigration,
     db: Kysely<any> | Transaction<any>,
@@ -558,6 +678,31 @@ export class ${this.toPascalCase(name)}Migration implements IMigration {
   }
 
   /**
+   * Record applied migration within a transaction
+   */
+  private async recordMigrationInTransaction(
+    metadata: MigrationMetadata,
+    executionTime: number,
+    migration: IMigration,
+    trx: Transaction<any>
+  ): Promise<void> {
+    const checksum = this.calculateChecksum(migration);
+
+    await sql`
+      INSERT INTO ${sql.table(this.config.tableName!)} (
+        version, name, description, execution_time, checksum, metadata
+      ) VALUES (
+        ${metadata.version},
+        ${metadata.name},
+        ${metadata.description || null},
+        ${executionTime},
+        ${checksum},
+        ${JSON.stringify(metadata)}
+      )
+    `.execute(trx);
+  }
+
+  /**
    * Remove migration record
    */
   private async removeMigrationRecord(version: string, connection?: string): Promise<void> {
@@ -567,6 +712,16 @@ export class ${this.toPascalCase(name)}Migration implements IMigration {
       DELETE FROM ${sql.table(this.config.tableName!)}
       WHERE version = ${version}
     `.execute(db);
+  }
+
+  /**
+   * Remove migration record within a transaction
+   */
+  private async removeMigrationRecordInTransaction(version: string, trx: Transaction<any>): Promise<void> {
+    await sql`
+      DELETE FROM ${sql.table(this.config.tableName!)}
+      WHERE version = ${version}
+    `.execute(trx);
   }
 
   /**
@@ -581,9 +736,33 @@ export class ${this.toPascalCase(name)}Migration implements IMigration {
   /**
    * Generate sequential version number
    */
-  private generateSequentialVersion(): string {
-    // In real implementation, would check existing migrations
-    return '001';
+  private async generateSequentialVersion(): Promise<string> {
+    // Get all existing migrations
+    const allMetadata = await this.provider.getAllMetadata();
+
+    if (allMetadata.length === 0) {
+      return '001';
+    }
+
+    // Extract numeric versions and find the highest
+    const numericVersions = allMetadata
+      .map((m) => {
+        // Try to extract a numeric value from the version string
+        const match = m.version.match(/^(\d+)/);
+        return match && match[1] ? parseInt(match[1], 10) : 0;
+      })
+      .filter((v) => !isNaN(v) && v > 0);
+
+    if (numericVersions.length === 0) {
+      return '001';
+    }
+
+    // Get the max version and increment by 1
+    const maxVersion = Math.max(...numericVersions);
+    const nextVersion = maxVersion + 1;
+
+    // Pad with zeros to maintain 3-digit format
+    return nextVersion.toString().padStart(3, '0');
   }
 
   /**

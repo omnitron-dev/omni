@@ -5,24 +5,83 @@
  */
 
 import { sql } from 'kysely';
-import type { IDatabaseManager } from '../database.types.js';
+import type { IDatabaseManager, DatabaseDialect } from '../database.types.js';
 import type { IMigrationLock } from './migration.types.js';
+import type { Logger } from '../database.internal-types.js';
+import { createDefaultLogger } from '../utils/logger.factory.js';
 
 export interface MigrationLockOptions {
   tableName: string;
   timeout: number;
   instanceId?: string;
+  maxRetries?: number;
+  retryDelayMs?: number;
 }
 
 export class MigrationLock implements IMigrationLock {
   private instanceId: string;
   private isHoldingLock: boolean = false;
+  private dialect: DatabaseDialect | undefined;
+  private logger: Logger;
+  private readonly maxRetries: number;
+  private readonly retryDelayMs: number;
 
   constructor(
     private manager: IDatabaseManager,
     private options: MigrationLockOptions
   ) {
     this.instanceId = options.instanceId || this.generateInstanceId();
+    this.logger = createDefaultLogger('MigrationLock');
+    this.maxRetries = options.maxRetries || 3;
+    this.retryDelayMs = options.retryDelayMs || 1000;
+  }
+
+  /**
+   * Get database dialect
+   */
+  private async getDialect(): Promise<DatabaseDialect> {
+    if (this.dialect) {
+      return this.dialect;
+    }
+
+    const config = this.manager.getConnectionConfig();
+    if (!config) {
+      throw new Error('Unable to determine database dialect');
+    }
+
+    this.dialect = config.dialect;
+    return this.dialect;
+  }
+
+  /**
+   * Validate connection health with retry
+   */
+  private async validateConnection(): Promise<void> {
+    let lastError: Error | undefined;
+
+    for (let attempt = 0; attempt < this.maxRetries; attempt++) {
+      try {
+        const db = await this.manager.getConnection();
+
+        // Test connection with simple query
+        await sql`SELECT 1`.execute(db);
+
+        // Connection is healthy
+        return;
+      } catch (error) {
+        lastError = error as Error;
+
+        if (attempt < this.maxRetries - 1) {
+          this.logger.warn(
+            { attempt, error: lastError.message },
+            'Connection validation failed, retrying'
+          );
+          await this.sleep(this.retryDelayMs * Math.pow(2, attempt)); // Exponential backoff
+        }
+      }
+    }
+
+    throw new Error(`Connection validation failed after ${this.maxRetries} attempts: ${lastError?.message}`);
   }
 
   /**
@@ -31,6 +90,14 @@ export class MigrationLock implements IMigrationLock {
   async acquire(timeout?: number): Promise<boolean> {
     const timeoutMs = timeout || this.options.timeout;
     const startTime = Date.now();
+
+    // Validate connection before attempting to acquire lock
+    try {
+      await this.validateConnection();
+    } catch (error) {
+      this.logger.error({ error }, 'Failed to validate connection before acquiring lock');
+      return false;
+    }
 
     while (Date.now() - startTime < timeoutMs) {
       const acquired = await this.tryAcquire();
@@ -50,29 +117,118 @@ export class MigrationLock implements IMigrationLock {
    * Try to acquire lock once
    */
   private async tryAcquire(): Promise<boolean> {
-    const db = await this.manager.getConnection();
+    let lastError: Error | undefined;
 
-    try {
-      // Try to acquire lock using UPDATE with WHERE
-      const result = await sql`
-        UPDATE ${sql.table(this.options.tableName)}
-        SET
-          is_locked = TRUE,
-          locked_at = CURRENT_TIMESTAMP,
-          locked_by = ${this.instanceId}
-        WHERE
-          id = 1
-          AND (
-            is_locked = FALSE
-            OR locked_at < CURRENT_TIMESTAMP - INTERVAL '5 minutes'
-          )
-      `.execute(db);
+    // Retry on connection errors
+    for (let attempt = 0; attempt < this.maxRetries; attempt++) {
+      try {
+        const db = await this.manager.getConnection();
+        const dialect = await this.getDialect();
 
-      // Check if we acquired the lock
-      return (result.numAffectedRows ?? 0) > 0;
-    } catch (error) {
-      console.error('Error acquiring migration lock:', error);
+        // Get expiry condition based on dialect
+        const expiryMinutes = 5;
+        const expiryCondition = this.getExpiryCondition(dialect, expiryMinutes);
+
+        // Try to acquire lock using UPDATE with WHERE
+        const result = await sql`
+          UPDATE ${sql.table(this.options.tableName)}
+          SET
+            is_locked = ${sql.lit(1)},
+            locked_at = ${sql.lit(this.getCurrentTimestamp(dialect))},
+            locked_by = ${this.instanceId}
+          WHERE
+            id = 1
+            AND (
+              is_locked = ${sql.lit(0)}
+              OR ${sql.raw(expiryCondition)}
+            )
+        `.execute(db);
+
+        // Check if we acquired the lock
+        return (result.numAffectedRows ?? 0) > 0;
+      } catch (error) {
+        lastError = error as Error;
+
+        // Check if this is a connection error
+        const isConnectionError = this.isConnectionError(error);
+
+        if (isConnectionError && attempt < this.maxRetries - 1) {
+          this.logger.warn(
+            { attempt, error: lastError.message },
+            'Connection error during lock acquisition, retrying'
+          );
+          await this.sleep(this.retryDelayMs * Math.pow(2, attempt));
+          continue;
+        }
+
+        this.logger.error({ error, attempt }, 'Error acquiring migration lock');
+        return false;
+      }
+    }
+
+    this.logger.error({ error: lastError }, 'Failed to acquire lock after retries');
+    return false;
+  }
+
+  /**
+   * Check if error is a connection error
+   */
+  private isConnectionError(error: unknown): boolean {
+    if (!error || typeof error !== 'object') {
       return false;
+    }
+
+    const errorObj = error as Record<string, unknown>;
+    const message = (errorObj['message'] as string)?.toLowerCase() || '';
+    const code = errorObj['code'] as string | undefined;
+
+    return (
+      message.includes('connection') ||
+      message.includes('econnrefused') ||
+      message.includes('etimedout') ||
+      message.includes('unable to connect') ||
+      code === 'ECONNREFUSED' ||
+      code === 'ETIMEDOUT' ||
+      code === 'ENOTFOUND'
+    );
+  }
+
+  /**
+   * Get current timestamp for dialect
+   */
+  private getCurrentTimestamp(dialect: DatabaseDialect): string {
+    const now = new Date();
+
+    switch (dialect) {
+      case 'postgres':
+      case 'mysql':
+        return now.toISOString().replace('T', ' ').replace('Z', '');
+      case 'sqlite':
+        // SQLite stores as ISO8601 string
+        return now.toISOString();
+      default:
+        return now.toISOString();
+    }
+  }
+
+  /**
+   * Get expiry condition SQL for dialect
+   */
+  private getExpiryCondition(dialect: DatabaseDialect, minutes: number): string {
+    const expiryTime = new Date(Date.now() - minutes * 60 * 1000);
+
+    switch (dialect) {
+      case 'postgres':
+        return `locked_at < CURRENT_TIMESTAMP - INTERVAL '${minutes} minutes'`;
+      case 'mysql':
+        return `locked_at < DATE_SUB(NOW(), INTERVAL ${minutes} MINUTE)`;
+      case 'sqlite': {
+        // SQLite: compare with ISO8601 timestamp
+        const expiryStr = expiryTime.toISOString();
+        return `locked_at < '${expiryStr}'`;
+      }
+      default:
+        throw new Error(`Unsupported dialect: ${dialect}`);
     }
   }
 
@@ -90,7 +246,7 @@ export class MigrationLock implements IMigrationLock {
       await sql`
         UPDATE ${sql.table(this.options.tableName)}
         SET
-          is_locked = FALSE,
+          is_locked = ${sql.lit(0)},
           locked_at = NULL,
           locked_by = NULL
         WHERE
@@ -100,7 +256,7 @@ export class MigrationLock implements IMigrationLock {
 
       this.isHoldingLock = false;
     } catch (error) {
-      console.error('Error releasing migration lock:', error);
+      this.logger.error('Error releasing migration lock:', error);
       throw error;
     }
   }
@@ -121,11 +277,11 @@ export class MigrationLock implements IMigrationLock {
       return false;
     }
 
-    const row = result.rows[0] as any;
+    const row = result.rows[0] as Record<string, unknown>;
 
     // Check if lock is held and not expired
-    if (row.is_locked) {
-      const lockedAt = new Date(row.locked_at);
+    if (row['is_locked']) {
+      const lockedAt = new Date(row['locked_at'] as string | number | Date);
       const expiryTime = 5 * 60 * 1000; // 5 minutes
       const isExpired = Date.now() - lockedAt.getTime() > expiryTime;
 
@@ -144,7 +300,7 @@ export class MigrationLock implements IMigrationLock {
     await sql`
       UPDATE ${sql.table(this.options.tableName)}
       SET
-        is_locked = FALSE,
+        is_locked = ${sql.lit(0)},
         locked_at = NULL,
         locked_by = NULL
       WHERE id = 1

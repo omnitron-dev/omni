@@ -7,6 +7,12 @@
 import type { Transaction } from 'kysely';
 
 /**
+ * Type alias for database transaction to avoid excessive type instantiation
+ * Using unknown as the database schema type for maximum flexibility
+ */
+export type DatabaseTransaction = Transaction<unknown>;
+
+/**
  * Transaction isolation levels
  */
 export enum TransactionIsolationLevel {
@@ -199,13 +205,19 @@ export enum TransactionState {
 }
 
 /**
+ * Transaction callback function type
+ * Uses DatabaseTransaction type alias to avoid excessive type instantiation
+ */
+export type TransactionCallback<T> = (trx: DatabaseTransaction) => Promise<T>;
+
+/**
  * Transaction manager interface
  */
 export interface ITransactionManager {
   /**
    * Execute function within transaction
    */
-  executeInTransaction<T>(fn: (trx: Transaction<any>) => Promise<T>, options?: TransactionOptions): Promise<T>;
+  executeInTransaction<T>(fn: TransactionCallback<T>, options?: TransactionOptions): Promise<T>;
 
   /**
    * Get current transaction context
@@ -215,14 +227,14 @@ export interface ITransactionManager {
   /**
    * Get current transaction connection
    */
-  getCurrentTransactionConnection(): Transaction<any> | null;
+  getCurrentTransactionConnection(): DatabaseTransaction | null;
 
   /**
    * Create a new transaction scope
    */
   withTransaction<T>(
     connection: string,
-    fn: (trx: Transaction<any>) => Promise<T>,
+    fn: TransactionCallback<T>,
     options?: TransactionOptions
   ): Promise<T>;
 
@@ -385,7 +397,7 @@ export interface ITransactionScope {
   /**
    * Get transaction connection
    */
-  getTransaction(): Transaction<any>;
+  getTransaction(): DatabaseTransaction;
 
   /**
    * Execute within this transaction scope

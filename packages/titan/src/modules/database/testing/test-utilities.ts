@@ -122,7 +122,7 @@ export async function createTestDatabase(options: DatabaseTestOptions = {}): Pro
       }
 
       let container: DockerContainer;
-      let connectionConfig: any;
+      let connectionConfig: DatabaseModuleOptions['connection'];
 
       switch (dialect) {
         case 'postgres':
@@ -140,8 +140,9 @@ export async function createTestDatabase(options: DatabaseTestOptions = {}): Pro
               database,
               user,
               password,
-              // Optimize for testing
-              connectionTimeoutMillis: 5000,
+            },
+            pool: {
+              acquireTimeoutMillis: 5000,
               idleTimeoutMillis: 10000,
               max: 10,
             },
@@ -164,9 +165,10 @@ export async function createTestDatabase(options: DatabaseTestOptions = {}): Pro
               database,
               user,
               password,
-              // Optimize for testing
-              connectionLimit: 10,
-              connectTimeout: 5000,
+            },
+            pool: {
+              max: 10,
+              acquireTimeoutMillis: 5000,
             },
           };
           break;
@@ -208,7 +210,7 @@ export async function createTestDatabase(options: DatabaseTestOptions = {}): Pro
     connection: {
       dialect: 'sqlite',
       connection: 'file::memory:?cache=shared',
-    } as any,
+    },
     dialect: 'sqlite',
     isDocker: false,
     cleanup: async () => {

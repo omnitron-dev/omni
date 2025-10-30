@@ -4,7 +4,7 @@
  * Provides database integration with Kysera ORM
  */
 
-import { DynamicModule, Provider, ProviderDefinition, RegistrationOptions } from '../../nexus/index.js';
+import { DynamicModule, Provider, ProviderDefinition, RegistrationOptions, Constructor, ServiceIdentifier, IModule } from '../../nexus/index.js';
 import { Module } from '../../decorators/index.js';
 import { DatabaseManager } from './database.manager.js';
 import { DatabaseService } from './database.service.js';
@@ -16,6 +16,8 @@ import { TransactionScopeFactory } from './transaction/transaction.scope.js';
 import { PluginManager } from './plugins/plugin.manager.js';
 import { PluginLoader } from './plugins/plugin.loader.js';
 import { getRepositoryMetadata } from './database.decorators.js';
+import type { RepositoryConstructor } from './database.internal-types.js';
+import type { RepositoryMetadata } from './repository/repository.types.js';
 import {
   DATABASE_SERVICE,
   DATABASE_HEALTH_INDICATOR,
@@ -31,17 +33,27 @@ import {
   DATABASE_DEFAULT_CONNECTION,
 } from './database.constants.js';
 import type { DatabaseModuleOptions, DatabaseModuleAsyncOptions, DatabaseOptionsFactory } from './database.types.js';
+import { createDefaultLogger } from './utils/logger.factory.js';
 
 @Module()
 export class TitanDatabaseModule {
   name = 'TitanDatabaseModule';
+  private static logger = createDefaultLogger('TitanDatabaseModule');
+  private static managerInstance: DatabaseManager | null = null;
+
+  /**
+   * Reset module (for testing)
+   */
+  static resetForTesting(): void {
+    TitanDatabaseModule.managerInstance = null;
+  }
 
   /**
    * Configure database module with static options
    */
   static forRoot(options: DatabaseModuleOptions = {}): DynamicModule {
     // Create providers using correct Nexus format
-    const providers: Array<[string | symbol, ProviderDefinition<any>] | Provider<any>> = [
+    const providers: Array<[ServiceIdentifier<unknown>, ProviderDefinition<unknown>] | Provider<unknown>> = [
       // Module options
       [
         DATABASE_MODULE_OPTIONS,
@@ -55,16 +67,12 @@ export class TitanDatabaseModule {
         DATABASE_MANAGER,
         {
           useFactory: async (moduleOptions: DatabaseModuleOptions) => {
-            const manager = new DatabaseManager(moduleOptions);
-            await manager.init();
-
-            // Run auto-migrations if enabled
-            if (moduleOptions.autoMigrate) {
-              // This will be implemented with migration service
-              // await runMigrations(manager);
+            // Use a static instance to ensure singleton behavior even if factory is called multiple times
+            if (!TitanDatabaseModule.managerInstance) {
+              TitanDatabaseModule.managerInstance = new DatabaseManager(moduleOptions);
+              await TitanDatabaseModule.managerInstance.init();
             }
-
-            return manager;
+            return TitanDatabaseModule.managerInstance;
           },
           inject: [DATABASE_MODULE_OPTIONS],
         },
@@ -72,7 +80,7 @@ export class TitanDatabaseModule {
 
       // Alias registration for DatabaseManager class (allows resolving by class)
       [
-        DatabaseManager as any,
+        DatabaseManager,
         {
           useFactory: async (manager: DatabaseManager) => manager,
           inject: [DATABASE_MANAGER],
@@ -90,7 +98,7 @@ export class TitanDatabaseModule {
 
       // Alias registration for DatabaseService class
       [
-        DatabaseService as any,
+        DatabaseService,
         {
           useFactory: async (service: DatabaseService) => service,
           inject: [DATABASE_SERVICE],
@@ -108,7 +116,7 @@ export class TitanDatabaseModule {
 
       // Alias registration for DatabaseHealthIndicator class
       [
-        DatabaseHealthIndicator as any,
+        DatabaseHealthIndicator,
         {
           useFactory: async (indicator: DatabaseHealthIndicator) => indicator,
           inject: [DATABASE_HEALTH_INDICATOR],
@@ -136,7 +144,7 @@ export class TitanDatabaseModule {
                     pluginManager.registerPlugin(config.name || config.plugin.name || 'custom', config.plugin, config);
                   }
                 } catch (error) {
-                  console.error('Failed to register custom plugin:', error);
+                  TitanDatabaseModule.logger.error('Failed to register custom plugin:', error);
                 }
               }
             }
@@ -169,12 +177,15 @@ export class TitanDatabaseModule {
       [
         DATABASE_REPOSITORY_FACTORY,
         {
-          useFactory: async (manager: DatabaseManager, pluginManager: any) => {
+          useFactory: async (manager: DatabaseManager, pluginManager: PluginManager) => {
             const factory = new RepositoryFactory(manager, options.kysera?.repository, pluginManager);
 
             // Auto-register repositories from metadata if any
-            const repositories = Reflect.getMetadata('database:repositories', global) || [];
-            repositories.forEach(({ target, metadata }: any) => {
+            const repositories = (Reflect.getMetadata('database:repositories', global) || []) as Array<{
+              target: RepositoryConstructor;
+              metadata: RepositoryMetadata;
+            }>;
+            repositories.forEach(({ target, metadata }) => {
               factory.register(target, metadata);
             });
 
@@ -193,10 +204,19 @@ export class TitanDatabaseModule {
 
             // Auto-migrate if configured
             if (options.autoMigrate) {
-              await runner.init();
-              const result = await runner.migrate();
-              if (!result.success) {
-                console.error('Auto-migration failed:', result.errors);
+              try {
+                await runner.init();
+                const result = await runner.migrate();
+                if (!result.success) {
+                  TitanDatabaseModule.logger.error('Auto-migration failed:', result.errors);
+                  // Don't throw error during initialization - just log it
+                  // Applications can check migration status via health endpoint
+                } else {
+                  TitanDatabaseModule.logger.info('Auto-migration completed successfully');
+                }
+              } catch (error) {
+                TitanDatabaseModule.logger.error('Auto-migration error:', error);
+                // Don't throw - let the application start but log the issue
               }
             }
 
@@ -238,7 +258,7 @@ export class TitanDatabaseModule {
     providers.push(...repositoryProviders);
 
     // Exports
-    const exports: any[] = [
+    const exports: Array<ServiceIdentifier<unknown>> = [
       DATABASE_SERVICE,
       DATABASE_HEALTH_INDICATOR,
       DATABASE_MANAGER,
@@ -272,7 +292,7 @@ export class TitanDatabaseModule {
    * Configure database module with async options
    */
   static forRootAsync(options: DatabaseModuleAsyncOptions): DynamicModule {
-    const providers: Array<[string | symbol, ProviderDefinition<any>] | Provider<any>> = [];
+    const providers: Array<[ServiceIdentifier<unknown>, ProviderDefinition<unknown>] | Provider<unknown>> = [];
 
     // Create async options provider
     const asyncProviders = this.createAsyncProviders(options);
@@ -285,10 +305,6 @@ export class TitanDatabaseModule {
         useFactory: async (moduleOptions: DatabaseModuleOptions) => {
           const manager = new DatabaseManager(moduleOptions);
           await manager.init();
-
-          if (moduleOptions.autoMigrate) {
-            // await runMigrations(manager);
-          }
 
           return manager;
         },
@@ -319,7 +335,7 @@ export class TitanDatabaseModule {
                   pluginManager.registerPlugin(config.name || config.plugin.name || 'custom', config.plugin, config);
                 }
               } catch (error) {
-                console.error('Failed to register custom plugin:', error);
+                TitanDatabaseModule.logger.error('Failed to register custom plugin:', error);
               }
             }
           }
@@ -352,12 +368,15 @@ export class TitanDatabaseModule {
     providers.push([
       DATABASE_REPOSITORY_FACTORY,
       {
-        useFactory: async (manager: DatabaseManager, moduleOptions: DatabaseModuleOptions, pluginManager: any) => {
+        useFactory: async (manager: DatabaseManager, moduleOptions: DatabaseModuleOptions, pluginManager: PluginManager) => {
           const factory = new RepositoryFactory(manager, moduleOptions.kysera?.repository, pluginManager);
 
           // Auto-register repositories
-          const repositories = Reflect.getMetadata('database:repositories', global) || [];
-          repositories.forEach(({ target, metadata }: any) => {
+          const repositories = (Reflect.getMetadata('database:repositories', global) || []) as Array<{
+            target: RepositoryConstructor;
+            metadata: RepositoryMetadata;
+          }>;
+          repositories.forEach(({ target, metadata }) => {
             factory.register(target, metadata);
           });
 
@@ -376,10 +395,19 @@ export class TitanDatabaseModule {
 
           // Auto-migrate if configured
           if (moduleOptions.autoMigrate) {
-            await runner.init();
-            const result = await runner.migrate();
-            if (!result.success) {
-              console.error('Auto-migration failed:', result.errors);
+            try {
+              await runner.init();
+              const result = await runner.migrate();
+              if (!result.success) {
+                TitanDatabaseModule.logger.error('Auto-migration failed:', result.errors);
+                // Don't throw error during initialization - just log it
+                // Applications can check migration status via health endpoint
+              } else {
+                TitanDatabaseModule.logger.info('Auto-migration completed successfully');
+              }
+            } catch (error) {
+              TitanDatabaseModule.logger.error('Auto-migration error:', error);
+              // Don't throw - let the application start but log the issue
             }
           }
 
@@ -414,7 +442,7 @@ export class TitanDatabaseModule {
 
     // Dynamic connection providers
     providers.push([
-      'DATABASE_CONNECTION_PROVIDERS' as any,
+      Symbol.for('DATABASE_CONNECTION_PROVIDERS'),
       {
         useFactory: async (moduleOptions: DatabaseModuleOptions, manager: DatabaseManager) =>
           this.createDynamicConnectionProviders(moduleOptions, manager),
@@ -424,14 +452,14 @@ export class TitanDatabaseModule {
 
     // Dynamic repository providers
     providers.push([
-      'DATABASE_REPOSITORY_PROVIDERS' as any,
+      Symbol.for('DATABASE_REPOSITORY_PROVIDERS'),
       {
         useFactory: async () => this.createRepositoryProviders(),
         inject: [],
       },
     ]);
 
-    const exports: any[] = [
+    const exports: Array<ServiceIdentifier<unknown>> = [
       DATABASE_MANAGER,
       DatabaseService,
       DatabaseHealthIndicator,
@@ -444,7 +472,7 @@ export class TitanDatabaseModule {
 
     const result: DynamicModule = {
       module: TitanDatabaseModule,
-      imports: (options.imports as any) || [],
+      imports: (options.imports as IModule[]) || [],
       providers,
       exports,
     };
@@ -459,8 +487,8 @@ export class TitanDatabaseModule {
   /**
    * Register specific database entities/repositories
    */
-  static forFeature(repositories: any[] = []): DynamicModule {
-    const providers: Array<[string | symbol, ProviderDefinition<any>, RegistrationOptions]> = [];
+  static forFeature(repositories: RepositoryConstructor[] = []): DynamicModule {
+    const providers: Array<[ServiceIdentifier<unknown>, ProviderDefinition<unknown>, RegistrationOptions]> = [];
 
     for (const repository of repositories) {
       const metadata = getRepositoryMetadata(repository);
@@ -470,7 +498,12 @@ export class TitanDatabaseModule {
         const factoryFn = async (factory: RepositoryFactory) => {
           // Register if not already registered (idempotent operation)
           if (!factory.getMetadata(repository)) {
-            factory.register(repository, metadata as any);
+            // Convert RepositoryConfig to RepositoryMetadata by adding target field
+            const repositoryMetadata: RepositoryMetadata = {
+              ...metadata,
+              target: repository,
+            };
+            factory.register(repository, repositoryMetadata);
           }
           return await factory.get(repository);
         };
@@ -509,8 +542,8 @@ export class TitanDatabaseModule {
    */
   private static createConnectionProviders(
     options: DatabaseModuleOptions
-  ): Array<[string | symbol, ProviderDefinition<any>]> {
-    const providers: Array<[string | symbol, ProviderDefinition<any>]> = [];
+  ): Array<[ServiceIdentifier<unknown>, ProviderDefinition<unknown>]> {
+    const providers: Array<[ServiceIdentifier<unknown>, ProviderDefinition<unknown>]> = [];
 
     // Create provider for default connection
     if (options.connection || (!options.connection && !options.connections)) {
@@ -545,8 +578,8 @@ export class TitanDatabaseModule {
   private static createDynamicConnectionProviders(
     options: DatabaseModuleOptions,
     manager: DatabaseManager
-  ): Array<[string | symbol, ProviderDefinition<any>]> {
-    const providers: Array<[string | symbol, ProviderDefinition<any>]> = [];
+  ): Array<[ServiceIdentifier<unknown>, ProviderDefinition<unknown>]> {
+    const providers: Array<[ServiceIdentifier<unknown>, ProviderDefinition<unknown>]> = [];
 
     // Default connection
     if (options.connection || (!options.connection && !options.connections)) {
@@ -578,16 +611,16 @@ export class TitanDatabaseModule {
    */
   private static createAsyncProviders(
     options: DatabaseModuleAsyncOptions
-  ): Array<[string | symbol, ProviderDefinition<any>] | Provider<any>> {
-    const providers: Array<[string | symbol, ProviderDefinition<any>] | Provider<any>> = [];
+  ): Array<[ServiceIdentifier<unknown>, ProviderDefinition<unknown>] | Provider<unknown>> {
+    const providers: Array<[ServiceIdentifier<unknown>, ProviderDefinition<unknown>] | Provider<unknown>> = [];
 
     if (options.useFactory) {
       // Factory provider
       providers.push([
         DATABASE_MODULE_OPTIONS,
         {
-          useFactory: async (...args: any[]) => Promise.resolve(options.useFactory!(...args)),
-          inject: (options.inject || []) as any,
+          useFactory: async (...args: unknown[]) => Promise.resolve(options.useFactory!(...args)),
+          inject: options.inject || [],
         },
       ]);
     } else if (options.useExisting) {
@@ -602,7 +635,7 @@ export class TitanDatabaseModule {
     } else if (options.useClass) {
       // Use class provider
       providers.push([
-        options.useClass as any,
+        options.useClass,
         {
           useClass: options.useClass,
         },
@@ -612,7 +645,7 @@ export class TitanDatabaseModule {
         DATABASE_MODULE_OPTIONS,
         {
           useFactory: async (optionsFactory: DatabaseOptionsFactory) => optionsFactory.createDatabaseOptions(),
-          inject: [options.useClass as any],
+          inject: [options.useClass],
         },
       ]);
     } else {
@@ -631,13 +664,16 @@ export class TitanDatabaseModule {
   /**
    * Create repository providers from registered repositories
    */
-  private static createRepositoryProviders(): Array<[string | symbol, ProviderDefinition<any>]> {
-    const providers: Array<[string | symbol, ProviderDefinition<any>]> = [];
+  private static createRepositoryProviders(): Array<[ServiceIdentifier<unknown>, ProviderDefinition<unknown>]> {
+    const providers: Array<[ServiceIdentifier<unknown>, ProviderDefinition<unknown>]> = [];
 
     // Get all registered repositories from global metadata
-    const repositories = Reflect.getMetadata('database:repositories', global) || [];
+    const repositories = (Reflect.getMetadata('database:repositories', global) || []) as Array<{
+      target: RepositoryConstructor;
+      metadata: RepositoryMetadata;
+    }>;
 
-    for (const { target, metadata } of repositories) {
+    for (const { target } of repositories) {
       providers.push([
         getRepositoryToken(target),
         {

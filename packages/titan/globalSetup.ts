@@ -8,12 +8,80 @@
 const { execFileSync, execSync } = require('child_process');
 const { writeFileSync } = require('fs');
 const { join } = require('path');
+const { existsSync } = require('fs');
+
+/**
+ * Find Docker executable path using cross-platform detection
+ * Same logic as DockerTestManager
+ */
+function findDockerPath() {
+  const isWindows = process.platform === 'win32';
+  const whichCommand = isWindows ? 'where' : 'which';
+  const dockerBinary = isWindows ? 'docker.exe' : 'docker';
+
+  // Strategy 1: Try to find docker in PATH
+  try {
+    const result = execSync(`${whichCommand} ${dockerBinary}`, {
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'ignore'],
+    }).trim();
+    const dockerPath = result.split('\n')[0]?.trim();
+    if (dockerPath) {
+      return dockerPath;
+    }
+  } catch {
+    // Continue to fallback paths
+  }
+
+  // Strategy 2: Platform-specific fallback paths
+  let fallbackPaths = [];
+
+  if (process.platform === 'darwin') {
+    fallbackPaths = [
+      '/usr/local/bin/docker',
+      '/opt/homebrew/bin/docker',
+      '/Applications/Docker.app/Contents/Resources/bin/docker',
+    ];
+  } else if (process.platform === 'win32') {
+    fallbackPaths = [
+      'docker.exe',
+      'C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe',
+      'C:\\ProgramData\\DockerDesktop\\version-bin\\docker.exe',
+    ];
+  } else {
+    // Linux
+    fallbackPaths = [
+      '/usr/bin/docker',
+      '/usr/local/bin/docker',
+      '/snap/bin/docker',
+      '/var/lib/snapd/snap/bin/docker',
+      '/opt/docker/bin/docker',
+    ];
+  }
+
+  // Try each fallback path
+  for (const path of fallbackPaths) {
+    if (existsSync(path)) {
+      try {
+        // Verify it's executable
+        execFileSync(path, ['--version'], { stdio: 'ignore' });
+        return path;
+      } catch {
+        continue;
+      }
+    }
+  }
+
+  // Strategy 3: Fall back to just 'docker' and hope it's in PATH
+  return dockerBinary;
+}
 
 module.exports = async function globalSetup() {
   console.log('[Global Setup] Starting global Redis container...');
 
   try {
-    const dockerPath = process.platform === 'win32' ? 'docker' : '/usr/local/bin/docker';
+    const dockerPath = findDockerPath();
+    console.log(`[Global Setup] Using Docker at: ${dockerPath}`);
 
     // Remove existing container if it exists
     try {

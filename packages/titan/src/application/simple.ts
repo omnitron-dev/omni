@@ -302,10 +302,12 @@ export function inject<T = any>(token: Token<T> | string): T {
  * });
  * ```
  */
-export function controller(basePath: string, handlers: Record<string, (req: any, res: any) => any>): any {
-  // This will be implemented when HTTP module is added
-  console.warn('HTTP controllers are not yet implemented in Titan');
-  return handlers;
+export function controller(basePath: string, handlers: Record<string, (req: any, res: any) => any>): never {
+  throw new Error(
+    'HTTP controllers are not yet implemented in Titan Simple API. ' +
+    'For HTTP functionality, use Netron\'s HTTP transport layer or Express/Fastify integration. ' +
+    'See documentation at: https://github.com/omnitron/titan'
+  );
 }
 
 /**

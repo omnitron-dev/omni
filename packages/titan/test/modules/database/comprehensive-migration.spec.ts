@@ -221,8 +221,8 @@ describe('Comprehensive Migration Tests', () => {
           TitanDatabaseModule.forRoot({
             connection: {
               dialect: 'sqlite',
-              filename: ':memory:',
-            } as any,
+              connection: ':memory:',
+            },
             migrations: {
               providers: [
                 CreateUsersTable,
@@ -409,8 +409,8 @@ describe('Comprehensive Migration Tests', () => {
             TitanDatabaseModule.forRoot({
               connection: {
                 dialect: 'sqlite',
-                filename: ':memory:',
-              } as any,
+                connection: ':memory:',
+              },
               migrations: {
                 providers: [FailingMigration],
                 autoRun: false,
@@ -457,8 +457,8 @@ describe('Comprehensive Migration Tests', () => {
             TitanDatabaseModule.forRoot({
               connection: {
                 dialect: 'sqlite',
-                filename: ':memory:',
-              } as any,
+                connection: ':memory:',
+              },
               migrations: {
                 providers: [FailingRollback],
                 autoRun: false,
@@ -565,8 +565,8 @@ describe('Comprehensive Migration Tests', () => {
           TitanDatabaseModule.forRoot({
             connection: {
               dialect: 'sqlite',
-              filename: ':memory:',
-            } as any,
+              connection: ':memory:',
+            },
             migrations: {
               directory: migrationsDir,
               autoRun: false,

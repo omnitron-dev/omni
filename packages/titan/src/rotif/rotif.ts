@@ -850,22 +850,32 @@ export class NotificationManager {
             if (now - lastPendingCheck >= pendingCheckInterval) {
               lastPendingCheck = now;
 
-              const pendingEntries = await this.redis.xpending(stream, group, 'IDLE', idleThreshold, '-', '+', 100);
+              try {
+                const pendingEntries = await this.redis.xpending(stream, group, 'IDLE', idleThreshold, '-', '+', 100);
 
-              if (pendingEntries && pendingEntries.length > 0) {
-                const staleIds = pendingEntries.map((entry: any) => entry[0]);
+                if (pendingEntries && pendingEntries.length > 0) {
+                  const staleIds = pendingEntries.map((entry: any) => entry[0]);
 
-                const claimedMessages = (await this.redis.xclaim(
-                  stream,
-                  group,
-                  consumer,
-                  idleThreshold,
-                  ...staleIds
-                )) as [string, string[]][];
+                  const claimedMessages = (await this.redis.xclaim(
+                    stream,
+                    group,
+                    consumer,
+                    idleThreshold,
+                    ...staleIds
+                  )) as [string, string[]][];
 
-                for (const [id, rawFields] of claimedMessages) {
-                  await handleMessage(id, rawFields);
+                  for (const [id, rawFields] of claimedMessages) {
+                    await handleMessage(id, rawFields);
+                  }
                 }
+              } catch (pendingErr: any) {
+                // Defensive handling: if NOGROUP, try to create the group and continue
+                if (pendingErr?.message?.includes('NOGROUP')) {
+                  this.logger.debug(`Consumer group ${group} not found for stream ${stream}, creating it`);
+                  await this.ensureStreamGroup(stream, group);
+                  continue; // Skip this iteration and retry on next loop
+                }
+                throw pendingErr; // Re-throw other errors
               }
             }
           }
@@ -893,8 +903,17 @@ export class NotificationManager {
               await handleMessage(id, rawFields);
             }
           }
-        } catch (err) {
+        } catch (err: any) {
           if (!this.active) break;
+
+          // Defensive handling: if NOGROUP, try to create the group and continue
+          if (err?.message?.includes('NOGROUP')) {
+            this.logger.debug(`Consumer group ${group} not found for stream ${stream}, creating it`);
+            await this.ensureStreamGroup(stream, group);
+            await delayMs(100); // Short delay before retry
+            continue;
+          }
+
           this.logger.error(`Error reading stream ${stream} group ${group}`, err);
           await delayMs(500);
         }

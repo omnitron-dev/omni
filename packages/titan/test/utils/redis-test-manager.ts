@@ -1,4 +1,4 @@
-import { execSync, ChildProcess } from 'child_process';
+import { execSync, execFileSync, ChildProcess } from 'child_process';
 import Redis from 'ioredis';
 import { randomBytes } from 'crypto';
 import * as path from 'path';
@@ -217,10 +217,9 @@ export class RedisTestManager {
     };
 
     // Start Redis container using docker-compose (v2 syntax)
-    const startCmd = `"${this.dockerPath}" compose -f "${this.dockerComposeFile}" up -d redis-test`;
-
+    // Using execFileSync for security (prevents shell injection)
     try {
-      execSync(startCmd, {
+      execFileSync(this.dockerPath, ['compose', '-f', this.dockerComposeFile, 'up', '-d', 'redis-test'], {
         env,
         stdio: this.verbose ? 'inherit' : 'ignore',
       });
@@ -249,9 +248,9 @@ export class RedisTestManager {
         }
 
         // Stop and remove container
-        const stopCmd = `"${this.dockerPath}" compose -f "${this.dockerComposeFile}" down -v`;
+        // Using execFileSync for security (prevents shell injection)
         try {
-          execSync(stopCmd, {
+          execFileSync(this.dockerPath, ['compose', '-f', this.dockerComposeFile, 'down', '-v'], {
             env,
             stdio: this.verbose ? 'inherit' : 'ignore',
           });

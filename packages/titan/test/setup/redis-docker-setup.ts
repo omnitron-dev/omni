@@ -28,6 +28,19 @@ export async function startGlobalRedis(): Promise<{ url: string; port: number; i
   // Try to start Docker container
   try {
     const dockerManager = DockerTestManager.getInstance();
+
+    // Remove existing container if it exists (from previous failed test run)
+    try {
+      const { execFileSync } = await import('node:child_process');
+      // Try common Docker paths
+      const dockerPath = process.platform === 'win32' ? 'docker' : '/usr/local/bin/docker';
+      execFileSync(dockerPath, ['rm', '-f', 'test-redis-global'], {
+        stdio: 'ignore',
+      });
+    } catch {
+      // Ignore if container doesn't exist or docker not available
+    }
+
     globalRedisContainer = await dockerManager.createContainer({
       name: 'test-redis-global',
       image: 'redis:7-alpine',

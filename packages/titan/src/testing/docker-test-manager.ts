@@ -1200,7 +1200,6 @@ export class RedisTestManager {
   static async createRedisCluster(options?: RedisClusterOptions): Promise<RedisClusterContainers> {
     const masterCount = options?.masterCount || 3;
     const replicasPerMaster = options?.replicasPerMaster || 1;
-    const basePort = options?.basePort || 7000;
     const password = options?.password;
     const networkName = options?.network || `redis-cluster-${randomBytes(8).toString('hex')}`;
 
@@ -1210,14 +1209,17 @@ export class RedisTestManager {
     const masters: DockerContainer[] = [];
     const replicas: DockerContainer[] = [];
     const nodes: Array<{ host: string; port: number }> = [];
+    const allocatedPorts: number[] = [];
 
     // Extract unique ID from network name to ensure container names are unique
     const networkId = networkName.split('-').pop() || randomBytes(4).toString('hex');
 
     try {
-      // Create master nodes
+      // Create master nodes with dynamically allocated ports
       for (let i = 0; i < masterCount; i++) {
-        const port = basePort + i;
+        // Use dynamic port allocation instead of fixed basePort to avoid conflicts
+        const port = await RedisTestManager.dockerManager['findAvailablePort']();
+        allocatedPorts.push(port);
         const name = `redis-cluster-${networkId}-master-${i}`;
 
         const command = [
@@ -1264,9 +1266,11 @@ export class RedisTestManager {
         nodes.push({ host: container.host, port });
       }
 
-      // Create replica nodes
+      // Create replica nodes with dynamically allocated ports
       for (let i = 0; i < masterCount * replicasPerMaster; i++) {
-        const port = basePort + masterCount + i;
+        // Use dynamic port allocation
+        const port = await RedisTestManager.dockerManager['findAvailablePort']();
+        allocatedPorts.push(port);
         const name = `redis-cluster-${networkId}-replica-${i}`;
 
         const command = [
@@ -1313,6 +1317,9 @@ export class RedisTestManager {
         nodes.push({ host: container.host, port });
       }
 
+      // Wait for all containers to be fully ready and connected to network
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+
       // Initialize cluster
       await RedisTestManager.initializeCluster(masters, replicas, password);
 
@@ -1334,7 +1341,10 @@ export class RedisTestManager {
         },
       };
     } catch (error) {
-      // Cleanup on failure
+      // Cleanup on failure - release allocated ports and clean up containers
+      allocatedPorts.forEach((port) => {
+        RedisTestManager.dockerManager['usedPorts'].delete(port);
+      });
       await Promise.allSettled([
         ...masters.map((c) => c.cleanup().catch(() => {})),
         ...replicas.map((c) => c.cleanup().catch(() => {})),
@@ -1356,7 +1366,6 @@ export class RedisTestManager {
     const masterName = options?.masterName || 'mymaster';
     const replicaCount = options?.replicaCount || 2;
     const sentinelCount = options?.sentinelCount || 3;
-    const basePort = options?.basePort || 26379;
     const password = options?.password;
     const networkName = options?.network || `redis-sentinel-${randomBytes(8).toString('hex')}`;
 
@@ -1367,10 +1376,12 @@ export class RedisTestManager {
     const replicas: DockerContainer[] = [];
     const sentinels: DockerContainer[] = [];
     const sentinelPorts: number[] = [];
+    const allocatedPorts: number[] = [];
 
     try {
-      // Create master
-      const masterPort = 6379;
+      // Create master with dynamic port allocation
+      const masterPort = await RedisTestManager.dockerManager['findAvailablePort']();
+      allocatedPorts.push(masterPort);
       const command = ['redis-server', '--appendonly', 'no', '--save', ''];
 
       if (password) {
@@ -1427,9 +1438,10 @@ export class RedisTestManager {
         replicas.push(replica);
       }
 
-      // Create sentinels
+      // Create sentinels with dynamic port allocation
       for (let i = 0; i < sentinelCount; i++) {
-        const sentinelPort = basePort + i;
+        const sentinelPort = await RedisTestManager.dockerManager['findAvailablePort']();
+        allocatedPorts.push(sentinelPort);
         sentinelPorts.push(sentinelPort);
 
         // Create sentinel config
@@ -1487,7 +1499,10 @@ export class RedisTestManager {
         },
       };
     } catch (error) {
-      // Cleanup on failure
+      // Cleanup on failure - release allocated ports
+      allocatedPorts.forEach((port) => {
+        RedisTestManager.dockerManager['usedPorts'].delete(port);
+      });
       await Promise.all(
         [
           master?.cleanup().catch(() => {}),
@@ -1540,15 +1555,33 @@ export class RedisTestManager {
     }
 
     try {
-      execFileSync(DockerTestManager.getInstance()['dockerPath'], ['exec', firstMaster.name, ...clusterArgs], {
-        stdio: 'pipe',
+      const dockerPath = DockerTestManager.getInstance()['dockerPath'];
+      const verbose = DockerTestManager.getInstance()['verbose'];
+
+      if (verbose) {
+        console.log('[RedisCluster] Initializing cluster with nodes:', nodeAddresses);
+        console.log('[RedisCluster] Running command:', ['exec', firstMaster.name, ...clusterArgs].join(' '));
+      }
+
+      const output = execFileSync(dockerPath, ['exec', firstMaster.name, ...clusterArgs], {
+        stdio: verbose ? 'inherit' : 'pipe',
         timeout: 30000,
+        encoding: 'utf8',
       });
+
+      if (verbose && output) {
+        console.log('[RedisCluster] Initialization output:', output);
+      }
 
       // Wait for cluster to be ready
       await new Promise((resolve) => setTimeout(resolve, 2000));
+
+      if (verbose) {
+        console.log('[RedisCluster] Cluster initialization complete');
+      }
     } catch (error) {
-      throw new Error(`Failed to initialize Redis cluster: ${error}`);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to initialize Redis cluster: ${errorMsg}`);
     }
   }
 

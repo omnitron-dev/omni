@@ -1,0 +1,757 @@
+
+> @omnitron-dev/titan@0.1.0 test /Users/taaliman/projects/luxquant/omnitron-dev/omni/packages/titan
+> NODE_OPTIONS='--experimental-vm-modules' jest --forceExit
+
+[Global Setup] Starting global Redis container...
+[Global Setup] Using Docker at: /usr/local/bin/docker
+[Global Setup] Started Redis container c98b59b860c0 on port 16243
+[Global Setup] Global Redis ready at redis://localhost:16243
+(node:2797) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+  console.info
+    [DatabaseManager] Initializing database manager
+
+      at Object.info (src/modules/database/utils/logger.factory.ts:18:43)
+
+  console.debug
+    [DatabaseManager] { name: 'default', attempt: 0, maxRetries: 5 } Attempting database connection
+
+      at Object.debug (src/modules/database/utils/logger.factory.ts:21:44)
+
+  console.debug
+    [DatabaseManager] { name: 'default', dialect: 'sqlite' } Creating database connection
+
+      at Object.debug (src/modules/database/utils/logger.factory.ts:21:44)
+
+{"level":30,"time":"2025-10-30T21:07:05.685Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"Application","msg":"Logger module initialized"}
+  console.info
+    [DatabaseManager] { name: 'default', dialect: 'sqlite' } Database connection established
+
+      at Object.info (src/modules/database/utils/logger.factory.ts:18:43)
+
+  console.info
+    [DatabaseManager] { connectionCount: 1 } Database manager initialized
+
+      at Object.info (src/modules/database/utils/logger.factory.ts:18:43)
+
+(node:2795) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2796) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+  console.info
+    [DatabaseManager] Initializing database manager
+
+      at Object.info (src/modules/database/utils/logger.factory.ts:18:43)
+
+  console.debug
+    [DatabaseManager] { name: 'default', attempt: 0, maxRetries: 5 } Attempting database connection
+
+      at Object.debug (src/modules/database/utils/logger.factory.ts:21:44)
+
+  console.debug
+    [DatabaseManager] { name: 'default', dialect: 'sqlite' } Creating database connection
+
+      at Object.debug (src/modules/database/utils/logger.factory.ts:21:44)
+
+  console.info
+    [DatabaseManager] { name: 'default', dialect: 'sqlite' } Database connection established
+
+      at Object.info (src/modules/database/utils/logger.factory.ts:18:43)
+
+  console.info
+    [DatabaseManager] { connectionCount: 1 } Database manager initialized
+
+      at Object.info (src/modules/database/utils/logger.factory.ts:18:43)
+
+{"level":30,"time":"2025-10-30T21:07:05.693Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","state":"starting","msg":"Application starting"}
+{"level":30,"time":"2025-10-30T21:07:05.694Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"Starting Netron instance"}
+{"level":30,"time":"2025-10-30T21:07:05.694Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"No transport servers configured, starting in client-only mode"}
+{"level":30,"time":"2025-10-30T21:07:05.694Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"Netron","msg":"Netron service started"}
+{"level":30,"time":"2025-10-30T21:07:05.694Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","state":"started","startupTime":5,"modules":["TitanDatabaseModule","TestModule"],"msg":"Application started successfully"}
+{"level":30,"time":"2025-10-30T21:07:35.685Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","options":{},"msg":"Application stopping"}
+{"level":30,"time":"2025-10-30T21:07:35.685Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Saving application state"}
+{"level":30,"time":"2025-10-30T21:07:35.685Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Closing active connections"}
+{"level":30,"time":"2025-10-30T21:07:35.686Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Flushing logs..."}
+{"level":30,"time":"2025-10-30T21:07:35.686Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Logs flushed successfully"}
+{"level":30,"time":"2025-10-30T21:07:35.787Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Application stopped successfully"}
+{"level":30,"time":"2025-10-30T21:07:35.787Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"Stopping Netron instance"}
+{"level":30,"time":"2025-10-30T21:07:35.787Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"Netron instance stopped"}
+{"level":30,"time":"2025-10-30T21:07:35.787Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"Netron","msg":"Netron service stopped"}
+{"level":30,"time":"2025-10-30T21:07:35.801Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"Application","msg":"Logger module initialized"}
+{"level":30,"time":"2025-10-30T21:07:35.803Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","state":"starting","msg":"Application starting"}
+{"level":30,"time":"2025-10-30T21:07:35.803Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"Starting Netron instance"}
+{"level":30,"time":"2025-10-30T21:07:35.803Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"No transport servers configured, starting in client-only mode"}
+{"level":30,"time":"2025-10-30T21:07:35.803Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"Netron","msg":"Netron service started"}
+{"level":30,"time":"2025-10-30T21:07:35.803Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","state":"started","startupTime":1,"modules":["TitanDatabaseModule","TestModule"],"msg":"Application started successfully"}
+{"level":30,"time":"2025-10-30T21:08:05.802Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","options":{},"msg":"Application stopping"}
+{"level":30,"time":"2025-10-30T21:08:05.802Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Saving application state"}
+{"level":30,"time":"2025-10-30T21:08:05.803Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Closing active connections"}
+{"level":30,"time":"2025-10-30T21:08:05.803Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Flushing logs..."}
+{"level":30,"time":"2025-10-30T21:08:05.803Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Logs flushed successfully"}
+{"level":30,"time":"2025-10-30T21:08:05.903Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Application stopped successfully"}
+{"level":30,"time":"2025-10-30T21:08:05.904Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"Stopping Netron instance"}
+{"level":30,"time":"2025-10-30T21:08:05.904Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"Netron instance stopped"}
+{"level":30,"time":"2025-10-30T21:08:05.904Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"Netron","msg":"Netron service stopped"}
+{"level":30,"time":"2025-10-30T21:08:05.906Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"Application","msg":"Logger module initialized"}
+{"level":30,"time":"2025-10-30T21:08:05.910Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","state":"starting","msg":"Application starting"}
+{"level":30,"time":"2025-10-30T21:08:05.910Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"Starting Netron instance"}
+{"level":30,"time":"2025-10-30T21:08:05.910Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"No transport servers configured, starting in client-only mode"}
+{"level":30,"time":"2025-10-30T21:08:05.910Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"Netron","msg":"Netron service started"}
+{"level":30,"time":"2025-10-30T21:08:05.910Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","state":"started","startupTime":1,"modules":["TitanDatabaseModule","TestModule"],"msg":"Application started successfully"}
+{"level":30,"time":"2025-10-30T21:08:35.906Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","options":{},"msg":"Application stopping"}
+{"level":30,"time":"2025-10-30T21:08:35.907Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Saving application state"}
+{"level":30,"time":"2025-10-30T21:08:35.907Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Closing active connections"}
+{"level":30,"time":"2025-10-30T21:08:35.907Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Flushing logs..."}
+{"level":30,"time":"2025-10-30T21:08:35.907Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Logs flushed successfully"}
+{"level":30,"time":"2025-10-30T21:08:36.009Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Application stopped successfully"}
+{"level":30,"time":"2025-10-30T21:08:36.009Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"Stopping Netron instance"}
+{"level":30,"time":"2025-10-30T21:08:36.009Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"Netron instance stopped"}
+{"level":30,"time":"2025-10-30T21:08:36.009Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"Netron","msg":"Netron service stopped"}
+{"level":30,"time":"2025-10-30T21:08:36.012Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"Application","msg":"Logger module initialized"}
+{"level":30,"time":"2025-10-30T21:08:36.014Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","state":"starting","msg":"Application starting"}
+{"level":30,"time":"2025-10-30T21:08:36.014Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"Starting Netron instance"}
+{"level":30,"time":"2025-10-30T21:08:36.014Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"No transport servers configured, starting in client-only mode"}
+{"level":30,"time":"2025-10-30T21:08:36.014Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"Netron","msg":"Netron service started"}
+{"level":30,"time":"2025-10-30T21:08:36.014Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","state":"started","startupTime":0,"modules":["TitanDatabaseModule","TestModule"],"msg":"Application started successfully"}
+{"level":30,"time":"2025-10-30T21:09:06.012Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","options":{},"msg":"Application stopping"}
+{"level":30,"time":"2025-10-30T21:09:06.013Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Saving application state"}
+{"level":30,"time":"2025-10-30T21:09:06.013Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Closing active connections"}
+{"level":30,"time":"2025-10-30T21:09:06.013Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Flushing logs..."}
+{"level":30,"time":"2025-10-30T21:09:06.013Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Logs flushed successfully"}
+{"level":30,"time":"2025-10-30T21:09:06.114Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Application stopped successfully"}
+{"level":30,"time":"2025-10-30T21:09:06.115Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"Stopping Netron instance"}
+{"level":30,"time":"2025-10-30T21:09:06.115Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"Netron instance stopped"}
+{"level":30,"time":"2025-10-30T21:09:06.115Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"Netron","msg":"Netron service stopped"}
+{"level":30,"time":"2025-10-30T21:09:06.116Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"Application","msg":"Logger module initialized"}
+{"level":30,"time":"2025-10-30T21:09:06.118Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","state":"starting","msg":"Application starting"}
+{"level":30,"time":"2025-10-30T21:09:06.118Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"Starting Netron instance"}
+{"level":30,"time":"2025-10-30T21:09:06.119Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"No transport servers configured, starting in client-only mode"}
+{"level":30,"time":"2025-10-30T21:09:06.119Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"Netron","msg":"Netron service started"}
+{"level":30,"time":"2025-10-30T21:09:06.119Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","state":"started","startupTime":1,"modules":["TitanDatabaseModule","TestModule"],"msg":"Application started successfully"}
+{"level":30,"time":"2025-10-30T21:09:36.117Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","options":{},"msg":"Application stopping"}
+{"level":30,"time":"2025-10-30T21:09:36.117Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Saving application state"}
+{"level":30,"time":"2025-10-30T21:09:36.117Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Closing active connections"}
+{"level":30,"time":"2025-10-30T21:09:36.117Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Flushing logs..."}
+{"level":30,"time":"2025-10-30T21:09:36.117Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Logs flushed successfully"}
+{"level":30,"time":"2025-10-30T21:09:36.220Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Application stopped successfully"}
+{"level":30,"time":"2025-10-30T21:09:36.220Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"Stopping Netron instance"}
+{"level":30,"time":"2025-10-30T21:09:36.220Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"Netron instance stopped"}
+{"level":30,"time":"2025-10-30T21:09:36.220Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"Netron","msg":"Netron service stopped"}
+{"level":30,"time":"2025-10-30T21:09:36.221Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"Application","msg":"Logger module initialized"}
+{"level":30,"time":"2025-10-30T21:09:36.224Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","state":"starting","msg":"Application starting"}
+{"level":30,"time":"2025-10-30T21:09:36.224Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"Starting Netron instance"}
+{"level":30,"time":"2025-10-30T21:09:36.224Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"No transport servers configured, starting in client-only mode"}
+{"level":30,"time":"2025-10-30T21:09:36.224Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"Netron","msg":"Netron service started"}
+{"level":30,"time":"2025-10-30T21:09:36.224Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","state":"started","startupTime":0,"modules":["TitanDatabaseModule","TestModule"],"msg":"Application started successfully"}
+{"level":30,"time":"2025-10-30T21:10:06.222Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","options":{},"msg":"Application stopping"}
+{"level":30,"time":"2025-10-30T21:10:06.222Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Saving application state"}
+{"level":30,"time":"2025-10-30T21:10:06.222Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Closing active connections"}
+{"level":30,"time":"2025-10-30T21:10:06.222Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Flushing logs..."}
+{"level":30,"time":"2025-10-30T21:10:06.222Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Logs flushed successfully"}
+{"level":30,"time":"2025-10-30T21:10:06.323Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Application stopped successfully"}
+{"level":30,"time":"2025-10-30T21:10:06.324Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"Stopping Netron instance"}
+{"level":30,"time":"2025-10-30T21:10:06.324Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"Netron instance stopped"}
+{"level":30,"time":"2025-10-30T21:10:06.324Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"Netron","msg":"Netron service stopped"}
+{"level":30,"time":"2025-10-30T21:10:06.326Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"Application","msg":"Logger module initialized"}
+{"level":30,"time":"2025-10-30T21:10:06.328Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","state":"starting","msg":"Application starting"}
+{"level":30,"time":"2025-10-30T21:10:06.329Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"Starting Netron instance"}
+{"level":30,"time":"2025-10-30T21:10:06.329Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"No transport servers configured, starting in client-only mode"}
+{"level":30,"time":"2025-10-30T21:10:06.329Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"Netron","msg":"Netron service started"}
+{"level":30,"time":"2025-10-30T21:10:06.329Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","state":"started","startupTime":1,"modules":["TitanDatabaseModule","TestModule"],"msg":"Application started successfully"}
+  console.warn
+    [DatabaseHealthIndicator] {
+      name: 'default',
+      error: TitanError: database health check timed out after 5000ms
+          at Object.timeout (/Users/taaliman/projects/luxquant/omnitron-dev/omni/packages/titan/src/errors/factories.ts:111:12)
+          at Timeout.timeout [as _onTimeout] (/Users/taaliman/projects/luxquant/omnitron-dev/omni/packages/titan/src/modules/database/database.health.ts:149:67)
+          at listOnTimeout (node:internal/timers:588:17)
+          at processTimers (node:internal/timers:523:7) {
+        code: 408,
+        category: 'client',
+        httpStatus: 408,
+        details: { operation: 'database health check', timeout: 5000 },
+        context: {},
+        timestamp: 1761858610739,
+        requestId: undefined,
+        correlationId: undefined,
+        spanId: undefined,
+        traceId: undefined
+      },
+      latency: 5001
+    } Database health check failed
+
+      18 |     info: (...args: unknown[]) => console.info(`[${prefix}]`, ...args),
+      19 |     error: (...args: unknown[]) => console.error(`[${prefix}]`, ...args),
+    > 20 |     warn: (...args: unknown[]) => console.warn(`[${prefix}]`, ...args),
+         |                                           ^
+      21 |     debug: (...args: unknown[]) => console.debug(`[${prefix}]`, ...args),
+      22 |     trace: (...args: unknown[]) => console.trace(`[${prefix}]`, ...args),
+      23 |     fatal: (...args: unknown[]) => console.error(`[${prefix}] FATAL:`, ...args),
+
+      at Object.warn (src/modules/database/utils/logger.factory.ts:20:43)
+      at DatabaseHealthIndicator.warn [as checkConnection] (src/modules/database/database.health.ts:167:19)
+      at DatabaseHealthIndicator.check (src/modules/database/database.health.ts:97:27)
+      at Object.<anonymous> (test/modules/database/real-world-ecommerce.spec.ts:1121:22)
+
+{"level":30,"time":"2025-10-30T21:10:36.327Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","options":{},"msg":"Application stopping"}
+{"level":30,"time":"2025-10-30T21:10:36.327Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Saving application state"}
+{"level":30,"time":"2025-10-30T21:10:36.327Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Closing active connections"}
+{"level":30,"time":"2025-10-30T21:10:36.327Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Flushing logs..."}
+{"level":30,"time":"2025-10-30T21:10:36.327Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Logs flushed successfully"}
+{"level":30,"time":"2025-10-30T21:10:36.428Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Application stopped successfully"}
+{"level":30,"time":"2025-10-30T21:10:36.428Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"Stopping Netron instance"}
+{"level":30,"time":"2025-10-30T21:10:36.428Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"Netron instance stopped"}
+{"level":30,"time":"2025-10-30T21:10:36.428Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"Netron","msg":"Netron service stopped"}
+{"level":30,"time":"2025-10-30T21:10:41.839Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"Application","msg":"Logger module initialized"}
+{"level":30,"time":"2025-10-30T21:10:41.840Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","state":"starting","msg":"Application starting"}
+{"level":30,"time":"2025-10-30T21:10:41.840Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"Starting Netron instance"}
+{"level":30,"time":"2025-10-30T21:10:41.840Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"No transport servers configured, starting in client-only mode"}
+{"level":30,"time":"2025-10-30T21:10:41.840Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"Netron","msg":"Netron service started"}
+{"level":30,"time":"2025-10-30T21:10:41.840Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","state":"started","startupTime":0,"modules":["TitanDatabaseModule","TestModule"],"msg":"Application started successfully"}
+FAIL test/modules/redis/redis.cluster.spec.ts (269.364 s)
+  Redis Cluster Support
+    Cluster Detection
+      ✕ should correctly identify cluster clients (2 ms)
+      ✕ should correctly identify non-cluster clients
+      ✕ should handle null/undefined in isCluster
+    Cluster Client Creation
+      ✕ should create cluster client with proper configuration
+      ✕ should handle cluster-specific options
+    Cluster Manager Integration
+      ✕ should manage cluster clients in RedisManager
+      ✕ should handle mixed cluster and regular clients
+    Cluster Service Operations
+      ✕ should handle cluster operations through service
+      ✕ should handle cluster pipeline operations
+    Cluster Health Checks
+      ✕ should check health of cluster clients
+    Cluster Error Handling
+      ✕ should handle cluster connection errors
+      ✕ should handle failover scenarios
+    Cluster Script Execution
+      ✕ should handle script execution in cluster mode
+    Cluster Pub/Sub
+      ✕ should handle pub/sub in cluster mode
+    Cluster Performance
+      ✓ should handle slot distribution (1 ms)
+      ✓ should handle hash tags for key grouping
+
+  ● Redis Cluster Support › Cluster Detection › should correctly identify cluster clients
+
+    Failed to initialize Redis cluster: Error: Command failed: /usr/local/bin/docker exec redis-cluster-master-0 redis-cli --cluster create 127.0.0.1:7000 127.0.0.1:7001 127.0.0.1:7002 127.0.0.1:7003 127.0.0.1:7004 127.0.0.1:7005 --cluster-replicas 1 --cluster-yes
+    Could not connect to Redis at 127.0.0.1:7000: Connection refused
+
+      1513 |       await new Promise((resolve) => setTimeout(resolve, 2000));
+      1514 |     } catch (error) {
+    > 1515 |       throw new Error(`Failed to initialize Redis cluster: ${error}`);
+           |             ^
+      1516 |     }
+      1517 |   }
+      1518 |
+
+      at Function.initializeCluster (src/testing/docker-test-manager.ts:1515:13)
+      at Function.initializeCluster [as createRedisCluster] (src/testing/docker-test-manager.ts:1296:30)
+      at createDockerRedisClusterFixture (test/modules/redis/utils/redis-test-utils.ts:538:19)
+      at Object.<anonymous> (test/modules/redis/redis.cluster.spec.ts:16:24)
+
+  ● Redis Cluster Support › Cluster Detection › should correctly identify non-cluster clients
+
+    Failed to initialize Redis cluster: Error: Command failed: /usr/local/bin/docker exec redis-cluster-master-0 redis-cli --cluster create 127.0.0.1:7000 127.0.0.1:7001 127.0.0.1:7002 127.0.0.1:7003 127.0.0.1:7004 127.0.0.1:7005 --cluster-replicas 1 --cluster-yes
+    Could not connect to Redis at 127.0.0.1:7000: Connection refused
+
+      1513 |       await new Promise((resolve) => setTimeout(resolve, 2000));
+      1514 |     } catch (error) {
+    > 1515 |       throw new Error(`Failed to initialize Redis cluster: ${error}`);
+           |             ^
+      1516 |     }
+      1517 |   }
+      1518 |
+
+      at Function.initializeCluster (src/testing/docker-test-manager.ts:1515:13)
+      at Function.initializeCluster [as createRedisCluster] (src/testing/docker-test-manager.ts:1296:30)
+      at createDockerRedisClusterFixture (test/modules/redis/utils/redis-test-utils.ts:538:19)
+      at Object.<anonymous> (test/modules/redis/redis.cluster.spec.ts:16:24)
+
+  ● Redis Cluster Support › Cluster Detection › should handle null/undefined in isCluster
+
+    Failed to initialize Redis cluster: Error: Command failed: /usr/local/bin/docker exec redis-cluster-master-0 redis-cli --cluster create 127.0.0.1:7000 127.0.0.1:7001 127.0.0.1:7002 127.0.0.1:7003 127.0.0.1:7004 127.0.0.1:7005 --cluster-replicas 1 --cluster-yes
+    Could not connect to Redis at 127.0.0.1:7000: Connection refused
+
+      1513 |       await new Promise((resolve) => setTimeout(resolve, 2000));
+      1514 |     } catch (error) {
+    > 1515 |       throw new Error(`Failed to initialize Redis cluster: ${error}`);
+           |             ^
+      1516 |     }
+      1517 |   }
+      1518 |
+
+      at Function.initializeCluster (src/testing/docker-test-manager.ts:1515:13)
+      at Function.initializeCluster [as createRedisCluster] (src/testing/docker-test-manager.ts:1296:30)
+      at createDockerRedisClusterFixture (test/modules/redis/utils/redis-test-utils.ts:538:19)
+      at Object.<anonymous> (test/modules/redis/redis.cluster.spec.ts:16:24)
+
+  ● Redis Cluster Support › Cluster Client Creation › should create cluster client with proper configuration
+
+    Failed to initialize Redis cluster: Error: Command failed: /usr/local/bin/docker exec redis-cluster-master-0 redis-cli --cluster create 127.0.0.1:7000 127.0.0.1:7001 127.0.0.1:7002 127.0.0.1:7003 127.0.0.1:7004 127.0.0.1:7005 --cluster-replicas 1 --cluster-yes
+    Could not connect to Redis at 127.0.0.1:7000: Connection refused
+
+      1513 |       await new Promise((resolve) => setTimeout(resolve, 2000));
+      1514 |     } catch (error) {
+    > 1515 |       throw new Error(`Failed to initialize Redis cluster: ${error}`);
+           |             ^
+      1516 |     }
+      1517 |   }
+      1518 |
+
+      at Function.initializeCluster (src/testing/docker-test-manager.ts:1515:13)
+      at Function.initializeCluster [as createRedisCluster] (src/testing/docker-test-manager.ts:1296:30)
+      at createDockerRedisClusterFixture (test/modules/redis/utils/redis-test-utils.ts:538:19)
+      at Object.<anonymous> (test/modules/redis/redis.cluster.spec.ts:58:24)
+
+  ● Redis Cluster Support › Cluster Client Creation › should handle cluster-specific options
+
+    Failed to initialize Redis cluster: Error: Command failed: /usr/local/bin/docker exec redis-cluster-master-0 redis-cli --cluster create 127.0.0.1:7000 127.0.0.1:7001 127.0.0.1:7002 127.0.0.1:7003 127.0.0.1:7004 127.0.0.1:7005 --cluster-replicas 1 --cluster-yes
+    Could not connect to Redis at 127.0.0.1:7000: Connection refused
+
+      1513 |       await new Promise((resolve) => setTimeout(resolve, 2000));
+      1514 |     } catch (error) {
+    > 1515 |       throw new Error(`Failed to initialize Redis cluster: ${error}`);
+           |             ^
+      1516 |     }
+      1517 |   }
+      1518 |
+
+      at Function.initializeCluster (src/testing/docker-test-manager.ts:1515:13)
+      at Function.initializeCluster [as createRedisCluster] (src/testing/docker-test-manager.ts:1296:30)
+      at createDockerRedisClusterFixture (test/modules/redis/utils/redis-test-utils.ts:538:19)
+      at Object.<anonymous> (test/modules/redis/redis.cluster.spec.ts:58:24)
+
+  ● Redis Cluster Support › Cluster Manager Integration › should manage cluster clients in RedisManager
+
+    Failed to initialize Redis cluster: Error: Command failed: /usr/local/bin/docker exec redis-cluster-master-0 redis-cli --cluster create 127.0.0.1:7000 127.0.0.1:7001 127.0.0.1:7002 127.0.0.1:7003 127.0.0.1:7004 127.0.0.1:7005 --cluster-replicas 1 --cluster-yes
+    Could not connect to Redis at 127.0.0.1:7000: Connection refused
+
+      1513 |       await new Promise((resolve) => setTimeout(resolve, 2000));
+      1514 |     } catch (error) {
+    > 1515 |       throw new Error(`Failed to initialize Redis cluster: ${error}`);
+           |             ^
+      1516 |     }
+      1517 |   }
+      1518 |
+
+      at Function.initializeCluster (src/testing/docker-test-manager.ts:1515:13)
+      at Function.initializeCluster [as createRedisCluster] (src/testing/docker-test-manager.ts:1296:30)
+      at createDockerRedisClusterFixture (test/modules/redis/utils/redis-test-utils.ts:538:19)
+      at Object.<anonymous> (test/modules/redis/redis.cluster.spec.ts:118:24)
+
+  ● Redis Cluster Support › Cluster Manager Integration › should handle mixed cluster and regular clients
+
+    Failed to initialize Redis cluster: Error: Command failed: /usr/local/bin/docker exec redis-cluster-master-0 redis-cli --cluster create 127.0.0.1:7000 127.0.0.1:7001 127.0.0.1:7002 127.0.0.1:7003 127.0.0.1:7004 127.0.0.1:7005 --cluster-replicas 1 --cluster-yes
+    Could not connect to Redis at 127.0.0.1:7000: Connection refused
+
+      1513 |       await new Promise((resolve) => setTimeout(resolve, 2000));
+      1514 |     } catch (error) {
+    > 1515 |       throw new Error(`Failed to initialize Redis cluster: ${error}`);
+           |             ^
+      1516 |     }
+      1517 |   }
+      1518 |
+
+      at Function.initializeCluster (src/testing/docker-test-manager.ts:1515:13)
+      at Function.initializeCluster [as createRedisCluster] (src/testing/docker-test-manager.ts:1296:30)
+      at createDockerRedisClusterFixture (test/modules/redis/utils/redis-test-utils.ts:538:19)
+      at Object.<anonymous> (test/modules/redis/redis.cluster.spec.ts:118:24)
+
+  ● Redis Cluster Support › Cluster Service Operations › should handle cluster operations through service
+
+    Failed to initialize Redis cluster: Error: Command failed: /usr/local/bin/docker exec redis-cluster-master-0 redis-cli --cluster create 127.0.0.1:7000 127.0.0.1:7001 127.0.0.1:7002 127.0.0.1:7003 127.0.0.1:7004 127.0.0.1:7005 --cluster-replicas 1 --cluster-yes
+    Could not connect to Redis at 127.0.0.1:7000: Connection refused
+
+      1513 |       await new Promise((resolve) => setTimeout(resolve, 2000));
+      1514 |     } catch (error) {
+    > 1515 |       throw new Error(`Failed to initialize Redis cluster: ${error}`);
+           |             ^
+      1516 |     }
+      1517 |   }
+      1518 |
+
+      at Function.initializeCluster (src/testing/docker-test-manager.ts:1515:13)
+      at Function.initializeCluster [as createRedisCluster] (src/testing/docker-test-manager.ts:1296:30)
+      at createDockerRedisClusterFixture (test/modules/redis/utils/redis-test-utils.ts:538:19)
+      at Object.<anonymous> (test/modules/redis/redis.cluster.spec.ts:197:24)
+
+  ● Redis Cluster Support › Cluster Service Operations › should handle cluster pipeline operations
+
+    Failed to initialize Redis cluster: Error: Command failed: /usr/local/bin/docker exec redis-cluster-master-0 redis-cli --cluster create 127.0.0.1:7000 127.0.0.1:7001 127.0.0.1:7002 127.0.0.1:7003 127.0.0.1:7004 127.0.0.1:7005 --cluster-replicas 1 --cluster-yes
+    Could not connect to Redis at 127.0.0.1:7000: Connection refused
+
+      1513 |       await new Promise((resolve) => setTimeout(resolve, 2000));
+      1514 |     } catch (error) {
+    > 1515 |       throw new Error(`Failed to initialize Redis cluster: ${error}`);
+           |             ^
+      1516 |     }
+      1517 |   }
+      1518 |
+
+      at Function.initializeCluster (src/testing/docker-test-manager.ts:1515:13)
+      at Function.initializeCluster [as createRedisCluster] (src/testing/docker-test-manager.ts:1296:30)
+      at createDockerRedisClusterFixture (test/modules/redis/utils/redis-test-utils.ts:538:19)
+      at Object.<anonymous> (test/modules/redis/redis.cluster.spec.ts:197:24)
+
+  ● Redis Cluster Support › Cluster Health Checks › should check health of cluster clients
+
+    Failed to initialize Redis cluster: Error: Command failed: /usr/local/bin/docker exec redis-cluster-master-0 redis-cli --cluster create 127.0.0.1:7000 127.0.0.1:7001 127.0.0.1:7002 127.0.0.1:7003 127.0.0.1:7004 127.0.0.1:7005 --cluster-replicas 1 --cluster-yes
+    Could not connect to Redis at 127.0.0.1:7000: Connection refused
+
+      1513 |       await new Promise((resolve) => setTimeout(resolve, 2000));
+      1514 |     } catch (error) {
+    > 1515 |       throw new Error(`Failed to initialize Redis cluster: ${error}`);
+           |             ^
+      1516 |     }
+      1517 |   }
+      1518 |
+
+      at Function.initializeCluster (src/testing/docker-test-manager.ts:1515:13)
+      at Function.initializeCluster [as createRedisCluster] (src/testing/docker-test-manager.ts:1296:30)
+      at createDockerRedisClusterFixture (test/modules/redis/utils/redis-test-utils.ts:538:19)
+      at Object.<anonymous> (test/modules/redis/redis.cluster.spec.ts:282:24)
+
+  ● Redis Cluster Support › Cluster Error Handling › should handle cluster connection errors
+
+    Failed to initialize Redis cluster: Error: Command failed: /usr/local/bin/docker exec redis-cluster-master-0 redis-cli --cluster create 127.0.0.1:7000 127.0.0.1:7001 127.0.0.1:7002 127.0.0.1:7003 127.0.0.1:7004 127.0.0.1:7005 --cluster-replicas 1 --cluster-yes
+    Could not connect to Redis at 127.0.0.1:7000: Connection refused
+
+      1513 |       await new Promise((resolve) => setTimeout(resolve, 2000));
+      1514 |     } catch (error) {
+    > 1515 |       throw new Error(`Failed to initialize Redis cluster: ${error}`);
+           |             ^
+      1516 |     }
+      1517 |   }
+      1518 |
+
+      at Function.initializeCluster (src/testing/docker-test-manager.ts:1515:13)
+      at Function.initializeCluster [as createRedisCluster] (src/testing/docker-test-manager.ts:1296:30)
+      at createDockerRedisClusterFixture (test/modules/redis/utils/redis-test-utils.ts:538:19)
+      at Object.<anonymous> (test/modules/redis/redis.cluster.spec.ts:332:24)
+
+  ● Redis Cluster Support › Cluster Error Handling › should handle failover scenarios
+
+    Failed to initialize Redis cluster: Error: Command failed: /usr/local/bin/docker exec redis-cluster-master-0 redis-cli --cluster create 127.0.0.1:7000 127.0.0.1:7001 127.0.0.1:7002 127.0.0.1:7003 127.0.0.1:7004 127.0.0.1:7005 --cluster-replicas 1 --cluster-yes
+    Could not connect to Redis at 127.0.0.1:7000: Connection refused
+
+      1513 |       await new Promise((resolve) => setTimeout(resolve, 2000));
+      1514 |     } catch (error) {
+    > 1515 |       throw new Error(`Failed to initialize Redis cluster: ${error}`);
+           |             ^
+      1516 |     }
+      1517 |   }
+      1518 |
+
+      at Function.initializeCluster (src/testing/docker-test-manager.ts:1515:13)
+      at Function.initializeCluster [as createRedisCluster] (src/testing/docker-test-manager.ts:1296:30)
+      at createDockerRedisClusterFixture (test/modules/redis/utils/redis-test-utils.ts:538:19)
+      at Object.<anonymous> (test/modules/redis/redis.cluster.spec.ts:332:24)
+
+  ● Redis Cluster Support › Cluster Script Execution › should handle script execution in cluster mode
+
+    Failed to initialize Redis cluster: Error: Command failed: /usr/local/bin/docker exec redis-cluster-master-0 redis-cli --cluster create 127.0.0.1:7000 127.0.0.1:7001 127.0.0.1:7002 127.0.0.1:7003 127.0.0.1:7004 127.0.0.1:7005 --cluster-replicas 1 --cluster-yes
+    Could not connect to Redis at 127.0.0.1:7000: Connection refused
+
+      1513 |       await new Promise((resolve) => setTimeout(resolve, 2000));
+      1514 |     } catch (error) {
+    > 1515 |       throw new Error(`Failed to initialize Redis cluster: ${error}`);
+           |             ^
+      1516 |     }
+      1517 |   }
+      1518 |
+
+      at Function.initializeCluster (src/testing/docker-test-manager.ts:1515:13)
+      at Function.initializeCluster [as createRedisCluster] (src/testing/docker-test-manager.ts:1296:30)
+      at createDockerRedisClusterFixture (test/modules/redis/utils/redis-test-utils.ts:538:19)
+      at Object.<anonymous> (test/modules/redis/redis.cluster.spec.ts:413:24)
+
+  ● Redis Cluster Support › Cluster Pub/Sub › should handle pub/sub in cluster mode
+
+    Failed to initialize Redis cluster: Error: Command failed: /usr/local/bin/docker exec redis-cluster-master-0 redis-cli --cluster create 127.0.0.1:7000 127.0.0.1:7001 127.0.0.1:7002 127.0.0.1:7003 127.0.0.1:7004 127.0.0.1:7005 --cluster-replicas 1 --cluster-yes
+    Could not connect to Redis at 127.0.0.1:7000: Connection refused
+
+      1513 |       await new Promise((resolve) => setTimeout(resolve, 2000));
+      1514 |     } catch (error) {
+    > 1515 |       throw new Error(`Failed to initialize Redis cluster: ${error}`);
+           |             ^
+      1516 |     }
+      1517 |   }
+      1518 |
+
+      at Function.initializeCluster (src/testing/docker-test-manager.ts:1515:13)
+      at Function.initializeCluster [as createRedisCluster] (src/testing/docker-test-manager.ts:1296:30)
+      at createDockerRedisClusterFixture (test/modules/redis/utils/redis-test-utils.ts:538:19)
+      at Object.<anonymous> (test/modules/redis/redis.cluster.spec.ts:481:24)
+
+{"level":30,"time":"2025-10-30T21:11:36.431Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","options":{},"msg":"Application stopping"}
+{"level":30,"time":"2025-10-30T21:11:36.431Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Saving application state"}
+{"level":30,"time":"2025-10-30T21:11:36.431Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Closing active connections"}
+{"level":30,"time":"2025-10-30T21:11:36.431Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Flushing logs..."}
+{"level":30,"time":"2025-10-30T21:11:36.431Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Logs flushed successfully"}
+{"level":30,"time":"2025-10-30T21:11:36.532Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","msg":"Application stopped successfully"}
+{"level":30,"time":"2025-10-30T21:11:36.533Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"Stopping Netron instance"}
+{"level":30,"time":"2025-10-30T21:11:36.533Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"Netron instance stopped"}
+{"level":30,"time":"2025-10-30T21:11:36.533Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"Netron","msg":"Netron service stopped"}
+{"level":30,"time":"2025-10-30T21:11:42.078Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"Application","msg":"Logger module initialized"}
+{"level":30,"time":"2025-10-30T21:11:42.079Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","state":"starting","msg":"Application starting"}
+{"level":30,"time":"2025-10-30T21:11:42.079Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"Starting Netron instance"}
+{"level":30,"time":"2025-10-30T21:11:42.079Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"netron","netronId":"titan-app-netron","msg":"No transport servers configured, starting in client-only mode"}
+{"level":30,"time":"2025-10-30T21:11:42.079Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","module":"Netron","msg":"Netron service started"}
+{"level":30,"time":"2025-10-30T21:11:42.079Z","pid":2795,"hostname":"MacBook-Pro-Taaliman.local","name":"titan-app","state":"started","startupTime":0,"modules":["TitanDatabaseModule","TestModule"],"msg":"Application started successfully"}
+FAIL test/modules/database/real-world-ecommerce.spec.ts (305.842 s)
+  Real-World E-Commerce Application
+    User Journey
+      ✕ should complete full shopping experience (30003 ms)
+      ✕ should handle product recommendations (30002 ms)
+      ✕ should provide analytics dashboard (30002 ms)
+    Inventory Management
+      ✕ should prevent overselling (30003 ms)
+      ✕ should update stock on purchase (30001 ms)
+    Performance & Health
+      ✕ should handle concurrent transactions (30002 ms)
+      ✓ should provide health metrics (5017 ms)
+      ✕ should handle large result sets efficiently (30001 ms)
+    Data Integrity
+      ✕ should maintain referential integrity (30001 ms)
+      ✕ should handle soft deletes correctly (30002 ms)
+      ✕ should handle optimistic locking (30002 ms)
+
+  ● Real-World E-Commerce Application › User Journey › should complete full shopping experience
+
+    thrown: "Exceeded timeout of 30000 ms for a test.
+    Add a timeout value to this test to increase the timeout, if this is a long-running test. See https://jestjs.io/docs/api#testname-fn-timeout."
+
+      988 |
+      989 |   describe('User Journey', () => {
+    > 990 |     it('should complete full shopping experience', async () => {
+          |     ^
+      991 |       // 1. User registration/login
+      992 |       const user = await userRepo.findByEmail('customer1@example.com');
+      993 |       expect(user).toBeDefined();
+
+      at test/modules/database/real-world-ecommerce.spec.ts:990:5
+      at test/modules/database/real-world-ecommerce.spec.ts:989:3
+      at test/modules/database/real-world-ecommerce.spec.ts:906:1
+
+  ● Real-World E-Commerce Application › User Journey › should handle product recommendations
+
+    thrown: "Exceeded timeout of 30000 ms for a test.
+    Add a timeout value to this test to increase the timeout, if this is a long-running test. See https://jestjs.io/docs/api#testname-fn-timeout."
+
+      1043 |     });
+      1044 |
+    > 1045 |     it('should handle product recommendations', async () => {
+           |     ^
+      1046 |       const user = await userRepo.findByEmail('customer1@example.com');
+      1047 |       const recommendations = await ecommerceService.getRecommendations(user!.id, 5);
+      1048 |
+
+      at test/modules/database/real-world-ecommerce.spec.ts:1045:5
+      at test/modules/database/real-world-ecommerce.spec.ts:989:3
+      at test/modules/database/real-world-ecommerce.spec.ts:906:1
+
+  ● Real-World E-Commerce Application › User Journey › should provide analytics dashboard
+
+    thrown: "Exceeded timeout of 30000 ms for a test.
+    Add a timeout value to this test to increase the timeout, if this is a long-running test. See https://jestjs.io/docs/api#testname-fn-timeout."
+
+      1051 |     });
+      1052 |
+    > 1053 |     it('should provide analytics dashboard', async () => {
+           |     ^
+      1054 |       const startDate = new Date('2024-01-01');
+      1055 |       const endDate = new Date('2024-12-31');
+      1056 |
+
+      at test/modules/database/real-world-ecommerce.spec.ts:1053:5
+      at test/modules/database/real-world-ecommerce.spec.ts:989:3
+      at test/modules/database/real-world-ecommerce.spec.ts:906:1
+
+  ● Real-World E-Commerce Application › Inventory Management › should prevent overselling
+
+    thrown: "Exceeded timeout of 30000 ms for a test.
+    Add a timeout value to this test to increase the timeout, if this is a long-running test. See https://jestjs.io/docs/api#testname-fn-timeout."
+
+      1066 |
+      1067 |   describe('Inventory Management', () => {
+    > 1068 |     it('should prevent overselling', async () => {
+           |     ^
+      1069 |       const product = await productRepo.findBySku('LAPTOP001');
+      1070 |       expect(product).toBeDefined();
+      1071 |
+
+      at test/modules/database/real-world-ecommerce.spec.ts:1068:5
+      at test/modules/database/real-world-ecommerce.spec.ts:1067:3
+      at test/modules/database/real-world-ecommerce.spec.ts:906:1
+
+  ● Real-World E-Commerce Application › Inventory Management › should update stock on purchase
+
+    thrown: "Exceeded timeout of 30000 ms for a test.
+    Add a timeout value to this test to increase the timeout, if this is a long-running test. See https://jestjs.io/docs/api#testname-fn-timeout."
+
+      1076 |     });
+      1077 |
+    > 1078 |     it('should update stock on purchase', async () => {
+           |     ^
+      1079 |       const product = await productRepo.findBySku('MOUSE001');
+      1080 |       const initialStock = product!.stock_quantity;
+      1081 |
+
+      at test/modules/database/real-world-ecommerce.spec.ts:1078:5
+      at test/modules/database/real-world-ecommerce.spec.ts:1067:3
+      at test/modules/database/real-world-ecommerce.spec.ts:906:1
+
+  ● Real-World E-Commerce Application › Performance & Health › should handle concurrent transactions
+
+    thrown: "Exceeded timeout of 30000 ms for a test.
+    Add a timeout value to this test to increase the timeout, if this is a long-running test. See https://jestjs.io/docs/api#testname-fn-timeout."
+
+      1095 |
+      1096 |   describe('Performance & Health', () => {
+    > 1097 |     it('should handle concurrent transactions', async () => {
+           |     ^
+      1098 |       const users = await userRepo.findActiveCustomers();
+      1099 |       const products = await productRepo.findInStock();
+      1100 |
+
+      at test/modules/database/real-world-ecommerce.spec.ts:1097:5
+      at test/modules/database/real-world-ecommerce.spec.ts:1096:3
+      at test/modules/database/real-world-ecommerce.spec.ts:906:1
+
+  ● Real-World E-Commerce Application › Performance & Health › should handle large result sets efficiently
+
+    thrown: "Exceeded timeout of 30000 ms for a test.
+    Add a timeout value to this test to increase the timeout, if this is a long-running test. See https://jestjs.io/docs/api#testname-fn-timeout."
+
+      1127 |     });
+      1128 |
+    > 1129 |     it('should handle large result sets efficiently', async () => {
+           |     ^
+      1130 |       const startTime = Date.now();
+      1131 |
+      1132 |       // Search with pagination
+
+      at test/modules/database/real-world-ecommerce.spec.ts:1129:5
+      at test/modules/database/real-world-ecommerce.spec.ts:1096:3
+      at test/modules/database/real-world-ecommerce.spec.ts:906:1
+
+  ● Real-World E-Commerce Application › Data Integrity › should maintain referential integrity
+
+    thrown: "Exceeded timeout of 30000 ms for a test.
+    Add a timeout value to this test to increase the timeout, if this is a long-running test. See https://jestjs.io/docs/api#testname-fn-timeout."
+
+      1150 |
+      1151 |   describe('Data Integrity', () => {
+    > 1152 |     it('should maintain referential integrity', async () => {
+           |     ^
+      1153 |       // Try to create order with non-existent user
+      1154 |       await expect(
+      1155 |         orderRepo.create({
+
+      at test/modules/database/real-world-ecommerce.spec.ts:1152:5
+      at test/modules/database/real-world-ecommerce.spec.ts:1151:3
+      at test/modules/database/real-world-ecommerce.spec.ts:906:1
+
+  ● Real-World E-Commerce Application › Data Integrity › should handle soft deletes correctly
+
+    thrown: "Exceeded timeout of 30000 ms for a test.
+    Add a timeout value to this test to increase the timeout, if this is a long-running test. See https://jestjs.io/docs/api#testname-fn-timeout."
+
+      1169 |     });
+      1170 |
+    > 1171 |     it('should handle soft deletes correctly', async () => {
+           |     ^
+      1172 |       // Get an existing category first to ensure foreign key constraint is satisfied
+      1173 |       const category = await db.selectFrom('categories').selectAll().executeTakeFirst();
+      1174 |
+
+      at test/modules/database/real-world-ecommerce.spec.ts:1171:5
+      at test/modules/database/real-world-ecommerce.spec.ts:1151:3
+      at test/modules/database/real-world-ecommerce.spec.ts:906:1
+
+  ● Real-World E-Commerce Application › Data Integrity › should handle optimistic locking
+
+    thrown: "Exceeded timeout of 30000 ms for a test.
+    Add a timeout value to this test to increase the timeout, if this is a long-running test. See https://jestjs.io/docs/api#testname-fn-timeout."
+
+      1197 |     });
+      1198 |
+    > 1199 |     it('should handle optimistic locking', async () => {
+           |     ^
+      1200 |       const product = await productRepo.findBySku('LAPTOP001');
+      1201 |       const originalVersion = product!.version;
+      1202 |
+
+      at test/modules/database/real-world-ecommerce.spec.ts:1199:5
+      at test/modules/database/real-world-ecommerce.spec.ts:1151:3
+      at test/modules/database/real-world-ecommerce.spec.ts:906:1
+
+  console.debug
+    [RedisManager] Redis client "default-dna64" connecting
+
+      at SimpleLogger.debug (src/modules/redis/redis.manager.ts:38:13)
+
+  console.debug
+    [RedisManager] Redis client "secondary-dna64" connecting
+
+      at SimpleLogger.debug (src/modules/redis/redis.manager.ts:38:13)
+
+  console.debug
+    [RedisManager] Redis client "default-dna64" ready
+
+      at SimpleLogger.debug (src/modules/redis/redis.manager.ts:38:13)
+
+  console.log
+    [RedisManager] Redis client "default-dna64" connected successfully
+
+      at SimpleLogger.log (src/modules/redis/redis.manager.ts:26:13)
+          at async Promise.all (index 0)
+
+  console.debug
+    [RedisManager] Redis client "secondary-dna64" ready
+
+      at SimpleLogger.debug (src/modules/redis/redis.manager.ts:38:13)
+
+  console.log
+    [RedisManager] Redis client "secondary-dna64" connected successfully
+
+      at SimpleLogger.log (src/modules/redis/redis.manager.ts:26:13)
+          at async Promise.all (index 1)
+
+  console.log
+    [RedisManager] Redis client "default-dna64" closed
+
+      at SimpleLogger.log (src/modules/redis/redis.manager.ts:26:13)
+          at async Promise.all (index 0)
+
+  console.debug
+    [RedisManager] Redis client "default-dna64" connection closed
+
+      at SimpleLogger.debug (src/modules/redis/redis.manager.ts:38:13)
+
+  console.debug
+    [RedisManager] Redis client "default-dna64" connection ended
+
+      at SimpleLogger.debug (src/modules/redis/redis.manager.ts:38:13)
+
+  console.log
+    [RedisManager] Redis client "secondary-dna64" closed
+
+      at SimpleLogger.log (src/modules/redis/redis.manager.ts:26:13)
+          at async Promise.all (index 1)
+
+  console.debug
+    [RedisManager] Redis client "secondary-dna64" connection closed
+
+      at SimpleLogger.debug (src/modules/redis/redis.manager.ts:38:13)
+
+  console.debug
+    [RedisManager] Redis client "secondary-dna64" connection ended
+
+      at SimpleLogger.debug (src/modules/redis/redis.manager.ts:38:13)
+

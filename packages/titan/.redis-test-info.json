@@ -1,6 +1,0 @@
-{
-  "url": "redis://localhost:16964",
-  "port": 16964,
-  "isDocker": true,
-  "containerId": "334426c0dfb2484a613a70ea0c37e3e416411e956686e14bd6321d08ac15e3a8"
-}

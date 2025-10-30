@@ -83,6 +83,109 @@ services:
       - "test.type=redis-cluster"
       - "test.cleanup=true"
 
+  # PostgreSQL for database testing
+  postgres-test:
+    image: postgres:16-alpine
+    container_name: postgres-test-${TEST_SUITE_ID:-default}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-testdb}
+      POSTGRES_USER: ${POSTGRES_USER:-testuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-testpass}
+      POSTGRES_HOST_AUTH_METHOD: trust
+    command: >
+      postgres
+      -c shared_buffers=256MB
+      -c max_connections=200
+      -c log_statement=none
+      -c fsync=off
+      -c synchronous_commit=off
+      -c full_page_writes=off
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-testuser}"]
+      interval: 1s
+      timeout: 3s
+      retries: 5
+      start_period: 2s
+    networks:
+      - test-network
+    tmpfs:
+      - /var/lib/postgresql/data
+    labels:
+      - "test.suite=${TEST_SUITE_ID:-default}"
+      - "test.type=postgres"
+      - "test.cleanup=true"
+
+  # MySQL for database testing
+  mysql-test:
+    image: mysql:8.0
+    container_name: mysql-test-${TEST_SUITE_ID:-default}
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-testdb}
+      MYSQL_USER: ${MYSQL_USER:-testuser}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-testpass}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpass}
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+    command: >
+      mysqld
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --max_connections=200
+      --innodb-buffer-pool-size=256M
+      --innodb-flush-log-at-trx-commit=0
+      --innodb-flush-method=O_DIRECT
+      --skip-log-bin
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 1s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - test-network
+    tmpfs:
+      - /var/lib/mysql
+    labels:
+      - "test.suite=${TEST_SUITE_ID:-default}"
+      - "test.type=mysql"
+      - "test.cleanup=true"
+
+  # MariaDB for database testing (alternative to MySQL)
+  mariadb-test:
+    image: mariadb:11
+    container_name: mariadb-test-${TEST_SUITE_ID:-default}
+    ports:
+      - "${MARIADB_PORT:-3307}:3306"
+    environment:
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-testdb}
+      MARIADB_USER: ${MARIADB_USER:-testuser}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:-testpass}
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-rootpass}
+      MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: "yes"
+    command: >
+      mariadbd
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --max_connections=200
+      --innodb-buffer-pool-size=256M
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 1s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - test-network
+    tmpfs:
+      - /var/lib/mysql
+    labels:
+      - "test.suite=${TEST_SUITE_ID:-default}"
+      - "test.type=mariadb"
+      - "test.cleanup=true"
+
 networks:
   test-network:
     name: test-network-${TEST_SUITE_ID:-default}

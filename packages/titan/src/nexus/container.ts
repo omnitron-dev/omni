@@ -351,6 +351,31 @@ export class Container implements IContainer {
     // Create factory function
     const factory = this.createFactory(token, provider);
 
+    // Determine if this registration should be async
+    let isAsync = 'useFactory' in provider && provider.useFactory?.constructor.name === 'AsyncFunction';
+
+    // Check if any injected dependency is async and propagate the async requirement
+    if (dependencies && dependencies.length > 0 && !isAsync) {
+      for (const dep of dependencies) {
+        // Handle optional dependencies and context injection
+        const depToken = typeof dep === 'object' && dep !== null && 'token' in dep ? (dep as any).token : dep;
+
+        // Skip context injection
+        if (depToken === 'CONTEXT' || (typeof dep === 'object' && (dep as any).type === 'context')) {
+          continue;
+        }
+
+        const depRegistration = this.registrations.get(depToken);
+        if (depRegistration) {
+          const depReg = Array.isArray(depRegistration) ? depRegistration[0] : depRegistration;
+          if (depReg?.isAsync) {
+            isAsync = true;
+            break;
+          }
+        }
+      }
+    }
+
     return {
       token,
       provider,
@@ -358,7 +383,7 @@ export class Container implements IContainer {
       scope,
       factory,
       dependencies,
-      isAsync: 'useFactory' in provider && provider.useFactory?.constructor.name === 'AsyncFunction',
+      isAsync,
     };
   }
 
@@ -630,7 +655,35 @@ export class Container implements IContainer {
 
     // Check for async provider
     if (registration.isAsync) {
-      throw new AsyncResolutionError(token);
+      // Build a helpful error message explaining why this is async
+      const tokenName = getTokenName(token);
+      let reason = '';
+
+      // Check if this provider itself is async
+      if ('useFactory' in registration.provider && registration.provider.useFactory?.constructor.name === 'AsyncFunction') {
+        reason = `it uses an async factory function`;
+      } else if (registration.dependencies && registration.dependencies.length > 0) {
+        // Check which dependencies are async
+        const asyncDeps: string[] = [];
+        for (const dep of registration.dependencies) {
+          const depToken = typeof dep === 'object' && dep !== null && 'token' in dep ? (dep as any).token : dep;
+          if (depToken === 'CONTEXT' || (typeof dep === 'object' && (dep as any).type === 'context')) {
+            continue;
+          }
+          const depRegistration = this.registrations.get(depToken);
+          const depReg = Array.isArray(depRegistration) ? depRegistration[0] : depRegistration;
+          if (depReg?.isAsync) {
+            asyncDeps.push(getTokenName(depToken));
+          }
+        }
+        if (asyncDeps.length > 0) {
+          reason = `it depends on async provider(s): ${asyncDeps.join(', ')}`;
+        }
+      }
+
+      const error = new AsyncResolutionError(token);
+      (error as any).message = `Cannot resolve '${tokenName}' synchronously because ${reason || 'it is registered as async'}. Use 'await container.resolveAsync(${tokenName})' instead.`;
+      throw error;
     }
 
     // Resolve based on scope

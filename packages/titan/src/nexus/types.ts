@@ -148,7 +148,8 @@ export type Provider<T = any> =
  */
 export type ProviderInput<T = any> =
   | Provider<T> // Provider without 'provide' field
-  | [InjectionToken<T>, Provider<T>] // Tuple format [token, provider]
+  | [ServiceIdentifier<T>, Provider<T>] // Tuple format [token, provider]
+  | [ServiceIdentifier<T>, Provider<T>, RegistrationOptions] // Tuple format with options [token, provider, options]
   | Constructor<T>; // Direct constructor
 
 /**

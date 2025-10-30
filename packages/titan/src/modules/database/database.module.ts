@@ -4,7 +4,7 @@
  * Provides database integration with Kysera ORM
  */
 
-import { DynamicModule, Provider, ProviderDefinition } from '../../nexus/index.js';
+import { DynamicModule, Provider, ProviderDefinition, RegistrationOptions } from '../../nexus/index.js';
 import { Module } from '../../decorators/index.js';
 import { DatabaseManager } from './database.manager.js';
 import { DatabaseService } from './database.service.js';
@@ -70,6 +70,15 @@ export class TitanDatabaseModule {
         },
       ],
 
+      // Alias registration for DatabaseManager class (allows resolving by class)
+      [
+        DatabaseManager as any,
+        {
+          useFactory: async (manager: DatabaseManager) => manager,
+          inject: [DATABASE_MANAGER],
+        },
+      ],
+
       // Database service
       [
         DATABASE_SERVICE,
@@ -79,12 +88,30 @@ export class TitanDatabaseModule {
         },
       ],
 
+      // Alias registration for DatabaseService class
+      [
+        DatabaseService as any,
+        {
+          useFactory: async (service: DatabaseService) => service,
+          inject: [DATABASE_SERVICE],
+        },
+      ],
+
       // Health indicator
       [
         DATABASE_HEALTH_INDICATOR,
         {
           useFactory: async (manager: DatabaseManager) => new DatabaseHealthIndicator(manager),
           inject: [DATABASE_MANAGER],
+        },
+      ],
+
+      // Alias registration for DatabaseHealthIndicator class
+      [
+        DatabaseHealthIndicator as any,
+        {
+          useFactory: async (indicator: DatabaseHealthIndicator) => indicator,
+          inject: [DATABASE_HEALTH_INDICATOR],
         },
       ],
 
@@ -220,6 +247,10 @@ export class TitanDatabaseModule {
       DATABASE_MIGRATION_SERVICE,
       DATABASE_TRANSACTION_MANAGER,
       DATABASE_TRANSACTION_SCOPE_FACTORY,
+      // Also export class constructors as aliases
+      DatabaseManager,
+      DatabaseService,
+      DatabaseHealthIndicator,
       ...connectionProviders.map((p) => (Array.isArray(p) ? p[0] : getDatabaseConnectionToken())),
       ...repositoryProviders.map((p) => (Array.isArray(p) ? p[0] : p)),
     ];
@@ -429,21 +460,39 @@ export class TitanDatabaseModule {
    * Register specific database entities/repositories
    */
   static forFeature(repositories: any[] = []): DynamicModule {
-    const providers: Array<[string | symbol, ProviderDefinition<any>]> = [];
+    const providers: Array<[string | symbol, ProviderDefinition<any>, RegistrationOptions]> = [];
 
     for (const repository of repositories) {
       const metadata = getRepositoryMetadata(repository);
       if (metadata) {
+        // Create shared factory function that ensures repository is registered
+        // This is idempotent - calling register() multiple times is safe
+        const factoryFn = async (factory: RepositoryFactory) => {
+          // Register if not already registered (idempotent operation)
+          if (!factory.getMetadata(repository)) {
+            factory.register(repository, metadata as any);
+          }
+          return await factory.get(repository);
+        };
+
+        // Register with class constructor token (for direct injection by class)
+        providers.push([
+          repository,
+          {
+            useFactory: factoryFn,
+            inject: [DATABASE_REPOSITORY_FACTORY],
+          },
+          { override: true }, // Registration options as third element
+        ]);
+
+        // Also register with string token (for @InjectRepository decorator)
         providers.push([
           getRepositoryToken(repository),
           {
-            useFactory: async (factory: RepositoryFactory) => {
-              // Register and return the repository
-              factory.register(repository, metadata as any);
-              return await factory.get(repository);
-            },
+            useFactory: factoryFn,
             inject: [DATABASE_REPOSITORY_FACTORY],
           },
+          { override: true }, // Registration options as third element
         ]);
       }
     }

@@ -34,14 +34,14 @@ export class DatabaseService {
     @Inject(DATABASE_MANAGER) private manager: DatabaseManager,
     private eventsService?: EventsService
   ) {
-    // Create a noop logger
+    // Create a console logger for proper output
     this.logger = {
-      info: () => {},
-      error: () => {},
-      warn: () => {},
-      debug: () => {},
-      trace: () => {},
-      fatal: () => {},
+      info: (...args: any[]) => console.info('[DatabaseService]', ...args),
+      error: (...args: any[]) => console.error('[DatabaseService]', ...args),
+      warn: (...args: any[]) => console.warn('[DatabaseService]', ...args),
+      debug: (...args: any[]) => console.debug('[DatabaseService]', ...args),
+      trace: (...args: any[]) => console.trace('[DatabaseService]', ...args),
+      fatal: (...args: any[]) => console.error('[DatabaseService] FATAL:', ...args),
     };
   }
 

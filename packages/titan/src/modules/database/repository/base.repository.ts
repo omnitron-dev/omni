@@ -392,21 +392,31 @@ export class BaseRepository<
       };
     } else {
       // Offset-based pagination
-      const result = (await paginate(query as any, {
-        page: options.page || 1,
-        limit: options.limit || 20,
-      })) as any;
+      const page = options.page || 1;
+      const limit = options.limit || 20;
 
-      const entities = result.data.map((row: any) => this.mapRow(row));
+      // Manual implementation since kysera/core might have issues
+      // Get total count first
+      const totalResult = await (this.qb
+        .selectFrom(this.tableName) as any)
+        .select(sql<number>`count(*)`.as('count'))
+        .executeTakeFirst();
+      const total = Number((totalResult as any)?.count || 0);
+      const totalPages = Math.ceil(total / limit);
+
+      // Get paginated data
+      const offset = (page - 1) * limit;
+      const rows = await query.limit(limit).offset(offset).execute();
+      const entities = rows.map((row: any) => this.mapRow(row));
 
       return {
         data: entities,
         pagination: {
-          page: result.page || options.page || 1,
-          limit: result.limit || options.limit || 20,
-          total: result.total,
-          totalPages: result.totalPages,
-          hasMore: result.page < result.totalPages,
+          page,
+          limit,
+          total,
+          totalPages,
+          hasMore: page < totalPages,
         },
       };
     }

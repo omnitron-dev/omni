@@ -11,10 +11,10 @@ import {
   TitanDatabaseModule,
   MigrationRunner,
   Migration,
-  IMigration,
-  IDatabaseManager,
   DATABASE_MIGRATION_SERVICE,
+  DATABASE_MANAGER,
 } from '../../../src/modules/database/index.js';
+import type { IMigration, IDatabaseManager } from '../../../src/modules/database/index.js';
 import { Kysely, sql } from 'kysely';
 import { DatabaseTestManager } from '../../utils/docker-test-manager.js';
 
@@ -143,7 +143,7 @@ describe('Migration System', () => {
 
       // Get services
       migrationRunner = await app.get(DATABASE_MIGRATION_SERVICE);
-      dbManager = await app.get(IDatabaseManager);
+      dbManager = await app.get(DATABASE_MANAGER);
 
       // Initialize migration tables
       await migrationRunner.init();
@@ -350,7 +350,7 @@ describe('Migration System', () => {
 
         // Get services
         migrationRunner = await app.get(DATABASE_MIGRATION_SERVICE);
-        dbManager = await app.get(IDatabaseManager);
+        dbManager = await app.get(DATABASE_MANAGER);
 
         // Initialize migration tables
         await migrationRunner.init();

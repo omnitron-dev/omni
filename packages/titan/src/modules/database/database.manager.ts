@@ -54,14 +54,14 @@ export class DatabaseManager implements IDatabaseManager {
 
   constructor(options: DatabaseModuleOptions = {}, logger?: any) {
     this.options = options;
-    // Create a noop logger if none provided
+    // Create a console logger if none provided (proper fallback)
     this.logger = logger || {
-      info: () => {},
-      error: () => {},
-      warn: () => {},
-      debug: () => {},
-      trace: () => {},
-      fatal: () => {},
+      info: (...args: any[]) => console.info('[DatabaseManager]', ...args),
+      error: (...args: any[]) => console.error('[DatabaseManager]', ...args),
+      warn: (...args: any[]) => console.warn('[DatabaseManager]', ...args),
+      debug: (...args: any[]) => console.debug('[DatabaseManager]', ...args),
+      trace: (...args: any[]) => console.trace('[DatabaseManager]', ...args),
+      fatal: (...args: any[]) => console.error('[DatabaseManager] FATAL:', ...args),
     };
   }
 

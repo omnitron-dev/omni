@@ -18,9 +18,11 @@ import {
   Repository,
   BaseRepository,
   DATABASE_TRANSACTION_MANAGER,
+  DATABASE_MANAGER,
   TransactionPropagation,
   TransactionIsolationLevel,
 } from '../../../src/modules/database/index.js';
+import type { IDatabaseManager } from '../../../src/modules/database/index.js';
 import { TitanError } from '../../../src/errors/index.js';
 import { sql } from 'kysely';
 import { DatabaseTestManager } from '../../utils/docker-test-manager.js';
@@ -182,7 +184,8 @@ describe('Transaction Management', () => {
       transactionManager = await app.get(DATABASE_TRANSACTION_MANAGER);
 
       // Create accounts table
-      const db = await app.get(DATABASE_MANAGER).then((m: any) => m.getConnection());
+      const dbManager = await app.get(DATABASE_MANAGER);
+      const db = (dbManager as IDatabaseManager).getConnection();
       await sql`
         CREATE TABLE accounts (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -342,7 +345,8 @@ describe('Transaction Management', () => {
         transactionManager = await app.get(DATABASE_TRANSACTION_MANAGER);
 
         // Create accounts table
-        const db = await app.get(DATABASE_MANAGER).then((m: any) => m.getConnection());
+        const dbManager = await app.get(DATABASE_MANAGER);
+        const db = (dbManager as IDatabaseManager).getConnection();
         await sql`
           CREATE TABLE accounts (
             id SERIAL PRIMARY KEY,

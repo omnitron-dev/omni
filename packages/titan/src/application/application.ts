@@ -86,6 +86,10 @@ export class Application implements IApplication {
    * Supports multiple usage patterns for maximum flexibility
    */
   static async create(
+    module: ModuleInput,
+    options?: IApplicationOptions
+  ): Promise<Application>;
+  static async create(
     options?: IApplicationOptions & {
       modules?: ModuleInput[];
       imports?: Token<IModule>[]; // Support direct imports like AppModule had
@@ -94,12 +98,49 @@ export class Application implements IApplication {
       scanPaths?: string[]; // Paths to scan for modules
       excludePaths?: string[]; // Paths to exclude from scanning
     }
+  ): Promise<Application>;
+  static async create(
+    moduleOrOptions?: ModuleInput | (IApplicationOptions & {
+      modules?: ModuleInput[];
+      imports?: Token<IModule>[];
+      providers?: Array<[InjectionToken<any>, Provider<any>]>;
+      autoDiscovery?: boolean;
+      scanPaths?: string[];
+      excludePaths?: string[];
+    }),
+    optionsArg?: IApplicationOptions
   ): Promise<Application> {
+    // Detect which overload was used
+    let mainModule: ModuleInput | undefined;
+    let options: IApplicationOptions & {
+      modules?: ModuleInput[];
+      imports?: Token<IModule>[];
+      providers?: Array<[InjectionToken<any>, Provider<any>]>;
+      autoDiscovery?: boolean;
+      scanPaths?: string[];
+      excludePaths?: string[];
+    } | undefined;
+
+    // Check if first argument is a module class (function) vs options object
+    if (typeof moduleOrOptions === 'function') {
+      // First overload: (module, options)
+      mainModule = moduleOrOptions as ModuleInput;
+      options = optionsArg;
+    } else {
+      // Second overload: (options)
+      options = moduleOrOptions as any;
+    }
+
     const app = new Application(options);
 
     // Register core modules properly with forRoot pattern
     if (!options?.disableCoreModules) {
       await app.initializeCoreModules();
+    }
+
+    // Register the main module if provided via first overload
+    if (mainModule) {
+      await app.registerModule(mainModule);
     }
 
     // Auto-discovery mode - automatically find and register @Module decorated classes
@@ -733,6 +774,7 @@ export class Application implements IApplication {
       Reflect.getMetadata('module:metadata', moduleInput) ||
       (moduleConstructor as any).__titanModuleMetadata ||
       (moduleInput as any).__titanModuleMetadata;
+
 
     // Ensure module has a name - use class name or metadata
     let moduleName = moduleInstance.name;
@@ -1615,9 +1657,16 @@ export class Application implements IApplication {
         this._modules.set(token, resolved as any);
       }
       return resolved;
-    } catch {
+    } catch (error: any) {
+      // Check if it's an async resolution error
+      if (error?.message?.includes('registered as async') || error?.name === 'AsyncResolutionError') {
+        throw new Error(
+          `Cannot resolve '${(token as any).name || token}' synchronously because it has async dependencies. ` +
+          `Use 'await app.resolveAsync(${(token as any).name || token})' instead.`
+        );
+      }
       // Provide a better error message
-      throw Errors.notFound('Module', token.name || token.toString());
+      throw Errors.notFound('Module', (token as any).name || token.toString());
     }
   }
 
@@ -2534,8 +2583,18 @@ export class Application implements IApplication {
         if (Array.isArray(provider)) {
           await this.registerProvider(provider as [InjectionToken<any>, Provider<any>]);
         } else if (typeof provider === 'function') {
+          // Check if this is a repository (has @Repository decorator metadata)
+          const isRepository = Reflect.getMetadata('database:is-repository', provider);
+
+          // Skip repositories - they're registered by the database module with proper async factories
+          if (isRepository) {
+            continue;
+          }
+
           // Constructor - register with the class as both token and implementation
-          this._container.register(provider, { useClass: provider });
+          this._container.register(provider, {
+            useClass: provider,
+          });
         } else if (typeof provider === 'object' && 'provide' in provider) {
           // Provider object format { provide: token, useValue/useClass/useFactory: ... }
           const { provide, ...providerDef } = provider as any;
@@ -2561,9 +2620,11 @@ export class Application implements IApplication {
   /**
    * Register a provider in the container
    */
-  private async registerProvider(provider: [InjectionToken<any>, Provider<any>]): Promise<void> {
-    const [token, providerDef] = provider;
-    this._container.register(token, providerDef);
+  private async registerProvider(provider: [InjectionToken<any>, Provider<any>, any?]): Promise<void> {
+    const [token, providerDef, registrationOptions] = provider;
+    // Use provided registration options or default to empty object
+    const options = registrationOptions || {};
+    this._container.register(token, providerDef, options);
   }
 
   private handleError(error: Error): void {

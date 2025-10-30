@@ -31,3 +31,12 @@ export {
   EventListenerTracker,
   collectEvents as collectEventsAsync,
 } from './async-test-utils.js';
+
+// Docker test utilities
+export {
+  DockerTestManager,
+  DatabaseTestManager,
+  type DockerContainer,
+  type DockerTestManagerOptions,
+  type ContainerOptions,
+} from './docker-test-manager.js';

@@ -13,7 +13,6 @@ import {
   TitanDatabaseModule,
   InjectConnection,
   Migration,
-  IMigration,
   MigrationRunner,
   MigrationService,
   MigrationLock,
@@ -22,6 +21,7 @@ import {
   DATABASE_MIGRATION_RUNNER,
   DATABASE_MIGRATION_LOCK,
 } from '../../../src/modules/database/index.js';
+import type { IMigration } from '../../../src/modules/database/index.js';
 import { DatabaseTestManager, DockerContainer } from '../../utils/docker-test-manager.js';
 import * as fs from 'fs/promises';
 import * as path from 'path';

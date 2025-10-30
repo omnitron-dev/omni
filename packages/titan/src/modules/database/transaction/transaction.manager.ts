@@ -552,15 +552,201 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
   }
 
   async begin(options?: TransactionOptions): Promise<TransactionContext> {
-    throw Errors.notImplemented('Manual transaction management');
+    const opts = { ...this.defaultOptions, ...options };
+    const connectionName = opts.connection || 'default';
+    const db = await this.manager.getConnection(connectionName);
+    const transactionId = uuidv4();
+    const transactionName = opts.name || `manual_${transactionId}`;
+
+    // Check if already in a transaction
+    const currentContext = this.getCurrentTransaction();
+    if (currentContext) {
+      throw Errors.conflict('Transaction already active', {
+        currentId: currentContext.id,
+        currentName: currentContext.name,
+      });
+    }
+
+    // Create context
+    const context: TransactionContext = {
+      id: transactionId,
+      name: transactionName,
+      connection: connectionName,
+      isolationLevel: opts.isolationLevel,
+      readOnly: opts.readOnly || false,
+      startedAt: new Date(),
+      state: TransactionState.ACTIVE,
+    };
+
+    // Begin transaction using Kysely's transaction API
+    // We need to start the transaction and store it for later commit/rollback
+    return new Promise((resolve, reject) => {
+      db.transaction()
+        .execute(async (trx) => {
+          // Set isolation level if specified
+          if (opts.isolationLevel) {
+            await this.setTransactionIsolationLevel(trx, opts.isolationLevel);
+          }
+
+          // Set read-only if specified
+          if (opts.readOnly) {
+            await this.setTransactionReadOnly(trx, true);
+          }
+
+          // Store transaction
+          this.transactions.set(transactionId, context);
+          this.connections.set(transactionId, trx);
+
+          // Update statistics
+          this.statistics.totalStarted++;
+          this.statistics.activeTransactions++;
+          if (opts.isolationLevel) {
+            this.statistics.byIsolationLevel[opts.isolationLevel] =
+              (this.statistics.byIsolationLevel[opts.isolationLevel] || 0) + 1;
+          }
+
+          // Emit start event
+          this.emitEvent({
+            type: TransactionEventType.TRANSACTION_START,
+            transactionId,
+            transactionName,
+            connection: connectionName,
+          });
+
+          // Set the context in async storage
+          this.storage.enterWith(context);
+
+          // Resolve with context to return control to caller
+          resolve(context);
+
+          // Wait indefinitely - the transaction will be committed or rolled back manually
+          // This is achieved by waiting on a promise that never resolves naturally
+          // The commit() or rollback() methods will control the transaction lifecycle
+          await new Promise<void>((resolveWait) => {
+            // Store the resolver so commit/rollback can call it
+            (context as any)._resolver = resolveWait;
+          });
+        })
+        .then(() => {
+          // Transaction completed successfully (committed)
+          const duration = Date.now() - context.startedAt.getTime();
+          this.updateDurationStatistics(duration);
+        })
+        .catch((error) => {
+          // Transaction was rolled back
+          context.state = TransactionState.ROLLED_BACK;
+          context.error = error as Error;
+          this.statistics.totalRolledBack++;
+          this.statistics.errors++;
+
+          if (opts.onError) {
+            Promise.resolve(opts.onError(error as Error)).catch(() => {});
+          }
+
+          this.emitEvent({
+            type: TransactionEventType.TRANSACTION_ROLLBACK,
+            transactionId,
+            transactionName,
+            connection: connectionName,
+            error: error as Error,
+            duration: Date.now() - context.startedAt.getTime(),
+          });
+        })
+        .finally(() => {
+          // Clean up
+          this.transactions.delete(transactionId);
+          this.connections.delete(transactionId);
+          this.statistics.activeTransactions--;
+        });
+    });
   }
 
   async commit(): Promise<void> {
-    throw Errors.notImplemented('Manual transaction management');
+    const context = this.getCurrentTransaction();
+    if (!context) {
+      throw Errors.conflict('No active transaction to commit');
+    }
+
+    if (context.state !== TransactionState.ACTIVE) {
+      throw Errors.conflict('Transaction not in active state', {
+        state: context.state,
+        transactionId: context.id,
+      });
+    }
+
+    // Update context state
+    context.state = TransactionState.COMMITTING;
+
+    try {
+      // Emit commit event
+      this.emitEvent({
+        type: TransactionEventType.TRANSACTION_COMMIT,
+        transactionId: context.id,
+        transactionName: context.name,
+        connection: context.connection,
+        duration: Date.now() - context.startedAt.getTime(),
+      });
+
+      // Mark as committed
+      context.state = TransactionState.COMMITTED;
+      this.statistics.totalCommitted++;
+
+      // Resolve the waiting promise in begin() to let the transaction complete
+      const resolver = (context as any)._resolver;
+      if (resolver) {
+        resolver();
+      }
+    } catch (error) {
+      context.state = TransactionState.FAILED;
+      context.error = error as Error;
+      throw error;
+    }
   }
 
   async rollback(error?: Error): Promise<void> {
-    throw Errors.notImplemented('Manual transaction management');
+    const context = this.getCurrentTransaction();
+    if (!context) {
+      throw Errors.conflict('No active transaction to rollback');
+    }
+
+    if (context.state === TransactionState.COMMITTED || context.state === TransactionState.ROLLED_BACK) {
+      throw Errors.conflict('Transaction already finalized', {
+        state: context.state,
+        transactionId: context.id,
+      });
+    }
+
+    // Update context state
+    context.state = TransactionState.ROLLING_BACK;
+    if (error) {
+      context.error = error;
+    }
+
+    try {
+      // Emit rollback event
+      this.emitEvent({
+        type: TransactionEventType.TRANSACTION_ROLLBACK,
+        transactionId: context.id,
+        transactionName: context.name,
+        connection: context.connection,
+        error,
+        duration: Date.now() - context.startedAt.getTime(),
+      });
+
+      // Mark as rolled back
+      context.state = TransactionState.ROLLED_BACK;
+
+      // Reject the waiting promise in begin() to trigger rollback
+      const resolver = (context as any)._resolver;
+      if (resolver) {
+        // Throwing an error will cause the transaction to rollback
+        throw error || new Error('Transaction manually rolled back');
+      }
+    } catch (rollbackError) {
+      context.state = TransactionState.FAILED;
+      context.error = rollbackError as Error;
+      throw rollbackError;
+    }
   }
 
   async savepoint(name: string): Promise<void> {

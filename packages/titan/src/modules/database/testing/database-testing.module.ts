@@ -464,7 +464,9 @@ export class DatabaseTestingModule {
         }) as any,
       ],
       providers,
-      exports: [DATABASE_TESTING_SERVICE],
+      exports: [
+        DATABASE_TESTING_SERVICE,
+      ],
     };
   }
 

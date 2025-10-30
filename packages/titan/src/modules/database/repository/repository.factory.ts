@@ -161,6 +161,11 @@ export class RepositoryFactory implements IRepositoryFactory {
    * Create and cache a repository instance
    */
   private async createAndCacheRepository(target: any, metadata: RepositoryMetadata): Promise<void> {
+    const connectionName = metadata.connection || this.config.connectionName || 'default';
+    const db = await this.manager.getConnection(connectionName);
+
+    // Create an instance of the actual custom repository class
+    // The custom repository class constructor expects the database connection and config
     const config: RepositoryConfig = {
       tableName: metadata.table,
       connectionName: metadata.connection,
@@ -175,7 +180,67 @@ export class RepositoryFactory implements IRepositoryFactory {
       audit: metadata.audit,
     };
 
-    const repository = await this.create(config);
+    // Instantiate the actual repository class (e.g., UserRepository, ProductRepository)
+    let repository: any;
+
+    // Check if target is a constructor function
+    if (typeof target === 'function' && target.prototype) {
+      // Create instance of the custom repository class
+      repository = new target(db, config);
+    } else {
+      // Fallback to BaseRepository if not a constructor
+      repository = new BaseRepository(db, config);
+    }
+
+    // Apply plugins if configured
+    if (metadata.plugins && metadata.plugins.length > 0) {
+      repository = this.applyPlugins(repository, metadata.plugins);
+    }
+
+    // Check for specific plugin configurations
+    const pluginsToApply: KyseraPlugin[] = [];
+
+    if (metadata.softDelete) {
+      const softDeleteConfig = typeof metadata.softDelete === 'object' ? metadata.softDelete : { column: 'deleted_at' };
+
+      pluginsToApply.push(
+        softDeletePlugin({
+          deletedAtColumn: softDeleteConfig.column || 'deleted_at',
+          includeDeleted: softDeleteConfig.includeDeleted || false,
+        })
+      );
+    }
+
+    if (metadata.timestamps) {
+      const timestampsConfig =
+        typeof metadata.timestamps === 'object'
+          ? metadata.timestamps
+          : { createdAt: 'created_at', updatedAt: 'updated_at' };
+
+      pluginsToApply.push(
+        timestampsPlugin({
+          createdAtColumn: timestampsConfig.createdAt || 'created_at',
+          updatedAtColumn: timestampsConfig.updatedAt || 'updated_at',
+        })
+      );
+    }
+
+    if (metadata.audit) {
+      const auditConfig = typeof metadata.audit === 'object' ? metadata.audit : { table: 'audit_logs' };
+
+      pluginsToApply.push(
+        auditPlugin({
+          auditTable: auditConfig.table || 'audit_logs',
+          captureOldValues: auditConfig.captureOldValues !== false,
+          captureNewValues: auditConfig.captureNewValues !== false,
+        })
+      );
+    }
+
+    if (pluginsToApply.length > 0) {
+      repository = this.applyPlugins(repository, pluginsToApply);
+    }
+
     this.repositories.set(target, repository);
   }
 
@@ -237,13 +302,65 @@ export class RepositoryFactory implements IRepositoryFactory {
       audit: metadata.audit,
     };
 
-    // Create base repository with transaction
-    const baseRepo = new BaseRepository(transaction, config);
+    // Instantiate the actual repository class with transaction
+    let repository: any;
+
+    // Check if target is a constructor function
+    if (typeof target === 'function' && target.prototype) {
+      // Create instance of the custom repository class
+      repository = new target(transaction, config);
+    } else {
+      // Fallback to BaseRepository if not a constructor
+      repository = new BaseRepository(transaction, config);
+    }
 
     // Apply plugins if configured
-    let repository: any = baseRepo;
     if (metadata.plugins && metadata.plugins.length > 0) {
       repository = this.applyPlugins(repository, metadata.plugins);
+    }
+
+    // Check for specific plugin configurations
+    const pluginsToApply: KyseraPlugin[] = [];
+
+    if (metadata.softDelete) {
+      const softDeleteConfig = typeof metadata.softDelete === 'object' ? metadata.softDelete : { column: 'deleted_at' };
+
+      pluginsToApply.push(
+        softDeletePlugin({
+          deletedAtColumn: softDeleteConfig.column || 'deleted_at',
+          includeDeleted: softDeleteConfig.includeDeleted || false,
+        })
+      );
+    }
+
+    if (metadata.timestamps) {
+      const timestampsConfig =
+        typeof metadata.timestamps === 'object'
+          ? metadata.timestamps
+          : { createdAt: 'created_at', updatedAt: 'updated_at' };
+
+      pluginsToApply.push(
+        timestampsPlugin({
+          createdAtColumn: timestampsConfig.createdAt || 'created_at',
+          updatedAtColumn: timestampsConfig.updatedAt || 'updated_at',
+        })
+      );
+    }
+
+    if (metadata.audit) {
+      const auditConfig = typeof metadata.audit === 'object' ? metadata.audit : { table: 'audit_logs' };
+
+      pluginsToApply.push(
+        auditPlugin({
+          auditTable: auditConfig.table || 'audit_logs',
+          captureOldValues: auditConfig.captureOldValues !== false,
+          captureNewValues: auditConfig.captureNewValues !== false,
+        })
+      );
+    }
+
+    if (pluginsToApply.length > 0) {
+      repository = this.applyPlugins(repository, pluginsToApply);
     }
 
     return repository as T;
@@ -330,14 +447,68 @@ export class RepositoryFactory implements IRepositoryFactory {
             audit: metadata.audit,
           };
 
-          const baseRepo = new BaseRepository(trx, config);
+          // Instantiate the actual repository class with transaction
+          let repository: any;
+
+          // Check if target is a constructor function
+          if (typeof target === 'function' && target.prototype) {
+            // Create instance of the custom repository class
+            repository = new target(trx, config);
+          } else {
+            // Fallback to BaseRepository if not a constructor
+            repository = new BaseRepository(trx, config);
+          }
 
           // Apply plugins if needed
           if (metadata.plugins && metadata.plugins.length > 0) {
-            return this.applyPlugins(baseRepo, metadata.plugins) as T;
+            repository = this.applyPlugins(repository, metadata.plugins);
           }
 
-          return baseRepo as T;
+          // Check for specific plugin configurations
+          const pluginsToApply: KyseraPlugin[] = [];
+
+          if (metadata.softDelete) {
+            const softDeleteConfig = typeof metadata.softDelete === 'object' ? metadata.softDelete : { column: 'deleted_at' };
+
+            pluginsToApply.push(
+              softDeletePlugin({
+                deletedAtColumn: softDeleteConfig.column || 'deleted_at',
+                includeDeleted: softDeleteConfig.includeDeleted || false,
+              })
+            );
+          }
+
+          if (metadata.timestamps) {
+            const timestampsConfig =
+              typeof metadata.timestamps === 'object'
+                ? metadata.timestamps
+                : { createdAt: 'created_at', updatedAt: 'updated_at' };
+
+            pluginsToApply.push(
+              timestampsPlugin({
+                createdAtColumn: timestampsConfig.createdAt || 'created_at',
+                updatedAtColumn: timestampsConfig.updatedAt || 'updated_at',
+              })
+            );
+          }
+
+          if (metadata.audit) {
+            const auditConfig = typeof metadata.audit === 'object' ? metadata.audit : { table: 'audit_logs' };
+
+            pluginsToApply.push(
+              auditPlugin({
+                auditTable: auditConfig.table || 'audit_logs',
+                captureOldValues: auditConfig.captureOldValues !== false,
+                captureNewValues: auditConfig.captureNewValues !== false,
+              })
+            );
+          }
+
+          if (pluginsToApply.length > 0) {
+            repository = this.applyPlugins(repository, pluginsToApply);
+          }
+
+          return repository as T;
         },
         execute: async <T>(executeFn: () => Promise<T>): Promise<T> => executeFn(),
       };

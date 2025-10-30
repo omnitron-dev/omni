@@ -43,14 +43,14 @@ export class DatabaseHealthIndicator {
     @Inject(DATABASE_MIGRATION_SERVICE) private migrationService?: MigrationService,
     @Inject(DATABASE_TRANSACTION_MANAGER) private transactionManager?: TransactionManager
   ) {
-    // Create a noop logger
+    // Create a console logger for proper output
     this.logger = {
-      info: () => {},
-      error: () => {},
-      warn: () => {},
-      debug: () => {},
-      trace: () => {},
-      fatal: () => {},
+      info: (...args: any[]) => console.info('[DatabaseHealth]', ...args),
+      error: (...args: any[]) => console.error('[DatabaseHealth]', ...args),
+      warn: (...args: any[]) => console.warn('[DatabaseHealth]', ...args),
+      debug: (...args: any[]) => console.debug('[DatabaseHealth]', ...args),
+      trace: (...args: any[]) => console.trace('[DatabaseHealth]', ...args),
+      fatal: (...args: any[]) => console.error('[DatabaseHealth] FATAL:', ...args),
     };
     this.initializeMetricsCollection();
   }

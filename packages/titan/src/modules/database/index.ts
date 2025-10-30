@@ -48,10 +48,10 @@ export type {
   // Events
   DatabaseEvent,
   QueryContext,
-
-  // Manager
-  IDatabaseManager,
 } from './database.types.js';
+
+// Export Manager interface separately for runtime compatibility
+export type { IDatabaseManager } from './database.types.js';
 
 // Re-export event type enum
 export { DatabaseEventType } from './database.types.js';
@@ -122,8 +122,11 @@ export { MigrationService } from './migration/migration.service.js';
 export { MigrationRunner } from './migration/migration.runner.js';
 export { MigrationProvider } from './migration/migration.provider.js';
 export { MigrationLock } from './migration/migration.lock.js';
+
+// Export IMigration separately for runtime compatibility
+export type { IMigration } from './migration/migration.types.js';
+
 export type {
-  IMigration,
   MigrationMetadata,
   AppliedMigration,
   MigrationStatus,
@@ -185,6 +188,15 @@ export { cachingPlugin, MemoryCache, createRedisCache } from './plugins/examples
 // Testing
 export { DatabaseTestingModule, DatabaseTestingService } from './testing/database-testing.module.js';
 export type { DatabaseTestingOptions } from './testing/database-testing.module.js';
+export {
+  isDockerAvailable,
+  createTestDatabase,
+  withTestDatabase,
+  createTestDatabaseConfigs,
+  cleanupTestDatabaseConfigs,
+  getRecommendedTestDatabase,
+} from './testing/test-utilities.js';
+export type { DatabaseTestOptions, DatabaseTestContext } from './testing/test-utilities.js';
 
 // Utilities
 export {

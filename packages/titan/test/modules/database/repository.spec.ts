@@ -238,7 +238,7 @@ describe('Repository Integration', () => {
       expect(deletedUser.rows[0].deleted_at).not.toBeNull();
     });
 
-    it.skip('should paginate results - skipped due to kysera/core pagination issue', async () => {
+    it('should paginate results', async () => {
       // Create multiple users
       const users = [];
       for (let i = 0; i < 15; i++) {

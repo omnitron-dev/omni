@@ -27,6 +27,7 @@ import type {
   RepositoryFactoryConfig,
   RepositoryTransactionScope,
 } from './repository.types.js';
+import type { RepositoryConstructor } from '../database.internal-types.js';
 
 /**
  * Repository Factory Service
@@ -35,8 +36,8 @@ import type {
  */
 @Injectable()
 export class RepositoryFactory implements IRepositoryFactory {
-  private repositories: Map<any, Repository<any>> = new Map();
-  private metadata: Map<any, RepositoryMetadata> = new Map();
+  private repositories: Map<RepositoryConstructor, Repository<unknown>> = new Map();
+  private metadata: Map<RepositoryConstructor, RepositoryMetadata> = new Map();
   private plugins: Map<string, KyseraPlugin> = new Map();
   private config: RepositoryFactoryConfig;
 
@@ -150,7 +151,7 @@ export class RepositoryFactory implements IRepositoryFactory {
   /**
    * Register a repository class
    */
-  register(target: any, metadata: RepositoryMetadata): void {
+  register(target: RepositoryConstructor, metadata: RepositoryMetadata): void {
     this.metadata.set(target, metadata);
 
     // Create and cache repository instance
@@ -160,7 +161,7 @@ export class RepositoryFactory implements IRepositoryFactory {
   /**
    * Create and cache a repository instance
    */
-  private async createAndCacheRepository(target: any, metadata: RepositoryMetadata): Promise<void> {
+  private async createAndCacheRepository(target: RepositoryConstructor, metadata: RepositoryMetadata): Promise<void> {
     const connectionName = metadata.connection || this.config.connectionName || 'default';
     const db = await this.manager.getConnection(connectionName);
 
@@ -181,15 +182,15 @@ export class RepositoryFactory implements IRepositoryFactory {
     };
 
     // Instantiate the actual repository class (e.g., UserRepository, ProductRepository)
-    let repository: any;
+    let repository: Repository<unknown>;
 
     // Check if target is a constructor function
     if (typeof target === 'function' && target.prototype) {
       // Create instance of the custom repository class
-      repository = new target(db, config);
+      repository = new target(db, config) as Repository<unknown>;
     } else {
       // Fallback to BaseRepository if not a constructor
-      repository = new BaseRepository(db, config);
+      repository = new BaseRepository(db, config) as Repository<unknown>;
     }
 
     // Apply plugins if configured
@@ -247,7 +248,7 @@ export class RepositoryFactory implements IRepositoryFactory {
   /**
    * Get a registered repository
    */
-  async get<T = any>(target: any): Promise<T> {
+  async get<T = unknown>(target: RepositoryConstructor): Promise<T> {
     const repository = this.repositories.get(target);
 
     if (!repository) {
@@ -258,7 +259,8 @@ export class RepositoryFactory implements IRepositoryFactory {
         return this.repositories.get(target) as T;
       }
 
-      throw Errors.notFound('Repository', target.name || target);
+      const targetName = typeof target === 'function' && target.name ? target.name : String(target);
+      throw Errors.notFound('Repository', targetName);
     }
 
     return repository as T;
@@ -267,28 +269,29 @@ export class RepositoryFactory implements IRepositoryFactory {
   /**
    * Get all registered repositories
    */
-  getAll(): Map<any, Repository<any>> {
+  getAll(): Map<RepositoryConstructor, Repository<unknown>> {
     return new Map(this.repositories);
   }
 
   /**
    * Get repository metadata
    */
-  getMetadata(target: any): RepositoryMetadata | undefined {
+  getMetadata(target: RepositoryConstructor): RepositoryMetadata | undefined {
     return this.metadata.get(target);
   }
 
   /**
    * Create repository with transaction
    */
-  createWithTransaction<T = any>(target: any, transaction: Transaction<any>): T {
+  createWithTransaction<T = unknown>(target: RepositoryConstructor, transaction: Transaction<unknown>): T {
     const metadata = this.metadata.get(target);
     if (!metadata) {
-      throw Errors.notFound('Repository metadata', target.name || target);
+      const targetName = typeof target === 'function' && target.name ? target.name : String(target);
+      throw Errors.notFound('Repository metadata', targetName);
     }
 
     // Create repository config from metadata
-    const config: RepositoryConfig<any, any, any> = {
+    const config: RepositoryConfig = {
       tableName: metadata.table,
       connectionName: metadata.connection,
       schemas: {
@@ -303,15 +306,15 @@ export class RepositoryFactory implements IRepositoryFactory {
     };
 
     // Instantiate the actual repository class with transaction
-    let repository: any;
+    let repository: Repository<unknown>;
 
     // Check if target is a constructor function
     if (typeof target === 'function' && target.prototype) {
       // Create instance of the custom repository class
-      repository = new target(transaction, config);
+      repository = new target(transaction, config) as Repository<unknown>;
     } else {
       // Fallback to BaseRepository if not a constructor
-      repository = new BaseRepository(transaction, config);
+      repository = new BaseRepository(transaction, config) as Repository<unknown>;
     }
 
     // Apply plugins if configured
@@ -369,14 +372,14 @@ export class RepositoryFactory implements IRepositoryFactory {
   /**
    * Apply plugins to a repository
    */
-  applyPlugins(repository: any, plugins: Array<string | KyseraPlugin>): any {
+  applyPlugins<T extends object = Record<string, unknown>>(repository: T, plugins: Array<string | KyseraPlugin>): T {
     // Use plugin manager if available
     if (this.pluginManager) {
       const pluginNames = plugins.filter((p) => typeof p === 'string').map((p) => p as string);
 
       // Apply string-based plugins through plugin manager
       if (pluginNames.length > 0) {
-        repository = this.pluginManager.applyPlugins(repository, pluginNames);
+        repository = this.pluginManager.applyPlugins(repository, pluginNames) as T;
       }
 
       // Apply direct plugin instances
@@ -384,7 +387,7 @@ export class RepositoryFactory implements IRepositoryFactory {
       for (const plugin of directPlugins) {
         const pluginInstance = plugin as KyseraPlugin;
         if (pluginInstance.extendRepository) {
-          repository = pluginInstance.extendRepository(repository);
+          repository = pluginInstance.extendRepository(repository) as T;
         }
       }
 
@@ -404,11 +407,11 @@ export class RepositoryFactory implements IRepositoryFactory {
 
       // Apply plugin based on Kysera plugin interface
       if (pluginInstance.extendRepository) {
-        enhancedRepo = pluginInstance.extendRepository(enhancedRepo);
+        enhancedRepo = pluginInstance.extendRepository(enhancedRepo) as T;
       }
     }
 
-    return enhancedRepo;
+    return enhancedRepo as T;
   }
 
   /**
@@ -421,16 +424,17 @@ export class RepositoryFactory implements IRepositoryFactory {
   /**
    * Create a transaction scope for repositories
    */
-  async createTransactionScope(fn: (scope: RepositoryTransactionScope) => Promise<any>): Promise<any> {
+  async createTransactionScope(fn: (scope: RepositoryTransactionScope) => Promise<unknown>): Promise<unknown> {
     const connectionName = this.config.connectionName || 'default';
     const db = await this.manager.getConnection(connectionName);
 
     return db.transaction().execute(async (trx) => {
       const scope: RepositoryTransactionScope = {
-        getRepository: <T = any>(target: any): T => {
+        getRepository: <T = unknown>(target: RepositoryConstructor): T => {
           const metadata = this.metadata.get(target);
           if (!metadata) {
-            throw Errors.notFound('Repository metadata', target.name || target);
+            const targetName = typeof target === 'function' && target.name ? target.name : String(target);
+            throw Errors.notFound('Repository metadata', targetName);
           }
 
           const config: RepositoryConfig = {
@@ -448,15 +452,15 @@ export class RepositoryFactory implements IRepositoryFactory {
           };
 
           // Instantiate the actual repository class with transaction
-          let repository: any;
+          let repository: Repository<unknown>;
 
           // Check if target is a constructor function
           if (typeof target === 'function' && target.prototype) {
             // Create instance of the custom repository class
-            repository = new target(trx, config);
+            repository = new target(trx, config) as Repository<unknown>;
           } else {
             // Fallback to BaseRepository if not a constructor
-            repository = new BaseRepository(trx, config);
+            repository = new BaseRepository(trx, config) as Repository<unknown>;
           }
 
           // Apply plugins if needed
@@ -524,10 +528,10 @@ export class RepositoryFactory implements IRepositoryFactory {
     connectionName?: string
   ): Promise<ReturnType<typeof createKyseraRepositoryFactory<DB>>['create']> {
     const connName = connectionName || this.config.connectionName || 'default';
-    const db = (await this.manager.getConnection(connName)) as Kysely<DB>;
+    const db = (await this.manager.getConnection(connName)) as Kysely<unknown>;
 
-    const factory = createKyseraRepositoryFactory<DB>(db);
-    return factory.create as any;
+    const factory = createKyseraRepositoryFactory<DB>(db as Kysely<DB>);
+    return factory.create;
   }
 
   /**
@@ -540,7 +544,7 @@ export class RepositoryFactory implements IRepositoryFactory {
   /**
    * Refresh a specific repository
    */
-  async refresh(target: any): Promise<void> {
+  async refresh(target: RepositoryConstructor): Promise<void> {
     const metadata = this.metadata.get(target);
     if (metadata) {
       await this.createAndCacheRepository(target, metadata);

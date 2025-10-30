@@ -86,9 +86,23 @@ export class MigrationProvider implements IMigrationProvider {
    */
   private async loadFromFilesystem(): Promise<void> {
     try {
-      const directory = resolve(this.config.directory!);
+      // Skip if no directory configured
+      if (!this.config.directory) {
+        return;
+      }
 
-      // Check if directory exists
+      const directory = resolve(this.config.directory);
+
+      // Check if directory exists before attempting to read
+      const fs = await import('fs');
+      if (!fs.existsSync(directory)) {
+        // It's valid to have no migrations directory - just log a debug message
+        if (this.config.debug) {
+          console.debug(`[MigrationProvider] Migrations directory does not exist: ${directory}`);
+        }
+        return;
+      }
+
       const files = readdirSync(directory);
 
       // Filter migration files based on pattern

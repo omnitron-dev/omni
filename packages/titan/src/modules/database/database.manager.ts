@@ -19,6 +19,7 @@ import type {
   DatabaseEvent,
   DatabaseEventType,
 } from './database.types.js';
+import type { Logger, ParsedConnectionConfig } from './database.internal-types.js';
 import {
   DATABASE_DEFAULT_CONNECTION,
   DEFAULT_POOL_CONFIG,
@@ -27,12 +28,13 @@ import {
   DIALECT_SETTINGS,
   DATABASE_EVENTS,
 } from './database.constants.js';
+import { createDefaultLogger } from './utils/logger.factory.js';
 import { EventEmitter } from 'events';
 
 interface ConnectionInfo {
   name: string;
   config: DatabaseConnection;
-  instance: Kysely<any>;
+  instance: Kysely<unknown>;
   pool?: Pool | mysql.Pool | Database;
   connected: boolean;
   connecting: boolean;
@@ -48,21 +50,14 @@ interface ConnectionInfo {
 export class DatabaseManager implements IDatabaseManager {
   private connections: Map<string, ConnectionInfo> = new Map();
   private eventEmitter: EventEmitter = new EventEmitter();
-  private logger: any;
+  private logger: Logger;
   private options: DatabaseModuleOptions;
   private shutdownInProgress = false;
 
-  constructor(options: DatabaseModuleOptions = {}, logger?: any) {
+  constructor(options: DatabaseModuleOptions = {}, logger?: Logger) {
     this.options = options;
     // Create a console logger if none provided (proper fallback)
-    this.logger = logger || {
-      info: (...args: any[]) => console.info('[DatabaseManager]', ...args),
-      error: (...args: any[]) => console.error('[DatabaseManager]', ...args),
-      warn: (...args: any[]) => console.warn('[DatabaseManager]', ...args),
-      debug: (...args: any[]) => console.debug('[DatabaseManager]', ...args),
-      trace: (...args: any[]) => console.trace('[DatabaseManager]', ...args),
-      fatal: (...args: any[]) => console.error('[DatabaseManager] FATAL:', ...args),
-    };
+    this.logger = logger || createDefaultLogger('DatabaseManager');
   }
 
   /**
@@ -126,7 +121,7 @@ export class DatabaseManager implements IDatabaseManager {
     const info: ConnectionInfo = {
       name,
       config,
-      instance: null as any,
+      instance: null as unknown as Kysely<unknown>,
       pool: undefined,
       connected: false,
       connecting: true,
@@ -190,13 +185,19 @@ export class DatabaseManager implements IDatabaseManager {
    */
   private async createKyselyInstance(
     config: DatabaseConnection
-  ): Promise<{ instance: Kysely<any>; pool?: Pool | mysql.Pool | Database }> {
+  ): Promise<{ instance: Kysely<unknown>; pool?: Pool | mysql.Pool | Database }> {
     const connectionConfig = this.parseConnectionConfig(config);
 
     switch (config.dialect) {
       case 'postgres': {
+        // Create a clean config object without ssl=false
+        const pgConfig = { ...connectionConfig } as Record<string, unknown>;
+        if (pgConfig['ssl'] === false) {
+          delete pgConfig['ssl'];
+        }
+
         const pool = new Pool({
-          ...connectionConfig,
+          ...pgConfig,
           ...DEFAULT_POOL_CONFIG,
           ...config.pool,
         });
@@ -208,7 +209,7 @@ export class DatabaseManager implements IDatabaseManager {
         });
 
         const dialect = new PostgresDialect({ pool });
-        const instance = new Kysely<any>({
+        const instance = new Kysely<unknown>({
           dialect,
           log: config.debug ? ['query', 'error'] : undefined,
         });
@@ -217,17 +218,23 @@ export class DatabaseManager implements IDatabaseManager {
       }
 
       case 'mysql': {
+        // Create a clean config object without ssl=false
+        const mysqlConfig = { ...connectionConfig } as Record<string, unknown>;
+        if (mysqlConfig['ssl'] === false) {
+          delete mysqlConfig['ssl'];
+        }
+
         const pool = mysql.createPool({
-          ...connectionConfig,
+          ...mysqlConfig,
           ...DEFAULT_POOL_CONFIG,
           ...config.pool,
           waitForConnections: true,
           connectionLimit: config.pool?.max || DEFAULT_POOL_CONFIG.max,
           queueLimit: 0,
-        });
+        } as mysql.PoolOptions);
 
         const dialect = new MysqlDialect({ pool });
-        const instance = new Kysely<any>({
+        const instance = new Kysely<unknown>({
           dialect,
           log: config.debug ? ['query', 'error'] : undefined,
         });
@@ -238,7 +245,7 @@ export class DatabaseManager implements IDatabaseManager {
       case 'sqlite': {
         const database = new BetterSqlite3(connectionConfig.database || ':memory:');
         const dialect = new SqliteDialect({ database });
-        const instance = new Kysely<any>({
+        const instance = new Kysely<unknown>({
           dialect,
           log: config.debug ? ['query', 'error'] : undefined,
         });
@@ -254,7 +261,7 @@ export class DatabaseManager implements IDatabaseManager {
   /**
    * Parse connection configuration
    */
-  private parseConnectionConfig(config: DatabaseConnection): any {
+  private parseConnectionConfig(config: DatabaseConnection): ParsedConnectionConfig {
     // Handle undefined or null config
     if (!config) {
       throw new Error('Database connection configuration is required');
@@ -268,24 +275,42 @@ export class DatabaseManager implements IDatabaseManager {
 
       // For PostgreSQL and MySQL, parse the connection string
       const url = new URL(config.connection);
-      return {
+      const sslParam = url.searchParams.get('ssl');
+      const result: ParsedConnectionConfig = {
         host: url.hostname,
         port: parseInt(url.port) || DIALECT_SETTINGS[config.dialect].defaultPort,
         database: url.pathname.slice(1),
         user: url.username,
         password: url.password,
-        ssl: url.searchParams.get('ssl') === 'true',
       };
+
+      // Only set ssl if explicitly requested
+      if (sslParam === 'true') {
+        result.ssl = true;
+      }
+
+      return result;
     }
 
     // If connection is not a string, it should be an object
-    return config.connection || {};
+    const connConfig = config.connection as Partial<ParsedConnectionConfig>;
+    return {
+      database: connConfig.database || 'postgres',
+      host: connConfig.host,
+      port: connConfig.port,
+      user: connConfig.user,
+      password: connConfig.password,
+      ssl: connConfig.ssl,
+      searchPath: connConfig.searchPath,
+      charset: connConfig.charset,
+      timezone: connConfig.timezone,
+    };
   }
 
   /**
    * Test database connection
    */
-  private async testConnection(db: Kysely<any>, dialect: DatabaseDialect): Promise<void> {
+  private async testConnection(db: Kysely<unknown>, dialect: DatabaseDialect): Promise<void> {
     const timeout = this.options.queryTimeout || DEFAULT_TIMEOUTS.query;
     const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(Errors.timeout('database connection test', timeout)), timeout)
@@ -293,7 +318,7 @@ export class DatabaseManager implements IDatabaseManager {
 
     const testQuery =
       dialect === 'sqlite'
-        ? db.selectFrom('sqlite_master').select('name').limit(1).execute()
+        ? (db as unknown as Kysely<Record<string, unknown>>).selectFrom('sqlite_master' as unknown as never).select('name' as unknown as never).limit(1).execute()
         : sql`SELECT 1`.execute(db);
 
     await Promise.race([testQuery, timeoutPromise]);
@@ -302,7 +327,7 @@ export class DatabaseManager implements IDatabaseManager {
   /**
    * Get a database connection by name
    */
-  async getConnection(name: string = DATABASE_DEFAULT_CONNECTION): Promise<Kysely<any>> {
+  async getConnection(name: string = DATABASE_DEFAULT_CONNECTION): Promise<Kysely<unknown>> {
     const info = this.connections.get(name);
 
     if (!info) {
@@ -420,13 +445,13 @@ export class DatabaseManager implements IDatabaseManager {
   /**
    * Get connection metrics
    */
-  getMetrics(name?: string): Record<string, any> {
+  getMetrics(name?: string): Record<string, unknown> {
     if (name) {
       const info = this.connections.get(name);
       return info?.metrics || {};
     }
 
-    const metrics: Record<string, any> = {};
+    const metrics: Record<string, unknown> = {};
     for (const [name, info] of this.connections) {
       metrics[name] = info.metrics;
     }

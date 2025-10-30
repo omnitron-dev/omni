@@ -51,29 +51,56 @@ async function initialize() {
     // Initialize Netron for this process
     const netron = new Netron(console as any, {
       id: config.netron.id,
-      // discoveryUrl: config.netron.discoveryUrl  // TODO: fix this
+      ...(config.netron.discoveryEnabled && config.netron.discoveryUrl
+        ? { discoveryUrl: config.netron.discoveryUrl }
+        : {}),
     });
 
     // Create local peer for service exposure
     const peer = new LocalPeer(netron);
 
-    // Set up transport based on configuration
+    // Configure transport based on configuration
     let transportUrl = '';
+    let transportName = 'ws'; // default
+    const transportOptions: any = {
+      host: config.netron.listenHost,
+      port: config.netron.listenPort,
+    };
+
     switch (config.netron.transport) {
       case 'unix':
         transportUrl = `unix:///tmp/titan-pm-${config.processId}.sock`;
+        transportName = 'unix';
+        transportOptions.path = transportUrl;
         break;
       case 'tcp':
-      case 'websocket':
+        transportUrl = `tcp://${config.netron.listenHost}:${config.netron.listenPort}`;
+        transportName = 'tcp';
+        break;
       case 'http':
-        transportUrl = `${config.netron.transport}://${config.netron.listenHost}:${config.netron.listenPort}`;
+        transportUrl = `http://${config.netron.listenHost}:${config.netron.listenPort}`;
+        transportName = 'http';
+        break;
+      case 'websocket':
+      case 'ws':
+        transportUrl = `ws://${config.netron.listenHost}:${config.netron.listenPort}`;
+        transportName = 'ws';
         break;
       default:
         transportUrl = `ws://${config.netron.listenHost}:${config.netron.listenPort}`;
+        transportName = 'ws';
     }
 
-    // Start listening for connections
-    // await peer.listen(transportUrl);  // TODO: fix LocalPeer API
+    // Register and start transport server through Netron
+    // Note: Transports are typically registered during application setup
+    // For worker processes, we'll register the server configuration
+    netron.registerTransportServer(transportName, {
+      name: transportName,
+      options: transportOptions,
+    });
+
+    // Start the Netron instance (this will start all registered transport servers)
+    await netron.start();
 
     // Get process metadata for method exposure
     const PROCESS_METHOD_METADATA_KEY = Symbol.for('process:method:metadata');
@@ -133,15 +160,34 @@ async function initialize() {
       if (typeof shutdownMethod === 'function') {
         await shutdownMethod.call(processInstance);
       }
-      // await peer.stop();  // TODO: fix LocalPeer API
+      // Stop Netron and close all transports
+      await netron.stop();
       process.exit(0);
     };
 
-    // Expose the service via Netron
-    // await peer.expose(serviceInterface, {  // TODO: fix LocalPeer API
-    //   name: config.serviceName || config.className,
-    //   version: config.version || '1.0.0'
-    // });
+    // Expose the service via Netron - the service interface needs to be decorated with @Service
+    // For now, we'll create a simple service wrapper
+    const ServiceClass = class {
+      constructor() {
+        Object.assign(this, serviceInterface);
+      }
+    };
+
+    // Copy metadata from process class to service class
+    const processMetadata = Reflect.getMetadata('netron:service', ProcessClass) || {};
+    Reflect.defineMetadata(
+      'netron:service',
+      {
+        ...processMetadata,
+        name: config.serviceName || config.className,
+        version: config.version || '1.0.0',
+      },
+      ServiceClass
+    );
+
+    // Create service instance and expose
+    const service = new ServiceClass();
+    await peer.exposeService(service);
 
     // Notify parent that we're ready
     parentPort?.postMessage({

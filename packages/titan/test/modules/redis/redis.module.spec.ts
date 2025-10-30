@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
-import { Container } from '../../../src/nexus/index.js';
+import { Container, Provider, ProviderInput, ServiceIdentifier } from '../../../src/nexus/index.js';
 import { TitanRedisModule } from '../../../src/modules/redis/redis.module.js';
 import { RedisService } from '../../../src/modules/redis/redis.service.js';
 import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
@@ -20,6 +20,34 @@ jest.mock('../../../src/modules/redis/redis.utils.js', () => ({
   createRedisClient: jest.fn(() => createMockRedisClient()),
   waitForConnection: jest.fn(async () => {}),
 }));
+
+/**
+ * Configuration object type for async factory
+ */
+interface RedisConfig {
+  redis: {
+    host: string;
+    port: number;
+  };
+}
+
+/**
+ * Helper to register providers from module metadata
+ */
+function registerProviders(container: Container, providers: ProviderInput[] | undefined): void {
+  if (!providers) {
+    return;
+  }
+
+  for (const provider of providers) {
+    if (Array.isArray(provider)) {
+      const [token, providerConfig] = provider as [ServiceIdentifier<unknown>, Provider<unknown>];
+      container.register(token, providerConfig);
+    } else {
+      container.register(provider, provider);
+    }
+  }
+}
 
 describe('TitanRedisModule', () => {
   let container: Container;
@@ -66,16 +94,7 @@ describe('TitanRedisModule', () => {
       expect(module.providers).toBeDefined();
 
       // Register providers in container
-      if (module.providers) {
-        for (const provider of module.providers as any[]) {
-          if (Array.isArray(provider)) {
-            const [token, providerConfig] = provider;
-            container.register(token, providerConfig);
-          } else {
-            container.register(provider, provider);
-          }
-        }
-      }
+      registerProviders(container, module.providers);
 
       // Verify manager can be resolved
       const manager = await container.resolveAsync<RedisManager>(REDIS_MANAGER);
@@ -114,16 +133,7 @@ describe('TitanRedisModule', () => {
       const module = TitanRedisModule.forRoot(options);
 
       // Register providers
-      if (module.providers) {
-        for (const provider of module.providers as any[]) {
-          if (Array.isArray(provider)) {
-            const [token, providerConfig] = provider;
-            container.register(token, providerConfig);
-          } else {
-            container.register(provider, provider);
-          }
-        }
-      }
+      registerProviders(container, module.providers);
 
       const manager = await container.resolveAsync<RedisManager>(REDIS_MANAGER);
       expect(manager).toBeInstanceOf(RedisManager);
@@ -153,7 +163,7 @@ describe('TitanRedisModule', () => {
 
       const module = TitanRedisModule.forRootAsync({
         inject: [CONFIG_TOKEN],
-        useFactory: (config: any) => ({
+        useFactory: (config: RedisConfig) => ({
           config: {
             host: config.redis.host,
             port: config.redis.port,
@@ -220,14 +230,7 @@ describe('TitanRedisModule', () => {
       });
 
       // Register root providers
-      if (rootModule.providers) {
-        for (const provider of rootModule.providers as any[]) {
-          if (Array.isArray(provider)) {
-            const [token, providerConfig] = provider;
-            container.register(token, providerConfig);
-          }
-        }
-      }
+      registerProviders(container, rootModule.providers);
 
       // Verify we can access the named clients via their tokens
       const manager = await container.resolveAsync<RedisManager>(REDIS_MANAGER);
@@ -245,14 +248,7 @@ describe('TitanRedisModule', () => {
     it('should initialize default client when no config provided', async () => {
       const module = TitanRedisModule.forRoot();
 
-      if (module.providers) {
-        for (const provider of module.providers as any[]) {
-          if (Array.isArray(provider)) {
-            const [token, providerConfig] = provider;
-            container.register(token, providerConfig);
-          }
-        }
-      }
+      registerProviders(container, module.providers);
 
       const manager = await container.resolveAsync<RedisManager>(REDIS_MANAGER);
       expect(manager.hasClient('default')).toBe(true);
@@ -272,14 +268,7 @@ describe('TitanRedisModule', () => {
 
       const module = TitanRedisModule.forRoot(options);
 
-      if (module.providers) {
-        for (const provider of module.providers as any[]) {
-          if (Array.isArray(provider)) {
-            const [token, providerConfig] = provider;
-            container.register(token, providerConfig);
-          }
-        }
-      }
+      registerProviders(container, module.providers);
 
       const manager = await container.resolveAsync<RedisManager>(REDIS_MANAGER);
 

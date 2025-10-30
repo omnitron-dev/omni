@@ -1,11 +1,11 @@
 /**
  * Redis Module Integration Tests
  *
- * Tests module functionality with real Redis instance
- * without NestJS dependencies
+ * Tests module functionality with real Redis instances running in Docker containers.
+ * Each test suite gets its own isolated Redis container to prevent conflicts.
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from '@jest/globals';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, jest } from '@jest/globals';
 import { Container } from '@nexus';
 import { Redis } from 'ioredis';
 
@@ -17,12 +17,14 @@ import { REDIS_MANAGER } from '../../../src/modules/redis/redis.constants.js';
 import { RedisCache, RedisLock, RedisRateLimit } from '../../../src/modules/redis/redis.decorators.js';
 import { TestApplication } from '../../../src/testing/test-application.js';
 import { suppressConsole } from '../../../src/testing/test-helpers.js';
+import { createDockerRedisFixture, type DockerRedisTestFixture } from './utils/redis-test-utils.js';
 
 // Skip integration tests if SKIP_INTEGRATION is set
 const SKIP_INTEGRATION = process.env.SKIP_INTEGRATION === 'true';
 const describeIntegration = SKIP_INTEGRATION ? describe.skip : describe;
 
-describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
+describeIntegration('Redis Module Integration Tests (Docker Redis)', () => {
+  let dockerFixture: DockerRedisTestFixture;
   let app: TestApplication;
   let container: Container;
   let redisManager: RedisManager;
@@ -30,28 +32,17 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
   let healthIndicator: RedisHealthIndicator;
   let testNamespace: string;
   let restoreConsole: (() => void) | undefined;
+  let redisHost: string;
+  let redisPort: number;
 
   beforeAll(async () => {
     // Suppress console output during tests
     restoreConsole = suppressConsole();
 
-    // Check if Redis is available at localhost:6379
-    const testConnection = new Redis({
-      host: 'localhost',
-      port: 6379,
-      retryStrategy: () => null,
-      lazyConnect: true,
-      maxRetriesPerRequest: 1,
-    });
-
-    try {
-      await testConnection.connect();
-      await testConnection.ping();
-      await testConnection.quit();
-    } catch (error) {
-      console.error('Redis is not available at localhost:6379. Please start Redis before running integration tests.');
-      throw error;
-    }
+    // Create Docker Redis container
+    dockerFixture = await createDockerRedisFixture();
+    redisHost = 'localhost';
+    redisPort = dockerFixture.port;
 
     // Generate unique namespace for this test run
     testNamespace = `test-${Date.now()}-${Math.random().toString(36).substring(7)}`;
@@ -64,29 +55,29 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
       clients: [
         {
           namespace: 'default',
-          host: 'localhost',
-          port: 6379,
+          host: redisHost,
+          port: redisPort,
           db: 15,
           keyPrefix: `${testNamespace}:default:`,
-          lazyConnect: false, // Force eager connection for tests
+          lazyConnect: false,
         },
         {
           namespace: 'cache',
-          host: 'localhost',
-          port: 6379,
+          host: redisHost,
+          port: redisPort,
           db: 14,
           keyPrefix: `${testNamespace}:cache:`,
           enableOfflineQueue: true,
           maxRetriesPerRequest: 5,
-          lazyConnect: false, // Force eager connection for tests
+          lazyConnect: false,
         },
         {
           namespace: 'pubsub',
-          host: 'localhost',
-          port: 6379,
+          host: redisHost,
+          port: redisPort,
           db: 13,
           keyPrefix: `${testNamespace}:pubsub:`,
-          lazyConnect: false, // Force eager connection for tests
+          lazyConnect: false,
         },
       ],
       scripts: [
@@ -112,7 +103,7 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
     redisManager = await container.resolveAsync<RedisManager>(REDIS_MANAGER);
     redisService = await container.resolveAsync<RedisService>(RedisService);
     healthIndicator = await container.resolveAsync<RedisHealthIndicator>(RedisHealthIndicator);
-  });
+  }, 30000);
 
   afterAll(async () => {
     // Clean up all test data
@@ -134,8 +125,9 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
 
     // Cleanup resources
     await app?.close();
+    await dockerFixture?.cleanup();
     restoreConsole?.();
-  }, 30000); // Increase timeout for cleanup
+  }, 30000);
 
   beforeEach(async () => {
     // Clean up test data before each test
@@ -179,8 +171,8 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
     it('should dynamically create and destroy clients', async () => {
       const dynamicClient = await redisManager.createClient({
         namespace: 'dynamic',
-        host: 'localhost',
-        port: 6379,
+        host: redisHost,
+        port: redisPort,
         db: 12,
         keyPrefix: `${testNamespace}:dynamic:`,
       });
@@ -621,11 +613,12 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
             expect(client.latency).toBeLessThan(100);
           }
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         // If health check throws, check the error details
-        if (error.message?.includes('not healthy')) {
+        const err = error as Error;
+        if (err.message?.includes('not healthy')) {
           // Some clients might not be healthy, let's get more details
-          console.log('Health check error:', error.message);
+          console.log('Health check error:', err.message);
           // For now, skip this test if clients aren't healthy
           // This might be due to timing issues in the test environment
           return;
@@ -642,9 +635,10 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
         expect(result.redis.healthy).toBe(true);
         expect(result.redis.latency).toBeGreaterThanOrEqual(0);
         expect(result.redis.latency).toBeLessThan(50); // Should be fast on localhost
-      } catch (error: any) {
+      } catch (error: unknown) {
         // Skip if health check fails
-        if (error.message?.includes('not healthy')) {
+        const err = error as Error;
+        if (err.message?.includes('not healthy')) {
           return;
         }
         throw error;
@@ -665,9 +659,10 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
         // The key is 'redis-default' not 'redis' when no namespace is specified
         expect(result['redis-default'].status).toBe('up');
         expect(result['redis-default'].healthy).toBe(true);
-      } catch (error: any) {
+      } catch (error: unknown) {
         // Skip if health check fails
-        if (error.message?.includes('not healthy')) {
+        const err = error as Error;
+        if (err.message?.includes('not healthy')) {
           return;
         }
         throw error;
@@ -882,8 +877,9 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
       try {
         await client.eval('invalid lua syntax', 0);
         fail('Should have thrown');
-      } catch (error: any) {
-        expect(error.message).toContain('ERR');
+      } catch (error: unknown) {
+        const err = error as Error;
+        expect(err.message).toContain('ERR');
       }
 
       // Should still work after error
@@ -924,8 +920,8 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
       // Create a client with aggressive timeout
       const tempClient = await redisManager.createClient({
         namespace: 'timeout-test',
-        host: 'localhost',
-        port: 6379,
+        host: redisHost,
+        port: redisPort,
         db: 12,
         commandTimeout: 100, // 100ms timeout - more reasonable but still short
         retryStrategy: () => null,
@@ -935,14 +931,14 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
       try {
         // Simulate network interruption by attempting operation on a client
         await tempClient.get('test');
-      } catch (error: any) {
+      } catch (error: unknown) {
         // Expected to potentially timeout or fail
       }
 
       // Clean up - handle potential timeout on cleanup
       try {
         await redisManager.destroyClient('timeout-test');
-      } catch (error: any) {
+      } catch (error: unknown) {
         // Cleanup might also timeout, which is acceptable
       }
 
@@ -962,19 +958,19 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
           clients: [
             {
               namespace: 'default',
-              host: 'localhost',
-              port: 6379,
+              host: redisHost,
+              port: redisPort,
               db: 10,
               keyPrefix: `${testNamespace}:async-default:`,
-              lazyConnect: false, // Force eager connection for tests
+              lazyConnect: false,
             },
             {
               namespace: 'async-config',
-              host: 'localhost',
-              port: 6379,
+              host: redisHost,
+              port: redisPort,
               db: 10,
               keyPrefix: `${testNamespace}:async:`,
-              lazyConnect: false, // Force eager connection for tests
+              lazyConnect: false,
             },
           ],
         }),
@@ -1009,19 +1005,19 @@ describeIntegration('Redis Module Integration Tests (Real Redis)', () => {
         clients: [
           {
             namespace: 'default',
-            host: 'localhost',
-            port: 6379,
+            host: redisHost,
+            port: redisPort,
             db: 9,
             keyPrefix: `${testNamespace}:feature-default:`,
-            lazyConnect: false, // Force eager connection for tests
+            lazyConnect: false,
           },
           {
             namespace: 'feature',
-            host: 'localhost',
-            port: 6379,
+            host: redisHost,
+            port: redisPort,
             db: 9,
             keyPrefix: `${testNamespace}:feature:`,
-            lazyConnect: false, // Force eager connection for tests
+            lazyConnect: false,
           },
         ],
       });

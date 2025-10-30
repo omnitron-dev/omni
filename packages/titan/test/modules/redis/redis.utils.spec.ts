@@ -13,9 +13,18 @@ import {
   waitForConnection,
 } from '../../../src/modules/redis/redis.utils.js';
 import { RedisClientOptions } from '../../../src/modules/redis/redis.types.js';
+import { withDockerRedis, type DockerRedisTestFixture } from './utils/redis-test-utils.js';
 
 // Mock fs module
 jest.mock('fs');
+
+// Mock cluster client type for tests
+interface MockClusterClient {
+  status: string;
+  on: jest.Mock;
+  once: jest.Mock;
+  removeListener: jest.Mock;
+}
 
 describe('Redis Utils', () => {
   let testClients: Array<Redis | Cluster> = [];
@@ -173,7 +182,7 @@ describe('Redis Utils', () => {
 
     it('should throw error when cluster nodes are missing', () => {
       expect(() => {
-        createRedisClient({ cluster: {} } as any);
+        createRedisClient({ cluster: {} } as RedisClientOptions);
       }).toThrow('Cluster configuration requires nodes');
     });
   });
@@ -192,13 +201,13 @@ describe('Redis Utils', () => {
     });
 
     it('should handle null/undefined', () => {
-      expect(isCluster(null as any)).toBe(false);
-      expect(isCluster(undefined as any)).toBe(false);
+      expect(isCluster(null)).toBe(false);
+      expect(isCluster(undefined)).toBe(false);
     });
 
     it('should handle invalid objects', () => {
-      expect(isCluster({} as any)).toBe(false);
-      expect(isCluster({ nodes: 'not-a-function' } as any)).toBe(false);
+      expect(isCluster({})).toBe(false);
+      expect(isCluster({ nodes: 'not-a-function' })).toBe(false);
     });
   });
 
@@ -219,8 +228,8 @@ describe('Redis Utils', () => {
     });
 
     it('should handle null/undefined options', () => {
-      expect(getClientNamespace(null as any)).toBe('default');
-      expect(getClientNamespace(undefined as any)).toBe('default');
+      expect(getClientNamespace(null)).toBe('default');
+      expect(getClientNamespace(undefined)).toBe('default');
     });
 
     it('should handle special characters in namespace', () => {
@@ -230,8 +239,8 @@ describe('Redis Utils', () => {
     });
 
     it('should convert non-string namespaces to string', () => {
-      expect(getClientNamespace({ namespace: 123 as any })).toBe('123');
-      expect(getClientNamespace({ namespace: true as any })).toBe('true');
+      expect(getClientNamespace({ namespace: 123 })).toBe('123');
+      expect(getClientNamespace({ namespace: true })).toBe('true');
     });
   });
 
@@ -538,14 +547,14 @@ describe('Redis Utils', () => {
     });
 
     it('should handle cluster client', async () => {
-      const mockCluster = {
+      const mockCluster: MockClusterClient = {
         status: 'ready',
         on: jest.fn(),
         once: jest.fn(),
         removeListener: jest.fn(),
-      } as any;
+      };
 
-      const result = await waitForConnection(mockCluster, 1000);
+      const result = await waitForConnection(mockCluster as unknown as Cluster, 1000);
       expect(result).toBe(true);
     });
 
@@ -558,56 +567,66 @@ describe('Redis Utils', () => {
     });
   });
 
-  describe('Real Redis Integration', () => {
-    it('should connect to real Redis instance', async () => {
-      const client = createRedisClient({
-        host: 'localhost',
-        port: 6379,
-        db: 15,
-        lazyConnect: false,
-      }) as Redis;
-      testClients.push(client);
+  describe('Docker Redis Integration', () => {
+    it('should connect to Docker Redis instance', async () => {
+      await withDockerRedis(async (fixture: DockerRedisTestFixture) => {
+        const client = createRedisClient({
+          host: 'localhost',
+          port: fixture.port,
+          db: 0,
+          lazyConnect: false,
+        }) as Redis;
 
-      const connected = await waitForConnection(client, 5000);
-      expect(connected).toBe(true);
+        try {
+          const connected = await waitForConnection(client, 5000);
+          expect(connected).toBe(true);
 
-      // Test actual operation
-      const testKey = `utils-test-${Date.now()}`;
-      await client.set(testKey, 'test-value');
-      const value = await client.get(testKey);
-      expect(value).toBe('test-value');
+          // Test actual operation
+          const testKey = `utils-test-${Date.now()}`;
+          await client.set(testKey, 'test-value');
+          const value = await client.get(testKey);
+          expect(value).toBe('test-value');
 
-      // Clean up
-      await client.del(testKey);
+          // Clean up
+          await client.del(testKey);
+        } finally {
+          await client.quit();
+        }
+      });
     });
 
     it('should handle multiple clients with different databases', async () => {
-      const client1 = createRedisClient({
-        host: 'localhost',
-        port: 6379,
-        db: 14,
-        lazyConnect: false,
-      }) as Redis;
-      testClients.push(client1);
+      await withDockerRedis(async (fixture: DockerRedisTestFixture) => {
+        const client1 = createRedisClient({
+          host: 'localhost',
+          port: fixture.port,
+          db: 1,
+          lazyConnect: false,
+        }) as Redis;
 
-      const client2 = createRedisClient({
-        host: 'localhost',
-        port: 6379,
-        db: 13,
-        lazyConnect: false,
-      }) as Redis;
-      testClients.push(client2);
+        const client2 = createRedisClient({
+          host: 'localhost',
+          port: fixture.port,
+          db: 2,
+          lazyConnect: false,
+        }) as Redis;
 
-      const testKey = `multi-test-${Date.now()}`;
-      await client1.set(testKey, 'value1');
-      await client2.set(testKey, 'value2');
+        try {
+          const testKey = `multi-test-${Date.now()}`;
+          await client1.set(testKey, 'value1');
+          await client2.set(testKey, 'value2');
 
-      expect(await client1.get(testKey)).toBe('value1');
-      expect(await client2.get(testKey)).toBe('value2');
+          expect(await client1.get(testKey)).toBe('value1');
+          expect(await client2.get(testKey)).toBe('value2');
 
-      // Clean up
-      await client1.del(testKey);
-      await client2.del(testKey);
+          // Clean up
+          await client1.del(testKey);
+          await client2.del(testKey);
+        } finally {
+          await client1.quit();
+          await client2.quit();
+        }
+      });
     });
 
     it('should handle connection failure gracefully', async () => {

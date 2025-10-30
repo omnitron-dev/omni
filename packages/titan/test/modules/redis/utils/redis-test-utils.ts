@@ -1,8 +1,27 @@
-import { Redis } from 'ioredis';
+import { Redis, Cluster } from 'ioredis';
 
 import { RedisManager } from '../../../../src/modules/redis/redis.manager.js';
 import { RedisService } from '../../../../src/modules/redis/redis.service.js';
 import { RedisModuleOptions } from '../../../../src/modules/redis/redis.types.js';
+import {
+  RedisTestManager,
+  type DockerContainer,
+  type RedisClusterContainers,
+  type RedisSentinelContainers,
+  type RedisContainerOptions,
+  type RedisClusterOptions,
+  type RedisSentinelOptions,
+} from '../../../../src/testing/docker-test-manager.js';
+
+/**
+ * Type for decorator target
+ */
+type DecoratorTarget = Record<string, unknown>;
+
+/**
+ * Type for test data values
+ */
+type TestDataValue = string | number | boolean | null | Record<string, unknown> | unknown[];
 
 /**
  * Redis test helper for managing Redis connections in tests
@@ -44,7 +63,7 @@ export class RedisTestHelper {
       ...options,
     };
 
-    return new RedisManager(defaultOptions, null as any);
+    return new RedisManager(defaultOptions, undefined);
   }
 
   /**
@@ -121,7 +140,7 @@ export class RedisTestHelper {
   /**
    * Create test data
    */
-  async setupTestData(client: Redis, data: Record<string, any>): Promise<void> {
+  async setupTestData(client: Redis, data: Record<string, TestDataValue>): Promise<void> {
     for (const [key, value] of Object.entries(data)) {
       if (typeof value === 'string' || typeof value === 'number') {
         await client.set(key, value);
@@ -235,10 +254,10 @@ export async function cleanupRedisTestFixture(fixture: RedisTestFixture): Promis
  * Redis test decorator - automatically sets up and tears down Redis for tests
  */
 export function withRedis(options?: { db?: number }) {
-  return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
-    const originalMethod = descriptor.value;
+  return function (target: DecoratorTarget, propertyKey: string, descriptor: PropertyDescriptor) {
+    const originalMethod = descriptor.value as (...args: unknown[]) => Promise<unknown>;
 
-    descriptor.value = async function (...args: any[]) {
+    descriptor.value = async function (this: unknown, ...args: unknown[]) {
       const fixture = await createRedisTestFixture(options);
 
       try {
@@ -257,7 +276,7 @@ export function withRedis(options?: { db?: number }) {
  * Mock Redis client for unit tests
  */
 export class MockRedisClient {
-  private data = new Map<string, any>();
+  private data = new Map<string, string>();
   private expiries = new Map<string, number>();
 
   // String operations
@@ -409,23 +428,23 @@ export class MockRedisClient {
     return Promise.resolve('OK');
   }
 
-  on(event: string, handler: Function): void {
+  on(event: string, handler: (...args: unknown[]) => void): void {
     // No-op for mock
   }
 
-  once(event: string, handler: Function): void {
+  once(event: string, handler: (...args: unknown[]) => void): void {
     // No-op for mock
   }
 
-  off(event: string, handler: Function): void {
+  off(event: string, handler: (...args: unknown[]) => void): void {
     // No-op for mock
   }
 
-  removeListener(event: string, handler: Function): void {
+  removeListener(event: string, handler: (...args: unknown[]) => void): void {
     // No-op for mock
   }
 
-  emit(event: string, ...args: any[]): boolean {
+  emit(event: string, ...args: unknown[]): boolean {
     return true;
   }
 
@@ -439,4 +458,263 @@ export class MockRedisClient {
  */
 export function createMockRedisClient(): MockRedisClient {
   return new MockRedisClient();
+}
+
+/**
+ * Docker-based Redis test fixture
+ * Provides a complete Redis environment with Docker containers
+ */
+export interface DockerRedisTestFixture {
+  container: DockerContainer;
+  client: Redis;
+  connectionString: string;
+  port: number;
+  cleanup: () => Promise<void>;
+}
+
+/**
+ * Create a Docker-based Redis test fixture
+ * This provides a real Redis instance running in Docker for integration tests
+ */
+export async function createDockerRedisFixture(options?: RedisContainerOptions): Promise<DockerRedisTestFixture> {
+  const container = await RedisTestManager.createRedisContainer(options);
+  const port = container.ports.get(6379)!;
+  const password = options?.password;
+  const database = options?.database ?? 0;
+
+  let connectionString = `redis://`;
+  if (password) {
+    connectionString += `:${password}@`;
+  }
+  connectionString += `localhost:${port}/${database}`;
+
+  const client = new Redis({
+    host: 'localhost',
+    port,
+    password,
+    db: database,
+    maxRetriesPerRequest: 3,
+    retryStrategy: (times: number) => {
+      if (times > 3) return null;
+      return Math.min(times * 100, 1000);
+    },
+  });
+
+  // Wait for connection
+  await client.ping();
+
+  return {
+    container,
+    client,
+    connectionString,
+    port,
+    cleanup: async () => {
+      try {
+        await client.quit();
+      } catch {
+        client.disconnect();
+      }
+      await container.cleanup();
+    },
+  };
+}
+
+/**
+ * Docker-based Redis cluster test fixture
+ */
+export interface DockerRedisClusterFixture {
+  cluster: RedisClusterContainers;
+  client: Cluster;
+  nodes: Array<{ host: string; port: number }>;
+  cleanup: () => Promise<void>;
+}
+
+/**
+ * Create a Docker-based Redis cluster test fixture
+ */
+export async function createDockerRedisClusterFixture(
+  options?: RedisClusterOptions
+): Promise<DockerRedisClusterFixture> {
+  const cluster = await RedisTestManager.createRedisCluster(options);
+  const password = options?.password;
+
+  const client = new Cluster(cluster.nodes, {
+    redisOptions: password ? { password } : undefined,
+    clusterRetryStrategy: (times: number) => {
+      if (times > 3) return null;
+      return Math.min(times * 100, 1000);
+    },
+  });
+
+  // Wait for cluster to be ready
+  await client.ping();
+
+  return {
+    cluster,
+    client,
+    nodes: cluster.nodes,
+    cleanup: async () => {
+      try {
+        await client.quit();
+      } catch {
+        client.disconnect();
+      }
+      await cluster.cleanup();
+    },
+  };
+}
+
+/**
+ * Docker-based Redis Sentinel test fixture
+ */
+export interface DockerRedisSentinelFixture {
+  sentinel: RedisSentinelContainers;
+  masterClient: Redis;
+  sentinels: Array<{ host: string; port: number }>;
+  masterName: string;
+  cleanup: () => Promise<void>;
+}
+
+/**
+ * Create a Docker-based Redis Sentinel test fixture
+ */
+export async function createDockerRedisSentinelFixture(
+  options?: RedisSentinelOptions
+): Promise<DockerRedisSentinelFixture> {
+  const sentinel = await RedisTestManager.createRedisSentinel(options);
+  const password = options?.password;
+  const masterName = options?.masterName || 'mymaster';
+
+  const sentinels = sentinel.sentinelPorts.map((port) => ({
+    host: 'localhost',
+    port,
+  }));
+
+  const masterClient = new Redis({
+    sentinels,
+    name: masterName,
+    password,
+    maxRetriesPerRequest: 3,
+    retryStrategy: (times: number) => {
+      if (times > 3) return null;
+      return Math.min(times * 100, 1000);
+    },
+  });
+
+  // Wait for connection
+  await masterClient.ping();
+
+  return {
+    sentinel,
+    masterClient,
+    sentinels,
+    masterName,
+    cleanup: async () => {
+      try {
+        await masterClient.quit();
+      } catch {
+        masterClient.disconnect();
+      }
+      await sentinel.cleanup();
+    },
+  };
+}
+
+/**
+ * Build Redis connection string
+ */
+export function buildRedisConnectionString(options: {
+  host?: string;
+  port?: number;
+  password?: string;
+  database?: number;
+}): string {
+  const host = options.host || 'localhost';
+  const port = options.port || 6379;
+  const database = options.database ?? 0;
+
+  let connectionString = `redis://`;
+  if (options.password) {
+    connectionString += `:${options.password}@`;
+  }
+  connectionString += `${host}:${port}/${database}`;
+
+  return connectionString;
+}
+
+/**
+ * Wait for Redis connection to be ready
+ */
+export async function waitForRedisReady(client: Redis | Cluster, timeout = 10000): Promise<void> {
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < timeout) {
+    try {
+      await client.ping();
+      return;
+    } catch (error) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+
+  throw new Error(`Redis not ready within ${timeout}ms`);
+}
+
+/**
+ * Flush all data from Redis instance
+ */
+export async function flushRedis(client: Redis | Cluster): Promise<void> {
+  await client.flushall();
+}
+
+/**
+ * Create a unique test database number (0-15)
+ */
+export function createTestDatabase(): number {
+  return Math.floor(Math.random() * 16);
+}
+
+/**
+ * Helper to run a test with a fresh Redis instance
+ */
+export async function withDockerRedis<T>(
+  testFn: (fixture: DockerRedisTestFixture) => Promise<T>,
+  options?: RedisContainerOptions
+): Promise<T> {
+  const fixture = await createDockerRedisFixture(options);
+  try {
+    return await testFn(fixture);
+  } finally {
+    await fixture.cleanup();
+  }
+}
+
+/**
+ * Helper to run a test with a fresh Redis cluster
+ */
+export async function withDockerRedisCluster<T>(
+  testFn: (fixture: DockerRedisClusterFixture) => Promise<T>,
+  options?: RedisClusterOptions
+): Promise<T> {
+  const fixture = await createDockerRedisClusterFixture(options);
+  try {
+    return await testFn(fixture);
+  } finally {
+    await fixture.cleanup();
+  }
+}
+
+/**
+ * Helper to run a test with a fresh Redis Sentinel setup
+ */
+export async function withDockerRedisSentinel<T>(
+  testFn: (fixture: DockerRedisSentinelFixture) => Promise<T>,
+  options?: RedisSentinelOptions
+): Promise<T> {
+  const fixture = await createDockerRedisSentinelFixture(options);
+  try {
+    return await testFn(fixture);
+  } finally {
+    await fixture.cleanup();
+  }
 }

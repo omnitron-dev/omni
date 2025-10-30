@@ -32,11 +32,22 @@ export interface AuthMiddlewareOptions {
  * Build ExecutionContext from NetronMiddlewareContext
  */
 export function buildExecutionContext(ctx: NetronMiddlewareContext, authContext?: AuthContext): ExecutionContext {
+  // Extract service version from metadata
+  let serviceVersion = '1.0.0'; // default
+  const serviceInstance = ctx.metadata?.get('serviceInstance');
+  if (serviceInstance) {
+    // Try to get version from service metadata
+    const serviceMeta = Reflect.getMetadata('netron:service', serviceInstance.constructor);
+    if (serviceMeta?.version) {
+      serviceVersion = serviceMeta.version;
+    }
+  }
+
   const execCtx: ExecutionContext = {
     auth: authContext,
     service: {
       name: ctx.serviceName || 'unknown',
-      version: '1.0.0', // TODO: Extract from service metadata
+      version: serviceVersion,
     },
   };
 

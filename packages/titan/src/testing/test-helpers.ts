@@ -356,11 +356,13 @@ export function suppressConsole() {
     info: console.info,
   };
 
-  console.log = jest.fn();
-  console.warn = jest.fn();
-  console.error = jest.fn();
-  console.debug = jest.fn();
-  console.info = jest.fn();
+  // Use noop functions instead of jest.fn() to avoid jest global dependency
+  const noop = () => {};
+  console.log = noop;
+  console.warn = noop;
+  console.error = noop;
+  console.debug = noop;
+  console.info = noop;
 
   return () => {
     console.log = originalConsole.log;

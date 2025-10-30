@@ -209,10 +209,6 @@ describe('Titan Application', () => {
       // Check that core services are registered
       expect(app.container.has(CONFIG_SERVICE_TOKEN)).toBe(true);
       expect(app.container.has(LOGGER_SERVICE_TOKEN)).toBe(true);
-      // Backward compatibility tokens should also be registered
-      // TODO: Fix ConfigModule registration - CONFIG_SERVICE_TOKEN is not being registered
-      // expect(app.container.has(CONFIG_SERVICE_TOKEN)).toBe(true);
-      expect(app.container.has(LOGGER_SERVICE_TOKEN)).toBe(true);
     });
 
     it('should not register core modules when disabled', async () => {
@@ -1031,9 +1027,7 @@ describe('Titan Application', () => {
       // CONFIG_SERVICE_TOKEN should be available
       const configService = await app.container.resolveAsync(CONFIG_SERVICE_TOKEN);
       expect(configService).toBeDefined();
-      // Check backward compatibility token too
-      // TODO: Fix CONFIG_SERVICE_TOKEN registration
-      // expect(app.container.has(CONFIG_SERVICE_TOKEN)).toBe(true);
+      expect(app.container.has(CONFIG_SERVICE_TOKEN)).toBe(true);
     });
 
     it('should integrate with logger module', async () => {

@@ -2,7 +2,27 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 import { createHash } from 'node:crypto';
 import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
 import { RedisModuleOptions } from '../../../src/modules/redis/redis.types.js';
-import type { Redis } from 'ioredis';
+import type { Redis, RedisOptions } from 'ioredis';
+
+/**
+ * Mock Redis instance interface with writable status property.
+ * Extends the base Redis type with jest mock functions and mutable properties.
+ */
+interface MockRedisInstance extends Omit<Redis, 'status' | 'options'> {
+  connect: jest.Mock<() => Promise<void>>;
+  quit: jest.Mock<() => Promise<string>>;
+  ping: jest.Mock<() => Promise<string>>;
+  script: jest.Mock;
+  evalsha: jest.Mock;
+  eval: jest.Mock;
+  on: jest.Mock;
+  once: jest.Mock;
+  removeListener: jest.Mock;
+  off: jest.Mock;
+  duplicate: jest.Mock<() => MockRedisInstance>;
+  status: 'ready' | 'wait' | 'end' | 'close' | 'reconnecting' | 'connecting';
+  options: Partial<RedisOptions>;
+}
 
 // Mock ioredis module
 jest.mock('ioredis', () => {
@@ -26,7 +46,7 @@ jest.mock('../../../src/modules/redis/redis.utils.js');
 
 describe('RedisManager', () => {
   let manager: RedisManager;
-  let mockRedisInstance: jest.Mocked<Redis>;
+  let mockRedisInstance: MockRedisInstance;
 
   beforeEach(() => {
     mockRedisInstance = {
@@ -43,7 +63,7 @@ describe('RedisManager', () => {
       status: 'ready',
       options: { lazyConnect: true },
       duplicate: jest.fn().mockReturnThis(),
-    } as any;
+    } as MockRedisInstance;
 
     mockRedis.mockImplementation(() => mockRedisInstance);
 
@@ -88,11 +108,11 @@ describe('RedisManager', () => {
 
       // Update mock to reflect non-lazy connect and set up event simulation
       mockRedisInstance.options = { lazyConnect: false };
-      (mockRedisInstance.status as any) = 'wait'; // Not ready yet
+      mockRedisInstance.status = 'wait'; // Not ready yet
 
       // Simulate ready event after connect is called
       mockRedisInstance.connect.mockImplementation(async () => {
-        (mockRedisInstance.status as any) = 'ready';
+        mockRedisInstance.status = 'ready';
         // Simulate the ready event
         const readyHandler = (mockRedisInstance.on as jest.Mock).mock.calls.find((call) => call[0] === 'ready')?.[1];
         if (readyHandler) {

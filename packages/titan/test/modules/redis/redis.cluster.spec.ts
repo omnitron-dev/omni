@@ -1,13 +1,29 @@
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, jest } from '@jest/globals';
 import { Cluster } from 'ioredis';
 import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
 import { RedisService } from '../../../src/modules/redis/redis.service.js';
 import { isCluster, createRedisClient } from '../../../src/modules/redis/redis.utils.js';
+import {
+  createDockerRedisClusterFixture,
+  type DockerRedisClusterFixture,
+} from './utils/redis-test-utils.js';
 
 describe('Redis Cluster Support', () => {
   describe('Cluster Detection', () => {
+    let clusterFixture: DockerRedisClusterFixture;
+
+    beforeAll(async () => {
+      clusterFixture = await createDockerRedisClusterFixture();
+    }, 60000);
+
+    afterAll(async () => {
+      if (clusterFixture) {
+        await clusterFixture.cleanup();
+      }
+    });
+
     it('should correctly identify cluster clients', () => {
-      const cluster = new Cluster([{ host: 'localhost', port: 7000 }], {
+      const cluster = new Cluster([clusterFixture.nodes[0]], {
         lazyConnect: true,
         enableOfflineQueue: false,
         clusterRetryStrategy: () => null,
@@ -20,7 +36,7 @@ describe('Redis Cluster Support', () => {
     it('should correctly identify non-cluster clients', () => {
       const regularClient = createRedisClient({
         host: 'localhost',
-        port: 6379,
+        port: clusterFixture.nodes[0].port,
         lazyConnect: true,
       });
 
@@ -36,13 +52,22 @@ describe('Redis Cluster Support', () => {
   });
 
   describe('Cluster Client Creation', () => {
+    let clusterFixture: DockerRedisClusterFixture;
+
+    beforeAll(async () => {
+      clusterFixture = await createDockerRedisClusterFixture();
+    }, 60000);
+
+    afterAll(async () => {
+      if (clusterFixture) {
+        await clusterFixture.cleanup();
+      }
+    });
+
     it('should create cluster client with proper configuration', () => {
       const client = createRedisClient({
         cluster: {
-          nodes: [
-            { host: 'localhost', port: 7000 },
-            { host: 'localhost', port: 7001 },
-          ],
+          nodes: [clusterFixture.nodes[0], clusterFixture.nodes[1]],
           options: {
             clusterRetryStrategy: (times: number) => Math.min(times * 100, 2000),
             redisOptions: {
@@ -64,7 +89,7 @@ describe('Redis Cluster Support', () => {
     it('should handle cluster-specific options', () => {
       const client = createRedisClient({
         cluster: {
-          nodes: [{ host: 'localhost', port: 7000 }],
+          nodes: [clusterFixture.nodes[0]],
           options: {
             enableReadyCheck: true,
             maxRedirections: 16,
@@ -87,6 +112,18 @@ describe('Redis Cluster Support', () => {
   });
 
   describe('Cluster Manager Integration', () => {
+    let clusterFixture: DockerRedisClusterFixture;
+
+    beforeAll(async () => {
+      clusterFixture = await createDockerRedisClusterFixture();
+    }, 60000);
+
+    afterAll(async () => {
+      if (clusterFixture) {
+        await clusterFixture.cleanup();
+      }
+    });
+
     it('should manage cluster clients in RedisManager', async () => {
       const manager = new RedisManager(
         {
@@ -94,7 +131,7 @@ describe('Redis Cluster Support', () => {
             {
               namespace: 'cluster',
               cluster: {
-                nodes: [{ host: 'localhost', port: 7000 }],
+                nodes: clusterFixture.nodes,
                 options: {
                   clusterRetryStrategy: () => null,
                 },
@@ -103,7 +140,7 @@ describe('Redis Cluster Support', () => {
             },
           ],
         },
-        null as any
+        undefined
       );
 
       await manager.init();
@@ -121,13 +158,13 @@ describe('Redis Cluster Support', () => {
             {
               namespace: 'regular',
               host: 'localhost',
-              port: 6379,
+              port: clusterFixture.nodes[0].port,
               lazyConnect: true,
             },
             {
               namespace: 'cluster',
               cluster: {
-                nodes: [{ host: 'localhost', port: 7000 }],
+                nodes: clusterFixture.nodes,
                 options: {
                   clusterRetryStrategy: () => null,
                 },
@@ -136,7 +173,7 @@ describe('Redis Cluster Support', () => {
             },
           ],
         },
-        null as any
+        undefined
       );
 
       await manager.init();
@@ -152,8 +189,13 @@ describe('Redis Cluster Support', () => {
   });
 
   describe('Cluster Service Operations', () => {
+    let clusterFixture: DockerRedisClusterFixture;
     let manager: RedisManager;
     let service: RedisService;
+
+    beforeAll(async () => {
+      clusterFixture = await createDockerRedisClusterFixture();
+    }, 60000);
 
     beforeEach(async () => {
       manager = new RedisManager(
@@ -162,7 +204,7 @@ describe('Redis Cluster Support', () => {
             {
               namespace: 'cluster',
               cluster: {
-                nodes: [{ host: 'localhost', port: 7000 }],
+                nodes: clusterFixture.nodes,
                 options: {
                   enableOfflineQueue: false,
                   clusterRetryStrategy: () => null,
@@ -172,7 +214,7 @@ describe('Redis Cluster Support', () => {
             },
           ],
         },
-        null as any
+        undefined
       );
 
       await manager.init();
@@ -180,7 +222,15 @@ describe('Redis Cluster Support', () => {
     });
 
     afterEach(async () => {
-      await manager.destroy();
+      if (manager) {
+        await manager.destroy();
+      }
+    });
+
+    afterAll(async () => {
+      if (clusterFixture) {
+        await clusterFixture.cleanup();
+      }
     });
 
     it('should handle cluster operations through service', async () => {
@@ -226,6 +276,18 @@ describe('Redis Cluster Support', () => {
   });
 
   describe('Cluster Health Checks', () => {
+    let clusterFixture: DockerRedisClusterFixture;
+
+    beforeAll(async () => {
+      clusterFixture = await createDockerRedisClusterFixture();
+    }, 60000);
+
+    afterAll(async () => {
+      if (clusterFixture) {
+        await clusterFixture.cleanup();
+      }
+    });
+
     it('should check health of cluster clients', async () => {
       const manager = new RedisManager(
         {
@@ -233,7 +295,7 @@ describe('Redis Cluster Support', () => {
             {
               namespace: 'cluster',
               cluster: {
-                nodes: [{ host: 'localhost', port: 7000 }],
+                nodes: clusterFixture.nodes,
                 options: {
                   clusterRetryStrategy: () => null,
                 },
@@ -242,7 +304,7 @@ describe('Redis Cluster Support', () => {
             },
           ],
         },
-        null as any
+        undefined
       );
 
       await manager.init();
@@ -264,6 +326,18 @@ describe('Redis Cluster Support', () => {
   });
 
   describe('Cluster Error Handling', () => {
+    let clusterFixture: DockerRedisClusterFixture;
+
+    beforeAll(async () => {
+      clusterFixture = await createDockerRedisClusterFixture();
+    }, 60000);
+
+    afterAll(async () => {
+      if (clusterFixture) {
+        await clusterFixture.cleanup();
+      }
+    });
+
     it('should handle cluster connection errors', async () => {
       const manager = new RedisManager(
         {
@@ -281,7 +355,7 @@ describe('Redis Cluster Support', () => {
             },
           ],
         },
-        null as any
+        undefined
       );
 
       await manager.init();
@@ -303,11 +377,7 @@ describe('Redis Cluster Support', () => {
             {
               namespace: 'cluster-failover',
               cluster: {
-                nodes: [
-                  { host: 'localhost', port: 7000 },
-                  { host: 'localhost', port: 7001 },
-                  { host: 'localhost', port: 7002 },
-                ],
+                nodes: clusterFixture.nodes,
                 options: {
                   clusterRetryStrategy: (times: number) => {
                     retryAttempts.push(times);
@@ -320,7 +390,7 @@ describe('Redis Cluster Support', () => {
             },
           ],
         },
-        null as any
+        undefined
       );
 
       await manager.init();
@@ -337,6 +407,18 @@ describe('Redis Cluster Support', () => {
   });
 
   describe('Cluster Script Execution', () => {
+    let clusterFixture: DockerRedisClusterFixture;
+
+    beforeAll(async () => {
+      clusterFixture = await createDockerRedisClusterFixture();
+    }, 60000);
+
+    afterAll(async () => {
+      if (clusterFixture) {
+        await clusterFixture.cleanup();
+      }
+    });
+
     it('should handle script execution in cluster mode', async () => {
       const manager = new RedisManager(
         {
@@ -344,7 +426,7 @@ describe('Redis Cluster Support', () => {
             {
               namespace: 'cluster-scripts',
               cluster: {
-                nodes: [{ host: 'localhost', port: 7000 }],
+                nodes: clusterFixture.nodes,
                 options: {
                   clusterRetryStrategy: () => null,
                 },
@@ -359,7 +441,7 @@ describe('Redis Cluster Support', () => {
             },
           ],
         },
-        null as any
+        undefined
       );
 
       await manager.init();
@@ -393,6 +475,18 @@ describe('Redis Cluster Support', () => {
   });
 
   describe('Cluster Pub/Sub', () => {
+    let clusterFixture: DockerRedisClusterFixture;
+
+    beforeAll(async () => {
+      clusterFixture = await createDockerRedisClusterFixture();
+    }, 60000);
+
+    afterAll(async () => {
+      if (clusterFixture) {
+        await clusterFixture.cleanup();
+      }
+    });
+
     it('should handle pub/sub in cluster mode', async () => {
       const manager = new RedisManager(
         {
@@ -400,7 +494,7 @@ describe('Redis Cluster Support', () => {
             {
               namespace: 'cluster-pubsub',
               cluster: {
-                nodes: [{ host: 'localhost', port: 7000 }],
+                nodes: clusterFixture.nodes,
                 options: {
                   clusterRetryStrategy: () => null,
                 },
@@ -409,7 +503,7 @@ describe('Redis Cluster Support', () => {
             },
           ],
         },
-        null as any
+        undefined
       );
 
       await manager.init();

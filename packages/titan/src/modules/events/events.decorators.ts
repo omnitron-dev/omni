@@ -180,7 +180,7 @@ export const EmitEvent = createMethodInterceptor<{
   event: string;
   mapResult?: (result: any) => any;
   mapError?: (error: any) => any;
-}>('EmitEvent', async (originalMethod, args, context) => {
+}>('EmitEvent', async function (this: any, originalMethod, args, context) {
   const { event, mapResult, mapError } = context.options!;
 
   try {
@@ -188,9 +188,17 @@ export const EmitEvent = createMethodInterceptor<{
 
     // Emit success event
     const eventData = mapResult ? mapResult(result) : result;
-    // TODO: Actually emit the event with eventData
-    // This requires access to an event emitter instance
-    void eventData; // Suppress unused variable warning
+
+    // Get event emitter from the instance's container if available
+    // `this` is the instance because createMethodInterceptor binds it
+    const instance = this;
+    if (instance && typeof instance === 'object') {
+      // Try to get the event emitter from the instance's injected dependencies
+      const emitter = (instance as any).__eventEmitter__ || (instance as any).eventEmitter;
+      if (emitter && typeof emitter.emit === 'function') {
+        emitter.emit(`${event}.success`, eventData);
+      }
+    }
 
     // Store metadata for discovery
     Reflect.defineMetadata(EVENT_EMITTER_METADATA, { event: `${event}.success` }, context.target, context.propertyKey!);
@@ -199,9 +207,16 @@ export const EmitEvent = createMethodInterceptor<{
   } catch (error) {
     // Emit error event
     const errorData = mapError ? mapError(error) : error;
-    // TODO: Actually emit the error event with errorData
-    // This requires access to an event emitter instance
-    void errorData; // Suppress unused variable warning
+
+    // Get event emitter from the instance's container if available
+    const instance = this;
+    if (instance && typeof instance === 'object') {
+      // Try to get the event emitter from the instance's injected dependencies
+      const emitter = (instance as any).__eventEmitter__ || (instance as any).eventEmitter;
+      if (emitter && typeof emitter.emit === 'function') {
+        emitter.emit(`${event}.error`, errorData);
+      }
+    }
 
     // Store metadata for discovery
     Reflect.defineMetadata(EVENT_EMITTER_METADATA, { event: `${event}.error` }, context.target, context.propertyKey!);

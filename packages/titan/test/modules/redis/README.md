@@ -166,3 +166,231 @@ See `.github/workflows/test-redis.yml` for details.
 - No authentication (test environment)
 - Automatic cleanup prevents data leaks
 - Isolated networks per test suite
+
+---
+
+# Redis Test Infrastructure (New)
+
+## Overview
+
+The new comprehensive Redis test infrastructure provides Docker-based test environments for:
+- **Standalone Redis** containers
+- **Redis Cluster** support (3+ masters with replicas)
+- **Redis Sentinel** support (master + replicas + sentinels)
+- **Automatic cleanup** and lifecycle management
+- **Test isolation** with proper resource cleanup
+
+## Quick Start Examples
+
+### Standalone Redis
+
+```typescript
+import { RedisTestManager } from '@omnitron-dev/titan/testing';
+
+it('should work with standalone Redis', async () => {
+  await RedisTestManager.withRedis(async (container, connectionString) => {
+    const Redis = require('ioredis');
+    const client = new Redis(connectionString);
+
+    await client.set('key', 'value');
+    const result = await client.get('key');
+    expect(result).toBe('value');
+
+    await client.quit();
+  });
+});
+```
+
+### Redis Cluster
+
+```typescript
+import { RedisTestManager } from '@omnitron-dev/titan/testing';
+
+it('should work with Redis cluster', async () => {
+  await RedisTestManager.withRedisCluster(async (cluster) => {
+    const Cluster = require('ioredis').Cluster;
+    const client = new Cluster(cluster.nodes);
+
+    await client.set('cluster-key', 'cluster-value');
+    expect(await client.get('cluster-key')).toBe('cluster-value');
+
+    await client.quit();
+  }, {
+    masterCount: 3,
+    replicasPerMaster: 1,
+  });
+}, 60000);
+```
+
+### Using Fixtures
+
+```typescript
+import {
+  createDockerRedisFixture,
+  withDockerRedis
+} from './utils/redis-test-utils';
+
+it('should use fixture', async () => {
+  const fixture = await createDockerRedisFixture({
+    password: 'secure-pass',
+    database: 5,
+  });
+
+  try {
+    await fixture.client.set('key', 'value');
+    expect(await fixture.client.get('key')).toBe('value');
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+// Or with auto-cleanup:
+it('should use helper', async () => {
+  await withDockerRedis(async (fixture) => {
+    await fixture.client.set('key', 'value');
+    expect(await fixture.client.get('key')).toBe('value');
+  });
+});
+```
+
+## Core Components
+
+### RedisTestManager
+
+Location: `/packages/titan/src/testing/docker-test-manager.ts`
+
+Main class for Docker container management:
+
+```typescript
+class RedisTestManager {
+  // Create containers
+  static async createRedisContainer(options?: RedisContainerOptions): Promise<DockerContainer>
+  static async createRedisCluster(options?: RedisClusterOptions): Promise<RedisClusterContainers>
+  static async createRedisSentinel(options?: RedisSentinelOptions): Promise<RedisSentinelContainers>
+
+  // Helper wrappers with auto-cleanup
+  static async withRedis<T>(testFn, options?): Promise<T>
+  static async withRedisCluster<T>(testFn, options?): Promise<T>
+  static async withRedisSentinel<T>(testFn, options?): Promise<T>
+}
+```
+
+### Test Utils
+
+Location: `/packages/titan/test/modules/redis/utils/redis-test-utils.ts`
+
+Provides fixtures and helpers:
+
+```typescript
+// Docker fixtures
+createDockerRedisFixture(options?): Promise<DockerRedisTestFixture>
+createDockerRedisClusterFixture(options?): Promise<DockerRedisClusterFixture>
+createDockerRedisSentinelFixture(options?): Promise<DockerRedisSentinelFixture>
+
+// Helpers
+buildRedisConnectionString(options): string
+waitForRedisReady(client, timeout?): Promise<void>
+flushRedis(client): Promise<void>
+
+// Wrappers with auto-cleanup
+withDockerRedis<T>(testFn, options?): Promise<T>
+withDockerRedisCluster<T>(testFn, options?): Promise<T>
+withDockerRedisSentinel<T>(testFn, options?): Promise<T>
+
+// Mock client for unit tests
+createMockRedisClient(): MockRedisClient
+```
+
+## Configuration Options
+
+### RedisContainerOptions
+
+```typescript
+interface RedisContainerOptions {
+  name?: string;           // Container name
+  port?: number | 'auto';  // Host port (auto = random)
+  password?: string;       // Redis password
+  database?: number;       // Database number (0-15)
+  maxMemory?: string;      // Max memory (e.g., '256mb')
+  requirePass?: boolean;   // Require password
+}
+```
+
+### RedisClusterOptions
+
+```typescript
+interface RedisClusterOptions {
+  masterCount?: number;        // Number of masters (default: 3)
+  replicasPerMaster?: number;  // Replicas per master (default: 1)
+  basePort?: number;           // Starting port (default: 7000)
+  password?: string;           // Cluster password
+  network?: string;            // Docker network
+}
+```
+
+### RedisSentinelOptions
+
+```typescript
+interface RedisSentinelOptions {
+  masterName?: string;    // Master name (default: 'mymaster')
+  replicaCount?: number;  // Number of replicas (default: 2)
+  sentinelCount?: number; // Number of sentinels (default: 3)
+  basePort?: number;      // Sentinel base port (default: 26379)
+  password?: string;      // Redis password
+  network?: string;       // Docker network
+}
+```
+
+## Integration Tests
+
+See `/packages/titan/test/modules/redis/redis.docker-integration.spec.ts` for comprehensive examples of:
+- Standalone Redis operations
+- Redis Cluster operations
+- Hash tags and slot distribution
+- Pub/sub messaging
+- Transactions
+- Sorted sets
+- Key expiration
+
+## Best Practices
+
+1. **Use auto-cleanup helpers** (`withRedis`, `withDockerRedis`) when possible
+2. **Set timeouts** for cluster/sentinel tests (60s recommended)
+3. **Cleanup in finally blocks** when using fixtures directly
+4. **Use unique databases** or separate containers for test isolation
+5. **Use mock clients** for unit tests
+
+## Migration from Old Infrastructure
+
+Old pattern:
+```typescript
+// Old
+import { RedisTestHelper } from './utils/redis-test-utils';
+const helper = new RedisTestHelper();
+const client = helper.createClient();
+```
+
+New pattern:
+```typescript
+// New - with Docker isolation
+import { withDockerRedis } from './utils/redis-test-utils';
+await withDockerRedis(async (fixture) => {
+  // fixture.client is ready to use
+});
+```
+
+## Exports
+
+All new infrastructure is exported from `@omnitron-dev/titan/testing`:
+
+```typescript
+export {
+  RedisTestManager,
+  type DockerContainer,
+  type RedisContainerOptions,
+  type RedisClusterOptions,
+  type RedisClusterContainers,
+  type RedisSentinelOptions,
+  type RedisSentinelContainers,
+} from '@omnitron-dev/titan/testing';
+```

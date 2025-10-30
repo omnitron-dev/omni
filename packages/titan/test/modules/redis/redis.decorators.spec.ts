@@ -9,50 +9,54 @@ import {
 } from '../../../src/modules/redis/redis.decorators.js';
 import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
 import { REDIS_MANAGER } from '../../../src/modules/redis/redis.constants.js';
-// Redis test utilities removed - using direct Redis connections
+import { Container } from '../../../src/nexus/container.js';
 import { Redis } from 'ioredis';
+import { createDockerRedisFixture, type DockerRedisTestFixture } from './utils/redis-test-utils.js';
+
+/**
+ * Global interface for RedisManager injection in decorators
+ */
+interface GlobalWithRedisManager {
+  __titanRedisManager?: RedisManager;
+}
 
 describe('Redis Decorators', () => {
-  let testClient: Redis;
+  let fixture: DockerRedisTestFixture;
   let redisManager: RedisManager;
   let namespace: string;
 
   beforeEach(async () => {
     namespace = `decorators-test-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-    testClient = new Redis({
-      host: 'localhost',
-      port: 6379,
-      db: 15,
-      keyPrefix: namespace + ':',
-    });
-    await testClient.ping();
 
-    // Create real Redis manager
+    // Create Docker-based Redis fixture
+    fixture = await createDockerRedisFixture();
+
+    // Create real Redis manager using Docker Redis port
     redisManager = new RedisManager(
       {
         clients: [
           {
             namespace: 'default',
             host: 'localhost',
-            port: 6379,
-            db: 15,
+            port: fixture.port,
+            db: 0,
+            keyPrefix: namespace + ':',
           },
         ],
       },
-      null as any
+      undefined
     );
 
     await redisManager.init();
 
     // Set global manager for decorators
-    (global as any).__titanRedisManager = redisManager;
+    (global as GlobalWithRedisManager).__titanRedisManager = redisManager;
   });
 
   afterEach(async () => {
-    delete (global as any).__titanRedisManager;
-    await testClient.flushdb();
-    await testClient.quit();
+    delete (global as GlobalWithRedisManager).__titanRedisManager;
     await redisManager.destroy();
+    await fixture.cleanup();
   });
 
   describe('@RedisCache', () => {
@@ -176,7 +180,9 @@ describe('Redis Decorators', () => {
       // Mock get to throw error
       const client = redisManager.getClient() as Redis;
       const originalGet = client.get.bind(client);
-      client.get = jest.fn().mockRejectedValue(new Error('Redis error'));
+      client.get = async () => {
+        throw new Error('Redis error');
+      };
 
       const result = await service.getData();
       expect(result).toBe('fallback-data');
@@ -493,7 +499,9 @@ describe('Redis Decorators', () => {
 
       // Mock incr to throw error
       const originalIncr = client.incr.bind(client);
-      client.incr = jest.fn().mockRejectedValue(new Error('Redis error'));
+      client.incr = async () => {
+        throw new Error('Redis error');
+      };
 
       const result = await service.fallbackApi();
       expect(result).toBe('fallback-result'); // Should fall back to method execution

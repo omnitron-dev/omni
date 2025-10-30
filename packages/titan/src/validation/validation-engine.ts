@@ -319,9 +319,23 @@ export class ValidationEngine {
       const innerSchema = schema._def.schema;
       const coercedInner = this.applyCoercionRecursive(innerSchema, inheritedMode, insideArray);
 
-      // We can't easily preserve effects, so we return the coerced inner schema
-      // This is a limitation - refinements will be lost
-      // TODO: Consider preserving effects by cloning the _def
+      // Preserve effects by reconstructing them on top of the coerced schema
+      const effectType = schema._def.effect?.type;
+      if (effectType === 'refinement') {
+        const refinement = schema._def.effect;
+        return coercedInner.refine(refinement.refinement, {
+          message: refinement.message,
+          path: refinement.path,
+        });
+      } else if (effectType === 'transform') {
+        const transform = schema._def.effect;
+        return coercedInner.transform(transform.transform);
+      } else if (effectType === 'preprocess') {
+        // For preprocess, we need to apply it before coercion
+        return schema;
+      }
+
+      // Fallback: return coerced inner schema if effect type is unknown
       return coercedInner;
     }
 

@@ -1,67 +1,32 @@
-import { describe, it, expect, beforeEach, afterEach, beforeAll } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from '@jest/globals';
 import { RedisService } from '../../../src/modules/redis/redis.service.js';
 import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
-import { RedisTestManager, RedisTestContainer } from '../../utils/redis-test-manager.js';
-import { RedisFallback } from '../../utils/redis-fallback.js';
+import { createDockerRedisFixture, type DockerRedisTestFixture } from './utils/redis-test-utils.js';
 
-// Setup Redis connection before tests are defined
-let testContainer: RedisTestContainer | null = null;
-let testManager: RedisTestManager | null = null;
-let fallbackConnection: any = null;
-
-// Initialize Redis connection immediately
-(async () => {
-  try {
-    console.log('Attempting to create Redis test container...');
-    testManager = RedisTestManager.getInstance({ verbose: false });
-    testContainer = await testManager.createContainer();
-    console.log('Redis test container created successfully:', testContainer.url);
-  } catch (error) {
-    console.log('Failed to create container:', error);
-    // Fallback to local Redis if Docker not available
-    fallbackConnection = await RedisFallback.getConnection();
-    if (!fallbackConnection) {
-      console.warn('Redis not available, skipping tests');
-    } else {
-      console.log('Using fallback connection:', fallbackConnection.url);
-    }
-  }
-})();
+/**
+ * RedisService Test Suite
+ *
+ * Production-ready tests using Docker fixtures exclusively.
+ * All tests run against real Redis instances in isolated Docker containers.
+ */
 
 describe('RedisService', () => {
   let service: RedisService;
   let manager: RedisManager;
+  let dockerFixture: DockerRedisTestFixture;
 
   beforeAll(async () => {
-    // Wait for connection to be established
-    const maxWait = 10000;
-    const startTime = Date.now();
-    while (!testContainer && !fallbackConnection && Date.now() - startTime < maxWait) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-
-    if (!testContainer && !fallbackConnection) {
-      console.warn('Redis not available after waiting, tests will be skipped');
-      return;
-    }
+    // Create Docker Redis container for all tests
+    dockerFixture = await createDockerRedisFixture();
   }, 30000);
 
   beforeEach(async () => {
-    if (!testContainer && !fallbackConnection) {
-      return;
-    }
+    const redisConfig = {
+      host: 'localhost',
+      port: dockerFixture.port,
+    };
 
-    const redisConfig = testContainer
-      ? {
-          host: testContainer.host,
-          port: testContainer.port,
-        }
-      : {
-          host: '127.0.0.1',
-          port: 6379,
-        };
-
-    // Create Redis manager with test Redis
+    // Create Redis manager with Docker Redis
     const redisOptions = {
       config: {
         ...redisConfig,
@@ -105,31 +70,13 @@ describe('RedisService', () => {
   });
 
   afterAll(async () => {
-    if (testContainer) {
-      await testContainer.cleanup();
-    }
-    if (fallbackConnection) {
-      await fallbackConnection.cleanup();
+    if (dockerFixture) {
+      await dockerFixture.cleanup();
     }
   });
 
-  // Helper to conditionally run tests based on Redis availability
-  const itWithRedis = (name: string, fn: () => Promise<void>, timeout?: number) => {
-    it(
-      name,
-      async () => {
-        if (!testContainer && !fallbackConnection) {
-          console.log(`Skipping test "${name}" - Redis not available`);
-          return;
-        }
-        await fn();
-      },
-      timeout
-    );
-  };
-
   describe('String Operations', () => {
-    itWithRedis('should get and set string values', async () => {
+    it('should get and set string values', async () => {
       const result = await service.set('key', 'value');
       expect(result).toBe('OK');
 
@@ -137,7 +84,7 @@ describe('RedisService', () => {
       expect(value).toBe('value');
     });
 
-    itWithRedis('should set with expiration', async () => {
+    it('should set with expiration', async () => {
       const result = await service.setex('key', 1, 'value');
       expect(result).toBe('OK');
 
@@ -149,7 +96,7 @@ describe('RedisService', () => {
       expect(expired).toBeNull();
     });
 
-    itWithRedis('should set if not exists', async () => {
+    it('should set if not exists', async () => {
       const result1 = await service.setnx('key', 'value1');
       expect(result1).toBe(1);
 
@@ -160,7 +107,7 @@ describe('RedisService', () => {
       expect(value).toBe('value1');
     });
 
-    itWithRedis('should delete keys', async () => {
+    it('should delete keys', async () => {
       await service.set('key', 'value');
       const deleted = await service.del('key');
       expect(deleted).toBe(1);
@@ -169,7 +116,7 @@ describe('RedisService', () => {
       expect(value).toBeNull();
     });
 
-    itWithRedis('should check key existence', async () => {
+    it('should check key existence', async () => {
       await service.set('key', 'value');
       const exists = await service.exists('key');
       expect(exists).toBe(1);
@@ -179,7 +126,7 @@ describe('RedisService', () => {
       expect(notExists).toBe(0);
     });
 
-    itWithRedis('should increment and decrement', async () => {
+    it('should increment and decrement', async () => {
       const incr = await service.incr('counter');
       expect(incr).toBe(1);
 
@@ -193,7 +140,7 @@ describe('RedisService', () => {
       expect(decrby).toBe(2);
     });
 
-    itWithRedis('should set expiration', async () => {
+    it('should set expiration', async () => {
       await service.set('key', 'value');
       const result = await service.expire('key', 1);
       expect(result).toBe(1);
@@ -209,7 +156,7 @@ describe('RedisService', () => {
   });
 
   describe('Hash Operations', () => {
-    itWithRedis('should perform hash operations', async () => {
+    it('should perform hash operations', async () => {
       const hset = await service.hset('hash', 'field1', 'value1');
       expect(hset).toBe(1);
 
@@ -226,7 +173,7 @@ describe('RedisService', () => {
   });
 
   describe('Set Operations', () => {
-    itWithRedis('should perform set operations', async () => {
+    it('should perform set operations', async () => {
       const sadd = await service.sadd('set', 'member1');
       expect(sadd).toBe(1);
 
@@ -243,7 +190,7 @@ describe('RedisService', () => {
   });
 
   describe('List Operations', () => {
-    itWithRedis('should perform list operations', async () => {
+    it('should perform list operations', async () => {
       const lpush = await service.lpush('list', 'item1');
       expect(lpush).toBe(1);
 
@@ -265,7 +212,7 @@ describe('RedisService', () => {
   });
 
   describe('Sorted Set Operations', () => {
-    itWithRedis('should perform sorted set operations', async () => {
+    it('should perform sorted set operations', async () => {
       const zadd = await service.zadd('zset', 1, 'member1');
       expect(zadd).toBe(1);
 
@@ -288,7 +235,7 @@ describe('RedisService', () => {
   });
 
   describe('Pipeline Operations', () => {
-    itWithRedis('should execute pipeline commands', async () => {
+    it('should execute pipeline commands', async () => {
       const pipeline = service.pipeline();
       pipeline.set('key1', 'value1');
       pipeline.set('key2', 'value2');
@@ -306,7 +253,7 @@ describe('RedisService', () => {
   });
 
   describe('Transaction Operations', () => {
-    itWithRedis('should execute multi commands', async () => {
+    it('should execute multi commands', async () => {
       const multi = service.multi();
       multi.set('key1', 'value1');
       multi.set('key2', 'value2');
@@ -324,28 +271,32 @@ describe('RedisService', () => {
   });
 
   describe('Pub/Sub Operations', () => {
-    itWithRedis('should publish messages', async () => {
+    it('should publish messages', async () => {
       const published = await service.publish('channel', 'message');
       expect(published).toBeGreaterThanOrEqual(0);
     });
 
-    itWithRedis('should subscribe and receive messages', async () => {
+    it('should create subscriber and receive messages', async () => {
       const messages: string[] = [];
-      const unsubscribe = await service.subscribe('channel', (message) => {
+      const subscriber = service.createSubscriber();
+
+      subscriber.on('message', (channel: string, message: string) => {
         messages.push(message);
       });
 
+      await subscriber.subscribe('test-channel');
       await new Promise((resolve) => setTimeout(resolve, 100));
-      await service.publish('channel', 'test-message');
+
+      await service.publish('test-channel', 'test-message');
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(messages).toContain('test-message');
-      await unsubscribe();
+      await subscriber.quit();
     });
   });
 
   describe('Script Operations', () => {
-    itWithRedis('should load and run Lua scripts', async () => {
+    it('should load and run Lua scripts', async () => {
       const script = `
         local key = KEYS[1]
         local value = ARGV[1]
@@ -353,7 +304,7 @@ describe('RedisService', () => {
         return redis.call('GET', key)
       `;
 
-      const sha = await service.scriptLoad(script);
+      const sha = await service.loadScript('test-script', script);
       expect(sha).toBeDefined();
       expect(typeof sha).toBe('string');
 
@@ -361,7 +312,7 @@ describe('RedisService', () => {
       expect(result).toBe('scriptValue');
     });
 
-    itWithRedis('should use eval for scripts', async () => {
+    it('should use eval for scripts', async () => {
       const result = await service.eval("return redis.call('SET', KEYS[1], ARGV[1])", 1, 'evalKey', 'evalValue');
       expect(result).toBe('OK');
 
@@ -371,7 +322,7 @@ describe('RedisService', () => {
   });
 
   describe('Connection Management', () => {
-    itWithRedis('should get client for specific purpose', async () => {
+    it('should get client for specific purpose', async () => {
       const cacheClient = service.getClient('cache');
       expect(cacheClient).toBeDefined();
 
@@ -380,32 +331,25 @@ describe('RedisService', () => {
       expect(value).toBe('value');
     });
 
-    itWithRedis('should get all clients', async () => {
-      const clients = service.getAllClients();
-      expect(clients).toBeDefined();
-      expect(Object.keys(clients).length).toBeGreaterThan(0);
+    it('should check if client is ready', async () => {
+      const isReady = service.isReady();
+      expect(isReady).toBe(true);
     });
 
-    itWithRedis('should check if connected', async () => {
-      const connected = service.isConnected();
-      expect(connected).toBe(true);
+    it('should ping Redis', async () => {
+      const pingResult = await service.ping();
+      expect(pingResult).toBe(true);
     });
 
-    itWithRedis('should get all purposes', async () => {
-      const purposes = service.getAllPurposes();
-      expect(purposes).toContain('default');
-    });
-
-    itWithRedis('should get Redis info', async () => {
-      const info = await service.info();
-      expect(info).toBeDefined();
-      expect(typeof info).toBe('string');
-      expect(info).toContain('redis_version');
+    it('should create subscriber client', async () => {
+      const subscriber = service.createSubscriber();
+      expect(subscriber).toBeDefined();
+      await subscriber.quit();
     });
   });
 
   describe('Database Operations', () => {
-    itWithRedis('should flush database', async () => {
+    it('should flush database', async () => {
       await service.set('key1', 'value1');
       await service.set('key2', 'value2');
 
@@ -417,7 +361,7 @@ describe('RedisService', () => {
       expect(exists2).toBe(0);
     });
 
-    itWithRedis('should flush all databases', async () => {
+    it('should flush all databases', async () => {
       await service.set('key', 'value');
 
       const cacheClient = service.getClient('cache');

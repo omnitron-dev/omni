@@ -1,22 +1,21 @@
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
 import { RedisModuleOptions } from '../../../src/modules/redis/redis.types.js';
-import { createRedisTestHelper, RedisTestHelper } from '../../utils/redis-test-utils.js';
+import { createDockerRedisFixture, DockerRedisTestFixture } from './utils/redis-test-utils.js';
 
 describe('RedisManager with Real Redis', () => {
   let manager: RedisManager;
-  let helper: RedisTestHelper;
+  let dockerFixture: DockerRedisTestFixture;
 
   beforeEach(async () => {
-    helper = createRedisTestHelper();
-    await helper.waitForRedis();
+    dockerFixture = await createDockerRedisFixture();
   });
 
   afterEach(async () => {
     if (manager) {
       await manager.destroy();
     }
-    await helper.cleanup();
+    await dockerFixture.cleanup();
   });
 
   describe('Client Management', () => {
@@ -26,13 +25,13 @@ describe('RedisManager with Real Redis', () => {
           {
             namespace: 'default',
             host: 'localhost',
-            port: 6379,
+            port: dockerFixture.port,
             db: 15,
           },
         ],
       };
 
-      manager = new RedisManager(options, null as any);
+      manager = new RedisManager(options, undefined);
       await manager.init();
 
       const client = manager.getClient();
@@ -50,25 +49,25 @@ describe('RedisManager with Real Redis', () => {
           {
             namespace: 'default',
             host: 'localhost',
-            port: 6379,
+            port: dockerFixture.port,
             db: 15,
           },
           {
             namespace: 'cache',
             host: 'localhost',
-            port: 6379,
+            port: dockerFixture.port,
             db: 14,
           },
           {
             namespace: 'pubsub',
             host: 'localhost',
-            port: 6379,
+            port: dockerFixture.port,
             db: 13,
           },
         ],
       };
 
-      manager = new RedisManager(options, null as any);
+      manager = new RedisManager(options, undefined);
       await manager.init();
 
       // Check all clients are created
@@ -96,20 +95,20 @@ describe('RedisManager with Real Redis', () => {
           {
             namespace: 'default',
             host: 'localhost',
-            port: 6379,
+            port: dockerFixture.port,
             db: 15,
           },
         ],
       };
 
-      manager = new RedisManager(options, null as any);
+      manager = new RedisManager(options, undefined);
       await manager.init();
 
       // Create new client dynamically
       const dynamicClient = await manager.createClient({
         namespace: 'dynamic',
         host: 'localhost',
-        port: 6379,
+        port: dockerFixture.port,
         db: 12,
       });
 
@@ -127,19 +126,19 @@ describe('RedisManager with Real Redis', () => {
           {
             namespace: 'default',
             host: 'localhost',
-            port: 6379,
+            port: dockerFixture.port,
             db: 15,
           },
           {
             namespace: 'temp',
             host: 'localhost',
-            port: 6379,
+            port: dockerFixture.port,
             db: 14,
           },
         ],
       };
 
-      manager = new RedisManager(options, null as any);
+      manager = new RedisManager(options, undefined);
       await manager.init();
 
       // Destroy specific client
@@ -162,19 +161,19 @@ describe('RedisManager with Real Redis', () => {
           {
             namespace: 'default',
             host: 'localhost',
-            port: 6379,
+            port: dockerFixture.port,
             db: 15,
           },
           {
             namespace: 'cache',
             host: 'localhost',
-            port: 6379,
+            port: dockerFixture.port,
             db: 14,
           },
         ],
       };
 
-      manager = new RedisManager(options, null as any);
+      manager = new RedisManager(options, undefined);
       await manager.init();
 
       const health = await manager.healthCheck();
@@ -193,7 +192,7 @@ describe('RedisManager with Real Redis', () => {
           {
             namespace: 'default',
             host: 'localhost',
-            port: 6379,
+            port: dockerFixture.port,
             db: 15,
           },
           {
@@ -205,7 +204,7 @@ describe('RedisManager with Real Redis', () => {
         ],
       };
 
-      manager = new RedisManager(options, null as any);
+      manager = new RedisManager(options, undefined);
 
       // Don't wait for init to complete - broken client won't connect
       manager.init().catch(() => {}); // Ignore error
@@ -230,7 +229,7 @@ describe('RedisManager with Real Redis', () => {
           {
             namespace: 'default',
             host: 'localhost',
-            port: 6379,
+            port: dockerFixture.port,
             db: 15,
           },
         ],
@@ -250,7 +249,7 @@ describe('RedisManager with Real Redis', () => {
         ],
       };
 
-      manager = new RedisManager(options, null as any);
+      manager = new RedisManager(options, undefined);
       await manager.init();
 
       // Execute increment script
@@ -279,7 +278,7 @@ describe('RedisManager with Real Redis', () => {
           {
             namespace: 'default',
             host: 'localhost',
-            port: 6379,
+            port: dockerFixture.port,
             db: 15,
           },
         ],
@@ -291,7 +290,7 @@ describe('RedisManager with Real Redis', () => {
         ],
       };
 
-      manager = new RedisManager(options, null as any);
+      manager = new RedisManager(options, undefined);
 
       // Should throw error during init due to invalid script
       await expect(manager.init()).rejects.toThrow();
@@ -305,13 +304,13 @@ describe('RedisManager with Real Redis', () => {
           {
             namespace: 'default',
             host: 'localhost',
-            port: 6379,
+            port: dockerFixture.port,
             db: 15,
           },
         ],
       };
 
-      manager = new RedisManager(options, null as any);
+      manager = new RedisManager(options, undefined);
 
       // Before init, client should not exist
       expect(() => manager.getClient()).toThrow();
@@ -337,13 +336,13 @@ describe('RedisManager with Real Redis', () => {
           {
             namespace: 'default',
             host: 'localhost',
-            port: 6379,
+            port: dockerFixture.port,
             db: 15,
           },
         ],
       };
 
-      manager = new RedisManager(options, null as any);
+      manager = new RedisManager(options, undefined);
 
       // Test NestJS-style lifecycle hooks
       await manager.onModuleInit();
@@ -372,7 +371,7 @@ describe('RedisManager with Real Redis', () => {
         ],
       };
 
-      manager = new RedisManager(options, null as any);
+      manager = new RedisManager(options, undefined);
 
       // Init should not throw but client won't be healthy
       await manager.init().catch(() => {}); // Catch init error
@@ -387,13 +386,13 @@ describe('RedisManager with Real Redis', () => {
           {
             namespace: 'default',
             host: 'localhost',
-            port: 6379,
+            port: dockerFixture.port,
             db: 15,
           },
         ],
       };
 
-      manager = new RedisManager(options, null as any);
+      manager = new RedisManager(options, undefined);
       await manager.init();
 
       expect(() => manager.getClient('non-existent')).toThrow('Redis client with namespace "non-existent" not found');
@@ -405,19 +404,19 @@ describe('RedisManager with Real Redis', () => {
           {
             namespace: 'duplicate',
             host: 'localhost',
-            port: 6379,
+            port: dockerFixture.port,
             db: 15,
           },
           {
             namespace: 'duplicate',
             host: 'localhost',
-            port: 6379,
+            port: dockerFixture.port,
             db: 14,
           },
         ],
       };
 
-      manager = new RedisManager(options, null as any);
+      manager = new RedisManager(options, undefined);
       await manager.init();
 
       // Should only have one client with the namespace (last one wins)
@@ -428,9 +427,13 @@ describe('RedisManager with Real Redis', () => {
       await client.set('duplicate-test', 'value');
 
       // Create a client directly to db 15 to check it's not there
-      const db15Client = helper.createClient('check-db15', 15);
-      const valueInDb15 = await db15Client.get('duplicate-test');
-      expect(valueInDb15).toBeNull();
+      const checkFixture = await createDockerRedisFixture({ database: 15, port: dockerFixture.port });
+      try {
+        const valueInDb15 = await checkFixture.client.get('duplicate-test');
+        expect(valueInDb15).toBeNull();
+      } finally {
+        await checkFixture.cleanup();
+      }
 
       // Clean up test key
       await client.del('duplicate-test');
@@ -444,13 +447,13 @@ describe('RedisManager with Real Redis', () => {
           {
             namespace: 'default',
             host: 'localhost',
-            port: 6379,
+            port: dockerFixture.port,
             db: 15,
           },
         ],
       };
 
-      manager = new RedisManager(options, null as any);
+      manager = new RedisManager(options, undefined);
       await manager.init();
 
       const client = manager.getClient();

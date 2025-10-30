@@ -515,11 +515,7 @@ export class DockerTestManager extends EventEmitter {
     return container;
   }
 
-  private async cleanupContainerWithRetry(
-    name: string,
-    id: string,
-    portMappings: Map<number, number>
-  ): Promise<void> {
+  private async cleanupContainerWithRetry(name: string, id: string, portMappings: Map<number, number>): Promise<void> {
     this.log(`Starting cleanup for container: ${name}`);
 
     let lastError: Error | null = null;
@@ -597,7 +593,9 @@ export class DockerTestManager extends EventEmitter {
   private async ensureNetwork(network: string): Promise<void> {
     if (!this.networks.has(network)) {
       try {
-        execFileSync(this.dockerPath, ['network', 'create', network, '--label', 'test.cleanup=true'], { stdio: 'ignore' });
+        execFileSync(this.dockerPath, ['network', 'create', network, '--label', 'test.cleanup=true'], {
+          stdio: 'ignore',
+        });
         this.networks.add(network);
       } catch {
         // Network might already exist
@@ -632,8 +630,7 @@ export class DockerTestManager extends EventEmitter {
 
           if (status.health === 'unhealthy') {
             throw new Error(
-              `Container ${name} health check failed. ` +
-                `Check container logs with 'docker logs ${name}'`
+              `Container ${name} health check failed. ` + `Check container logs with 'docker logs ${name}'`
             );
           }
 
@@ -833,10 +830,14 @@ export class DockerTestManager extends EventEmitter {
 
       // Remove test networks
       try {
-        const networkIds = execFileSync(this.dockerPath, ['network', 'ls', '--filter', 'label=test.cleanup=true', '-q'], {
-          encoding: 'utf8',
-          stdio: ['pipe', 'pipe', 'ignore'],
-        }).trim();
+        const networkIds = execFileSync(
+          this.dockerPath,
+          ['network', 'ls', '--filter', 'label=test.cleanup=true', '-q'],
+          {
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+          }
+        ).trim();
 
         if (networkIds) {
           const ids = networkIds.split('\n').filter((id) => id.trim());
@@ -1070,6 +1071,496 @@ export class DatabaseTestManager {
       return await testFn(container, connectionString);
     } finally {
       await container.cleanup();
+    }
+  }
+}
+
+// Redis-specific helpers
+export interface RedisClusterContainers {
+  masters: DockerContainer[];
+  replicas: DockerContainer[];
+  network: string;
+  nodes: Array<{ host: string; port: number }>;
+  cleanup: () => Promise<void>;
+}
+
+export interface RedisContainerOptions {
+  name?: string;
+  port?: number | 'auto';
+  password?: string;
+  database?: number;
+  maxMemory?: string;
+  requirePass?: boolean;
+}
+
+export interface RedisClusterOptions {
+  masterCount?: number;
+  replicasPerMaster?: number;
+  basePort?: number;
+  password?: string;
+  network?: string;
+}
+
+export interface RedisSentinelContainers {
+  master: DockerContainer;
+  replicas: DockerContainer[];
+  sentinels: DockerContainer[];
+  network: string;
+  masterName: string;
+  sentinelPorts: number[];
+  cleanup: () => Promise<void>;
+}
+
+export interface RedisSentinelOptions {
+  masterName?: string;
+  replicaCount?: number;
+  sentinelCount?: number;
+  basePort?: number;
+  password?: string;
+  network?: string;
+}
+
+export class RedisTestManager {
+  private static dockerManager = DockerTestManager.getInstance();
+
+  /**
+   * Create a standalone Redis container
+   */
+  static async createRedisContainer(options?: RedisContainerOptions): Promise<DockerContainer> {
+    const port = options?.port || 'auto';
+    const password = options?.password;
+    const database = options?.database ?? 0;
+    const maxMemory = options?.maxMemory || '256mb';
+    const requirePass = options?.requirePass ?? Boolean(password);
+
+    const environment: Record<string, string> = {};
+    const command: string[] = ['redis-server'];
+
+    // Configure Redis settings
+    command.push('--maxmemory', maxMemory);
+    command.push('--maxmemory-policy', 'allkeys-lru');
+    command.push('--save', ''); // Disable RDB snapshots for tests
+    command.push('--appendonly', 'no'); // Disable AOF for tests
+
+    if (requirePass && password) {
+      command.push('--requirepass', password);
+    }
+
+    return RedisTestManager.dockerManager.createContainer({
+      name: options?.name,
+      image: 'redis:7-alpine',
+      ports: { 6379: port },
+      environment,
+      command: command.join(' '),
+      healthcheck: {
+        test: password ? ['CMD', 'redis-cli', '-a', password, 'ping'] : ['CMD', 'redis-cli', 'ping'],
+        interval: '1s',
+        timeout: '3s',
+        retries: 5,
+        startPeriod: '2s',
+      },
+      waitFor: {
+        healthcheck: true,
+        timeout: 30000,
+      },
+    });
+  }
+
+  /**
+   * Create a Redis Cluster (3 masters + 3 replicas by default)
+   */
+  static async createRedisCluster(options?: RedisClusterOptions): Promise<RedisClusterContainers> {
+    const masterCount = options?.masterCount || 3;
+    const replicasPerMaster = options?.replicasPerMaster || 1;
+    const basePort = options?.basePort || 7000;
+    const password = options?.password;
+    const networkName = options?.network || `redis-cluster-${randomBytes(4).toString('hex')}`;
+
+    // Create network
+    await RedisTestManager.dockerManager['ensureNetwork'](networkName);
+
+    const masters: DockerContainer[] = [];
+    const replicas: DockerContainer[] = [];
+    const nodes: Array<{ host: string; port: number }> = [];
+
+    try {
+      // Create master nodes
+      for (let i = 0; i < masterCount; i++) {
+        const port = basePort + i;
+        const name = `redis-cluster-master-${i}`;
+
+        const command = [
+          'redis-server',
+          '--cluster-enabled',
+          'yes',
+          '--cluster-config-file',
+          'nodes.conf',
+          '--cluster-node-timeout',
+          '5000',
+          '--appendonly',
+          'no',
+          '--save',
+          '',
+          '--port',
+          '6379',
+        ];
+
+        if (password) {
+          command.push('--requirepass', password);
+          command.push('--masterauth', password);
+        }
+
+        const container = await RedisTestManager.dockerManager.createContainer({
+          name,
+          image: 'redis:7-alpine',
+          ports: { 6379: port },
+          networks: [networkName],
+          command: command.join(' '),
+          healthcheck: {
+            test: password ? ['CMD', 'redis-cli', '-a', password, 'ping'] : ['CMD', 'redis-cli', 'ping'],
+            interval: '1s',
+            timeout: '3s',
+            retries: 5,
+            startPeriod: '2s',
+          },
+          waitFor: {
+            healthcheck: true,
+            timeout: 30000,
+          },
+        });
+
+        masters.push(container);
+        nodes.push({ host: container.host, port });
+      }
+
+      // Create replica nodes
+      for (let i = 0; i < masterCount * replicasPerMaster; i++) {
+        const port = basePort + masterCount + i;
+        const name = `redis-cluster-replica-${i}`;
+
+        const command = [
+          'redis-server',
+          '--cluster-enabled',
+          'yes',
+          '--cluster-config-file',
+          'nodes.conf',
+          '--cluster-node-timeout',
+          '5000',
+          '--appendonly',
+          'no',
+          '--save',
+          '',
+          '--port',
+          '6379',
+        ];
+
+        if (password) {
+          command.push('--requirepass', password);
+          command.push('--masterauth', password);
+        }
+
+        const container = await RedisTestManager.dockerManager.createContainer({
+          name,
+          image: 'redis:7-alpine',
+          ports: { 6379: port },
+          networks: [networkName],
+          command: command.join(' '),
+          healthcheck: {
+            test: password ? ['CMD', 'redis-cli', '-a', password, 'ping'] : ['CMD', 'redis-cli', 'ping'],
+            interval: '1s',
+            timeout: '3s',
+            retries: 5,
+            startPeriod: '2s',
+          },
+          waitFor: {
+            healthcheck: true,
+            timeout: 30000,
+          },
+        });
+
+        replicas.push(container);
+        nodes.push({ host: container.host, port });
+      }
+
+      // Initialize cluster
+      await RedisTestManager.initializeCluster(masters, replicas, password);
+
+      return {
+        masters,
+        replicas,
+        network: networkName,
+        nodes,
+        cleanup: async () => {
+          await Promise.all([...masters.map((c) => c.cleanup()), ...replicas.map((c) => c.cleanup())]);
+        },
+      };
+    } catch (error) {
+      // Cleanup on failure
+      await Promise.all([
+        ...masters.map((c) => c.cleanup().catch(() => {})),
+        ...replicas.map((c) => c.cleanup().catch(() => {})),
+      ]);
+      throw error;
+    }
+  }
+
+  /**
+   * Create Redis Sentinel setup (1 master + N replicas + M sentinels)
+   */
+  static async createRedisSentinel(options?: RedisSentinelOptions): Promise<RedisSentinelContainers> {
+    const masterName = options?.masterName || 'mymaster';
+    const replicaCount = options?.replicaCount || 2;
+    const sentinelCount = options?.sentinelCount || 3;
+    const basePort = options?.basePort || 26379;
+    const password = options?.password;
+    const networkName = options?.network || `redis-sentinel-${randomBytes(4).toString('hex')}`;
+
+    // Create network
+    await RedisTestManager.dockerManager['ensureNetwork'](networkName);
+
+    let master: DockerContainer | undefined;
+    const replicas: DockerContainer[] = [];
+    const sentinels: DockerContainer[] = [];
+    const sentinelPorts: number[] = [];
+
+    try {
+      // Create master
+      const masterPort = 6379;
+      const command = ['redis-server', '--appendonly', 'no', '--save', ''];
+
+      if (password) {
+        command.push('--requirepass', password);
+        command.push('--masterauth', password);
+      }
+
+      master = await RedisTestManager.dockerManager.createContainer({
+        name: `redis-sentinel-master`,
+        image: 'redis:7-alpine',
+        ports: { 6379: masterPort },
+        networks: [networkName],
+        command: command.join(' '),
+        healthcheck: {
+          test: password ? ['CMD', 'redis-cli', '-a', password, 'ping'] : ['CMD', 'redis-cli', 'ping'],
+          interval: '1s',
+          timeout: '3s',
+          retries: 5,
+        },
+        waitFor: {
+          healthcheck: true,
+          timeout: 30000,
+        },
+      });
+
+      // Create replicas
+      for (let i = 0; i < replicaCount; i++) {
+        const replicaPort = 6380 + i;
+        const replicaCommand = ['redis-server', '--appendonly', 'no', '--save', '', '--slaveof', master.name, '6379'];
+
+        if (password) {
+          replicaCommand.push('--requirepass', password);
+          replicaCommand.push('--masterauth', password);
+        }
+
+        const replica = await RedisTestManager.dockerManager.createContainer({
+          name: `redis-sentinel-replica-${i}`,
+          image: 'redis:7-alpine',
+          ports: { 6379: replicaPort },
+          networks: [networkName],
+          command: replicaCommand.join(' '),
+          healthcheck: {
+            test: password ? ['CMD', 'redis-cli', '-a', password, 'ping'] : ['CMD', 'redis-cli', 'ping'],
+            interval: '1s',
+            timeout: '3s',
+            retries: 5,
+          },
+          waitFor: {
+            healthcheck: true,
+            timeout: 30000,
+          },
+        });
+
+        replicas.push(replica);
+      }
+
+      // Create sentinels
+      for (let i = 0; i < sentinelCount; i++) {
+        const sentinelPort = basePort + i;
+        sentinelPorts.push(sentinelPort);
+
+        // Create sentinel config
+        const sentinelConfig = [
+          `sentinel monitor ${masterName} ${master.name} 6379 2`,
+          `sentinel down-after-milliseconds ${masterName} 5000`,
+          `sentinel parallel-syncs ${masterName} 1`,
+          `sentinel failover-timeout ${masterName} 10000`,
+        ];
+
+        if (password) {
+          sentinelConfig.push(`sentinel auth-pass ${masterName} ${password}`);
+        }
+
+        const sentinelCommand = [
+          'sh',
+          '-c',
+          `echo "${sentinelConfig.join('\\n')}" > /tmp/sentinel.conf && redis-sentinel /tmp/sentinel.conf`,
+        ];
+
+        const sentinel = await RedisTestManager.dockerManager.createContainer({
+          name: `redis-sentinel-${i}`,
+          image: 'redis:7-alpine',
+          ports: { 26379: sentinelPort },
+          networks: [networkName],
+          command: sentinelCommand.join(' '),
+          healthcheck: {
+            test: ['CMD', 'redis-cli', '-p', '26379', 'ping'],
+            interval: '1s',
+            timeout: '3s',
+            retries: 5,
+          },
+          waitFor: {
+            healthcheck: true,
+            timeout: 30000,
+          },
+        });
+
+        sentinels.push(sentinel);
+      }
+
+      return {
+        master,
+        replicas,
+        sentinels,
+        network: networkName,
+        masterName,
+        sentinelPorts,
+        cleanup: async () => {
+          await Promise.all(
+            [master?.cleanup(), ...replicas.map((c) => c.cleanup()), ...sentinels.map((c) => c.cleanup())].filter(
+              Boolean
+            ) as Promise<void>[]
+          );
+        },
+      };
+    } catch (error) {
+      // Cleanup on failure
+      await Promise.all(
+        [
+          master?.cleanup().catch(() => {}),
+          ...replicas.map((c) => c.cleanup().catch(() => {})),
+          ...sentinels.map((c) => c.cleanup().catch(() => {})),
+        ].filter(Boolean)
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Helper to initialize Redis cluster
+   */
+  private static async initializeCluster(
+    masters: DockerContainer[],
+    replicas: DockerContainer[],
+    password?: string
+  ): Promise<void> {
+    if (masters.length === 0) {
+      return;
+    }
+
+    // Build cluster create command
+    const allNodes = [...masters, ...replicas];
+    const nodeAddresses = allNodes.map((c) => {
+      const port = c.ports.values().next().value;
+      return `${c.host}:${port}`;
+    });
+
+    const clusterArgs = [
+      'redis-cli',
+      '--cluster',
+      'create',
+      ...nodeAddresses,
+      '--cluster-replicas',
+      String(Math.floor(replicas.length / masters.length)),
+      '--cluster-yes',
+    ];
+
+    if (password) {
+      clusterArgs.splice(1, 0, '-a', password);
+    }
+
+    // Execute cluster create inside the first master container
+    const firstMaster = masters[0];
+    if (!firstMaster) {
+      throw new Error('No master nodes available to initialize cluster');
+    }
+
+    try {
+      execFileSync(DockerTestManager.getInstance()['dockerPath'], ['exec', firstMaster.name, ...clusterArgs], {
+        stdio: 'pipe',
+        timeout: 30000,
+      });
+
+      // Wait for cluster to be ready
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    } catch (error) {
+      throw new Error(`Failed to initialize Redis cluster: ${error}`);
+    }
+  }
+
+  /**
+   * Helper: Run test with a standalone Redis container
+   */
+  static async withRedis<T>(
+    testFn: (container: DockerContainer, connectionString: string) => Promise<T>,
+    options?: RedisContainerOptions
+  ): Promise<T> {
+    const container = await RedisTestManager.createRedisContainer(options);
+
+    const port = container.ports.get(6379)!;
+    const password = options?.password;
+    const database = options?.database ?? 0;
+
+    let connectionString = `redis://`;
+    if (password) {
+      connectionString += `:${password}@`;
+    }
+    connectionString += `localhost:${port}/${database}`;
+
+    try {
+      return await testFn(container, connectionString);
+    } finally {
+      await container.cleanup();
+    }
+  }
+
+  /**
+   * Helper: Run test with Redis cluster
+   */
+  static async withRedisCluster<T>(
+    testFn: (cluster: RedisClusterContainers) => Promise<T>,
+    options?: RedisClusterOptions
+  ): Promise<T> {
+    const cluster = await RedisTestManager.createRedisCluster(options);
+
+    try {
+      return await testFn(cluster);
+    } finally {
+      await cluster.cleanup();
+    }
+  }
+
+  /**
+   * Helper: Run test with Redis Sentinel
+   */
+  static async withRedisSentinel<T>(
+    testFn: (sentinel: RedisSentinelContainers) => Promise<T>,
+    options?: RedisSentinelOptions
+  ): Promise<T> {
+    const sentinel = await RedisTestManager.createRedisSentinel(options);
+
+    try {
+      return await testFn(sentinel);
+    } finally {
+      await sentinel.cleanup();
     }
   }
 }

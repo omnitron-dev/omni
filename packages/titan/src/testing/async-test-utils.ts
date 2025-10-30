@@ -389,6 +389,9 @@ export function createEventSpy(target: any, event: string): { events: any[]; cle
 export {
   createRedisTestFixture,
   cleanupRedisTestFixture,
+} from './redis-test-utils.js';
+
+export type {
   RedisTestFixture,
   RedisTestFixtureOptions,
 } from './redis-test-utils.js';

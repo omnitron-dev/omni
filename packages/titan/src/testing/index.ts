@@ -36,7 +36,13 @@ export {
 export {
   DockerTestManager,
   DatabaseTestManager,
+  RedisTestManager,
   type DockerContainer,
   type DockerTestManagerOptions,
   type ContainerOptions,
+  type RedisContainerOptions,
+  type RedisClusterOptions,
+  type RedisClusterContainers,
+  type RedisSentinelOptions,
+  type RedisSentinelContainers,
 } from './docker-test-manager.js';

@@ -5,7 +5,8 @@
  * where every process becomes a Netron service with full type safety.
  */
 
-import { Application } from '@omnitron-dev/titan';
+// Fixed import: use explicit subpath instead of root to enable tree-shaking
+import { Application } from '@omnitron-dev/titan/application';
 import { ProcessManagerModule } from '@omnitron-dev/titan/module/pm';
 import {
   Process,

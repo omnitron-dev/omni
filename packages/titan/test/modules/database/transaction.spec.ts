@@ -165,7 +165,7 @@ describe('Transaction Management', () => {
           TitanDatabaseModule.forRoot({
             connection: {
               dialect: 'sqlite',
-              database: ':memory:',
+              connection: ':memory:',
             },
             transactionOptions: {
               retryAttempts: 3,
@@ -180,11 +180,11 @@ describe('Transaction Management', () => {
       await app.start();
 
       // Get services
-      bankingService = await app.get(BankingService);
-      transactionManager = await app.get(DATABASE_TRANSACTION_MANAGER);
+      bankingService = await app.resolveAsync(BankingService);
+      transactionManager = await app.resolveAsync(DATABASE_TRANSACTION_MANAGER);
 
       // Create accounts table
-      const dbManager = await app.get(DATABASE_MANAGER);
+      const dbManager = await app.resolveAsync(DATABASE_MANAGER);
       const db = (dbManager as IDatabaseManager).getConnection();
       await sql`
         CREATE TABLE accounts (
@@ -341,11 +341,11 @@ describe('Transaction Management', () => {
         await app.start();
 
         // Get services
-        bankingService = await app.get(BankingService);
-        transactionManager = await app.get(DATABASE_TRANSACTION_MANAGER);
+        bankingService = await app.resolveAsync(BankingService);
+        transactionManager = await app.resolveAsync(DATABASE_TRANSACTION_MANAGER);
 
         // Create accounts table
-        const dbManager = await app.get(DATABASE_MANAGER);
+        const dbManager = await app.resolveAsync(DATABASE_MANAGER);
         const db = (dbManager as IDatabaseManager).getConnection();
         await sql`
           CREATE TABLE accounts (

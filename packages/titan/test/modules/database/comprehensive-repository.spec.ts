@@ -326,11 +326,11 @@ describe('Comprehensive Repository Tests', () => {
         disableGracefulShutdown: true,
       });
 
-      testService = app.get(DatabaseTestingService);
-      userRepo = app.get(UserRepository);
-      postRepo = app.get(PostRepository);
-      commentRepo = app.get(CommentRepository);
-      blogService = app.get(BlogService);
+      testService = await app.resolveAsync(DatabaseTestingService);
+      userRepo = await app.resolveAsync(UserRepository);
+      postRepo = await app.resolveAsync(PostRepository);
+      commentRepo = await app.resolveAsync(CommentRepository);
+      blogService = await app.resolveAsync(BlogService);
 
       await testService.initialize();
       db = testService.getTestConnection();
@@ -822,11 +822,13 @@ describe('Comprehensive Repository Tests', () => {
           DatabaseTestingModule.forTest({
             connection: {
               dialect: 'postgres',
-              host: 'localhost',
-              port,
-              database: 'test_repo',
-              user: 'test',
-              password: 'test',
+              connection: {
+                host: 'localhost',
+                port,
+                database: 'test_repo',
+                user: 'test',
+                password: 'test',
+              },
             },
             transactional: true,
             autoClean: true,
@@ -841,10 +843,10 @@ describe('Comprehensive Repository Tests', () => {
         disableGracefulShutdown: true,
       });
 
-      testService = app.get(DatabaseTestingService);
-      userRepo = app.get(UserRepository);
-      postRepo = app.get(PostRepository);
-      blogService = app.get(BlogService);
+      testService = await app.resolveAsync(DatabaseTestingService);
+      userRepo = await app.resolveAsync(UserRepository);
+      postRepo = await app.resolveAsync(PostRepository);
+      blogService = await app.resolveAsync(BlogService);
 
       await testService.initialize();
       const db = testService.getTestConnection();
@@ -972,11 +974,13 @@ describe('Comprehensive Repository Tests', () => {
           DatabaseTestingModule.forTest({
             connection: {
               dialect: 'mysql',
-              host: 'localhost',
-              port,
-              database: 'test_repo',
-              user: 'test',
-              password: 'test',
+              connection: {
+                host: 'localhost',
+                port,
+                database: 'test_repo',
+                user: 'test',
+                password: 'test',
+              },
             },
             transactional: true,
             autoClean: true,
@@ -991,9 +995,9 @@ describe('Comprehensive Repository Tests', () => {
         disableGracefulShutdown: true,
       });
 
-      testService = app.get(DatabaseTestingService);
-      userRepo = app.get(UserRepository);
-      postRepo = app.get(PostRepository);
+      testService = await app.resolveAsync(DatabaseTestingService);
+      userRepo = await app.resolveAsync(UserRepository);
+      postRepo = await app.resolveAsync(PostRepository);
 
       await testService.initialize();
       const db = testService.getTestConnection();

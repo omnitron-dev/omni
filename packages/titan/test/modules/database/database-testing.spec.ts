@@ -155,9 +155,9 @@ describe('DatabaseTestingModule', () => {
         disableGracefulShutdown: true,
       });
 
-      testService = await app.resolveAsync<DatabaseTestingService>(DATABASE_TESTING_SERVICE);
-      blogService = await app.resolveAsync<BlogService>(BlogService);
-      userRepo = await app.resolveAsync<UserRepository>(UserRepository);
+      testService = await app.resolveAsync(DATABASE_TESTING_SERVICE) as DatabaseTestingService;
+      blogService = await app.resolveAsync(BlogService) as BlogService;
+      userRepo = await app.resolveAsync(UserRepository) as UserRepository;
 
       // Initialize test database
       await testService.initialize();
@@ -349,11 +349,13 @@ describe('DatabaseTestingModule', () => {
           DatabaseTestingModule.forTest({
             connection: {
               dialect: 'postgres',
-              host: 'localhost',
-              port,
-              database: 'testdb',
-              user: 'testuser',
-              password: 'testpass',
+              connection: {
+                host: 'localhost',
+                port,
+                database: 'testdb',
+                user: 'testuser',
+                password: 'testpass',
+              },
             },
             transactional: true,
             autoMigrate: false,
@@ -371,7 +373,7 @@ describe('DatabaseTestingModule', () => {
         disableDefaultProviders: true,
       });
 
-      pgTestService = pgApp.get<DatabaseTestingService>(DatabaseTestingService);
+      pgTestService = (await pgApp.resolveAsync(DatabaseTestingService)) as DatabaseTestingService;
       await pgTestService.initialize();
 
       // Create tables in isolated schema
@@ -425,8 +427,8 @@ describe('DatabaseTestingModule', () => {
     });
 
     it('should work with PostgreSQL database', async () => {
-      const blogService = pgApp.get<BlogService>(BlogService);
-      const userRepo = pgApp.get<UserRepository>(UserRepository);
+      const blogService = (await pgApp.resolveAsync(BlogService)) as BlogService;
+      const userRepo = (await pgApp.resolveAsync(UserRepository)) as UserRepository;
 
       const { user, post } = await blogService.createUserWithPost(
         { email: 'pg@example.com', name: 'PG User' },
@@ -505,11 +507,13 @@ describe('DatabaseTestingModule', () => {
           DatabaseTestingModule.forTest({
             connection: {
               dialect: 'mysql',
-              host: 'localhost',
-              port,
-              database: 'testdb',
-              user: 'testuser',
-              password: 'testpass',
+              connection: {
+                host: 'localhost',
+                port,
+                database: 'testdb',
+                user: 'testuser',
+                password: 'testpass',
+              },
             },
             transactional: true,
             autoMigrate: false,
@@ -526,7 +530,7 @@ describe('DatabaseTestingModule', () => {
         disableDefaultProviders: true,
       });
 
-      mysqlTestService = mysqlApp.get<DatabaseTestingService>(DatabaseTestingService);
+      mysqlTestService = (await mysqlApp.resolveAsync(DatabaseTestingService)) as DatabaseTestingService;
       await mysqlTestService.initialize();
 
       // Create tables
@@ -583,8 +587,8 @@ describe('DatabaseTestingModule', () => {
     });
 
     it('should work with MySQL database', async () => {
-      const blogService = mysqlApp.get<BlogService>(BlogService);
-      const userRepo = mysqlApp.get<UserRepository>(UserRepository);
+      const blogService = (await mysqlApp.resolveAsync(BlogService)) as BlogService;
+      const userRepo = (await mysqlApp.resolveAsync(UserRepository)) as UserRepository;
 
       const { user, post } = await blogService.createUserWithPost(
         { email: 'mysql@example.com', name: 'MySQL User' },
@@ -708,7 +712,7 @@ describe('DatabaseTestingModule', () => {
         disableDefaultProviders: true,
       });
 
-      testService = app.get<DatabaseTestingService>(DATABASE_TESTING_SERVICE);
+      testService = (await app.resolveAsync(DATABASE_TESTING_SERVICE)) as DatabaseTestingService;
       await testService.initialize();
 
       // Create tables
@@ -772,7 +776,7 @@ describe('DatabaseTestingModule', () => {
     });
 
     it('should seed with custom function', async () => {
-      const userRepo = app.get<UserRepository>(UserRepository);
+      const userRepo = (await app.resolveAsync(UserRepository)) as UserRepository;
 
       const users = await userRepo.findAll();
       expect(users).toHaveLength(4); // 1 admin + 3 regular users
@@ -844,7 +848,7 @@ describe('DatabaseTestingModule', () => {
         disableDefaultProviders: true,
       });
 
-      testService = app.get<DatabaseTestingService>(DATABASE_TESTING_SERVICE);
+      testService = (await app.resolveAsync(DATABASE_TESTING_SERVICE)) as DatabaseTestingService;
       await testService.initialize();
 
       const db = testService.getTestConnection();

@@ -255,6 +255,11 @@ export class DatabaseManager implements IDatabaseManager {
    * Parse connection configuration
    */
   private parseConnectionConfig(config: DatabaseConnection): any {
+    // Handle undefined or null config
+    if (!config) {
+      throw new Error('Database connection configuration is required');
+    }
+
     if (typeof config.connection === 'string') {
       // Parse connection string
       if (config.dialect === 'sqlite') {
@@ -273,7 +278,8 @@ export class DatabaseManager implements IDatabaseManager {
       };
     }
 
-    return config.connection;
+    // If connection is not a string, it should be an object
+    return config.connection || {};
   }
 
   /**

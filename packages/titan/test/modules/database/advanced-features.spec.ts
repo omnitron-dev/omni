@@ -142,7 +142,7 @@ describe('Advanced Database Features', () => {
           TitanDatabaseModule.forRoot({
             connection: {
               dialect: 'sqlite',
-              database: ':memory:',
+              connection: ':memory:',
             },
             isGlobal: true,
           }),
@@ -150,10 +150,10 @@ describe('Advanced Database Features', () => {
       });
 
       await app.start();
-      healthIndicator = await app.get(DatabaseHealthIndicator);
+      healthIndicator = await app.resolveAsync(DatabaseHealthIndicator);
 
       // Create test tables
-      const dbManager = await app.get(DATABASE_MANAGER);
+      const dbManager = await app.resolveAsync(DATABASE_MANAGER);
       const db = await dbManager.getConnection();
 
       await sql`
@@ -207,7 +207,7 @@ describe('Advanced Database Features', () => {
     });
 
     it('should track query metrics', async () => {
-      const dbManager = await app.get(DATABASE_MANAGER);
+      const dbManager = await app.resolveAsync(DATABASE_MANAGER);
       const db = await dbManager.getConnection();
 
       // Execute some queries
@@ -228,7 +228,7 @@ describe('Advanced Database Features', () => {
     });
 
     it('should provide transaction statistics', async () => {
-      const txManager = await app.get(DATABASE_TRANSACTION_MANAGER);
+      const txManager = await app.resolveAsync(DATABASE_TRANSACTION_MANAGER);
 
       if (txManager) {
         // Execute a transaction
@@ -257,7 +257,7 @@ describe('Advanced Database Features', () => {
           TitanDatabaseModule.forRoot({
             connection: {
               dialect: 'sqlite',
-              database: ':memory:',
+              connection: ':memory:',
             },
             isGlobal: true,
           }),
@@ -266,10 +266,10 @@ describe('Advanced Database Features', () => {
       });
 
       await app.start();
-      userService = await app.get(AdvancedUserService);
+      userService = await app.resolveAsync(AdvancedUserService);
 
       // Get direct DB access
-      const dbManager = await app.get(DATABASE_MANAGER);
+      const dbManager = await app.resolveAsync(DATABASE_MANAGER);
       db = await dbManager.getConnection();
 
       // Create tables
@@ -361,7 +361,7 @@ describe('Advanced Database Features', () => {
           TitanDatabaseModule.forRoot({
             connection: {
               dialect: 'sqlite',
-              database: ':memory:',
+              connection: ':memory:',
             },
             isGlobal: true,
           }),
@@ -370,9 +370,9 @@ describe('Advanced Database Features', () => {
       });
 
       await app.start();
-      userService = await app.get(AdvancedUserService);
+      userService = await app.resolveAsync(AdvancedUserService);
 
-      const dbManager = await app.get(DATABASE_MANAGER);
+      const dbManager = await app.resolveAsync(DATABASE_MANAGER);
       db = await dbManager.getConnection();
 
       // Create table
@@ -516,11 +516,13 @@ describe('Advanced Database Features', () => {
           TitanDatabaseModule.forRoot({
             connection: {
               dialect: 'postgres',
-              host: pgContainer.host,
-              port: pgContainer.ports.get(5432),
-              user: 'test',
-              password: 'test',
-              database: 'testdb',
+              connection: {
+                host: pgContainer.host,
+                port: pgContainer.ports.get(5432),
+                user: 'test',
+                password: 'test',
+                database: 'testdb',
+              },
             },
             isGlobal: true,
           }),
@@ -531,7 +533,7 @@ describe('Advanced Database Features', () => {
       await app.start();
 
       // Create tables
-      const dbManager = await app.get(DATABASE_MANAGER);
+      const dbManager = await app.resolveAsync(DATABASE_MANAGER);
       const db = await dbManager.getConnection();
 
       await sql`
@@ -546,7 +548,7 @@ describe('Advanced Database Features', () => {
       `.execute(db);
 
       // Test operations
-      const userService = await app.get(AdvancedUserService);
+      const userService = await app.resolveAsync(AdvancedUserService);
 
       await userService.batchInsertUsers([
         { email: 'pg1@example.com', name: 'PG User 1', active: true },
@@ -609,11 +611,13 @@ describe('Advanced Database Features', () => {
           TitanDatabaseModule.forRoot({
             connection: {
               dialect: 'mysql',
-              host: mysqlContainer.host,
-              port: mysqlContainer.ports.get(3306),
-              user: 'test',
-              password: 'test',
-              database: 'testdb',
+              connection: {
+                host: mysqlContainer.host,
+                port: mysqlContainer.ports.get(3306),
+                user: 'test',
+                password: 'test',
+                database: 'testdb',
+              },
             },
             isGlobal: true,
           }),
@@ -624,7 +628,7 @@ describe('Advanced Database Features', () => {
       await app.start();
 
       // Create tables
-      const dbManager = await app.get(DATABASE_MANAGER);
+      const dbManager = await app.resolveAsync(DATABASE_MANAGER);
       const db = await dbManager.getConnection();
 
       await sql`
@@ -639,7 +643,7 @@ describe('Advanced Database Features', () => {
       `.execute(db);
 
       // Test operations
-      const userService = await app.get(AdvancedUserService);
+      const userService = await app.resolveAsync(AdvancedUserService);
 
       await userService.batchInsertUsers([
         { email: 'mysql1@example.com', name: 'MySQL User 1', active: true },

@@ -205,7 +205,8 @@ export class DockerTestManager {
    */
   private testDockerPath(dockerPath: string): boolean {
     try {
-      execSync(`"${dockerPath}" version`, {
+      // Use execFileSync to avoid shell quoting issues
+      execFileSync(dockerPath, ['version'], {
         stdio: 'ignore',
         timeout: 5000, // 5 second timeout
       });
@@ -217,7 +218,8 @@ export class DockerTestManager {
 
   private verifyDocker(): void {
     try {
-      execSync(`"${this.dockerPath}" version`, { stdio: 'ignore' });
+      // Use execFileSync to avoid shell quoting issues
+      execFileSync(this.dockerPath, ['version'], { stdio: 'ignore' });
     } catch {
       throw new Error(
         `Docker is not available at path: ${this.dockerPath}\n` +
@@ -376,8 +378,8 @@ export class DockerTestManager {
 
         // Stop and remove container
         try {
-          execSync(`"${this.dockerPath}" stop ${name}`, { stdio: 'ignore' });
-          execSync(`"${this.dockerPath}" rm ${name}`, { stdio: 'ignore' });
+          execFileSync(this.dockerPath, ['stop', name], { stdio: 'ignore' });
+          execFileSync(this.dockerPath, ['rm', name], { stdio: 'ignore' });
         } catch (error) {
           console.warn(`Failed to cleanup container ${name}: ${error}`);
         }
@@ -399,7 +401,7 @@ export class DockerTestManager {
   private async ensureNetwork(network: string): Promise<void> {
     if (!this.networks.has(network)) {
       try {
-        execSync(`"${this.dockerPath}" network create ${network} --label test.cleanup=true`, { stdio: 'ignore' });
+        execFileSync(this.dockerPath, ['network', 'create', network, '--label', 'test.cleanup=true'], { stdio: 'ignore' });
         this.networks.add(network);
       } catch {
         // Network might already exist
@@ -416,7 +418,7 @@ export class DockerTestManager {
       // Check if container is healthy
       if (options?.healthcheck) {
         try {
-          const healthStatus = execSync(`"${this.dockerPath}" inspect --format='{{.State.Health.Status}}' ${name}`, {
+          const healthStatus = execFileSync(this.dockerPath, ['inspect', '--format', '{{.State.Health.Status}}', name], {
             encoding: 'utf8',
           }).trim();
 
@@ -484,7 +486,7 @@ export class DockerTestManager {
     // Cleanup networks
     for (const network of this.networks) {
       try {
-        execSync(`"${this.dockerPath}" network rm ${network}`, { stdio: 'ignore' });
+        execFileSync(this.dockerPath, ['network', 'rm', network], { stdio: 'ignore' });
       } catch {
         // Ignore errors
       }
@@ -517,14 +519,14 @@ export class DockerTestManager {
         } catch {
           // Fallback: Try getting IDs and removing one by one
           try {
-            const containerIds = execSync(`"${this.dockerPath}" ps -a --filter "label=test.cleanup=true" -q`, {
+            const containerIds = execFileSync(this.dockerPath, ['ps', '-a', '--filter', 'label=test.cleanup=true', '-q'], {
               encoding: 'utf8',
               stdio: ['pipe', 'pipe', 'ignore'],
             }).trim();
             if (containerIds) {
               containerIds.split('\n').forEach((id) => {
                 try {
-                  execSync(`"${this.dockerPath}" rm -f ${id.trim()}`, { stdio: 'ignore' });
+                  execFileSync(this.dockerPath, ['rm', '-f', id.trim()], { stdio: 'ignore' });
                 } catch {
                   // Ignore individual failures
                 }

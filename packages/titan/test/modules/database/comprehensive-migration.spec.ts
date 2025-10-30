@@ -244,8 +244,8 @@ describe('Comprehensive Migration Tests', () => {
         disableGracefulShutdown: true,
       });
 
-      migrationService = app.get(MigrationTestService);
-      db = app.get<Kysely<any>>(Symbol.for('DATABASE_CONNECTION'));
+      migrationService = await app.resolveAsync(MigrationTestService);
+      db = (await app.resolveAsync(Symbol.for('DATABASE_CONNECTION'))) as Kysely<any>;
     });
 
     afterAll(async () => {
@@ -582,7 +582,7 @@ describe('Comprehensive Migration Tests', () => {
         disableGracefulShutdown: true,
       });
 
-      migrationService = app.get(MigrationTestService);
+      migrationService = await app.resolveAsync(MigrationTestService);
     });
 
     afterAll(async () => {
@@ -621,11 +621,13 @@ describe('Comprehensive Migration Tests', () => {
           TitanDatabaseModule.forRoot({
             connection: {
               dialect: 'postgres',
-              host: 'localhost',
-              port,
-              database: 'migration_test',
-              user: 'test',
-              password: 'test',
+              connection: {
+                host: 'localhost',
+                port,
+                database: 'migration_test',
+                user: 'test',
+                password: 'test',
+              },
             },
             migrations: {
               providers: [
@@ -648,7 +650,7 @@ describe('Comprehensive Migration Tests', () => {
         disableGracefulShutdown: true,
       });
 
-      migrationService = app.get(MigrationTestService);
+      migrationService = await app.resolveAsync(MigrationTestService);
     }, 60000);
 
     afterAll(async () => {
@@ -661,7 +663,7 @@ describe('Comprehensive Migration Tests', () => {
       expect(result.migrations).toHaveLength(5);
 
       // Verify PostgreSQL-specific features work
-      const db = app.get<Kysely<any>>(Symbol.for('DATABASE_CONNECTION'));
+      const db = (await app.resolveAsync(Symbol.for('DATABASE_CONNECTION'))) as Kysely<any>;
 
       // Test JSONB column
       await db.schema.alterTable('users').addColumn('settings', 'jsonb').execute();

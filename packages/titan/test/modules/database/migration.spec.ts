@@ -125,7 +125,7 @@ describe('Migration System', () => {
           TitanDatabaseModule.forRoot({
             connection: {
               dialect: 'sqlite',
-              database: ':memory:',
+              connection: ':memory:',
             },
             migrations: {
               tableName: 'test_migrations',
@@ -142,8 +142,8 @@ describe('Migration System', () => {
       await app.start();
 
       // Get services
-      migrationRunner = await app.get(DATABASE_MIGRATION_SERVICE);
-      dbManager = await app.get(DATABASE_MANAGER);
+      migrationRunner = await app.resolveAsync(DATABASE_MIGRATION_SERVICE);
+      dbManager = await app.resolveAsync(DATABASE_MANAGER);
 
       // Initialize migration tables
       await migrationRunner.init();
@@ -328,11 +328,13 @@ describe('Migration System', () => {
             TitanDatabaseModule.forRoot({
               connection: {
                 dialect: 'postgres',
-                host: url.hostname,
-                port: parseInt(url.port || '5432'),
-                user: url.username,
-                password: url.password,
-                database: url.pathname.slice(1),
+                connection: {
+                  host: url.hostname,
+                  port: parseInt(url.port || '5432'),
+                  user: url.username,
+                  password: url.password,
+                  database: url.pathname.slice(1),
+                },
               },
               migrations: {
                 tableName: 'test_migrations',
@@ -349,8 +351,8 @@ describe('Migration System', () => {
         await app.start();
 
         // Get services
-        migrationRunner = await app.get(DATABASE_MIGRATION_SERVICE);
-        dbManager = await app.get(DATABASE_MANAGER);
+        migrationRunner = await app.resolveAsync(DATABASE_MIGRATION_SERVICE);
+        dbManager = await app.resolveAsync(DATABASE_MANAGER);
 
         // Initialize migration tables
         await migrationRunner.init();

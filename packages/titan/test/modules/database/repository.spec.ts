@@ -339,7 +339,7 @@ describe('Repository Integration', () => {
     });
 
     it('should handle transactions', async () => {
-      const factory = await app.get(RepositoryFactory);
+      const factory = await app.resolveAsync(RepositoryFactory);
 
       try {
         await factory.createTransactionScope(async (scope) => {

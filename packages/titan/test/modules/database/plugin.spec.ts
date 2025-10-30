@@ -120,7 +120,7 @@ describe('Database Plugin System', () => {
           TitanDatabaseModule.forRoot({
             connection: {
               dialect: 'sqlite',
-              database: ':memory:',
+              connection: ':memory:',
             },
             plugins: {
               builtIn: {
@@ -138,9 +138,9 @@ describe('Database Plugin System', () => {
       await app.start();
 
       // Get services
-      productService = await app.get(ProductService);
+      productService = await app.resolveAsync(ProductService);
       const { DATABASE_MANAGER } = await import('../../../src/modules/database/database.constants.js');
-      const dbManager = await app.get(DATABASE_MANAGER);
+      const dbManager = await app.resolveAsync(DATABASE_MANAGER);
       db = await (dbManager as any).getConnection();
 
       // Create products table
@@ -255,7 +255,7 @@ describe('Database Plugin System', () => {
           TitanDatabaseModule.forRoot({
             connection: {
               dialect: 'sqlite',
-              database: ':memory:',
+              connection: ':memory:',
             },
             plugins: {
               custom: [
@@ -288,9 +288,9 @@ describe('Database Plugin System', () => {
       await app.start();
 
       // Get services
-      productService = await app.get(ProductService);
+      productService = await app.resolveAsync(ProductService);
       const { DATABASE_MANAGER } = await import('../../../src/modules/database/database.constants.js');
-      const dbManager = await app.get(DATABASE_MANAGER);
+      const dbManager = await app.resolveAsync(DATABASE_MANAGER);
       db = await (dbManager as any).getConnection();
 
       // Create products table
@@ -415,7 +415,7 @@ describe('Database Plugin System', () => {
           TitanDatabaseModule.forRoot({
             connection: {
               dialect: 'sqlite',
-              database: ':memory:',
+              connection: ':memory:',
             },
             plugins: {
               manager: {
@@ -429,7 +429,7 @@ describe('Database Plugin System', () => {
       });
 
       await app.start();
-      pluginManager = await app.get(DATABASE_PLUGIN_MANAGER);
+      pluginManager = await app.resolveAsync(DATABASE_PLUGIN_MANAGER);
     });
 
     afterEach(async () => {

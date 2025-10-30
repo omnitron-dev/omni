@@ -395,12 +395,12 @@ describe('Comprehensive Transaction Tests', () => {
         disableGracefulShutdown: true,
       });
 
-      testService = app.get(DatabaseTestingService);
-      bankingService = app.get(BankingService);
-      accountRepo = app.get(AccountRepository);
-      transactionRepo = app.get(TransactionRepository);
-      auditRepo = app.get(AuditLogRepository);
-      txManager = app.get(DATABASE_TRANSACTION_MANAGER);
+      testService = await app.resolveAsync(DatabaseTestingService);
+      bankingService = await app.resolveAsync(BankingService);
+      accountRepo = await app.resolveAsync(AccountRepository);
+      transactionRepo = await app.resolveAsync(TransactionRepository);
+      auditRepo = await app.resolveAsync(AuditLogRepository);
+      txManager = await app.resolveAsync(DATABASE_TRANSACTION_MANAGER);
 
       await testService.initialize();
       db = testService.getTestConnection();
@@ -652,11 +652,13 @@ describe('Comprehensive Transaction Tests', () => {
           DatabaseTestingModule.forTest({
             connection: {
               dialect: 'postgres',
-              host: 'localhost',
-              port,
-              database: 'tx_test',
-              user: 'test',
-              password: 'test',
+              connection: {
+                host: 'localhost',
+                port,
+                database: 'tx_test',
+                user: 'test',
+                password: 'test',
+              },
             },
             transactional: false,
             autoClean: true,
@@ -671,10 +673,10 @@ describe('Comprehensive Transaction Tests', () => {
         disableGracefulShutdown: true,
       });
 
-      const testService = app.get(DatabaseTestingService);
-      bankingService = app.get(BankingService);
-      accountRepo = app.get(AccountRepository);
-      txManager = app.get(DATABASE_TRANSACTION_MANAGER);
+      const testService = await app.resolveAsync(DatabaseTestingService);
+      bankingService = await app.resolveAsync(BankingService);
+      accountRepo = await app.resolveAsync(AccountRepository);
+      txManager = await app.resolveAsync(DATABASE_TRANSACTION_MANAGER);
 
       await testService.initialize();
       const db = testService.getTestConnection();
@@ -687,7 +689,7 @@ describe('Comprehensive Transaction Tests', () => {
     });
 
     beforeEach(async () => {
-      const testService = app.get(DatabaseTestingService);
+      const testService = await app.resolveAsync(DatabaseTestingService);
       const db = testService.getTestConnection();
       await cleanDatabase(db);
       await seedTestData(accountRepo);

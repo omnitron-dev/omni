@@ -385,8 +385,12 @@ export interface ISchedulerConfig {
    */
   persistence?: {
     enabled: boolean;
-    provider?: 'redis' | 'database' | 'memory';
-    options?: any;
+    /**
+     * Persistence provider instance
+     * Use RedisPersistenceProvider, DatabasePersistenceProvider, or InMemoryPersistenceProvider
+     */
+    provider?: any; // IPersistenceProvider from scheduler.persistence.ts
+    options?: Record<string, unknown>;
   };
 
   /**

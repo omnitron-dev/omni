@@ -211,6 +211,11 @@ export class RedisService {
     return client.llen(key);
   }
 
+  async ltrim(key: string, start: number, stop: number, namespace?: string): Promise<'OK'> {
+    const client = this.getClient(namespace);
+    return client.ltrim(key, start, stop);
+  }
+
   async zadd(key: string, ...args: (string | number)[]): Promise<number> {
     // Parse namespace from last argument if it's a string and not part of score-member pairs
     let namespace: string | undefined;

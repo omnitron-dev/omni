@@ -9,6 +9,7 @@ import { EventEmitter } from '@omnitron-dev/eventemitter';
 import type { ITransportServer, ITransportConnection, TransportOptions, ServerMetrics } from '../types.js';
 import type { LocalPeer } from '../../local-peer.js';
 import { TitanError, ErrorCode, NetronErrors, Errors, toTitanError, mapToHttp } from '../../../errors/index.js';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 import {
   MiddlewarePipeline,
   MiddlewareStage,
@@ -1274,18 +1275,16 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         // Store input schema
         if (method.contract?.input) {
           spec.components.schemas[`${serviceName}_${methodName}_Input`] = {
-            type: 'object',
+            ...this.zodSchemaToJsonSchema(method.contract.input),
             description: `Input for ${serviceName}.${methodName}`,
-            // TODO: Convert Zod schema to JSON Schema using zod-to-json-schema
           };
         }
 
         // Store output schema
         if (method.contract?.output) {
           spec.components.schemas[`${serviceName}_${methodName}_Output`] = {
-            type: 'object',
+            ...this.zodSchemaToJsonSchema(method.contract.output),
             description: `Output for ${serviceName}.${methodName}`,
-            // TODO: Convert Zod schema to JSON Schema using zod-to-json-schema
           };
         }
 
@@ -1304,9 +1303,8 @@ export class HttpServer extends EventEmitter implements ITransportServer {
             };
 
             spec.components.schemas[`${serviceName}_${methodName}_Error${statusCode}`] = {
-              type: 'object',
+              ...this.zodSchemaToJsonSchema(errorSchema),
               description: `Error ${statusCode} for ${serviceName}.${methodName}`,
-              // TODO: Convert Zod schema to JSON Schema
             };
           }
         }
@@ -1725,5 +1723,28 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     // Return the validated data (with defaults applied by Zod)
     // If input was an array, wrap the validated value back in an array
     return isArrayInput && Array.isArray(input) && input.length === 1 ? [validation.data] : validation.data;
+  }
+
+  /**
+   * Convert Zod schema to JSON Schema for OpenAPI
+   */
+  private zodSchemaToJsonSchema(schema: unknown): Record<string, unknown> {
+    try {
+      // Use zod-to-json-schema library to convert
+      const jsonSchema = zodToJsonSchema(schema as any, {
+        target: 'openApi3',
+        $refStrategy: 'none', // Inline all definitions
+      });
+
+      // Return the schema without the $schema property
+      const { $schema, ...rest } = jsonSchema as any;
+      return rest;
+    } catch (error) {
+      // If conversion fails, return a generic object schema
+      return {
+        type: 'object',
+        description: 'Schema conversion failed',
+      };
+    }
   }
 }

@@ -94,8 +94,16 @@ export class SchedulerPersistence {
       return new InMemoryPersistenceProvider();
     }
 
-    // For now, only support in-memory
-    // TODO: Add Redis and database providers
+    // Support Redis and database providers based on configuration
+    // Provider implementation should be injected via config
+    // Example usage:
+    //   config.persistence.provider = new RedisPersistenceProvider(redisService)
+    //   config.persistence.provider = new DatabasePersistenceProvider(db)
+    if (this.config.persistence.provider) {
+      return this.config.persistence.provider;
+    }
+
+    // Default to in-memory if no provider specified
     return new InMemoryPersistenceProvider();
   }
 

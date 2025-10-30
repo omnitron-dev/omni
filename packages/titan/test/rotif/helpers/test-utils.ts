@@ -1,12 +1,16 @@
 import { Redis } from 'ioredis';
+import { getGlobalRedisInfo } from '../../setup/redis-docker-setup.js';
 
 /**
  * Get the test Redis URL from environment or use default
+ * Automatically uses Docker Redis if available from global setup
  * @param db - Database number to append (optional)
  * @returns Redis connection string
  */
 export function getTestRedisUrl(db?: number): string {
-  const baseUrl = process.env['REDIS_URL'] || 'redis://localhost:6379';
+  // Try to use global Docker Redis setup first
+  const globalRedis = getGlobalRedisInfo();
+  const baseUrl = process.env['REDIS_URL'] || globalRedis?.url || 'redis://localhost:6379';
   return db !== undefined ? `${baseUrl}/${db}` : baseUrl;
 }
 

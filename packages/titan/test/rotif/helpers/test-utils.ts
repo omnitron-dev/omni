@@ -1,5 +1,7 @@
 import { Redis } from 'ioredis';
 import { getGlobalRedisInfo } from '../../setup/redis-docker-setup.js';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 /**
  * Get the test Redis URL from environment or use default
@@ -9,7 +11,19 @@ import { getGlobalRedisInfo } from '../../setup/redis-docker-setup.js';
  */
 export function getTestRedisUrl(db?: number): string {
   // Try to use global Docker Redis setup first
-  const globalRedis = getGlobalRedisInfo();
+  let globalRedis = getGlobalRedisInfo();
+
+  // If not in memory, try to read from file (written by globalSetup)
+  if (!globalRedis) {
+    try {
+      const infoFile = join(__dirname, '../../../.redis-test-info.json');
+      const info = JSON.parse(readFileSync(infoFile, 'utf-8'));
+      globalRedis = info;
+    } catch {
+      // Ignore if file doesn't exist
+    }
+  }
+
   const baseUrl = process.env['REDIS_URL'] || globalRedis?.url || 'redis://localhost:6379';
   return db !== undefined ? `${baseUrl}/${db}` : baseUrl;
 }

@@ -3,6 +3,8 @@ import type { JestConfigWithTsJest } from 'ts-jest';
 const config: JestConfigWithTsJest = {
   preset: 'ts-jest/presets/default-esm',
   testEnvironment: 'node',
+  globalSetup: '<rootDir>/globalSetup.ts',
+  globalTeardown: '<rootDir>/globalTeardown.ts',
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   forceExit: true,
   verbose: true,

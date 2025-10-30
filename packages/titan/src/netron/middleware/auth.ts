@@ -60,20 +60,22 @@ export function buildExecutionContext(ctx: NetronMiddlewareContext, authContext?
   }
 
   // Add environment information
+  const transport = ctx.metadata?.get('transport');
   execCtx.environment = {
     timestamp: new Date(),
-    transport: ctx.metadata?.get('transport') || 'unknown',
+    transport: typeof transport === 'string' ? transport : 'unknown',
   };
 
   // Extract IP from metadata if available
   const clientIp = ctx.metadata?.get('clientIp') || ctx.metadata?.get('ip');
-  if (clientIp) {
+  if (clientIp && typeof clientIp === 'string') {
     execCtx.environment.ip = clientIp;
   }
 
   // Add request metadata
+  const headers = ctx.metadata?.get('headers');
   execCtx.request = {
-    headers: ctx.metadata?.get('headers') || {},
+    headers: typeof headers === 'object' && headers !== null ? (headers as Record<string, string>) : {},
     metadata: Object.fromEntries(ctx.metadata || new Map()),
   };
 
@@ -83,7 +85,10 @@ export function buildExecutionContext(ctx: NetronMiddlewareContext, authContext?
 /**
  * Read @Method metadata from service prototype
  */
-export function readMethodMetadata(serviceInstance: any, methodName: string): MethodOptions | undefined {
+export function readMethodMetadata(
+  serviceInstance: object | null | undefined,
+  methodName: string
+): MethodOptions | undefined {
   if (!serviceInstance || !methodName) {
     return undefined;
   }
@@ -127,7 +132,8 @@ function getAuthContext(ctx: NetronMiddlewareContext): AuthContext | undefined {
   }
 
   // Fallback: try to get from metadata
-  return ctx.metadata?.get('authContext');
+  const authContext = ctx.metadata?.get('authContext');
+  return authContext && typeof authContext === 'object' ? (authContext as AuthContext) : undefined;
 }
 
 /**
@@ -151,7 +157,7 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions): Middleware
 
     // Get service instance from metadata
     const serviceInstance = ctx.metadata?.get('serviceInstance');
-    if (!serviceInstance) {
+    if (!serviceInstance || typeof serviceInstance !== 'object') {
       logger.debug('No service instance in context, skipping auth');
       return next();
     }

@@ -189,7 +189,7 @@ export interface TransactionContext {
   /**
    * Custom metadata
    */
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -313,7 +313,7 @@ export interface TransactionEvent {
   connection: string;
   duration?: number;
   error?: Error;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -387,12 +387,12 @@ export interface ITransactionScope {
   /**
    * Get scoped repository
    */
-  getRepository<T>(repositoryClass: any): T;
+  getRepository<T>(repositoryClass: new (...args: unknown[]) => T): T;
 
   /**
    * Get scoped service
    */
-  getService<T>(serviceClass: any): T;
+  getService<T>(serviceClass: new (...args: unknown[]) => T): T;
 
   /**
    * Get transaction connection

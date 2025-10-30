@@ -273,8 +273,8 @@ export class RepositoryFactory implements IRepositoryFactory {
   /**
    * Get all registered repositories
    */
-  getAll(): Map<RepositoryConstructor, Repository<unknown>> {
-    return new Map(this.repositories);
+  getAll(): Map<new (...args: unknown[]) => unknown, Repository<Record<string, unknown>>> {
+    return new Map(this.repositories as Map<new (...args: unknown[]) => unknown, Repository<Record<string, unknown>>>);
   }
 
   /**

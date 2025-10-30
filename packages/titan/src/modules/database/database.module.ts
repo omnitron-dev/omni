@@ -543,9 +543,9 @@ export class TitanDatabaseModule {
             // Convert RepositoryConfig to RepositoryMetadata by adding target field
             const repositoryMetadata: RepositoryMetadata = {
               ...metadata,
-              target: repository,
+              target: repository as new (...args: unknown[]) => unknown,
             };
-            factory.register(repository, repositoryMetadata);
+            factory.register(repository as new (...args: unknown[]) => unknown, repositoryMetadata);
           }
           return await factory.get(repository);
         };

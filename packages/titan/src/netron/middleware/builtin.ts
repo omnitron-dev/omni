@@ -5,10 +5,69 @@
  */
 
 import type { NetronMiddlewareContext, MiddlewareFunction } from './types.js';
+import type { ILogger } from '../../modules/logger/logger.types.js';
 import { TitanError, ErrorCode } from '../../errors/index.js';
 import * as zlib from 'zlib';
 import { generateRequestId } from '../utils.js';
 import { extractBearerToken } from '../auth/utils.js';
+
+/**
+ * Metrics collector interface
+ */
+export interface MetricsCollector {
+  recordRequest(service: string, method: string): void;
+  recordDuration(service: string, method: string, duration: number): void;
+  recordError(service: string, method: string, error: Error): void;
+}
+
+/**
+ * Authenticator interface
+ */
+export interface Authenticator {
+  verify(token: string): Promise<unknown> | unknown;
+}
+
+/**
+ * Rate limiter interface
+ */
+export interface RateLimiter {
+  check(params: { key: string; context: NetronMiddlewareContext }): Promise<{ allowed: boolean; retryAfter?: number }>;
+}
+
+/**
+ * Circuit breaker interface
+ */
+export interface CircuitBreaker {
+  isOpen(key: string): boolean;
+  onSuccess(key: string): void;
+  onFailure(key: string, error: Error): void;
+}
+
+/**
+ * Validator interface
+ */
+export interface Validator {
+  validate(
+    input: unknown,
+    context: { service?: string; method?: string }
+  ): { valid: boolean; errors?: string[] };
+}
+
+/**
+ * Tracer span interface
+ */
+export interface TracerSpan {
+  setTag(key: string, value: unknown): void;
+  finish(): void;
+}
+
+/**
+ * Tracer interface
+ */
+export interface Tracer {
+  startSpan(name: string): TracerSpan;
+  inject?(span: TracerSpan, carrier: Map<string, unknown>): void;
+}
 
 /**
  * Transport-agnostic built-in middleware
@@ -37,7 +96,8 @@ export class NetronBuiltinMiddleware {
     const requests = new Map<string, { count: number; resetTime: number }>();
 
     return async (ctx, next) => {
-      const key = ctx.metadata?.get('clientId') || 'default';
+      const clientId = ctx.metadata?.get('clientId');
+      const key = typeof clientId === 'string' ? clientId : 'default';
       const now = Date.now();
 
       let record = requests.get(key);
@@ -104,7 +164,15 @@ export class NetronBuiltinMiddleware {
   /**
    * Metrics middleware
    */
-  static metrics(metricsCollector?: (metrics: any) => void): MiddlewareFunction {
+  static metrics(
+    metricsCollector?: (metrics: {
+      service?: string;
+      method?: string;
+      duration: number;
+      success: boolean;
+      timestamp: string;
+    }) => void
+  ): MiddlewareFunction {
     return async (ctx, next) => {
       const start = Date.now();
       let success = false;
@@ -132,14 +200,14 @@ export class NetronBuiltinMiddleware {
   /**
    * Logging middleware (alias)
    */
-  static logging(logger: any): MiddlewareFunction {
+  static logging(logger: ILogger): MiddlewareFunction {
     return this.loggingMiddleware(logger);
   }
 
   /**
    * Logging middleware
    */
-  static loggingMiddleware(logger: any): MiddlewareFunction {
+  static loggingMiddleware(logger: ILogger): MiddlewareFunction {
     return async (ctx, next) => {
       const start = Date.now();
 
@@ -165,12 +233,13 @@ export class NetronBuiltinMiddleware {
           },
           'Netron response'
         );
-      } catch (error: any) {
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
         logger.error(
           {
             service: ctx.serviceName,
             method: ctx.methodName,
-            error: error.message,
+            error: errorMessage,
             duration: Date.now() - start,
           },
           'Netron error'
@@ -183,11 +252,7 @@ export class NetronBuiltinMiddleware {
   /**
    * Metrics collection middleware
    */
-  static metricsMiddleware(metrics: {
-    recordRequest: (service: string, method: string) => void;
-    recordDuration: (service: string, method: string, duration: number) => void;
-    recordError: (service: string, method: string, error: Error) => void;
-  }): MiddlewareFunction {
+  static metricsMiddleware(metrics: MetricsCollector): MiddlewareFunction {
     return async (ctx, next) => {
       const start = Date.now();
 
@@ -202,8 +267,8 @@ export class NetronBuiltinMiddleware {
           const duration = Date.now() - start;
           metrics.recordDuration(ctx.serviceName, ctx.methodName, duration);
         }
-      } catch (error: any) {
-        if (ctx.serviceName && ctx.methodName) {
+      } catch (error: unknown) {
+        if (ctx.serviceName && ctx.methodName && error instanceof Error) {
           metrics.recordError(ctx.serviceName, ctx.methodName, error);
         }
         throw error;
@@ -214,9 +279,7 @@ export class NetronBuiltinMiddleware {
   /**
    * Authentication middleware
    */
-  static authenticationMiddleware(authenticator: {
-    verify: (token: string) => Promise<any> | any;
-  }): MiddlewareFunction {
+  static authenticationMiddleware(authenticator: Authenticator): MiddlewareFunction {
     return async (ctx, next) => {
       const authHeader = ctx.metadata.get('authorization');
 
@@ -233,11 +296,11 @@ export class NetronBuiltinMiddleware {
         const user = await authenticator.verify(token);
         ctx.metadata.set('user', user);
         await next();
-      } catch (error: any) {
+      } catch (error: unknown) {
         throw new TitanError({
           code: ErrorCode.UNAUTHORIZED,
           message: 'Invalid authentication token',
-          cause: error,
+          cause: error instanceof Error ? error : new Error(String(error)),
         });
       }
     };
@@ -257,9 +320,19 @@ export class NetronBuiltinMiddleware {
         });
       }
 
-      const userRole = user.role || user.roles?.[0];
+      // Type guard for user object
+      if (typeof user !== 'object' || user === null) {
+        throw new TitanError({
+          code: ErrorCode.UNAUTHORIZED,
+          message: 'Invalid user object',
+        });
+      }
 
-      if (!requiredRoles.includes(userRole)) {
+      // Extract role with proper type checking
+      const userObj = user as { role?: string; roles?: string[] };
+      const userRole = userObj.role || userObj.roles?.[0];
+
+      if (!userRole || !requiredRoles.includes(userRole)) {
         throw new TitanError({
           code: ErrorCode.FORBIDDEN,
           message: 'Insufficient permissions',
@@ -273,9 +346,7 @@ export class NetronBuiltinMiddleware {
   /**
    * Rate limiting middleware
    */
-  static rateLimitMiddleware(limiter: {
-    check: (params: any) => Promise<{ allowed: boolean; retryAfter?: number }>;
-  }): MiddlewareFunction {
+  static rateLimitMiddleware(limiter: RateLimiter): MiddlewareFunction {
     return async (ctx, next) => {
       const key = `${ctx.serviceName}.${ctx.methodName}`;
       const result = await limiter.check({ key, context: ctx });
@@ -295,11 +366,7 @@ export class NetronBuiltinMiddleware {
   /**
    * Circuit breaker middleware
    */
-  static circuitBreakerMiddleware(breaker: {
-    isOpen: (key: string) => boolean;
-    onSuccess: (key: string) => void;
-    onFailure: (key: string, error: Error) => void;
-  }): MiddlewareFunction {
+  static circuitBreakerMiddleware(breaker: CircuitBreaker): MiddlewareFunction {
     return async (ctx, next) => {
       const key = `${ctx.serviceName}.${ctx.methodName}`;
 
@@ -313,8 +380,9 @@ export class NetronBuiltinMiddleware {
       try {
         await next();
         breaker.onSuccess(key);
-      } catch (error: any) {
-        breaker.onFailure(key, error);
+      } catch (error: unknown) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        breaker.onFailure(key, err);
         throw error;
       }
     };
@@ -344,7 +412,7 @@ export class NetronBuiltinMiddleware {
    * Caching middleware
    */
   static cachingMiddleware(options: {
-    cache: Map<string, any>;
+    cache: Map<string, unknown>;
     ttl: number;
     keyGenerator?: (ctx: NetronMiddlewareContext) => string;
   }): MiddlewareFunction {
@@ -393,10 +461,11 @@ export class NetronBuiltinMiddleware {
         try {
           await next();
           return;
-        } catch (error: any) {
-          lastError = error;
+        } catch (error: unknown) {
+          const err = error instanceof Error ? error : new Error(String(error));
+          lastError = err;
 
-          if (options.shouldRetry && !options.shouldRetry(error)) {
+          if (options.shouldRetry && !options.shouldRetry(err)) {
             throw error;
           }
 
@@ -444,9 +513,7 @@ export class NetronBuiltinMiddleware {
   /**
    * Validation middleware
    */
-  static validationMiddleware(validator: {
-    validate: (input: any, context: any) => { valid: boolean; errors?: string[] };
-  }): MiddlewareFunction {
+  static validationMiddleware(validator: Validator): MiddlewareFunction {
     return async (ctx, next) => {
       const result = validator.validate(ctx.input, {
         service: ctx.serviceName,
@@ -468,10 +535,7 @@ export class NetronBuiltinMiddleware {
   /**
    * Tracing middleware
    */
-  static tracingMiddleware(tracer: {
-    startSpan: (name: string) => any;
-    inject?: (span: any, carrier: any) => void;
-  }): MiddlewareFunction {
+  static tracingMiddleware(tracer: Tracer): MiddlewareFunction {
     return async (ctx, next) => {
       const span = tracer.startSpan(`${ctx.serviceName}.${ctx.methodName}`);
 
@@ -484,9 +548,10 @@ export class NetronBuiltinMiddleware {
 
       try {
         await next();
-      } catch (error: any) {
+      } catch (error: unknown) {
         span.setTag('error', true);
-        span.setTag('error.message', error.message);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        span.setTag('error.message', errorMessage);
         throw error;
       } finally {
         span.finish();

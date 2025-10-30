@@ -38,16 +38,16 @@ export interface IBaseRepository<Entity, CreateInput = Partial<Entity>, UpdateIn
   paginate(options?: PaginationOptions): Promise<PaginatedResult<Entity>>;
 
   // Query builder access
-  query(): any; // Returns Kysely query builder
+  query(): unknown; // Returns Kysely query builder
 
   // Transaction support
-  withTransaction(trx: Transaction<any>): IBaseRepository<Entity, CreateInput, UpdateInput>;
+  withTransaction(trx: Transaction<unknown>): IBaseRepository<Entity, CreateInput, UpdateInput>;
 }
 
 /**
  * Repository configuration
  */
-export interface RepositoryConfig<DB = any, TableName extends keyof DB = any, Entity = any> {
+export interface RepositoryConfig<DB = Record<string, unknown>, TableName extends string = string, Entity = Record<string, unknown>> {
   /**
    * Table name in the database
    */
@@ -61,18 +61,18 @@ export interface RepositoryConfig<DB = any, TableName extends keyof DB = any, En
   /**
    * Map database row to entity
    */
-  mapRow?: (row: Selectable<DB[TableName]>) => Entity;
+  mapRow?: (row: Record<string, unknown>) => Entity;
 
   /**
    * Map entity to database row
    */
-  mapEntity?: (entity: Entity) => Insertable<DB[TableName]>;
+  mapEntity?: (entity: Entity) => Record<string, unknown>;
 
   /**
    * Validation schemas
    */
   schemas?: {
-    entity?: z.ZodType<Entity>;
+    entity?: z.ZodType;
     create?: z.ZodType;
     update?: z.ZodType;
   };
@@ -195,11 +195,11 @@ export interface RepositoryFactoryConfig {
 /**
  * Repository metadata stored via decorators
  */
-export interface RepositoryMetadata<Entity = any> {
+export interface RepositoryMetadata<Entity = Record<string, unknown>> {
   /**
    * Repository target class
    */
-  target: any;
+  target: new (...args: unknown[]) => unknown;
 
   /**
    * Table name
@@ -214,7 +214,7 @@ export interface RepositoryMetadata<Entity = any> {
   /**
    * Entity schema
    */
-  schema?: z.ZodType<Entity>;
+  schema?: z.ZodType;
 
   /**
    * Create schema
@@ -277,7 +277,7 @@ export interface Repository<Entity, CreateInput = Partial<Entity>, UpdateInput =
   findDeleted?(): Promise<Entity[]>;
 
   // Audit methods (if enabled)
-  getAuditHistory?(entityId: number | string): Promise<any[]>;
+  getAuditHistory?(entityId: number | string): Promise<Array<Record<string, unknown>>>;
   getAuditSnapshot?(entityId: number | string, timestamp: Date): Promise<Entity | null>;
 }
 
@@ -295,22 +295,22 @@ export interface IRepositoryFactory {
   /**
    * Register a repository class
    */
-  register(target: any, metadata: RepositoryMetadata): void;
+  register(target: new (...args: unknown[]) => unknown, metadata: RepositoryMetadata): void;
 
   /**
    * Get a registered repository
    */
-  get<T = any>(target: any): Promise<T>;
+  get<T = Repository<Record<string, unknown>>>(target: new (...args: unknown[]) => unknown): Promise<T>;
 
   /**
    * Get all registered repositories
    */
-  getAll(): Map<any, Repository<any>>;
+  getAll(): Map<new (...args: unknown[]) => unknown, Repository<Record<string, unknown>>>;
 
   /**
    * Apply plugins to a repository
    */
-  applyPlugins(repository: any, plugins: Array<string | KyseraPlugin>): any;
+  applyPlugins(repository: unknown, plugins: Array<string | KyseraPlugin>): unknown;
 }
 
 /**
@@ -320,7 +320,7 @@ export interface RepositoryTransactionScope {
   /**
    * Get repository with transaction
    */
-  getRepository<T = any>(target: any): T;
+  getRepository<T = Repository<Record<string, unknown>>>(target: new (...args: unknown[]) => unknown): T;
 
   /**
    * Execute function in transaction
@@ -347,10 +347,10 @@ export enum RepositoryEventType {
 /**
  * Repository event payload
  */
-export interface RepositoryEvent<Entity = any> {
+export interface RepositoryEvent<Entity = Record<string, unknown>> {
   type: RepositoryEventType;
   repository: string;
   entity?: Entity;
-  data?: any;
+  data?: unknown;
   timestamp: Date;
 }

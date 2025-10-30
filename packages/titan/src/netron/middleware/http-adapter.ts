@@ -4,8 +4,15 @@
  * Bridges HTTP-specific context with Netron's middleware system
  */
 
-import type { NetronMiddlewareContext, MiddlewareFunction, ITransportMiddlewareAdapter } from './types.js';
+import type {
+  NetronMiddlewareContext,
+  MiddlewareFunction,
+  ITransportMiddlewareAdapter,
+  TransportContext,
+} from './types.js';
 import type { IncomingMessage, ServerResponse } from 'http';
+import type { ILogger } from '../../modules/logger/logger.types.js';
+import type { LocalPeer, RemotePeer } from '../index.js';
 import { TitanError, ErrorCode } from '../../errors/index.js';
 import * as zlib from 'zlib';
 
@@ -18,8 +25,24 @@ export interface HttpMiddlewareContext extends NetronMiddlewareContext {
   route?: string;
   params?: Record<string, string>;
   query?: Record<string, string>;
-  body?: any;
+  body?: unknown;
   cookies?: Record<string, string>;
+}
+
+/**
+ * HTTP transport context
+ */
+export interface HttpTransportContext extends TransportContext {
+  peer?: unknown;
+  metadata?: Map<string, unknown>;
+  timing?: {
+    start: number;
+    middlewareTimes: Map<string, number>;
+  };
+  request?: IncomingMessage;
+  route?: string;
+  body?: unknown;
+  result?: unknown;
 }
 
 /**
@@ -38,7 +61,7 @@ export interface CorsOptions {
 /**
  * HTTP Middleware adapter implementation
  */
-export class HttpMiddlewareAdapter implements ITransportMiddlewareAdapter<HttpMiddlewareContext> {
+export class HttpMiddlewareAdapter implements ITransportMiddlewareAdapter<HttpMiddlewareContext, HttpTransportContext> {
   private corsOptions?: CorsOptions;
 
   constructor(options?: { cors?: CorsOptions }) {
@@ -48,35 +71,56 @@ export class HttpMiddlewareAdapter implements ITransportMiddlewareAdapter<HttpMi
   /**
    * Transform HTTP request to Netron context
    */
-  toNetronContext(httpCtx: any): HttpMiddlewareContext {
+  toNetronContext(httpCtx: HttpTransportContext): HttpMiddlewareContext {
+    // Extract known properties with proper type guards
+    const peer = httpCtx.peer && typeof httpCtx.peer === 'object' ? (httpCtx.peer as LocalPeer | RemotePeer) : ({} as LocalPeer);
+    const metadata = httpCtx.metadata instanceof Map ? httpCtx.metadata : new Map<string, unknown>();
+    const timing = httpCtx.timing || {
+      start: Date.now(),
+      middlewareTimes: new Map<string, number>(),
+    };
+    const request = httpCtx.request;
+    const response = httpCtx['response'] as ServerResponse | undefined;
+    const route = typeof httpCtx.route === 'string' ? httpCtx.route : undefined;
+    const body = httpCtx.body;
+
+    if (!request || !response) {
+      throw new TitanError({
+        code: ErrorCode.INTERNAL_SERVER_ERROR,
+        message: 'HTTP request and response are required',
+      });
+    }
+
     const context: HttpMiddlewareContext = {
-      ...httpCtx,
-      peer: httpCtx.peer || {},
-      metadata: httpCtx.metadata || new Map(),
-      timing: httpCtx.timing || {
-        start: Date.now(),
-        middlewareTimes: new Map(),
-      },
+      peer,
+      metadata,
+      timing,
+      request,
+      response,
+      route,
+      body,
     };
 
     // Set HTTP-specific metadata
-    if (httpCtx.request) {
-      context.metadata.set('http-method', httpCtx.request.method);
-      context.metadata.set('http-url', httpCtx.route || httpCtx.request.url);
+    if (request.method) {
+      metadata.set('http-method', request.method);
+    }
+    if (route || request.url) {
+      metadata.set('http-url', route || request.url);
     }
 
     // Copy HTTP headers to metadata
-    if (httpCtx.request?.headers) {
-      for (const [key, value] of Object.entries(httpCtx.request.headers)) {
+    if (request.headers) {
+      for (const [key, value] of Object.entries(request.headers)) {
         if (value) {
-          context.metadata.set(key.toLowerCase().replace('x-', ''), value);
+          metadata.set(key.toLowerCase().replace('x-', ''), value);
         }
       }
     }
 
     // Set body as input for service calls
-    if (httpCtx.body !== undefined) {
-      context.input = httpCtx.body;
+    if (body !== undefined) {
+      context.input = body;
     }
 
     return context;
@@ -85,7 +129,7 @@ export class HttpMiddlewareAdapter implements ITransportMiddlewareAdapter<HttpMi
   /**
    * Apply Netron context changes back to HTTP response
    */
-  fromNetronContext(netronCtx: HttpMiddlewareContext, httpCtx: any): void {
+  fromNetronContext(netronCtx: HttpMiddlewareContext, httpCtx: HttpTransportContext): void {
     // Update response body
     if (netronCtx.result !== undefined) {
       httpCtx.body = netronCtx.result;
@@ -267,12 +311,12 @@ export class HttpBuiltinMiddleware {
               ctx.body = buffer;
             }
             resolve();
-          } catch (error: any) {
+          } catch (error: unknown) {
             reject(
               new TitanError({
                 code: ErrorCode.BAD_REQUEST,
                 message: 'Invalid request body',
-                cause: error,
+                cause: error instanceof Error ? error : new Error(String(error)),
               })
             );
           }
@@ -406,7 +450,7 @@ export class HttpBuiltinMiddleware {
   /**
    * Request logging middleware
    */
-  static requestLoggingMiddleware(logger: any): MiddlewareFunction<HttpMiddlewareContext> {
+  static requestLoggingMiddleware(logger: ILogger): MiddlewareFunction<HttpMiddlewareContext> {
     return async (ctx, next) => {
       const start = Date.now();
 
@@ -435,15 +479,18 @@ export class HttpBuiltinMiddleware {
           },
           'HTTP Response'
         );
-      } catch (error: any) {
+      } catch (error: unknown) {
         const duration = Date.now() - start;
+
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorCode = error instanceof TitanError ? error.code : undefined;
 
         logger.error(
           {
             method: ctx.request.method,
             url: ctx.request.url,
-            error: error.message,
-            code: error.code,
+            error: errorMessage,
+            code: errorCode,
             duration,
           },
           'HTTP Error'

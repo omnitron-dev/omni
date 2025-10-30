@@ -421,7 +421,7 @@ export interface RepositoryConfig<Entity = unknown> {
   /**
    * Entity schema for validation
    */
-  schema?: z.ZodType<Entity>;
+  schema?: z.ZodType;
 
   /**
    * Create schema for validation

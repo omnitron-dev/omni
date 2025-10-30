@@ -15,31 +15,31 @@ import type { PaginatedResult, PaginationOptions } from '../database.types.js';
  * Base repository class implementing common database operations
  */
 export class BaseRepository<
-  DB = any,
+  DB = Record<string, unknown>,
   TableName extends string = string,
-  Entity = any,
-  CreateInput = any,
-  UpdateInput = any,
+  Entity = Record<string, unknown>,
+  CreateInput = Partial<Entity>,
+  UpdateInput = Partial<Entity>,
 > implements IBaseRepository<Entity, CreateInput, UpdateInput>
 {
   public readonly tableName: TableName;
   public readonly connectionName: string;
 
-  protected db: Kysely<any>;
-  protected trx?: Transaction<any>;
-  protected config: RepositoryConfig<any, any, any>;
+  protected db: Kysely<DB>;
+  protected trx?: Transaction<DB>;
+  protected config: RepositoryConfig<DB, TableName, Entity>;
 
-  constructor(db: Kysely<any> | Transaction<any>, config: RepositoryConfig<any, any, any>) {
+  constructor(db: Kysely<DB> | Transaction<DB>, config: RepositoryConfig<DB, TableName, Entity>) {
     this.tableName = config.tableName;
     this.connectionName = config.connectionName || 'default';
     this.config = config;
 
     // Check if it's a transaction or regular connection
     if ('isTransaction' in db && db.isTransaction) {
-      this.trx = db as Transaction<any>;
-      this.db = db as any; // Transaction is also a Kysely instance
+      this.trx = db as Transaction<DB>;
+      this.db = db as Kysely<DB>; // Transaction is also a Kysely instance
     } else {
-      this.db = db as Kysely<any>;
+      this.db = db as Kysely<DB>;
     }
   }
 
@@ -53,7 +53,7 @@ export class BaseRepository<
   /**
    * Map database row to entity
    */
-  protected mapRow(row: any): Entity {
+  protected mapRow(row: Record<string, unknown>): Entity {
     if (this.config.mapRow) {
       return this.config.mapRow(row);
     }
@@ -63,11 +63,11 @@ export class BaseRepository<
   /**
    * Map entity to database row
    */
-  protected mapEntity(entity: Entity | CreateInput | UpdateInput): any {
+  protected mapEntity(entity: Entity | CreateInput | UpdateInput): Record<string, unknown> {
     if (this.config.mapEntity) {
       return this.config.mapEntity(entity as Entity);
     }
-    return entity;
+    return entity as Record<string, unknown>;
   }
 
   /**
@@ -82,7 +82,7 @@ export class BaseRepository<
       return schema.parse(data) as T;
     } catch (error) {
       if (error instanceof z.ZodError) {
-        const fieldErrors = error.issues.map((e: any) => ({
+        const fieldErrors = error.issues.map((e) => ({
           field: e.path.join('.'),
           message: e.message,
           code: e.code,
@@ -102,10 +102,10 @@ export class BaseRepository<
     }
 
     try {
-      return this.config.schemas.entity.parse(result) as T;
+      return this.config.schemas.entity.parse(result) as unknown as T;
     } catch (error) {
       if (error instanceof z.ZodError) {
-        const fieldErrors = error.issues.map((e: any) => ({
+        const fieldErrors = error.issues.map((e) => ({
           field: e.path.join('.'),
           message: e.message,
           code: e.code,
@@ -120,19 +120,20 @@ export class BaseRepository<
    * Find all records
    */
   async findAll(options: FindOptions<Entity> = {}): Promise<Entity[]> {
-    let query = this.qb.selectFrom(this.tableName).selectAll();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let query = this.qb.selectFrom(this.tableName as any).selectAll() as any;
 
     // Apply where conditions
     if (options.where) {
       for (const [key, value] of Object.entries(options.where)) {
-        query = (query as any).where(key, '=', value);
+        query = query.where(key, '=', value);
       }
     }
 
     // Apply ordering
     if (options.orderBy) {
       for (const { column, direction } of options.orderBy) {
-        query = (query as any).orderBy(column, direction);
+        query = query.orderBy(column as string, direction);
       }
     }
 
@@ -148,17 +149,18 @@ export class BaseRepository<
 
     // Select specific columns
     if (options.select && options.select.length > 0) {
-      query = (this.qb.selectFrom(this.tableName) as any).select(options.select);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      query = (this.qb.selectFrom(this.tableName as any) as any).select(options.select as string[]);
 
       // Re-apply conditions after changing select
       if (options.where) {
         for (const [key, value] of Object.entries(options.where)) {
-          query = (query as any).where(key, '=', value);
+          query = query.where(key, '=', value);
         }
       }
     }
 
-    const rows = await query.execute();
+    const rows = await query.execute() as Record<string, unknown>[];
     const entities = rows.map((row) => this.mapRow(row));
 
     if (this.config.validateDbResults) {
@@ -172,7 +174,10 @@ export class BaseRepository<
    * Find record by ID
    */
   async findById(id: number | string): Promise<Entity | null> {
-    const row = await (this.qb.selectFrom(this.tableName).selectAll() as any).where('id', '=', id).executeTakeFirst();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const row = await (this.qb.selectFrom(this.tableName as any).selectAll() as any)
+      .where('id', '=', id)
+      .executeTakeFirst() as Record<string, unknown> | undefined;
 
     if (!row) {
       return null;
@@ -186,13 +191,14 @@ export class BaseRepository<
    * Find one record by conditions
    */
   async findOne(conditions: Partial<Entity>): Promise<Entity | null> {
-    let query = this.qb.selectFrom(this.tableName).selectAll();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let query = this.qb.selectFrom(this.tableName as any).selectAll() as any;
 
     for (const [key, value] of Object.entries(conditions)) {
-      query = (query as any).where(key, '=', value);
+      query = query.where(key, '=', value);
     }
 
-    const row = await query.executeTakeFirst();
+    const row = await query.executeTakeFirst() as Record<string, unknown> | undefined;
 
     if (!row) {
       return null;
@@ -217,7 +223,9 @@ export class BaseRepository<
     const dbData = this.mapEntity(validatedData);
 
     try {
-      const result = await this.qb.insertInto(this.tableName).values(dbData).returningAll().executeTakeFirstOrThrow();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await (this.qb.insertInto(this.tableName as any).values(dbData as any).returningAll() as any)
+        .executeTakeFirstOrThrow() as Record<string, unknown>;
 
       const entity = this.mapRow(result);
       return this.config.validateDbResults ? this.validateResult(entity) : entity;
@@ -238,7 +246,9 @@ export class BaseRepository<
     const dbData = validatedData.map((item) => this.mapEntity(item));
 
     try {
-      const results = await this.qb.insertInto(this.tableName).values(dbData).returningAll().execute();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const results = await (this.qb.insertInto(this.tableName as any).values(dbData as any).returningAll() as any)
+        .execute() as Array<Record<string, unknown>>;
 
       const entities = results.map((row) => this.mapRow(row));
 
@@ -265,13 +275,17 @@ export class BaseRepository<
         acc[key] = value;
       }
       return acc;
-    }, {} as any);
+    }, {} as Record<string, unknown>);
 
     try {
-      const result = await (this.qb.updateTable(this.tableName).set(cleanData) as any)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const updateQuery = this.qb.updateTable(this.tableName as any) as any;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await updateQuery
+        .set(cleanData)
         .where('id', '=', id)
         .returningAll()
-        .executeTakeFirstOrThrow();
+        .executeTakeFirstOrThrow() as Record<string, unknown>;
 
       const entity = this.mapRow(result);
       return this.config.validateDbResults ? this.validateResult(entity) : entity;
@@ -293,16 +307,19 @@ export class BaseRepository<
         acc[key] = value;
       }
       return acc;
-    }, {} as any);
+    }, {} as Record<string, unknown>);
 
     try {
-      let query = this.qb.updateTable(this.tableName).set(cleanData);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const updateQuery = this.qb.updateTable(this.tableName as any) as any;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let query = updateQuery.set(cleanData);
 
       for (const [key, value] of Object.entries(conditions)) {
-        query = (query as any).where(key, '=', value);
+        query = query.where(key, '=', value);
       }
 
-      const result = await query.execute();
+      const result = await query.execute() as Array<{ numUpdatedRows?: bigint | number }>;
       return Number(result[0]?.numUpdatedRows || 0);
     } catch (error) {
       throw parseDatabaseError(error);
@@ -314,7 +331,8 @@ export class BaseRepository<
    */
   async delete(id: number | string): Promise<void> {
     try {
-      await (this.qb.deleteFrom(this.tableName) as any).where('id', '=', id).execute();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (this.qb.deleteFrom(this.tableName as any) as any).where('id', '=', id).execute();
     } catch (error) {
       throw parseDatabaseError(error);
     }
@@ -325,13 +343,14 @@ export class BaseRepository<
    */
   async deleteMany(conditions: Partial<Entity>): Promise<number> {
     try {
-      let query = this.qb.deleteFrom(this.tableName);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let query = this.qb.deleteFrom(this.tableName as any) as any;
 
       for (const [key, value] of Object.entries(conditions)) {
-        query = (query as any).where(key, '=', value);
+        query = query.where(key, '=', value);
       }
 
-      const result = await query.execute();
+      const result = await query.execute() as Array<{ numDeletedRows?: bigint | number }>;
       return Number(result[0]?.numDeletedRows || 0);
     } catch (error) {
       throw parseDatabaseError(error);
@@ -342,16 +361,17 @@ export class BaseRepository<
    * Count records
    */
   async count(conditions?: Partial<Entity>): Promise<number> {
-    let query = (this.qb.selectFrom(this.tableName) as any).select(sql<number>`count(*)`.as('count'));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let query = (this.qb.selectFrom(this.tableName as any) as any).select(sql<number>`count(*)`.as('count'));
 
     if (conditions) {
       for (const [key, value] of Object.entries(conditions)) {
-        query = (query as any).where(key, '=', value);
+        query = query.where(key, '=', value);
       }
     }
 
-    const result = await query.executeTakeFirstOrThrow();
-    return Number((result as any).count);
+    const result = await query.executeTakeFirstOrThrow() as { count: number | bigint };
+    return Number(result.count);
   }
 
   /**
@@ -366,20 +386,31 @@ export class BaseRepository<
    * Paginate results
    */
   async paginate(options: PaginationOptions = {}): Promise<PaginatedResult<Entity>> {
-    const query = this.qb.selectFrom(this.tableName).selectAll();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const query = this.qb.selectFrom(this.tableName as any).selectAll();
 
     if (options.cursor) {
       // Cursor-based pagination
-      const result = (await paginateCursor(query as any, {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const paginationResult = await paginateCursor(query as any, {
         limit: options.limit || 20,
         cursor: options.cursor,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         orderBy: (options.orderBy?.map((o) => ({
           column: o.column,
           direction: o.direction,
         })) || [{ column: 'id', direction: 'asc' }]) as any,
-      })) as any;
+      });
 
-      const entities = result.data.map((row: any) => this.mapRow(row));
+      const result = paginationResult as unknown as {
+        data: Record<string, unknown>[];
+        limit: number;
+        hasMore: boolean;
+        nextCursor?: string;
+        prevCursor?: string;
+      };
+
+      const entities = result.data.map((row) => this.mapRow(row));
 
       return {
         data: entities,
@@ -397,17 +428,18 @@ export class BaseRepository<
 
       // Manual implementation since kysera/core might have issues
       // Get total count first
-      const totalResult = await (this.qb
-        .selectFrom(this.tableName) as any)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const totalResult = await (this.qb.selectFrom(this.tableName as any) as any)
         .select(sql<number>`count(*)`.as('count'))
-        .executeTakeFirst();
-      const total = Number((totalResult as any)?.count || 0);
+        .executeTakeFirst() as { count: number | bigint } | undefined;
+      const total = Number(totalResult?.count || 0);
       const totalPages = Math.ceil(total / limit);
 
       // Get paginated data
       const offset = (page - 1) * limit;
-      const rows = await query.limit(limit).offset(offset).execute();
-      const entities = rows.map((row: any) => this.mapRow(row));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rows = await (query as any).limit(limit).offset(offset).execute() as Record<string, unknown>[];
+      const entities = rows.map((row) => this.mapRow(row));
 
       return {
         data: entities,
@@ -425,14 +457,15 @@ export class BaseRepository<
   /**
    * Get query builder for custom queries
    */
-  query(): any {
-    return this.qb.selectFrom(this.tableName);
+  query(): ReturnType<typeof this.qb.selectFrom> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return this.qb.selectFrom(this.tableName as any);
   }
 
   /**
    * Create a new instance with transaction
    */
-  withTransaction(trx: Transaction<any>): IBaseRepository<Entity, CreateInput, UpdateInput> {
-    return new BaseRepository(trx, this.config);
+  withTransaction(trx: Transaction<unknown>): IBaseRepository<Entity, CreateInput, UpdateInput> {
+    return new BaseRepository(trx as Transaction<DB>, this.config);
   }
 }

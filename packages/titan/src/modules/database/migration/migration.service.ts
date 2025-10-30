@@ -376,8 +376,7 @@ export class MigrationService extends EventEmitter {
       ORDER BY version ASC
     `.execute(db);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const applied: AppliedMigration[] = appliedRows.rows.map((row: any) => ({
+    const applied: AppliedMigration[] = (appliedRows.rows as Array<Record<string, unknown>>).map((row) => ({
       id: row['id'] as number,
       version: row['version'] as string,
       name: row['name'] as string,
@@ -636,10 +635,9 @@ export class ${this.toPascalCase(name)}Migration implements IMigration {
   /**
    * Execute migration with timeout
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async executeMigration(
     migration: IMigration,
-    db: Kysely<any> | Transaction<any>,
+    db: Kysely<unknown> | Transaction<unknown>,
     direction: 'up' | 'down',
     timeout?: number
   ): Promise<void> {
@@ -684,7 +682,7 @@ export class ${this.toPascalCase(name)}Migration implements IMigration {
     metadata: MigrationMetadata,
     executionTime: number,
     migration: IMigration,
-    trx: Transaction<any>
+    trx: Transaction<unknown>
   ): Promise<void> {
     const checksum = this.calculateChecksum(migration);
 
@@ -717,7 +715,7 @@ export class ${this.toPascalCase(name)}Migration implements IMigration {
   /**
    * Remove migration record within a transaction
    */
-  private async removeMigrationRecordInTransaction(version: string, trx: Transaction<any>): Promise<void> {
+  private async removeMigrationRecordInTransaction(version: string, trx: Transaction<unknown>): Promise<void> {
     await sql`
       DELETE FROM ${sql.table(this.config.tableName!)}
       WHERE version = ${version}

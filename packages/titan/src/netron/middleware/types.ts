@@ -21,12 +21,12 @@ export interface NetronMiddlewareContext {
   // Service invocation
   serviceName?: string;
   methodName?: string;
-  input?: any;
-  result?: any;
+  input?: unknown;
+  result?: unknown;
   error?: Error;
 
   // Metadata & timing
-  metadata: Map<string, any>;
+  metadata: Map<string, unknown>;
   timing: {
     start: number;
     middlewareTimes: Map<string, number>;
@@ -88,14 +88,23 @@ export interface MiddlewareRegistration {
 }
 
 /**
+ * Transport context type parameter for adapters
+ * Represents a transport-specific context object
+ */
+export type TransportContext = Record<string, unknown>;
+
+/**
  * Transport middleware adapter interface
  */
-export interface ITransportMiddlewareAdapter<T extends NetronMiddlewareContext> {
+export interface ITransportMiddlewareAdapter<
+  T extends NetronMiddlewareContext = NetronMiddlewareContext,
+  TTransportCtx extends TransportContext = TransportContext
+> {
   /** Transform transport-specific context to Netron context */
-  toNetronContext(transportCtx: any): T;
+  toNetronContext(transportCtx: TTransportCtx): T;
 
   /** Apply Netron context changes back to transport context */
-  fromNetronContext(netronCtx: T, transportCtx: any): void;
+  fromNetronContext(netronCtx: T, transportCtx: TTransportCtx): void;
 
   /** Get transport-specific middleware */
   getTransportMiddleware(): MiddlewareFunction<T>[];
@@ -130,6 +139,15 @@ export interface IMiddlewareManager {
 }
 
 /**
+ * Per-middleware metrics
+ */
+export interface PerMiddlewareMetrics {
+  executions: number;
+  avgTime: number;
+  errors: number;
+}
+
+/**
  * Middleware metrics
  */
 export interface MiddlewareMetrics {
@@ -142,12 +160,5 @@ export interface MiddlewareMetrics {
   /** Skip count */
   skips: number;
   /** Per-middleware metrics */
-  byMiddleware: Map<
-    string,
-    {
-      executions: number;
-      avgTime: number;
-      errors: number;
-    }
-  >;
+  byMiddleware: Map<string, PerMiddlewareMetrics>;
 }

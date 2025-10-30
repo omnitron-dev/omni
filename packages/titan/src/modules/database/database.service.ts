@@ -28,6 +28,7 @@ import type {
 import type { Logger, DatabaseError } from './database.internal-types.js';
 import { isDatabaseError } from './database.internal-types.js';
 import { createDefaultLogger } from './utils/logger.factory.js';
+import { isDeadlockError as isDeadlockErrorGuard, isError, isRecord } from './utils/type-guards.js';
 
 @Injectable()
 export class DatabaseService {
@@ -171,8 +172,7 @@ export class DatabaseService {
    * Paginate query results (offset-based)
    */
   async paginate<T>(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    query: any,
+    query: unknown,
     options: PaginationOptions = {}
   ): Promise<PaginatedResult<T>> {
     const paginateOptions: KyseraPaginateOptions = {
@@ -180,8 +180,8 @@ export class DatabaseService {
       limit: options.limit || 20,
     };
 
-    const result = (await kyseraPaginate(query, paginateOptions)) as KyseraPaginatedResult<T>;
-    const resultData = result as unknown as Record<string, any>;
+    const result = await kyseraPaginate(query as never, paginateOptions) as KyseraPaginatedResult<T>;
+    const resultData = result as unknown as Record<string, unknown>;
     const page = resultData['page'] as number || options.page || 1;
     const limit = resultData['limit'] as number || options.limit || 20;
     const total = resultData['total'] as number | undefined;
@@ -203,23 +203,19 @@ export class DatabaseService {
    * Paginate query results (cursor-based)
    */
   async paginateCursor<T>(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    query: any,
+    query: unknown,
     options: PaginationOptions = {}
   ): Promise<PaginatedResult<T>> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const cursorOptions: KyseraCursorOptions<any> = {
+    const cursorOptions: KyseraCursorOptions<Record<string, unknown>> = {
       limit: options.limit || 20,
       cursor: options.cursor,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       orderBy: options.orderBy?.map((o) => ({
-        column: o.column as any,
+        column: o.column as string,
         direction: o.direction,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      })) || [{ column: 'id' as any, direction: 'asc' }],
+      })) || [{ column: 'id', direction: 'asc' }],
     };
 
-    const result = (await kyseraPaginateCursor(query, cursorOptions)) as unknown as Record<string, unknown>;
+    const result = (await kyseraPaginateCursor(query as never, cursorOptions)) as unknown as Record<string, unknown>;
 
     return {
       data: ((result['data'] as T[]) || []),
@@ -348,17 +344,7 @@ export class DatabaseService {
    * Check if error is a deadlock error
    */
   private isDeadlockError(error: unknown): boolean {
-    if (!error || typeof error !== 'object') {
-      return false;
-    }
-    const errorObj = error as Record<string, unknown>;
-    const message = (errorObj['message'] as string)?.toLowerCase() || '';
-    return (
-      message.includes('deadlock') ||
-      message.includes('lock wait timeout') ||
-      errorObj['code'] === '40P01' || // PostgreSQL deadlock
-      errorObj['code'] === '1213' // MySQL deadlock
-    );
+    return isDeadlockErrorGuard(error);
   }
 
   /**

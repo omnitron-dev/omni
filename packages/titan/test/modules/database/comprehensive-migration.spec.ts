@@ -14,12 +14,8 @@ import {
   InjectConnection,
   Migration,
   MigrationRunner,
-  MigrationService,
-  MigrationLock,
   DatabaseTestingService,
   DATABASE_MIGRATION_SERVICE,
-  DATABASE_MIGRATION_RUNNER,
-  DATABASE_MIGRATION_LOCK,
 } from '../../../src/modules/database/index.js';
 import type { IMigration } from '../../../src/modules/database/index.js';
 import { DatabaseTestManager, DockerContainer } from '../../utils/docker-test-manager.js';
@@ -164,9 +160,7 @@ class AddTagsSupport implements IMigration {
 @Injectable()
 class MigrationTestService {
   constructor(
-    @Inject(DATABASE_MIGRATION_SERVICE) private migrationService: MigrationService,
-    @Inject(DATABASE_MIGRATION_RUNNER) private migrationRunner: MigrationRunner,
-    @Inject(DATABASE_MIGRATION_LOCK) private migrationLock: MigrationLock,
+    @Inject(DATABASE_MIGRATION_SERVICE) private migrationRunner: MigrationRunner,
     @InjectConnection() private db: Kysely<any>
   ) {}
 
@@ -179,7 +173,7 @@ class MigrationTestService {
   }
 
   async getMigrationStatus() {
-    return this.migrationService.status();
+    return this.migrationRunner.status();
   }
 
   async resetDatabase() {

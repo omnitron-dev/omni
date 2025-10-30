@@ -9,6 +9,14 @@ const config: JestConfigWithTsJest = {
   forceExit: true,
   verbose: true,
   clearMocks: true,
+
+  // Limit workers to prevent resource exhaustion and port conflicts
+  // Each worker gets dedicated port ranges via JEST_WORKER_ID
+  maxWorkers: 3,
+
+  // Increase timeout for Docker-based tests
+  testTimeout: 30000, // 30 seconds (default is 5s)
+
   collectCoverage: true,
   collectCoverageFrom: [
     'src/**/*.ts',

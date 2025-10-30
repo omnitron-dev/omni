@@ -532,10 +532,25 @@ export class NotificationManager {
               }
             }
           }
-        } catch (err) {
-          if (this.active) {
-            this.logger.error('[DLQ] Processing error', err);
+        } catch (err: any) {
+          if (!this.active) break;
+
+          // Defensive handling: if NOGROUP, try to create the group and continue
+          if (err?.message?.includes('NOGROUP')) {
+            this.logger.debug(`[DLQ] Consumer group ${group} not found, creating it`);
+            try {
+              await this.redis.xgroup('CREATE', streamKey, group, '0', 'MKSTREAM');
+            } catch (createErr: any) {
+              if (!createErr?.message?.includes('BUSYGROUP')) {
+                this.logger.error('[DLQ] Failed to create consumer group:', createErr);
+              }
+            }
+            await delayMs(100); // Short delay before retry
+            continue;
           }
+
+          this.logger.error('[DLQ] Processing error', err);
+          await delayMs(500);
         }
       }
     })();

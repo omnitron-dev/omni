@@ -614,6 +614,24 @@ export class DockerTestManager extends EventEmitter {
     }
   }
 
+  private async removeNetwork(network: string): Promise<void> {
+    if (!this.networks.has(network)) {
+      return; // Network not tracked by this manager
+    }
+
+    try {
+      execFileSync(this.dockerPath, ['network', 'rm', network], {
+        stdio: 'ignore',
+      });
+      this.networks.delete(network);
+      this.log(`Removed network: ${network}`);
+    } catch (error) {
+      // Network might still be in use or already removed
+      this.networks.delete(network); // Remove from tracking anyway
+      this.logError(`Failed to remove network ${network}`, error);
+    }
+  }
+
   private async waitForContainer(name: string, options: ContainerOptions['waitFor']): Promise<void> {
     const startTime = Date.now();
     const timeout = options?.timeout || this.startupTimeout;
@@ -1193,11 +1211,14 @@ export class RedisTestManager {
     const replicas: DockerContainer[] = [];
     const nodes: Array<{ host: string; port: number }> = [];
 
+    // Extract unique ID from network name to ensure container names are unique
+    const networkId = networkName.split('-').pop() || randomBytes(4).toString('hex');
+
     try {
       // Create master nodes
       for (let i = 0; i < masterCount; i++) {
         const port = basePort + i;
-        const name = `redis-cluster-master-${i}`;
+        const name = `redis-cluster-${networkId}-master-${i}`;
 
         const command = [
           'redis-server',
@@ -1246,7 +1267,7 @@ export class RedisTestManager {
       // Create replica nodes
       for (let i = 0; i < masterCount * replicasPerMaster; i++) {
         const port = basePort + masterCount + i;
-        const name = `redis-cluster-replica-${i}`;
+        const name = `redis-cluster-${networkId}-replica-${i}`;
 
         const command = [
           'redis-server',
@@ -1301,15 +1322,29 @@ export class RedisTestManager {
         network: networkName,
         nodes,
         cleanup: async () => {
-          await Promise.all([...masters.map((c) => c.cleanup()), ...replicas.map((c) => c.cleanup())]);
+          // Clean up containers first
+          await Promise.allSettled([...masters.map((c) => c.cleanup()), ...replicas.map((c) => c.cleanup())]);
+          // Then remove the network
+          try {
+            await RedisTestManager.dockerManager['removeNetwork'](networkName);
+          } catch (error) {
+            // Log but don't throw - network cleanup is best effort
+            console.warn(`Failed to remove network ${networkName}:`, error);
+          }
         },
       };
     } catch (error) {
       // Cleanup on failure
-      await Promise.all([
+      await Promise.allSettled([
         ...masters.map((c) => c.cleanup().catch(() => {})),
         ...replicas.map((c) => c.cleanup().catch(() => {})),
       ]);
+      // Try to remove network on failure too
+      try {
+        await RedisTestManager.dockerManager['removeNetwork'](networkName);
+      } catch {
+        // Ignore network cleanup errors during failure handling
+      }
       throw error;
     }
   }
@@ -1477,10 +1512,11 @@ export class RedisTestManager {
     }
 
     // Build cluster create command
+    // Note: Use container names as hostnames (not 127.0.0.1) because cluster init runs inside a container
+    // Docker network DNS resolves container names to their IPs, and Redis listens on port 6379 internally
     const allNodes = [...masters, ...replicas];
     const nodeAddresses = allNodes.map((c) => {
-      const port = c.ports.values().next().value;
-      return `${c.host}:${port}`;
+      return `${c.name}:6379`;
     });
 
     const clusterArgs = [

@@ -441,7 +441,13 @@ export class DatabaseManager implements IDatabaseManager {
         return { database: ':memory:' };
       }
       // For network databases, require at least a database name
-      throw new Error(`Connection configuration is required for ${config.dialect}`);
+      const configKeys = Object.keys(config).join(', ');
+      throw new Error(
+        `Connection configuration is required for ${config.dialect || 'undefined'}.\n` +
+          `Received config keys: [${configKeys}]\n` +
+          `Common mistake: Using {...context.connection} instead of {connection: context.connection} ` +
+          `in TitanDatabaseModule.forRoot()`
+      );
     }
 
     return {

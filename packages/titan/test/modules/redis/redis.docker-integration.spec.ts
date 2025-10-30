@@ -351,7 +351,7 @@ describe('Integration: Real-world Scenarios', () => {
       const messages: string[] = [];
 
       const subscriber = fixture.client.duplicate();
-      await subscriber.connect();
+      // Note: duplicate() creates an already-connected client, no need to call connect()
 
       subscriber.on('message', (channel, message) => {
         messages.push(message);

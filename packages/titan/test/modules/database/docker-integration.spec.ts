@@ -91,7 +91,7 @@ describe('Docker Database Integration', () => {
       @Module({
         imports: [
           TitanDatabaseModule.forRoot({
-            ...context.connection,
+            connection: context.connection,
             isGlobal: true,
           }),
           TitanDatabaseModule.forFeature([UserRepository]),
@@ -156,7 +156,7 @@ describe('Docker Database Integration', () => {
           @Module({
             imports: [
               TitanDatabaseModule.forRoot({
-                ...context.connection,
+                connection: context.connection,
                 isGlobal: true,
               }),
               TitanDatabaseModule.forFeature([UserRepository]),
@@ -204,7 +204,7 @@ describe('Docker Database Integration', () => {
             @Module({
               imports: [
                 TitanDatabaseModule.forRoot({
-                  ...context.connection,
+                  connection: context.connection,
                   isGlobal: true,
                 }),
                 TitanDatabaseModule.forFeature([UserRepository]),

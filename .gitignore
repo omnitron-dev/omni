@@ -44,4 +44,4 @@ GEMINI.md
 
 experiments/
 .fastembed_cache
-.meridian
+.meridian.redis-test-info.json

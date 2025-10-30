@@ -16,7 +16,8 @@ export function getTestRedisUrl(db?: number): string {
   // If not in memory, try to read from file (written by globalSetup)
   if (!globalRedis) {
     try {
-      const infoFile = join(__dirname, '../../../.redis-test-info.json');
+      // File is in the titan package root
+      const infoFile = '/Users/taaliman/projects/luxquant/omnitron-dev/omni/packages/titan/.redis-test-info.json';
       const info = JSON.parse(readFileSync(infoFile, 'utf-8'));
       globalRedis = info;
     } catch {

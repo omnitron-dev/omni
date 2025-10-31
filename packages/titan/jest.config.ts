@@ -12,7 +12,8 @@ const config: JestConfigWithTsJest = {
 
   // Limit workers to prevent resource exhaustion and port conflicts
   // Each worker gets dedicated port ranges via JEST_WORKER_ID
-  maxWorkers: 3,
+  // Use 1 worker for database tests to avoid concurrency issues
+  maxWorkers: process.env.TEST_DATABASE ? 1 : 3,
 
   // Increase timeout for Docker-based tests
   testTimeout: 30000, // 30 seconds (default is 5s)

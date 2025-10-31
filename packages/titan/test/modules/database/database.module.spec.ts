@@ -61,7 +61,7 @@ describe('TitanDatabaseModule', () => {
       await databaseService.raw('INSERT INTO users (name) VALUES (?)', ['John Doe']);
 
       // Query data
-      const result = await databaseService.raw<{ rows: any[] }>('SELECT * FROM users');
+      const result = await databaseService.raw<{ rows: Record<string, unknown>[] }>('SELECT * FROM users');
 
       expect(result.rows).toHaveLength(1);
       expect(result.rows[0].name).toBe('John Doe');
@@ -80,7 +80,7 @@ describe('TitanDatabaseModule', () => {
         await sql.raw('UPDATE accounts SET balance = balance + 30 WHERE id = 2').execute(trx);
       });
 
-      const result = await databaseService.raw<{ rows: any[] }>('SELECT * FROM accounts ORDER BY id');
+      const result = await databaseService.raw<{ rows: Record<string, unknown>[] }>('SELECT * FROM accounts ORDER BY id');
 
       expect(result.rows[0].balance).toBe(70);
       expect(result.rows[1].balance).toBe(80);
@@ -95,7 +95,7 @@ describe('TitanDatabaseModule', () => {
         // Expected error
       }
 
-      const resultAfterRollback = await databaseService.raw<{ rows: any[] }>('SELECT * FROM accounts WHERE id = 1');
+      const resultAfterRollback = await databaseService.raw<{ rows: Record<string, unknown>[] }>('SELECT * FROM accounts WHERE id = 1');
 
       expect(resultAfterRollback.rows[0].balance).toBe(70); // Should remain unchanged
     });
@@ -150,7 +150,7 @@ describe('TitanDatabaseModule', () => {
     let app: Application;
     let databaseService: DatabaseService;
     let connectionString: string;
-    let container: any;
+    let container: import('../../utils/docker-test-manager.js').DockerContainer;
 
     // Skip if not in CI or Docker not available
     const skipDockerTests = process.env.SKIP_DOCKER_TESTS === 'true';
@@ -208,7 +208,7 @@ describe('TitanDatabaseModule', () => {
         await databaseService.raw('INSERT INTO products (name, price) VALUES ($1, $2)', ['Widget', 19.99]);
 
         // Query data
-        const result = await databaseService.raw<{ rows: any[] }>('SELECT * FROM products');
+        const result = await databaseService.raw<{ rows: Record<string, unknown>[] }>('SELECT * FROM products');
 
         expect(result.rows).toHaveLength(1);
         expect(result.rows[0].name).toBe('Widget');
@@ -225,7 +225,7 @@ describe('TitanDatabaseModule', () => {
           )
         `);
 
-        const result = await databaseService.raw<{ rows: any[] }>('INSERT INTO items (name) VALUES ($1) RETURNING *', [
+        const result = await databaseService.raw<{ rows: Record<string, unknown>[] }>('INSERT INTO items (name) VALUES ($1) RETURNING *', [
           'Test Item',
         ]);
 
@@ -241,7 +241,7 @@ describe('TitanDatabaseModule', () => {
     let app: Application;
     let databaseService: DatabaseService;
     let connectionString: string;
-    let container: any;
+    let container: import('../../utils/docker-test-manager.js').DockerContainer;
 
     // Skip if not in CI or Docker not available
     const skipDockerTests = process.env.SKIP_DOCKER_TESTS === 'true';
@@ -303,7 +303,7 @@ describe('TitanDatabaseModule', () => {
         await databaseService.raw('INSERT INTO orders (customer_name, total) VALUES (?, ?)', ['Alice', 99.99]);
 
         // Query data
-        const result = await databaseService.raw<{ rows: any[] }>('SELECT * FROM orders');
+        const result = await databaseService.raw<{ rows: Record<string, unknown>[] }>('SELECT * FROM orders');
 
         expect(result).toBeDefined();
         // MySQL returns array directly, not { rows: [...] }

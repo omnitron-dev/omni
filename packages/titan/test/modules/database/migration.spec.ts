@@ -287,7 +287,7 @@ describe('Migration System', () => {
     let app: Application;
     let migrationRunner: MigrationRunner;
     let dbManager: IDatabaseManager;
-    let container: any;
+    let container: import('../../utils/docker-test-manager.js').DockerContainer;
 
     beforeEach(async () => {
       // Create PostgreSQL container directly (not using withPostgres to keep it alive)

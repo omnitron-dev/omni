@@ -334,12 +334,6 @@ export class DatabaseHealthIndicator {
     return aggregated;
   }
 
-  /**
-   * Get aggregated metrics from all connections (deprecated - kept for compatibility)
-   */
-  private getAggregatedMetrics(): DatabaseMetrics {
-    return this.getEnhancedMetrics();
-  }
 
   /**
    * Check if database is healthy (simple boolean check)

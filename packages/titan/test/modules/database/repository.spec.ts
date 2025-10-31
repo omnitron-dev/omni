@@ -267,7 +267,7 @@ describe('Repository Integration', () => {
     let app: Application;
     let userService: UserService;
     let dbManager: DatabaseManager;
-    let container: any;
+    let container: import('../../utils/docker-test-manager.js').DockerContainer;
 
     beforeEach(async () => {
       // Create PostgreSQL container directly (not using withPostgres to keep it alive)

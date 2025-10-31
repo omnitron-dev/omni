@@ -122,8 +122,20 @@ interface Order {
   tax_amount: number;
   shipping_amount: number;
   discount_amount: number;
-  shipping_address: any;
-  billing_address: any;
+  shipping_address: {
+    street: string;
+    city: string;
+    state: string;
+    zip: string;
+    country: string;
+  };
+  billing_address: {
+    street: string;
+    city: string;
+    state: string;
+    zip: string;
+    country: string;
+  };
   payment_method: string;
   payment_status: 'pending' | 'paid' | 'failed' | 'refunded';
   notes?: string;
@@ -236,7 +248,7 @@ class ProductRepository extends BaseRepository<any, 'products', Product, Partial
     const db = await this.getDb();
     await db
       .updateTable('products')
-      .set((eb: any) => ({
+      .set((eb) => ({
         stock_quantity: eb('stock_quantity', '+', quantity),
         version: eb('version', '+', 1),
         updated_at: new Date().toISOString(),
@@ -429,7 +441,7 @@ class InventoryRepository extends BaseRepository<any, 'inventory', Inventory, Pa
     const db = await this.getDb();
     await db
       .updateTable('inventory')
-      .set((eb: any) => ({
+      .set((eb) => ({
         reserved_quantity: eb('reserved_quantity', '+', quantity),
         updated_at: new Date().toISOString(),
       }))
@@ -466,13 +478,21 @@ class EcommerceService {
   /**
    * Complete checkout process with inventory, payment, and order creation
    */
-  async checkout(userId: number, paymentDetails: any, shippingAddress: any): Promise<Order> {
+  async checkout(
+    userId: number,
+    paymentDetails: { method: string; card_last_four?: string; transaction_id?: string },
+    shippingAddress: { street: string; city: string; state: string; zip: string; country: string }
+  ): Promise<Order> {
     return this.transactionManager.executeInTransaction(async () => {
       return this._checkoutImpl(userId, paymentDetails, shippingAddress);
     });
   }
 
-  private async _checkoutImpl(userId: number, paymentDetails: any, shippingAddress: any): Promise<Order> {
+  private async _checkoutImpl(
+    userId: number,
+    paymentDetails: { method: string; card_last_four?: string; transaction_id?: string },
+    shippingAddress: { street: string; city: string; state: string; zip: string; country: string }
+  ): Promise<Order> {
     // Get active cart
     const cart = await this.cartRepo.findActiveCart(userId);
     if (!cart) {
@@ -707,7 +727,7 @@ class EcommerceService {
       .limit(3)
       .execute();
 
-    const preferredCategories = result.map((r: any) => r.category_id);
+    const preferredCategories = result.map((r) => r.category_id);
 
     // Get products from preferred categories that user hasn't bought
     const recommendations = await this.db
@@ -846,7 +866,10 @@ class EcommerceService {
   /**
    * Mock payment processing
    */
-  private async processPayment(paymentDetails: any, amount: number): Promise<boolean> {
+  private async processPayment(
+    paymentDetails: { method: string; card_last_four?: string; transaction_id?: string },
+    amount: number
+  ): Promise<boolean> {
     // Simulate payment processing delay
     await new Promise((resolve) => setTimeout(resolve, 100));
     // Always succeed in tests (was 95% success rate, but we need deterministic tests)

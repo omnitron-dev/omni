@@ -40,33 +40,39 @@ interface Profile {
   avatar_url?: string;
 }
 
+// Database schema type
+interface Database {
+  users: User;
+  profiles: Profile;
+}
+
 // Test repository
 @Repository<User>({
   table: 'users',
   timestamps: true,
 })
-class UserRepository extends BaseRepository<any, 'users', User, any, any> {}
+class UserRepository extends BaseRepository<Database, 'users', User, number, Partial<User>> {}
 
 @Repository<Profile>({
   table: 'profiles',
 })
-class ProfileRepository extends BaseRepository<any, 'profiles', Profile, any, any> {}
+class ProfileRepository extends BaseRepository<Database, 'profiles', Profile, number, Partial<Profile>> {}
 
 // Test service with direct query builder access
 @Injectable()
 class AdvancedUserService {
   constructor(
-    @InjectConnection() private db: Kysely<any>,
-    @InjectConnection('replica') private replica?: Kysely<any>,
+    @InjectConnection() private db: Kysely<Database>,
+    @InjectConnection('replica') private replica?: Kysely<Database>,
     @InjectRepository(UserRepository) private userRepo: UserRepository,
     @InjectRepository(ProfileRepository) private profileRepo: ProfileRepository,
-    @InjectDatabaseManager() private dbManager: any
+    @InjectDatabaseManager() private dbManager: import('../../../src/modules/database/database.manager.js').DatabaseManager
   ) {}
 
   /**
    * Complex query using direct Kysely query builder
    */
-  async getUsersWithProfiles(): Promise<any[]> {
+  async getUsersWithProfiles(): Promise<Array<Pick<User, 'id' | 'email' | 'name'> & Pick<Profile, 'bio' | 'avatar_url'>>> {
     return this.db
       .selectFrom('users')
       .innerJoin('profiles', 'users.id', 'profiles.user_id')
@@ -87,14 +93,14 @@ class AdvancedUserService {
    * Paginated user list
    */
   @Paginated({ defaultLimit: 10, maxLimit: 50 })
-  async listUsers(options?: any): Promise<any> {
+  async listUsers(options?: { page?: number; limit?: number }): Promise<{ data: User[]; total: number; page: number; limit: number }> {
     return this.userRepo.paginate(options);
   }
 
   /**
    * Custom aggregation query
    */
-  async getUserStatistics(): Promise<any> {
+  async getUserStatistics(): Promise<{ total: number; active: number; inactive: number }> {
     const result = await this.db
       .selectFrom('users')
       .select([

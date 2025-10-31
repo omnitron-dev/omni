@@ -393,14 +393,9 @@ export class TitanDatabaseModule {
         useFactory: async (manager: DatabaseManager, moduleOptions: DatabaseModuleOptions, pluginManager: PluginManager) => {
           const factory = new RepositoryFactory(manager, moduleOptions.kysera?.repository, pluginManager);
 
-          // Auto-register repositories
-          const repositories = (Reflect.getMetadata('database:repositories', global) || []) as Array<{
-            target: RepositoryConstructor;
-            metadata: RepositoryMetadata;
-          }>;
-          await Promise.all(
-            repositories.map(({ target, metadata }) => factory.register(target, metadata))
-          );
+          // Don't auto-register here - let forFeature() handle registration on-demand
+          // Auto-registering all repositories during module init causes initialization hangs
+          // because repositories are instantiated before the DI container is fully ready
 
           return factory;
         },

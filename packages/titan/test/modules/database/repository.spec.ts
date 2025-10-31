@@ -269,7 +269,7 @@ describe('Repository Integration', () => {
     let dbManager: DatabaseManager;
     let container: import('../../utils/docker-test-manager.js').DockerContainer;
 
-    beforeEach(async () => {
+    beforeAll(async () => {
       // Create PostgreSQL container directly (not using withPostgres to keep it alive)
       container = await DatabaseTestManager.createPostgresContainer({
         database: 'test_repository_db',
@@ -279,6 +279,9 @@ describe('Repository Integration', () => {
 
       const port = container.ports.get(5432)!;
       const connectionString = `postgresql://testuser:testpass@localhost:${port}/test_repository_db`;
+
+      // Wait additional time for PostgreSQL to be fully ready
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       // Create application with PostgreSQL
       app = await Application.create({
@@ -322,7 +325,7 @@ describe('Repository Integration', () => {
       `.execute(db);
     }, 60000);
 
-    afterEach(async () => {
+    afterAll(async () => {
       if (app) {
         await app.stop();
       }

@@ -143,6 +143,9 @@ describe('Advanced Database Features', () => {
     let healthIndicator: DatabaseHealthIndicator;
 
     beforeEach(async () => {
+      // Reset static manager before each test
+      TitanDatabaseModule.resetForTesting();
+
       app = await Application.create({
         imports: [
           TitanDatabaseModule.forRoot({
@@ -258,6 +261,9 @@ describe('Advanced Database Features', () => {
     let db: Kysely<any>;
 
     beforeEach(async () => {
+      // Reset static manager before each test
+      TitanDatabaseModule.resetForTesting();
+
       app = await Application.create({
         imports: [
           TitanDatabaseModule.forRoot({
@@ -362,6 +368,9 @@ describe('Advanced Database Features', () => {
     let db: Kysely<any>;
 
     beforeEach(async () => {
+      // Reset static manager before each test
+      TitanDatabaseModule.resetForTesting();
+
       app = await Application.create({
         imports: [
           TitanDatabaseModule.forRoot({

@@ -419,7 +419,24 @@ export class PluginManager extends EventEmitter implements IPluginManager {
       try {
         // Apply plugin based on extension method
         if (entry.plugin.extendRepository) {
-          enhancedRepo = entry.plugin.extendRepository(enhancedRepo);
+          const extended = entry.plugin.extendRepository(enhancedRepo);
+
+          // Merge plugin extensions back onto original repository to preserve prototype methods
+          // @kysera plugins use object spreading which loses prototype chain
+          if (extended !== enhancedRepo) {
+            // Copy all new/modified properties from extended back to enhancedRepo
+            for (const key of Object.keys(extended)) {
+              if (typeof extended[key] === 'function' || !(key in enhancedRepo) || extended[key] !== enhancedRepo[key]) {
+                enhancedRepo[key] = extended[key];
+              }
+            }
+            // Also copy any symbol properties
+            for (const sym of Object.getOwnPropertySymbols(extended)) {
+              enhancedRepo[sym] = extended[sym];
+            }
+          } else {
+            enhancedRepo = extended;
+          }
         }
 
         // Update metrics

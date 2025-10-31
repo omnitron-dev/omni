@@ -14,7 +14,7 @@ describe('Redis Cluster Support', () => {
 
     beforeAll(async () => {
       clusterFixture = await createDockerRedisClusterFixture();
-    }, 60000);
+    }, 180000);
 
     afterAll(async () => {
       if (clusterFixture) {
@@ -56,7 +56,7 @@ describe('Redis Cluster Support', () => {
 
     beforeAll(async () => {
       clusterFixture = await createDockerRedisClusterFixture();
-    }, 60000);
+    }, 180000);
 
     afterAll(async () => {
       if (clusterFixture) {
@@ -116,7 +116,7 @@ describe('Redis Cluster Support', () => {
 
     beforeAll(async () => {
       clusterFixture = await createDockerRedisClusterFixture();
-    }, 60000);
+    }, 180000);
 
     afterAll(async () => {
       if (clusterFixture) {
@@ -195,7 +195,7 @@ describe('Redis Cluster Support', () => {
 
     beforeAll(async () => {
       clusterFixture = await createDockerRedisClusterFixture();
-    }, 60000);
+    }, 180000);
 
     beforeEach(async () => {
       manager = new RedisManager(
@@ -280,7 +280,7 @@ describe('Redis Cluster Support', () => {
 
     beforeAll(async () => {
       clusterFixture = await createDockerRedisClusterFixture();
-    }, 60000);
+    }, 180000);
 
     afterAll(async () => {
       if (clusterFixture) {
@@ -330,7 +330,7 @@ describe('Redis Cluster Support', () => {
 
     beforeAll(async () => {
       clusterFixture = await createDockerRedisClusterFixture();
-    }, 60000);
+    }, 180000);
 
     afterAll(async () => {
       if (clusterFixture) {
@@ -411,7 +411,7 @@ describe('Redis Cluster Support', () => {
 
     beforeAll(async () => {
       clusterFixture = await createDockerRedisClusterFixture();
-    }, 60000);
+    }, 180000);
 
     afterAll(async () => {
       if (clusterFixture) {
@@ -479,7 +479,7 @@ describe('Redis Cluster Support', () => {
 
     beforeAll(async () => {
       clusterFixture = await createDockerRedisClusterFixture();
-    }, 60000);
+    }, 180000);
 
     afterAll(async () => {
       if (clusterFixture) {

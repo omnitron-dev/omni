@@ -24,6 +24,7 @@ export class BaseRepository<
 {
   public readonly tableName: TableName;
   public readonly connectionName: string;
+  public readonly executor: Kysely<DB>; // For @kysera plugin compatibility
 
   protected db: Kysely<DB>;
   protected trx?: Transaction<DB>;
@@ -41,6 +42,9 @@ export class BaseRepository<
     } else {
       this.db = db as Kysely<DB>;
     }
+
+    // Expose executor for @kysera plugin compatibility
+    this.executor = this.db;
   }
 
   /**

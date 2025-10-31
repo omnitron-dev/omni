@@ -45,9 +45,18 @@ export class TitanDatabaseModule {
 
   /**
    * Reset module (for testing)
+   * Properly closes all database connections and clears state
    */
-  static resetForTesting(): void {
-    TitanDatabaseModule.managerInstance = null;
+  static async resetForTesting(): Promise<void> {
+    if (TitanDatabaseModule.managerInstance) {
+      try {
+        // Close all connections
+        await TitanDatabaseModule.managerInstance.closeAll();
+      } catch (error) {
+        TitanDatabaseModule.logger.error('Error during resetForTesting:', error);
+      }
+      TitanDatabaseModule.managerInstance = null;
+    }
   }
 
   /**

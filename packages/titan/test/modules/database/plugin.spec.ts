@@ -116,7 +116,7 @@ describe('Database Plugin System', () => {
 
     beforeEach(async () => {
       // Reset static manager before each test
-      TitanDatabaseModule.resetForTesting();
+      await TitanDatabaseModule.resetForTesting();
 
       app = await Application.create({
         imports: [
@@ -198,21 +198,24 @@ describe('Database Plugin System', () => {
         stock: 10,
       });
 
-      // Delete the product
-      await productService.deleteProduct(product.id);
+      // Soft delete the product using softDelete() method
+      // Note: @kysera/soft-delete adds softDelete() method, doesn't intercept delete()
+      await (productService as any).productRepo.softDelete(product.id);
 
       // Should not find with normal query (soft deleted)
       const found = await productService.findProduct(product.id);
-      // Note: Soft delete plugin behavior depends on implementation
-      // In real implementation, this would return null
+      // Soft-deleted records are filtered out by default
+      expect(found).toBeNull();
 
-      // Check that record still exists in database
+      // Check that record still exists in database with deleted_at set
       const result = await sql`
         SELECT * FROM products WHERE id = ${product.id}
       `.execute(db);
 
       expect(result.rows.length).toBeGreaterThan(0);
-      // The deleted_at field would be set if soft delete is working
+      const row = result.rows[0] as any;
+      expect(row.deleted_at).toBeDefined();
+      expect(row.deleted_at).not.toBeNull();
     });
 
     it('should show plugin status', () => {
@@ -235,7 +238,7 @@ describe('Database Plugin System', () => {
 
     beforeEach(async () => {
       // Reset static manager before each test
-      TitanDatabaseModule.resetForTesting();
+      await TitanDatabaseModule.resetForTesting();
 
       // Create custom plugin instances
       const optimisticLocking = optimisticLockingPlugin({
@@ -255,6 +258,7 @@ describe('Database Plugin System', () => {
         ttl: 60,
         cache: new MemoryCache(),
         operations: ['find', 'findOne', 'findById'],
+        enableStats: true,
       });
 
       app = await Application.create({
@@ -385,15 +389,18 @@ describe('Database Plugin System', () => {
       const read2 = await productService.findProduct(product.id);
       expect(read2).toEqual(read1);
 
-      // Get plugin metrics to verify caching
-      const metrics = productService.getPluginMetrics();
-
-      // Check if caching metrics exist
-      if (metrics && typeof metrics.get === 'function') {
-        const cachingMetrics = metrics.get('caching');
-        if (cachingMetrics) {
-          expect(cachingMetrics.invocations).toBeGreaterThan(0);
-        }
+      // Verify caching by checking that the repository has cache stats
+      // The caching plugin adds getCacheStats() method to repositories
+      const repo = (productService as any).productRepo;
+      if (repo.getCacheStats) {
+        const cacheStats = repo.getCacheStats();
+        // We should have at least 1 cache operation (either hit or miss)
+        const totalOps = (cacheStats.hits || 0) + (cacheStats.misses || 0);
+        expect(totalOps).toBeGreaterThan(0);
+      } else {
+        // If getCacheStats is not available, just verify reads worked
+        expect(read1).toBeDefined();
+        expect(read2).toBeDefined();
       }
     });
 

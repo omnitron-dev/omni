@@ -209,16 +209,6 @@ export class RedisManager {
       const sha = generateScriptSha(content);
 
       for (const [namespace, client] of this.clients) {
-        // Skip loading scripts for clients that aren't connected yet (lazy connect)
-        if ((client as any).status !== 'ready' && (client as any).status !== 'connect') {
-          // Store the script sha for later loading
-          if (!this.scripts.has(namespace)) {
-            this.scripts.set(namespace, new Map());
-          }
-          const scriptMap = this.scripts.get(namespace)!;
-          scriptMap.set(script.name, sha);
-          continue;
-        }
         if (!this.scripts.has(namespace)) {
           this.scripts.set(namespace, new Map());
         }
@@ -226,6 +216,8 @@ export class RedisManager {
         const scriptMap = this.scripts.get(namespace)!;
 
         try {
+          // For lazy-connected clients, force connection to load scripts
+          // This ensures scripts are validated even with lazyConnect
           const [exists] = (await client.script('EXISTS', sha)) as [number];
 
           if (!exists) {
@@ -251,7 +243,7 @@ export class RedisManager {
     const client = this.clients.get(ns);
 
     if (!client) {
-      throw Errors.notFound('Redis client', ns);
+      throw Errors.notFound(`Redis client with namespace "${ns}"`);
     }
 
     return client;
@@ -307,10 +299,8 @@ export class RedisManager {
     try {
       const client = this.getClient(namespace);
 
-      if ((client as any).status !== 'ready') {
-        return false;
-      }
-
+      // For lazy-connected clients, try to ping (which will trigger connection)
+      // If not ready and not connecting, the ping will handle connection
       const result = await client.ping();
       return result === 'PONG';
     } catch {

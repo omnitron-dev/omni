@@ -154,7 +154,7 @@ describe('Migration System', () => {
         await app.stop();
       }
       // Reset static singleton for next test
-      TitanDatabaseModule.resetForTesting();
+      await TitanDatabaseModule.resetForTesting();
     });
 
     it('should get migration status', async () => {
@@ -378,7 +378,7 @@ describe('Migration System', () => {
         await container.cleanup();
       }
       // Reset static singleton for next test
-      TitanDatabaseModule.resetForTesting();
+      await TitanDatabaseModule.resetForTesting();
     });
 
     it('should handle concurrent migration attempts', async () => {

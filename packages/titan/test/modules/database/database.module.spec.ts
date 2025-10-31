@@ -23,7 +23,7 @@ describe('TitanDatabaseModule', () => {
 
     beforeAll(async () => {
       // Reset static manager before suite
-      TitanDatabaseModule.resetForTesting();
+      await TitanDatabaseModule.resetForTesting();
       app = await Application.create({
         imports: [
           TitanDatabaseModule.forRoot({
@@ -112,7 +112,7 @@ describe('TitanDatabaseModule', () => {
 
     it('should handle multiple named connections', async () => {
       // Reset static manager for this specific test since it creates a new app
-      TitanDatabaseModule.resetForTesting();
+      await TitanDatabaseModule.resetForTesting();
 
       const multiApp = await Application.create({
         imports: [
@@ -164,7 +164,7 @@ describe('TitanDatabaseModule', () => {
     describeOrSkip('Docker PostgreSQL', () => {
       beforeAll(async () => {
         // Reset static manager before suite
-        TitanDatabaseModule.resetForTesting();
+        await TitanDatabaseModule.resetForTesting();
         // Create PostgreSQL container directly (not using withPostgres to avoid early cleanup)
         container = await DatabaseTestManager.createPostgresContainer({
           database: 'testdb',
@@ -257,7 +257,7 @@ describe('TitanDatabaseModule', () => {
     describeOrSkip('Docker MySQL', () => {
       beforeAll(async () => {
         // Reset static manager before suite
-        TitanDatabaseModule.resetForTesting();
+        await TitanDatabaseModule.resetForTesting();
         // Create MySQL container directly (not using withMySQL to avoid early cleanup)
         container = await DatabaseTestManager.createMySQLContainer({
           database: 'testdb',

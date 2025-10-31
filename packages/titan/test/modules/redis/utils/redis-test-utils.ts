@@ -541,13 +541,48 @@ export async function createDockerRedisClusterFixture(
   const client = new Cluster(cluster.nodes, {
     redisOptions: password ? { password } : undefined,
     clusterRetryStrategy: (times: number) => {
-      if (times > 3) return null;
-      return Math.min(times * 100, 1000);
+      if (times > 10) return null;
+      return Math.min(times * 100, 2000);
     },
+    enableReadyCheck: true,
+    maxRedirections: 16,
   });
 
-  // Wait for cluster to be ready
-  await client.ping();
+  // Wait for cluster to be ready - robust check
+  const maxWait = 60000; // 60 seconds
+  const startTime = Date.now();
+  let clusterReady = false;
+
+  while (!clusterReady && Date.now() - startTime < maxWait) {
+    try {
+      // First check: Can we ping?
+      await client.ping();
+
+      // Second check: Is cluster state OK?
+      const clusterInfo = await client.cluster('INFO');
+      if (typeof clusterInfo === 'string' && clusterInfo.includes('cluster_state:ok')) {
+        // Third check: Can we get cluster nodes?
+        const nodes = await client.cluster('NODES');
+        if (typeof nodes === 'string' && nodes.length > 0) {
+          clusterReady = true;
+          break;
+        }
+      }
+    } catch (error) {
+      // Cluster not ready yet, wait and retry
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    if (!clusterReady) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  }
+
+  if (!clusterReady) {
+    await client.disconnect();
+    await cluster.cleanup();
+    throw new Error(`Redis cluster failed to become ready within ${maxWait}ms`);
+  }
 
   return {
     cluster,

@@ -426,13 +426,19 @@ describe('RedisManager with Real Redis', () => {
       // Verify it's using the second database (db: 14)
       await client.set('duplicate-test', 'value');
 
-      // Create a client directly to db 15 to check it's not there
-      const checkFixture = await createDockerRedisFixture({ database: 15, port: dockerFixture.port });
+      // Connect directly to db 15 using the same port to verify key is not there
+      const Redis = (await import('ioredis')).default;
+      const checkClient = new Redis({
+        host: 'localhost',
+        port: dockerFixture.port,
+        db: 15,
+      });
+
       try {
-        const valueInDb15 = await checkFixture.client.get('duplicate-test');
+        const valueInDb15 = await checkClient.get('duplicate-test');
         expect(valueInDb15).toBeNull();
       } finally {
-        await checkFixture.cleanup();
+        await checkClient.quit();
       }
 
       // Clean up test key

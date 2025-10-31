@@ -98,7 +98,7 @@ export class RepositoryFactory implements IRepositoryFactory {
     const db = await this.manager.getConnection(connectionName);
 
     // Create base repository
-    const baseRepo = new BaseRepository(db, config);
+    let baseRepo = new BaseRepository(db, config);
 
     // Apply plugins if configured
     if (config.plugins && config.plugins.length > 0) {
@@ -146,7 +146,23 @@ export class RepositoryFactory implements IRepositoryFactory {
     }
 
     if (pluginsToApply.length > 0) {
-      return this.applyPlugins(baseRepo, pluginsToApply) as Repository<Entity, CreateInput, UpdateInput>;
+      baseRepo = this.applyPlugins(baseRepo, pluginsToApply) as typeof baseRepo;
+    }
+
+    // Apply globally enabled plugins from PluginManager
+    if (this.pluginManager) {
+      const pluginStatus = this.pluginManager.getPluginStatus();
+      const globalPluginNames: string[] = [];
+
+      for (const [name, status] of pluginStatus) {
+        if (status.enabled) {
+          globalPluginNames.push(name);
+        }
+      }
+
+      if (globalPluginNames.length > 0) {
+        baseRepo = this.pluginManager.applyPlugins(baseRepo, globalPluginNames) as typeof baseRepo;
+      }
     }
 
     return baseRepo as Repository<Entity, CreateInput, UpdateInput>;
@@ -244,6 +260,22 @@ export class RepositoryFactory implements IRepositoryFactory {
 
     if (pluginsToApply.length > 0) {
       repository = this.applyPlugins(repository, pluginsToApply);
+    }
+
+    // Apply globally enabled plugins from PluginManager
+    if (this.pluginManager) {
+      const pluginStatus = this.pluginManager.getPluginStatus();
+      const globalPluginNames: string[] = [];
+
+      for (const [name, status] of pluginStatus) {
+        if (status.enabled) {
+          globalPluginNames.push(name);
+        }
+      }
+
+      if (globalPluginNames.length > 0) {
+        repository = this.pluginManager.applyPlugins(repository, globalPluginNames);
+      }
     }
 
     this.repositories.set(target, repository);
@@ -368,6 +400,22 @@ export class RepositoryFactory implements IRepositoryFactory {
 
     if (pluginsToApply.length > 0) {
       repository = this.applyPlugins(repository, pluginsToApply);
+    }
+
+    // Apply globally enabled plugins from PluginManager
+    if (this.pluginManager) {
+      const pluginStatus = this.pluginManager.getPluginStatus();
+      const globalPluginNames: string[] = [];
+
+      for (const [name, status] of pluginStatus) {
+        if (status.enabled) {
+          globalPluginNames.push(name);
+        }
+      }
+
+      if (globalPluginNames.length > 0) {
+        repository = this.pluginManager.applyPlugins(repository, globalPluginNames);
+      }
     }
 
     return repository as T;

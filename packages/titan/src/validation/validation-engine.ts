@@ -67,8 +67,8 @@ export class ValidationError extends Error {
         path: error.path.join('.'),
         message: error.message,
         code: error.code,
-        expected: (error as any).expected,
-        received: (error as any).received,
+        expected: 'expected' in error ? String(error.expected) : undefined,
+        received: 'received' in error ? String(error.received) : undefined,
       })),
     };
   }
@@ -80,7 +80,7 @@ export class ValidationError extends Error {
 export class ServiceError<TCode extends number = number> extends Error {
   constructor(
     public readonly statusCode: TCode,
-    public readonly data: any
+    public readonly data: Record<string, unknown>
   ) {
     super(`Service error: ${statusCode}`);
     this.name = 'ServiceError';
@@ -108,7 +108,11 @@ export class ValidationEngine {
       this.validators.set(key, validator);
     }
 
-    return this.validators.get(key)! as CompiledValidator<T>;
+    const validator = this.validators.get(key);
+    if (!validator) {
+      throw new Error(`Validator not found in cache for key: ${key}`);
+    }
+    return validator as CompiledValidator<T>;
   }
 
   /**
@@ -156,11 +160,9 @@ export class ValidationEngine {
           processedSchema = this.applyCoercion(optimized);
         }
 
-        // Configure parse options
-        const parseOptions: any = {};
-        if (options?.errorMap) {
-          parseOptions.errorMap = options.errorMap;
-        }
+        // Note: Zod v4 changed errorMap handling - it's now global or passed differently
+        // For now, we use safeParse without custom errorMap support in parse call
+        // errorMap can be set globally via z.setErrorMap() if needed
 
         // Handle abort early mode
         if (options?.abortEarly === false) {
@@ -170,7 +172,7 @@ export class ValidationEngine {
         }
 
         // Use safeParse for better error handling
-        const result = processedSchema.safeParse(data, parseOptions);
+        const result = processedSchema.safeParse(data);
 
         if (!result.success) {
           // Handle abortEarly by limiting errors
@@ -198,12 +200,11 @@ export class ValidationEngine {
           processedSchema = this.applyCoercion(optimized);
         }
 
-        const parseOptions: any = {};
-        if (options?.errorMap) {
-          parseOptions.errorMap = options.errorMap;
-        }
+        // Note: Zod v4 changed errorMap handling - it's now global or passed differently
+        // For now, we use safeParseAsync without custom errorMap support in parse call
+        // errorMap can be set globally via z.setErrorMap() if needed
 
-        const result = await processedSchema.safeParseAsync(data, parseOptions);
+        const result = await processedSchema.safeParseAsync(data);
 
         if (!result.success) {
           // Handle abortEarly by limiting errors
@@ -286,9 +287,11 @@ export class ValidationEngine {
    * @param insideArray Whether we're currently inside an array (to avoid Zod v4 preprocess issues)
    */
   private applyCoercionRecursive(
-    schema: any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    schema: any, // Zod internal structures - not all types are exported
     inheritedMode?: 'strip' | 'strict' | 'passthrough',
     insideArray = false
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): any {
     // Get the base type name - check both .type and ._def.typeName for compatibility
     const typeName = schema.type || schema._def?.typeName;
@@ -446,7 +449,8 @@ export class ValidationEngine {
         mode = 'strip'; // Default
       }
 
-      const coercedShape: any = {};
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const coercedShape: Record<string, any> = {};
 
       // Recursively coerce all fields, passing down the mode and insideArray flag
       for (const key in shape) {

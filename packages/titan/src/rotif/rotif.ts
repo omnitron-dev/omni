@@ -320,7 +320,7 @@ export class NotificationManager {
         // Wait for in-flight messages to complete (with timeout)
         const maxWait = 5000; // 5 seconds max wait
         const startTime = Date.now();
-        while ((sub as any).inflightCount > 0 && Date.now() - startTime < maxWait) {
+        while (sub.inflightCount > 0 && Date.now() - startTime < maxWait) {
           await delayMs(10);
         }
 
@@ -688,7 +688,7 @@ export class NotificationManager {
         }
 
         // Increment in-flight counter
-        (sub as any).inflightCount = ((sub as any).inflightCount || 0) + 1;
+        sub.inflightCount += 1;
 
         // Record retry if this is a retry attempt (attempt > 1)
         if (msg.attempt > 1) {
@@ -718,7 +718,7 @@ export class NotificationManager {
           sub.statsTracker?.recordFailure();
           this.logger.error(`Message ${id} moved to DLQ - max retries exceeded`);
           // Decrement in-flight counter
-          (sub as any).inflightCount = Math.max(0, ((sub as any).inflightCount || 0) - 1);
+          sub.inflightCount = Math.max(0, sub.inflightCount - 1);
           continue;
         }
 
@@ -734,7 +734,7 @@ export class NotificationManager {
             await msg.ack();
             this.logger.info(`Duplicate message detected for channel=${channel} and group=${group} msg=${id}`);
             // Decrement in-flight counter
-            (sub as any).inflightCount = Math.max(0, ((sub as any).inflightCount || 0) - 1);
+            sub.inflightCount = Math.max(0, sub.inflightCount - 1);
             continue;
           }
         }
@@ -769,7 +769,7 @@ export class NotificationManager {
             sub.statsTracker?.recordFailure();
             this.logger.error(`Message ${id} moved to DLQ after error: ${errorMessage}`);
             // Decrement in-flight counter
-            (sub as any).inflightCount = Math.max(0, ((sub as any).inflightCount || 0) - 1);
+            sub.inflightCount = Math.max(0, sub.inflightCount - 1);
             continue;
           }
 
@@ -822,7 +822,7 @@ export class NotificationManager {
           }
         } finally {
           // Decrement in-flight counter
-          (sub as any).inflightCount = Math.max(0, ((sub as any).inflightCount || 0) - 1);
+          sub.inflightCount = Math.max(0, sub.inflightCount - 1);
         }
       }
     };

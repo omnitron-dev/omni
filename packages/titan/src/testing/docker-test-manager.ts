@@ -377,6 +377,14 @@ export class DockerTestManager extends EventEmitter {
     const name = options.name || `container-${id}`;
     const host = '127.0.0.1';
 
+    // Remove any existing container with the same name to avoid conflicts
+    try {
+      execFileSync(this.dockerPath, ['rm', '-f', name], { stdio: 'ignore' });
+      this.log(`Removed existing container: ${name}`);
+    } catch {
+      // Container doesn't exist, which is fine
+    }
+
     // Process port mappings
     const portMappings = new Map<number, number>();
     if (options.ports) {
@@ -428,18 +436,26 @@ export class DockerTestManager extends EventEmitter {
 
     // Add healthcheck if provided
     if (options.healthcheck) {
-      // Docker CLI --health-cmd expects a string, not a JSON array
-      // If the test is an array like ['CMD-SHELL', 'command'], extract just the command
+      // Docker CLI --health-cmd expects a string that is executed by the shell
+      // The healthcheck.test array format from Docker Compose needs to be converted:
+      // - ['CMD', 'arg1', 'arg2'] -> execute command directly (no shell)
+      // - ['CMD-SHELL', 'command'] -> execute via shell
       let healthCmd: string;
       if (Array.isArray(options.healthcheck.test)) {
-        // If it starts with 'CMD-SHELL' or 'CMD', take the rest as the command
-        if (options.healthcheck.test[0] === 'CMD-SHELL' || options.healthcheck.test[0] === 'CMD') {
+        if (options.healthcheck.test[0] === 'CMD-SHELL') {
+          // CMD-SHELL format: join everything after the first element
+          healthCmd = options.healthcheck.test.slice(1).join(' ');
+        } else if (options.healthcheck.test[0] === 'CMD') {
+          // CMD format: join command parts without shell
+          // Docker CLI expects this as a single string that will be word-split
+          // For example: ['CMD', 'redis-cli', 'ping'] -> 'redis-cli ping'
           healthCmd = options.healthcheck.test.slice(1).join(' ');
         } else {
-          // Otherwise join all parts
+          // No format specifier, join all parts
           healthCmd = options.healthcheck.test.join(' ');
         }
       } else {
+        // String format
         healthCmd = options.healthcheck.test;
       }
       dockerArgs.push('--health-cmd', healthCmd);
@@ -470,15 +486,40 @@ export class DockerTestManager extends EventEmitter {
     // Start container using execFileSync to properly handle arguments with spaces
     try {
       this.log(`Starting container: ${name}`, { image: options.image });
-      execFileSync(this.dockerPath, dockerArgs, {
-        stdio: this.verbose ? 'inherit' : 'ignore',
+      const result = execFileSync(this.dockerPath, dockerArgs, {
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe'], // Always capture output for better error messages
       });
+      if (this.verbose && result) {
+        console.log(result);
+      }
     } catch (error) {
       // Clean up allocated ports before throwing
       portMappings.forEach((port) => {
         this.usedPorts.delete(port);
       });
-      throw new Error(`Failed to start container ${name}: ${error}`);
+      const execError = error as { stderr?: Buffer | string; stdout?: Buffer | string; message?: string; status?: number };
+      const stderr = execError.stderr ? String(execError.stderr).trim() : '';
+      const stdout = execError.stdout ? String(execError.stdout).trim() : '';
+      const message = execError.message || String(error);
+
+      // Check if container already exists
+      if (stderr.includes('already in use') || stderr.includes('name is already') || stderr.includes('Conflict')) {
+        throw new Error(
+          `Container name conflict: ${name} already exists.\n` +
+          `Please ensure previous test containers are cleaned up.\n` +
+          `Stderr: ${stderr}`
+        );
+      }
+
+      throw new Error(
+        `Failed to start container ${name}:\n` +
+        `Command: docker ${dockerArgs.join(' ')}\n` +
+        `Exit code: ${execError.status || 'unknown'}\n` +
+        (stderr ? `Stderr: ${stderr}\n` : '') +
+        (stdout ? `Stdout: ${stdout}\n` : '') +
+        (message && !stderr && !stdout ? `Error: ${message}` : '')
+      );
     }
 
     // Wait for container to be ready
@@ -604,12 +645,22 @@ export class DockerTestManager extends EventEmitter {
     if (!this.networks.has(network)) {
       try {
         execFileSync(this.dockerPath, ['network', 'create', network, '--label', 'test.cleanup=true'], {
-          stdio: 'ignore',
+          stdio: 'pipe',
+          encoding: 'utf8',
         });
         this.networks.add(network);
-      } catch {
-        // Network might already exist
-        this.networks.add(network);
+        this.log(`Created network: ${network}`);
+      } catch (error) {
+        const execError = error as { stderr?: string; stdout?: string; message?: string };
+        const stderr = execError.stderr || execError.message || String(error);
+        // Network might already exist - check if that's the case
+        if (stderr.includes('already exists') || stderr.includes('network with name')) {
+          this.log(`Network already exists: ${network}`);
+          this.networks.add(network);
+        } else {
+          // Real error - throw it
+          throw new Error(`Failed to create network ${network}: ${stderr}`);
+        }
       }
     }
   }
@@ -1573,8 +1624,39 @@ export class RedisTestManager {
         console.log('[RedisCluster] Initialization output:', output);
       }
 
-      // Wait for cluster to be ready
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      // Wait for cluster to be ready - robust check
+      const maxWait = 30000; // 30 seconds
+      const startTime = Date.now();
+      let clusterReady = false;
+
+      while (!clusterReady && Date.now() - startTime < maxWait) {
+        try {
+          const clusterInfo = execFileSync(
+            dockerPath,
+            ['exec', firstMaster.name, 'redis-cli', ...(password ? ['-a', password] : []), 'cluster', 'info'],
+            { encoding: 'utf8', stdio: 'pipe' }
+          );
+
+          if (clusterInfo.includes('cluster_state:ok')) {
+            // Verify all slots are assigned
+            if (clusterInfo.includes('cluster_slots_assigned:16384') && clusterInfo.includes('cluster_slots_ok:16384')) {
+              clusterReady = true;
+              if (verbose) {
+                console.log('[RedisCluster] Cluster is ready');
+              }
+              break;
+            }
+          }
+        } catch {
+          // Not ready yet, continue waiting
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+
+      if (!clusterReady) {
+        throw new Error('Redis cluster failed to reach ready state within timeout');
+      }
 
       if (verbose) {
         console.log('[RedisCluster] Cluster initialization complete');

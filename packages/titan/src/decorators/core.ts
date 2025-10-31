@@ -12,6 +12,23 @@ import type { ITransport } from '../netron/transport/types.js';
 import type { MethodOptions } from '../netron/auth/types.js';
 
 /**
+ * Type representing a service contract for validation
+ * Can be any object with string keys
+ */
+export type ServiceContract = Record<string, unknown>;
+
+/**
+ * Type representing a DI provider definition
+ * Kept flexible for compatibility with various provider types
+ */
+export type ProviderDefinition = 
+  | Constructor<unknown>
+  | { useClass: Constructor<unknown> }
+  | { useValue: unknown }
+  | { useFactory: (...args: unknown[]) => unknown }
+  | { useToken: symbol | string };
+
+/**
  * Options for the Service decorator
  */
 export interface ServiceOptions {
@@ -23,7 +40,7 @@ export interface ServiceOptions {
   /**
    * Optional service contract for validation and documentation
    */
-  contract?: any;
+  contract?: ServiceContract;
 
   /**
    * Optional array of transports the service should be exposed on
@@ -58,7 +75,7 @@ export interface ExtendedServiceMetadata extends ServiceMetadata {
   /**
    * Service contract for validation and documentation
    */
-  contract?: any;
+  contract?: ServiceContract;
 
   /**
    * Transport names this service should be exposed on (for decorator → ServiceStub transfer)
@@ -148,7 +165,7 @@ export const PUBLIC_ANNOTATION = METADATA_KEYS.METHOD_ANNOTATION;
  */
 export interface InjectableOptions {
   scope?: Scope;
-  token?: any;
+  token?: symbol | string | Constructor<unknown>;
   providedIn?: 'root' | 'any' | string;
 }
 
@@ -158,8 +175,11 @@ export interface InjectableOptions {
 export interface ModuleDecoratorOptions {
   name?: string;
   version?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   imports?: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   providers?: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   exports?: any[];
   global?: boolean;
 }
@@ -168,6 +188,7 @@ export interface ModuleDecoratorOptions {
  * Mark a class as injectable and available for dependency injection
  */
 export function Injectable(options: InjectableOptions = {}) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return function injectableDecorator<T extends Constructor<any>>(target: T): T {
     // Mark as injectable
     Reflect.defineMetadata(METADATA_KEYS.INJECTABLE, true, target);
@@ -199,6 +220,7 @@ export function Injectable(options: InjectableOptions = {}) {
  * Module decorator - defines a module with providers, imports, and exports
  */
 export function Module(options: ModuleDecoratorOptions = {}) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return function moduleDecorator<T extends Constructor<any>>(target: T): T {
     // Set Nexus module metadata
     Reflect.defineMetadata(METADATA_KEYS.MODULE, true, target);
@@ -213,7 +235,9 @@ export function Module(options: ModuleDecoratorOptions = {}) {
     }
 
     // Mark class for auto-discovery
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (target as any).__titanModule = true;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (target as any).__titanModuleMetadata = options;
 
     // Apply Injectable decorator
@@ -227,6 +251,7 @@ export function Module(options: ModuleDecoratorOptions = {}) {
  * Mark a class as singleton scoped (one instance for the entire application)
  */
 export function Singleton() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return function singletonDecorator<T extends Constructor<any>>(target: T): T {
     Injectable({ scope: 'singleton' })(target);
     Reflect.defineMetadata('singleton', true, target);
@@ -238,6 +263,7 @@ export function Singleton() {
  * Mark a class as transient scoped (new instance for every injection)
  */
 export function Transient() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return function transientDecorator<T extends Constructor<any>>(target: T): T {
     Injectable({ scope: 'transient' })(target);
     return target;
@@ -248,6 +274,7 @@ export function Transient() {
  * Mark a class as scoped (one instance per scope/context)
  */
 export function Scoped() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return function scopedDecorator<T extends Constructor<any>>(target: T): T {
     Injectable({ scope: 'scoped' })(target);
     return target;
@@ -258,6 +285,7 @@ export function Scoped() {
  * Mark a class as request scoped (one instance per request)
  */
 export function Request() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return function requestDecorator<T extends Constructor<any>>(target: T): T {
     Injectable({ scope: 'request' })(target);
     return target;
@@ -303,6 +331,7 @@ export function Request() {
  *   // ...
  * }
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Service = (options?: string | ServiceOptions) => (target: any) => {
   // Normalize options to ensure we always have an object
   const serviceOptions: ServiceOptions =
@@ -355,13 +384,19 @@ export const Service = (options?: string | ServiceOptions) => (target: any) => {
     // Process method metadata
     if (typeof descriptor.value === 'function') {
       // Extract parameter types and return type using reflection
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const paramTypes = Reflect.getMetadata('design:paramtypes', target.prototype, key) || [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const returnType = Reflect.getMetadata('design:returntype', target.prototype, key)?.name || 'void';
 
       // Store method metadata
       metadata.methods[key] = {
         type: returnType,
-        arguments: paramTypes.map((type: any) => type?.name || 'unknown'),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        arguments: paramTypes.map((type: any, index: number) => ({
+          index,
+          type: type?.name || 'unknown'
+        })),
       };
     }
   }
@@ -378,6 +413,7 @@ export const Service = (options?: string | ServiceOptions) => (target: any) => {
       if (!isPublic) continue;
 
       // Extract property type and readonly status
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const type = Reflect.getMetadata('design:type', target.prototype, key)?.name || 'unknown';
       const isReadonly = Reflect.getMetadata('readonly', target.prototype, key);
 
@@ -409,6 +445,7 @@ export const Service = (options?: string | ServiceOptions) => (target: any) => {
  * Mark a module or provider as global (available to all modules)
  */
 export function Global() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return function globalDecorator<T extends Constructor<any>>(target: T): T {
     Reflect.defineMetadata(METADATA_KEYS.GLOBAL, true, target);
     Reflect.defineMetadata('global', true, target);
@@ -420,6 +457,7 @@ export function Global() {
  * Controller decorator - marks a class as a controller
  */
 export function Controller(path: string = '') {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return function controllerDecorator<T extends Constructor<any>>(target: T): T {
     Reflect.defineMetadata(METADATA_KEYS.CONTROLLER_PATH, path, target);
     Reflect.defineMetadata('controller:path', path, target);
@@ -432,7 +470,9 @@ export function Controller(path: string = '') {
 /**
  * Repository decorator - marks a class as a repository
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function Repository(entity?: Constructor<any>) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return function repositoryDecorator<T extends Constructor<any>>(target: T): T {
     if (entity) {
       Reflect.defineMetadata(METADATA_KEYS.REPOSITORY_ENTITY, entity, target);
@@ -447,6 +487,7 @@ export function Repository(entity?: Constructor<any>) {
  * Factory decorator - marks a method as a factory for creating instances
  */
 export function Factory(name: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return function factoryDecorator(target: any, propertyKey: string, descriptor: PropertyDescriptor) {
     Reflect.defineMetadata(METADATA_KEYS.FACTORY_NAME, name, target, propertyKey);
     Reflect.defineMetadata('factory', name, target, propertyKey);
@@ -524,6 +565,7 @@ export function Factory(name: string) {
  * public readonly value: string;
  */
 export const Method =
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (options?: MethodOptions) => (target: any, propertyKey: string | symbol, descriptor?: PropertyDescriptor) => {
     // Mark the member as public/method
     Reflect.defineMetadata('public', true, target, propertyKey);
@@ -567,6 +609,17 @@ export const Method =
 
 /**
  * Public decorator - alias for Method decorator for backward compatibility
- * @deprecated Use @Method instead
+ * 
+ * @deprecated Use @Method instead. This decorator will be removed in a future version.
+ * The @Method decorator provides the same functionality with enhanced features.
+ * 
+ * @example
+ * // Old way (deprecated):
+ * @Public()
+ * async doSomething() {}
+ * 
+ * // New way:
+ * @Method()
+ * async doSomething() {}
  */
 export const Public = Method;

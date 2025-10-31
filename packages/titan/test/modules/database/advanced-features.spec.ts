@@ -144,7 +144,7 @@ describe('Advanced Database Features', () => {
 
     beforeEach(async () => {
       // Reset static manager before each test
-      TitanDatabaseModule.resetForTesting();
+      await TitanDatabaseModule.resetForTesting();
 
       app = await Application.create({
         imports: [
@@ -262,7 +262,7 @@ describe('Advanced Database Features', () => {
 
     beforeEach(async () => {
       // Reset static manager before each test
-      TitanDatabaseModule.resetForTesting();
+      await TitanDatabaseModule.resetForTesting();
 
       app = await Application.create({
         imports: [
@@ -369,7 +369,7 @@ describe('Advanced Database Features', () => {
 
     beforeEach(async () => {
       // Reset static manager before each test
-      TitanDatabaseModule.resetForTesting();
+      await TitanDatabaseModule.resetForTesting();
 
       app = await Application.create({
         imports: [

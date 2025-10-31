@@ -119,7 +119,7 @@ export interface Subscription {
   /** Stats tracker instance (internal) */
   statsTracker?: StatsTracker;
   /** Number of messages currently being processed (internal) */
-  inflightCount?: number;
+  inflightCount: number;
 }
 
 /**

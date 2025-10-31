@@ -257,6 +257,15 @@ export class DatabaseService {
 
       // Build the query with parameters for PostgreSQL
       // We need to use sql template literal for proper parameter binding
+
+      // Count placeholders in the query
+      const placeholderMatches = sqlString.match(/\$\d+/g);
+      const placeholderCount = placeholderMatches ? placeholderMatches.length : 0;
+
+      if (placeholderCount !== params.length) {
+        throw Errors.badRequest(`Parameter count mismatch: expected ${placeholderCount}, got ${params.length}`);
+      }
+
       const parts = sqlString.split(/\$\d+/);
       let boundQuery = sql`${sql.raw(parts[0] || '')}`;
 

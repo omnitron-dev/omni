@@ -1,4 +1,6 @@
 import Redis from 'ioredis';
+import { readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { RedisManager } from '../../src/modules/redis/redis.manager';
 import { RedisService } from '../../src/modules/redis/redis.service';
 import { RedisModuleOptions } from '../../src/modules/redis/redis.types';
@@ -16,8 +18,9 @@ export interface RedisTestConfig {
 /**
  * Get centralized Redis test configuration
  *
- * This function retrieves the dynamic Redis configuration from globalThis.globalRedis
- * if available (set by vitest.config.ts globalSetup), otherwise falls back to localhost:6379.
+ * This function retrieves the dynamic Redis configuration from .redis-test-info.json
+ * (set by Jest globalSetup.ts) or globalThis.globalRedis (set by Vitest),
+ * otherwise falls back to localhost:6379.
  *
  * All tests should use this function to get Redis connection details to ensure they use
  * the correct dynamically-allocated port in CI/parallel test environments.
@@ -39,7 +42,32 @@ export interface RedisTestConfig {
  * ```
  */
 export function getTestRedisConfig(db = 15): RedisTestConfig {
-  // Check if global Redis configuration is available (from vitest global setup)
+  // Strategy 1: Check Jest global setup (reads from .redis-test-info.json)
+  try {
+    const infoPath = join(process.cwd(), '.redis-test-info.json');
+
+    if (existsSync(infoPath)) {
+      const content = readFileSync(infoPath, 'utf-8');
+      const info = JSON.parse(content);
+
+      if (info.port) {
+        const host = 'localhost';
+        const port = info.port;
+        const url = `redis://${host}:${port}/${db}`;
+
+        return {
+          url,
+          host,
+          port,
+          db,
+        };
+      }
+    }
+  } catch (error) {
+    // Continue to next strategy
+  }
+
+  // Strategy 2: Check Vitest global setup
   const globalRedis = (globalThis as any).globalRedis;
 
   if (globalRedis?.host && globalRedis?.port) {

@@ -940,23 +940,7 @@ describe('Real-World E-Commerce Application', () => {
 
     // Get the database manager
     const dbManager = await app.resolveAsync(DatabaseManager);
-    const managerConnection = await dbManager.getConnection();
-
-    // IMPORTANT: Use the SAME connection for schema creation and repositories
-    // WORKAROUND: Manually set all repositories to use the manager's connection
-    // This fixes an initialization order issue where repositories get different DB instances
-    db = managerConnection;
-
-    // Patch all repositories to use the correct database connection
-    // (qb is a getter that returns trx || db, so we only need to set db)
-    (userRepo as any).db = db;
-    (productRepo as any).db = db;
-    (orderRepo as any).db = db;
-    (reviewRepo as any).db = db;
-    (orderItemRepo as any).db = db;
-    (cartRepo as any).db = db;
-    (cartItemRepo as any).db = db;
-    (inventoryRepo as any).db = db;
+    db = await dbManager.getConnection();
 
     healthIndicator = await app.resolveAsync(DatabaseHealthIndicator);
 
@@ -997,10 +981,7 @@ describe('Real-World E-Commerce Application', () => {
   });
 
   describe('User Journey', () => {
-    // TODO: Fix repository initialization issue causing queries to hang
-    // The repositories cannot execute queries even though database connection exists
-    // Needs investigation of DatabaseTestingModule and manual repository patching
-    it.skip('should complete full shopping experience', async () => {
+    it('should complete full shopping experience', async () => {
       // 1. User registration/login
       const user = await userRepo.findByEmail('customer1@example.com');
       expect(user).toBeDefined();
@@ -1055,10 +1036,7 @@ describe('Real-World E-Commerce Application', () => {
       expect(review).toBeDefined();
     });
 
-    // TODO: Fix repository initialization issue causing queries to hang
-    // The repositories cannot execute queries even though database connection exists
-    // Needs investigation of DatabaseTestingModule and manual repository patching
-    it.skip('should handle product recommendations', async () => {
+    it('should handle product recommendations', async () => {
       const user = await userRepo.findByEmail('customer1@example.com');
       const recommendations = await ecommerceService.getRecommendations(user!.id, 5);
 
@@ -1066,10 +1044,7 @@ describe('Real-World E-Commerce Application', () => {
       expect(recommendations.length).toBeLessThanOrEqual(5);
     });
 
-    // TODO: Fix repository initialization issue causing queries to hang
-    // The repositories cannot execute queries even though database connection exists
-    // Needs investigation of DatabaseTestingModule and manual repository patching
-    it.skip('should provide analytics dashboard', async () => {
+    it('should provide analytics dashboard', async () => {
       const startDate = new Date('2024-01-01');
       const endDate = new Date('2024-12-31');
 
@@ -1084,10 +1059,7 @@ describe('Real-World E-Commerce Application', () => {
   });
 
   describe('Inventory Management', () => {
-    // TODO: Fix repository initialization issue causing queries to hang
-    // The repositories cannot execute queries even though database connection exists
-    // Needs investigation of DatabaseTestingModule and manual repository patching
-    it.skip('should prevent overselling', async () => {
+    it('should prevent overselling', async () => {
       const product = await productRepo.findBySku('LAPTOP001');
       expect(product).toBeDefined();
 
@@ -1097,10 +1069,7 @@ describe('Real-World E-Commerce Application', () => {
       await expect(ecommerceService.addToCart(user!.id, product!.id, 1000)).rejects.toThrow('Insufficient stock');
     });
 
-    // TODO: Fix repository initialization issue causing queries to hang
-    // The repositories cannot execute queries even though database connection exists
-    // Needs investigation of DatabaseTestingModule and manual repository patching
-    it.skip('should update stock on purchase', async () => {
+    it('should update stock on purchase', async () => {
       const product = await productRepo.findBySku('MOUSE001');
       const initialStock = product!.stock_quantity;
 
@@ -1119,10 +1088,7 @@ describe('Real-World E-Commerce Application', () => {
   });
 
   describe('Performance & Health', () => {
-    // TODO: Fix repository initialization issue causing queries to hang
-    // The repositories cannot execute queries even though database connection exists
-    // Needs investigation of DatabaseTestingModule and manual repository patching
-    it.skip('should handle concurrent transactions', async () => {
+    it('should handle concurrent transactions', async () => {
       const users = await userRepo.findActiveCustomers();
       const products = await productRepo.findInStock();
 
@@ -1154,10 +1120,7 @@ describe('Real-World E-Commerce Application', () => {
       expect(health.connections).toBeDefined();
     });
 
-    // TODO: Fix repository initialization issue causing queries to hang
-    // The repositories cannot execute queries even though database connection exists
-    // Needs investigation of DatabaseTestingModule and manual repository patching
-    it.skip('should handle large result sets efficiently', async () => {
+    it('should handle large result sets efficiently', async () => {
       const startTime = Date.now();
 
       // Search with pagination
@@ -1180,10 +1143,7 @@ describe('Real-World E-Commerce Application', () => {
   });
 
   describe('Data Integrity', () => {
-    // TODO: Fix repository initialization issue causing queries to hang
-    // The repositories cannot execute queries even though database connection exists
-    // Needs investigation of DatabaseTestingModule and manual repository patching
-    it.skip('should maintain referential integrity', async () => {
+    it('should maintain referential integrity', async () => {
       // Try to create order with non-existent user
       await expect(
         orderRepo.create({
@@ -1202,10 +1162,7 @@ describe('Real-World E-Commerce Application', () => {
       ).rejects.toThrow();
     });
 
-    // TODO: Fix repository initialization issue causing queries to hang
-    // The repositories cannot execute queries even though database connection exists
-    // Needs investigation of DatabaseTestingModule and manual repository patching
-    it.skip('should handle soft deletes correctly', async () => {
+    it('should handle soft deletes correctly', async () => {
       // Get an existing category first to ensure foreign key constraint is satisfied
       const category = await db.selectFrom('categories').selectAll().executeTakeFirst();
 
@@ -1233,10 +1190,7 @@ describe('Real-World E-Commerce Application', () => {
       expect((result as any).deleted_at).toBeDefined();
     });
 
-    // TODO: Fix repository initialization issue causing queries to hang
-    // The repositories cannot execute queries even though database connection exists
-    // Needs investigation of DatabaseTestingModule and manual repository patching
-    it.skip('should handle optimistic locking', async () => {
+    it('should handle optimistic locking', async () => {
       const product = await productRepo.findBySku('LAPTOP001');
       const originalVersion = product!.version;
 

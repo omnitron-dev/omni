@@ -187,9 +187,9 @@ export class TitanDatabaseModule {
               target: RepositoryConstructor;
               metadata: RepositoryMetadata;
             }>;
-            repositories.forEach(({ target, metadata }) => {
-              factory.register(target, metadata);
-            });
+            await Promise.all(
+              repositories.map(({ target, metadata }) => factory.register(target, metadata))
+            );
 
             return factory;
           },
@@ -398,9 +398,9 @@ export class TitanDatabaseModule {
             target: RepositoryConstructor;
             metadata: RepositoryMetadata;
           }>;
-          repositories.forEach(({ target, metadata }) => {
-            factory.register(target, metadata);
-          });
+          await Promise.all(
+            repositories.map(({ target, metadata }) => factory.register(target, metadata))
+          );
 
           return factory;
         },
@@ -545,7 +545,7 @@ export class TitanDatabaseModule {
               ...metadata,
               target: repository as new (...args: unknown[]) => unknown,
             };
-            factory.register(repository as new (...args: unknown[]) => unknown, repositoryMetadata);
+            await factory.register(repository as new (...args: unknown[]) => unknown, repositoryMetadata);
           }
           return await factory.get(repository);
         };

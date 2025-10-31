@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 import { NotificationManager } from '../../src/rotif/rotif.js';
 import { DLQManager } from '../../src/rotif/dlq-manager.js';
 import { delay } from '@omnitron-dev/common';
-import Redis from 'ioredis';
 import { getTestRedisConfig } from '../utils/redis-test-utils.js';
 
 // Increase timeout for DLQ tests as they involve delays
@@ -38,30 +37,31 @@ async function publishAndFail(manager: NotificationManager, channel: string, pay
 
 describe('DLQ Auto-Cleanup', () => {
   let manager: NotificationManager;
-  let redis: Redis;
   const testChannel = 'test:dlq:cleanup';
 
   beforeEach(async () => {
+    // Create manager first so we can use its Redis client for cleanup
     const redisConfig = getTestRedisConfig(0);
-    redis = new Redis({
-      host: redisConfig.host,
-      port: redisConfig.port,
-      db: redisConfig.db,
-      retryStrategy: () => null,
-      maxRetriesPerRequest: 1,
+    manager = new NotificationManager({
+      redis: { host: redisConfig.host, port: redisConfig.port, db: redisConfig.db },
+      blockInterval: 100, // Use short block interval for tests
+      maxRetries: 0, // Messages fail immediately by default
     });
 
-    // Clean up test data
-    await redis.del('rotif:dlq');
+    // Wait for manager to be fully initialized
+    await delay(100);
+
+    // Clean up test data using manager's Redis client
+    await manager.redis.del('rotif:dlq');
     // Delete all archive keys
-    const archiveKeys = await redis.keys('rotif:dlq:archive:*');
+    const archiveKeys = await manager.redis.keys('rotif:dlq:archive:*');
     if (archiveKeys.length > 0) {
-      await redis.del(...archiveKeys);
+      await manager.redis.del(...archiveKeys);
     }
     // Also delete test-specific archive keys
-    const testArchiveKeys = await redis.keys('test:archive:*');
+    const testArchiveKeys = await manager.redis.keys('test:archive:*');
     if (testArchiveKeys.length > 0) {
-      await redis.del(...testArchiveKeys);
+      await manager.redis.del(...testArchiveKeys);
     }
   });
 
@@ -74,27 +74,11 @@ describe('DLQ Auto-Cleanup', () => {
     } catch (error) {
       console.error('Error stopping manager:', error);
     }
-
-    try {
-      if (redis) {
-        await redis.quit();
-      }
-    } catch (error) {
-      console.error('Error closing Redis:', error);
-    }
   });
 
   describe('DLQ Manager Basic Operations', () => {
     it('should get DLQ statistics', async () => {
-      const redisConfig = getTestRedisConfig(0);
-      manager = new NotificationManager({
-        redis: { host: redisConfig.host, port: redisConfig.port, db: redisConfig.db },
-        maxRetries: 0, // Messages fail immediately
-        blockInterval: 100, // Use short block interval for tests
-      });
-
-      // Wait for manager to be fully initialized
-      await delay(100);
+      // Manager already created in beforeEach with maxRetries: 0
 
       // Clear DLQ to start fresh
       await manager.clearDLQ();
@@ -141,13 +125,7 @@ describe('DLQ Auto-Cleanup', () => {
     });
 
     it('should get DLQ messages with filtering', async () => {
-      const redisConfig = getTestRedisConfig(0);
-      manager = new NotificationManager({
-        blockInterval: 100, // Use short block interval for tests
-        redis: { host: redisConfig.host, port: redisConfig.port, db: redisConfig.db },
-        maxRetries: 0,
-        blockInterval: 100, // Use short block interval for tests
-      });
+      // Manager already created in beforeEach with maxRetries: 0
 
       // Send messages to different channels
       await publishAndFail(manager, testChannel, { msg: 'a' });
@@ -173,13 +151,7 @@ describe('DLQ Auto-Cleanup', () => {
     });
 
     it('should manually clear DLQ', async () => {
-      const redisConfig = getTestRedisConfig(0);
-      manager = new NotificationManager({
-        blockInterval: 100, // Use short block interval for tests
-        redis: { host: redisConfig.host, port: redisConfig.port, db: redisConfig.db },
-        maxRetries: 0,
-        blockInterval: 100, // Use short block interval for tests
-      });
+      // Manager already created in beforeEach with maxRetries: 0
 
       // Send messages to DLQ
       await publishAndFail(manager, testChannel, { msg: 1 });
@@ -200,10 +172,13 @@ describe('DLQ Auto-Cleanup', () => {
     it('should start auto-cleanup when enabled', async () => {
       const cleanupSpy = jest.spyOn(DLQManager.prototype, 'startAutoCleanup');
 
+      // Stop default manager and create new one with auto-cleanup enabled
+      await manager.stopAll();
       const redisConfig = getTestRedisConfig(0);
       manager = new NotificationManager({
         redis: { host: redisConfig.host, port: redisConfig.port, db: redisConfig.db },
         blockInterval: 100, // Use short block interval for tests
+        maxRetries: 0,
         dlqCleanup: {
           enabled: true,
           cleanupInterval: 100, // Very short for testing
@@ -218,10 +193,13 @@ describe('DLQ Auto-Cleanup', () => {
     it('should not start auto-cleanup when disabled', async () => {
       const cleanupSpy = jest.spyOn(DLQManager.prototype, 'startAutoCleanup');
 
+      // Stop default manager and create new one with auto-cleanup disabled
+      await manager.stopAll();
       const redisConfig = getTestRedisConfig(0);
       manager = new NotificationManager({
         redis: { host: redisConfig.host, port: redisConfig.port, db: redisConfig.db },
         blockInterval: 100, // Use short block interval for tests
+        maxRetries: 0,
         dlqCleanup: {
           enabled: false,
         },
@@ -233,10 +211,13 @@ describe('DLQ Auto-Cleanup', () => {
     });
 
     it('should update cleanup configuration dynamically', async () => {
+      // Stop default manager and create new one with specific cleanup config
+      await manager.stopAll();
       const redisConfig = getTestRedisConfig(0);
       manager = new NotificationManager({
         redis: { host: redisConfig.host, port: redisConfig.port, db: redisConfig.db },
         blockInterval: 100, // Use short block interval for tests
+        maxRetries: 0,
         dlqCleanup: {
           enabled: false,
           maxAge: 1000,
@@ -260,7 +241,8 @@ describe('DLQ Auto-Cleanup', () => {
 
   describe('Message Age-Based Cleanup', () => {
     it('should remove old messages based on maxAge', async () => {
-      // Create manager with short max age
+      // Stop default manager and create new one with short max age
+      await manager.stopAll();
       const redisConfig = getTestRedisConfig(0);
       manager = new NotificationManager({
         blockInterval: 100, // Use short block interval for tests
@@ -296,6 +278,8 @@ describe('DLQ Auto-Cleanup', () => {
 
   describe('Size-Based Cleanup', () => {
     it('should enforce maximum DLQ size', async () => {
+      // Stop default manager and create new one with maxSize limit
+      await manager.stopAll();
       const redisConfig = getTestRedisConfig(0);
       manager = new NotificationManager({
         blockInterval: 100, // Use short block interval for tests
@@ -326,6 +310,8 @@ describe('DLQ Auto-Cleanup', () => {
 
   describe('Message Archiving', () => {
     it('should archive messages before deletion when configured', async () => {
+      // Stop default manager and create new one with archiving enabled
+      await manager.stopAll();
       const redisConfig = getTestRedisConfig(0);
       manager = new NotificationManager({
         blockInterval: 100, // Use short block interval for tests
@@ -351,7 +337,7 @@ describe('DLQ Auto-Cleanup', () => {
       // Check archive
       const today = new Date().toISOString().split('T')[0];
       const archiveKey = `test:archive:${today}`;
-      const archived = await redis.lrange(archiveKey, 0, -1);
+      const archived = await manager.redis.lrange(archiveKey, 0, -1);
 
       expect(archived.length).toBe(1);
 
@@ -360,12 +346,14 @@ describe('DLQ Auto-Cleanup', () => {
       expect(archivedData.archivedAt).toBeDefined();
 
       // Clean up
-      await redis.del(archiveKey);
+      await manager.redis.del(archiveKey);
     });
   });
 
   describe('Batch Processing', () => {
     it('should process messages in batches', async () => {
+      // Stop default manager and create new one with batch processing
+      await manager.stopAll();
       const redisConfig = getTestRedisConfig(0);
       manager = new NotificationManager({
         blockInterval: 100, // Use short block interval for tests
@@ -398,6 +386,8 @@ describe('DLQ Auto-Cleanup', () => {
 
   describe('Integration with Retry Strategies', () => {
     it('should move messages to DLQ after retries with new strategies', async () => {
+      // Stop default manager and create new one with retry strategy
+      await manager.stopAll();
       const redisConfig = getTestRedisConfig(0);
       manager = new NotificationManager({
         blockInterval: 100, // Use short block interval for tests
@@ -440,6 +430,8 @@ describe('DLQ Auto-Cleanup', () => {
     });
 
     it('should use subscription-level retry strategy', async () => {
+      // Stop default manager and create new one with maxRetries: 1
+      await manager.stopAll();
       const redisConfig = getTestRedisConfig(0);
       manager = new NotificationManager({
         blockInterval: 100, // Use short block interval for tests
@@ -491,6 +483,8 @@ describe('DLQ Auto-Cleanup', () => {
 
   describe('Concurrent Operations', () => {
     it('should handle concurrent cleanup and message processing', async () => {
+      // Stop default manager and create new one with concurrent cleanup
+      await manager.stopAll();
       const redisConfig = getTestRedisConfig(0);
       manager = new NotificationManager({
         blockInterval: 100, // Use short block interval for tests

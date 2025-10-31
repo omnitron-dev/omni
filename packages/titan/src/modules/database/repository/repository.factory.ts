@@ -155,11 +155,11 @@ export class RepositoryFactory implements IRepositoryFactory {
   /**
    * Register a repository class
    */
-  register(target: RepositoryConstructor, metadata: RepositoryMetadata): void {
+  async register(target: RepositoryConstructor, metadata: RepositoryMetadata): Promise<void> {
     this.metadata.set(target, metadata);
 
     // Create and cache repository instance
-    this.createAndCacheRepository(target, metadata);
+    await this.createAndCacheRepository(target, metadata);
   }
 
   /**

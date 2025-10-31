@@ -14,6 +14,7 @@ import {
   InjectRepository,
   Repository,
   BaseRepository,
+  TitanDatabaseModule,
   DatabaseTestingModule,
   DatabaseTestingService,
 } from '../../../src/modules/database/index.js';
@@ -305,8 +306,9 @@ class BlogService {
       autoMigrate: false,
       autoClean: true,
     }),
+    TitanDatabaseModule.forFeature([UserRepository, PostRepository, CommentRepository]),
   ],
-  providers: [BlogService, UserRepository, PostRepository, CommentRepository],
+  providers: [BlogService],
 })
 class TestModule {}
 
@@ -333,7 +335,13 @@ describe('Comprehensive Repository Tests', () => {
       blogService = await app.resolveAsync(BlogService);
 
       await testService.initialize();
-      db = testService.getTestConnection();
+      // Get connection asynchronously via execute() helper
+      db = await new Promise(async (resolve) => {
+        await testService.execute(async (connection) => {
+          resolve(connection);
+          return connection;
+        });
+      });
 
       // Create schema
       await createSchema(db);

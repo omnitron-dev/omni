@@ -18,9 +18,9 @@ import ImageProcessorService from './processes/image-processor.process.js';
 import AnalyticsAggregatorService from './processes/analytics-aggregator.process.js';
 import OrderProcessingWorkflow from './processes/order-processing.workflow.js';
 
-// ESM equivalent of __dirname
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+// ESM equivalent of __dirname - Conditional declarations to avoid conflicts with Jest transform
+const __filename = typeof globalThis.__filename !== 'undefined' ? globalThis.__filename : fileURLToPath(import.meta.url);
+const __dirname = typeof globalThis.__dirname !== 'undefined' ? globalThis.__dirname : dirname(__filename);
 
 // ============================================================================
 // Type Definitions

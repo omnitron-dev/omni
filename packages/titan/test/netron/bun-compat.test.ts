@@ -11,9 +11,9 @@ import WebSocket from 'ws';
 // @ts-ignore - Bun global may not be available in Node
 const isBun = typeof Bun !== 'undefined';
 
-// Get __dirname equivalent in ESM
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Get __dirname equivalent in ESM - Conditional declarations to avoid conflicts with Jest transform
+const __filename = typeof globalThis.__filename !== 'undefined' ? globalThis.__filename : fileURLToPath(import.meta.url);
+const __dirname = typeof globalThis.__dirname !== 'undefined' ? globalThis.__dirname : path.dirname(__filename);
 
 describe('Bun Compatibility', () => {
   it('should import the package correctly', async () => {

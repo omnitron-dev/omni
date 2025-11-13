@@ -4,8 +4,9 @@ import { dirname } from 'path';
 import { TaskManager } from '../../src/netron';
 import { syncTask, asyncTask, failingTask, delayedTask } from './fixtures/tasks';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+// Conditional declarations to avoid conflicts with Jest transform
+const __filename = typeof globalThis.__filename !== 'undefined' ? globalThis.__filename : fileURLToPath(import.meta.url);
+const __dirname = typeof globalThis.__dirname !== 'undefined' ? globalThis.__dirname : dirname(__filename);
 
 describe('TaskManager', () => {
   let manager: TaskManager;

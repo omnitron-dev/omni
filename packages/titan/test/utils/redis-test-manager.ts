@@ -5,8 +5,9 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+// Conditional declarations to avoid conflicts with Jest transform
+const __filename = typeof globalThis.__filename !== 'undefined' ? globalThis.__filename : fileURLToPath(import.meta.url);
+const __dirname = typeof globalThis.__dirname !== 'undefined' ? globalThis.__dirname : dirname(__filename);
 
 export interface RedisTestContainer {
   id: string;

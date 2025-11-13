@@ -18,9 +18,9 @@ import ResourceManagerService from './processes/resource-manager.process.js';
 import CachingService from './processes/caching.process.js';
 import SelfHealingService from './processes/self-healing.process.js';
 
-// ESM equivalent of __dirname
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+// ESM equivalent of __dirname - Conditional declarations to avoid conflicts with Jest transform
+const __filename = typeof globalThis.__filename !== 'undefined' ? globalThis.__filename : fileURLToPath(import.meta.url);
+const __dirname = typeof globalThis.__dirname !== 'undefined' ? globalThis.__dirname : dirname(__filename);
 
 // ============================================================================
 // Tests

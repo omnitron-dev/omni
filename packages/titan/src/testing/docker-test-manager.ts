@@ -1397,14 +1397,25 @@ export class RedisTestManager {
         RedisTestManager.dockerManager['usedPorts'].delete(port);
       });
       await Promise.allSettled([
-        ...masters.map((c) => c.cleanup().catch(() => {})),
-        ...replicas.map((c) => c.cleanup().catch(() => {})),
+        ...masters.map((c) =>
+          c.cleanup().catch((cleanupError) => {
+            // Log cleanup errors but don't fail the error flow - we're already handling a failure
+            console.error(`Failed to cleanup master container ${c.name}:`, cleanupError);
+          })
+        ),
+        ...replicas.map((c) =>
+          c.cleanup().catch((cleanupError) => {
+            // Log cleanup errors but don't fail the error flow - we're already handling a failure
+            console.error(`Failed to cleanup replica container ${c.name}:`, cleanupError);
+          })
+        ),
       ]);
       // Try to remove network on failure too
       try {
         await RedisTestManager.dockerManager['removeNetwork'](networkName);
-      } catch {
-        // Ignore network cleanup errors during failure handling
+      } catch (networkError) {
+        // Log network cleanup errors but don't fail - network might be in use or already removed
+        console.error(`Failed to remove network ${networkName} during failure cleanup:`, networkError);
       }
       throw error;
     }
@@ -1556,9 +1567,22 @@ export class RedisTestManager {
       });
       await Promise.all(
         [
-          master?.cleanup().catch(() => {}),
-          ...replicas.map((c) => c.cleanup().catch(() => {})),
-          ...sentinels.map((c) => c.cleanup().catch(() => {})),
+          master?.cleanup().catch((cleanupError) => {
+            // Log cleanup errors but don't fail the error flow - we're already handling a failure
+            console.error(`Failed to cleanup master container ${master?.name}:`, cleanupError);
+          }),
+          ...replicas.map((c) =>
+            c.cleanup().catch((cleanupError) => {
+              // Log cleanup errors but don't fail the error flow - we're already handling a failure
+              console.error(`Failed to cleanup replica container ${c.name}:`, cleanupError);
+            })
+          ),
+          ...sentinels.map((c) =>
+            c.cleanup().catch((cleanupError) => {
+              // Log cleanup errors but don't fail the error flow - we're already handling a failure
+              console.error(`Failed to cleanup sentinel container ${c.name}:`, cleanupError);
+            })
+          ),
         ].filter(Boolean)
       );
       throw error;

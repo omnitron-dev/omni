@@ -316,7 +316,13 @@ export class ProcessSpawner implements IProcessSpawner {
     } catch (error) {
       // Cleanup on error
       if (netronClient) {
-        await netronClient.disconnect().catch(() => {});
+        // Disconnect the Netron client - log errors but don't fail the error flow
+        await netronClient.disconnect().catch((disconnectError) => {
+          this.logger.error(
+            { error: disconnectError, serviceName, processId },
+            'Failed to disconnect Netron client during error cleanup'
+          );
+        });
       }
 
       throw error;

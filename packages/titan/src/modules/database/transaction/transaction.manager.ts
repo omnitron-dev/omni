@@ -650,7 +650,15 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
           this.statistics.errors++;
 
           if (opts.onError) {
-            Promise.resolve(opts.onError(error as Error)).catch(() => {});
+            // Call user-provided error handler, but log if it throws to avoid silent failures
+            Promise.resolve(opts.onError(error as Error)).catch((handlerError) => {
+              console.error(
+                `Transaction error handler threw an error for transaction ${transactionId}:`,
+                handlerError
+              );
+              // Track that the error handler itself failed
+              this.statistics.errors++;
+            });
           }
 
           this.emitEvent({

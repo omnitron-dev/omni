@@ -602,7 +602,13 @@ export class NotificationAnalytics {
           const event = JSON.parse(message) as NotificationEvent;
           callback(event);
         } catch (err) {
-          // Ignore parse errors
+          // Log parse errors - malformed messages in Redis should be tracked
+          console.error(
+            `Failed to parse notification event from Redis channel ${channel}:`,
+            err,
+            'Message:',
+            message
+          );
         }
       }
     });

@@ -44,10 +44,12 @@ export class WebSocketConnection extends BaseConnection {
   private socket: WebSocket;
   private pingInterval?: NodeJS.Timeout;
   private pongTimeout?: NodeJS.Timeout;
+  private url?: string;
 
-  constructor(socket: WebSocket, options: WebSocketOptions = {}, isServer = false) {
+  constructor(socket: WebSocket, options: WebSocketOptions = {}, isServer = false, url?: string) {
     super(options);
     this.socket = socket;
+    this.url = url;
     (this as any).isServer = isServer;
     this.setupEventHandlers();
 
@@ -195,9 +197,69 @@ export class WebSocketConnection extends BaseConnection {
    * Reconnect the WebSocket
    */
   protected async doReconnect(): Promise<void> {
-    // WebSocket doesn't support direct reconnection,
-    // would need to create new socket with same URL
-    throw Errors.notImplemented('WebSocket reconnection requires creating new connection');
+    // Cannot reconnect server-side connections
+    if ((this as any).isServer) {
+      throw Errors.badRequest('Cannot reconnect server-side WebSocket connection');
+    }
+
+    // Must have stored URL from client connection
+    if (!this.url) {
+      throw Errors.badRequest('Cannot reconnect: no URL stored (connection was not created via connect())');
+    }
+
+    // Close old socket if still open
+    if (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING) {
+      try {
+        this.socket.terminate();
+      } catch (error) {
+        // Ignore errors during termination
+      }
+    }
+
+    // Clean up old timers
+    this.cleanup();
+
+    // Create new WebSocket connection
+    const newSocket = new WebSocket(this.url, (this.options as WebSocketOptions).protocols, {
+      perMessageDeflate: (this.options as WebSocketOptions).perMessageDeflate,
+      maxPayload: (this.options as WebSocketOptions).maxPayload,
+      handshakeTimeout: (this.options as WebSocketOptions).handshakeTimeout ?? this.options.connectTimeout,
+      headers: this.options.headers,
+    });
+
+    // Replace the old socket
+    this.socket = newSocket;
+
+    // Re-setup event handlers
+    this.setupEventHandlers();
+
+    // Restart keep-alive if enabled
+    if (this.options.keepAlive?.enabled) {
+      this.startKeepAlive();
+    }
+
+    // Wait for connection to establish
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        newSocket.terminate();
+        reject(NetronErrors.connectionTimeout('websocket', this.url!));
+      }, this.options.connectTimeout ?? 10000);
+
+      const onOpen = () => {
+        clearTimeout(timeout);
+        newSocket.removeListener('error', onError);
+        resolve();
+      };
+
+      const onError = (error: Error) => {
+        clearTimeout(timeout);
+        newSocket.removeListener('open', onOpen);
+        reject(error);
+      };
+
+      newSocket.once('open', onOpen);
+      newSocket.once('error', onError);
+    });
   }
 
   /**
@@ -359,8 +421,8 @@ export class WebSocketTransport extends BaseTransport {
         headers: options.headers,
       });
 
-      // Create connection immediately to set up event handlers
-      const connection = new WebSocketConnection(socket, options);
+      // Create connection with URL for reconnection support
+      const connection = new WebSocketConnection(socket, options, false, url);
 
       return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
@@ -386,7 +448,7 @@ export class WebSocketTransport extends BaseTransport {
       }
 
       const socket = new BrowserWebSocket(url, options.protocols) as unknown as WebSocket;
-      const connection = new WebSocketConnection(socket, options);
+      const connection = new WebSocketConnection(socket, options, false, url);
 
       return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {

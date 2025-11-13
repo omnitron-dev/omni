@@ -5,6 +5,7 @@
  */
 
 import { Injectable } from '../../decorators/index.js';
+import { z, type ZodSchema, type ZodError } from 'zod';
 
 import type { EventData, EventValidator, EventTransformer } from './event.types.js';
 import type { IEventValidationResult } from './types.js';
@@ -18,12 +19,33 @@ export interface ISchemaValidator {
 }
 
 /**
+ * JSON Schema type definition
+ */
+export interface JSONSchema {
+  type?: string | string[];
+  properties?: Record<string, JSONSchema>;
+  required?: string[];
+  items?: JSONSchema;
+  additionalProperties?: boolean | JSONSchema;
+  enum?: unknown[];
+  pattern?: string;
+  minLength?: number;
+  maxLength?: number;
+  minimum?: number;
+  maximum?: number;
+  minItems?: number;
+  maxItems?: number;
+  [key: string]: unknown;
+}
+
+/**
  * Service for validating event data
  */
 @Injectable()
 export class EventValidationService {
   private schemas: Map<string, ISchemaValidator> = new Map();
   private validators: Map<string, EventValidator> = new Map();
+  private transformers: Map<string, EventTransformer> = new Map();
   private initialized = false;
   private destroyed = false;
   private logger: ILogger | null = null;
@@ -46,9 +68,10 @@ export class EventValidationService {
     if (this.destroyed) return;
     this.destroyed = true;
 
-    // Clear all schemas and validators
+    // Clear all schemas, validators, and transformers
     this.schemas.clear();
     this.validators.clear();
+    this.transformers.clear();
 
     this.logger?.info('EventValidationService destroyed');
   }
@@ -64,6 +87,7 @@ export class EventValidationService {
         destroyed: this.destroyed,
         registeredSchemas: this.schemas.size,
         registeredValidators: this.validators.size,
+        registeredTransformers: this.transformers.size,
       },
     };
   }
@@ -144,6 +168,27 @@ export class EventValidationService {
    */
   registerValidator(event: string, validator: EventValidator): void {
     this.validators.set(event, validator);
+  }
+
+  /**
+   * Register a transformer function for an event
+   */
+  registerTransformer(event: string, transformer: EventTransformer): void {
+    this.transformers.set(event, transformer);
+  }
+
+  /**
+   * Check if event has a transformer
+   */
+  hasTransformer(event: string): boolean {
+    return this.transformers.has(event);
+  }
+
+  /**
+   * Remove transformer for an event
+   */
+  removeTransformer(event: string): void {
+    this.transformers.delete(event);
   }
 
   /**
@@ -267,46 +312,150 @@ export class EventValidationService {
   }
 
   /**
-   * Create a schema object
+   * Create a schema object from JSON Schema definition
+   * Converts JSON Schema to Zod schema for validation
    */
-  createSchema(definition: {
-    type?: string;
-    properties?: Record<string, unknown>;
-    required?: string[];
-    additionalProperties?: boolean;
-  }): ISchemaValidator {
-    // This would create a proper schema object
-    // For now, return a simple validator
+  createSchema(definition: JSONSchema): ISchemaValidator {
+    const zodSchema = this.jsonSchemaToZod(definition);
+
     return {
       validate: (data: EventData) => {
-        const errors: string[] = [];
-
-        // Check type
-        if (definition.type && typeof data !== definition.type) {
-          errors.push(`Expected type ${definition.type}, got ${typeof data}`);
-        }
-
-        // Check required properties
-        if (definition.required && typeof data === 'object') {
-          for (const prop of definition.required) {
-            if (!(prop in data)) {
-              errors.push(`Missing required property: ${prop}`);
-            }
+        try {
+          zodSchema.parse(data);
+          return { valid: true };
+        } catch (error) {
+          if (error instanceof z.ZodError) {
+            const issues = (error as any).issues || [];
+            const errors = issues.map((issue: any) => {
+              const path = issue.path?.join('.') || '';
+              return path ? `${path}: ${issue.message}` : issue.message;
+            });
+            return { valid: false, errors };
           }
+          return {
+            valid: false,
+            errors: [(error as Error).message]
+          };
         }
-
-        return {
-          valid: errors.length === 0,
-          errors: errors.length > 0 ? errors : undefined,
-        };
       },
     };
   }
 
   /**
+   * Convert JSON Schema to Zod schema
+   */
+  private jsonSchemaToZod(schema: JSONSchema): ZodSchema {
+    // Handle enum first
+    if (schema.enum && Array.isArray(schema.enum) && schema.enum.length > 0) {
+      // z.enum requires at least one value in Zod v4
+      const enumValues = schema.enum.map(String) as [string, ...string[]];
+      return z.enum(enumValues[0] as any, enumValues.slice(1) as any);
+    }
+
+    const type = Array.isArray(schema.type) ? schema.type[0] : schema.type;
+
+    let zodSchema: ZodSchema;
+
+    switch (type) {
+      case 'string': {
+        let stringSchema = z.string();
+        if (schema.minLength !== undefined) {
+          stringSchema = stringSchema.min(schema.minLength);
+        }
+        if (schema.maxLength !== undefined) {
+          stringSchema = stringSchema.max(schema.maxLength);
+        }
+        if (schema.pattern) {
+          stringSchema = stringSchema.regex(new RegExp(schema.pattern));
+        }
+        zodSchema = stringSchema;
+        break;
+      }
+
+      case 'number':
+      case 'integer': {
+        let numberSchema = type === 'integer' ? z.number().int() : z.number();
+        if (schema.minimum !== undefined) {
+          numberSchema = numberSchema.min(schema.minimum);
+        }
+        if (schema.maximum !== undefined) {
+          numberSchema = numberSchema.max(schema.maximum);
+        }
+        zodSchema = numberSchema;
+        break;
+      }
+
+      case 'boolean':
+        zodSchema = z.boolean();
+        break;
+
+      case 'null':
+        zodSchema = z.null();
+        break;
+
+      case 'array': {
+        let arraySchema: ZodSchema;
+        if (schema.items) {
+          const itemSchema = this.jsonSchemaToZod(schema.items);
+          arraySchema = z.array(itemSchema);
+        } else {
+          arraySchema = z.array(z.unknown());
+        }
+
+        if (schema.minItems !== undefined) {
+          arraySchema = (arraySchema as z.ZodArray<any>).min(schema.minItems);
+        }
+        if (schema.maxItems !== undefined) {
+          arraySchema = (arraySchema as z.ZodArray<any>).max(schema.maxItems);
+        }
+
+        zodSchema = arraySchema;
+        break;
+      }
+
+      case 'object':
+      default: {
+        if (schema.properties) {
+          const shape: Record<string, ZodSchema> = {};
+
+          for (const [key, propSchema] of Object.entries(schema.properties)) {
+            let propZodSchema = this.jsonSchemaToZod(propSchema as JSONSchema);
+
+            // Make optional if not in required array
+            if (!schema.required?.includes(key)) {
+              propZodSchema = propZodSchema.optional();
+            }
+
+            shape[key] = propZodSchema;
+          }
+
+          let objectSchema = z.object(shape);
+
+          // Handle additionalProperties
+          if (schema.additionalProperties === false) {
+            objectSchema = objectSchema.strict();
+          } else if (schema.additionalProperties === true || schema.additionalProperties === undefined) {
+            objectSchema = objectSchema.passthrough();
+          }
+
+          zodSchema = objectSchema;
+        } else {
+          // Generic object without specific properties
+          zodSchema = z.record(z.string(), z.unknown());
+        }
+        break;
+      }
+    }
+
+    return zodSchema;
+  }
+
+  /**
    * Create validator from schema
+   * Supports: ISchemaValidator, Zod schema, or JSON Schema
    */
   private createValidator(schema: unknown): ISchemaValidator {
+    // Already a validator
     if (
       schema &&
       typeof schema === 'object' &&
@@ -316,54 +465,35 @@ export class EventValidationService {
       return schema as ISchemaValidator;
     }
 
-    // Create a JSON schema validator
-    const schemaObj = schema as any;
-    return {
-      validate: (data: EventData) => {
-        const errors: string[] = [];
-
-        // Check type
-        if (schemaObj?.type) {
-          const expectedType = schemaObj.type;
-          const actualType = Array.isArray(data) ? 'array' : typeof data;
-
-          if (expectedType !== actualType) {
+    // Check if it's a Zod schema
+    if (schema && typeof schema === 'object' && '_def' in schema) {
+      const zodSchema = schema as ZodSchema;
+      return {
+        validate: (data: EventData) => {
+          try {
+            zodSchema.parse(data);
+            return { valid: true };
+          } catch (error) {
+            if (error instanceof z.ZodError) {
+              const issues = (error as any).issues || [];
+              const errors = issues.map((issue: any) => {
+                const path = issue.path?.join('.') || '';
+                return path ? `${path}: ${issue.message}` : issue.message;
+              });
+              return { valid: false, errors };
+            }
             return {
               valid: false,
-              errors: [`Expected type ${expectedType}, got ${actualType}`],
+              errors: [(error as Error).message]
             };
           }
-        }
+        },
+      };
+    }
 
-        // Check required fields
-        if (schemaObj?.required && Array.isArray(schemaObj.required) && typeof data === 'object') {
-          for (const field of schemaObj.required) {
-            if (!(field in data) || data[field] === undefined) {
-              errors.push(`Missing required property: ${field}`);
-            }
-          }
-        }
-
-        // Check properties
-        if (schemaObj?.properties && typeof data === 'object') {
-          for (const [prop, propSchema] of Object.entries(schemaObj.properties)) {
-            if (prop in data) {
-              const propType = (propSchema as any).type;
-              const actualType = Array.isArray(data[prop]) ? 'array' : typeof data[prop];
-
-              if (propType && actualType !== propType) {
-                errors.push(`Property '${prop}' should be ${propType}, got ${actualType}`);
-              }
-            }
-          }
-        }
-
-        return {
-          valid: errors.length === 0,
-          errors: errors.length > 0 ? errors : undefined,
-        };
-      },
-    };
+    // Assume it's a JSON Schema, convert to Zod
+    const jsonSchema = schema as JSONSchema;
+    return this.createSchema(jsonSchema);
   }
 
   /**
@@ -390,7 +520,8 @@ export class EventValidationService {
 
     // Simple wildcard matching
     if (pattern.includes('*')) {
-      const regex = new RegExp('^' + pattern.replace(/\*/g, '.*').replace(/\./g, '\\.') + '$');
+      // Escape dots first, then replace asterisks with .*
+      const regex = new RegExp('^' + pattern.replace(/\./g, '\\.').replace(/\*/g, '.*') + '$');
       return regex.test(event);
     }
 
@@ -399,10 +530,22 @@ export class EventValidationService {
 
   /**
    * Get transformer for an event
+   * Supports exact match and wildcard patterns
    */
   private getTransformer(event: string): EventTransformer | undefined {
-    // This would return a registered transformer
-    // For now, return undefined
+    // Check for exact match first
+    const exactTransformer = this.transformers.get(event);
+    if (exactTransformer) {
+      return exactTransformer;
+    }
+
+    // Check for wildcard matches
+    for (const [pattern, transformer] of this.transformers.entries()) {
+      if (this.matchesPattern(event, pattern)) {
+        return transformer;
+      }
+    }
+
     return undefined;
   }
 }

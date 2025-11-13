@@ -1,0 +1,189 @@
+{
+  "generated": "2025-11-13",
+  "overall_coverage": {
+    "lines": 6.67,
+    "statements": 6.59,
+    "functions": 4.30,
+    "branches": 4.89
+  },
+  "test_suite_status": {
+    "total_suites": 253,
+    "passed_suites": 185,
+    "failed_suites": 66,
+    "skipped_suites": 2,
+    "total_tests": 4485,
+    "passed_tests": 4064,
+    "failed_tests": 327,
+    "skipped_tests": 94
+  },
+  "critical_issues": [
+    "153 source files with 0% test coverage",
+    "66 test suites failing",
+    "Core modules severely undertested: modules/ (4.6%), netron/ (3.0%), rotif/ (0%)",
+    "667+ Redis-related async cleanup warnings"
+  ],
+  "modules_by_priority": [
+    {
+      "rank": 1,
+      "module": "modules/",
+      "coverage": 4.6,
+      "untested_files": 79,
+      "total_files": 122,
+      "total_loc": 12491,
+      "priority_score": 23830,
+      "priority": "CRITICAL"
+    },
+    {
+      "rank": 2,
+      "module": "netron/",
+      "coverage": 3.0,
+      "untested_files": 43,
+      "total_files": 64,
+      "total_loc": 5368,
+      "priority_score": 15627,
+      "priority": "CRITICAL"
+    },
+    {
+      "rank": 3,
+      "module": "rotif/",
+      "coverage": 0.0,
+      "untested_files": 7,
+      "total_files": 7,
+      "total_loc": 601,
+      "priority_score": 1803,
+      "priority": "CRITICAL"
+    },
+    {
+      "rank": 4,
+      "module": "nexus/",
+      "coverage": 11.0,
+      "untested_files": 4,
+      "total_files": 18,
+      "total_loc": 3771,
+      "priority_score": 10065,
+      "priority": "HIGH"
+    },
+    {
+      "rank": 5,
+      "module": "validation/",
+      "coverage": 0.0,
+      "untested_files": 3,
+      "total_files": 3,
+      "total_loc": 299,
+      "priority_score": 299,
+      "priority": "HIGH"
+    }
+  ],
+  "failing_tests_by_category": {
+    "database": 107,
+    "redis": 667,
+    "decorators": 46,
+    "integration": 44,
+    "module_resolution": 16,
+    "rotif": 3,
+    "netron": 12
+  },
+  "top_20_critical_files": [
+    {"file": "modules/pm/process-pool.ts", "lines": 337, "coverage": 0},
+    {"file": "netron/transport/http/server.ts", "lines": 462, "coverage": 0},
+    {"file": "rotif/rotif.ts", "lines": 398, "coverage": 0},
+    {"file": "netron/remote-peer.ts", "lines": 286, "coverage": 0},
+    {"file": "modules/discovery/discovery.service.ts", "lines": 258, "coverage": 0},
+    {"file": "modules/pm/enterprise/saga.ts", "lines": 209, "coverage": 0},
+    {"file": "modules/pm/enterprise/feature-flags.ts", "lines": 204, "coverage": 0},
+    {"file": "modules/notifications/workflow-engine.ts", "lines": 195, "coverage": 0},
+    {"file": "netron/transport/http/peer.ts", "lines": 194, "coverage": 0},
+    {"file": "netron/transport/websocket-transport.ts", "lines": 186, "coverage": 0},
+    {"file": "validation/validation-engine.ts", "lines": 182, "coverage": 0},
+    {"file": "modules/pm/process-spawner.ts", "lines": 147, "coverage": 0},
+    {"file": "modules/pm/process-workflow.ts", "lines": 153, "coverage": 0},
+    {"file": "modules/database/repository/base.repository.ts", "lines": 146, "coverage": 0},
+    {"file": "rotif/dlq-manager.ts", "lines": 122, "coverage": 0},
+    {"file": "modules/notifications/template-engine.ts", "lines": 118, "coverage": 0},
+    {"file": "errors/utils.ts", "lines": 110, "coverage": 0},
+    {"file": "modules/database/database.utils.ts", "lines": 112, "coverage": 0},
+    {"file": "modules/pm/worker-runtime.ts", "lines": 100, "coverage": 0},
+    {"file": "modules/pm/process-supervisor.ts", "lines": 116, "coverage": 0}
+  ],
+  "subagent_assignments": [
+    {
+      "id": "subagent-1",
+      "name": "Test Failure Remediation",
+      "tasks": [
+        "Fix 46 decorator import failures",
+        "Fix 16 module resolution issues",
+        "Fix 667 Redis async cleanup warnings",
+        "Document fixes"
+      ],
+      "priority": "P0"
+    },
+    {
+      "id": "subagent-2",
+      "name": "Rotif Testing",
+      "tasks": [
+        "Write tests for rotif.ts (398 LOC)",
+        "Write tests for dlq-manager.ts (122 LOC)",
+        "Fix 3 existing test failures"
+      ],
+      "target_coverage": 80,
+      "priority": "P1"
+    },
+    {
+      "id": "subagent-3",
+      "name": "Netron Transport Testing",
+      "tasks": [
+        "Test http/server.ts (462 LOC)",
+        "Test websocket-transport.ts (186 LOC)",
+        "Test remote-peer.ts (286 LOC)"
+      ],
+      "target_coverage": 75,
+      "priority": "P1"
+    },
+    {
+      "id": "subagent-4",
+      "name": "Validation Testing",
+      "tasks": [
+        "Test validation-engine.ts (182 LOC)",
+        "Test validation-middleware.ts (90 LOC)",
+        "Integration tests"
+      ],
+      "target_coverage": 80,
+      "priority": "P1"
+    },
+    {
+      "id": "subagent-5",
+      "name": "Database Module Repair",
+      "tasks": [
+        "Fix 107 database test failures",
+        "Migration system repair",
+        "PostgreSQL/MySQL integration",
+        "Add missing tests"
+      ],
+      "priority": "P0"
+    },
+    {
+      "id": "subagent-6",
+      "name": "Process Manager Testing",
+      "tasks": [
+        "Test process-pool.ts (337 LOC)",
+        "Test process-spawner.ts (147 LOC)",
+        "Test process-manager.ts (155 LOC)"
+      ],
+      "target_coverage": 70,
+      "priority": "P1"
+    }
+  ],
+  "coverage_targets": {
+    "current": 6.67,
+    "phase_1": 15,
+    "phase_2": 35,
+    "phase_3": 60,
+    "phase_4": 80
+  },
+  "files": {
+    "full_report": "/Users/taaliman/projects/luxquant/omnitron-dev/omni/packages/titan/TEST_COVERAGE_ANALYSIS.md",
+    "test_output": "/Users/taaliman/projects/luxquant/omnitron-dev/omni/packages/titan/full-test-run-2.log",
+    "coverage_summary": "/Users/taaliman/projects/luxquant/omnitron-dev/omni/packages/titan/coverage/coverage-summary.json",
+    "coverage_html": "/Users/taaliman/projects/luxquant/omnitron-dev/omni/packages/titan/coverage/index.html"
+  }
+}

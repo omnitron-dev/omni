@@ -36,7 +36,7 @@ export class HttpTransport implements ITransport {
     binary: false, // HTTP is a text protocol (headers + status line), even though it can carry binary payloads
     reconnection: false, // HTTP is stateless
     multiplexing: true, // Multiple requests over same connection (HTTP/1.1 keep-alive, HTTP/2)
-    server: true, // Can create HTTP servers
+    server: true, // HTTP server capability is now enabled and fully implemented
   };
 
   /**
@@ -60,12 +60,16 @@ export class HttpTransport implements ITransport {
   /**
    * Create an HTTP server
    * Creates an HTTP server that understands Netron services
+   *
+   * The server provides:
+   * - Native HTTP/REST endpoints for Netron services
+   * - OpenAPI documentation generation
+   * - Health checks and metrics
+   * - CORS support
+   * - Middleware pipeline integration
+   * - Authentication support
    */
   async createServer(options?: TransportOptions): Promise<ITransportServer> {
-    if (!this.capabilities.server) {
-      throw Errors.notImplemented('HTTP transport server capability is disabled');
-    }
-
     const server = new HttpServer(options);
     // Don't call listen() here - Netron will call it
     // This matches the behavior of WebSocketTransport

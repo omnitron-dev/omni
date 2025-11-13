@@ -29,7 +29,7 @@ import type {
 
 import { ProcessStatus } from './types.js';
 
-import { PROCESS_METADATA_KEY } from './decorators.js';
+import { PROCESS_METADATA_KEY, WORKFLOW_METADATA_KEY } from './decorators.js';
 import { ProcessPool } from './process-pool.js';
 // import { EnhancedProcessPool } from './process-pool-enhanced.js';
 import { ProcessSupervisor } from './process-supervisor.js';
@@ -236,16 +236,86 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
    * Create a workflow
    */
   async workflow<T>(WorkflowPathOrClass: string | (new () => T)): Promise<T> {
-    // For now, workflows must be classes, not file paths
+    let WorkflowClass: new () => T;
+
+    // Handle file path case
     if (typeof WorkflowPathOrClass === 'string') {
-      throw Errors.notImplemented(
-        'Workflow file paths are not yet supported. Please pass the workflow class directly.'
-      );
+      WorkflowClass = await this.loadWorkflowFromFile<T>(WorkflowPathOrClass);
+    } else {
+      WorkflowClass = WorkflowPathOrClass;
     }
 
-    const workflow = new ProcessWorkflow<T>(this, WorkflowPathOrClass, this.logger);
+    const workflow = new ProcessWorkflow<T>(this, WorkflowClass, this.logger);
 
     return workflow.create();
+  }
+
+  /**
+   * Load workflow class from a file path
+   */
+  private async loadWorkflowFromFile<T>(filePath: string): Promise<new () => T> {
+    try {
+      // Resolve the file path
+      const resolvedPath = path.resolve(filePath);
+
+      // Verify file exists
+      const fs = await import('fs/promises');
+      try {
+        await fs.access(resolvedPath);
+      } catch {
+        throw Errors.notFound('Workflow file', resolvedPath);
+      }
+
+      // Dynamic import the module
+      const module = await import(resolvedPath);
+
+      // Try to find the workflow class from the module
+      // Priority: default export, named export matching filename, first exported class
+      let WorkflowClass: new () => T;
+
+      if (module.default) {
+        // Prefer default export
+        WorkflowClass = module.default;
+      } else {
+        // Try to find a named export
+        const basename = path.basename(filePath, path.extname(filePath));
+        const pascalCaseName = basename
+          .split(/[-_]/)
+          .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+          .join('');
+
+        // Try exact match, PascalCase match, or first exported value
+        WorkflowClass =
+          module[basename] ||
+          module[pascalCaseName] ||
+          Object.values(module).find((exp) => typeof exp === 'function') as new () => T;
+
+        if (!WorkflowClass) {
+          throw Errors.badRequest(`No workflow class found in ${resolvedPath}`);
+        }
+      }
+
+      // Validate that it's a constructor
+      if (typeof WorkflowClass !== 'function') {
+        throw Errors.badRequest(`Workflow export is not a class constructor in ${resolvedPath}`);
+      }
+
+      // Check if it has workflow metadata
+      const metadata = Reflect.getMetadata(WORKFLOW_METADATA_KEY, WorkflowClass);
+      if (!metadata) {
+        throw Errors.badRequest(
+          `Class in ${resolvedPath} is not decorated with @Workflow(). ` +
+            'Please add the @Workflow() decorator to your workflow class.'
+        );
+      }
+
+      return WorkflowClass;
+    } catch (error: any) {
+      if (error.code === 'ERR_MODULE_NOT_FOUND' || error.code === 'MODULE_NOT_FOUND') {
+        throw Errors.notFound('Workflow module', filePath);
+      }
+      throw error;
+    }
   }
 
   /**

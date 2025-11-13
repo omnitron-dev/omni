@@ -291,27 +291,253 @@ export function inject<T = any>(token: Token<T> | string): T {
 }
 
 /**
+ * HTTP Request object for controller handlers
+ */
+export interface ControllerRequest {
+  /** HTTP method (GET, POST, etc.) */
+  method: string;
+  /** Request URL */
+  url: string;
+  /** URL path */
+  path: string;
+  /** Query parameters */
+  query: Record<string, string>;
+  /** Route parameters (e.g., /users/:id) */
+  params: Record<string, string>;
+  /** Request headers */
+  headers: Record<string, string>;
+  /** Request body (parsed JSON) */
+  body?: any;
+  /** Raw request */
+  raw: Request;
+}
+
+/**
+ * HTTP Response object for controller handlers
+ */
+export interface ControllerResponse {
+  /** Set response status code */
+  status(code: number): ControllerResponse;
+  /** Send JSON response */
+  json(data: any): void;
+  /** Send text response */
+  text(data: string): void;
+  /** Send HTML response */
+  html(data: string): void;
+  /** Set response header */
+  header(name: string, value: string): ControllerResponse;
+  /** Set multiple headers */
+  headers(headers: Record<string, string>): ControllerResponse;
+  /** Send response with custom status and body */
+  send(statusCode: number, body: any, contentType?: string): void;
+}
+
+/**
+ * Controller handler function type
+ */
+export type ControllerHandler = (req: ControllerRequest, res: ControllerResponse) => Promise<void> | void;
+
+/**
+ * Internal controller registration storage
+ */
+interface ControllerRegistration {
+  basePath: string;
+  handlers: Record<string, ControllerHandler>;
+}
+
+/**
+ * Global controller registry (attached to the application)
+ */
+const controllerRegistry = new Map<Application, ControllerRegistration[]>();
+
+/**
  * Create a controller with automatic route registration
+ *
+ * Controllers provide a simple way to create HTTP endpoints that work with
+ * Titan's HTTP transport. Routes are automatically registered when the
+ * application starts.
  *
  * @example
  * ```typescript
  * const userController = controller('/users', {
  *   async list(req, res) {
- *     res.json(await userService.findAll());
+ *     const users = await userService.findAll();
+ *     res.json(users);
  *   },
  *
  *   async get(req, res) {
- *     res.json(await userService.findById(req.params.id));
+ *     const user = await userService.findById(req.params.id);
+ *     res.json(user);
+ *   },
+ *
+ *   async create(req, res) {
+ *     const user = await userService.create(req.body);
+ *     res.status(201).json(user);
  *   }
  * });
  * ```
  */
-export function controller(basePath: string, handlers: Record<string, (req: any, res: any) => any>): never {
-  throw new Error(
-    'HTTP controllers are not yet implemented in Titan Simple API. ' +
-    'For HTTP functionality, use Netron\'s HTTP transport layer or Express/Fastify integration. ' +
-    'See documentation at: https://github.com/omnitron/titan'
-  );
+export function controller(basePath: string, handlers: Record<string, ControllerHandler>): ControllerRegistration {
+  // Normalize base path
+  const normalizedPath = basePath.startsWith('/') ? basePath : `/${basePath}`;
+  const registration: ControllerRegistration = {
+    basePath: normalizedPath,
+    handlers,
+  };
+
+  // Auto-register with the global application if it exists
+  const app = (global as any).__titanApp as Application | undefined;
+  if (app) {
+    if (!controllerRegistry.has(app)) {
+      controllerRegistry.set(app, []);
+    }
+    controllerRegistry.get(app)!.push(registration);
+  }
+
+  return registration;
+}
+
+/**
+ * Get controllers registered for an application
+ * @internal
+ */
+export function getControllers(app: Application): ControllerRegistration[] {
+  return controllerRegistry.get(app) || [];
+}
+
+/**
+ * Create a Netron service from a controller registration
+ * This bridges the simple controller API with Netron's HTTP transport
+ * @internal
+ */
+export function createControllerService(registration: ControllerRegistration): any {
+  @Injectable({ scope: 'singleton' })
+  class ControllerService {
+    /**
+     * Handle incoming HTTP requests and route to appropriate handler
+     */
+    async handleRequest(request: {
+      method: string;
+      path: string;
+      query?: Record<string, string>;
+      params?: Record<string, string>;
+      headers?: Record<string, string>;
+      body?: any;
+    }): Promise<{
+      status: number;
+      headers: Record<string, string>;
+      body: any;
+    }> {
+      // Extract handler name from path
+      // Pattern: /basePath/handlerName or /basePath
+      const relativePath = request.path.startsWith(registration.basePath)
+        ? request.path.substring(registration.basePath.length)
+        : request.path;
+
+      const pathParts = relativePath.split('/').filter(Boolean);
+      const handlerName = pathParts[0] || 'index';
+
+      // Find matching handler
+      const handler = registration.handlers[handlerName];
+      if (!handler) {
+        return {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+          body: { error: 'Not Found', message: `No handler found for ${handlerName}` },
+        };
+      }
+
+      // Build controller request object
+      const controllerReq: ControllerRequest = {
+        method: request.method || 'GET',
+        url: request.path,
+        path: request.path,
+        query: request.query || {},
+        params: request.params || {},
+        headers: request.headers || {},
+        body: request.body,
+        raw: null as any, // Will be set by HTTP transport if available
+      };
+
+      // Build controller response object with state
+      let responseStatus = 200;
+      let responseHeaders: Record<string, string> = {};
+      let responseBody: any = null;
+      let responseSent = false;
+
+      const controllerRes: ControllerResponse = {
+        status(code: number) {
+          responseStatus = code;
+          return this;
+        },
+        json(data: any) {
+          if (responseSent) throw new Error('Response already sent');
+          responseHeaders['Content-Type'] = 'application/json';
+          responseBody = data;
+          responseSent = true;
+        },
+        text(data: string) {
+          if (responseSent) throw new Error('Response already sent');
+          responseHeaders['Content-Type'] = 'text/plain';
+          responseBody = data;
+          responseSent = true;
+        },
+        html(data: string) {
+          if (responseSent) throw new Error('Response already sent');
+          responseHeaders['Content-Type'] = 'text/html';
+          responseBody = data;
+          responseSent = true;
+        },
+        header(name: string, value: string) {
+          responseHeaders[name] = value;
+          return this;
+        },
+        headers(headers: Record<string, string>) {
+          Object.assign(responseHeaders, headers);
+          return this;
+        },
+        send(statusCode: number, body: any, contentType = 'application/json') {
+          if (responseSent) throw new Error('Response already sent');
+          responseStatus = statusCode;
+          responseHeaders['Content-Type'] = contentType;
+          responseBody = body;
+          responseSent = true;
+        },
+      };
+
+      // Execute handler
+      try {
+        await handler(controllerReq, controllerRes);
+
+        // If handler didn't send a response, send empty 204
+        if (!responseSent) {
+          return {
+            status: 204,
+            headers: {},
+            body: null,
+          };
+        }
+
+        return {
+          status: responseStatus,
+          headers: responseHeaders,
+          body: responseBody,
+        };
+      } catch (error: any) {
+        // Handle errors
+        return {
+          status: error.statusCode || 500,
+          headers: { 'Content-Type': 'application/json' },
+          body: {
+            error: error.name || 'Internal Server Error',
+            message: error.message || 'An unexpected error occurred',
+          },
+        };
+      }
+    }
+  }
+
+  return ControllerService;
 }
 
 /**

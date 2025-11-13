@@ -605,6 +605,11 @@ export const Method =
     if (options?.audit) {
       Reflect.defineMetadata(METADATA_KEYS.METHOD_AUDIT, options.audit, target, propertyKey);
     }
+
+    // Store transports metadata (legacy support)
+    if (options?.transports) {
+      Reflect.defineMetadata('method:transports', options.transports, target, propertyKey);
+    }
   };
 
 /**

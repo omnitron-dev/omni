@@ -21,6 +21,9 @@ import type {
   ISelfHealAction,
 } from './types.js';
 
+// Re-export Method decorator from core for convenience
+export { Method } from '../../decorators/core.js';
+
 // ============================================================================
 // Metadata Keys
 // ============================================================================

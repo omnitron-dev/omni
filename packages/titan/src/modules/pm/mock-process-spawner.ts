@@ -89,9 +89,11 @@ export class MockWorker extends EventEmitter {
       const descriptor = Object.getOwnPropertyDescriptor(prototype, propertyName);
       if (!descriptor || typeof descriptor.value !== 'function') continue;
 
-      // Check if method is marked as public
-      const metadata = Reflect.getMetadata(PROCESS_METHOD_METADATA_KEY, prototype, propertyName);
-      if (metadata?.public) {
+      // Check if method is marked as public (supports both PM decorators and core @Method decorator)
+      const pmMetadata = Reflect.getMetadata(PROCESS_METHOD_METADATA_KEY, prototype, propertyName);
+      const corePublic = Reflect.getMetadata('public', prototype, propertyName);
+
+      if (pmMetadata?.public || corePublic) {
         this.publicMethods.set(propertyName, descriptor.value.bind(this.instance));
       }
     }

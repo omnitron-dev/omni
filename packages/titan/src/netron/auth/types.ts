@@ -346,6 +346,9 @@ export interface MethodOptions {
   /** Read-only property (for properties only) */
   readonly?: boolean;
 
+  /** Transport protocols (legacy support) */
+  transports?: string[];
+
   /** Authentication and authorization configuration */
   auth?:
     | boolean

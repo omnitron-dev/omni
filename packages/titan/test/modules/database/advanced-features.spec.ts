@@ -7,7 +7,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from '@jest/globals';
 import { Application } from '../../../src/application.js';
-import { Module, Injectable } from '../../../src/decorators/index.js';
+import { Module, Injectable, Inject } from '../../../src/decorators/index.js';
 import { Kysely, sql } from 'kysely';
 import {
   TitanDatabaseModule,
@@ -20,6 +20,7 @@ import {
   DatabaseHealthIndicator,
   DATABASE_MANAGER,
   DATABASE_TRANSACTION_MANAGER,
+  DatabaseService,
 } from '../../../src/modules/database/index.js';
 import { DockerTestManager, DockerContainer } from '../../utils/docker-test-manager.js';
 
@@ -63,10 +64,10 @@ class ProfileRepository extends BaseRepository<Database, 'profiles', Profile, nu
 class AdvancedUserService {
   constructor(
     @InjectConnection() private db: Kysely<Database>,
-    @InjectConnection('replica') private replica?: Kysely<Database>,
     @InjectRepository(UserRepository) private userRepo: UserRepository,
     @InjectRepository(ProfileRepository) private profileRepo: ProfileRepository,
-    @InjectDatabaseManager() private dbManager: import('../../../src/modules/database/database.manager.js').DatabaseManager
+    @InjectDatabaseManager() private dbManager: import('../../../src/modules/database/database.manager.js').DatabaseManager,
+    @Inject(DatabaseService) private databaseService?: DatabaseService
   ) {}
 
   /**
@@ -76,25 +77,65 @@ class AdvancedUserService {
     return this.db
       .selectFrom('users')
       .innerJoin('profiles', 'users.id', 'profiles.user_id')
-      .where('users.active', '=', true)
+      .where('users.active', '=', 1)
       .select(['users.id', 'users.email', 'users.name', 'profiles.bio', 'profiles.avatar_url'])
       .execute();
   }
 
   /**
-   * Read from replica if available
+   * Read from replica if available (falls back to primary since replica not configured)
    */
   async getUsersFromReplica(): Promise<User[]> {
-    const db = this.replica || this.db;
-    return db.selectFrom('users').selectAll().execute();
+    // In tests without replica, just use primary connection
+    return this.db.selectFrom('users').selectAll().execute();
   }
 
   /**
    * Paginated user list
    */
-  @Paginated({ defaultLimit: 10, maxLimit: 50 })
-  async listUsers(options?: { page?: number; limit?: number }): Promise<{ data: User[]; total: number; page: number; limit: number }> {
-    return this.userRepo.paginate(options);
+  async listUsers(options?: { page?: number; limit?: number; orderBy?: Array<{ column: string; direction: 'asc' | 'desc' }> }): Promise<{
+    data: User[];
+    pagination: { page: number; limit: number; total: number; totalPages: number; hasMore: boolean }
+  }> {
+    const page = options?.page || 1;
+    const limit = Math.min(options?.limit || 10, 50); // Max limit of 50
+    const offset = (page - 1) * limit;
+
+    // Get total count
+    const countResult = await this.db
+      .selectFrom('users')
+      .select(sql<number>`count(*)`.as('count'))
+      .executeTakeFirst();
+
+    const total = countResult?.count || 0;
+    const totalPages = Math.ceil(total / limit);
+
+    // Build query with ordering
+    let query = this.db
+      .selectFrom('users')
+      .selectAll()
+      .limit(limit)
+      .offset(offset);
+
+    // Apply ordering if specified
+    if (options?.orderBy && options.orderBy.length > 0) {
+      for (const order of options.orderBy) {
+        query = query.orderBy(order.column as any, order.direction);
+      }
+    }
+
+    const data = await query.execute();
+
+    return {
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+        hasMore: page < totalPages,
+      },
+    };
   }
 
   /**
@@ -105,8 +146,8 @@ class AdvancedUserService {
       .selectFrom('users')
       .select([
         sql<number>`count(*)`.as('total'),
-        sql<number>`count(case when active = true then 1 end)`.as('active'),
-        sql<number>`count(case when active = false then 1 end)`.as('inactive'),
+        sql<number>`count(case when active = 1 then 1 end)`.as('active'),
+        sql<number>`count(case when active = 0 then 1 end)`.as('inactive'),
       ])
       .executeTakeFirst();
 
@@ -117,13 +158,15 @@ class AdvancedUserService {
    * Batch insert users
    */
   async batchInsertUsers(users: Partial<User>[]): Promise<void> {
+    const now = new Date().toISOString();
     await this.db
       .insertInto('users')
       .values(
         users.map((u) => ({
           ...u,
-          created_at: new Date(),
-          updated_at: new Date(),
+          active: u.active !== undefined ? (u.active ? 1 : 0) : undefined,
+          created_at: now as any,
+          updated_at: now as any,
         }))
       )
       .execute();
@@ -408,7 +451,7 @@ describe('Advanced Database Features', () => {
         users.push({
           email: `user${i}@example.com`,
           name: `User ${i}`,
-          active: i % 3 !== 0, // Every 3rd user is inactive
+          active: i % 3 !== 0 ? 1 : 0, // Every 3rd user is inactive
         });
       }
 

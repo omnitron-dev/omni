@@ -84,16 +84,17 @@ class CreatePostsTable implements IMigration {
 })
 class AddUserProfileFields implements IMigration {
   async up(db: Kysely<any>): Promise<void> {
-    await db.schema
-      .alterTable('users')
-      .addColumn('bio', 'text')
-      .addColumn('avatar_url', 'varchar(500)')
-      .addColumn('is_active', 'boolean', (col) => col.defaultTo(true))
-      .execute();
+    // SQLite requires separate ALTER TABLE statements for each column
+    await db.schema.alterTable('users').addColumn('bio', 'text').execute();
+    await db.schema.alterTable('users').addColumn('avatar_url', 'varchar(500)').execute();
+    await db.schema.alterTable('users').addColumn('is_active', 'boolean', (col) => col.defaultTo(true)).execute();
   }
 
   async down(db: Kysely<any>): Promise<void> {
-    await db.schema.alterTable('users').dropColumn('bio').dropColumn('avatar_url').dropColumn('is_active').execute();
+    // SQLite requires separate ALTER TABLE statements for each column
+    await db.schema.alterTable('users').dropColumn('is_active').execute();
+    await db.schema.alterTable('users').dropColumn('avatar_url').execute();
+    await db.schema.alterTable('users').dropColumn('bio').execute();
   }
 }
 

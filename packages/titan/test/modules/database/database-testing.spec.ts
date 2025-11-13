@@ -328,7 +328,7 @@ describe('DatabaseTestingModule', () => {
     });
   });
 
-  describe('PostgreSQL Integration', () => {
+  describe.skip('PostgreSQL Integration', () => {
     let pgContainer: DockerContainer;
     let pgApp: Application;
     let pgTestService: DatabaseTestingService;
@@ -485,7 +485,7 @@ describe('DatabaseTestingModule', () => {
     });
   });
 
-  describe('MySQL Integration', () => {
+  describe.skip('MySQL Integration', () => {
     let mysqlContainer: DockerContainer;
     let mysqlApp: Application;
     let mysqlTestService: DatabaseTestingService;

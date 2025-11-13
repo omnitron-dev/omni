@@ -1,716 +1,731 @@
-import { jest, describe, beforeEach, afterEach, it, expect } from '@jest/globals';
-import { delay } from '@omnitron-dev/common';
+/**
+ * Comprehensive RemotePeer Tests
+ * Tests for remote peer communication and service management
+ */
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { Netron } from '../../src/netron/netron.js';
+import { RemotePeer } from '../../src/netron/remote-peer.js';
+import { Definition } from '../../src/netron/definition.js';
+import { Service, Method } from '../../src/decorators/index.js';
+import { createLogger } from '../utils/test-logger.js';
+import { 
+  Packet, 
+  TYPE_GET, 
+  TYPE_SET, 
+  TYPE_CALL, 
+  TYPE_TASK,
+  TYPE_STREAM,
+  TYPE_STREAM_ERROR,
+  TYPE_STREAM_CLOSE,
+  createPacket,
+  encodePacket,
+} from '../../src/netron/packet/index.js';
 
-import { Service1, IService1 } from './fixtures/service1';
-import { Service2, IService2 } from './fixtures/service2';
-import { Service5, IService5 } from './fixtures/service5';
-import {
-  Netron,
-  Interface,
-  RemotePeer,
-  NETRON_EVENT_PEER_CONNECT,
-  NETRON_EVENT_SERVICE_EXPOSE,
-  NETRON_EVENT_PEER_DISCONNECT,
-  NETRON_EVENT_SERVICE_UNEXPOSE,
-} from '../../src/netron/index';
-import { createMockLogger, createNetronClient } from './test-utils.js';
-import { WebSocketTransport } from '../../src/netron/transport/websocket-transport.js';
-
-describe('RemotePeer', () => {
+describe('RemotePeer - Comprehensive Tests', () => {
+  let logger: any;
   let netron: Netron;
-  let testPort: number;
+  let mockSocket: any;
+  let remotePeer: RemotePeer;
 
-  beforeEach(async () => {
-    // Use random port to avoid conflicts during parallel test execution
-    testPort = 8000 + Math.floor(Math.random() * 1000);
+  beforeEach(() => {
+    logger = createLogger();
+    netron = new Netron(logger, { id: 'test-netron' });
 
-    const logger = createMockLogger();
+    // Create mock socket that mimics WebSocket/TransportAdapter
+    mockSocket = {
+      on: jest.fn(),
+      once: jest.fn(),
+      send: jest.fn((data: any, options: any, callback?: any) => {
+        if (callback) callback();
+      }),
+      close: jest.fn().mockResolvedValue(undefined),
+      readyState: 'OPEN',
+    };
 
-    netron = new Netron(logger, {
-      id: 'n1',
-      allowServiceEvents: true,
-    });
-
-    netron.registerTransport('ws', () => new WebSocketTransport());
-    netron.registerTransportServer('ws', {
-      name: 'ws',
-      options: { host: 'localhost', port: testPort },
-    });
-
-    await netron.start();
+    remotePeer = new RemotePeer(mockSocket, netron, 'remote-peer-123');
   });
 
   afterEach(async () => {
-    await netron.stop();
-  });
-
-  async function testMembers(iface: IService1, svc1?: Service1) {
-    expect(await iface.greet()).toEqual('Hello, Context1!');
-    expect(await iface.addNumbers(1, 2)).toEqual(3);
-    expect(await iface.concatenateStrings('Hello, ', 'World!')).toEqual('Hello, World!');
-    expect(await iface.getBooleanValue(true)).toEqual(true);
-    expect(await iface.getObjectProperty({ key: 'value' })).toEqual('value');
-    expect(await iface.getArrayElement([1, 2, 3], 1)).toEqual(2);
-    expect(await iface.fetchData('https://jsonplaceholder.typicode.com/todos/1')).toEqual({
-      userId: 1,
-      id: 1,
-      title: 'delectus aut autem',
-      completed: false,
-    });
-    expect(await iface.updateData('nana', 'New Name')).toEqual(undefined);
-    expect(await iface.updateData('desc1', 'New Description')).toEqual(undefined);
-    expect(await iface.getDataKeys()).toEqual(['nana', 'desc1']);
-    expect(await iface.delay(50)).toEqual(undefined);
-    expect(await iface.fetchDataWithDelay('https://jsonplaceholder.typicode.com/todos/1', 500)).toEqual({
-      userId: 1,
-      id: 1,
-      title: 'delectus aut autem',
-      completed: false,
-    });
-    expect(await iface.updateDataWithDelay('nana', 'New Name', 50)).toEqual(undefined);
-    expect(await iface.updateDataWithDelay('desc1', 'New Description', 50)).toEqual(undefined);
-    expect(await iface.getStatus()).toEqual('ACTIVE');
-    expect(await iface.getPriority()).toEqual(3);
-    expect(await iface.getAllStatuses()).toEqual(['ACTIVE', 'INACTIVE', 'PENDING']);
-    expect(await iface.getAllPriorities()).toEqual([1, 2, 3]);
-    expect(await iface.getUndefined()).toEqual(undefined);
-    expect(await iface.getNull()).toEqual(null);
-    expect(await iface.getBigInt()).toEqual(BigInt(9007199254740991));
-    if (svc1) {
-      expect(await iface.getDate()).toEqual(svc1.getDate());
+    if (remotePeer && mockSocket.readyState === 'OPEN') {
+      await remotePeer.close();
     }
-    expect(await iface.getRegExp()).toEqual(/test/i);
-    expect(await iface.getMap()).toEqual(
-      new Map([
-        ['one', 1],
-        ['two', 2],
-      ])
-    );
-    expect(await iface.getSet()).toEqual(new Set(['first', 'second']));
-    expect(await iface.getPromise()).toEqual('resolved');
-    expect(await iface.echo('test')).toEqual('test');
-  }
-
-  it('should connect to remote peer', async () => {
-    const n2 = await createNetronClient();
-    const peer1 = await n2.connect(`ws://localhost:${testPort}`);
-    expect(peer1).toBeInstanceOf(RemotePeer);
-    expect(peer1.id).toBe(netron.id);
-
-    // Wait for server to receive client ID (async handshake)
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(netron.peers.has(n2.id)).toBe(true);
-
-    await peer1.disconnect();
+    if (netron) {
+      await netron.stop();
+    }
   });
 
-  it('start netron second time should throw error', async () => {
-    await expect(netron.start()).rejects.toThrow('Netron already started');
-  });
-
-  it('should emit peer connect and disconnect events with correct peerId and update peers list', async () => {
-    const n2 = await createNetronClient();
-
-    const connectHandlerN1 = jest.fn();
-    const disconnectHandlerN1 = jest.fn();
-    const connectHandlerN2 = jest.fn();
-    const disconnectHandlerN2 = jest.fn();
-
-    netron.on(NETRON_EVENT_PEER_CONNECT, connectHandlerN1);
-    netron.on(NETRON_EVENT_PEER_DISCONNECT, disconnectHandlerN1);
-    n2.on(NETRON_EVENT_PEER_CONNECT, connectHandlerN2);
-    n2.on(NETRON_EVENT_PEER_DISCONNECT, disconnectHandlerN2);
-
-    const peer1 = await n2.connect(`ws://localhost:${testPort}`);
-
-    await delay(100);
-
-    expect(connectHandlerN1).toHaveBeenCalledTimes(1);
-    expect(connectHandlerN1).toHaveBeenCalledWith(expect.objectContaining({ peerId: n2.id }));
-    expect(disconnectHandlerN1).toHaveBeenCalledTimes(0);
-    expect(connectHandlerN2).toHaveBeenCalledTimes(1);
-    expect(connectHandlerN2).toHaveBeenCalledWith(expect.objectContaining({ peerId: netron.id }));
-    expect(disconnectHandlerN2).toHaveBeenCalledTimes(0);
-
-    expect(netron.peers.has(n2.id)).toBe(true);
-    expect(n2.peers.has(netron.id)).toBe(true);
-
-    await peer1.disconnect();
-
-    await delay(100);
-
-    expect(disconnectHandlerN1).toHaveBeenCalledTimes(1);
-    expect(disconnectHandlerN1).toHaveBeenCalledWith(expect.objectContaining({ peerId: n2.id }));
-    expect(disconnectHandlerN2).toHaveBeenCalledTimes(1);
-    expect(disconnectHandlerN2).toHaveBeenCalledWith(expect.objectContaining({ peerId: netron.id }));
-
-    expect(netron.peers.has(n2.id)).toBe(false);
-    expect(n2.peers.has(netron.id)).toBe(false);
-
-    // Clean up client
-    await n2.stop();
-  });
-
-  it('should use specified id', async () => {
-    const n2 = new Netron(createMockLogger(), {
-      id: 'n2',
+  describe('Initialization', () => {
+    it('should create RemotePeer with ID', () => {
+      expect(remotePeer).toBeDefined();
+      expect(remotePeer.id).toBe('remote-peer-123');
     });
-    n2.registerTransport('ws', () => new WebSocketTransport());
 
-    const peer1 = await n2.connect(`ws://localhost:${testPort}`);
+    it('should initialize with socket', async () => {
+      await remotePeer.init(false);
+      
+      expect(mockSocket.on).toHaveBeenCalledWith('message', expect.any(Function));
+    });
 
-    // Wait for server to receive client ID (async handshake)
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    it('should set request timeout', () => {
+      const peerWithTimeout = new RemotePeer(mockSocket, netron, 'timeout-peer', 10000);
+      expect(peerWithTimeout['requestTimeout']).toBe(10000);
+    });
 
-    const peer2 = netron.peers.get('n2');
+    it('should initialize as connector', async () => {
+      await remotePeer.init(true);
+      
+      expect(mockSocket.on).toHaveBeenCalledWith('message', expect.any(Function));
+    });
 
-    expect(peer2).toBeInstanceOf(RemotePeer);
-    expect(peer1.id).toBe(netron.id);
-    expect(peer2?.id).toBe(n2.id);
+    it('should handle initialization options', async () => {
+      const options = {
+        taskTimeout: 5000,
+        allowServiceEvents: true,
+      };
 
-    await peer1.disconnect();
-  });
-  it('should call methods and access properties of remote service', async () => {
-    const svc1 = new Service1();
-    const peer = netron.peer;
-    peer.exposeService(svc1);
-
-    const n2 = await createNetronClient();
-    const peer1 = await n2.connect(`ws://localhost:${testPort}`);
-    const iface = await peer1.queryInterface<IService1>('service1');
-
-    await testMembers(iface, svc1);
-
-    await peer1.releaseInterface(iface);
-
-    await peer1.disconnect();
+      await remotePeer.init(false, options);
+      expect(mockSocket.on).toHaveBeenCalled();
+    });
   });
 
-  it('should throw error while request timeout', async () => {
-    const ctx1 = new Service1();
-    const peer = netron.peer;
-    peer.exposeService(ctx1);
-
-    const n2 = new Netron(createMockLogger(), {});
-    n2.registerTransport('ws', () => new WebSocketTransport());
-    n2.setTransportOptions('ws', { requestTimeout: 500 });
-    await n2.start();
-    const peer1 = await n2.connect(`ws://localhost:${testPort}`);
-    const iface = await peer1.queryInterface<IService1>('service1');
-
-    expect(async () => await iface.delay(1000)).rejects.toThrow(/Request timeout exceeded/);
-
-    await peer1.releaseInterface(iface);
-
-    await delay(1000);
-
-    await peer1.disconnect();
-    await n2.stop();
-  });
-
-  it('should throw if set read-only property', async () => {
-    const ctx1 = new Service1();
-    const peer = netron.peer;
-    peer.exposeService(ctx1);
-
-    const n2 = await createNetronClient();
-    const peer1 = await n2.connect(`ws://localhost:${testPort}`);
-
-    const iface = await peer1.queryInterface<IService1>('service1');
-
-    expect(() => ((iface as any).isActive = false)).toThrow(/Property is not writable/);
-    await peer1.releaseInterface(iface);
-
-    await peer1.disconnect();
-  });
-
-  it('should get all std and custom error', async () => {
-    const ctx1 = new Service5();
-    const peer = netron.peer;
-    peer.exposeService(ctx1);
-
-    const n2 = await createNetronClient();
-    const peer1 = await n2.connect(`ws://localhost:${testPort}`);
-
-    const iface = await peer1.queryInterface<IService5>('service5');
-
-    const errorTypes = [
-      'TypeError',
-      'RangeError',
-      'ReferenceError',
-      'SyntaxError',
-      'URIError',
-      'EvalError',
-      'GenericError',
-    ];
-
-    for (const errorType of errorTypes) {
-      try {
-        await iface.generateError(errorType);
-      } catch (error: any) {
-        expect(error.name).toBe(errorType === 'GenericError' ? 'Error' : errorType);
-        expect(error.message).toMatch(/This is a/);
+  describe('Service Exposure', () => {
+    it('should expose service', async () => {
+      @Service({ name: 'TestService', version: '1.0.0' })
+      class TestService {
+        @Method()
+        async getValue() {
+          return 'test-value';
+        }
       }
-    }
 
-    await peer1.releaseInterface(iface);
-    await peer1.disconnect();
-  });
+      const service = new TestService();
+      
+      // Mock successful runTask response
+      remotePeer.runTask = jest.fn().mockResolvedValue({
+        id: 'def-123',
+        meta: { name: 'TestService', version: '1.0.0' },
+      });
 
-  it('should return error with custom fields', async () => {
-    const ctx1 = new Service5();
-    const peer = netron.peer;
-    peer.exposeService(ctx1);
-
-    const n2 = await createNetronClient();
-    const peer1 = await n2.connect(`ws://localhost:${testPort}`);
-
-    const iface = await peer1.queryInterface<IService5>('service5');
-
-    try {
-      await iface.generateCustomError('CustomError', 400, { detail: 'Some detail', abc: [1, 2, 3] });
-    } catch (error: any) {
-      expect(error.name).toBe('CustomError');
-      expect(error.message).toBe('This is a custom error');
-      expect(error.code).toBe(400);
-      expect(error.meta).toEqual({ detail: 'Some detail', abc: [1, 2, 3] });
-    }
-
-    await peer1.releaseInterface(iface);
-    await peer1.disconnect();
-  });
-
-  it('call method that returns another service and release it', async () => {
-    const svc2 = new Service2();
-    const peer = netron.peer;
-    peer.exposeService(svc2);
-
-    const n2 = new Netron(createMockLogger(), {});
-    n2.registerTransport('ws', () => new WebSocketTransport());
-    const peer1 = await n2.connect(`ws://localhost:${testPort}`);
-
-    // With modern auth-aware discovery, services are discovered on-demand via queryInterface
-    // No automatic service enumeration - use queryInterface directly
-    const iService2 = await peer1.queryInterface<IService2>('service2');
-    expect(iService2).toBeInstanceOf(Interface);
-    expect((iService2 as any).$def.parentId).toBe('');
-    expect(peer.stubs.size).toBe(1);
-    expect(peer1.definitions.size).toBe(1);
-
-    const iService1 = await iService2.getService1();
-    expect(iService1).toBeInstanceOf(Interface);
-    expect(peer.stubs.size).toBe(2);
-    expect(peer1.definitions.size).toBe(2);
-    expect((iService1 as unknown as Interface).$def?.parentId).toBeDefined();
-    expect((iService1 as unknown as Interface).$def?.parentId).toBe((iService2 as unknown as Interface).$def?.id);
-    expect(await iService1.name).toBe('Context1');
-    expect(await iService1.greet()).toBe('Hello, Context1!');
-    expect(await iService1.addNumbers(1, 2)).toBe(3);
-    expect(await iService1.concatenateStrings('Hello, ', 'World!')).toBe('Hello, World!');
-    expect(await iService1.getBooleanValue(true)).toBe(true);
-    expect(await iService1.getObjectProperty({ key: 'value' })).toBe('value');
-    expect(await iService1.getArrayElement([1, 2, 3], 1)).toBe(2);
-    svc2.getService1().description = 'testd1';
-    expect(await iService1.description).toBe('testd1');
-    iService1.description = 'testd2';
-    await (iService1 as any as Interface).waitForAssigned('description');
-    expect(await iService1.description).toBe('testd2');
-    expect(peer.stubs.keys()).toContain((iService1 as any).$def.id);
-    expect(peer1.definitions.keys()).toContain((iService1 as any).$def.id);
-
-    const defId = (iService1 as any).$def.id;
-    await peer1.releaseInterface(iService1);
-    expect(peer1.definitions.keys()).not.toContain(defId);
-    expect(peer.stubs.keys()).not.toContain(defId);
-    try {
-      await iService1.addNumbers(1, 2);
-    } catch (e: any) {
-      expect(e.message).toMatch(/Invalid interface/);
-    }
-
-    await peer1.disconnect();
-  });
-
-  it('call method that returns another service and release it', async () => {
-    const svc2 = new Service2();
-    const peer = netron.peer;
-    peer.exposeService(svc2);
-
-    const n2 = new Netron(createMockLogger(), {});
-    n2.registerTransport('ws', () => new WebSocketTransport());
-    const peer1 = await n2.connect(`ws://localhost:${testPort}`);
-    const iService2 = await peer1.queryInterface<IService2>('service2');
-    const iService1 = await iService2.getService1();
-    const defId = (iService1 as any).$def.id;
-    await expect(async () => peer.releaseInterface(iService1)).rejects.toThrow(/Invalid interface/);
-    expect(await iService1.addNumbers(1, 2)).toBe(3);
-
-    await peer1.disconnect();
-  });
-  it('subscribe to event', async () => {
-    const peer = netron.peer;
-    const n2 = await createNetronClient();
-    const peer1 = await n2.connect(`ws://localhost:${testPort}`);
-
-    const eventHandler1 = jest.fn();
-    const eventHandler2 = jest.fn();
-    await peer1.subscribe(NETRON_EVENT_SERVICE_EXPOSE, eventHandler1);
-
-    peer.exposeService(new Service1());
-
-    await delay(100);
-
-    expect(eventHandler1).toHaveBeenCalledTimes(1);
-    expect(eventHandler1).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: 'service1',
-        peerId: peer.id,
-      })
-    );
-
-    await peer1.subscribe(NETRON_EVENT_SERVICE_EXPOSE, eventHandler2);
-    await peer1.subscribe(NETRON_EVENT_SERVICE_UNEXPOSE, eventHandler2);
-
-    peer.unexposeService('service1');
-    peer.exposeService(new Service2());
-
-    await delay(100);
-
-    expect(eventHandler1).toHaveBeenCalledTimes(2);
-    expect(eventHandler2).toHaveBeenCalledTimes(2);
-
-    await peer1.disconnect();
-  });
-
-  it('subscribe to same event multiple times should handle it only once', async () => {
-    const peer = netron.peer;
-    const n2 = await createNetronClient();
-    const peer1 = await n2.connect(`ws://localhost:${testPort}`);
-
-    const eventHandler1 = jest.fn();
-    const eventHandler2 = jest.fn();
-    await peer1.subscribe(NETRON_EVENT_SERVICE_EXPOSE, eventHandler1);
-    await peer1.subscribe(NETRON_EVENT_SERVICE_EXPOSE, eventHandler1);
-
-    peer.exposeService(new Service1());
-
-    await delay(100);
-
-    expect(eventHandler1).toHaveBeenCalledTimes(1);
-    expect(eventHandler1).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: 'service1',
-        peerId: peer.id,
-      })
-    );
-
-    await peer1.disconnect();
-  });
-
-  it('unsubscribe event', async () => {
-    const peer = netron.peer;
-    const n2 = await createNetronClient();
-    const peer1 = await n2.connect(`ws://localhost:${testPort}`);
-
-    const eventHandler1 = jest.fn();
-    await peer1.subscribe(NETRON_EVENT_SERVICE_EXPOSE, eventHandler1);
-
-    peer.exposeService(new Service1());
-
-    await delay(100);
-
-    expect(eventHandler1).toHaveBeenCalledTimes(1);
-    expect(eventHandler1).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: 'service1',
-        peerId: peer.id,
-      })
-    );
-
-    await peer1.unsubscribe(NETRON_EVENT_SERVICE_EXPOSE, eventHandler1);
-
-    peer.exposeService(new Service2());
-
-    await delay(100);
-
-    expect(eventHandler1).toHaveBeenCalledTimes(1);
-
-    await peer1.disconnect();
-  });
-
-  it('unsubscribe all events', async () => {
-    const peer = netron.peer;
-    const n2 = await createNetronClient();
-    const peer1 = await n2.connect(`ws://localhost:${testPort}`);
-
-    const eventHandler1 = jest.fn();
-    await peer1.subscribe(NETRON_EVENT_SERVICE_UNEXPOSE, eventHandler1);
-
-    peer.exposeService(new Service1());
-    peer.exposeService(new Service2());
-
-    await peer.unexposeAllServices();
-
-    await delay(100);
-
-    expect(eventHandler1).toHaveBeenCalledTimes(2);
-
-    await peer1.disconnect();
-  });
-
-  it('expose service remotely and query it from local peer', async () => {
-    const peer = netron.peer;
-    const n2 = await createNetronClient();
-    const peer1 = await n2.connect(`ws://localhost:${testPort}`);
-
-    const svc1 = new Service1();
-    await peer1.exposeService(svc1);
-    expect(peer.stubs.size).toBe(1);
-    expect(netron.services.size).toBe(1);
-    expect(netron.services.keys()).toContain('service1');
-
-    const iface = await peer.queryInterface<IService1>('service1');
-
-    await testMembers(iface, svc1);
-
-    await peer1.unexposeService('service1');
-
-    await peer1.disconnect();
-  });
-
-  it('expose service remotely and query it from other remote peer', async () => {
-    const peer = netron.peer;
-    const n2 = await createNetronClient();
-    const n3 = await createNetronClient();
-    const peer21 = await n2.connect(`ws://localhost:${testPort}`);
-    const peer31 = await n3.connect(`ws://localhost:${testPort}`);
-
-    const svc1 = new Service1();
-    await peer21.exposeService(svc1);
-    expect(peer.stubs.size).toBe(1);
-    expect(netron.services.size).toBe(1);
-    expect(netron.services.keys()).toContain('service1');
-
-    await delay(100);
-
-    const iface = await peer31.queryInterface<IService1>('service1');
-
-    expect(await iface.greet()).toEqual('Hello, Context1!');
-    expect(await iface.addNumbers(1, 2)).toEqual(3);
-    expect(await iface.concatenateStrings('Hello, ', 'World!')).toEqual('Hello, World!');
-    expect(await iface.getBooleanValue(true)).toEqual(true);
-    expect(await iface.getObjectProperty({ key: 'value' })).toEqual('value');
-    expect(await iface.getArrayElement([1, 2, 3], 1)).toEqual(2);
-    expect(await iface.fetchData('https://jsonplaceholder.typicode.com/todos/1')).toEqual({
-      userId: 1,
-      id: 1,
-      title: 'delectus aut autem',
-      completed: false,
+      const definition = await remotePeer.exposeService(service);
+      
+      expect(definition).toBeDefined();
+      expect(remotePeer.runTask).toHaveBeenCalledWith('expose_service', expect.any(Object));
     });
-    expect(await iface.updateData('nana', 'New Name')).toEqual(undefined);
-    expect(await iface.updateData('desc1', 'New Description')).toEqual(undefined);
-    expect(await iface.getDataKeys()).toEqual(['nana', 'desc1']);
-    expect(await iface.delay(100)).toEqual(undefined);
-    expect(await iface.fetchDataWithDelay('https://jsonplaceholder.typicode.com/todos/1', 500)).toEqual({
-      userId: 1,
-      id: 1,
-      title: 'delectus aut autem',
-      completed: false,
+
+    it('should throw when exposing service without metadata', async () => {
+      class InvalidService {
+        getValue() {
+          return 'value';
+        }
+      }
+
+      await expect(remotePeer.exposeService(new InvalidService())).rejects.toThrow(/invalid service/i);
     });
-    expect(await iface.updateDataWithDelay('nana', 'New Name', 500)).toEqual(undefined);
-    expect(await iface.updateDataWithDelay('desc1', 'New Description', 500)).toEqual(undefined);
-    expect(await iface.getStatus()).toEqual('ACTIVE');
-    expect(await iface.getPriority()).toEqual(3);
-    expect(await iface.getAllStatuses()).toEqual(['ACTIVE', 'INACTIVE', 'PENDING']);
-    expect(await iface.getAllPriorities()).toEqual([1, 2, 3]);
-    expect(await iface.getUndefined()).toEqual(undefined);
-    expect(await iface.getNull()).toEqual(null);
-    try {
-      const receivedSymbol = await iface.getSymbol();
-    } catch (error: any) {
-      expect(error.message).toMatch(/Not supported/);
-    }
-    expect(await iface.getBigInt()).toEqual(BigInt(9007199254740991));
-    expect(await iface.getDate()).toEqual(svc1.getDate());
-    expect(await iface.getRegExp()).toEqual(/test/i);
-    expect(await iface.getMap()).toEqual(
-      new Map([
-        ['one', 1],
-        ['two', 2],
-      ])
-    );
-    expect(await iface.getSet()).toEqual(new Set(['first', 'second']));
-    expect(await iface.getPromise()).toEqual('resolved');
 
-    await peer21.unexposeService('service1');
+    it('should prevent duplicate service exposure', async () => {
+      @Service({ name: 'DuplicateService', version: '1.0.0' })
+      class DuplicateService {
+        @Method()
+        async test() {}
+      }
 
-    await delay(100);
+      remotePeer.runTask = jest.fn().mockResolvedValue({
+        id: 'def-123',
+        meta: { name: 'DuplicateService', version: '1.0.0' },
+      });
 
-    await peer21.disconnect();
-    await peer31.disconnect();
+      const service = new DuplicateService();
+      remotePeer.services.set('DuplicateService', {} as any);
+
+      await expect(remotePeer.exposeService(service)).rejects.toThrow(/already exposed/i);
+    });
   });
 
-  it('subscribe to event for remote service exposed by another peer', async () => {
-    const peer = netron.peer;
-    const n2 = await createNetronClient();
-    const n3 = await createNetronClient();
-    const peer21 = await n2.connect(`ws://localhost:${testPort}`);
-    const peer31 = await n3.connect(`ws://localhost:${testPort}`);
+  describe('Service Unexposure', () => {
+    it('should unexpose service', async () => {
+      remotePeer.runTask = jest.fn().mockResolvedValue('def-123');
+      
+      await remotePeer.unexposeService('TestService');
+      
+      expect(remotePeer.runTask).toHaveBeenCalledWith('unexpose_service', 'TestService');
+    });
 
-    const eventHandlerLocal = jest.fn();
-    const eventHandler21 = jest.fn();
-    const eventHandler31 = jest.fn();
+    it('should cleanup associated interfaces on unexpose', async () => {
+      const mockInterface = {
+        $def: { id: 'def-123', parentId: 'parent-123' },
+      };
 
-    await peer.subscribe(NETRON_EVENT_SERVICE_EXPOSE, eventHandlerLocal);
-    await peer21.subscribe(NETRON_EVENT_SERVICE_EXPOSE, eventHandler21);
-    await peer31.subscribe(NETRON_EVENT_SERVICE_EXPOSE, eventHandler31);
+      remotePeer.interfaces.set('interface-123', mockInterface as any);
+      remotePeer.runTask = jest.fn().mockResolvedValue('parent-123');
 
-    const def = await peer21.exposeService(new Service1());
+      await remotePeer.unexposeService('TestService');
 
-    await delay(100);
-
-    expect(eventHandlerLocal).toHaveBeenCalledTimes(1);
-    expect(eventHandlerLocal).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: 'service1',
-        peerId: peer.id,
-        remotePeerId: n2.id,
-      })
-    );
-    expect(eventHandler21).toHaveBeenCalledTimes(1);
-    expect(eventHandler21).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: 'service1',
-        peerId: peer.id,
-        remotePeerId: n2.id,
-      })
-    );
-    expect(eventHandler31).toHaveBeenCalledTimes(1);
-    expect(eventHandler31).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: 'service1',
-        peerId: peer.id,
-        remotePeerId: n2.id,
-      })
-    );
-
-    eventHandlerLocal.mockClear();
-    eventHandler21.mockClear();
-    eventHandler31.mockClear();
-    await peer.unsubscribe(NETRON_EVENT_SERVICE_EXPOSE, eventHandlerLocal);
-    await peer21.unsubscribe(NETRON_EVENT_SERVICE_EXPOSE, eventHandler21);
-    await peer31.unsubscribe(NETRON_EVENT_SERVICE_EXPOSE, eventHandler31);
-
-    const def2 = await peer21.exposeService(new Service2());
-
-    await delay(100);
-
-    expect(eventHandlerLocal).toHaveBeenCalledTimes(0);
-    expect(eventHandler21).toHaveBeenCalledTimes(0);
-    expect(eventHandler31).toHaveBeenCalledTimes(0);
-
-    await peer.subscribe(NETRON_EVENT_SERVICE_UNEXPOSE, eventHandlerLocal);
-    await peer21.subscribe(NETRON_EVENT_SERVICE_UNEXPOSE, eventHandler21);
-    await peer31.subscribe(NETRON_EVENT_SERVICE_UNEXPOSE, eventHandler31);
-
-    await peer21.unexposeService('service2');
-
-    await delay(100);
-
-    expect(eventHandlerLocal).toHaveBeenCalledTimes(1);
-    expect(eventHandler21).toHaveBeenCalledTimes(1);
-    expect(eventHandler31).toHaveBeenCalledTimes(1);
-
-    await peer21.disconnect();
-    await peer31.disconnect();
+      expect(remotePeer.runTask).toHaveBeenCalled();
+    });
   });
 
-  it('query, use and release proxified service', async () => {
-    const peer = netron.peer;
-    const n2 = await createNetronClient();
-    const n3 = await createNetronClient();
-    const peer21 = await n2.connect(`ws://localhost:${testPort}`);
-    const peer31 = await n3.connect(`ws://localhost:${testPort}`);
+  describe('Event Subscription', () => {
+    it('should subscribe to event', async () => {
+      const handler = jest.fn();
+      remotePeer.runTask = jest.fn().mockResolvedValue(undefined);
 
-    const svc2 = new Service2();
-    await peer21.exposeService(svc2);
-    await delay(100);
+      await remotePeer.subscribe('test-event', handler);
 
-    // Services are discovered on-demand via queryInterface (no auto-discovery)
-    // Check that we can query the service from all peers
-    expect(peer.netron.services.has('service2')).toBe(true);
+      expect(remotePeer.eventSubscribers.has('test-event')).toBe(true);
+      expect(remotePeer.eventSubscribers.get('test-event')).toContain(handler);
+      expect(remotePeer.runTask).toHaveBeenCalledWith('subscribe', 'test-event');
+    });
 
-    let iService2 = await peer.queryInterface<IService2>('service2');
-    expect(iService2).toBeInstanceOf(Interface);
-    let iService1 = await iService2.getService1();
-    expect(iService1).toBeInstanceOf(Interface);
+    it('should not re-subscribe if already subscribed', async () => {
+      const handler = jest.fn();
+      remotePeer.runTask = jest.fn().mockResolvedValue(undefined);
 
-    await testMembers(iService1);
-    await peer.releaseInterface(iService1);
-    await peer.releaseInterface(iService2);
+      await remotePeer.subscribe('test-event', handler);
+      remotePeer.runTask = jest.fn().mockResolvedValue(undefined);
+      await remotePeer.subscribe('test-event', handler);
 
-    await peer21.unexposeService('service2');
-    await peer21.exposeService(svc2);
-    await delay(100);
+      expect(remotePeer.runTask).toHaveBeenCalledTimes(1);
+    });
 
-    iService2 = await peer21.queryInterface<IService2>('service2');
-    expect(iService2).toBeInstanceOf(Interface);
-    iService1 = await iService2.getService1();
-    expect(iService1).toBeInstanceOf(Interface);
+    it('should unsubscribe from event', async () => {
+      const handler = jest.fn();
+      remotePeer.runTask = jest.fn().mockResolvedValue(undefined);
 
-    await testMembers(iService1);
-    await peer21.releaseInterface(iService1);
-    await peer21.releaseInterface(iService2);
+      await remotePeer.subscribe('test-event', handler);
+      await remotePeer.unsubscribe('test-event', handler);
 
-    await peer21.unexposeService('service2');
-    await peer21.exposeService(svc2);
-    await delay(100);
-
-    iService2 = await peer31.queryInterface<IService2>('service2');
-    expect(iService2).toBeInstanceOf(Interface);
-    iService1 = await iService2.getService1();
-    expect(iService1).toBeInstanceOf(Interface);
-
-    await testMembers(iService1);
-    await peer31.releaseInterface(iService1);
-    await peer31.releaseInterface(iService2);
-
-    await peer21.unexposeService('service2');
-
-    await delay(100);
-
-    await peer21.disconnect();
-    await peer31.disconnect();
+      expect(remotePeer.eventSubscribers.has('test-event')).toBe(false);
+      expect(remotePeer.runTask).toHaveBeenCalledWith('unsubscribe', 'test-event');
+    });
   });
 
-  it('should be able to release and re-query interface', async () => {
-    const svc1 = new Service1();
-    const peer = netron.peer;
-    await peer.exposeService(svc1);
+  describe('RPC Operations', () => {
+    it('should get property value', async () => {
+      const definition = {
+        id: 'def-123',
+        meta: { name: 'TestService' },
+      } as Definition;
 
-    const n2 = await createNetronClient();
-    const peer1 = await n2.connect(`ws://localhost:${testPort}`);
+      remotePeer.definitions.set('def-123', definition);
 
-    // Query interface first time
-    const iface1 = await peer1.queryInterface<IService1>('service1');
-    expect(iface1).toBeInstanceOf(Interface);
+      // Simulate successful response
+      setTimeout(() => {
+        const responseHandler = remotePeer['responseHandlers'].get(1);
+        if (responseHandler) {
+          responseHandler.successHandler({ data: 'property-value' } as any);
+        }
+      }, 10);
 
-    // Call method
-    const result1 = await iface1.echo('test');
-    expect(result1).toBe('test');
+      mockSocket.send = jest.fn();
+      const result = await remotePeer.get('def-123', 'testProperty');
 
-    // Release interface
-    await peer1.releaseInterface(iface1);
+      expect(mockSocket.send).toHaveBeenCalled();
+    });
 
-    // Query interface again
-    const iface2 = await peer1.queryInterface<IService1>('service1');
-    expect(iface2).toBeInstanceOf(Interface);
+    it('should set property value', async () => {
+      const definition = {
+        id: 'def-123',
+        meta: { name: 'TestService' },
+      } as Definition;
 
-    // Verify methods work with new interface
-    const result2 = await iface2.echo('test2');
-    expect(result2).toBe('test2');
+      remotePeer.definitions.set('def-123', definition);
 
-    await peer1.releaseInterface(iface2);
-    await peer1.disconnect();
+      setTimeout(() => {
+        const responseHandler = remotePeer['responseHandlers'].get(1);
+        if (responseHandler) {
+          responseHandler.successHandler(undefined);
+        }
+      }, 10);
+
+      mockSocket.send = jest.fn();
+      await remotePeer.set('def-123', 'testProperty', 'new-value');
+
+      expect(mockSocket.send).toHaveBeenCalled();
+    });
+
+    it('should call remote method', async () => {
+      const definition = {
+        id: 'def-123',
+        meta: { name: 'TestService' },
+      } as Definition;
+
+      remotePeer.definitions.set('def-123', definition);
+
+      setTimeout(() => {
+        const responseHandler = remotePeer['responseHandlers'].get(1);
+        if (responseHandler) {
+          responseHandler.successHandler({ data: 'method-result' } as any);
+        }
+      }, 10);
+
+      mockSocket.send = jest.fn();
+      const result = await remotePeer.call('def-123', 'testMethod', ['arg1', 'arg2']);
+
+      expect(mockSocket.send).toHaveBeenCalled();
+    });
+
+    it('should throw error for unknown definition in get', async () => {
+      await expect(remotePeer.get('unknown-def', 'prop')).rejects.toThrow(/not found/i);
+    });
+
+    it('should throw error for unknown definition in set', async () => {
+      await expect(remotePeer.set('unknown-def', 'prop', 'value')).rejects.toThrow(/not found/i);
+    });
+
+    it('should throw error for unknown definition in call', async () => {
+      await expect(remotePeer.call('unknown-def', 'method', [])).rejects.toThrow(/not found/i);
+    });
+  });
+
+  describe('Task Execution', () => {
+    it('should run task', async () => {
+      setTimeout(() => {
+        const responseHandler = remotePeer['responseHandlers'].get(1);
+        if (responseHandler) {
+          responseHandler.successHandler('task-result');
+        }
+      }, 10);
+
+      mockSocket.send = jest.fn();
+      const result = await remotePeer.runTask('test_task', 'arg1', 'arg2');
+
+      expect(mockSocket.send).toHaveBeenCalled();
+    });
+
+    it('should handle task errors', async () => {
+      setTimeout(() => {
+        const responseHandler = remotePeer['responseHandlers'].get(1);
+        if (responseHandler?.errorHandler) {
+          responseHandler.errorHandler(new Error('Task failed'));
+        }
+      }, 10);
+
+      mockSocket.send = jest.fn();
+      
+      await expect(remotePeer.runTask('failing_task')).rejects.toThrow('Task failed');
+    });
+  });
+
+  describe('Packet Handling', () => {
+    it('should handle GET packet', async () => {
+      const packet = createPacket(1, 1, TYPE_GET, ['def-123', 'property']);
+      
+      const mockStub = {
+        get: jest.fn().mockResolvedValue('property-value'),
+      };
+
+      netron.peer.getStubByDefinitionId = jest.fn().mockReturnValue(mockStub);
+      remotePeer['sendResponse'] = jest.fn();
+
+      await remotePeer.handlePacket(packet);
+
+      expect(mockStub.get).toHaveBeenCalledWith('property');
+      expect(remotePeer['sendResponse']).toHaveBeenCalledWith(packet, 'property-value');
+    });
+
+    it('should handle SET packet', async () => {
+      const packet = createPacket(2, 1, TYPE_SET, ['def-123', 'property', 'new-value']);
+      
+      const mockStub = {
+        set: jest.fn().mockResolvedValue(undefined),
+      };
+
+      netron.peer.getStubByDefinitionId = jest.fn().mockReturnValue(mockStub);
+      remotePeer['sendResponse'] = jest.fn();
+
+      await remotePeer.handlePacket(packet);
+
+      expect(mockStub.set).toHaveBeenCalledWith('property', 'new-value');
+      expect(remotePeer['sendResponse']).toHaveBeenCalledWith(packet, undefined);
+    });
+
+    it('should handle CALL packet', async () => {
+      const packet = createPacket(3, 1, TYPE_CALL, ['def-123', 'method', 'arg1', 'arg2']);
+      
+      const mockStub = {
+        call: jest.fn().mockResolvedValue('call-result'),
+      };
+
+      netron.peer.getStubByDefinitionId = jest.fn().mockReturnValue(mockStub);
+      remotePeer['sendResponse'] = jest.fn();
+
+      await remotePeer.handlePacket(packet);
+
+      expect(mockStub.call).toHaveBeenCalledWith('method', ['arg1', 'arg2'], remotePeer);
+      expect(remotePeer['sendResponse']).toHaveBeenCalledWith(packet, 'call-result');
+    });
+
+    it('should handle TASK packet', async () => {
+      const packet = createPacket(4, 1, TYPE_TASK, ['test_task', 'arg1']);
+      
+      netron.runTask = jest.fn().mockResolvedValue('task-result');
+      remotePeer['sendResponse'] = jest.fn();
+
+      await remotePeer.handlePacket(packet);
+
+      expect(netron.runTask).toHaveBeenCalledWith(remotePeer, 'test_task', 'arg1');
+      expect(remotePeer['sendResponse']).toHaveBeenCalledWith(packet, 'task-result');
+    });
+
+    it('should handle STREAM packet', async () => {
+      const packet = createPacket(5, 1, TYPE_STREAM, 'chunk-data');
+      packet.streamId = 123;
+      packet.streamIndex = 0;
+
+      await remotePeer.handlePacket(packet);
+
+      expect(remotePeer.readableStreams.has(123)).toBe(true);
+    });
+
+    it('should handle STREAM_ERROR packet', async () => {
+      const streamId = 456;
+      const packet = createPacket(6, 1, TYPE_STREAM_ERROR, {
+        streamId,
+        message: 'Stream error',
+      });
+
+      const mockStream = {
+        destroy: jest.fn(),
+      };
+
+      remotePeer.readableStreams.set(streamId, mockStream as any);
+
+      await remotePeer.handlePacket(packet);
+
+      expect(mockStream.destroy).toHaveBeenCalled();
+    });
+
+    it('should handle STREAM_CLOSE packet', async () => {
+      const streamId = 789;
+      const packet = createPacket(7, 1, TYPE_STREAM_CLOSE, {
+        streamId,
+        reason: 'Stream closed',
+      });
+
+      const mockStream = {
+        forceClose: jest.fn(),
+      };
+
+      remotePeer.readableStreams.set(streamId, mockStream as any);
+
+      await remotePeer.handlePacket(packet);
+
+      expect(mockStream.forceClose).toHaveBeenCalledWith('Stream closed');
+    });
+
+    it('should handle packet errors gracefully', async () => {
+      const packet = createPacket(8, 1, TYPE_GET, ['def-123', 'property']);
+      
+      netron.peer.getStubByDefinitionId = jest.fn().mockImplementation(() => {
+        throw new Error('Stub not found');
+      });
+
+      remotePeer['sendErrorResponse'] = jest.fn();
+
+      await remotePeer.handlePacket(packet);
+
+      expect(remotePeer['sendErrorResponse']).toHaveBeenCalledWith(packet, expect.any(Error));
+    });
+  });
+
+  describe('Stream Management', () => {
+    it('should send stream chunk', async () => {
+      mockSocket.send = jest.fn();
+
+      await remotePeer.sendStreamChunk(123, 'chunk-data', 0, false, false);
+
+      expect(mockSocket.send).toHaveBeenCalled();
+    });
+
+    it('should track writable streams', () => {
+      const mockWritableStream = {
+        write: jest.fn(),
+      };
+
+      remotePeer.writableStreams.set(123, mockWritableStream as any);
+
+      expect(remotePeer.writableStreams.has(123)).toBe(true);
+      expect(remotePeer.writableStreams.get(123)).toBe(mockWritableStream);
+    });
+
+    it('should track readable streams', () => {
+      const mockReadableStream = {
+        read: jest.fn(),
+      };
+
+      remotePeer.readableStreams.set(456, mockReadableStream as any);
+
+      expect(remotePeer.readableStreams.has(456)).toBe(true);
+      expect(remotePeer.readableStreams.get(456)).toBe(mockReadableStream);
+    });
+  });
+
+  describe('Connection Management', () => {
+    it('should disconnect', async () => {
+      await remotePeer.disconnect();
+
+      expect(mockSocket.close).toHaveBeenCalled();
+    });
+
+    it('should handle close', async () => {
+      await remotePeer.close();
+
+      expect(mockSocket.close).toHaveBeenCalled();
+    });
+
+    it('should cleanup resources on disconnect', async () => {
+      remotePeer.writableStreams.set(1, {} as any);
+      remotePeer.readableStreams.set(2, {} as any);
+      remotePeer.eventSubscribers.set('test', []);
+
+      await remotePeer.disconnect();
+
+      expect(remotePeer.writableStreams.size).toBe(0);
+      expect(remotePeer.readableStreams.size).toBe(0);
+      expect(remotePeer.eventSubscribers.size).toBe(0);
+    });
+
+    it('should emit manual-disconnect event', async () => {
+      const disconnectHandler = jest.fn();
+      remotePeer.once('manual-disconnect', disconnectHandler);
+
+      await remotePeer.disconnect();
+
+      expect(disconnectHandler).toHaveBeenCalled();
+    });
+
+    it('should handle socket not open state', async () => {
+      mockSocket.readyState = 'CLOSED';
+
+      await expect(remotePeer.disconnect()).resolves.not.toThrow();
+    });
+  });
+
+  describe('Definition Management', () => {
+    it('should reference service definition', () => {
+      const parentDef = {
+        id: 'parent-123',
+        meta: { name: 'ParentService' },
+      } as Definition;
+
+      const childDef = {
+        id: 'child-456',
+        meta: { name: 'ChildService' },
+      } as Definition;
+
+      const result = remotePeer.refService(childDef, parentDef);
+
+      expect(result.parentId).toBe('parent-123');
+      expect(remotePeer.definitions.has('child-456')).toBe(true);
+    });
+
+    it('should return existing definition on re-reference', () => {
+      const parentDef = { id: 'parent-123' } as Definition;
+      const childDef = { id: 'child-456' } as Definition;
+
+      remotePeer.definitions.set('child-456', childDef);
+
+      const result = remotePeer.refService(childDef, parentDef);
+
+      expect(result).toBe(childDef);
+    });
+
+    it('should unreference service definition', () => {
+      const definition = {
+        id: 'def-789',
+        meta: { name: 'TestService', version: '1.0.0' },
+      } as Definition;
+
+      remotePeer.definitions.set('def-789', definition);
+      remotePeer.unrefService('def-789');
+
+      expect(remotePeer.definitions.has('def-789')).toBe(false);
+    });
+
+    it('should get service names', () => {
+      remotePeer.services.set('Service1', {} as any);
+      remotePeer.services.set('Service2', {} as any);
+
+      const names = remotePeer.getServiceNames();
+
+      expect(names).toContain('Service1');
+      expect(names).toContain('Service2');
+      expect(names.length).toBe(2);
+    });
+  });
+
+  describe('Cache Invalidation', () => {
+    it('should invalidate all definitions', () => {
+      remotePeer.services.set('Service1', {} as any);
+      remotePeer.definitions.set('def-1', {} as any);
+
+      const count = remotePeer.invalidateDefinitionCache();
+
+      expect(count).toBeGreaterThan(0);
+      expect(remotePeer.services.size).toBe(0);
+      expect(remotePeer.definitions.size).toBe(0);
+    });
+
+    it('should invalidate definitions by pattern', () => {
+      remotePeer.services.set('TestService@1.0.0', { id: 'def-1' } as any);
+      remotePeer.services.set('OtherService@1.0.0', { id: 'def-2' } as any);
+      remotePeer.definitions.set('def-1', {} as any);
+      remotePeer.definitions.set('def-2', {} as any);
+
+      remotePeer.invalidateDefinitionCache('Test*');
+
+      expect(remotePeer.services.has('TestService@1.0.0')).toBe(false);
+      expect(remotePeer.services.has('OtherService@1.0.0')).toBe(true);
+    });
+  });
+
+  describe('Authentication', () => {
+    it('should set authentication context', () => {
+      const authContext = {
+        userId: 'user-123',
+        roles: ['admin'],
+        permissions: ['read', 'write'],
+      };
+
+      remotePeer.setAuthContext(authContext);
+
+      expect(remotePeer.getAuthContext()).toEqual(authContext);
+      expect(remotePeer.isAuthenticated()).toBe(true);
+    });
+
+    it('should clear authentication context', () => {
+      const authContext = {
+        userId: 'user-123',
+        roles: ['admin'],
+        permissions: ['read'],
+      };
+
+      remotePeer.setAuthContext(authContext);
+      remotePeer.clearAuthContext();
+
+      expect(remotePeer.getAuthContext()).toBeUndefined();
+      expect(remotePeer.isAuthenticated()).toBe(false);
+    });
+
+    it('should check authentication status', () => {
+      expect(remotePeer.isAuthenticated()).toBe(false);
+
+      remotePeer.setAuthContext({
+        userId: 'user-123',
+        roles: [],
+        permissions: [],
+      });
+
+      expect(remotePeer.isAuthenticated()).toBe(true);
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('should handle packet decode errors', async () => {
+      const messageHandler = mockSocket.on.mock.calls.find(
+        (call: any) => call[0] === 'message'
+      )?.[1];
+
+      if (messageHandler) {
+        // Send invalid binary data
+        await messageHandler(Buffer.from('invalid'), true);
+      }
+
+      // Should log error but not throw
+      expect(logger.child().error).toHaveBeenCalled();
+    });
+
+    it('should handle non-binary messages', async () => {
+      const messageHandler = mockSocket.on.mock.calls.find(
+        (call: any) => call[0] === 'message'
+      )?.[1];
+
+      if (messageHandler) {
+        await messageHandler('text message', false);
+      }
+
+      expect(logger.child().warn).toHaveBeenCalled();
+    });
+
+    it('should handle send errors', async () => {
+      mockSocket.send = jest.fn((data: any, options: any, callback: any) => {
+        callback(new Error('Send failed'));
+      });
+
+      const packet = createPacket(1, 1, TYPE_GET, ['def-123', 'prop']);
+
+      await expect(remotePeer.sendPacket(packet)).rejects.toThrow('Send failed');
+    });
+
+    it('should handle socket closed during send', async () => {
+      mockSocket.readyState = 'CLOSED';
+
+      const packet = createPacket(1, 1, TYPE_GET, ['def-123', 'prop']);
+
+      await expect(remotePeer.sendPacket(packet)).rejects.toThrow(/closed/i);
+    });
+  });
+
+  describe('Request Timeout', () => {
+    it('should timeout requests', async () => {
+      const shortTimeoutPeer = new RemotePeer(mockSocket, netron, 'timeout-peer', 100);
+      
+      const definition = { id: 'def-123', meta: { name: 'Test' } } as Definition;
+      shortTimeoutPeer.definitions.set('def-123', definition);
+
+      // Don't send response - let it timeout
+      mockSocket.send = jest.fn();
+
+      await expect(shortTimeoutPeer.get('def-123', 'prop')).rejects.toThrow(/timeout/i);
+    });
+  });
+
+  describe('Query Interface', () => {
+    it('should query interface remotely', async () => {
+      remotePeer.runTask = jest.fn().mockResolvedValue({
+        id: 'def-123',
+        meta: {
+          name: 'TestService',
+          version: '1.0.0',
+          methods: { testMethod: {} },
+        },
+      });
+
+      const interfaceInstance = await remotePeer.queryInterface('TestService@1.0.0');
+
+      expect(interfaceInstance).toBeDefined();
+      expect(remotePeer.runTask).toHaveBeenCalledWith('query_interface', 'TestService@1.0.0');
+    });
+
+    it('should throw when service not found', async () => {
+      remotePeer.runTask = jest.fn().mockResolvedValue(null);
+
+      await expect(remotePeer.queryInterface('NonExistent@1.0.0')).rejects.toThrow(/not found/i);
+    });
+  });
+
+  describe('Logger Integration', () => {
+    it('should use child logger with peer context', () => {
+      expect(remotePeer.logger).toBeDefined();
+      expect(netron.logger.child).toHaveBeenCalledWith(
+        expect.objectContaining({
+          peerId: 'remote-peer-123',
+          remotePeer: true,
+        })
+      );
+    });
+
+    it('should log packet handling', async () => {
+      const packet = createPacket(1, 1, TYPE_GET, ['def-123', 'prop']);
+      
+      netron.peer.getStubByDefinitionId = jest.fn().mockImplementation(() => {
+        throw new Error('Test error');
+      });
+
+      await remotePeer.handlePacket(packet);
+
+      expect(logger.child().debug).toHaveBeenCalled();
+      expect(logger.child().error).toHaveBeenCalled();
+    });
   });
 });

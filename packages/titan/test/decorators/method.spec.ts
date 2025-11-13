@@ -88,7 +88,10 @@ describe('Method Decorator', () => {
 
       const metadata = Reflect.getMetadata(SERVICE_ANNOTATION, TestService);
       expect(metadata.methods.add).toBeDefined();
-      expect(metadata.methods.add.arguments).toEqual(['Number', 'Number']);
+      expect(metadata.methods.add.arguments).toEqual([
+        { index: 0, type: 'Number' },
+        { index: 1, type: 'Number' }
+      ]);
       expect(metadata.methods.add.type).toBe('Number');
     });
 

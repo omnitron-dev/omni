@@ -733,9 +733,60 @@ export class DiscoveryService implements IDiscoveryService {
 
   /**
    * Detect the node's address automatically
+   * Tries multiple strategies in order:
+   * 1. Environment variables (HOST:PORT)
+   * 2. Network interface detection (prefers non-internal IPv4)
+   * 3. Fallback to localhost
    */
   private detectAddress(): string {
-    // This is a placeholder - in production, you'd detect the actual network address
-    return `${process.env['HOST'] || 'localhost'}:${process.env['PORT'] || '3000'}`;
+    // Strategy 1: Check environment variables
+    const envHost = process.env['HOST'] || process.env['TITAN_HOST'];
+    const envPort = process.env['PORT'] || process.env['TITAN_PORT'] || '3000';
+
+    if (envHost) {
+      return `${envHost}:${envPort}`;
+    }
+
+    // Strategy 2: Detect from network interfaces
+    try {
+      const os = require('os');
+      const interfaces = os.networkInterfaces();
+
+      // Collect all addresses
+      const addresses: Array<{ address: string; internal: boolean; family: string }> = [];
+
+      for (const name of Object.keys(interfaces)) {
+        const iface = interfaces[name];
+        if (!iface) continue;
+
+        for (const addr of iface) {
+          // Only consider IPv4 addresses
+          if (addr.family === 'IPv4') {
+            addresses.push({
+              address: addr.address,
+              internal: addr.internal,
+              family: addr.family,
+            });
+          }
+        }
+      }
+
+      // Prefer external (non-internal) addresses
+      const externalAddr = addresses.find(a => !a.internal);
+      if (externalAddr) {
+        return `${externalAddr.address}:${envPort}`;
+      }
+
+      // Fallback to first non-loopback internal address
+      const nonLoopback = addresses.find(a => a.address !== '127.0.0.1');
+      if (nonLoopback) {
+        return `${nonLoopback.address}:${envPort}`;
+      }
+    } catch (err: any) {
+      this.logger.warn({ error: err.message }, 'Failed to detect network address from interfaces');
+    }
+
+    // Strategy 3: Fallback to localhost
+    return `localhost:${envPort}`;
   }
 }

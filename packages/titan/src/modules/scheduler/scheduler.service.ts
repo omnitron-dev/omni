@@ -10,6 +10,7 @@ import { Errors } from '../../errors/index.js';
 
 import {
   ERROR_MESSAGES,
+  SCHEDULER_EVENTS,
   SCHEDULER_CONFIG_TOKEN,
   SCHEDULER_METRICS_TOKEN,
   SCHEDULER_REGISTRY_TOKEN,
@@ -98,8 +99,13 @@ export class SchedulerService {
       }
     }
 
-    // Emit started event (registry should emit, not subscribe)
-    // This is a placeholder - real implementation would emit through event bus
+    // Emit started event through registry event emitter
+    if (this.registry) {
+      this.registry.emit(SCHEDULER_EVENTS.SCHEDULER_STARTED, {
+        timestamp: new Date(),
+        jobCount: jobs.length,
+      });
+    }
   }
 
   /**
@@ -142,8 +148,12 @@ export class SchedulerService {
       await this.persistence.flush();
     }
 
-    // Emit stopped event (registry should emit, not subscribe)
-    // This is a placeholder - real implementation would emit through event bus
+    // Emit stopped event through registry event emitter
+    if (this.registry) {
+      this.registry.emit(SCHEDULER_EVENTS.SCHEDULER_STOPPED, {
+        timestamp: new Date(),
+      });
+    }
   }
 
   /**

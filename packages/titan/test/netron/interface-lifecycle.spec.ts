@@ -62,7 +62,7 @@ describe('Interface Lifecycle Tests', () => {
   });
 
   afterAll(async () => {
-    if (remotePeer) remotePeer.disconnect();
+    if (remotePeer) await remotePeer.disconnect();
     if (remoteNetron) await remoteNetron.stop();
     if (netron) await netron.stop();
   });

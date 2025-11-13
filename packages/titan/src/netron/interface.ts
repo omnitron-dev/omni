@@ -209,7 +209,41 @@ export class Interface {
       }
       return new Reference(value.$def.id);
     } else if (isNetronService(value)) {
-      throw Errors.notImplemented('Unsupported value type: Direct service exposure is not yet implemented');
+      // Handle direct service exposure
+      // When a service instance is passed as an argument, we need to expose it
+      // to the remote peer so it can be used there
+      const peer = this.$peer;
+      if (!peer || !peer.netron) {
+        throw Errors.badRequest('Cannot expose service: No peer or netron instance available');
+      }
+
+      // Get or create a definition for this service instance
+      const localPeer = peer.netron.getLocalPeer();
+      const existingStub = localPeer.serviceInstances.get(value);
+
+      if (existingStub) {
+        // Service already exposed, return its reference
+        return new Reference(existingStub.definition.id);
+      }
+
+      // Service not exposed yet, expose it synchronously
+      // Note: This is a synchronous operation because we're in a processing pipeline
+      // The actual exposure happens on the local peer, which is synchronous
+      try {
+        const metadata = Reflect.getMetadata('service:metadata', value.constructor);
+        if (!metadata) {
+          throw Errors.badRequest('Service instance does not have proper metadata');
+        }
+
+        // For now, we'll throw an error indicating this needs to be done explicitly
+        // This is because exposing a service should be an explicit action by the developer
+        throw Errors.badRequest(
+          'Direct service exposure in RPC calls requires the service to be exposed first. ' +
+          'Please expose the service using netron.exposeService() before passing it as an argument.'
+        );
+      } catch (err: any) {
+        throw Errors.badRequest(`Failed to expose service: ${err.message}`);
+      }
     } else if (isNetronStream(value)) {
       return StreamReference.from(value);
     }

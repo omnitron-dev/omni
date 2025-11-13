@@ -22,7 +22,7 @@ describe('Redis Cluster Support', () => {
       }
     });
 
-    it('should correctly identify cluster clients', () => {
+    it('should correctly identify cluster clients', async () => {
       const cluster = new Cluster([clusterFixture.nodes[0]], {
         lazyConnect: true,
         enableOfflineQueue: false,
@@ -30,10 +30,10 @@ describe('Redis Cluster Support', () => {
       });
 
       expect(isCluster(cluster)).toBe(true);
-      cluster.disconnect();
+      await cluster.disconnect();
     });
 
-    it('should correctly identify non-cluster clients', () => {
+    it('should correctly identify non-cluster clients', async () => {
       const regularClient = createRedisClient({
         host: 'localhost',
         port: clusterFixture.nodes[0].port,
@@ -41,7 +41,7 @@ describe('Redis Cluster Support', () => {
       });
 
       expect(isCluster(regularClient)).toBe(false);
-      regularClient.disconnect();
+      await regularClient.disconnect();
     });
 
     it('should handle null/undefined in isCluster', () => {
@@ -64,7 +64,7 @@ describe('Redis Cluster Support', () => {
       }
     });
 
-    it('should create cluster client with proper configuration', () => {
+    it('should create cluster client with proper configuration', async () => {
       const client = createRedisClient({
         cluster: {
           nodes: [clusterFixture.nodes[0], clusterFixture.nodes[1]],
@@ -83,10 +83,10 @@ describe('Redis Cluster Support', () => {
       expect(cluster.options.clusterRetryStrategy).toBeDefined();
       expect(cluster.options.redisOptions?.password).toBe('cluster-pass');
 
-      cluster.disconnect();
+      await cluster.disconnect();
     });
 
-    it('should handle cluster-specific options', () => {
+    it('should handle cluster-specific options', async () => {
       const client = createRedisClient({
         cluster: {
           nodes: [clusterFixture.nodes[0]],
@@ -107,7 +107,7 @@ describe('Redis Cluster Support', () => {
       expect(cluster.options.maxRedirections).toBe(16);
       expect(cluster.options.retryDelayOnFailover).toBe(100);
 
-      cluster.disconnect();
+      await cluster.disconnect();
     });
   });
 

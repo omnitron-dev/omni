@@ -101,7 +101,7 @@ describe('RemotePeer', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(netron.peers.has(n2.id)).toBe(true);
 
-    peer1.disconnect();
+    await peer1.disconnect();
   });
 
   it('start netron second time should throw error', async () => {
@@ -135,7 +135,7 @@ describe('RemotePeer', () => {
     expect(netron.peers.has(n2.id)).toBe(true);
     expect(n2.peers.has(netron.id)).toBe(true);
 
-    peer1.disconnect();
+    await peer1.disconnect();
 
     await delay(100);
 
@@ -168,7 +168,7 @@ describe('RemotePeer', () => {
     expect(peer1.id).toBe(netron.id);
     expect(peer2?.id).toBe(n2.id);
 
-    peer1.disconnect();
+    await peer1.disconnect();
   });
   it('should call methods and access properties of remote service', async () => {
     const svc1 = new Service1();
@@ -328,7 +328,7 @@ describe('RemotePeer', () => {
       expect(e.message).toMatch(/Invalid interface/);
     }
 
-    peer1.disconnect();
+    await peer1.disconnect();
   });
 
   it('call method that returns another service and release it', async () => {
@@ -345,7 +345,7 @@ describe('RemotePeer', () => {
     await expect(async () => peer.releaseInterface(iService1)).rejects.toThrow(/Invalid interface/);
     expect(await iService1.addNumbers(1, 2)).toBe(3);
 
-    peer1.disconnect();
+    await peer1.disconnect();
   });
   it('subscribe to event', async () => {
     const peer = netron.peer;
@@ -379,7 +379,7 @@ describe('RemotePeer', () => {
     expect(eventHandler1).toHaveBeenCalledTimes(2);
     expect(eventHandler2).toHaveBeenCalledTimes(2);
 
-    peer1.disconnect();
+    await peer1.disconnect();
   });
 
   it('subscribe to same event multiple times should handle it only once', async () => {
@@ -404,7 +404,7 @@ describe('RemotePeer', () => {
       })
     );
 
-    peer1.disconnect();
+    await peer1.disconnect();
   });
 
   it('unsubscribe event', async () => {
@@ -435,7 +435,7 @@ describe('RemotePeer', () => {
 
     expect(eventHandler1).toHaveBeenCalledTimes(1);
 
-    peer1.disconnect();
+    await peer1.disconnect();
   });
 
   it('unsubscribe all events', async () => {
@@ -455,7 +455,7 @@ describe('RemotePeer', () => {
 
     expect(eventHandler1).toHaveBeenCalledTimes(2);
 
-    peer1.disconnect();
+    await peer1.disconnect();
   });
 
   it('expose service remotely and query it from local peer', async () => {
@@ -475,7 +475,7 @@ describe('RemotePeer', () => {
 
     await peer1.unexposeService('service1');
 
-    peer1.disconnect();
+    await peer1.disconnect();
   });
 
   it('expose service remotely and query it from other remote peer', async () => {
@@ -546,8 +546,8 @@ describe('RemotePeer', () => {
 
     await delay(100);
 
-    peer21.disconnect();
-    peer31.disconnect();
+    await peer21.disconnect();
+    await peer31.disconnect();
   });
 
   it('subscribe to event for remote service exposed by another peer', async () => {
@@ -621,8 +621,8 @@ describe('RemotePeer', () => {
     expect(eventHandler21).toHaveBeenCalledTimes(1);
     expect(eventHandler31).toHaveBeenCalledTimes(1);
 
-    peer21.disconnect();
-    peer31.disconnect();
+    await peer21.disconnect();
+    await peer31.disconnect();
   });
 
   it('query, use and release proxified service', async () => {
@@ -679,8 +679,8 @@ describe('RemotePeer', () => {
 
     await delay(100);
 
-    peer21.disconnect();
-    peer31.disconnect();
+    await peer21.disconnect();
+    await peer31.disconnect();
   });
 
   it('should be able to release and re-query interface', async () => {

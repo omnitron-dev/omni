@@ -349,17 +349,10 @@ export class SchedulerRegistry {
   }
 
   /**
-   * Get job count by type
+   * Emit an event through the registry event emitter
    */
-  getJobCountByType(type: SchedulerJobType): number {
-    return this.jobsByType.get(type)?.size || 0;
-  }
-
-  /**
-   * Get job count by status
-   */
-  getJobCountByStatus(status: JobStatus): number {
-    return this.jobsByStatus.get(status)?.size || 0;
+  emit(event: string, data: any): void {
+    this.eventEmitter.emit(event, data);
   }
 
   /**
@@ -374,6 +367,20 @@ export class SchedulerRegistry {
    */
   off(event: string, handler: (...args: any[]) => void): void {
     this.eventEmitter.off(event, handler);
+  }
+
+  /**
+   * Get job count by type
+   */
+  getJobCountByType(type: SchedulerJobType): number {
+    return this.jobsByType.get(type)?.size || 0;
+  }
+
+  /**
+   * Get job count by status
+   */
+  getJobCountByStatus(status: JobStatus): number {
+    return this.jobsByStatus.get(status)?.size || 0;
   }
 
   /**

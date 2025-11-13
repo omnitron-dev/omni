@@ -41,6 +41,7 @@ export { ServiceProxyHandler, StreamingServiceProxyHandler } from './service-pro
 export {
   // Process decorators
   Process,
+  Method,
   Public,
   RateLimit,
   Cache,

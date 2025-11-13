@@ -32,7 +32,7 @@ describe('Discovery Module - Comprehensive Tests', () => {
     try {
       await testRedis.connect();
       await testRedis.ping();
-      testRedis.disconnect();
+      await testRedis.disconnect();
     } catch (error) {
       console.error('Redis is not running. Please start Redis server.');
       throw error;
@@ -53,7 +53,7 @@ describe('Discovery Module - Comprehensive Tests', () => {
       service = null as any;
     }
     await cleanupRedis(redis);
-    redis.disconnect();
+    await redis.disconnect();
     jest.clearAllMocks();
   });
 

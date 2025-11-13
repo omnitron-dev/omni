@@ -300,11 +300,11 @@ describeWithRedis('RedisService with Real Redis', () => {
       const messages: string[] = [];
 
       const messagePromise = new Promise<void>((resolve) => {
-        subscriber.on('message', (channel, message) => {
+        subscriber.on('message', async (channel, message) => {
           messages.push(message);
           if (messages.length === 3) {
             expect(messages).toEqual(['msg1', 'msg2', 'msg3']);
-            subscriber.quit();
+            await subscriber.quit();
             resolve();
           }
         });

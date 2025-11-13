@@ -60,7 +60,7 @@ describe('RemotePeer Service Versioning', () => {
   });
 
   afterAll(async () => {
-    remotePeer.disconnect();
+    await remotePeer.disconnect();
     await localNetron.stop();
     await remoteNetron.stop();
   });

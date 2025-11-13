@@ -1,5 +1,8 @@
 import { jest } from '@jest/globals';
 
+// Make jest available globally for source files that need it
+(global as any).jest = jest;
+
 // Common test setup
 jest.setTimeout(30000);
 

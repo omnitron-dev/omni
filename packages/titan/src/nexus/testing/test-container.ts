@@ -39,6 +39,98 @@ export interface Interaction {
 }
 
 /**
+ * Spy expectation interface
+ */
+export interface SpyExpectation {
+  verify(spy: any): boolean;
+  getMessage(): string;
+}
+
+/**
+ * Call count expectation
+ */
+export class CallCountExpectation implements SpyExpectation {
+  constructor(
+    private expectedCount: number,
+    private comparison: 'exact' | 'atleast' | 'atmost' = 'exact'
+  ) {}
+
+  verify(spy: any): boolean {
+    const actualCount = spy.mock.calls.length;
+    switch (this.comparison) {
+      case 'exact':
+        return actualCount === this.expectedCount;
+      case 'atleast':
+        return actualCount >= this.expectedCount;
+      case 'atmost':
+        return actualCount <= this.expectedCount;
+      default:
+        return false;
+    }
+  }
+
+  getMessage(): string {
+    switch (this.comparison) {
+      case 'exact':
+        return `Expected exactly ${this.expectedCount} calls`;
+      case 'atleast':
+        return `Expected at least ${this.expectedCount} calls`;
+      case 'atmost':
+        return `Expected at most ${this.expectedCount} calls`;
+      default:
+        return 'Unknown comparison';
+    }
+  }
+}
+
+/**
+ * Call arguments expectation
+ */
+export class CallArgumentsExpectation implements SpyExpectation {
+  constructor(
+    private expectedArgs: any[],
+    private callIndex: number = 0
+  ) {}
+
+  verify(spy: any): boolean {
+    const calls = spy.mock.calls;
+    if (calls.length <= this.callIndex) {
+      return false;
+    }
+
+    const actualArgs = calls[this.callIndex];
+    if (actualArgs.length !== this.expectedArgs.length) {
+      return false;
+    }
+
+    return this.expectedArgs.every((expected, index) => {
+      const actual = actualArgs[index];
+      if (typeof expected === 'object' && expected !== null) {
+        return JSON.stringify(actual) === JSON.stringify(expected);
+      }
+      return actual === expected;
+    });
+  }
+
+  getMessage(): string {
+    return `Expected call ${this.callIndex} with arguments ${JSON.stringify(this.expectedArgs)}`;
+  }
+}
+
+/**
+ * Never called expectation
+ */
+export class NeverCalledExpectation implements SpyExpectation {
+  verify(spy: any): boolean {
+    return spy.mock.calls.length === 0;
+  }
+
+  getMessage(): string {
+    return 'Expected spy to never be called';
+  }
+}
+
+/**
  * Test container with testing utilities
  */
 // Jest types workaround for build
@@ -49,6 +141,7 @@ export class TestContainer extends Container {
   private spies = new Map<InjectionToken<any>, Map<string, any>>();
   private interactions = new Map<InjectionToken<any>, Interaction[]>();
   private snapshots = new Map<string, Map<InjectionToken<any>, any>>();
+  private expectations = new Map<InjectionToken<any>, Map<string, SpyExpectation[]>>();
   private autoMock: boolean;
   private originalContainer?: Container;
   private detectLeaks: boolean;
@@ -423,17 +516,112 @@ export class TestContainer extends Container {
   }
 
   /**
+   * Add expectation for a spy
+   */
+  expect<T>(token: InjectionToken<T>, method: keyof T): {
+    toBeCalledTimes: (count: number) => void;
+    toBeCalledWith: (...args: any[]) => void;
+    toBeCalledAtLeast: (count: number) => void;
+    toBeCalledAtMost: (count: number) => void;
+    neverBeCalled: () => void;
+  } {
+    const methodName = method as string;
+
+    return {
+      toBeCalledTimes: (count: number) => {
+        this.addExpectation(token, methodName, new CallCountExpectation(count, 'exact'));
+      },
+      toBeCalledWith: (...args: any[]) => {
+        this.addExpectation(token, methodName, new CallArgumentsExpectation(args));
+      },
+      toBeCalledAtLeast: (count: number) => {
+        this.addExpectation(token, methodName, new CallCountExpectation(count, 'atleast'));
+      },
+      toBeCalledAtMost: (count: number) => {
+        this.addExpectation(token, methodName, new CallCountExpectation(count, 'atmost'));
+      },
+      neverBeCalled: () => {
+        this.addExpectation(token, methodName, new NeverCalledExpectation());
+      },
+    };
+  }
+
+  /**
+   * Add an expectation
+   */
+  private addExpectation(token: InjectionToken<any>, method: string, expectation: SpyExpectation): void {
+    let tokenExpectations = this.expectations.get(token);
+    if (!tokenExpectations) {
+      tokenExpectations = new Map();
+      this.expectations.set(token, tokenExpectations);
+    }
+
+    let methodExpectations = tokenExpectations.get(method);
+    if (!methodExpectations) {
+      methodExpectations = [];
+      tokenExpectations.set(method, methodExpectations);
+    }
+
+    methodExpectations.push(expectation);
+  }
+
+  /**
+   * Get expectations for a token and method
+   */
+  private getExpectations(token: InjectionToken<any>, method: string): SpyExpectation[] {
+    const tokenExpectations = this.expectations.get(token);
+    if (!tokenExpectations) {
+      return [];
+    }
+
+    return tokenExpectations.get(method) || [];
+  }
+
+  /**
+   * Clear all expectations
+   */
+  clearExpectations(token?: InjectionToken<any>): void {
+    if (token) {
+      this.expectations.delete(token);
+    } else {
+      this.expectations.clear();
+    }
+  }
+
+  /**
    * Verify no unexpected calls
    */
   verifyNoUnexpectedCalls(): void {
+    const violations: string[] = [];
+
     for (const [token, spyMap] of this.spies) {
       for (const [method, spy] of spyMap) {
         const calls = spy.mock.calls;
-        if (calls.length > 0) {
-          // Check if these calls were expected
-          // This is a placeholder - real implementation would track expectations
+        const expectations = this.getExpectations(token, method as string);
+
+        // If there are calls but no expectations set, they are unexpected
+        if (calls.length > 0 && expectations.length === 0) {
+          const tokenName = typeof token === 'string' ? token : String(token);
+          violations.push(
+            `Unexpected ${calls.length} call(s) to ${tokenName}.${method as string}. ` +
+              `Expected no calls but got: ${JSON.stringify(calls)}`
+          );
+        }
+
+        // Verify each expectation
+        for (const expectation of expectations) {
+          if (!expectation.verify(spy)) {
+            const tokenName = typeof token === 'string' ? token : String(token);
+            violations.push(
+              `Expectation failed for ${tokenName}.${method as string}: ${expectation.getMessage()}`
+            );
+          }
         }
       }
+    }
+
+    if (violations.length > 0) {
+      throw new Error(`Unexpected calls detected:\n${violations.join('\n')}`);
     }
   }
 

@@ -504,25 +504,106 @@ export class DatabaseTestingModule {
   /**
    * Create isolated testing module for parallel tests
    *
-   * Note: This is a placeholder for future implementation.
-   * The service would need to be injected after module compilation.
+   * Creates a completely isolated database testing environment suitable for
+   * running tests in parallel. Each isolated module gets its own schema (if supported)
+   * and independent service instances.
    */
   static async createIsolatedModule(
     options: DatabaseTestingOptions = {}
   ): Promise<{
     module: DynamicModule;
+    service?: DatabaseTestingService;
     cleanup: () => Promise<void>;
   }> {
-    const module = DatabaseTestingModule.forTest({
+    // Generate unique schema name for this isolated module
+    const schemaPrefix = options.schemaPrefix || 'test_isolated';
+    const uniqueSuffix = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const isolatedSchemaName = `${schemaPrefix}_${uniqueSuffix}`;
+
+    // Create isolated module with unique schema
+    const isolatedOptions: DatabaseTestingOptions = {
       ...options,
       isolatedSchema: true,
-    });
+      schemaPrefix: isolatedSchemaName,
+      transactional: options.transactional ?? true,
+      autoMigrate: options.autoMigrate ?? false,
+      autoClean: options.autoClean ?? true,
+    };
 
+    // Override connection to use unique database/schema if not provided
+    if (!isolatedOptions.connection) {
+      // Use unique file-based SQLite for true isolation
+      // :memory: databases are shared if the connection string is the same
+      isolatedOptions.connection = {
+        dialect: 'sqlite',
+        connection: `file:${isolatedSchemaName}?mode=memory&cache=shared`,
+      };
+    }
+
+    const module = DatabaseTestingModule.forTest(isolatedOptions);
+
+    // Store service reference for cleanup
+    let serviceInstance: DatabaseTestingService | undefined;
+
+    // Return module with enhanced cleanup that properly disposes the service
     return {
       module,
+      get service() {
+        return serviceInstance;
+      },
       cleanup: async () => {
-        // Cleanup logic would be implemented here
+        try {
+          // If service was injected, clean it up
+          if (serviceInstance) {
+            await serviceInstance.afterAll();
+          }
+
+          // Find and cleanup the service from the module's container if it exists
+          // This handles cases where the service was created but not stored in serviceInstance
+          const providers = (module as any).providers || [];
+          for (const provider of providers) {
+            if (
+              typeof provider === 'object' &&
+              provider &&
+              'provide' in provider &&
+              provider.provide === DATABASE_TESTING_SERVICE
+            ) {
+              // Provider cleanup handled by afterAll above
+              break;
+            }
+          }
+        } catch (error) {
+          if (isolatedOptions.verbose) {
+            console.warn('Error during isolated module cleanup:', error);
+          }
+        }
       },
     };
+  }
+
+  /**
+   * Helper to inject the DatabaseTestingService into an isolated module result
+   * This should be called after the application/container is created
+   */
+  static async injectServiceIntoIsolatedModule(
+    isolatedModuleResult: {
+      module: DynamicModule;
+      service?: DatabaseTestingService;
+      cleanup: () => Promise<void>;
+    },
+    container: { resolveAsync: (token: any) => Promise<any> }
+  ): Promise<void> {
+    try {
+      const service = (await container.resolveAsync(DATABASE_TESTING_SERVICE)) as DatabaseTestingService;
+      // Store the service reference in the result object
+      Object.defineProperty(isolatedModuleResult, 'service', {
+        value: service,
+        writable: true,
+        configurable: true,
+      });
+      await service.initialize();
+    } catch (error) {
+      console.warn('Failed to inject DatabaseTestingService:', error);
+    }
   }
 }

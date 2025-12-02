@@ -1,4 +1,5 @@
 import { jest } from '@jest/globals';
+import 'reflect-metadata';
 
 // Make jest available globally for source files that need it
 (global as any).jest = jest;

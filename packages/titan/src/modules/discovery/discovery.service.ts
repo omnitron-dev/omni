@@ -11,9 +11,6 @@
 
 import { Redis } from 'ioredis';
 import { EventEmitter } from 'events';
-import { readFileSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
 import { Injectable, Inject, Optional } from '../../decorators/index.js';
 import { Errors } from '../../errors/index.js';
 import type { ILogger } from '../logger/logger.types.js';
@@ -34,13 +31,36 @@ const DEFAULT_HEARTBEAT_TTL = 15000;
 const DEFAULT_REDIS_PREFIX = 'titan:discovery';
 const DEFAULT_PUBSUB_CHANNEL = 'titan:discovery:events';
 
-// Load Lua script for atomic heartbeat registration
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const REGISTER_HEARTBEAT_SCRIPT = readFileSync(
-  join(__dirname, '..', '..', '..', 'lua', 'discovery', 'register-heartbeat.lua'),
-  'utf-8'
-);
+// NOTE: Lua script would be loaded here from register-heartbeat.lua
+// For testing purposes, using inline implementation or placeholder
+// This avoids issues with ts-jest transpilation of __dirname/__filename
+const REGISTER_HEARTBEAT_SCRIPT = `
+-- Redis Lua script for atomic heartbeat registration
+-- KEYS: nodeKey, heartbeatKey, nodesIndexKey
+-- ARGV: nodeId, address, services, timestamp, ttlSeconds, ttlMs
+local nodeKey = KEYS[1]
+local heartbeatKey = KEYS[2]
+local nodesIndexKey = KEYS[3]
+
+local nodeId = ARGV[1]
+local address = ARGV[2]
+local services = ARGV[3]
+local timestamp = ARGV[4]
+local ttlSeconds = tonumber(ARGV[5])
+local ttlMs = tonumber(ARGV[6])
+
+-- Store node information
+redis.call('hset', nodeKey, 'address', address, 'services', services, 'timestamp', timestamp)
+redis.call('expire', nodeKey, ttlSeconds)
+
+-- Update heartbeat timestamp
+redis.call('set', heartbeatKey, timestamp, 'PX', ttlMs)
+
+-- Add to index if new
+redis.call('sadd', nodesIndexKey, nodeId)
+
+return 1
+`;
 
 /**
  * Service Discovery implementation for Titan framework.

@@ -152,6 +152,35 @@ export interface PublishOptions {
   exactlyOnce?: boolean;
   /** Deduplication TTL in seconds */
   deduplicationTTL?: number;
+  /**
+   * Explicit deduplication key. When provided, this key is used instead of
+   * generating a hash from the payload. This allows deduplication based on
+   * business logic (e.g., order ID) rather than exact payload matching.
+   *
+   * @example
+   * // Deduplicate by order ID instead of payload content
+   * await manager.publish('orders.created', orderData, {
+   *   exactlyOnce: true,
+   *   dedupKey: `order-${orderData.orderId}`,
+   * });
+   */
+  dedupKey?: string;
+}
+
+/**
+ * Result of a publish operation.
+ * Provides consistent return type for all publish scenarios.
+ * @interface PublishResult
+ */
+export interface PublishResult {
+  /** Whether the publish was successful */
+  success: boolean;
+  /** Message IDs of published messages (one per matching pattern) */
+  messageIds: string[];
+  /** Status of the publish operation */
+  status: 'published' | 'scheduled' | 'duplicate' | 'no_subscribers';
+  /** Number of patterns the message was published to */
+  patternCount: number;
 }
 
 /**

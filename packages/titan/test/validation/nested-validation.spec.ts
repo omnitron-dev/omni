@@ -529,11 +529,13 @@ describe('Nested and Complex Validation', () => {
   describe('transform and preprocess', () => {
     it('should validate with multiple transforms', () => {
       const schema = z.object({
-        email: z
-          .string()
-          .email()
-          .transform((s) => s.toLowerCase())
-          .transform((s) => s.trim()),
+        email: z.preprocess(
+          (val) => (typeof val === 'string' ? val.trim() : val),
+          z
+            .string()
+            .email()
+            .transform((s) => s.toLowerCase())
+        ),
         tags: z
           .array(z.string())
           .transform((arr) => arr.map((s) => s.toLowerCase()))
@@ -582,7 +584,11 @@ describe('Nested and Complex Validation', () => {
               notifications: z.boolean().default(true),
               language: z.string().default('en'),
             })
-            .default({}),
+            .default({
+              theme: 'light' as const,
+              notifications: true,
+              language: 'en',
+            }),
         }),
       });
 

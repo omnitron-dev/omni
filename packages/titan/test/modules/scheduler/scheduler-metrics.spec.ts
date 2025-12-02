@@ -81,8 +81,8 @@ describe('Scheduler Metrics', () => {
     });
 
     it('should calculate uptime', async () => {
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
+      await new Promise(resolve => setTimeout(resolve, 1100));
+
       const currentMetrics = metrics.getMetrics();
       expect(currentMetrics.uptime).toBeGreaterThan(0);
     });

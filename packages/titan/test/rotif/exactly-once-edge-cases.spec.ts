@@ -1,13 +1,18 @@
 import { delay } from '@omnitron-dev/common';
-import { NotificationManager } from '../../src/rotif/rotif.js';
-import { getTestRedisUrl } from './helpers/test-utils.js';
+import type { NotificationManager } from '../../src/rotif/rotif.js';
+import { getTestRedisUrl, createTestNotificationManager, isInMockMode } from './helpers/test-utils.js';
 
-describe('Exactly-Once Edge Cases', () => {
+const describeOrSkip = isInMockMode() ? describe.skip : describe;
+
+if (isInMockMode()) {
+  console.log('⏭️ Skipping exactly-once-edge-cases.spec.ts - requires real Redis');
+}
+
+describeOrSkip('Exactly-Once Edge Cases', () => {
   let manager: NotificationManager;
 
   beforeEach(async () => {
-    manager = new NotificationManager({
-      redis: getTestRedisUrl(1),
+    manager = await createTestNotificationManager(1, {
       deduplicationTTL: 3600,
       blockInterval: 50,
     });

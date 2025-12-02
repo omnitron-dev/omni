@@ -159,6 +159,21 @@ export {
   type ModuleCompiler,
   createDynamicModule,
   createFeatureModule,
+  // Async options helpers (reduces boilerplate in forRootAsync)
+  createAsyncOptionsProvider,
+  createServiceProvider,
+  createAliasProvider,
+  type AsyncOptionsFactory,
+  type ModuleAsyncOptions,
+  type ModuleProviderTuple,
+  type ModuleProviderWithOptions,
+  // Type-safe provider helpers (avoid 'as any' in modules)
+  defineFactory,
+  defineClass,
+  defineValue,
+  defineExisting,
+  defineProviders,
+  type ModuleProviders,
 } from './module.js';
 
 // Advanced Context System
@@ -180,9 +195,9 @@ export {
 } from './context.js';
 
 /**
- * Feature flags for all phases
+ * Nexus DI container feature flags
  */
-export const FEATURES = {
+export const NEXUS_FEATURES = {
   // Phase 1
   CORE: true,
   TOKEN_SYSTEM: true,
@@ -207,6 +222,11 @@ export const FEATURES = {
   DISTRIBUTED_TRACING: true,
   DEVTOOLS: true,
 } as const;
+
+/**
+ * @deprecated Use `NEXUS_FEATURES` instead. Will be removed in future.
+ */
+export const FEATURES = NEXUS_FEATURES;
 
 /**
  * Phase 3 Features Notice

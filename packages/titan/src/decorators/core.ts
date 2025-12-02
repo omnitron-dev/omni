@@ -612,19 +612,164 @@ export const Method =
     }
   };
 
+// Track if deprecation warning has been shown to avoid console spam
+let publicDecoratorWarningShown = false;
+
 /**
  * Public decorator - alias for Method decorator for backward compatibility
- * 
+ *
  * @deprecated Use @Method instead. This decorator will be removed in a future version.
  * The @Method decorator provides the same functionality with enhanced features.
- * 
+ *
  * @example
  * // Old way (deprecated):
  * @Public()
  * async doSomething() {}
- * 
+ *
  * // New way:
  * @Method()
  * async doSomething() {}
  */
-export const Public = Method;
+export const Public = (options?: MethodOptions) => {
+  // Show deprecation warning once at runtime
+  if (!publicDecoratorWarningShown && typeof console !== 'undefined') {
+    publicDecoratorWarningShown = true;
+    console.warn(
+      '[Titan] @Public decorator is deprecated. Use @Method instead. ' +
+      'This decorator will be removed in a future version.'
+    );
+  }
+  return Method(options);
+};
+
+// ============================================================================
+// Composable Method Decorators
+// ============================================================================
+// These decorators can be used alongside @Method() for cleaner separation of concerns.
+// They allow for more readable and maintainable code by splitting configuration.
+
+/**
+ * Auth decorator - configures authentication and authorization for a method.
+ * Use alongside @Method() for cleaner separation of concerns.
+ *
+ * @example
+ * ```typescript
+ * @Method()
+ * @Auth({ roles: ['admin'], scopes: ['write:users'] })
+ * async deleteUser(id: string) {}
+ * ```
+ */
+export const Auth =
+  (config: NonNullable<MethodOptions['auth']>) =>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (target: any, propertyKey: string | symbol, _descriptor?: PropertyDescriptor) => {
+    Reflect.defineMetadata(METADATA_KEYS.METHOD_AUTH, config, target, propertyKey);
+  };
+
+/**
+ * RateLimit decorator - configures rate limiting for a method.
+ * Use alongside @Method() for cleaner separation of concerns.
+ *
+ * @example
+ * ```typescript
+ * @Method()
+ * @RateLimit({ limit: 100, window: 60000 })
+ * async searchDocuments(query: string) {}
+ * ```
+ */
+export const RateLimit =
+  (config: NonNullable<MethodOptions['rateLimit']>) =>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (target: any, propertyKey: string | symbol, _descriptor?: PropertyDescriptor) => {
+    Reflect.defineMetadata(METADATA_KEYS.METHOD_RATE_LIMIT, config, target, propertyKey);
+  };
+
+/**
+ * Cache decorator - configures caching for a method.
+ * Use alongside @Method() for cleaner separation of concerns.
+ *
+ * @example
+ * ```typescript
+ * @Method()
+ * @Cache({ ttl: 30000, invalidateOn: ['document:updated'] })
+ * async getDocument(id: string) {}
+ * ```
+ */
+export const Cache =
+  (config: NonNullable<MethodOptions['cache']>) =>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (target: any, propertyKey: string | symbol, _descriptor?: PropertyDescriptor) => {
+    Reflect.defineMetadata(METADATA_KEYS.METHOD_CACHE, config, target, propertyKey);
+  };
+
+/**
+ * Prefetch decorator - configures resource prefetching for a method.
+ * Use alongside @Method() for cleaner separation of concerns.
+ *
+ * @example
+ * ```typescript
+ * @Method()
+ * @Prefetch({ resources: ['user-profile', 'permissions'] })
+ * async getUserDashboard(userId: string) {}
+ * ```
+ */
+export const Prefetch =
+  (config: NonNullable<MethodOptions['prefetch']>) =>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (target: any, propertyKey: string | symbol, _descriptor?: PropertyDescriptor) => {
+    Reflect.defineMetadata(METADATA_KEYS.METHOD_PREFETCH, config, target, propertyKey);
+  };
+
+/**
+ * Audit decorator - configures audit logging for a method.
+ * Use alongside @Method() for cleaner separation of concerns.
+ *
+ * @example
+ * ```typescript
+ * @Method()
+ * @Audit({ action: 'user.delete', level: 'critical' })
+ * async deleteUser(id: string) {}
+ * ```
+ */
+export const Audit =
+  (config: NonNullable<MethodOptions['audit']>) =>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (target: any, propertyKey: string | symbol, _descriptor?: PropertyDescriptor) => {
+    Reflect.defineMetadata(METADATA_KEYS.METHOD_AUDIT, config, target, propertyKey);
+  };
+
+/**
+ * Transports decorator - specifies which transports a method is available on.
+ * Use alongside @Method() for cleaner separation of concerns.
+ *
+ * @example
+ * ```typescript
+ * @Method()
+ * @Transports(['ws', 'tcp']) // Only available on WebSocket and TCP
+ * async streamData() {}
+ * ```
+ */
+export const Transports =
+  (transports: string[]) =>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (target: any, propertyKey: string | symbol, _descriptor?: PropertyDescriptor) => {
+    Reflect.defineMetadata('method:transports', transports, target, propertyKey);
+  };
+
+/**
+ * Readonly decorator - marks a property as read-only.
+ * Use alongside @Method() for properties.
+ *
+ * @example
+ * ```typescript
+ * @Method()
+ * @Readonly()
+ * public readonly version: string = '1.0.0';
+ * ```
+ */
+export const Readonly =
+  () =>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (target: any, propertyKey: string | symbol) => {
+    Reflect.defineMetadata('readonly', true, target, propertyKey);
+  };

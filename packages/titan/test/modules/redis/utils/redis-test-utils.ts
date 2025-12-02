@@ -1,4 +1,6 @@
 import { Redis, Cluster } from 'ioredis';
+import { readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { RedisManager } from '../../../../src/modules/redis/redis.manager.js';
 import { RedisService } from '../../../../src/modules/redis/redis.service.js';
@@ -24,20 +26,158 @@ type DecoratorTarget = Record<string, unknown>;
 type TestDataValue = string | number | boolean | null | Record<string, unknown> | unknown[];
 
 /**
+ * Redis test configuration
+ */
+interface RedisTestConfig {
+  url: string;
+  host: string;
+  port: number;
+  db?: number;
+  isMock?: boolean;
+}
+
+/**
+ * Get raw Redis info from global setup
+ */
+function getRedisInfo(): { port?: number; isMock?: boolean; url?: string } | null {
+  try {
+    const infoPath = join(process.cwd(), '.redis-test-info.json');
+    if (existsSync(infoPath)) {
+      const content = readFileSync(infoPath, 'utf-8');
+      return JSON.parse(content);
+    }
+  } catch {
+    // Continue
+  }
+  return null;
+}
+
+/**
+ * Check if we're in mock mode (no real Redis available)
+ */
+export function isRedisInMockMode(): boolean {
+  const info = getRedisInfo();
+  return info?.isMock === true || process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+}
+
+/**
+ * Check if Docker is available for running containers
+ * This is used to skip tests that require Docker when it's not available
+ */
+export function isDockerAvailable(): boolean {
+  // If in mock mode or CI, Docker tests should be skipped
+  if (process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true') {
+    return false;
+  }
+
+  try {
+    // Try to get the DockerTestManager instance
+    // This will throw if Docker is not available
+    const { DockerTestManager } = require('../../../utils/docker-test-manager.js');
+    DockerTestManager.getInstance();
+    return true;
+  } catch (error) {
+    // Docker is not available
+    return false;
+  }
+}
+
+/**
+ * Get centralized Redis test configuration
+ * Reads from .redis-test-info.json (set by Jest globalSetup.ts)
+ */
+function getTestRedisConfig(db = 15): RedisTestConfig {
+  // Strategy 1: Check Jest global setup (reads from .redis-test-info.json)
+  const info = getRedisInfo();
+
+  if (info) {
+    // Check for mock mode
+    if (info.isMock) {
+      return {
+        url: 'mock://localhost',
+        host: 'localhost',
+        port: 0,
+        db,
+        isMock: true,
+      };
+    }
+
+    if (info.port) {
+      const host = 'localhost';
+      const port = info.port;
+      const url = `redis://${host}:${port}/${db}`;
+
+      return { url, host, port, db, isMock: false };
+    }
+  }
+
+  // Strategy 2: Check Vitest global setup
+  const globalRedis = (globalThis as any).globalRedis;
+
+  if (globalRedis?.host && globalRedis?.port) {
+    const host = globalRedis.host;
+    const port = globalRedis.port;
+    const url = `redis://${host}:${port}/${db}`;
+
+    return { url, host, port, db, isMock: false };
+  }
+
+  // Check if USE_MOCK_REDIS is set
+  if (process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true') {
+    return {
+      url: 'mock://localhost',
+      host: 'localhost',
+      port: 0,
+      db,
+      isMock: true,
+    };
+  }
+
+  // Fallback to localhost:6379 if global config is not available
+  const host = 'localhost';
+  const port = 6379;
+  const url = `redis://${host}:${port}/${db}`;
+
+  return { url, host, port, db, isMock: false };
+}
+
+/**
  * Redis test helper for managing Redis connections in tests
  */
 export class RedisTestHelper {
-  private clients: Map<string, Redis> = new Map();
+  private clients: Map<string, Redis | MockRedisClient> = new Map();
   private testDb = 15; // Use database 15 for tests by default
+  private isMockMode: boolean;
+
+  constructor() {
+    this.isMockMode = isRedisInMockMode();
+  }
+
+  /**
+   * Check if running in mock mode
+   */
+  isInMockMode(): boolean {
+    return this.isMockMode;
+  }
 
   /**
    * Create a test Redis client
+   * Returns MockRedisClient if in mock mode, real Redis otherwise
    */
   createClient(namespace = 'default', db?: number): Redis {
+    const config = getTestRedisConfig(db ?? this.testDb);
+
+    // Use mock client in mock mode
+    if (config.isMock || this.isMockMode) {
+      const mockClient = new MockRedisClient();
+      this.clients.set(namespace, mockClient);
+      return mockClient as unknown as Redis;
+    }
+
     const client = new Redis({
-      host: 'localhost',
-      port: 6379,
-      db: db ?? this.testDb,
+      host: config.host,
+      port: config.port,
+      db: config.db,
       lazyConnect: false,
       maxRetriesPerRequest: 1,
       retryStrategy: () => null, // Don't retry in tests
@@ -51,13 +191,14 @@ export class RedisTestHelper {
    * Create a test Redis manager
    */
   createManager(options?: Partial<RedisModuleOptions>): RedisManager {
+    const config = getTestRedisConfig(this.testDb);
     const defaultOptions: RedisModuleOptions = {
       clients: [
         {
           namespace: 'default',
-          host: 'localhost',
-          port: 6379,
-          db: this.testDb,
+          host: config.host,
+          port: config.port,
+          db: config.db,
         },
       ],
       ...options,
@@ -116,9 +257,16 @@ export class RedisTestHelper {
    * Wait for Redis to be ready
    */
   async waitForRedis(timeout = 5000): Promise<void> {
+    const config = getTestRedisConfig();
+
+    // In mock mode, Redis is always "ready"
+    if (config.isMock || this.isMockMode) {
+      return;
+    }
+
     const client = new Redis({
-      host: 'localhost',
-      port: 6379,
+      host: config.host,
+      port: config.port,
       maxRetriesPerRequest: 1,
       retryStrategy: () => null,
     });
@@ -134,6 +282,7 @@ export class RedisTestHelper {
       }
     }
 
+    client.disconnect();
     throw new Error('Redis not available');
   }
 

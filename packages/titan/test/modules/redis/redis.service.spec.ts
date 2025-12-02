@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from '@jest/globals';
 import { RedisService } from '../../../src/modules/redis/redis.service.js';
 import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
-import { createDockerRedisFixture, type DockerRedisTestFixture } from './utils/redis-test-utils.js';
+import { createDockerRedisFixture, type DockerRedisTestFixture, isDockerAvailable } from './utils/redis-test-utils.js';
 
 /**
  * RedisService Test Suite
@@ -10,7 +10,14 @@ import { createDockerRedisFixture, type DockerRedisTestFixture } from './utils/r
  * All tests run against real Redis instances in isolated Docker containers.
  */
 
-describe('RedisService', () => {
+// Skip tests if Docker is not available or in CI/mock mode
+const skipTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true' || !isDockerAvailable();
+if (skipTests) {
+  console.log('⏭️ Skipping redis.service.spec.ts - requires Docker');
+}
+const describeOrSkip = skipTests ? describe.skip : describe;
+
+describeOrSkip('RedisService', () => {
   let service: RedisService;
   let manager: RedisManager;
   let dockerFixture: DockerRedisTestFixture;

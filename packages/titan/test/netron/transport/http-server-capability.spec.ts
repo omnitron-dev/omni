@@ -3,7 +3,7 @@
  * Verifies that the HTTP transport can create and manage servers
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { HttpTransport } from '../../../src/netron/transport/http/http-transport.js';
 import { HttpServer } from '../../../src/netron/transport/http/server.js';
 import type { ITransportServer } from '../../../src/netron/transport/types.js';

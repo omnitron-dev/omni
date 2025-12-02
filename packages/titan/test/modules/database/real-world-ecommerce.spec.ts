@@ -6,6 +6,17 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, jest } from '@jest/globals';
+
+// Skip Docker tests if env var is set
+const skipIntegrationTests = process.env.SKIP_DOCKER_TESTS === 'true' ||
+                            process.env.USE_MOCK_REDIS === 'true' ||
+                            process.env.CI === 'true';
+
+if (skipIntegrationTests) {
+  console.log('⏭️ Skipping real-world-ecommerce.spec.ts - requires Docker/PostgreSQL');
+}
+
+const describeOrSkip = skipIntegrationTests ? describe.skip : describe;
 import { Application } from '../../../src/application.js';
 import { Module, Injectable, Inject } from '../../../src/decorators/index.js';
 import { Kysely, sql } from 'kysely';
@@ -916,7 +927,7 @@ class EcommerceService {
 })
 class EcommerceModule {}
 
-describe('Real-World E-Commerce Application', () => {
+describeOrSkip('Real-World E-Commerce Application', () => {
   let app: Application;
   let ecommerceService: EcommerceService;
   let userRepo: UserRepository;

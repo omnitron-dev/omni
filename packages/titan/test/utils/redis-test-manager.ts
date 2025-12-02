@@ -2,12 +2,6 @@ import { execSync, execFileSync, ChildProcess } from 'child_process';
 import Redis from 'ioredis';
 import { randomBytes } from 'crypto';
 import * as path from 'path';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
-
-// Conditional declarations to avoid conflicts with Jest transform
-const __filename = typeof globalThis.__filename !== 'undefined' ? globalThis.__filename : fileURLToPath(import.meta.url);
-const __dirname = typeof globalThis.__dirname !== 'undefined' ? globalThis.__dirname : dirname(__filename);
 
 export interface RedisTestContainer {
   id: string;
@@ -50,6 +44,7 @@ export class RedisTestManager {
     this.startupTimeout = options.startupTimeout || 30000;
     this.cleanup = options.cleanup !== false;
     this.verbose = options.verbose || false;
+    // Use relative path from test directory
     this.dockerComposeFile = path.join(__dirname, '../docker/docker-compose.test.yml');
     this.dockerPath = this.findDockerPath();
 

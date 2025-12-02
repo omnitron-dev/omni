@@ -452,16 +452,8 @@ describe('ComplianceManager', () => {
   });
 
   describe('Compliance Standards', () => {
-    it('should apply GDPR compliance', (done) => {
-      complianceManager.on('standard:applied', (data) => {
-        if (data.standard === 'GDPR') {
-          expect(data.standard).toBe('GDPR');
-          done();
-        }
-      });
-
-      // Trigger by creating a new instance
-      new ComplianceManager({
+    it('should apply GDPR compliance', () => {
+      const gdprManager = new ComplianceManager({
         standards: [ComplianceStandard.GDPR],
         auditConfig: {
           level: 'standard',
@@ -472,17 +464,13 @@ describe('ComplianceManager', () => {
           standards: [ComplianceStandard.GDPR],
         },
       });
+
+      const report = gdprManager.generateComplianceReport();
+      expect(report.standards).toContain(ComplianceStandard.GDPR);
     });
 
-    it('should apply HIPAA compliance', (done) => {
-      complianceManager.on('standard:applied', (data) => {
-        if (data.standard === 'HIPAA') {
-          expect(data.standard).toBe('HIPAA');
-          done();
-        }
-      });
-
-      new ComplianceManager({
+    it('should apply HIPAA compliance', () => {
+      const hipaaManager = new ComplianceManager({
         standards: [ComplianceStandard.HIPAA],
         auditConfig: {
           level: 'standard',
@@ -493,17 +481,13 @@ describe('ComplianceManager', () => {
           standards: [ComplianceStandard.HIPAA],
         },
       });
+
+      const report = hipaaManager.generateComplianceReport();
+      expect(report.standards).toContain(ComplianceStandard.HIPAA);
     });
 
-    it('should apply SOC2 compliance', (done) => {
-      complianceManager.on('standard:applied', (data) => {
-        if (data.standard === 'SOC2') {
-          expect(data.standard).toBe('SOC2');
-          done();
-        }
-      });
-
-      new ComplianceManager({
+    it('should apply SOC2 compliance', () => {
+      const soc2Manager = new ComplianceManager({
         standards: [ComplianceStandard.SOC2],
         auditConfig: {
           level: 'standard',
@@ -514,17 +498,13 @@ describe('ComplianceManager', () => {
           standards: [ComplianceStandard.SOC2],
         },
       });
+
+      const report = soc2Manager.generateComplianceReport();
+      expect(report.standards).toContain(ComplianceStandard.SOC2);
     });
 
-    it('should apply PCI-DSS compliance', (done) => {
-      complianceManager.on('standard:applied', (data) => {
-        if (data.standard === 'PCI-DSS') {
-          expect(data.standard).toBe('PCI-DSS');
-          done();
-        }
-      });
-
-      new ComplianceManager({
+    it('should apply PCI-DSS compliance', () => {
+      const pciManager = new ComplianceManager({
         standards: [ComplianceStandard.PCI_DSS],
         auditConfig: {
           level: 'standard',
@@ -535,6 +515,9 @@ describe('ComplianceManager', () => {
           standards: [ComplianceStandard.PCI_DSS],
         },
       });
+
+      const report = pciManager.generateComplianceReport();
+      expect(report.standards).toContain(ComplianceStandard.PCI_DSS);
     });
   });
 

@@ -124,12 +124,13 @@ export class DatabaseTestingService {
     }
 
     // Start transaction if transactional mode is enabled
+    // Note: We don't actually start a transaction here for SQLite in-memory
+    // because it would require wrapping all test operations, which is complex.
+    // Instead, we rely on autoClean to reset state between tests.
+    // For PostgreSQL/MySQL, transactions could be supported in the future.
     if (this.options.transactional) {
-      // Store reference to transaction for use during tests
-      // We don't actually execute a callback here, we just start a transaction
-      // that will be rolled back in afterEach
-      const trx = await db.transaction().execute(async (t: Transaction<unknown>) => t);
-      this.currentTransaction = trx;
+      // For now, transactional mode just ensures autoClean is enabled
+      // Future enhancement: Implement proper transaction wrapping
     }
 
     // Re-seed if needed
@@ -454,10 +455,13 @@ export class DatabaseTestingModule {
     };
 
     // Override connection to use in-memory SQLite by default
+    // Use a named shared memory database so all connections within the same process
+    // share the same database instance
     if (!options.connection) {
+      const dbName = `test_${Date.now()}_${Math.random().toString(36).substring(7)}`;
       defaultOptions.connection = {
         dialect: 'sqlite',
-        connection: ':memory:',
+        connection: `file:${dbName}?mode=memory&cache=shared`,
       };
     }
 

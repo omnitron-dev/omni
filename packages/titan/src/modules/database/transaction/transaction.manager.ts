@@ -91,9 +91,8 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
       case TransactionPropagation.MANDATORY:
         // Must have existing transaction
         if (!currentContext) {
-          throw Errors.badRequest('Invalid transaction propagation', {
+          throw Errors.badRequest('Transaction required but none exists', {
             propagation,
-            message: 'Transaction required but none exists',
           });
         }
         return this.executeInExistingTransaction(fn, currentContext, opts);
@@ -101,9 +100,8 @@ export class TransactionManager extends EventEmitter implements ITransactionMana
       case TransactionPropagation.NEVER:
         // Must not have transaction
         if (currentContext) {
-          throw Errors.badRequest('Invalid transaction propagation', {
+          throw Errors.badRequest('Transaction exists but none allowed', {
             propagation,
-            message: 'Transaction exists but none allowed',
           });
         }
         return fn((await this.manager.getConnection(opts.connection)) as DatabaseTransaction);

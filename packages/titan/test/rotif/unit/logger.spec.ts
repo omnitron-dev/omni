@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { defaultLogger } from '../../../src/rotif/utils/logger.js';
 
 describe('Rotif - Logger', () => {
@@ -11,10 +11,10 @@ describe('Rotif - Logger', () => {
 
   beforeEach(() => {
     consoleSpy = {
-      debug: vi.spyOn(console, 'debug').mockImplementation(() => {}),
-      info: vi.spyOn(console, 'info').mockImplementation(() => {}),
-      warn: vi.spyOn(console, 'warn').mockImplementation(() => {}),
-      error: vi.spyOn(console, 'error').mockImplementation(() => {}),
+      debug: jest.spyOn(console, 'debug').mockImplementation(() => {}),
+      info: jest.spyOn(console, 'info').mockImplementation(() => {}),
+      warn: jest.spyOn(console, 'warn').mockImplementation(() => {}),
+      error: jest.spyOn(console, 'error').mockImplementation(() => {}),
     };
   });
 

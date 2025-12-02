@@ -1,19 +1,24 @@
 import { delay } from '@omnitron-dev/common';
 import { it, expect, afterAll, describe, beforeAll } from '@jest/globals';
 
-import { Middleware, NotificationManager } from '../../src/rotif/rotif.js';
-import { createTestConfig } from './helpers/test-utils.js';
+import { Middleware } from '../../src/rotif/rotif.js';
+import type { NotificationManager } from '../../src/rotif/rotif.js';
+import { createTestConfig, createTestNotificationManager, isInMockMode } from './helpers/test-utils.js';
 
-describe('Middleware - hooks', () => {
+const describeOrSkip = isInMockMode() ? describe.skip : describe;
+
+if (isInMockMode()) {
+  console.log('⏭️ Skipping middleware-hooks.spec.ts - requires real Redis');
+}
+
+describeOrSkip('Middleware - hooks', () => {
   let manager: NotificationManager;
 
   beforeAll(async () => {
-    manager = new NotificationManager(
-      createTestConfig(1, {
+    manager = await createTestNotificationManager(1, {
         checkDelayInterval: 100,
         blockInterval: 100,
-      })
-    );
+      });
 
     await manager.redis.flushdb();
   });

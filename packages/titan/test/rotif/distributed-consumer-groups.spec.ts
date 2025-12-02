@@ -1,9 +1,15 @@
 import { delay } from '@omnitron-dev/common';
 
-import { NotificationManager } from '../../src/rotif/rotif.js';
-import { getTestRedisUrl } from './helpers/test-utils.js';
+import type { NotificationManager } from '../../src/rotif/rotif.js';
+import { getTestRedisUrl, createTestNotificationManager, isInMockMode } from './helpers/test-utils.js';
 
-describe('Distributed Rotif Instances – Consumer Group Handling', () => {
+const describeOrSkip = isInMockMode() ? describe.skip : describe;
+
+if (isInMockMode()) {
+  console.log('⏭️ Skipping distributed-consumer-groups.spec.ts - requires real Redis');
+}
+
+describeOrSkip('Distributed Rotif Instances – Consumer Group Handling', () => {
   let managerA: NotificationManager;
   let managerB: NotificationManager;
 

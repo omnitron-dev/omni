@@ -1,14 +1,19 @@
 import { delay } from '@omnitron-dev/common';
 
-import { NotificationManager } from '../../src/rotif/rotif.js';
-import { getTestRedisUrl } from './helpers/test-utils.js';
+import type { NotificationManager } from '../../src/rotif/rotif.js';
+import { getTestRedisUrl, createTestNotificationManager, isInMockMode } from './helpers/test-utils.js';
 
-describe('NotificationManager – Complex Case 1 Tests', () => {
+const describeOrSkip = isInMockMode() ? describe.skip : describe;
+
+if (isInMockMode()) {
+  console.log('⏭️ Skipping complex.spec.ts - requires real Redis');
+}
+
+describeOrSkip('NotificationManager – Complex Case 1 Tests', () => {
   let manager: NotificationManager;
 
   beforeEach(async () => {
-    manager = new NotificationManager({
-      redis: getTestRedisUrl(1),
+    manager = await createTestNotificationManager(1, {
       maxRetries: 2,
       blockInterval: 100,
       checkDelayInterval: 200,

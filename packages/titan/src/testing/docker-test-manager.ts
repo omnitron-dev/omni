@@ -1038,7 +1038,14 @@ export class DockerTestManager extends EventEmitter {
 
 // Database-specific helpers
 export class DatabaseTestManager {
-  private static dockerManager = DockerTestManager.getInstance();
+  private static _dockerManager: DockerTestManager | null = null;
+
+  private static getDockerManager(): DockerTestManager {
+    if (!DatabaseTestManager._dockerManager) {
+      DatabaseTestManager._dockerManager = DockerTestManager.getInstance();
+    }
+    return DatabaseTestManager._dockerManager;
+  }
 
   static async createPostgresContainer(options?: {
     name?: string;
@@ -1052,7 +1059,7 @@ export class DatabaseTestManager {
     const user = options?.user || 'testuser';
     const password = options?.password || 'testpass';
 
-    return DatabaseTestManager.dockerManager.createContainer({
+    return DatabaseTestManager.getDockerManager().createContainer({
       name: options?.name,
       image: 'postgres:16-alpine',
       ports: { 5432: port },
@@ -1090,7 +1097,7 @@ export class DatabaseTestManager {
     const password = options?.password || 'testpass';
     const rootPassword = options?.rootPassword || 'rootpass';
 
-    return DatabaseTestManager.dockerManager.createContainer({
+    return DatabaseTestManager.getDockerManager().createContainer({
       name: options?.name,
       image: 'mysql:8.0',
       ports: { 3306: port },
@@ -1200,7 +1207,14 @@ export interface RedisSentinelOptions {
 }
 
 export class RedisTestManager {
-  private static dockerManager = DockerTestManager.getInstance();
+  private static _dockerManager: DockerTestManager | null = null;
+
+  private static getDockerManager(): DockerTestManager {
+    if (!RedisTestManager._dockerManager) {
+      RedisTestManager._dockerManager = DockerTestManager.getInstance();
+    }
+    return RedisTestManager._dockerManager;
+  }
 
   /**
    * Create a standalone Redis container
@@ -1225,7 +1239,7 @@ export class RedisTestManager {
       command.push('--requirepass', password);
     }
 
-    return RedisTestManager.dockerManager.createContainer({
+    return RedisTestManager.getDockerManager().createContainer({
       name: options?.name,
       image: 'redis:7-alpine',
       ports: { 6379: port },
@@ -1255,7 +1269,7 @@ export class RedisTestManager {
     const networkName = options?.network || `redis-cluster-${randomBytes(8).toString('hex')}`;
 
     // Create network
-    await RedisTestManager.dockerManager['ensureNetwork'](networkName);
+    await RedisTestManager.getDockerManager()['ensureNetwork'](networkName);
 
     const masters: DockerContainer[] = [];
     const replicas: DockerContainer[] = [];
@@ -1269,7 +1283,7 @@ export class RedisTestManager {
       // Create master nodes with dynamically allocated ports
       for (let i = 0; i < masterCount; i++) {
         // Use dynamic port allocation instead of fixed basePort to avoid conflicts
-        const port = await RedisTestManager.dockerManager['findAvailablePort']();
+        const port = await RedisTestManager.getDockerManager()['findAvailablePort']();
         allocatedPorts.push(port);
         const name = `redis-cluster-${networkId}-master-${i}`;
 
@@ -1294,7 +1308,7 @@ export class RedisTestManager {
           command.push('--masterauth', password);
         }
 
-        const container = await RedisTestManager.dockerManager.createContainer({
+        const container = await RedisTestManager.getDockerManager().createContainer({
           name,
           image: 'redis:7-alpine',
           ports: { 6379: port },
@@ -1320,7 +1334,7 @@ export class RedisTestManager {
       // Create replica nodes with dynamically allocated ports
       for (let i = 0; i < masterCount * replicasPerMaster; i++) {
         // Use dynamic port allocation
-        const port = await RedisTestManager.dockerManager['findAvailablePort']();
+        const port = await RedisTestManager.getDockerManager()['findAvailablePort']();
         allocatedPorts.push(port);
         const name = `redis-cluster-${networkId}-replica-${i}`;
 
@@ -1345,7 +1359,7 @@ export class RedisTestManager {
           command.push('--masterauth', password);
         }
 
-        const container = await RedisTestManager.dockerManager.createContainer({
+        const container = await RedisTestManager.getDockerManager().createContainer({
           name,
           image: 'redis:7-alpine',
           ports: { 6379: port },
@@ -1384,7 +1398,7 @@ export class RedisTestManager {
           await Promise.allSettled([...masters.map((c) => c.cleanup()), ...replicas.map((c) => c.cleanup())]);
           // Then remove the network
           try {
-            await RedisTestManager.dockerManager['removeNetwork'](networkName);
+            await RedisTestManager.getDockerManager()['removeNetwork'](networkName);
           } catch (error) {
             // Log but don't throw - network cleanup is best effort
             console.warn(`Failed to remove network ${networkName}:`, error);
@@ -1394,7 +1408,7 @@ export class RedisTestManager {
     } catch (error) {
       // Cleanup on failure - release allocated ports and clean up containers
       allocatedPorts.forEach((port) => {
-        RedisTestManager.dockerManager['usedPorts'].delete(port);
+        RedisTestManager.getDockerManager()['usedPorts'].delete(port);
       });
       await Promise.allSettled([
         ...masters.map((c) =>
@@ -1412,7 +1426,7 @@ export class RedisTestManager {
       ]);
       // Try to remove network on failure too
       try {
-        await RedisTestManager.dockerManager['removeNetwork'](networkName);
+        await RedisTestManager.getDockerManager()['removeNetwork'](networkName);
       } catch (networkError) {
         // Log network cleanup errors but don't fail - network might be in use or already removed
         console.error(`Failed to remove network ${networkName} during failure cleanup:`, networkError);
@@ -1432,7 +1446,7 @@ export class RedisTestManager {
     const networkName = options?.network || `redis-sentinel-${randomBytes(8).toString('hex')}`;
 
     // Create network
-    await RedisTestManager.dockerManager['ensureNetwork'](networkName);
+    await RedisTestManager.getDockerManager()['ensureNetwork'](networkName);
 
     let master: DockerContainer | undefined;
     const replicas: DockerContainer[] = [];
@@ -1442,7 +1456,7 @@ export class RedisTestManager {
 
     try {
       // Create master with dynamic port allocation
-      const masterPort = await RedisTestManager.dockerManager['findAvailablePort']();
+      const masterPort = await RedisTestManager.getDockerManager()['findAvailablePort']();
       allocatedPorts.push(masterPort);
       const command = ['redis-server', '--appendonly', 'no', '--save', ''];
 
@@ -1451,7 +1465,7 @@ export class RedisTestManager {
         command.push('--masterauth', password);
       }
 
-      master = await RedisTestManager.dockerManager.createContainer({
+      master = await RedisTestManager.getDockerManager().createContainer({
         name: `redis-sentinel-master`,
         image: 'redis:7-alpine',
         ports: { 6379: masterPort },
@@ -1479,7 +1493,7 @@ export class RedisTestManager {
           replicaCommand.push('--masterauth', password);
         }
 
-        const replica = await RedisTestManager.dockerManager.createContainer({
+        const replica = await RedisTestManager.getDockerManager().createContainer({
           name: `redis-sentinel-replica-${i}`,
           image: 'redis:7-alpine',
           ports: { 6379: replicaPort },
@@ -1502,7 +1516,7 @@ export class RedisTestManager {
 
       // Create sentinels with dynamic port allocation
       for (let i = 0; i < sentinelCount; i++) {
-        const sentinelPort = await RedisTestManager.dockerManager['findAvailablePort']();
+        const sentinelPort = await RedisTestManager.getDockerManager()['findAvailablePort']();
         allocatedPorts.push(sentinelPort);
         sentinelPorts.push(sentinelPort);
 
@@ -1524,7 +1538,7 @@ export class RedisTestManager {
           `echo "${sentinelConfig.join('\\n')}" > /tmp/sentinel.conf && redis-sentinel /tmp/sentinel.conf`,
         ];
 
-        const sentinel = await RedisTestManager.dockerManager.createContainer({
+        const sentinel = await RedisTestManager.getDockerManager().createContainer({
           name: `redis-sentinel-${i}`,
           image: 'redis:7-alpine',
           ports: { 26379: sentinelPort },
@@ -1563,7 +1577,7 @@ export class RedisTestManager {
     } catch (error) {
       // Cleanup on failure - release allocated ports
       allocatedPorts.forEach((port) => {
-        RedisTestManager.dockerManager['usedPorts'].delete(port);
+        RedisTestManager.getDockerManager()['usedPorts'].delete(port);
       });
       await Promise.all(
         [

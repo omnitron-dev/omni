@@ -2,7 +2,7 @@ import 'reflect-metadata';
 
 import { delay } from '@omnitron-dev/common';
 
-import { Netron, Public, Service, NetronReadableStream } from '../../src/netron';
+import { Netron, Public, Service, Method, NetronReadableStream } from '../../src/netron';
 import { createMockLogger, createNetronServer, createNetronClient } from './test-utils.js';
 
 // Example service with async generator methods

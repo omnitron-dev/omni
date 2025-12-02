@@ -1,7 +1,33 @@
 import { Redis } from 'ioredis';
 import { getGlobalRedisInfo } from '../../setup/redis-docker-setup.js';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import type { NotificationManager } from '../../../src/rotif/rotif.js';
+
+/**
+ * Check if we're in mock mode
+ */
+export function isInMockMode(): boolean {
+  // Check environment variable first
+  if (process.env.USE_MOCK_REDIS === 'true') {
+    return true;
+  }
+
+  // Check .redis-test-info.json
+  try {
+    const infoFile = join(process.cwd(), '.redis-test-info.json');
+    if (existsSync(infoFile)) {
+      const info = JSON.parse(readFileSync(infoFile, 'utf-8'));
+      if (info.isMock === true) {
+        return true;
+      }
+    }
+  } catch {
+    // Ignore
+  }
+
+  return false;
+}
 
 /**
  * Get the test Redis URL from environment or use default
@@ -16,8 +42,9 @@ export function getTestRedisUrl(db?: number): string {
   // If not in memory, try to read from file (written by globalSetup)
   if (!globalRedis) {
     try {
-      // File is in the titan package root
-      const infoFile = '/Users/taaliman/projects/luxquant/omnitron-dev/omni/packages/titan/.redis-test-info.json';
+      // File is in the titan package root - use process.cwd() for portability
+      // This works because Jest runs from the package directory
+      const infoFile = join(process.cwd(), '.redis-test-info.json');
       const info = JSON.parse(readFileSync(infoFile, 'utf-8'));
       globalRedis = info;
     } catch {
@@ -40,6 +67,25 @@ export function createTestConfig(db: number = 1, additionalConfig: any = {}) {
     redis: getTestRedisUrl(db),
     ...additionalConfig,
   };
+}
+
+/**
+ * Create a NotificationManager for testing
+ * Returns MockNotificationManager when in mock mode, real NotificationManager otherwise
+ * @param db - Database number (default: 1)
+ * @param additionalConfig - Additional configuration options
+ * @returns NotificationManager or MockNotificationManager
+ */
+export async function createTestNotificationManager(db: number = 1, additionalConfig: any = {}): Promise<NotificationManager> {
+  const config = createTestConfig(db, additionalConfig);
+
+  if (isInMockMode()) {
+    const { MockNotificationManager } = await import('./mock-rotif.js');
+    return new MockNotificationManager(config) as unknown as NotificationManager;
+  }
+
+  const { NotificationManager } = await import('../../../src/rotif/rotif.js');
+  return new NotificationManager(config);
 }
 
 /**

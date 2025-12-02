@@ -8,7 +8,7 @@ import { HttpRemotePeer } from '../../../../src/netron/transport/http/peer.js';
 import { HttpServer } from '../../../../src/netron/transport/http/server.js';
 import { HttpConnection } from '../../../../src/netron/transport/http/connection.js';
 import { Netron } from '../../../../src/netron/netron.js';
-import { Service, Public } from '../../../../src/decorators/core.js';
+import { Service, Public, Method } from '../../../../src/decorators/core.js';
 import { createMockLogger } from '../../test-utils.js';
 import type { ILogger } from '../../../../src/modules/logger/logger.types.js';
 

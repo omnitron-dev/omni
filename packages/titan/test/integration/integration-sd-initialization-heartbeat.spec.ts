@@ -5,6 +5,12 @@ import { Service } from '@omnitron-dev/netron/src/index.js';
 import { Netron } from '@omnitron-dev/netron/dist/netron.js';
 import { cleanupRedis, getTestRedisUrl, createTestRedisClient } from '@omnitron-dev/netron/test/helpers/test-utils.js';
 
+const skipTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+
+if (skipTests) {
+  console.log('⏭️ Skipping integration-sd-initialization-heartbeat.spec.ts - requires external services');
+}
+
 @Service('test.service@1.0.0')
 class TestService {
   hello() {
@@ -12,7 +18,9 @@ class TestService {
   }
 }
 
-describe('ServiceDiscovery Integration - Initialization & Heartbeat', () => {
+const describeOrSkip = skipTests ? describe.skip : describe;
+
+describeOrSkip('ServiceDiscovery Integration - Initialization & Heartbeat', () => {
   let netron: Netron;
   let redis: Redis;
 

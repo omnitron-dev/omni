@@ -6,6 +6,14 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
+
+const skipIntegrationTests = process.env.SKIP_DOCKER_TESTS === 'true' ||
+                            process.env.USE_MOCK_REDIS === 'true' ||
+                            process.env.CI === 'true';
+
+if (skipIntegrationTests) {
+  console.log('⏭️ Skipping docker-integration.spec.ts - requires Docker/PostgreSQL');
+}
 import {
   createTestDatabase,
   withTestDatabase,
@@ -58,7 +66,9 @@ class UserService {
 })
 class TestModule {}
 
-describe('Docker Database Integration', () => {
+const describeOrSkip = skipIntegrationTests ? describe.skip : describe;
+
+describeOrSkip('Docker Database Integration', () => {
   it('should detect Docker availability', () => {
     const available = isDockerAvailable();
     console.log(`Docker available: ${available}`);

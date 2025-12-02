@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { MiddlewareManager, Middleware } from '../../../src/rotif/middleware.js';
 import { RotifMessage } from '../../../src/rotif/types.js';
 
@@ -13,7 +13,7 @@ describe('Rotif - Middleware', () => {
     describe('use', () => {
       it('should add middleware to the chain', () => {
         const mw: Middleware = {
-          beforePublish: vi.fn(),
+          beforePublish: jest.fn(),
         };
 
         manager.use(mw);
@@ -21,9 +21,9 @@ describe('Rotif - Middleware', () => {
       });
 
       it('should add multiple middleware in order', () => {
-        const mw1: Middleware = { beforePublish: vi.fn() };
-        const mw2: Middleware = { beforePublish: vi.fn() };
-        const mw3: Middleware = { beforePublish: vi.fn() };
+        const mw1: Middleware = { beforePublish: jest.fn() };
+        const mw2: Middleware = { beforePublish: jest.fn() };
+        const mw3: Middleware = { beforePublish: jest.fn() };
 
         manager.use(mw1);
         manager.use(mw2);
@@ -38,8 +38,8 @@ describe('Rotif - Middleware', () => {
 
     describe('runBeforePublish', () => {
       it('should call beforePublish on all middleware', async () => {
-        const mw1 = { beforePublish: vi.fn() };
-        const mw2 = { beforePublish: vi.fn() };
+        const mw1 = { beforePublish: jest.fn() };
+        const mw2 = { beforePublish: jest.fn() };
 
         manager.use(mw1);
         manager.use(mw2);
@@ -78,9 +78,9 @@ describe('Rotif - Middleware', () => {
       });
 
       it('should skip middleware without beforePublish', async () => {
-        const mw1 = { beforePublish: vi.fn() };
-        const mw2 = { afterPublish: vi.fn() }; // No beforePublish
-        const mw3 = { beforePublish: vi.fn() };
+        const mw1 = { beforePublish: jest.fn() };
+        const mw2 = { afterPublish: jest.fn() }; // No beforePublish
+        const mw3 = { beforePublish: jest.fn() };
 
         manager.use(mw1);
         manager.use(mw2);
@@ -93,7 +93,7 @@ describe('Rotif - Middleware', () => {
       });
 
       it('should pass correct arguments to middleware', async () => {
-        const mw = { beforePublish: vi.fn() };
+        const mw = { beforePublish: jest.fn() };
         manager.use(mw);
 
         const channel = 'user.created';
@@ -108,8 +108,8 @@ describe('Rotif - Middleware', () => {
 
     describe('runAfterPublish', () => {
       it('should call afterPublish on all middleware', async () => {
-        const mw1 = { afterPublish: vi.fn() };
-        const mw2 = { afterPublish: vi.fn() };
+        const mw1 = { afterPublish: jest.fn() };
+        const mw2 = { afterPublish: jest.fn() };
 
         manager.use(mw1);
         manager.use(mw2);
@@ -121,7 +121,7 @@ describe('Rotif - Middleware', () => {
       });
 
       it('should handle null message ID', async () => {
-        const mw = { afterPublish: vi.fn() };
+        const mw = { afterPublish: jest.fn() };
         manager.use(mw);
 
         await manager.runAfterPublish('test', {}, null, {});
@@ -130,7 +130,7 @@ describe('Rotif - Middleware', () => {
       });
 
       it('should handle array of message IDs', async () => {
-        const mw = { afterPublish: vi.fn() };
+        const mw = { afterPublish: jest.fn() };
         manager.use(mw);
 
         const ids = ['id1', 'id2', 'id3'];
@@ -148,11 +148,11 @@ describe('Rotif - Middleware', () => {
           payload: { data: 'test' },
           timestamp: Date.now(),
           attempt: 1,
-          ack: vi.fn(),
+          ack: jest.fn(),
         };
 
-        const mw1 = { beforeProcess: vi.fn() };
-        const mw2 = { beforeProcess: vi.fn() };
+        const mw1 = { beforeProcess: jest.fn() };
+        const mw2 = { beforeProcess: jest.fn() };
 
         manager.use(mw1);
         manager.use(mw2);
@@ -170,10 +170,10 @@ describe('Rotif - Middleware', () => {
           payload: { userId: 789 },
           timestamp: Date.now(),
           attempt: 2,
-          ack: vi.fn(),
+          ack: jest.fn(),
         };
 
-        const mw = { beforeProcess: vi.fn() };
+        const mw = { beforeProcess: jest.fn() };
         manager.use(mw);
 
         await manager.runBeforeProcess(msg);
@@ -191,11 +191,11 @@ describe('Rotif - Middleware', () => {
           payload: {},
           timestamp: Date.now(),
           attempt: 1,
-          ack: vi.fn(),
+          ack: jest.fn(),
         };
 
-        const mw1 = { afterProcess: vi.fn() };
-        const mw2 = { afterProcess: vi.fn() };
+        const mw1 = { afterProcess: jest.fn() };
+        const mw2 = { afterProcess: jest.fn() };
 
         manager.use(mw1);
         manager.use(mw2);
@@ -215,12 +215,12 @@ describe('Rotif - Middleware', () => {
           payload: {},
           timestamp: Date.now(),
           attempt: 1,
-          ack: vi.fn(),
+          ack: jest.fn(),
         };
         const error = new Error('Test error');
 
-        const mw1 = { onError: vi.fn() };
-        const mw2 = { onError: vi.fn() };
+        const mw1 = { onError: jest.fn() };
+        const mw2 = { onError: jest.fn() };
 
         manager.use(mw1);
         manager.use(mw2);
@@ -238,12 +238,12 @@ describe('Rotif - Middleware', () => {
           payload: {},
           timestamp: Date.now(),
           attempt: 3,
-          ack: vi.fn(),
+          ack: jest.fn(),
         };
         const error = new Error('Processing failed');
         error.stack = 'Error stack trace';
 
-        const mw = { onError: vi.fn() };
+        const mw = { onError: jest.fn() };
         manager.use(mw);
 
         await manager.runOnError(msg, error);
@@ -284,7 +284,7 @@ describe('Rotif - Middleware', () => {
           payload: {},
           timestamp: Date.now(),
           attempt: 1,
-          ack: vi.fn(),
+          ack: jest.fn(),
         };
 
         await manager.runBeforeProcess(msg);

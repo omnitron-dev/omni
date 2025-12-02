@@ -6,7 +6,15 @@ import Redis from 'ioredis';
 import {
   createDockerRedisFixture,
   type DockerRedisTestFixture,
+  isDockerAvailable,
 } from './utils/redis-test-utils.js';
+
+// Skip tests if in CI/mock mode (check env vars first to avoid slow Docker check)
+const skipTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+if (skipTests) {
+  console.log('⏭️ Skipping redis.health.spec.ts - requires Docker');
+}
+const describeOrSkip = skipTests ? describe.skip : describe;
 
 interface Logger {
   log(message: string): void;
@@ -33,7 +41,7 @@ interface HealthCheckDetails {
   clients?: Record<string, { healthy: boolean; latency: number }>;
 }
 
-describe('RedisHealthIndicator', () => {
+describeOrSkip('RedisHealthIndicator', () => {
   let healthIndicator: RedisHealthIndicator;
   let manager: RedisManager;
   let dockerFixture: DockerRedisTestFixture;

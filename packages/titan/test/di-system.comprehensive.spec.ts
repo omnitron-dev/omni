@@ -10,16 +10,18 @@ import 'reflect-metadata';
 import {
   Container,
   createToken,
+  Scope,
+  CircularDependencyError,
+} from '@nexus';
+import {
   Injectable,
   Inject,
   Optional,
   Singleton,
   Transient,
-  Scope,
-  CircularDependencyError,
-} from '@nexus';
-import { Service, OnInit, OnDestroy, TitanApplication, EnhancedApplicationModule } from '../src/index.js';
-import { ConfigModule } from '../src/modules/config/config.module.js';
+} from '@/decorators';
+import { Service, OnInit, OnDestroy, TitanApplication, EnhancedApplicationModule } from '@/index';
+import { ConfigModule } from '@/modules/config/config.module';
 const CONFIG_SERVICE_TOKEN = createToken('ConfigModule');
 
 // Test utilities
@@ -65,8 +67,11 @@ describe('Comprehensive DI System Tests', () => {
 
       @Injectable()
       class ServiceWithPropertyInjection {
-        @Inject(LoggerToken)
-        public logger!: { log: (msg: string) => void };
+        private logger!: { log: (msg: string) => void };
+
+        constructor(@Inject(LoggerToken) logger: { log: (msg: string) => void }) {
+          this.logger = logger;
+        }
 
         logMessage(msg: string) {
           this.logger.log(msg);
@@ -336,44 +341,65 @@ describe('Comprehensive DI System Tests', () => {
 
   describe('Module System Integration', () => {
     it('should handle module dependencies correctly', async () => {
-      // Create a custom module with dependencies
+      // Create tokens
+      const CONFIG_TOKEN = createToken<{ host: string; port: number }>('Config');
+      const DB_CONNECTION_TOKEN = createToken<{ host: string; port: number }>('DB_CONNECTION');
+
+      // Create a simple config module
+      class ConfigModule extends EnhancedApplicationModule {
+        constructor() {
+          super({
+            name: 'config',
+            version: '1.0.0',
+            providers: [
+              [
+                CONFIG_TOKEN,
+                {
+                  useValue: {
+                    host: 'test-db',
+                    port: 3306,
+                  },
+                },
+              ],
+            ],
+            exports: [CONFIG_TOKEN],
+          });
+        }
+      }
+
+      // Create a database module that depends on config
       class DatabaseModule extends EnhancedApplicationModule {
         constructor() {
           super({
             name: 'database',
             version: '1.0.0',
-            dependencies: [CONFIG_SERVICE_TOKEN],
+            dependencies: ['config'],
             providers: [
               [
-                'DB_CONNECTION',
+                DB_CONNECTION_TOKEN,
                 {
-                  useFactory: (config: ConfigModule) => ({
-                    host: config.get('db.host', 'localhost'),
-                    port: config.get('db.port', 5432),
+                  useFactory: (config: { host: string; port: number }) => ({
+                    host: config.host,
+                    port: config.port,
                   }),
-                  inject: [CONFIG_SERVICE_TOKEN],
+                  inject: [CONFIG_TOKEN],
                 },
               ],
             ],
-            exports: ['DB_CONNECTION'],
+            exports: [DB_CONNECTION_TOKEN],
           });
         }
       }
 
       const app = await TitanApplication.create({
         name: 'TestApp',
-        config: {
-          db: {
-            host: 'test-db',
-            port: 3306,
-          },
-        },
-        modules: [DatabaseModule],
+        modules: [ConfigModule, DatabaseModule],
       });
 
       await app.start();
 
-      const dbConnection = app.get('DB_CONNECTION');
+      // Resolve the connection
+      const dbConnection = app.resolve(DB_CONNECTION_TOKEN);
       expect(dbConnection).toEqual({
         host: 'test-db',
         port: 3306,
@@ -393,7 +419,7 @@ describe('Comprehensive DI System Tests', () => {
           });
         }
 
-        protected async onModuleStart() {
+        async onStart() {
           await delay(20);
           initOrder.push('async1');
         }
@@ -408,7 +434,7 @@ describe('Comprehensive DI System Tests', () => {
           });
         }
 
-        protected async onModuleStart() {
+        async onStart() {
           await delay(10);
           initOrder.push('async2');
         }

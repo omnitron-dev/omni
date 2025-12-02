@@ -1,24 +1,28 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import Redis from 'ioredis';
-import { NotificationManager } from '../../../src/rotif/rotif.js';
-import { createTestConfig } from '../helpers/test-utils.js';
+import type { NotificationManager } from '../../../src/rotif/rotif.js';
+import { createTestConfig, createTestNotificationManager } from '../helpers/test-utils.js';
 import { delay } from '@omnitron-dev/common';
 
-describe('Rotif - Consumer Loop', () => {
+const skipTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+if (skipTests) {
+  console.log('⏭️  Skipping consumer-loop.spec.ts - integration test');
+}
+const describeOrSkip = skipTests ? describe.skip : describe;
+
+describeOrSkip('Rotif - Consumer Loop', () => {
   let manager: NotificationManager;
   let redis: Redis;
 
   beforeEach(async () => {
-    manager = new NotificationManager(
-      createTestConfig(9, {
-        checkDelayInterval: 100,
-        blockInterval: 100,
-        maxRetries: 3,
-        retryDelay: 200,
-        pendingCheckInterval: 500,
-        pendingIdleThreshold: 1000,
-      })
-    );
+    manager = await createTestNotificationManager(9, {
+      checkDelayInterval: 100,
+      blockInterval: 100,
+      maxRetries: 3,
+      retryDelay: 200,
+      pendingCheckInterval: 500,
+      pendingIdleThreshold: 1000,
+    });
     redis = manager.redis;
     await redis.flushdb();
     await manager.waitUntilReady();

@@ -52,6 +52,14 @@ export {
   // Service/Method decorators
   Method,
   Public, // Deprecated alias for Method
+  // Composable method decorators (use alongside @Method())
+  Auth,
+  RateLimit,
+  Cache,
+  Prefetch,
+  Audit,
+  Transports,
+  Readonly,
   // Metadata keys
   METADATA_KEYS,
   SERVICE_ANNOTATION,

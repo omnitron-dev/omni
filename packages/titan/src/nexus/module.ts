@@ -589,3 +589,305 @@ export interface ForwardRef<T> {
 export function forwardRef<T>(fn: () => T): ForwardRef<T> {
   return fn as ForwardRef<T>;
 }
+
+// ============================================================================
+// Module Async Options Helpers
+// ============================================================================
+
+/**
+ * Interface for factory-based async options
+ */
+export interface AsyncOptionsFactory<TOptions> {
+  createOptions(): Promise<TOptions> | TOptions;
+}
+
+/**
+ * Common async module options pattern used across all modules
+ */
+export interface ModuleAsyncOptions<TOptions, TFactory extends AsyncOptionsFactory<TOptions> = AsyncOptionsFactory<TOptions>> {
+  /**
+   * Factory function to create options
+   */
+  useFactory?: (...args: any[]) => Promise<TOptions> | TOptions;
+
+  /**
+   * Dependencies to inject into factory
+   */
+  inject?: InjectionToken<any>[];
+
+  /**
+   * Existing factory to use
+   */
+  useExisting?: InjectionToken<TFactory>;
+
+  /**
+   * Class to instantiate as factory
+   */
+  useClass?: Constructor<TFactory>;
+
+  /**
+   * Modules to import
+   */
+  imports?: (IModule | DynamicModule | Constructor<any>)[];
+
+  /**
+   * Mark module as global
+   */
+  isGlobal?: boolean;
+}
+
+/**
+ * Creates async options providers from common async options pattern.
+ * This helper reduces boilerplate across all modules that use forRootAsync().
+ *
+ * @example
+ * ```typescript
+ * static forRootAsync(options: RedisModuleAsyncOptions): DynamicModule {
+ *   const providers = createAsyncOptionsProvider(REDIS_MODULE_OPTIONS, options);
+ *   // ... rest of module configuration
+ * }
+ * ```
+ */
+export function createAsyncOptionsProvider<TOptions>(
+  optionsToken: InjectionToken<TOptions>,
+  asyncOptions: ModuleAsyncOptions<TOptions>
+): Array<[InjectionToken<any>, ProviderDefinition<any>]> {
+  const providers: Array<[InjectionToken<any>, ProviderDefinition<any>]> = [];
+
+  if (asyncOptions.useFactory) {
+    // Factory function provided directly
+    providers.push([
+      optionsToken,
+      {
+        useFactory: async (...args: any[]) =>
+          Promise.resolve(asyncOptions.useFactory!(...args)),
+        inject: (asyncOptions.inject || []) as any,
+      },
+    ]);
+  } else if (asyncOptions.useExisting) {
+    // Use existing factory instance
+    providers.push([
+      optionsToken,
+      {
+        useFactory: async (factory: AsyncOptionsFactory<TOptions>) =>
+          factory.createOptions(),
+        inject: [asyncOptions.useExisting],
+      },
+    ]);
+  } else if (asyncOptions.useClass) {
+    // Instantiate a factory class
+    providers.push([
+      asyncOptions.useClass as any,
+      {
+        useClass: asyncOptions.useClass,
+      },
+    ]);
+    providers.push([
+      optionsToken,
+      {
+        useFactory: async (factory: AsyncOptionsFactory<TOptions>) =>
+          factory.createOptions(),
+        inject: [asyncOptions.useClass as any],
+      },
+    ]);
+  } else {
+    // No options provided - use empty object as default
+    providers.push([
+      optionsToken,
+      {
+        useValue: {} as TOptions,
+      },
+    ]);
+  }
+
+  return providers;
+}
+
+/**
+ * Helper type for defining module provider tuples
+ */
+export type ModuleProviderTuple<T = any> = [InjectionToken<T>, ProviderDefinition<T>];
+
+/**
+ * Helper type for defining module provider tuples with registration options
+ */
+export type ModuleProviderWithOptions<T = any> = [
+  InjectionToken<T>,
+  ProviderDefinition<T>,
+  Partial<{ override: boolean; scope: string }>
+];
+
+/**
+ * Creates a service provider tuple with a factory that depends on other services.
+ * Reduces boilerplate for common factory patterns.
+ *
+ * @example
+ * ```typescript
+ * const providers = [
+ *   createServiceProvider(
+ *     MY_SERVICE_TOKEN,
+ *     MyService,
+ *     [DEP1_TOKEN, DEP2_TOKEN]
+ *   ),
+ * ];
+ * ```
+ */
+export function createServiceProvider<T, TDeps extends any[]>(
+  token: InjectionToken<T>,
+  ServiceClass: Constructor<T>,
+  inject: { [K in keyof TDeps]: InjectionToken<TDeps[K]> }
+): ModuleProviderTuple<T> {
+  return [
+    token,
+    {
+      useFactory: (...deps: TDeps) => new ServiceClass(...deps),
+      inject: inject as InjectionToken<any>[],
+    },
+  ];
+}
+
+/**
+ * Creates an alias provider that resolves to the same instance as another token.
+ * Useful for allowing resolution by class type when the primary token is a symbol.
+ *
+ * @example
+ * ```typescript
+ * // After registering DATABASE_MANAGER token:
+ * createAliasProvider(DatabaseManager, DATABASE_MANAGER)
+ * // Now container.resolve(DatabaseManager) works
+ * ```
+ */
+export function createAliasProvider<T>(
+  aliasToken: InjectionToken<T>,
+  targetToken: InjectionToken<T>
+): ModuleProviderTuple<T> {
+  return [
+    aliasToken,
+    {
+      useFactory: (instance: T) => instance,
+      inject: [targetToken],
+    },
+  ];
+}
+
+// ============================================================================
+// Type-Safe Provider Definition Helpers
+// ============================================================================
+
+/**
+ * Provider definition with factory function.
+ * Use this helper to create type-safe factory providers for module definitions.
+ *
+ * @example
+ * ```typescript
+ * const providers = [
+ *   defineFactory(MY_SERVICE_TOKEN, {
+ *     useFactory: (dep) => new MyService(dep),
+ *     inject: [DEP_TOKEN],
+ *     scope: 'singleton',
+ *   }),
+ * ];
+ * ```
+ */
+export function defineFactory<T>(
+  token: InjectionToken<T>,
+  provider: {
+    useFactory: (...args: any[]) => T | Promise<T>;
+    inject?: InjectionToken<any>[];
+    scope?: 'singleton' | 'transient' | 'scoped' | 'request';
+    async?: boolean;
+  }
+): ModuleProviderTuple<T> {
+  return [token, provider as ProviderDefinition<T>];
+}
+
+/**
+ * Provider definition with class.
+ * Use this helper to create type-safe class providers for module definitions.
+ *
+ * @example
+ * ```typescript
+ * const providers = [
+ *   defineClass(MY_SERVICE_TOKEN, {
+ *     useClass: MyServiceImpl,
+ *     inject: [DEP_TOKEN],
+ *     scope: 'singleton',
+ *   }),
+ * ];
+ * ```
+ */
+export function defineClass<T>(
+  token: InjectionToken<T>,
+  provider: {
+    useClass: Constructor<T>;
+    inject?: InjectionToken<any>[];
+    scope?: 'singleton' | 'transient' | 'scoped' | 'request';
+  }
+): ModuleProviderTuple<T> {
+  return [token, provider as ProviderDefinition<T>];
+}
+
+/**
+ * Provider definition with value.
+ * Use this helper to create type-safe value providers for module definitions.
+ *
+ * @example
+ * ```typescript
+ * const providers = [
+ *   defineValue(CONFIG_TOKEN, { useValue: myConfig }),
+ * ];
+ * ```
+ */
+export function defineValue<T>(
+  token: InjectionToken<T>,
+  provider: { useValue: T }
+): ModuleProviderTuple<T> {
+  return [token, provider as ProviderDefinition<T>];
+}
+
+/**
+ * Provider definition with existing token (alias).
+ * Use this helper to create type-safe token alias providers.
+ *
+ * @example
+ * ```typescript
+ * const providers = [
+ *   defineExisting(MyService, { useExisting: MY_SERVICE_TOKEN }),
+ * ];
+ * ```
+ */
+export function defineExisting<T>(
+  token: InjectionToken<T>,
+  provider: { useExisting: InjectionToken<T> }
+): ModuleProviderTuple<T> {
+  return [
+    token,
+    {
+      useFactory: (instance: T) => instance,
+      inject: [provider.useExisting],
+    } as ProviderDefinition<T>,
+  ];
+}
+
+/**
+ * Type for a providers array that can be used in DynamicModule.
+ * This type accepts the common tuple format without requiring 'as any'.
+ */
+export type ModuleProviders = Array<ModuleProviderTuple<any> | ModuleProviderWithOptions<any> | Constructor<any>>;
+
+/**
+ * Helper to define a complete providers array with correct types.
+ * Use this to avoid 'as any' casts in module provider arrays.
+ *
+ * @example
+ * ```typescript
+ * const providers = defineProviders([
+ *   defineFactory(SERVICE_TOKEN, { useFactory: () => new Service(), scope: 'singleton' }),
+ *   defineClass(OTHER_TOKEN, { useClass: OtherService }),
+ *   defineValue(CONFIG_TOKEN, { useValue: config }),
+ * ]);
+ * ```
+ */
+export function defineProviders(providers: ModuleProviders): ModuleProviders {
+  return providers;
+}

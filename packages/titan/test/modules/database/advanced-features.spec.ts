@@ -6,6 +6,17 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from '@jest/globals';
+
+const skipIntegrationTests = process.env.SKIP_DOCKER_TESTS === 'true' ||
+                            process.env.USE_MOCK_REDIS === 'true' ||
+                            process.env.CI === 'true';
+
+if (skipIntegrationTests) {
+  console.log('⏭️ Skipping advanced-features.spec.ts - requires Docker/PostgreSQL');
+}
+
+const describeDocker = skipIntegrationTests ? describe.skip : describe;
+
 import { Application } from '../../../src/application.js';
 import { Module, Injectable, Inject } from '../../../src/decorators/index.js';
 import { Kysely, sql } from 'kysely';
@@ -181,7 +192,8 @@ class AdvancedUserService {
 class TestModule {}
 
 describe('Advanced Database Features', () => {
-  describe('Health Monitoring', () => {
+  const describeFeatures = skipIntegrationTests ? describe.skip : describe;
+  describeFeatures('Health Monitoring', () => {
     let app: Application;
     let healthIndicator: DatabaseHealthIndicator;
 
@@ -298,7 +310,7 @@ describe('Advanced Database Features', () => {
     });
   });
 
-  describe('Direct Query Builder Access', () => {
+  describeFeatures('Direct Query Builder Access', () => {
     let app: Application;
     let userService: AdvancedUserService;
     let db: Kysely<any>;
@@ -405,7 +417,7 @@ describe('Advanced Database Features', () => {
     });
   });
 
-  describe('Pagination', () => {
+  describeFeatures('Pagination', () => {
     let app: Application;
     let userService: AdvancedUserService;
     let db: Kysely<any>;
@@ -526,7 +538,7 @@ describe('Advanced Database Features', () => {
     });
   });
 
-  describe('PostgreSQL Integration', () => {
+  describeDocker('PostgreSQL Integration', () => {
     let dockerManager: DockerTestManager;
     let pgContainer: DockerContainer;
     let app: Application;
@@ -620,7 +632,7 @@ describe('Advanced Database Features', () => {
     }, 30000);
   });
 
-  describe('MySQL Integration', () => {
+  describeDocker('MySQL Integration', () => {
     let dockerManager: DockerTestManager;
     let mysqlContainer: DockerContainer;
     let app: Application;

@@ -338,10 +338,18 @@ export class DLQManager {
         if (channel && fieldsObj['channel'] !== channel) continue;
         if (maxAge && age > maxAge) continue;
 
+        let payload = {};
+        try {
+          payload = JSON.parse(fieldsObj['payload'] || '{}');
+        } catch {
+          // If payload is not valid JSON, default to empty object
+          payload = {};
+        }
+
         filtered.push({
           id,
           channel: fieldsObj['channel'] || 'unknown',
-          payload: JSON.parse(fieldsObj['payload'] || '{}'),
+          payload,
           error: fieldsObj['error'],
           timestamp,
           attempt: parseInt(fieldsObj['attempt'] || '0'),

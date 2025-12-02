@@ -13,10 +13,19 @@ import {
   waitForConnection,
 } from '../../../src/modules/redis/redis.utils.js';
 import { RedisClientOptions } from '../../../src/modules/redis/redis.types.js';
-import { withDockerRedis, type DockerRedisTestFixture } from './utils/redis-test-utils.js';
+import { withDockerRedis, type DockerRedisTestFixture, isRedisInMockMode, isDockerAvailable } from './utils/redis-test-utils.js';
 
 // Mock fs module
 jest.mock('fs');
+
+// Skip tests if Docker is not available or in mock mode
+const skipDockerTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true' || !isDockerAvailable();
+if (skipDockerTests && !isRedisInMockMode()) {
+  console.log('⏭️ Skipping redis.utils.spec.ts Docker tests - requires Docker');
+}
+
+// Conditional describe for tests that require real Redis
+const describeIfRealRedis = isRedisInMockMode() || skipDockerTests ? describe.skip : describe;
 
 // Mock cluster client type for tests
 interface MockClusterClient {
@@ -471,10 +480,14 @@ describe('Redis Utils', () => {
     });
   });
 
-  describe('waitForConnection', () => {
+  describeIfRealRedis('waitForConnection', () => {
     let client: Redis;
 
     beforeEach(() => {
+      if (isRedisInMockMode()) {
+        console.log('⏭️  Skipping waitForConnection tests - require real Redis');
+        return;
+      }
       client = new Redis({ host: 'localhost', port: 6379, db: 15, lazyConnect: true });
       testClients.push(client);
     });
@@ -567,7 +580,7 @@ describe('Redis Utils', () => {
     });
   });
 
-  describe('Docker Redis Integration', () => {
+  describeIfRealRedis('Docker Redis Integration', () => {
     it('should connect to Docker Redis instance', async () => {
       await withDockerRedis(async (fixture: DockerRedisTestFixture) => {
         const client = createRedisClient({

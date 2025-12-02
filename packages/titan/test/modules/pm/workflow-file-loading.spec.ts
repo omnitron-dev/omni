@@ -7,13 +7,10 @@
 
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { createTestProcessManager, TestProcessManager } from '../../../src/modules/pm/index.js';
 
 // Get the directory for fixture files
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const fixturesDir = path.join(__dirname, 'fixtures');
+const fixturesDir = path.resolve(__dirname, 'fixtures');
 
 describe('Workflow File Loading - Basic Loading', () => {
   let pm: TestProcessManager;

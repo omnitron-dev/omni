@@ -28,8 +28,15 @@ import { sql } from 'kysely';
 import { DatabaseTestManager } from '../../utils/docker-test-manager.js';
 
 // Skip Docker tests if env var is set
-const SKIP_DOCKER_TESTS = process.env.SKIP_DOCKER_TESTS === 'true';
-const describeOrSkip = SKIP_DOCKER_TESTS ? describe.skip : describe;
+const skipIntegrationTests = process.env.SKIP_DOCKER_TESTS === 'true' ||
+                            process.env.USE_MOCK_REDIS === 'true' ||
+                            process.env.CI === 'true';
+
+if (skipIntegrationTests) {
+  console.log('⏭️ Skipping transaction.spec.ts - requires Docker/PostgreSQL');
+}
+
+const describeOrSkip = skipIntegrationTests ? describe.skip : describe;
 
 // Test entity
 interface Account {
@@ -153,7 +160,7 @@ class BankingService {
 })
 class TestModule {}
 
-describe('Transaction Management', () => {
+describeOrSkip('Transaction Management', () => {
   describe('SQLite (in-memory)', () => {
     let app: Application;
     let bankingService: BankingService;

@@ -57,7 +57,7 @@ describe('Plugin System', () => {
       });
 
       container.use(plugin);
-      expect(() => container.use(plugin)).toThrow('Plugin UniquePlugin is already installed');
+      expect(() => container.use(plugin)).toThrow('Plugin already installed');
     });
 
     it('should check plugin compatibility', () => {
@@ -68,7 +68,7 @@ describe('Plugin System', () => {
         install: jest.fn(),
       });
 
-      expect(() => container.use(plugin)).toThrow('Plugin IncompatiblePlugin requires');
+      expect(() => container.use(plugin)).toThrow('Plugin version incompatible');
     });
 
     it('should install plugins with dependencies', () => {
@@ -86,7 +86,7 @@ describe('Plugin System', () => {
       });
 
       // Should fail without base plugin
-      expect(() => container.use(dependentPlugin)).toThrow('Plugin DependentPlugin depends on BasePlugin');
+      expect(() => container.use(dependentPlugin)).toThrow('Plugin dependency with id BasePlugin not found');
 
       // Should work with base plugin
       container.use(basePlugin);

@@ -1,15 +1,21 @@
 import Redis from 'ioredis';
 import { delay, defer } from '@omnitron-dev/common';
 
-import { NotificationManager } from '../../src/rotif/rotif.js';
-import { createTestConfig } from './helpers/test-utils.js';
+import type { NotificationManager } from '../../src/rotif/rotif.js';
+import { createTestConfig, createTestNotificationManager, isInMockMode } from './helpers/test-utils.js';
 
-describe('Lua Atomic Ack Script', () => {
+const describeOrSkip = isInMockMode() ? describe.skip : describe;
+
+if (isInMockMode()) {
+  console.log('⏭️ Skipping atomic-ack.spec.ts - requires real Redis');
+}
+
+describeOrSkip('Lua Atomic Ack Script', () => {
   let manager: NotificationManager;
   let redis: Redis;
 
   beforeAll(async () => {
-    manager = new NotificationManager(createTestConfig(1, { blockInterval: 100 }));
+    manager = await createTestNotificationManager(1, { blockInterval: 100 });
     redis = manager.redis;
     await redis.flushdb();
     await delay(1000); // Дождёмся загрузки скриптов

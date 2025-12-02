@@ -13,7 +13,18 @@ import {
 } from '../../../src/modules/database/testing/database-testing.module.js';
 import { InjectDatabaseManager, DatabaseManager } from '../../../src/modules/database/index.js';
 
-describe('Isolated Database Testing Module', () => {
+// Skip Docker tests if env var is set
+const skipIntegrationTests = process.env.SKIP_DOCKER_TESTS === 'true' ||
+                            process.env.USE_MOCK_REDIS === 'true' ||
+                            process.env.CI === 'true';
+
+if (skipIntegrationTests) {
+  console.log('⏭️ Skipping isolated-testing.spec.ts - requires Docker/PostgreSQL');
+}
+
+const describeOrSkip = skipIntegrationTests ? describe.skip : describe;
+
+describeOrSkip('Isolated Database Testing Module', () => {
   describe('createIsolatedModule', () => {
     it('should create isolated module with unique schema', async () => {
       const isolated1 = await DatabaseTestingModule.createIsolatedModule({

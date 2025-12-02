@@ -7,6 +7,15 @@
 // Main module
 export { TitanDatabaseModule } from './database.module.js';
 
+// Module alias for consistent naming (preferred)
+import { TitanDatabaseModule } from './database.module.js';
+
+/**
+ * Alias for TitanDatabaseModule for consistent naming convention.
+ * Recommended: Use `DatabaseModule` for consistency with other modules.
+ */
+export { TitanDatabaseModule as DatabaseModule };
+
 // Core services
 export { DatabaseManager } from './database.manager.js';
 export { DatabaseService } from './database.service.js';

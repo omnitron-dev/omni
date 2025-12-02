@@ -4,11 +4,22 @@ import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
 import { ConfigService } from '../../../src/modules/config/config.service.js';
 import { RedisTestManager, RedisTestContainer } from '../../utils/redis-test-manager.js';
 import { setupRedisTests, describeWithRedis } from '../../setup/redis-setup.js';
+import { isRedisInMockMode } from './utils/redis-test-utils.js';
 
-// Setup Redis test infrastructure
-setupRedisTests();
+// Skip all tests in this file if running in mock mode - requires real Redis
+const describeOrSkip = isRedisInMockMode() ? describe.skip : describeWithRedis;
 
-describeWithRedis('RedisService with Real Redis', () => {
+// Setup Redis test infrastructure (only if not in mock mode)
+if (!isRedisInMockMode()) {
+  setupRedisTests();
+}
+
+describeOrSkip('RedisService with Real Redis', () => {
+  beforeAll(() => {
+    if (isRedisInMockMode()) {
+      console.log('⏭️  Skipping redis.service.real.spec.ts - requires real Redis (USE_MOCK_REDIS=true)');
+    }
+  });
   let service: RedisService;
   let manager: RedisManager;
   let configService: ConfigService;

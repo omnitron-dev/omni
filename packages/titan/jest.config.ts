@@ -57,8 +57,9 @@ const config: JestConfigWithTsJest = {
         useESM: true,
       },
     ],
+    '^.+\\.(js|jsx|mjs)$': ['babel-jest'],
   },
-  transformIgnorePatterns: ['node_modules/(?!(@omnitron-dev|long)/)'],
+  transformIgnorePatterns: ['node_modules/(?!(@omnitron-dev|@kysera|long|uuid)/)'],
   extensionsToTreatAsEsm: ['.ts'],
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
@@ -74,6 +75,9 @@ const config: JestConfigWithTsJest = {
     '^@omnitron-dev/common$': '<rootDir>/../common/src/index.ts',
     '^@omnitron-dev/msgpack$': '<rootDir>/../msgpack/src/index.ts',
     '^@omnitron-dev/msgpack/smart-buffer$': '<rootDir>/../msgpack/src/smart-buffer.ts',
+    '^@kysera/core$': '<rootDir>/test/__mocks__/@kysera/core.ts',
+    '^@kysera/(.*)$': '<rootDir>/test/__mocks__/@kysera/$1.ts',
+    '^uuid$': '<rootDir>/test/__mocks__/uuid.ts',
   },
   resolver: 'ts-jest-resolver',
 };

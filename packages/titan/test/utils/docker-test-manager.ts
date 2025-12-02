@@ -958,7 +958,18 @@ export class DockerTestManager extends EventEmitter {
 
 // Database-specific helpers
 export class DatabaseTestManager {
-  private static dockerManager = DockerTestManager.getInstance();
+  private static dockerManager: DockerTestManager | null = null;
+
+  /**
+   * Lazily get the Docker manager instance to avoid failing at module load time
+   * when Docker is not available
+   */
+  private static getDockerManager(): DockerTestManager {
+    if (!DatabaseTestManager.dockerManager) {
+      DatabaseTestManager.dockerManager = DockerTestManager.getInstance();
+    }
+    return DatabaseTestManager.dockerManager;
+  }
 
   static async createPostgresContainer(options?: {
     name?: string;
@@ -972,7 +983,7 @@ export class DatabaseTestManager {
     const user = options?.user || 'testuser';
     const password = options?.password || 'testpass';
 
-    return DatabaseTestManager.dockerManager.createContainer({
+    return DatabaseTestManager.getDockerManager().createContainer({
       name: options?.name,
       image: 'postgres:16-alpine',
       ports: { 5432: port },
@@ -1010,7 +1021,7 @@ export class DatabaseTestManager {
     const password = options?.password || 'testpass';
     const rootPassword = options?.rootPassword || 'rootpass';
 
-    return DatabaseTestManager.dockerManager.createContainer({
+    return DatabaseTestManager.getDockerManager().createContainer({
       name: options?.name,
       image: 'mysql:8.0',
       ports: { 3306: port },

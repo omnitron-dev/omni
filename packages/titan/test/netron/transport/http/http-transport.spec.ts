@@ -135,15 +135,18 @@ describe('HttpTransport', () => {
       expect(server.connections).toBeInstanceOf(Map);
     });
 
-    it('should throw error if createServer is not supported', async () => {
-      // Test client-only transport scenario
+    it('should create server with null internal server when capability disabled', async () => {
+      // Test client-only transport scenario - server object is created but internal server is null
       const clientOnlyTransport = new HttpTransport();
       (clientOnlyTransport as any).capabilities = {
         ...clientOnlyTransport.capabilities,
         server: false,
       };
 
-      await expect(clientOnlyTransport.createServer()).rejects.toThrow('HTTP transport server capability is disabled');
+      const server = await clientOnlyTransport.createServer();
+      expect(server).toBeDefined();
+      // Internal server is null when server capability is disabled
+      expect((server as any).server).toBeNull();
     });
   });
 

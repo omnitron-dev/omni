@@ -1,21 +1,25 @@
 import { delay as delayMs } from '@omnitron-dev/common';
 import { it, expect, describe, afterAll, beforeAll, jest } from '@jest/globals';
 
-import { NotificationManager } from '../../src/rotif/rotif.js';
-import { createTestConfig } from './helpers/test-utils.js';
+import type { NotificationManager } from '../../src/rotif/rotif.js';
+import { createTestConfig, createTestNotificationManager, isInMockMode } from './helpers/test-utils.js';
 
-describe('NotificationManager - delay delivery', () => {
+const describeOrSkip = isInMockMode() ? describe.skip : describe;
+
+if (isInMockMode()) {
+  console.log('⏭️ Skipping delay-delivery.spec.ts - requires real Redis');
+}
+
+describeOrSkip('NotificationManager - delay delivery', () => {
   let manager: NotificationManager;
 
   jest.setTimeout(10000);
 
   beforeAll(async () => {
-    manager = new NotificationManager(
-      createTestConfig(1, {
+    manager = await createTestNotificationManager(1, {
         checkDelayInterval: 100,
         blockInterval: 100,
-      })
-    );
+      });
     await manager.redis.flushdb();
   });
 

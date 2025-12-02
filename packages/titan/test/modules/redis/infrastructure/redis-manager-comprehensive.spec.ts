@@ -3,13 +3,24 @@
  * Tests connection management, script loading, error handling, and lifecycle
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, beforeAll } from '@jest/globals';
 import { RedisManager } from '../../../../src/modules/redis/redis.manager.js';
 import type { RedisModuleOptions } from '../../../../src/modules/redis/redis.types.js';
 import { RedisTestManager } from '../../../utils/redis-test-manager.js';
 import { delay } from '@omnitron-dev/common';
+import { isRedisInMockMode } from '../../redis/utils/redis-test-utils.js';
 
-describe('Redis Manager - Infrastructure Tests', () => {
+// Check if running in mock mode
+const skipTests = isRedisInMockMode();
+
+if (skipTests) {
+  console.log('⏭️  Skipping redis-manager-comprehensive.spec.ts - requires real Redis');
+}
+
+// Skip all tests if in mock mode - requires real Redis
+const describeOrSkip = skipTests ? describe.skip : describe;
+
+describeOrSkip('Redis Manager - Infrastructure Tests', () => {
   let testContainer: Awaited<ReturnType<typeof RedisTestManager.prototype.createContainer>>;
   let manager: RedisManager;
 

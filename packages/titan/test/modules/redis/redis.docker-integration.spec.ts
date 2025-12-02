@@ -17,9 +17,23 @@ import {
   flushRedis,
   type DockerRedisTestFixture,
   type DockerRedisClusterFixture,
+  isRedisInMockMode,
+  isDockerAvailable,
 } from './utils/redis-test-utils.js';
 
-describe('RedisTestManager - Standalone Redis', () => {
+// Skip all tests in this file if running in mock mode or CI (check env vars FIRST to avoid slow Docker check)
+const skipTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true' || isRedisInMockMode();
+if (skipTests) {
+  console.log('⏭️ Skipping redis.docker-integration.spec.ts - requires Docker');
+}
+const describeOrSkip = skipTests ? describe.skip : describe;
+
+describeOrSkip('RedisTestManager - Standalone Redis', () => {
+  beforeAll(() => {
+    if (skipTests) {
+      console.log('⏭️  Skipping redis.docker-integration.spec.ts - requires Docker');
+    }
+  });
   describe('Basic Container Creation', () => {
     it('should create a standalone Redis container', async () => {
       const container = await RedisTestManager.createRedisContainer();

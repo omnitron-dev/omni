@@ -1,17 +1,21 @@
 import { delay, defer } from '@omnitron-dev/common';
 
-import { NotificationManager } from '../../src/rotif/rotif.js';
-import { createTestConfig } from './helpers/test-utils.js';
+import type { NotificationManager } from '../../src/rotif/rotif.js';
+import { createTestConfig, createTestNotificationManager, isInMockMode } from './helpers/test-utils.js';
 
-describe('NotificationManager – Channel Subscription Tests', () => {
+const describeOrSkip = isInMockMode() ? describe.skip : describe;
+
+if (isInMockMode()) {
+  console.log('⏭️ Skipping channel-subscription.spec.ts - requires real Redis');
+}
+
+describeOrSkip('NotificationManager – Channel Subscription Tests', () => {
   let manager: NotificationManager;
 
   beforeEach(async () => {
-    manager = new NotificationManager(
-      createTestConfig(1, {
-        blockInterval: 100,
-      })
-    );
+    manager = await createTestNotificationManager(1, {
+      blockInterval: 100,
+    });
     await manager.redis.flushdb();
   });
 

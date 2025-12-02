@@ -1,7 +1,13 @@
 import { delay } from '@omnitron-dev/common';
-import { NotificationManager } from '../../src/rotif/rotif.js';
-import { getTestRedisUrl } from './helpers/test-utils.js';
+import type { NotificationManager } from '../../src/rotif/rotif.js';
+import { getTestRedisUrl, createTestNotificationManager, isInMockMode } from './helpers/test-utils.js';
 import { generateDedupKey } from '../../src/rotif/utils/common.js';
+
+const describeOrSkip = isInMockMode() ? describe.skip : describe;
+
+if (isInMockMode()) {
+  console.log('⏭️ Skipping deduplication-coverage integration tests - requires real Redis');
+}
 
 describe('Deduplication Coverage Tests', () => {
   describe('generateDedupKey function', () => {
@@ -76,12 +82,11 @@ describe('Deduplication Coverage Tests', () => {
   });
 
   // Integration tests that need Redis
-  describe('Integration Tests', () => {
+  describeOrSkip('Integration Tests', () => {
     let manager: NotificationManager;
 
     beforeEach(async () => {
-      manager = new NotificationManager({
-        redis: getTestRedisUrl(1),
+      manager = await createTestNotificationManager(1, {
         deduplicationTTL: 3600,
         blockInterval: 50,
       });

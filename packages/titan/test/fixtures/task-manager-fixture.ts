@@ -5,10 +5,10 @@
  */
 
 import { createToken } from '@nexus';
-import { Injectable, Inject, Singleton, OnInit, OnDestroy, IApplication, HealthStatus } from '../../src/index';
-import { LOGGER_SERVICE_TOKEN, ILogger as Logger } from '../../src/modules/logger.module';
+import { OnInit, OnDestroy, IApplication, HealthStatus } from '../../src/index';
+import { LOGGER_SERVICE_TOKEN, ILogger as Logger } from '../../src/modules/logger/index.js';
+import { Module, Injectable, Inject, Singleton } from '../../src/decorators/index.js';
 const CONFIG_SERVICE_TOKEN = createToken('ConfigModule');
-import { Module } from '../../src/enhanced-module';
 
 // ============================
 // Domain Models

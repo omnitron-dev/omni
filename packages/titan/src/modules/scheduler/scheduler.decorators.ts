@@ -31,8 +31,8 @@ export function Cron(expression: CronExpression, options?: ICronOptions): Method
 
     Reflect.defineMetadata(SCHEDULER_METADATA.CRON_JOB, metadata, target, propertyKey);
 
-    // Also store in array for discovery
-    const existingJobs = Reflect.getMetadata(SCHEDULER_METADATA.SCHEDULED_JOB, target.constructor) || [];
+    // Also store in array for discovery (only own metadata, not inherited)
+    const existingJobs = Reflect.getOwnMetadata(SCHEDULER_METADATA.SCHEDULED_JOB, target.constructor) || [];
 
     existingJobs.push({
       propertyKey,
@@ -64,8 +64,8 @@ export function Interval(milliseconds: number, options?: IIntervalOptions): Meth
 
     Reflect.defineMetadata(SCHEDULER_METADATA.INTERVAL, metadata, target, propertyKey);
 
-    // Also store in array for discovery
-    const existingJobs = Reflect.getMetadata(SCHEDULER_METADATA.SCHEDULED_JOB, target.constructor) || [];
+    // Also store in array for discovery (only own metadata, not inherited)
+    const existingJobs = Reflect.getOwnMetadata(SCHEDULER_METADATA.SCHEDULED_JOB, target.constructor) || [];
 
     existingJobs.push({
       propertyKey,
@@ -97,8 +97,8 @@ export function Timeout(milliseconds: number, options?: ITimeoutOptions): Method
 
     Reflect.defineMetadata(SCHEDULER_METADATA.TIMEOUT, metadata, target, propertyKey);
 
-    // Also store in array for discovery
-    const existingJobs = Reflect.getMetadata(SCHEDULER_METADATA.SCHEDULED_JOB, target.constructor) || [];
+    // Also store in array for discovery (only own metadata, not inherited)
+    const existingJobs = Reflect.getOwnMetadata(SCHEDULER_METADATA.SCHEDULED_JOB, target.constructor) || [];
 
     existingJobs.push({
       propertyKey,
@@ -125,7 +125,8 @@ export function Schedulable(): ClassDecorator {
  * Helper to extract all scheduled jobs from a class
  */
 export function getScheduledJobs(target: any): Array<{ propertyKey: string | symbol; metadata: IJobMetadata }> {
-  return Reflect.getMetadata(SCHEDULER_METADATA.SCHEDULED_JOB, target) || [];
+  // Use getOwnMetadata to only get jobs defined on this class, not inherited
+  return Reflect.getOwnMetadata(SCHEDULER_METADATA.SCHEDULED_JOB, target) || [];
 }
 
 /**

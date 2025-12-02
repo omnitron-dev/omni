@@ -1,16 +1,34 @@
 /**
  * Redis Docker Test Helper
  * Manages Redis containers for testing
+ *
+ * Uses JEST_WORKER_ID to avoid conflicts when tests run in parallel
  */
 
 import { execSync } from 'child_process';
 import Redis from 'ioredis';
 
 export class RedisDockerTestHelper {
-  private static containerName = 'test-redis-notifications';
-  private static port = 36379; // Use a different port to avoid conflicts
+  // Use worker-aware naming to avoid conflicts in parallel test execution
+  private static getWorkerId(): number {
+    return parseInt(process.env['JEST_WORKER_ID'] || '1', 10);
+  }
+
+  private static getContainerName(): string {
+    const workerId = this.getWorkerId();
+    return `test-redis-notifications-worker-${workerId}`;
+  }
+
+  private static getPort(): number {
+    // Base port 36379, each worker gets a unique port
+    const workerId = this.getWorkerId();
+    return 36379 + (workerId - 1) * 10;
+  }
+
   private static redis?: Redis;
   private static dockerPath?: string;
+  private static currentContainerName?: string;
+  private static currentPort?: number;
 
   /**
    * Find Docker executable path across different platforms
@@ -94,19 +112,25 @@ export class RedisDockerTestHelper {
   static async startRedis(): Promise<Redis> {
     try {
       const docker = this.findDockerPath();
+      const containerName = this.getContainerName();
+      const port = this.getPort();
+
+      // Store current container info for cleanup
+      this.currentContainerName = containerName;
+      this.currentPort = port;
 
       // Check if container already exists
       try {
-        execSync(`"${docker}" inspect ${this.containerName}`, { stdio: 'ignore' });
+        execSync(`"${docker}" inspect ${containerName}`, { stdio: 'ignore' });
         // Container exists, remove it
-        execSync(`"${docker}" rm -f ${this.containerName}`, { stdio: 'ignore' });
+        execSync(`"${docker}" rm -f ${containerName}`, { stdio: 'ignore' });
       } catch {
         // Container doesn't exist, continue
       }
 
       // Start new Redis container
-      console.log('Starting Redis container for testing...');
-      execSync(`"${docker}" run -d --name ${this.containerName} -p ${this.port}:6379 redis:7-alpine`, {
+      console.log(`Starting Redis container ${containerName} on port ${port}...`);
+      execSync(`"${docker}" run -d --name ${containerName} -p ${port}:6379 redis:7-alpine`, {
         stdio: 'pipe',
       });
 
@@ -116,7 +140,7 @@ export class RedisDockerTestHelper {
       // Create and return Redis client
       this.redis = new Redis({
         host: 'localhost',
-        port: this.port,
+        port: port,
         maxRetriesPerRequest: 3,
         retryStrategy: (times: number) => {
           if (times > 3) return null;
@@ -125,7 +149,7 @@ export class RedisDockerTestHelper {
       });
 
       await this.redis.ping();
-      console.log('Redis container started successfully');
+      console.log(`Redis container ${containerName} started successfully`);
       return this.redis;
     } catch (error) {
       console.error('Failed to start Redis container:', error);
@@ -144,11 +168,24 @@ export class RedisDockerTestHelper {
       }
 
       const docker = this.findDockerPath();
+      const containerName = this.currentContainerName || this.getContainerName();
 
-      console.log('Stopping Redis container...');
-      execSync(`"${docker}" stop ${this.containerName}`, { stdio: 'ignore' });
-      execSync(`"${docker}" rm ${this.containerName}`, { stdio: 'ignore' });
-      console.log('Redis container stopped');
+      console.log(`Stopping Redis container ${containerName}...`);
+      try {
+        execSync(`"${docker}" stop ${containerName}`, { stdio: 'ignore', timeout: 30000 });
+      } catch {
+        // Container may already be stopped
+      }
+      try {
+        execSync(`"${docker}" rm -f ${containerName}`, { stdio: 'ignore', timeout: 10000 });
+      } catch {
+        // Container may already be removed
+      }
+      console.log(`Redis container ${containerName} stopped`);
+
+      // Clear container info
+      this.currentContainerName = undefined;
+      this.currentPort = undefined;
     } catch (error) {
       // Ignore errors when stopping
       console.warn('Warning: Failed to stop Redis container:', error);
@@ -159,11 +196,13 @@ export class RedisDockerTestHelper {
    * Wait for Redis to be ready
    */
   private static async waitForRedis(maxAttempts = 30): Promise<void> {
+    const port = this.currentPort || this.getPort();
+
     for (let i = 0; i < maxAttempts; i++) {
       try {
         const testClient = new Redis({
           host: 'localhost',
-          port: this.port,
+          port: port,
           retryStrategy: () => null,
           lazyConnect: false,
         });
@@ -173,7 +212,7 @@ export class RedisDockerTestHelper {
         return;
       } catch (error) {
         if (i === maxAttempts - 1) {
-          throw new Error('Redis container failed to start in time');
+          throw new Error(`Redis container failed to start in time on port ${port}`);
         }
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
@@ -184,9 +223,10 @@ export class RedisDockerTestHelper {
    * Create Redis clients for testing
    */
   static createClients() {
+    const port = this.currentPort || this.getPort();
     const options = {
       host: 'localhost',
-      port: this.port,
+      port: port,
       maxRetriesPerRequest: 3,
     };
 

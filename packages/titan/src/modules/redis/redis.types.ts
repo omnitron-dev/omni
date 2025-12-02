@@ -1,6 +1,64 @@
 import type { Constructor, AbstractConstructor, ModuleMetadata, Token } from '../../nexus/index.js';
 import type { Redis, Cluster, ClusterNode, RedisOptions, ClusterOptions } from 'ioredis';
 
+/**
+ * Redis client connection status.
+ * These are the possible states of an ioredis client connection.
+ */
+export type RedisClientStatus =
+  | 'wait' // Not connected, waiting to connect
+  | 'reconnecting' // Reconnecting after disconnect
+  | 'connecting' // Currently connecting
+  | 'connect' // Connected but not ready
+  | 'ready' // Connected and ready for commands
+  | 'close' // Connection closed normally
+  | 'end'; // Connection ended (will not reconnect)
+
+/**
+ * Extended Redis client type with status property.
+ * ioredis clients have a status property that isn't in the type definitions.
+ */
+export interface RedisClientWithStatus extends Redis {
+  readonly status: RedisClientStatus;
+}
+
+/**
+ * Extended Cluster client type with status property.
+ */
+export interface ClusterWithStatus extends Cluster {
+  readonly status: RedisClientStatus;
+}
+
+/**
+ * Helper to get status from any Redis client type
+ */
+export function getClientStatus(client: Redis | Cluster): RedisClientStatus {
+  return (client as RedisClientWithStatus).status;
+}
+
+/**
+ * Check if client is ready for commands
+ */
+export function isClientReady(client: Redis | Cluster): boolean {
+  return getClientStatus(client) === 'ready';
+}
+
+/**
+ * Check if client is still alive (not ended)
+ */
+export function isClientAlive(client: Redis | Cluster): boolean {
+  const status = getClientStatus(client);
+  return status !== 'end' && status !== 'close';
+}
+
+/**
+ * Check if client is connecting or connected
+ */
+export function isClientConnecting(client: Redis | Cluster): boolean {
+  const status = getClientStatus(client);
+  return status === 'connecting' || status === 'connect' || status === 'ready';
+}
+
 export interface RedisClientOptions extends RedisOptions {
   namespace?: string;
   cluster?: {

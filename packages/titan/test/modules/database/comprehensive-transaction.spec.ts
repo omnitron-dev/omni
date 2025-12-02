@@ -6,6 +6,17 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from '@jest/globals';
+
+const skipIntegrationTests = process.env.SKIP_DOCKER_TESTS === 'true' ||
+                            process.env.USE_MOCK_REDIS === 'true' ||
+                            process.env.CI === 'true';
+
+if (skipIntegrationTests) {
+  console.log('⏭️ Skipping comprehensive-transaction.spec.ts - requires Docker/PostgreSQL');
+}
+
+const describeDocker = skipIntegrationTests ? describe.skip : describe;
+
 import { Application } from '../../../src/application.js';
 import { Module, Injectable, Inject } from '../../../src/decorators/index.js';
 import { Kysely, sql, Transaction } from 'kysely';
@@ -379,7 +390,8 @@ class BankingService {
 class TestModule {}
 
 describe('Comprehensive Transaction Tests', () => {
-  describe('SQLite Transaction Tests', () => {
+  const describeSqlite = skipIntegrationTests ? describe.skip : describe;
+  describeSqlite('SQLite Transaction Tests', () => {
     let app: Application;
     let testService: DatabaseTestingService;
     let bankingService: BankingService;
@@ -631,7 +643,7 @@ describe('Comprehensive Transaction Tests', () => {
     });
   });
 
-  describe('PostgreSQL Transaction Tests', () => {
+  describeDocker('PostgreSQL Transaction Tests', () => {
     let container: DockerContainer;
     let app: Application;
     let bankingService: BankingService;

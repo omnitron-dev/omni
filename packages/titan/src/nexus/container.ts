@@ -32,6 +32,7 @@ import {
   Initializable,
   InjectionToken,
   ResolutionContext,
+  ResolutionState,
   ContainerMetadata,
   RegistrationOptions,
   FactoryProvider,
@@ -51,12 +52,14 @@ interface Registration {
   isAsync?: boolean;
 }
 
-/**
- * Resolution state for circular dependency detection
- */
-interface ResolutionState {
-  chain: InjectionToken<any>[];
-  resolved: Map<InjectionToken<any>, any>;
+// ResolutionState type is now imported from types.ts
+
+/** Counter for generating unique resolution IDs */
+let resolutionIdCounter = 0;
+
+/** Generate unique resolution ID */
+function generateResolutionId(): string {
+  return `res_${Date.now()}_${++resolutionIdCounter}`;
 }
 
 /**
@@ -76,7 +79,8 @@ export class Container implements IContainer {
     string,
     Map<string, { token: InjectionToken<any>; exported: boolean; global: boolean }>
   >;
-  private resolutionState?: ResolutionState;
+  // NOTE: resolutionState is now passed through ResolutionContext to prevent race conditions
+  // in concurrent async resolution calls. Each top-level resolve creates its own isolated state.
   private moduleImports = new Map<string, Set<string>>();
   private context: ResolutionContext;
   private pendingPromises = new Map<InjectionToken<any>, Promise<any>>();
@@ -440,23 +444,27 @@ export class Container implements IContainer {
 
   /**
    * Resolve a dependency
+   * Uses isolated resolution state to prevent race conditions in concurrent calls
    */
   resolve<T>(token: InjectionToken<T>, context?: any): T {
     this.checkDisposed();
 
-    // Initialize resolution state if needed
-    if (!this.resolutionState) {
-      this.resolutionState = {
-        chain: [],
-        resolved: new Map(),
-      };
-    }
+    // Check if we're in a nested resolution (resolutionState already exists in context)
+    const isTopLevel = !this.context.resolutionState;
 
-    // Store resolution context temporarily
+    // Create isolated resolution state for top-level calls
+    // Nested calls reuse the parent's resolution state
+    const resolutionState: ResolutionState = isTopLevel
+      ? { chain: [], resolved: new Map(), id: generateResolutionId() }
+      : this.context.resolutionState!;
+
+    // Store previous context and create new one with resolution state
     const previousContext = this.context;
-    if (context) {
-      this.context = { ...this.context, resolveContext: context };
-    }
+    this.context = {
+      ...this.context,
+      resolutionState,
+      ...(context ? { resolveContext: context } : {}),
+    };
 
     try {
       // Emit before resolve event
@@ -468,20 +476,20 @@ export class Container implements IContainer {
       // Execute plugin hooks
       this.pluginManager.executeHooksSync('beforeResolve', token, this.context);
 
-      // Check for circular dependency
-      if (this.resolutionState.chain.includes(token)) {
-        throw new CircularDependencyError([...this.resolutionState.chain, token]);
+      // Check for circular dependency using isolated state
+      if (resolutionState.chain.includes(token)) {
+        throw new CircularDependencyError([...resolutionState.chain, token]);
       }
 
-      // Check resolution cache
-      if (this.resolutionState.resolved.has(token)) {
-        const cached = this.resolutionState.resolved.get(token);
+      // Check resolution cache within this resolution tree
+      if (resolutionState.resolved.has(token)) {
+        const cached = resolutionState.resolved.get(token);
         this.lifecycleManager.emitSync(LifecycleEvent.CacheHit, { token });
         return cached;
       }
 
       // Add to resolution chain
-      this.resolutionState.chain.push(token);
+      resolutionState.chain.push(token);
 
       // Create middleware context
       const middlewareContext: MiddlewareContext = {
@@ -498,10 +506,8 @@ export class Container implements IContainer {
       // Execute afterResolve hooks which may modify the result
       result = this.pluginManager.executeHooksSync('afterResolve', token, result, this.context);
 
-      // Cache the result if resolutionState still exists
-      if (this.resolutionState) {
-        this.resolutionState.resolved.set(token, result);
-      }
+      // Cache the result in this resolution tree
+      resolutionState.resolved.set(token, result);
 
       // Emit after resolve event
       this.lifecycleManager.emitSync(LifecycleEvent.AfterResolve, {
@@ -524,20 +530,13 @@ export class Container implements IContainer {
 
       throw error;
     } finally {
-      // Remove from resolution chain (check if resolutionState exists in case of early error)
-      if (this.resolutionState && this.resolutionState.chain.length > 0) {
-        this.resolutionState.chain.pop();
+      // Remove from resolution chain
+      if (resolutionState.chain.length > 0) {
+        resolutionState.chain.pop();
       }
 
-      // Clean up resolution state if we're back at the top level
-      if (this.resolutionState && this.resolutionState.chain.length === 0) {
-        this.resolutionState = undefined;
-      }
-
-      // Restore previous context
-      if (context) {
-        this.context = previousContext;
-      }
+      // Restore previous context (removes resolutionState for top-level calls)
+      this.context = previousContext;
     }
   }
 
@@ -579,7 +578,7 @@ export class Container implements IContainer {
       }
 
       // Provide resolution chain in error - use specific error for simple cases
-      const chain = this.resolutionState?.chain || [];
+      const chain = this.context.resolutionState?.chain || [];
       if (chain.length <= 1) {
         // Simple case - just token not found (chain length 1 means only current token)
         throw new DependencyNotFoundError(token);
@@ -870,7 +869,7 @@ export class Container implements IContainer {
         throw error;
       }
       // Factory errors should be wrapped as ResolutionError with chain
-      const chain = this.resolutionState?.chain || [];
+      const chain = this.context.resolutionState?.chain || [];
       throw new ResolutionError(registration.token, [...chain], error);
     }
   }
@@ -948,16 +947,28 @@ export class Container implements IContainer {
   /**
    * Resolve async
    */
+  /**
+   * Resolve a dependency asynchronously
+   * Uses isolated resolution state to prevent race conditions in concurrent calls
+   */
   async resolveAsync<T>(token: InjectionToken<T>): Promise<T> {
     this.checkDisposed();
 
-    // Initialize resolution state if needed
-    if (!this.resolutionState) {
-      this.resolutionState = {
-        chain: [],
-        resolved: new Map(),
-      };
-    }
+    // Check if we're in a nested resolution (resolutionState already exists in context)
+    const isTopLevel = !this.context.resolutionState;
+
+    // Create isolated resolution state for top-level calls
+    // Nested calls reuse the parent's resolution state
+    const resolutionState: ResolutionState = isTopLevel
+      ? { chain: [], resolved: new Map(), id: generateResolutionId() }
+      : this.context.resolutionState!;
+
+    // Store previous context and create new one with resolution state
+    const previousContext = this.context;
+    this.context = {
+      ...this.context,
+      resolutionState,
+    };
 
     // Create middleware context early so it's available in catch blocks
     const middlewareContext: MiddlewareContext = {
@@ -978,25 +989,25 @@ export class Container implements IContainer {
       // Execute plugin hooks (async for async resolution)
       await this.pluginManager.executeHooks('beforeResolve', token, middlewareContext);
 
-      // Check for pending promise (handles concurrent async resolutions)
+      // Check for pending promise (handles concurrent async resolutions of same token)
       if (this.pendingPromises.has(token)) {
         return this.pendingPromises.get(token)!;
       }
 
-      // Check for circular dependency AFTER checking pending promises
-      if (this.resolutionState.chain.includes(token)) {
-        throw new CircularDependencyError([...this.resolutionState.chain, token]);
+      // Check for circular dependency using isolated state
+      if (resolutionState.chain.includes(token)) {
+        throw new CircularDependencyError([...resolutionState.chain, token]);
       }
 
-      // Check resolution cache
-      if (this.resolutionState.resolved.has(token)) {
-        const cached = this.resolutionState.resolved.get(token);
+      // Check resolution cache within this resolution tree
+      if (resolutionState.resolved.has(token)) {
+        const cached = resolutionState.resolved.get(token);
         this.lifecycleManager.emitSync(LifecycleEvent.CacheHit, { token });
         return cached;
       }
 
       // Add to resolution chain
-      this.resolutionState.chain.push(token);
+      resolutionState.chain.push(token);
 
       // Create and store the promise
       const resolutionPromise = this.middlewarePipeline.execute(middlewareContext, () =>
@@ -1008,10 +1019,8 @@ export class Container implements IContainer {
       // Resolve through async middleware pipeline
       const result = await resolutionPromise;
 
-      // Cache the result
-      if (this.resolutionState) {
-        this.resolutionState.resolved.set(token, result);
-      }
+      // Cache the result in this resolution tree
+      resolutionState.resolved.set(token, result);
 
       // Emit after resolve event
       this.lifecycleManager.emitSync(LifecycleEvent.AfterResolve, {
@@ -1048,14 +1057,12 @@ export class Container implements IContainer {
       throw error;
     } finally {
       // Remove from resolution chain
-      if (this.resolutionState && this.resolutionState.chain.length > 0) {
-        this.resolutionState.chain.pop();
+      if (resolutionState.chain.length > 0) {
+        resolutionState.chain.pop();
       }
 
-      // Clean up resolution state
-      if (this.resolutionState && this.resolutionState.chain.length === 0) {
-        this.resolutionState = undefined;
-      }
+      // Restore previous context (removes resolutionState for top-level calls)
+      this.context = previousContext;
     }
   }
 
@@ -1181,18 +1188,22 @@ export class Container implements IContainer {
 
   /**
    * Resolve async dependencies
+   * Uses isolated resolution state from context to prevent race conditions
    */
   private async resolveAsyncDependencies(registration: Registration): Promise<any[]> {
     if (!registration.dependencies || registration.dependencies.length === 0) {
       return [];
     }
 
-    // Resolve dependencies sequentially to avoid race conditions with resolution state
+    // Get resolution state from context (isolated per resolution tree)
+    const resolutionState = this.context.resolutionState;
+
+    // Resolve dependencies sequentially to maintain resolution chain integrity
     const resolvedDeps = [];
     for (const dep of registration.dependencies) {
       // Check for circular dependency in async context too
-      if (this.resolutionState?.chain.includes(dep)) {
-        throw new CircularDependencyError([...this.resolutionState.chain, dep]);
+      if (resolutionState?.chain.includes(dep)) {
+        throw new CircularDependencyError([...resolutionState.chain, dep]);
       }
 
       const depReg = this.getRegistration(dep);
@@ -1201,15 +1212,15 @@ export class Container implements IContainer {
         if (this.pendingPromises.has(dep)) {
           resolvedDeps.push(await this.pendingPromises.get(dep)!);
         } else {
-          // Don't use resolveAsync here - it manages its own resolution state
-          // Instead, resolve the dependency directly within current resolution context
-          this.resolutionState?.chain.push(dep);
+          // Resolve the dependency directly within current resolution context
+          // The context already contains the correct resolutionState
+          resolutionState?.chain.push(dep);
           try {
             const result = await this.resolveAsyncInternal(dep);
             resolvedDeps.push(result);
           } finally {
             // Remove from chain after resolution
-            this.resolutionState?.chain.pop();
+            resolutionState?.chain.pop();
           }
         }
       } else {

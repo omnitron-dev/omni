@@ -1,9 +1,17 @@
 import { delay } from '@omnitron-dev/common';
 
-import { RotifMessage, NotificationManager } from '../../src/rotif/rotif.js';
+import { RotifMessage } from '../../src/rotif/rotif.js';
+import type { NotificationManager } from '../../src/rotif/rotif.js';
 import { getTestRedisConfig } from '../utils/redis-test-utils.js';
+import { isInMockMode } from './helpers/test-utils.js';
 
-describe('NotificationManager - DLQ Subscription', () => {
+const describeOrSkip = isInMockMode() ? describe.skip : describe;
+
+if (isInMockMode()) {
+  console.log('⏭️ Skipping dlq-subscription.spec.ts - requires real Redis');
+}
+
+describeOrSkip('NotificationManager - DLQ Subscription', () => {
   let manager: NotificationManager;
 
   beforeAll(async () => {

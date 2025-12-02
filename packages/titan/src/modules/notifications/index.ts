@@ -1,5 +1,14 @@
 // Main module exports
 export { TitanNotificationsModule } from './notifications.module.js';
+
+// Module alias for consistent naming (preferred)
+import { TitanNotificationsModule } from './notifications.module.js';
+
+/**
+ * Alias for TitanNotificationsModule for consistent naming convention.
+ * Recommended: Use `NotificationsModule` for consistency with other modules.
+ */
+export { TitanNotificationsModule as NotificationsModule };
 export type {
   NotificationModuleOptions,
   NotificationOptionsFactory,

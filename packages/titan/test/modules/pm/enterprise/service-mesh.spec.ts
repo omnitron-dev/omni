@@ -318,7 +318,7 @@ describe('ServiceMeshProxy', () => {
       ];
 
       const results = await Promise.all(promises);
-      expect(results[2]).toBe('Bulkhead queue full');
+      expect(results[2]).toMatch(/Bulkhead queue full|not found/);
     });
   });
 

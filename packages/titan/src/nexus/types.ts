@@ -87,6 +87,19 @@ export type AsyncFactory<T = unknown, Args extends any[] = any[]> = (...args: Ar
 export type InjectionToken<T = any> = Token<T> | ServiceIdentifier<T>;
 
 /**
+ * Resolution state for circular dependency detection
+ * Isolated per top-level resolution call to prevent race conditions
+ */
+export interface ResolutionState {
+  /** Chain of tokens being resolved (for circular dependency detection) */
+  chain: InjectionToken<any>[];
+  /** Cache of resolved instances within this resolution tree */
+  resolved: Map<InjectionToken<any>, any>;
+  /** Unique ID for this resolution tree */
+  id: string;
+}
+
+/**
  * Resolution context for contextual injection
  */
 export interface ResolutionContext {
@@ -94,6 +107,8 @@ export interface ResolutionContext {
   scope?: Scope;
   parent?: ResolutionContext;
   metadata?: Record<string, any>;
+  /** Isolated resolution state for this resolution tree (prevents race conditions) */
+  resolutionState?: ResolutionState;
   [key: string]: any;
 }
 

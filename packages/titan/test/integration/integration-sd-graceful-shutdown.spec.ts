@@ -4,7 +4,15 @@ import { delay } from '@omnitron-dev/common';
 import { Netron } from '@omnitron-dev/netron/dist/netron.js';
 import { cleanupRedis, getTestRedisUrl, createTestRedisClient } from '@omnitron-dev/netron/test/helpers/test-utils.js';
 
-describe('ServiceDiscovery Integration - Graceful Shutdown', () => {
+const skipTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+
+if (skipTests) {
+  console.log('⏭️ Skipping integration-sd-graceful-shutdown.spec.ts - requires external services');
+}
+
+const describeOrSkip = skipTests ? describe.skip : describe;
+
+describeOrSkip('ServiceDiscovery Integration - Graceful Shutdown', () => {
   let netron: Netron;
   let redis: Redis;
 

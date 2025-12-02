@@ -1,7 +1,14 @@
 import { Redis, Cluster } from 'ioredis';
 import { Errors } from '../../errors/index.js';
 
-import { RedisClient, RedisClientOptions, RedisModuleOptions } from './redis.types.js';
+import {
+  RedisClient,
+  RedisClientOptions,
+  RedisModuleOptions,
+  isClientReady,
+  isClientConnecting,
+  isClientAlive,
+} from './redis.types.js';
 import {
   mergeOptions,
   createRedisClient,
@@ -129,15 +136,11 @@ export class RedisManager {
         const timeout = this.options.healthCheck?.timeout || (process.env['NODE_ENV'] === 'test' ? 10000 : 5000);
 
         // If already ready, skip connection wait
-        if ((client as any).status === 'ready') {
+        if (isClientReady(client)) {
           this.logger.debug(`Redis client "${namespace}" already ready`);
         } else {
           // Check if already connected/connecting
-          if (
-            (client as any).status !== 'ready' &&
-            (client as any).status !== 'connecting' &&
-            (client as any).status !== 'connect'
-          ) {
+          if (!isClientConnecting(client)) {
             await client.connect();
           }
 
@@ -276,7 +279,7 @@ export class RedisManager {
     }
 
     try {
-      if ((client as any).status !== 'end') {
+      if (isClientAlive(client)) {
         await client.quit();
       }
 
@@ -374,7 +377,7 @@ export class RedisManager {
 
     const closePromises = Array.from(this.clients.entries()).map(async ([namespace, client]) => {
       try {
-        if ((client as any).status !== 'end') {
+        if (isClientAlive(client)) {
           await client.quit();
         }
         this.logger.log(`Redis client "${namespace}" closed`);

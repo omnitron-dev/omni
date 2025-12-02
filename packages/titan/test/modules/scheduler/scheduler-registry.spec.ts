@@ -306,10 +306,13 @@ describe('Scheduler Registry', () => {
         priority: JobPriority.LOW,
         disabled: true,
       });
+      registry.registerJob('cron-normal', SchedulerJobType.CRON, '0 12 * * *', {}, 'run', {
+        priority: JobPriority.NORMAL,
+      });
       registry.registerJob('interval-normal', SchedulerJobType.INTERVAL, 1000, {}, 'run', {
         priority: JobPriority.NORMAL,
       });
-      
+
       // Update some statuses
       registry.updateJobStatus('cron-high', JobStatus.RUNNING);
     });
@@ -331,29 +334,29 @@ describe('Scheduler Registry', () => {
 
     it('should filter by type', () => {
       const cronJobs = registry.findJobs({ type: SchedulerJobType.CRON });
-      
-      expect(cronJobs).toHaveLength(2);
+
+      expect(cronJobs).toHaveLength(2); // cron-high, cron-normal (cron-low is disabled and excluded)
     });
 
     it('should filter by multiple types', () => {
-      const jobs = registry.findJobs({ 
-        type: [SchedulerJobType.CRON, SchedulerJobType.INTERVAL] 
+      const jobs = registry.findJobs({
+        type: [SchedulerJobType.CRON, SchedulerJobType.INTERVAL]
       });
-      
-      expect(jobs).toHaveLength(3);
+
+      expect(jobs).toHaveLength(3); // 2 cron + 1 interval
     });
 
     it('should filter by name pattern (string)', () => {
       const jobs = registry.findJobs({ namePattern: 'cron' });
-      
-      expect(jobs).toHaveLength(2);
+
+      expect(jobs).toHaveLength(2); // cron-high, cron-normal (cron-low is disabled)
       expect(jobs.every(j => j.name.includes('cron'))).toBe(true);
     });
 
     it('should filter by name pattern (regex)', () => {
       const jobs = registry.findJobs({ namePattern: /^cron-/ });
-      
-      expect(jobs).toHaveLength(2);
+
+      expect(jobs).toHaveLength(2); // cron-high, cron-normal (cron-low is disabled)
     });
 
     it('should filter by priority', () => {
@@ -365,18 +368,19 @@ describe('Scheduler Registry', () => {
 
     it('should exclude disabled jobs by default', () => {
       const jobs = registry.findJobs({ type: SchedulerJobType.CRON });
-      
-      expect(jobs.length).toBeLessThan(2);
+
+      // Should get enabled cron jobs only (cron-high, cron-normal), not cron-low which is disabled
+      expect(jobs.length).toBe(2);
       expect(jobs.find(j => j.options.disabled)).toBeUndefined();
     });
 
     it('should include disabled jobs when specified', () => {
-      const jobs = registry.findJobs({ 
+      const jobs = registry.findJobs({
         type: SchedulerJobType.CRON,
-        includeDisabled: true 
+        includeDisabled: true
       });
-      
-      expect(jobs).toHaveLength(2);
+
+      expect(jobs).toHaveLength(3); // cron-high, cron-low (disabled), cron-normal
     });
 
     it('should sort by name', () => {

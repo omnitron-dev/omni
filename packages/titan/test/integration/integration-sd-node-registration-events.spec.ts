@@ -4,7 +4,15 @@ import { delay } from '@omnitron-dev/common';
 import { Netron } from '@omnitron-dev/netron/src/index.js';
 import { cleanupRedis, getTestRedisUrl, createTestRedisClient } from '@omnitron-dev/netron/test/helpers/test-utils.js';
 
-describe('ServiceDiscovery Integration - Node Registration & Deregistration Events', () => {
+const skipTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+
+if (skipTests) {
+  console.log('⏭️ Skipping integration-sd-node-registration-events.spec.ts - requires external services');
+}
+
+const describeOrSkip = skipTests ? describe.skip : describe;
+
+describeOrSkip('ServiceDiscovery Integration - Node Registration & Deregistration Events', () => {
   let redis: Redis;
   let nodeA: Netron;
   let nodeB: Netron;

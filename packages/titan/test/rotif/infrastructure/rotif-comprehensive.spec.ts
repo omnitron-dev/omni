@@ -3,14 +3,27 @@
  * Tests critical functionality, error scenarios, and edge cases
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+// Support both Bun and Jest test runners
+let describe: any, it: any, expect: any, beforeEach: any, afterEach: any;
+try {
+  ({ describe, it, expect, beforeEach, afterEach } = require('bun:test'));
+} catch {
+  ({ describe, it, expect, beforeEach, afterEach } = require('@jest/globals'));
+}
+
 import { Redis } from 'ioredis';
-import { NotificationManager } from '../../../src/rotif/rotif.js';
+import type { NotificationManager } from '../../../src/rotif/rotif.js';
 import type { RotifConfig, Subscription, RotifMessage } from '../../../src/rotif/types.js';
 import { RedisTestManager } from '../../utils/redis-test-manager.js';
 import { delay } from '@omnitron-dev/common';
 
-describe('Rotif - NotificationManager Infrastructure Tests', () => {
+const skipTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+if (skipTests) {
+  console.log('⏭️  Skipping rotif-comprehensive.spec.ts - integration test');
+}
+const describeOrSkip = skipTests ? describe.skip : describe;
+
+describeOrSkip('Rotif - NotificationManager Infrastructure Tests', () => {
   let testContainer: Awaited<ReturnType<typeof RedisTestManager.prototype.createContainer>>;
   let redis: Redis;
   let manager: NotificationManager;

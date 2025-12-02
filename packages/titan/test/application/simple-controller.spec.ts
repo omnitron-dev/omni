@@ -2,8 +2,8 @@
  * Tests for HTTP Controller support in Simple API
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { controller, type ControllerRequest, type ControllerResponse, createControllerService } from '../../src/application/simple.js';
+import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { controller, type ControllerRequest, type ControllerResponse, createControllerService } from '@/application/simple';
 
 describe('Simple API - HTTP Controllers', () => {
   describe('controller() function', () => {
@@ -17,7 +17,7 @@ describe('Simple API - HTTP Controllers', () => {
       expect(ctrl).toBeDefined();
       expect(ctrl.basePath).toBe('/api/users');
       expect(ctrl.handlers).toBeDefined();
-      expect(ctrl.handlers.list).toBeFunction();
+      expect(typeof ctrl.handlers.list).toBe('function');
     });
 
     it('should normalize base path', () => {
@@ -50,9 +50,9 @@ describe('Simple API - HTTP Controllers', () => {
       });
 
       expect(Object.keys(ctrl.handlers)).toHaveLength(3);
-      expect(ctrl.handlers.list).toBeFunction();
-      expect(ctrl.handlers.get).toBeFunction();
-      expect(ctrl.handlers.create).toBeFunction();
+      expect(typeof ctrl.handlers.list).toBe('function');
+      expect(typeof ctrl.handlers.get).toBe('function');
+      expect(typeof ctrl.handlers.create).toBe('function');
     });
   });
 
@@ -69,7 +69,7 @@ describe('Simple API - HTTP Controllers', () => {
 
       const service = new ServiceClass();
       expect(service).toBeDefined();
-      expect(service.handleRequest).toBeFunction();
+      expect(typeof service.handleRequest).toBe('function');
     });
 
     it('should handle JSON responses', async () => {

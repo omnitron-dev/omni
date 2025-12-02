@@ -1,6 +1,9 @@
 /**
  * Real Redis Integration Tests for NotificationService
  * Tests with actual Redis connection for comprehensive coverage
+ *
+ * These tests require Docker or a real Redis server.
+ * They will be skipped if Redis is not available (USE_MOCK_REDIS=true).
  */
 
 import Redis from 'ioredis';
@@ -11,8 +14,34 @@ import { PreferenceManager } from '../../../src/modules/notifications/preference
 import { RateLimiter } from '../../../src/modules/notifications/rate-limiter.js';
 import type { NotificationPayload, NotificationRecipient } from '../../../src/modules/notifications/types.js';
 import { RedisDockerTestHelper } from './test-redis-docker.js';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
-describe('NotificationService with Real Redis', () => {
+/**
+ * Check if real Redis is available from global setup
+ */
+function isRealRedisAvailable(): boolean {
+  // Check environment variable first
+  if (process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true') {
+    return false;
+  }
+  try {
+    const infoPath = join(process.cwd(), '.redis-test-info.json');
+    if (existsSync(infoPath)) {
+      const info = JSON.parse(readFileSync(infoPath, 'utf-8'));
+      // Real Redis is available if we have a port and it's not mock mode
+      return info.port > 0 && !info.isMock;
+    }
+  } catch {
+    // Ignore errors
+  }
+  return false;
+}
+
+// Skip entire test suite if Redis is not available
+const describeWithRedis = isRealRedisAvailable() ? describe : describe.skip;
+
+describeWithRedis('NotificationService with Real Redis', () => {
   let redis: Redis;
   let pubRedis: Redis;
   let subRedis: Redis;

@@ -1,8 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
-import { NotificationManager } from '../../src/rotif/rotif.js';
+import type { NotificationManager } from '../../src/rotif/rotif.js';
 import { DLQManager } from '../../src/rotif/dlq-manager.js';
 import { delay } from '@omnitron-dev/common';
 import { getTestRedisConfig } from '../utils/redis-test-utils.js';
+import { isInMockMode } from './helpers/test-utils.js';
+
+const describeOrSkip = isInMockMode() ? describe.skip : describe;
+
+if (isInMockMode()) {
+  console.log('⏭️ Skipping dlq-cleanup.spec.ts - requires real Redis');
+}
 
 // Increase timeout for DLQ tests as they involve delays
 jest.setTimeout(30000);
@@ -35,7 +42,7 @@ async function publishAndFail(manager: NotificationManager, channel: string, pay
   await delay(50);
 }
 
-describe('DLQ Auto-Cleanup', () => {
+describeOrSkip('DLQ Auto-Cleanup', () => {
   let manager: NotificationManager;
   const testChannel = 'test:dlq:cleanup';
 

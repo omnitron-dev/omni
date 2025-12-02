@@ -1,4 +1,4 @@
-import { jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { delay } from '@omnitron-dev/common';
 
 import {
@@ -11,7 +11,13 @@ import {
 } from '../../src/netron/index';
 import { createMockLogger, createNetronServer, createNetronClient } from './test-utils.js';
 
-describe('Netron Streams Integration Tests', () => {
+const skipTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+if (skipTests) {
+  console.log('⏭️  Skipping integration-netron-streams.spec.ts - integration test');
+}
+const describeOrSkip = skipTests ? describe.skip : describe;
+
+describeOrSkip('Netron Streams Integration Tests', () => {
   let netronA: Netron;
   let netronB: Netron;
   let peerB: RemotePeer;

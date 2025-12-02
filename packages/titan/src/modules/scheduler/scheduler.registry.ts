@@ -143,8 +143,14 @@ export class SchedulerRegistry {
       throw Errors.notFound('Scheduled job', name);
     }
 
+    // Count as execution if either lastExecution is provided or lastError is provided
+    const isExecution = execution.lastExecution || execution.lastError;
+
     if (execution.lastExecution) {
       job.lastExecution = execution.lastExecution;
+    }
+
+    if (isExecution) {
       job.executionCount++;
     }
 

@@ -44,7 +44,10 @@ const mockCluster = ioredis.Cluster as jest.Mock;
 // Mock redis.utils - we'll set the implementation in beforeEach
 jest.mock('../../../src/modules/redis/redis.utils.js');
 
-describe('RedisManager', () => {
+const skipTests = process.env.USE_MOCK_REDIS === 'true';
+const describeOrSkip = skipTests ? describe.skip : describe;
+
+describeOrSkip('RedisManager', () => {
   let manager: RedisManager;
   let mockRedisInstance: MockRedisInstance;
 

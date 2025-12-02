@@ -1,13 +1,18 @@
 import { delay } from '@omnitron-dev/common';
 
-import { NotificationManager } from '../../src/rotif/rotif.js';
-import { getTestRedisUrl } from './helpers/test-utils.js';
+import type { NotificationManager } from '../../src/rotif/rotif.js';
+import { getTestRedisUrl, createTestNotificationManager, isInMockMode } from './helpers/test-utils.js';
+
+const describeOrSkip = isInMockMode() ? describe.skip : describe;
+
+if (isInMockMode()) {
+  console.log('⏭️ Skipping exactly-once.spec.ts - requires real Redis');
+}
 
 let manager: NotificationManager;
 
 beforeEach(async () => {
-  manager = new NotificationManager({
-    redis: getTestRedisUrl(1),
+  manager = await createTestNotificationManager(1, {
     deduplicationTTL: 3600,
     blockInterval: 100,
   });
@@ -18,7 +23,7 @@ afterEach(async () => {
   await manager.stopAll();
 });
 
-describe('Exactly-once Deduplication', () => {
+describeOrSkip('Exactly-once Deduplication', () => {
   it('should process unique messages only once', async () => {
     let received = 0;
 

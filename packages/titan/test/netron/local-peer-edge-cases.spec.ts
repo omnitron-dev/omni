@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { Netron } from '../../src/netron/netron.js';
 import { createMockLogger } from './test-utils.js';
-import { Service, Public } from '../../src/decorators/core.js';
+import { Service, Public, Method } from '../../src/decorators/core.js';
 
 describe('LocalPeer Edge Cases', () => {
   let netron: Netron;

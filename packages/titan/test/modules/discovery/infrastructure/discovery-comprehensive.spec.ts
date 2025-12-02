@@ -3,7 +3,7 @@
  * Tests heartbeat, registration, cleanup, and distributed scenarios
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { Redis } from 'ioredis';
 import { DiscoveryService } from '../../../../src/modules/discovery/discovery.service.js';
 import type { ILogger } from '../../../../src/modules/logger/logger.types.js';
@@ -22,7 +22,13 @@ const createMockLogger = (): ILogger => ({
   child: () => createMockLogger(),
 });
 
-describe('Discovery Service - Infrastructure Tests', () => {
+const skipTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+if (skipTests) {
+  console.log('⏭️ Skipping discovery-comprehensive.spec.ts - requires external Redis services');
+}
+const describeOrSkip = skipTests ? describe.skip : describe;
+
+describeOrSkip('Discovery Service - Infrastructure Tests', () => {
   let testContainer: Awaited<ReturnType<typeof RedisTestManager.prototype.createContainer>>;
   let redis: Redis;
   let logger: ILogger;

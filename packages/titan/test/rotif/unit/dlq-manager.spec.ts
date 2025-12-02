@@ -1,24 +1,29 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import Redis from 'ioredis';
 import { DLQManager, DLQCleanupConfig } from '../../../src/rotif/dlq-manager.js';
 import { RotifLogger } from '../../../src/rotif/types.js';
-import { getTestRedisUrl } from '../helpers/test-utils.js';
+import { getTestRedisUrl, isInMockMode } from '../helpers/test-utils.js';
+import { MockRotifRedis } from '../helpers/mock-rotif.js';
 
 // Mock logger
 const createMockLogger = (): RotifLogger => ({
-  debug: vi.fn(),
-  info: vi.fn(),
-  warn: vi.fn(),
-  error: vi.fn(),
+  debug: jest.fn(),
+  info: jest.fn(),
+  warn: jest.fn(),
+  error: jest.fn(),
 });
 
 describe('Rotif - DLQManager', () => {
-  let redis: Redis;
+  let redis: Redis | MockRotifRedis;
   let logger: RotifLogger;
   let manager: DLQManager;
 
   beforeEach(async () => {
-    redis = new Redis(getTestRedisUrl(5));
+    if (isInMockMode()) {
+      redis = new MockRotifRedis() as unknown as Redis;
+    } else {
+      redis = new Redis(getTestRedisUrl(5));
+    }
     await redis.flushdb();
     logger = createMockLogger();
   });

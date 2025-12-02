@@ -6,6 +6,17 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from '@jest/globals';
+
+const skipIntegrationTests = process.env.SKIP_DOCKER_TESTS === 'true' ||
+                            process.env.USE_MOCK_REDIS === 'true' ||
+                            process.env.CI === 'true';
+
+if (skipIntegrationTests) {
+  console.log('⏭️ Skipping database-testing.spec.ts - requires Docker/PostgreSQL');
+}
+
+const describeOrSkip = skipIntegrationTests ? describe.skip : describe;
+
 import { Application } from '../../../src/application.js';
 import { Module, Injectable } from '../../../src/decorators/index.js';
 import { sql } from 'kysely';
@@ -129,7 +140,7 @@ class BlogService {
 })
 class TestAppModule {}
 
-describe('DatabaseTestingModule', () => {
+describeOrSkip('DatabaseTestingModule', () => {
   let app: Application;
   let testService: DatabaseTestingService;
   let blogService: BlogService;

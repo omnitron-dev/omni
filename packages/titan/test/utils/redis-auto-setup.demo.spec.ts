@@ -10,7 +10,15 @@
 import { describe, it, expect, beforeEach } from '@jest/globals';
 import { setupRedisContainer, setupSharedRedisContainer, setupRedisForTests } from './redis-auto-setup.js';
 
-describe('Redis Auto-Setup Demo', () => {
+const skipIntegrationTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+
+if (skipIntegrationTests) {
+  console.log('⏭️ Skipping Redis Auto-Setup Demo - requires Docker and Redis');
+}
+
+const describeOrSkip = skipIntegrationTests ? describe.skip : describe;
+
+describeOrSkip('Redis Auto-Setup Demo', () => {
   describe('Pattern 1: Isolated Container Per Test', () => {
     const redis = setupRedisContainer();
 

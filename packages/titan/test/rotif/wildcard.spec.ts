@@ -1,14 +1,19 @@
 import { delay } from '@omnitron-dev/common';
 
-import { NotificationManager } from '../../src/rotif/rotif.js';
-import { getTestRedisUrl } from './helpers/test-utils.js';
+import type { NotificationManager } from '../../src/rotif/rotif.js';
+import { getTestRedisUrl, createTestNotificationManager, isInMockMode } from './helpers/test-utils.js';
 
-describe('Rotif Wildcard Subscriptions', () => {
+const describeOrSkip = isInMockMode() ? describe.skip : describe;
+
+if (isInMockMode()) {
+  console.log('⏭️ Skipping wildcard.spec.ts - requires real Redis');
+}
+
+describeOrSkip('Rotif Wildcard Subscriptions', () => {
   let manager: NotificationManager;
 
   beforeEach(async () => {
-    manager = new NotificationManager({
-      redis: getTestRedisUrl(1),
+    manager = await createTestNotificationManager(1, {
       maxRetries: 2,
       checkDelayInterval: 400,
       blockInterval: 100,
@@ -239,7 +244,7 @@ describe('Rotif Wildcard Subscriptions', () => {
       await manager.stopAll();
 
       // Создание нового manager'а
-      manager = new NotificationManager({ redis: getTestRedisUrl(1), blockInterval: 100 });
+      manager = await createTestNotificationManager(1, { blockInterval: 100 });
 
       await manager.subscribe('sessions.*', async (msg) => {
         received.push(msg.channel);

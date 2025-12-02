@@ -3,13 +3,24 @@
  * Tests all Redis operations, pub/sub, scripts, transactions, and pipelines
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, beforeAll } from '@jest/globals';
 import { RedisManager } from '../../../../src/modules/redis/redis.manager.js';
 import { RedisService } from '../../../../src/modules/redis/redis.service.js';
 import { RedisTestManager } from '../../../utils/redis-test-manager.js';
 import { delay } from '@omnitron-dev/common';
+import { isRedisInMockMode } from '../../redis/utils/redis-test-utils.js';
 
-describe('Redis Service - Infrastructure Tests', () => {
+// Check if running in mock mode
+const skipTests = isRedisInMockMode();
+
+if (skipTests) {
+  console.log('⏭️  Skipping redis-service-comprehensive.spec.ts - requires real Redis');
+}
+
+// Skip all tests if in mock mode - requires real Redis
+const describeOrSkip = skipTests ? describe.skip : describe;
+
+describeOrSkip('Redis Service - Infrastructure Tests', () => {
   let testContainer: Awaited<ReturnType<typeof RedisTestManager.prototype.createContainer>>;
   let manager: RedisManager;
   let service: RedisService;

@@ -492,4 +492,11 @@ export class SchedulerExecutor {
   off(event: string, handler: (...args: any[]) => void): void {
     this.eventEmitter.off(event, handler);
   }
+
+  /**
+   * Emit an event
+   */
+  emit(event: string, data?: any): void {
+    this.eventEmitter.emit(event, data);
+  }
 }

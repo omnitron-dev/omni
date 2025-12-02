@@ -1,10 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
-import { NotificationManager } from '../../src/rotif/rotif.js';
+import type { NotificationManager } from '../../src/rotif/rotif.js';
 import { delay } from '@omnitron-dev/common';
 import Redis from 'ioredis';
 import { getTestRedisConfig } from '../utils/redis-test-utils.js';
 
-describe('Rotif Improvements Integration', () => {
+const skipTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+if (skipTests) {
+  console.log('⏭️  Skipping integration-improvements.spec.ts - integration test');
+}
+const describeOrSkip = skipTests ? describe.skip : describe;
+
+describeOrSkip('Rotif Improvements Integration', () => {
   let manager: NotificationManager;
   let redis: Redis;
 

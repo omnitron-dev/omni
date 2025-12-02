@@ -4,13 +4,21 @@ import { delay } from '@omnitron-dev/common';
 import { Netron, Service } from '@omnitron-dev/netron/src/index.js';
 import { cleanupRedis, getTestRedisUrl, createTestRedisClient } from '@omnitron-dev/netron/test/helpers/test-utils.js';
 
+const skipTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+
+if (skipTests) {
+  console.log('⏭️ Skipping integration-sd-concurrent-service-updates.spec.ts - requires external services');
+}
+
 @Service('service.alpha@1.0.0')
 class ServiceAlpha {}
 
 @Service('service.beta@1.0.0')
 class ServiceBeta {}
 
-describe('ServiceDiscovery Integration - Concurrent Service Updates', () => {
+const describeOrSkip = skipTests ? describe.skip : describe;
+
+describeOrSkip('ServiceDiscovery Integration - Concurrent Service Updates', () => {
   let redis: Redis;
   let netron: Netron;
 

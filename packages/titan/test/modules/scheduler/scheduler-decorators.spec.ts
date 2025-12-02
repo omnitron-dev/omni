@@ -4,10 +4,10 @@
  */
 
 import { describe, it, expect, beforeEach } from '@jest/globals';
-import { 
-  Cron, 
-  Interval, 
-  Timeout, 
+import {
+  Cron,
+  Interval,
+  Timeout,
   Schedulable,
   getScheduledJobs,
   getCronMetadata,
@@ -15,6 +15,7 @@ import {
   getTimeoutMetadata
 } from '../../../src/modules/scheduler/scheduler.decorators.js';
 import { CronExpression, JobPriority } from '../../../src/modules/scheduler/scheduler.interfaces.js';
+import { SCHEDULER_METADATA } from '../../../src/modules/scheduler/scheduler.constants.js';
 
 describe('Scheduler Decorators', () => {
   describe('@Cron', () => {
@@ -258,7 +259,7 @@ describe('Scheduler Decorators', () => {
         task() {}
       }
 
-      const metadata = Reflect.getMetadata('scheduler:job-options', TestService);
+      const metadata = Reflect.getMetadata(SCHEDULER_METADATA.JOB_OPTIONS, TestService);
       expect(metadata).toBe(true);
     });
 

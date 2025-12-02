@@ -1,21 +1,25 @@
 import Redis from 'ioredis';
 import { delay } from '@omnitron-dev/common';
 
-import { NotificationManager } from '../../src/rotif/rotif.js';
-import { createTestConfig } from './helpers/test-utils.js';
+import type { NotificationManager } from '../../src/rotif/rotif.js';
+import { createTestConfig, createTestNotificationManager, isInMockMode } from './helpers/test-utils.js';
 
-describe('Lua Atomic Retry Script', () => {
+const describeOrSkip = isInMockMode() ? describe.skip : describe;
+
+if (isInMockMode()) {
+  console.log('⏭️ Skipping atomic-retry.spec.ts - requires real Redis');
+}
+
+describeOrSkip('Lua Atomic Retry Script', () => {
   let manager: NotificationManager;
   let redis: Redis;
 
   beforeAll(async () => {
-    manager = new NotificationManager(
-      createTestConfig(1, {
+    manager = await createTestNotificationManager(1, {
         blockInterval: 100,
         scheduledBatchSize: 1000,
         checkDelayInterval: 100,
-      })
-    );
+      });
     redis = manager.redis;
     await redis.flushdb();
   });

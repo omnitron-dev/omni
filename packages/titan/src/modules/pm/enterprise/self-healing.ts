@@ -638,6 +638,7 @@ export class SelfHealingManager extends EventEmitter {
 export class AnomalyDetector {
   private history: number[][] = [];
   private model?: any; // ML model
+  private baselineMean = 0;
 
   constructor(private config: AnomalyDetectionConfig) {
     if (config.algorithm === 'lstm') {
@@ -654,14 +655,22 @@ export class AnomalyDetector {
 
     // Store in history
     this.history.push(values);
-    if (this.history.length > (this.config.trainingWindow || 100)) {
+    if (this.history.length > (this.config.trainingWindow || 10)) {
       this.history.shift();
     }
 
-    // Simple statistical anomaly detection
-    const mean = this.calculateMean(values);
-    const stdDev = this.calculateStdDev(values, mean);
-    const threshold = mean + stdDev * (this.config.sensitivity || 2);
+    // Use history for baseline if available
+    let baseline = this.baselineMean;
+    if (this.history.length > 1) {
+      const flatHistory = this.history.slice(0, -1).flat();
+      baseline = this.calculateMean(flatHistory);
+      this.baselineMean = baseline;
+    }
+
+    // Simple statistical anomaly detection using baseline
+    const currentMean = this.calculateMean(values);
+    const stdDev = this.calculateStdDev(values, currentMean);
+    const threshold = baseline + stdDev * (this.config.sensitivity || 2);
 
     for (const [name, value] of Object.entries(metrics)) {
       if (value > threshold) {
@@ -669,7 +678,7 @@ export class AnomalyDetector {
           metric: name,
           value,
           threshold,
-          severity: this.calculateSeverity(value, threshold),
+          severity: this.calculateSeverity(value, baseline),
           description: `${name} value ${value} exceeds threshold ${threshold}`,
         });
       }
@@ -679,18 +688,21 @@ export class AnomalyDetector {
   }
 
   private calculateMean(values: number[]): number {
+    if (values.length === 0) return 0;
     return values.reduce((sum, v) => sum + v, 0) / values.length;
   }
 
   private calculateStdDev(values: number[], mean: number): number {
+    if (values.length === 0) return 0;
     const variance = values.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / values.length;
     return Math.sqrt(variance);
   }
 
-  private calculateSeverity(value: number, threshold: number): 'low' | 'medium' | 'high' {
-    const ratio = value / threshold;
-    if (ratio > 2) return 'high';
-    if (ratio > 1.5) return 'medium';
+  private calculateSeverity(value: number, baseline: number): 'low' | 'medium' | 'high' {
+    if (baseline === 0) baseline = value / 2; // Avoid division by zero
+    const ratio = value / baseline;
+    if (ratio >= 2) return 'high';
+    if (ratio >= 1.5) return 'medium';
     return 'low';
   }
 }

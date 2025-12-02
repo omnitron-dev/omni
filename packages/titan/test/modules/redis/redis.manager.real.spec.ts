@@ -1,9 +1,17 @@
-import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, beforeAll } from '@jest/globals';
 import { RedisManager } from '../../../src/modules/redis/redis.manager.js';
 import { RedisModuleOptions } from '../../../src/modules/redis/redis.types.js';
-import { createDockerRedisFixture, DockerRedisTestFixture } from './utils/redis-test-utils.js';
+import { createDockerRedisFixture, DockerRedisTestFixture, isRedisInMockMode } from './utils/redis-test-utils.js';
 
-describe('RedisManager with Real Redis', () => {
+// Skip all tests in this file if running in mock mode - requires real Redis
+const describeOrSkip = isRedisInMockMode() ? describe.skip : describe;
+
+describeOrSkip('RedisManager with Real Redis', () => {
+  beforeAll(() => {
+    if (isRedisInMockMode()) {
+      console.log('⏭️  Skipping redis.manager.real.spec.ts - requires real Redis (USE_MOCK_REDIS=true)');
+    }
+  });
   let manager: RedisManager;
   let dockerFixture: DockerRedisTestFixture;
 

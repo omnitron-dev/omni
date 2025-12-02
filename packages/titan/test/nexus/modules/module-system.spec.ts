@@ -555,7 +555,7 @@ describe('Module System', () => {
       });
 
       // Should throw when required modules are not loaded
-      expect(() => container.loadModule(module)).toThrow('Required module not found: DatabaseModule');
+      expect(() => container.loadModule(module)).toThrow('Module with id DatabaseModule not found');
     });
   });
 });

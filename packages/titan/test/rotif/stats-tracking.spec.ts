@@ -1,19 +1,23 @@
 import { delay as delayMs } from '@omnitron-dev/common';
 
-import { NotificationManager } from '../../src/rotif/rotif.js';
-import { createTestConfig } from './helpers/test-utils.js';
+import type { NotificationManager } from '../../src/rotif/rotif.js';
+import { createTestConfig, createTestNotificationManager, isInMockMode } from './helpers/test-utils.js';
 
-describe('Stats - tracking', () => {
+const describeOrSkip = isInMockMode() ? describe.skip : describe;
+
+if (isInMockMode()) {
+  console.log('⏭️ Skipping stats-tracking.spec.ts - requires real Redis');
+}
+
+describeOrSkip('Stats - tracking', () => {
   describe('should correctly track subscription stats', () => {
     let manager: NotificationManager;
 
     beforeAll(async () => {
-      manager = new NotificationManager(
-        createTestConfig(1, {
+      manager = await createTestNotificationManager(1, {
           checkDelayInterval: 50,
           blockInterval: 100,
-        })
-      );
+        });
 
       await manager.redis.flushdb();
     });
@@ -58,13 +62,11 @@ describe('Stats - tracking', () => {
     let manager: NotificationManager;
 
     beforeAll(async () => {
-      manager = new NotificationManager(
-        createTestConfig(1, {
+      manager = await createTestNotificationManager(1, {
           checkDelayInterval: 100,
           maxRetries: 2,
           blockInterval: 100,
-        })
-      );
+        });
 
       await manager.redis.flushdb();
     });

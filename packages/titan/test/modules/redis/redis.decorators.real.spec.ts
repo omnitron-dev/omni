@@ -20,8 +20,11 @@ import {
   flushPromises,
   waitForCondition,
 } from '../../../src/testing/async-test-utils.js';
+import { isRedisInMockMode } from './utils/redis-test-utils.js';
 
-const SKIP_DOCKER_TESTS = process.env.SKIP_DOCKER_TESTS === 'true';
+// Skip all tests in this file if running in mock mode - requires real Redis
+const SKIP_DOCKER_TESTS = process.env.SKIP_DOCKER_TESTS === 'true' || isRedisInMockMode();
+const describeOrSkip = SKIP_DOCKER_TESTS ? describe.skip : describe;
 
 /**
  * Global type extension for Titan Redis Manager
@@ -46,7 +49,7 @@ interface ComplexDataStructure {
   undefinedValue?: undefined;
 }
 
-describe('Redis Decorators with Real Redis', () => {
+describeOrSkip('Redis Decorators with Real Redis', () => {
   let fixture: RedisTestFixture | undefined;
   let eventTracker: EventListenerTracker;
   let manager: RedisManager;
@@ -54,6 +57,10 @@ describe('Redis Decorators with Real Redis', () => {
   let testsSkipped = false;
 
   beforeAll(async () => {
+    if (SKIP_DOCKER_TESTS) {
+      console.log('⏭️  Skipping redis.decorators.real.spec.ts - requires real Redis (USE_MOCK_REDIS=true or SKIP_DOCKER_TESTS=true)');
+      return;
+    }
     // Skip if explicitly disabled
     if (SKIP_DOCKER_TESTS) {
       console.warn('⚠️  Skipping Redis decorator tests - SKIP_DOCKER_TESTS is set');

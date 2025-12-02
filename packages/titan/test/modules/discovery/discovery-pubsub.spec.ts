@@ -10,7 +10,10 @@ import type { ILogger } from '../../../src/modules/logger/logger.types.js';
 import type { DiscoveryOptions, DiscoveryEvent } from '../../../src/modules/discovery/types.js';
 import { createTestRedisClient, cleanupRedis, createMockLogger } from './test-utils.js';
 
-describe('DiscoveryService - PubSub Tests', () => {
+const skipTests = process.env.USE_MOCK_REDIS === 'true';
+const describeOrSkip = skipTests ? describe.skip : describe;
+
+describeOrSkip('DiscoveryService - PubSub Tests', () => {
   let redis: Redis;
   let logger: ILogger;
   let service: DiscoveryService;

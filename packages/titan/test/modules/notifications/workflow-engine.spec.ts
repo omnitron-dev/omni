@@ -1,6 +1,9 @@
 /**
  * Comprehensive Tests for WorkflowEngine
  * Tests workflow orchestration and complex notification scenarios
+ *
+ * These tests require Docker or a real Redis server.
+ * They will be skipped if Redis is not available (USE_MOCK_REDIS=true).
  */
 
 import Redis from 'ioredis';
@@ -16,8 +19,32 @@ import { PreferenceManager } from '../../../src/modules/notifications/preference
 import { RateLimiter } from '../../../src/modules/notifications/rate-limiter.js';
 import { RedisDockerTestHelper } from './test-redis-docker.js';
 import type { NotificationWorkflow } from '../../../src/modules/notifications/workflow-engine.js';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
-describe('WorkflowEngine', () => {
+/**
+ * Check if real Redis is available from global setup
+ */
+function isRealRedisAvailable(): boolean {
+  if (process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true') {
+    return false;
+  }
+  try {
+    const infoPath = join(process.cwd(), '.redis-test-info.json');
+    if (existsSync(infoPath)) {
+      const info = JSON.parse(readFileSync(infoPath, 'utf-8'));
+      return info.port > 0 && !info.isMock;
+    }
+  } catch {
+    // Ignore errors
+  }
+  return false;
+}
+
+// Skip entire test suite if Redis is not available
+const describeWithRedis = isRealRedisAvailable() ? describe : describe.skip;
+
+describeWithRedis('WorkflowEngine', () => {
   let redis: Redis;
   let pubRedis: Redis;
   let subRedis: Redis;

@@ -73,8 +73,12 @@ describe('Service Decorator with Transports', () => {
       expect(metadata.version).toBe('1.0.0');
       expect(metadata.transports).toBeDefined();
       expect(metadata.transports).toHaveLength(2);
-      expect(metadata.transports![0]).toBe(wsTransport);
-      expect(metadata.transports![1]).toBe(tcpTransport);
+      expect(metadata.transports![0]).toBe('websocket');
+      expect(metadata.transports![1]).toBe('tcp');
+      // Check internal transport instances
+      expect(metadata._transports).toBeDefined();
+      expect(metadata._transports![0]).toBe(wsTransport);
+      expect(metadata._transports![1]).toBe(tcpTransport);
     });
 
     it('should store transport config options', () => {
@@ -147,7 +151,10 @@ describe('Service Decorator with Transports', () => {
       const metadata = Reflect.getMetadata(SERVICE_ANNOTATION, MultiTransportService) as ExtendedServiceMetadata;
 
       expect(metadata.transports).toHaveLength(3);
-      expect(metadata.transports).toEqual(transports);
+      expect(metadata.transports).toEqual(['websocket', 'tcp', 'websocket']);
+      // Check internal transport instances
+      expect(metadata._transports).toHaveLength(3);
+      expect(metadata._transports).toEqual(transports);
     });
 
     it('should support Unix socket transport on non-Windows platforms', () => {
@@ -172,7 +179,10 @@ describe('Service Decorator with Transports', () => {
       const metadata = Reflect.getMetadata(SERVICE_ANNOTATION, UnixService) as ExtendedServiceMetadata;
 
       expect(metadata.transports).toHaveLength(1);
-      expect(metadata.transports![0]).toBe(unixTransport);
+      expect(metadata.transports![0]).toBe('unix');
+      // Check internal transport instance
+      expect(metadata._transports).toBeDefined();
+      expect(metadata._transports![0]).toBe(unixTransport);
     });
 
     it('should support Named Pipe transport on Windows', () => {
@@ -197,7 +207,10 @@ describe('Service Decorator with Transports', () => {
       const metadata = Reflect.getMetadata(SERVICE_ANNOTATION, PipeService) as ExtendedServiceMetadata;
 
       expect(metadata.transports).toHaveLength(1);
-      expect(metadata.transports![0]).toBe(pipeTransport);
+      expect(metadata.transports![0]).toBe('namedpipe');
+      // Check internal transport instance
+      expect(metadata._transports).toBeDefined();
+      expect(metadata._transports![0]).toBe(pipeTransport);
     });
   });
 
@@ -219,6 +232,7 @@ describe('Service Decorator with Transports', () => {
         services: new Map(),
         options: {},
         emitSpecial: jest.fn(),
+        transportServers: new Map(),
       };
 
       const localPeer = new LocalPeer(mockNetron);
@@ -243,7 +257,8 @@ describe('Service Decorator with Transports', () => {
 
       // Check that transports are accessible via metadata
       const metadata = Reflect.getMetadata(SERVICE_ANNOTATION, service.constructor) as ExtendedServiceMetadata;
-      expect(metadata.transports).toContain(wsTransport);
+      expect(metadata.transports).toContain('websocket');
+      expect(metadata._transports).toContain(wsTransport);
     });
 
     it('should use transport config when exposing service', async () => {
@@ -261,6 +276,7 @@ describe('Service Decorator with Transports', () => {
         services: new Map(),
         options: {},
         emitSpecial: jest.fn(),
+        transportServers: new Map(),
       };
 
       const localPeer = new LocalPeer(mockNetron);
@@ -343,7 +359,8 @@ describe('Service Decorator with Transports', () => {
 
       expect(metadata.name).toBe('noversion');
       expect(metadata.version).toBe('');
-      expect(metadata.transports).toContain(wsTransport);
+      expect(metadata.transports).toContain('websocket');
+      expect(metadata._transports).toContain(wsTransport);
     });
   });
 
@@ -392,7 +409,8 @@ describe('Service Decorator with Transports', () => {
       // Check service metadata
       expect(metadata.name).toBe('complex');
       expect(metadata.version).toBe('1.0.0');
-      expect(metadata.transports).toEqual(transports);
+      expect(metadata.transports).toEqual(['websocket', 'tcp']);
+      expect(metadata._transports).toEqual(transports);
       expect(metadata.transportConfig).toBeDefined();
       expect(metadata.transportConfig!.timeout).toBe(15000);
       expect(metadata.transportConfig!.maxMessageSize).toBe(2 * 1024 * 1024);
@@ -428,8 +446,10 @@ describe('Service Decorator with Transports', () => {
       const metadata = Reflect.getMetadata(SERVICE_ANNOTATION, DynamicTransportService) as ExtendedServiceMetadata;
 
       expect(metadata.transports).toHaveLength(2);
-      expect(metadata.transports![0]).toBeInstanceOf(WebSocketTransport);
-      expect(metadata.transports![1]).toBeInstanceOf(TcpTransport);
+      expect(metadata.transports).toEqual(['websocket', 'tcp']);
+      expect(metadata._transports).toHaveLength(2);
+      expect(metadata._transports![0]).toBeInstanceOf(WebSocketTransport);
+      expect(metadata._transports![1]).toBeInstanceOf(TcpTransport);
     });
   });
 
@@ -452,13 +472,16 @@ describe('Service Decorator with Transports', () => {
       const metadata = Reflect.getMetadata(SERVICE_ANNOTATION, DiscoverableService) as ExtendedServiceMetadata;
 
       // Services should be discoverable via their transports
-      const wsEndpoint = metadata.transports![0];
-      const tcpEndpoint = metadata.transports![1];
+      expect(metadata.transports![0]).toBe('websocket');
+      expect(metadata.transports![1]).toBe('tcp');
+
+      // Internal transport instances should maintain their identity
+      const wsEndpoint = metadata._transports![0];
+      const tcpEndpoint = metadata._transports![1];
 
       expect(wsEndpoint).toBeInstanceOf(WebSocketTransport);
       expect(tcpEndpoint).toBeInstanceOf(TcpTransport);
 
-      // Each transport should be identifiable and of correct type
       // Transport instances should maintain their identity
       expect(wsEndpoint).toBe(wsTransport);
       expect(tcpEndpoint).toBe(tcpTransport);

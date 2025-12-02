@@ -3,7 +3,7 @@
  * Verifies that cache hints from server responses are properly stored
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { HttpCacheManager } from '../../../src/netron/transport/http/fluent-interface/cache-manager.js';
 
 describe('HTTP Transport - Cache Storage', () => {

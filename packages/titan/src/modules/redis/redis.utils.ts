@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { Redis, Cluster } from 'ioredis';
 import { Errors } from '../../errors/index.js';
 
-import { RedisClient, RedisClientOptions } from './redis.types.js';
+import { RedisClient, RedisClientOptions, isClientReady } from './redis.types.js';
 
 export function isCluster(client: RedisClient): client is Cluster {
   return client instanceof Cluster;
@@ -160,7 +160,7 @@ export async function waitForConnection(client: RedisClient, timeout = 5000): Pr
   }
 
   // If already ready, return immediately
-  if ((client as any).status === 'ready') {
+  if (isClientReady(client)) {
     return Promise.resolve(true);
   }
 

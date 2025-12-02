@@ -8,7 +8,15 @@ import { HttpNativeServer } from '../src/netron/transport/http/index.js';
 import { HttpTransportClient } from '../src/netron/transport/http/index.js';
 import { TestService, type User } from './server/services/test.service.js';
 
-describe('Netron HTTP Transport E2E', () => {
+const skipTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+
+if (skipTests) {
+  console.log('⏭️ Skipping http-transport.e2e.spec.ts - requires external services');
+}
+
+const describeOrSkip = skipTests ? describe.skip : describe;
+
+describeOrSkip('Netron HTTP Transport E2E', () => {
   let netron: Netron;
   let server: HttpNativeServer;
   let client: HttpTransportClient;

@@ -1,19 +1,25 @@
 import { delay } from '@omnitron-dev/common';
 
-import { NotificationManager } from '../../src/rotif/rotif.js';
-import { createTestConfig } from './helpers/test-utils.js';
+import type { NotificationManager } from '../../src/rotif/rotif.js';
+import { createTestConfig, createTestNotificationManager, isInMockMode } from './helpers/test-utils.js';
 
-describe('NotificationManager - retry after failure', () => {
+const skipTests = isInMockMode();
+
+if (skipTests) {
+  console.log('⏭️ Skipping retry-success-after-failure.spec.ts - requires real Redis');
+}
+
+const describeOrSkip = skipTests ? describe.skip : describe;
+
+describeOrSkip('NotificationManager - retry after failure', () => {
   let manager: NotificationManager;
 
   beforeAll(async () => {
-    manager = new NotificationManager(
-      createTestConfig(1, {
-        checkDelayInterval: 100,
-        maxRetries: 3,
-        blockInterval: 100,
-      })
-    );
+    manager = await createTestNotificationManager(1, {
+      checkDelayInterval: 100,
+      maxRetries: 3,
+      blockInterval: 100,
+    });
 
     await manager.redis.flushdb();
   });

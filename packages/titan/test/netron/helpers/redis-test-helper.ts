@@ -12,6 +12,25 @@ export interface RedisTestConfig {
   useMock?: boolean; // Use mock Redis instead of real Redis
 }
 
+/**
+ * Get global Redis config from .redis-test-info.json (set by globalSetup.ts)
+ */
+function getGlobalRedisConfig(): { port: number; url: string } | null {
+  try {
+    const infoPath = path.join(process.cwd(), '.redis-test-info.json');
+    if (fs.existsSync(infoPath)) {
+      const content = fs.readFileSync(infoPath, 'utf-8');
+      const info = JSON.parse(content);
+      if (info.port) {
+        return { port: info.port, url: info.url };
+      }
+    }
+  } catch {
+    // Ignore errors
+  }
+  return null;
+}
+
 export class RedisTestHelper {
   private static instance: RedisTestHelper | null = null;
   private redisProcess: ChildProcess | null = null;
@@ -20,9 +39,17 @@ export class RedisTestHelper {
   private dataDir: string;
   private isStarted: boolean = false;
   private useMock: boolean;
+  private usingGlobalRedis: boolean = false;
 
   private constructor(config: RedisTestConfig = {}) {
-    this.port = config.port || this.findAvailablePort();
+    // First try to use global Redis from globalSetup
+    const globalConfig = getGlobalRedisConfig();
+    if (globalConfig) {
+      this.port = globalConfig.port;
+      this.usingGlobalRedis = true;
+    } else {
+      this.port = config.port || this.findAvailablePort();
+    }
     this.dataDir = path.join(os.tmpdir(), `redis-test-${process.pid}-${this.port}`);
     this.useMock = config.useMock || false;
   }
@@ -74,6 +101,22 @@ export class RedisTestHelper {
       this.redisClient = new MockRedis() as any;
       this.isStarted = true;
       return this.redisClient as Redis;
+    }
+
+    // If using global Redis from globalSetup, just connect to it
+    if (this.usingGlobalRedis) {
+      this.redisClient = new Redis({
+        port: this.port,
+        host: '127.0.0.1',
+        lazyConnect: false,
+        maxRetriesPerRequest: 3,
+        retryStrategy: (times) => {
+          if (times > 3) return null;
+          return Math.min(times * 50, 200);
+        },
+      });
+      this.isStarted = true;
+      return this.redisClient;
     }
 
     // Check if redis-server is available
@@ -177,6 +220,14 @@ export class RedisTestHelper {
     if (this.redisClient) {
       this.redisClient.disconnect();
       this.redisClient = null;
+    }
+
+    // Don't stop Redis process if using global Redis from globalSetup
+    // That will be cleaned up by globalTeardown
+    if (this.usingGlobalRedis) {
+      this.isStarted = false;
+      RedisTestHelper.instance = null;
+      return;
     }
 
     if (this.redisProcess) {

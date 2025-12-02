@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 
-import { Public, Service } from '../../src/netron/index.js';
+import { Public, Service, Method } from '../../src/netron/index.js';
 import { createNetronServer, createNetronClient } from './test-utils.js';
 
 // Simple service with async generator

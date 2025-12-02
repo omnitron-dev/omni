@@ -1,18 +1,22 @@
 import { delay as delayMs } from '@omnitron-dev/common';
 
-import { NotificationManager } from '../../src/rotif/rotif.js';
-import { createTestConfig } from './helpers/test-utils.js';
+import type { NotificationManager } from '../../src/rotif/rotif.js';
+import { createTestConfig, createTestNotificationManager, isInMockMode } from './helpers/test-utils.js';
 
-describe('DLQ - Requeue from DLQ', () => {
+const describeOrSkip = isInMockMode() ? describe.skip : describe;
+
+if (isInMockMode()) {
+  console.log('⏭️ Skipping dlq-requeue.spec.ts - requires real Redis');
+}
+
+describeOrSkip('DLQ - Requeue from DLQ', () => {
   let manager: NotificationManager;
 
   beforeAll(async () => {
-    manager = new NotificationManager(
-      createTestConfig(1, {
-        checkDelayInterval: 100,
-        blockInterval: 100,
-      })
-    );
+    manager = await createTestNotificationManager(1, {
+      checkDelayInterval: 100,
+      blockInterval: 100,
+    });
     await manager.redis.flushdb();
   });
 

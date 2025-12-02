@@ -4,6 +4,7 @@
  * Tests for the Titan Database Module with Docker containers
  */
 
+import { describe, beforeAll, afterAll, it, expect } from '@jest/globals';
 import { Application } from '../../../src/application.js';
 import {
   TitanDatabaseModule,
@@ -15,7 +16,17 @@ import {
 import { sql } from 'kysely';
 import { DatabaseTestManager } from '../../utils/docker-test-manager.js';
 
-describe('TitanDatabaseModule', () => {
+const skipIntegrationTests = process.env.SKIP_DOCKER_TESTS === 'true' ||
+                            process.env.USE_MOCK_REDIS === 'true' ||
+                            process.env.CI === 'true';
+
+if (skipIntegrationTests) {
+  console.log('⏭️ Skipping database.module.spec.ts - requires Docker/PostgreSQL');
+}
+
+const describeOrSkip = skipIntegrationTests ? describe.skip : describe;
+
+describeOrSkip('TitanDatabaseModule', () => {
   describe('SQLite (in-memory)', () => {
     let app: Application;
     let databaseService: DatabaseService;
@@ -157,9 +168,7 @@ describe('TitanDatabaseModule', () => {
     let connectionString: string;
     let container: import('../../utils/docker-test-manager.js').DockerContainer;
 
-    // Skip if not in CI or Docker not available
-    const skipDockerTests = process.env.SKIP_DOCKER_TESTS === 'true';
-    const describeOrSkip = skipDockerTests ? describe.skip : describe;
+    const describeOrSkip = skipIntegrationTests ? describe.skip : describe;
 
     describeOrSkip('Docker PostgreSQL', () => {
       beforeAll(async () => {
@@ -250,9 +259,7 @@ describe('TitanDatabaseModule', () => {
     let connectionString: string;
     let container: import('../../utils/docker-test-manager.js').DockerContainer;
 
-    // Skip if not in CI or Docker not available
-    const skipDockerTests = process.env.SKIP_DOCKER_TESTS === 'true';
-    const describeOrSkip = skipDockerTests ? describe.skip : describe;
+    const describeOrSkip = skipIntegrationTests ? describe.skip : describe;
 
     describeOrSkip('Docker MySQL', () => {
       beforeAll(async () => {

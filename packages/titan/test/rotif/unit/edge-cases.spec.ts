@@ -1,21 +1,25 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import Redis from 'ioredis';
-import { NotificationManager } from '../../../src/rotif/rotif.js';
-import { createTestConfig } from '../helpers/test-utils.js';
+import type { NotificationManager } from '../../../src/rotif/rotif.js';
+import { createTestConfig, createTestNotificationManager } from '../helpers/test-utils.js';
 import { delay } from '@omnitron-dev/common';
 
-describe('Rotif - Edge Cases', () => {
+const skipTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+if (skipTests) {
+  console.log('⏭️  Skipping edge-cases.spec.ts - integration test');
+}
+const describeOrSkip = skipTests ? describe.skip : describe;
+
+describeOrSkip('Rotif - Edge Cases', () => {
   let manager: NotificationManager;
   let redis: Redis;
 
   beforeEach(async () => {
-    manager = new NotificationManager(
-      createTestConfig(8, {
-        checkDelayInterval: 100,
-        blockInterval: 100,
-        maxRetries: 2,
-      })
-    );
+    manager = await createTestNotificationManager(8, {
+      checkDelayInterval: 100,
+      blockInterval: 100,
+      maxRetries: 2,
+    });
     redis = manager.redis;
     await redis.flushdb();
     await manager.waitUntilReady();

@@ -17,13 +17,18 @@ import { REDIS_MANAGER } from '../../../src/modules/redis/redis.constants.js';
 import { RedisCache, RedisLock, RedisRateLimit } from '../../../src/modules/redis/redis.decorators.js';
 import { TestApplication } from '../../../src/testing/test-application.js';
 import { suppressConsole } from '../../../src/testing/test-helpers.js';
-import { createDockerRedisFixture, type DockerRedisTestFixture } from './utils/redis-test-utils.js';
+import { createDockerRedisFixture, type DockerRedisTestFixture, isRedisInMockMode } from './utils/redis-test-utils.js';
 
-// Skip integration tests if SKIP_INTEGRATION is set
-const SKIP_INTEGRATION = process.env.SKIP_INTEGRATION === 'true';
+// Skip integration tests if SKIP_INTEGRATION is set or in mock mode
+const SKIP_INTEGRATION = process.env.SKIP_INTEGRATION === 'true' || isRedisInMockMode();
 const describeIntegration = SKIP_INTEGRATION ? describe.skip : describe;
 
 describeIntegration('Redis Module Integration Tests (Docker Redis)', () => {
+  beforeAll(() => {
+    if (isRedisInMockMode()) {
+      console.log('⏭️  Skipping redis.integration.spec.ts - requires Docker (USE_MOCK_REDIS=true)');
+    }
+  });
   let dockerFixture: DockerRedisTestFixture;
   let app: TestApplication;
   let container: Container;

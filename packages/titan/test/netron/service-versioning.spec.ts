@@ -1,6 +1,6 @@
 import { delay } from '@omnitron-dev/common';
 
-import { Public, Netron, Service, RemotePeer } from '../../src/netron';
+import { Public, Netron, Service, Method, RemotePeer } from '../../src/netron';
 import { createMockLogger, createNetronClient } from './test-utils.js';
 
 describe('RemotePeer Service Versioning', () => {

@@ -422,6 +422,44 @@ export class RepositoryFactory implements IRepositoryFactory {
   }
 
   /**
+   * Apply plugin extensions while preserving the prototype chain.
+   * Kysera plugins use object spread which loses prototype methods,
+   * so we merge new properties back onto the original object.
+   */
+  private applyPluginWithPrototypePreservation<T extends object>(repository: T, plugin: KyseraPlugin): T {
+    if (!plugin.extendRepository) {
+      return repository;
+    }
+
+    const extended = plugin.extendRepository(repository);
+
+    // If the plugin returned a different object (e.g., via object spread),
+    // merge the new/modified properties back onto the original repository
+    // to preserve the prototype chain
+    if (extended !== repository && extended) {
+      // Copy all enumerable own properties from extended to repository
+      for (const key of Object.keys(extended)) {
+        const extendedValue = (extended as Record<string, unknown>)[key];
+        const originalValue = (repository as Record<string, unknown>)[key];
+
+        // Copy if it's a new property, a function, or the value changed
+        if (typeof extendedValue === 'function' || !(key in repository) || extendedValue !== originalValue) {
+          (repository as Record<string, unknown>)[key] = extendedValue;
+        }
+      }
+
+      // Also copy any symbol properties
+      for (const sym of Object.getOwnPropertySymbols(extended)) {
+        (repository as Record<symbol, unknown>)[sym] = (extended as Record<symbol, unknown>)[sym];
+      }
+
+      return repository;
+    }
+
+    return extended as T;
+  }
+
+  /**
    * Apply plugins to a repository
    */
   applyPlugins<T extends object = Record<string, unknown>>(repository: T, plugins: Array<string | KyseraPlugin>): T {
@@ -434,13 +472,11 @@ export class RepositoryFactory implements IRepositoryFactory {
         repository = this.pluginManager.applyPlugins(repository, pluginNames) as T;
       }
 
-      // Apply direct plugin instances
+      // Apply direct plugin instances with prototype preservation
       const directPlugins = plugins.filter((p) => typeof p !== 'string');
       for (const plugin of directPlugins) {
         const pluginInstance = plugin as KyseraPlugin;
-        if (pluginInstance.extendRepository) {
-          repository = pluginInstance.extendRepository(repository) as T;
-        }
+        repository = this.applyPluginWithPrototypePreservation(repository, pluginInstance);
       }
 
       return repository;
@@ -457,10 +493,8 @@ export class RepositoryFactory implements IRepositoryFactory {
         continue;
       }
 
-      // Apply plugin based on Kysera plugin interface
-      if (pluginInstance.extendRepository) {
-        enhancedRepo = pluginInstance.extendRepository(enhancedRepo) as T;
-      }
+      // Apply plugin with prototype preservation
+      enhancedRepo = this.applyPluginWithPrototypePreservation(enhancedRepo, pluginInstance);
     }
 
     return enhancedRepo as T;

@@ -6,9 +6,18 @@ import { isCluster, createRedisClient } from '../../../src/modules/redis/redis.u
 import {
   createDockerRedisClusterFixture,
   type DockerRedisClusterFixture,
+  isRedisInMockMode,
 } from './utils/redis-test-utils.js';
 
-describe('Redis Cluster Support', () => {
+// Skip all tests in this file if running in mock mode - requires real Redis cluster
+const describeOrSkip = isRedisInMockMode() ? describe.skip : describe;
+
+describeOrSkip('Redis Cluster Support', () => {
+  beforeAll(() => {
+    if (isRedisInMockMode()) {
+      console.log('⏭️  Skipping redis.cluster.spec.ts - requires real Redis cluster (USE_MOCK_REDIS=true)');
+    }
+  });
   describe('Cluster Detection', () => {
     let clusterFixture: DockerRedisClusterFixture;
 

@@ -1,4 +1,4 @@
-import { Netron, Public, Service, RemotePeer } from '../../src/netron';
+import { Netron, Public, Service, Method, RemotePeer } from '../../src/netron';
 import { createMockLogger, createNetronServer, createNetronClient } from './test-utils.js';
 
 describe('Interface Lifecycle Tests', () => {

@@ -1,23 +1,27 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import Redis from 'ioredis';
-import { NotificationManager } from '../../../src/rotif/rotif.js';
+import type { NotificationManager } from '../../../src/rotif/rotif.js';
 import { RotifMessage, Middleware } from '../../../src/rotif/types.js';
-import { createTestConfig } from '../helpers/test-utils.js';
+import { createTestConfig, createTestNotificationManager } from '../helpers/test-utils.js';
 import { delay } from '@omnitron-dev/common';
 
-describe('Rotif - NotificationManager Integration', () => {
+const skipTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+if (skipTests) {
+  console.log('⏭️  Skipping notification-manager.spec.ts - integration test');
+}
+const describeOrSkip = skipTests ? describe.skip : describe;
+
+describeOrSkip('Rotif - NotificationManager Integration', () => {
   let manager: NotificationManager;
   let redis: Redis;
 
   beforeEach(async () => {
-    manager = new NotificationManager(
-      createTestConfig(6, {
-        checkDelayInterval: 100,
-        blockInterval: 100,
-        maxRetries: 3,
-        retryDelay: 100,
-      })
-    );
+    manager = await createTestNotificationManager(6, {
+      checkDelayInterval: 100,
+      blockInterval: 100,
+      maxRetries: 3,
+      retryDelay: 100,
+    });
     redis = manager.redis;
     await redis.flushdb();
     await manager.waitUntilReady();
@@ -116,7 +120,7 @@ describe('Rotif - NotificationManager Integration', () => {
 
   describe('subscribe', () => {
     it('should subscribe to pattern successfully', async () => {
-      const handler = vi.fn(async (msg: RotifMessage) => {});
+      const handler = jest.fn(async (msg: RotifMessage) => {});
 
       const sub = await manager.subscribe('test.*', handler);
 

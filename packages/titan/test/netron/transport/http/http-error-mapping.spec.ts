@@ -11,7 +11,7 @@ import { HttpConnection } from '../../../../src/netron/transport/http/connection
 import { TitanError, ErrorCode } from '../../../../src/errors/index.js';
 import { LocalPeer } from '../../../../src/netron/local-peer.js';
 import { Netron } from '../../../../src/netron/netron.js';
-import { Service, Public } from '../../../../src/netron/index.js';
+import { Service, Public, Method } from '../../../../src/decorators/core.js';
 import { createMockLogger } from '../../test-utils.js';
 
 describe('HTTP Error Mapping with TitanError', () => {

@@ -14,7 +14,15 @@ import type { ChannelManager } from '../../../src/modules/notifications/channel-
 import { InAppChannel, EmailChannel } from '../../../src/modules/notifications/channel-manager.js';
 import { getTestRedisConfig } from '../../utils/redis-test-utils.js';
 
-describe('Notifications Module Integration', () => {
+const skipIntegrationTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+
+if (skipIntegrationTests) {
+  console.log('⏭️ Skipping Notifications Integration - requires Redis');
+}
+
+const describeOrSkip = skipIntegrationTests ? describe.skip : describe;
+
+describeOrSkip('Notifications Module Integration', () => {
   let redis: Redis;
   let container: Container;
 

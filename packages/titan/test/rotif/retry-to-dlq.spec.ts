@@ -1,20 +1,26 @@
-import { NotificationManager } from '../../src/rotif/rotif.js';
-import { createTestConfig } from './helpers/test-utils.js';
+import type { NotificationManager } from '../../src/rotif/rotif.js';
+import { createTestConfig, createTestNotificationManager, isInMockMode } from './helpers/test-utils.js';
 
 // Use a local delay function to avoid any import issues
 const delayMs = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-describe('NotificationManager - retry to DLQ', () => {
+const skipTests = isInMockMode();
+
+if (skipTests) {
+  console.log('⏭️ Skipping retry-to-dlq.spec.ts - requires real Redis');
+}
+
+const describeOrSkip = skipTests ? describe.skip : describe;
+
+describeOrSkip('NotificationManager - retry to DLQ', () => {
   let manager: NotificationManager;
 
   beforeEach(async () => {
-    manager = new NotificationManager(
-      createTestConfig(1, {
-        checkDelayInterval: 50,
-        maxRetries: 3,
-        blockInterval: 10,
-      })
-    );
+    manager = await createTestNotificationManager(1, {
+      checkDelayInterval: 50,
+      maxRetries: 3,
+      blockInterval: 10,
+    });
     await manager.redis.flushdb();
   });
 

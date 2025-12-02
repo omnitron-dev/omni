@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 import { Netron } from '../../src/netron/netron.js';
 import { Interface } from '../../src/netron/interface.js';
 import { createMockLogger } from './test-utils.js';
-import { Service, Public } from '../../src/decorators/core.js';
+import { Service, Public, Method } from '../../src/decorators/core.js';
 
 describe('Interface Edge Cases', () => {
   let netron: Netron;

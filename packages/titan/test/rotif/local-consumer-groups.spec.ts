@@ -1,14 +1,13 @@
 import { delay } from '@omnitron-dev/common';
 
-import { NotificationManager } from '../../src/rotif/rotif.js';
-import { getTestRedisUrl } from './helpers/test-utils.js';
+import type { NotificationManager } from '../../src/rotif/rotif.js';
+import { getTestRedisUrl, createTestNotificationManager } from './helpers/test-utils.js';
 
 describe('Multiple Subscribers Handling whithin one rotif instance', () => {
   let manager: NotificationManager;
 
   beforeEach(async () => {
-    manager = new NotificationManager({
-      redis: getTestRedisUrl(1),
+    manager = await createTestNotificationManager(1, {
       maxRetries: 2,
       blockInterval: 100,
       localRoundRobin: true,

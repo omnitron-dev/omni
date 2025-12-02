@@ -6,15 +6,13 @@ import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { createToken } from '@nexus';
 import {
   TitanApplication,
-  Injectable,
-  Singleton,
-  Inject,
   OnInit,
   OnDestroy,
   type DynamicModule,
   type Provider,
 } from '../src/index';
-import { LOGGER_SERVICE_TOKEN } from '../src/modules/logger.module';
+import { Injectable, Singleton, Inject } from '@/decorators';
+import { LOGGER_SERVICE_TOKEN } from '@/modules/logger';
 const CONFIG_SERVICE_TOKEN = createToken('ConfigModule');
 
 // Test service tokens
@@ -158,16 +156,16 @@ class TestModule implements IModule {
 
   async onStart(app: any): Promise<void> {
     // Services are automatically registered via providers
-    // Just initialize them if they exist
+    // Use resolveAsync to handle async dependencies
     if (app.hasProvider(TestServiceToken)) {
-      const testService = app.resolve(TestServiceToken);
+      const testService = await app.resolveAsync(TestServiceToken);
       if (testService.onInit) {
         await testService.onInit();
       }
     }
 
     if (app.hasProvider(DependentServiceToken)) {
-      const dependentService = app.resolve(DependentServiceToken);
+      const dependentService = await app.resolveAsync(DependentServiceToken);
       if (dependentService.onInit) {
         await dependentService.onInit();
       }
@@ -175,9 +173,9 @@ class TestModule implements IModule {
   }
 
   async onStop(app: any): Promise<void> {
-    // Cleanup
+    // Cleanup - use resolveAsync for consistency
     if (app.hasProvider(TestServiceToken)) {
-      const testService = app.resolve(TestServiceToken);
+      const testService = await app.resolveAsync(TestServiceToken);
       if (testService.onDestroy) {
         await testService.onDestroy();
       }
@@ -279,7 +277,8 @@ describe('Improved Titan Module API', () => {
 
       await app.start();
 
-      const testService = app.resolve(TestServiceToken);
+      // Use resolveAsync since TestConfig is async
+      const testService = await app.resolveAsync(TestServiceToken);
       expect(testService).toBeDefined();
       expect(testService.getConfig().value).toBe('async-loaded');
       expect(testService.getConfig().count).toBe(999);
@@ -370,9 +369,11 @@ describe('Improved Titan Module API', () => {
       await app.start();
 
       // Core modules should be resolvable
-      const logger = app.resolve(LOGGER_SERVICE_TOKEN);
-      expect(logger).toBeDefined();
-      expect(logger.name).toBe('logger');
+      const loggerModule = app.resolve(LOGGER_SERVICE_TOKEN);
+      expect(loggerModule).toBeDefined();
+      // LoggerModule has a logger property with log methods
+      expect(typeof loggerModule.logger.debug).toBe('function');
+      expect(typeof loggerModule.logger.error).toBe('function');
     });
 
     it('should support hasProvider method', () => {

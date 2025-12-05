@@ -28,6 +28,7 @@ export interface DockerContainer {
   labels: Record<string, string>;
   networks: string[];
   createdAt: Date;
+  internalIp?: string;
   cleanup: () => Promise<void>;
   getStatus: () => Promise<DockerContainerStatus>;
   isHealthy: () => Promise<boolean>;
@@ -544,6 +545,28 @@ export class DockerTestManager extends EventEmitter {
       }
     }
 
+    // Get internal IP if container is on a network
+    let internalIp: string | undefined;
+    if (networks.length > 0) {
+      try {
+        const ipOutput = execFileSync(
+          this.dockerPath,
+          ['inspect', name, '--format', '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'],
+          {
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+          }
+        ).trim();
+        if (ipOutput) {
+          internalIp = ipOutput;
+          this.log(`Container ${name} internal IP: ${internalIp}`);
+        }
+      } catch (error) {
+        this.logError(`Failed to get internal IP for ${name}`, error);
+        // Continue without internal IP
+      }
+    }
+
     const container: DockerContainer = {
       id,
       name,
@@ -555,6 +578,7 @@ export class DockerTestManager extends EventEmitter {
       labels,
       networks,
       createdAt: new Date(),
+      internalIp,
       getStatus: async () => this.getContainerStatus(name),
       isHealthy: async () => this.isContainerHealthy(name),
       cleanup: async () => {
@@ -1167,6 +1191,7 @@ export interface RedisClusterContainers {
   replicas: DockerContainer[];
   network: string;
   nodes: Array<{ host: string; port: number }>;
+  natMap?: Record<string, { host: string; port: number }>;
   cleanup: () => Promise<void>;
 }
 
@@ -1185,6 +1210,10 @@ export interface RedisClusterOptions {
   basePort?: number;
   password?: string;
   network?: string;
+  /** Timeout in ms for cluster to become ready (default: 120000 = 2 minutes) */
+  readyTimeout?: number;
+  /** Pre-init delay in ms after containers start (default: 5000) */
+  preInitDelay?: number;
 }
 
 export interface RedisSentinelContainers {
@@ -1383,16 +1412,52 @@ export class RedisTestManager {
       }
 
       // Wait for all containers to be fully ready and connected to network
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+      const preInitDelay = options?.preInitDelay ?? 5000;
+      await new Promise((resolve) => setTimeout(resolve, preInitDelay));
+
+      // Verify all nodes respond to PING before initializing cluster
+      const dockerPath = RedisTestManager.getDockerManager()['dockerPath'];
+      const allContainers = [...masters, ...replicas];
+      for (const container of allContainers) {
+        const maxPingRetries = 30;
+        for (let i = 0; i < maxPingRetries; i++) {
+          try {
+            const pingArgs = password
+              ? ['exec', container.name, 'redis-cli', '-a', password, 'ping']
+              : ['exec', container.name, 'redis-cli', 'ping'];
+            execFileSync(dockerPath, pingArgs, { stdio: 'pipe', timeout: 5000 });
+            break;
+          } catch {
+            if (i === maxPingRetries - 1) {
+              throw new Error(`Container ${container.name} not responding to redis-cli ping after ${maxPingRetries} attempts`);
+            }
+            await new Promise((r) => setTimeout(r, 1000));
+          }
+        }
+      }
 
       // Initialize cluster
       await RedisTestManager.initializeCluster(masters, replicas, password);
+
+      // Build NAT map for ioredis cluster connectivity
+      // Maps internal Docker IPs to external localhost:port addresses
+      const natMap: Record<string, { host: string; port: number }> = {};
+      for (const container of allContainers) {
+        if (container.internalIp) {
+          const hostPort = container.ports.get(6379);
+          if (hostPort) {
+            // Map internal IP:6379 to localhost:hostPort
+            natMap[`${container.internalIp}:6379`] = { host: 'localhost', port: hostPort };
+          }
+        }
+      }
 
       return {
         masters,
         replicas,
         network: networkName,
         nodes,
+        natMap,
         cleanup: async () => {
           // Clean up containers first
           await Promise.allSettled([...masters.map((c) => c.cleanup()), ...replicas.map((c) => c.cleanup())]);

@@ -18,9 +18,13 @@ import {
   type DataInventoryItem,
 } from '../../../../src/modules/pm/enterprise/compliance.js';
 
+// Test keys (for testing only - in production these would come from secure key management)
+const TEST_ENCRYPTION_KEY_HEX = 'a1b2c3d4e5f6789012345678901234567890abcd1234567890abcdef12345678';
+const TEST_SIGNING_KEY_HEX = 'f1e2d3c4b5a69876543210987654321098765432fedcba0987654321fedcba98';
+
 describe('AuditLogger', () => {
   let auditLogger: AuditLogger;
-  
+
   beforeEach(() => {
     const config: AuditConfig = {
       level: 'full',
@@ -29,6 +33,7 @@ describe('AuditLogger', () => {
       immutable: true,
       redactPII: true,
       standards: [ComplianceStandard.GDPR, ComplianceStandard.HIPAA],
+      signingKey: TEST_SIGNING_KEY_HEX,
     };
     auditLogger = new AuditLogger(config);
   });
@@ -204,6 +209,7 @@ describe('AuditLogger', () => {
         immutable: true,
         redactPII: false,
         standards: [ComplianceStandard.SOC2],
+        signingKey: TEST_SIGNING_KEY_HEX,
       };
       auditLogger = new AuditLogger(config);
     });
@@ -346,6 +352,7 @@ describe('AuditLogger', () => {
         immutable: false,
         redactPII: false,
         standards: [ComplianceStandard.HIPAA],
+        encryptionKey: TEST_ENCRYPTION_KEY_HEX,
       };
       auditLogger = new AuditLogger(config);
     });
@@ -447,6 +454,8 @@ describe('ComplianceManager', () => {
         immutable: true,
         redactPII: true,
         standards: [ComplianceStandard.GDPR],
+        encryptionKey: TEST_ENCRYPTION_KEY_HEX,
+        signingKey: TEST_SIGNING_KEY_HEX,
       },
     });
   });

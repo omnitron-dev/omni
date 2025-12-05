@@ -680,6 +680,7 @@ export interface DockerRedisClusterFixture {
 
 /**
  * Create a Docker-based Redis cluster test fixture
+ * @param options - Cluster options including readyTimeout (default: 120000ms = 2 minutes)
  */
 export async function createDockerRedisClusterFixture(
   options?: RedisClusterOptions
@@ -688,19 +689,22 @@ export async function createDockerRedisClusterFixture(
   const password = options?.password;
 
   const client = new Cluster(cluster.nodes, {
+    natMap: cluster.natMap, // Map internal Docker IPs to localhost:port
     redisOptions: password ? { password } : undefined,
     clusterRetryStrategy: (times: number) => {
-      if (times > 10) return null;
-      return Math.min(times * 100, 2000);
+      if (times > 20) return null; // Increased from 10 to 20
+      return Math.min(times * 200, 3000); // Increased backoff
     },
     enableReadyCheck: true,
     maxRedirections: 16,
+    lazyConnect: false, // Eagerly connect to detect issues early
   });
 
-  // Wait for cluster to be ready - robust check
-  const maxWait = 60000; // 60 seconds
+  // Wait for cluster to be ready - use configurable timeout
+  const maxWait = options?.readyTimeout ?? 120000; // Default: 2 minutes (increased from 60s)
   const startTime = Date.now();
   let clusterReady = false;
+  let lastError: Error | null = null;
 
   while (!clusterReady && Date.now() - startTime < maxWait) {
     try {
@@ -710,27 +714,34 @@ export async function createDockerRedisClusterFixture(
       // Second check: Is cluster state OK?
       const clusterInfo = await client.cluster('INFO');
       if (typeof clusterInfo === 'string' && clusterInfo.includes('cluster_state:ok')) {
-        // Third check: Can we get cluster nodes?
-        const nodes = await client.cluster('NODES');
-        if (typeof nodes === 'string' && nodes.length > 0) {
-          clusterReady = true;
-          break;
+        // Third check: Are all slots assigned?
+        if (clusterInfo.includes('cluster_slots_assigned:16384')) {
+          // Fourth check: Can we get cluster nodes?
+          const nodes = await client.cluster('NODES');
+          if (typeof nodes === 'string' && nodes.length > 0) {
+            clusterReady = true;
+            break;
+          }
         }
       }
     } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
       // Cluster not ready yet, wait and retry
-      await new Promise(resolve => setTimeout(resolve, 500));
     }
 
     if (!clusterReady) {
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Increased from 500ms to 1s
     }
   }
 
   if (!clusterReady) {
     await client.disconnect();
     await cluster.cleanup();
-    throw new Error(`Redis cluster failed to become ready within ${maxWait}ms`);
+    const elapsed = Date.now() - startTime;
+    throw new Error(
+      `Redis cluster failed to become ready within ${maxWait}ms (elapsed: ${elapsed}ms). ` +
+      `Last error: ${lastError?.message ?? 'unknown'}`
+    );
   }
 
   return {

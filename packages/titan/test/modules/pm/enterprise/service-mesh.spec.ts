@@ -161,7 +161,7 @@ describe('ServiceMeshProxy', () => {
       await meshedService.normalMethod('2');
 
       // Third call should be rate limited
-      await expect(meshedService.normalMethod('3')).rejects.toThrow('Rate limit exceeded');
+      await expect(meshedService.normalMethod('3')).rejects.toThrow('Too many requests');
     });
 
     it('should refill tokens over time', async () => {

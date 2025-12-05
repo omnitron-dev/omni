@@ -125,22 +125,25 @@ export class MockWorker extends EventEmitter {
         const result = await this.publicMethods.get('checkHealth')!();
         // Normalize the result to IHealthStatus format
         if (result && typeof result === 'object') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const healthResult = result as any;
           // If it already has the correct format, return as-is
-          if ('status' in result && 'checks' in result && 'timestamp' in result) {
-            return result;
+          if ('status' in healthResult && 'checks' in healthResult && 'timestamp' in healthResult) {
+            return healthResult as IHealthStatus;
           }
           // Convert from test format to IHealthStatus
+          const status = healthResult.status || (this._status === ProcessStatus.RUNNING ? 'healthy' : 'unhealthy');
           return {
-            status: result.status || (this._status === ProcessStatus.RUNNING ? 'healthy' : 'unhealthy'),
-            checks: result.checks || [
+            status: status as 'healthy' | 'degraded' | 'unhealthy',
+            checks: healthResult.checks || [
               {
                 name: 'checkHealth',
-                status: result.status === 'healthy' ? 'pass' : 'fail',
-                message: result.message,
-                details: result.details,
+                status: status === 'healthy' ? 'pass' : 'fail',
+                message: healthResult.message,
+                details: healthResult.details,
               },
             ],
-            timestamp: result.timestamp || Date.now(),
+            timestamp: healthResult.timestamp || Date.now(),
           };
         }
       }
@@ -165,7 +168,7 @@ export class MockWorker extends EventEmitter {
   /**
    * Call a method on the mock worker
    */
-  async callMethod(methodName: string, args: any[]): Promise<any> {
+  async callMethod(methodName: string, args: unknown[]): Promise<unknown> {
     const method = this.publicMethods.get(methodName);
     if (!method) {
       if (this.metrics) this.metrics.errors = (this.metrics.errors || 0) + 1;
@@ -177,8 +180,8 @@ export class MockWorker extends EventEmitter {
       const result = method(...args);
 
       // If the method returns a promise, await it
-      if (result && typeof result.then === 'function') {
-        return await result;
+      if (result && typeof result === 'object' && 'then' in result && typeof (result as Promise<unknown>).then === 'function') {
+        return await (result as Promise<unknown>);
       }
 
       // Return as-is for async generators and other values
@@ -328,16 +331,19 @@ export class MockWorkerHandle implements IWorkerHandle {
 
           if (isStreamMethod) {
             const workerInstance = this.worker;
-            return async (...args: any[]) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            return async (...args: any[]): Promise<any> => {
               const result = await workerInstance.callMethod(methodName, args);
               // If result is already an async iterable, return it directly
-              if (result && typeof result[Symbol.asyncIterator] === 'function') {
-                return result;
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const anyResult = result as any;
+              if (anyResult && typeof anyResult[Symbol.asyncIterator] === 'function') {
+                return anyResult;
               }
               // If result is a sync iterable, convert to async
-              if (result && typeof result[Symbol.iterator] === 'function') {
+              if (anyResult && typeof anyResult[Symbol.iterator] === 'function') {
                 return (async function* () {
-                  yield* result;
+                  yield* anyResult;
                 })();
               }
               // Otherwise return as normal async result

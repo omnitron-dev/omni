@@ -42,6 +42,33 @@ export interface TimelineEvent {
 }
 
 /**
+ * State Change
+ */
+export interface StateChange {
+  type: 'added' | 'modified' | 'deleted';
+  path: string;
+  oldValue?: any;
+  newValue?: any;
+}
+
+/**
+ * State Diff
+ */
+export interface StateDiff {
+  fromSnapshot: string;
+  toSnapshot: string;
+  fromTimestamp: number;
+  toTimestamp: number;
+  duration: number;
+  changes: StateChange[];
+}
+
+/**
+ * Snapshot Cleanup Policy
+ */
+export type CleanupPolicy = 'lru' | 'fifo' | 'ttl' | 'none';
+
+/**
  * Time Travel Options
  */
 export interface TimeTravelOptions {
@@ -51,6 +78,8 @@ export interface TimeTravelOptions {
   recordArguments?: boolean;
   recordResults?: boolean;
   recordErrors?: boolean;
+  cleanupPolicy?: CleanupPolicy;
+  snapshotTTL?: number; // milliseconds
 }
 
 /**
@@ -76,6 +105,8 @@ export class TimeTravelDebugger extends EventEmitter {
       recordArguments: true,
       recordResults: true,
       recordErrors: true,
+      cleanupPolicy: 'lru',
+      snapshotTTL: 3600000, // 1 hour default
       ...options,
     };
   }
@@ -113,10 +144,8 @@ export class TimeTravelDebugger extends EventEmitter {
     this.snapshots.push(snapshot);
     this.addToTimeline('state', snapshot);
 
-    // Trim old snapshots
-    if (this.snapshots.length > this.options.maxSnapshots!) {
-      this.snapshots.shift();
-    }
+    // Apply cleanup policy
+    this.applyCleanupPolicy();
 
     this.emit('snapshot:recorded', snapshot);
   }
@@ -359,7 +388,120 @@ export class TimeTravelDebugger extends EventEmitter {
       recording: this.recording,
       replaying: this.replaying,
       memoryUsage: this.estimateMemoryUsage(),
+      options: this.options,
     };
+  }
+
+  /**
+   * Compare two snapshots and generate a diff
+   */
+  diffSnapshots(snapshot1Id: string, snapshot2Id: string): StateDiff | null {
+    const snap1 = this.snapshots.find((s) => s.id === snapshot1Id);
+    const snap2 = this.snapshots.find((s) => s.id === snapshot2Id);
+
+    if (!snap1 || !snap2) {
+      return null;
+    }
+
+    const diff = this.computeDiff(snap1.state, snap2.state);
+
+    return {
+      fromSnapshot: snapshot1Id,
+      toSnapshot: snapshot2Id,
+      fromTimestamp: snap1.timestamp,
+      toTimestamp: snap2.timestamp,
+      duration: snap2.timestamp - snap1.timestamp,
+      changes: diff,
+    };
+  }
+
+  /**
+   * Get diff between current state and a snapshot
+   */
+  diffFromSnapshot<T>(snapshotId: string, currentState: T): StateDiff | null {
+    const snapshot = this.snapshots.find((s) => s.id === snapshotId);
+
+    if (!snapshot) {
+      return null;
+    }
+
+    const diff = this.computeDiff(snapshot.state, currentState);
+
+    return {
+      fromSnapshot: snapshotId,
+      toSnapshot: 'current',
+      fromTimestamp: snapshot.timestamp,
+      toTimestamp: Date.now(),
+      duration: Date.now() - snapshot.timestamp,
+      changes: diff,
+    };
+  }
+
+  /**
+   * Visualize state diff
+   */
+  visualizeDiff(diff: StateDiff): string {
+    const lines: string[] = [];
+    lines.push(`Diff from ${diff.fromSnapshot} to ${diff.toSnapshot}`);
+    lines.push(`Duration: ${diff.duration}ms`);
+    lines.push('');
+
+    for (const change of diff.changes) {
+      switch (change.type) {
+        case 'added':
+          lines.push(`+ ${change.path}: ${JSON.stringify(change.newValue)}`);
+          break;
+        case 'modified':
+          lines.push(`~ ${change.path}:`);
+          lines.push(`  - ${JSON.stringify(change.oldValue)}`);
+          lines.push(`  + ${JSON.stringify(change.newValue)}`);
+          break;
+        case 'deleted':
+          lines.push(`- ${change.path}: ${JSON.stringify(change.oldValue)}`);
+          break;
+      }
+    }
+
+    return lines.join('\n');
+  }
+
+  /**
+   * Clean up old snapshots based on TTL
+   */
+  cleanupByTTL(): number {
+    const now = Date.now();
+    const ttl = this.options.snapshotTTL!;
+    const before = this.snapshots.length;
+
+    this.snapshots = this.snapshots.filter((snapshot) => now - snapshot.timestamp <= ttl);
+
+    const removed = before - this.snapshots.length;
+    if (removed > 0) {
+      this.emit('snapshots:cleaned', { removed, policy: 'ttl' });
+    }
+
+    return removed;
+  }
+
+  /**
+   * Get snapshot by ID
+   */
+  getSnapshot(snapshotId: string): StateSnapshot | undefined {
+    return this.snapshots.find((s) => s.id === snapshotId);
+  }
+
+  /**
+   * Get action by ID
+   */
+  getAction(actionId: string): ActionRecord | undefined {
+    return this.actions.find((a) => a.id === actionId);
+  }
+
+  /**
+   * Get timeline event by ID
+   */
+  getTimelineEvent(eventId: string): TimelineEvent | undefined {
+    return this.timeline.find((e) => e.id === eventId);
   }
 
   private addToTimeline(type: TimelineEvent['type'], data: any): void {
@@ -405,7 +547,122 @@ export class TimeTravelDebugger extends EventEmitter {
       actions: this.actions,
       timeline: this.timeline,
     });
-    return new Blob([jsonStr]).size;
+    // Estimate based on character count (UTF-8 encoding)
+    return Buffer.byteLength(jsonStr, 'utf8');
+  }
+
+  private applyCleanupPolicy(): void {
+    const policy = this.options.cleanupPolicy!;
+
+    switch (policy) {
+      case 'lru':
+        // Keep most recently accessed (in this case, most recent)
+        if (this.snapshots.length > this.options.maxSnapshots!) {
+          this.snapshots.shift();
+        }
+        break;
+
+      case 'fifo':
+        // First in, first out - same as LRU in this context
+        if (this.snapshots.length > this.options.maxSnapshots!) {
+          this.snapshots.shift();
+        }
+        break;
+
+      case 'ttl':
+        // Time-to-live based cleanup
+        this.cleanupByTTL();
+        break;
+
+      case 'none':
+        // No cleanup
+        break;
+    }
+  }
+
+  private computeDiff(oldState: any, newState: any, path = ''): StateChange[] {
+    const changes: StateChange[] = [];
+
+    // Handle null/undefined
+    if (oldState === null || oldState === undefined) {
+      if (newState !== null && newState !== undefined) {
+        changes.push({
+          type: 'added',
+          path: path || 'root',
+          newValue: newState,
+        });
+      }
+      return changes;
+    }
+
+    if (newState === null || newState === undefined) {
+      changes.push({
+        type: 'deleted',
+        path: path || 'root',
+        oldValue: oldState,
+      });
+      return changes;
+    }
+
+    // Handle primitives
+    if (typeof oldState !== 'object' || typeof newState !== 'object') {
+      if (oldState !== newState) {
+        changes.push({
+          type: 'modified',
+          path: path || 'root',
+          oldValue: oldState,
+          newValue: newState,
+        });
+      }
+      return changes;
+    }
+
+    // Handle arrays
+    if (Array.isArray(oldState) || Array.isArray(newState)) {
+      if (JSON.stringify(oldState) !== JSON.stringify(newState)) {
+        changes.push({
+          type: 'modified',
+          path: path || 'root',
+          oldValue: oldState,
+          newValue: newState,
+        });
+      }
+      return changes;
+    }
+
+    // Handle objects
+    const allKeys = new Set([...Object.keys(oldState), ...Object.keys(newState)]);
+
+    for (const key of allKeys) {
+      const newPath = path ? `${path}.${key}` : key;
+      const oldValue = oldState[key];
+      const newValue = newState[key];
+
+      if (!(key in oldState)) {
+        changes.push({
+          type: 'added',
+          path: newPath,
+          newValue,
+        });
+      } else if (!(key in newState)) {
+        changes.push({
+          type: 'deleted',
+          path: newPath,
+          oldValue,
+        });
+      } else if (typeof oldValue === 'object' && typeof newValue === 'object') {
+        changes.push(...this.computeDiff(oldValue, newValue, newPath));
+      } else if (oldValue !== newValue) {
+        changes.push({
+          type: 'modified',
+          path: newPath,
+          oldValue,
+          newValue,
+        });
+      }
+    }
+
+    return changes;
   }
 }
 

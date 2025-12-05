@@ -87,6 +87,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
 
   // Health monitoring
   private healthCheckTimer?: NodeJS.Timeout;
+  private recycleTimer?: NodeJS.Timeout;
   private unhealthyWorkers = new Set<string>();
 
   // Circuit breaker state
@@ -102,6 +103,10 @@ export class ProcessPool<T> implements IProcessPool<T> {
 
   // Pool options
   private poolOptions: IProcessPoolOptions;
+
+  // Healthy workers cache for O(1) selection
+  private healthyWorkersCache: WorkerInfo<T>[] = [];
+  private healthyWorkersCacheValid = false;
 
   constructor(
     private readonly manager: IProcessManager,
@@ -301,6 +306,11 @@ export class ProcessPool<T> implements IProcessPool<T> {
       to: newSize,
     });
 
+    // Cleanup old history entries (keep last 100)
+    if (this.scaleHistory.length > 100) {
+      this.scaleHistory = this.scaleHistory.slice(-100);
+    }
+
     if (newSize > currentSize) {
       // Scale up
       await this.scaleUp(newSize - currentSize);
@@ -323,10 +333,14 @@ export class ProcessPool<T> implements IProcessPool<T> {
     this.logger.info({ class: this.processName }, 'Draining process pool');
     this.isDraining = true;
 
-    // Clear the queue
+    // Clear the queue and cleanup timeouts
     while (this.queue.length > 0) {
       const request = this.queue.shift();
       if (request) {
+        // Clear the request timeout to prevent memory leaks
+        if (request.timeout) {
+          clearTimeout(request.timeout);
+        }
         request.reject(Errors.conflict('Pool is draining'));
       }
     }
@@ -347,9 +361,15 @@ export class ProcessPool<T> implements IProcessPool<T> {
     // Clear timers
     if (this.autoScaleTimer) {
       clearInterval(this.autoScaleTimer);
+      this.autoScaleTimer = undefined;
     }
     if (this.healthCheckTimer) {
       clearInterval(this.healthCheckTimer);
+      this.healthCheckTimer = undefined;
+    }
+    if (this.recycleTimer) {
+      clearInterval(this.recycleTimer);
+      this.recycleTimer = undefined;
     }
 
     // Drain first
@@ -435,6 +455,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
       };
 
       this.workers.set(workerId, worker);
+      this.invalidateHealthyWorkersCache(); // New worker added
 
       this.logger.debug(
         {
@@ -480,6 +501,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
 
       this.workers.delete(workerId);
       this.unhealthyWorkers.delete(workerId);
+      this.invalidateHealthyWorkersCache(); // Worker removed
 
       this.logger.debug({ workerId }, 'Shutdown pool worker');
       this.emit('worker:shutdown', { workerId, class: this.processName });
@@ -489,10 +511,28 @@ export class ProcessPool<T> implements IProcessPool<T> {
   }
 
   /**
+   * Invalidate healthy workers cache
+   */
+  private invalidateHealthyWorkersCache(): void {
+    this.healthyWorkersCacheValid = false;
+  }
+
+  /**
+   * Get healthy workers with caching for O(1) amortized access
+   */
+  private getHealthyWorkers(): WorkerInfo<T>[] {
+    if (!this.healthyWorkersCacheValid) {
+      this.healthyWorkersCache = Array.from(this.workers.values()).filter((w) => w.health === 'healthy');
+      this.healthyWorkersCacheValid = true;
+    }
+    return this.healthyWorkersCache;
+  }
+
+  /**
    * Private: Select a worker based on the strategy
    */
   private async selectWorker(): Promise<WorkerInfo<T>> {
-    const healthyWorkers = Array.from(this.workers.values()).filter((w) => w.health === 'healthy');
+    const healthyWorkers = this.getHealthyWorkers();
 
     if (healthyWorkers.length === 0) {
       // Fallback to any worker if no healthy ones
@@ -589,21 +629,38 @@ export class ProcessPool<T> implements IProcessPool<T> {
 
   /**
    * Private: Adaptive selection based on performance metrics
+   * Uses single-pass minimum selection: O(n) instead of O(n log n)
    */
   private selectAdaptive(workers: WorkerInfo<T>[]): WorkerInfo<T> {
-    // Score each worker based on multiple factors
-    const scored = workers.map((w) => {
-      const avgResponseTime = w.requests > 0 ? w.totalRequestTime / w.requests : 0;
-      const errorRate = w.requests > 0 ? w.errors / w.requests : 0;
+    if (workers.length === 0) {
+      throw Errors.conflict('No workers available');
+    }
 
-      // Lower score is better
-      const score = w.currentLoad * 0.3 + avgResponseTime * 0.3 + errorRate * 0.2 + w.processing.size * 0.2;
+    let bestWorker = workers[0]!;
+    let bestScore = this.computeWorkerScore(bestWorker);
 
-      return { worker: w, score };
-    });
+    // Single-pass minimum selection - O(n) instead of O(n log n)
+    for (let i = 1; i < workers.length; i++) {
+      const worker = workers[i]!;
+      const score = this.computeWorkerScore(worker);
+      if (score < bestScore) {
+        bestScore = score;
+        bestWorker = worker;
+      }
+    }
 
-    scored.sort((a, b) => a.score - b.score);
-    return scored[0]!.worker;
+    return bestWorker;
+  }
+
+  /**
+   * Compute worker score for adaptive selection
+   * Lower score is better
+   */
+  private computeWorkerScore(worker: WorkerInfo<T>): number {
+    const avgResponseTime = worker.requests > 0 ? worker.totalRequestTime / worker.requests : 0;
+    const errorRate = worker.requests > 0 ? worker.errors / worker.requests : 0;
+
+    return worker.currentLoad * 0.3 + avgResponseTime * 0.3 + errorRate * 0.2 + worker.processing.size * 0.2;
   }
 
   /**
@@ -684,6 +741,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
       if (worker.errors > (this.poolOptions.healthCheck?.unhealthyThreshold || 3)) {
         worker.health = 'unhealthy';
         this.unhealthyWorkers.add(worker.id);
+        this.invalidateHealthyWorkersCache(); // Invalidate cache when health changes
         this.emit('worker:unhealthy', { workerId: worker.id });
       }
 
@@ -775,7 +833,10 @@ export class ProcessPool<T> implements IProcessPool<T> {
     const interval = this.poolOptions.healthCheck?.interval || 30000;
 
     this.healthCheckTimer = setInterval(async () => {
+      let healthChanged = false;
+
       for (const worker of this.workers.values()) {
+        const previousHealth = worker.health;
         try {
           // Try to get health status
           if ('__getHealth' in worker.proxy) {
@@ -792,6 +853,15 @@ export class ProcessPool<T> implements IProcessPool<T> {
           this.logger.warn({ error, workerId: worker.id }, 'Health check failed');
           worker.health = 'unhealthy';
         }
+
+        if (previousHealth !== worker.health) {
+          healthChanged = true;
+        }
+      }
+
+      // Invalidate cache if any health status changed
+      if (healthChanged) {
+        this.invalidateHealthyWorkersCache();
       }
 
       // Replace unhealthy workers
@@ -814,32 +884,36 @@ export class ProcessPool<T> implements IProcessPool<T> {
     this.autoScaleTimer = setInterval(async () => {
       if (this.isShuttingDown || this.isDraining) return;
 
-      const now = Date.now();
-      const cooldownPeriod = this.poolOptions.autoScale?.cooldownPeriod || 60000;
+      try {
+        const now = Date.now();
+        const cooldownPeriod = this.poolOptions.autoScale?.cooldownPeriod || 60000;
 
-      if (now - this.lastScaleCheck < cooldownPeriod) return;
+        if (now - this.lastScaleCheck < cooldownPeriod) return;
 
-      const metrics = this.metrics;
-      const config = this.poolOptions.autoScale!;
+        const metrics = this.metrics;
+        const config = this.poolOptions.autoScale!;
 
-      // Check if we need to scale up
-      const shouldScaleUp =
-        metrics.cpu > (config.targetCPU || 70) ||
-        metrics.memory > (config.targetMemory || 80) ||
-        (metrics.saturation || 0) > (config.scaleUpThreshold || 0.8);
+        // Check if we need to scale up
+        const shouldScaleUp =
+          metrics.cpu > (config.targetCPU || 70) ||
+          metrics.memory > (config.targetMemory || 80) ||
+          (metrics.saturation || 0) > (config.scaleUpThreshold || 0.8);
 
-      // Check if we need to scale down
-      const shouldScaleDown =
-        metrics.cpu < 30 && metrics.memory < 40 && (metrics.saturation || 0) < (config.scaleDownThreshold || 0.3);
+        // Check if we need to scale down
+        const shouldScaleDown =
+          metrics.cpu < 30 && metrics.memory < 40 && (metrics.saturation || 0) < (config.scaleDownThreshold || 0.3);
 
-      if (shouldScaleUp && this.workers.size < (config.max || 10)) {
-        const newSize = Math.min(this.workers.size + 1, config.max || 10);
-        await this.scale(newSize);
-        this.lastScaleCheck = now;
-      } else if (shouldScaleDown && this.workers.size > (config.min || 1)) {
-        const newSize = Math.max(this.workers.size - 1, config.min || 1);
-        await this.scale(newSize);
-        this.lastScaleCheck = now;
+        if (shouldScaleUp && this.workers.size < (config.max || 10)) {
+          const newSize = Math.min(this.workers.size + 1, config.max || 10);
+          await this.scale(newSize);
+          this.lastScaleCheck = now;
+        } else if (shouldScaleDown && this.workers.size > (config.min || 1)) {
+          const newSize = Math.max(this.workers.size - 1, config.min || 1);
+          await this.scale(newSize);
+          this.lastScaleCheck = now;
+        }
+      } catch (error) {
+        this.logger.error({ error }, 'Error during auto-scaling check');
       }
     }, checkInterval);
   }
@@ -848,19 +922,23 @@ export class ProcessPool<T> implements IProcessPool<T> {
    * Private: Setup worker recycling
    */
   private setupRecycling(): void {
-    setInterval(async () => {
+    this.recycleTimer = setInterval(async () => {
       if (this.isShuttingDown) return;
 
-      const now = Date.now();
-      const maxLifetime = this.poolOptions.maxLifetime || 3600000;
-      const recycleAfter = this.poolOptions.recycleAfter || 10000;
+      try {
+        const now = Date.now();
+        const maxLifetime = this.poolOptions.maxLifetime || 3600000;
+        const recycleAfter = this.poolOptions.recycleAfter || 10000;
 
-      for (const worker of this.workers.values()) {
-        const shouldRecycle = now - worker.created > maxLifetime || worker.requests > recycleAfter;
+        for (const worker of this.workers.values()) {
+          const shouldRecycle = now - worker.created > maxLifetime || worker.requests > recycleAfter;
 
-        if (shouldRecycle) {
-          await this.replaceWorker(worker.id);
+          if (shouldRecycle) {
+            await this.replaceWorker(worker.id);
+          }
         }
+      } catch (error) {
+        this.logger.error({ error }, 'Error during worker recycling');
       }
     }, 60000); // Check every minute
   }
@@ -912,7 +990,7 @@ export class ProcessPool<T> implements IProcessPool<T> {
   }
 
   /**
-   * Private: Scale down
+   * Private: Scale down - parallelized for efficiency
    */
   private async scaleDown(count: number): Promise<void> {
     // Select workers to remove (prefer idle ones)
@@ -920,9 +998,8 @@ export class ProcessPool<T> implements IProcessPool<T> {
 
     const toRemove = sortedWorkers.slice(0, count);
 
-    for (const worker of toRemove) {
-      await this.shutdownWorker(worker.id);
-    }
+    // Parallel shutdown for faster scale-down
+    await Promise.all(toRemove.map((worker) => this.shutdownWorker(worker.id)));
   }
 
   /**

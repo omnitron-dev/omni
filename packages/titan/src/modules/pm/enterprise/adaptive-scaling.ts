@@ -54,12 +54,72 @@ export interface PredictionModel {
 }
 
 /**
+ * Scaling State
+ */
+export interface ScalingState {
+  currentInstances: number;
+  targetInstances: number;
+  minInstances: number;
+  maxInstances: number;
+  metricsCount: number;
+  lastMetrics?: ScalingMetrics;
+  lastDecision?: ScalingDecision;
+}
+
+/**
+ * Circular buffer for efficient O(1) operations
+ */
+class CircularBuffer<T> {
+  private readonly buffer: (T | undefined)[];
+  private head = 0;
+  private count = 0;
+
+  constructor(private readonly maxSize: number) {
+    this.buffer = new Array(maxSize);
+  }
+
+  push(item: T): void {
+    const index = (this.head + this.count) % this.maxSize;
+    this.buffer[index] = item;
+
+    if (this.count < this.maxSize) {
+      this.count++;
+    } else {
+      // Buffer is full, advance head
+      this.head = (this.head + 1) % this.maxSize;
+    }
+  }
+
+  get length(): number {
+    return this.count;
+  }
+
+  toArray(): T[] {
+    const result: T[] = [];
+    for (let i = 0; i < this.count; i++) {
+      const index = (this.head + i) % this.maxSize;
+      const item = this.buffer[index];
+      if (item !== undefined) {
+        result.push(item);
+      }
+    }
+    return result;
+  }
+
+  getLast(): T | undefined {
+    if (this.count === 0) return undefined;
+    const index = (this.head + this.count - 1) % this.maxSize;
+    return this.buffer[index];
+  }
+}
+
+/**
  * Adaptive Scaling Controller
  */
 export class AdaptiveScalingController extends EventEmitter {
-  private metricsHistory: ScalingMetrics[] = [];
-  private scalingHistory: ScalingDecision[] = [];
-  private lastScaleTime = new Map<string, number>();
+  private readonly metricsHistory = new CircularBuffer<ScalingMetrics>(1000);
+  private readonly scalingHistory = new CircularBuffer<ScalingDecision>(100);
+  private readonly lastScaleTime = new Map<string, number>();
   private currentInstances = 0;
   private targetInstances = 0;
 
@@ -116,20 +176,17 @@ export class AdaptiveScalingController extends EventEmitter {
    * Update metrics and evaluate scaling
    */
   async updateMetrics(metrics: ScalingMetrics): Promise<ScalingDecision> {
+    // Circular buffer handles bounds automatically - O(1) operation
     this.metricsHistory.push({
       ...metrics,
       customMetrics: { ...metrics.customMetrics },
     });
 
-    // Keep history bounded
-    if (this.metricsHistory.length > 1000) {
-      this.metricsHistory.shift();
-    }
-
     // Predict future metrics if model available
     let predictedMetrics: ScalingMetrics | undefined;
     if (this.predictionModel && this.metricsHistory.length > 10) {
-      const predictions = this.predictionModel.predict(this.metricsHistory, 5);
+      const historyArray = this.metricsHistory.toArray();
+      const predictions = this.predictionModel.predict(historyArray, 5);
       predictedMetrics = predictions[predictions.length - 1];
     }
 
@@ -261,7 +318,8 @@ export class AdaptiveScalingController extends EventEmitter {
     // Prioritize scale up (safety first)
     if (scaleUpDecisions.length > 0) {
       const maxAmount = Math.max(...scaleUpDecisions.map((d) => d.amount));
-      const avgConfidence = scaleUpDecisions.reduce((sum, d) => sum + d.confidence, 0) / scaleUpDecisions.length;
+      const totalConfidence = scaleUpDecisions.reduce((sum, d) => sum + d.confidence, 0);
+      const avgConfidence = totalConfidence / scaleUpDecisions.length;
       const reasons = scaleUpDecisions.map((d) => d.reason).join('; ');
 
       return {
@@ -272,9 +330,10 @@ export class AdaptiveScalingController extends EventEmitter {
       };
     }
 
-    // All are scale down
+    // All are scale down (we already checked scaleDownDecisions.length > 0 via activeDecisions)
     const minAmount = Math.min(...scaleDownDecisions.map((d) => d.amount));
-    const avgConfidence = scaleDownDecisions.reduce((sum, d) => sum + d.confidence, 0) / scaleDownDecisions.length;
+    const totalDownConfidence = scaleDownDecisions.reduce((sum, d) => sum + d.confidence, 0);
+    const avgConfidence = scaleDownDecisions.length > 0 ? totalDownConfidence / scaleDownDecisions.length : 0;
     const reasons = scaleDownDecisions.map((d) => d.reason).join('; ');
 
     return {
@@ -317,15 +376,15 @@ export class AdaptiveScalingController extends EventEmitter {
   /**
    * Get current scaling state
    */
-  getState(): any {
+  getState(): ScalingState {
     return {
       currentInstances: this.currentInstances,
       targetInstances: this.targetInstances,
       minInstances: this.minInstances,
       maxInstances: this.maxInstances,
       metricsCount: this.metricsHistory.length,
-      lastMetrics: this.metricsHistory[this.metricsHistory.length - 1],
-      lastDecision: this.scalingHistory[this.scalingHistory.length - 1],
+      lastMetrics: this.metricsHistory.getLast(),
+      lastDecision: this.scalingHistory.getLast(),
     };
   }
 
@@ -371,7 +430,7 @@ export class AdaptiveScalingController extends EventEmitter {
    */
   trainModel(): void {
     if (this.predictionModel && this.metricsHistory.length > 100) {
-      this.predictionModel.train(this.metricsHistory);
+      this.predictionModel.train(this.metricsHistory.toArray());
       this.emit('model:trained');
     }
   }

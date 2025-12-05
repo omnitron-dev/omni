@@ -16,9 +16,12 @@ import { SUPERVISOR_METADATA_KEY } from './decorators.js';
  */
 export class ProcessSupervisor {
   private children = new Map<string, { info: ISupervisorChild; proxy: any }>();
+  /** Reverse lookup map for O(1) processId -> name resolution */
+  private readonly processIdToName = new Map<string, string>();
   private restartCounts = new Map<string, number>();
   private restartTimestamps = new Map<string, number[]>();
   private isStarted = false;
+  private crashHandler: ((info: IProcessInfo, error: Error) => Promise<void>) | null = null;
 
   constructor(
     private readonly manager: IProcessManager,
@@ -56,6 +59,12 @@ export class ProcessSupervisor {
     if (!this.isStarted) return;
 
     this.logger.info({ supervisor: this.SupervisorClass.name }, 'Stopping supervisor');
+
+    // Remove crash handler to prevent memory leaks
+    if (this.crashHandler) {
+      this.manager.off('process:crash', this.crashHandler);
+      this.crashHandler = null;
+    }
 
     // Stop all children
     for (const [name, child] of this.children) {
@@ -124,6 +133,12 @@ export class ProcessSupervisor {
 
       this.children.set(name, { info: childDef, proxy });
       this.restartCounts.set(name, 0);
+
+      // Add to reverse lookup map for O(1) crash handling
+      const processId = (proxy as any).__processId;
+      if (processId) {
+        this.processIdToName.set(processId, name);
+      }
     } catch (error) {
       this.logger.error({ error, child: name }, 'Failed to start child process');
 
@@ -143,6 +158,12 @@ export class ProcessSupervisor {
     this.logger.debug({ child: name }, 'Stopping child process');
 
     try {
+      // Remove from reverse lookup map
+      const processId = (child.proxy as any).__processId;
+      if (processId) {
+        this.processIdToName.delete(processId);
+      }
+
       if ('__destroy' in child.proxy) {
         await child.proxy.__destroy();
       }
@@ -156,17 +177,28 @@ export class ProcessSupervisor {
    * Setup process monitoring
    */
   private setupMonitoring(): void {
-    // Monitor process crashes
-    this.manager.on('process:crash', async (info: IProcessInfo, error: Error) => {
-      const childEntry = Array.from(this.children.entries()).find(
-        ([_, child]) => (child.proxy as any).__processId === info.id
-      );
+    // Create bound crash handler so we can remove it later
+    this.crashHandler = async (info: IProcessInfo, error: Error) => {
+      try {
+        // O(1) lookup using reverse map instead of O(n) Array.find
+        const name = this.processIdToName.get(info.id);
 
-      if (childEntry) {
-        const [name, child] = childEntry;
-        await this.handleChildCrash(name, child.info, error);
+        if (name) {
+          const child = this.children.get(name);
+          if (child) {
+            await this.handleChildCrash(name, child.info, error);
+          }
+        }
+      } catch (handlerError) {
+        this.logger.error(
+          { error: handlerError, originalError: error },
+          'Error in crash handler'
+        );
       }
-    });
+    };
+
+    // Monitor process crashes
+    this.manager.on('process:crash', this.crashHandler);
   }
 
   /**

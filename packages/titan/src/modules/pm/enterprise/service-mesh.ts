@@ -226,13 +226,13 @@ class CircuitBreaker {
       if (timeSinceLastFail > resetTimeout) {
         this.transitionToHalfOpen();
       } else {
-        throw Errors.notFound('Circuit breaker is open');
+        throw Errors.unavailable('service', 'Circuit breaker is open');
       }
     }
 
     if (this.state === 'half-open') {
       if (this.halfOpenRequests >= (this.config.halfOpenRequests || 3)) {
-        throw Errors.notFound('Circuit breaker is half-open, max requests reached');
+        throw Errors.unavailable('service', 'Circuit breaker is half-open, max requests reached');
       }
       this.halfOpenRequests++;
     }
@@ -341,7 +341,7 @@ class RateLimiter {
 
     // Check if we have tokens
     if (this.tokens < 1) {
-      throw Errors.notFound('Rate limit exceeded');
+      throw Errors.tooManyRequests();
     }
 
     this.tokens--;

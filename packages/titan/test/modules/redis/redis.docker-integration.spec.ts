@@ -275,7 +275,10 @@ describe('RedisTestManager - Redis Cluster', () => {
     it(
       'should perform operations on cluster',
       async () => {
-        const fixture = await createDockerRedisClusterFixture();
+        const fixture = await createDockerRedisClusterFixture({
+          readyTimeout: 180000, // 3 minutes for cluster to become ready
+          preInitDelay: 8000,   // 8 seconds pre-init delay
+        });
 
         try {
           // Basic operations

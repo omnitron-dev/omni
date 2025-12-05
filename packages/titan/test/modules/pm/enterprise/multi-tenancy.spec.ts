@@ -12,7 +12,58 @@ import {
   type ITenantContext,
 } from '../../../../src/modules/pm/enterprise/multi-tenancy.js';
 import { Process, Method } from '../../../../src/modules/pm/decorators.js';
-import { ProcessManager } from '../../../../src/modules/pm/process-manager.js';
+
+// Mock ProcessManager to avoid ESM import.meta.url issues
+class MockProcessManager {
+  private processes = new Map<string, any>();
+  private processCounter = 0;
+  private pools = new Map<string, any>();
+
+  async spawn(ProcessClass: any, options?: any): Promise<any> {
+    const id = `mock-process-${++this.processCounter}`;
+    const instance = new ProcessClass();
+    const proxy = {
+      __processId: id,
+      __destroy: jest.fn().mockResolvedValue(undefined),
+      store: instance.store?.bind(instance) || jest.fn().mockResolvedValue(undefined),
+      get: instance.get?.bind(instance) || jest.fn().mockResolvedValue(undefined),
+      listKeys: instance.listKeys?.bind(instance) || jest.fn().mockResolvedValue([]),
+      getAllTenantIds: instance.getAllTenantIds?.bind(instance) || jest.fn().mockResolvedValue([]),
+    };
+    this.processes.set(id, proxy);
+    return proxy;
+  }
+
+  async pool(ProcessClass: any, options?: any): Promise<any> {
+    const poolId = options?.name || `pool-${++this.processCounter}`;
+    const instance = new ProcessClass();
+    const mockPool = {
+      id: poolId,
+      size: options?.size || 1,
+      execute: async (method: string, ...args: any[]) => {
+        if (instance[method]) {
+          return instance[method](...args);
+        }
+        return undefined;
+      },
+      destroy: jest.fn().mockResolvedValue(undefined),
+    };
+    this.pools.set(poolId, mockPool);
+    return mockPool;
+  }
+
+  async kill(processId: string): Promise<void> {
+    this.processes.delete(processId);
+  }
+
+  async shutdown(options?: any): Promise<void> {
+    this.processes.clear();
+    this.pools.clear();
+  }
+}
+
+// Use type alias for compatibility
+type ProcessManager = MockProcessManager;
 
 // Mock logger
 const mockLogger = {
@@ -59,7 +110,7 @@ class TenantDataService {
 
 describe('MultiTenancyManager', () => {
   let manager: MultiTenancyManager;
-  let processManager: ProcessManager;
+  let processManager: MockProcessManager;
 
   beforeEach(() => {
     manager = new MultiTenancyManager(mockLogger as any, {
@@ -69,7 +120,7 @@ describe('MultiTenancyManager', () => {
       quotaEnforcement: true,
     });
 
-    processManager = new ProcessManager(mockLogger as any);
+    processManager = new MockProcessManager();
   });
 
   afterEach(async () => {
@@ -201,7 +252,7 @@ describe('MultiTenancyManager', () => {
 
 describe('TenantProcessPool', () => {
   let manager: MultiTenancyManager;
-  let processManager: ProcessManager;
+  let processManager: MockProcessManager;
   let pool: TenantProcessPool<TenantDataService>;
 
   beforeEach(() => {
@@ -211,8 +262,8 @@ describe('TenantProcessPool', () => {
       dataPartitioning: true,
     });
 
-    processManager = new ProcessManager(mockLogger as any);
-    pool = new TenantProcessPool(TenantDataService, processManager, manager, mockLogger as any);
+    processManager = new MockProcessManager();
+    pool = new TenantProcessPool(TenantDataService, processManager as any, manager, mockLogger as any);
   });
 
   afterEach(async () => {

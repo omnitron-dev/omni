@@ -6,7 +6,7 @@
 
 import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
-import { createHash, createCipheriv, createDecipheriv, randomBytes } from 'crypto';
+import { createHash, createHmac, createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 
 import { Errors } from '../../../errors/index.js';
 /**
@@ -72,6 +72,18 @@ export interface AuditConfig {
   redactPII: boolean;
   standards: ComplianceStandard[];
   storage?: AuditStorageConfig;
+  /**
+   * HMAC key for signing audit events (required when immutable=true)
+   * MUST be provided from secure key management (e.g., AWS KMS, HashiCorp Vault)
+   * Should be at least 256 bits (32 bytes) for security
+   */
+  signingKey?: Buffer | string;
+  /**
+   * Encryption key for encrypting sensitive audit data (required when encryption=true)
+   * MUST be provided from secure key management
+   * Should be exactly 256 bits (32 bytes) for AES-256
+   */
+  encryptionKey?: Buffer | string;
 }
 
 /**
@@ -122,23 +134,97 @@ export interface GDPRRights {
 
 /**
  * Audit Logger
+ *
+ * Production-grade audit logging with proper cryptographic security.
+ * Keys MUST be provided from secure key management systems.
  */
 export class AuditLogger extends EventEmitter {
   private events: AuditEvent[] = [];
   private encryptionKey?: Buffer;
+  private signingKey?: Buffer;
   private piiPatterns: PIIPattern[] = [
+    // US Social Security Number
     { name: 'ssn', pattern: /\b\d{3}-\d{2}-\d{4}\b/g, replacement: '***-**-****' },
+    // Credit Card Numbers (various formats)
     { name: 'creditCard', pattern: /\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g, replacement: '****-****-****-****' },
+    // Email addresses
     { name: 'email', pattern: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, replacement: '***@***.***' },
+    // US Phone numbers
     { name: 'phone', pattern: /\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g, replacement: '***-***-****' },
+    // IP addresses (IPv4)
     { name: 'ipAddress', pattern: /\b(?:\d{1,3}\.){3}\d{1,3}\b/g, replacement: '***.***.***.***' },
+    // Passport numbers (common formats)
+    { name: 'passport', pattern: /\b[A-Z]{1,2}\d{6,9}\b/gi, replacement: '***PASSPORT***' },
+    // Date of birth (YYYY-MM-DD format)
+    { name: 'dob', pattern: /\b(19|20)\d{2}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])\b/g, replacement: '****-**-**' },
+    // IBAN (International Bank Account Number)
+    { name: 'iban', pattern: /\b[A-Z]{2}\d{2}[A-Z0-9]{4,30}\b/gi, replacement: '***IBAN***' },
+    // US Driver's License (common formats)
+    { name: 'driversLicense', pattern: /\b[A-Z]{1,2}\d{5,8}\b/gi, replacement: '***DL***' },
   ];
 
   constructor(private config: AuditConfig) {
     super();
+
+    // Validate and setup encryption key
     if (config.encryption) {
-      this.encryptionKey = randomBytes(32);
+      if (!config.encryptionKey) {
+        throw Errors.badRequest(
+          'Encryption is enabled but no encryptionKey provided. ' +
+            'Keys MUST be provided from secure key management (AWS KMS, HashiCorp Vault, etc.)',
+          { field: 'encryptionKey' }
+        );
+      }
+      this.encryptionKey = this.normalizeKey(config.encryptionKey, 32, 'encryptionKey');
     }
+
+    // Validate and setup signing key
+    if (config.immutable) {
+      if (!config.signingKey) {
+        throw Errors.badRequest(
+          'Immutable mode is enabled but no signingKey provided. ' +
+            'Keys MUST be provided from secure key management (AWS KMS, HashiCorp Vault, etc.)',
+          { field: 'signingKey' }
+        );
+      }
+      this.signingKey = this.normalizeKey(config.signingKey, 32, 'signingKey');
+    }
+  }
+
+  /**
+   * Normalize a key to a Buffer of the required length
+   */
+  private normalizeKey(key: Buffer | string, requiredLength: number, keyName: string): Buffer {
+    let keyBuffer: Buffer;
+
+    if (Buffer.isBuffer(key)) {
+      keyBuffer = key;
+    } else if (typeof key === 'string') {
+      // Try to decode as hex first, then as base64, then as UTF-8
+      if (/^[0-9a-fA-F]+$/.test(key) && key.length === requiredLength * 2) {
+        keyBuffer = Buffer.from(key, 'hex');
+      } else if (/^[A-Za-z0-9+/=]+$/.test(key)) {
+        keyBuffer = Buffer.from(key, 'base64');
+      } else {
+        // Use SHA-256 to derive a key from the string (not recommended for production)
+        this.emit('warning', {
+          message: `${keyName} provided as plain string. Using SHA-256 to derive key. ` +
+            'For production, provide a proper 256-bit key from key management.',
+        });
+        keyBuffer = createHash('sha256').update(key).digest();
+      }
+    } else {
+      throw Errors.badRequest(`${keyName} must be a Buffer or string`, { field: keyName });
+    }
+
+    if (keyBuffer.length < requiredLength) {
+      throw Errors.badRequest(
+        `${keyName} is too short (${keyBuffer.length} bytes). Required: ${requiredLength} bytes (${requiredLength * 8} bits)`,
+        { field: keyName }
+      );
+    }
+
+    return keyBuffer.subarray(0, requiredLength);
   }
 
   /**
@@ -220,14 +306,20 @@ export class AuditLogger extends EventEmitter {
   }
 
   /**
-   * Generate signature for event
+   * Generate HMAC signature for event
+   *
+   * Uses HMAC-SHA512 with the configured signing key for tamper-proof signatures.
+   * The signing key must be provided from secure key management.
    */
   private generateSignature(event: AuditEvent): string {
-    // In production, would use proper digital signature with private key
+    if (!this.signingKey) {
+      throw Errors.internal('Cannot generate signature: signingKey not configured');
+    }
+
     const content = event.hash || this.generateHash(event);
-    return createHash('sha512')
-      .update(content + 'secret')
-      .digest('hex');
+
+    // Use HMAC-SHA512 for proper message authentication
+    return createHmac('sha512', this.signingKey).update(content).digest('hex');
   }
 
   /**
@@ -366,20 +458,56 @@ export class AuditLogger extends EventEmitter {
   }
 
   /**
-   * Export as CSV
+   * Export as CSV with proper escaping to prevent CSV injection attacks
    */
   private exportCSV(): string {
     const headers = ['id', 'timestamp', 'actor_id', 'action', 'resource_id', 'outcome'];
     const rows = this.events.map((e) => [
-      e.id,
-      new Date(e.timestamp).toISOString(),
-      e.actor.id,
-      e.action,
-      e.resource.id,
-      e.outcome,
+      this.escapeCSVValue(e.id),
+      this.escapeCSVValue(new Date(e.timestamp).toISOString()),
+      this.escapeCSVValue(e.actor.id),
+      this.escapeCSVValue(e.action),
+      this.escapeCSVValue(e.resource.id),
+      this.escapeCSVValue(e.outcome),
     ]);
 
-    return [headers, ...rows].map((row) => row.join(',')).join('\n');
+    return [headers.map((h) => this.escapeCSVValue(h)), ...rows].map((row) => row.join(',')).join('\n');
+  }
+
+  /**
+   * Escape a CSV value to prevent injection attacks and handle special characters
+   *
+   * Rules:
+   * 1. Values containing comma, quote, newline, or carriage return must be quoted
+   * 2. Quotes within values must be doubled
+   * 3. Values starting with =, +, -, @, Tab, or CR are prefixed with single quote (CSV injection prevention)
+   */
+  private escapeCSVValue(value: string | number | boolean | null | undefined): string {
+    if (value === null || value === undefined) {
+      return '';
+    }
+
+    const stringValue = String(value);
+
+    // CSV injection prevention: prefix potentially dangerous values
+    // These characters can be interpreted as formulas by spreadsheet applications
+    const dangerousChars = ['=', '+', '-', '@', '\t', '\r'];
+    const startsWithDangerous = dangerousChars.some((char) => stringValue.startsWith(char));
+
+    // Check if value needs quoting
+    const needsQuoting = /[",\n\r]/.test(stringValue) || startsWithDangerous;
+
+    if (needsQuoting) {
+      // Double any existing quotes and wrap in quotes
+      const escaped = stringValue.replace(/"/g, '""');
+      // If it starts with a dangerous character, prefix with single quote inside the quotes
+      if (startsWithDangerous) {
+        return `"'${escaped}"`;
+      }
+      return `"${escaped}"`;
+    }
+
+    return stringValue;
   }
 }
 
@@ -469,9 +597,60 @@ export class ComplianceManager extends EventEmitter {
   }
 
   /**
+   * Validate data subject request input
+   */
+  private validateDataSubjectRequest(request: DataSubjectRequest): void {
+    // Validate request ID
+    if (!request.id || typeof request.id !== 'string' || request.id.length > 255) {
+      throw Errors.badRequest('Invalid request ID: must be a non-empty string up to 255 characters', { field: 'id' });
+    }
+
+    // Validate subject ID (prevent injection and ensure reasonable format)
+    if (!request.subjectId || typeof request.subjectId !== 'string') {
+      throw Errors.badRequest('Invalid subject ID: must be a non-empty string', { field: 'subjectId' });
+    }
+    if (request.subjectId.length > 255) {
+      throw Errors.badRequest('Subject ID too long: maximum 255 characters', { field: 'subjectId' });
+    }
+    // Basic sanitization - allow alphanumeric, dash, underscore, email-like formats
+    if (!/^[a-zA-Z0-9@._-]+$/.test(request.subjectId)) {
+      throw Errors.badRequest('Subject ID contains invalid characters', { field: 'subjectId' });
+    }
+
+    // Validate request type
+    const validTypes = ['access', 'rectification', 'erasure', 'portability', 'restriction'];
+    if (!validTypes.includes(request.type)) {
+      throw Errors.badRequest(`Invalid request type: ${request.type}`, { field: 'type' });
+    }
+
+    // Validate corrections if present
+    if (request.corrections !== undefined && request.corrections !== null) {
+      if (typeof request.corrections !== 'object') {
+        throw Errors.badRequest('Corrections must be an object', { field: 'corrections' });
+      }
+      // Limit corrections size to prevent abuse
+      const correctionsJson = JSON.stringify(request.corrections);
+      if (correctionsJson.length > 100000) {
+        throw Errors.badRequest('Corrections payload too large: maximum 100KB', { field: 'corrections' });
+      }
+    }
+
+    // Validate format if present
+    if (request.format !== undefined) {
+      const validFormats = ['json', 'csv', 'xml'];
+      if (!validFormats.includes(request.format)) {
+        throw Errors.badRequest(`Invalid export format: ${request.format}`, { field: 'format' });
+      }
+    }
+  }
+
+  /**
    * Process data subject request
    */
   async processDataSubjectRequest(request: DataSubjectRequest): Promise<DataSubjectResponse> {
+    // Validate input before processing
+    this.validateDataSubjectRequest(request);
+
     this.auditLogger.log({
       actor: { type: 'user', id: request.subjectId },
       action: `data-subject-request:${request.type}`,
@@ -492,7 +671,8 @@ export class ComplianceManager extends EventEmitter {
       case 'restriction':
         return this.handleRestrictionRequest(request);
       default:
-        throw Errors.notFound(`Unknown request type: ${request.type}`);
+        // This should never happen due to validation above, but TypeScript needs it
+        throw Errors.badRequest('Invalid request type', { field: 'type' });
     }
   }
 
@@ -697,21 +877,296 @@ export class ComplianceManager extends EventEmitter {
   }
 
   /**
-   * Assess compliance
+   * Assess compliance status based on actual configuration and data
+   *
+   * NOTE: This is a basic self-assessment based on configuration state.
+   * For production compliance certification, use a certified compliance assessment tool
+   * or engage a qualified auditor.
    */
   private assessCompliance(): Record<string, ComplianceAssessment> {
     const assessments: Record<string, ComplianceAssessment> = {};
 
     for (const standard of this.config.standards) {
-      assessments[standard] = {
-        compliant: true,
-        score: 95 + Math.random() * 5,
-        gaps: [],
-        recommendations: [],
-      };
+      assessments[standard] = this.assessStandard(standard);
     }
 
     return assessments;
+  }
+
+  /**
+   * Assess a specific compliance standard
+   */
+  private assessStandard(standard: ComplianceStandard): ComplianceAssessment {
+    const gaps: string[] = [];
+    const recommendations: string[] = [];
+    let score = 0;
+    const maxScore = 100;
+
+    // Common checks for all standards
+    const commonChecks = this.performCommonChecks();
+    gaps.push(...commonChecks.gaps);
+    recommendations.push(...commonChecks.recommendations);
+    score += commonChecks.score;
+
+    // Standard-specific checks
+    switch (standard) {
+      case ComplianceStandard.GDPR:
+        const gdprChecks = this.assessGDPRCompliance();
+        gaps.push(...gdprChecks.gaps);
+        recommendations.push(...gdprChecks.recommendations);
+        score += gdprChecks.score;
+        break;
+
+      case ComplianceStandard.HIPAA:
+        const hipaaChecks = this.assessHIPAACompliance();
+        gaps.push(...hipaaChecks.gaps);
+        recommendations.push(...hipaaChecks.recommendations);
+        score += hipaaChecks.score;
+        break;
+
+      case ComplianceStandard.SOC2:
+        const soc2Checks = this.assessSOC2Compliance();
+        gaps.push(...soc2Checks.gaps);
+        recommendations.push(...soc2Checks.recommendations);
+        score += soc2Checks.score;
+        break;
+
+      case ComplianceStandard.PCI_DSS:
+        const pciChecks = this.assessPCIDSSCompliance();
+        gaps.push(...pciChecks.gaps);
+        recommendations.push(...pciChecks.recommendations);
+        score += pciChecks.score;
+        break;
+
+      default:
+        // Unknown standard - add generic warning
+        gaps.push(`No specific assessment available for ${standard}`);
+        recommendations.push('Engage a qualified auditor for compliance assessment');
+        score += 20; // Base score for having audit logging enabled
+        break;
+    }
+
+    // Normalize score to 0-100
+    const normalizedScore = Math.min(Math.max(score, 0), maxScore);
+
+    return {
+      compliant: normalizedScore >= 70 && gaps.length === 0,
+      score: normalizedScore,
+      gaps,
+      recommendations,
+    };
+  }
+
+  /**
+   * Perform checks common to all compliance standards
+   */
+  private performCommonChecks(): { gaps: string[]; recommendations: string[]; score: number } {
+    const gaps: string[] = [];
+    const recommendations: string[] = [];
+    let score = 0;
+
+    // Check audit logging configuration
+    if (this.config.auditConfig.level === 'none') {
+      gaps.push('Audit logging is disabled');
+      recommendations.push('Enable audit logging at minimum "standard" level');
+    } else {
+      score += 15;
+      if (this.config.auditConfig.level === 'full') {
+        score += 5;
+      }
+    }
+
+    // Check immutability (tamper-proof logs)
+    if (!this.config.auditConfig.immutable) {
+      gaps.push('Audit logs are not immutable (tamper-proof)');
+      recommendations.push('Enable immutable audit logging with digital signatures');
+    } else {
+      score += 15;
+    }
+
+    // Check encryption
+    if (!this.config.auditConfig.encryption) {
+      gaps.push('Audit data is not encrypted at rest');
+      recommendations.push('Enable encryption for sensitive audit data');
+    } else {
+      score += 10;
+    }
+
+    // Check PII redaction
+    if (!this.config.auditConfig.redactPII) {
+      recommendations.push('Consider enabling PII redaction for enhanced privacy');
+    } else {
+      score += 5;
+    }
+
+    // Check persistent storage
+    const storageType = this.config.auditConfig.storage?.type;
+    if (!storageType || storageType === 'memory') {
+      gaps.push('Audit logs are stored in-memory only and will be lost on restart');
+      recommendations.push('Configure persistent storage (database, S3, or file-based)');
+    } else {
+      score += 10;
+    }
+
+    return { gaps, recommendations, score };
+  }
+
+  /**
+   * GDPR-specific compliance checks
+   */
+  private assessGDPRCompliance(): { gaps: string[]; recommendations: string[]; score: number } {
+    const gaps: string[] = [];
+    const recommendations: string[] = [];
+    let score = 0;
+
+    // Check if consent records are being tracked
+    if (this.consentRecords.size > 0) {
+      score += 10;
+    } else {
+      recommendations.push('Record consent for all data processing activities');
+    }
+
+    // Check if data subject rights are implemented (we have the methods)
+    score += 15; // Credit for having DSR handling methods
+
+    // Check data inventory
+    if (this.dataInventory.size > 0) {
+      score += 10;
+    } else {
+      recommendations.push('Maintain a data inventory (Article 30 GDPR)');
+    }
+
+    // Check retention policy
+    if (this.config.auditConfig.retention) {
+      score += 5;
+    } else {
+      gaps.push('No retention policy configured');
+      recommendations.push('Define data retention periods');
+    }
+
+    return { gaps, recommendations, score };
+  }
+
+  /**
+   * HIPAA-specific compliance checks
+   */
+  private assessHIPAACompliance(): { gaps: string[]; recommendations: string[]; score: number } {
+    const gaps: string[] = [];
+    const recommendations: string[] = [];
+    let score = 0;
+
+    // HIPAA requires encryption
+    if (this.config.auditConfig.encryption) {
+      score += 15;
+    } else {
+      gaps.push('HIPAA requires encryption of PHI');
+    }
+
+    // HIPAA requires audit trails
+    if (this.config.auditConfig.level !== 'none') {
+      score += 15;
+    } else {
+      gaps.push('HIPAA requires audit trails for all access to PHI');
+    }
+
+    // 6-year retention requirement
+    const retention = this.config.auditConfig.retention;
+    if (retention && this.parseRetentionYears(retention) >= 6) {
+      score += 10;
+    } else {
+      gaps.push('HIPAA requires 6-year retention of audit logs');
+      recommendations.push('Set retention to at least 6 years ("6y")');
+    }
+
+    return { gaps, recommendations, score };
+  }
+
+  /**
+   * SOC2-specific compliance checks
+   */
+  private assessSOC2Compliance(): { gaps: string[]; recommendations: string[]; score: number } {
+    const gaps: string[] = [];
+    const recommendations: string[] = [];
+    let score = 0;
+
+    // SOC2 requires comprehensive logging
+    if (this.config.auditConfig.level === 'full') {
+      score += 15;
+    } else if (this.config.auditConfig.level === 'standard') {
+      score += 10;
+      recommendations.push('Consider "full" audit level for SOC2');
+    } else {
+      gaps.push('SOC2 requires comprehensive audit logging');
+    }
+
+    // Immutability is important for SOC2
+    if (this.config.auditConfig.immutable) {
+      score += 15;
+    } else {
+      recommendations.push('Enable immutable logging for stronger SOC2 controls');
+    }
+
+    // Change tracking
+    score += 10; // Credit for having change tracking in audit events
+
+    return { gaps, recommendations, score };
+  }
+
+  /**
+   * PCI-DSS specific compliance checks
+   */
+  private assessPCIDSSCompliance(): { gaps: string[]; recommendations: string[]; score: number } {
+    const gaps: string[] = [];
+    const recommendations: string[] = [];
+    let score = 0;
+
+    // PCI-DSS requires 1-year retention minimum
+    const retention = this.config.auditConfig.retention;
+    if (retention && this.parseRetentionYears(retention) >= 1) {
+      score += 10;
+    } else {
+      gaps.push('PCI-DSS requires at least 1-year log retention');
+    }
+
+    // PCI-DSS requires audit trails
+    if (this.config.auditConfig.level !== 'none' && this.config.auditConfig.level !== 'minimal') {
+      score += 15;
+    } else {
+      gaps.push('PCI-DSS requires detailed audit trails');
+    }
+
+    // Encryption is required
+    if (this.config.auditConfig.encryption) {
+      score += 15;
+    } else {
+      gaps.push('PCI-DSS requires encryption of cardholder data');
+    }
+
+    return { gaps, recommendations, score };
+  }
+
+  /**
+   * Parse retention string to years
+   */
+  private parseRetentionYears(retention: string): number {
+    const match = retention.match(/^(\d+)([ymdh])$/);
+    if (!match) return 0;
+
+    const [, value, unit] = match;
+    const num = parseInt(value || '0', 10);
+
+    switch (unit) {
+      case 'y':
+        return num;
+      case 'm':
+        return num / 12;
+      case 'd':
+        return num / 365;
+      case 'h':
+        return num / (365 * 24);
+      default:
+        return 0;
+    }
   }
 }
 

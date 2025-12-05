@@ -142,6 +142,7 @@ export {
   type ScalingMetrics,
   type ScalingPolicy,
   type ScalingDecision,
+  type ScalingState,
   type PredictionModel,
 } from './adaptive-scaling.js';
 
@@ -325,3 +326,9 @@ export {
   type Incident,
   type HealthIndicator,
 } from './self-healing.js';
+
+// ============================================================================
+// Enterprise Integration Layer
+// ============================================================================
+
+export { EnterpriseFeatures, type IEnterpriseConfig } from './integration.js';

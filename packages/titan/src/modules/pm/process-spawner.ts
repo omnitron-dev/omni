@@ -10,7 +10,6 @@ import { fork, ChildProcess } from 'child_process';
 import { v4 as uuidv4 } from 'uuid';
 import { promises as fs } from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import os from 'os';
 import { Errors } from '../../errors/index.js';
 import type { ILogger } from '../logger/logger.types.js';
@@ -88,22 +87,8 @@ export class WorkerHandle implements IWorkerHandle {
       } else {
         const child = this.worker as ChildProcess;
 
-        // Send graceful shutdown signal
-        if (child.send) {
-          child.send({ type: 'shutdown' });
-        }
-
-        // Wait for graceful shutdown
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-
-        if (!child.killed) {
-          child.kill('SIGTERM');
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-
-          if (!child.killed) {
-            child.kill('SIGKILL');
-          }
-        }
+        // Wait for actual process exit with proper timeout handling
+        await this.terminateChildProcess(child);
       }
 
       this._status = ProcessStatus.STOPPED;
@@ -112,6 +97,97 @@ export class WorkerHandle implements IWorkerHandle {
       this._status = ProcessStatus.FAILED;
       throw error;
     }
+  }
+
+  /**
+   * Terminate child process with proper exit verification
+   */
+  private async terminateChildProcess(child: ChildProcess): Promise<void> {
+    const GRACEFUL_TIMEOUT = 2000;
+    const SIGTERM_TIMEOUT = 2000;
+    const SIGKILL_TIMEOUT = 1000;
+
+    return new Promise((resolve, reject) => {
+      let resolved = false;
+
+      const cleanup = () => {
+        resolved = true;
+        child.off('exit', exitHandler);
+        child.off('error', errorHandler);
+      };
+
+      const exitHandler = () => {
+        if (!resolved) {
+          cleanup();
+          resolve();
+        }
+      };
+
+      const errorHandler = (err: Error) => {
+        if (!resolved) {
+          cleanup();
+          // Ignore "channel closed" errors during shutdown
+          if ((err as any).code !== 'ERR_IPC_CHANNEL_CLOSED') {
+            this.logger.warn({ error: err, workerId: this.id }, 'Error during child termination');
+          }
+          resolve(); // Still resolve as the process may have exited
+        }
+      };
+
+      // Listen for exit event
+      child.once('exit', exitHandler);
+      child.once('error', errorHandler);
+
+      // Check if already exited
+      if (child.exitCode !== null || child.killed) {
+        cleanup();
+        resolve();
+        return;
+      }
+
+      // Try graceful shutdown first
+      try {
+        if (child.send && child.connected) {
+          child.send({ type: 'shutdown' });
+        }
+      } catch (e) {
+        // IPC channel may be closed, continue with SIGTERM
+        this.logger.debug({ workerId: this.id }, 'IPC channel closed, proceeding with SIGTERM');
+      }
+
+      // Schedule SIGTERM after graceful timeout
+      setTimeout(() => {
+        if (resolved || child.exitCode !== null || child.killed) return;
+
+        this.logger.debug({ workerId: this.id }, 'Graceful shutdown timeout, sending SIGTERM');
+        try {
+          child.kill('SIGTERM');
+        } catch (e) {
+          // Process may have already exited
+        }
+      }, GRACEFUL_TIMEOUT);
+
+      // Schedule SIGKILL as last resort
+      setTimeout(() => {
+        if (resolved || child.exitCode !== null || child.killed) return;
+
+        this.logger.warn({ workerId: this.id }, 'SIGTERM timeout, sending SIGKILL');
+        try {
+          child.kill('SIGKILL');
+        } catch (e) {
+          // Process may have already exited
+        }
+      }, GRACEFUL_TIMEOUT + SIGTERM_TIMEOUT);
+
+      // Final timeout - resolve even if process didn't exit cleanly
+      setTimeout(() => {
+        if (!resolved) {
+          cleanup();
+          this.logger.error({ workerId: this.id }, 'Process termination timeout - process may be zombie');
+          resolve(); // Resolve anyway to not block shutdown
+        }
+      }, GRACEFUL_TIMEOUT + SIGTERM_TIMEOUT + SIGKILL_TIMEOUT);
+    });
   }
 
   isAlive(): boolean {
@@ -195,8 +271,17 @@ export class ProcessSpawner implements IProcessSpawner {
     private readonly logger: ILogger,
     private readonly config: IProcessManagerConfig = {}
   ) {
-    // Setup paths
-    const currentDir = path.dirname(fileURLToPath(import.meta.url));
+    // Setup paths - handle both src (tests) and dist (production) directories
+    // Use __dirname for CommonJS compatibility (Jest, Node.js CJS modules)
+    // In ESM, __dirname is not available but dist/modules/pm/*.js provides it via esbuild/tsc
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let currentDir: string = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
+
+    // If running from source (during tests with ts-jest), redirect to dist
+    if (currentDir.includes('/src/') || currentDir.includes('\\src\\')) {
+      currentDir = currentDir.replace(/[/\\]src[/\\]/, path.sep + 'dist' + path.sep);
+    }
+
     this.workerRuntimePath = path.join(currentDir, 'worker-runtime.js');
     this.forkWorkerPath = path.join(currentDir, 'fork-worker.js');
 

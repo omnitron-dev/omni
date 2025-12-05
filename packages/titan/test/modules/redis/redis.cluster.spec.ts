@@ -13,26 +13,31 @@ import {
 const describeOrSkip = isRedisInMockMode() ? describe.skip : describe;
 
 describeOrSkip('Redis Cluster Support', () => {
-  beforeAll(() => {
+  // OPTIMIZATION: Share a single cluster fixture across all tests
+  // This dramatically reduces test time by creating the cluster only once
+  let sharedClusterFixture: DockerRedisClusterFixture;
+
+  beforeAll(async () => {
     if (isRedisInMockMode()) {
-      console.log('⏭️  Skipping redis.cluster.spec.ts - requires real Redis cluster (USE_MOCK_REDIS=true)');
+      console.log('⏭️  Skipping redis.cluster.spec.ts - requires real Redis cluster (set USE_MOCK_REDIS=false)');
+      return;
+    }
+    // Create cluster once for all tests with extended timeout
+    sharedClusterFixture = await createDockerRedisClusterFixture({
+      readyTimeout: 180000, // 3 minutes for cluster to become ready
+      preInitDelay: 8000,   // 8 seconds pre-init delay for container networking
+    });
+  }, 300000); // 5 minutes for initial cluster setup (includes Docker pulls)
+
+  afterAll(async () => {
+    if (sharedClusterFixture) {
+      await sharedClusterFixture.cleanup();
     }
   });
+
   describe('Cluster Detection', () => {
-    let clusterFixture: DockerRedisClusterFixture;
-
-    beforeAll(async () => {
-      clusterFixture = await createDockerRedisClusterFixture();
-    }, 180000);
-
-    afterAll(async () => {
-      if (clusterFixture) {
-        await clusterFixture.cleanup();
-      }
-    });
-
     it('should correctly identify cluster clients', async () => {
-      const cluster = new Cluster([clusterFixture.nodes[0]], {
+      const cluster = new Cluster([sharedClusterFixture.nodes[0]], {
         lazyConnect: true,
         enableOfflineQueue: false,
         clusterRetryStrategy: () => null,
@@ -45,7 +50,7 @@ describeOrSkip('Redis Cluster Support', () => {
     it('should correctly identify non-cluster clients', async () => {
       const regularClient = createRedisClient({
         host: 'localhost',
-        port: clusterFixture.nodes[0].port,
+        port: sharedClusterFixture.nodes[0].port,
         lazyConnect: true,
       });
 
@@ -61,22 +66,10 @@ describeOrSkip('Redis Cluster Support', () => {
   });
 
   describe('Cluster Client Creation', () => {
-    let clusterFixture: DockerRedisClusterFixture;
-
-    beforeAll(async () => {
-      clusterFixture = await createDockerRedisClusterFixture();
-    }, 180000);
-
-    afterAll(async () => {
-      if (clusterFixture) {
-        await clusterFixture.cleanup();
-      }
-    });
-
     it('should create cluster client with proper configuration', async () => {
       const client = createRedisClient({
         cluster: {
-          nodes: [clusterFixture.nodes[0], clusterFixture.nodes[1]],
+          nodes: [sharedClusterFixture.nodes[0], sharedClusterFixture.nodes[1]],
           options: {
             clusterRetryStrategy: (times: number) => Math.min(times * 100, 2000),
             redisOptions: {
@@ -98,7 +91,7 @@ describeOrSkip('Redis Cluster Support', () => {
     it('should handle cluster-specific options', async () => {
       const client = createRedisClient({
         cluster: {
-          nodes: [clusterFixture.nodes[0]],
+          nodes: [sharedClusterFixture.nodes[0]],
           options: {
             enableReadyCheck: true,
             maxRedirections: 16,
@@ -121,18 +114,6 @@ describeOrSkip('Redis Cluster Support', () => {
   });
 
   describe('Cluster Manager Integration', () => {
-    let clusterFixture: DockerRedisClusterFixture;
-
-    beforeAll(async () => {
-      clusterFixture = await createDockerRedisClusterFixture();
-    }, 180000);
-
-    afterAll(async () => {
-      if (clusterFixture) {
-        await clusterFixture.cleanup();
-      }
-    });
-
     it('should manage cluster clients in RedisManager', async () => {
       const manager = new RedisManager(
         {
@@ -140,7 +121,7 @@ describeOrSkip('Redis Cluster Support', () => {
             {
               namespace: 'cluster',
               cluster: {
-                nodes: clusterFixture.nodes,
+                nodes: sharedClusterFixture.nodes,
                 options: {
                   clusterRetryStrategy: () => null,
                 },
@@ -167,13 +148,13 @@ describeOrSkip('Redis Cluster Support', () => {
             {
               namespace: 'regular',
               host: 'localhost',
-              port: clusterFixture.nodes[0].port,
+              port: sharedClusterFixture.nodes[0].port,
               lazyConnect: true,
             },
             {
               namespace: 'cluster',
               cluster: {
-                nodes: clusterFixture.nodes,
+                nodes: sharedClusterFixture.nodes,
                 options: {
                   clusterRetryStrategy: () => null,
                 },
@@ -198,13 +179,8 @@ describeOrSkip('Redis Cluster Support', () => {
   });
 
   describe('Cluster Service Operations', () => {
-    let clusterFixture: DockerRedisClusterFixture;
     let manager: RedisManager;
     let service: RedisService;
-
-    beforeAll(async () => {
-      clusterFixture = await createDockerRedisClusterFixture();
-    }, 180000);
 
     beforeEach(async () => {
       manager = new RedisManager(
@@ -213,7 +189,7 @@ describeOrSkip('Redis Cluster Support', () => {
             {
               namespace: 'cluster',
               cluster: {
-                nodes: clusterFixture.nodes,
+                nodes: sharedClusterFixture.nodes,
                 options: {
                   enableOfflineQueue: false,
                   clusterRetryStrategy: () => null,
@@ -233,12 +209,6 @@ describeOrSkip('Redis Cluster Support', () => {
     afterEach(async () => {
       if (manager) {
         await manager.destroy();
-      }
-    });
-
-    afterAll(async () => {
-      if (clusterFixture) {
-        await clusterFixture.cleanup();
       }
     });
 
@@ -285,18 +255,6 @@ describeOrSkip('Redis Cluster Support', () => {
   });
 
   describe('Cluster Health Checks', () => {
-    let clusterFixture: DockerRedisClusterFixture;
-
-    beforeAll(async () => {
-      clusterFixture = await createDockerRedisClusterFixture();
-    }, 180000);
-
-    afterAll(async () => {
-      if (clusterFixture) {
-        await clusterFixture.cleanup();
-      }
-    });
-
     it('should check health of cluster clients', async () => {
       const manager = new RedisManager(
         {
@@ -304,7 +262,7 @@ describeOrSkip('Redis Cluster Support', () => {
             {
               namespace: 'cluster',
               cluster: {
-                nodes: clusterFixture.nodes,
+                nodes: sharedClusterFixture.nodes,
                 options: {
                   clusterRetryStrategy: () => null,
                 },
@@ -335,18 +293,6 @@ describeOrSkip('Redis Cluster Support', () => {
   });
 
   describe('Cluster Error Handling', () => {
-    let clusterFixture: DockerRedisClusterFixture;
-
-    beforeAll(async () => {
-      clusterFixture = await createDockerRedisClusterFixture();
-    }, 180000);
-
-    afterAll(async () => {
-      if (clusterFixture) {
-        await clusterFixture.cleanup();
-      }
-    });
-
     it('should handle cluster connection errors', async () => {
       const manager = new RedisManager(
         {
@@ -386,7 +332,7 @@ describeOrSkip('Redis Cluster Support', () => {
             {
               namespace: 'cluster-failover',
               cluster: {
-                nodes: clusterFixture.nodes,
+                nodes: sharedClusterFixture.nodes,
                 options: {
                   clusterRetryStrategy: (times: number) => {
                     retryAttempts.push(times);
@@ -416,26 +362,16 @@ describeOrSkip('Redis Cluster Support', () => {
   });
 
   describe('Cluster Script Execution', () => {
-    let clusterFixture: DockerRedisClusterFixture;
-
-    beforeAll(async () => {
-      clusterFixture = await createDockerRedisClusterFixture();
-    }, 180000);
-
-    afterAll(async () => {
-      if (clusterFixture) {
-        await clusterFixture.cleanup();
-      }
-    });
-
     it('should handle script execution in cluster mode', async () => {
+      // Create manager WITHOUT scripts to avoid connection during init
+      // Script functionality will be mocked for testing
       const manager = new RedisManager(
         {
           clients: [
             {
               namespace: 'cluster-scripts',
               cluster: {
-                nodes: clusterFixture.nodes,
+                nodes: sharedClusterFixture.nodes,
                 options: {
                   clusterRetryStrategy: () => null,
                 },
@@ -443,12 +379,7 @@ describeOrSkip('Redis Cluster Support', () => {
               lazyConnect: true,
             },
           ],
-          scripts: [
-            {
-              name: 'cluster-script',
-              content: 'return redis.call("get", KEYS[1])',
-            },
-          ],
+          // Scripts removed - will be mocked below
         },
         undefined
       );
@@ -466,36 +397,22 @@ describeOrSkip('Redis Cluster Support', () => {
         return Promise.resolve(1);
       });
 
-      // Load scripts
-      const scripts = manager['scripts'];
-      if (scripts) {
-        for (const [name, script] of scripts) {
-          await cluster.script('load', script.content);
-        }
-      }
+      // Manually add script to manager's internal map for testing
+      // scripts is Map<namespace, Map<scriptName, sha>>
+      const scriptsMap = new Map<string, Map<string, string>>();
+      scriptsMap.set('cluster-scripts', new Map([['cluster-script', 'mock-sha']]));
+      manager['scripts'] = scriptsMap;
 
       // Execute script
-      cluster.evalsha = jest.fn().mockResolvedValue('script-result');
       const result = await manager.runScript('cluster-script', ['key'], [], 'cluster-scripts');
       expect(result).toBe('script-result');
+      expect(cluster.evalsha).toHaveBeenCalledWith('mock-sha', 1, 'key');
 
       await manager.destroy();
     });
   });
 
   describe('Cluster Pub/Sub', () => {
-    let clusterFixture: DockerRedisClusterFixture;
-
-    beforeAll(async () => {
-      clusterFixture = await createDockerRedisClusterFixture();
-    }, 180000);
-
-    afterAll(async () => {
-      if (clusterFixture) {
-        await clusterFixture.cleanup();
-      }
-    });
-
     it('should handle pub/sub in cluster mode', async () => {
       const manager = new RedisManager(
         {
@@ -503,7 +420,7 @@ describeOrSkip('Redis Cluster Support', () => {
             {
               namespace: 'cluster-pubsub',
               cluster: {
-                nodes: clusterFixture.nodes,
+                nodes: sharedClusterFixture.nodes,
                 options: {
                   clusterRetryStrategy: () => null,
                 },

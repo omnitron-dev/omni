@@ -25,6 +25,7 @@ import type {
   IProcessManagerConfig,
   ISupervisorOptions,
   IProcessMetadata,
+  IWorkerHandle,
 } from './types.js';
 
 import { ProcessStatus } from './types.js';
@@ -46,9 +47,9 @@ import { ProcessHealthChecker } from './process-health.js';
  */
 @Injectable()
 export class ProcessManager extends EventEmitter implements IProcessManager {
-  private processes = new Map<string, IProcessInfo>();
-  private workers = new Map<string, any>(); // Now stores IWorkerHandle
-  private serviceProxies = new Map<string, any>();
+  private readonly processes = new Map<string, IProcessInfo>();
+  private readonly workers = new Map<string, IWorkerHandle>();
+  private readonly serviceProxies = new Map<string, ServiceProxy<unknown>>();
   private isShuttingDown = false;
 
   private readonly registry: ProcessRegistry;
@@ -124,14 +125,13 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
         name: mergedOptions.name,
         version: mergedOptions.version,
         config: mergedOptions, // Pass whole options as config
-        transport: mergedOptions.netron?.transport as any,
+        transport: this.mapTransport(mergedOptions.netron?.transport),
         host: mergedOptions.netron?.host,
-        isolation: mergedOptions.security?.isolation as any,
+        isolation: mergedOptions.security?.isolation,
       });
 
       // Store references
       this.workers.set(processId, handle);
-      (processInfo as any).transportUrl = handle.transportUrl;
 
       // Check if worker is already running
       if (handle.status === ProcessStatus.RUNNING) {
@@ -141,11 +141,10 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
         await this.waitForProcessReady(processId);
       }
 
-      // Use proxy from handle if available
-      const proxy =
-        handle.proxy ||
+      // Use proxy from handle if available, or create one
+      const proxy = (handle.proxy as ServiceProxy<T>) ||
         (await this.createServiceProxy<T>(
-          ProcessClass || ({} as any), // Pass empty object if using file path
+          ProcessClass,
           processId,
           null,
           mergedOptions
@@ -158,7 +157,7 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
 
       // Update status
       processInfo.status = ProcessStatus.RUNNING;
-      processInfo.pid = (handle as any).pid || process.pid;
+      processInfo.pid = process.pid;
       this.emit('process:ready', processInfo);
 
       // Setup monitoring
@@ -358,7 +357,7 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
       // Cleanup proxy
       const proxy = this.serviceProxies.get(processId);
       if (proxy && '__destroy' in proxy) {
-        await (proxy as any).__destroy();
+        await proxy.__destroy();
       }
 
       // Stop monitoring
@@ -401,7 +400,7 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
     }
 
     try {
-      return await (proxy as any).__getMetrics();
+      return await proxy.__getMetrics();
     } catch (error) {
       this.logger.error({ error, processId }, 'Failed to get process metrics');
       return null;
@@ -418,7 +417,7 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
     }
 
     try {
-      return await (proxy as any).__getHealth();
+      return await proxy.__getHealth();
     } catch (error) {
       this.logger.error({ error, processId }, 'Failed to get process health');
       return null;
@@ -492,27 +491,69 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
 
   /**
    * Wait for process to be ready
+   * Uses event-based signaling instead of polling to avoid race conditions
    */
   private async waitForProcessReady(processId: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(Errors.timeout(`Process ${processId} startup`, 30000));
-      }, 30000);
+    const STARTUP_TIMEOUT = 30000;
 
-      const checkReady = () => {
-        const processInfo = this.processes.get(processId);
-        if (processInfo?.status === ProcessStatus.RUNNING) {
-          clearTimeout(timeout);
+    return new Promise((resolve, reject) => {
+      let resolved = false;
+      let pollTimer: NodeJS.Timeout | null = null;
+
+      const cleanup = () => {
+        resolved = true;
+        if (pollTimer) {
+          clearTimeout(pollTimer);
+          pollTimer = null;
+        }
+        this.off('process:ready', readyHandler);
+        this.off('process:crash', crashHandler);
+      };
+
+      const readyHandler = (info: IProcessInfo) => {
+        if (info.id === processId && !resolved) {
+          cleanup();
           resolve();
-        } else if (processInfo?.status === ProcessStatus.FAILED) {
-          clearTimeout(timeout);
-          reject(Errors.internal(`Process ${processId} failed to start`));
-        } else {
-          setTimeout(checkReady, 100);
         }
       };
 
+      const crashHandler = (info: IProcessInfo, error: Error) => {
+        if (info.id === processId && !resolved) {
+          cleanup();
+          reject(error || Errors.internal(`Process ${processId} failed to start`));
+        }
+      };
+
+      // Listen for events
+      this.on('process:ready', readyHandler);
+      this.on('process:crash', crashHandler);
+
+      // Also poll in case status changed before we attached listeners
+      const checkReady = () => {
+        if (resolved) return;
+
+        const processInfo = this.processes.get(processId);
+        if (processInfo?.status === ProcessStatus.RUNNING) {
+          cleanup();
+          resolve();
+        } else if (processInfo?.status === ProcessStatus.FAILED) {
+          cleanup();
+          reject(Errors.internal(`Process ${processId} failed to start`));
+        } else {
+          pollTimer = setTimeout(checkReady, 100);
+        }
+      };
+
+      // Initial check
       checkReady();
+
+      // Timeout handler
+      setTimeout(() => {
+        if (!resolved) {
+          cleanup();
+          reject(Errors.timeout(`Process ${processId} startup`, STARTUP_TIMEOUT));
+        }
+      }, STARTUP_TIMEOUT);
     });
   }
 
@@ -520,24 +561,41 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
    * Create a type-safe service proxy
    */
   private async createServiceProxy<T>(
-    ProcessClass: new (...args: any[]) => T,
+    ProcessClass: (new (...args: unknown[]) => T) | null,
     processId: string,
-    netron: any,
+    netron: null,
     options: IProcessOptions
   ): Promise<ServiceProxy<T>> {
-    const handler = new ServiceProxyHandler<T>(processId, netron, ProcessClass.name, this.logger);
+    const serviceName = ProcessClass?.name ?? options.name ?? 'unknown';
+    const handler = new ServiceProxyHandler<T>(processId, netron, serviceName, this.logger);
 
     return handler.createProxy();
+  }
+
+  /**
+   * Map netron transport type to spawn transport type
+   */
+  private mapTransport(transport?: string): 'tcp' | 'unix' | 'ws' | 'ipc' | undefined {
+    if (!transport) return undefined;
+
+    const mapping: Record<string, 'tcp' | 'unix' | 'ws' | 'ipc'> = {
+      tcp: 'tcp',
+      unix: 'unix',
+      websocket: 'ws',
+      http: 'ws', // HTTP uses WebSocket transport
+    };
+
+    return mapping[transport];
   }
 
   /**
    * Setup graceful shutdown handlers
    */
   private setupShutdownHandlers(): void {
-    const signals = ['SIGINT', 'SIGTERM', 'SIGUSR2'];
+    const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM', 'SIGUSR2'];
 
     signals.forEach((signal) => {
-      process.on(signal as any, async () => {
+      process.on(signal, async () => {
         this.logger.info({ signal }, 'Received shutdown signal');
         await this.shutdown();
         process.exit(0);

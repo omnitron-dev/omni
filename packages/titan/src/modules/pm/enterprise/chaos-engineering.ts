@@ -43,7 +43,7 @@ export interface MetricCondition {
 export interface ChaosMethod {
   type: ChaosType;
   target: ChaosTarget;
-  parameters: any;
+  parameters: Record<string, unknown>;
   duration?: number;
   probability?: number;
 }
@@ -68,7 +68,7 @@ export enum ChaosType {
  */
 export interface ChaosTarget {
   type: 'process' | 'service' | 'node' | 'network';
-  selector: string | ((item: any) => boolean);
+  selector: string | ((item: unknown) => boolean);
   percentage?: number;
 }
 
@@ -82,28 +82,56 @@ export interface ChaosResult {
   steadyStateBefore: boolean;
   steadyStateAfter: boolean;
   success: boolean;
-  observations: any[];
+  observations: ChaosObservation[];
   errors: Error[];
 }
 
 /**
+ * Chaos Observation
+ */
+export interface ChaosObservation {
+  time: number;
+  type: string;
+  value?: unknown;
+  method?: string;
+  target?: ChaosTarget;
+  reason?: string;
+}
+
+/**
+ * Chaos Monkey Configuration
+ */
+export interface ChaosMonkeyConfig {
+  enabled?: boolean;
+  probability?: number;
+  minInterval?: number;
+  maxInterval?: number;
+  types?: ChaosType[];
+  safetyLimits?: {
+    maxConcurrentChaos?: number;
+    excludeTargets?: string[];
+    allowedHours?: [number, number];
+    maxDuration?: number;
+  };
+  blastRadius?: {
+    maxTargets?: number;
+    maxPercentage?: number;
+  };
+}
+
+/**
  * Chaos Monkey
- * Random failure injector
+ * Random failure injector with safety controls
  */
 export class ChaosMonkey extends EventEmitter {
   private active = false;
   private experiments: ChaosExperiment[] = [];
   private activeExperiments = new Map<string, NodeJS.Timeout>();
+  private activeChaosCount = 0;
+  private chaosHistory: Array<{ type: ChaosType; target: unknown; timestamp: number }> = [];
+  private chaosTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(
-    private config: {
-      enabled?: boolean;
-      probability?: number;
-      minInterval?: number;
-      maxInterval?: number;
-      types?: ChaosType[];
-    } = {}
-  ) {
+  constructor(private config: ChaosMonkeyConfig = {}) {
     super();
     this.config = {
       enabled: false,
@@ -111,6 +139,16 @@ export class ChaosMonkey extends EventEmitter {
       minInterval: 60000,
       maxInterval: 300000,
       types: [ChaosType.LATENCY, ChaosType.ERROR],
+      safetyLimits: {
+        maxConcurrentChaos: 3,
+        excludeTargets: [],
+        allowedHours: [9, 17],
+        maxDuration: 300000,
+      },
+      blastRadius: {
+        maxTargets: 5,
+        maxPercentage: 25,
+      },
       ...config,
     };
   }
@@ -132,6 +170,12 @@ export class ChaosMonkey extends EventEmitter {
   stop(): void {
     this.active = false;
 
+    // Clear chaos timer
+    if (this.chaosTimer) {
+      clearTimeout(this.chaosTimer);
+      this.chaosTimer = null;
+    }
+
     // Clear all active experiments
     this.activeExperiments.forEach((timer) => clearTimeout(timer));
     this.activeExperiments.clear();
@@ -146,37 +190,91 @@ export class ChaosMonkey extends EventEmitter {
     if (!this.active) return;
 
     const interval = this.randomInterval();
-    setTimeout(() => {
+    this.chaosTimer = setTimeout(() => {
       if (this.active && Math.random() < this.config.probability!) {
         this.injectChaos();
       }
       this.scheduleNextChaos();
-    }, interval);
+    }, interval).unref();
   }
 
   /**
-   * Inject random chaos
+   * Inject random chaos with safety checks
    */
   private async injectChaos(): Promise<void> {
+    // Safety check: max concurrent chaos
+    if (this.activeChaosCount >= (this.config.safetyLimits?.maxConcurrentChaos ?? 3)) {
+      this.emit('chaos:skipped', { reason: 'max-concurrent-reached' });
+      return;
+    }
+
+    // Safety check: time window
+    if (!this.isInAllowedTimeWindow()) {
+      this.emit('chaos:skipped', { reason: 'outside-allowed-hours' });
+      return;
+    }
+
     const type = this.randomChaosType();
     const target = this.randomTarget();
 
+    // Safety check: excluded targets
+    if (this.isTargetExcluded(target)) {
+      this.emit('chaos:skipped', { reason: 'target-excluded', target });
+      return;
+    }
+
+    this.activeChaosCount++;
     this.emit('chaos:injected', { type, target });
 
     try {
       await this.applyChaos(type, target);
+      this.chaosHistory.push({ type, target, timestamp: Date.now() });
     } catch (error) {
       this.emit('chaos:error', error);
+    } finally {
+      this.activeChaosCount--;
     }
+  }
+
+  /**
+   * Check if current time is within allowed hours
+   */
+  private isInAllowedTimeWindow(): boolean {
+    if (!this.config.safetyLimits?.allowedHours) {
+      return true;
+    }
+
+    const hour = new Date().getHours();
+    const [start, end] = this.config.safetyLimits.allowedHours;
+    return hour >= start && hour < end;
+  }
+
+  /**
+   * Check if target is excluded
+   */
+  private isTargetExcluded(target: unknown): boolean {
+    if (!this.config.safetyLimits?.excludeTargets) {
+      return false;
+    }
+
+    const targetId = typeof target === 'object' && target !== null && 'id' in target
+      ? (target as { id: string }).id
+      : String(target);
+
+    return this.config.safetyLimits.excludeTargets.some(
+      excluded => targetId.includes(excluded)
+    );
   }
 
   /**
    * Apply chaos effect
    */
-  private async applyChaos(type: ChaosType, target: any): Promise<void> {
+  private async applyChaos(type: ChaosType, target: unknown): Promise<void> {
+    const maxDuration = this.config.safetyLimits?.maxDuration ?? 300000;
+
     switch (type) {
       case ChaosType.LATENCY:
-        await this.injectLatency(target);
+        await this.injectLatency(target, Math.min(5000, maxDuration));
         break;
       case ChaosType.ERROR:
         await this.injectError(target);
@@ -185,35 +283,37 @@ export class ChaosMonkey extends EventEmitter {
         await this.killProcess(target);
         break;
       case ChaosType.CPU_SPIKE:
-        await this.spikeCPU(target);
+        await this.spikeCPU(target, Math.min(10000, maxDuration));
         break;
       case ChaosType.MEMORY_LEAK:
         await this.leakMemory(target);
+        break;
+      case ChaosType.NETWORK_PARTITION:
+        await this.injectNetworkPartition(target);
+        break;
+      case ChaosType.IO_DELAY:
+        await this.injectIODelay(target);
         break;
       default:
         break;
     }
   }
 
-  private async injectLatency(target: any, duration = 5000): Promise<void> {
-    // Simulate latency injection
+  private async injectLatency(target: unknown, duration = 5000): Promise<void> {
     this.emit('latency:injected', { target, duration });
     await new Promise((resolve) => setTimeout(resolve, duration));
     this.emit('latency:removed', { target });
   }
 
-  private async injectError(target: any): Promise<void> {
-    // Simulate error injection
+  private async injectError(target: unknown): Promise<void> {
     this.emit('error:injected', { target });
   }
 
-  private async killProcess(target: any): Promise<void> {
-    // Simulate process kill
+  private async killProcess(target: unknown): Promise<void> {
     this.emit('process:killed', { target });
   }
 
-  private async spikeCPU(target: any, duration = 10000): Promise<void> {
-    // Simulate CPU spike
+  private async spikeCPU(target: unknown, duration = 10000): Promise<void> {
     this.emit('cpu:spiked', { target, duration });
 
     const endTime = Date.now() + duration;
@@ -225,11 +325,10 @@ export class ChaosMonkey extends EventEmitter {
     this.emit('cpu:normal', { target });
   }
 
-  private async leakMemory(target: any, size = 10 * 1024 * 1024): Promise<void> {
-    // Simulate memory leak
+  private async leakMemory(target: unknown, size = 10 * 1024 * 1024): Promise<void> {
     this.emit('memory:leaked', { target, size });
 
-    const leak: any[] = [];
+    const leak: unknown[] = [];
     for (let i = 0; i < size / 1024; i++) {
       leak.push(new Array(1024).fill(Math.random()));
     }
@@ -241,6 +340,17 @@ export class ChaosMonkey extends EventEmitter {
     }, 60000);
   }
 
+  private async injectNetworkPartition(target: unknown): Promise<void> {
+    this.emit('network:partitioned', { target });
+    // In a real implementation, this would manipulate network rules
+  }
+
+  private async injectIODelay(target: unknown, delay = 1000): Promise<void> {
+    this.emit('io:delayed', { target, delay });
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    this.emit('io:restored', { target });
+  }
+
   private randomInterval(): number {
     return Math.random() * (this.config.maxInterval! - this.config.minInterval!) + this.config.minInterval!;
   }
@@ -250,9 +360,30 @@ export class ChaosMonkey extends EventEmitter {
     return types[Math.floor(Math.random() * types.length)] || ChaosType.LATENCY;
   }
 
-  private randomTarget(): any {
+  private randomTarget(): unknown {
     // In real implementation, would select from available targets
     return { id: `target-${Math.random().toString(36).substr(2, 9)}` };
+  }
+
+  /**
+   * Get chaos history
+   */
+  getChaosHistory(): Array<{ type: ChaosType; target: unknown; timestamp: number }> {
+    return [...this.chaosHistory];
+  }
+
+  /**
+   * Get active chaos count
+   */
+  getActiveChaosCount(): number {
+    return this.activeChaosCount;
+  }
+
+  /**
+   * Get configuration
+   */
+  getConfig(): ChaosMonkeyConfig {
+    return { ...this.config };
   }
 }
 
@@ -314,7 +445,19 @@ export class ChaosOrchestrator extends EventEmitter {
       });
 
       if (!result.steadyStateBefore) {
-        throw Errors.notFound('Steady state not achieved before experiment');
+        const error = Errors.notFound('Steady state not achieved before experiment');
+        result.errors.push(error);
+        result.endTime = Date.now();
+        this.running.delete(experimentId);
+
+        // Store failed result
+        if (!this.results.has(experimentId)) {
+          this.results.set(experimentId, []);
+        }
+        this.results.get(experimentId)!.push(result);
+
+        this.emit('experiment:completed', { experiment, result });
+        throw error;
       }
 
       // Execute chaos methods
@@ -323,7 +466,7 @@ export class ChaosOrchestrator extends EventEmitter {
       }
 
       // Wait for system to stabilize
-      await this.delay(5000);
+      await this.delay(100);
 
       // Check steady state after
       result.steadyStateAfter = await this.checkSteadyState(experiment);
@@ -445,8 +588,9 @@ export class ChaosOrchestrator extends EventEmitter {
         this.emit('chaos:io-delay', method);
       },
       [ChaosType.CUSTOM]: async (method) => {
-        if (method.parameters.handler) {
-          await method.parameters.handler();
+        const handler = method.parameters['handler'];
+        if (typeof handler === 'function') {
+          await handler();
         }
       },
     };
@@ -485,14 +629,57 @@ export class ChaosOrchestrator extends EventEmitter {
 }
 
 /**
+ * Chaos Schedule
+ */
+export interface ChaosSchedule {
+  experimentId: string;
+  cron?: string;
+  interval?: number;
+  enabled: boolean;
+}
+
+/**
+ * Chaos Report
+ */
+export interface ChaosReport {
+  period: { start: number; end: number };
+  totalExperiments: number;
+  successfulExperiments: number;
+  failedExperiments: number;
+  experiments: Array<{
+    id: string;
+    name: string;
+    runs: number;
+    successRate: number;
+    avgDuration: number;
+  }>;
+  recommendations: string[];
+}
+
+/**
+ * Chaos Testing Framework Configuration
+ */
+export interface ChaosTestingFrameworkConfig {
+  monkey?: ChaosMonkeyConfig;
+  reporting?: {
+    enabled?: boolean;
+    interval?: number;
+  };
+}
+
+/**
  * Chaos Testing Framework
  */
 export class ChaosTestingFramework {
   private orchestrator = new ChaosOrchestrator();
-  private monkey = new ChaosMonkey();
+  private monkey: ChaosMonkey;
+  private schedules = new Map<string, NodeJS.Timeout>();
+  private reportData: ChaosResult[] = [];
 
-  constructor(private config: any = {}) {
+  constructor(private config: ChaosTestingFrameworkConfig = {}) {
+    this.monkey = new ChaosMonkey(config.monkey);
     this.setupDefaultExperiments();
+    this.setupReporting();
   }
 
   /**
@@ -573,17 +760,150 @@ export class ChaosTestingFramework {
   }
 
   /**
+   * Setup reporting
+   */
+  private setupReporting(): void {
+    if (!this.config.reporting?.enabled) {
+      return;
+    }
+
+    this.orchestrator.on('experiment:completed', ({ result }) => {
+      this.reportData.push(result);
+    });
+  }
+
+  /**
    * Run experiment
    */
   async runExperiment(experimentId: string): Promise<ChaosResult> {
-    return this.orchestrator.runExperiment(experimentId);
+    const result = await this.orchestrator.runExperiment(experimentId);
+    return result;
+  }
+
+  /**
+   * Schedule experiment
+   */
+  scheduleExperiment(schedule: ChaosSchedule): void {
+    if (!schedule.enabled) {
+      return;
+    }
+
+    if (schedule.interval) {
+      const timer = setInterval(async () => {
+        try {
+          await this.runExperiment(schedule.experimentId);
+        } catch (error) {
+          // Log error but continue schedule
+        }
+      }, schedule.interval);
+
+      this.schedules.set(schedule.experimentId, timer);
+    }
+  }
+
+  /**
+   * Unschedule experiment
+   */
+  unscheduleExperiment(experimentId: string): void {
+    const timer = this.schedules.get(experimentId);
+    if (timer) {
+      clearInterval(timer);
+      this.schedules.delete(experimentId);
+    }
+  }
+
+  /**
+   * Generate chaos report
+   */
+  generateReport(period?: { start: number; end: number }): ChaosReport {
+    const filteredResults = period
+      ? this.reportData.filter(
+          (r) => r.startTime >= period.start && r.endTime <= period.end
+        )
+      : this.reportData;
+
+    const experimentStats = new Map<string, { runs: number; successes: number; totalDuration: number }>();
+
+    for (const result of filteredResults) {
+      const stats = experimentStats.get(result.experimentId) ?? {
+        runs: 0,
+        successes: 0,
+        totalDuration: 0,
+      };
+
+      stats.runs++;
+      if (result.success) stats.successes++;
+      stats.totalDuration += result.endTime - result.startTime;
+
+      experimentStats.set(result.experimentId, stats);
+    }
+
+    const experiments = Array.from(experimentStats.entries()).map(([id, stats]) => {
+      const experiment = this.orchestrator.getExperiments().find((e) => e.id === id);
+      return {
+        id,
+        name: experiment?.name ?? 'Unknown',
+        runs: stats.runs,
+        successRate: stats.runs > 0 ? stats.successes / stats.runs : 0,
+        avgDuration: stats.runs > 0 ? stats.totalDuration / stats.runs : 0,
+      };
+    });
+
+    const recommendations = this.generateRecommendations(experiments);
+
+    return {
+      period: period ?? { start: 0, end: Date.now() },
+      totalExperiments: filteredResults.length,
+      successfulExperiments: filteredResults.filter((r) => r.success).length,
+      failedExperiments: filteredResults.filter((r) => !r.success).length,
+      experiments,
+      recommendations,
+    };
+  }
+
+  /**
+   * Generate recommendations based on experiment results
+   */
+  private generateRecommendations(
+    experiments: Array<{ id: string; successRate: number; avgDuration: number }>
+  ): string[] {
+    const recommendations: string[] = [];
+
+    for (const exp of experiments) {
+      if (exp.successRate < 0.5) {
+        recommendations.push(
+          `Experiment "${exp.id}" has low success rate (${(exp.successRate * 100).toFixed(1)}%). Consider reviewing system resilience.`
+        );
+      }
+
+      if (exp.avgDuration > 60000) {
+        recommendations.push(
+          `Experiment "${exp.id}" takes long to complete (avg ${(exp.avgDuration / 1000).toFixed(1)}s). Consider optimizing recovery time.`
+        );
+      }
+    }
+
+    if (recommendations.length === 0) {
+      recommendations.push('All experiments are performing well. System shows good resilience.');
+    }
+
+    return recommendations;
+  }
+
+  /**
+   * Clear report data
+   */
+  clearReportData(): void {
+    this.reportData = [];
   }
 
   /**
    * Start chaos monkey
    */
-  startChaosMonkey(config?: any): void {
-    this.monkey = new ChaosMonkey(config || this.config.monkey);
+  startChaosMonkey(config?: ChaosMonkeyConfig): void {
+    if (config) {
+      this.monkey = new ChaosMonkey(config);
+    }
     this.monkey.start();
   }
 
@@ -592,6 +912,16 @@ export class ChaosTestingFramework {
    */
   stopChaosMonkey(): void {
     this.monkey.stop();
+  }
+
+  /**
+   * Shutdown framework
+   */
+  shutdown(): void {
+    this.stopChaosMonkey();
+    for (const [id] of this.schedules) {
+      this.unscheduleExperiment(id);
+    }
   }
 
   /**
@@ -606,5 +936,12 @@ export class ChaosTestingFramework {
    */
   getChaosMonkey(): ChaosMonkey {
     return this.monkey;
+  }
+
+  /**
+   * Get scheduled experiments
+   */
+  getScheduledExperiments(): string[] {
+    return Array.from(this.schedules.keys());
   }
 }

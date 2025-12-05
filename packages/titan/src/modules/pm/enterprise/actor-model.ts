@@ -27,6 +27,10 @@ export interface ActorRef<T = any> {
   tell(message: any): void;
   ask<R>(message: any, timeout?: number): Promise<R>;
   stop(): Promise<void>;
+  link(other: ActorRef): void;
+  unlink(other: ActorRef): void;
+  monitor(other: ActorRef): string;
+  demonitor(monitorRef: string): void;
 }
 
 /**
@@ -35,11 +39,16 @@ export interface ActorRef<T = any> {
 export interface ActorContext {
   self: ActorRef;
   sender?: ActorRef;
+  parent?: ActorRef;
   system: ActorSystem;
   become(behavior: ActorBehavior): void;
   unbecome(): void;
   spawn<T>(ActorClass: new () => T, name?: string): Promise<ActorRef<T>>;
   stop(): void;
+  link(other: ActorRef): void;
+  unlink(other: ActorRef): void;
+  monitor(other: ActorRef): string;
+  demonitor(monitorRef: string): void;
 }
 
 /**
@@ -118,12 +127,20 @@ export class OneForOneStrategy implements SupervisorStrategy {
     const retryInfo = this.retryMap.get(key);
 
     if (!retryInfo) {
+      // First error for this child
+      if (this.maxRetries === 0) {
+        // No retries allowed, stop immediately
+        return SupervisorAction.STOP;
+      }
       this.retryMap.set(key, { count: 1, firstError: now });
       return SupervisorAction.RESTART;
     }
 
     if (now - retryInfo.firstError > this.withinMs) {
       // Reset counter if outside time window
+      if (this.maxRetries === 0) {
+        return SupervisorAction.STOP;
+      }
       this.retryMap.set(key, { count: 1, firstError: now });
       return SupervisorAction.RESTART;
     }
@@ -175,6 +192,24 @@ export class AllForOneStrategy implements SupervisorStrategy {
 }
 
 /**
+ * Terminated message
+ */
+export interface TerminatedMessage {
+  type: 'Terminated';
+  actorId: string;
+  reason?: Error;
+}
+
+/**
+ * Monitor reference
+ */
+interface MonitorRef {
+  id: string;
+  watcher: string;
+  watched: string;
+}
+
+/**
  * Actor Instance
  */
 class ActorInstance<T extends Actor = Actor> extends EventEmitter {
@@ -183,13 +218,19 @@ class ActorInstance<T extends Actor = Actor> extends EventEmitter {
   private processing = false;
   private stopped = false;
   private children = new Map<string, ActorInstance>();
+  private parent?: ActorInstance;
+  private linkedActors = new Set<string>();
+  private monitors = new Map<string, MonitorRef>();
+  private watchedBy = new Set<string>();
 
   constructor(
     public readonly id: string,
     private actor: T,
-    private system: ActorSystem
+    private system: ActorSystem,
+    parent?: ActorInstance
   ) {
     super();
+    this.parent = parent;
     this.setupContext();
   }
 
@@ -198,11 +239,12 @@ class ActorInstance<T extends Actor = Actor> extends EventEmitter {
 
     const context: ActorContext = {
       self,
+      parent: this.parent?.createRef(),
       system: this.system,
       become: (behavior) => this.become(behavior),
       unbecome: () => this.unbecome(),
       spawn: async (ActorClass, name) => {
-        const child = await this.system.actorOf(ActorClass as new () => Actor, name);
+        const child = await this.system.actorOf(ActorClass as new () => Actor, name, this);
         const childInstance = (this.system as any).actors.get(child.id);
         if (childInstance) {
           this.children.set(child.id, childInstance);
@@ -210,6 +252,10 @@ class ActorInstance<T extends Actor = Actor> extends EventEmitter {
         return child;
       },
       stop: () => this.stop(),
+      link: (other) => this.link(other),
+      unlink: (other) => this.unlink(other),
+      monitor: (other) => this.monitor(other),
+      demonitor: (ref) => this.demonitor(ref),
     };
 
     this.actor.context = context;
@@ -221,6 +267,10 @@ class ActorInstance<T extends Actor = Actor> extends EventEmitter {
       tell: (message) => this.tell(message),
       ask: (message, timeout) => this.ask(message, timeout),
       stop: () => this.stop(),
+      link: (other) => this.link(other),
+      unlink: (other) => this.unlink(other),
+      monitor: (other) => this.monitor(other),
+      demonitor: (ref) => this.demonitor(ref),
     };
   }
 
@@ -230,13 +280,78 @@ class ActorInstance<T extends Actor = Actor> extends EventEmitter {
     }
   }
 
-  async stop(): Promise<void> {
+  link(other: ActorRef): void {
+    this.linkedActors.add(other.id);
+    const otherInstance = (this.system as any).actors.get(other.id);
+    if (otherInstance) {
+      otherInstance.linkedActors.add(this.id);
+    }
+  }
+
+  unlink(other: ActorRef): void {
+    this.linkedActors.delete(other.id);
+    const otherInstance = (this.system as any).actors.get(other.id);
+    if (otherInstance) {
+      otherInstance.linkedActors.delete(this.id);
+    }
+  }
+
+  monitor(other: ActorRef): string {
+    const monitorId = uuid();
+    const ref: MonitorRef = {
+      id: monitorId,
+      watcher: this.id,
+      watched: other.id,
+    };
+    this.monitors.set(monitorId, ref);
+
+    const otherInstance = (this.system as any).actors.get(other.id);
+    if (otherInstance) {
+      otherInstance.watchedBy.add(this.id);
+    }
+
+    return monitorId;
+  }
+
+  demonitor(monitorRef: string): void {
+    const ref = this.monitors.get(monitorRef);
+    if (ref) {
+      this.monitors.delete(monitorRef);
+      const otherInstance = (this.system as any).actors.get(ref.watched);
+      if (otherInstance) {
+        otherInstance.watchedBy.delete(this.id);
+      }
+    }
+  }
+
+  async stop(reason?: Error): Promise<void> {
     if (this.stopped) return;
     this.stopped = true;
 
+    // Notify linked actors (crash propagation)
+    for (const linkedId of this.linkedActors) {
+      const linked = (this.system as any).actors.get(linkedId);
+      if (linked && !linked.stopped) {
+        await linked.stop(reason || new Error(`Linked actor ${this.id} terminated`));
+      }
+    }
+
+    // Notify monitors (death watch)
+    for (const watcherId of this.watchedBy) {
+      const watcher = (this.system as any).actors.get(watcherId);
+      if (watcher && !watcher.stopped) {
+        const terminatedMsg: TerminatedMessage = {
+          type: 'Terminated',
+          actorId: this.id,
+          reason,
+        };
+        watcher.tell(terminatedMsg);
+      }
+    }
+
     // Stop all children
     for (const child of this.children.values()) {
-      await child.stop();
+      await child.stop(reason);
     }
 
     if (this.actor.onStop) {
@@ -244,6 +359,10 @@ class ActorInstance<T extends Actor = Actor> extends EventEmitter {
     }
 
     this.removeAllListeners();
+
+    // Clean up from system
+    (this.system as any).actors.delete(this.id);
+    (this.system as any).rootActors.delete(this.id);
   }
 
   tell(message: any, sender?: ActorRef): void {
@@ -301,12 +420,8 @@ class ActorInstance<T extends Actor = Actor> extends EventEmitter {
       try {
         // Update context with current sender
         if (message.from) {
-          this.actor.context.sender = {
-            id: message.from,
-            tell: () => {}, // Would be resolved by system
-            ask: async <R>() => null as unknown as R,
-            stop: async () => {},
-          };
+          const senderInstance = (this.system as any).actors.get(message.from);
+          this.actor.context.sender = senderInstance ? senderInstance.createRef() : undefined;
         }
 
         // Use current behavior or default receive
@@ -327,31 +442,63 @@ class ActorInstance<T extends Actor = Actor> extends EventEmitter {
   }
 
   private async handleError(error: Error): Promise<void> {
-    const strategy = this.actor.supervisorStrategy();
+    // If there's a parent, let parent handle supervision
+    if (this.parent) {
+      const strategy = this.parent.actor.supervisorStrategy();
+      const action = strategy.decideAction(error, this.createRef());
 
-    // Apply strategy to self (parent would normally do this)
-    const action = strategy.decideAction(error, this.createRef());
+      switch (action) {
+        case SupervisorAction.RESTART:
+          // Check if AllForOne - restart all siblings
+          if (strategy instanceof AllForOneStrategy) {
+            // Parent restarts all children
+            for (const child of this.parent.children.values()) {
+              await child.restart(error);
+            }
+          } else {
+            // OneForOne - restart only this child
+            await this.restart(error);
+          }
+          break;
+        case SupervisorAction.STOP:
+          await this.stop(error);
+          break;
+        case SupervisorAction.RESUME:
+          // Continue processing
+          break;
+        case SupervisorAction.ESCALATE:
+          // Escalate to grandparent or crash
+          if (this.parent.parent) {
+            await this.parent.handleError(error);
+          } else {
+            await this.stop(error);
+          }
+          break;
+        default:
+          throw Errors.notFound(`Unknown supervisor action: ${action}`);
+      }
+    } else {
+      // No parent, handle ourselves
+      const strategy = this.actor.supervisorStrategy();
+      const action = strategy.decideAction(error, this.createRef());
 
-    switch (action) {
-      case SupervisorAction.RESTART:
-        await this.restart(error);
-        break;
-      case SupervisorAction.STOP:
-        await this.stop();
-        break;
-      case SupervisorAction.RESUME:
-        // Continue processing
-        break;
-      case SupervisorAction.ESCALATE:
-        // Would escalate to parent
-        throw error;
-      default:
-        // Unknown action, escalate
-        throw Errors.notFound(`Unknown supervisor action: ${action}`);
+      switch (action) {
+        case SupervisorAction.RESTART:
+          await this.restart(error);
+          break;
+        case SupervisorAction.STOP:
+          await this.stop(error);
+          break;
+        case SupervisorAction.RESUME:
+          // Continue processing
+          break;
+        default:
+          await this.stop(error);
+      }
     }
   }
 
-  private async restart(error: Error): Promise<void> {
+  async restart(error: Error): Promise<void> {
     if (this.actor.onPreRestart) {
       await this.actor.onPreRestart(error);
     }
@@ -359,14 +506,15 @@ class ActorInstance<T extends Actor = Actor> extends EventEmitter {
     // Clear state
     this.mailbox = [];
     this.behaviors = [];
-
-    // Restart children
-    for (const child of this.children.values()) {
-      await child.restart(error);
-    }
+    this.processing = false;
 
     if (this.actor.onPostRestart) {
       await this.actor.onPostRestart();
+    }
+
+    // Resume processing
+    if (this.mailbox.length > 0) {
+      this.processMailbox();
     }
   }
 
@@ -396,7 +544,11 @@ export class ActorSystem {
   /**
    * Create an actor
    */
-  async actorOf<T extends Actor>(ActorClass: new () => T, name?: string): Promise<ActorRef<T>> {
+  async actorOf<T extends Actor>(
+    ActorClass: new () => T,
+    name?: string,
+    parent?: ActorInstance
+  ): Promise<ActorRef<T>> {
     const id = name || uuid();
 
     if (this.actors.has(id)) {
@@ -404,10 +556,13 @@ export class ActorSystem {
     }
 
     const actor = new ActorClass();
-    const instance = new ActorInstance(id, actor, this);
+    const instance = new ActorInstance(id, actor, this, parent);
 
     this.actors.set(id, instance);
-    this.rootActors.add(id);
+
+    if (!parent) {
+      this.rootActors.add(id);
+    }
 
     await instance.start();
 

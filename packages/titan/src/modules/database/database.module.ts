@@ -23,6 +23,7 @@ import {
   DATABASE_HEALTH_INDICATOR,
   DATABASE_MANAGER,
   DATABASE_MODULE_OPTIONS,
+  DATABASE_CONNECTION,
   DATABASE_REPOSITORY_FACTORY,
   DATABASE_MIGRATION_SERVICE,
   DATABASE_MIGRATION_RUNNER,
@@ -343,9 +344,59 @@ export class TitanDatabaseModule {
       },
     ]);
 
-    // Service providers
-    providers.push(DatabaseService);
-    providers.push(DatabaseHealthIndicator);
+    // Alias registration for DatabaseManager class (allows resolving by class)
+    providers.push([
+      DatabaseManager,
+      {
+        useFactory: async (manager: DatabaseManager) => manager,
+        inject: [DATABASE_MANAGER],
+      },
+    ]);
+
+    // Default connection provider - use DATABASE_CONNECTION symbol directly
+    providers.push([
+      DATABASE_CONNECTION,
+      {
+        useFactory: async (manager: DatabaseManager) => manager.getConnection(DATABASE_DEFAULT_CONNECTION),
+        inject: [DATABASE_MANAGER],
+      },
+    ]);
+
+    // Database service provider
+    providers.push([
+      DATABASE_SERVICE,
+      {
+        useFactory: async (manager: DatabaseManager) => new DatabaseService(manager),
+        inject: [DATABASE_MANAGER],
+      },
+    ]);
+
+    // Alias registration for DatabaseService class
+    providers.push([
+      DatabaseService,
+      {
+        useFactory: async (service: DatabaseService) => service,
+        inject: [DATABASE_SERVICE],
+      },
+    ]);
+
+    // Health indicator provider
+    providers.push([
+      DATABASE_HEALTH_INDICATOR,
+      {
+        useFactory: async (manager: DatabaseManager) => new DatabaseHealthIndicator(manager),
+        inject: [DATABASE_MANAGER],
+      },
+    ]);
+
+    // Alias registration for DatabaseHealthIndicator class
+    providers.push([
+      DatabaseHealthIndicator,
+      {
+        useFactory: async (indicator: DatabaseHealthIndicator) => indicator,
+        inject: [DATABASE_HEALTH_INDICATOR],
+      },
+    ]);
 
     // Plugin manager
     providers.push([
@@ -505,7 +556,10 @@ export class TitanDatabaseModule {
 
     const exports: Array<ServiceIdentifier<unknown>> = [
       DATABASE_MANAGER,
+      DatabaseManager,
+      DATABASE_SERVICE,
       DatabaseService,
+      DATABASE_HEALTH_INDICATOR,
       DatabaseHealthIndicator,
       DATABASE_PLUGIN_MANAGER,
       DATABASE_REPOSITORY_FACTORY,
@@ -514,6 +568,7 @@ export class TitanDatabaseModule {
       DATABASE_MIGRATION_LOCK,
       DATABASE_TRANSACTION_MANAGER,
       DATABASE_TRANSACTION_SCOPE_FACTORY,
+      DATABASE_CONNECTION,
     ];
 
     const result: DynamicModule = {

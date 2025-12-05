@@ -422,6 +422,12 @@ export class Container implements IContainer {
       return () => this.resolve(aliasToken);
     }
 
+    // Handle useExisting (NestJS-style alias provider)
+    if ('useExisting' in provider && provider.useExisting) {
+      const aliasToken = provider.useExisting as InjectionToken<any>;
+      return () => this.resolve(aliasToken);
+    }
+
     throw new InvalidProviderError(token, 'Unable to create factory from provider');
   }
 
@@ -438,6 +444,7 @@ export class Container implements IContainer {
       'useClass' in provider ||
       'useFactory' in provider ||
       'useToken' in provider ||
+      'useExisting' in provider || // NestJS-style alias provider
       ('when' in provider && 'useFactory' in provider)
     );
   }
@@ -1198,33 +1205,105 @@ export class Container implements IContainer {
     // Get resolution state from context (isolated per resolution tree)
     const resolutionState = this.context.resolutionState;
 
+    // Find which module this registration belongs to (same as sync version)
+    let currentModule: string | undefined;
+    if (this.moduleProviders) {
+      const tokenKey = this.getTokenKey(registration.token);
+      for (const [moduleName, providerMap] of this.moduleProviders) {
+        if (providerMap.has(tokenKey)) {
+          currentModule = moduleName;
+          break;
+        }
+      }
+    }
+
     // Resolve dependencies sequentially to maintain resolution chain integrity
     const resolvedDeps = [];
     for (const dep of registration.dependencies) {
-      // Check for circular dependency in async context too
-      if (resolutionState?.chain.includes(dep)) {
-        throw new CircularDependencyError([...resolutionState.chain, dep]);
+      // Extract actual token from dependency object (same as sync version)
+      let depToken: InjectionToken<any> = dep;
+      let isOptional = false;
+
+      // Handle optional dependencies and context injection
+      if (typeof dep === 'object' && dep !== null && 'token' in dep) {
+        const depObj = dep as any;
+
+        // Handle context injection
+        if (depObj.token === 'CONTEXT' && depObj.type === 'context') {
+          resolvedDeps.push(this.context['resolveContext'] || this.context);
+          continue;
+        }
+
+        depToken = depObj.token;
+        isOptional = depObj.optional || false;
+      } else if (dep === 'CONTEXT') {
+        // Handle string context token directly
+        resolvedDeps.push(this.context['resolveContext'] || this.context);
+        continue;
       }
 
-      const depReg = this.getRegistration(dep);
+      // Check for circular dependency in async context too
+      if (resolutionState?.chain.includes(depToken)) {
+        throw new CircularDependencyError([...resolutionState.chain, depToken]);
+      }
+
+      const depReg = this.getRegistration(depToken);
       if (depReg?.isAsync) {
         // Check if already being resolved (pending promise)
-        if (this.pendingPromises.has(dep)) {
-          resolvedDeps.push(await this.pendingPromises.get(dep)!);
+        if (this.pendingPromises.has(depToken)) {
+          resolvedDeps.push(await this.pendingPromises.get(depToken)!);
         } else {
           // Resolve the dependency directly within current resolution context
           // The context already contains the correct resolutionState
-          resolutionState?.chain.push(dep);
+          resolutionState?.chain.push(depToken);
+          const prevModule = (this.context as any).__resolvingModule;
           try {
-            const result = await this.resolveAsyncInternal(dep);
+            (this.context as any).__resolvingModule = currentModule;
+            const result = await this.resolveAsyncInternal(depToken);
             resolvedDeps.push(result);
           } finally {
             // Remove from chain after resolution
             resolutionState?.chain.pop();
+            (this.context as any).__resolvingModule = prevModule;
           }
         }
       } else {
-        resolvedDeps.push(this.resolve(dep));
+        // Handle optional dependencies
+        if (isOptional) {
+          // Try async resolution first, fallback to optional behavior
+          const prevModule = (this.context as any).__resolvingModule;
+          try {
+            (this.context as any).__resolvingModule = currentModule;
+            // Check if registered - if not, push undefined for optional
+            if (!this.getRegistration(depToken) && !this.parent?.has(depToken)) {
+              resolvedDeps.push(undefined);
+            } else {
+              // Use async resolution to handle nested async dependencies
+              resolutionState?.chain.push(depToken);
+              try {
+                const result = await this.resolveAsyncInternal(depToken);
+                resolvedDeps.push(result);
+              } finally {
+                resolutionState?.chain.pop();
+              }
+            }
+          } finally {
+            (this.context as any).__resolvingModule = prevModule;
+          }
+        } else {
+          // Set module context and resolve asynchronously
+          // Always use async resolution to handle nested async dependencies
+          resolutionState?.chain.push(depToken);
+          const prevModule = (this.context as any).__resolvingModule;
+          try {
+            (this.context as any).__resolvingModule = currentModule;
+            const result = await this.resolveAsyncInternal(depToken);
+            resolvedDeps.push(result);
+          } finally {
+            resolutionState?.chain.pop();
+            (this.context as any).__resolvingModule = prevModule;
+          }
+        }
       }
     }
 

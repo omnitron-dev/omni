@@ -94,8 +94,8 @@ export class DatabaseManager implements IDatabaseManager {
       await this.createConnectionWithRetry(name, config);
     }
 
-    // Register shutdown handlers
-    this.registerShutdownHandlers();
+    // Note: Shutdown is managed by Application lifecycle via DatabaseModule.onStop()
+    // Do NOT register process signal handlers here - it causes double shutdown
 
     this.initialized = true;
     this.logger.info({ connectionCount: this.connections.size }, 'Database manager initialized');
@@ -595,6 +595,9 @@ export class DatabaseManager implements IDatabaseManager {
       return;
     }
 
+    // Remove from map immediately to prevent double-close
+    this.connections.delete(name);
+
     this.logger.info({ name }, 'Closing database connection');
 
     try {
@@ -634,14 +637,20 @@ export class DatabaseManager implements IDatabaseManager {
    * Close all connections
    */
   async closeAll(): Promise<void> {
+    // Early return if no connections to close
+    if (this.connections.size === 0) {
+      return;
+    }
+
     this.logger.info('Closing all database connections');
 
-    const closePromises = Array.from(this.connections.keys()).map((name) =>
+    // Get keys before iteration since close() removes from map
+    const connectionNames = Array.from(this.connections.keys());
+    const closePromises = connectionNames.map((name) =>
       this.close(name).catch((error) => this.logger.error({ name, error }, 'Error closing connection'))
     );
 
     await Promise.all(closePromises);
-    this.connections.clear();
 
     this.logger.info('All database connections closed');
   }

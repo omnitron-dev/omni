@@ -1,0 +1,57 @@
+{
+  "app": {
+    "name": "priceverse",
+    "version": "2.0.0",
+    "environment": "development",
+    "port": 3000,
+    "host": "0.0.0.0"
+  },
+  "database": {
+    "dialect": "postgres",
+    "host": "localhost",
+    "port": 5432,
+    "database": "priceverse",
+    "user": "postgres",
+    "password": "postgres",
+    "pool": {
+      "min": 2,
+      "max": 20
+    },
+    "ssl": false
+  },
+  "redis": {
+    "host": "localhost",
+    "port": 6379,
+    "db": 0
+  },
+  "exchanges": {
+    "enabled": [
+      "binance",
+      "kraken",
+      "coinbase",
+      "okx",
+      "bybit",
+      "kucoin"
+    ],
+    "maxReconnectAttempts": 10,
+    "reconnectBaseDelay": 1000
+  },
+  "aggregation": {
+    "interval": 10000,
+    "windowSize": 30000,
+    "pairs": [
+      "btc-usd",
+      "xmr-usd",
+      "eth-usd"
+    ]
+  },
+  "logging": {
+    "level": "info",
+    "pretty": false
+  },
+  "health": {
+    "enabled": true,
+    "path": "/health",
+    "timeout": 5000
+  }
+}

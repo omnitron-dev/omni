@@ -8,8 +8,8 @@ import { Token, Container, createToken, InjectionToken, Provider } from '../nexu
 import { Netron, type NetronOptions } from '../netron/index.js';
 import { Errors } from '../errors/index.js';
 
-import { ConfigModule, CONFIG_SERVICE_TOKEN } from '../modules/config/index.js';
-import { LoggerModule, LOGGER_SERVICE_TOKEN } from '../modules/logger/index.js';
+import { ConfigModule, CONFIG_SERVICE_TOKEN, CONFIG_OPTIONS_TOKEN } from '../modules/config/index.js';
+import { LoggerModule, LOGGER_SERVICE_TOKEN, LOGGER_OPTIONS_TOKEN } from '../modules/logger/index.js';
 import type { ILogger, ILoggerModule } from '../modules/logger/index.js';
 import {
   IModule,
@@ -133,14 +133,16 @@ export class Application implements IApplication {
 
     const app = new Application(options);
 
-    // Register core modules properly with forRoot pattern
-    if (!options?.disableCoreModules) {
-      await app.initializeCoreModules();
-    }
-
-    // Register the main module if provided via first overload
+    // Register the main module FIRST if provided via first overload
+    // This allows user's module to configure core modules (Logger, Config) before
+    // the defaults are registered
     if (mainModule) {
       await app.registerModule(mainModule);
+    }
+
+    // Register core modules (will skip if already registered by the main module)
+    if (!options?.disableCoreModules) {
+      await app.initializeCoreModules();
     }
 
     // Auto-discovery mode - automatically find and register @Module decorated classes
@@ -378,6 +380,20 @@ export class Application implements IApplication {
           await this.withTimeout(promise, hook.timeout, `Start hook ${hook.name || 'unnamed'} timed out`);
         } else {
           await promise;
+        }
+      }
+
+      // Auto-expose services decorated with @Service to Netron
+      // This happens after all modules are started and all dependencies are resolved
+      if (this._container.has(NETRON_TOKEN)) {
+        try {
+          const netron = (await this._container.resolveAsync(NETRON_TOKEN)) as Netron;
+          if (netron) {
+            await this.exposeServicesToNetron(netron);
+          }
+        } catch (error) {
+          this._logger?.warn({ error }, 'Failed to auto-expose services to Netron');
+          // Don't fail application start if service exposure fails
         }
       }
 
@@ -1788,7 +1804,8 @@ export class Application implements IApplication {
 
   private async initializeCoreModules(): Promise<void> {
     // 1. First, register Logger module (it initializes immediately)
-    if (!this._container.has(LOGGER_SERVICE_TOKEN)) {
+    // Check for both LOGGER_OPTIONS_TOKEN and LOGGER_SERVICE_TOKEN to avoid duplicates
+    if (!this._container.has(LOGGER_SERVICE_TOKEN) && !this._container.has(LOGGER_OPTIONS_TOKEN)) {
       // Get logger configuration from application config
       const loggerConfig = this._config?.logger || this._config?.logging || {};
       const loggerOptions = {
@@ -1801,8 +1818,10 @@ export class Application implements IApplication {
       // Register Logger module with forRoot pattern
       const loggerModuleConfig = LoggerModule.forRoot(loggerOptions);
       await this.registerDynamicModule(loggerModuleConfig);
+    }
 
-      // Get logger service for internal use
+    // Get logger service for internal use (even if it was registered by main module)
+    if (!this._logger && this._container.has(LOGGER_SERVICE_TOKEN)) {
       try {
         const loggerService = (await this._container.resolveAsync(LOGGER_SERVICE_TOKEN)) as ILoggerModule;
         this._logger = loggerService.logger;
@@ -1813,7 +1832,8 @@ export class Application implements IApplication {
     }
 
     // 2. Then, register Config module if not already registered
-    if (!this._container.has(CONFIG_SERVICE_TOKEN)) {
+    // Check for both CONFIG_OPTIONS_TOKEN and CONFIG_SERVICE_TOKEN to avoid duplicates
+    if (!this._container.has(CONFIG_SERVICE_TOKEN) && !this._container.has(CONFIG_OPTIONS_TOKEN)) {
       // Register Config module with forRoot pattern
       const configOptions = {
         sources: [{ type: 'object' as const, data: this._config }, { type: 'env' as const }],
@@ -2648,6 +2668,161 @@ export class Application implements IApplication {
         setTimeout(() => reject(Errors.timeout(message, timeout)), timeout);
       }),
     ]);
+  }
+
+  /**
+   * Automatically expose services decorated with @Service to Netron
+   * This scans all registered providers in the container and exposes those with the @Service decorator
+   */
+  private async exposeServicesToNetron(netron: Netron): Promise<void> {
+    this._logger?.debug('Auto-exposing services decorated with @Service to Netron');
+
+    // Get the registrations map from the container
+    // Access internal registrations map to scan for service classes
+    const registrations = (this._container as any)['registrations'];
+
+    this._logger?.info(
+      {
+        hasRegistrations: !!registrations,
+        isMap: registrations instanceof Map,
+        size: registrations?.size
+      },
+      'Checking container registrations'
+    );
+
+    if (!registrations || !(registrations instanceof Map)) {
+      this._logger?.warn('Could not access container registrations for service auto-exposure');
+      return;
+    }
+
+    let exposedCount = 0;
+    const servicesToExpose: Array<{ serviceClass: any; serviceMetadata: any }> = [];
+
+    this._logger?.info({ registrationsCount: registrations.size }, 'Scanning container registrations');
+
+    // First pass: collect all services with @Service decorator
+    for (const [token, registration] of registrations.entries()) {
+      try {
+        // Handle both single registration and array of registrations
+        const regs = Array.isArray(registration) ? registration : [registration];
+
+        for (const reg of regs) {
+          // Get the provider class/constructor from the registration
+          let serviceClass: any = null;
+          const provider = reg.provider;
+
+          if (!provider) {
+            continue;
+          }
+
+          if (typeof provider === 'function') {
+            serviceClass = provider;
+          } else if (typeof provider === 'object') {
+            if ('useClass' in provider && provider.useClass) {
+              serviceClass = provider.useClass;
+            } else if ('useValue' in provider && provider.useValue) {
+              // Check if the value is a service instance
+              serviceClass = provider.useValue?.constructor;
+            }
+          }
+
+          if (!serviceClass) {
+            continue;
+          }
+
+          // Check if this class has the @Service decorator metadata
+          const serviceMetadata = Reflect.getMetadata('netron:service', serviceClass);
+          if (!serviceMetadata) {
+            // Log classes without @Service for debugging
+            if (serviceClass.name && serviceClass.name.includes('RpcService')) {
+              this._logger?.info(
+                { className: serviceClass.name, hasMetadata: !!serviceMetadata },
+                'RPC Service class found without @Service metadata'
+              );
+            }
+            continue;
+          }
+
+          this._logger?.info(
+            { serviceName: serviceMetadata.name, className: serviceClass.name },
+            'Found service with @Service decorator'
+          );
+
+          // Add to the list of services to expose
+          servicesToExpose.push({ serviceClass, serviceMetadata });
+        }
+      } catch (error) {
+        this._logger?.warn({ error }, 'Error during service discovery');
+      }
+    }
+
+    this._logger?.info({ servicesToExposeCount: servicesToExpose.length }, 'Services to expose');
+
+    // Second pass: resolve and expose services
+    // This ensures all dependencies are registered before we try to resolve
+    for (const { serviceClass, serviceMetadata } of servicesToExpose) {
+      try {
+        // Resolve the service instance from the container
+        let serviceInstance: any = null;
+        try {
+          // Try to resolve using the class as the token
+          const hasService = this._container.has(serviceClass);
+          this._logger?.info(
+            { serviceName: serviceMetadata.name, className: serviceClass.name, hasService },
+            'Attempting to resolve service'
+          );
+
+          if (hasService) {
+            serviceInstance = await this._container.resolveAsync(serviceClass);
+            this._logger?.info(
+              { serviceName: serviceMetadata.name, resolved: !!serviceInstance },
+              'Service resolution result'
+            );
+          }
+        } catch (error) {
+          this._logger?.info(
+            { serviceName: serviceMetadata.name, error },
+            'Failed to resolve service instance for auto-exposure'
+          );
+          continue;
+        }
+
+        if (!serviceInstance) {
+          this._logger?.info(
+            { serviceName: serviceMetadata.name },
+            'Service instance not found for auto-exposure'
+          );
+          continue;
+        }
+
+        // Expose the service to Netron
+        try {
+          await netron.peer.exposeService(serviceInstance);
+          exposedCount++;
+          this._logger?.info(
+            { serviceName: serviceMetadata.name, version: serviceMetadata.version },
+            'Auto-exposed service to Netron'
+          );
+        } catch (error) {
+          // Check if already exposed
+          if (error instanceof Error && error.message.includes('already exposed')) {
+            this._logger?.debug(
+              { serviceName: serviceMetadata.name },
+              'Service already exposed, skipping'
+            );
+          } else {
+            this._logger?.error(
+              { serviceName: serviceMetadata.name, error },
+              'Failed to expose service to Netron'
+            );
+          }
+        }
+      } catch (error) {
+        this._logger?.warn({ serviceName: serviceMetadata.name, error }, 'Error during service auto-exposure');
+      }
+    }
+
+    this._logger?.info({ exposedCount }, `Auto-exposed ${exposedCount} service(s) to Netron`);
   }
 }
 

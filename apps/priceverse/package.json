@@ -1,0 +1,38 @@
+{
+  "name": "@priceverse/server",
+  "version": "2.0.0",
+  "description": "Titan-based cryptocurrency price aggregation platform",
+  "type": "module",
+  "main": "dist/main.js",
+  "types": "dist/main.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js",
+    "start:prod": "NODE_ENV=production node dist/main.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run test/unit",
+    "test:e2e": "vitest run test/e2e",
+    "test:watch": "vitest",
+    "test:cov": "vitest run --coverage",
+    "lint": "eslint src/**/*.ts",
+    "migrate": "tsx src/database/migrate.ts",
+    "migrate:down": "tsx src/database/migrate.ts --down"
+  },
+  "dependencies": {
+    "@omnitron-dev/titan": "workspace:*",
+    "xml2js": "^0.6.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/xml2js": "^0.4.14",
+    "@vitest/coverage-v8": "^4.0.15",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^4.0.15"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

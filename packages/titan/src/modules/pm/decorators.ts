@@ -283,18 +283,23 @@ export function Actor(options: any = {}): ClassDecorator {
 export function CircuitBreaker(options: ICircuitBreakerOptions): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
     const original = descriptor.value;
-    let failures = 0;
-    let lastFailTime = 0;
-    let state: 'closed' | 'open' | 'half-open' = 'closed';
+    const stateMap = new WeakMap<object, { failures: number; lastFailTime: number; state: 'closed' | 'open' | 'half-open' }>();
 
     descriptor.value = async function (this: any, ...args: any[]) {
       const { threshold = 5, timeout = 60000, fallback } = options;
 
+      // Get or initialize instance-specific state
+      let state = stateMap.get(this);
+      if (!state) {
+        state = { failures: 0, lastFailTime: 0, state: 'closed' };
+        stateMap.set(this, state);
+      }
+
       // Check if circuit is open
-      if (state === 'open') {
-        const timeSinceLastFail = Date.now() - lastFailTime;
+      if (state.state === 'open') {
+        const timeSinceLastFail = Date.now() - state.lastFailTime;
         if (timeSinceLastFail > timeout) {
-          state = 'half-open';
+          state.state = 'half-open';
         } else {
           // Use fallback if available
           if (fallback && typeof (this as any)[fallback] === 'function') {
@@ -308,18 +313,18 @@ export function CircuitBreaker(options: ICircuitBreakerOptions): MethodDecorator
         const result = await original.apply(this, args);
 
         // Success - reset on half-open
-        if (state === 'half-open') {
-          state = 'closed';
-          failures = 0;
+        if (state.state === 'half-open') {
+          state.state = 'closed';
+          state.failures = 0;
         }
 
         return result;
       } catch (error) {
-        failures++;
-        lastFailTime = Date.now();
+        state.failures++;
+        state.lastFailTime = Date.now();
 
-        if (failures >= threshold) {
-          state = 'open';
+        if (state.failures >= threshold) {
+          state.state = 'open';
         }
 
         // Use fallback if available
@@ -330,6 +335,8 @@ export function CircuitBreaker(options: ICircuitBreakerOptions): MethodDecorator
         throw error;
       }
     };
+
+    return descriptor;
   };
 }
 
@@ -356,18 +363,28 @@ export function SelfHeal(options: ISelfHealAction): MethodDecorator {
 export function Idempotent(options: { key: string; ttl?: string }): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
     const original = descriptor.value;
-    const cache = new Map<string, { result: any; timestamp: number }>();
+    const cacheMap = new WeakMap<object, Map<string, { result: any; timestamp: number }>>();
+    const ttl = parseDuration(options.ttl || '1h');
 
     descriptor.value = async function (this: any, ...args: any[]) {
+      // Get or initialize instance-specific cache
+      let cache = cacheMap.get(this);
+      if (!cache) {
+        cache = new Map<string, { result: any; timestamp: number }>();
+        cacheMap.set(this, cache);
+      }
+
       // Extract idempotency key from request
       const key = args[0]?.[options.key] || options.key;
 
       // Check cache
       const cached = cache.get(key);
       if (cached) {
-        const ttl = parseDuration(options.ttl || '1h');
         if (Date.now() - cached.timestamp < ttl) {
           return cached.result;
+        } else {
+          // Clean up expired entry
+          cache.delete(key);
         }
       }
 
@@ -375,8 +392,19 @@ export function Idempotent(options: { key: string; ttl?: string }): MethodDecora
       const result = await original.apply(this, args);
       cache.set(key, { result, timestamp: Date.now() });
 
+      // Cleanup old entries to prevent memory growth
+      const now = Date.now();
+      const entries = Array.from(cache.entries());
+      for (const [cacheKey, entry] of entries) {
+        if (now - entry.timestamp >= ttl) {
+          cache.delete(cacheKey);
+        }
+      }
+
       return result;
     };
+
+    return descriptor;
   };
 }
 

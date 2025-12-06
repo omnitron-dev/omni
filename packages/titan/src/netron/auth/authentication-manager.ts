@@ -110,14 +110,17 @@ export class AuthenticationManager {
    * @returns Promise result
    */
   private async withTimeout<T>(promise: Promise<T>, timeoutMs: number, operation: string): Promise<T> {
-    return Promise.race([
-      promise,
-      new Promise<T>((_, reject) => {
-        setTimeout(() => {
-          reject(new Error(`${operation} timed out after ${timeoutMs}ms`));
-        }, timeoutMs);
-      }),
-    ]);
+    let timer: NodeJS.Timeout;
+    const timeoutPromise = new Promise<T>((_, reject) => {
+      timer = setTimeout(() => {
+        reject(new Error(`${operation} timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+    });
+    try {
+      return await Promise.race([promise, timeoutPromise]);
+    } finally {
+      clearTimeout(timer!);
+    }
   }
 
   /**

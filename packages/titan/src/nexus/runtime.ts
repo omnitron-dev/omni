@@ -110,6 +110,24 @@ export function getRuntimeInfo(): RuntimeInfo {
 }
 
 /**
+ * Reset runtime info for testing.
+ * This function clears the cached runtime information and should be called
+ * during test cleanup to ensure a clean state.
+ *
+ * @internal
+ * @since 0.1.0
+ *
+ * @example
+ * ```typescript
+ * // During test cleanup
+ * resetRuntimeInfo();
+ * ```
+ */
+export function resetRuntimeInfo(): void {
+  runtimeInfo = null;
+}
+
+/**
  * Check if running in Node.js
  */
 export function isNode(): boolean {

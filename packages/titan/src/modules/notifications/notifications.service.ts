@@ -85,8 +85,10 @@ export interface ScheduleResult {
 
 @Injectable()
 export class NotificationService {
-  private deduplicationCache = new Map<string, number>();
+  private deduplicationCache = new Map<string, { timestamp: number }>();
   private scheduleStorage = new Map<string, any>();
+  private readonly DEDUP_MAX_SIZE = 10000;
+  private readonly DEDUP_TTL = 86400000; // 24 hours
 
   constructor(
     private rotif: NotificationManager,
@@ -112,7 +114,7 @@ export class NotificationService {
       const lastSent = this.deduplicationCache.get(dedupKey);
       const ttl = options.deduplicationTTL || 86400000; // 24 hours default
 
-      if (lastSent && Date.now() - lastSent < ttl) {
+      if (lastSent && Date.now() - lastSent.timestamp < ttl) {
         return {
           id: notificationId,
           sent: 0,
@@ -120,7 +122,10 @@ export class NotificationService {
           filtered: Array.isArray(recipients) ? recipients.length : 1,
         };
       }
-      this.deduplicationCache.set(dedupKey, Date.now());
+      this.deduplicationCache.set(dedupKey, { timestamp: Date.now() });
+
+      // Cleanup cache periodically
+      this.cleanupDeduplicationCache();
     }
 
     // Normalize recipients
@@ -349,5 +354,26 @@ export class NotificationService {
 
     // In real implementation, would cancel in Rotif
     return true;
+  }
+
+  /**
+   * Cleanup expired entries from deduplication cache
+   */
+  private cleanupDeduplicationCache(): void {
+    const now = Date.now();
+
+    // Remove expired entries
+    for (const [key, value] of this.deduplicationCache.entries()) {
+      if (now - value.timestamp > this.DEDUP_TTL) {
+        this.deduplicationCache.delete(key);
+      }
+    }
+
+    // Limit cache size to prevent unbounded growth
+    if (this.deduplicationCache.size > this.DEDUP_MAX_SIZE) {
+      const excess = this.deduplicationCache.size - this.DEDUP_MAX_SIZE;
+      const keys = Array.from(this.deduplicationCache.keys()).slice(0, excess);
+      keys.forEach(k => this.deduplicationCache.delete(k));
+    }
   }
 }

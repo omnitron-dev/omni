@@ -326,6 +326,7 @@ export class PluginManager {
       try {
         this.uninstall(pluginName);
       } catch (error) {
+        // TODO: Replace with injectable logger
         console.error(`Failed to uninstall plugin ${pluginName}:`, error);
       }
     }
@@ -451,6 +452,7 @@ export function MetricsPlugin(options: { enabled?: boolean } = {}): Plugin {
 
     install(container: IContainer) {
       if (options.enabled !== false) {
+        // TODO: Replace with injectable logger
         console.log('[Nexus] Metrics plugin installed');
       }
     },
@@ -493,6 +495,7 @@ export function LoggingPlugin(options: { level?: 'debug' | 'info' | 'warn' | 'er
 
     install(container: IContainer) {
       if (level === 'debug' || level === 'info') {
+        // TODO: Replace with injectable logger
         console.log('[Nexus] Logging plugin installed');
       }
     },
@@ -502,6 +505,7 @@ export function LoggingPlugin(options: { level?: 'debug' | 'info' | 'warn' | 'er
         if (level === 'debug') {
           const name =
             typeof token === 'string' ? token : typeof token === 'symbol' ? token.toString() : token?.name || 'unknown';
+          // TODO: Replace with injectable logger
           console.log(`[Nexus] Resolving: ${name}`);
         }
       },
@@ -510,6 +514,7 @@ export function LoggingPlugin(options: { level?: 'debug' | 'info' | 'warn' | 'er
         if (level === 'debug' || level === 'info') {
           const name =
             typeof token === 'string' ? token : typeof token === 'symbol' ? token.toString() : token?.name || 'unknown';
+          // TODO: Replace with injectable logger
           console.log(`[Nexus] Resolved: ${name}`, instance?.constructor?.name || typeof instance);
         }
       },
@@ -522,6 +527,7 @@ export function LoggingPlugin(options: { level?: 'debug' | 'info' | 'warn' | 'er
               ? token.toString()
               : token?.name || 'unknown'
           : 'unknown';
+        // TODO: Replace with injectable logger
         console.error(`[Nexus] Error resolving ${name}:`, error);
       },
     },
@@ -541,6 +547,7 @@ export function PerformancePlugin(options: { threshold?: number } = {}): Plugin 
     description: 'Monitors resolution performance',
 
     install(container: IContainer) {
+      // TODO: Replace with injectable logger
       console.log('[Nexus] Performance plugin installed');
     },
 
@@ -559,6 +566,7 @@ export function PerformancePlugin(options: { threshold?: number } = {}): Plugin 
             typeof token === 'string' ? token : typeof token === 'symbol' ? token.toString() : token?.name || 'unknown';
 
           if (duration > threshold) {
+            // TODO: Replace with injectable logger
             console.warn(`[Nexus] Slow resolution: ${name} took ${duration.toFixed(2)}ms`);
           }
           timings.delete(token);
@@ -588,6 +596,7 @@ export function CachingPlugin(options: { ttl?: number; maxSize?: number } = {}):
     },
 
     install(container: IContainer) {
+      // TODO: Replace with injectable logger
       console.log('[Nexus] Caching plugin installed');
 
       // Periodic cleanup
@@ -673,6 +682,7 @@ export function StrictValidationPlugin(options: { strict?: boolean } = {}): Plug
     description: 'Provider validation with strict mode',
 
     install(container: IContainer) {
+      // TODO: Replace with injectable logger
       console.log('[Nexus] Strict validation plugin installed');
     },
 

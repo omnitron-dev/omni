@@ -249,6 +249,7 @@ export const LoggingMiddleware = createMiddleware({
           ? context.token.toString()
           : context.token?.name || 'unknown';
 
+    // TODO: Replace with injectable logger
     console.log(`[Middleware] Resolving: ${name}`);
     const start = Date.now();
 
@@ -259,19 +260,23 @@ export const LoggingMiddleware = createMiddleware({
       if (result instanceof Promise) {
         return result.then(
           (value) => {
+            // TODO: Replace with injectable logger
             console.log(`[Middleware] Resolved: ${name} in ${Date.now() - start}ms`);
             return value;
           },
           (error) => {
+            // TODO: Replace with injectable logger
             console.error(`[Middleware] Failed: ${name} after ${Date.now() - start}ms`, error);
             throw error;
           }
         );
       }
 
+      // TODO: Replace with injectable logger
       console.log(`[Middleware] Resolved: ${name} in ${Date.now() - start}ms`);
       return result;
     } catch (error) {
+      // TODO: Replace with injectable logger
       console.error(`[Middleware] Failed: ${name} after ${Date.now() - start}ms`, error);
       throw error;
     }
@@ -302,6 +307,7 @@ export const CachingMiddleware = createMiddleware({
     // Check cache
     if (cache.has(key)) {
       const cached = cache.get(key);
+      // TODO: Replace with injectable logger
       console.log(`[Cache] Hit: ${key}`);
       return cached;
     }
@@ -313,12 +319,14 @@ export const CachingMiddleware = createMiddleware({
     if (result instanceof Promise) {
       return result.then((value) => {
         cache.set(key, value);
+        // TODO: Replace with injectable logger
         console.log(`[Cache] Miss: ${key}`);
         return value;
       });
     }
 
     cache.set(key, result);
+    // TODO: Replace with injectable logger
     console.log(`[Cache] Miss: ${key}`);
     return result;
   },
@@ -357,6 +365,7 @@ export const RetryMiddleware = createMiddleware({
             lastError = error;
 
             if (attempt < maxRetries) {
+              // TODO: Replace with injectable logger
               console.log(`[Retry] Attempt ${attempt} failed, retrying in ${retryDelay}ms...`);
               await new Promise((resolve) => setTimeout(resolve, retryDelay));
             }
@@ -552,6 +561,7 @@ export class CircuitBreakerMiddleware implements Middleware {
     // Open circuit if threshold exceeded
     if (failures >= this.threshold) {
       this.state.set(key, 'open');
+      // TODO: Replace with injectable logger
       console.error(`[CircuitBreaker] Opening circuit for ${key} after ${failures} failures`);
     }
   }

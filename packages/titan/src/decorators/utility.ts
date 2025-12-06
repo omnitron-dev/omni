@@ -9,23 +9,30 @@ import { createMethodInterceptor } from './decorator-factory.js';
 /**
  * Timeout decorator - adds timeout to method execution
  */
-export const Timeout = createMethodInterceptor<{ ms: number }>('Timeout', (originalMethod, args, context) => {
+export const Timeout = createMethodInterceptor<{ ms: number }>('Timeout', async (originalMethod, args, context) => {
   const timeoutMs = context.options?.ms || 5000;
+  let timeoutId: NodeJS.Timeout;
 
-  return Promise.race([
-    originalMethod(...args),
-    new Promise((_, reject) =>
-      setTimeout(
-        () =>
-          reject(
-            new TimeoutError(
-              `Method ${context.target.constructor.name}.${String(context.propertyKey)} timed out after ${timeoutMs}ms`
-            )
-          ),
-        timeoutMs
-      )
-    ),
-  ]);
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(
+      () =>
+        reject(
+          new TimeoutError(
+            `Method ${context.target.constructor.name}.${String(context.propertyKey)} timed out after ${timeoutMs}ms`
+          )
+        ),
+      timeoutMs
+    );
+  });
+
+  try {
+    const result = await Promise.race([originalMethod(...args), timeoutPromise]);
+    clearTimeout(timeoutId!);
+    return result;
+  } catch (error) {
+    clearTimeout(timeoutId!);
+    throw error;
+  }
 });
 
 /**

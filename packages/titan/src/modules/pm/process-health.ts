@@ -81,6 +81,18 @@ export class ProcessHealthChecker extends EventEmitter {
   }
 
   /**
+   * Destroy the health checker and clean up all intervals
+   */
+  public destroy(): void {
+    for (const checker of this.checkers.values()) {
+      clearInterval(checker);
+    }
+    this.checkers.clear();
+    this.healthHistory.clear();
+    this.failureCounts.clear();
+  }
+
+  /**
    * Get current health status for a process
    */
   getHealth(processId: string): IHealthStatus | null {

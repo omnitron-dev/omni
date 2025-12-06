@@ -3,6 +3,7 @@
  */
 
 import { InjectionToken, ResolutionContext } from './types.js';
+import { getTokenName } from './token.js';
 
 /**
  * Lifecycle events
@@ -162,6 +163,7 @@ export class LifecycleManager {
         try {
           await hook(eventData);
         } catch (error) {
+          // TODO: Replace with injectable logger
           console.error(`Lifecycle hook error for ${event}:`, error);
         }
       }
@@ -173,6 +175,7 @@ export class LifecycleManager {
         try {
           await observer.onEvent(eventData);
         } catch (error) {
+          // TODO: Replace with injectable logger
           console.error(`Lifecycle observer error for ${event}:`, error);
         }
       }
@@ -202,10 +205,12 @@ export class LifecycleManager {
           const result = hook(eventData);
           if (result instanceof Promise) {
             result.catch((error) => {
+              // TODO: Replace with injectable logger
               console.error(`Async lifecycle hook error for ${event}:`, error);
             });
           }
         } catch (error) {
+          // TODO: Replace with injectable logger
           console.error(`Lifecycle hook error for ${event}:`, error);
         }
       }
@@ -218,10 +223,12 @@ export class LifecycleManager {
           const result = observer.onEvent(eventData);
           if (result instanceof Promise) {
             result.catch((error) => {
+              // TODO: Replace with injectable logger
               console.error(`Async lifecycle observer error for ${event}:`, error);
             });
           }
         } catch (error) {
+          // TODO: Replace with injectable logger
           console.error(`Lifecycle observer error for ${event}:`, error);
         }
       }
@@ -322,7 +329,7 @@ export class PerformanceObserver implements LifecycleObserver {
   events = [LifecycleEvent.BeforeResolve, LifecycleEvent.AfterResolve, LifecycleEvent.ResolveFailed];
 
   onEvent(data: LifecycleEventData): void {
-    const key = this.getKey(data.token);
+    const key = getTokenName(data.token);
 
     if (data.event === LifecycleEvent.BeforeResolve) {
       this.activeTimers.set(key, Date.now());
@@ -334,19 +341,11 @@ export class PerformanceObserver implements LifecycleObserver {
         this.activeTimers.delete(key);
 
         if (duration > 100) {
+          // TODO: Replace with injectable logger
           console.warn(`[Performance] Slow resolution: ${key} took ${duration}ms`);
         }
       }
     }
-  }
-
-  private getKey(token?: InjectionToken<any>): string {
-    if (!token) return 'unknown';
-    if (typeof token === 'string') return token;
-    if (typeof token === 'symbol') return token.toString();
-    if (typeof token === 'function') return token.name;
-    if (token && typeof token === 'object' && 'name' in token) return token.name;
-    return 'unknown';
   }
 
   private updateMetrics(key: string, duration: number): void {
@@ -378,7 +377,7 @@ export class MemoryObserver implements LifecycleObserver {
   events = [LifecycleEvent.InstanceCreated, LifecycleEvent.InstanceDisposed];
 
   onEvent(data: LifecycleEventData): void {
-    const key = this.getKey(data.token);
+    const key = getTokenName(data.token);
 
     if (data.event === LifecycleEvent.InstanceCreated) {
       const count = this.instanceCounts.get(key) || 0;
@@ -394,6 +393,7 @@ export class MemoryObserver implements LifecycleObserver {
     if (Date.now() - this.lastGC > this.gcInterval) {
       const totalInstances = Array.from(this.instanceCounts.values()).reduce((a, b) => a + b, 0);
       if (totalInstances > 1000) {
+        // TODO: Replace with injectable logger
         console.warn(`[Memory] High instance count: ${totalInstances} instances in memory`);
         if (global.gc) {
           global.gc();
@@ -401,15 +401,6 @@ export class MemoryObserver implements LifecycleObserver {
         }
       }
     }
-  }
-
-  private getKey(token?: InjectionToken<any>): string {
-    if (!token) return 'unknown';
-    if (typeof token === 'string') return token;
-    if (typeof token === 'symbol') return token.toString();
-    if (typeof token === 'function') return token.name;
-    if (token && typeof token === 'object' && 'name' in token) return token.name;
-    return 'unknown';
   }
 
   getInstanceCounts(): Map<string, number> {
@@ -441,7 +432,7 @@ export class AuditObserver implements LifecycleObserver {
     const entry = {
       timestamp: data.timestamp,
       event: data.event,
-      token: this.getTokenName(data.token),
+      token: data.token ? getTokenName(data.token) : undefined,
       user: userContext.user,
       metadata: {
         ...data.metadata,
@@ -453,15 +444,6 @@ export class AuditObserver implements LifecycleObserver {
 
     // Could also send to external audit service
     // await this.sendToAuditService(entry);
-  }
-
-  private getTokenName(token?: InjectionToken<any>): string | undefined {
-    if (!token) return undefined;
-    if (typeof token === 'string') return token;
-    if (typeof token === 'symbol') return token.toString();
-    if (typeof token === 'function') return token.name;
-    if (token && typeof token === 'object' && 'name' in token) return token.name;
-    return 'unknown';
   }
 
   getAuditLog(): typeof this.auditLog {

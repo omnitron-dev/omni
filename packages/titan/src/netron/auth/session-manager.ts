@@ -5,6 +5,7 @@
  * @module @omnitron-dev/titan/netron/auth
  */
 
+import { randomUUID } from 'crypto';
 import { Injectable } from '../../decorators/index.js';
 import type { ILogger } from '../../modules/logger/logger.types.js';
 import type { AuthContext } from './types.js';
@@ -405,11 +406,7 @@ export class SessionManager {
    * @returns Session ID
    */
   private generateSessionId(): string {
-    // Generate a random session ID (using crypto-safe random)
-    const timestamp = Date.now().toString(36);
-    const randomPart = Math.random().toString(36).substring(2, 15);
-    const randomPart2 = Math.random().toString(36).substring(2, 15);
-    return `sess_${timestamp}_${randomPart}${randomPart2}`;
+    return `sess_${randomUUID()}`;
   }
 
   /**

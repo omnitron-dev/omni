@@ -182,6 +182,12 @@ export class NotificationManager {
     // Stop active operations
     this.active = false;
 
+    // Clear delay scheduler interval
+    if (this.delayTimeoutId) {
+      clearInterval(this.delayTimeoutId);
+      this.delayTimeoutId = undefined;
+    }
+
     // Clear patterns
     this.activePatterns.clear();
 
@@ -645,8 +651,23 @@ export class NotificationManager {
         payload = payloadStr ? JSON.parse(payloadStr) : null;
       } catch (parseError) {
         this.logger.error(`Failed to parse payload for message ${id}: ${payloadStr}`, parseError);
-        // Acknowledge the message to prevent it from being stuck
-        await this.runLuaScript('ack-message', [stream], [group, id, '1']);
+        // Move unparseable message to DLQ instead of silently acknowledging
+        const errorMessage = parseError instanceof Error ? parseError.message : 'Failed to parse message payload';
+        await this.runLuaScript(
+          'move-to-dlq',
+          [stream, 'rotif:dlq'],
+          [
+            group,
+            id,
+            channel,
+            payloadStr,
+            errorMessage,
+            timestamp.toString(),
+            attempt.toString(),
+            exactlyOnce ? 'true' : 'false',
+            dedupTTL ?? '3600',
+          ]
+        );
         return;
       }
 

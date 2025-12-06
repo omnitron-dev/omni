@@ -37,7 +37,8 @@ export function getLoopKey(stream: string, group: string): string {
 }
 
 export function splitLoopKey(loopKey: string): [string, string] {
-  return loopKey.split('::') as [string, string];
+  const parts = loopKey.split(':');
+  return [parts[0], parts.slice(1).join(':')] as [string, string];
 }
 
 /**

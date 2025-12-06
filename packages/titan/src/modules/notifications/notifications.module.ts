@@ -109,6 +109,15 @@ export interface NotificationModuleAsyncOptions {
 @Module()
 export class TitanNotificationsModule {
   name = 'TitanNotificationsModule';
+  private static redisClient: Redis | null = null;
+
+  async onModuleDestroy(): Promise<void> {
+    // Clean up Redis client when module is destroyed
+    if (TitanNotificationsModule.redisClient) {
+      await TitanNotificationsModule.redisClient.quit();
+      TitanNotificationsModule.redisClient = null;
+    }
+  }
 
   static forRoot(options: NotificationModuleOptions = {}): DynamicModule {
     const providers: Array<[InjectionToken<any>, ProviderDefinition<any>]> = [];
@@ -123,6 +132,9 @@ export class TitanNotificationsModule {
       db: options.redis?.db || 0,
       password: options.redis?.password,
     });
+
+    // Store reference for cleanup
+    TitanNotificationsModule.redisClient = redis;
 
     providers.push(['REDIS_CLIENT' as any, { useValue: redis }]);
 
@@ -295,13 +307,17 @@ export class TitanNotificationsModule {
     providers.push([
       'REDIS_CLIENT' as any,
       {
-        useFactory: (moduleOptions: NotificationModuleOptions) =>
-          new Redis({
+        useFactory: (moduleOptions: NotificationModuleOptions) => {
+          const redis = new Redis({
             host: moduleOptions.redis?.host || 'localhost',
             port: moduleOptions.redis?.port || 6379,
             db: moduleOptions.redis?.db || 0,
             password: moduleOptions.redis?.password,
-          }),
+          });
+          // Store reference for cleanup
+          TitanNotificationsModule.redisClient = redis;
+          return redis;
+        },
         inject: [NOTIFICATION_MODULE_OPTIONS],
       },
     ]);

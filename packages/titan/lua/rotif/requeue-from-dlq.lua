@@ -24,7 +24,7 @@ for _, entry in ipairs(entries) do
     end
   end
 
-  if channel and payload then
+  if channel and payload and streamKey and streamKey ~= "" then
     redis.call('XADD', streamKey, '*',
       'channel', channel,
       'payload', payload,

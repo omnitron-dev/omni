@@ -611,10 +611,12 @@ export function CachingPlugin(options: { ttl?: number; maxSize?: number } = {}):
     },
 
     uninstall(container: IContainer) {
+      // Clear the cleanup interval to prevent memory leaks
       if (interval) {
         clearInterval(interval);
         interval = null;
       }
+      // Clear the cache map
       cache.clear();
     },
 
@@ -636,9 +638,13 @@ export function CachingPlugin(options: { ttl?: number; maxSize?: number } = {}):
       },
 
       onDispose: () => {
+        // Ensure interval is cleared during disposal to prevent memory leaks
         if (interval) {
           clearInterval(interval);
+          interval = null;
         }
+        // Clear the cache to free up memory
+        cache.clear();
       },
     },
   });

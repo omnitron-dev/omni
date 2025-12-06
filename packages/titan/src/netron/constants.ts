@@ -71,3 +71,12 @@ export const CONNECT_TIMEOUT = 5000;
  * @constant {number} REQUEST_TIMEOUT
  */
 export const REQUEST_TIMEOUT = 5000;
+
+/**
+ * The maximum number of events that can be queued per event ID.
+ * This prevents unbounded memory growth from potential DoS attacks
+ * or misbehaving clients that continuously emit events.
+ *
+ * @constant {number} MAX_EVENT_QUEUE_SIZE
+ */
+export const MAX_EVENT_QUEUE_SIZE = 1000;

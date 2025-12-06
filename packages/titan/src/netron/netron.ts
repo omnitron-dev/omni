@@ -7,7 +7,16 @@
 
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 
-import type { INetron, ILocalPeer, IPeer, ITransportServerWithServices, ServiceMetadataWithContract, ServiceContract, NetronOptionsExtended, RemotePeerSocket } from './types.js';
+import type {
+  INetron,
+  ILocalPeer,
+  IPeer,
+  ITransportServerWithServices,
+  ServiceMetadataWithContract,
+  ServiceContract,
+  NetronOptionsExtended,
+  RemotePeerSocket,
+} from './types.js';
 import type { NetronOptions, TransportConfig } from './types.js';
 import { LocalPeer } from './local-peer.js';
 import { RemotePeer } from './remote-peer.js';
@@ -18,7 +27,12 @@ import { Task, TaskManager } from './task-manager.js';
 import type { ILogger } from '../modules/logger/logger.types.js';
 import { Errors, NetronErrors } from '../errors/index.js';
 // import { ServiceInfo, ServiceDiscovery } from './service-discovery/index.js';
-import { CONNECT_TIMEOUT, NETRON_EVENT_PEER_CONNECT, NETRON_EVENT_PEER_DISCONNECT } from './constants.js';
+import {
+  CONNECT_TIMEOUT,
+  NETRON_EVENT_PEER_CONNECT,
+  NETRON_EVENT_PEER_DISCONNECT,
+  MAX_EVENT_QUEUE_SIZE,
+} from './constants.js';
 import { ensureStreamReferenceRegistered } from './packet/serializer.js';
 
 // Import transport layer
@@ -212,8 +226,6 @@ export class Netron extends EventEmitter implements INetron {
    * @private
    */
   private transportServerConfigs: Map<string, TransportConfig> = new Map();
-
-
 
   /**
    * Creates a new Netron instance.
@@ -466,7 +478,9 @@ export class Netron extends EventEmitter implements INetron {
             continue; // Skip this service for this transport
           }
 
-          const contract = (meta as ServiceMetadataWithContract).contract || (stub.instance?.constructor as { contract?: ServiceContract })?.contract;
+          const contract =
+            (meta as ServiceMetadataWithContract).contract ||
+            (stub.instance?.constructor as { contract?: ServiceContract })?.contract;
           serverWithServices.registerService(meta.name, stub.definition, contract);
         }
       }
@@ -1002,6 +1016,7 @@ export class Netron extends EventEmitter implements INetron {
    * 2. Implements a timeout mechanism for event processing
    * 3. Handles error cases gracefully
    * 4. Ensures proper cleanup of event queues
+   * 5. Prevents unbounded queue growth with a configurable maximum size
    *
    * The method maintains event order and prevents race conditions by processing
    * events in a first-in-first-out manner with a maximum processing time of 5 seconds.
@@ -1010,10 +1025,21 @@ export class Netron extends EventEmitter implements INetron {
    * @param {string} id - The unique identifier for this event sequence
    * @param {any} data - The data payload to be emitted with the event
    * @returns {Promise<void>} A promise that resolves when event processing is complete
-   * @throws {Error} If event processing times out or fails
+   * @throws {Error} If event processing times out, fails, or queue is full
    */
   async emitSpecial(event: string, id: string, data: any) {
     const events = this.ownEvents.get(id) || [];
+
+    // Prevent unbounded queue growth (DoS protection)
+    if (events.length >= MAX_EVENT_QUEUE_SIZE) {
+      this.logger.error(
+        { event, id, queueSize: events.length },
+        `Event queue limit exceeded (${MAX_EVENT_QUEUE_SIZE}), dropping oldest event`
+      );
+      // Drop the oldest event to make room
+      events.shift();
+    }
+
     events.push({ name: event, data });
     this.ownEvents.set(id, events);
 
@@ -1027,16 +1053,21 @@ export class Netron extends EventEmitter implements INetron {
         break;
       }
       try {
-        const timeoutPromise = new Promise((_, reject) => {
-          const timeoutId = setTimeout(() => {
+        let timeoutId: NodeJS.Timeout | undefined;
+
+        const timeoutPromise = new Promise<void>((_, reject) => {
+          timeoutId = setTimeout(() => {
             reject(Errors.timeout('Event emission: ' + eventData.name, 5000));
           }, 5000);
-          this.emitParallel(eventData.name, eventData.data)
-            .finally(() => clearTimeout(timeoutId))
-            .catch(reject);
         });
 
-        await timeoutPromise;
+        const emitPromise = this.emitParallel(eventData.name, eventData.data);
+
+        await Promise.race([emitPromise, timeoutPromise]).finally(() => {
+          if (timeoutId !== undefined) {
+            clearTimeout(timeoutId);
+          }
+        });
       } catch (err: any) {
         this.logger.error(`Event emit error: ${err.message}`);
       }

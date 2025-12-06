@@ -468,6 +468,32 @@ export function getContextManager(): ContextManager {
 }
 
 /**
+ * Reset the global context manager.
+ * This method clears all strategies and contexts, and should be called
+ * during container disposal to prevent memory leaks.
+ *
+ * @internal
+ * @since 0.1.0
+ *
+ * @example
+ * ```typescript
+ * // During container disposal
+ * await container.dispose();
+ * resetContextManager(); // Clean up global context manager
+ * ```
+ */
+export function resetContextManager(): void {
+  if (globalContextManager) {
+    // Clear all strategies
+    globalContextManager['strategies'].clear();
+    // Clear global context
+    globalContextManager['globalContext'].clear();
+    // Reset the singleton
+    globalContextManager = null;
+  }
+}
+
+/**
  * Get current auth context from the execution context
  * This allows business logic to access authentication information
  *

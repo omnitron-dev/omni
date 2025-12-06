@@ -305,7 +305,18 @@ export class ConsulServiceDiscovery implements ServiceDiscovery {
   }
 
   /**
-   * Stop health checking and clean up resources
+   * Stop health checking and clean up resources.
+   * This method clears the health check interval to prevent memory leaks.
+   * Should be called when the service discovery is no longer needed.
+   *
+   * @since 0.1.0
+   *
+   * @example
+   * ```typescript
+   * const discovery = new ConsulServiceDiscovery();
+   * // ... use discovery ...
+   * discovery.stop(); // Clean up interval
+   * ```
    */
   stop(): void {
     if (this.healthCheckInterval) {
@@ -315,12 +326,37 @@ export class ConsulServiceDiscovery implements ServiceDiscovery {
   }
 
   /**
-   * Close the service discovery connection
+   * Close the service discovery connection and clean up all resources.
+   * This method stops health checking, clears services and watchers to prevent memory leaks.
+   * Should be called during application shutdown or container disposal.
+   *
+   * @since 0.1.0
+   *
+   * @example
+   * ```typescript
+   * const discovery = new ConsulServiceDiscovery();
+   * // ... use discovery ...
+   * await discovery.close(); // Complete cleanup
+   * ```
    */
   async close(): Promise<void> {
-    // Clean up any resources
+    // Stop health checking first to clear the interval
+    this.stop();
+    // Clean up all cached data
     this.services.clear();
     this.watchers.clear();
+  }
+
+  /**
+   * Destructor-like cleanup method.
+   * Ensures proper cleanup even if close() is not explicitly called.
+   * This is useful for integration with DI containers that support lifecycle hooks.
+   *
+   * @internal
+   * @since 0.1.0
+   */
+  async dispose(): Promise<void> {
+    await this.close();
   }
 }
 

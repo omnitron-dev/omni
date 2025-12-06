@@ -8,6 +8,14 @@ import type { ExecutionContext } from './types.js';
 import { Errors } from '../../errors/index.js';
 
 /**
+ * Maximum time (in milliseconds) a request can wait in the queue before timing out.
+ * This prevents queued requests from waiting indefinitely if the queue processor stops.
+ *
+ * @constant {number} MAX_QUEUE_TIMEOUT_MS
+ */
+const MAX_QUEUE_TIMEOUT_MS = 30000; // 30 seconds
+
+/**
  * Rate limit tier configuration
  */
 export interface RateLimitTier {
@@ -139,6 +147,8 @@ interface QueuedRequest {
   priority: number;
   timestamp: number;
   resolve: (allowed: boolean) => void;
+  reject: (error: Error) => void;
+  timeoutHandle?: NodeJS.Timeout;
 }
 
 /**
@@ -388,7 +398,8 @@ export class RateLimiter {
   }
 
   /**
-   * Destroy the rate limiter (cleanup resources)
+   * Destroy the rate limiter (cleanup resources).
+   * Clears all intervals, timeout handles, and queued requests.
    */
   destroy(): void {
     if (this.queueInterval) {
@@ -397,6 +408,16 @@ export class RateLimiter {
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);
     }
+
+    // Clear all pending timeout handles in the queue
+    for (const request of this.queue) {
+      if (request.timeoutHandle !== undefined) {
+        clearTimeout(request.timeoutHandle);
+      }
+      // Reject pending requests
+      request.reject(new Error('Rate limiter destroyed'));
+    }
+
     this.state.clear();
     this.queue.length = 0;
     this.logger.debug('Rate limiter destroyed');
@@ -563,17 +584,37 @@ export class RateLimiter {
   }
 
   /**
-   * Enqueue a request
+   * Enqueue a request with timeout protection.
+   * Queued requests will be rejected if not processed within MAX_QUEUE_TIMEOUT_MS.
+   *
+   * @param key - The rate limit key
+   * @param tier - The tier configuration
+   * @returns Promise that resolves when processed or rejects on timeout
    */
   private enqueue(key: string, tier: RateLimitTier): Promise<boolean> {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const request: QueuedRequest = {
         key,
         tier: tier.name,
         priority: tier.priority ?? 0,
         timestamp: Date.now(),
         resolve,
+        reject,
       };
+
+      // Set timeout to prevent indefinite waiting
+      request.timeoutHandle = setTimeout(() => {
+        // Remove from queue if still present
+        const index = this.queue.indexOf(request);
+        if (index !== -1) {
+          this.queue.splice(index, 1);
+          this.logger.warn(
+            { key, tier: tier.name, queueTime: Date.now() - request.timestamp },
+            'Queued request timed out'
+          );
+          reject(Errors.timeout(`Rate limit queue for key ${key}`, MAX_QUEUE_TIMEOUT_MS));
+        }
+      }, MAX_QUEUE_TIMEOUT_MS);
 
       // Insert in priority order (higher priority first)
       const insertIndex = this.queue.findIndex((q) => q.priority < request.priority);
@@ -601,7 +642,8 @@ export class RateLimiter {
   }
 
   /**
-   * Process queued requests
+   * Process queued requests.
+   * Clears timeout handles and removes processed requests from the queue.
    */
   private async processQueue(): Promise<void> {
     if (this.queue.length === 0) {
@@ -615,6 +657,11 @@ export class RateLimiter {
       try {
         const result = await this.check(request.key, request.tier);
         if (result.allowed) {
+          // Clear timeout since we're processing the request
+          if (request.timeoutHandle !== undefined) {
+            clearTimeout(request.timeoutHandle);
+          }
+
           // Mark as consumed
           const state = this.state.get(request.key);
           if (state) {
@@ -628,6 +675,11 @@ export class RateLimiter {
           this.logger.debug({ key: request.key, tier: request.tier }, 'Queued request processed');
         }
       } catch (error) {
+        // Clear timeout on error
+        if (request.timeoutHandle !== undefined) {
+          clearTimeout(request.timeoutHandle);
+        }
+
         this.logger.error({ error, key: request.key }, 'Error processing queued request');
         request.resolve(false);
         processed.push(request);

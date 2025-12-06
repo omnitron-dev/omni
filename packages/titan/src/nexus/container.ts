@@ -312,23 +312,28 @@ export class Container implements IContainer {
       ? { chain: [], resolved: new Map(), id: generateResolutionId() }
       : this.context.resolutionState!;
 
-    // Store previous context and create new one with resolution state
-    const previousContext = this.context;
-    this.context = {
+    // Create isolated context for this resolution WITHOUT mutating this.context
+    const localContext: ResolutionContext = {
       ...this.context,
       resolutionState,
       ...(context ? { resolveContext: context } : {}),
     };
 
+    // Store previous context to restore in finally
+    const previousContext = this.context;
+
     try {
+      // Set local context for nested calls within this resolution
+      this.context = localContext;
+
       // Emit before resolve event
       this.lifecycleManager.emitSync(LifecycleEvent.BeforeResolve, {
         token,
-        context: this.context,
+        context: localContext,
       });
 
       // Execute plugin hooks
-      this.pluginManager.executeHooksSync('beforeResolve', token, this.context);
+      this.pluginManager.executeHooksSync('beforeResolve', token, localContext);
 
       // Check for circular dependency using isolated state
       if (resolutionState.chain.includes(token)) {
@@ -347,10 +352,10 @@ export class Container implements IContainer {
 
       // Create middleware context
       const middlewareContext: MiddlewareContext = {
-        ...this.context,
+        ...localContext,
         token,
         container: this,
-        metadata: this.context.metadata || {},
+        metadata: localContext.metadata || {},
         startTime: Date.now(),
       };
 
@@ -358,7 +363,7 @@ export class Container implements IContainer {
       let result = this.middlewarePipeline.executeSync(middlewareContext, () => this.resolveInternal(token));
 
       // Execute afterResolve hooks which may modify the result
-      result = this.pluginManager.executeHooksSync('afterResolve', token, result, this.context);
+      result = this.pluginManager.executeHooksSync('afterResolve', token, result, localContext);
 
       // Cache the result in this resolution tree
       resolutionState.resolved.set(token, result);
@@ -367,7 +372,7 @@ export class Container implements IContainer {
       this.lifecycleManager.emitSync(LifecycleEvent.AfterResolve, {
         token,
         instance: result,
-        context: this.context,
+        context: localContext,
       });
 
       return result;
@@ -376,11 +381,11 @@ export class Container implements IContainer {
       this.lifecycleManager.emitSync(LifecycleEvent.ResolveFailed, {
         token,
         error,
-        context: this.context,
+        context: localContext,
       });
 
       // Execute plugin error hooks
-      this.pluginManager.executeHooksSync('onError', error, token, this.context);
+      this.pluginManager.executeHooksSync('onError', error, token, localContext);
 
       throw error;
     } finally {
@@ -389,7 +394,7 @@ export class Container implements IContainer {
         resolutionState.chain.pop();
       }
 
-      // Restore previous context (removes resolutionState for top-level calls)
+      // Restore previous context
       this.context = previousContext;
     }
   }
@@ -604,27 +609,32 @@ export class Container implements IContainer {
       ? { chain: [], resolved: new Map(), id: generateResolutionId() }
       : this.context.resolutionState!;
 
-    // Store previous context and create new one with resolution state
-    const previousContext = this.context;
-    this.context = {
+    // Create isolated context for this resolution WITHOUT mutating this.context
+    const localContext: ResolutionContext = {
       ...this.context,
       resolutionState,
     };
 
     // Create middleware context early so it's available in catch blocks
     const middlewareContext: MiddlewareContext = {
-      ...this.context,
+      ...localContext,
       token,
       container: this,
-      metadata: this.context.metadata || {},
+      metadata: localContext.metadata || {},
       startTime: Date.now(),
     };
 
+    // Store previous context to restore in finally
+    const previousContext = this.context;
+
     try {
+      // Set local context for nested calls within this resolution
+      this.context = localContext;
+
       // Emit before resolve event
       this.lifecycleManager.emitSync(LifecycleEvent.BeforeResolve, {
         token,
-        context: this.context,
+        context: localContext,
       });
 
       // Execute plugin hooks (async for async resolution)
@@ -1416,6 +1426,20 @@ export class Container implements IContainer {
     this.scopedInstances.clear();
     this.modules.clear();
     this.moduleLoaderService.clear();
+
+    // Clean up global singletons to prevent memory leaks
+    // Import these at the top if not already imported
+    const { resetContextManager } = await import('./context.js');
+    const { TokenRegistry, clearTokenCache } = await import('./token.js');
+
+    // Reset global context manager
+    resetContextManager();
+
+    // Clear module-level token cache
+    clearTokenCache();
+
+    // Reset token registry singleton
+    TokenRegistry.reset();
 
     this.disposed = true;
   }

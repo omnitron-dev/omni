@@ -104,9 +104,10 @@ export class NotificationManager {
       if (this.config.dlqCleanup?.enabled) {
         this.dlqManager.startAutoCleanup();
       }
+      // Subscribe to pattern updates after Lua scripts are loaded
+      this.subscribeToPatternUpdates();
       this.initializationDefer.resolve?.(true);
     });
-    this.subscribeToPatternUpdates();
   }
 
   async loadLuaScripts() {
@@ -190,10 +191,12 @@ export class NotificationManager {
     // Clear subscriptions
     this.subscriptions.clear();
 
-    // Close Redis connection if needed
-    if (this.redis) {
-      await this.redis.quit();
-    }
+    // Close all Redis connections
+    await Promise.all([
+      this.redis?.quit(),
+      this.subClient?.quit(),
+      this.dlqClient?.quit()
+    ].filter(Boolean));
   }
 
   /**
@@ -607,6 +610,7 @@ export class NotificationManager {
       });
 
       this.subClient.on('connect', () => {
+        this.syncPatterns();
         this.logger.info('Pub/Sub subscriber connected');
       });
     };
@@ -682,8 +686,8 @@ export class NotificationManager {
       }
 
       for (const sub of subs) {
-        // Double-check if subscription is still active before processing
-        if (sub.isPaused) {
+        // Verify subscription is still valid before processing
+        if (!subscriptions.has(sub) || sub.isPaused) {
           continue;
         }
 
@@ -712,6 +716,8 @@ export class NotificationManager {
               'Max retries exceeded',
               msg.timestamp.toString(),
               msg.attempt.toString(),
+              exactlyOnce ? 'true' : 'false',
+              dedupTTL ?? '3600',
             ]
           );
           // Record failure when message moved to DLQ
@@ -763,7 +769,17 @@ export class NotificationManager {
             await this.runLuaScript(
               'move-to-dlq',
               [stream, 'rotif:dlq'],
-              [group, msg.id, channel, payloadStr, errorMessage, msg.timestamp.toString(), msg.attempt.toString()]
+              [
+                group,
+                msg.id,
+                channel,
+                payloadStr,
+                errorMessage,
+                msg.timestamp.toString(),
+                msg.attempt.toString(),
+                exactlyOnce ? 'true' : 'false',
+                dedupTTL ?? '3600',
+              ]
             );
             // Record failure when message moved to DLQ
             sub.statsTracker?.recordFailure();

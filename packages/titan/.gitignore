@@ -1,0 +1,40 @@
+# Build artifacts
+dist/
+*.tsbuildinfo
+
+# Test coverage
+coverage/
+
+# Node modules (if not using workspace hoisting)
+node_modules/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Redis test info (generated during test setup)
+.redis-test-info.json
+
+# SQLite in-memory database temp files
+# These are created when using file: URI with mode=memory or cache=shared
+# but the filesystem incorrectly creates literal files with these names
+file:*
+file\:*
+
+# Specific patterns for SQLite temp files
+file::memory:*
+file:memdb*
+file:sharedmem_*
+file:test_*
+
+# Jest cache
+.jest/
+
+# Benchmark results
+benchmark/results/

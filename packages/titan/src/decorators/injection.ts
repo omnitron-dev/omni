@@ -76,22 +76,44 @@ export function Value(path: string, defaultValue?: any) {
 
 /**
  * Lazy injection - delays resolution until first use
+ *
+ * @remarks
+ * This decorator uses a Symbol-keyed property to store the resolved value per-instance,
+ * preventing shared state bugs across multiple instances.
+ *
+ * @example
+ * ```typescript
+ * class MyService {
+ *   @Lazy(() => DatabaseToken)
+ *   private db!: Database;
+ *
+ *   async query() {
+ *     // Database is resolved on first access, not at construction
+ *     return this.db.query('SELECT * FROM users');
+ *   }
+ * }
+ * ```
  */
 export function Lazy<T>(tokenFactory: () => InjectionToken<T>) {
   return function (target: any, propertyKey: string) {
-    let cachedValue: T;
-    let resolved = false;
+    // Use a unique Symbol to store the cached value on each instance
+    const cacheSymbol = Symbol(`lazy-${propertyKey}`);
 
     Object.defineProperty(target, propertyKey, {
       get() {
-        if (!resolved) {
+        // Check if this instance already has a cached value
+        if (!(cacheSymbol in this)) {
           const container = Reflect.getMetadata('nexus:container', this);
-          if (container) {
-            cachedValue = container.resolve(tokenFactory());
-            resolved = true;
+          if (!container) {
+            throw new Error(
+              `@Lazy decorator requires a container to be set. ` +
+              `Ensure the class is instantiated through the DI container.`
+            );
           }
+          // Store the resolved value using the Symbol key on this instance
+          this[cacheSymbol] = container.resolve(tokenFactory());
         }
-        return cachedValue;
+        return this[cacheSymbol];
       },
       enumerable: true,
       configurable: true,

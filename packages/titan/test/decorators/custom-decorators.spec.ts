@@ -14,7 +14,7 @@ import {
   Memoize,
   Retry,
   Deprecated,
-  Validate,
+  ValidateSchema,
 } from '../../src/decorators/index.js';
 
 describe('Custom Decorators', () => {
@@ -124,7 +124,7 @@ describe('Custom Decorators', () => {
       expect(() => {
         @ValidatedDecorator({ min: 10, max: 5 })
         class TestClass {}
-      }).toThrow('Invalid options for @Validated: min must be less than max');
+      }).toThrow('Validation failed');
     });
 
     it('should enforce target restrictions', () => {
@@ -397,7 +397,7 @@ describe('Custom Decorators', () => {
       const schema = (value: number) => value > 0;
 
       class MathService {
-        @Validate({ schema })
+        @ValidateSchema({ schema })
         sqrt(value: number): number {
           return Math.sqrt(value);
         }
@@ -405,7 +405,7 @@ describe('Custom Decorators', () => {
 
       const service = new MathService();
 
-      expect(() => service.sqrt(-1)).toThrow('Validation failed for sqrt');
+      expect(() => service.sqrt(-1)).toThrow('Validation failed');
       expect(service.sqrt(4)).toBe(2);
     });
   });

@@ -50,7 +50,7 @@ export {
   Memoize,
   Retry,
   Deprecated,
-  Validate,
+  ValidateSchema, // Renamed from Validate to avoid conflict with validation.ts
 } from './decorator-factory.js';
 
 // ============================================================================
@@ -139,3 +139,39 @@ export * from './lifecycle.js';
  * @since 0.1.0
  */
 export * from './utility.js';
+
+// ============================================================================
+// Validation Decorators
+// ============================================================================
+
+/**
+ * Validation decorators for type-safe input/output validation using Zod.
+ *
+ * @stable
+ * @since 0.1.0
+ *
+ * @remarks
+ * These are the recommended validation decorators. They provide type-safe
+ * validation using Zod schemas. Use `@Validate` from this module instead
+ * of the deprecated `@ValidateSchema` from decorator-factory.
+ */
+export {
+  Contract,
+  Validate,
+  NoValidation,
+  WithValidationOptions,
+  ValidationBatch,
+  ValidateInput,
+  ValidateOutput,
+  ValidateStream,
+  ValidationSchemas,
+  ValidationPresets,
+  type ValidationBatchOptions,
+  type ContractType,
+  type MethodContract,
+  type ValidationOptions,
+  type ValidationOptionsType,
+  contract,
+  contractBuilder,
+  Contracts,
+} from './validation.js';

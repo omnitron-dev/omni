@@ -181,13 +181,18 @@ export class ServiceStub {
    *
    * @param {any} obj - Value to process
    * @returns {any} Processed value
+   * @throws {Error} If peer not found for stream reference
    * @private
    */
   private processValue(obj: any) {
     if (isServiceReference(obj)) {
       return this.peer.queryInterfaceByDefId(obj.defId);
     } else if (isNetronStreamReference(obj)) {
-      return StreamReference.to(obj, this.peer.netron.peers.get(obj.peerId)!);
+      const peer = this.peer.netron.peers.get(obj.peerId);
+      if (!peer) {
+        throw new Error(`Peer not found for stream reference: ${obj.peerId}`);
+      }
+      return StreamReference.to(obj, peer);
     }
     return obj;
   }

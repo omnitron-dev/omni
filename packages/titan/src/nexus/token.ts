@@ -682,9 +682,58 @@ export class TokenRegistry {
   }
 
   /**
-   * Clear all registered tokens
+   * Clear all registered tokens.
+   * This method should be called during container disposal to prevent memory leaks.
+   *
+   * @since 0.1.0
+   *
+   * @example
+   * ```typescript
+   * // During container disposal
+   * const registry = TokenRegistry.getInstance();
+   * registry.clear();
+   * ```
    */
   clear(): void {
     this.tokens.clear();
   }
+
+  /**
+   * Reset the singleton instance and clear all registered tokens.
+   * This method should be called during container disposal to prevent memory leaks.
+   *
+   * @internal
+   * @since 0.1.0
+   *
+   * @example
+   * ```typescript
+   * // During container disposal
+   * TokenRegistry.reset();
+   * ```
+   */
+  static reset(): void {
+    if (TokenRegistry.instance) {
+      TokenRegistry.instance.clear();
+      // Reset singleton instance for complete cleanup
+      TokenRegistry.instance = null as any;
+    }
+  }
+}
+
+/**
+ * Clear the module-level token registry cache.
+ * This function clears the internal token cache used by createToken().
+ * Should be called during container disposal to prevent memory leaks.
+ *
+ * @internal
+ * @since 0.1.0
+ *
+ * @example
+ * ```typescript
+ * // During container disposal
+ * clearTokenCache();
+ * ```
+ */
+export function clearTokenCache(): void {
+  tokenRegistry.clear();
 }

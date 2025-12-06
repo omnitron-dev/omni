@@ -134,6 +134,48 @@ function cleanupNativeRedisData() {
   }
 }
 
+/**
+ * Clean up SQLite in-memory database temp files
+ * These files are created when using file: URI with mode=memory or :memory:
+ * but the filesystem creates literal files with these names
+ */
+function cleanupSqliteTempFiles() {
+  const fs = require('fs');
+  const cwd = process.cwd();
+
+  try {
+    const entries = fs.readdirSync(cwd);
+
+    // Patterns for SQLite temp files that shouldn't be created
+    const patterns = [
+      /^file:/,  // Any file starting with 'file:'
+    ];
+
+    for (const entry of entries) {
+      // Check if it matches any pattern
+      const shouldDelete = patterns.some(pattern => pattern.test(entry));
+
+      if (shouldDelete) {
+        const fullPath = join(cwd, entry);
+        try {
+          const stat = fs.statSync(fullPath);
+          if (stat.isFile()) {
+            fs.unlinkSync(fullPath);
+            console.log(`[Global Teardown] Removed SQLite temp file: ${entry}`);
+          } else if (stat.isDirectory()) {
+            rmSync(fullPath, { recursive: true, force: true });
+            console.log(`[Global Teardown] Removed SQLite temp dir: ${entry}`);
+          }
+        } catch (err) {
+          console.warn(`[Global Teardown] Failed to remove ${entry}:`, err.message);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[Global Teardown] Error cleaning SQLite temp files:', err.message);
+  }
+}
+
 module.exports = async function globalTeardown() {
   console.log('[Global Teardown] Cleaning up Redis resources...');
 
@@ -190,6 +232,9 @@ module.exports = async function globalTeardown() {
     } catch {
       // Ignore if file doesn't exist
     }
+
+    // Clean up SQLite temp files created during tests
+    cleanupSqliteTempFiles();
 
     console.log('[Global Teardown] Cleanup complete');
   } catch (error) {

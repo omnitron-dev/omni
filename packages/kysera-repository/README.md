@@ -10,7 +10,7 @@
 
 | Metric | Value |
 |--------|-------|
-| **Version** | 0.3.0 |
+| **Version** | 0.4.1 |
 | **Bundle Size** | 4.93 KB (minified) |
 | **Test Coverage** | 99 tests passing |
 | **Dependencies** | @kysera/core (workspace) |
@@ -943,26 +943,85 @@ const page2 = await userRepo.paginate({
 const totalPages = Math.ceil(page1.total / page1.limit)
 ```
 
-#### Cursor-based Pagination
+#### Cursor-based Pagination (Keyset Pagination)
+
+**True keyset pagination with O(1) performance and cursor stability.**
 
 ```typescript
-// First page
+// First page (default: ordered by 'id' ascending)
 const page1 = await userRepo.paginateCursor({
-  limit: 20,
-  orderBy: 'id'
+  limit: 20
 })
 
-console.log(`Items: ${page1.items.length}`)
-console.log(`Next cursor: ${page1.nextCursor}`)
+console.log(`Items: ${page1.items.length}`)          // 20
+console.log(`Has more: ${page1.hasMore}`)            // true/false
+console.log(`Next cursor:`, page1.nextCursor)        // { value: 20, id: 20 }
 
 // Next page
 if (page1.nextCursor) {
   const page2 = await userRepo.paginateCursor({
     limit: 20,
-    cursor: page1.nextCursor,
-    orderBy: 'id'
+    cursor: page1.nextCursor
   })
 }
+
+// Custom ordering (e.g., by created_at descending)
+const recentUsers = await userRepo.paginateCursor({
+  limit: 10,
+  orderBy: 'created_at',
+  orderDirection: 'desc'
+})
+
+// Continue pagination
+const nextPage = await userRepo.paginateCursor({
+  limit: 10,
+  cursor: recentUsers.nextCursor,
+  orderBy: 'created_at',
+  orderDirection: 'desc'
+})
+```
+
+**Keyset vs Offset Pagination:**
+
+| Feature | Keyset (Cursor) | Offset |
+|---------|----------------|--------|
+| **Performance** | O(1) constant | O(N) degrades with offset |
+| **Cursor Stability** | ✅ Stable across inserts/deletes | ❌ Shifts with data changes |
+| **Deep Pagination** | ✅ Fast at any depth | ❌ Slow at large offsets |
+| **Random Access** | ❌ Sequential only | ✅ Jump to any page |
+| **Use Case** | Infinite scroll, feeds | Admin tables, reports |
+
+**How it works:**
+
+Keyset pagination uses WHERE clauses instead of OFFSET:
+
+```sql
+-- Offset pagination (slow for large offsets)
+SELECT * FROM users ORDER BY id LIMIT 20 OFFSET 1000;  -- Scans 1020 rows
+
+-- Keyset pagination (always fast)
+SELECT * FROM users
+WHERE id > 1000                    -- Uses index
+ORDER BY id
+LIMIT 20;                          -- Scans 20 rows
+```
+
+**Tie-breaking with duplicate values:**
+
+When ordering by non-unique columns, `id` is used as a secondary sort for consistent pagination:
+
+```typescript
+// Users with duplicate names are paginated consistently
+const page1 = await userRepo.paginateCursor({
+  limit: 2,
+  orderBy: 'name',
+  orderDirection: 'asc'
+})
+
+// Even with duplicates, pagination is stable and complete
+// Example: Alice (id:1), Alice (id:2), Bob (id:3)
+// Page 1: Alice (id:1), Alice (id:2)
+// Page 2: Bob (id:3)
 ```
 
 ---

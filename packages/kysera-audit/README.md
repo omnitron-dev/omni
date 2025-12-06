@@ -27,6 +27,7 @@
 - ✅ **User attribution** - Tracks who made each change
 - ✅ **Timestamp tracking** - Records when changes occurred
 - ✅ **Metadata support** - Add custom context (IP, user agent, etc.)
+- ✅ **Configurable primary key** - Support for custom PK columns (numeric & string IDs)
 
 ### Advanced Features
 - ✅ **Transaction-aware** - Audit logs commit/rollback with transactions
@@ -35,6 +36,7 @@
 - ✅ **Query methods** - Rich API for querying audit history
 - ✅ **Table filtering** - Whitelist/blacklist specific tables
 - ✅ **Auto-initialization** - Creates audit_logs table automatically
+- ✅ **UUID support** - Works with UUID and other string-based primary keys
 
 ### Performance Optimizations
 - ✅ **Single-query fetching** - Bulk operations avoid N+1 queries
@@ -204,6 +206,13 @@ export interface AuditOptions {
   auditTable?: string
 
   /**
+   * Primary key column name
+   * Supports both numeric IDs and string IDs (e.g., UUIDs)
+   * @default 'id'
+   */
+  primaryKeyColumn?: string
+
+  /**
    * Whether to capture old values in updates/deletes
    * @default true
    */
@@ -259,6 +268,9 @@ import { auditPlugin } from '@kysera/audit'
 const audit = auditPlugin({
   // Custom audit table name
   auditTable: 'my_audit_logs',
+
+  // Custom primary key column (default: 'id')
+  primaryKeyColumn: 'id',  // or 'uuid', 'user_id', etc.
 
   // Value capture options
   captureOldValues: true,  // Capture state before changes
@@ -1214,6 +1226,104 @@ CREATE INDEX idx_audit_logs_table_entity ON audit_logs(table_name, entity_id);
 ```
 
 ## 🔧 Advanced Usage
+
+### Custom Primary Keys (UUID Support)
+
+The audit plugin supports custom primary key columns, including UUID and other string-based identifiers.
+
+#### UUID Primary Keys
+
+```typescript
+// Table with UUID primary key
+interface UsersTable {
+  uuid: string  // UUID primary key instead of numeric id
+  email: string
+  name: string
+}
+
+// Configure audit plugin for UUID
+const audit = auditPlugin({
+  primaryKeyColumn: 'uuid',  // Specify custom primary key
+  tables: ['users']
+})
+
+// Usage
+const userRepo = orm.createRepository(() =>
+  factory.create({
+    tableName: 'users',
+    mapRow: (row) => row as User,
+    schemas: { create: CreateUserSchema }
+  })
+)
+
+// All operations work with UUID
+const uuid = randomUUID()
+await userRepo.create({ uuid, email: 'test@example.com', name: 'John' })
+await userRepo.update(uuid, { name: 'Jane' })
+await userRepo.delete(uuid)
+
+// Query audit history with UUID
+const history = await userRepo.getAuditHistory(uuid)
+console.log(history)  // Full audit trail with UUID references
+```
+
+#### Custom String Primary Keys
+
+```typescript
+// Table with custom string primary key
+interface OrdersTable {
+  order_id: string  // Custom primary key like 'ORD-12345'
+  product_id: number
+  total: number
+}
+
+// Configure audit plugin
+const audit = auditPlugin({
+  primaryKeyColumn: 'order_id',  // Custom primary key column
+  tables: ['orders']
+})
+
+// Usage
+const orderRepo = orm.createRepository(() =>
+  factory.create({
+    tableName: 'orders',
+    mapRow: (row) => row as Order,
+    schemas: { create: CreateOrderSchema }
+  })
+)
+
+// Works with custom string IDs
+const orderId = `ORD-${Date.now()}`
+await orderRepo.create({ order_id: orderId, product_id: 123, total: 99.99 })
+
+// Get audit history
+const history = await orderRepo.getAuditHistory(orderId)
+```
+
+#### Numeric IDs (Default Behavior)
+
+```typescript
+// Default behavior - uses 'id' column
+const audit = auditPlugin({
+  // primaryKeyColumn: 'id' is implicit
+  tables: ['products']
+})
+
+// Works with standard numeric IDs
+await productRepo.create({ name: 'Product', price: 50.0 })
+await productRepo.update(1, { price: 60.0 })
+await productRepo.delete(1)
+```
+
+#### Backward Compatibility
+
+The `primaryKeyColumn` option defaults to `'id'`, ensuring backward compatibility with existing code:
+
+```typescript
+// These are equivalent:
+auditPlugin({ tables: ['users'] })
+auditPlugin({ primaryKeyColumn: 'id', tables: ['users'] })
+```
 
 ### Custom Timestamps
 

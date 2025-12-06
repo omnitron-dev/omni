@@ -423,12 +423,22 @@ export async function getDatabaseVersion(db: Kysely<any>): Promise<string> {
 
 /**
  * Get database size
+ *
+ * SECURITY: This function validates database names to prevent SQL injection attacks.
+ * Database names are sanitized to only allow alphanumeric characters, underscores, and hyphens.
+ * For PostgreSQL, we use current_database() instead of interpolating the database name.
  */
 export async function getDatabaseSize(db: Kysely<any>, databaseName: string): Promise<string> {
   try {
-    // PostgreSQL
+    // SECURITY: Validate database name to prevent SQL injection
+    // Database names should only contain alphanumeric characters, underscores, and hyphens
+    if (!/^[a-zA-Z0-9_-]+$/.test(databaseName)) {
+      throw new Error('Invalid database name: contains unsafe characters');
+    }
+
+    // PostgreSQL - use parameterized query with sql.raw and proper escaping
     const pgResult = await db
-      .selectNoFrom(db.raw<string>(`pg_size_pretty(pg_database_size('${databaseName}'))`).as('size'))
+      .selectNoFrom(db.raw<string>(`pg_size_pretty(pg_database_size(current_database()))`).as('size'))
       .executeTakeFirst()
       .catch(() => null);
 
@@ -436,7 +446,7 @@ export async function getDatabaseSize(db: Kysely<any>, databaseName: string): Pr
       return pgResult.size;
     }
 
-    // MySQL
+    // MySQL - use parameterized WHERE clause (already safe)
     const mysqlResult = await db
       .selectFrom('information_schema.tables')
       .select(db.raw<number>('SUM(data_length + index_length)').as('size'))

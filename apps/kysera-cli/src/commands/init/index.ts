@@ -361,15 +361,37 @@ async function initProject(projectName: string | undefined, options: InitOptions
 
     // Success message
     console.log('');
+
+    // Display security warning for database configurations with authentication
+    if (database === 'postgres' || database === 'mysql') {
+      console.log(prism.yellow('⚠️  SECURITY WARNING'));
+      console.log(prism.yellow('   Your project uses an empty database password by default.'));
+      console.log(prism.yellow('   See SECURITY.md for important security guidelines.'));
+      console.log('');
+    }
+
+    const nextSteps = ['Next steps:'];
+    let stepNumber = 1;
+
+    if (projectDir !== '.') {
+      nextSteps.push(`  ${prism.gray(`${stepNumber}.`)} cd ${projectName}`);
+      stepNumber++;
+    }
+
+    if (database === 'postgres' || database === 'mysql') {
+      nextSteps.push(`  ${prism.gray(`${stepNumber}.`)} Set DB_PASSWORD in .env file`);
+      stepNumber++;
+    }
+
+    nextSteps.push(`  ${prism.gray(`${stepNumber}.`)} ${packageManager} run dev`);
+
     const successMessage = [
       `Project: ${prism.cyan(projectName)}`,
       `Template: ${prism.cyan(template)}`,
       `Database: ${prism.cyan(database)}`,
       `Plugins: ${prism.cyan(plugins.join(', '))}`,
       '',
-      'Next steps:',
-      projectDir !== '.' ? `  ${prism.gray('1.')} cd ${projectName}` : '',
-      `  ${prism.gray(projectDir !== '.' ? '2.' : '1.')} ${packageManager} run dev`,
+      ...nextSteps,
       '',
       `Documentation: ${prism.blue('https://kysera.dev/docs')}`,
       `GitHub: ${prism.blue('https://github.com/kysera/kysera')}`,
@@ -507,13 +529,15 @@ async function generateConfigFiles(projectPath: string, config: any): Promise<vo
     database: process.env.DB_FILE || './database.sqlite'
   },`;
   } else if (config.database === 'postgres') {
+    // SECURITY: Default password is empty string instead of a hardcoded value
+    // Users MUST set DB_PASSWORD in their .env file for secure deployments
     databaseConfig = `  database: {
     dialect: 'postgres',
     host: process.env.DB_HOST || 'localhost',
     port: Number(process.env.DB_PORT) || 5432,
     database: process.env.DB_NAME || '${config.name}',
     user: process.env.DB_USER || 'postgres',
-    password: process.env.DB_PASSWORD || 'postgres'
+    password: process.env.DB_PASSWORD || ''
   },`;
   } else if (config.database === 'mysql') {
     databaseConfig = `  database: {
@@ -618,7 +642,7 @@ ${
 DB_PORT=5432
 DB_NAME=${config.name}
 DB_USER=postgres
-DB_PASSWORD=postgres`
+DB_PASSWORD=`
     : ''
 }
 ${
@@ -638,6 +662,31 @@ PORT=3000
 `;
 
   await renderTemplate('init/.env.example', envExample, join(projectPath, '.env.example'));
+
+  // Generate security warning if using database with authentication
+  if (config.database === 'postgres' || config.database === 'mysql') {
+    const securityWarning = `
+⚠️  SECURITY WARNING ⚠️
+
+Your project configuration uses an empty password for the database connection.
+This is insecure and should ONLY be used for local development.
+
+BEFORE DEPLOYING TO PRODUCTION:
+1. Set a strong password in your .env file
+2. Use environment variables for all credentials
+3. Never commit .env files to version control
+4. Consider using connection strings with secret management
+
+Example secure setup:
+  DB_PASSWORD=<your-strong-password-here>
+
+For PostgreSQL, you can generate a secure password with:
+  openssl rand -base64 32
+`;
+
+    const securityFilePath = join(projectPath, 'SECURITY.md');
+    await renderTemplate('init/SECURITY.md', securityWarning, securityFilePath);
+  }
 }
 
 async function generateSourceFiles(projectPath: string, config: any): Promise<void> {
@@ -664,7 +713,7 @@ export const db = new Kysely<Database>({
       port: Number(process.env.DB_PORT) || 5432,
       database: process.env.DB_NAME || '${config.name}',
       user: process.env.DB_USER || 'postgres',
-      password: process.env.DB_PASSWORD || 'postgres'
+      password: process.env.DB_PASSWORD || ''
     })
   })`
       : config.database === 'mysql'

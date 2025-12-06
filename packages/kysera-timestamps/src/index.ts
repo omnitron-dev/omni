@@ -20,6 +20,9 @@ export interface TimestampMethods<T> {
   updateWithoutTimestamp(id: number, input: unknown): Promise<T>;
   touch(id: number): Promise<void>;
   getTimestampColumns(): { createdAt: string; updatedAt: string };
+  createMany(inputs: unknown[]): Promise<T[]>;
+  updateMany(ids: (number | string)[], input: unknown): Promise<T[]>;
+  touchMany(ids: (number | string)[]): Promise<void>;
 }
 
 /**
@@ -64,6 +67,12 @@ export interface TimestampsOptions {
    * Date format for database (ISO string by default)
    */
   dateFormat?: 'iso' | 'unix' | 'date';
+
+  /**
+   * Name of the primary key column used by touch() method
+   * @default 'id'
+   */
+  primaryKeyColumn?: string;
 }
 
 /**
@@ -143,11 +152,16 @@ function createTimestampQuery(
  * ```
  */
 export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
-  const { createdAtColumn = 'created_at', updatedAtColumn = 'updated_at', setUpdatedAtOnInsert = false } = options;
+  const {
+    createdAtColumn = 'created_at',
+    updatedAtColumn = 'updated_at',
+    setUpdatedAtOnInsert = false,
+    primaryKeyColumn = 'id',
+  } = options;
 
   return {
     name: '@kysera/timestamps',
-    version: '1.0.0',
+    version: '0.4.1',
 
     interceptQuery(qb, _context) {
       // The interceptQuery method can't modify INSERT/UPDATE values in Kysely
@@ -298,7 +312,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
           await executor
             .updateTable(baseRepo.tableName as never)
             .set(updateData as never)
-            .where('id' as never, '=', id as never)
+            .where(primaryKeyColumn as never, '=', id as never)
             .execute();
         },
 
@@ -310,6 +324,95 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
             createdAt: createdAtColumn,
             updatedAt: updatedAtColumn,
           };
+        },
+
+        /**
+         * Create multiple records with timestamps
+         * Uses efficient bulk INSERT with automatic timestamp injection
+         */
+        async createMany(inputs: unknown[]): Promise<unknown[]> {
+          // Handle empty arrays gracefully
+          if (!inputs || inputs.length === 0) {
+            return [];
+          }
+
+          const timestamp = getTimestamp(options);
+          const dataWithTimestamps = inputs.map((input) => {
+            const data = input as Record<string, unknown>;
+            const result: Record<string, unknown> = {
+              ...data,
+              [createdAtColumn]: data[createdAtColumn] ?? timestamp,
+            };
+
+            if (setUpdatedAtOnInsert) {
+              result[updatedAtColumn] = data[updatedAtColumn] ?? timestamp;
+            }
+
+            return result;
+          });
+
+          // Use Kysely's insertInto for efficient bulk insert
+          const result = await executor
+            .insertInto(baseRepo.tableName as never)
+            .values(dataWithTimestamps as never)
+            .returningAll()
+            .execute();
+
+          return result;
+        },
+
+        /**
+         * Update multiple records (sets updated_at for all)
+         * Updates all specified records with the same data
+         */
+        async updateMany(ids: (number | string)[], input: unknown): Promise<unknown[]> {
+          // Handle empty arrays gracefully
+          if (!ids || ids.length === 0) {
+            return [];
+          }
+
+          const data = input as Record<string, unknown>;
+          const timestamp = getTimestamp(options);
+          const dataWithTimestamp: Record<string, unknown> = {
+            ...data,
+            [updatedAtColumn]: data[updatedAtColumn] ?? timestamp,
+          };
+
+          // Use Kysely's update with IN clause for efficient bulk update
+          await executor
+            .updateTable(baseRepo.tableName as never)
+            .set(dataWithTimestamp as never)
+            .where('id' as never, 'in', ids as never)
+            .execute();
+
+          // Fetch and return updated records
+          const result = await executor
+            .selectFrom(baseRepo.tableName as never)
+            .selectAll()
+            .where('id' as never, 'in', ids as never)
+            .execute();
+
+          return result;
+        },
+
+        /**
+         * Touch multiple records (update updated_at only)
+         * Efficiently updates only the timestamp column
+         */
+        async touchMany(ids: (number | string)[]): Promise<void> {
+          // Handle empty arrays gracefully
+          if (!ids || ids.length === 0) {
+            return;
+          }
+
+          const timestamp = getTimestamp(options);
+          const updateData = { [updatedAtColumn]: timestamp };
+
+          await executor
+            .updateTable(baseRepo.tableName as never)
+            .set(updateData as never)
+            .where('id' as never, 'in', ids as never)
+            .execute();
         },
       };
 

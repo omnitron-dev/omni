@@ -27,11 +27,19 @@ export interface BaseRepository<DB, Entity> {
     orderBy?: string;
     orderDirection?: 'asc' | 'desc';
   }): Promise<{ items: Entity[]; total: number; limit: number; offset: number }>;
-  paginateCursor(options: {
+  paginateCursor<K extends keyof Entity>(options: {
     limit: number;
-    cursor?: unknown;
-    orderBy?: string;
-  }): Promise<{ items: Entity[]; nextCursor: unknown }>;
+    cursor?: {
+      value: Entity[K];
+      id: number;
+    } | null;
+    orderBy?: K;
+    orderDirection?: 'asc' | 'desc';
+  }): Promise<{
+    items: Entity[];
+    nextCursor: { value: Entity[K]; id: number } | null;
+    hasMore: boolean;
+  }>;
 }
 
 /**
@@ -68,6 +76,15 @@ export interface TableOperations<Table> {
   paginate(options: {
     limit: number;
     offset: number;
+    orderBy: string;
+    orderDirection: 'asc' | 'desc';
+  }): Promise<Selectable<Table>[]>;
+  paginateCursor(options: {
+    limit: number;
+    cursor?: {
+      value: unknown;
+      id: number;
+    } | null;
     orderBy: string;
     orderDirection: 'asc' | 'desc';
   }): Promise<Selectable<Table>[]>;
@@ -247,30 +264,53 @@ export function createBaseRepository<DB, Table, Entity>(
       };
     },
 
-    async paginateCursor(options: {
+    async paginateCursor<K extends keyof Entity>(options: {
       limit: number;
-      cursor?: unknown;
-      orderBy?: string;
-    }): Promise<{ items: Entity[]; nextCursor: unknown }> {
-      const { limit, cursor, orderBy = 'id' } = options;
+      cursor?: {
+        value: Entity[K];
+        id: number;
+      } | null;
+      orderBy?: K;
+      orderDirection?: 'asc' | 'desc';
+    }): Promise<{
+      items: Entity[];
+      nextCursor: { value: Entity[K]; id: number } | null;
+      hasMore: boolean;
+    }> {
+      const { limit, cursor, orderBy = 'id' as K, orderDirection = 'asc' } = options;
 
-      // This is simplified - real implementation would need cursor-based pagination support
-      const offset = cursor ? Number(cursor) : 0;
-      const rows = await operations.paginate({
+      // Fetch limit + 1 to determine if there are more results
+      const rows = await operations.paginateCursor({
         limit: limit + 1,
-        offset,
-        orderBy,
-        orderDirection: 'asc',
+        cursor: cursor
+          ? {
+              value: cursor.value,
+              id: cursor.id,
+            }
+          : null,
+        orderBy: String(orderBy),
+        orderDirection,
       });
 
       const hasMore = rows.length > limit;
       const items = processRows(hasMore ? rows.slice(0, limit) : rows);
 
-      const nextCursor = hasMore ? offset + limit : null;
+      // Generate nextCursor from the last item
+      let nextCursor: { value: Entity[K]; id: number } | null = null;
+      if (hasMore && items.length > 0) {
+        const lastItem = items[items.length - 1];
+        if (lastItem) {
+          nextCursor = {
+            value: lastItem[orderBy],
+            id: lastItem['id' as keyof Entity] as number,
+          };
+        }
+      }
 
       return {
         items,
         nextCursor,
+        hasMore,
       };
     },
   };

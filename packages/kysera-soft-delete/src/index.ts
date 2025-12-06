@@ -10,7 +10,8 @@ import { sql } from 'kysely';
  * const plugin = softDeletePlugin({
  *   deletedAtColumn: 'deleted_at',
  *   includeDeleted: false,
- *   tables: ['users', 'posts'] // Only these tables support soft delete
+ *   tables: ['users', 'posts'], // Only these tables support soft delete
+ *   primaryKeyColumn: 'id' // Default primary key column
  * })
  * ```
  */
@@ -37,6 +38,15 @@ export interface SoftDeleteOptions {
    * @example ['users', 'posts', 'comments']
    */
   tables?: string[];
+
+  /**
+   * Primary key column name used for identifying records.
+   * Tables with different primary key names (uuid, user_id, etc.) can be configured.
+   *
+   * @default 'id'
+   * @example 'uuid', 'user_id', 'post_id'
+   */
+  primaryKeyColumn?: string;
 }
 
 interface BaseRepository {
@@ -99,7 +109,7 @@ interface BaseRepository {
  * @returns Plugin instance that can be used with createORM
  */
 export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
-  const { deletedAtColumn = 'deleted_at', includeDeleted = false, tables } = options;
+  const { deletedAtColumn = 'deleted_at', includeDeleted = false, tables, primaryKeyColumn = 'id' } = options;
 
   return {
     name: '@kysera/soft-delete',
@@ -156,6 +166,9 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
      * - findWithDeleted(id): Find a record including soft-deleted ones
      * - findAllWithDeleted(): Find all records including soft-deleted ones
      * - findDeleted(): Find only soft-deleted records
+     * - softDeleteMany(ids): Soft delete multiple records (bulk operation)
+     * - restoreMany(ids): Restore multiple soft-deleted records (bulk operation)
+     * - hardDeleteMany(ids): Permanently delete multiple records (bulk operation)
      *
      * Also overrides findAll() and findById() to automatically filter out
      * soft-deleted records (unless includeDeleted option is set).
@@ -202,8 +215,18 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
             const result = await baseRepo.executor
               .selectFrom(baseRepo.tableName)
               .selectAll()
-              .where('id' as never, '=', id as never)
+              .where(primaryKeyColumn as never, '=', id as never)
               .where(deletedAtColumn as never, 'is', null)
+              .executeTakeFirst();
+            return result ?? null;
+          }
+          // When includeDeleted is true, use custom PK column if configured
+          // Otherwise fall back to original method (which uses 'id')
+          if (primaryKeyColumn !== 'id') {
+            const result = await baseRepo.executor
+              .selectFrom(baseRepo.tableName)
+              .selectAll()
+              .where(primaryKeyColumn as never, '=', id as never)
               .executeTakeFirst();
             return result ?? null;
           }
@@ -217,11 +240,21 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
           await baseRepo.executor
             .updateTable(baseRepo.tableName)
             .set({ [deletedAtColumn]: sql`CURRENT_TIMESTAMP` } as never)
-            .where('id' as never, '=', id as never)
+            .where(primaryKeyColumn as never, '=', id as never)
             .execute();
 
           // Fetch the updated record to verify it exists
-          const record = await originalFindById(id);
+          // Use custom PK column if configured
+          let record;
+          if (primaryKeyColumn !== 'id') {
+            record = await baseRepo.executor
+              .selectFrom(baseRepo.tableName)
+              .selectAll()
+              .where(primaryKeyColumn as never, '=', id as never)
+              .executeTakeFirst();
+          } else {
+            record = await originalFindById(id);
+          }
 
           // If record not found or deleted_at not set, throw error
           if (!record) {
@@ -232,19 +265,50 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
         },
 
         async restore(id: number): Promise<unknown> {
-          return await baseRepo.update(id, { [deletedAtColumn]: null });
+          // Use direct executor to support custom primary key columns
+          await baseRepo.executor
+            .updateTable(baseRepo.tableName)
+            .set({ [deletedAtColumn]: null } as never)
+            .where(primaryKeyColumn as never, '=', id as never)
+            .execute();
+
+          // Fetch and return the restored record
+          let record;
+          if (primaryKeyColumn !== 'id') {
+            record = await baseRepo.executor
+              .selectFrom(baseRepo.tableName)
+              .selectAll()
+              .where(primaryKeyColumn as never, '=', id as never)
+              .executeTakeFirst();
+          } else {
+            record = await originalFindById(id);
+          }
+
+          if (!record) {
+            throw new Error(`Record with id ${id} not found`);
+          }
+
+          return record;
         },
 
         async hardDelete(id: number): Promise<void> {
           // Direct hard delete - bypass soft delete
           await baseRepo.executor
             .deleteFrom(baseRepo.tableName)
-            .where('id' as never, '=', id as never)
+            .where(primaryKeyColumn as never, '=', id as never)
             .execute();
         },
 
         async findWithDeleted(id: number): Promise<unknown> {
-          // Use original method without filtering
+          // Use custom PK column if configured, otherwise use original method
+          if (primaryKeyColumn !== 'id') {
+            const result = await baseRepo.executor
+              .selectFrom(baseRepo.tableName)
+              .selectAll()
+              .where(primaryKeyColumn as never, '=', id as never)
+              .executeTakeFirst();
+            return result ?? null;
+          }
           return await originalFindById(id);
         },
 
@@ -260,6 +324,72 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
             .where(deletedAtColumn as never, 'is not', null)
             .execute();
           return result as unknown[];
+        },
+
+        async softDeleteMany(ids: (number | string)[]): Promise<unknown[]> {
+          // Handle empty arrays gracefully
+          if (ids.length === 0) {
+            return [];
+          }
+
+          // Efficient bulk UPDATE query
+          await baseRepo.executor
+            .updateTable(baseRepo.tableName)
+            .set({ [deletedAtColumn]: sql`CURRENT_TIMESTAMP` } as never)
+            .where(primaryKeyColumn as never, 'in', ids as never)
+            .execute();
+
+          // Fetch all affected records to verify and return them
+          const records = await baseRepo.executor
+            .selectFrom(baseRepo.tableName)
+            .selectAll()
+            .where(primaryKeyColumn as never, 'in', ids as never)
+            .execute();
+
+          // Verify all records were found
+          if (records.length !== ids.length) {
+            const foundIds = records.map((r: any) => r[primaryKeyColumn]);
+            const missingIds = ids.filter((id) => !foundIds.includes(id));
+            throw new Error(`Records with ids ${missingIds.join(', ')} not found`);
+          }
+
+          return records as unknown[];
+        },
+
+        async restoreMany(ids: (number | string)[]): Promise<unknown[]> {
+          // Handle empty arrays gracefully
+          if (ids.length === 0) {
+            return [];
+          }
+
+          // Efficient bulk UPDATE query to restore records
+          await baseRepo.executor
+            .updateTable(baseRepo.tableName)
+            .set({ [deletedAtColumn]: null } as never)
+            .where(primaryKeyColumn as never, 'in', ids as never)
+            .execute();
+
+          // Fetch all affected records to return them
+          const records = await baseRepo.executor
+            .selectFrom(baseRepo.tableName)
+            .selectAll()
+            .where(primaryKeyColumn as never, 'in', ids as never)
+            .execute();
+
+          return records as unknown[];
+        },
+
+        async hardDeleteMany(ids: (number | string)[]): Promise<void> {
+          // Handle empty arrays gracefully
+          if (ids.length === 0) {
+            return;
+          }
+
+          // Efficient bulk DELETE query
+          await baseRepo.executor
+            .deleteFrom(baseRepo.tableName)
+            .where(primaryKeyColumn as never, 'in', ids as never)
+            .execute();
         },
       };
 

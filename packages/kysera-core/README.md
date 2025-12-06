@@ -10,7 +10,7 @@
 
 | Metric | Value |
 |--------|-------|
-| **Version** | 0.3.0 |
+| **Version** | 0.4.1 |
 | **Bundle Size** | 12.76 KB (minified) |
 | **Test Coverage** | 265 tests passing |
 | **Runtime Dependencies** | 0 (peer: kysely >=0.28.0) |

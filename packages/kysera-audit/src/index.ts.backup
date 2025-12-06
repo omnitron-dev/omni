@@ -22,13 +22,6 @@ export interface AuditOptions {
   auditTable?: string;
 
   /**
-   * Primary key column name
-   * Supports both numeric IDs and string IDs (e.g., UUIDs)
-   * @default 'id'
-   */
-  primaryKeyColumn?: string;
-
-  /**
    * Whether to capture old values in updates
    * @default true
    */
@@ -112,11 +105,11 @@ interface BaseRepositoryLike {
   tableName?: string;
   executor?: unknown;
   create?: (data: unknown) => Promise<unknown>;
-  update?: (id: number | string, data: unknown) => Promise<unknown>;
-  delete?: (id: number | string) => Promise<boolean>;
+  update?: (id: number, data: unknown) => Promise<unknown>;
+  delete?: (id: number) => Promise<boolean>;
   bulkCreate?: (data: unknown[]) => Promise<unknown[]>;
-  bulkUpdate?: (updates: { id: number | string; data: unknown }[]) => Promise<unknown[]>;
-  bulkDelete?: (ids: (number | string)[]) => Promise<number>;
+  bulkUpdate?: (updates: { id: number; data: unknown }[]) => Promise<unknown[]>;
+  bulkDelete?: (ids: number[]) => Promise<number>;
 }
 
 // ============================================================================
@@ -273,8 +266,7 @@ async function fetchEntityById(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic DB type parameter needed for Kysely
   executor: Kysely<any>,
   tableName: string,
-  id: number | string,
-  primaryKeyColumn: string
+  id: number
 ): Promise<unknown> {
   try {
     // Kysely requires dynamic table access via `any` cast since tableName is a runtime string
@@ -284,7 +276,7 @@ async function fetchEntityById(
 
       .selectAll()
 
-      .where(primaryKeyColumn, '=', id)
+      .where('id', '=', id)
 
       .executeTakeFirst();
     return entity;
@@ -300,12 +292,11 @@ async function fetchEntityById(
  * @param executor - Kysely executor (database or transaction)
  * @param tableName - Name of the table to query
  * @param ids - Array of entity IDs to fetch
- * @param primaryKeyColumn - Name of the primary key column
  * @returns Map of ID to entity (only includes found entities)
  *
  * @example
  * ```typescript
- * const entities = await fetchEntitiesByIds(db, 'users', [1, 2, 3], 'id')
+ * const entities = await fetchEntitiesByIds(db, 'users', [1, 2, 3])
  * console.log(entities.get(1)) // User with id 1 or undefined
  * console.log(entities.get(2)) // User with id 2 or undefined
  * ```
@@ -314,10 +305,9 @@ async function fetchEntitiesByIds(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic DB type parameter needed for Kysely
   executor: Kysely<any>,
   tableName: string,
-  ids: (number | string)[],
-  primaryKeyColumn: string
-): Promise<Map<number | string, unknown>> {
-  const entityMap = new Map<number | string, unknown>();
+  ids: number[]
+): Promise<Map<number, unknown>> {
+  const entityMap = new Map<number, unknown>();
 
   if (ids.length === 0) {
     return entityMap;
@@ -333,15 +323,15 @@ async function fetchEntitiesByIds(
 
         .selectAll()
 
-        .where(primaryKeyColumn, 'in', ids)
+        .where('id', 'in', ids)
 
         .execute();
 
     // Build map for O(1) lookups
     for (const entity of entities) {
-      const id = (entity as Record<string, unknown>)[primaryKeyColumn];
+      const id = (entity as { id?: number }).id;
       if (id !== undefined) {
-        entityMap.set(id as number | string, entity);
+        entityMap.set(id, entity);
       }
     }
 
@@ -350,18 +340,6 @@ async function fetchEntitiesByIds(
     // Return empty map on error
     return entityMap;
   }
-}
-
-/**
- * Extract primary key value from an entity
- */
-function extractPrimaryKey(entity: unknown, primaryKeyColumn: string): string | number {
-  const record = entity as Record<string, unknown>;
-  const pkValue = record[primaryKeyColumn];
-  if (pkValue === undefined || pkValue === null) {
-    throw new Error(`Primary key '${primaryKeyColumn}' not found in entity`);
-  }
-  return pkValue as string | number;
 }
 
 // ============================================================================
@@ -378,7 +356,6 @@ function wrapCreateMethod(
   executor: Kysely<any>,
   auditTable: string,
   tableName: string,
-  primaryKeyColumn: string,
   captureNewValues: boolean,
   skipSystemOperations: boolean,
   options: AuditOptions
@@ -391,12 +368,11 @@ function wrapCreateMethod(
     const result = await originalCreate(input);
 
     if (!skipSystemOperations) {
-      const pkValue = extractPrimaryKey(result, primaryKeyColumn);
       await createAuditLogEntry(
         executor,
         auditTable,
         tableName,
-        pkValue,
+        String(result.id),
         'INSERT',
         null,
         captureNewValues ? result : null,
@@ -418,7 +394,6 @@ function wrapUpdateMethod(
   executor: Kysely<any>,
   auditTable: string,
   tableName: string,
-  primaryKeyColumn: string,
   captureOldValues: boolean,
   captureNewValues: boolean,
   skipSystemOperations: boolean,
@@ -427,11 +402,11 @@ function wrapUpdateMethod(
   if (!baseRepo.update) return;
 
   const originalUpdate = baseRepo.update.bind(baseRepo);
-  baseRepo.update = async function (id: number | string, input: unknown) {
+  baseRepo.update = async function (id: number, input: unknown) {
     // Fetch old values if needed
     let oldValues: unknown = null;
     if (captureOldValues) {
-      oldValues = await fetchEntityById(executor, tableName, id, primaryKeyColumn);
+      oldValues = await fetchEntityById(executor, tableName, id);
     }
 
     const result = await originalUpdate(id, input);
@@ -441,7 +416,7 @@ function wrapUpdateMethod(
         executor,
         auditTable,
         tableName,
-        id,
+        String(id),
         'UPDATE',
         oldValues,
         captureNewValues ? result : null,
@@ -463,7 +438,6 @@ function wrapDeleteMethod(
   executor: Kysely<any>,
   auditTable: string,
   tableName: string,
-  primaryKeyColumn: string,
   captureOldValues: boolean,
   skipSystemOperations: boolean,
   options: AuditOptions
@@ -471,17 +445,17 @@ function wrapDeleteMethod(
   if (!baseRepo.delete) return;
 
   const originalDelete = baseRepo.delete.bind(baseRepo);
-  baseRepo.delete = async function (id: number | string) {
+  baseRepo.delete = async function (id: number) {
     // Fetch old values before deletion
     let oldValues: unknown = null;
     if (captureOldValues) {
-      oldValues = await fetchEntityById(executor, tableName, id, primaryKeyColumn);
+      oldValues = await fetchEntityById(executor, tableName, id);
     }
 
     const result = await originalDelete(id);
 
     if (!skipSystemOperations && result) {
-      await createAuditLogEntry(executor, auditTable, tableName, id, 'DELETE', oldValues, null, options);
+      await createAuditLogEntry(executor, auditTable, tableName, String(id), 'DELETE', oldValues, null, options);
     }
 
     return result;
@@ -498,7 +472,6 @@ function wrapBulkCreateMethod(
   executor: Kysely<any>,
   auditTable: string,
   tableName: string,
-  primaryKeyColumn: string,
   captureNewValues: boolean,
   skipSystemOperations: boolean,
   options: AuditOptions
@@ -511,12 +484,11 @@ function wrapBulkCreateMethod(
 
     if (!skipSystemOperations && Array.isArray(results)) {
       for (const result of results) {
-        const pkValue = extractPrimaryKey(result, primaryKeyColumn);
         await createAuditLogEntry(
           executor,
           auditTable,
           tableName,
-          pkValue,
+          String(result.id),
           'INSERT',
           null,
           captureNewValues ? result : null,
@@ -539,7 +511,6 @@ function wrapBulkUpdateMethod(
   executor: Kysely<any>,
   auditTable: string,
   tableName: string,
-  primaryKeyColumn: string,
   captureOldValues: boolean,
   captureNewValues: boolean,
   skipSystemOperations: boolean,
@@ -548,13 +519,13 @@ function wrapBulkUpdateMethod(
   if (!baseRepo.bulkUpdate) return;
 
   const originalBulkUpdate = baseRepo.bulkUpdate.bind(baseRepo);
-  baseRepo.bulkUpdate = async function (updates: { id: number | string; data: unknown }[]) {
+  baseRepo.bulkUpdate = async function (updates: { id: number; data: unknown }[]) {
     // Fetch old values before update if needed
     // Use bulk fetch to avoid N+1 queries (performance optimization)
-    const oldValuesMap = new Map<number | string, unknown>();
+    const oldValuesMap = new Map<number, unknown>();
     if (captureOldValues) {
       const ids = updates.map((u) => u.id);
-      const fetchedOldValues = await fetchEntitiesByIds(executor, tableName, ids, primaryKeyColumn);
+      const fetchedOldValues = await fetchEntitiesByIds(executor, tableName, ids);
       // Copy to our map
       for (const [id, entity] of fetchedOldValues) {
         oldValuesMap.set(id, entity);
@@ -565,15 +536,15 @@ function wrapBulkUpdateMethod(
 
     if (!skipSystemOperations && Array.isArray(results)) {
       for (const result of results) {
-        const pkValue = extractPrimaryKey(result, primaryKeyColumn);
+        const id = result.id as number;
 
         await createAuditLogEntry(
           executor,
           auditTable,
           tableName,
-          pkValue,
+          String(id),
           'UPDATE',
-          oldValuesMap.get(pkValue) ?? null,
+          oldValuesMap.get(id) ?? null,
           captureNewValues ? result : null,
           options
         );
@@ -594,7 +565,6 @@ function wrapBulkDeleteMethod(
   executor: Kysely<any>,
   auditTable: string,
   tableName: string,
-  primaryKeyColumn: string,
   captureOldValues: boolean,
   skipSystemOperations: boolean,
   options: AuditOptions
@@ -602,12 +572,12 @@ function wrapBulkDeleteMethod(
   if (!baseRepo.bulkDelete) return;
 
   const originalBulkDelete = baseRepo.bulkDelete.bind(baseRepo);
-  baseRepo.bulkDelete = async function (ids: (number | string)[]) {
+  baseRepo.bulkDelete = async function (ids: number[]) {
     // Fetch old values before deletion if needed
     // Use bulk fetch to avoid N+1 queries (performance optimization)
-    const oldValuesMap = new Map<number | string, unknown>();
+    const oldValuesMap = new Map<number, unknown>();
     if (captureOldValues) {
-      const fetchedOldValues = await fetchEntitiesByIds(executor, tableName, ids, primaryKeyColumn);
+      const fetchedOldValues = await fetchEntitiesByIds(executor, tableName, ids);
       // Copy to our map
       for (const [id, entity] of fetchedOldValues) {
         oldValuesMap.set(id, entity);
@@ -622,7 +592,7 @@ function wrapBulkDeleteMethod(
           executor,
           auditTable,
           tableName,
-          id,
+          String(id),
           'DELETE',
           oldValuesMap.get(id) ?? null,
           null,
@@ -646,8 +616,7 @@ function addAuditQueryMethods(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic DB type
   executor: Kysely<any>,
   auditTable: string,
-  tableName: string,
-  primaryKeyColumn: string
+  tableName: string
 ): void {
   // Get audit history for a specific entity (returns parsed entries)
   extendedRepo.getAuditHistory = async function (entityId: number | string): Promise<ParsedAuditLogEntry[]> {
@@ -699,11 +668,7 @@ function addAuditQueryMethods(
       throw new Error(`Failed to parse values from audit log ${String(auditId)}`);
     }
 
-    const entityId = parsedValues[primaryKeyColumn];
-
-    if (entityId === undefined || entityId === null) {
-      throw new Error(`Primary key '${primaryKeyColumn}' not found in audit log values`);
-    }
+    const entityId = parseInt(log.entity_id);
 
     // For DELETE operations, restore using old_values (the entity before deletion)
     // For UPDATE operations, restore using old_values (revert the update)
@@ -808,7 +773,6 @@ function addAuditQueryMethods(
  * - Metadata support for custom context
  * - Query methods to retrieve and analyze audit history
  * - **Optimized bulk operations** - Uses single query to fetch old values
- * - **Configurable primary key** - Supports both numeric and string IDs (e.g., UUIDs)
  *
  * ## Transaction Behavior
  *
@@ -865,7 +829,6 @@ function addAuditQueryMethods(
  *
  * const audit = auditPlugin({
  *   auditTable: 'audit_logs',
- *   primaryKeyColumn: 'id',  // or 'uuid' for UUID primary keys
  *   getUserId: () => currentUser?.id || null,
  *   metadata: () => ({ ip: request.ip }),
  *   captureOldValues: true,  // Capture state before changes
@@ -904,23 +867,10 @@ function addAuditQueryMethods(
  * await repos.users.bulkDelete([1, 2, 3, ..., 100])
  * // Old values fetched in 1 query instead of 100 queries ⚡
  * ```
- *
- * @example Custom primary key (UUID)
- * ```typescript
- * // Support for UUID primary keys
- * const audit = auditPlugin({
- *   primaryKeyColumn: 'uuid'
- * })
- *
- * // Works with string IDs
- * await userRepo.create({ uuid: '550e8400-e29b-41d4-a716-446655440000', name: 'John' })
- * const history = await userRepo.getAuditHistory('550e8400-e29b-41d4-a716-446655440000')
- * ```
  */
 export function auditPlugin(options: AuditOptions = {}): Plugin {
   const {
     auditTable = 'audit_logs',
-    primaryKeyColumn = 'id',
     captureOldValues = true,
     captureNewValues = true,
     skipSystemOperations = false,
@@ -967,43 +917,23 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic repository type
       const mutableRepo = typedRepo as any;
 
-      wrapCreateMethod(
-        mutableRepo,
-        executor,
-        auditTable,
-        tableName,
-        primaryKeyColumn,
-        captureNewValues,
-        skipSystemOperations,
-        options
-      );
+      wrapCreateMethod(mutableRepo, executor, auditTable, tableName, captureNewValues, skipSystemOperations, options);
       wrapUpdateMethod(
         mutableRepo,
         executor,
         auditTable,
         tableName,
-        primaryKeyColumn,
         captureOldValues,
         captureNewValues,
         skipSystemOperations,
         options
       );
-      wrapDeleteMethod(
-        mutableRepo,
-        executor,
-        auditTable,
-        tableName,
-        primaryKeyColumn,
-        captureOldValues,
-        skipSystemOperations,
-        options
-      );
+      wrapDeleteMethod(mutableRepo, executor, auditTable, tableName, captureOldValues, skipSystemOperations, options);
       wrapBulkCreateMethod(
         mutableRepo,
         executor,
         auditTable,
         tableName,
-        primaryKeyColumn,
         captureNewValues,
         skipSystemOperations,
         options
@@ -1013,7 +943,6 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
         executor,
         auditTable,
         tableName,
-        primaryKeyColumn,
         captureOldValues,
         captureNewValues,
         skipSystemOperations,
@@ -1024,14 +953,13 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
         executor,
         auditTable,
         tableName,
-        primaryKeyColumn,
         captureOldValues,
         skipSystemOperations,
         options
       );
 
       // Add audit query methods
-      addAuditQueryMethods(mutableRepo, mutableRepo, executor, auditTable, tableName, primaryKeyColumn);
+      addAuditQueryMethods(mutableRepo, mutableRepo, executor, auditTable, tableName);
 
       return baseRepo;
     },

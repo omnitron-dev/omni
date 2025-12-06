@@ -1,4 +1,5 @@
 import type { Kysely } from 'kysely';
+import type { QueryMetrics } from './debug.js';
 
 export interface HealthCheckResult {
   status: 'healthy' | 'degraded' | 'unhealthy';
@@ -304,66 +305,191 @@ export async function performHealthCheck<DB>(
 }
 
 /**
- * Get database metrics
+ * Extended database with metrics tracking capability.
+ * This type represents a Kysely database instance that has been wrapped
+ * with the debug plugin (using withDebug function from './debug.js').
+ */
+export interface DatabaseWithMetrics<DB> extends Kysely<DB> {
+  getMetrics(): QueryMetrics[];
+  clearMetrics(): void;
+}
+
+/**
+ * Options for getMetrics function
+ */
+export interface GetMetricsOptions {
+  /**
+   * Time period for metrics (informational, not used for filtering)
+   * @default '1h'
+   */
+  period?: string;
+  /**
+   * Optional pool to extract connection metrics from
+   */
+  pool?: MetricsPool;
+  /**
+   * Duration threshold (in ms) to consider a query as slow
+   * @default 100
+   */
+  slowQueryThreshold?: number;
+}
+
+/**
+ * Metrics result interface
+ */
+export interface MetricsResult {
+  period: string;
+  timestamp: string;
+  connections?: {
+    total: number;
+    active: number;
+    idle: number;
+    max: number;
+  };
+  queries?: {
+    total: number;
+    avgDuration: number;
+    minDuration: number;
+    maxDuration: number;
+    p95Duration: number;
+    p99Duration: number;
+    slowCount: number;
+  };
+  recommendations?: string[];
+}
+
+/**
+ * Calculate percentile from sorted array of numbers
+ */
+function calculatePercentile(sortedValues: number[], percentile: number): number {
+  if (sortedValues.length === 0) return 0;
+  const index = Math.ceil((percentile / 100) * sortedValues.length) - 1;
+  return sortedValues[Math.max(0, index)] ?? 0;
+}
+
+/**
+ * Get database metrics from real query execution data.
+ *
+ * IMPORTANT: This function requires the database to be wrapped with the debug plugin
+ * to track query metrics. Use `withDebug()` from './debug.js' to enable metrics collection.
+ *
+ * @param db - Kysely database instance with metrics tracking (created using withDebug)
+ * @param options - Options for metrics collection
+ * @returns Real metrics data collected from actual query execution
+ * @throws {Error} If the database is not wrapped with the debug plugin
+ *
+ * @example
+ * ```typescript
+ * import { withDebug } from '@omnitron-dev/kysera-core/debug';
+ * import { getMetrics } from '@omnitron-dev/kysera-core/health';
+ *
+ * // Create a database with metrics tracking
+ * const db = new Kysely<Database>({ ... });
+ * const debugDb = withDebug(db, { maxMetrics: 1000 });
+ *
+ * // Perform some queries...
+ * await debugDb.selectFrom('users').selectAll().execute();
+ *
+ * // Get real metrics
+ * const metrics = await getMetrics(debugDb, {
+ *   slowQueryThreshold: 100,
+ *   pool: metricsPool
+ * });
+ *
+ * console.log(metrics.queries.avgDuration); // Real average from tracked queries
+ * console.log(metrics.queries.slowCount); // Real count of slow queries
+ * ```
  */
 export async function getMetrics<DB>(
-  _db: Kysely<DB>,
-  options: {
-    period?: string;
-    pool?: MetricsPool;
-  } = {}
-): Promise<any> {
-  const metrics: any = {
-    period: options.period || '1h',
+  db: Kysely<DB> | DatabaseWithMetrics<DB>,
+  options: GetMetricsOptions = {}
+): Promise<MetricsResult> {
+  const { period = '1h', pool, slowQueryThreshold = 100 } = options;
+
+  // Check if database has metrics tracking enabled
+  const dbWithMetrics = db as DatabaseWithMetrics<DB>;
+  if (typeof dbWithMetrics.getMetrics !== 'function') {
+    throw new Error(
+      'Database metrics are not available. ' +
+        'To collect query metrics, wrap your database with the debug plugin using withDebug() from @omnitron-dev/kysera-core/debug. ' +
+        'Example: const debugDb = withDebug(db, { maxMetrics: 1000 });'
+    );
+  }
+
+  const result: MetricsResult = {
+    period,
     timestamp: new Date().toISOString(),
   };
 
   // Get pool metrics if available
-  if (options.pool?.getMetrics) {
-    const poolMetrics = options.pool.getMetrics();
-    metrics.connections = {
+  if (pool?.getMetrics) {
+    const poolMetrics = pool.getMetrics();
+    result.connections = {
       total: poolMetrics.total,
       active: poolMetrics.active,
       idle: poolMetrics.idle,
       max: poolMetrics.total,
-      errors: 0,
     };
   }
 
-  // Try to get database-specific metrics
-  try {
-    // This is a simplified version - in production you'd query actual metrics tables
-    metrics.queries = {
-      total: Math.floor(Math.random() * 10000),
-      avgDuration: Math.floor(Math.random() * 50) + 10,
-      minDuration: 1,
-      maxDuration: Math.floor(Math.random() * 1000) + 100,
-      p95Duration: Math.floor(Math.random() * 200) + 50,
-      p99Duration: Math.floor(Math.random() * 500) + 100,
-      slowCount: Math.floor(Math.random() * 100),
-      errorCount: Math.floor(Math.random() * 10),
+  // Get real query metrics from debug plugin
+  const queryMetrics = dbWithMetrics.getMetrics();
+
+  if (queryMetrics.length > 0) {
+    // Calculate real statistics from collected metrics
+    const durations = queryMetrics.map((m) => m.duration);
+    const sortedDurations = [...durations].sort((a, b) => a - b);
+
+    const totalDuration = durations.reduce((sum, d) => sum + d, 0);
+    const avgDuration = totalDuration / durations.length;
+    const minDuration = Math.min(...durations);
+    const maxDuration = Math.max(...durations);
+    const p95Duration = calculatePercentile(sortedDurations, 95);
+    const p99Duration = calculatePercentile(sortedDurations, 99);
+    const slowCount = durations.filter((d) => d > slowQueryThreshold).length;
+
+    result.queries = {
+      total: queryMetrics.length,
+      avgDuration: Math.round(avgDuration * 100) / 100, // Round to 2 decimal places
+      minDuration: Math.round(minDuration * 100) / 100,
+      maxDuration: Math.round(maxDuration * 100) / 100,
+      p95Duration: Math.round(p95Duration * 100) / 100,
+      p99Duration: Math.round(p99Duration * 100) / 100,
+      slowCount,
     };
 
-    // Add some fake table statistics
-    metrics.tables = [
-      { name: 'users', rowCount: 15234, size: 5242880, indexSize: 1048576 },
-      { name: 'posts', rowCount: 48291, size: 15728640, indexSize: 3145728 },
-      { name: 'comments', rowCount: 128493, size: 31457280, indexSize: 6291456 },
-    ];
+    // Generate recommendations based on real data
+    result.recommendations = [];
 
-    // Add recommendations
-    metrics.recommendations = [];
-    if (metrics.queries.slowCount > 50) {
-      metrics.recommendations.push('High number of slow queries detected. Consider query optimization.');
+    if (slowCount > queryMetrics.length * 0.1) {
+      // More than 10% slow queries
+      result.recommendations.push(
+        `High number of slow queries detected (${slowCount}/${queryMetrics.length}). ` +
+          `Consider query optimization or indexing.`
+      );
     }
-    if (metrics.connections && metrics.connections.active > metrics.connections.total * 0.8) {
-      metrics.recommendations.push('Connection pool usage is high. Consider increasing pool size.');
+
+    if (avgDuration > slowQueryThreshold * 0.5) {
+      result.recommendations.push(
+        `Average query duration (${avgDuration.toFixed(2)}ms) is approaching slow query threshold. ` +
+          `Monitor performance closely.`
+      );
     }
-  } catch (error) {
-    // Ignore metrics collection errors
   }
 
-  return metrics;
+  // Add connection pool recommendations if applicable
+  if (result.connections) {
+    const utilizationRate = result.connections.active / result.connections.total;
+    if (utilizationRate > 0.8) {
+      result.recommendations = result.recommendations || [];
+      result.recommendations.push(
+        `Connection pool utilization is high (${(utilizationRate * 100).toFixed(1)}%). ` +
+          `Consider increasing pool size.`
+      );
+    }
+  }
+
+  return result;
 }
 
 /**

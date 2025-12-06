@@ -9,7 +9,7 @@ import {
   seedDatabase,
   clearDatabase,
   // @ts-ignore - Cross-package test utility import (monorepo)
-} from '../../core/test/utils/multi-db';
+} from '../../kysera-core/test/utils/multi-db';
 import { createRepositoryFactory } from '../src/repository.js';
 import { parseDatabaseError } from '../../kysera-core/dist/index.js';
 

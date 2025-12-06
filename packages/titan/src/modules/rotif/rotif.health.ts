@@ -146,14 +146,7 @@ export class RotifHealthIndicator {
    * Get subscription statistics.
    */
   private getSubscriptionStats(): RotifHealthStatus['subscriptions'] {
-    // Note: We can't directly access subscriptions from NotificationManager
-    // This would need to be exposed via a getter in NotificationManager
-    // For now, return placeholder values
-    return {
-      count: 0,
-      active: 0,
-      paused: 0,
-    };
+    return this.manager.getSubscriptionStats();
   }
 
   /**

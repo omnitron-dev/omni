@@ -19,7 +19,7 @@ import { Plugin, PluginManager } from './plugin.js';
 import { ContextManager, ContextProvider } from './context.js';
 import { LifecycleEvent, LifecycleManager } from './lifecycle.js';
 import { isToken, isMultiToken, getTokenName, isOptionalToken, createToken } from './token.js';
-import { Middleware, MiddlewareContext, MiddlewarePipeline } from './middleware.js';
+import { Middleware, MiddlewarePipeline } from './middleware.js';
 import { isConstructor } from './provider-utils.js';
 import {
   DisposalError,
@@ -56,6 +56,7 @@ import {
   ConditionalProviderWithWhen,
   StreamProviderOptions,
   hasStreamOptions,
+  MiddlewareContext,
 } from './types.js';
 
 // Import internal services
@@ -170,6 +171,12 @@ export class Container implements IContainer {
 
   /**
    * Register a provider - supports multiple formats
+   *
+   * @template T - The type of the service being registered
+   * @param tokenOrProvider - The token, provider, or constructor to register
+   * @param providerOrOptions - The provider definition or registration options
+   * @param optionsArg - Additional registration options
+   * @returns this container for chaining
    */
   register<T>(
     tokenOrProvider: InjectionToken<T> | Provider<T> | Constructor<T>,
@@ -299,8 +306,16 @@ export class Container implements IContainer {
   /**
    * Resolve a dependency
    * Uses isolated resolution state to prevent race conditions in concurrent calls
+   *
+   * @template T - The type of the service being resolved
+   * @param token - The token identifying the dependency
+   * @param context - Optional context to pass to the resolution
+   * @returns The resolved instance
+   * @throws {DependencyNotFoundError} If the token is not registered
+   * @throws {CircularDependencyError} If a circular dependency is detected
+   * @throws {AsyncResolutionError} If an async provider is resolved synchronously
    */
-  resolve<T>(token: InjectionToken<T>, context?: any): T {
+  resolve<T>(token: InjectionToken<T>, context?: unknown): T {
     this.checkDisposed();
 
     // Check if we're in a nested resolution (resolutionState already exists in context)
@@ -351,7 +366,7 @@ export class Container implements IContainer {
       resolutionState.chain.push(token);
 
       // Create middleware context
-      const middlewareContext: MiddlewareContext = {
+      const middlewareContext: MiddlewareContext<T> = {
         ...localContext,
         token,
         container: this,
@@ -363,7 +378,10 @@ export class Container implements IContainer {
       let result = this.middlewarePipeline.executeSync(middlewareContext, () => this.resolveInternal(token));
 
       // Execute afterResolve hooks which may modify the result
-      result = this.pluginManager.executeHooksSync('afterResolve', token, result, localContext);
+      const modifiedResult = this.pluginManager.executeHooksSync<T>('afterResolve', token, result, localContext);
+      if (modifiedResult !== undefined) {
+        result = modifiedResult;
+      }
 
       // Cache the result in this resolution tree
       resolutionState.resolved.set(token, result);
@@ -596,7 +614,14 @@ export class Container implements IContainer {
   }
 
   /**
-   * Resolve async
+   * Resolve a dependency asynchronously
+   *
+   * @template T - The type of the service being resolved
+   * @param token - The token identifying the dependency
+   * @returns Promise that resolves to the instance
+   * @throws {DependencyNotFoundError} If the token is not registered
+   * @throws {CircularDependencyError} If a circular dependency is detected
+   * @throws {AsyncResolutionError} If resolution fails
    */
   async resolveAsync<T>(token: InjectionToken<T>): Promise<T> {
     this.checkDisposed();
@@ -616,7 +641,7 @@ export class Container implements IContainer {
     };
 
     // Create middleware context early so it's available in catch blocks
-    const middlewareContext: MiddlewareContext = {
+    const middlewareContext: MiddlewareContext<T> = {
       ...localContext,
       token,
       container: this,

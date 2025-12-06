@@ -30,6 +30,14 @@ local messageUUID = ARGV[11]
 local exactlyOnce = ARGV[12]
 local pattern = ARGV[13]
 
+-- Input validation
+if not channel or channel == "" then
+  return redis.error_reply("Channel is required")
+end
+if not payload then
+  return redis.error_reply("Payload is required")
+end
+
 if dedupKey ~= "" and redis.call("EXISTS", dedupKey) == 1 then
   return "DUPLICATE"
 end

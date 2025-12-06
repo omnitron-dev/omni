@@ -193,7 +193,8 @@ export class TemplateEngine {
     if (cached) {
       try {
         return JSON.parse(cached);
-      } catch {
+      } catch (error) {
+        console.warn(`Failed to parse cached template render for ${templateId}:`, error);
         // Invalid cache entry
       }
     }

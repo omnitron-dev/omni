@@ -480,8 +480,9 @@ export class SessionManager {
    */
   private startCleanupTimer(): void {
     this.cleanupTimer = setInterval(() => {
-      this.cleanup().catch((error) => {
-        this.logger.error({ error: error.message }, 'Session cleanup failed');
+      this.cleanup().catch((error: unknown) => {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        this.logger.error({ error: errorMessage }, 'Session cleanup failed');
       });
     }, this.config.cleanupInterval);
 

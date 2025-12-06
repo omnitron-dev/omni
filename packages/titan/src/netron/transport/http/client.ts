@@ -169,10 +169,10 @@ export class HttpTransportClient {
       }
 
       return await response.json();
-    } catch (error: any) {
+    } catch (error: unknown) {
       clearTimeout(timeoutId);
 
-      if (error.name === 'AbortError') {
+      if (error instanceof Error && error.name === 'AbortError') {
         return {
           id: message.id,
           version: '2.0',
@@ -192,7 +192,7 @@ export class HttpTransportClient {
         success: false,
         error: {
           code: getErrorName(ErrorCode.INTERNAL_ERROR),
-          message: error.message,
+          message: error instanceof Error ? error.message : 'Unknown error',
         },
       };
     }

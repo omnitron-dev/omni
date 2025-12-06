@@ -6,6 +6,21 @@ import { InjectionToken, ResolutionContext } from './types.js';
 import { getTokenName } from './token.js';
 
 /**
+ * Lifecycle constants for performance and memory management.
+ * These values control history retention, performance thresholds, and GC behavior.
+ */
+const LIFECYCLE_CONSTANTS = {
+  /** Maximum number of lifecycle events to retain in history */
+  MAX_HISTORY_SIZE: 1000,
+  /** Threshold in milliseconds to warn about slow resolution */
+  SLOW_RESOLUTION_THRESHOLD_MS: 100,
+  /** Interval in milliseconds between garbage collection checks */
+  GC_INTERVAL_MS: 60000,
+  /** Threshold for high instance count that triggers GC warning */
+  HIGH_INSTANCE_COUNT: 1000,
+} as const;
+
+/**
  * Lifecycle events
  */
 export enum LifecycleEvent {
@@ -105,7 +120,7 @@ export class LifecycleManager {
   private hooks = new Map<LifecycleEvent, Set<LifecycleHook>>();
   private observers = new Set<LifecycleObserver>();
   private eventHistory: LifecycleEventData[] = [];
-  private maxHistorySize = 1000;
+  private maxHistorySize = LIFECYCLE_CONSTANTS.MAX_HISTORY_SIZE;
   private enabled = true;
 
   /**
@@ -340,7 +355,7 @@ export class PerformanceObserver implements LifecycleObserver {
         this.updateMetrics(key, duration);
         this.activeTimers.delete(key);
 
-        if (duration > 100) {
+        if (duration > LIFECYCLE_CONSTANTS.SLOW_RESOLUTION_THRESHOLD_MS) {
           // TODO: Replace with injectable logger
           console.warn(`[Performance] Slow resolution: ${key} took ${duration}ms`);
         }
@@ -372,7 +387,7 @@ export class PerformanceObserver implements LifecycleObserver {
 export class MemoryObserver implements LifecycleObserver {
   private instanceCounts = new Map<string, number>();
   private lastGC = Date.now();
-  private gcInterval = 60000; // 1 minute
+  private gcInterval = LIFECYCLE_CONSTANTS.GC_INTERVAL_MS;
 
   events = [LifecycleEvent.InstanceCreated, LifecycleEvent.InstanceDisposed];
 
@@ -392,7 +407,7 @@ export class MemoryObserver implements LifecycleObserver {
     // Check if GC should be suggested
     if (Date.now() - this.lastGC > this.gcInterval) {
       const totalInstances = Array.from(this.instanceCounts.values()).reduce((a, b) => a + b, 0);
-      if (totalInstances > 1000) {
+      if (totalInstances > LIFECYCLE_CONSTANTS.HIGH_INSTANCE_COUNT) {
         // TODO: Replace with injectable logger
         console.warn(`[Memory] High instance count: ${totalInstances} instances in memory`);
         if (global.gc) {

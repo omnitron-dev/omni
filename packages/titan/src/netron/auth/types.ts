@@ -234,6 +234,8 @@ export interface ServiceACL {
       allowedRoles?: string[];
       requiredPermissions?: string[];
       policies?: string[];
+      /** Override service-level ACL instead of merging */
+      __override?: boolean;
     };
   };
 }

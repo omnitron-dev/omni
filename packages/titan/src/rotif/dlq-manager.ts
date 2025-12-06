@@ -68,12 +68,15 @@ export class DLQManager {
     messagesCleanedUp: 0,
     messagesArchived: 0,
   };
+  private dlqKey: string;
 
   constructor(
     private redis: Redis,
     private logger: RotifLogger,
-    private config: DLQCleanupConfig = {}
+    private config: DLQCleanupConfig = {},
+    dlqKey: string = 'rotif:dlq'
   ) {
+    this.dlqKey = dlqKey;
     this.config = {
       enabled: false,
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days default
@@ -127,7 +130,7 @@ export class DLQManager {
    * Perform DLQ cleanup
    */
   async cleanup(): Promise<number> {
-    const dlqKey = 'rotif:dlq';
+    const dlqKey = this.dlqKey;
     let cleanedCount = 0;
 
     try {
@@ -225,7 +228,7 @@ export class DLQManager {
    * Enforce maximum DLQ size
    */
   private async enforceMaxSize(): Promise<void> {
-    const dlqKey = 'rotif:dlq';
+    const dlqKey = this.dlqKey;
 
     // Get current size
     const size = await this.redis.xlen(dlqKey);
@@ -257,7 +260,7 @@ export class DLQManager {
    * Get DLQ statistics
    */
   async getStats(): Promise<DLQStats> {
-    const dlqKey = 'rotif:dlq';
+    const dlqKey = this.dlqKey;
 
     try {
       // Get total count
@@ -319,7 +322,7 @@ export class DLQManager {
       maxAge?: number;
     } = {}
   ): Promise<DLQMessageInfo[]> {
-    const dlqKey = 'rotif:dlq';
+    const dlqKey = this.dlqKey;
     const { limit = 100, offset = 0, channel, maxAge } = options;
 
     try {
@@ -369,7 +372,7 @@ export class DLQManager {
    * Clear all messages from DLQ
    */
   async clear(): Promise<void> {
-    const dlqKey = 'rotif:dlq';
+    const dlqKey = this.dlqKey;
     await this.redis.del(dlqKey);
     this.logger.info('DLQ cleared');
   }

@@ -2,6 +2,15 @@ import { getRedisClientToken, REDIS_MANAGER } from './redis.constants.js';
 import { LockOptions, CacheOptions, RateLimitOptions } from './redis.types.js';
 import { Errors } from '../../errors/index.js';
 
+/**
+ * Redis key prefixes for different operations
+ */
+const REDIS_KEY_PREFIXES = {
+  CACHE: 'cache:',
+  LOCK: 'lock:',
+  RATE: 'rate:',
+} as const;
+
 // Simple parameter decorator for dependency injection
 function createInjectDecorator(token: string | symbol): ParameterDecorator {
   return (target: any, propertyKey: string | symbol | undefined, parameterIndex: number) => {
@@ -41,10 +50,17 @@ export function RedisCache(options?: CacheOptions): MethodDecorator {
         }
 
         if (!client) {
+          console.warn(
+            `@RedisCache: No Redis client found for method ${String(propertyKey)}. Falling back to uncached execution.`
+          );
           return originalMethod.apply(this, args);
         }
       } catch (error) {
         // If client not found, fall back to original method
+        console.error(
+          `@RedisCache: Error getting Redis client for method ${String(propertyKey)}:`,
+          error
+        );
         return originalMethod.apply(this, args);
       }
 
@@ -63,7 +79,7 @@ export function RedisCache(options?: CacheOptions): MethodDecorator {
         key = `${String(propertyKey)}:${args.map((a) => (typeof a === 'object' ? JSON.stringify(a) : a)).join(':')}`;
       }
 
-      const fullKey = `cache:${key}`;
+      const fullKey = `${REDIS_KEY_PREFIXES.CACHE}${key}`;
 
       if (options?.condition && !options.condition(...args)) {
         return originalMethod.apply(this, args);
@@ -96,7 +112,11 @@ export function RedisCache(options?: CacheOptions): MethodDecorator {
         }
 
         return result;
-      } catch {
+      } catch (error) {
+        console.error(
+          `@RedisCache: Error during cache operation for method ${String(propertyKey)}:`,
+          error
+        );
         return originalMethod.apply(this, args);
       }
     };
@@ -129,10 +149,17 @@ export function RedisLock(options?: LockOptions): MethodDecorator {
         }
 
         if (!client) {
+          console.warn(
+            `@RedisLock: No Redis client found for method ${String(propertyKey)}. Falling back to unlocked execution.`
+          );
           return originalMethod.apply(this, args);
         }
       } catch (error) {
         // If client not found, fall back to original method
+        console.error(
+          `@RedisLock: Error getting Redis client for method ${String(propertyKey)}:`,
+          error
+        );
         return originalMethod.apply(this, args);
       }
 
@@ -154,7 +181,7 @@ export function RedisLock(options?: LockOptions): MethodDecorator {
       const ttl = options?.ttl || 10; // Default 10 seconds
       const retries = options?.retries ?? 10; // Use ?? to allow 0
       const retryDelay = options?.retryDelay || 100;
-      const fullKey = `lock:${key}`;
+      const fullKey = `${REDIS_KEY_PREFIXES.LOCK}${key}`;
 
       const lockValue = `${Date.now()}:${Math.random()}`;
       const ttlSeconds = ttl; // TTL is already in seconds
@@ -223,20 +250,27 @@ export function RedisRateLimit(options: RateLimitOptions): MethodDecorator {
         }
 
         if (!client) {
+          console.warn(
+            `@RedisRateLimit: No Redis client found for method ${String(propertyKey)}. Falling back to unthrottled execution.`
+          );
           return originalMethod.apply(this, args);
         }
       } catch (error) {
         // If client not found, fall back to original method
+        console.error(
+          `@RedisRateLimit: Error getting Redis client for method ${String(propertyKey)}:`,
+          error
+        );
         return originalMethod.apply(this, args);
       }
 
       // Support custom key function or static key/keyPrefix
       let key: string;
       if ((options as any).keyFn && typeof (options as any).keyFn === 'function') {
-        key = `rate:${(options as any).keyFn(...args)}`;
+        key = `${REDIS_KEY_PREFIXES.RATE}${(options as any).keyFn(...args)}`;
       } else {
         // Support both 'key' and 'keyPrefix' for backward compatibility
-        const keyPrefix = (options as any).key || options.keyPrefix || `rate:${String(propertyKey)}`;
+        const keyPrefix = (options as any).key || options.keyPrefix || `${REDIS_KEY_PREFIXES.RATE}${String(propertyKey)}`;
         key = `${keyPrefix}:${args[0] || 'default'}`;
       }
 

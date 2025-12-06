@@ -481,17 +481,13 @@ export class EventDiscoveryService {
       // Check container's internal structure
       if (this.container) {
         // Check for internal instances map (private property)
-        if ((this.container as any).instances) {
-          return Array.from((this.container as any).instances.values());
-        }
-
-        // Fallback to checking other possible internal structures
-        if ((this.container as any)._instances) {
-          return Array.from((this.container as any)._instances.values());
+        const instances = (this.container as any)?.instances ?? (this.container as any)?._instances;
+        if (instances) {
+          return Array.from(instances.values());
         }
 
         // If container has providers property
-        if ((this.container as any).providers) {
+        if ((this.container as any)?.providers) {
           return Array.from((this.container as any).providers.values());
         }
       }

@@ -196,9 +196,6 @@ export class AuthorizationManager {
       return false;
     }
 
-    // Determine if method ACL overrides service ACL
-    const override = (methodACL as any)?.__override === true;
-
     // No method-specific ACL - service-level access is sufficient
     if (!methodACL) {
       // Check service-level access
@@ -212,6 +209,9 @@ export class AuthorizationManager {
       // This should not happen due to earlier check, but for type safety
       return false;
     }
+
+    // Determine if method ACL overrides service ACL
+    const override = methodACL.__override === true;
 
     // Build effective ACL
     // For method-level ACLs: if method defines roles/permissions, they REPLACE service-level ones (more restrictive)
@@ -276,7 +276,7 @@ export class AuthorizationManager {
     }
 
     // Clone definition to avoid mutating original
-    const filtered = JSON.parse(JSON.stringify(definition));
+    const filtered = structuredClone(definition);
 
     // Find matching ACL
     const acl = this.findMatchingACL(serviceName);
@@ -405,52 +405,4 @@ export class AuthorizationManager {
     return true;
   }
 
-  /**
-   * Merge role arrays for inheritance
-   * Method roles are added to service roles (logical OR)
-   */
-  private mergeRoles(serviceRoles?: string[], methodRoles?: string[]): string[] | undefined {
-    if (!serviceRoles && !methodRoles) {
-      return undefined;
-    }
-
-    const merged = new Set<string>();
-
-    if (serviceRoles) {
-      for (const role of serviceRoles) {
-        merged.add(role);
-      }
-    }
-
-    if (methodRoles) {
-      for (const role of methodRoles) {
-        merged.add(role);
-      }
-    }
-
-    return Array.from(merged);
-  }
-
-  /**
-   * Merge permission arrays for inheritance
-   * Method permissions are added to service permissions (all required)
-   */
-  private mergePermissions(servicePermissions?: string[], methodPermissions?: string[]): string[] | undefined {
-    if (!servicePermissions && !methodPermissions) {
-      return undefined;
-    }
-
-    const merged: string[] = [];
-
-    if (servicePermissions) {
-      merged.push(...servicePermissions);
-    }
-
-    if (methodPermissions) {
-      merged.push(...methodPermissions);
-    }
-
-    // Remove duplicates
-    return Array.from(new Set(merged));
-  }
 }

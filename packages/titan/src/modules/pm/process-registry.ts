@@ -12,7 +12,6 @@ import type { IProcessInfo } from './types.js';
 export class ProcessRegistry {
   private processes = new Map<string, IProcessInfo>();
   private serviceNameIndex = new Map<string, Set<string>>();
-  private processClassIndex = new Map<string, Set<string>>();
 
   /**
    * Register a new process
@@ -102,6 +101,5 @@ export class ProcessRegistry {
   clear(): void {
     this.processes.clear();
     this.serviceNameIndex.clear();
-    this.processClassIndex.clear();
   }
 }

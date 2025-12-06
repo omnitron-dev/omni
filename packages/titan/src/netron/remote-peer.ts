@@ -137,7 +137,7 @@ export class RemotePeer extends AbstractPeer {
       if (isBinary) {
         try {
           this.handlePacket(decodePacket(data));
-        } catch (error) {
+        } catch (error: unknown) {
           this.logger.error({ error }, 'Packet decode error:');
         }
       } else {
@@ -609,11 +609,11 @@ export class RemotePeer extends AbstractPeer {
           const stub = this.netron.peer.getStubByDefinitionId(defId);
           await stub.set(name, value);
           await this.sendResponse(packet, undefined);
-        } catch (err: any) {
+        } catch (err: unknown) {
           this.logger.error({ value: err }, 'Error setting value:');
           try {
             await this.sendErrorResponse(packet, err);
-          } catch (err_: any) {
+          } catch (err_: unknown) {
             this.logger.error({ value: err_ }, 'Error sending error response:');
           }
         }
@@ -626,11 +626,11 @@ export class RemotePeer extends AbstractPeer {
         try {
           const stub = this.netron.peer.getStubByDefinitionId(defId);
           await this.sendResponse(packet, await stub.get(name));
-        } catch (err: any) {
+        } catch (err: unknown) {
           this.logger.error({ value: err }, 'Error getting value:');
           try {
             await this.sendErrorResponse(packet, err);
-          } catch (err_) {
+          } catch (err_: unknown) {
             this.logger.error({ value: err_ }, 'Error sending error response:');
           }
         }
@@ -643,11 +643,11 @@ export class RemotePeer extends AbstractPeer {
         try {
           const stub = this.netron.peer.getStubByDefinitionId(defId);
           await this.sendResponse(packet, await stub.call(method, args, this));
-        } catch (err: any) {
+        } catch (err: unknown) {
           this.logger.error({ value: err }, 'Error calling method:');
           try {
             await this.sendErrorResponse(packet, err);
-          } catch (err_) {
+          } catch (err_: unknown) {
             this.logger.error({ value: err_ }, 'Error sending error response:');
           }
         }
@@ -662,11 +662,11 @@ export class RemotePeer extends AbstractPeer {
             throw Errors.notImplemented('runTask not available');
           }
           await this.sendResponse(packet, await this.netron.runTask(this, name, ...args));
-        } catch (err: any) {
+        } catch (err: unknown) {
           this.logger.error({ value: err }, 'Error running task:');
           try {
             await this.sendErrorResponse(packet, err);
-          } catch (err_) {
+          } catch (err_: unknown) {
             this.logger.error({ value: err_ }, 'Error sending error response:');
           }
         }

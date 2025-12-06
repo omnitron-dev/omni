@@ -23,6 +23,20 @@ import { createRetryDelayFn, RetryStrategies } from './retry-strategies.js';
 import { DLQManager, type DLQCleanupConfig } from './dlq-manager.js';
 
 /**
+ * Constants used throughout the Rotif module
+ */
+const ROTIF_CONSTANTS = {
+  /** Base retry delay in milliseconds for exponential backoff */
+  BASE_RETRY_DELAY_MS: 100,
+  /** Maximum retry delay in milliseconds */
+  MAX_RETRY_DELAY_MS: 5000,
+  /** Default maximum wait time in milliseconds for unsubscribe operations */
+  DEFAULT_MAX_WAIT_MS: 5000,
+  /** Default number of messages to read per batch in xreadgroup */
+  DEFAULT_READ_COUNT: 5000,
+} as const;
+
+/**
  * Main class for managing message queues and subscriptions.
  * Provides functionality for publishing messages, subscribing to channels,
  * managing delayed messages, and handling message processing.
@@ -56,6 +70,8 @@ export class NotificationManager {
   private dlqSubscriptionPromise?: Promise<void>;
   /** DLQ Manager instance */
   private dlqManager: DLQManager;
+  /** DLQ key */
+  private dlqKey: string;
 
   /**
    * Creates a new NotificationManager instance.
@@ -65,16 +81,18 @@ export class NotificationManager {
     this.config = config;
     this.logger = config.logger || defaultLogger;
     this.redis = new Redis(config.redis as RedisOptions);
+    this.dlqKey = config.dlqKey || 'rotif:dlq';
 
     // Initialize DLQ Manager
-    this.dlqManager = new DLQManager(this.redis, this.logger, config.dlqCleanup);
+    this.dlqManager = new DLQManager(this.redis, this.logger, config.dlqCleanup, this.dlqKey);
     this.redis.options.retryStrategy = (times) => {
-      const baseDelay = 100; // Базовое время ожидания
-      const maxDelay = 5000; // Максимальное время ожидания
-      const jitter = Math.random() * 100; // Случайное отклонение для предотвращения thundering herd
+      const jitter = Math.random() * ROTIF_CONSTANTS.BASE_RETRY_DELAY_MS; // Random jitter to prevent thundering herd
 
-      // Экспоненциальная задержка с добавлением jitter
-      const delay = Math.min(baseDelay * Math.pow(2, times - 1) + jitter, maxDelay);
+      // Exponential backoff with jitter
+      const delay = Math.min(
+        ROTIF_CONSTANTS.BASE_RETRY_DELAY_MS * Math.pow(2, times - 1) + jitter,
+        ROTIF_CONSTANTS.MAX_RETRY_DELAY_MS
+      );
 
       return delay;
     };
@@ -327,9 +345,8 @@ export class NotificationManager {
         sub.isPaused = true;
 
         // Wait for in-flight messages to complete (with timeout)
-        const maxWait = 5000; // 5 seconds max wait
         const startTime = Date.now();
-        while (sub.inflightCount > 0 && Date.now() - startTime < maxWait) {
+        while (sub.inflightCount > 0 && Date.now() - startTime < ROTIF_CONSTANTS.DEFAULT_MAX_WAIT_MS) {
           await delayMs(10);
         }
 
@@ -475,7 +492,7 @@ export class NotificationManager {
    */
   async subscribeToDLQ(handler: (msg: RotifMessage) => Promise<void>) {
     await this.initializationDefer.promise;
-    const streamKey = 'rotif:dlq';
+    const streamKey = this.dlqKey;
     const group = 'dlq-group';
     const consumer = 'dlq-worker';
 
@@ -575,7 +592,7 @@ export class NotificationManager {
   async requeueFromDLQ(count = 10): Promise<number> {
     await this.initializationDefer.promise;
 
-    const requeuedCount = await this.runLuaScript('requeue-from-dlq', ['rotif:dlq'], [count.toString()]);
+    const requeuedCount = await this.runLuaScript('requeue-from-dlq', [this.dlqKey], [count.toString()]);
 
     this.logger.info(`Requeued ${requeuedCount} messages from DLQ`);
 
@@ -655,7 +672,7 @@ export class NotificationManager {
         const errorMessage = parseError instanceof Error ? parseError.message : 'Failed to parse message payload';
         await this.runLuaScript(
           'move-to-dlq',
-          [stream, 'rotif:dlq'],
+          [stream, this.dlqKey],
           [
             group,
             id,
@@ -728,7 +745,7 @@ export class NotificationManager {
         if (msg.attempt > 1 && msg.attempt > maxRetries + 1) {
           await this.runLuaScript(
             'move-to-dlq',
-            [stream, 'rotif:dlq'],
+            [stream, this.dlqKey],
             [
               group,
               msg.id,
@@ -789,7 +806,7 @@ export class NotificationManager {
             const errorMessage = err instanceof Error ? err.message : String(err);
             await this.runLuaScript(
               'move-to-dlq',
-              [stream, 'rotif:dlq'],
+              [stream, this.dlqKey],
               [
                 group,
                 msg.id,
@@ -937,9 +954,9 @@ export class NotificationManager {
             group,
             consumer,
             'COUNT',
-            5000,
+            ROTIF_CONSTANTS.DEFAULT_READ_COUNT,
             'BLOCK',
-            this.config.blockInterval ?? 5000,
+            this.config.blockInterval ?? ROTIF_CONSTANTS.DEFAULT_MAX_WAIT_MS,
             'STREAMS',
             stream,
             '>'
@@ -1060,4 +1077,27 @@ export class NotificationManager {
    * Export createRetryDelayFn for custom strategies
    */
   static createRetryDelayFn = createRetryDelayFn;
+
+  /**
+   * Get subscription statistics
+   * @returns Object containing count of total, active, and paused subscriptions
+   */
+  getSubscriptionStats(): { count: number; active: number; paused: number } {
+    let active = 0;
+    let paused = 0;
+
+    for (const sub of this.subscriptions.values()) {
+      if (sub.isPaused) {
+        paused++;
+      } else {
+        active++;
+      }
+    }
+
+    return {
+      count: this.subscriptions.size,
+      active,
+      paused,
+    };
+  }
 }

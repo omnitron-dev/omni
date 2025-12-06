@@ -71,6 +71,42 @@ export class RotifModule {
   private static handlerInstances: WeakMap<any, RotifHandlerMetadata[]> = new WeakMap();
 
   /**
+   * Creates a NotificationManager instance from options.
+   * @param options - Module configuration options
+   * @returns NotificationManager instance
+   * @private
+   */
+  private static async createManager(options: RotifModuleOptions): Promise<NotificationManager> {
+    const manager = new NotificationManager({
+      redis: options.redis,
+      logger: options.logger,
+      disableDelayed: options.disableDelayed,
+      checkDelayInterval: options.checkDelayInterval,
+      maxRetries: options.maxRetries,
+      maxStreamLength: options.maxStreamLength,
+      minStreamId: options.minStreamId,
+      blockInterval: options.blockInterval,
+      deduplicationTTL: options.deduplicationTTL,
+      scheduledBatchSize: options.scheduledBatchSize,
+      retryDelay: options.retryDelay,
+      retryStrategy: options.retryStrategy,
+      localRoundRobin: options.localRoundRobin,
+      disablePendingMessageRecovery: options.disablePendingMessageRecovery,
+      pendingCheckInterval: options.pendingCheckInterval,
+      pendingIdleThreshold: options.pendingIdleThreshold,
+      groupNameFn: options.groupNameFn,
+      consumerNameFn: options.consumerNameFn,
+      generateDedupKey: options.generateDedupKey,
+      dlqCleanup: options.dlqCleanup,
+    });
+
+    // Wait for initialization to complete
+    await manager.waitUntilReady();
+
+    return manager;
+  }
+
+  /**
    * Configure the Rotif module with static options.
    *
    * @param options - Module configuration options
@@ -90,35 +126,7 @@ export class RotifModule {
       [
         ROTIF_MANAGER_TOKEN,
         {
-          useFactory: async () => {
-            const manager = new NotificationManager({
-              redis: options.redis,
-              logger: options.logger,
-              disableDelayed: options.disableDelayed,
-              checkDelayInterval: options.checkDelayInterval,
-              maxRetries: options.maxRetries,
-              maxStreamLength: options.maxStreamLength,
-              minStreamId: options.minStreamId,
-              blockInterval: options.blockInterval,
-              deduplicationTTL: options.deduplicationTTL,
-              scheduledBatchSize: options.scheduledBatchSize,
-              retryDelay: options.retryDelay,
-              retryStrategy: options.retryStrategy,
-              localRoundRobin: options.localRoundRobin,
-              disablePendingMessageRecovery: options.disablePendingMessageRecovery,
-              pendingCheckInterval: options.pendingCheckInterval,
-              pendingIdleThreshold: options.pendingIdleThreshold,
-              groupNameFn: options.groupNameFn,
-              consumerNameFn: options.consumerNameFn,
-              generateDedupKey: options.generateDedupKey,
-              dlqCleanup: options.dlqCleanup,
-            });
-
-            // Wait for initialization to complete
-            await manager.waitUntilReady();
-
-            return manager;
-          },
+          useFactory: async () => this.createManager(options),
           scope: Scope.Singleton,
         },
       ],
@@ -157,35 +165,7 @@ export class RotifModule {
     providers.push([
       ROTIF_MANAGER_TOKEN,
       {
-        useFactory: async (moduleOptions: RotifModuleOptions) => {
-          const manager = new NotificationManager({
-            redis: moduleOptions.redis,
-            logger: moduleOptions.logger,
-            disableDelayed: moduleOptions.disableDelayed,
-            checkDelayInterval: moduleOptions.checkDelayInterval,
-            maxRetries: moduleOptions.maxRetries,
-            maxStreamLength: moduleOptions.maxStreamLength,
-            minStreamId: moduleOptions.minStreamId,
-            blockInterval: moduleOptions.blockInterval,
-            deduplicationTTL: moduleOptions.deduplicationTTL,
-            scheduledBatchSize: moduleOptions.scheduledBatchSize,
-            retryDelay: moduleOptions.retryDelay,
-            retryStrategy: moduleOptions.retryStrategy,
-            localRoundRobin: moduleOptions.localRoundRobin,
-            disablePendingMessageRecovery: moduleOptions.disablePendingMessageRecovery,
-            pendingCheckInterval: moduleOptions.pendingCheckInterval,
-            pendingIdleThreshold: moduleOptions.pendingIdleThreshold,
-            groupNameFn: moduleOptions.groupNameFn,
-            consumerNameFn: moduleOptions.consumerNameFn,
-            generateDedupKey: moduleOptions.generateDedupKey,
-            dlqCleanup: moduleOptions.dlqCleanup,
-          });
-
-          // Wait for initialization to complete
-          await manager.waitUntilReady();
-
-          return manager;
-        },
+        useFactory: async (moduleOptions: RotifModuleOptions) => this.createManager(moduleOptions),
         inject: [ROTIF_MODULE_OPTIONS],
         scope: Scope.Singleton,
       },

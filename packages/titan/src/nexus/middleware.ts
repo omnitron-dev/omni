@@ -2,44 +2,33 @@
  * Middleware system for Nexus DI Container
  */
 
-import { InjectionToken, ResolutionContext } from './types.js';
+import { InjectionToken, ResolutionContext, IContainer, MiddlewareContext } from './types.js';
 import { Errors, ValidationError, TitanError, ErrorCode } from '../errors/index.js';
 
 /**
  * Middleware execution result
  */
-export interface MiddlewareResult<T = any> {
+export interface MiddlewareResult<T = unknown> {
   value?: T;
   skip?: boolean;
   error?: Error;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 /**
  * Middleware next function
  */
-export type MiddlewareNext<T = any> = () => T | Promise<T>;
+export type MiddlewareNext<T = unknown> = () => T | Promise<T>;
 
 /**
  * Middleware function
  */
-export type MiddlewareFunction<T = any> = (context: MiddlewareContext, next: MiddlewareNext<T>) => T | Promise<T>;
-
-/**
- * Middleware context
- */
-export interface MiddlewareContext extends ResolutionContext {
-  token: InjectionToken<any>;
-  container: any; // Required in ResolutionContext
-  attempt?: number;
-  startTime?: number;
-  [key: string]: any;
-}
+export type MiddlewareFunction<T = unknown> = (context: MiddlewareContext<T>, next: MiddlewareNext<T>) => T | Promise<T>;
 
 /**
  * Middleware interface
  */
-export interface Middleware<T = any> {
+export interface Middleware<T = unknown> {
   /**
    * Middleware name
    */
@@ -58,12 +47,12 @@ export interface Middleware<T = any> {
   /**
    * Condition to apply middleware
    */
-  condition?: (context: MiddlewareContext) => boolean;
+  condition?: (context: MiddlewareContext<T>) => boolean;
 
   /**
    * Error handler
    */
-  onError?: (error: Error, context: MiddlewareContext) => void;
+  onError?: (error: Error, context: MiddlewareContext<T>) => void;
 }
 
 /**
@@ -110,14 +99,10 @@ export class MiddlewarePipeline {
     let retryContext = false;
 
     const dispatch = async (i: number): Promise<T> => {
-      // Check if we're in a retry context - detect if current middleware is retry
+      // For retry middleware, we allow multiple next() calls
+      // Check using explicit marker instead of fragile string matching
       const currentMiddleware = applicable[i];
-      const isRetryMiddleware =
-        currentMiddleware &&
-        (currentMiddleware.name?.includes('Retry') ||
-          currentMiddleware.name?.includes('retry') ||
-          (currentMiddleware as any)?.isRetryMiddleware ||
-          currentMiddleware.constructor?.name?.includes('Retry'));
+      const isRetryMiddleware = currentMiddleware && 'isRetryMiddleware' in currentMiddleware && (currentMiddleware as any).isRetryMiddleware === true;
 
       if (isRetryMiddleware) {
         retryContext = true;
@@ -230,7 +215,7 @@ export class MiddlewarePipeline {
 /**
  * Create a middleware
  */
-export function createMiddleware<T = any>(config: Middleware<T>): Middleware<T> {
+export function createMiddleware<T = unknown>(config: Middleware<T>): Middleware<T> {
   return config;
 }
 
@@ -613,6 +598,7 @@ export class RateLimitMiddleware implements Middleware {
 
 /**
  * Built-in retry middleware class
+ * @deprecated Use the functional RetryMiddleware instead. This class-style middleware will be removed in a future version.
  */
 export class RetryMiddlewareClass implements Middleware {
   name = 'retry';
@@ -649,6 +635,7 @@ export class RetryMiddlewareClass implements Middleware {
 
 /**
  * Built-in cache middleware class
+ * @deprecated Use the functional CachingMiddleware instead. This class-style middleware will be removed in a future version.
  */
 export class CacheMiddleware implements Middleware {
   name = 'cache';
@@ -698,6 +685,7 @@ export class CacheMiddleware implements Middleware {
 
 /**
  * Built-in validation middleware class
+ * @deprecated Use the functional ValidationMiddleware instead. This class-style middleware will be removed in a future version.
  */
 export class ValidationMiddlewareClass implements Middleware {
   name = 'validation';

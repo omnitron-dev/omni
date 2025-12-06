@@ -4,7 +4,9 @@
  * Decorators for logging functionality in Titan framework
  */
 
-import { createDecorator, createMethodInterceptor } from '../../decorators/index.js';
+import { createDecorator } from '../../decorators/index.js';
+// Re-export Log and Monitor from utility decorators to avoid duplication
+export { Log, Monitor } from '../../decorators/utility.js';
 
 // Re-export ILogger type from logger module for convenience
 export type { ILogger } from './logger.module.js';
@@ -80,133 +82,9 @@ export const Logger = createDecorator<string>()
   .build();
 
 /**
- * Log method decorator - logs method entry, exit and errors
+ * Note: Log and Monitor decorators are re-exported from utility.ts
+ * to avoid code duplication. The implementations in utility.ts are
+ * used throughout the framework for consistency.
  *
- * @example
- * ```typescript
- * class UserService {
- *   @Log({ level: 'info', includeArgs: true })
- *   async createUser(userData: any) {
- *     // Method will be logged automatically
- *     return user;
- *   }
- * }
- * ```
+ * @see ../../decorators/utility.ts for implementation details
  */
-export const Log = createMethodInterceptor<{
-  level?: 'trace' | 'debug' | 'info' | 'warn' | 'error';
-  includeArgs?: boolean;
-  includeResult?: boolean;
-  message?: string;
-}>('Log', async (originalMethod, args, context) => {
-  const level = context.options?.level || 'info';
-  const methodName = `${context.target.constructor.name}.${String(context.propertyKey)}`;
-  const logger = getLoggerInstance(context.target.constructor.name);
-
-  const logData: any = {
-    method: methodName,
-    timestamp: new Date().toISOString(),
-  };
-
-  if (context.options?.includeArgs) {
-    logData.args = args;
-  }
-
-  if (context.options?.message) {
-    logData.message = context.options.message;
-  }
-
-  // Log method entry
-  logger[level](logData, `Entering ${methodName}`);
-
-  try {
-    const result = await originalMethod(...args);
-
-    if (context.options?.includeResult) {
-      logData.result = result;
-    }
-
-    // Log method exit
-    logger[level](logData, `Exiting ${methodName}`);
-
-    return result;
-  } catch (error) {
-    logData.error = error;
-    logger.error(logData, `Error in ${methodName}`);
-    throw error;
-  }
-});
-
-/**
- * Monitor decorator - tracks performance metrics
- * This is a lightweight version for basic monitoring
- *
- * @example
- * ```typescript
- * class DataService {
- *   @Monitor({ name: 'fetch-data' })
- *   async fetchData() {
- *     // Performance will be tracked
- *   }
- * }
- * ```
- */
-export const Monitor = createMethodInterceptor<{
-  name?: string;
-  sampleRate?: number;
-  includeArgs?: boolean;
-  includeResult?: boolean;
-}>('Monitor', async (originalMethod, args, context) => {
-  const sampleRate = context.options?.sampleRate ?? 1.0;
-
-  // Skip monitoring based on sample rate
-  if (Math.random() > sampleRate) {
-    return originalMethod(...args);
-  }
-
-  const metricName = context.options?.name || `${context.target.constructor.name}.${String(context.propertyKey)}`;
-  const start = performance.now();
-
-  const metadata: any = {
-    method: metricName,
-    timestamp: Date.now(),
-  };
-
-  if (context.options?.includeArgs) {
-    metadata.args = args;
-  }
-
-  try {
-    const result = await originalMethod(...args);
-
-    const duration = performance.now() - start;
-    metadata.duration = duration;
-    metadata.success = true;
-
-    if (context.options?.includeResult) {
-      metadata.result = result;
-    }
-
-    // Log metrics (could be replaced with actual metrics collection)
-    console.debug(`[Metrics] ${metricName}`, {
-      duration: `${duration.toFixed(2)}ms`,
-      success: true,
-    });
-
-    return result;
-  } catch (error) {
-    const duration = performance.now() - start;
-    metadata.duration = duration;
-    metadata.success = false;
-    metadata.error = error;
-
-    // Log error metrics
-    console.error(`[Metrics] ${metricName}`, {
-      duration: `${duration.toFixed(2)}ms`,
-      success: false,
-      error: (error as Error).name,
-    });
-
-    throw error;
-  }
-});

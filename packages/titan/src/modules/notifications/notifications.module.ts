@@ -19,6 +19,9 @@ import {
   ANALYTICS_SERVICE,
   ROTIF_MANAGER,
   NOTIFICATION_MODULE_OPTIONS,
+  DEFAULT_REDIS_HOST,
+  DEFAULT_REDIS_PORT,
+  DEFAULT_REDIS_DB,
 } from './constants.js';
 
 export interface NotificationModuleOptions {
@@ -127,9 +130,9 @@ export class TitanNotificationsModule {
 
     // Create Redis client
     const redis = new Redis({
-      host: options.redis?.host || 'localhost',
-      port: options.redis?.port || 6379,
-      db: options.redis?.db || 0,
+      host: options.redis?.host || DEFAULT_REDIS_HOST,
+      port: options.redis?.port || DEFAULT_REDIS_PORT,
+      db: options.redis?.db || DEFAULT_REDIS_DB,
       password: options.redis?.password,
     });
 
@@ -144,7 +147,7 @@ export class TitanNotificationsModule {
       {
         useFactory: () => {
           const rotifConfig = {
-            redis: options.redis || { host: 'localhost', port: 6379 },
+            redis: options.redis || { host: DEFAULT_REDIS_HOST, port: DEFAULT_REDIS_PORT },
             ...options.rotif,
           };
           return new NotificationManager(rotifConfig);
@@ -309,9 +312,9 @@ export class TitanNotificationsModule {
       {
         useFactory: (moduleOptions: NotificationModuleOptions) => {
           const redis = new Redis({
-            host: moduleOptions.redis?.host || 'localhost',
-            port: moduleOptions.redis?.port || 6379,
-            db: moduleOptions.redis?.db || 0,
+            host: moduleOptions.redis?.host || DEFAULT_REDIS_HOST,
+            port: moduleOptions.redis?.port || DEFAULT_REDIS_PORT,
+            db: moduleOptions.redis?.db || DEFAULT_REDIS_DB,
             password: moduleOptions.redis?.password,
           });
           // Store reference for cleanup
@@ -328,7 +331,7 @@ export class TitanNotificationsModule {
       {
         useFactory: (moduleOptions: NotificationModuleOptions) => {
           const rotifConfig = {
-            redis: moduleOptions.redis || { host: 'localhost', port: 6379 },
+            redis: moduleOptions.redis || { host: DEFAULT_REDIS_HOST, port: DEFAULT_REDIS_PORT },
             ...moduleOptions.rotif,
           };
           return new NotificationManager(rotifConfig);

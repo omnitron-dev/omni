@@ -12,6 +12,15 @@ import { generateRequestId } from '../utils.js';
 import { extractBearerToken } from '../auth/utils.js';
 
 /**
+ * Default values for middleware configuration
+ */
+const MIDDLEWARE_DEFAULTS = {
+  RATE_LIMIT_MAX_REQUESTS: 100,
+  RATE_LIMIT_WINDOW_MS: 60000,
+  COMPRESSION_THRESHOLD_BYTES: 1024,
+} as const;
+
+/**
  * Metrics collector interface
  */
 export interface MetricsCollector {
@@ -92,7 +101,7 @@ export class NetronBuiltinMiddleware {
    * Rate limit middleware
    */
   static rateLimit(options: { maxRequests?: number; window?: number } = {}): MiddlewareFunction {
-    const { maxRequests = 100, window = 60000 } = options;
+    const { maxRequests = MIDDLEWARE_DEFAULTS.RATE_LIMIT_MAX_REQUESTS, window = MIDDLEWARE_DEFAULTS.RATE_LIMIT_WINDOW_MS } = options;
     const requests = new Map<string, { count: number; resetTime: number }>();
 
     return async (ctx, next) => {
@@ -491,7 +500,7 @@ export class NetronBuiltinMiddleware {
       threshold?: number;
     } = {}
   ): MiddlewareFunction {
-    const threshold = options.threshold || 1024; // 1KB default
+    const threshold = options.threshold || MIDDLEWARE_DEFAULTS.COMPRESSION_THRESHOLD_BYTES;
 
     return async (ctx, next) => {
       await next();

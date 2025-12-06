@@ -14,6 +14,18 @@
  */
 
 // ============================================================================
+// Constants
+// ============================================================================
+
+/**
+ * Decorator metadata constants for standardized metadata key usage.
+ *
+ * @stable
+ * @since 0.1.0
+ */
+export { DECORATOR_METADATA, type DecoratorMetadataKey } from './constants.js';
+
+// ============================================================================
 // Decorator Creation Utilities
 // ============================================================================
 

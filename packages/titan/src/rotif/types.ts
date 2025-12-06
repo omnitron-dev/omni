@@ -18,14 +18,15 @@ export interface RotifLogger {
 /**
  * Represents a message in the Rotif system.
  * @interface RotifMessage
+ * @template T - Type of the message payload
  */
-export interface RotifMessage {
+export interface RotifMessage<T = unknown> {
   /** Unique identifier of the message */
   id: string;
   /** Channel name the message was published to */
   channel: string;
   /** Message payload */
-  payload: any;
+  payload: T;
   /** Timestamp when the message was created */
   timestamp: number;
   /** Current processing attempt number */
@@ -89,6 +90,8 @@ export interface RotifConfig {
   }) => string;
   /** DLQ cleanup configuration */
   dlqCleanup?: DLQCleanupConfig;
+  /** Custom DLQ key (default: 'rotif:dlq') */
+  dlqKey?: string;
 }
 
 /**

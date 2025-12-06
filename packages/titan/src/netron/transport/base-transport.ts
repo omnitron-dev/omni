@@ -105,7 +105,7 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
         } else {
           this.emit('packet', packet);
         }
-      } catch (error: any) {
+      } catch (_error: unknown) {
         // Not a valid packet, emit as raw data
         this.emit('data', data);
       }
@@ -124,6 +124,7 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
       pongPacket.setImpulse(0); // Response
       pongPacket.data = packet.data; // Echo timestamp
       this.sendPacket(pongPacket).catch((err) => {
+        // TODO: Replace with logger when available in BaseConnection
         console.error('Failed to send pong:', err);
       });
     } else {
@@ -315,6 +316,7 @@ export abstract class BaseServer extends EventEmitter implements ITransportServe
   async broadcast(data: Buffer | ArrayBuffer): Promise<void> {
     const promises = Array.from(this.connections.values()).map((conn) =>
       conn.send(data).catch((error) => {
+        // TODO: Replace with logger when available in BaseServer
         console.error(`Failed to broadcast to connection ${conn.id}:`, error);
       })
     );
@@ -327,6 +329,7 @@ export abstract class BaseServer extends EventEmitter implements ITransportServe
   async broadcastPacket(packet: Packet): Promise<void> {
     const promises = Array.from(this.connections.values()).map((conn) =>
       conn.sendPacket(packet).catch((error) => {
+        // TODO: Replace with logger when available in BaseServer
         console.error(`Failed to broadcast packet to connection ${conn.id}:`, error);
       })
     );

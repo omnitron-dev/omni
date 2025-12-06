@@ -15,7 +15,7 @@
 
 import { EnhancedEventEmitter } from '@omnitron-dev/eventemitter';
 import { Container } from '../../nexus/index.js';
-import { Module, Global } from '../../decorators/index.js';
+import { Module, Global, Inject } from '../../decorators/index.js';
 
 import { EventsService } from './events.service.js';
 import { EventBusService } from './event-bus.service.js';
@@ -249,6 +249,26 @@ export interface IEventsModuleOptions {
   ],
 })
 export class EventsModule {
+  constructor(
+    @Inject(EVENT_SCHEDULER_SERVICE_TOKEN) private readonly scheduler?: EventSchedulerService,
+    @Inject(EVENT_EMITTER_TOKEN) private readonly emitter?: EnhancedEventEmitter
+  ) {}
+
+  /**
+   * Clean up resources when module is destroyed
+   */
+  async onModuleDestroy(): Promise<void> {
+    // Clean up scheduler timers and intervals
+    if (this.scheduler) {
+      await this.scheduler.onDestroy();
+    }
+
+    // Remove all event listeners
+    if (this.emitter) {
+      this.emitter.removeAllListeners();
+    }
+  }
+
   /**
    * Configure the Events module with options
    */

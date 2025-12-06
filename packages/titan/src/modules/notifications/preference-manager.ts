@@ -67,7 +67,8 @@ export class PreferenceManager {
     if (stored) {
       try {
         return JSON.parse(stored);
-      } catch {
+      } catch (error) {
+        console.warn(`Failed to parse user preferences for ${userId}:`, error);
         // Fall back to defaults if parsing fails
       }
     }

@@ -15,6 +15,23 @@
 
 import { ContextProvider } from './context.js';
 
+// Forward declarations for circular dependency resolution
+export interface Middleware<T = unknown> {
+  name: string;
+  execute: (context: MiddlewareContext<T>, next: () => T | Promise<T>) => T | Promise<T>;
+  priority?: number;
+  condition?: (context: MiddlewareContext<T>) => boolean;
+  onError?: (error: Error, context: MiddlewareContext<T>) => void;
+}
+
+export interface Plugin {
+  name: string;
+  version: string;
+  description?: string;
+  install(container: IContainer): void;
+  uninstall?(container: IContainer): void;
+}
+
 /**
  * Constructor type for creating instances.
  * Note: Uses any[] for args to maintain DI container flexibility.
@@ -168,6 +185,28 @@ export interface ResolutionContext {
   /** Isolated resolution state for this resolution tree (prevents race conditions) */
   resolutionState?: ResolutionState;
   [key: string]: any;
+}
+
+/**
+ * Middleware context
+ * Extends ResolutionContext with middleware-specific properties
+ *
+ * @stable
+ * @since 0.1.0
+ */
+export interface MiddlewareContext<T = unknown> extends ResolutionContext {
+  /** Token being resolved */
+  token: InjectionToken<T>;
+  /** Container instance */
+  container: IContainer;
+  /** Current attempt number (for retry middleware) */
+  attempt?: number;
+  /** Start time of resolution (milliseconds since epoch) */
+  startTime?: number;
+  /** Additional metadata */
+  metadata: Record<string, unknown>;
+  /** Additional context properties */
+  [key: string]: unknown;
 }
 
 /**
@@ -327,6 +366,12 @@ export interface RegistrationOptions {
 export interface IContainer {
   /**
    * Register a provider - supports multiple formats.
+   *
+   * @template T - The type of the service being registered
+   * @param token - The token or constructor to register
+   * @param provider - The provider definition
+   * @param options - Optional registration options
+   * @returns this container for chaining
    */
   register<T>(token: InjectionToken<T>, provider: ProviderDefinition<T>, options?: RegistrationOptions): this;
   register<T>(provider: Provider<T>, options?: RegistrationOptions): this;
@@ -335,8 +380,13 @@ export interface IContainer {
 
   /**
    * Resolve a dependency.
+   *
+   * @template T - The type of the service being resolved
+   * @param token - The token identifying the dependency
+   * @param context - Optional context to pass to the resolution
+   * @returns The resolved instance
    */
-  resolve<T>(token: InjectionToken<T>, context?: any): T;
+  resolve<T>(token: InjectionToken<T>, context?: unknown): T;
 
   /**
    * Resolve a dependency asynchronously.
@@ -347,6 +397,12 @@ export interface IContainer {
    * Resolve multiple instances for a multi-token.
    */
   resolveMany<T>(token: InjectionToken<T>): T[];
+
+  /**
+   * Resolve all instances for a token (including from parent containers).
+   * Similar to resolveMany but explicitly resolves from parent containers as well.
+   */
+  resolveAll<T>(token: InjectionToken<T>): T[];
 
   /**
    * Resolve an optional dependency.
@@ -439,13 +495,19 @@ export interface IContainer {
 
   /**
    * Add middleware to the container.
+   *
+   * @param middleware - The middleware to add
+   * @returns this container for chaining
    */
-  addMiddleware(middleware: any): this;
+  addMiddleware(middleware: Middleware<unknown>): this;
 
   /**
    * Install a plugin.
+   *
+   * @param plugin - The plugin to install
+   * @returns this container for chaining
    */
-  use(plugin: any): this;
+  use(plugin: Plugin): this;
 }
 
 /**

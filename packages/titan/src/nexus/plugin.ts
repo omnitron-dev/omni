@@ -274,8 +274,12 @@ export class PluginManager {
   /**
    * Execute hooks synchronously
    * For afterResolve hooks, returns the potentially modified value
+   *
+   * @param name - The hook name to execute
+   * @param args - Arguments to pass to the hooks
+   * @returns For afterResolve hooks, returns the potentially modified value. Otherwise undefined.
    */
-  executeHooksSync(name: keyof PluginHooks, ...args: any[]): any {
+  executeHooksSync<T = unknown>(name: keyof PluginHooks, ...args: any[]): T | undefined {
     const hooks = this.hooks.get(name);
     if (hooks) {
       // Special handling for afterResolve to allow value modification
@@ -288,7 +292,7 @@ export class PluginManager {
             value = result;
           }
         }
-        return value;
+        return value as T;
       }
 
       // Regular hook execution
@@ -299,7 +303,7 @@ export class PluginManager {
 
     // For afterResolve, return the original value if no hooks
     if (name === 'afterResolve' && args.length >= 2) {
-      return args[1];
+      return args[1] as T;
     }
 
     // For other hooks, return undefined
@@ -337,11 +341,25 @@ export class PluginManager {
   }
 
   /**
-   * Check if a version satisfies a version range
+   * Check if a version satisfies a version range.
+   *
+   * Supported version range formats:
+   * - `^X.Y.Z` - Compatible with version X.Y.Z (caret range)
+   *   - Allows changes that do not modify the left-most non-zero digit
+   *   - Example: `^1.2.3` matches `1.2.3`, `1.2.4`, `1.3.0` but not `2.0.0`
+   * - `X.Y.Z` - Exact version match
+   *   - Example: `1.2.3` matches only `1.2.3`
+   *
+   * Note: This is a basic semver implementation that only supports ^ prefix and exact matches.
+   * For more complex version ranges (e.g., ~, >=, <, ||), consider using a full semver library
+   * like 'semver' package.
+   *
+   * @param version - The current version to check (e.g., "2.0.0")
+   * @param range - The version range requirement (e.g., "^2.0.0" or "2.0.0")
+   * @returns true if version satisfies the range, false otherwise
    */
   private isCompatibleVersion(version: string, range: string): boolean {
-    // Simple version compatibility check
-    // This is a basic implementation - in production, use a proper semver library
+    // Handle caret (^) range - allows minor and patch updates
     if (range.startsWith('^')) {
       const requiredVersion = range.substring(1);
       const [reqMajor, reqMinor = '0', reqPatch = '0'] = requiredVersion.split('.');

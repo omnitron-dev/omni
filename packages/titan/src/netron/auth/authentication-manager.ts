@@ -40,6 +40,31 @@ export class AuthenticationManager {
   }
 
   /**
+   * Log audit event for authentication operations
+   * @param method - Method name (required)
+   * @param eventDetails - Additional audit event details
+   */
+  private async logAudit(
+    method: string,
+    eventDetails: {
+      userId?: string;
+      args?: any[];
+      success: boolean;
+      error?: string;
+      metadata?: Record<string, any>;
+    }
+  ): Promise<void> {
+    if (this.auditLogger) {
+      await this.auditLogger.logAuth({
+        timestamp: new Date(),
+        service: 'authentication',
+        method,
+        ...eventDetails,
+      });
+    }
+  }
+
+  /**
    * Configure authentication functions
    * @param config - Authentication configuration
    * @throws {TypeError} If authenticate function is not a function
@@ -137,16 +162,11 @@ export class AuthenticationManager {
       this.logger.error({ error: validationError }, 'Invalid credentials format');
 
       // Audit failed authentication
-      if (this.auditLogger) {
-        await this.auditLogger.logAuth({
-          timestamp: new Date(),
-          service: 'authentication',
-          method: 'authenticate',
-          args: [{ username: credentials.username }],
-          success: false,
-          error: validationError,
-        });
-      }
+      await this.logAudit('authenticate', {
+        args: [{ username: credentials.username }],
+        success: false,
+        error: validationError,
+      });
 
       return {
         success: false,
@@ -158,15 +178,10 @@ export class AuthenticationManager {
       this.logger.error('No authentication function configured');
 
       // Audit configuration error
-      if (this.auditLogger) {
-        await this.auditLogger.logAuth({
-          timestamp: new Date(),
-          service: 'authentication',
-          method: 'authenticate',
-          success: false,
-          error: 'Authentication not configured',
-        });
-      }
+      await this.logAudit('authenticate', {
+        success: false,
+        error: 'Authentication not configured',
+      });
 
       return {
         success: false,
@@ -186,17 +201,12 @@ export class AuthenticationManager {
         this.logger.error('Authentication function returned null or undefined');
 
         // Audit failed authentication
-        if (this.auditLogger) {
-          await this.auditLogger.logAuth({
-            timestamp: new Date(),
-            service: 'authentication',
-            method: 'authenticate',
-            args: [{ username: credentials.username }],
-            success: false,
-            error: 'Authentication failed: no context returned',
-            metadata: { duration: Date.now() - startTime },
-          });
-        }
+        await this.logAudit('authenticate', {
+          args: [{ username: credentials.username }],
+          success: false,
+          error: 'Authentication failed: no context returned',
+          metadata: { duration: Date.now() - startTime },
+        });
 
         return {
           success: false,
@@ -214,51 +224,42 @@ export class AuthenticationManager {
       );
 
       // Audit successful authentication
-      if (this.auditLogger) {
-        await this.auditLogger.logAuth({
-          timestamp: new Date(),
-          userId: context.userId,
-          service: 'authentication',
-          method: 'authenticate',
-          args: [{ username: credentials.username }],
-          success: true,
-          metadata: {
-            duration: Date.now() - startTime,
-            roles: context.roles,
-            permissions: context.permissions,
-          },
-        });
-      }
+      await this.logAudit('authenticate', {
+        userId: context.userId,
+        args: [{ username: credentials.username }],
+        success: true,
+        metadata: {
+          duration: Date.now() - startTime,
+          roles: context.roles,
+          permissions: context.permissions,
+        },
+      });
 
       return {
         success: true,
         context,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Authentication failed';
       this.logger.error(
         {
-          error: error.message,
+          error: errorMessage,
           username: credentials.username,
         },
         'Authentication failed'
       );
 
       // Audit failed authentication
-      if (this.auditLogger) {
-        await this.auditLogger.logAuth({
-          timestamp: new Date(),
-          service: 'authentication',
-          method: 'authenticate',
-          args: [{ username: credentials.username }],
-          success: false,
-          error: error.message || 'Authentication failed',
-          metadata: { duration: Date.now() - startTime },
-        });
-      }
+      await this.logAudit('authenticate', {
+        args: [{ username: credentials.username }],
+        success: false,
+        error: errorMessage,
+        metadata: { duration: Date.now() - startTime },
+      });
 
       return {
         success: false,
-        error: error.message || 'Authentication failed',
+        error: errorMessage,
       };
     }
   }
@@ -276,15 +277,10 @@ export class AuthenticationManager {
       this.logger.error({ error: 'Invalid token format' }, 'Token validation failed');
 
       // Audit failed validation
-      if (this.auditLogger) {
-        await this.auditLogger.logAuth({
-          timestamp: new Date(),
-          service: 'authentication',
-          method: 'validateToken',
-          success: false,
-          error: 'Token must be a non-empty string',
-        });
-      }
+      await this.logAudit('validateToken', {
+        success: false,
+        error: 'Token must be a non-empty string',
+      });
 
       return {
         success: false,
@@ -296,15 +292,10 @@ export class AuthenticationManager {
       this.logger.error({ error: 'Empty token' }, 'Token validation failed');
 
       // Audit failed validation
-      if (this.auditLogger) {
-        await this.auditLogger.logAuth({
-          timestamp: new Date(),
-          service: 'authentication',
-          method: 'validateToken',
-          success: false,
-          error: 'Token cannot be empty',
-        });
-      }
+      await this.logAudit('validateToken', {
+        success: false,
+        error: 'Token cannot be empty',
+      });
 
       return {
         success: false,
@@ -321,15 +312,10 @@ export class AuthenticationManager {
       this.logger.error('No token validation function configured');
 
       // Audit configuration error
-      if (this.auditLogger) {
-        await this.auditLogger.logAuth({
-          timestamp: new Date(),
-          service: 'authentication',
-          method: 'validateToken',
-          success: false,
-          error: 'Token validation not configured',
-        });
-      }
+      await this.logAudit('validateToken', {
+        success: false,
+        error: 'Token validation not configured',
+      });
 
       return {
         success: false,
@@ -349,16 +335,11 @@ export class AuthenticationManager {
         this.logger.error('Token validation function returned null or undefined');
 
         // Audit failed validation
-        if (this.auditLogger) {
-          await this.auditLogger.logAuth({
-            timestamp: new Date(),
-            service: 'authentication',
-            method: 'validateToken',
-            success: false,
-            error: 'Token validation failed: no context returned',
-            metadata: { duration: Date.now() - startTime },
-          });
-        }
+        await this.logAudit('validateToken', {
+          success: false,
+          error: 'Token validation failed: no context returned',
+          metadata: { duration: Date.now() - startTime },
+        });
 
         return {
           success: false,
@@ -375,48 +356,39 @@ export class AuthenticationManager {
       );
 
       // Audit successful validation
-      if (this.auditLogger) {
-        await this.auditLogger.logAuth({
-          timestamp: new Date(),
-          userId: context.userId,
-          service: 'authentication',
-          method: 'validateToken',
-          success: true,
-          metadata: {
-            duration: Date.now() - startTime,
-            roles: context.roles,
-            permissions: context.permissions,
-          },
-        });
-      }
+      await this.logAudit('validateToken', {
+        userId: context.userId,
+        success: true,
+        metadata: {
+          duration: Date.now() - startTime,
+          roles: context.roles,
+          permissions: context.permissions,
+        },
+      });
 
       return {
         success: true,
         context,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Token validation failed';
       this.logger.error(
         {
-          error: error.message,
+          error: errorMessage,
         },
         'Token validation failed'
       );
 
       // Audit failed validation
-      if (this.auditLogger) {
-        await this.auditLogger.logAuth({
-          timestamp: new Date(),
-          service: 'authentication',
-          method: 'validateToken',
-          success: false,
-          error: error.message || 'Token validation failed',
-          metadata: { duration: Date.now() - startTime },
-        });
-      }
+      await this.logAudit('validateToken', {
+        success: false,
+        error: errorMessage,
+        metadata: { duration: Date.now() - startTime },
+      });
 
       return {
         success: false,
-        error: error.message || 'Token validation failed',
+        error: errorMessage,
       };
     }
   }

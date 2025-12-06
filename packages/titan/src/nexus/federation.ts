@@ -1,10 +1,13 @@
 /**
  * Module Federation support for Nexus DI
  *
+ * Enables sharing modules across applications and microservices.
+ * This feature allows for micro-frontend and micro-service architectures.
+ *
+ * @experimental
+ * @since 0.1.0
  * @module federation
  * @packageDocumentation
- *
- * Enables sharing modules across applications and microservices
  */
 
 import { createToken } from './token.js';
@@ -13,7 +16,10 @@ import { IModule, Provider, DynamicModule, InjectionToken } from './types.js';
 import { Errors, HttpErrors } from '../errors/index.js';
 
 /**
- * Remote module configuration
+ * Remote module configuration.
+ *
+ * @experimental
+ * @since 0.1.0
  */
 export interface RemoteModuleConfig {
   name: string;
@@ -722,7 +728,7 @@ export class SharedDependencyManager {
     if (this.dependencies.has(dep.name)) {
       const existing = this.dependencies.get(dep.name)!;
       if (dep.singleton && existing.version !== dep.version) {
-        throw new Error(`Singleton dependency ${dep.name} version conflict: ${existing.version} vs ${dep.version}`);
+        throw Errors.conflict(`Singleton dependency ${dep.name} version conflict: ${existing.version} vs ${dep.version}`);
       }
     }
     this.dependencies.set(dep.name, dep);

@@ -83,6 +83,30 @@
     "./module/database": {
       "types": "./dist/modules/database/index.d.ts",
       "default": "./dist/modules/database/index.js"
+    },
+    "./rotif": {
+      "types": "./dist/rotif/index.d.ts",
+      "default": "./dist/rotif/index.js"
+    },
+    "./errors": {
+      "types": "./dist/errors/index.d.ts",
+      "default": "./dist/errors/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "default": "./dist/testing/index.js"
+    },
+    "./module/rotif": {
+      "types": "./dist/modules/rotif/index.d.ts",
+      "default": "./dist/modules/rotif/index.js"
+    },
+    "./module/health": {
+      "types": "./dist/modules/health/index.d.ts",
+      "default": "./dist/modules/health/index.js"
+    },
+    "./utils": {
+      "types": "./dist/utils/index.d.ts",
+      "default": "./dist/utils/index.js"
     }
   },
   "files": [

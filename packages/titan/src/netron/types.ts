@@ -6,6 +6,7 @@
 import type { ILogger } from '../modules/logger/logger.types.js';
 import type { ITransportServer, ITransportConnection } from './transport/types.js';
 import { Definition } from './definition.js';
+import type { AuthContext } from './auth/types.js';
 
 /**
  * Transport configuration for Netron instance or service.
@@ -294,6 +295,14 @@ export interface INetron {
    */
   transportServers: Map<string, ITransportServer>;
 
+  /**
+   * Authorization manager for method-level access control.
+   * Optional - only present when authorization is configured.
+   * @internal
+   */
+  // Type is any to avoid circular dependencies with auth module
+  authorizationManager?: IAuthorizationManager;
+
   /** Get local peer */
   getLocalPeer(): ILocalPeer;
 
@@ -428,4 +437,103 @@ export interface IRemotePeer extends IPeer {
 
   /** Check if connected */
   isConnected?(): boolean;
+}
+
+// ============================================================================
+// Internal Types for Type Safety
+// ============================================================================
+
+/**
+ * Extended transport server interface with optional service registration capabilities.
+ * Used by HTTP and other transports that support direct service registration.
+ */
+export interface ITransportServerWithServices extends ITransportServer {
+  /**
+   * Set the local peer for service invocation.
+   * Called when the server is started to enable service method execution.
+   */
+  setPeer?(peer: ILocalPeer): void;
+
+  /**
+   * Register a service with the transport server.
+   * @param name - Service name
+   * @param definition - Service definition
+   * @param contract - Optional service contract for validation
+   */
+  registerService?(name: string, definition: Definition, contract?: ServiceContract): void;
+
+  /**
+   * Unregister a service from the transport server.
+   * @param serviceName - Service name to unregister
+   */
+  unregisterService?(serviceName: string): void;
+}
+
+/**
+ * Service contract type for validation.
+ * Represents the expected interface of a service.
+ */
+export type ServiceContract = Record<string, unknown>;
+
+/**
+ * Extended metadata type that includes the service contract.
+ * Used internally by service stubs.
+ */
+export interface ServiceMetadataWithContract extends ServiceMetadata {
+  contract?: ServiceContract;
+}
+
+/**
+ * Extended metadata type that includes transport configuration.
+ * Used internally when services have transport associations.
+ * @internal
+ */
+export interface ServiceMetadataExtended extends ServiceMetadataWithContract {
+  transports?: string[];
+  /** Internal transport storage */
+  _transports?: string[];
+}
+
+/**
+ * Extended NetronOptions with experimental HTTP direct mode flag.
+ * @internal
+ */
+export interface NetronOptionsExtended extends NetronOptions {
+  /**
+   * Use direct HTTP implementation instead of WebSocket wrapper.
+   * @experimental
+   */
+  useDirectHttp?: boolean;
+}
+
+/**
+ * Socket-like interface for RemotePeer.
+ * Can be a WebSocket or a TransportConnectionAdapter.
+ * This type documents the required interface for RemotePeer's socket parameter.
+ */
+export interface RemotePeerSocket {
+  /** Send data through the socket */
+  send(data: Buffer | ArrayBuffer | Uint8Array | string): void;
+  /** Close the socket connection */
+  close?(code?: number, reason?: string): void;
+  /** Add event listener */
+  on(event: string, listener: (...args: unknown[]) => void): void;
+  /** Add one-time event listener */
+  once(event: string, listener: (...args: unknown[]) => void): void;
+  /** Remove event listener */
+  off?(event: string, listener: (...args: unknown[]) => void): void;
+  /** Remove event listener (alias) */
+  removeListener?(event: string, listener: (...args: unknown[]) => void): void;
+}
+
+/**
+ * Interface for Authorization Manager used in INetron.
+ * Defines the methods called by the netron core for access control.
+ * @internal
+ */
+export interface IAuthorizationManager {
+  /** Check if user can access a service */
+  canAccessService(serviceName: string, auth?: AuthContext): boolean;
+  /** Filter a service definition based on user permissions */
+  filterDefinition(serviceName: string, definition: ServiceMetadata, auth?: AuthContext): ServiceMetadata | null;
 }

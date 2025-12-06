@@ -10,11 +10,14 @@ import { RedisTestManager } from '../../../utils/redis-test-manager.js';
 import { delay } from '@omnitron-dev/common';
 import { isRedisInMockMode } from '../../redis/utils/redis-test-utils.js';
 
-// Check if running in mock mode
-const skipTests = isRedisInMockMode();
+// Check if running in mock mode or CI
+const skipTests = isRedisInMockMode() ||
+                  process.env.CI === 'true' ||
+                  process.env.SKIP_DOCKER_TESTS === 'true' ||
+                  process.env.SKIP_INTEGRATION_TESTS === 'true';
 
 if (skipTests) {
-  console.log('⏭️  Skipping redis-service-comprehensive.spec.ts - requires real Redis');
+  console.log('⏭️  Skipping redis-service-comprehensive.spec.ts - requires Docker Compose and Redis');
 }
 
 // Skip all tests if in mock mode - requires real Redis

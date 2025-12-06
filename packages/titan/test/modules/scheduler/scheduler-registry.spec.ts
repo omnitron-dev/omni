@@ -3,7 +3,7 @@
  * Tests job registration, query, filtering, and state management
  */
 
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { SchedulerRegistry } from '../../../src/modules/scheduler/scheduler.registry.js';
 import { SCHEDULER_EVENTS } from '../../../src/modules/scheduler/scheduler.constants.js';
 import { JobStatus, SchedulerJobType, JobPriority } from '../../../src/modules/scheduler/scheduler.interfaces.js';
@@ -16,8 +16,30 @@ describe('Scheduler Registry', () => {
     enabled: true,
   };
 
+  beforeAll(() => {
+    // Use fake timers to prevent async operations from lingering
+    jest.useFakeTimers();
+  });
+
+  afterAll(() => {
+    jest.useRealTimers();
+  });
+
   beforeEach(() => {
     registry = new SchedulerRegistry(config);
+  });
+
+  afterEach(() => {
+    // Clear all pending timers
+    jest.clearAllTimers();
+
+    // Clear all jobs and event listeners to prevent cleanup errors
+    try {
+      registry.clear();
+      registry.removeAllListeners();
+    } catch {
+      // Ignore errors during cleanup
+    }
   });
 
   describe('Job Registration', () => {

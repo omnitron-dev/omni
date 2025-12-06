@@ -79,7 +79,7 @@ export class MigrationService extends EventEmitter {
     const config = this.manager.getConnectionConfig(connection);
 
     if (!config) {
-      throw new Error('Unable to determine database configuration');
+      throw Errors.internal('Unable to determine database configuration');
     }
 
     const dialect = config.dialect;

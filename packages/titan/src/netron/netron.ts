@@ -1,6 +1,13 @@
+/**
+ * Netron - Distributed RPC and Service Communication Framework
+ *
+ * @stable
+ * @since 0.1.0
+ */
+
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 
-import type { INetron, ILocalPeer, IPeer } from './types.js';
+import type { INetron, ILocalPeer, IPeer, ITransportServerWithServices, ServiceMetadataWithContract, ServiceContract, NetronOptionsExtended, RemotePeerSocket } from './types.js';
 import type { NetronOptions, TransportConfig } from './types.js';
 import { LocalPeer } from './local-peer.js';
 import { RemotePeer } from './remote-peer.js';
@@ -42,16 +49,24 @@ import { uuid } from './uuid.js';
  * This class serves as the central hub for creating and managing distributed system components.
  * It extends EventEmitter to provide asynchronous event handling capabilities.
  *
- * @class Netron
- * @extends EventEmitter
- * @description Core class for managing distributed system components and peer-to-peer communication
+ * @stable
+ * @since 0.1.0
+ *
  * @example
+ * ```typescript
  * // Create a new Netron instance
  * const netron = new Netron(logger, {
  *   id: 'my-netron-instance',
  *   taskTimeout: 10000,
  *   allowServiceEvents: true
  * });
+ *
+ * // Start a transport server
+ * await netron.start({ ws: { port: 8080 } });
+ *
+ * // Expose a service
+ * await netron.expose(new MyService());
+ * ```
  */
 export class Netron extends EventEmitter implements INetron {
   /**
@@ -186,6 +201,19 @@ export class Netron extends EventEmitter implements INetron {
    * @private
    */
   private transportOptions: Map<string, TransportOptions> = new Map();
+  /**
+   * Base logger instance before child logger creation.
+   * @private
+   */
+  private baseLogger!: ILogger;
+
+  /**
+   * Transport server configurations.
+   * @private
+   */
+  private transportServerConfigs: Map<string, TransportConfig> = new Map();
+
+
 
   /**
    * Creates a new Netron instance.
@@ -209,7 +237,7 @@ export class Netron extends EventEmitter implements INetron {
     this.id = options.id ?? uuid();
 
     // Store base logger as private field
-    (this as any).baseLogger = logger;
+    this.baseLogger = logger;
 
     // Create child logger for Netron with context
     this.logger = logger.child({
@@ -253,10 +281,8 @@ export class Netron extends EventEmitter implements INetron {
     }
 
     // Store config for use when starting
-    if (!(this as any).transportServerConfigs) {
-      (this as any).transportServerConfigs = new Map<string, TransportConfig>();
-    }
-    (this as any).transportServerConfigs.set(name, config);
+    // transportServerConfigs is initialized in constructor
+    this.transportServerConfigs.set(name, config);
   }
 
   /**
@@ -372,7 +398,7 @@ export class Netron extends EventEmitter implements INetron {
     this.registerCoreTasks();
 
     // Get configured transport servers
-    const serverConfigs = (this as any).transportServerConfigs as Map<string, TransportConfig> | undefined;
+    const serverConfigs = this.transportServerConfigs.size > 0 ? this.transportServerConfigs : undefined;
 
     if (!serverConfigs || serverConfigs.size === 0) {
       this.logger.info('No transport servers configured, starting in client-only mode');
@@ -417,18 +443,21 @@ export class Netron extends EventEmitter implements INetron {
       const server = await transport.createServer!({
         ...config.options,
         headers: { 'x-netron-id': this.id },
-      } as any);
+      } as TransportOptions);
 
       // Store the server
       this.transportServers.set(name, server);
 
+      // Cast to extended interface for optional service registration methods
+      const serverWithServices = server as ITransportServerWithServices;
+
       // If this is an HTTP server, set the peer for service invocation
-      if (server && typeof (server as any).setPeer === 'function') {
-        (server as any).setPeer(this.peer);
+      if (serverWithServices.setPeer) {
+        serverWithServices.setPeer(this.peer);
       }
 
       // Register existing services with the transport server
-      if (server && typeof (server as any).registerService === 'function') {
+      if (serverWithServices.registerService) {
         for (const [, stub] of this.services) {
           const meta = stub.definition.meta;
 
@@ -437,8 +466,8 @@ export class Netron extends EventEmitter implements INetron {
             continue; // Skip this service for this transport
           }
 
-          const contract = (meta as any).contract || (stub.instance?.constructor as any)?.contract;
-          (server as any).registerService(meta.name, stub.definition, contract);
+          const contract = (meta as ServiceMetadataWithContract).contract || (stub.instance?.constructor as { contract?: ServiceContract })?.contract;
+          serverWithServices.registerService(meta.name, stub.definition, contract);
         }
       }
 
@@ -454,7 +483,8 @@ export class Netron extends EventEmitter implements INetron {
         const adapter = TransportConnectionFactory.fromConnection(connection);
         // Get transport-specific options for requestTimeout
         const transportOpts = this.transportOptions.get(name) || {};
-        const peer = new RemotePeer(adapter as any, this, peerId, transportOpts.requestTimeout);
+        // RemotePeer accepts any socket-like object (WebSocket or TransportAdapter)
+        const peer = new RemotePeer(adapter as RemotePeerSocket, this, peerId, transportOpts.requestTimeout);
         this.peers.set(peer.id, peer);
 
         // Send our ID to peer through the adapter (with small delay to ensure client is ready)
@@ -567,8 +597,8 @@ export class Netron extends EventEmitter implements INetron {
     this.transportServers.clear();
 
     // Clear transport server configs
-    if ((this as any).transportServerConfigs) {
-      (this as any).transportServerConfigs.clear();
+    if (this.transportServerConfigs) {
+      this.transportServerConfigs.clear();
     }
 
     // if (this.discovery) {
@@ -614,7 +644,7 @@ export class Netron extends EventEmitter implements INetron {
     if (isHttp) {
       // Check if we should use the new direct HTTP implementation
       const useDirectHttp =
-        (this.options as any)?.useDirectHttp || process.env['NETRON_HTTP_DIRECT'] === 'true' || false;
+        (this.options as NetronOptionsExtended)?.useDirectHttp || process.env['NETRON_HTTP_DIRECT'] === 'true' || false;
 
       // Use optimized HTTP-specific connection flow
       return this.connectHttp(address, useDirectHttp);
@@ -653,7 +683,8 @@ export class Netron extends EventEmitter implements INetron {
 
             // Create RemotePeer with transport adapter
             const adapter = TransportConnectionFactory.fromConnection(connection);
-            const peer = new RemotePeer(adapter as any, this, address, transportOpts.requestTimeout);
+            // RemotePeer accepts any socket-like object (WebSocket or TransportAdapter)
+            const peer = new RemotePeer(adapter as RemotePeerSocket, this, address, transportOpts.requestTimeout);
 
             let resolved = false;
 
@@ -785,13 +816,14 @@ export class Netron extends EventEmitter implements INetron {
         ...transportOpts,
         useDirectHttp: true,
         headers: { 'x-netron-id': this.id },
-      } as any);
+      } as TransportOptions);
 
       // Create HTTP direct peer (v2.0)
       const peer = new HttpRemotePeer(connection, this, address, transportOpts);
 
       // Register the peer
-      this.peers.set(peer.id, peer as any);
+      // HttpRemotePeer is compatible with RemotePeer for storage
+      this.peers.set(peer.id, peer as unknown as RemotePeer);
 
       // Initialize the peer
       await peer.init(true, transportOpts);

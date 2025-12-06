@@ -145,16 +145,29 @@ export interface IDiscoveryService {
 
   /** Unsubscribe from discovery events */
   offEvent(handler: (event: DiscoveryEvent) => void): void;
+
+  /**
+   * Register a single service with the discovery system.
+   * Used by the Netron-Discovery integration to auto-register exposed services.
+   */
+  registerService(service: ServiceInfo): Promise<void>;
+
+  /**
+   * Unregister a service by name from the discovery system.
+   * Used by the Netron-Discovery integration to auto-unregister unexposed services.
+   */
+  unregisterService(serviceName: string): Promise<void>;
 }
 
 import { createToken, type Token } from '../../nexus/index.js';
 import type { Redis } from 'ioredis';
-import type { ILogger } from '../logger/logger.types.js';
+
+// Re-export canonical LOGGER_TOKEN from logger module
+export { LOGGER_TOKEN } from '../logger/logger.tokens.js';
 
 /**
  * Tokens for dependency injection
  */
 export const DISCOVERY_SERVICE_TOKEN: Token<IDiscoveryService> = createToken<IDiscoveryService>('DiscoveryService');
 export const REDIS_TOKEN: Token<Redis> = createToken<Redis>('Redis');
-export const LOGGER_TOKEN: Token<ILogger> = createToken<ILogger>('Logger');
 export const DISCOVERY_OPTIONS_TOKEN: Token<DiscoveryOptions> = createToken<DiscoveryOptions>('DiscoveryOptions');

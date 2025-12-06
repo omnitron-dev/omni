@@ -1,8 +1,15 @@
+/**
+ * Service Stub for Netron Framework
+ *
+ * @stable
+ * @since 0.1.0
+ */
+
 import { isAsyncGenerator } from '@omnitron-dev/common';
 
 import type { ILocalPeer } from './types.js';
 import { Definition } from './definition.js';
-import { ServiceMetadata } from './types.js';
+import { ServiceMetadata, ServiceMetadataExtended } from './types.js';
 import { StreamReference } from './stream-reference.js';
 import { NetronWritableStream } from './writable-stream.js';
 import {
@@ -19,8 +26,14 @@ import { Interface } from './interface.js';
  * This class provides transparent interaction with remote services,
  * handling data transformation and managing the lifecycle of service definitions.
  *
- * @class ServiceStub
- * @description Main class for working with services in the distributed Netron system
+ * @stable
+ * @since 0.1.0
+ *
+ * @example
+ * ```typescript
+ * const stub = new ServiceStub(peer, myServiceInstance, metadata);
+ * const result = await stub.call('methodName', [arg1, arg2]);
+ * ```
  */
 export class ServiceStub {
   /** Service definition containing metadata and interface specification */
@@ -51,8 +64,9 @@ export class ServiceStub {
     // Extract transports from metadata (but don't include in definition)
     const meta = isServiceDefinition(metaOrDefinition) ? metaOrDefinition.meta : metaOrDefinition;
 
-    if ((meta as any).transports) {
-      this.transports = (meta as any).transports;
+    const extendedMeta = meta as ServiceMetadataExtended;
+    if (extendedMeta.transports) {
+      this.transports = extendedMeta.transports;
     }
   }
 

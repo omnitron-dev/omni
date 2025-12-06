@@ -285,7 +285,7 @@ export class PolicyEngine {
 
       // Validate decision structure
       if (!decision || typeof decision.allowed !== 'boolean') {
-        throw new Error('Policy must return a decision with "allowed" boolean field');
+        throw Errors.badRequest('Policy must return a decision with "allowed" boolean field');
       }
 
       if (this.debugMode) {

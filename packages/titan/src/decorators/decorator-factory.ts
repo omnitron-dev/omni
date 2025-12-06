@@ -33,6 +33,7 @@
 import 'reflect-metadata';
 
 import { Container } from '@nexus/container.js';
+import { Errors } from '../errors/index.js';
 
 /**
  * Decorator target types
@@ -273,11 +274,11 @@ export class CustomDecoratorBuilder<TOptions = any> {
     const config = this.config as CustomDecoratorConfig<TOptions>;
 
     if (!config.name) {
-      throw new Error('Decorator name is required');
+      throw Errors.badRequest('Decorator name is required');
     }
 
     if (config.targets.length === 0) {
-      throw new Error('At least one target type must be specified');
+      throw Errors.badRequest('At least one target type must be specified');
     }
 
     return function (optionsOrTarget?: any, propertyKey?: string | symbol, descriptorOrIndex?: any) {
@@ -303,7 +304,7 @@ export class CustomDecoratorBuilder<TOptions = any> {
         if (config.validate && options) {
           const error = config.validate(options);
           if (error) {
-            throw new Error(`Invalid options for @${config.name}: ${error}`);
+            throw Errors.validation([{ field: 'options', message: `Invalid options for @${config.name}: ${error}` }]);
           }
         }
 
@@ -337,9 +338,7 @@ export class CustomDecoratorBuilder<TOptions = any> {
 
         // Check if decorator can be applied to this target
         if (!config.targets.includes(targetType)) {
-          throw new Error(
-            `@${config.name} cannot be applied to ${targetType}. ` + `Allowed targets: ${config.targets.join(', ')}`
-          );
+          throw Errors.badRequest(`@${config.name} cannot be applied to ${targetType}. Allowed targets: ${config.targets.join(', ')}`);
         }
 
         // Check for stacking if not stackable
@@ -351,7 +350,7 @@ export class CustomDecoratorBuilder<TOptions = any> {
             : Reflect.getOwnMetadata(metadataKey, target);
 
           if (existingMetadata) {
-            throw new Error(`@${config.name} has already been applied and is not stackable`);
+            throw Errors.conflict(`@${config.name} has already been applied and is not stackable`);
           }
         }
 
@@ -687,7 +686,7 @@ export const Validate = createDecorator<{ schema: any }>()
       if (schema && typeof schema === 'function') {
         const valid = schema(...args);
         if (!valid) {
-          throw new Error(`Validation failed for ${String(context.propertyKey)}`);
+          throw Errors.validation([{ field: String(context.propertyKey), message: 'Validation failed' }]);
         }
       }
       return originalMethod.apply(this, args);

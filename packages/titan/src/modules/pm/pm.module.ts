@@ -5,7 +5,7 @@
  * treating every process as a service with full type safety.
  */
 
-import type { DynamicModule } from '../../nexus/index.js';
+import { createToken, type DynamicModule, type Token } from '../../nexus/index.js';
 import { Module } from '../../decorators/index.js';
 import { ProcessManager } from './process-manager.js';
 import { ProcessRegistry } from './process-registry.js';
@@ -18,13 +18,14 @@ import type { IProcessManagerConfig } from './types.js';
 
 /**
  * Process Manager module tokens
+ * Using createToken for consistency with other Titan modules
  */
-export const PM_CONFIG_TOKEN = Symbol('PM_CONFIG_TOKEN');
-export const PM_MANAGER_TOKEN = Symbol('PM_MANAGER_TOKEN');
-export const PM_REGISTRY_TOKEN = Symbol('PM_REGISTRY_TOKEN');
-export const PM_SPAWNER_TOKEN = Symbol('PM_SPAWNER_TOKEN');
-export const PM_METRICS_TOKEN = Symbol('PM_METRICS_TOKEN');
-export const PM_HEALTH_TOKEN = Symbol('PM_HEALTH_TOKEN');
+export const PM_CONFIG_TOKEN: Token<IProcessManagerConfig> = createToken<IProcessManagerConfig>('PMConfig');
+export const PM_MANAGER_TOKEN: Token<ProcessManager> = createToken<ProcessManager>('PMManager');
+export const PM_REGISTRY_TOKEN: Token<ProcessRegistry> = createToken<ProcessRegistry>('PMRegistry');
+export const PM_SPAWNER_TOKEN: Token<ProcessSpawnerFactory> = createToken<ProcessSpawnerFactory>('PMSpawner');
+export const PM_METRICS_TOKEN: Token<ProcessMetricsCollector> = createToken<ProcessMetricsCollector>('PMMetrics');
+export const PM_HEALTH_TOKEN: Token<ProcessHealthChecker> = createToken<ProcessHealthChecker>('PMHealth');
 
 /**
  * Default Process Manager configuration

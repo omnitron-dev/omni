@@ -5,6 +5,53 @@ import { Interface } from './interface.js';
 import { Definition } from './definition.js';
 import { EventSubscriber } from './types.js';
 import { NetronErrors, Errors } from '../errors/index.js';
+import { LRUCache, type LRUCacheOptions } from '../utils/lru-cache.js';
+
+/**
+ * Default cache configuration for definition caching.
+ * These values can be overridden via AbstractPeerOptions.
+ */
+export const DEFAULT_DEFINITION_CACHE_OPTIONS = {
+  /** Maximum number of cached definitions (default: 500) */
+  maxSize: 500,
+  /** TTL in milliseconds (default: 5 minutes) */
+  ttl: 5 * 60 * 1000,
+  /** Cleanup interval in milliseconds (default: 1 minute) */
+  cleanupInterval: 60 * 1000,
+} as const;
+
+/**
+ * Configuration options for AbstractPeer definition cache.
+ */
+export interface DefinitionCacheOptions {
+  /**
+   * Maximum number of definitions to cache.
+   * When exceeded, least recently used definitions are evicted.
+   * @default 500
+   */
+  maxSize?: number;
+
+  /**
+   * Time-to-live in milliseconds for cached definitions.
+   * Definitions older than this are automatically evicted.
+   * Set to 0 to disable TTL-based expiration.
+   * @default 300000 (5 minutes)
+   */
+  ttl?: number;
+
+  /**
+   * Interval in milliseconds for TTL cleanup sweep.
+   * @default 60000 (1 minute)
+   */
+  cleanupInterval?: number;
+
+  /**
+   * Disable caching entirely. Useful for testing or when
+   * definitions change frequently.
+   * @default false
+   */
+  disabled?: boolean;
+}
 
 /**
  * Abstract base class representing a peer in the Netron network.
@@ -22,22 +69,48 @@ export abstract class AbstractPeer implements IPeer {
   protected interfaces = new Map<string, { instance: Interface; refCount: number }>();
 
   /**
-   * Cache of service definitions indexed by qualified service name (name@version).
+   * LRU cache of service definitions indexed by qualified service name (name@version).
    * This cache reduces network overhead by storing previously fetched definitions.
+   *
+   * Features:
+   * - LRU eviction when maxSize is reached (prevents unbounded memory growth)
+   * - TTL-based expiration (ensures stale definitions are refreshed)
+   * - Automatic cleanup on background timer
+   *
    * The cache can be manually invalidated using invalidateDefinitionCache().
+   * Cache statistics can be retrieved via getDefinitionCacheStats().
    */
-  protected definitionCache = new Map<string, Definition>();
+  protected definitionCache: LRUCache<string, Definition>;
+
+  /**
+   * Whether definition caching is disabled.
+   */
+  protected definitionCacheDisabled: boolean;
 
   /**
    * Constructs a new AbstractPeer instance.
    *
    * @param {INetron} netron - The Netron instance this peer belongs to
    * @param {string} id - Unique identifier for this peer
+   * @param {DefinitionCacheOptions} [cacheOptions] - Optional cache configuration
    */
   constructor(
     public netron: INetron,
-    public id: string
-  ) {}
+    public id: string,
+    cacheOptions?: DefinitionCacheOptions
+  ) {
+    this.definitionCacheDisabled = cacheOptions?.disabled ?? false;
+
+    // Initialize LRU cache with TTL support
+    const options: LRUCacheOptions<string, Definition> = {
+      maxSize: cacheOptions?.maxSize ?? DEFAULT_DEFINITION_CACHE_OPTIONS.maxSize,
+      ttl: cacheOptions?.ttl ?? DEFAULT_DEFINITION_CACHE_OPTIONS.ttl,
+      cleanupInterval: cacheOptions?.cleanupInterval ?? DEFAULT_DEFINITION_CACHE_OPTIONS.cleanupInterval,
+      updateOnGet: true, // Mark definitions as recently used on access
+    };
+
+    this.definitionCache = new LRUCache<string, Definition>(options);
+  }
 
   /**
    * Sets a property value or calls a method on the remote peer.
@@ -146,9 +219,9 @@ export abstract class AbstractPeer implements IPeer {
    *
    * Flow:
    * 1. Parse service name and version
-   * 2. Check definition cache
+   * 2. Check definition cache (LRU with TTL)
    * 3. If not cached, query remote peer via queryInterfaceRemote()
-   * 4. Cache the definition
+   * 4. Cache the definition (with automatic LRU eviction and TTL expiration)
    * 5. Create and return interface
    *
    * @template T - Type of the interface to return
@@ -170,17 +243,20 @@ export abstract class AbstractPeer implements IPeer {
     // Normalize the qualified name for caching
     const normalizedName = version === '*' || !version ? name : `${name}@${version}`;
 
-    // Check definition cache first
-    let def = this.definitionCache.get(normalizedName);
+    // Check definition cache first (unless caching is disabled)
+    let def: Definition | undefined;
+    if (!this.definitionCacheDisabled) {
+      def = this.definitionCache.get(normalizedName);
 
-    // Verify cached definition still exists (could be deleted after releaseInterface)
-    if (def) {
-      try {
-        this.getDefinitionById(def.id);
-      } catch {
-        // Definition was deleted, invalidate cache entry
-        this.definitionCache.delete(normalizedName);
-        def = undefined;
+      // Verify cached definition still exists (could be deleted after releaseInterface)
+      if (def) {
+        try {
+          this.getDefinitionById(def.id);
+        } catch {
+          // Definition was deleted, invalidate cache entry
+          this.definitionCache.delete(normalizedName);
+          def = undefined;
+        }
       }
     }
 
@@ -205,8 +281,10 @@ export abstract class AbstractPeer implements IPeer {
         }
       }
 
-      // Cache the definition
-      this.definitionCache.set(normalizedName, def);
+      // Cache the definition (LRU cache handles eviction automatically)
+      if (!this.definitionCacheDisabled) {
+        this.definitionCache.set(normalizedName, def);
+      }
     }
 
     // Create and return interface
@@ -425,6 +503,41 @@ export abstract class AbstractPeer implements IPeer {
     const count = this.definitionCache.size;
     this.definitionCache.clear();
     return count;
+  }
+
+  /**
+   * Gets statistics about the definition cache.
+   * Useful for monitoring cache performance and tuning cache parameters.
+   *
+   * @returns {Object} Cache statistics including size, hits, misses, and hit rate
+   *
+   * @example
+   * const stats = peer.getDefinitionCacheStats();
+   * console.log(`Cache hit rate: ${stats.hitRate.toFixed(2)}%`);
+   * console.log(`Entries: ${stats.size}/${stats.maxSize}`);
+   */
+  getDefinitionCacheStats() {
+    return this.definitionCache.getStats();
+  }
+
+  /**
+   * Manually triggers cleanup of expired cache entries.
+   * This is called automatically on a timer, but can be invoked manually
+   * if immediate cleanup is desired.
+   *
+   * @returns {number} Number of expired entries removed
+   */
+  cleanupDefinitionCache(): number {
+    return this.definitionCache.cleanupExpired();
+  }
+
+  /**
+   * Disposes of the definition cache, stopping the background cleanup timer.
+   * Should be called when the peer is being destroyed to prevent memory leaks.
+   * This method is idempotent and safe to call multiple times.
+   */
+  disposeDefinitionCache(): void {
+    this.definitionCache.dispose();
   }
 
   /**

@@ -15,6 +15,9 @@ import type { EventSchedulerService } from './event-scheduler.service.js';
 import type { EventValidationService } from './event-validation.service.js';
 import type { IEventEmitterOptions } from './types.js';
 
+// Re-export canonical LOGGER_TOKEN from logger module
+export { LOGGER_TOKEN } from '../logger/logger.tokens.js';
+
 // Core Tokens
 export const EVENT_EMITTER_TOKEN: Token<EnhancedEventEmitter> = createToken<EnhancedEventEmitter>('EventEmitter');
 export const EVENTS_SERVICE_TOKEN: Token<EventsService> = createToken<EventsService>('EventsService');
@@ -31,4 +34,3 @@ export const EVENT_HISTORY_SERVICE_TOKEN: Token<EventHistoryService> =
   createToken<EventHistoryService>('EventHistoryService');
 export const EVENT_OPTIONS_TOKEN: Token<IEventEmitterOptions> =
   createToken<IEventEmitterOptions>('EventEmitterOptions');
-export const LOGGER_TOKEN: Token<any> = createToken<any>('Logger');

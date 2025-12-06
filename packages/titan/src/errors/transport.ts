@@ -6,6 +6,7 @@
 import { TitanError } from './core.js';
 import { ErrorCode, getErrorName } from './codes.js';
 import { RateLimitError, AuthError } from './http.js';
+import { Errors } from './factories.js';
 
 /**
  * Supported transport types
@@ -196,7 +197,7 @@ export function mapToTransport(error: TitanError, transport: TransportType, opti
       return mapToJsonRpc(error, options);
 
     default:
-      throw new Error(`Unsupported transport: ${transport}`);
+      throw Errors.badRequest(`Unsupported transport: ${transport}`);
   }
 }
 
@@ -577,6 +578,6 @@ export function createTransportAdapter(transport: TransportType): TransportAdapt
 
     // Add more adapters as needed
     default:
-      throw new Error(`No adapter available for transport: ${transport}`);
+      throw Errors.badRequest(`No adapter available for transport: ${transport}`);
   }
 }

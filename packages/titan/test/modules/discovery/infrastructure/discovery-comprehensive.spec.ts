@@ -22,9 +22,13 @@ const createMockLogger = (): ILogger => ({
   child: () => createMockLogger(),
 });
 
-const skipTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+// Skip these infrastructure tests in CI or when Docker/Redis isn't available
+const skipTests = process.env.USE_MOCK_REDIS === 'true' ||
+                  process.env.CI === 'true' ||
+                  process.env.SKIP_DOCKER_TESTS === 'true' ||
+                  process.env.SKIP_INTEGRATION_TESTS === 'true';
 if (skipTests) {
-  console.log('⏭️ Skipping discovery-comprehensive.spec.ts - requires external Redis services');
+  console.log('⏭️ Skipping discovery-comprehensive.spec.ts (infrastructure) - requires Docker Compose and Redis');
 }
 const describeOrSkip = skipTests ? describe.skip : describe;
 

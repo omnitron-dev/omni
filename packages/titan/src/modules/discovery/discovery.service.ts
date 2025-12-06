@@ -792,13 +792,13 @@ export class DiscoveryService implements IDiscoveryService {
       }
 
       // Prefer external (non-internal) addresses
-      const externalAddr = addresses.find(a => !a.internal);
+      const externalAddr = addresses.find((a) => !a.internal);
       if (externalAddr) {
         return `${externalAddr.address}:${envPort}`;
       }
 
       // Fallback to first non-loopback internal address
-      const nonLoopback = addresses.find(a => a.address !== '127.0.0.1');
+      const nonLoopback = addresses.find((a) => a.address !== '127.0.0.1');
       if (nonLoopback) {
         return `${nonLoopback.address}:${envPort}`;
       }

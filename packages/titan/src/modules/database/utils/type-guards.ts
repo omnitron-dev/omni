@@ -12,6 +12,7 @@ import type {
   ConnectionConfig
 } from '../database.types.js';
 import type { TransactionContext, TransactionState } from '../transaction/transaction.types.js';
+import { Errors } from '../../../errors/index.js';
 
 /**
  * Check if value is a valid database dialect
@@ -190,7 +191,7 @@ export function assertDefined<T>(
   message = 'Value must be defined'
 ): asserts value is T {
   if (!isDefined(value)) {
-    throw new Error(message);
+    throw Errors.badRequest(message);
   }
 }
 
@@ -202,7 +203,7 @@ export function assertValidId(
   message = 'Invalid ID: must be a number or string'
 ): asserts value is number | string {
   if (!isValidId(value)) {
-    throw new Error(message);
+    throw Errors.badRequest(message);
   }
 }
 
@@ -214,6 +215,6 @@ export function assertRecord(
   message = 'Value must be a plain object'
 ): asserts value is Record<string, unknown> {
   if (!isRecord(value)) {
-    throw new Error(message);
+    throw Errors.badRequest(message);
   }
 }

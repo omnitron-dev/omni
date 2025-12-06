@@ -9,6 +9,7 @@ import type { IDatabaseManager, DatabaseDialect } from '../database.types.js';
 import type { IMigrationLock } from './migration.types.js';
 import type { Logger } from '../database.internal-types.js';
 import { createDefaultLogger } from '../utils/logger.factory.js';
+import { Errors } from '../../../errors/index.js';
 
 export interface MigrationLockOptions {
   tableName: string;
@@ -46,7 +47,7 @@ export class MigrationLock implements IMigrationLock {
 
     const config = this.manager.getConnectionConfig();
     if (!config) {
-      throw new Error('Unable to determine database dialect');
+      throw Errors.internal('Unable to determine database dialect');
     }
 
     this.dialect = config.dialect;
@@ -81,7 +82,7 @@ export class MigrationLock implements IMigrationLock {
       }
     }
 
-    throw new Error(`Connection validation failed after ${this.maxRetries} attempts: ${lastError?.message}`);
+    throw Errors.unavailable('Database', `Connection validation failed after ${this.maxRetries} attempts: ${lastError?.message}`);
   }
 
   /**
@@ -228,7 +229,7 @@ export class MigrationLock implements IMigrationLock {
         return `locked_at < '${expiryStr}'`;
       }
       default:
-        throw new Error(`Unsupported dialect: ${dialect}`);
+        throw Errors.badRequest(`Unsupported dialect: ${dialect}`);
     }
   }
 

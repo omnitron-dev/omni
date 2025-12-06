@@ -11,7 +11,7 @@ import { Interface } from './interface.js';
 import { Definition } from './definition.js';
 import { getQualifiedName } from './utils.js';
 import { ServiceStub } from './service-stub.js';
-import { AbstractPeer } from './abstract-peer.js';
+import { AbstractPeer, type DefinitionCacheOptions } from './abstract-peer.js';
 import { StreamReference } from './stream-reference.js';
 import { NetronReadableStream } from './readable-stream.js';
 import { NetronWritableStream } from './writable-stream.js';
@@ -97,14 +97,16 @@ export class RemotePeer extends AbstractPeer {
    * @param {Netron} netron - The Netron instance this peer belongs to
    * @param {string} [id=""] - Optional unique identifier for the remote peer
    * @param {number} [requestTimeout] - Request timeout in milliseconds (overrides default)
+   * @param {DefinitionCacheOptions} [cacheOptions] - Optional cache configuration for definition caching
    */
   constructor(
     private socket: any, // Can be WebSocket or TransportAdapter
     netron: Netron,
     id: string = '',
-    private requestTimeout?: number
+    private requestTimeout?: number,
+    cacheOptions?: DefinitionCacheOptions
   ) {
-    super(netron, id);
+    super(netron, id, cacheOptions);
 
     this.logger = netron.logger.child({ peerId: this.id, remotePeer: true });
 
@@ -192,7 +194,7 @@ export class RemotePeer extends AbstractPeer {
     this.netron.peer.serviceInstances.set(instance, stub);
 
     // Store transport associations for this service (use _transports if available)
-    const extendedMeta = meta as any;
+    const extendedMeta = meta as ExtendedServiceMetadata;
     if (extendedMeta._transports) {
       this.serviceTransports.set(meta.name, extendedMeta._transports);
     }
@@ -424,6 +426,7 @@ export class RemotePeer extends AbstractPeer {
    * Cleans up internal resources and state.
    * This method clears all internal maps and collections used for managing
    * connections, streams, and service definitions.
+   * Also disposes the definition cache to stop background cleanup timers.
    */
   private cleanup() {
     this.responseHandlers.clear();
@@ -433,6 +436,9 @@ export class RemotePeer extends AbstractPeer {
     this.remoteSubscriptions.clear();
     this.services.clear();
     this.definitions.clear();
+
+    // Dispose definition cache to stop TTL cleanup timer and prevent memory leaks
+    this.disposeDefinitionCache();
   }
 
   /**
@@ -905,7 +911,7 @@ export class RemotePeer extends AbstractPeer {
    */
   override async queryInterface<T>(qualifiedName: string): Promise<T> {
     // Check if authorization manager is configured
-    const authzManager = (this.netron as any).authorizationManager;
+    const authzManager = this.netron.authorizationManager;
 
     // If no auth manager, use default caching behavior from parent
     if (!authzManager) {

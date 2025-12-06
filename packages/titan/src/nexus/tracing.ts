@@ -1,10 +1,13 @@
 /**
  * Distributed Tracing support for Nexus DI
  *
+ * Provides OpenTelemetry integration and distributed tracing capabilities.
+ * Allows tracking of dependency resolution and service calls across the system.
+ *
+ * @experimental
+ * @since 0.1.0
  * @module tracing
  * @packageDocumentation
- *
- * Provides OpenTelemetry integration and distributed tracing capabilities
  */
 
 import { createToken } from './token.js';
@@ -13,7 +16,10 @@ import { Plugin, PluginHooks } from './plugin.js';
 import { InjectionToken, ResolutionContext } from './types.js';
 
 /**
- * Span attributes
+ * Span attributes.
+ *
+ * @experimental
+ * @since 0.1.0
  */
 export interface SpanAttributes {
   [key: string]: string | number | boolean | undefined;

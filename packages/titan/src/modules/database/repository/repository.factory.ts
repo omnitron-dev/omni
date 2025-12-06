@@ -8,8 +8,10 @@ import { Injectable } from '../../../decorators/index.js';
 import { Kysely, Transaction } from 'kysely';
 import {
   createRepositoryFactory as createKyseraRepositoryFactory,
+  createRepositoriesFactory as createKyseraRepositoriesFactory,
   type Plugin as KyseraPlugin,
 } from '@kysera/repository';
+import type { Executor } from '@kysera/core';
 import { softDeletePlugin } from '@kysera/soft-delete';
 import { auditPlugin } from '@kysera/audit';
 import { timestampsPlugin } from '@kysera/timestamps';
@@ -636,4 +638,145 @@ export class RepositoryFactory implements IRepositoryFactory {
       await this.createAndCacheRepository(target, metadata);
     }
   }
+
+  // ============================================================================
+  // KYSERA REPOSITORY INTEGRATION: Multi-Repository Factory Pattern
+  // ============================================================================
+
+  /**
+   * Create a multi-repository factory using @kysera/repository pattern
+   * This enables clean transaction handling with multiple repositories
+   *
+   * @example
+   * ```typescript
+   * // Define repository factories
+   * const repoFactories = repositoryFactory.createRepositoriesFactory({
+   *   users: (db) => new UserRepository(db),
+   *   posts: (db) => new PostRepository(db),
+   *   comments: (db) => new CommentRepository(db),
+   * });
+   *
+   * // Use in normal operations
+   * const repos = await repoFactories();
+   * const user = await repos.users.findById(1);
+   *
+   * // Use in transactions - all repos share the transaction
+   * await db.transaction().execute(async (trx) => {
+   *   const txRepos = await repoFactories(trx);
+   *   await txRepos.users.create({ name: 'Alice' });
+   *   await txRepos.posts.create({ userId: 1, title: 'Hello' });
+   * });
+   * ```
+   */
+  createRepositoriesFactory<
+    Repos extends Record<string, Repository<unknown>>
+  >(
+    factories: {
+      [K in keyof Repos]: (executor: Kysely<unknown> | Transaction<unknown>) => Repos[K] | Promise<Repos[K]>;
+    }
+  ): (executor?: Kysely<unknown> | Transaction<unknown>) => Promise<Repos> {
+    return async (executor?: Kysely<unknown> | Transaction<unknown>): Promise<Repos> => {
+      const db = executor || (await this.manager.getConnection());
+      const repos: Partial<Repos> = {};
+
+      for (const [name, factory] of Object.entries(factories)) {
+        repos[name as keyof Repos] = await factory(db) as Repos[keyof Repos];
+      }
+
+      return repos as Repos;
+    };
+  }
+
+  /**
+   * Create a simple repository using @kysera/repository createSimpleRepository
+   * Useful for quick repository creation without full configuration
+   *
+   * @example
+   * ```typescript
+   * const userRepo = await repositoryFactory.createSimpleKyseraRepository(
+   *   'users',
+   *   (row) => ({ id: row.id, email: row.email, name: row.name })
+   * );
+   * ```
+   */
+  async createSimpleKyseraRepository<Entity>(
+    tableName: string,
+    mapRow: (row: Record<string, unknown>) => Entity,
+    connectionName?: string
+  ): Promise<unknown> {
+    const connName = connectionName || this.config.connectionName || 'default';
+    const db = await this.manager.getConnection(connName);
+
+    // Use createKyseraRepositoryFactory for more flexibility
+    const factory = createKyseraRepositoryFactory(db);
+    return factory.create({
+      tableName: tableName as never,
+      mapRow: mapRow as never,
+      schemas: {
+        create: { parse: (v: unknown) => v } as never,
+      },
+      validateDbResults: false,
+    });
+  }
+
+  /**
+   * Create a typed Kysera repository factory for direct Kysely integration
+   * Returns the raw @kysera/repository factory for advanced usage
+   *
+   * @example
+   * ```typescript
+   * const factory = await repositoryFactory.getKyseraFactory<MyDatabase>();
+   * const userRepo = factory.create({
+   *   tableName: 'users',
+   *   mapRow: (row) => row,
+   *   schemas: { create: userCreateSchema },
+   * });
+   * ```
+   */
+  async getKyseraFactory<DB>(
+    connectionName?: string
+  ): Promise<ReturnType<typeof createKyseraRepositoryFactory<DB>>> {
+    const connName = connectionName || this.config.connectionName || 'default';
+    const db = (await this.manager.getConnection(connName)) as Kysely<DB>;
+
+    return createKyseraRepositoryFactory<DB>(db);
+  }
+}
+
+// ============================================================================
+// STANDALONE HELPER FUNCTIONS FOR KYSERA INTEGRATION
+// ============================================================================
+
+/**
+ * Create a multi-repository factory using @kysera/repository pattern
+ * Standalone function for use outside of DI container
+ *
+ * @example
+ * ```typescript
+ * import { createMultiRepositoryFactory } from '@omnitron-dev/titan/module/database';
+ *
+ * const createRepos = createMultiRepositoryFactory({
+ *   users: (db) => new UserRepository(db),
+ *   posts: (db) => new PostRepository(db),
+ * });
+ *
+ * // Use with Kysely instance
+ * const repos = createRepos(db);
+ *
+ * // Use in transaction
+ * await db.transaction().execute(async (trx) => {
+ *   const txRepos = createRepos(trx);
+ *   await txRepos.users.create({ ... });
+ * });
+ * ```
+ */
+export function createMultiRepositoryFactory<
+  DB,
+  Repos extends Record<string, unknown>
+>(
+  factories: {
+    [K in keyof Repos]: (executor: Executor<DB>) => Repos[K];
+  }
+): (executor: Executor<DB>) => Repos {
+  return createKyseraRepositoriesFactory(factories);
 }

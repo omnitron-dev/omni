@@ -43,6 +43,7 @@ export function InjectRepository<T = unknown>(target: RepositoryConstructor<T>):
  * Marks a class as a repository and configures it
  */
 export function Repository<Entity = unknown>(config: RepositoryConfig<Entity>): ClassDecorator {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
   return <TFunction extends Function>(target: TFunction): TFunction => {
     // Store repository metadata
     Reflect.defineMetadata(METADATA_KEYS.REPOSITORY, config, target);
@@ -92,6 +93,7 @@ export function Migration(config: {
   transactional?: boolean;
   timeout?: number;
 }): ClassDecorator {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
   return <TFunction extends Function>(target: TFunction): TFunction => {
     const metadata = {
       version: config.version,
@@ -318,6 +320,7 @@ export function Query(sql: string): MethodDecorator {
  * Marks a repository to use soft delete
  */
 export function SoftDelete(config?: { column?: string; includeDeleted?: boolean }): ClassDecorator {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
   return <TFunction extends Function>(target: TFunction): TFunction => {
     const existingConfig = Reflect.getMetadata(METADATA_KEYS.REPOSITORY, target) || {};
 
@@ -339,6 +342,7 @@ export function SoftDelete(config?: { column?: string; includeDeleted?: boolean 
  * Marks a repository to use automatic timestamps
  */
 export function Timestamps(config?: { createdAt?: string; updatedAt?: string }): ClassDecorator {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
   return <TFunction extends Function>(target: TFunction): TFunction => {
     const existingConfig = Reflect.getMetadata(METADATA_KEYS.REPOSITORY, target) || {};
 
@@ -364,6 +368,7 @@ export function Audit(config?: {
   captureOldValues?: boolean;
   captureNewValues?: boolean;
 }): ClassDecorator {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
   return <TFunction extends Function>(target: TFunction): TFunction => {
     const existingConfig = Reflect.getMetadata(METADATA_KEYS.REPOSITORY, target) || {};
 

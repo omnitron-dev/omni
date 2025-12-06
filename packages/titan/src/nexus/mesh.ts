@@ -1,10 +1,13 @@
 /**
  * Service Mesh Integration for Nexus DI
  *
+ * Provides service discovery, load balancing, and distributed communication.
+ * Supports integration with service mesh solutions like Consul.
+ *
+ * @experimental
+ * @since 0.1.0
  * @module mesh
  * @packageDocumentation
- *
- * Provides service discovery, load balancing, and distributed communication
  */
 
 import { createToken } from './token.js';
@@ -12,7 +15,10 @@ import { ProviderDefinition, InjectionToken } from './types.js';
 import { Errors, HttpErrors } from '../errors/index.js';
 
 /**
- * Service instance information
+ * Service instance information.
+ *
+ * @experimental
+ * @since 0.1.0
  */
 export interface ServiceInstance {
   id: string;

@@ -201,10 +201,9 @@ export class InAppChannel implements NotificationChannel {
     return true; // Always available
   }
 
-  async send(recipient: Recipient, content: ChannelContent): Promise<void> {
-    // In real implementation, would store in database
-    // For now, just log
-    console.log(`InApp notification sent to ${recipient.id}:`, content);
+  async send(_recipient: Recipient, _content: ChannelContent): Promise<void> {
+    // Stub implementation - in production, would store in database
+    // Override this method with your actual in-app notification storage
   }
 
   validateRecipient(recipient: Recipient): boolean {
@@ -232,13 +231,13 @@ export class EmailChannel implements NotificationChannel {
     return true;
   }
 
-  async send(recipient: Recipient, content: ChannelContent): Promise<void> {
+  async send(recipient: Recipient, _content: ChannelContent): Promise<void> {
     if (!recipient.email) {
       throw Errors.badRequest('Recipient email not provided');
     }
 
-    // In real implementation, would send via email service
-    console.log(`Email sent to ${recipient.email}:`, content);
+    // Stub implementation - in production, would send via email service (SendGrid, SES, etc.)
+    // Override this method with your actual email sending logic
   }
 
   validateRecipient(recipient: Recipient): boolean {
@@ -271,13 +270,13 @@ export class SMSChannel implements NotificationChannel {
     return true;
   }
 
-  async send(recipient: Recipient, content: ChannelContent): Promise<void> {
+  async send(recipient: Recipient, _content: ChannelContent): Promise<void> {
     if (!recipient.phone) {
       throw Errors.badRequest('Recipient phone not provided');
     }
 
-    // In real implementation, would send via SMS service
-    console.log(`SMS sent to ${recipient.phone}:`, content.message);
+    // Stub implementation - in production, would send via SMS service (Twilio, etc.)
+    // Override this method with your actual SMS sending logic
   }
 
   validateRecipient(recipient: Recipient): boolean {

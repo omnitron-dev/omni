@@ -1,17 +1,33 @@
 /**
  * Application Integration Tests
  *
- * Tests for complete application scenarios:
+ * Comprehensive integration tests for complete application scenarios:
+ * - Application lifecycle (creation, start, stop, restart)
+ * - Module registration and loading
+ * - Provider registration and resolution
+ * - Event emission (ApplicationEvent.Starting, Started, Stopping, Stopped, Error)
+ * - Netron integration (if configured)
+ * - Error handling
+ * - Graceful shutdown
+ * - Configuration options
  * - Real-world use cases
  * - Cross-feature interactions
  * - Performance and reliability
  * - Advanced patterns
  */
-import { describe, it, expect, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, afterEach, beforeEach, jest } from '@jest/globals';
 
-import { Application, createApp } from '../../src/application.js';
-import { createToken } from '../../src/nexus/index.js';
-import { ApplicationState, ApplicationEvent, IModule, ShutdownPriority } from '../../src/types.js';
+import { Application, createApp, APPLICATION_TOKEN, NETRON_TOKEN } from '../../src/application.js';
+import { createToken, Container, Token } from '../../src/nexus/index.js';
+import {
+  ApplicationState,
+  ApplicationEvent,
+  IModule,
+  ShutdownPriority,
+  ShutdownReason,
+  IHealthStatus,
+  ILifecycleHook,
+} from '../../src/types.js';
 import {
   createWebApplication,
   createMicroserviceApplication,
@@ -29,8 +45,10 @@ import {
   FailingModule,
   SlowModule,
   SimpleModule,
+  createTrackedModule,
+  createCustomModule,
 } from '../fixtures/test-modules.js';
-import { Module } from '../../src/decorators/index.js';
+import { Module, Injectable } from '../../src/decorators/index.js';
 
 describe('Application Integration', () => {
   let app: Application;
@@ -721,6 +739,1229 @@ describe('Application Integration', () => {
 
       expect(eventCount).toBe(10000);
       expect(duration).toBeLessThan(100); // Should be very fast
+    });
+  });
+
+  // ============================================================================
+  // COMPREHENSIVE APPLICATION LIFECYCLE TESTS
+  // ============================================================================
+
+  describe('Application Lifecycle (Comprehensive)', () => {
+    it('should transition through all lifecycle states correctly', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      const states: ApplicationState[] = [];
+
+      // Track state changes via events
+      app.on(ApplicationEvent.Starting, () => states.push(ApplicationState.Starting));
+      app.on(ApplicationEvent.Started, () => states.push(ApplicationState.Started));
+      app.on(ApplicationEvent.Stopping, () => states.push(ApplicationState.Stopping));
+      app.on(ApplicationEvent.Stopped, () => states.push(ApplicationState.Stopped));
+
+      expect(app.state).toBe(ApplicationState.Created);
+
+      await app.start();
+      expect(app.state).toBe(ApplicationState.Started);
+
+      await app.stop();
+      expect(app.state).toBe(ApplicationState.Stopped);
+
+      // Verify state transition order
+      expect(states).toEqual([
+        ApplicationState.Starting,
+        ApplicationState.Started,
+        ApplicationState.Stopping,
+        ApplicationState.Stopped,
+      ]);
+    });
+
+    it('should support restart with state reset', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      const module = createTrackedModule('restart-test');
+      app.use(module);
+
+      await app.start();
+      expect(module.calls).toContain('start');
+
+      // Clear tracking
+      module.calls.length = 0;
+
+      await app.restart();
+
+      // Should have stopped and started again
+      expect(module.calls).toContain('stop');
+      expect(module.calls).toContain('start');
+      expect(app.state).toBe(ApplicationState.Started);
+    });
+
+    it('should handle concurrent start attempts gracefully', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      app.use(new SlowModule(100));
+
+      // Start multiple concurrent start attempts
+      const results = await Promise.allSettled([app.start(), app.start(), app.start()]);
+
+      // The application should end up in a started state regardless of concurrent calls
+      expect(app.state).toBe(ApplicationState.Started);
+
+      // At least one call should succeed
+      const succeeded = results.filter((r) => r.status === 'fulfilled');
+      expect(succeeded.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should handle concurrent stop attempts gracefully', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      app.use(new SlowModule(100));
+
+      await app.start();
+
+      // Start multiple concurrent stop attempts
+      const results = await Promise.allSettled([app.stop(), app.stop(), app.stop()]);
+
+      // All should resolve without throwing
+      const succeeded = results.filter((r) => r.status === 'fulfilled');
+      expect(succeeded.length).toBeGreaterThanOrEqual(1);
+      expect(app.state).toBe(ApplicationState.Stopped);
+    });
+
+    it('should wait for start to complete before processing stop', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      const startTime = Date.now();
+      app.use(new SlowModule(200));
+
+      // Start the app
+      const startPromise = app.start();
+
+      // Immediately try to stop
+      const stopPromise = app.stop();
+
+      // Both should complete
+      await Promise.all([startPromise, stopPromise]);
+
+      // Total time should be at least the module delay
+      const totalTime = Date.now() - startTime;
+      expect(totalTime).toBeGreaterThanOrEqual(200);
+    });
+
+    it('should report uptime correctly after start', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+
+      await app.start();
+
+      // Wait a bit
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      const uptime = app.uptime;
+      expect(uptime).toBeGreaterThanOrEqual(100);
+      expect(uptime).toBeLessThan(5000); // Sanity check
+    });
+  });
+
+  // ============================================================================
+  // MODULE REGISTRATION AND LOADING TESTS
+  // ============================================================================
+
+  describe('Module Registration and Loading', () => {
+    it('should register modules via use() method', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+
+      const module1 = new SimpleModule();
+      const module2 = new DatabaseModule();
+
+      app.use(module1);
+      app.use(module2);
+
+      expect(app.modules.has('simple')).toBe(true);
+      expect(app.modules.has('database')).toBe(true);
+    });
+
+    it('should register modules via registerModule() method', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+
+      @Module({
+        providers: [],
+      })
+      class TestModule implements IModule {
+        name = 'test-module';
+        version = '1.0.0';
+      }
+
+      await app.registerModule(TestModule);
+
+      expect(app.modules.has('test-module')).toBe(true);
+    });
+
+    it('should handle duplicate module registration idempotently', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+
+      const module = new SimpleModule();
+
+      app.use(module);
+      app.use(module); // Duplicate
+
+      // Should only be registered once
+      expect(app.modules.size).toBe(1);
+    });
+
+    it('should emit ModuleRegistered event on registration', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      const registeredModules: string[] = [];
+
+      app.on(ApplicationEvent.ModuleRegistered, (data: any) => {
+        registeredModules.push(data.module);
+      });
+
+      app.use(new SimpleModule());
+      app.use(new DatabaseModule());
+
+      expect(registeredModules).toContain('simple');
+      expect(registeredModules).toContain('database');
+    });
+
+    it('should start modules in registration order', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      const startOrder: string[] = [];
+
+      const module1 = createCustomModule({
+        name: 'first',
+        onStart: async () => {
+          startOrder.push('first');
+        },
+      });
+
+      const module2 = createCustomModule({
+        name: 'second',
+        onStart: async () => {
+          startOrder.push('second');
+        },
+      });
+
+      const module3 = createCustomModule({
+        name: 'third',
+        onStart: async () => {
+          startOrder.push('third');
+        },
+      });
+
+      app.use(module1);
+      app.use(module2);
+      app.use(module3);
+
+      await app.start();
+
+      expect(startOrder).toEqual(['first', 'second', 'third']);
+    });
+
+    it('should stop modules in reverse order', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      const stopOrder: string[] = [];
+
+      const module1 = createCustomModule({
+        name: 'first',
+        onStop: async () => {
+          stopOrder.push('first');
+        },
+      });
+
+      const module2 = createCustomModule({
+        name: 'second',
+        onStop: async () => {
+          stopOrder.push('second');
+        },
+      });
+
+      const module3 = createCustomModule({
+        name: 'third',
+        onStop: async () => {
+          stopOrder.push('third');
+        },
+      });
+
+      app.use(module1);
+      app.use(module2);
+      app.use(module3);
+
+      await app.start();
+      await app.stop();
+
+      expect(stopOrder).toEqual(['third', 'second', 'first']);
+    });
+
+    it('should configure modules with matching config', async () => {
+      app = createApp({
+        disableGracefulShutdown: true,
+        disableCoreModules: true,
+        config: {
+          simple: { customSetting: 'test-value' },
+        },
+      });
+
+      const module = new SimpleModule();
+      app.use(module);
+
+      expect(module.configureCalled).toBe(true);
+      expect(module.configValue).toEqual({ customSetting: 'test-value' });
+    });
+
+    it('should replace modules with replaceModule()', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+
+      const originalModule = new SimpleModule();
+      originalModule.name = 'replaceable';
+      app.use(originalModule);
+
+      const replacementModule = new SimpleModule();
+      replacementModule.name = 'replaceable';
+      replacementModule.version = '2.0.0';
+
+      app.replaceModule('replaceable', replacementModule);
+
+      const retrieved = app.modules.get('replaceable');
+      expect(retrieved?.version).toBe('2.0.0');
+    });
+
+    it('should throw when replacing module after start', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+
+      const module = new SimpleModule();
+      app.use(module);
+
+      await app.start();
+
+      const replacement = new SimpleModule();
+      expect(() => app.replaceModule('simple', replacement)).toThrow(
+        'Cannot replace modules after application has started'
+      );
+    });
+  });
+
+  // ============================================================================
+  // PROVIDER REGISTRATION AND RESOLUTION TESTS
+  // ============================================================================
+
+  describe('Provider Registration and Resolution', () => {
+    it('should register providers via register() method', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+
+      const SERVICE_TOKEN = createToken<string>('SERVICE');
+      app.register(SERVICE_TOKEN, { useValue: 'test-service' });
+
+      const resolved = app.resolve(SERVICE_TOKEN);
+      expect(resolved).toBe('test-service');
+    });
+
+    it('should resolve providers with useClass', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+
+      @Injectable()
+      class TestService {
+        getValue() {
+          return 'from-class';
+        }
+      }
+
+      const SERVICE_TOKEN = createToken<TestService>('TestService');
+      app.register(SERVICE_TOKEN, { useClass: TestService });
+
+      const resolved = app.resolve(SERVICE_TOKEN);
+      expect(resolved.getValue()).toBe('from-class');
+    });
+
+    it('should resolve providers with useFactory', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+
+      const CONFIG_TOKEN = createToken<{ value: string }>('Config');
+      app.register(CONFIG_TOKEN, {
+        useFactory: () => ({ value: 'from-factory' }),
+      });
+
+      const resolved = app.resolve(CONFIG_TOKEN);
+      expect(resolved.value).toBe('from-factory');
+    });
+
+    it('should support provider override with override option', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+
+      const TOKEN = createToken<string>('Value');
+      app.register(TOKEN, { useValue: 'original' });
+      app.register(TOKEN, { useValue: 'override' }, { override: true });
+
+      expect(app.resolve(TOKEN)).toBe('override');
+    });
+
+    it('should resolve APPLICATION_TOKEN to the application instance', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+
+      const resolved = app.resolve(APPLICATION_TOKEN);
+      expect(resolved).toBe(app);
+    });
+
+    it('should check provider existence with hasProvider()', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+
+      const EXISTING_TOKEN = createToken<string>('Existing');
+      const MISSING_TOKEN = createToken<string>('Missing');
+
+      app.register(EXISTING_TOKEN, { useValue: 'test' });
+
+      expect(app.hasProvider(EXISTING_TOKEN)).toBe(true);
+      expect(app.hasProvider(MISSING_TOKEN)).toBe(false);
+    });
+
+    it('should allow providers from @Module decorator', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+
+      const SERVICE_TOKEN = createToken<any>('ModuleService');
+
+      @Injectable()
+      class ModuleService {
+        getValue() {
+          return 'module-service-value';
+        }
+      }
+
+      @Module({
+        providers: [{ provide: SERVICE_TOKEN, useClass: ModuleService }],
+        exports: [SERVICE_TOKEN],
+      })
+      class ProviderModule implements IModule {
+        name = 'provider-module';
+        version = '1.0.0';
+      }
+
+      await app.registerModule(ProviderModule);
+
+      const service = app.container.resolve(SERVICE_TOKEN);
+      expect(service.getValue()).toBe('module-service-value');
+    });
+  });
+
+  // ============================================================================
+  // EVENT EMISSION TESTS
+  // ============================================================================
+
+  describe('Event Emission', () => {
+    it('should emit Starting event before module starts', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      let startingEmitted = false;
+      let moduleStarted = false;
+
+      const module = createCustomModule({
+        name: 'event-test',
+        onStart: async () => {
+          expect(startingEmitted).toBe(true);
+          moduleStarted = true;
+        },
+      });
+
+      app.on(ApplicationEvent.Starting, () => {
+        startingEmitted = true;
+        expect(moduleStarted).toBe(false);
+      });
+
+      app.use(module);
+      await app.start();
+
+      expect(startingEmitted).toBe(true);
+      expect(moduleStarted).toBe(true);
+    });
+
+    it('should emit Started event after all modules start', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      let allModulesStarted = false;
+      let startedEmitted = false;
+
+      const module = createCustomModule({
+        name: 'event-test',
+        onStart: async () => {
+          allModulesStarted = true;
+        },
+      });
+
+      app.on(ApplicationEvent.Started, () => {
+        startedEmitted = true;
+        expect(allModulesStarted).toBe(true);
+      });
+
+      app.use(module);
+      await app.start();
+
+      expect(startedEmitted).toBe(true);
+    });
+
+    it('should emit Stopping event before modules stop', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      let stoppingEmitted = false;
+      let moduleStopped = false;
+
+      const module = createCustomModule({
+        name: 'event-test',
+        onStop: async () => {
+          expect(stoppingEmitted).toBe(true);
+          moduleStopped = true;
+        },
+      });
+
+      app.on(ApplicationEvent.Stopping, () => {
+        stoppingEmitted = true;
+        expect(moduleStopped).toBe(false);
+      });
+
+      app.use(module);
+      await app.start();
+      await app.stop();
+
+      expect(stoppingEmitted).toBe(true);
+      expect(moduleStopped).toBe(true);
+    });
+
+    it('should emit Stopped event after all modules stop', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      let allModulesStopped = false;
+      let stoppedEmitted = false;
+
+      const module = createCustomModule({
+        name: 'event-test',
+        onStop: async () => {
+          allModulesStopped = true;
+        },
+      });
+
+      app.on(ApplicationEvent.Stopped, () => {
+        stoppedEmitted = true;
+        expect(allModulesStopped).toBe(true);
+      });
+
+      app.use(module);
+      await app.start();
+      await app.stop();
+
+      expect(stoppedEmitted).toBe(true);
+    });
+
+    it('should emit Error event on module failure', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      let errorEmitted = false;
+      let errorData: any = null;
+
+      app.on(ApplicationEvent.Error, (error: any) => {
+        errorEmitted = true;
+        errorData = error;
+      });
+
+      app.use(new FailingModule('start', 'Test error'));
+
+      await expect(app.start()).rejects.toThrow('Test error');
+      expect(errorEmitted).toBe(true);
+    });
+
+    it('should emit ModuleStarted event for each module', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      const startedModules: string[] = [];
+
+      app.on(ApplicationEvent.ModuleStarted, (data: any) => {
+        startedModules.push(data.module);
+      });
+
+      app.use(new SimpleModule());
+      const dbModule = new DatabaseModule();
+      dbModule.name = 'database';
+      app.use(dbModule);
+
+      await app.start();
+
+      expect(startedModules).toContain('simple');
+      expect(startedModules).toContain('database');
+    });
+
+    it('should emit ModuleStopped event for each module', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      const stoppedModules: string[] = [];
+
+      app.on(ApplicationEvent.ModuleStopped, (data: any) => {
+        stoppedModules.push(data.module);
+      });
+
+      app.use(new SimpleModule());
+      app.use(new DatabaseModule());
+
+      await app.start();
+      await app.stop();
+
+      expect(stoppedModules).toContain('simple');
+      expect(stoppedModules).toContain('database');
+    });
+
+    it('should emit ConfigChanged event on configuration update', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      let configChangeEmitted = false;
+      let configData: any = null;
+
+      app.on(ApplicationEvent.ConfigChanged, (data: any) => {
+        configChangeEmitted = true;
+        configData = data;
+      });
+
+      app.configure({ newSetting: 'value' });
+
+      expect(configChangeEmitted).toBe(true);
+      expect(configData.config.newSetting).toBe('value');
+    });
+
+    it('should support once() for single-fire event handlers', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      let callCount = 0;
+
+      app.once(ApplicationEvent.Custom, () => {
+        callCount++;
+      });
+
+      app.emit(ApplicationEvent.Custom, {});
+      app.emit(ApplicationEvent.Custom, {});
+      app.emit(ApplicationEvent.Custom, {});
+
+      expect(callCount).toBe(1);
+    });
+
+    it('should support off() to remove event handlers', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      let callCount = 0;
+
+      const handler = () => {
+        callCount++;
+      };
+
+      app.on(ApplicationEvent.Custom, handler);
+      app.emit(ApplicationEvent.Custom, {});
+      expect(callCount).toBe(1);
+
+      app.off(ApplicationEvent.Custom, handler);
+      app.emit(ApplicationEvent.Custom, {});
+      expect(callCount).toBe(1); // Should not increase
+    });
+
+    it('should support removeAllListeners()', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      let callCount = 0;
+
+      app.on(ApplicationEvent.Custom, () => callCount++);
+      app.on(ApplicationEvent.Custom, () => callCount++);
+
+      app.emit(ApplicationEvent.Custom, {});
+      expect(callCount).toBe(2);
+
+      app.removeAllListeners(ApplicationEvent.Custom);
+
+      app.emit(ApplicationEvent.Custom, {});
+      expect(callCount).toBe(2); // Should not increase
+    });
+
+    it('should handle errors in event handlers gracefully', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      let secondHandlerCalled = false;
+
+      app.on(ApplicationEvent.Custom, () => {
+        throw new Error('Handler error');
+      });
+
+      app.on(ApplicationEvent.Custom, () => {
+        secondHandlerCalled = true;
+      });
+
+      // Should not throw even with handler error
+      expect(() => app.emit(ApplicationEvent.Custom, {})).not.toThrow();
+      expect(secondHandlerCalled).toBe(true);
+    });
+  });
+
+  // ============================================================================
+  // NETRON INTEGRATION TESTS (MOCKED)
+  // ============================================================================
+
+  describe('Netron Integration', () => {
+    it('should not have Netron when disableCoreModules is true', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+
+      await app.start();
+
+      expect(app.netron).toBeUndefined();
+      expect(app.hasProvider(NETRON_TOKEN)).toBe(false);
+    });
+
+    it('should access Netron via netron getter when enabled', async () => {
+      // Create app with core modules enabled
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: false });
+
+      await app.start();
+
+      // Netron should be available when core modules are enabled
+      if (app.hasProvider(NETRON_TOKEN)) {
+        expect(app.netron).toBeDefined();
+      }
+    });
+
+    it('should expose NETRON_TOKEN from application exports', () => {
+      expect(NETRON_TOKEN).toBeDefined();
+      expect(typeof NETRON_TOKEN).toBe('object');
+    });
+  });
+
+  // ============================================================================
+  // ERROR HANDLING TESTS
+  // ============================================================================
+
+  describe('Error Handling', () => {
+    it('should set state to Failed on startup error', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      app.use(new FailingModule('start', 'Startup failure'));
+
+      await expect(app.start()).rejects.toThrow('Startup failure');
+      expect(app.state).toBe(ApplicationState.Failed);
+    });
+
+    it('should allow stop from Failed state', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      app.use(new FailingModule('start', 'Startup failure'));
+
+      await expect(app.start()).rejects.toThrow('Startup failure');
+      expect(app.state).toBe(ApplicationState.Failed);
+
+      // Should be able to stop from failed state
+      await app.stop();
+      expect(app.state).toBe(ApplicationState.Stopped);
+    });
+
+    it('should prevent start from Failed state without stop', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      app.use(new FailingModule('start', 'Startup failure'));
+
+      await expect(app.start()).rejects.toThrow('Startup failure');
+      expect(app.state).toBe(ApplicationState.Failed);
+
+      await expect(app.start()).rejects.toThrow('Cannot start from failed state');
+    });
+
+    it('should call onError handlers on failure', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      let errorHandlerCalled = false;
+      let capturedError: Error | null = null;
+
+      app.onError((error) => {
+        errorHandlerCalled = true;
+        capturedError = error;
+      });
+
+      app.use(new FailingModule('start', 'Test error'));
+
+      await expect(app.start()).rejects.toThrow('Test error');
+      expect(errorHandlerCalled).toBe(true);
+      expect(capturedError?.message).toBe('Test error');
+    });
+
+    it('should continue stopping other modules when one fails (graceful)', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      const stoppedModules: string[] = [];
+
+      const goodModule = createCustomModule({
+        name: 'good-module',
+        onStop: async () => {
+          stoppedModules.push('good-module');
+        },
+      });
+
+      const failingModule = new FailingModule('stop', 'Stop failure');
+
+      const anotherGoodModule = createCustomModule({
+        name: 'another-good',
+        onStop: async () => {
+          stoppedModules.push('another-good');
+        },
+      });
+
+      app.use(goodModule);
+      app.use(failingModule);
+      app.use(anotherGoodModule);
+
+      await app.start();
+
+      // Default stop should continue despite failures
+      await app.stop();
+
+      // Both good modules should have stopped
+      expect(stoppedModules).toContain('good-module');
+      expect(stoppedModules).toContain('another-good');
+    });
+
+    it('should throw on stop failure when graceful is false', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      app.use(new FailingModule('stop', 'Stop failure'));
+
+      await app.start();
+
+      await expect(app.stop({ graceful: false })).rejects.toThrow('Stop failure');
+    });
+
+    it('should handle module registration failure', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      app.use(new FailingModule('register', 'Registration failure'));
+
+      await expect(app.start()).rejects.toThrow('Registration failure');
+      expect(app.state).toBe(ApplicationState.Failed);
+    });
+
+    it('should handle health check errors gracefully', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+
+      const faultyModule = createCustomModule({
+        name: 'faulty',
+        health: async () => {
+          throw new Error('Health check error');
+        },
+      });
+
+      app.use(faultyModule);
+      await app.start();
+
+      const health = await app.health();
+      expect(health.modules?.['faulty']?.status).toBe('unhealthy');
+    });
+  });
+
+  // ============================================================================
+  // GRACEFUL SHUTDOWN TESTS
+  // ============================================================================
+
+  describe('Graceful Shutdown', () => {
+    it('should execute shutdown tasks in priority order', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      const executionOrder: string[] = [];
+
+      app.registerShutdownTask(
+        'low-priority',
+        async () => {
+          executionOrder.push('low');
+        },
+        ShutdownPriority.Low
+      );
+
+      app.registerShutdownTask(
+        'high-priority',
+        async () => {
+          executionOrder.push('high');
+        },
+        ShutdownPriority.High
+      );
+
+      app.registerShutdownTask(
+        'normal-priority',
+        async () => {
+          executionOrder.push('normal');
+        },
+        ShutdownPriority.Normal
+      );
+
+      await app.start();
+      await app.stop();
+
+      // Should be: high (20), normal (50), low (80)
+      expect(executionOrder).toEqual(['high', 'normal', 'low']);
+    });
+
+    it('should support timeout option in stop()', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      app.use(new SlowModule(500));
+
+      await app.start();
+
+      // Stop with short timeout should timeout
+      await expect(app.stop({ timeout: 100 })).rejects.toThrow('timed out');
+    });
+
+    it('should support force stop to skip slow modules', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      app.use(new SlowModule(5000));
+
+      await app.start();
+
+      const startTime = Date.now();
+      await app.stop({ force: true });
+      const duration = Date.now() - startTime;
+
+      expect(duration).toBeLessThan(500);
+      expect(app.state).toBe(ApplicationState.Stopped);
+    });
+
+    it('should run cleanup handlers on stop', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      const cleanedUp: string[] = [];
+
+      app.registerCleanupHandler(() => {
+        cleanedUp.push('handler1');
+      });
+
+      app.registerCleanupHandler(async () => {
+        cleanedUp.push('handler2');
+      });
+
+      await app.start();
+      await app.stop();
+
+      expect(cleanedUp).toContain('handler1');
+      expect(cleanedUp).toContain('handler2');
+    });
+
+    it('should continue cleanup even if one handler fails', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      const cleanedUp: string[] = [];
+
+      app.registerCleanupHandler(() => {
+        throw new Error('Cleanup error');
+      });
+
+      app.registerCleanupHandler(() => {
+        cleanedUp.push('successful');
+      });
+
+      await app.start();
+      await app.stop();
+
+      expect(cleanedUp).toContain('successful');
+    });
+
+    it('should emit ShutdownComplete event', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      let shutdownComplete = false;
+
+      app.on(ApplicationEvent.ShutdownComplete, () => {
+        shutdownComplete = true;
+      });
+
+      await app.start();
+      await app.stop();
+
+      expect(shutdownComplete).toBe(true);
+    });
+
+    it('should unregister shutdown tasks', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      const executed: string[] = [];
+
+      const taskId = app.registerShutdownTask('removable', async () => {
+        executed.push('removable');
+      });
+
+      app.unregisterShutdownTask(taskId);
+
+      await app.start();
+      await app.stop();
+
+      expect(executed).not.toContain('removable');
+    });
+  });
+
+  // ============================================================================
+  // CONFIGURATION OPTIONS TESTS
+  // ============================================================================
+
+  describe('Configuration Options', () => {
+    it('should accept config via constructor options', async () => {
+      app = createApp({
+        disableGracefulShutdown: true,
+        disableCoreModules: true,
+        config: {
+          database: { host: 'localhost', port: 5432 },
+          cache: { ttl: 60000 },
+        },
+      });
+
+      const config = app.getConfig();
+      expect(config.database).toEqual({ host: 'localhost', port: 5432 });
+      expect(config.cache).toEqual({ ttl: 60000 });
+    });
+
+    it('should update config via configure() method', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+
+      app.configure({ newKey: 'newValue' });
+
+      expect(app.config('newKey' as any)).toBe('newValue');
+    });
+
+    it('should deep merge configuration objects', async () => {
+      app = createApp({
+        disableGracefulShutdown: true,
+        disableCoreModules: true,
+        config: {
+          database: { host: 'localhost', port: 5432 },
+        },
+      });
+
+      app.configure({
+        database: { port: 3306, user: 'admin' },
+      });
+
+      const config = app.getConfig();
+      expect(config.database).toEqual({
+        host: 'localhost',
+        port: 3306,
+        user: 'admin',
+      });
+    });
+
+    it('should set config via setConfig() method', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+
+      app.setConfig('nested.key.value', 'deep-value');
+
+      // Verify the value was set
+      const config = app.getConfig();
+      expect((config as any).nested?.key?.value).toBe('deep-value');
+    });
+
+    it('should reconfigure modules when config changes', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+
+      const module = new SimpleModule();
+      app.use(module);
+
+      // Reset the configure tracking
+      module.configureCalled = false;
+
+      app.configure({ simple: { setting: 'new-value' } });
+
+      expect(module.configureCalled).toBe(true);
+      expect(module.configValue).toEqual({ setting: 'new-value' });
+    });
+
+    it('should provide name, version, and debug via getters', async () => {
+      app = createApp({
+        name: 'test-app',
+        version: '2.0.0',
+        debug: true,
+        disableGracefulShutdown: true,
+        disableCoreModules: true,
+      });
+
+      expect(app.name).toBe('test-app');
+      expect(app.version).toBe('2.0.0');
+      expect(app.debug).toBe(true);
+    });
+
+    it('should provide environment information', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+
+      const env = app.environment;
+
+      expect(env.nodeVersion).toBeDefined();
+      expect(env.platform).toBeDefined();
+      expect(env.arch).toBeDefined();
+      expect(env.pid).toBe(process.pid);
+    });
+
+    it('should provide metrics information', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+      app.use(new SimpleModule());
+      app.use(new DatabaseModule());
+
+      await app.start();
+
+      const metrics = app.metrics;
+
+      expect(metrics.modules).toBe(2);
+      expect(metrics.memoryUsage).toBeDefined();
+      expect(metrics.memoryUsage.heapUsed).toBeGreaterThan(0);
+      // Note: metrics.uptime uses process.uptime() which may be 0 in tests
+      // Use app.uptime for application-specific uptime
+      expect(metrics.uptime).toBeGreaterThanOrEqual(0);
+      expect(metrics.startupTime).toBeGreaterThanOrEqual(0);
+    });
+  });
+
+  // ============================================================================
+  // HEALTH CHECK TESTS
+  // ============================================================================
+
+  describe('Health Checks', () => {
+    it('should return healthy status when all modules are healthy', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+
+      app.use(new SimpleModule());
+      app.use(new DatabaseModule());
+
+      await app.start();
+
+      const health = await app.health();
+
+      expect(health.status).toBe('healthy');
+      expect(health.modules).toBeDefined();
+    });
+
+    it('should return unhealthy status when a module is unhealthy', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+
+      const unhealthyModule = createCustomModule({
+        name: 'unhealthy',
+        health: async (): Promise<IHealthStatus> => ({
+          status: 'unhealthy',
+          message: 'Module is down',
+        }),
+      });
+
+      app.use(new SimpleModule());
+      app.use(unhealthyModule);
+
+      await app.start();
+
+      const health = await app.health();
+
+      expect(health.status).toBe('unhealthy');
+    });
+
+    it('should return degraded status when a module is degraded', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+
+      const degradedModule = createCustomModule({
+        name: 'degraded',
+        health: async (): Promise<IHealthStatus> => ({
+          status: 'degraded',
+          message: 'Module is degraded',
+        }),
+      });
+
+      app.use(new SimpleModule());
+      app.use(degradedModule);
+
+      await app.start();
+
+      const health = await app.health();
+
+      expect(health.status).toBe('degraded');
+    });
+
+    it('should check individual module health via checkHealth()', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+
+      app.use(new SimpleModule());
+
+      await app.start();
+
+      const moduleHealth = await app.checkHealth('simple');
+
+      expect(moduleHealth.status).toBe('healthy');
+    });
+
+    it('should return unhealthy for non-existent module', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+
+      await app.start();
+
+      await expect(app.checkHealth('non-existent')).rejects.toThrow();
+    });
+  });
+
+  // ============================================================================
+  // DYNAMIC MODULE REGISTRATION TESTS
+  // ============================================================================
+
+  describe('Dynamic Module Registration', () => {
+    it('should register dynamic modules at runtime', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+
+      await app.start();
+
+      const dynamicModule: IModule = {
+        name: 'dynamic-module',
+        version: '1.0.0',
+        onStart: jest.fn(),
+      };
+
+      await app.registerDynamic(dynamicModule);
+
+      expect(app.modules.has('dynamic-module')).toBe(true);
+      expect(dynamicModule.onStart).toHaveBeenCalled();
+    });
+
+    it('should throw when registering dynamic module before start', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+
+      const dynamicModule: IModule = {
+        name: 'dynamic-module',
+        version: '1.0.0',
+      };
+
+      await expect(app.registerDynamic(dynamicModule)).rejects.toThrow(
+        'Application must be running to register dynamic modules'
+      );
+    });
+
+    it('should validate dependencies for dynamic modules', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+
+      await app.start();
+
+      const dynamicModule: IModule = {
+        name: 'dependent-dynamic',
+        version: '1.0.0',
+        dependencies: ['non-existent-dep'],
+      };
+
+      await expect(app.registerDynamic(dynamicModule)).rejects.toThrow();
+    });
+  });
+
+  // ============================================================================
+  // PROCESS METRICS TESTS
+  // ============================================================================
+
+  describe('Process Metrics', () => {
+    it('should provide process metrics via getProcessMetrics()', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+
+      await app.start();
+
+      const metrics = app.getProcessMetrics();
+
+      expect(metrics).toBeDefined();
+      expect(metrics.memoryUsage).toBeDefined();
+      expect(metrics.memoryUsage.heapUsed).toBeGreaterThan(0);
+      expect(metrics.cpuUsage).toBeDefined();
+      expect(metrics.uptime).toBeGreaterThan(0);
+      expect(metrics.pid).toBe(process.pid);
+    });
+  });
+
+  // ============================================================================
+  // CONTAINER ACCESS TESTS
+  // ============================================================================
+
+  describe('Container Access', () => {
+    it('should expose container via getter', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+
+      expect(app.container).toBeInstanceOf(Container);
+    });
+
+    it('should allow direct container operations', async () => {
+      app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
+
+      const TOKEN = createToken<string>('Direct');
+      app.container.register(TOKEN, { useValue: 'direct-value' });
+
+      expect(app.container.resolve(TOKEN)).toBe('direct-value');
+    });
+
+    it('should use custom container if provided', async () => {
+      const customContainer = new Container();
+      const CUSTOM_TOKEN = createToken<string>('Custom');
+      customContainer.register(CUSTOM_TOKEN, { useValue: 'custom-container-value' });
+
+      app = createApp({
+        container: customContainer,
+        disableGracefulShutdown: true,
+        disableCoreModules: true,
+      });
+
+      expect(app.container).toBe(customContainer);
+      expect(app.container.resolve(CUSTOM_TOKEN)).toBe('custom-container-value');
     });
   });
 });

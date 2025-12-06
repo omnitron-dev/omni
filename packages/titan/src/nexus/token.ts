@@ -1,17 +1,30 @@
 /**
  * Token system for type-safe dependency identification
+ *
+ * Tokens provide a way to identify dependencies without coupling to concrete implementations.
+ * They support type safety through TypeScript generics and can carry metadata for advanced use cases.
+ *
+ * @stable
+ * @since 0.1.0
  */
 
 import { Token, Scope, MultiToken, TokenMetadata } from './types.js';
 import { Errors } from '../errors/factories.js';
 
 /**
- * Token registry for caching tokens by name
+ * Token registry for caching tokens by name.
+ *
+ * @internal
+ * @since 0.1.0
  */
 const tokenRegistry = new Map<string, EnhancedToken<any>>();
 
 /**
- * Base token interface with enhanced features
+ * Base token interface with enhanced features.
+ * Extends the basic Token interface with additional methods for comparison and serialization.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export interface EnhancedToken<T = any> extends Token<T> {
   readonly symbol: symbol;
@@ -25,7 +38,11 @@ export interface EnhancedToken<T = any> extends Token<T> {
 }
 
 /**
- * Enhanced multi-token interface
+ * Enhanced multi-token interface.
+ * Multi-tokens allow registering multiple providers under a single token.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export interface EnhancedMultiToken<T = any> extends MultiToken<T>, EnhancedToken<T> {
   readonly multi: true;
@@ -33,14 +50,22 @@ export interface EnhancedMultiToken<T = any> extends MultiToken<T>, EnhancedToke
 }
 
 /**
- * Enhanced optional token interface
+ * Enhanced optional token interface.
+ * Optional tokens do not throw when not found, returning undefined instead.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export interface EnhancedOptionalToken<T = any> extends EnhancedToken<T | undefined> {
   readonly isOptional: true;
 }
 
 /**
- * Config token with validation
+ * Config token with validation.
+ * Used for configuration providers that support validation and default values.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export interface ConfigToken<T = any> extends EnhancedToken<T> {
   readonly isConfig: true;
@@ -49,17 +74,36 @@ export interface ConfigToken<T = any> extends EnhancedToken<T> {
 }
 
 /**
- * Lazy token for lazy loading
+ * Lazy token for lazy loading.
+ * Lazy tokens defer resolution until the dependency is first accessed.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export interface LazyToken<T = any> extends EnhancedToken<T> {
   readonly isLazy: true;
 }
 
 /**
- * Creates a type-safe token for dependency identification
+ * Creates a type-safe token for dependency identification.
+ *
+ * @stable
+ * @since 0.1.0
+ *
  * @param name - The name of the token
  * @param metadata - Optional metadata for the token
  * @returns A typed token
+ *
+ * @example
+ * ```typescript
+ * interface ILogger {
+ *   log(message: string): void;
+ * }
+ *
+ * const LOGGER_TOKEN = createToken<ILogger>('Logger');
+ * container.register(LOGGER_TOKEN, { useClass: ConsoleLogger });
+ * const logger = container.resolve(LOGGER_TOKEN);
+ * ```
  */
 export function createToken<T = any>(name: string, metadata: Partial<TokenMetadata> = {}): EnhancedToken<T> {
   if (!name || (typeof name === 'string' && name.trim() === '')) {

@@ -1,0 +1,146 @@
+/**
+ * Lifecycle management for Nexus DI Container
+ */
+
+import { getTokenName } from '../token.js';
+import {
+  InjectionToken,
+  IModule,
+  Disposable,
+  Initializable,
+} from '../types.js';
+
+/**
+ * LifecycleService handles instance lifecycle management
+ */
+export class LifecycleService {
+  /**
+   * Check if disposable
+   */
+  isDisposable(instance: any): instance is Disposable {
+    return instance && typeof instance.dispose === 'function';
+  }
+
+  /**
+   * Check if initializable
+   */
+  isInitializable(instance: any): instance is Initializable {
+    return instance && typeof instance.initialize === 'function';
+  }
+
+  /**
+   * Check if async initializable (has onInit method)
+   */
+  isAsyncInitializable(instance: any): instance is { onInit(): Promise<void> } {
+    return instance && typeof instance.onInit === 'function';
+  }
+
+  /**
+   * Dispose all instances
+   */
+  async disposeInstances(
+    instances: Map<InjectionToken<any>, any>,
+    scopedInstances: Map<string, Map<InjectionToken<any>, any>>
+  ): Promise<void> {
+    // Dispose instances in reverse order (dispose dependents before dependencies)
+    const disposableEntries = Array.from(instances.entries()).reverse();
+
+    for (const [token, instance] of disposableEntries) {
+      // Call onDestroy lifecycle hook first
+      if (instance && typeof instance.onDestroy === 'function') {
+        try {
+          const result = instance.onDestroy();
+          if (result instanceof Promise) {
+            await result;
+          }
+        } catch (error: any) {
+          console.error('Failed to call onDestroy for ' + getTokenName(token) + ':', error);
+        }
+      }
+
+      // Then call dispose if available
+      if (this.isDisposable(instance)) {
+        try {
+          await instance.dispose();
+        } catch (error: any) {
+          console.error('Failed to dispose ' + getTokenName(token) + ':', error);
+        }
+      }
+    }
+
+    // Dispose scoped instances
+    for (const scopeCache of scopedInstances.values()) {
+      const scopedEntries = Array.from(scopeCache.entries()).reverse();
+
+      for (const [token, instance] of scopedEntries) {
+        // Call onDestroy lifecycle hook first
+        if (instance && typeof instance.onDestroy === 'function') {
+          try {
+            const result = instance.onDestroy();
+            if (result instanceof Promise) {
+              await result;
+            }
+          } catch (error: any) {
+            console.error('Failed to call onDestroy for scoped ' + getTokenName(token) + ':', error);
+          }
+        }
+
+        // Then call dispose if available
+        if (this.isDisposable(instance)) {
+          try {
+            await instance.dispose();
+          } catch (error: any) {
+            console.error('Failed to dispose scoped ' + getTokenName(token) + ':', error);
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Dispose modules in order
+   */
+  async disposeModules(modules: Map<string, IModule>, disposeOrder: string[]): Promise<void> {
+    for (const moduleName of disposeOrder) {
+      const module = modules.get(moduleName);
+      if (module?.onModuleDestroy) {
+        try {
+          await module.onModuleDestroy();
+        } catch (error: any) {
+          console.error('Failed to destroy module ' + module.name + ':', error);
+        }
+      }
+    }
+  }
+
+  /**
+   * Initialize all initializable instances
+   */
+  async initializeInstances(initializableInstances: Set<any>): Promise<void> {
+    const initPromises: Promise<void>[] = [];
+
+    for (const instance of initializableInstances) {
+      if (instance && typeof instance.onInit === 'function') {
+        try {
+          const result = instance.onInit();
+          if (result instanceof Promise) {
+            initPromises.push(result);
+          }
+        } catch (error: any) {
+          console.error('Failed to initialize instance:', error);
+          throw error;
+        }
+      }
+    }
+
+    // Wait for all async initializations
+    if (initPromises.length > 0) {
+      const results = await Promise.allSettled(initPromises);
+      // Check for any rejected promises
+      const rejected = results.find((r) => r.status === 'rejected');
+      if (rejected && rejected.status === 'rejected') {
+        throw rejected.reason;
+      }
+    }
+  }
+}

@@ -18,6 +18,7 @@ const INTERNAL_READ_PROPERTIES = [
   '$peer',
   'waitForAssigned',
   '$pendingPromises',
+  '$methodCache',
   'then',
   '$$typeof',
   'nodeType',
@@ -60,6 +61,15 @@ export class Interface {
   private $pendingPromises = new Map<string, Promise<void>>();
 
   /**
+   * Cache for method proxy functions to avoid creating new functions on each access.
+   * This improves performance by reusing the same function instance for repeated method calls.
+   *
+   * @private
+   * @type {Map<string, Function>}
+   */
+  private $methodCache = new Map<string, Function>();
+
+  /**
    * Constructs a new Interface instance with the specified service definition and peer.
    * The constructor returns a Proxy that intercepts all property access and method calls,
    * providing transparent remote service interaction.
@@ -92,10 +102,16 @@ export class Interface {
         }
 
         if (this.$def?.meta.methods[prop]) {
-          return async function methodProxy(...args: any[]) {
-            const processedArgs = target.$processArgs(args);
-            return $peer?.call($def!.id, prop, processedArgs);
-          };
+          // Return cached method proxy or create and cache a new one
+          let cachedMethod = target.$methodCache.get(prop);
+          if (!cachedMethod) {
+            cachedMethod = async function methodProxy(...args: any[]) {
+              const processedArgs = target.$processArgs(args);
+              return $peer?.call($def!.id, prop, processedArgs);
+            };
+            target.$methodCache.set(prop, cachedMethod);
+          }
+          return cachedMethod;
         }
 
         if ($def?.meta.properties[prop]) {

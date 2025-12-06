@@ -79,7 +79,7 @@ export async function query_interface(peer: RemotePeer, serviceName: string): Pr
   const definition = serviceStub.definition;
 
   // Get AuthorizationManager from Netron
-  const authzManager = (peer.netron as any).authorizationManager;
+  const authzManager = peer.netron.authorizationManager;
 
   // If no authorization manager configured, return full definition
   if (!authzManager) {

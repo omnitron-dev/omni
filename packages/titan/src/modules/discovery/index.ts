@@ -16,6 +16,10 @@ export { DiscoveryService } from './discovery.service.js';
 export {
   DiscoveryModule,
   DiscoveryModuleToken,
+  NETRON_DISCOVERY_INTEGRATION_TOKEN,
   createDiscoveryModule,
   type DiscoveryModuleOptions,
 } from './discovery.module.js';
+
+// Netron-Discovery Integration
+export { NetronDiscoveryIntegration, type NetronDiscoveryIntegrationOptions } from './netron-integration.js';

@@ -13,6 +13,20 @@ import { DatabaseManager } from '../database.manager.js';
 import { MigrationRunner } from '../migration/migration.runner.js';
 import { TransactionManager } from '../transaction/transaction.manager.js';
 import { Errors } from '../../../errors/index.js';
+// @kysera/core testing utilities
+import {
+  testInTransaction,
+  testWithSavepoints,
+  testWithIsolation,
+  cleanDatabase as kyseraCleanDatabase,
+  seedDatabase as kyseraSeedDatabase,
+  snapshotTable,
+  countRows,
+  waitFor,
+  createFactory as kyseraCreateFactory,
+  type CleanupStrategy,
+  type IsolationLevel,
+} from '@kysera/core';
 import {
   DATABASE_MANAGER,
   DATABASE_MIGRATION_SERVICE,
@@ -434,6 +448,210 @@ export class DatabaseTestingService {
       .executeTakeFirst();
 
     return result?.count === count;
+  }
+
+  // ============================================================================
+  // KYSERA-CORE TESTING UTILITIES INTEGRATION
+  // ============================================================================
+
+  /**
+   * Run test in a transaction that automatically rolls back
+   * Uses @kysera/core testInTransaction for automatic cleanup
+   *
+   * @example
+   * ```typescript
+   * await testingService.runInTransaction(async (trx) => {
+   *   await trx.insertInto('users').values({ name: 'test' }).execute();
+   *   // Transaction auto-rolls back after test
+   * });
+   * ```
+   */
+  async runInTransaction<T>(
+    fn: (trx: Transaction<unknown>) => Promise<T>
+  ): Promise<void> {
+    const db = await this.manager.getConnection();
+    await testInTransaction(db, fn);
+  }
+
+  /**
+   * Run test with savepoints for nested transaction testing
+   * Uses @kysera/core testWithSavepoints
+   *
+   * @example
+   * ```typescript
+   * await testingService.runWithSavepoints(async (trx) => {
+   *   await trx.insertInto('users').values({ name: 'test' }).execute();
+   *   // Savepoint created and rolled back automatically
+   * });
+   * ```
+   */
+  async runWithSavepoints<T>(
+    fn: (trx: Transaction<unknown>) => Promise<T>
+  ): Promise<void> {
+    const db = await this.manager.getConnection();
+    await testWithSavepoints(db, fn);
+  }
+
+  /**
+   * Run test with specific isolation level
+   * Uses @kysera/core testWithIsolation
+   *
+   * @param isolationLevel - 'read uncommitted' | 'read committed' | 'repeatable read' | 'serializable'
+   *
+   * @example
+   * ```typescript
+   * await testingService.runWithIsolation('serializable', async (trx) => {
+   *   // Test concurrent access scenarios
+   * });
+   * ```
+   */
+  async runWithIsolation<T>(
+    isolationLevel: IsolationLevel,
+    fn: (trx: Transaction<unknown>) => Promise<T>
+  ): Promise<void> {
+    const db = await this.manager.getConnection();
+    await testWithIsolation(db, isolationLevel, fn);
+  }
+
+  /**
+   * Clean database using @kysera/core cleanup strategies
+   *
+   * @param strategy - 'truncate' | 'transaction' | 'delete'
+   * @param tables - Optional list of tables to clean (cleans all if not specified)
+   *
+   * @example
+   * ```typescript
+   * await testingService.cleanWithKysera('truncate', ['users', 'posts']);
+   * ```
+   */
+  async cleanWithKysera(
+    strategy: CleanupStrategy = 'delete',
+    tables?: string[]
+  ): Promise<void> {
+    const db = await this.manager.getConnection();
+    await kyseraCleanDatabase(db, strategy, tables);
+  }
+
+  /**
+   * Seed database using @kysera/core seedDatabase
+   *
+   * @example
+   * ```typescript
+   * await testingService.seedWithKysera(async (trx) => {
+   *   await trx.insertInto('users').values([...]).execute();
+   * });
+   * ```
+   */
+  async seedWithKysera(
+    fn: (trx: Transaction<unknown>) => Promise<void>
+  ): Promise<void> {
+    const db = await this.manager.getConnection();
+    await kyseraSeedDatabase(db, fn);
+  }
+
+  /**
+   * Take a snapshot of table data for comparison
+   * Uses @kysera/core snapshotTable
+   *
+   * @example
+   * ```typescript
+   * const before = await testingService.snapshotTable('users');
+   * // ... perform operations
+   * const after = await testingService.snapshotTable('users');
+   * expect(after.length).toBe(before.length + 1);
+   * ```
+   */
+  async snapshotTable<T = unknown>(table: string): Promise<T[]> {
+    const db = await this.manager.getConnection();
+    return snapshotTable(db, table) as Promise<T[]>;
+  }
+
+  /**
+   * Count rows in a table using @kysera/core countRows
+   *
+   * @example
+   * ```typescript
+   * const count = await testingService.countRows('users');
+   * expect(count).toBe(5);
+   * ```
+   */
+  async countTableRows(table: string): Promise<number> {
+    const db = await this.manager.getConnection();
+    return countRows(db, table);
+  }
+
+  /**
+   * Wait for a condition to become true
+   * Uses @kysera/core waitFor - useful for async operations
+   *
+   * @example
+   * ```typescript
+   * await testingService.waitForCondition(
+   *   async () => (await testingService.countTableRows('events')) > 0,
+   *   { timeout: 5000, interval: 100 }
+   * );
+   * ```
+   */
+  async waitForCondition(
+    condition: () => Promise<boolean> | boolean,
+    options?: { timeout?: number; interval?: number; timeoutMessage?: string }
+  ): Promise<void> {
+    await waitFor(condition, options);
+  }
+
+  /**
+   * Create a test data factory using @kysera/core createFactory
+   *
+   * @example
+   * ```typescript
+   * const createUser = testingService.createDataFactory({
+   *   id: 1,
+   *   email: () => `user${Date.now()}@test.com`,
+   *   name: 'Test User',
+   * });
+   *
+   * const user1 = createUser(); // Uses defaults
+   * const user2 = createUser({ name: 'Custom Name' }); // Override name
+   * ```
+   */
+  createDataFactory<T extends Record<string, unknown>>(
+    defaults: { [K in keyof T]: T[K] | (() => T[K]) }
+  ): (overrides?: Partial<T>) => T {
+    return kyseraCreateFactory(defaults);
+  }
+
+  /**
+   * Create multiple test records using factory pattern
+   *
+   * @example
+   * ```typescript
+   * const createUser = testingService.createDataFactory({ ... });
+   * const users = await testingService.createManyFromFactory('users', createUser, 10);
+   * ```
+   */
+  async createManyFromFactory<T extends Record<string, unknown>>(
+    table: string,
+    factory: (overrides?: Partial<T>) => T,
+    count: number,
+    overrides?: Partial<T>
+  ): Promise<T[]> {
+    const db = this.getTestConnection() as Kysely<Record<string, unknown>>;
+    const results: T[] = [];
+
+    for (let i = 0; i < count; i++) {
+      const data = factory(overrides);
+      const result = await db
+        .insertInto(table)
+        .values(data)
+        .returningAll()
+        .executeTakeFirst();
+
+      if (result) {
+        results.push(result as T);
+      }
+    }
+
+    return results;
   }
 }
 

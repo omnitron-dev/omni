@@ -3,6 +3,7 @@
  */
 
 import net from 'net';
+import { Errors } from '../errors/index.js';
 
 /**
  * Get an available port
@@ -94,7 +95,7 @@ export async function waitForPort(port: number, host = '127.0.0.1', timeout = 30
         });
 
         socket.once('error', () => {
-          reject(new Error('Connection failed'));
+          reject(Errors.unavailable('Port', 'Connection failed'));
         });
       });
 
@@ -103,11 +104,11 @@ export async function waitForPort(port: number, host = '127.0.0.1', timeout = 30
     } catch (error) {
       // Connection failed, wait and retry
       if (Date.now() - startTime >= timeout) {
-        throw new Error(`Port ${port} not available after ${timeout}ms`);
+        throw Errors.timeout(`Port ${port} availability check`, timeout);
       }
       await new Promise((r) => setTimeout(r, interval));
     }
   }
 
-  throw new Error(`Timeout waiting for port ${port}`);
+  throw Errors.timeout(`Waiting for port ${port}`, timeout);
 }

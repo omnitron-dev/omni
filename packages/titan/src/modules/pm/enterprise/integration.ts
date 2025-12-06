@@ -16,6 +16,7 @@ import { ChaosOrchestrator, ChaosType, type ChaosExperiment } from './chaos-engi
 import { AdaptiveScalingController, type ScalingMetrics, type ScalingPolicy } from './adaptive-scaling.js';
 import { TimeTravelDebugger, type TimeTravelOptions } from './time-travel.js';
 import { AuditLogger, type AuditConfig } from './compliance.js';
+import { Errors } from '../../../errors/index.js';
 
 /**
  * Enterprise features configuration
@@ -166,7 +167,7 @@ export class EnterpriseFeatures extends EventEmitter {
    */
   updateFeatureFlag(flag: FeatureFlag): void {
     if (!this.featureFlagManager) {
-      throw new Error('Feature flags not enabled');
+      throw Errors.badRequest('Feature flags not enabled');
     }
     this.featureFlagManager.upsertFlag(flag);
     this.emit('featureFlag:updated', flag);
@@ -201,7 +202,7 @@ export class EnterpriseFeatures extends EventEmitter {
    */
   registerChaosExperiment(experiment: ChaosExperiment): void {
     if (!this.chaosOrchestrator) {
-      throw new Error('Chaos engineering not enabled');
+      throw Errors.badRequest('Chaos engineering not enabled');
     }
 
     this.chaosOrchestrator.registerExperiment(experiment);
@@ -213,7 +214,7 @@ export class EnterpriseFeatures extends EventEmitter {
    */
   async runChaosExperiment(experimentId: string): Promise<void> {
     if (!this.chaosOrchestrator) {
-      throw new Error('Chaos engineering not enabled');
+      throw Errors.badRequest('Chaos engineering not enabled');
     }
 
     await this.chaosOrchestrator.runExperiment(experimentId);
@@ -277,7 +278,7 @@ export class EnterpriseFeatures extends EventEmitter {
    */
   addScalingPolicy(policy: ScalingPolicy): void {
     if (!this.adaptiveScaler) {
-      throw new Error('Adaptive scaling not enabled');
+      throw Errors.badRequest('Adaptive scaling not enabled');
     }
     this.adaptiveScaler.addPolicy(policy);
     this.emit('scaling:policyAdded', policy);
@@ -349,7 +350,7 @@ export class EnterpriseFeatures extends EventEmitter {
   travelTo<T>(processId: string, timestamp: number): T | null {
     const debugger_ = this.timeTravelDebuggers.get(processId);
     if (!debugger_) {
-      throw new Error(`Time-travel not enabled for process ${processId}`);
+      throw Errors.badRequest(`Time-travel not enabled for process ${processId}`);
     }
 
     const snapshot = debugger_.travelTo(timestamp);
@@ -456,7 +457,7 @@ export class EnterpriseFeatures extends EventEmitter {
               const methodFlag = `method:${processId}:${prop}`;
               const enabled = this.isFeatureEnabled(methodFlag, {});
               if (!enabled && this.featureFlagManager?.getFlag(methodFlag)) {
-                throw new Error(`Method ${prop} is disabled by feature flag`);
+                throw Errors.forbidden(`Method ${prop} is disabled by feature flag`);
               }
             }
 

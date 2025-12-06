@@ -226,7 +226,7 @@ export class DatabaseManager implements IDatabaseManager {
       // Validate connection health before marking as connected
       const isHealthy = await this.validateConnectionHealth(instance, config.dialect);
       if (!isHealthy) {
-        throw new Error('Connection health check failed');
+        throw Errors.unavailable('Database', 'Connection health check failed');
       }
 
       info.connected = true;
@@ -426,7 +426,7 @@ export class DatabaseManager implements IDatabaseManager {
   private parseConnectionConfig(config: DatabaseConnection): ParsedConnectionConfig {
     // Handle undefined or null config
     if (!config) {
-      throw new Error('Database connection configuration is required');
+      throw Errors.badRequest('Database connection configuration is required');
     }
 
     if (typeof config.connection === 'string') {
@@ -465,9 +465,9 @@ export class DatabaseManager implements IDatabaseManager {
       }
       // For network databases, require at least a database name
       const configKeys = Object.keys(config).join(', ');
-      throw new Error(
-        `Connection configuration is required for ${config.dialect || 'undefined'}.\n` +
-          `Received config keys: [${configKeys}]\n` +
+      throw Errors.badRequest(
+        `Connection configuration is required for ${config.dialect || 'undefined'}. ` +
+          `Received config keys: [${configKeys}]. ` +
           `Common mistake: Using {...context.connection} instead of {connection: context.connection} ` +
           `in TitanDatabaseModule.forRoot()`
       );
@@ -680,8 +680,8 @@ export class DatabaseManager implements IDatabaseManager {
     }
 
     const metrics: Record<string, unknown> = {};
-    for (const [name, info] of this.connections) {
-      metrics[name] = info.metrics;
+    for (const [connName, info] of this.connections) {
+      metrics[connName] = info.metrics;
     }
     return metrics;
   }

@@ -1,5 +1,12 @@
 /**
  * Plugin system for Nexus DI Container
+ *
+ * The plugin system allows extending container functionality with custom behaviors,
+ * middleware, hooks, and integrations. Plugins can intercept resolution, registration,
+ * and lifecycle events.
+ *
+ * @experimental
+ * @since 0.1.0
  */
 
 import { createMiddleware } from './middleware.js';
@@ -7,12 +14,19 @@ import { IContainer, InjectionToken, ResolutionContext } from './types.js';
 import { Errors, ValidationError } from '../errors/index.js';
 
 /**
- * Plugin hook function type
+ * Plugin hook function type.
+ *
+ * @experimental
+ * @since 0.1.0
  */
 export type PluginHookFunction = (...args: unknown[]) => void | Promise<void>;
 
 /**
- * Plugin lifecycle hooks
+ * Plugin lifecycle hooks.
+ * Define callbacks for various container events.
+ *
+ * @experimental
+ * @since 0.1.0
  */
 export interface PluginHooks {
   /**
@@ -52,7 +66,11 @@ export interface PluginHooks {
 }
 
 /**
- * Plugin interface
+ * Plugin interface.
+ * Defines the structure for container plugins.
+ *
+ * @experimental
+ * @since 0.1.0
  */
 export interface Plugin {
   /**
@@ -102,7 +120,10 @@ export interface Plugin {
 }
 
 /**
- * Plugin manager for managing plugins
+ * Plugin manager for managing plugins.
+ *
+ * @experimental
+ * @since 0.1.0
  */
 export class PluginManager {
   private plugins = new Map<string, Plugin>();

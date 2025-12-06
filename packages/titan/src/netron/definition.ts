@@ -1,3 +1,9 @@
+/**
+ * Service definition for Netron framework.
+ *
+ * @internal
+ * @since 0.1.0
+ */
 import { ServiceMetadata } from './types.js';
 import { uuid } from './uuid.js';
 
@@ -7,7 +13,9 @@ import { uuid } from './uuid.js';
  * associated peer, and comprehensive metadata. This class serves as a fundamental building block
  * for service discovery, registration, and communication within the Netron ecosystem.
  *
- * @class Definition
+ * @internal
+ * @since 0.1.0
+ *
  * @property {string} parentId - Optional identifier of a parent service definition, used for
  *                              establishing hierarchical relationships between services.
  *                              Defaults to an empty string when no parent is specified.

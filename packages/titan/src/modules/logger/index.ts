@@ -38,6 +38,7 @@ export { Logger, Log, Monitor } from './logger.decorators.js';
 // Tokens (for DI)
 // ============================================================================
 export {
+  LOGGER_TOKEN,
   LOGGER_SERVICE_TOKEN,
   LOGGER_OPTIONS_TOKEN,
   LOGGER_TRANSPORTS_TOKEN,

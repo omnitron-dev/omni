@@ -1,10 +1,13 @@
 /**
  * DevTools Extension for Nexus DI
  *
+ * Provides debugging and visualization tools for dependency injection.
+ * Includes performance monitoring, dependency graph visualization, and state inspection.
+ *
+ * @experimental
+ * @since 0.1.0
  * @module devtools
  * @packageDocumentation
- *
- * Provides debugging and visualization tools for dependency injection
  */
 
 import { Plugin } from './plugin.js';
@@ -14,7 +17,10 @@ import { LifecycleEvent } from './lifecycle.js';
 import { Scope, InjectionToken, ResolutionContext } from './types.js';
 
 /**
- * DevTools message types
+ * DevTools message types.
+ *
+ * @experimental
+ * @since 0.1.0
  */
 export enum MessageType {
   ContainerCreated = 'CONTAINER_CREATED',

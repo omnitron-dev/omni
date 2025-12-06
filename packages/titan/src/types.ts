@@ -1,11 +1,26 @@
 /**
  * Core types for Titan application framework
+ *
+ * @packageDocumentation
+ *
+ * ## API Stability Markers
+ *
+ * - `@stable` - Part of the public API, follows semantic versioning
+ * - `@experimental` - API may change in minor versions
+ * - `@internal` - Not intended for public use
+ * - `@deprecated` - Will be removed in a future version
+ *
+ * @since 0.1.0
  */
 
 import { Token, Container, Provider, type IModule, type DynamicModule } from './nexus/index.js';
 
 /**
- * Application lifecycle state
+ * Application lifecycle state enumeration.
+ * Tracks the current state of the application through its lifecycle.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export enum ApplicationState {
   Created = 'created',
@@ -17,7 +32,11 @@ export enum ApplicationState {
 }
 
 /**
- * Application lifecycle events
+ * Application lifecycle events.
+ * Events emitted during application lifecycle transitions.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export enum ApplicationEvent {
   Starting = 'starting',
@@ -44,7 +63,11 @@ export enum ApplicationEvent {
 }
 
 /**
- * Application configuration
+ * Application configuration interface.
+ * Defines the structure of application-level configuration.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export interface IApplicationConfig {
   name?: string;
@@ -58,7 +81,11 @@ export interface IApplicationConfig {
 }
 
 /**
- * Module metadata
+ * Module metadata interface.
+ * Contains information about a module's identity and dependencies.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export interface IModuleMetadata {
   name: string;
@@ -68,7 +95,11 @@ export interface IModuleMetadata {
 }
 
 /**
- * Health check status
+ * Health check status interface.
+ * Represents the health state of the application or a module.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export interface IHealthStatus {
   status: 'healthy' | 'degraded' | 'unhealthy';
@@ -80,16 +111,28 @@ export interface IHealthStatus {
 // IModule and DynamicModule are now imported from nexus/index.js
 // The unified module system is defined in nexus/types.ts
 
-// Re-export IModule and DynamicModule for backward compatibility
+/**
+ * Re-exported IModule interface for backward compatibility.
+ *
+ * @stable
+ * @since 0.1.0
+ */
 export type { IModule, DynamicModule };
 
 /**
- * Event handler type
+ * Event handler function type.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export type EventHandler<T = any> = (data: T, meta?: IEventMeta) => void | Promise<void>;
 
 /**
- * Event metadata
+ * Event metadata interface.
+ * Contains contextual information about an event.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export interface IEventMeta {
   event: string;
@@ -99,7 +142,11 @@ export interface IEventMeta {
 }
 
 /**
- * Lifecycle hook
+ * Lifecycle hook interface.
+ * Defines a hook that can be registered for lifecycle events.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export interface ILifecycleHook {
   name?: string;
@@ -109,7 +156,11 @@ export interface ILifecycleHook {
 }
 
 /**
- * Shutdown options
+ * Shutdown options interface.
+ * Configuration for graceful shutdown behavior.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export interface IShutdownOptions {
   timeout?: number;
@@ -119,7 +170,11 @@ export interface IShutdownOptions {
 }
 
 /**
- * Application metrics
+ * Application metrics interface.
+ * Contains runtime metrics about the application.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export interface IApplicationMetrics {
   uptime: number;
@@ -131,7 +186,11 @@ export interface IApplicationMetrics {
 }
 
 /**
- * Application environment
+ * Application environment interface.
+ * Contains information about the runtime environment.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export interface IEnvironment {
   nodeVersion: string;
@@ -143,7 +202,11 @@ export interface IEnvironment {
 }
 
 /**
- * Application options
+ * Application options interface.
+ * Configuration options for creating an application.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export interface IApplicationOptions {
   name?: string;
@@ -160,7 +223,11 @@ export interface IApplicationOptions {
 }
 
 /**
- * Main application interface
+ * Main application interface.
+ * Defines the public API for interacting with a Titan application.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export interface IApplication {
   // Lifecycle management
@@ -203,16 +270,27 @@ export interface IApplication {
 }
 
 /**
- * Module constructor type
+ * Module constructor type.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export type ModuleConstructor<T extends IModule = IModule> = new (...args: any[]) => T;
 
-// IDynamicModule is now replaced by DynamicModule from nexus/index.js
-// For backward compatibility, create a type alias
+/**
+ * Dynamic module type alias.
+ *
+ * @stable
+ * @since 0.1.0
+ */
 export type IDynamicModule = DynamicModule;
 
 /**
- * Module input types - supports various module definition patterns
+ * Module input types.
+ * Supports various module definition patterns for flexibility.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export type ModuleInput =
   | IModule // Module instance
@@ -224,7 +302,10 @@ export type ModuleInput =
   | (() => Promise<IDynamicModule>); // Async dynamic module factory
 
 /**
- * Shutdown task definition
+ * Shutdown task definition.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export interface IShutdownTask {
   id?: string;
@@ -237,7 +318,10 @@ export interface IShutdownTask {
 }
 
 /**
- * Reasons for shutdown
+ * Reasons for shutdown enumeration.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export enum ShutdownReason {
   Manual = 'manual',
@@ -255,12 +339,19 @@ export enum ShutdownReason {
 }
 
 /**
- * Process signals
+ * Process signals type.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export type ProcessSignal = 'SIGTERM' | 'SIGINT' | 'SIGHUP' | 'SIGUSR1' | 'SIGUSR2' | 'SIGQUIT' | 'SIGABRT';
 
 /**
- * Shutdown priority levels
+ * Shutdown priority levels.
+ * Controls the order in which shutdown tasks are executed.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export enum ShutdownPriority {
   First = 0,
@@ -275,7 +366,10 @@ export enum ShutdownPriority {
 }
 
 /**
- * Lifecycle states
+ * Lifecycle states enumeration.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export enum LifecycleState {
   Created = 'created',
@@ -290,7 +384,10 @@ export enum LifecycleState {
 }
 
 /**
- * Process metrics
+ * Process metrics interface.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export interface IProcessMetrics {
   uptime: number;
@@ -306,7 +403,10 @@ export interface IProcessMetrics {
 }
 
 /**
- * Lifecycle event
+ * Lifecycle event interface.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export interface ILifecycleEvent {
   type: string;
@@ -315,28 +415,53 @@ export interface ILifecycleEvent {
 }
 
 /**
- * Event handler function type
+ * Event handler function type for application events.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export type ApplicationEventHandler<T = unknown> = (data?: T) => void | Promise<void>;
 
 /**
- * Configuration value type
+ * Configuration value type.
+ * Represents valid configuration values.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export type ConfigValue = string | number | boolean | null | undefined | ConfigObject | ConfigArray;
 
+/**
+ * Configuration object interface.
+ *
+ * @stable
+ * @since 0.1.0
+ */
 export interface ConfigObject {
   [key: string]: ConfigValue;
 }
 
+/**
+ * Configuration array interface.
+ *
+ * @stable
+ * @since 0.1.0
+ */
 export interface ConfigArray extends Array<ConfigValue> {}
 
 /**
- * Signal handler function type
+ * Signal handler function type.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export type SignalHandler = (signal: NodeJS.Signals) => void | Promise<void>;
 
 /**
- * Module configuration for dynamic modules
+ * Module configuration for dynamic modules.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export interface IDynamicModuleConfig {
   module: Token<IModule>;
@@ -346,17 +471,26 @@ export interface IDynamicModuleConfig {
 }
 
 /**
- * Unhandled rejection handler
+ * Unhandled rejection handler type.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export type RejectionHandler = (reason: unknown, promise: Promise<unknown>) => void;
 
 /**
- * Module export type
+ * Module export type.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export type ModuleExport = { name: string } | { toString(): string } | string;
 
 /**
- * Deep merge function options
+ * Deep merge function options.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export interface DeepMergeOptions {
   arrayMerge?: 'replace' | 'concat' | 'merge';

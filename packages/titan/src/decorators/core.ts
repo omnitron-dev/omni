@@ -6,7 +6,8 @@
 
 import 'reflect-metadata';
 import semver from 'semver';
-import type { Constructor } from '../nexus/index.js';
+import { Scope, type ScopeValue, type Constructor } from '../nexus/index.js';
+import { Errors } from '../errors/index.js';
 import type { ServiceMetadata } from '../netron/types.js';
 import type { ITransport } from '../netron/transport/types.js';
 import type { MethodOptions } from '../netron/auth/types.js';
@@ -96,10 +97,8 @@ export interface ExtendedServiceMetadata extends ServiceMetadata {
   transportConfig?: ServiceOptions['transportConfig'];
 }
 
-/**
- * Scope type for dependency injection
- */
-export type Scope = 'singleton' | 'transient' | 'scoped' | 'request';
+// Re-export Scope enum and ScopeValue type from nexus for backward compatibility
+export { Scope, type ScopeValue };
 
 /**
  * Metadata keys for decorators
@@ -164,7 +163,7 @@ export const PUBLIC_ANNOTATION = METADATA_KEYS.METHOD_ANNOTATION;
  * Injectable decorator options
  */
 export interface InjectableOptions {
-  scope?: Scope;
+  scope?: Scope | ScopeValue;
   token?: symbol | string | Constructor<unknown>;
   providedIn?: 'root' | 'any' | string;
 }
@@ -183,9 +182,108 @@ export interface ModuleDecoratorOptions {
   exports?: any[];
   global?: boolean;
 }
+/**
+ * Interface for classes marked with @Module decorator.
+ * These properties are added at runtime for auto-discovery.
+ */
+export interface TitanModuleMarker {
+  /** Flag indicating this is a Titan module */
+  __titanModule?: boolean;
+  /** Module metadata options */
+  __titanModuleMetadata?: ModuleDecoratorOptions;
+}
+
+
 
 /**
- * Mark a class as injectable and available for dependency injection
+ * Mark a class as injectable and available for dependency injection.
+ * 
+ * Injectable classes can be automatically resolved by the Nexus DI container
+ * and can have their dependencies injected via constructor parameters.
+ *
+ * @param options - Configuration options for the injectable
+ * @returns A class decorator that marks the class as injectable
+ *
+ * @example Basic injectable service
+ * ```typescript
+ * import { Injectable } from '@omnitron-dev/titan/decorators';
+ *
+ * @Injectable()
+ * class UserService {
+ *   constructor(private readonly db: DatabaseService) {}
+ *
+ *   async findUser(id: string): Promise<User> {
+ *     return await this.db.query('SELECT * FROM users WHERE id = ?', [id]);
+ *   }
+ * }
+ * ```
+ *
+ * @example Injectable with singleton scope (default)
+ * ```typescript
+ * @Injectable({ scope: 'singleton' })
+ * class ConfigService {
+ *   private config: Record<string, string> = {};
+ *
+ *   get(key: string): string {
+ *     return this.config[key];
+ *   }
+ * }
+ * ```
+ *
+ * @example Injectable with transient scope (new instance per injection)
+ * ```typescript
+ * @Injectable({ scope: 'transient' })
+ * class RequestContext {
+ *   readonly id = crypto.randomUUID();
+ *   readonly timestamp = Date.now();
+ * }
+ * ```
+ *
+ * @example Injectable with request scope (per-request instance)
+ * ```typescript
+ * @Injectable({ scope: 'request' })
+ * class RequestLogger {
+ *   private logs: string[] = [];
+ *
+ *   log(message: string): void {
+ *     this.logs.push(`[${new Date().toISOString()}] ${message}`);
+ *   }
+ *
+ *   getLogs(): string[] {
+ *     return this.logs;
+ *   }
+ * }
+ * ```
+ *
+ * @example Injectable with custom token
+ * ```typescript
+ * import { Injectable, createToken } from '@omnitron-dev/titan/decorators';
+ *
+ * const CACHE_TOKEN = createToken<ICacheService>('CacheService');
+ *
+ * @Injectable({ token: CACHE_TOKEN })
+ * class RedisCacheService implements ICacheService {
+ *   async get<T>(key: string): Promise<T | null> {
+ *     // Redis implementation
+ *   }
+ * }
+ *
+ * // Later, resolve by token:
+ * const cache = container.resolve(CACHE_TOKEN);
+ * ```
+ *
+ * @example Injectable with providedIn option
+ * ```typescript
+ * @Injectable({ providedIn: 'root' })
+ * class GlobalService {
+ *   // Available application-wide without explicit registration
+ * }
+ *
+ * @Injectable({ providedIn: 'any' })
+ * class FeatureService {
+ *   // New instance provided to any module that imports it
+ * }
+ * ```
  */
 export function Injectable(options: InjectableOptions = {}) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -234,11 +332,10 @@ export function Module(options: ModuleDecoratorOptions = {}) {
       Reflect.defineMetadata(METADATA_KEYS.GLOBAL, true, target);
     }
 
-    // Mark class for auto-discovery
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (target as any).__titanModule = true;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (target as any).__titanModuleMetadata = options;
+    // Mark class for auto-discovery using module marker interface
+    const moduleTarget = target as Constructor<unknown> & TitanModuleMarker;
+    moduleTarget.__titanModule = true;
+    moduleTarget.__titanModuleMetadata = options;
 
     // Apply Injectable decorator
     Injectable({ scope: 'singleton' })(target);
@@ -298,38 +395,131 @@ export function Request() {
  * and properties, validates the service name and version, and stores the metadata using
  * reflection.
  *
- * @param {string | ServiceOptions} options - Either a qualified name string 'name[@version]'
- *                                           or an options object with name and optional transports
- * @returns {ClassDecorator} A decorator function that processes the target class
+ * @param options - Either a qualified name string 'name[@version]'
+ *                  or an options object with name and optional transports
+ * @returns A decorator function that processes the target class
  *
- * @throws {Error} If the service name is invalid or doesn't match the required pattern
- * @throws {Error} If the version string is provided but doesn't follow semantic versioning
+ * @throws Error - If the service name is invalid or doesn't match the required pattern
+ * @throws Error - If the version string is provided but doesn't follow semantic versioning
  *
- * @example
- * // Simple string usage
+ * @example Basic service with version
+ * ```typescript
+ * import { Service, Method } from '@omnitron-dev/titan/decorators';
+ *
  * @Service('auth@1.0.0')
  * class AuthService {
  *   @Method()
- *   async login(username: string, password: string): Promise<string> {
- *     // Implementation
+ *   async login(username: string, password: string): Promise<{ token: string }> {
+ *     const user = await this.validateCredentials(username, password);
+ *     return { token: this.generateToken(user) };
+ *   }
+ *
+ *   @Method()
+ *   async logout(token: string): Promise<void> {
+ *     await this.invalidateToken(token);
  *   }
  * }
+ * ```
  *
- * @example
- * // With contract and transports configuration
- * import { WebSocketTransport, TcpTransport } from '@omnitron-dev/titan/netron';
+ * @example Service with namespaced name
+ * ```typescript
+ * @Service('api.users@2.0.0')
+ * class UserService {
+ *   @Method()
+ *   async getUser(id: string): Promise<User> {
+ *     return await this.userRepository.findById(id);
+ *   }
+ *
+ *   @Method()
+ *   async createUser(data: CreateUserDto): Promise<User> {
+ *     return await this.userRepository.create(data);
+ *   }
+ *
+ *   @Method()
+ *   async updateUser(id: string, data: UpdateUserDto): Promise<User> {
+ *     return await this.userRepository.update(id, data);
+ *   }
+ *
+ *   @Method()
+ *   async deleteUser(id: string): Promise<void> {
+ *     await this.userRepository.delete(id);
+ *   }
+ * }
+ * ```
+ *
+ * @example Service with contract validation
+ * ```typescript
+ * import { Service, Method } from '@omnitron-dev/titan/decorators';
+ *
+ * // Define a contract for type-safe RPC
+ * const userContract = {
+ *   getUser: { params: ['string'], returns: 'User' },
+ *   listUsers: { params: ['object'], returns: 'User[]' }
+ * };
  *
  * @Service({
  *   name: 'UserService@1.0.0',
- *   contract: userContract,
- *   transports: [
- *     new WebSocketTransport({ port: 8080 }),
- *     new TcpTransport({ port: 3000 })
- *   ]
+ *   contract: userContract
  * })
  * class UserService {
- *   // ...
+ *   @Method()
+ *   async getUser(id: string): Promise<User> {
+ *     return await this.db.users.findUnique({ where: { id } });
+ *   }
+ *
+ *   @Method()
+ *   async listUsers(filter: UserFilter): Promise<User[]> {
+ *     return await this.db.users.findMany({ where: filter });
+ *   }
  * }
+ * ```
+ *
+ * @example Service with transport configuration
+ * ```typescript
+ * import { Service, Method } from '@omnitron-dev/titan/decorators';
+ * import { WebSocketTransport, TcpTransport } from '@omnitron-dev/titan/netron';
+ *
+ * @Service({
+ *   name: 'StreamService@1.0.0',
+ *   transports: [
+ *     new WebSocketTransport({ port: 8080 }),
+ *     new TcpTransport({ port: 9000 })
+ *   ],
+ *   transportConfig: {
+ *     timeout: 30000,
+ *     compression: true,
+ *     maxMessageSize: 1024 * 1024 // 1MB
+ *   }
+ * })
+ * class StreamService {
+ *   @Method()
+ *   async streamData(options: StreamOptions): Promise<AsyncIterable<DataChunk>> {
+ *     return this.createDataStream(options);
+ *   }
+ * }
+ * ```
+ *
+ * @example Service with dependency injection
+ * ```typescript
+ * import { Service, Method, Inject } from '@omnitron-dev/titan/decorators';
+ *
+ * @Service('orders@1.0.0')
+ * class OrderService {
+ *   constructor(
+ *     @Inject(UserService) private readonly userService: UserService,
+ *     @Inject(InventoryService) private readonly inventory: InventoryService,
+ *     @Inject(PaymentService) private readonly payments: PaymentService
+ *   ) {}
+ *
+ *   @Method()
+ *   async createOrder(userId: string, items: OrderItem[]): Promise<Order> {
+ *     const user = await this.userService.getUser(userId);
+ *     await this.inventory.reserveItems(items);
+ *     const order = await this.processOrder(user, items);
+ *     return order;
+ *   }
+ * }
+ * ```
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Service = (options?: string | ServiceOptions) => (target: any) => {
@@ -350,12 +540,12 @@ export const Service = (options?: string | ServiceOptions) => (target: any) => {
 
   // Validate service name format
   if (!name || !nameRegex.test(name)) {
-    throw new Error(`Invalid service name "${name}". Only latin letters and dots are allowed.`);
+    throw Errors.badRequest(`Invalid service name "${name}". Only latin letters, numbers and dots are allowed.`);
   }
 
   // Validate version string if provided
   if (version && !semver.valid(version)) {
-    throw new Error(`Invalid version "${version}". Version must follow semver.`);
+    throw Errors.badRequest(`Invalid version "${version}". Version must follow semver.`);
   }
 
   // Initialize metadata structure with extended properties

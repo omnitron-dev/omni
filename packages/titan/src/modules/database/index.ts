@@ -116,7 +116,7 @@ export {
 
 // Repository
 export { BaseRepository } from './repository/base.repository.js';
-export { RepositoryFactory } from './repository/repository.factory.js';
+export { RepositoryFactory, createMultiRepositoryFactory } from './repository/repository.factory.js';
 export type {
   IBaseRepository,
   Repository as IRepositoryInterface,
@@ -228,5 +228,178 @@ export {
 // Re-export Kysely types for convenience
 export type { Kysely, Transaction, Selectable, Insertable, Updateable, sql } from 'kysely';
 
-// Re-export Kysera utilities
-export { parseDatabaseError, paginate, paginateCursor } from '@kysera/core';
+// ============================================================================
+// KYSERA RE-EXPORTS
+// ============================================================================
+// Re-export all useful @kysera/* utilities for tight integration
+
+// @kysera/core - Error handling
+export {
+  parseDatabaseError,
+  DatabaseError as KyseraDatabaseError,
+  UniqueConstraintError,
+  ForeignKeyError,
+  NotFoundError as KyseraNotFoundError,
+  BadRequestError as KyseraBadRequestError,
+} from '@kysera/core';
+
+// @kysera/core - Pagination
+export {
+  paginate,
+  paginateCursor,
+  paginateCursorSimple,
+} from '@kysera/core';
+
+export type {
+  PaginationOptions as KyseraPaginationOptions,
+  PaginatedResult as KyseraPaginatedResult,
+  CursorOptions as KyseraCursorOptions,
+} from '@kysera/core';
+
+// @kysera/core - Retry & Circuit Breaker
+export {
+  withRetry,
+  createRetryWrapper,
+  isTransientError,
+  CircuitBreaker,
+} from '@kysera/core';
+
+export type {
+  RetryOptions,
+} from '@kysera/core';
+
+// @kysera/core - Debug & Profiling
+export {
+  withDebug,
+  formatSQL,
+  QueryProfiler,
+} from '@kysera/core';
+
+export type {
+  DebugOptions,
+  QueryMetrics,
+} from '@kysera/core';
+
+// @kysera/core - Health Monitoring
+export {
+  checkDatabaseHealth,
+  performHealthCheck,
+  getMetrics as getKyseraMetrics,
+  createMetricsPool,
+  HealthMonitor as KyseraHealthMonitor,
+} from '@kysera/core';
+
+export type {
+  HealthCheckResult as KyseraHealthCheckResult,
+  PoolMetrics,
+  MetricsPool,
+  DatabasePool,
+} from '@kysera/core';
+
+// @kysera/core - Graceful Shutdown
+export {
+  createGracefulShutdown,
+  shutdownDatabase,
+} from '@kysera/core';
+
+export type {
+  ShutdownOptions,
+} from '@kysera/core';
+
+// @kysera/core - Testing Utilities
+export {
+  testInTransaction,
+  testWithSavepoints,
+  testWithIsolation,
+  cleanDatabase,
+  seedDatabase,
+  snapshotTable,
+  countRows,
+  waitFor,
+  createFactory,
+} from '@kysera/core';
+
+export type {
+  CleanupStrategy,
+  IsolationLevel as KyseraIsolationLevel,
+} from '@kysera/core';
+
+// @kysera/core - Type Utilities
+export type {
+  Executor,
+  Timestamps as KyseraTimestamps,
+  SoftDelete as KyseraSoftDelete,
+  AuditFields as KyseraAuditFields,
+} from '@kysera/core';
+
+// @kysera/repository - Repository Factory
+export {
+  createRepositoryFactory as createKyseraRepositoryFactory,
+  createSimpleRepository,
+  createRepositoriesFactory,
+} from '@kysera/repository';
+
+export type {
+  Plugin as KyseraPlugin,
+  BaseRepository as KyseraBaseRepository,
+  Repository as KyseraRepository,
+  RepositoryConfig as KyseraRepositoryConfig,
+  TableOperations,
+} from '@kysera/repository';
+
+// @kysera/repository - Validation
+export {
+  getValidationMode,
+  shouldValidate,
+  safeParse,
+  createValidator,
+} from '@kysera/repository';
+
+export type {
+  ValidationOptions,
+} from '@kysera/repository';
+
+// @kysera/repository - Plugin System
+export {
+  createORM,
+  withPlugins,
+} from '@kysera/repository';
+
+export type {
+  PluginOrm,
+  QueryBuilderContext,
+  QueryContext as KyseraQueryContext,
+} from '@kysera/repository';
+
+// @kysera/soft-delete
+export { softDeletePlugin } from '@kysera/soft-delete';
+export type {
+  SoftDeleteOptions,
+} from '@kysera/soft-delete';
+
+// @kysera/timestamps
+export { timestampsPlugin } from '@kysera/timestamps';
+export type {
+  TimestampsOptions,
+} from '@kysera/timestamps';
+
+// @kysera/audit
+export { auditPlugin } from '@kysera/audit';
+export type {
+  AuditOptions,
+} from '@kysera/audit';
+
+// @kysera/migrations
+export {
+  createMigration,
+  createMigrationRunner,
+  setupMigrations,
+  MigrationRunner as KyseraMigrationRunner,
+} from '@kysera/migrations';
+
+export type {
+  Migration as KyseraMigration,
+  MigrationWithMeta,
+  MigrationStatus as KyseraMigrationStatus,
+  MigrationRunnerOptions,
+} from '@kysera/migrations';

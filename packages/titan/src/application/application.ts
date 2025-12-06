@@ -1,5 +1,12 @@
 /**
  * Titan Application - Core application kernel
+ *
+ * The Application class is the main entry point for creating and managing
+ * Titan applications. It handles module registration, lifecycle management,
+ * configuration, and graceful shutdown.
+ *
+ * @stable
+ * @since 0.1.0
  */
 
 import os from 'node:os';
@@ -39,17 +46,205 @@ import {
 } from '../types.js';
 
 /**
- * Application token for DI
+ * Application token for dependency injection.
+ * Use this token to resolve the Application instance from the container.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export const APPLICATION_TOKEN: Token<Application> = createToken<Application>('Application');
 
 /**
- * Netron service token - Core networking and RPC service
+ * Netron service token - Core networking and RPC service.
+ * Use this token to resolve the Netron instance from the container.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export const NETRON_TOKEN: Token<Netron> = createToken<Netron>('Netron');
 
 /**
- * Titan Application implementation
+ * The main Titan Application class.
+ *
+ * Provides a complete application lifecycle management system with:
+ * - Module registration and dependency injection
+ * - Configuration management
+ * - Event system
+ * - Health checks
+ * - Graceful shutdown handling
+ *
+ * @stable
+ * @since 0.1.0
+ *
+ * @example Basic application creation
+ * ```typescript
+ * import { Application } from '@omnitron-dev/titan/application';
+ *
+ * // Create and start a basic application
+ * const app = await Application.create({
+ *   name: 'my-app',
+ *   version: '1.0.0'
+ * });
+ * await app.start();
+ *
+ * // Access configuration
+ * const port = app.config('port');
+ *
+ * // Graceful shutdown
+ * await app.stop();
+ * ```
+ *
+ * @example Application with modules
+ * ```typescript
+ * import { Application } from '@omnitron-dev/titan/application';
+ * import { LoggerModule } from '@omnitron-dev/titan/module/logger';
+ * import { ConfigModule } from '@omnitron-dev/titan/module/config';
+ * import { RedisModule } from '@omnitron-dev/titan/module/redis';
+ *
+ * const app = await Application.create({
+ *   name: 'my-service',
+ *   modules: [
+ *     LoggerModule.forRoot({ level: 'info' }),
+ *     ConfigModule.forRoot({ path: './config' }),
+ *     RedisModule.forRootAsync({
+ *       useFactory: (config) => ({
+ *         host: config.get('redis.host'),
+ *         port: config.get('redis.port')
+ *       }),
+ *       inject: [ConfigService]
+ *     })
+ *   ],
+ *   config: {
+ *     port: 3000,
+ *     environment: 'production'
+ *   }
+ * });
+ * ```
+ *
+ * @example Exposing RPC services
+ * ```typescript
+ * import { Application, NETRON_TOKEN } from '@omnitron-dev/titan/application';
+ * import { Service, Method } from '@omnitron-dev/titan/decorators';
+ *
+ * @Service('api.users@1.0.0')
+ * class UserService {
+ *   @Method()
+ *   async getUser(id: string): Promise<User> {
+ *     return await this.userRepo.findById(id);
+ *   }
+ *
+ *   @Method({ auth: { roles: ['admin'] } })
+ *   async deleteUser(id: string): Promise<void> {
+ *     await this.userRepo.delete(id);
+ *   }
+ * }
+ *
+ * const app = await Application.create({
+ *   name: 'user-service',
+ *   providers: [
+ *     [UserService, { useClass: UserService }]
+ *   ]
+ * });
+ *
+ * await app.start();
+ *
+ * // Services decorated with @Service are auto-exposed to Netron
+ * // Or manually expose via Netron:
+ * const netron = app.resolve(NETRON_TOKEN);
+ * await netron.peer.exposeService(new UserService());
+ * ```
+ *
+ * @example Lifecycle hooks
+ * ```typescript
+ * const app = await Application.create({
+ *   name: 'my-app'
+ * });
+ *
+ * // Register startup hook
+ * app.onStart({
+ *   name: 'database-init',
+ *   handler: async () => {
+ *     await database.connect();
+ *     console.log('Database connected');
+ *   },
+ *   timeout: 10000
+ * });
+ *
+ * // Register shutdown hook
+ * app.onStop({
+ *   name: 'database-cleanup',
+ *   handler: async () => {
+ *     await database.disconnect();
+ *     console.log('Database disconnected');
+ *   }
+ * });
+ *
+ * // Register shutdown task with priority
+ * app.registerShutdownTask({
+ *   id: 'close-connections',
+ *   name: 'Close all connections',
+ *   priority: 10, // Lower priority runs first
+ *   handler: async (reason) => {
+ *     console.log(`Shutting down: ${reason}`);
+ *   }
+ * });
+ *
+ * await app.start();
+ * ```
+ *
+ * @example Event handling
+ * ```typescript
+ * import { Application, ApplicationEvent } from '@omnitron-dev/titan/application';
+ *
+ * const app = await Application.create({ name: 'my-app' });
+ *
+ * app.on(ApplicationEvent.Starting, () => {
+ *   console.log('Application is starting...');
+ * });
+ *
+ * app.on(ApplicationEvent.Started, () => {
+ *   console.log('Application started successfully');
+ * });
+ *
+ * app.on(ApplicationEvent.ModuleRegistered, ({ module }) => {
+ *   console.log(`Module registered: ${module}`);
+ * });
+ *
+ * app.on(ApplicationEvent.Stopping, () => {
+ *   console.log('Application is stopping...');
+ * });
+ *
+ * await app.start();
+ * ```
+ *
+ * @example Custom module creation
+ * ```typescript
+ * import { Application, IModule } from '@omnitron-dev/titan/application';
+ *
+ * class MyCustomModule implements IModule {
+ *   name = 'my-custom-module';
+ *
+ *   async onRegister(app: Application) {
+ *     // Register providers
+ *     app.container.register(MyService, { useClass: MyService });
+ *   }
+ *
+ *   async onStart(app: Application) {
+ *     const service = app.resolve(MyService);
+ *     await service.initialize();
+ *   }
+ *
+ *   async onStop(app: Application) {
+ *     const service = app.resolve(MyService);
+ *     await service.cleanup();
+ *   }
+ * }
+ *
+ * const app = await Application.create({
+ *   name: 'my-app',
+ *   modules: [MyCustomModule]
+ * });
+ * ```
  */
 export class Application implements IApplication {
   private _isStarted = false;
@@ -1677,16 +1872,16 @@ export class Application implements IApplication {
       // Check if it's an async resolution error
       if (error?.message?.includes('registered as async') || error?.name === 'AsyncResolutionError') {
         const tokenName = typeof token === 'symbol'
-          ? (token as Symbol).description || 'Symbol'
+          ? token.description || 'Symbol'
           : (token as any).name || String(token);
-        throw new Error(
+        throw Errors.badRequest(
           `Cannot resolve '${tokenName}' synchronously because it has async dependencies. ` +
           `Use 'await app.resolveAsync(${tokenName})' instead.`
         );
       }
       // Provide a better error message
       const tokenStr = typeof token === 'symbol'
-        ? (token as Symbol).description || 'Symbol'
+        ? token.description || 'Symbol'
         : (token as any).name || String(token);
       throw Errors.notFound('Module', tokenStr);
     }
@@ -1940,7 +2135,7 @@ export class Application implements IApplication {
 
       if (visiting.has(token)) {
         const tokenName = typeof token === 'symbol'
-          ? (token as Symbol).description || 'Symbol'
+          ? token.description || 'Symbol'
           : (token as any).name || String(token);
         throw Errors.conflict(`Circular dependency detected in module: ${tokenName}`);
       }

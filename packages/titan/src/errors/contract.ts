@@ -5,6 +5,7 @@
 import { z } from 'zod';
 import { TitanError, ErrorOptions } from './core.js';
 import type { Contract } from '../validation/contract.js';
+import { Errors } from './factories.js';
 
 /**
  * Contract error that validates against method contracts
@@ -41,22 +42,22 @@ export class ContractError extends TitanError {
     const methodContract = contract.getMethod(String(method));
 
     if (!methodContract) {
-      throw new Error(`Method ${String(method)} not found in contract`);
+      throw Errors.notFound('Contract method', String(method));
     }
 
     if (!methodContract.errors) {
-      throw new Error(`Method ${String(method)} has no error definitions`);
+      throw Errors.badRequest(`Method ${String(method)} has no error definitions`);
     }
 
     const errorSchema = methodContract.errors[code as any];
     if (!errorSchema) {
-      throw new Error(`Error code ${String(code)} not defined in contract for method ${String(method)}`);
+      throw Errors.badRequest(`Error code ${String(code)} not defined in contract for method ${String(method)}`);
     }
 
     // Validate the payload
     const result = errorSchema.safeParse(payload);
     if (!result.success) {
-      throw new Error(`Invalid error payload for contract: ${result.error.message}`);
+      throw Errors.validation([{ field: 'payload', message: result.error.message }]);
     }
 
     return new ContractError({

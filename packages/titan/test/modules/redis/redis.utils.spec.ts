@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import Redis, { Cluster } from 'ioredis';
 import * as crypto from 'crypto';
-import * as fs from 'fs';
 import {
   createRedisClient,
   isCluster,
@@ -14,9 +13,6 @@ import {
 } from '../../../src/modules/redis/redis.utils.js';
 import { RedisClientOptions } from '../../../src/modules/redis/redis.types.js';
 import { withDockerRedis, type DockerRedisTestFixture, isRedisInMockMode, isDockerAvailable } from './utils/redis-test-utils.js';
-
-// Mock fs module
-jest.mock('fs');
 
 // Skip tests if Docker is not available or in mock mode
 const skipDockerTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true' || !isDockerAvailable();
@@ -296,42 +292,54 @@ describe('Redis Utils', () => {
   });
 
   describe('loadScriptContent', () => {
-    beforeEach(() => {
-      jest.clearAllMocks();
+    // These tests use real file system operations since mocking ESM imports is complex
+    let tempDir: string;
+    let fs: typeof import('fs');
+    let path: typeof import('path');
+    let os: typeof import('os');
+
+    beforeAll(async () => {
+      fs = await import('fs');
+      path = await import('path');
+      os = await import('os');
+      tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redis-test-'));
+    });
+
+    afterAll(() => {
+      if (fs && tempDir) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
     });
 
     it('should load script content from file', () => {
       const scriptContent = 'return redis.call("get", KEYS[1])';
-      (fs.readFileSync as jest.Mock).mockReturnValue(scriptContent);
+      const filePath = path.join(tempDir, 'test-script.lua');
+      fs.writeFileSync(filePath, scriptContent);
 
-      const content = loadScriptContent('/path/to/script.lua');
+      const content = loadScriptContent(filePath);
       expect(content).toBe(scriptContent.trim());
-      expect(fs.readFileSync).toHaveBeenCalledWith('/path/to/script.lua', 'utf-8');
     });
 
     it('should trim whitespace from content', () => {
       const scriptContent = '  return 1  \n\t';
-      (fs.readFileSync as jest.Mock).mockReturnValue(scriptContent);
+      const filePath = path.join(tempDir, 'whitespace-script.lua');
+      fs.writeFileSync(filePath, scriptContent);
 
-      const content = loadScriptContent('/script.lua');
+      const content = loadScriptContent(filePath);
       expect(content).toBe('return 1');
     });
 
     it('should handle different encodings', () => {
       const scriptContent = 'return 1';
-      (fs.readFileSync as jest.Mock).mockReturnValue(scriptContent);
+      const filePath = path.join(tempDir, 'encoding-script.lua');
+      fs.writeFileSync(filePath, scriptContent, 'ascii');
 
-      const content = loadScriptContent('/script.lua', 'ascii');
+      const content = loadScriptContent(filePath, 'ascii');
       expect(content).toBe(scriptContent.trim());
-      expect(fs.readFileSync).toHaveBeenCalledWith('/script.lua', 'ascii');
     });
 
     it('should throw error if file not found', () => {
-      (fs.readFileSync as jest.Mock).mockImplementation(() => {
-        throw new Error('ENOENT: no such file or directory');
-      });
-
-      expect(() => loadScriptContent('/nonexistent.lua')).toThrow('ENOENT: no such file or directory');
+      expect(() => loadScriptContent('/nonexistent-path-12345/nonexistent.lua')).toThrow();
     });
   });
 

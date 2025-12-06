@@ -1,5 +1,11 @@
 /**
  * Advanced module system for Nexus DI Container
+ *
+ * Provides a modular architecture for organizing providers and dependencies.
+ * Supports the forRoot/forFeature pattern for configurable modules.
+ *
+ * @stable
+ * @since 0.1.0
  */
 
 import {
@@ -13,18 +19,27 @@ import {
   InjectionToken,
   ServiceIdentifier,
   ModuleMetadata,
+  FactoryProvider,
+  Factory,
+  ModuleMetadataExtended,
 } from './types.js';
 import { Errors, ValidationError } from '../errors/index.js';
 
 /**
- * Module options for forRoot pattern
+ * Module options for forRoot pattern.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export interface ModuleOptions {
   [key: string]: any;
 }
 
 /**
- * Module factory for creating modules
+ * Module factory interface for creating configurable modules.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export interface ModuleFactory {
   forRoot(options: ModuleOptions): DynamicModule;
@@ -32,7 +47,10 @@ export interface ModuleFactory {
 }
 
 /**
- * Module reference for accessing module internals
+ * Module reference for accessing module internals.
+ *
+ * @stable
+ * @since 0.1.0
  */
 export interface ModuleRef {
   /**
@@ -58,7 +76,7 @@ export interface ModuleRef {
   /**
    * Module container
    */
-  readonly container: IContainer;
+  readonly container?: IContainer;
 
   /**
    * Check if provider is exported
@@ -82,7 +100,10 @@ export interface ModuleRef {
 }
 
 /**
- * Module compiler for processing module metadata
+ * Module compiler for processing module metadata.
+ *
+ * @internal
+ * @since 0.1.0
  */
 export class ModuleCompiler {
   private compiledModules = new Map<string, ModuleRef>();
@@ -152,8 +173,10 @@ export class ModuleCompiler {
         }
       }
       // Fallback to stored metadata on constructor
-      if ((module as any).__moduleMetadata) {
-        return { name: module.name, ...(module as any).__moduleMetadata };
+      // Type for modules with internally stored metadata
+      const moduleWithMetadata = module as Constructor<IModule> & { __moduleMetadata?: ModuleMetadata };
+      if (moduleWithMetadata.__moduleMetadata) {
+        return { name: module.name, ...moduleWithMetadata.__moduleMetadata };
       }
     }
 
@@ -199,7 +222,7 @@ export class ModuleCompiler {
     }
 
     // Create container for this module
-    const container = null as any; // Will be set by the container
+    const container: IContainer | undefined = undefined; // Will be set by the container
 
     return {
       name,
@@ -314,7 +337,7 @@ export class ModuleCompiler {
 /**
  * Create a module
  */
-export function createModule(metadata: ModuleMetadata & { name: string }): IModule {
+export function createModule(metadata: ModuleMetadataExtended & { name: string }): IModule {
   const module: IModule = {
     name: metadata.name,
     imports: metadata.imports as IModule[],
@@ -337,15 +360,15 @@ export function createModule(metadata: ModuleMetadata & { name: string }): IModu
     }),
     exports: metadata.exports as InjectionToken<any>[],
     global: metadata.global,
-    requires: (metadata as any).requires,
+    requires: metadata.requires,
     metadata: {
-      version: (metadata as any).version,
-      description: (metadata as any).description,
-      author: (metadata as any).author,
-      tags: (metadata as any).tags,
+      version: metadata.version,
+      description: metadata.description,
+      author: metadata.author,
+      tags: metadata.tags,
     },
-    onModuleInit: (metadata as any).onModuleInit,
-    onModuleDestroy: (metadata as any).onModuleDestroy,
+    onModuleInit: metadata.onModuleInit,
+    onModuleDestroy: metadata.onModuleDestroy,
   };
 
   return module;
@@ -546,12 +569,13 @@ export function createFeatureModule(
               {
                 ...provider,
                 useFactory: ((...args: any[]) => {
-                  const instance = (provider as any).useFactory(...args);
+                  const factoryProvider = provider as FactoryProvider<unknown>;
+                  const instance = factoryProvider.useFactory(...args);
                   if (typeof instance === 'object' && instance !== null) {
                     Object.assign(instance, options);
                   }
                   return instance;
-                }) as any,
+                }) as Factory, // Factory type compatible cast
               },
             ] as [InjectionToken<any>, ProviderDefinition<any>];
           }
@@ -661,7 +685,7 @@ export function createAsyncOptionsProvider<TOptions>(
       {
         useFactory: async (...args: any[]) =>
           Promise.resolve(asyncOptions.useFactory!(...args)),
-        inject: (asyncOptions.inject || []) as any,
+        inject: asyncOptions.inject ?? [],
       },
     ]);
   } else if (asyncOptions.useExisting) {
@@ -677,7 +701,7 @@ export function createAsyncOptionsProvider<TOptions>(
   } else if (asyncOptions.useClass) {
     // Instantiate a factory class
     providers.push([
-      asyncOptions.useClass as any,
+      asyncOptions.useClass,
       {
         useClass: asyncOptions.useClass,
       },
@@ -687,7 +711,7 @@ export function createAsyncOptionsProvider<TOptions>(
       {
         useFactory: async (factory: AsyncOptionsFactory<TOptions>) =>
           factory.createOptions(),
-        inject: [asyncOptions.useClass as any],
+        inject: [asyncOptions.useClass],
       },
     ]);
   } else {

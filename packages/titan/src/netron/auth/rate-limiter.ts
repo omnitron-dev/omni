@@ -5,6 +5,7 @@
 
 import type { ILogger } from '../../modules/logger/logger.types.js';
 import type { ExecutionContext } from './types.js';
+import { Errors } from '../../errors/index.js';
 
 /**
  * Rate limit tier configuration
@@ -254,7 +255,7 @@ export class RateLimiter {
         ({ allowed, remaining, resetAt } = this.checkTokenBucket(state, tierConfig, now, false));
         break;
       default:
-        throw new Error(`Unknown strategy: ${this.config.strategy}`);
+        throw Errors.badRequest(`Unknown rate limit strategy: ${this.config.strategy}`);
     }
 
     // Calculate retry after if denied
@@ -300,7 +301,7 @@ export class RateLimiter {
         ({ allowed, resetAt } = this.checkTokenBucket(state, tierConfig, now, true).result);
         break;
       default:
-        throw new Error(`Unknown strategy: ${this.config.strategy}`);
+        throw Errors.badRequest(`Unknown rate limit strategy: ${this.config.strategy}`);
     }
 
     if (!allowed) {
@@ -311,12 +312,12 @@ export class RateLimiter {
         await this.enqueue(key, tierConfig);
         state.queued++;
 
-        throw new Error('Request queued due to rate limit');
+        throw Errors.tooManyRequests();
       }
 
       state.denied++;
 
-      throw new Error(`Rate limit exceeded. Retry after ${retryAfter}ms`);
+      throw Errors.tooManyRequests(retryAfter);
     }
 
     // Mark as consumed

@@ -8,7 +8,13 @@ import { RemotePeer } from './remote-peer.js';
 import { ServiceStub } from './service-stub.js';
 import { AbstractPeer } from './abstract-peer.js';
 import { isServiceDefinition } from './predicates.js';
-import { EventSubscriber, ServiceMetadata, ServiceExposeEvent } from './types.js';
+import {
+  EventSubscriber,
+  ServiceMetadata,
+  ServiceExposeEvent,
+  ITransportServerWithServices,
+  ServiceMetadataWithContract,
+} from './types.js';
 import { getQualifiedName, getServiceMetadata, getServiceEventName } from './utils.js';
 import { NETRON_EVENT_SERVICE_EXPOSE, NETRON_EVENT_SERVICE_UNEXPOSE } from './constants.js';
 
@@ -97,14 +103,20 @@ export class LocalPeer extends AbstractPeer {
     this.serviceInstances.set(instance, stub);
 
     // Register service with all transport servers that support registerService
-    for (const [transportName, server] of this.netron.transportServers) {
-      if (typeof (server as any).registerService === 'function') {
+    // Type guard for transport servers with service registration capabilities
+    const isTransportWithServices = (s: unknown): s is ITransportServerWithServices =>
+      s !== null && typeof s === 'object' && 'registerService' in s && typeof (s as ITransportServerWithServices).registerService === 'function';
+
+    for (const [, server] of this.netron.transportServers) {
+      if (isTransportWithServices(server)) {
         // Contract is stored in the metadata, not directly on the constructor
+        const metaWithContract = meta as ServiceMetadataWithContract;
+        const constructor = instance.constructor as { contract?: Record<string, unknown> };
         const contract =
-          (meta as any).contract ||
-          Reflect.getMetadata('validation:contract', instance.constructor) ||
-          (instance.constructor as any).contract;
-        (server as any).registerService(meta.name, def, contract);
+          metaWithContract.contract ||
+          (Reflect.getMetadata('validation:contract', instance.constructor) as Record<string, unknown> | undefined) ||
+          constructor.contract;
+        server.registerService?.(meta.name, def, contract);
       }
     }
 
@@ -177,9 +189,13 @@ export class LocalPeer extends AbstractPeer {
     }
 
     // Unregister service from all transport servers that support unregisterService
-    for (const [transportName, server] of this.netron.transportServers) {
-      if (typeof (server as any).unregisterService === 'function') {
-        (server as any).unregisterService(serviceName);
+    // Type guard for transport servers with unregister capability
+    const hasUnregisterService = (s: unknown): s is ITransportServerWithServices =>
+      s !== null && typeof s === 'object' && 'unregisterService' in s && typeof (s as ITransportServerWithServices).unregisterService === 'function';
+
+    for (const [, server] of this.netron.transportServers) {
+      if (hasUnregisterService(server)) {
+        server.unregisterService?.(serviceName);
       }
     }
 

@@ -5,9 +5,19 @@
  */
 
 import { createToken, Token } from '../../nexus/index.js';
-import type { ILoggerModule, ILoggerOptions, ITransport, ILogProcessor } from './logger.types.js';
+import type { ILogger, ILoggerModule, ILoggerOptions, ITransport, ILogProcessor } from './logger.types.js';
 
-// Service token
+/**
+ * Generic logger token for simple ILogger injection.
+ * Use this when you only need basic logging functionality.
+ * This is the canonical LOGGER_TOKEN - all modules should import from here.
+ */
+export const LOGGER_TOKEN: Token<ILogger> = createToken<ILogger>('Logger');
+
+/**
+ * Logger module service token for full LoggerModule functionality.
+ * Use this when you need advanced features like transports, processors, context.
+ */
 export const LOGGER_SERVICE_TOKEN: Token<ILoggerModule> = createToken<ILoggerModule>('LoggerService');
 
 // Options token

@@ -9,7 +9,14 @@ import { Application } from './application.js';
 import { Module, Injectable } from '../decorators/index.js';
 import type { IApplicationOptions, IModule } from '../types.js';
 import { Token, createToken as nexusCreateToken } from '../nexus/index.js';
-import { TitanError, ErrorCode } from '../errors/index.js';
+import { TitanError, ErrorCode, Errors } from '../errors/index.js';
+
+/**
+ * Augment global type to include the Titan application instance
+ */
+declare global {
+  var __titanApp: Application | undefined;
+}
 
 /**
  * Create and start a Titan application with zero configuration
@@ -71,7 +78,7 @@ export async function titan(input?: any | IApplicationOptions): Promise<Applicat
   });
 
   // Store app globally for simple API auto-registration
-  (global as any).__titanApp = app;
+  globalThis.__titanApp = app;
 
   // Auto-start the application
   await app.start();
@@ -160,10 +167,10 @@ export function service<T extends object>(
   })(ServiceClass);
 
   // Auto-register if application exists
-  if ((global as any).__titanApp) {
-    const app = (global as any).__titanApp as Application;
+  if (globalThis.__titanApp) {
+    const app = globalThis.__titanApp as Application;
     // Create a token for this service based on name or use the class itself
-    const token = options?.name ? createToken<T>(options.name) : (ServiceClass as any);
+    const token = options?.name ? createToken<T>(options.name) : ServiceClass as unknown as Token<T>;
     app.register(token, { useClass: ServiceClass });
   }
 
@@ -279,7 +286,7 @@ export function env<T>(key: string, defaultValue: T): T {
 export function inject<T = any>(token: Token<T> | string): T {
   // This will be replaced by the actual injection at runtime
   // For now, return a proxy that will be resolved later
-  return new Proxy({} as any, {
+  return new Proxy<object>({} as object, {
     get(target, prop) {
       throw new TitanError({
         code: ErrorCode.INTERNAL_ERROR,
@@ -386,7 +393,7 @@ export function controller(basePath: string, handlers: Record<string, Controller
   };
 
   // Auto-register with the global application if it exists
-  const app = (global as any).__titanApp as Application | undefined;
+  const app = globalThis.__titanApp as Application | undefined;
   if (app) {
     if (!controllerRegistry.has(app)) {
       controllerRegistry.set(app, []);
@@ -456,12 +463,12 @@ export function createControllerService(registration: ControllerRegistration): a
         params: request.params || {},
         headers: request.headers || {},
         body: request.body,
-        raw: null as any, // Will be set by HTTP transport if available
+        raw: null as unknown as Request, // Set by HTTP transport // Will be set by HTTP transport if available
       };
 
       // Build controller response object with state
       let responseStatus = 200;
-      let responseHeaders: Record<string, string> = {};
+      const responseHeaders: Record<string, string> = {};
       let responseBody: any = null;
       let responseSent = false;
 
@@ -471,19 +478,19 @@ export function createControllerService(registration: ControllerRegistration): a
           return this;
         },
         json(data: any) {
-          if (responseSent) throw new Error('Response already sent');
+          if (responseSent) throw Errors.badRequest('Response already sent');
           responseHeaders['Content-Type'] = 'application/json';
           responseBody = data;
           responseSent = true;
         },
         text(data: string) {
-          if (responseSent) throw new Error('Response already sent');
+          if (responseSent) throw Errors.badRequest('Response already sent');
           responseHeaders['Content-Type'] = 'text/plain';
           responseBody = data;
           responseSent = true;
         },
         html(data: string) {
-          if (responseSent) throw new Error('Response already sent');
+          if (responseSent) throw Errors.badRequest('Response already sent');
           responseHeaders['Content-Type'] = 'text/html';
           responseBody = data;
           responseSent = true;
@@ -497,7 +504,7 @@ export function createControllerService(registration: ControllerRegistration): a
           return this;
         },
         send(statusCode: number, body: any, contentType = 'application/json') {
-          if (responseSent) throw new Error('Response already sent');
+          if (responseSent) throw Errors.badRequest('Response already sent');
           responseStatus = statusCode;
           responseHeaders['Content-Type'] = contentType;
           responseBody = body;

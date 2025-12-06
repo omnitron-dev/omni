@@ -127,7 +127,7 @@ export class ServiceMeshProxy<T> {
 
         // Wrap method with mesh capabilities
         return async (...args: any[]) =>
-          this.executeWithMesh(property as string, () => (original as ProcessMethod).apply(target, args), args);
+          this.executeWithMesh(property as string, () => (original as ProcessMethod).apply(target, args) as Promise<any>, args);
       },
     }) as ServiceProxy<T>;
   }

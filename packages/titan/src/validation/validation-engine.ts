@@ -3,6 +3,7 @@
  */
 
 import { z } from 'zod';
+import { Errors } from '../errors/index.js';
 
 /**
  * Validation options for customizing behavior
@@ -110,7 +111,7 @@ export class ValidationEngine {
 
     const validator = this.validators.get(key);
     if (!validator) {
-      throw new Error(`Validator not found in cache for key: ${key}`);
+      throw Errors.internal(`Validator not found in cache for key: ${key}`);
     }
     return validator as CompiledValidator<T>;
   }
@@ -360,17 +361,17 @@ export class ValidationEngine {
         if (typeof val === 'string') {
           // Empty string should fail - this is critical for data integrity
           if (val.trim() === '') {
-            throw new Error('Cannot coerce empty string to number');
+            throw Errors.validation([{ field: 'value', message: 'Cannot coerce empty string to number' }]);
           }
           const parsed = Number(val);
           if (Number.isNaN(parsed)) {
-            throw new Error(`Cannot coerce "${val}" to number`);
+            throw Errors.validation([{ field: 'value', message: `Cannot coerce "${val}" to number` }]);
           }
           return parsed;
         }
         if (typeof val === 'boolean') return val ? 1 : 0;
         if (val === null) {
-          throw new Error('Cannot coerce null to number');
+          throw Errors.validation([{ field: 'value', message: 'Cannot coerce null to number' }]);
         }
         return Number(val);
       }, schema) as any;
@@ -394,7 +395,7 @@ export class ValidationEngine {
           if (lower === 'false' || lower === '0' || lower === '') return false;
           if (lower === 'true' || lower === '1') return true;
           // For any other string, throw to fail validation
-          throw new Error(`Cannot coerce "${val}" to boolean`);
+          throw Errors.validation([{ field: 'value', message: `Cannot coerce "${val}" to boolean` }]);
         }
         if (typeof val === 'number') return val !== 0;
         return Boolean(val);

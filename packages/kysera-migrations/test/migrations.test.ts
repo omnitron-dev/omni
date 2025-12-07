@@ -14,9 +14,21 @@ import {
   MigrationError,
   createLoggingPlugin,
   createMetricsPlugin,
+  
   type Migration,
   type MigrationWithMeta,
+  type KyseraLogger,
 } from '../src/index.js';
+
+// Helper to create a test logger that captures output
+function createTestLogger(logs: string[]): KyseraLogger {
+  return {
+    debug: (msg: string) => logs.push(msg),
+    info: (msg: string) => logs.push(msg),
+    warn: (msg: string) => logs.push(msg),
+    error: (msg: string) => logs.push(msg),
+  };
+}
 import { safeDbDestroy, safeSqliteClose } from './helpers/cleanup.js';
 
 describe('Migration System', () => {
@@ -136,7 +148,7 @@ describe('Migration System', () => {
     describe('up', () => {
       it('should run all pending migrations', async () => {
         const migrations = createTestMigrations();
-        const runner = new MigrationRunner(db, migrations, { logger: () => {} });
+        const runner = new MigrationRunner(db, migrations, { });
 
         const result = await runner.up();
 
@@ -164,7 +176,7 @@ describe('Migration System', () => {
 
       it('should skip already executed migrations', async () => {
         const migrations = createTestMigrations();
-        const runner = new MigrationRunner(db, migrations, { logger: () => {} });
+        const runner = new MigrationRunner(db, migrations, { });
 
         // Run migrations first time
         await runner.up();
@@ -187,7 +199,7 @@ describe('Migration System', () => {
           createMigration('003_never_runs', async () => {}),
         ];
 
-        const runner = new MigrationRunner(db, migrations, { logger: () => {} });
+        const runner = new MigrationRunner(db, migrations, { });
 
         await expect(runner.up()).rejects.toThrow(MigrationError);
 
@@ -201,7 +213,7 @@ describe('Migration System', () => {
         const migrations = createTestMigrations();
         const runner = new MigrationRunner(db, migrations, {
           dryRun: true,
-          logger: () => {},
+          
         });
 
         const result = await runner.up();
@@ -225,7 +237,7 @@ describe('Migration System', () => {
       });
 
       it('should handle empty migration list', async () => {
-        const runner = new MigrationRunner(db, [], { logger: () => {} });
+        const runner = new MigrationRunner(db, [], { });
 
         const result = await runner.up();
 
@@ -247,7 +259,7 @@ describe('Migration System', () => {
     describe('down', () => {
       it('should rollback last migration', async () => {
         const migrations = createTestMigrations();
-        const runner = new MigrationRunner(db, migrations, { logger: () => {} });
+        const runner = new MigrationRunner(db, migrations, { });
 
         // Run all migrations
         await runner.up();
@@ -263,7 +275,7 @@ describe('Migration System', () => {
 
       it('should rollback multiple migrations', async () => {
         const migrations = createTestMigrations();
-        const runner = new MigrationRunner(db, migrations, { logger: () => {} });
+        const runner = new MigrationRunner(db, migrations, { });
 
         await runner.up();
         // Try to rollback 2, but 003 has no down(), so only 002 will be rolled back
@@ -287,7 +299,7 @@ describe('Migration System', () => {
 
       it('should handle migration without down method', async () => {
         const migrations = createTestMigrations();
-        const runner = new MigrationRunner(db, migrations, { logger: () => {} });
+        const runner = new MigrationRunner(db, migrations, { });
 
         await runner.up();
 
@@ -302,14 +314,14 @@ describe('Migration System', () => {
 
       it('should work with dry run mode', async () => {
         const migrations = createTestMigrations();
-        const runner = new MigrationRunner(db, migrations, { logger: () => {} });
+        const runner = new MigrationRunner(db, migrations, { });
 
         await runner.up();
 
         // Dry run rollback
         const dryRunner = new MigrationRunner(db, migrations, {
           dryRun: true,
-          logger: () => {},
+          
         });
         const result = await dryRunner.down(1);
 
@@ -321,7 +333,7 @@ describe('Migration System', () => {
 
       it('should handle empty executed migrations', async () => {
         const migrations = createTestMigrations();
-        const runner = new MigrationRunner(db, migrations, { logger: () => {} });
+        const runner = new MigrationRunner(db, migrations, { });
 
         // Setup migrations table first
         await setupMigrations(db);
@@ -339,7 +351,7 @@ describe('Migration System', () => {
     describe('status', () => {
       it('should show correct migration status', async () => {
         const migrations = createTestMigrations();
-        const runner = new MigrationRunner(db, migrations, { logger: () => {} });
+        const runner = new MigrationRunner(db, migrations, { });
 
         // Before any migrations
         let status = await runner.status();
@@ -371,7 +383,7 @@ describe('Migration System', () => {
     describe('reset', () => {
       it('should rollback all migrations', async () => {
         const migrations = createTestMigrations();
-        const runner = new MigrationRunner(db, migrations, { logger: () => {} });
+        const runner = new MigrationRunner(db, migrations, { });
 
         await runner.up();
         await runner.reset();
@@ -384,13 +396,13 @@ describe('Migration System', () => {
 
       it('should work with dry run', async () => {
         const migrations = createTestMigrations();
-        const runner = new MigrationRunner(db, migrations, { logger: () => {} });
+        const runner = new MigrationRunner(db, migrations, { });
 
         await runner.up();
 
         const dryRunner = new MigrationRunner(db, migrations, {
           dryRun: true,
-          logger: () => {},
+          
         });
         const result = await dryRunner.reset();
 
@@ -404,7 +416,7 @@ describe('Migration System', () => {
     describe('upTo', () => {
       it('should migrate up to specific migration', async () => {
         const migrations = createTestMigrations();
-        const runner = new MigrationRunner(db, migrations, { logger: () => {} });
+        const runner = new MigrationRunner(db, migrations, { });
 
         const result = await runner.upTo('002_create_posts');
 
@@ -416,7 +428,7 @@ describe('Migration System', () => {
 
       it('should throw NotFoundError for unknown migration', async () => {
         const migrations = createTestMigrations();
-        const runner = new MigrationRunner(db, migrations, { logger: () => {} });
+        const runner = new MigrationRunner(db, migrations, { });
 
         await expect(runner.upTo('999_unknown')).rejects.toThrow('Migration not found');
       });
@@ -435,7 +447,7 @@ describe('Migration System', () => {
       const migrations: Migration[] = [];
       const runner = createMigrationRunner(db, migrations, {
         dryRun: true,
-        logger: () => {},
+        
       });
 
       expect(runner).toBeInstanceOf(MigrationRunner);
@@ -518,7 +530,7 @@ describe('Migration System', () => {
         },
       });
 
-      const result = await runMigrations(db, migrations, { logger: () => {} });
+      const result = await runMigrations(db, migrations, { });
 
       expect(result.executed).toHaveLength(1);
       expect(result.executed[0]).toBe('001_test');
@@ -528,7 +540,7 @@ describe('Migration System', () => {
   describe('runMigrations (Level 2 API)', () => {
     it('should run all pending migrations', async () => {
       const migrations = createTestMigrations();
-      const result = await runMigrations(db, migrations, { logger: () => {} });
+      const result = await runMigrations(db, migrations, { });
 
       expect(result.executed).toHaveLength(3);
       expect(result.dryRun).toBe(false);
@@ -536,7 +548,7 @@ describe('Migration System', () => {
 
     it('should support dry run', async () => {
       const migrations = createTestMigrations();
-      const result = await runMigrations(db, migrations, { dryRun: true, logger: () => {} });
+      const result = await runMigrations(db, migrations, { dryRun: true });
 
       expect(result.dryRun).toBe(true);
     });
@@ -545,9 +557,9 @@ describe('Migration System', () => {
   describe('rollbackMigrations (Level 2 API)', () => {
     it('should rollback migrations', async () => {
       const migrations = createTestMigrations();
-      await runMigrations(db, migrations, { logger: () => {} });
+      await runMigrations(db, migrations, { });
 
-      const result = await rollbackMigrations(db, migrations, 2, { logger: () => {} });
+      const result = await rollbackMigrations(db, migrations, 2, { });
 
       // 003 has no down, 002 has down
       expect(result.executed.length + result.skipped.length).toBe(2);
@@ -557,9 +569,9 @@ describe('Migration System', () => {
   describe('getMigrationStatus (Level 2 API)', () => {
     it('should get migration status', async () => {
       const migrations = createTestMigrations();
-      await runMigrations(db, migrations, { logger: () => {} });
+      await runMigrations(db, migrations, { });
 
-      const status = await getMigrationStatus(db, migrations, { logger: () => {} });
+      const status = await getMigrationStatus(db, migrations, { });
 
       expect(status.executed).toHaveLength(3);
       expect(status.pending).toHaveLength(0);
@@ -571,13 +583,13 @@ describe('Migration System', () => {
     describe('createLoggingPlugin', () => {
       it('should log migration events', () => {
         const logs: string[] = [];
-        const plugin = createLoggingPlugin((msg) => logs.push(msg));
+        const plugin = createLoggingPlugin(createTestLogger(logs));
 
         expect(plugin.name).toBe('@kysera/migrations/logging');
 
         // Test beforeMigration
         plugin.beforeMigration?.({ name: 'test', up: async () => {} }, 'up');
-        expect(logs).toContain('[MIGRATION] Starting up for test');
+        expect(logs).toContain('Starting up for test');
       });
     });
 
@@ -603,7 +615,7 @@ describe('Migration System', () => {
   describe('Integration', () => {
     it('should handle full migration lifecycle', async () => {
       const migrations = createTestMigrations();
-      const runner = new MigrationRunner(db, migrations, { logger: () => {} });
+      const runner = new MigrationRunner(db, migrations, { });
 
       // 1. Check initial status
       let status = await runner.status();
@@ -656,7 +668,7 @@ describe('Migration System', () => {
         ),
       ];
 
-      const runner = new MigrationRunner(db, migrations, { logger: () => {} });
+      const runner = new MigrationRunner(db, migrations, { });
 
       await runner.up();
 
@@ -708,7 +720,7 @@ describe('Migration System', () => {
       ];
 
       const runner = new MigrationRunner(db, migrations, {
-        logger: (msg) => logs.push(msg),
+        logger: createTestLogger(logs),
         verbose: true,
       });
 

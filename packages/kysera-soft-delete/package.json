@@ -24,15 +24,11 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
   },
-  "peerDependencies": {
-    "kysely": ">=0.28.8"
-  },
   "dependencies": {
-    "@kysera/core": "workspace:*",
-    "@kysera/repository": "workspace:*",
-    "zod": "^4.1.13"
+    "@kysera/core": "workspace:*"
   },
   "devDependencies": {
+    "@kysera/repository": "workspace:*",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.10.1",
     "@vitest/coverage-v8": "^4.0.15",
@@ -40,7 +36,18 @@
     "kysely": "^0.28.8",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.15"
+    "vitest": "^4.0.15",
+    "zod": "^4.1.13"
+  },
+  "peerDependencies": {
+    "@kysera/repository": "workspace:*",
+    "kysely": ">=0.28.8",
+    "zod": "^4.1.13"
+  },
+  "peerDependenciesMeta": {
+    "zod": {
+      "optional": true
+    }
   },
   "keywords": [
     "kysely",

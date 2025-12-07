@@ -27,8 +27,7 @@
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\""
   },
   "dependencies": {
-    "@kysera/core": "workspace:*",
-    "zod": "^4.1.13"
+    "@kysera/core": "workspace:*"
   },
   "devDependencies": {
     "@kysera/repository": "workspace:*",
@@ -38,11 +37,18 @@
     "kysely": "^0.28.8",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.15"
+    "vitest": "^4.0.15",
+    "zod": "^4.1.13"
   },
   "peerDependencies": {
     "@kysera/repository": "workspace:*",
-    "kysely": ">=0.28.8"
+    "kysely": ">=0.28.8",
+    "zod": "^4.1.13"
+  },
+  "peerDependenciesMeta": {
+    "zod": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=20.0.0",

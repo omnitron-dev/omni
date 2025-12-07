@@ -4,8 +4,7 @@ import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
-import { getDatabaseConnection } from '../../utils/database.js';
-import { loadConfig } from '../../config/loader.js';
+import { withDatabase } from '../../utils/with-database.js';
 import { DatabaseIntrospector, TableInfo } from './introspector.js';
 import { execa } from 'execa';
 
@@ -55,33 +54,12 @@ export function crudCommand(): Command {
 }
 
 async function generateCrud(tableName: string, options: CrudOptions): Promise<void> {
-  // Load configuration
-  const config = await loadConfig(options.config);
+  await withDatabase({ config: options.config }, async (db, config) => {
+    const generateSpinner = spinner();
+    generateSpinner.start(`Introspecting table '${tableName}'...`);
 
-  if (!config?.database) {
-    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
-      'Create a kysera.config.ts file with database configuration',
-      'Or specify a config file with --config option',
-    ]);
-  }
-
-  // Get database connection
-  const db = await getDatabaseConnection(config.database);
-
-  if (!db) {
-    throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', [
-      'Check your database configuration',
-      'Ensure the database server is running',
-    ]);
-  }
-
-  const generateSpinner = spinner();
-  generateSpinner.start(`Introspecting table '${tableName}'...`);
-
-  try {
     const introspector = new DatabaseIntrospector(db, config.database.dialect as any);
 
-    // Get table information
     let tableInfo: TableInfo;
     try {
       tableInfo = await introspector.getTableInfo(tableName);
@@ -95,24 +73,11 @@ async function generateCrud(tableName: string, options: CrudOptions): Promise<vo
 
     generateSpinner.succeed(`Found table '${tableName}' with ${tableInfo.columns.length} columns`);
 
-    // Check for existing files
     const outputDir = options.outputDir || './src';
     const filesToGenerate = [
-      {
-        type: 'Model',
-        path: join(outputDir, 'models', `${toKebabCase(tableName)}.ts`),
-        generator: generateModelCode,
-      },
-      {
-        type: 'Repository',
-        path: join(outputDir, 'repositories', `${toKebabCase(tableName)}.repository.ts`),
-        generator: generateRepositoryCode,
-      },
-      {
-        type: 'Schema',
-        path: join(outputDir, 'schemas', `${toKebabCase(tableName)}.schema.ts`),
-        generator: generateSchemaCode,
-      },
+      { type: 'Model', path: join(outputDir, 'models', `${toKebabCase(tableName)}.ts`), generator: generateModelCode },
+      { type: 'Repository', path: join(outputDir, 'repositories', `${toKebabCase(tableName)}.repository.ts`), generator: generateRepositoryCode },
+      { type: 'Schema', path: join(outputDir, 'schemas', `${toKebabCase(tableName)}.schema.ts`), generator: generateSchemaCode },
     ];
 
     if (!options.overwrite) {
@@ -122,7 +87,7 @@ async function generateCrud(tableName: string, options: CrudOptions): Promise<vo
         console.log('');
         console.log(prism.yellow('The following files already exist:'));
         for (const file of existingFiles) {
-          console.log(`  • ${file.type}: ${prism.cyan(file.path)}`);
+          console.log(`  - ${file.type}: ${prism.cyan(file.path)}`);
         }
         console.log('');
 
@@ -138,20 +103,17 @@ async function generateCrud(tableName: string, options: CrudOptions): Promise<vo
       }
     }
 
-    // Generate all files
     console.log('');
     logger.info('Generating CRUD stack...');
 
     const generatedFiles: string[] = [];
 
     for (const file of filesToGenerate) {
-      // Ensure directory exists
       const dir = join(file.path, '..');
       if (!existsSync(dir)) {
         mkdirSync(dir, { recursive: true });
       }
 
-      // Generate code
       const code = file.generator(tableInfo, {
         withValidation: options.withValidation !== false,
         withPagination: options.withPagination !== false,
@@ -159,73 +121,34 @@ async function generateCrud(tableName: string, options: CrudOptions): Promise<vo
         withTimestamps: options.withTimestamps !== false,
       });
 
-      // Write file
       writeFileSync(file.path, code, 'utf-8');
-      logger.info(`  ${prism.green('✓')} Generated ${file.type}: ${prism.cyan(file.path)}`);
+      logger.info(`  ${prism.green('OK')} Generated ${file.type}: ${prism.cyan(file.path)}`);
       generatedFiles.push(file.path);
     }
 
-    // Format files if requested
     if (options.format !== false && generatedFiles.length > 0) {
       try {
         const formatSpinner = spinner();
         formatSpinner.start('Formatting generated files...');
-
-        await execa('npx', ['prettier', '--write', ...generatedFiles], {
-          stdio: 'ignore',
-        });
-
+        await execa('npx', ['prettier', '--write', ...generatedFiles], { stdio: 'ignore' });
         formatSpinner.succeed('Files formatted successfully');
-      } catch (error) {
+      } catch {
         logger.warn('Failed to format files (Prettier may not be installed)');
       }
     }
 
-    // Generate index file to export everything
-    const indexPath = join(outputDir, 'index.ts');
-    const indexExports = [
-      `export * from './models/${toKebabCase(tableName)}.js'`,
-      `export * from './repositories/${toKebabCase(tableName)}.repository.js'`,
-      `export * from './schemas/${toKebabCase(tableName)}.schema.js'`,
-    ];
-
-    if (existsSync(indexPath)) {
-      // Append to existing index
-      const existingContent = require('fs').readFileSync(indexPath, 'utf-8');
-      const newExports = indexExports.filter((exp) => !existingContent.includes(exp));
-
-      if (newExports.length > 0) {
-        require('fs').appendFileSync(indexPath, '\n' + newExports.join('\n'), 'utf-8');
-        logger.info(`  ${prism.green('✓')} Updated index file`);
-      }
-    } else {
-      // Create new index
-      writeFileSync(indexPath, indexExports.join('\n') + '\n', 'utf-8');
-      logger.info(`  ${prism.green('✓')} Created index file`);
-    }
-
-    // Success message
     console.log('');
-    console.log(prism.green('✨ CRUD stack generated successfully!'));
+    console.log(prism.green('CRUD stack generated successfully!'));
     console.log('');
     console.log('Next steps:');
     console.log(`  1. Update your Database interface in ${prism.cyan('src/database.ts')}:`);
     console.log(`     ${prism.gray(`${tableName}: ${toPascalCase(tableName)}Table`)}`);
     console.log(`  2. Import and use the generated repository:`);
-    console.log(
-      `     ${prism.gray(`import { ${toPascalCase(tableName)}Repository } from './repositories/${toKebabCase(tableName)}.repository.js'`)}`
-    );
-    console.log(`     ${prism.gray(`const repo = new ${toPascalCase(tableName)}Repository(db)`)}`);
-    console.log(`  3. Run migrations if needed:`);
-    console.log(`     ${prism.gray('kysera migrate up')}`);
+    console.log(`     ${prism.gray(`import { ${toPascalCase(tableName)}Repository } from './repositories/${toKebabCase(tableName)}.repository.js'`)}`);
     console.log('');
-  } finally {
-    // Close database connection
-    await db.destroy();
-  }
+  });
 }
 
-// Import generator functions (simplified versions)
 function generateModelCode(table: TableInfo, options: any): string {
   const entityName = toPascalCase(table.name);
   const tableInterfaceName = `${entityName}Table`;
@@ -233,43 +156,33 @@ function generateModelCode(table: TableInfo, options: any): string {
   let code = `import type { Generated } from 'kysely'
 
 export interface ${entityName} {
-${table.columns
-  .map(
-    (col) => `  ${toCamelCase(col.name)}: ${DatabaseIntrospector.mapDataTypeToTypeScript(col.dataType, col.isNullable)}`
-  )
-  .join('\n')}
+${table.columns.map((col) => `  ${toCamelCase(col.name)}: ${DatabaseIntrospector.mapDataTypeToTypeScript(col.dataType, col.isNullable)}`).join('\n')}
 }
 
 export interface ${tableInterfaceName} {
-${table.columns
-  .map((col) => {
+${table.columns.map((col) => {
     let type = DatabaseIntrospector.mapDataTypeToTypeScript(col.dataType, col.isNullable);
     if (col.isPrimaryKey && col.defaultValue) {
       type = `Generated<${type}>`;
     }
     return `  ${col.name}: ${type}`;
-  })
-  .join('\n')}
+  }).join('\n')}
 }
 
 export interface New${entityName} {
 ${table.columns
-  .filter((col) => !(col.isPrimaryKey && col.defaultValue))
-  .map((col) => {
-    const optional = col.isNullable || col.defaultValue ? '?' : '';
-    return `  ${toCamelCase(col.name)}${optional}: ${DatabaseIntrospector.mapDataTypeToTypeScript(col.dataType, col.isNullable)}`;
-  })
-  .join('\n')}
+    .filter((col) => !(col.isPrimaryKey && col.defaultValue))
+    .map((col) => {
+      const optional = col.isNullable || col.defaultValue ? '?' : '';
+      return `  ${toCamelCase(col.name)}${optional}: ${DatabaseIntrospector.mapDataTypeToTypeScript(col.dataType, col.isNullable)}`;
+    }).join('\n')}
 }
 
 export interface ${entityName}Update {
 ${table.columns
-  .filter((col) => !col.isPrimaryKey && !['created_at', 'updated_at', 'deleted_at'].includes(col.name))
-  .map(
-    (col) =>
-      `  ${toCamelCase(col.name)}?: ${DatabaseIntrospector.mapDataTypeToTypeScript(col.dataType, col.isNullable)}`
-  )
-  .join('\n')}
+    .filter((col) => !col.isPrimaryKey && !['created_at', 'updated_at', 'deleted_at'].includes(col.name))
+    .map((col) => `  ${toCamelCase(col.name)}?: ${DatabaseIntrospector.mapDataTypeToTypeScript(col.dataType, col.isNullable)}`)
+    .join('\n')}
 }
 `;
 
@@ -288,14 +201,8 @@ function generateRepositoryCode(table: TableInfo, options: any): string {
     `import type { Database } from '../database.js'`,
   ];
 
-  if (options.withPagination) {
-    imports.push(`import { paginate, type PaginationOptions, type PaginatedResult } from '@kysera/core'`);
-  }
-
   if (options.withValidation) {
-    imports.push(
-      `import { New${entityName}Schema, Update${entityName}Schema } from '../schemas/${toKebabCase(table.name)}.schema.js'`
-    );
+    imports.push(`import { New${entityName}Schema, Update${entityName}Schema } from '../schemas/${toKebabCase(table.name)}.schema.js'`);
   }
 
   let code = `${imports.join('\n')}
@@ -365,32 +272,26 @@ function generateSchemaCode(table: TableInfo, options: any): string {
   let code = `import { z } from 'zod'
 
 export const ${entityName}Schema = z.object({
-${table.columns
-  .map((col) => `  ${toCamelCase(col.name)}: ${DatabaseIntrospector.mapDataTypeToZod(col.dataType, col.isNullable)}`)
-  .join(',\n')}
+${table.columns.map((col) => `  ${toCamelCase(col.name)}: ${DatabaseIntrospector.mapDataTypeToZod(col.dataType, col.isNullable)}`).join(',\n')}
 }).strict()
 
 export const New${entityName}Schema = z.object({
 ${table.columns
-  .filter((col) => !(col.isPrimaryKey && col.defaultValue) && !['created_at', 'updated_at'].includes(col.name))
-  .map((col) => {
-    let zodType = DatabaseIntrospector.mapDataTypeToZod(col.dataType, col.isNullable);
-    if (col.isNullable || col.defaultValue) {
-      zodType += '.optional()';
-    }
-    return `  ${toCamelCase(col.name)}: ${zodType}`;
-  })
-  .join(',\n')}
+    .filter((col) => !(col.isPrimaryKey && col.defaultValue) && !['created_at', 'updated_at'].includes(col.name))
+    .map((col) => {
+      let zodType = DatabaseIntrospector.mapDataTypeToZod(col.dataType, col.isNullable);
+      if (col.isNullable || col.defaultValue) {
+        zodType += '.optional()';
+      }
+      return `  ${toCamelCase(col.name)}: ${zodType}`;
+    }).join(',\n')}
 }).strict()
 
 export const Update${entityName}Schema = z.object({
 ${table.columns
-  .filter((col) => !col.isPrimaryKey && !['created_at', 'updated_at', 'deleted_at'].includes(col.name))
-  .map(
-    (col) =>
-      `  ${toCamelCase(col.name)}: ${DatabaseIntrospector.mapDataTypeToZod(col.dataType, col.isNullable)}.optional()`
-  )
-  .join(',\n')}
+    .filter((col) => !col.isPrimaryKey && !['created_at', 'updated_at', 'deleted_at'].includes(col.name))
+    .map((col) => `  ${toCamelCase(col.name)}: ${DatabaseIntrospector.mapDataTypeToZod(col.dataType, col.isNullable)}.optional()`)
+    .join(',\n')}
 }).strict()
 
 export type ${entityName} = z.infer<typeof ${entityName}Schema>
@@ -409,7 +310,6 @@ function getPrimaryKeyType(table: TableInfo): string {
   return DatabaseIntrospector.mapDataTypeToTypeScript(primaryKeyColumn.dataType, false);
 }
 
-// Utility functions
 function toCamelCase(str: string): string {
   return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
 }

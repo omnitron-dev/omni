@@ -1,11 +1,10 @@
 import { Command } from 'commander';
 import { prism, spinner } from '@xec-sh/kit';
 import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join } from 'node:path';
 import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
-import { getDatabaseConnection } from '../../utils/database.js';
-import { loadConfig } from '../../config/loader.js';
+import { withDatabase } from '../../utils/with-database.js';
 import { DatabaseIntrospector, TableInfo } from './introspector.js';
 
 export interface ModelOptions {
@@ -45,47 +44,23 @@ export function modelCommand(): Command {
 }
 
 async function generateModel(tableName: string | undefined, options: ModelOptions): Promise<void> {
-  // Load configuration
-  const config = await loadConfig(options.config);
+  await withDatabase({ config: options.config }, async (db, config) => {
+    const generateSpinner = spinner();
+    generateSpinner.start('Introspecting database...');
 
-  if (!config?.database) {
-    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
-      'Create a kysera.config.ts file with database configuration',
-      'Or specify a config file with --config option',
-    ]);
-  }
-
-  // Get database connection
-  const db = await getDatabaseConnection(config.database);
-
-  if (!db) {
-    throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', [
-      'Check your database configuration',
-      'Ensure the database server is running',
-    ]);
-  }
-
-  const generateSpinner = spinner();
-  generateSpinner.start('Introspecting database...');
-
-  try {
     const introspector = new DatabaseIntrospector(db, config.database.dialect as any);
 
-    // Get table information
     let tables: TableInfo[] = [];
 
     if (tableName) {
-      // Generate for specific table
       const tableInfo = await introspector.getTableInfo(tableName);
       tables = [tableInfo];
     } else {
-      // Generate for all tables
       tables = await introspector.introspect();
     }
 
     generateSpinner.succeed(`Found ${tables.length} table${tables.length !== 1 ? 's' : ''}`);
 
-    // Generate models
     const outputDir = options.output || './src/models';
 
     if (!existsSync(outputDir)) {
@@ -99,21 +74,18 @@ async function generateModel(tableName: string | undefined, options: ModelOption
       const fileName = `${toKebabCase(table.name)}.ts`;
       const filePath = join(outputDir, fileName);
 
-      // Check if file exists
       if (existsSync(filePath) && !options.overwrite) {
         logger.warn(`Skipping ${fileName} (file exists, use --overwrite to replace)`);
         continue;
       }
 
-      // Generate model code
       const modelCode = generateModelCode(table, {
         timestamps: options.timestamps !== false,
         softDelete: options.softDelete === true,
       });
 
-      // Write file
       writeFileSync(filePath, modelCode, 'utf-8');
-      logger.info(`${prism.green('✓')} Generated ${prism.cyan(fileName)}`);
+      logger.info(`${prism.green('OK')} Generated ${prism.cyan(fileName)}`);
       generated++;
     }
 
@@ -121,12 +93,9 @@ async function generateModel(tableName: string | undefined, options: ModelOption
       logger.warn('No models were generated');
     } else {
       logger.info('');
-      logger.info(prism.green(`✅ Generated ${generated} model${generated !== 1 ? 's' : ''} successfully`));
+      logger.info(prism.green(`Generated ${generated} model${generated !== 1 ? 's' : ''} successfully`));
     }
-  } finally {
-    // Close database connection
-    await db.destroy();
-  }
+  });
 }
 
 function generateModelCode(table: TableInfo, options: { timestamps: boolean; softDelete: boolean }): string {
@@ -135,26 +104,22 @@ function generateModelCode(table: TableInfo, options: { timestamps: boolean; sof
 
   let imports = [`import type { Generated } from 'kysely'`];
 
-  // Generate main interface
   let mainInterface = `export interface ${interfaceName} {\n`;
 
   for (const column of table.columns) {
     const fieldName = toCamelCase(column.name);
     const fieldType = DatabaseIntrospector.mapDataTypeToTypeScript(column.dataType, column.isNullable);
-
     mainInterface += `  ${fieldName}: ${fieldType}\n`;
   }
 
   mainInterface += '}\n';
 
-  // Generate table interface for Kysely
   let tableInterface = `export interface ${tableInterfaceName} {\n`;
 
   for (const column of table.columns) {
-    const fieldName = column.name; // Keep original column name for database
+    const fieldName = column.name;
     let fieldType = DatabaseIntrospector.mapDataTypeToTypeScript(column.dataType, column.isNullable);
 
-    // Wrap auto-generated columns with Generated<>
     if (column.isPrimaryKey && column.defaultValue) {
       fieldType = `Generated<${fieldType}>`;
     } else if (column.defaultValue && column.defaultValue.toLowerCase().includes('current_timestamp')) {
@@ -166,23 +131,16 @@ function generateModelCode(table: TableInfo, options: { timestamps: boolean; sof
 
   tableInterface += '}\n';
 
-  // Generate NewModel interface (for inserts)
   let newInterface = `export interface New${interfaceName} {\n`;
 
   for (const column of table.columns) {
     const fieldName = toCamelCase(column.name);
 
-    // Skip auto-generated fields
-    if (column.isPrimaryKey && column.defaultValue) {
-      continue;
-    }
-    if (column.defaultValue && column.defaultValue.toLowerCase().includes('current_timestamp')) {
-      continue;
-    }
+    if (column.isPrimaryKey && column.defaultValue) continue;
+    if (column.defaultValue && column.defaultValue.toLowerCase().includes('current_timestamp')) continue;
 
     let fieldType = DatabaseIntrospector.mapDataTypeToTypeScript(column.dataType, column.isNullable);
 
-    // Make nullable fields optional
     if (column.isNullable || column.defaultValue) {
       newInterface += `  ${fieldName}?: ${fieldType}\n`;
     } else {
@@ -192,21 +150,13 @@ function generateModelCode(table: TableInfo, options: { timestamps: boolean; sof
 
   newInterface += '}\n';
 
-  // Generate UpdateModel interface (for updates)
   let updateInterface = `export interface ${interfaceName}Update {\n`;
 
   for (const column of table.columns) {
     const fieldName = toCamelCase(column.name);
 
-    // Skip primary keys in updates
-    if (column.isPrimaryKey) {
-      continue;
-    }
-
-    // Skip system fields
-    if (['created_at', 'updated_at', 'deleted_at'].includes(column.name)) {
-      continue;
-    }
+    if (column.isPrimaryKey) continue;
+    if (['created_at', 'updated_at', 'deleted_at'].includes(column.name)) continue;
 
     const fieldType = DatabaseIntrospector.mapDataTypeToTypeScript(column.dataType, column.isNullable);
     updateInterface += `  ${fieldName}?: ${fieldType}\n`;
@@ -214,12 +164,9 @@ function generateModelCode(table: TableInfo, options: { timestamps: boolean; sof
 
   updateInterface += '}\n';
 
-  // Generate Database interface addition comment
-  const databaseAddition = `// Add this to your Database interface:
-// ${table.name}: ${tableInterfaceName}`;
+  const databaseAddition = `// Add this to your Database interface:\n// ${table.name}: ${tableInterfaceName}`;
 
-  // Combine all parts
-  const code = `${imports.join('\n')}
+  return `${imports.join('\n')}
 
 ${mainInterface}
 
@@ -231,11 +178,8 @@ ${updateInterface}
 
 ${databaseAddition}
 `;
-
-  return code;
 }
 
-// Utility functions for name conversion
 function toCamelCase(str: string): string {
   return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
 }

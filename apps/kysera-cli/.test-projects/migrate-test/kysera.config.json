@@ -1,9 +1,0 @@
-{
-  "database": {
-    "dialect": "sqlite",
-    "database": "migrate-test",
-    "host": "localhost",
-    "user": "test",
-    "password": "test"
-  }
-}

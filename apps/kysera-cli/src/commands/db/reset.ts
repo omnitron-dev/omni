@@ -1,8 +1,7 @@
 import { Command } from 'commander';
 import { prism, confirm, spinner } from '@xec-sh/kit';
 import { CLIError } from '../../utils/errors.js';
-import { getDatabaseConnection } from '../../utils/database.js';
-import { loadConfig } from '../../config/loader.js';
+import { withDatabase } from '../../utils/with-database.js';
 import { MigrationRunner } from '../migrate/runner.js';
 import { execa } from 'execa';
 import { logger } from '../../utils/logger.js';
@@ -57,29 +56,9 @@ async function resetDatabase(options: ResetOptions): Promise<void> {
     }
   }
 
-  // Load configuration
-  const config = await loadConfig(options.config);
+  await withDatabase({ config: options.config, verbose: options.verbose }, async (db, config) => {
+    const resetSpinner = spinner() as any;
 
-  if (!config?.database) {
-    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
-      'Create a kysera.config.ts file with database configuration',
-      'Or specify a config file with --config option',
-    ]);
-  }
-
-  // Get database connection
-  const db = await getDatabaseConnection(config.database);
-
-  if (!db) {
-    throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', [
-      'Check your database configuration',
-      'Ensure the database server is running',
-    ]);
-  }
-
-  const resetSpinner = spinner() as any;
-
-  try {
     // Step 1: Drop all tables
     resetSpinner.start('Dropping all tables...');
 
@@ -167,8 +146,5 @@ async function resetDatabase(options: ResetOptions): Promise<void> {
       console.log(`  • Ran database seeds`);
     }
     console.log('');
-  } finally {
-    // Close database connection
-    await db.destroy();
-  }
+  });
 }

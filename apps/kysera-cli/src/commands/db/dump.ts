@@ -3,8 +3,9 @@ import { prism, spinner } from '@xec-sh/kit';
 import { CLIError } from '../../utils/errors.js';
 import { withDatabase } from '../../utils/with-database.js';
 import { DatabaseIntrospector } from '../generate/introspector.js';
+import { safePath, isPathSafe } from '../../utils/fs.js';
 import { writeFileSync } from 'fs';
-import { resolve } from 'path';
+import { resolve, dirname } from 'path';
 
 export interface DumpOptions {
   output?: string;
@@ -77,7 +78,31 @@ async function dumpDatabase(options: DumpOptions): Promise<void> {
     // Generate output filename
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
     const outputFile = options.output || `dump_${timestamp}.${options.format === 'json' ? 'json' : 'sql'}`;
-    const outputPath = resolve(outputFile);
+    
+    // Validate output path is safe (within current working directory or absolute path)
+    const baseDir = process.cwd();
+    let outputPath: string;
+    
+    if (resolve(outputFile) === outputFile) {
+      // Absolute path provided - validate it's within a reasonable location
+      outputPath = outputFile;
+      const outputDir = dirname(outputPath);
+      // Ensure the output directory exists and is accessible
+      if (!outputDir.startsWith(baseDir) && !outputDir.startsWith('/tmp')) {
+        // For absolute paths outside cwd, just use them directly but warn
+        console.log(prism.yellow(`Warning: Writing to path outside current directory: ${outputPath}`));
+      }
+    } else {
+      // Relative path - validate no traversal
+      if (!isPathSafe(baseDir, outputFile)) {
+        throw new CLIError(
+          `Invalid output path: ${outputFile}`,
+          'PATH_TRAVERSAL',
+          ['Output path must not contain path traversal sequences', 'Use a path within the current directory']
+        );
+      }
+      outputPath = safePath(baseDir, outputFile);
+    }
 
     let dumpContent: string;
 

@@ -1,9 +1,8 @@
 import { Command } from 'commander';
-import { prism, spinner, table, select, confirm } from '@xec-sh/kit';
+import { prism, spinner, table, confirm } from '@xec-sh/kit';
 import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
-import { getDatabaseConnection } from '../../utils/database.js';
-import { loadConfig } from '../../config/loader.js';
+import { withDatabase } from '../../utils/with-database.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as yaml from 'js-yaml';
@@ -40,10 +39,7 @@ interface Fixture {
 interface LoadResult {
   loaded: string[];
   skipped: string[];
-  failed: Array<{
-    fixture: string;
-    error: string;
-  }>;
+  failed: Array<{ fixture: string; error: string; }>;
   tablesAffected: string[];
   totalRecords: number;
   duration: number;
@@ -82,25 +78,14 @@ export function fixturesCommand(): Command {
 }
 
 async function manageFixtures(options: FixtureOptions): Promise<void> {
-  // Load configuration
-  const config = await loadConfig(options.config);
-
-  if (!config?.database) {
-    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
-      'Create a kysera.config.ts file with database configuration',
-      'Or specify a config file with --config option',
-    ]);
-  }
-
-  // Handle different actions
   if (options.list) {
     await listFixtures(options);
   } else if (options.save) {
-    await saveFixture(config, options);
+    await saveFixture(options);
   } else if (options.validate) {
-    await validateFixtures(config, options);
+    await validateFixtures(options);
   } else {
-    await loadFixtures(config, options);
+    await loadFixtures(options);
   }
 }
 
@@ -111,7 +96,6 @@ async function listFixtures(options: FixtureOptions): Promise<void> {
   try {
     const fixturesDir = path.resolve(options.directory || 'tests/fixtures');
 
-    // Check if directory exists
     try {
       await fs.access(fixturesDir);
     } catch {
@@ -120,7 +104,6 @@ async function listFixtures(options: FixtureOptions): Promise<void> {
       return;
     }
 
-    // Find all fixtures
     const fixtures = await findAllFixtures(fixturesDir, options.tags);
 
     if (fixtures.length === 0) {
@@ -130,7 +113,6 @@ async function listFixtures(options: FixtureOptions): Promise<void> {
 
     listSpinner.succeed(`Found ${fixtures.length} fixture${fixtures.length !== 1 ? 's' : ''}`);
 
-    // Display fixtures
     if (options.json) {
       console.log(JSON.stringify(fixtures, null, 2));
     } else {
@@ -142,28 +124,18 @@ async function listFixtures(options: FixtureOptions): Promise<void> {
   }
 }
 
-async function saveFixture(config: any, options: FixtureOptions): Promise<void> {
-  const saveSpinner = spinner();
-  saveSpinner.start('Connecting to database...');
+async function saveFixture(options: FixtureOptions): Promise<void> {
+  await withDatabase({ config: options.config }, async (db, config) => {
+    const saveSpinner = spinner();
+    saveSpinner.start('Reading database schema...');
 
-  try {
-    const db = await getDatabaseConnection(config.database);
-
-    if (!db) {
-      throw new CLIError('Failed to connect to database', 'DATABASE_ERROR');
-    }
-
-    // Get all tables or specific ones
-    saveSpinner.text = 'Reading database schema...';
-    const tables = await getAllTables(db);
+    const tables = await getAllTables(db, config.database.dialect);
 
     if (tables.length === 0) {
       saveSpinner.warn('No tables found in database');
-      await db.destroy();
       return;
     }
 
-    // Extract data from tables
     saveSpinner.text = 'Extracting data...';
     const data: Record<string, any[]> = {};
     let totalRecords = 0;
@@ -178,11 +150,9 @@ async function saveFixture(config: any, options: FixtureOptions): Promise<void> 
 
     if (totalRecords === 0) {
       saveSpinner.warn('No data found to save');
-      await db.destroy();
       return;
     }
 
-    // Determine format and save
     const format = options.format === 'auto' ? 'json' : options.format || 'json';
     const fixturesDir = path.resolve(options.directory || 'tests/fixtures');
     await fs.mkdir(fixturesDir, { recursive: true });
@@ -194,7 +164,6 @@ async function saveFixture(config: any, options: FixtureOptions): Promise<void> 
 
     saveSpinner.text = `Saving fixture to ${filename}...`;
 
-    // Create fixture metadata
     const metadata = {
       name: fixtureName,
       created: new Date().toISOString(),
@@ -203,7 +172,6 @@ async function saveFixture(config: any, options: FixtureOptions): Promise<void> 
       description: `Snapshot of ${Object.keys(data).length} tables with ${totalRecords} records`,
     };
 
-    // Save based on format
     if (format === 'yaml') {
       const content = yaml.dump({ metadata, data });
       await fs.writeFile(filepath, content, 'utf-8');
@@ -212,14 +180,11 @@ async function saveFixture(config: any, options: FixtureOptions): Promise<void> 
       await fs.writeFile(filepath, content, 'utf-8');
     }
 
-    // Generate checksum
     const content = await fs.readFile(filepath, 'utf-8');
     const checksum = createHash('md5').update(content).digest('hex');
 
-    await db.destroy();
     saveSpinner.succeed(`Fixture saved: ${filename}`);
 
-    // Display summary
     console.log('');
     console.log(prism.cyan('Fixture Details:'));
     console.log(`  File: ${filename}`);
@@ -228,18 +193,15 @@ async function saveFixture(config: any, options: FixtureOptions): Promise<void> 
     console.log(`  Format: ${format}`);
     console.log(`  Checksum: ${checksum}`);
     console.log('');
-    console.log(prism.green('✨ Fixture saved successfully'));
-  } catch (error) {
-    saveSpinner.fail('Failed to save fixture');
-    throw error;
-  }
+    console.log(prism.green('Fixture saved successfully'));
+  });
 }
 
-async function validateFixtures(config: any, options: FixtureOptions): Promise<void> {
-  const validateSpinner = spinner();
-  validateSpinner.start('Validating fixtures...');
+async function validateFixtures(options: FixtureOptions): Promise<void> {
+  await withDatabase({ config: options.config }, async (db, config) => {
+    const validateSpinner = spinner();
+    validateSpinner.start('Validating fixtures...');
 
-  try {
     const fixturesDir = path.resolve(options.directory || 'tests/fixtures');
     const fixtures = await findAllFixtures(fixturesDir, options.tags);
 
@@ -248,148 +210,107 @@ async function validateFixtures(config: any, options: FixtureOptions): Promise<v
       return;
     }
 
-    const db = await getDatabaseConnection(config.database);
-    if (!db) {
-      throw new CLIError('Failed to connect to database', 'DATABASE_ERROR');
-    }
-
-    const existingTables = await getAllTables(db);
-    const results: Array<{
-      fixture: string;
-      valid: boolean;
-      issues: string[];
-    }> = [];
+    const existingTables = await getAllTables(db, config.database.dialect);
+    const results: Array<{ fixture: string; valid: boolean; issues: string[]; }> = [];
 
     for (const fixture of fixtures) {
       validateSpinner.text = `Validating ${fixture.name}...`;
 
       const issues: string[] = [];
 
-      // Check if fixture file exists and is readable
       try {
         await fs.access(fixture.path);
       } catch {
         issues.push('File not accessible');
       }
 
-      // Check if all referenced tables exist
       for (const table of fixture.tables) {
         if (!existingTables.includes(table)) {
           issues.push(`Table '${table}' does not exist in database`);
         }
       }
 
-      // Verify checksum if requested
       if (options.checksum && fixture.checksum) {
         const content = await fs.readFile(fixture.path, 'utf-8');
         const actualChecksum = createHash('md5').update(content).digest('hex');
-
         if (actualChecksum !== fixture.checksum) {
           issues.push('Checksum mismatch - fixture may have been modified');
         }
       }
 
-      results.push({
-        fixture: fixture.name,
-        valid: issues.length === 0,
-        issues,
-      });
+      results.push({ fixture: fixture.name, valid: issues.length === 0, issues });
     }
 
-    await db.destroy();
     validateSpinner.succeed('Validation complete');
 
-    // Display results
     console.log('');
-    console.log(prism.bold('🔍 Fixture Validation Results'));
-    console.log(prism.gray('─'.repeat(50)));
+    console.log(prism.bold('Fixture Validation Results'));
+    console.log(prism.gray('-'.repeat(50)));
 
     const valid = results.filter((r) => r.valid);
     const invalid = results.filter((r) => !r.valid);
 
     if (valid.length > 0) {
       console.log('');
-      console.log(prism.green(`✅ Valid fixtures: ${valid.length}`));
-      if (options.verbose) {
-        for (const result of valid) {
-          console.log(`  • ${result.fixture}`);
-        }
-      }
+      console.log(prism.green(`Valid fixtures: ${valid.length}`));
     }
 
     if (invalid.length > 0) {
       console.log('');
-      console.log(prism.red(`❌ Invalid fixtures: ${invalid.length}`));
+      console.log(prism.red(`Invalid fixtures: ${invalid.length}`));
       for (const result of invalid) {
-        console.log(`  • ${result.fixture}`);
+        console.log(`  - ${result.fixture}`);
         for (const issue of result.issues) {
           console.log(prism.gray(`    - ${issue}`));
         }
       }
     }
-  } catch (error) {
-    validateSpinner.fail('Validation failed');
-    throw error;
-  }
+  });
 }
 
-async function loadFixtures(config: any, options: FixtureOptions): Promise<void> {
+async function loadFixtures(options: FixtureOptions): Promise<void> {
   const startTime = Date.now();
-  const loadSpinner = spinner();
-  loadSpinner.start('Preparing to load fixtures...');
 
-  const result: LoadResult = {
-    loaded: [],
-    skipped: [],
-    failed: [],
-    tablesAffected: [],
-    totalRecords: 0,
-    duration: 0,
-  };
+  await withDatabase({ config: options.config }, async (db, config) => {
+    const loadSpinner = spinner();
+    loadSpinner.start('Preparing to load fixtures...');
 
-  try {
-    const db = await getDatabaseConnection(config.database);
+    const result: LoadResult = {
+      loaded: [],
+      skipped: [],
+      failed: [],
+      tablesAffected: [],
+      totalRecords: 0,
+      duration: 0,
+    };
 
-    if (!db) {
-      throw new CLIError('Failed to connect to database', 'DATABASE_ERROR');
-    }
-
-    // Determine which fixtures to load
     let fixturesToLoad: Fixture[] = [];
 
     if (options.load && options.load.length > 0) {
-      // Load specific fixtures
       for (const fixtureName of options.load) {
         const fixture = await findFixture(fixtureName, options.directory || 'tests/fixtures');
         if (fixture) {
           fixturesToLoad.push(fixture);
         } else {
-          result.failed.push({
-            fixture: fixtureName,
-            error: 'Fixture not found',
-          });
+          result.failed.push({ fixture: fixtureName, error: 'Fixture not found' });
         }
       }
     } else {
-      // Load all fixtures in directory
       const fixturesDir = path.resolve(options.directory || 'tests/fixtures');
       fixturesToLoad = await findAllFixtures(fixturesDir, options.tags);
     }
 
     if (fixturesToLoad.length === 0) {
       loadSpinner.warn('No fixtures to load');
-      await db.destroy();
       return;
     }
 
-    // Sort fixtures by dependencies
     if (options.dependencies !== false) {
       fixturesToLoad = sortByDependencies(fixturesToLoad);
     }
 
     loadSpinner.succeed(`Found ${fixturesToLoad.length} fixture${fixturesToLoad.length !== 1 ? 's' : ''} to load`);
 
-    // Load each fixture
     for (const fixture of fixturesToLoad) {
       const fixtureSpinner = spinner();
       fixtureSpinner.start(`Loading ${fixture.name}...`);
@@ -400,9 +321,9 @@ async function loadFixtures(config: any, options: FixtureOptions): Promise<void>
         result.loaded.push(fixture.name);
         result.totalRecords += loadedData.recordCount;
 
-        for (const table of loadedData.tables) {
-          if (!result.tablesAffected.includes(table)) {
-            result.tablesAffected.push(table);
+        for (const tbl of loadedData.tables) {
+          if (!result.tablesAffected.includes(tbl)) {
+            result.tablesAffected.push(tbl);
           }
         }
 
@@ -416,19 +337,14 @@ async function loadFixtures(config: any, options: FixtureOptions): Promise<void>
       }
     }
 
-    await db.destroy();
     result.duration = Date.now() - startTime;
 
-    // Display results
     if (options.json) {
       console.log(JSON.stringify(result, null, 2));
     } else {
       displayLoadResults(result, options);
     }
-  } catch (error) {
-    loadSpinner.fail('Failed to load fixtures');
-    throw error;
-  }
+  });
 }
 
 async function findAllFixtures(directory: string, tags?: string[]): Promise<Fixture[]> {
@@ -443,7 +359,6 @@ async function findAllFixtures(directory: string, tags?: string[]): Promise<Fixt
 
       if (!stat.isFile()) continue;
 
-      // Determine format
       let format: Fixture['format'] | null = null;
       if (file.endsWith('.json')) format = 'json';
       else if (file.endsWith('.yaml') || file.endsWith('.yml')) format = 'yaml';
@@ -451,10 +366,8 @@ async function findAllFixtures(directory: string, tags?: string[]): Promise<Fixt
       else if (file.endsWith('.js') || file.endsWith('.ts')) format = 'js';
       else continue;
 
-      // Parse fixture
       const fixture = await parseFixture(filepath, format);
 
-      // Filter by tags if specified
       if (tags && tags.length > 0) {
         const hasTag = tags.some((tag) => fixture.tags.includes(tag));
         if (!hasTag) continue;
@@ -471,8 +384,6 @@ async function findAllFixtures(directory: string, tags?: string[]): Promise<Fixt
 
 async function findFixture(name: string, directory: string): Promise<Fixture | null> {
   const fixturesDir = path.resolve(directory);
-
-  // Try different extensions
   const extensions = ['.json', '.yaml', '.yml', '.sql', '.js', '.ts'];
 
   for (const ext of extensions) {
@@ -488,9 +399,7 @@ async function findFixture(name: string, directory: string): Promise<Fixture | n
       else format = 'js';
 
       return await parseFixture(filepath, format);
-    } catch {
-      // Continue trying other extensions
-    }
+    } catch { }
   }
 
   return null;
@@ -511,7 +420,6 @@ async function parseFixture(filepath: string, format: Fixture['format']): Promis
     tags: [],
   };
 
-  // Parse based on format
   if (format === 'json') {
     const content = await fs.readFile(filepath, 'utf-8');
     const data = JSON.parse(content);
@@ -543,7 +451,6 @@ async function parseFixture(filepath: string, format: Fixture['format']): Promis
     }
   }
 
-  // Calculate checksum
   const content = await fs.readFile(filepath, 'utf-8');
   fixture.checksum = createHash('md5').update(content).digest('hex');
 
@@ -558,7 +465,6 @@ function sortByDependencies(fixtures: Fixture[]): Fixture[] {
     if (visited.has(fixture.name)) return;
     visited.add(fixture.name);
 
-    // Visit dependencies first
     for (const dep of fixture.dependencies) {
       const dependency = fixtures.find((f) => f.name === dep);
       if (dependency && !visited.has(dependency.name)) {
@@ -581,30 +487,26 @@ async function loadFixtureFile(
   fixture: Fixture,
   options: FixtureOptions
 ): Promise<{ recordCount: number; tables: string[] }> {
-  const result = {
-    recordCount: 0,
-    tables: [] as string[],
-  };
+  const result = { recordCount: 0, tables: [] as string[] };
 
   if (fixture.format === 'json') {
     const content = await fs.readFile(fixture.path, 'utf-8');
     const parsed = JSON.parse(content);
     const data = parsed.data || parsed;
 
-    for (const [table, records] of Object.entries(data)) {
+    for (const [tbl, records] of Object.entries(data)) {
       if (Array.isArray(records)) {
-        // Insert records in batches
         const batchSize = 100;
         for (let i = 0; i < records.length; i += batchSize) {
           const batch = records.slice(i, i + batchSize);
-          await db.insertInto(table).values(batch).execute();
+          await db.insertInto(tbl).values(batch).execute();
         }
 
         result.recordCount += records.length;
-        result.tables.push(table);
+        result.tables.push(tbl);
 
         if (options.verbose) {
-          console.log(prism.gray(`    Loaded ${records.length} records into ${table}`));
+          console.log(prism.gray(`    Loaded ${records.length} records into ${tbl}`));
         }
       }
     }
@@ -613,28 +515,27 @@ async function loadFixtureFile(
     const parsed = yaml.load(content) as any;
     const data = parsed.data || parsed;
 
-    for (const [table, records] of Object.entries(data)) {
+    for (const [tbl, records] of Object.entries(data)) {
       if (Array.isArray(records)) {
         const batchSize = 100;
         for (let i = 0; i < records.length; i += batchSize) {
           const batch = records.slice(i, i + batchSize);
-          await db.insertInto(table).values(batch).execute();
+          await db.insertInto(tbl).values(batch).execute();
         }
 
         result.recordCount += records.length;
-        result.tables.push(table);
+        result.tables.push(tbl);
       }
     }
   } else if (fixture.format === 'sql') {
     const content = await fs.readFile(fixture.path, 'utf-8');
     await db.raw(content);
 
-    // Parse SQL to estimate affected tables and records
-    const tableMatches = content.match(/INSERT INTO\s+`?(\w+)`?/gi) || [];
+    const tableMatches = content.match(/INSERT INTO\s+\`?(\w+)\`?/gi) || [];
     for (const match of tableMatches) {
-      const table = match.replace(/INSERT INTO\s+`?/i, '').replace('`', '');
-      if (!result.tables.includes(table)) {
-        result.tables.push(table);
+      const tbl = match.replace(/INSERT INTO\s+\`?/i, '').replace('\`', '');
+      if (!result.tables.includes(tbl)) {
+        result.tables.push(tbl);
       }
     }
 
@@ -653,11 +554,11 @@ async function loadFixtureFile(
   return result;
 }
 
-async function getAllTables(db: any): Promise<string[]> {
+async function getAllTables(db: any, dialect: string): Promise<string[]> {
   const tables: string[] = [];
 
   try {
-    if (db.dialectName === 'postgres') {
+    if (dialect === 'postgres') {
       const result = await db
         .selectFrom('information_schema.tables')
         .select('table_name')
@@ -666,23 +567,8 @@ async function getAllTables(db: any): Promise<string[]> {
         .execute();
 
       tables.push(...result.map((r: any) => r.table_name));
-    } else if (db.dialectName === 'mysql') {
-      const result = await db.raw(`
-        SELECT table_name
-        FROM information_schema.tables
-        WHERE table_schema = DATABASE()
-        AND table_type = 'BASE TABLE'
-      `);
-
-      tables.push(...result[0].map((r: any) => r.TABLE_NAME || r.table_name));
-    } else if (db.dialectName === 'sqlite') {
-      const result = await db.raw(`
-        SELECT name
-        FROM sqlite_master
-        WHERE type = 'table'
-        AND name NOT LIKE 'sqlite_%'
-      `);
-
+    } else if (dialect === 'sqlite') {
+      const result = await db.raw(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`);
       tables.push(...result.map((r: any) => r.name));
     }
   } catch (error) {
@@ -694,8 +580,8 @@ async function getAllTables(db: any): Promise<string[]> {
 
 function displayFixtureList(fixtures: Fixture[], options: FixtureOptions): void {
   console.log('');
-  console.log(prism.bold('📦 Available Fixtures'));
-  console.log(prism.gray('─'.repeat(50)));
+  console.log(prism.bold('Available Fixtures'));
+  console.log(prism.gray('-'.repeat(50)));
 
   const tableData = fixtures.map((f) => ({
     Name: f.name,
@@ -709,23 +595,6 @@ function displayFixtureList(fixtures: Fixture[], options: FixtureOptions): void 
   console.log('');
   console.log(table(tableData));
 
-  if (options.verbose) {
-    console.log('');
-    console.log(prism.cyan('Details:'));
-    for (const fixture of fixtures) {
-      console.log(`  ${fixture.name}:`);
-      if (fixture.description) {
-        console.log(`    ${fixture.description}`);
-      }
-      if (fixture.dependencies.length > 0) {
-        console.log(`    Dependencies: ${fixture.dependencies.join(', ')}`);
-      }
-      if (fixture.checksum) {
-        console.log(`    Checksum: ${fixture.checksum}`);
-      }
-    }
-  }
-
   console.log('');
   console.log(prism.cyan('Usage:'));
   console.log('  kysera test fixtures --load <name>    Load specific fixture');
@@ -735,8 +604,8 @@ function displayFixtureList(fixtures: Fixture[], options: FixtureOptions): void 
 
 function displayLoadResults(result: LoadResult, options: FixtureOptions): void {
   console.log('');
-  console.log(prism.bold('✨ Fixtures Loaded'));
-  console.log(prism.gray('─'.repeat(50)));
+  console.log(prism.bold('Fixtures Loaded'));
+  console.log(prism.gray('-'.repeat(50)));
 
   console.log('');
   console.log(prism.cyan('Summary:'));
@@ -747,33 +616,17 @@ function displayLoadResults(result: LoadResult, options: FixtureOptions): void {
 
   if (result.loaded.length > 0) {
     console.log('');
-    console.log(prism.green('✅ Loaded:'));
+    console.log(prism.green('Loaded:'));
     for (const name of result.loaded) {
-      console.log(`  • ${name}`);
-    }
-  }
-
-  if (result.skipped.length > 0) {
-    console.log('');
-    console.log(prism.yellow('⏭️  Skipped:'));
-    for (const name of result.skipped) {
-      console.log(`  • ${name}`);
+      console.log(`  - ${name}`);
     }
   }
 
   if (result.failed.length > 0) {
     console.log('');
-    console.log(prism.red('❌ Failed:'));
+    console.log(prism.red('Failed:'));
     for (const failure of result.failed) {
-      console.log(`  • ${failure.fixture}: ${failure.error}`);
-    }
-  }
-
-  if (options.verbose && result.tablesAffected.length > 0) {
-    console.log('');
-    console.log(prism.cyan('Tables affected:'));
-    for (const table of result.tablesAffected) {
-      console.log(`  • ${table}`);
+      console.log(`  - ${failure.fixture}: ${failure.error}`);
     }
   }
 }

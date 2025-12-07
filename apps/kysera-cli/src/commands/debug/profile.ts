@@ -1,9 +1,14 @@
 import { Command } from 'commander';
-import { prism, spinner, table, confirm } from '@xec-sh/kit';
+import { prism, spinner, table } from '@xec-sh/kit';
 import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
-import { getDatabaseConnection } from '../../utils/database.js';
-import { loadConfig } from '../../config/loader.js';
+import { withDatabase } from '../../utils/with-database.js';
+import type {
+  QueryPlan,
+  PostgresExplainTextRow,
+  MySQLPlan,
+  SQLitePlan,
+} from '../../types/index.js';
 
 export interface ProfileOptions {
   query?: string;
@@ -29,7 +34,7 @@ interface ProfileResult {
   p95Duration: number;
   p99Duration: number;
   stdDeviation: number;
-  queryPlan?: any;
+  queryPlan?: QueryPlan[] | PostgresExplainTextRow[] | MySQLPlan[] | SQLitePlan[] | null;
   rowCount?: number;
 }
 
@@ -63,28 +68,7 @@ export function profileCommand(): Command {
 }
 
 async function profileQuery(options: ProfileOptions): Promise<void> {
-  // Load configuration
-  const config = await loadConfig(options.config);
-
-  if (!config?.database) {
-    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
-      'Create a kysera.config.ts file with database configuration',
-      'Or specify a config file with --config option',
-    ]);
-  }
-
-  // Get database connection
-  const db = await getDatabaseConnection(config.database);
-
-  if (!db) {
-    throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', [
-      'Check your database configuration',
-      'Ensure the database server is running',
-    ]);
-  }
-
-  try {
-    // Determine query to profile
+  await withDatabase({ config: options.config }, async (db, config) => {
     let queryToProfile: string;
 
     if (options.query) {
@@ -98,7 +82,6 @@ async function profileQuery(options: ProfileOptions): Promise<void> {
       ]);
     }
 
-    // Profile the query
     const profileSpinner = spinner();
     profileSpinner.start('Profiling query...');
 
@@ -106,7 +89,6 @@ async function profileQuery(options: ProfileOptions): Promise<void> {
 
     profileSpinner.succeed('Profiling complete');
 
-    // Compare with another query if specified
     let compareResult: ProfileResult | undefined;
     if (options.compare) {
       const compareSpinner = spinner();
@@ -117,25 +99,12 @@ async function profileQuery(options: ProfileOptions): Promise<void> {
       compareSpinner.succeed('Comparison profiling complete');
     }
 
-    // Display results
     if (options.json) {
-      console.log(
-        JSON.stringify(
-          {
-            main: result,
-            comparison: compareResult,
-          },
-          null,
-          2
-        )
-      );
+      console.log(JSON.stringify({ main: result, comparison: compareResult }, null, 2));
     } else {
       displayProfileResults(result, compareResult, config.database.dialect);
     }
-  } finally {
-    // Close database connection
-    await db.destroy();
-  }
+  });
 }
 
 async function runProfile(db: any, query: string, options: ProfileOptions, dialect: string): Promise<ProfileResult> {
@@ -151,7 +120,6 @@ async function runProfile(db: any, query: string, options: ProfileOptions, diale
 
   const timings: number[] = [];
 
-  // Warmup runs
   for (let i = 0; i < warmupRuns; i++) {
     try {
       await db.executeQuery(db.raw(query));
@@ -160,7 +128,6 @@ async function runProfile(db: any, query: string, options: ProfileOptions, diale
     }
   }
 
-  // Actual profiling runs
   let rowCount: number | undefined;
 
   for (let i = 0; i < iterations; i++) {
@@ -170,7 +137,7 @@ async function runProfile(db: any, query: string, options: ProfileOptions, diale
       const result = await db.executeQuery(db.raw(query));
 
       const endTime = process.hrtime.bigint();
-      const duration = Number(endTime - startTime) / 1000000; // Convert to milliseconds
+      const duration = Number(endTime - startTime) / 1000000;
 
       timings.push(duration);
 
@@ -185,14 +152,11 @@ async function runProfile(db: any, query: string, options: ProfileOptions, diale
     }
   }
 
-  // Get query execution plan if requested
-  let queryPlan: any;
-
+  let queryPlan: QueryPlan[] | PostgresExplainTextRow[] | MySQLPlan[] | SQLitePlan[] | null = null;
   if (options.showPlan) {
     queryPlan = await getQueryPlan(db, query, dialect);
   }
 
-  // Calculate statistics
   timings.sort((a, b) => a - b);
 
   const avgDuration = timings.reduce((a, b) => a + b, 0) / timings.length;
@@ -202,7 +166,6 @@ async function runProfile(db: any, query: string, options: ProfileOptions, diale
   const p95Duration = timings[Math.floor(timings.length * 0.95)];
   const p99Duration = timings[Math.floor(timings.length * 0.99)];
 
-  // Calculate standard deviation
   const variance =
     timings.reduce((sum, time) => {
       const diff = time - avgDuration;
@@ -227,7 +190,7 @@ async function runProfile(db: any, query: string, options: ProfileOptions, diale
   };
 }
 
-async function getQueryPlan(db: any, query: string, dialect: string): Promise<any> {
+async function getQueryPlan(db: any, query: string, dialect: string): Promise<QueryPlan[] | PostgresExplainTextRow[] | MySQLPlan[] | SQLitePlan[] | null> {
   try {
     if (dialect === 'postgres') {
       const result = await db.executeQuery(db.raw(`EXPLAIN ANALYZE ${query}`));
@@ -262,13 +225,12 @@ function generateQueryForTable(tableName: string, operation: string): string {
 
 function displayProfileResults(result: ProfileResult, compareResult: ProfileResult | undefined, dialect: string): void {
   console.log('');
-  console.log(prism.bold('📊 Query Profile Results'));
-  console.log(prism.gray('─'.repeat(60)));
+  console.log(prism.bold('Query Profile Results'));
+  console.log(prism.gray('-'.repeat(60)));
 
-  // Display main query
   console.log('');
   console.log(prism.cyan('Query:'));
-  console.log(`  ${highlightSql(result.query)}`);
+  console.log(`  ${result.query}`);
 
   if (result.rowCount !== undefined) {
     console.log(prism.gray(`  Returned ${result.rowCount} rows`));
@@ -278,65 +240,21 @@ function displayProfileResults(result: ProfileResult, compareResult: ProfileResu
   console.log(prism.cyan('Performance Metrics:'));
 
   const metricsData = [
-    {
-      Metric: 'Average',
-      Value: `${result.avgDuration.toFixed(2)}ms`,
-      Comparison: compareResult ? `${compareResult.avgDuration.toFixed(2)}ms` : '',
-    },
-    {
-      Metric: 'Minimum',
-      Value: `${result.minDuration.toFixed(2)}ms`,
-      Comparison: compareResult ? `${compareResult.minDuration.toFixed(2)}ms` : '',
-    },
-    {
-      Metric: 'Maximum',
-      Value: `${result.maxDuration.toFixed(2)}ms`,
-      Comparison: compareResult ? `${compareResult.maxDuration.toFixed(2)}ms` : '',
-    },
-    {
-      Metric: 'P50 (Median)',
-      Value: `${result.p50Duration.toFixed(2)}ms`,
-      Comparison: compareResult ? `${compareResult.p50Duration.toFixed(2)}ms` : '',
-    },
-    {
-      Metric: 'P95',
-      Value: `${result.p95Duration.toFixed(2)}ms`,
-      Comparison: compareResult ? `${compareResult.p95Duration.toFixed(2)}ms` : '',
-    },
-    {
-      Metric: 'P99',
-      Value: `${result.p99Duration.toFixed(2)}ms`,
-      Comparison: compareResult ? `${compareResult.p99Duration.toFixed(2)}ms` : '',
-    },
-    {
-      Metric: 'Std Deviation',
-      Value: `${result.stdDeviation.toFixed(2)}ms`,
-      Comparison: compareResult ? `${compareResult.stdDeviation.toFixed(2)}ms` : '',
-    },
+    { Metric: 'Average', Value: `${result.avgDuration.toFixed(2)}ms`, Comparison: compareResult ? `${compareResult.avgDuration.toFixed(2)}ms` : '' },
+    { Metric: 'Minimum', Value: `${result.minDuration.toFixed(2)}ms`, Comparison: compareResult ? `${compareResult.minDuration.toFixed(2)}ms` : '' },
+    { Metric: 'Maximum', Value: `${result.maxDuration.toFixed(2)}ms`, Comparison: compareResult ? `${compareResult.maxDuration.toFixed(2)}ms` : '' },
+    { Metric: 'P50 (Median)', Value: `${result.p50Duration.toFixed(2)}ms`, Comparison: compareResult ? `${compareResult.p50Duration.toFixed(2)}ms` : '' },
+    { Metric: 'P95', Value: `${result.p95Duration.toFixed(2)}ms`, Comparison: compareResult ? `${compareResult.p95Duration.toFixed(2)}ms` : '' },
+    { Metric: 'P99', Value: `${result.p99Duration.toFixed(2)}ms`, Comparison: compareResult ? `${compareResult.p99Duration.toFixed(2)}ms` : '' },
+    { Metric: 'Std Deviation', Value: `${result.stdDeviation.toFixed(2)}ms`, Comparison: compareResult ? `${compareResult.stdDeviation.toFixed(2)}ms` : '' },
   ];
-
-  if (compareResult) {
-    // Add difference column
-    metricsData.forEach((row) => {
-      if (row.Comparison) {
-        const mainValue = parseFloat(row.Value);
-        const compareValue = parseFloat(row.Comparison);
-        const diff = (((mainValue - compareValue) / compareValue) * 100).toFixed(1);
-        const sign = mainValue > compareValue ? '+' : '';
-        const color = mainValue > compareValue ? prism.red : prism.green;
-        row.Comparison += ` (${color(sign + diff + '%')})`;
-      }
-    });
-  }
 
   console.log(table(metricsData));
 
-  // Display distribution
   console.log('');
   console.log(prism.cyan('Response Time Distribution:'));
   displayHistogram(result.timings);
 
-  // Display query plan if available
   if (result.queryPlan && result.queryPlan.length > 0) {
     console.log('');
     console.log(prism.cyan('Execution Plan:'));
@@ -350,72 +268,47 @@ function displayProfileResults(result: ProfileResult, compareResult: ProfileResu
     }
   }
 
-  // Display comparison query if provided
   if (compareResult) {
     console.log('');
-    console.log(prism.gray('─'.repeat(60)));
+    console.log(prism.gray('-'.repeat(60)));
     console.log(prism.cyan('Comparison Query:'));
-    console.log(`  ${highlightSql(compareResult.query)}`);
+    console.log(`  ${compareResult.query}`);
 
-    if (compareResult.rowCount !== undefined) {
-      console.log(prism.gray(`  Returned ${compareResult.rowCount} rows`));
-    }
-
-    // Performance comparison
     console.log('');
     console.log(prism.cyan('Performance Comparison:'));
 
-    const improvement = (((compareResult.avgDuration - result.avgDuration) / compareResult.avgDuration) * 100).toFixed(
-      1
-    );
+    const improvement = (((compareResult.avgDuration - result.avgDuration) / compareResult.avgDuration) * 100).toFixed(1);
 
     if (result.avgDuration < compareResult.avgDuration) {
-      console.log(prism.green(`  ✓ Main query is ${improvement}% faster`));
+      console.log(prism.green(`  Main query is ${improvement}% faster`));
     } else {
-      console.log(prism.red(`  ✗ Main query is ${Math.abs(parseFloat(improvement))}% slower`));
-    }
-
-    // Consistency comparison
-    if (result.stdDeviation < compareResult.stdDeviation) {
-      console.log(prism.green(`  ✓ Main query has more consistent performance`));
-    } else {
-      console.log(prism.yellow(`  ⚠ Comparison query has more consistent performance`));
+      console.log(prism.red(`  Main query is ${Math.abs(parseFloat(improvement))}% slower`));
     }
   }
 
-  // Summary and recommendations
   console.log('');
-  console.log(prism.gray('─'.repeat(60)));
+  console.log(prism.gray('-'.repeat(60)));
   console.log(prism.gray('Analysis:'));
 
-  // Performance assessment
   if (result.avgDuration < 10) {
-    console.log(prism.green('  ✓ Excellent performance (< 10ms average)'));
+    console.log(prism.green('  Excellent performance (< 10ms average)'));
   } else if (result.avgDuration < 100) {
-    console.log(prism.green('  ✓ Good performance (< 100ms average)'));
+    console.log(prism.green('  Good performance (< 100ms average)'));
   } else if (result.avgDuration < 1000) {
-    console.log(prism.yellow('  ⚠ Moderate performance (< 1s average)'));
+    console.log(prism.yellow('  Moderate performance (< 1s average)'));
   } else {
-    console.log(prism.red('  ✗ Poor performance (> 1s average)'));
+    console.log(prism.red('  Poor performance (> 1s average)'));
   }
 
-  // Consistency assessment
   const variability = (result.stdDeviation / result.avgDuration) * 100;
   if (variability < 10) {
-    console.log(prism.green('  ✓ Very consistent performance'));
+    console.log(prism.green('  Very consistent performance'));
   } else if (variability < 25) {
-    console.log(prism.green('  ✓ Consistent performance'));
+    console.log(prism.green('  Consistent performance'));
   } else if (variability < 50) {
-    console.log(prism.yellow('  ⚠ Variable performance'));
+    console.log(prism.yellow('  Variable performance'));
   } else {
-    console.log(prism.red('  ✗ Highly variable performance'));
-  }
-
-  // Outlier detection
-  const outlierThreshold = result.avgDuration * 2;
-  const outliers = result.timings.filter((t) => t > outlierThreshold).length;
-  if (outliers > 0) {
-    console.log(prism.yellow(`  ⚠ ${outliers} outlier(s) detected (>${outlierThreshold.toFixed(0)}ms)`));
+    console.log(prism.red('  Highly variable performance'));
   }
 
   console.log('');
@@ -442,57 +335,11 @@ function displayHistogram(timings: number[]): void {
     const rangeEnd = rangeStart + bucketSize;
     const count = histogram[i];
     const barLength = Math.round((count / maxCount) * 30);
-    const bar = '█'.repeat(barLength) + '░'.repeat(30 - barLength);
+    const bar = '='.repeat(barLength) + '-'.repeat(30 - barLength);
     const percentage = ((count / timings.length) * 100).toFixed(1);
 
     console.log(
       `  ${rangeStart.toFixed(1).padStart(6)}-${rangeEnd.toFixed(1).padEnd(6)}ms: ${bar} ${count.toString().padStart(3)} (${percentage}%)`
     );
   }
-}
-
-function highlightSql(sql: string): string {
-  const keywords = [
-    'SELECT',
-    'FROM',
-    'WHERE',
-    'JOIN',
-    'LEFT',
-    'RIGHT',
-    'INNER',
-    'OUTER',
-    'INSERT',
-    'INTO',
-    'VALUES',
-    'UPDATE',
-    'SET',
-    'DELETE',
-    'CREATE',
-    'DROP',
-    'ALTER',
-    'TABLE',
-    'INDEX',
-    'GROUP BY',
-    'ORDER BY',
-    'HAVING',
-    'LIMIT',
-    'OFFSET',
-    'AND',
-    'OR',
-    'NOT',
-    'IN',
-    'EXISTS',
-    'BETWEEN',
-    'LIKE',
-    'AS',
-  ];
-
-  let highlighted = sql;
-
-  keywords.forEach((keyword) => {
-    const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
-    highlighted = highlighted.replace(regex, prism.cyan(keyword));
-  });
-
-  return highlighted;
 }

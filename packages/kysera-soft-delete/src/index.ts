@@ -1,7 +1,8 @@
 import type { Plugin, AnyQueryBuilder, Repository } from '@kysera/repository';
 import type { SelectQueryBuilder, Kysely } from 'kysely';
 import { sql } from 'kysely';
-import { NotFoundError } from '@kysera/core';
+import { NotFoundError, silentLogger } from '@kysera/core';
+import type { KyseraLogger } from '@kysera/core';
 import { z } from 'zod';
 
 /**
@@ -49,6 +50,14 @@ export interface SoftDeleteOptions {
    * @example 'uuid', 'user_id', 'post_id'
    */
   primaryKeyColumn?: string;
+
+  /**
+   * Logger for plugin operations.
+   * Uses KyseraLogger interface from @kysera/core.
+   *
+   * @default silentLogger (no output)
+   */
+  logger?: KyseraLogger;
 }
 
 /**
@@ -142,7 +151,13 @@ interface BaseRepository {
  * @returns Plugin instance that can be used with createORM
  */
 export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
-  const { deletedAtColumn = 'deleted_at', includeDeleted = false, tables, primaryKeyColumn = 'id' } = options;
+  const {
+    deletedAtColumn = 'deleted_at',
+    includeDeleted = false,
+    tables,
+    primaryKeyColumn = 'id',
+    logger = silentLogger,
+  } = options;
 
   return {
     name: '@kysera/soft-delete',
@@ -173,6 +188,7 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
         !context.metadata['includeDeleted'] &&
         !includeDeleted
       ) {
+        logger.debug(`Filtering soft-deleted records from ${context.table}`);
         // Add WHERE deleted_at IS NULL to the query builder
         type GenericSelectQueryBuilder = SelectQueryBuilder<Record<string, unknown>, string, Record<string, unknown>>;
         return (qb as unknown as GenericSelectQueryBuilder).where(
@@ -220,8 +236,11 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
 
       // If table doesn't support soft delete, return unmodified repo
       if (!supportsSoftDelete) {
+        logger.debug(`Table ${baseRepo.tableName} does not support soft delete, skipping extension`);
         return repo;
       }
+
+      logger.debug(`Extending repository for table ${baseRepo.tableName} with soft delete methods`);
 
       // Wrap original methods to apply soft delete filtering
       const originalFindAll = baseRepo.findAll.bind(baseRepo);
@@ -267,6 +286,7 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
         },
 
         async softDelete(id: number): Promise<unknown> {
+          logger.info(`Soft deleting record ${id} from ${baseRepo.tableName}`);
           // Use CURRENT_TIMESTAMP directly in SQL to avoid datetime format issues
           // This works across all databases (MySQL, PostgreSQL, SQLite)
           // We bypass repository.update() to avoid Zod validation issues with RawBuilder
@@ -291,6 +311,7 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
 
           // If record not found or deleted_at not set, throw error
           if (!record) {
+            logger.warn(`Record ${id} not found in ${baseRepo.tableName} for soft delete`);
             throw new NotFoundError('Record', { id });
           }
 
@@ -298,6 +319,7 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
         },
 
         async restore(id: number): Promise<unknown> {
+          logger.info(`Restoring soft-deleted record ${id} from ${baseRepo.tableName}`);
           // Use direct executor to support custom primary key columns
           await baseRepo.executor
             .updateTable(baseRepo.tableName)
@@ -318,6 +340,7 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
           }
 
           if (!record) {
+            logger.warn(`Record ${id} not found in ${baseRepo.tableName} for restore`);
             throw new NotFoundError('Record', { id });
           }
 
@@ -325,6 +348,7 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
         },
 
         async hardDelete(id: number): Promise<void> {
+          logger.info(`Hard deleting record ${id} from ${baseRepo.tableName}`);
           // Direct hard delete - bypass soft delete
           await baseRepo.executor
             .deleteFrom(baseRepo.tableName)
@@ -365,6 +389,8 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
             return [];
           }
 
+          logger.info(`Soft deleting ${ids.length} records from ${baseRepo.tableName}`);
+
           // Efficient bulk UPDATE query
           await baseRepo.executor
             .updateTable(baseRepo.tableName)
@@ -383,6 +409,7 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
           if (records.length !== ids.length) {
             const foundIds = records.map((r: any) => r[primaryKeyColumn]);
             const missingIds = ids.filter((id) => !foundIds.includes(id));
+            logger.warn(`Some records not found for soft delete: ${missingIds.join(', ')}`);
             throw new NotFoundError('Records', { ids: missingIds });
           }
 
@@ -394,6 +421,8 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
           if (ids.length === 0) {
             return [];
           }
+
+          logger.info(`Restoring ${ids.length} soft-deleted records from ${baseRepo.tableName}`);
 
           // Efficient bulk UPDATE query to restore records
           await baseRepo.executor
@@ -417,6 +446,8 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
           if (ids.length === 0) {
             return;
           }
+
+          logger.info(`Hard deleting ${ids.length} records from ${baseRepo.tableName}`);
 
           // Efficient bulk DELETE query
           await baseRepo.executor

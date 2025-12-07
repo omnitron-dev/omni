@@ -1,16 +1,11 @@
 import { Command } from 'commander';
-import { prism, spinner, confirm, select } from '@xec-sh/kit';
+import { prism, spinner, confirm } from '@xec-sh/kit';
 import { sql } from 'kysely';
 import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
 import { getDatabaseConnection } from '../../utils/database.js';
 import { loadConfig } from '../../config/loader.js';
-import {
-  validateIdentifier,
-  escapeIdentifier,
-  safeTruncate,
-  safeDropDatabase,
-} from '../../utils/sql-sanitizer.js';
+import { validateIdentifier, safeTruncate, safeDropDatabase } from '../../utils/sql-sanitizer.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
@@ -29,15 +24,8 @@ export interface TestTeardownOptions {
 
 interface TeardownResult {
   environment: string;
-  databases: Array<{
-    name: string;
-    status: 'dropped' | 'preserved' | 'failed';
-    reason?: string;
-  }>;
-  artifacts: {
-    cleaned: string[];
-    preserved: string[];
-  };
+  databases: Array<{ name: string; status: 'dropped' | 'preserved' | 'failed'; reason?: string; }>;
+  artifacts: { cleaned: string[]; preserved: string[]; };
   duration: number;
 }
 
@@ -73,7 +61,6 @@ export function testTeardownCommand(): Command {
 
 async function teardownTestEnvironment(options: TestTeardownOptions): Promise<void> {
   const startTime = Date.now();
-
   const config = await loadConfig(options.config);
 
   if (!config?.database) {
@@ -89,10 +76,7 @@ async function teardownTestEnvironment(options: TestTeardownOptions): Promise<vo
   const result: TeardownResult = {
     environment: options.environment || 'test',
     databases: [],
-    artifacts: {
-      cleaned: [],
-      preserved: [],
-    },
+    artifacts: { cleaned: [], preserved: [] },
     duration: 0,
   };
 
@@ -132,18 +116,11 @@ async function teardownTestEnvironment(options: TestTeardownOptions): Promise<vo
       try {
         if (options.keepData) {
           await truncateDatabase(config.database, dbName, options.preserveLogs || false);
-          result.databases.push({
-            name: dbName,
-            status: 'preserved',
-            reason: 'Data truncated, structure preserved',
-          });
+          result.databases.push({ name: dbName, status: 'preserved', reason: 'Data truncated, structure preserved' });
           cleanupSpinner.stop(`Truncated ${dbName}`);
         } else {
           await dropTestDatabase(config.database, dbName);
-          result.databases.push({
-            name: dbName,
-            status: 'dropped',
-          });
+          result.databases.push({ name: dbName, status: 'dropped' });
           cleanupSpinner.stop(`Dropped ${dbName}`);
         }
       } catch (error) {
@@ -163,9 +140,7 @@ async function teardownTestEnvironment(options: TestTeardownOptions): Promise<vo
       const artifacts = await cleanTestArtifacts(options.preserveLogs || false);
       result.artifacts = artifacts;
 
-      artifactSpinner.stop(
-        `Cleaned ${artifacts.cleaned.length} artifact${artifacts.cleaned.length !== 1 ? 's' : ''}`
-      );
+      artifactSpinner.stop(`Cleaned ${artifacts.cleaned.length} artifact${artifacts.cleaned.length !== 1 ? 's' : ''}`);
     }
 
     result.duration = Date.now() - startTime;
@@ -216,15 +191,6 @@ async function findTestDatabases(config: any, options: TestTeardownOptions): Pro
       databases.push(...result.map((r: any) => r.datname));
       await db.destroy();
     }
-  } else if (dialect === 'mysql') {
-    const adminConfig = { ...config, database: undefined };
-    const db = await getDatabaseConnection(adminConfig);
-    if (db) {
-      const result = await sql.raw('SHOW DATABASES').execute(db);
-      const dbNames = (result as any).rows.map((r: any) => r.Database || r.database);
-      databases.push(...dbNames.filter((name: string) => name.includes(pattern)));
-      await db.destroy();
-    }
   } else if (dialect === 'sqlite') {
     const testDir = process.cwd();
     const files = await fs.readdir(testDir);
@@ -260,18 +226,8 @@ async function truncateDatabase(config: any, dbName: string, preserveLogs: boole
         .execute();
       tables = result.map((r: any) => r.table_name);
       await sql.raw('SET session_replication_role = replica').execute(db);
-    } else if (dialect === 'mysql') {
-      const result = await sql.raw(`
-        SELECT table_name FROM information_schema.tables
-        WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'
-      `).execute(db);
-      tables = (result as any).rows.map((r: any) => r.TABLE_NAME || r.table_name);
-      await sql.raw('SET FOREIGN_KEY_CHECKS = 0').execute(db);
     } else if (dialect === 'sqlite') {
-      const result = await sql.raw(`
-        SELECT name FROM sqlite_master
-        WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
-      `).execute(db);
+      const result = await sql.raw(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`).execute(db);
       tables = (result as any).rows.map((r: any) => r.name);
       await sql.raw('PRAGMA foreign_keys = OFF').execute(db);
     }
@@ -282,9 +238,8 @@ async function truncateDatabase(config: any, dbName: string, preserveLogs: boole
       }
       try {
         validateIdentifier(table, 'table');
-        if (dialect === 'postgresql' || dialect === 'mysql') {
-          const dialectType = dialect === 'postgresql' ? 'postgres' : 'mysql';
-          await sql.raw(safeTruncate(table, dialectType, true)).execute(db);
+        if (dialect === 'postgresql') {
+          await sql.raw(safeTruncate(table, 'postgres', true)).execute(db);
         } else {
           await db.deleteFrom(table as any).execute();
         }
@@ -295,8 +250,6 @@ async function truncateDatabase(config: any, dbName: string, preserveLogs: boole
 
     if (dialect === 'postgresql') {
       await sql.raw('SET session_replication_role = DEFAULT').execute(db);
-    } else if (dialect === 'mysql') {
-      await sql.raw('SET FOREIGN_KEY_CHECKS = 1').execute(db);
     } else if (dialect === 'sqlite') {
       await sql.raw('PRAGMA foreign_keys = ON').execute(db);
     }
@@ -313,29 +266,14 @@ async function dropTestDatabase(config: any, dbName: string): Promise<void> {
     const adminConfig = { ...config, database: 'postgres' };
     const db = await getDatabaseConnection(adminConfig);
     if (db) {
-      // Terminate connections using parameterized sql template
-      await sql`
-        SELECT pg_terminate_backend(pid)
-        FROM pg_stat_activity
-        WHERE datname = ${validDbName} AND pid <> pg_backend_pid()
-      `.execute(db);
-
+      await sql`SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = ${validDbName} AND pid <> pg_backend_pid()`.execute(db);
       await sql.raw(safeDropDatabase(dbName, 'postgres')).execute(db);
-      await db.destroy();
-    }
-  } else if (dialect === 'mysql') {
-    const adminConfig = { ...config, database: undefined };
-    const db = await getDatabaseConnection(adminConfig);
-    if (db) {
-      await sql.raw(safeDropDatabase(dbName, 'mysql')).execute(db);
       await db.destroy();
     }
   } else if (dialect === 'sqlite') {
     try {
       await fs.unlink(dbName);
-    } catch {
-      // File might not exist
-    }
+    } catch { }
   }
 }
 
@@ -352,9 +290,7 @@ async function cleanTestArtifacts(preserveLogs: boolean): Promise<TeardownResult
     try {
       await fs.rm(fullPath, { recursive: true, force: true });
       artifacts.cleaned.push(dir);
-    } catch {
-      // Directory might not exist
-    }
+    } catch { }
   }
 
   const filesToClean = ['tests/test-config.ts', 'tests/test-config.js', '.test.env'];
@@ -363,9 +299,7 @@ async function cleanTestArtifacts(preserveLogs: boolean): Promise<TeardownResult
     try {
       await fs.unlink(fullPath);
       artifacts.cleaned.push(file);
-    } catch {
-      // File might not exist
-    }
+    } catch { }
   }
 
   if (preserveLogs) {
@@ -375,9 +309,7 @@ async function cleanTestArtifacts(preserveLogs: boolean): Promise<TeardownResult
       try {
         await fs.access(fullPath);
         artifacts.preserved.push(log);
-      } catch {
-        // Directory doesn't exist
-      }
+      } catch { }
     }
   }
 
@@ -401,20 +333,10 @@ function displayTeardownResults(result: TeardownResult, options: TestTeardownOpt
 
     if (grouped.dropped.length > 0) {
       console.log(prism.green(`  [OK] Dropped: ${grouped.dropped.length}`));
-      if (options.verbose) {
-        for (const db of grouped.dropped) {
-          console.log(`     - ${db.name}`);
-        }
-      }
     }
 
     if (grouped.preserved.length > 0) {
       console.log(prism.yellow(`  [WARN] Preserved: ${grouped.preserved.length}`));
-      if (options.verbose) {
-        for (const db of grouped.preserved) {
-          console.log(`     - ${db.name}: ${db.reason}`);
-        }
-      }
     }
 
     if (grouped.failed.length > 0) {
@@ -431,20 +353,10 @@ function displayTeardownResults(result: TeardownResult, options: TestTeardownOpt
 
     if (result.artifacts.cleaned.length > 0) {
       console.log(`  Cleaned: ${result.artifacts.cleaned.length} item${result.artifacts.cleaned.length !== 1 ? 's' : ''}`);
-      if (options.verbose) {
-        for (const artifact of result.artifacts.cleaned) {
-          console.log(`     - ${artifact}`);
-        }
-      }
     }
 
     if (result.artifacts.preserved.length > 0) {
       console.log(`  Preserved: ${result.artifacts.preserved.length} item${result.artifacts.preserved.length !== 1 ? 's' : ''}`);
-      if (options.verbose) {
-        for (const artifact of result.artifacts.preserved) {
-          console.log(`     - ${artifact}`);
-        }
-      }
     }
   }
 
@@ -452,18 +364,4 @@ function displayTeardownResults(result: TeardownResult, options: TestTeardownOpt
   console.log(prism.cyan('Summary:'));
   console.log(`  Environment: ${result.environment}`);
   console.log(`  Duration: ${result.duration}ms`);
-
-  if (result.databases.filter((d) => d.status === 'failed').length > 0) {
-    console.log('');
-    console.log(prism.yellow('Some databases could not be cleaned:'));
-    console.log('  - Check for active connections');
-    console.log('  - Verify database permissions');
-    console.log('  - Use --force to skip confirmation');
-  }
-
-  if (options.keepData) {
-    console.log('');
-    console.log(prism.yellow('Data was truncated but databases were preserved'));
-    console.log('  Use without --keep-data to fully drop databases');
-  }
 }

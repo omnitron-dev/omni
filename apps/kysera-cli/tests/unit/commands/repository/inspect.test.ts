@@ -46,6 +46,7 @@ vi.mock('../../../../src/utils/logger.js', () => ({
   },
 }));
 
+
 import { access, readdir, readFile } from 'node:fs/promises';
 import { inspectRepositoryCommand } from '../../../../src/commands/repository/inspect.js';
 import { getDatabaseConnection } from '../../../../src/utils/database.js';

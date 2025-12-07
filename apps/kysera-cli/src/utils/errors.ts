@@ -43,9 +43,11 @@ export class ValidationError extends CLIError {
 export class FileSystemError extends CLIError {
   constructor(
     message: string,
+    code: string = 'FS_ERROR',
+    suggestions: string[] = [],
     public readonly path?: string
   ) {
-    super(message, 'FS_ERROR', path ? { path } : undefined);
+    super(message, code, path ? { path } : undefined, suggestions);
     this.name = 'FileSystemError';
   }
 }

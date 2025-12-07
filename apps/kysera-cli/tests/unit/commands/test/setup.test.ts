@@ -48,6 +48,12 @@ vi.mock('../../../../src/utils/logger.js', () => ({
   },
 }));
 
+// Mock fs module for file operations
+vi.mock('../../../../src/utils/fs.js', () => ({
+  safePath: vi.fn((p) => p),
+  isPathSafe: vi.fn(() => true),
+}));
+
 import { mkdir, readdir, writeFile } from 'node:fs/promises';
 import { testSetupCommand } from '../../../../src/commands/test/setup.js';
 import { getDatabaseConnection } from '../../../../src/utils/database.js';

@@ -1,8 +1,7 @@
 import { Command } from 'commander';
 import { prism, table as displayTable, confirm } from '@xec-sh/kit';
 import { CLIError } from '../../utils/errors.js';
-import { getDatabaseConnection } from '../../utils/database.js';
-import { loadConfig } from '../../config/loader.js';
+import { withDatabase } from '../../utils/with-database.js';
 import { DatabaseIntrospector } from '../generate/introspector.js';
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
@@ -35,27 +34,7 @@ export function consoleCommand(): Command {
 }
 
 async function databaseConsole(options: ConsoleOptions): Promise<void> {
-  // Load configuration
-  const config = await loadConfig(options.config);
-
-  if (!config?.database) {
-    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
-      'Create a kysera.config.ts file with database configuration',
-      'Or specify a config file with --config option',
-    ]);
-  }
-
-  // Get database connection
-  const db = await getDatabaseConnection(config.database);
-
-  if (!db) {
-    throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', [
-      'Check your database configuration',
-      'Ensure the database server is running',
-    ]);
-  }
-
-  try {
+  await withDatabase({ config: options.config }, async (db, config) => {
     // If query provided, execute and exit
     if (options.query) {
       await executeQuery(db, options.query);
@@ -63,7 +42,7 @@ async function databaseConsole(options: ConsoleOptions): Promise<void> {
     }
 
     // Interactive mode
-    console.log(prism.cyan('🗄️  Kysera Database Console'));
+    console.log(prism.cyan('Database Console'));
     console.log(prism.gray(`Connected to: ${config.database.dialect}`));
     console.log(prism.gray('Type ".help" for help, ".exit" to quit'));
     console.log('');
@@ -166,7 +145,6 @@ async function databaseConsole(options: ConsoleOptions): Promise<void> {
       } else if (trimmedLine) {
         // SQL query
         if (trimmedLine.endsWith(';')) {
-          // Single line query
           try {
             await executeQuery(db, trimmedLine);
           } catch (error) {
@@ -181,7 +159,6 @@ async function databaseConsole(options: ConsoleOptions): Promise<void> {
           trimmedLine.toLowerCase().startsWith('drop') ||
           trimmedLine.toLowerCase().startsWith('alter')
         ) {
-          // Start multi-line query
           inMultiline = true;
           multilineQuery = trimmedLine;
           rl.setPrompt(prism.gray('     -> '));
@@ -192,10 +169,7 @@ async function databaseConsole(options: ConsoleOptions): Promise<void> {
 
       rl.prompt();
     }
-  } finally {
-    // Close database connection
-    await db.destroy();
-  }
+  });
 }
 
 function isDestructiveQuery(query: string): boolean {
@@ -205,92 +179,64 @@ function isDestructiveQuery(query: string): boolean {
     queryLower.startsWith('truncate') ||
     queryLower.startsWith('delete') ||
     queryLower.includes('drop table') ||
-    queryLower.includes('drop database') ||
-    queryLower.includes('drop schema') ||
-    queryLower.includes('alter table') && queryLower.includes('drop')
+    queryLower.includes('drop database')
   );
 }
 
 async function executeQuery(db: any, query: string): Promise<void> {
   const startTime = Date.now();
 
-  try {
-    // Remove trailing semicolon for Kysely
-    const cleanQuery = query.trim().replace(/;$/, '');
+  const cleanQuery = query.trim().replace(/;$/, '');
 
-    // Check for destructive operations and warn user
-    if (isDestructiveQuery(cleanQuery)) {
-      console.log('');
-      console.log(prism.yellow('⚠️  WARNING: This is a destructive operation!'));
-      console.log(prism.yellow(`Query: ${cleanQuery}`));
-      console.log('');
+  if (isDestructiveQuery(cleanQuery)) {
+    console.log('');
+    console.log(prism.yellow('WARNING: This is a destructive operation!'));
+    console.log(prism.yellow(`Query: ${cleanQuery}`));
+    console.log('');
 
-      const confirmed = await confirm({
-        message: 'Are you sure you want to execute this query?',
-        initialValue: false,
-      });
+    const confirmed = await confirm({
+      message: 'Are you sure you want to execute this query?',
+      initialValue: false,
+    });
 
-      if (!confirmed) {
-        console.log(prism.gray('Query cancelled'));
-        return;
-      }
+    if (!confirmed) {
+      console.log(prism.gray('Query cancelled'));
+      return;
     }
+  }
 
-    // Determine query type
-    const queryLower = cleanQuery.toLowerCase();
-    const isSelect = queryLower.startsWith('select');
-    const isInsert = queryLower.startsWith('insert');
-    const isUpdate = queryLower.startsWith('update');
-    const isDelete = queryLower.startsWith('delete');
-    const isDDL = queryLower.startsWith('create') || queryLower.startsWith('drop') || queryLower.startsWith('alter');
+  const queryLower = cleanQuery.toLowerCase();
+  const isSelect = queryLower.startsWith('select');
 
-    // Execute query
-    const result = await db.executeQuery(db.raw(cleanQuery));
+  const result = await db.executeQuery(db.raw(cleanQuery));
+  const duration = Date.now() - startTime;
 
-    const duration = Date.now() - startTime;
-
-    if (isSelect) {
-      // Display results as table
-      const rows = result.rows as any[];
-
-      if (rows.length === 0) {
-        console.log(prism.gray('(0 rows)'));
-      } else {
-        // Format rows for display
-        const formattedRows = rows.map((row) => {
-          const formatted: any = {};
-          for (const [key, value] of Object.entries(row)) {
-            if (value === null) {
-              formatted[key] = prism.gray('NULL');
-            } else if (value instanceof Date) {
-              formatted[key] = value.toISOString();
-            } else if (typeof value === 'boolean') {
-              formatted[key] = value ? prism.green('true') : prism.red('false');
-            } else {
-              formatted[key] = String(value);
-            }
-          }
-          return formatted;
-        });
-
-        console.log('');
-        console.log(displayTable(formattedRows));
-        console.log('');
-        console.log(prism.gray(`(${rows.length} row${rows.length !== 1 ? 's' : ''}, ${duration}ms)`));
-      }
-    } else if (isInsert || isUpdate || isDelete) {
-      // Show affected rows
-      const affected = result.numAffectedRows ?? 0;
-      console.log(prism.green(`✓ Query OK, ${affected} row${affected !== 1 ? 's' : ''} affected (${duration}ms)`));
-    } else if (isDDL) {
-      // DDL statement
-      console.log(prism.green(`✓ Query OK (${duration}ms)`));
+  if (isSelect) {
+    const rows = result.rows as any[];
+    if (rows.length === 0) {
+      console.log(prism.gray('(0 rows)'));
     } else {
-      // Other statements
-      console.log(prism.green(`✓ Query executed successfully (${duration}ms)`));
+      const formattedRows = rows.map((row) => {
+        const formatted: any = {};
+        for (const [key, value] of Object.entries(row)) {
+          if (value === null) {
+            formatted[key] = prism.gray('NULL');
+          } else if (value instanceof Date) {
+            formatted[key] = value.toISOString();
+          } else {
+            formatted[key] = String(value);
+          }
+        }
+        return formatted;
+      });
+      console.log('');
+      console.log(displayTable(formattedRows));
+      console.log('');
+      console.log(prism.gray(`(${rows.length} row${rows.length !== 1 ? 's' : ''}, ${duration}ms)`));
     }
-  } catch (error) {
-    throw error;
+  } else {
+    const affected = result.numAffectedRows ?? 0;
+    console.log(prism.green(`Query OK, ${affected} row${affected !== 1 ? 's' : ''} affected (${duration}ms)`));
   }
 }
 
@@ -306,114 +252,58 @@ function showHelp(): void {
   console.log('  .count, .c <table>   Count rows in table');
   console.log('  .clear, .cls         Clear the screen');
   console.log('');
-  console.log(prism.bold('SQL Queries:'));
-  console.log('');
-  console.log('  Execute any SQL query by typing it and ending with ";"');
-  console.log('  Multi-line queries are supported');
-  console.log('');
-  console.log(prism.bold('Examples:'));
-  console.log('');
-  console.log('  SELECT * FROM users LIMIT 5;');
-  console.log("  UPDATE users SET status = 'active' WHERE id = 1;");
-  console.log('  .describe users');
-  console.log('  .count posts');
-  console.log('');
 }
 
 async function showTables(introspector: DatabaseIntrospector): Promise<void> {
-  try {
-    const tables = await introspector.getTables();
-
-    if (tables.length === 0) {
-      console.log(prism.gray('No tables found'));
-    } else {
-      console.log('');
-      console.log(prism.bold('Tables:'));
-      for (const table of tables) {
-        console.log(`  • ${table}`);
-      }
-      console.log('');
-      console.log(prism.gray(`(${tables.length} table${tables.length !== 1 ? 's' : ''})`));
+  const tables = await introspector.getTables();
+  if (tables.length === 0) {
+    console.log(prism.gray('No tables found'));
+  } else {
+    console.log('');
+    console.log(prism.bold('Tables:'));
+    for (const table of tables) {
+      console.log(`  - ${table}`);
     }
-  } catch (error) {
-    console.error(prism.red(`Error: ${error instanceof Error ? error.message : String(error)}`));
+    console.log('');
   }
 }
 
 async function describeTable(introspector: DatabaseIntrospector, tableName: string): Promise<void> {
-  try {
-    const info = await introspector.getTableInfo(tableName);
-
-    console.log('');
-    console.log(prism.bold(`Table: ${tableName}`));
-    console.log('');
-
-    // Format columns for display
-    const columns = info.columns.map((col: any) => ({
-      Column: col.name,
-      Type: col.dataType,
-      Nullable: col.isNullable ? 'YES' : 'NO',
-      Key: col.isPrimaryKey ? 'PRI' : col.isForeignKey ? 'MUL' : '',
-      Default: col.defaultValue || prism.gray('NULL'),
-      Extra: col.isAutoIncrement ? 'auto_increment' : '',
-    }));
-
-    console.log(displayTable(columns));
-
-    // Show primary key
-    if (info.primaryKey && info.primaryKey.length > 0) {
-      console.log('');
-      console.log(`Primary Key: ${info.primaryKey.join(', ')}`);
-    }
-
-    // Show foreign keys
-    if (info.foreignKeys && info.foreignKeys.length > 0) {
-      console.log('');
-      console.log('Foreign Keys:');
-      for (const fk of info.foreignKeys) {
-        console.log(`  • ${fk.column} → ${fk.referencedTable}.${fk.referencedColumn}`);
-      }
-    }
-
-    console.log('');
-  } catch (error) {
-    console.error(prism.red(`Error: ${error instanceof Error ? error.message : String(error)}`));
-  }
+  const info = await introspector.getTableInfo(tableName);
+  console.log('');
+  console.log(prism.bold(`Table: ${tableName}`));
+  console.log('');
+  const columns = info.columns.map((col: any) => ({
+    Column: col.name,
+    Type: col.dataType,
+    Nullable: col.isNullable ? 'YES' : 'NO',
+    Key: col.isPrimaryKey ? 'PRI' : col.isForeignKey ? 'MUL' : '',
+    Default: col.defaultValue || prism.gray('NULL'),
+  }));
+  console.log(displayTable(columns));
+  console.log('');
 }
 
 async function showIndexes(introspector: DatabaseIntrospector, tableName: string): Promise<void> {
-  try {
-    const info = await introspector.getTableInfo(tableName);
-
-    if (info.indexes.length === 0) {
-      console.log(prism.gray(`No indexes found for table '${tableName}'`));
-    } else {
-      console.log('');
-      console.log(prism.bold(`Indexes for table '${tableName}':`));
-      console.log('');
-
-      const indexes = info.indexes.map((idx: any) => ({
-        Name: idx.name,
-        Columns: idx.columns.join(', '),
-        Unique: idx.isUnique ? 'YES' : 'NO',
-        Primary: idx.isPrimary ? 'YES' : 'NO',
-      }));
-
-      console.log(displayTable(indexes));
-      console.log('');
-    }
-  } catch (error) {
-    console.error(prism.red(`Error: ${error instanceof Error ? error.message : String(error)}`));
+  const info = await introspector.getTableInfo(tableName);
+  if (info.indexes.length === 0) {
+    console.log(prism.gray(`No indexes found for table '${tableName}'`));
+  } else {
+    console.log('');
+    console.log(prism.bold(`Indexes for table '${tableName}':`));
+    console.log('');
+    const indexes = info.indexes.map((idx: any) => ({
+      Name: idx.name,
+      Columns: idx.columns.join(', '),
+      Unique: idx.isUnique ? 'YES' : 'NO',
+    }));
+    console.log(displayTable(indexes));
+    console.log('');
   }
 }
 
 async function showCount(db: any, tableName: string): Promise<void> {
-  try {
-    const result = await db.selectFrom(tableName).select(db.fn.countAll().as('count')).executeTakeFirst();
-
-    const count = Number(result?.count || 0);
-    console.log(`${tableName}: ${count} row${count !== 1 ? 's' : ''}`);
-  } catch (error) {
-    console.error(prism.red(`Error: ${error instanceof Error ? error.message : String(error)}`));
-  }
+  const result = await db.selectFrom(tableName).select(db.fn.countAll().as('count')).executeTakeFirst();
+  const count = Number(result?.count || 0);
+  console.log(`${tableName}: ${count} row${count !== 1 ? 's' : ''}`);
 }

@@ -6,6 +6,7 @@ import { Kysely, PostgresDialect, MysqlDialect, SqliteDialect } from 'kysely';
 import { Pool } from 'pg';
 import { createPool } from 'mysql2';
 import Database from 'better-sqlite3';
+import { validateIdentifier, SqlSanitizationError } from '../../src/utils/sql-sanitizer.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = path.join(__dirname, '../../dist/index.js');
@@ -91,6 +92,9 @@ export async function runCLI(
  * Create a test database
  */
 export async function createTestDatabase(dialect: 'postgres' | 'mysql' | 'sqlite', name: string): Promise<Kysely<any>> {
+  // Validate database name to prevent SQL injection
+  const validDbName = validateIdentifier(name, 'database');
+
   switch (dialect) {
     case 'postgres': {
       const pool = new Pool({
@@ -101,9 +105,10 @@ export async function createTestDatabase(dialect: 'postgres' | 'mysql' | 'sqlite
         database: 'postgres',
       });
 
-      // Drop if exists and create
-      await pool.query(`DROP DATABASE IF EXISTS "${name}"`);
-      await pool.query(`CREATE DATABASE "${name}"`);
+      // Drop if exists and create - use parameterized queries where possible
+      // For DDL statements, use validated identifier with proper escaping
+      await pool.query(`DROP DATABASE IF EXISTS "${validDbName}"`);
+      await pool.query(`CREATE DATABASE "${validDbName}"`);
       await pool.end();
 
       return new Kysely({
@@ -113,7 +118,7 @@ export async function createTestDatabase(dialect: 'postgres' | 'mysql' | 'sqlite
             port: parseInt(process.env['DB_PORT'] || '5432'),
             user: process.env['DB_USER'] || 'postgres',
             password: process.env['DB_PASSWORD'] || 'postgres',
-            database: name,
+            database: validDbName,
           }),
         }),
       });
@@ -128,8 +133,9 @@ export async function createTestDatabase(dialect: 'postgres' | 'mysql' | 'sqlite
       });
 
       const connection = pool.promise();
-      await connection.query(`DROP DATABASE IF EXISTS \`${name}\``);
-      await connection.query(`CREATE DATABASE \`${name}\``);
+      // Use validated identifier with MySQL backtick escaping
+      await connection.query(`DROP DATABASE IF EXISTS \`${validDbName}\``);
+      await connection.query(`CREATE DATABASE \`${validDbName}\``);
       await pool.end();
 
       return new Kysely({
@@ -139,14 +145,14 @@ export async function createTestDatabase(dialect: 'postgres' | 'mysql' | 'sqlite
             port: parseInt(process.env['DB_PORT'] || '3306'),
             user: process.env['DB_USER'] || 'root',
             password: process.env['DB_PASSWORD'] || 'root',
-            database: name,
+            database: validDbName,
           }),
         }),
       });
     }
 
     case 'sqlite': {
-      const dbPath = path.join(__dirname, '../../.test-db', `${name}.db`);
+      const dbPath = path.join(__dirname, '../../.test-db', `${validDbName}.db`);
       await fs.mkdir(path.dirname(dbPath), { recursive: true });
 
       // Remove if exists
@@ -164,11 +170,13 @@ export async function createTestDatabase(dialect: 'postgres' | 'mysql' | 'sqlite
     }
   }
 }
-
 /**
  * Clean up test database
  */
 export async function cleanupTestDatabase(dialect: 'postgres' | 'mysql' | 'sqlite', name: string): Promise<void> {
+  // Validate database name to prevent SQL injection
+  const validDbName = validateIdentifier(name, 'database');
+
   switch (dialect) {
     case 'postgres': {
       const pool = new Pool({
@@ -179,7 +187,8 @@ export async function cleanupTestDatabase(dialect: 'postgres' | 'mysql' | 'sqlit
         database: 'postgres',
       });
 
-      await pool.query(`DROP DATABASE IF EXISTS "${name}"`);
+      // Use validated identifier with proper escaping
+      await pool.query(`DROP DATABASE IF EXISTS "${validDbName}"`);
       await pool.end();
       break;
     }
@@ -193,13 +202,14 @@ export async function cleanupTestDatabase(dialect: 'postgres' | 'mysql' | 'sqlit
       });
 
       const connection = pool.promise();
-      await connection.query(`DROP DATABASE IF EXISTS \`${name}\``);
+      // Use validated identifier with MySQL backtick escaping
+      await connection.query(`DROP DATABASE IF EXISTS \`${validDbName}\``);
       await pool.end();
       break;
     }
 
     case 'sqlite': {
-      const dbPath = path.join(__dirname, '../../.test-db', `${name}.db`);
+      const dbPath = path.join(__dirname, '../../.test-db', `${validDbName}.db`);
       try {
         await fs.unlink(dbPath);
       } catch {

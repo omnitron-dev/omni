@@ -9,6 +9,7 @@ export default defineConfig({
   clean: true,
   minify: true,
   treeshake: true,
+  external: ['kysely', 'zod', '@kysera/repository'],
   target: 'esnext',
   platform: 'neutral',
   tsconfig: './tsconfig.build.json',

@@ -11,12 +11,14 @@ vi.mock('../../../../src/config/loader.js', () => ({
 }));
 
 vi.mock('../../../../src/commands/migrate/runner.js', () => ({
-  MigrationRunner: vi.fn().mockImplementation(() => ({
-    acquireLock: vi.fn().mockResolvedValue(() => Promise.resolve()),
-    getMigrationStatus: vi.fn().mockResolvedValue([]),
-    down: vi.fn().mockResolvedValue({ rolledBack: [], duration: 0 }),
-  })),
+  MigrationRunner: vi.fn().mockImplementation(function(this: any) {
+    this.acquireLock = vi.fn().mockResolvedValue(() => Promise.resolve());
+    this.getMigrationStatus = vi.fn().mockResolvedValue([]);
+    this.down = vi.fn().mockResolvedValue({ rolledBack: [], duration: 0 });
+    return this;
+  }),
 }));
+
 
 vi.mock('@xec-sh/kit', () => ({
   prism: {
@@ -144,7 +146,10 @@ describe('migrate down command', () => {
         getMigrationStatus: vi.fn().mockResolvedValue([{ status: 'executed', name: 'test_migration' }]),
         down: vi.fn().mockResolvedValue({ rolledBack: ['test_migration'], duration: 100 }),
       };
-      (MigrationRunner as unknown as Mock).mockImplementation(() => mockRunner);
+      (MigrationRunner as unknown as Mock).mockImplementation(function(this: any) {
+        Object.assign(this, mockRunner);
+        return this;
+      });
 
       await expect(command.parseAsync(['node', 'test'])).resolves.not.toThrow();
       expect(mockRunner.down).toHaveBeenCalled();
@@ -156,7 +161,10 @@ describe('migrate down command', () => {
         getMigrationStatus: vi.fn().mockResolvedValue([{ status: 'executed', name: 'test_migration' }]),
         down: vi.fn().mockResolvedValue({ rolledBack: ['test_migration'], duration: 100 }),
       };
-      (MigrationRunner as unknown as Mock).mockImplementation(() => mockRunner);
+      (MigrationRunner as unknown as Mock).mockImplementation(function(this: any) {
+        Object.assign(this, mockRunner);
+        return this;
+      });
 
       await command.parseAsync(['node', 'test', '--dry-run']);
       expect(mockRunner.down).toHaveBeenCalledWith(expect.objectContaining({ dryRun: true }));
@@ -171,7 +179,10 @@ describe('migrate down command', () => {
         ]),
         down: vi.fn().mockResolvedValue({ rolledBack: ['migration2'], duration: 50 }),
       };
-      (MigrationRunner as unknown as Mock).mockImplementation(() => mockRunner);
+      (MigrationRunner as unknown as Mock).mockImplementation(function(this: any) {
+        Object.assign(this, mockRunner);
+        return this;
+      });
 
       await command.parseAsync(['node', 'test', '--steps', '1']);
       expect(mockRunner.down).toHaveBeenCalledWith(expect.objectContaining({ steps: 1 }));
@@ -183,7 +194,10 @@ describe('migrate down command', () => {
         getMigrationStatus: vi.fn().mockResolvedValue([{ status: 'executed', name: 'target_migration' }]),
         down: vi.fn().mockResolvedValue({ rolledBack: ['target_migration'], duration: 50 }),
       };
-      (MigrationRunner as unknown as Mock).mockImplementation(() => mockRunner);
+      (MigrationRunner as unknown as Mock).mockImplementation(function(this: any) {
+        Object.assign(this, mockRunner);
+        return this;
+      });
 
       await command.parseAsync(['node', 'test', '--to', 'target_migration']);
       expect(mockRunner.down).toHaveBeenCalledWith(expect.objectContaining({ to: 'target_migration' }));
@@ -198,7 +212,10 @@ describe('migrate down command', () => {
         ]),
         down: vi.fn().mockResolvedValue({ rolledBack: ['migration1', 'migration2'], duration: 100 }),
       };
-      (MigrationRunner as unknown as Mock).mockImplementation(() => mockRunner);
+      (MigrationRunner as unknown as Mock).mockImplementation(function(this: any) {
+        Object.assign(this, mockRunner);
+        return this;
+      });
 
       await command.parseAsync(['node', 'test', '--all', '--force']);
       expect(mockRunner.down).toHaveBeenCalledWith(expect.objectContaining({ all: true }));
@@ -221,13 +238,16 @@ describe('migrate down command', () => {
     it('should handle migration lock error', async () => {
       const lockError = new Error('Lock error');
       (lockError as any).code = 'MIGRATION_LOCKED';
-      
+
       const mockRunner = {
         acquireLock: vi.fn().mockRejectedValue(lockError),
         getMigrationStatus: vi.fn().mockResolvedValue([{ status: 'executed', name: 'test' }]),
         down: vi.fn().mockResolvedValue({ rolledBack: [], duration: 0 }),
       };
-      (MigrationRunner as unknown as Mock).mockImplementation(() => mockRunner);
+      (MigrationRunner as unknown as Mock).mockImplementation(function(this: any) {
+        Object.assign(this, mockRunner);
+        return this;
+      });
 
       await expect(command.parseAsync(['node', 'test'])).rejects.toThrow(CLIError);
     });
@@ -240,7 +260,10 @@ describe('migrate down command', () => {
         getMigrationStatus: vi.fn().mockResolvedValue([{ status: 'pending', name: 'pending' }]),
         down: vi.fn().mockResolvedValue({ rolledBack: [], duration: 0 }),
       };
-      (MigrationRunner as unknown as Mock).mockImplementation(() => mockRunner);
+      (MigrationRunner as unknown as Mock).mockImplementation(function(this: any) {
+        Object.assign(this, mockRunner);
+        return this;
+      });
 
       await expect(command.parseAsync(['node', 'test'])).resolves.not.toThrow();
     });
@@ -251,7 +274,10 @@ describe('migrate down command', () => {
         getMigrationStatus: vi.fn().mockResolvedValue([{ status: 'executed', name: 'test' }]),
         down: vi.fn().mockResolvedValue({ rolledBack: ['test'], duration: 50 }),
       };
-      (MigrationRunner as unknown as Mock).mockImplementation(() => mockRunner);
+      (MigrationRunner as unknown as Mock).mockImplementation(function(this: any) {
+        Object.assign(this, mockRunner);
+        return this;
+      });
 
       await command.parseAsync(['node', 'test', '--count', '2']);
       expect(mockRunner.down).toHaveBeenCalledWith(expect.objectContaining({ steps: 2 }));
@@ -263,7 +289,10 @@ describe('migrate down command', () => {
         getMigrationStatus: vi.fn().mockResolvedValue([]),
         down: vi.fn().mockResolvedValue({ rolledBack: [], duration: 0 }),
       };
-      (MigrationRunner as unknown as Mock).mockImplementation(() => mockRunner);
+      (MigrationRunner as unknown as Mock).mockImplementation(function(this: any) {
+        Object.assign(this, mockRunner);
+        return this;
+      });
 
       await command.parseAsync(['node', 'test']);
       expect(mockDb.destroy).toHaveBeenCalled();
@@ -276,7 +305,10 @@ describe('migrate down command', () => {
         getMigrationStatus: vi.fn().mockResolvedValue([{ status: 'executed', name: 'test' }]),
         down: vi.fn().mockResolvedValue({ rolledBack: ['test'], duration: 50 }),
       };
-      (MigrationRunner as unknown as Mock).mockImplementation(() => mockRunner);
+      (MigrationRunner as unknown as Mock).mockImplementation(function(this: any) {
+        Object.assign(this, mockRunner);
+        return this;
+      });
 
       await command.parseAsync(['node', 'test']);
       expect(releaseLock).toHaveBeenCalled();
@@ -288,7 +320,10 @@ describe('migrate down command', () => {
         getMigrationStatus: vi.fn().mockResolvedValue([{ status: 'executed', name: 'test' }]),
         down: vi.fn().mockResolvedValue({ rolledBack: ['test'], duration: 50 }),
       };
-      (MigrationRunner as unknown as Mock).mockImplementation(() => mockRunner);
+      (MigrationRunner as unknown as Mock).mockImplementation(function(this: any) {
+        Object.assign(this, mockRunner);
+        return this;
+      });
 
       await command.parseAsync(['node', 'test', '--all']);
       expect(confirm).not.toHaveBeenCalled();

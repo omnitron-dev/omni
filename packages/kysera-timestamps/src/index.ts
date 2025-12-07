@@ -1,5 +1,7 @@
 import type { Plugin, Repository } from '@kysera/repository';
 import type { Kysely, SelectQueryBuilder } from 'kysely';
+import { silentLogger } from '@kysera/core';
+import type { KyseraLogger } from '@kysera/core';
 import { z } from 'zod';
 
 /**
@@ -74,6 +76,14 @@ export interface TimestampsOptions {
    * @default 'id'
    */
   primaryKeyColumn?: string;
+
+  /**
+   * Logger for plugin operations.
+   * Uses KyseraLogger interface from @kysera/core.
+   *
+   * @default silentLogger (no output)
+   */
+  logger?: KyseraLogger;
 }
 
 /**
@@ -178,6 +188,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
     updatedAtColumn = 'updated_at',
     setUpdatedAtOnInsert = false,
     primaryKeyColumn = 'id',
+    logger = silentLogger,
   } = options;
 
   return {
@@ -201,8 +212,11 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
 
       // Skip if table doesn't support timestamps
       if (!shouldApplyTimestamps(baseRepo.tableName, options)) {
+        logger.debug(`Table ${baseRepo.tableName} excluded from timestamps, skipping extension`);
         return repo;
       }
+
+      logger.debug(`Extending repository for table ${baseRepo.tableName} with timestamp methods`);
 
       // Save original methods
       const originalCreate = baseRepo.create.bind(baseRepo);
@@ -225,6 +239,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
             dataWithTimestamps[updatedAtColumn] = data[updatedAtColumn] ?? timestamp;
           }
 
+          logger.debug(`Creating record in ${baseRepo.tableName} with timestamp ${timestamp}`);
           return await originalCreate(dataWithTimestamps);
         },
 
@@ -237,6 +252,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
             [updatedAtColumn]: data[updatedAtColumn] ?? timestamp,
           };
 
+          logger.debug(`Updating record ${id} in ${baseRepo.tableName} with timestamp ${timestamp}`);
           return await originalUpdate(id, dataWithTimestamp);
         },
 
@@ -313,6 +329,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
          * Create without adding timestamps
          */
         async createWithoutTimestamps(input: unknown): Promise<unknown> {
+          logger.debug(`Creating record in ${baseRepo.tableName} without timestamps`);
           return await originalCreate(input);
         },
 
@@ -320,6 +337,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
          * Update without modifying timestamp
          */
         async updateWithoutTimestamp(id: number, input: unknown): Promise<unknown> {
+          logger.debug(`Updating record ${id} in ${baseRepo.tableName} without timestamp`);
           return await originalUpdate(id, input);
         },
 
@@ -330,6 +348,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
           const timestamp = getTimestamp(options);
           const updateData = { [updatedAtColumn]: timestamp };
 
+          logger.info(`Touching record ${id} in ${baseRepo.tableName}`);
           await executor
             .updateTable(baseRepo.tableName as never)
             .set(updateData as never)
@@ -372,6 +391,8 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
             return result;
           });
 
+          logger.info(`Creating ${inputs.length} records in ${baseRepo.tableName} with timestamp ${timestamp}`);
+
           // Use Kysely's insertInto for efficient bulk insert
           const result = await executor
             .insertInto(baseRepo.tableName as never)
@@ -398,6 +419,8 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
             ...data,
             [updatedAtColumn]: data[updatedAtColumn] ?? timestamp,
           };
+
+          logger.info(`Updating ${ids.length} records in ${baseRepo.tableName} with timestamp ${timestamp}`);
 
           // Use Kysely's update with IN clause for efficient bulk update
           await executor
@@ -429,6 +452,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
           const timestamp = getTimestamp(options);
           const updateData = { [updatedAtColumn]: timestamp };
 
+          logger.info(`Touching ${ids.length} records in ${baseRepo.tableName}`);
           await executor
             .updateTable(baseRepo.tableName as never)
             .set(updateData as never)

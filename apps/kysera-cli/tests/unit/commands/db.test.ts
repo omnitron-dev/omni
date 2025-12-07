@@ -56,10 +56,10 @@ vi.mock('../../../src/utils/database.js', () => ({
   getDatabaseConnection: vi.fn(),
 }));
 
-vi.mock('../../../src/commands/generate/introspector.js', () => {
-  class MockDatabaseIntrospector {
-    getTables = vi.fn().mockResolvedValue(['users', 'posts']);
-    getTableInfo = vi.fn().mockResolvedValue({
+vi.mock('../../../src/commands/generate/introspector.js', () => ({
+  DatabaseIntrospector: vi.fn().mockImplementation(function(this: any) {
+    this.getTables = vi.fn().mockResolvedValue(['users', 'posts']);
+    this.getTableInfo = vi.fn().mockResolvedValue({
       name: 'users',
       columns: [
         { name: 'id', dataType: 'integer', isNullable: false, isPrimaryKey: true },
@@ -69,7 +69,7 @@ vi.mock('../../../src/commands/generate/introspector.js', () => {
       primaryKey: ['id'],
       foreignKeys: [],
     });
-    introspect = vi.fn().mockResolvedValue({
+    this.introspect = vi.fn().mockResolvedValue({
       tables: [{
         name: 'users',
         columns: [
@@ -81,30 +81,10 @@ vi.mock('../../../src/commands/generate/introspector.js', () => {
         foreignKeys: [],
       }],
     });
-    getAllRows = vi.fn().mockResolvedValue([{ id: 1, email: 'test@example.com' }]);
-    static mapDataTypeToTypeScript = vi.fn((type: string) => {
-      const typeMap: Record<string, string> = {
-        integer: 'number',
-        varchar: 'string',
-        text: 'string',
-        boolean: 'boolean',
-        timestamp: 'Date',
-      };
-      return typeMap[type] || 'unknown';
-    });
-    static mapDataTypeToZod = vi.fn((type: string) => {
-      const typeMap: Record<string, string> = {
-        integer: 'z.number()',
-        varchar: 'z.string()',
-        text: 'z.string()',
-        boolean: 'z.boolean()',
-        timestamp: 'z.date()',
-      };
-      return typeMap[type] || 'z.unknown()';
-    });
-  }
-  return { DatabaseIntrospector: MockDatabaseIntrospector };
-});
+    this.getAllRows = vi.fn().mockResolvedValue([{ id: 1, email: 'test@example.com' }]);
+    return this;
+  }),
+}));
 
 import { existsSync, writeFileSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -243,7 +223,10 @@ describe('db tables command', () => {
       getTableInfo: vi.fn().mockResolvedValue(mockTableInfo),
       introspect: vi.fn().mockResolvedValue([mockTableInfo]),
     };
-    (DatabaseIntrospector as Mock).mockImplementation(() => mockIntrospector);
+    (DatabaseIntrospector as Mock).mockImplementation(function(this: any) {
+      Object.assign(this, mockIntrospector);
+      return this;
+    });
     
     consoleSpy = { log: vi.fn() };
     vi.spyOn(console, 'log').mockImplementation(consoleSpy.log);
@@ -350,7 +333,10 @@ describe('db introspect command', () => {
       getTableInfo: vi.fn().mockResolvedValue(mockTableInfo),
       introspect: vi.fn().mockResolvedValue([mockTableInfo]),
     };
-    (DatabaseIntrospector as Mock).mockImplementation(() => mockIntrospector);
+    (DatabaseIntrospector as Mock).mockImplementation(function(this: any) {
+      Object.assign(this, mockIntrospector);
+      return this;
+    });
     
     consoleSpy = { log: vi.fn() };
     vi.spyOn(console, 'log').mockImplementation(consoleSpy.log);
@@ -523,7 +509,10 @@ describe('db dump command', () => {
       getTableInfo: vi.fn().mockResolvedValue(mockTableInfo),
       introspect: vi.fn().mockResolvedValue([mockTableInfo]),
     };
-    (DatabaseIntrospector as Mock).mockImplementation(() => mockIntrospector);
+    (DatabaseIntrospector as Mock).mockImplementation(function(this: any) {
+      Object.assign(this, mockIntrospector);
+      return this;
+    });
     
     command = dumpCommand();
   });

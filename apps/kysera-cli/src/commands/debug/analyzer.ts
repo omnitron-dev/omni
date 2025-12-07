@@ -4,6 +4,12 @@ import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
 import { getDatabaseConnection } from '../../utils/database.js';
 import { loadConfig } from '../../config/loader.js';
+import type {
+  PostgresPlan,
+  PostgresExplainOutput,
+  MySQLPlan,
+  SQLitePlan,
+} from '../../types/index.js';
 
 export interface AnalyzerOptions {
   query?: string;
@@ -18,7 +24,7 @@ export interface AnalyzerOptions {
 
 interface QueryAnalysis {
   query: string;
-  executionPlan: any[];
+  executionPlan: Array<PostgresExplainOutput | MySQLPlan | SQLitePlan>;
   estimatedCost?: number;
   actualTime?: number;
   rowsExamined?: number;

@@ -10,6 +10,7 @@ vi.mock('../../../../src/config/loader.js', () => ({
   loadConfig: vi.fn(),
 }));
 
+
 vi.mock('@xec-sh/kit', () => ({
   prism: {
     cyan: (s: string) => s,

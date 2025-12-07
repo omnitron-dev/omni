@@ -21,13 +21,53 @@ import { FileSystemError } from './errors.js';
 import { logger } from './logger.js';
 
 /**
+ * Normalize and validate a path to prevent traversal attacks
+ * @throws FileSystemError if path traversal is detected
+ */
+export function safePath(basePath: string, userPath: string): string {
+  const resolvedBase = resolve(basePath);
+  const resolvedPath = resolve(basePath, userPath);
+
+  if (!resolvedPath.startsWith(resolvedBase + '/') && resolvedPath !== resolvedBase) {
+    throw new FileSystemError(
+      `Path traversal detected: ${userPath}`,
+      'PATH_TRAVERSAL',
+      ['Ensure the path does not contain ".." sequences', 'Use absolute paths within the project']
+    );
+  }
+
+  return resolvedPath;
+}
+
+/**
+ * Check if a path is safe (no traversal)
+ */
+export function isPathSafe(basePath: string, userPath: string): boolean {
+  try {
+    safePath(basePath, userPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Validate that a path stays within allowed boundaries
+ * Returns the resolved path if valid, throws otherwise
+ */
+export function validatePath(userPath: string, allowedBase?: string): string {
+  const base = allowedBase || process.cwd();
+  return safePath(base, userPath);
+}
+
+/**
  * Read file content
  */
 export async function readFile(path: string, encoding: BufferEncoding = 'utf8'): Promise<string> {
   try {
     return await fsReadFile(path, encoding);
   } catch (error: any) {
-    throw new FileSystemError(`Failed to read file: ${path}`, path);
+    throw new FileSystemError(`Failed to read file: ${path}`, 'READ_ERROR', undefined, path);
   }
 }
 
@@ -39,7 +79,7 @@ export async function writeFile(path: string, content: string): Promise<void> {
     await ensureDir(dirname(path));
     await fsWriteFile(path, content, 'utf8');
   } catch (error: any) {
-    throw new FileSystemError(`Failed to write file: ${path}`, path);
+    throw new FileSystemError(`Failed to write file: ${path}`, 'WRITE_ERROR', undefined, path);
   }
 }
 
@@ -103,7 +143,7 @@ export async function listFiles(
 
     return files;
   } catch (error: any) {
-    throw new FileSystemError(`Failed to list files in directory: ${dir}`, dir);
+    throw new FileSystemError(`Failed to list files in directory: ${dir}`, 'LIST_ERROR', undefined, dir);
   }
 }
 
@@ -118,7 +158,7 @@ export async function findFiles(pattern: string, cwd?: string): Promise<string[]
       nodir: true,
     });
   } catch (error: any) {
-    throw new FileSystemError(`Failed to find files matching pattern: ${pattern}`);
+    throw new FileSystemError(`Failed to find files matching pattern: ${pattern}`, 'GLOB_ERROR');
   }
 }
 
@@ -129,7 +169,7 @@ export async function createDirectory(path: string): Promise<void> {
   try {
     await ensureDir(path);
   } catch (error: any) {
-    throw new FileSystemError(`Failed to create directory: ${path}`, path);
+    throw new FileSystemError(`Failed to create directory: ${path}`, 'MKDIR_ERROR', undefined, path);
   }
 }
 
@@ -140,7 +180,7 @@ export async function removePath(path: string): Promise<void> {
   try {
     await remove(path);
   } catch (error: any) {
-    throw new FileSystemError(`Failed to remove: ${path}`, path);
+    throw new FileSystemError(`Failed to remove: ${path}`, 'REMOVE_ERROR', undefined, path);
   }
 }
 
@@ -151,7 +191,7 @@ export async function copyPath(src: string, dest: string): Promise<void> {
   try {
     await copy(src, dest, { overwrite: true });
   } catch (error: any) {
-    throw new FileSystemError(`Failed to copy from ${src} to ${dest}`);
+    throw new FileSystemError(`Failed to copy from ${src} to ${dest}`, 'COPY_ERROR');
   }
 }
 
@@ -162,7 +202,7 @@ export async function movePath(src: string, dest: string): Promise<void> {
   try {
     await move(src, dest, { overwrite: true });
   } catch (error: any) {
-    throw new FileSystemError(`Failed to move from ${src} to ${dest}`);
+    throw new FileSystemError(`Failed to move from ${src} to ${dest}`, 'MOVE_ERROR');
   }
 }
 
@@ -173,7 +213,7 @@ export async function readJsonFile<T = any>(path: string): Promise<T> {
   try {
     return await readJson(path);
   } catch (error: any) {
-    throw new FileSystemError(`Failed to read JSON file: ${path}`, path);
+    throw new FileSystemError(`Failed to read JSON file: ${path}`, 'JSON_READ_ERROR', undefined, path);
   }
 }
 
@@ -184,7 +224,7 @@ export async function writeJsonFile(path: string, data: any, spaces: number = 2)
   try {
     await writeJson(path, data, { spaces });
   } catch (error: any) {
-    throw new FileSystemError(`Failed to write JSON file: ${path}`, path);
+    throw new FileSystemError(`Failed to write JSON file: ${path}`, 'JSON_WRITE_ERROR', undefined, path);
   }
 }
 
@@ -195,7 +235,7 @@ export async function getFileStats(path: string) {
   try {
     return await stat(path);
   } catch (error: any) {
-    throw new FileSystemError(`Failed to get stats for: ${path}`, path);
+    throw new FileSystemError(`Failed to get stats for: ${path}`, 'STAT_ERROR', undefined, path);
   }
 }
 

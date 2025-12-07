@@ -14,7 +14,7 @@ export type DatabaseDialect = 'postgres' | 'mysql' | 'sqlite';
 // Generic database type - can be extended with specific table schemas
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export interface Database { [key: string]: any }
+export interface Database { [key: string]: Record<string, unknown> }
 
 export interface ConnectionOptions {
   config: DatabaseConfig;

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { Kysely, SqliteDialect, type Generated, type Selectable } from 'kysely';
 import betterSqlite3 from 'better-sqlite3';
-import { auditPluginSQLite } from '../src/index.js';
+import { auditPluginSQLite, type AuditRepositoryExtensions } from '../src/index.js';
 import { createRepositoryFactory } from '../../kysera-repository/dist/index.js';
 import { createORM } from '../../kysera-repository/dist/index.js';
 import { z } from 'zod';
@@ -97,7 +97,7 @@ describe('Audit Plugin - Primary Key Configuration', () => {
 
       expect(audit).toBeDefined();
       expect(audit.name).toBe('@kysera/audit');
-      expect(audit.version).toBe('1.0.0');
+      expect(audit.version).toBe('0.4.1');
     });
 
     it('should default to "id" when primaryKeyColumn not specified', async () => {
@@ -285,7 +285,7 @@ describe('Audit Plugin - Primary Key Configuration', () => {
             }),
           },
         })
-      );
+      ) as ReturnType<typeof factory.create<'users', User>> & AuditRepositoryExtensions<User>;
 
       currentUserId = 'doc-example-user';
 

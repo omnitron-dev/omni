@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { Kysely, SqliteDialect, type Generated, type Selectable } from 'kysely';
 import betterSqlite3 from 'better-sqlite3';
 import { auditPluginSQLite, auditPlugin } from '../src/index.js';
@@ -432,14 +432,12 @@ describe('Audit Plugin Edge Cases and Error Handling', () => {
 
       // Try to update 2 IDs but only 1 exists
       // The bulk update may throw or return partial results depending on implementation
-      let threwError = false;
       try {
         await userRepo.bulkUpdate([
           { id: user1.id, data: { name: 'Updated User 1' } },
           { id: 99999, data: { name: 'Ghost User' } },
         ]);
       } catch {
-        threwError = true;
         // May throw for non-existent entity depending on implementation
       }
 

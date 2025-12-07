@@ -106,6 +106,85 @@ export interface ParsedAuditLogEntry {
 }
 
 /**
+ * Filters for querying table audit logs
+ */
+export interface AuditFilters {
+  /** Filter by operation type ('INSERT', 'UPDATE', 'DELETE') */
+  operation?: string;
+  /** Filter by user ID (changed_by field) */
+  userId?: string;
+  /** Filter by start date (inclusive) */
+  startDate?: Date | string;
+  /** Filter by end date (inclusive) */
+  endDate?: Date | string;
+}
+
+/**
+ * Audit repository extension methods added by the audit plugin.
+ * Use this interface for type annotations when working with audited repositories.
+ *
+ * @example
+ * ```typescript
+ * import type { AuditRepositoryExtensions, ParsedAuditLogEntry } from '@kysera/audit';
+ *
+ * // Type-safe access to audit methods
+ * const userRepo = orm.createRepository(...) as Repository<User, DB> & AuditRepositoryExtensions<User>;
+ *
+ * const history: ParsedAuditLogEntry[] = await userRepo.getAuditHistory(123);
+ * const restored: User = await userRepo.restoreFromAudit(42);
+ * ```
+ */
+export interface AuditRepositoryExtensions<T = unknown> {
+  /**
+   * Get audit history for a specific entity
+   * @param entityId - The entity ID to get history for (supports both numeric and string IDs)
+   * @returns Array of parsed audit log entries, most recent first
+   */
+  getAuditHistory(entityId: number | string): Promise<ParsedAuditLogEntry[]>;
+
+  /**
+   * Alias for getAuditHistory (backwards compatibility)
+   * @param entityId - The entity ID to get history for
+   * @returns Array of parsed audit log entries, most recent first
+   */
+  getAuditLogs(entityId: number | string): Promise<ParsedAuditLogEntry[]>;
+
+  /**
+   * Get a specific audit log entry by its ID
+   * @param auditId - The audit log ID
+   * @returns Raw audit log entry or null if not found
+   */
+  getAuditLog(auditId: number): Promise<AuditLogEntry | null>;
+
+  /**
+   * Get audit logs for entire table with optional filters
+   * @param filters - Optional filters to apply
+   * @returns Array of parsed audit log entries, most recent first
+   */
+  getTableAuditLogs(filters?: AuditFilters): Promise<ParsedAuditLogEntry[]>;
+
+  /**
+   * Get all changes made by a specific user for this table
+   * @param userId - The user ID to filter by
+   * @returns Array of parsed audit log entries, most recent first
+   */
+  getUserChanges(userId: string): Promise<ParsedAuditLogEntry[]>;
+
+  /**
+   * Restore entity from audit log.
+   *
+   * - For DELETE operations: Re-creates the deleted entity using old_values
+   * - For UPDATE operations: Reverts entity to old_values (the state before the update)
+   * - For INSERT operations: Throws error (cannot restore)
+   *
+   * @param auditId - The audit log ID to restore from
+   * @returns Restored entity
+   * @throws Error if audit log not found, operation not restorable, or old_values not captured
+   */
+  restoreFromAudit(auditId: number): Promise<T>;
+}
+
+/**
  * Base repository interface for type checking
  */
 interface BaseRepositoryLike {
@@ -688,35 +767,51 @@ function addAuditQueryMethods(
       throw new Error(`Audit log ${String(auditId)} not found`);
     }
 
-    // Parse the values
-    const values = log.old_values ?? log.new_values;
-    if (!values) {
-      throw new Error(`No values found in audit log ${String(auditId)}`);
-    }
-
-    const parsedValues = safeParseJSON<Record<string, unknown>>(values);
-    if (!parsedValues) {
-      throw new Error(`Failed to parse values from audit log ${String(auditId)}`);
-    }
-
-    const entityId = parsedValues[primaryKeyColumn];
-
-    if (entityId === undefined || entityId === null) {
-      throw new Error(`Primary key '${primaryKeyColumn}' not found in audit log values`);
-    }
-
     // For DELETE operations, restore using old_values (the entity before deletion)
     // For UPDATE operations, restore using old_values (revert the update)
+    // INSERT operations cannot be restored (the entity already exists)
     if (log.operation === 'DELETE') {
-      // Re-create the deleted entity
+      // DELETE: Re-create the deleted entity using old_values
+      if (!log.old_values) {
+        throw new Error(
+          `Cannot restore from DELETE audit log ${String(auditId)}: old_values not captured. ` +
+            `Ensure captureOldValues is enabled when creating the audit plugin.`
+        );
+      }
+
+      const parsedValues = safeParseJSON<Record<string, unknown>>(log.old_values);
+      if (!parsedValues) {
+        throw new Error(`Failed to parse old_values from audit log ${String(auditId)}`);
+      }
+
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- Checked above for existence
       return await baseRepo.create!(parsedValues);
     } else if (log.operation === 'UPDATE') {
-      // Revert to old values
+      // UPDATE: Revert to old_values (the state before the update)
+      if (!log.old_values) {
+        throw new Error(
+          `Cannot revert UPDATE from audit log ${String(auditId)}: old_values not captured. ` +
+            `Ensure captureOldValues is enabled when creating the audit plugin.`
+        );
+      }
+
+      const parsedValues = safeParseJSON<Record<string, unknown>>(log.old_values);
+      if (!parsedValues) {
+        throw new Error(`Failed to parse old_values from audit log ${String(auditId)}`);
+      }
+
+      const entityId = parsedValues[primaryKeyColumn];
+      if (entityId === undefined || entityId === null) {
+        throw new Error(`Primary key '${primaryKeyColumn}' not found in audit log old_values`);
+      }
+
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- Checked above for existence
       return await baseRepo.update!(entityId, parsedValues);
     } else {
-      throw new Error(`Cannot restore from ${log.operation} operation`);
+      throw new Error(
+        `Cannot restore from ${log.operation} operation. ` +
+          `Only DELETE (re-creates entity) and UPDATE (reverts to old values) operations can be restored.`
+      );
     }
   };
 
@@ -928,7 +1023,7 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
 
   return {
     name: '@kysera/audit',
-    version: '1.0.0',
+    version: '0.4.1',
 
     async onInit<DB>(executor: Kysely<DB>): Promise<void> {
       const exists = await checkAuditTableExists(executor, auditTable);

@@ -1,6 +1,7 @@
 import type { Kysely } from 'kysely';
 import { sql } from 'kysely';
-import type { Plugin } from '../../kysera-repository/dist/index.js';
+import type { Plugin } from '@kysera/repository';
+import { NotFoundError, BadRequestError } from '@kysera/core';
 
 // ============================================================================
 // Types
@@ -438,7 +439,7 @@ function extractPrimaryKey(entity: unknown, primaryKeyColumn: string): string | 
   const record = entity as Record<string, unknown>;
   const pkValue = record[primaryKeyColumn];
   if (pkValue === undefined || pkValue === null) {
-    throw new Error(`Primary key '${primaryKeyColumn}' not found in entity`);
+    throw new BadRequestError(`Primary key '${primaryKeyColumn}' not found in entity`);
   }
   return pkValue as string | number;
 }
@@ -764,7 +765,7 @@ function addAuditQueryMethods(
   extendedRepo.restoreFromAudit = async function (auditId: number): Promise<unknown> {
     const log = await extendedRepo.getAuditLog(auditId);
     if (!log) {
-      throw new Error(`Audit log ${String(auditId)} not found`);
+      throw new NotFoundError('AuditLog', { id: auditId });
     }
 
     // For DELETE operations, restore using old_values (the entity before deletion)
@@ -773,7 +774,7 @@ function addAuditQueryMethods(
     if (log.operation === 'DELETE') {
       // DELETE: Re-create the deleted entity using old_values
       if (!log.old_values) {
-        throw new Error(
+        throw new BadRequestError(
           `Cannot restore from DELETE audit log ${String(auditId)}: old_values not captured. ` +
             `Ensure captureOldValues is enabled when creating the audit plugin.`
         );
@@ -781,7 +782,7 @@ function addAuditQueryMethods(
 
       const parsedValues = safeParseJSON<Record<string, unknown>>(log.old_values);
       if (!parsedValues) {
-        throw new Error(`Failed to parse old_values from audit log ${String(auditId)}`);
+        throw new BadRequestError(`Failed to parse old_values from audit log ${String(auditId)}`);
       }
 
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- Checked above for existence
@@ -789,7 +790,7 @@ function addAuditQueryMethods(
     } else if (log.operation === 'UPDATE') {
       // UPDATE: Revert to old_values (the state before the update)
       if (!log.old_values) {
-        throw new Error(
+        throw new BadRequestError(
           `Cannot revert UPDATE from audit log ${String(auditId)}: old_values not captured. ` +
             `Ensure captureOldValues is enabled when creating the audit plugin.`
         );
@@ -797,18 +798,18 @@ function addAuditQueryMethods(
 
       const parsedValues = safeParseJSON<Record<string, unknown>>(log.old_values);
       if (!parsedValues) {
-        throw new Error(`Failed to parse old_values from audit log ${String(auditId)}`);
+        throw new BadRequestError(`Failed to parse old_values from audit log ${String(auditId)}`);
       }
 
       const entityId = parsedValues[primaryKeyColumn];
       if (entityId === undefined || entityId === null) {
-        throw new Error(`Primary key '${primaryKeyColumn}' not found in audit log old_values`);
+        throw new BadRequestError(`Primary key '${primaryKeyColumn}' not found in audit log old_values`);
       }
 
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- Checked above for existence
       return await baseRepo.update!(entityId, parsedValues);
     } else {
-      throw new Error(
+      throw new BadRequestError(
         `Cannot restore from ${log.operation} operation. ` +
           `Only DELETE (re-creates entity) and UPDATE (reverts to old values) operations can be restored.`
       );
@@ -1023,7 +1024,7 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
 
   return {
     name: '@kysera/audit',
-    version: '0.4.1',
+    version: '0.5.1',
 
     async onInit<DB>(executor: Kysely<DB>): Promise<void> {
       const exists = await checkAuditTableExists(executor, auditTable);

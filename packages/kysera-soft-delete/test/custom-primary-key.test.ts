@@ -597,7 +597,7 @@ describe('Soft Delete Plugin - Custom Primary Key', () => {
       });
 
       // Try to soft delete non-existent product
-      await expect(productRepo.softDelete(99999)).rejects.toThrow('Record with id 99999 not found');
+      await expect(productRepo.softDelete(99999)).rejects.toThrow('Record not found');
     });
 
     it('should throw error when soft deleting many with non-existent IDs', async () => {

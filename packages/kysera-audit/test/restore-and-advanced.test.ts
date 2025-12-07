@@ -484,7 +484,7 @@ describe('Audit Plugin - restoreFromAudit', () => {
         })
       ) as ReturnType<typeof factory.create<'users', User>> & AuditRepositoryExtensions<User>;
 
-      await expect(userRepo.restoreFromAudit(999999)).rejects.toThrow('Audit log 999999 not found');
+      await expect(userRepo.restoreFromAudit(999999)).rejects.toThrow('AuditLog not found');
     });
   });
 });
@@ -775,7 +775,7 @@ describe('Audit Plugin - Database-Specific Plugins', () => {
 
     expect(plugin).toBeDefined();
     expect(plugin.name).toBe('@kysera/audit');
-    expect(plugin.version).toBe('0.4.1');
+    expect(plugin.version).toBe('0.5.1');
     expect(plugin.onInit).toBeDefined();
     expect(plugin.extendRepository).toBeDefined();
   });
@@ -800,7 +800,7 @@ describe('Audit Plugin - Database-Specific Plugins', () => {
 
     expect(plugin).toBeDefined();
     expect(plugin.name).toBe('@kysera/audit');
-    expect(plugin.version).toBe('0.4.1');
+    expect(plugin.version).toBe('0.5.1');
     expect(plugin.onInit).toBeDefined();
     expect(plugin.extendRepository).toBeDefined();
   });
@@ -823,7 +823,7 @@ describe('Audit Plugin - Database-Specific Plugins', () => {
 
     expect(plugin).toBeDefined();
     expect(plugin.name).toBe('@kysera/audit');
-    expect(plugin.version).toBe('0.4.1');
+    expect(plugin.version).toBe('0.5.1');
   });
 
   it('generic auditPlugin should create valid plugin', () => {
@@ -834,7 +834,7 @@ describe('Audit Plugin - Database-Specific Plugins', () => {
 
     expect(plugin).toBeDefined();
     expect(plugin.name).toBe('@kysera/audit');
-    expect(plugin.version).toBe('0.4.1');
+    expect(plugin.version).toBe('0.5.1');
   });
 
   it('all plugins should accept all AuditOptions', () => {

@@ -1,6 +1,7 @@
 import type { Selectable, InsertQueryBuilder, SelectQueryBuilder, DeleteQueryBuilder } from 'kysely';
 import type { TableOperations } from './base-repository.js';
 import type { Executor } from './helpers.js';
+import { DatabaseError } from '@kysera/core';
 
 /**
  * Type helper to convert unknown results to typed results
@@ -234,7 +235,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
         // Type assertion needed: MySQL returns insertId which isn't in Kysely's type definitions
         const insertResult = result as unknown as InsertResult;
         if (!insertResult.insertId) {
-          throw new Error('Failed to create record');
+          throw new DatabaseError('Failed to create record', 'INSERT_FAILED', tableName);
         }
 
         // Fetch the inserted record
@@ -243,7 +244,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
         const record = await queryWithWhere.executeTakeFirst();
 
         if (!record) {
-          throw new Error('Failed to fetch created record');
+          throw new DatabaseError('Failed to fetch created record', 'FETCH_FAILED', tableName);
         }
 
         return castResults<SelectTable>(record);
@@ -256,7 +257,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
           .executeTakeFirst();
 
         if (!result) {
-          throw new Error('Failed to create record');
+          throw new DatabaseError('Failed to create record', 'INSERT_FAILED', tableName);
         }
 
         return castResults<SelectTable>(result);
@@ -280,7 +281,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
           // Type assertion needed: MySQL returns insertId which isn't in Kysely's type definitions
           const insertResult = result as unknown as InsertResult;
           if (!insertResult.insertId) {
-            throw new Error('Failed to create record');
+            throw new DatabaseError('Failed to create record', 'INSERT_FAILED', tableName);
           }
 
           // Fetch the inserted record

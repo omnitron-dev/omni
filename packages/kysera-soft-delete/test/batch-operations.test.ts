@@ -97,7 +97,7 @@ describe('Soft Delete Plugin - Batch Operations', () => {
       const invalidId = 99999;
 
       await expect(userRepo.softDeleteMany([validId, invalidId])).rejects.toThrow(
-        /Records with ids.*not found/
+        'Records not found'
       );
     });
 
@@ -334,7 +334,7 @@ describe('Soft Delete Plugin - Batch Operations', () => {
       // This will only match one record even though ID appears multiple times
       // We expect this to fail because softDeleteMany verifies count matches
       await expect(userRepo.softDeleteMany([aliceId, aliceId, aliceId])).rejects.toThrow(
-        /Records with ids.*not found/
+        'Records not found'
       );
 
       // Better approach: deduplicate before calling

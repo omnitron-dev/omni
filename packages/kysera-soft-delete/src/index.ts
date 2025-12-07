@@ -1,6 +1,7 @@
-import type { Plugin, AnyQueryBuilder } from '../../kysera-repository/dist/index.js';
+import type { Plugin, AnyQueryBuilder } from '@kysera/repository';
 import type { SelectQueryBuilder, Kysely } from 'kysely';
 import { sql } from 'kysely';
+import { NotFoundError } from '@kysera/core';
 
 /**
  * Configuration options for the soft delete plugin.
@@ -113,7 +114,7 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
 
   return {
     name: '@kysera/soft-delete',
-    version: '1.0.0',
+    version: '0.5.1',
 
     /**
      * Intercept queries to automatically filter soft-deleted records.
@@ -258,7 +259,7 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
 
           // If record not found or deleted_at not set, throw error
           if (!record) {
-            throw new Error(`Record with id ${id} not found`);
+            throw new NotFoundError('Record', { id });
           }
 
           return record;
@@ -285,7 +286,7 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
           }
 
           if (!record) {
-            throw new Error(`Record with id ${id} not found`);
+            throw new NotFoundError('Record', { id });
           }
 
           return record;
@@ -350,7 +351,7 @@ export const softDeletePlugin = (options: SoftDeleteOptions = {}): Plugin => {
           if (records.length !== ids.length) {
             const foundIds = records.map((r: any) => r[primaryKeyColumn]);
             const missingIds = ids.filter((id) => !foundIds.includes(id));
-            throw new Error(`Records with ids ${missingIds.join(', ')} not found`);
+            throw new NotFoundError('Records', { ids: missingIds });
           }
 
           return records as unknown[];

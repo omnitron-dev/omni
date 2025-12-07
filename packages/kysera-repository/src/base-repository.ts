@@ -1,6 +1,7 @@
 import type { Selectable, Transaction } from 'kysely';
 import type { z } from 'zod';
 import type { Executor } from './helpers.js';
+import { NotFoundError } from '@kysera/core';
 
 /**
  * Core repository interface
@@ -160,7 +161,7 @@ export function createBaseRepository<DB, Table, Entity>(
       const row = await operations.updateById(id, validatedInput);
 
       if (!row) {
-        throw new Error(`Record with id ${id} not found`);
+        throw new NotFoundError('Record', { id });
       }
 
       return processRow(row);
@@ -196,7 +197,7 @@ export function createBaseRepository<DB, Table, Entity>(
         const row = await operations.updateById(id, validatedInput);
 
         if (!row) {
-          throw new Error(`Failed to update record with id ${id}: Record not found`);
+          throw new NotFoundError('Record', { id });
         }
 
         return processRow(row);

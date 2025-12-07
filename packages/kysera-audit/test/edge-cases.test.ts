@@ -245,7 +245,7 @@ describe('Audit Plugin Edge Cases and Error Handling', () => {
 
     it('should handle restoreFromAudit with non-existent audit log', async () => {
       await expect(userRepo.restoreFromAudit(99999)).rejects.toThrow(
-        'Audit log 99999 not found'
+        'AuditLog not found'
       );
     });
 

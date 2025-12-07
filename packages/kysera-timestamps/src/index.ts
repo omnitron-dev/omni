@@ -1,4 +1,4 @@
-import type { Plugin } from '../../kysera-repository/dist/index.js';
+import type { Plugin } from '@kysera/repository';
 import type { Kysely, SelectQueryBuilder } from 'kysely';
 
 /**
@@ -161,7 +161,7 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
 
   return {
     name: '@kysera/timestamps',
-    version: '0.4.1',
+    version: '0.5.1',
 
     interceptQuery(qb, _context) {
       // The interceptQuery method can't modify INSERT/UPDATE values in Kysely

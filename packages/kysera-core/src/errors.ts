@@ -51,6 +51,15 @@ export class ForeignKeyError extends DatabaseError {
     super(`FOREIGN KEY constraint violation`, 'FOREIGN_KEY_VIOLATION');
     this.name = 'ForeignKeyError';
   }
+
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      constraint: this.constraint,
+      table: this.table,
+      referencedTable: this.referencedTable,
+    };
+  }
 }
 
 export class NotFoundError extends DatabaseError {

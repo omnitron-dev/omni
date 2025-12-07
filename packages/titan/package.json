@@ -133,12 +133,12 @@
     "dev": "tsc -p ./tsconfig.build.json --watch"
   },
   "dependencies": {
-    "@kysera/audit": "^0.4.1",
-    "@kysera/core": "^0.4.1",
-    "@kysera/migrations": "^0.4.1",
-    "@kysera/repository": "^0.4.1",
-    "@kysera/soft-delete": "^0.4.1",
-    "@kysera/timestamps": "^0.4.1",
+    "@kysera/audit": "workspace:*",
+    "@kysera/core": "workspace:*",
+    "@kysera/migrations": "workspace:*",
+    "@kysera/repository": "workspace:*",
+    "@kysera/soft-delete": "workspace:*",
+    "@kysera/timestamps": "workspace:*",
     "@omnitron-dev/common": "workspace:*",
     "@omnitron-dev/eventemitter": "workspace:*",
     "@omnitron-dev/msgpack": "workspace:*",

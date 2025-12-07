@@ -830,9 +830,6 @@ importers:
       '@kysera/core':
         specifier: workspace:*
         version: link:../kysera-core
-      zod:
-        specifier: ^4.1.13
-        version: 4.1.13
     devDependencies:
       '@kysera/repository':
         specifier: workspace:*
@@ -858,6 +855,9 @@ importers:
       vitest:
         specifier: ^4.0.15
         version: 4.0.15(@types/node@24.10.1)(happy-dom@20.0.2)(jiti@2.6.1)(jsdom@27.0.0(postcss@8.5.6))(terser@5.44.0)(tsx@4.21.0)(yaml@2.8.1)
+      zod:
+        specifier: ^4.1.13
+        version: 4.1.13
 
   packages/kysera-core:
     devDependencies:
@@ -900,9 +900,6 @@ importers:
       '@kysera/core':
         specifier: workspace:*
         version: link:../kysera-core
-      zod:
-        specifier: ^4.1.13
-        version: 4.1.13
     devDependencies:
       '@types/better-sqlite3':
         specifier: ^7.6.13
@@ -925,6 +922,9 @@ importers:
       vitest:
         specifier: ^4.0.15
         version: 4.0.15(@types/node@24.10.1)(happy-dom@20.0.2)(jiti@2.6.1)(jsdom@27.0.0(postcss@8.5.6))(terser@5.44.0)(tsx@4.21.0)(yaml@2.8.1)
+      zod:
+        specifier: ^4.1.13
+        version: 4.1.13
 
   packages/kysera-repository:
     dependencies:
@@ -977,13 +977,10 @@ importers:
       '@kysera/core':
         specifier: workspace:*
         version: link:../kysera-core
+    devDependencies:
       '@kysera/repository':
         specifier: workspace:*
         version: link:../kysera-repository
-      zod:
-        specifier: ^4.1.13
-        version: 4.1.13
-    devDependencies:
       '@types/better-sqlite3':
         specifier: ^7.6.13
         version: 7.6.13
@@ -1008,15 +1005,15 @@ importers:
       vitest:
         specifier: ^4.0.15
         version: 4.0.15(@types/node@24.10.1)(happy-dom@20.0.2)(jiti@2.6.1)(jsdom@27.0.0(postcss@8.5.6))(terser@5.44.0)(tsx@4.21.0)(yaml@2.8.1)
+      zod:
+        specifier: ^4.1.13
+        version: 4.1.13
 
   packages/kysera-timestamps:
     dependencies:
       '@kysera/core':
         specifier: workspace:*
         version: link:../kysera-core
-      zod:
-        specifier: ^4.1.13
-        version: 4.1.13
     devDependencies:
       '@kysera/repository':
         specifier: workspace:*
@@ -1042,6 +1039,9 @@ importers:
       vitest:
         specifier: ^4.0.15
         version: 4.0.15(@types/node@24.10.1)(happy-dom@20.0.2)(jiti@2.6.1)(jsdom@27.0.0(postcss@8.5.6))(terser@5.44.0)(tsx@4.21.0)(yaml@2.8.1)
+      zod:
+        specifier: ^4.1.13
+        version: 4.1.13
 
   packages/msgpack:
     dependencies:
@@ -1187,23 +1187,23 @@ importers:
   packages/titan:
     dependencies:
       '@kysera/audit':
-        specifier: ^0.4.1
-        version: 0.4.1(@kysera/repository@0.4.1(kysely@0.28.8)(zod@4.1.12))(kysely@0.28.8)
+        specifier: workspace:*
+        version: link:../kysera-audit
       '@kysera/core':
-        specifier: ^0.4.1
-        version: 0.4.1(kysely@0.28.8)
+        specifier: workspace:*
+        version: link:../kysera-core
       '@kysera/migrations':
-        specifier: ^0.4.1
-        version: 0.4.1(kysely@0.28.8)
+        specifier: workspace:*
+        version: link:../kysera-migrations
       '@kysera/repository':
-        specifier: ^0.4.1
-        version: 0.4.1(kysely@0.28.8)(zod@4.1.12)
+        specifier: workspace:*
+        version: link:../kysera-repository
       '@kysera/soft-delete':
-        specifier: ^0.4.1
-        version: 0.4.1(kysely@0.28.8)(zod@4.1.12)
+        specifier: workspace:*
+        version: link:../kysera-soft-delete
       '@kysera/timestamps':
-        specifier: ^0.4.1
-        version: 0.4.1(@kysera/repository@0.4.1(kysely@0.28.8)(zod@4.1.12))(kysely@0.28.8)
+        specifier: workspace:*
+        version: link:../kysera-timestamps
       '@omnitron-dev/common':
         specifier: workspace:*
         version: link:../common
@@ -3030,45 +3030,6 @@ packages:
     engines: {node: '>=10.0'}
     peerDependencies:
       tslib: '2'
-
-  '@kysera/audit@0.4.1':
-    resolution: {integrity: sha512-HDs8rCtvLgya6KsEp2GNBwUhiSFtTNc9REbunPedGdSdsXAu4n586poELnocuS+WTwhCuPoUK8T0Eg5y4AzktA==}
-    engines: {bun: '>=1.0.0', node: '>=20.0.0'}
-    peerDependencies:
-      '@kysera/repository': 0.4.1
-      kysely: ^0.28.7
-
-  '@kysera/core@0.4.1':
-    resolution: {integrity: sha512-59eGXzovyvFXxNBgF62fGg1bXAziTGOxXrJ/3xsCfuVDwzcSc+AgeiaqL9uJX6wlG7rYD6cW3r8hRLpHLHjZDg==}
-    engines: {bun: '>=1.0.0', node: '>=20.0.0'}
-    peerDependencies:
-      kysely: '>=0.28.7'
-
-  '@kysera/migrations@0.4.1':
-    resolution: {integrity: sha512-HbBBv7mQYLo33QqcmnWFOjyxr1/e+IoVnZ3R8ePcxUhf8klU67MG+DhPivlVDyB6mqi6OzX0saE1hBeQK38Vpw==}
-    engines: {bun: '>=1.0.0', node: '>=20.0.0'}
-    peerDependencies:
-      kysely: ^0.28.7
-
-  '@kysera/repository@0.4.1':
-    resolution: {integrity: sha512-6boCvFNxGg+P0nWvJ9ZtD+U0HEIW19XfVGmPHW3/dV04QL1XVfSUhw/7tLgcU2eFpAZF9f1fh25aUc4IswjaHA==}
-    engines: {bun: '>=1.0.0', node: '>=20.0.0'}
-    peerDependencies:
-      kysely: '>=0.28.7'
-      zod: ^4.1.11
-
-  '@kysera/soft-delete@0.4.1':
-    resolution: {integrity: sha512-nyYV/hlRXUbXFh/qioN+PjmKcDsN8752Jd/JONJqM0Ta1MHVky8Qi8nxmSx93YtI6MDbvyAfQkPogth6V64nBg==}
-    engines: {bun: '>=1.0.0', node: '>=20.0.0'}
-    peerDependencies:
-      kysely: '>=0.28.7'
-
-  '@kysera/timestamps@0.4.1':
-    resolution: {integrity: sha512-dyaRPKnjHTVD/9uKf0/tvHCtMsz9ERMOzkylfmfE1rB1mOMm+sbn1INzf1MDK44qQ6tIs1AOtpMfeoFs+doSNA==}
-    engines: {bun: '>=1.0.0', node: '>=20.0.0'}
-    peerDependencies:
-      '@kysera/repository': 0.4.1
-      kysely: ^0.28.7
 
   '@lezer/common@1.2.3':
     resolution: {integrity: sha512-w7ojc8ejBqr2REPsWxJjrMFsA/ysDCFICn8zEOR9mrqzOu2amhITYuLD8ag6XZf0CFXDrhKqw7+tW8cX66NaDA==}
@@ -9972,38 +9933,6 @@ snapshots:
       '@jsonjoy.com/buffers': 1.2.0(tslib@2.8.1)
       '@jsonjoy.com/codegen': 1.0.0(tslib@2.8.1)
       tslib: 2.8.1
-
-  '@kysera/audit@0.4.1(@kysera/repository@0.4.1(kysely@0.28.8)(zod@4.1.12))(kysely@0.28.8)':
-    dependencies:
-      '@kysera/repository': 0.4.1(kysely@0.28.8)(zod@4.1.12)
-      kysely: 0.28.8
-      zod: 4.1.13
-
-  '@kysera/core@0.4.1(kysely@0.28.8)':
-    dependencies:
-      kysely: 0.28.8
-
-  '@kysera/migrations@0.4.1(kysely@0.28.8)':
-    dependencies:
-      kysely: 0.28.8
-
-  '@kysera/repository@0.4.1(kysely@0.28.8)(zod@4.1.12)':
-    dependencies:
-      '@kysera/core': 0.4.1(kysely@0.28.8)
-      kysely: 0.28.8
-      zod: 4.1.12
-
-  '@kysera/soft-delete@0.4.1(kysely@0.28.8)(zod@4.1.12)':
-    dependencies:
-      '@kysera/repository': 0.4.1(kysely@0.28.8)(zod@4.1.12)
-      kysely: 0.28.8
-    transitivePeerDependencies:
-      - zod
-
-  '@kysera/timestamps@0.4.1(@kysera/repository@0.4.1(kysely@0.28.8)(zod@4.1.12))(kysely@0.28.8)':
-    dependencies:
-      '@kysera/repository': 0.4.1(kysely@0.28.8)(zod@4.1.12)
-      kysely: 0.28.8
 
   '@lezer/common@1.2.3': {}
 

@@ -428,9 +428,156 @@ export interface AuditFields {
 
 export class BadRequestError extends DatabaseError {
   constructor(message: string) {
-    super(message, 'BAD_REQUEST');
+    super(message, 'RESOURCE_BAD_REQUEST');
     this.name = 'BadRequestError';
   }
+}
+
+export class NotNullError extends DatabaseError {
+  constructor(
+    public column: string,
+    public table?: string
+  ) {
+    const tableInfo = table ? ` on table ${table}` : '';
+    super(`NOT NULL constraint violation on column ${column}${tableInfo}`, 'VALIDATION_NOT_NULL_VIOLATION', column);
+    this.name = 'NotNullError';
+  }
+
+  toJSON() {
+    return {
+      ...super.toJSON(),
+      column: this.column,
+      table: this.table,
+    };
+  }
+}
+
+export class CheckConstraintError extends DatabaseError {
+  constructor(
+    public constraint: string,
+    public table?: string
+  ) {
+    const tableInfo = table ? ` on table ${table}` : '';
+    super(`CHECK constraint violation: ${constraint}${tableInfo}`, 'VALIDATION_CHECK_VIOLATION');
+    this.name = 'CheckConstraintError';
+  }
+
+  toJSON() {
+    return {
+      ...super.toJSON(),
+      constraint: this.constraint,
+      table: this.table,
+    };
+  }
+}
+
+// Error Codes - Unified system
+export const DatabaseErrorCodes = {
+  DB_CONNECTION_FAILED: 'DB_CONNECTION_FAILED',
+  DB_QUERY_FAILED: 'DB_QUERY_FAILED',
+  DB_TRANSACTION_FAILED: 'DB_TRANSACTION_FAILED',
+  DB_TIMEOUT: 'DB_TIMEOUT',
+  DB_POOL_EXHAUSTED: 'DB_POOL_EXHAUSTED',
+  DB_UNKNOWN: 'DB_UNKNOWN',
+} as const;
+
+export const ValidationErrorCodes = {
+  VALIDATION_UNIQUE_VIOLATION: 'VALIDATION_UNIQUE_VIOLATION',
+  VALIDATION_FOREIGN_KEY_VIOLATION: 'VALIDATION_FOREIGN_KEY_VIOLATION',
+  VALIDATION_NOT_NULL_VIOLATION: 'VALIDATION_NOT_NULL_VIOLATION',
+  VALIDATION_CHECK_VIOLATION: 'VALIDATION_CHECK_VIOLATION',
+  VALIDATION_INVALID_INPUT: 'VALIDATION_INVALID_INPUT',
+  VALIDATION_REQUIRED_FIELD: 'VALIDATION_REQUIRED_FIELD',
+  VALIDATION_INVALID_TYPE: 'VALIDATION_INVALID_TYPE',
+} as const;
+
+export const ResourceErrorCodes = {
+  RESOURCE_NOT_FOUND: 'RESOURCE_NOT_FOUND',
+  RESOURCE_ALREADY_EXISTS: 'RESOURCE_ALREADY_EXISTS',
+  RESOURCE_CONFLICT: 'RESOURCE_CONFLICT',
+  RESOURCE_BAD_REQUEST: 'RESOURCE_BAD_REQUEST',
+} as const;
+
+export const MigrationErrorCodes = {
+  MIGRATION_UP_FAILED: 'MIGRATION_UP_FAILED',
+  MIGRATION_DOWN_FAILED: 'MIGRATION_DOWN_FAILED',
+  MIGRATION_VALIDATION_FAILED: 'MIGRATION_VALIDATION_FAILED',
+  MIGRATION_NOT_FOUND: 'MIGRATION_NOT_FOUND',
+  MIGRATION_DUPLICATE_NAME: 'MIGRATION_DUPLICATE_NAME',
+  MIGRATION_LOCK_FAILED: 'MIGRATION_LOCK_FAILED',
+  MIGRATION_ALREADY_EXECUTED: 'MIGRATION_ALREADY_EXECUTED',
+} as const;
+
+export const PluginErrorCodes = {
+  PLUGIN_VALIDATION_FAILED: 'PLUGIN_VALIDATION_FAILED',
+  PLUGIN_INIT_FAILED: 'PLUGIN_INIT_FAILED',
+  PLUGIN_CONFLICT: 'PLUGIN_CONFLICT',
+  PLUGIN_DEPENDENCY_MISSING: 'PLUGIN_DEPENDENCY_MISSING',
+  PLUGIN_DUPLICATE: 'PLUGIN_DUPLICATE',
+  PLUGIN_NOT_FOUND: 'PLUGIN_NOT_FOUND',
+} as const;
+
+export const AuditErrorCodes = {
+  AUDIT_LOG_NOT_FOUND: 'AUDIT_LOG_NOT_FOUND',
+  AUDIT_RESTORE_NOT_SUPPORTED: 'AUDIT_RESTORE_NOT_SUPPORTED',
+  AUDIT_OLD_VALUES_MISSING: 'AUDIT_OLD_VALUES_MISSING',
+  AUDIT_TABLE_CREATION_FAILED: 'AUDIT_TABLE_CREATION_FAILED',
+} as const;
+
+export const ConfigErrorCodes = {
+  CONFIG_NOT_FOUND: 'CONFIG_NOT_FOUND',
+  CONFIG_VALIDATION_FAILED: 'CONFIG_VALIDATION_FAILED',
+  CONFIG_PARSE_ERROR: 'CONFIG_PARSE_ERROR',
+  CONFIG_REQUIRED_MISSING: 'CONFIG_REQUIRED_MISSING',
+  CONFIG_INVALID_VALUE: 'CONFIG_INVALID_VALUE',
+} as const;
+
+export const FileSystemErrorCodes = {
+  FS_FILE_NOT_FOUND: 'FS_FILE_NOT_FOUND',
+  FS_PERMISSION_DENIED: 'FS_PERMISSION_DENIED',
+  FS_DIRECTORY_NOT_FOUND: 'FS_DIRECTORY_NOT_FOUND',
+  FS_FILE_EXISTS: 'FS_FILE_EXISTS',
+  FS_WRITE_FAILED: 'FS_WRITE_FAILED',
+  FS_READ_FAILED: 'FS_READ_FAILED',
+} as const;
+
+export const NetworkErrorCodes = {
+  NETWORK_CONNECTION_REFUSED: 'NETWORK_CONNECTION_REFUSED',
+  NETWORK_TIMEOUT: 'NETWORK_TIMEOUT',
+  NETWORK_DNS_FAILED: 'NETWORK_DNS_FAILED',
+  NETWORK_SSL_ERROR: 'NETWORK_SSL_ERROR',
+} as const;
+
+export const ErrorCodes = {
+  ...DatabaseErrorCodes,
+  ...ValidationErrorCodes,
+  ...ResourceErrorCodes,
+  ...MigrationErrorCodes,
+  ...PluginErrorCodes,
+  ...AuditErrorCodes,
+  ...ConfigErrorCodes,
+  ...FileSystemErrorCodes,
+  ...NetworkErrorCodes,
+} as const;
+
+export type ErrorCode = typeof ErrorCodes[keyof typeof ErrorCodes];
+
+export function isValidErrorCode(code: string): code is ErrorCode {
+  return Object.values(ErrorCodes).includes(code as ErrorCode);
+}
+
+export function getErrorCategory(code: string): string {
+  return code.match(/^([A-Z]+)_/)?.[1] ?? 'UNKNOWN';
+}
+
+export function mapLegacyCode(legacyCode: string): ErrorCode | string {
+  const mapping: Record<string, ErrorCode> = {
+    UNIQUE_VIOLATION: ErrorCodes.VALIDATION_UNIQUE_VIOLATION,
+    FOREIGN_KEY_VIOLATION: ErrorCodes.VALIDATION_FOREIGN_KEY_VIOLATION,
+    NOT_FOUND: ErrorCodes.RESOURCE_NOT_FOUND,
+    BAD_REQUEST: ErrorCodes.RESOURCE_BAD_REQUEST,
+  };
+  return mapping[legacyCode] ?? legacyCode;
 }
 
 export function paginateCursorSimple<DB, TB, O>(query: unknown, options?: PaginationOptions): Promise<PaginatedResult<O>> {

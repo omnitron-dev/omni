@@ -189,7 +189,12 @@ export class DatabaseService {
         this.logger.warn({ connection: connectionName, duration, sql: sqlQuery }, 'Slow query detected');
         debugOptions.onSlowQuery?.(sqlQuery, duration);
       },
-      logger: debugOptions.logger || ((message: string) => this.logger.debug(message)),
+      logger: debugOptions.logger || {
+        debug: (msg: string, ...args: unknown[]) => this.logger.debug({ ...args }, msg),
+        info: (msg: string, ...args: unknown[]) => this.logger.info({ ...args }, msg),
+        warn: (msg: string, ...args: unknown[]) => this.logger.warn({ ...args }, msg),
+        error: (msg: string, ...args: unknown[]) => this.logger.error({ ...args }, msg),
+      },
     });
 
     this.debugConnections.set(cacheKey, debugDb);

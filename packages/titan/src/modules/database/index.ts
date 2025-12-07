@@ -241,6 +241,29 @@ export {
   ForeignKeyError,
   NotFoundError as KyseraNotFoundError,
   BadRequestError as KyseraBadRequestError,
+  NotNullError,
+  CheckConstraintError,
+} from '@kysera/core';
+
+// @kysera/core - Error codes (unified error code system)
+export {
+  ErrorCodes,
+  DatabaseErrorCodes,
+  ValidationErrorCodes,
+  ResourceErrorCodes,
+  MigrationErrorCodes,
+  PluginErrorCodes,
+  AuditErrorCodes,
+  ConfigErrorCodes,
+  FileSystemErrorCodes,
+  NetworkErrorCodes,
+  isValidErrorCode,
+  getErrorCategory,
+  mapLegacyCode,
+} from '@kysera/core';
+
+export type {
+  ErrorCode,
 } from '@kysera/core';
 
 // @kysera/core - Pagination

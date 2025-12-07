@@ -21,12 +21,36 @@ vi.mock('../../../../src/config/loader.js', () => ({
 }));
 
 vi.mock('../../../../src/utils/sql-sanitizer.js', () => ({
-  validateIdentifier: vi.fn(),
+  validateIdentifier: vi.fn((name) => name),
   escapeIdentifier: vi.fn((id) => `"${id}"`),
   safeTruncate: vi.fn((table) => `TRUNCATE "${table}"`),
   safeDropDatabase: vi.fn((db) => `DROP DATABASE IF EXISTS "${db}"`),
   safeTerminateBackendQuery: vi.fn((db) => ({ sql: 'SELECT pg_terminate_backend($1)', params: [db] })),
 }));
+
+// Create mock execute function that can be reused
+const mockSqlExecute = vi.fn().mockResolvedValue([]);
+
+vi.mock('kysely', async () => {
+  const actual = await vi.importActual<typeof import('kysely')>('kysely');
+
+  const sqlTaggedTemplate = vi.fn(() => ({
+    execute: mockSqlExecute,
+  }));
+
+  const sqlRaw = vi.fn(() => ({
+    execute: mockSqlExecute,
+  }));
+
+  const mockSql = Object.assign(sqlTaggedTemplate, {
+    raw: sqlRaw,
+  });
+
+  return {
+    ...actual,
+    sql: mockSql,
+  };
+});
 
 vi.mock('@xec-sh/kit', () => ({
   prism: {
@@ -70,6 +94,7 @@ import { getDatabaseConnection } from '../../../../src/utils/database.js';
 import { loadConfig } from '../../../../src/config/loader.js';
 import { CLIError } from '../../../../src/utils/errors.js';
 import { confirm } from '@xec-sh/kit';
+import { sql } from 'kysely';
 
 describe('test teardown command', () => {
   let command: Command;
@@ -78,39 +103,45 @@ describe('test teardown command', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
     process.env['NODE_ENV'] = 'test';
-    
+
+    // Create the main mock db that will be reused
+    // The key is that all chain methods return the mockDb itself
+    const executeImpl = vi.fn().mockResolvedValue([]);
+
     mockDb = {
-      selectFrom: vi.fn().mockReturnThis(),
-      select: vi.fn().mockReturnThis(),
-      where: vi.fn().mockReturnThis(),
-      execute: vi.fn().mockResolvedValue([]),
-      deleteFrom: vi.fn().mockReturnThis(),
+      selectFrom: vi.fn(function() { return this; }),
+      select: vi.fn(function() { return this; }),
+      where: vi.fn(function() { return this; }),
+      execute: executeImpl,
+      deleteFrom: vi.fn(function() { return this; }),
       schema: {
         dropDatabase: vi.fn().mockReturnThis(),
         ifExists: vi.fn().mockReturnThis(),
       },
       raw: vi.fn().mockResolvedValue([]),
-      dialectName: 'postgres',
+      dialectName: 'postgresql',
       destroy: vi.fn().mockResolvedValue(undefined),
     };
-    
+
+    // Always return the same mockDb instance so tests can modify it
     (getDatabaseConnection as Mock).mockResolvedValue(mockDb);
+
     (loadConfig as Mock).mockResolvedValue({
-      database: { 
-        dialect: 'postgres', 
+      database: {
+        dialect: 'postgresql',
         database: 'myapp',
         host: 'localhost',
         port: 5432,
       },
     });
-    
+
     consoleSpy = {
       log: vi.fn(),
     };
     vi.spyOn(console, 'log').mockImplementation(consoleSpy.log);
-    
+
     command = testTeardownCommand();
   });
 
@@ -188,7 +219,7 @@ describe('test teardown command', () => {
       mockDb.execute.mockResolvedValue([{ datname: 'myapp_test' }]);
 
       await command.parseAsync(['node', 'test', '--force']);
-      expect(mockDb.raw).toHaveBeenCalled();
+      expect(sql.raw).toHaveBeenCalled();
     });
 
     it('should output JSON when --json is used', async () => {
@@ -209,7 +240,7 @@ describe('test teardown command', () => {
 
     it('should clean specific database', async () => {
       await command.parseAsync(['node', 'test', '--force', '--database', 'myapp_test']);
-      expect(mockDb.raw).toHaveBeenCalled();
+      expect(sql.raw).toHaveBeenCalled();
     });
   });
 

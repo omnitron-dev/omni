@@ -736,7 +736,7 @@ describe('confirmWithDryRun', () => {
 
     const result = await confirmWithDryRun('Proceed?');
 
-    expect(confirm).toHaveBeenCalledWith('Proceed?', { defaultValue: false });
+    expect(confirm).toHaveBeenCalledWith({ message: 'Proceed?', initialValue: false });
     expect(result).toBe(true);
   });
 });

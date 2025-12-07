@@ -14,7 +14,7 @@ vi.mock('node:path', async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...(actual as object),
-    resolve: vi.fn((p: string) => p),
+    resolve: vi.fn((...args: string[]) => args[args.length - 1]),
   };
 });
 
@@ -33,6 +33,7 @@ vi.mock('@xec-sh/kit', () => ({
     succeed: vi.fn(),
     fail: vi.fn(),
     warn: vi.fn(),
+    stop: vi.fn(),
     text: '',
   })),
   table: vi.fn((data: any[]) => JSON.stringify(data)),
@@ -56,8 +57,8 @@ vi.mock('../../../src/utils/database.js', () => ({
   getDatabaseConnection: vi.fn(),
 }));
 
-vi.mock('../../../src/commands/generate/introspector.js', () => ({
-  DatabaseIntrospector: vi.fn().mockImplementation(function(this: any) {
+vi.mock('../../../src/commands/generate/introspector.js', () => {
+  const mockClass = vi.fn().mockImplementation(function(this: any) {
     this.getTables = vi.fn().mockResolvedValue(['users', 'posts']);
     this.getTableInfo = vi.fn().mockResolvedValue({
       name: 'users',
@@ -83,8 +84,17 @@ vi.mock('../../../src/commands/generate/introspector.js', () => ({
     });
     this.getAllRows = vi.fn().mockResolvedValue([{ id: 1, email: 'test@example.com' }]);
     return this;
-  }),
-}));
+  });
+
+  // Add static method
+  mockClass.mapDataTypeToTypeScript = vi.fn((dataType: string, isNullable: boolean) => {
+    return isNullable ? 'string | null' : 'string';
+  });
+
+  return {
+    DatabaseIntrospector: mockClass,
+  };
+});
 
 import { existsSync, writeFileSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -171,7 +181,11 @@ const mockDb = {
     values: vi.fn().mockReturnThis(),
     execute: vi.fn().mockResolvedValue(undefined),
   })),
-  transaction: vi.fn().mockResolvedValue(mockTrx),
+  transaction: vi.fn(() => ({
+    execute: vi.fn(async (callback: (trx: any) => Promise<void>) => {
+      await callback(mockTrx);
+    }),
+  })),
   raw: vi.fn(),
   schema: {
     createTable: vi.fn().mockReturnThis(),
@@ -630,7 +644,11 @@ describe('db restore command', () => {
     vi.clearAllMocks();
 
     // Reset transaction mock
-    mockDb.transaction = vi.fn().mockResolvedValue(mockTrx);
+    mockDb.transaction = vi.fn(() => ({
+      execute: vi.fn(async (callback: (trx: any) => Promise<void>) => {
+        await callback(mockTrx);
+      }),
+    }));
     mockTrx.executeQuery = vi.fn().mockResolvedValue(undefined);
     mockTrx.commit = vi.fn().mockResolvedValue(undefined);
     mockTrx.rollback = vi.fn().mockResolvedValue(undefined);

@@ -251,6 +251,58 @@ function generateRepositoryCode(
 
     return Number(result?.count ?? 0)
   }
+
+  async exists(${primaryKey}: ${getPrimaryKeyType(table)}): Promise<boolean> {
+    const result = await this.db
+      .selectFrom('${tableName}')
+      .select('${primaryKey}')
+      .where('${primaryKey}', '=', ${primaryKey})`;
+
+  if (options.withSoftDelete) {
+    classCode += `
+      .where('deleted_at', 'is', null)`;
+  }
+
+  classCode += `
+      .executeTakeFirst()
+
+    return result !== undefined
+  }`;
+
+  if (options.withSoftDelete) {
+    classCode += `
+
+  async restore(${primaryKey}: ${getPrimaryKeyType(table)}): Promise<${entityName}> {
+    const result = await this.db
+      .updateTable('${tableName}')
+      .set({ deleted_at: null } as any)
+      .where('${primaryKey}', '=', ${primaryKey})
+      .where('deleted_at', 'is not', null)
+      .returningAll()
+      .executeTakeFirstOrThrow()
+
+    return result as ${entityName}
+  }
+
+  async findDeleted(): Promise<${entityName}[]> {
+    const results = await this.db
+      .selectFrom('${tableName}')
+      .selectAll()
+      .where('deleted_at', 'is not', null)
+      .execute()
+
+    return results as ${entityName}[]
+  }
+
+  async forceDelete(${primaryKey}: ${getPrimaryKeyType(table)}): Promise<void> {
+    await this.db
+      .deleteFrom('${tableName}')
+      .where('${primaryKey}', '=', ${primaryKey})
+      .execute()
+  }`;
+  }
+
+  classCode += `
 }
 
 export const ${toCamelCase(table.name)}Repository = (db: Kysely<Database>) => new ${repositoryName}(db)

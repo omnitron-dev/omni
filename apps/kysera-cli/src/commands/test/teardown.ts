@@ -85,51 +85,50 @@ async function teardownTestEnvironment(options: TestTeardownOptions): Promise<vo
 
     if (testDatabases.length === 0) {
       teardownSpinner.stop('No test databases found');
-      return;
-    }
+    } else {
+      teardownSpinner.stop(`Found ${testDatabases.length} test database${testDatabases.length !== 1 ? 's' : ''}`);
 
-    teardownSpinner.stop(`Found ${testDatabases.length} test database${testDatabases.length !== 1 ? 's' : ''}`);
-
-    if (!options.force && !options.json) {
-      console.log('');
-      console.log(prism.yellow('Test databases to clean:'));
-      for (const dbName of testDatabases) {
-        console.log(`  - ${dbName}`);
-      }
-
-      const action = options.keepData ? 'truncate' : 'drop';
-      const shouldContinue = await confirm({
-        message: `${action.charAt(0).toUpperCase() + action.slice(1)} ${testDatabases.length} test database${testDatabases.length !== 1 ? 's' : ''}?`
-      });
-
-      if (!shouldContinue) {
-        console.log(prism.gray('Teardown cancelled'));
-        return;
-      }
-    }
-
-    const cleanupSpinner = spinner();
-
-    for (const dbName of testDatabases) {
-      cleanupSpinner.start(`Cleaning ${dbName}...`);
-
-      try {
-        if (options.keepData) {
-          await truncateDatabase(config.database, dbName, options.preserveLogs || false);
-          result.databases.push({ name: dbName, status: 'preserved', reason: 'Data truncated, structure preserved' });
-          cleanupSpinner.stop(`Truncated ${dbName}`);
-        } else {
-          await dropTestDatabase(config.database, dbName);
-          result.databases.push({ name: dbName, status: 'dropped' });
-          cleanupSpinner.stop(`Dropped ${dbName}`);
+      if (!options.force && !options.json) {
+        console.log('');
+        console.log(prism.yellow('Test databases to clean:'));
+        for (const dbName of testDatabases) {
+          console.log(`  - ${dbName}`);
         }
-      } catch (error) {
-        result.databases.push({
-          name: dbName,
-          status: 'failed',
-          reason: error instanceof Error ? error.message : String(error),
+
+        const action = options.keepData ? 'truncate' : 'drop';
+        const shouldContinue = await confirm({
+          message: `${action.charAt(0).toUpperCase() + action.slice(1)} ${testDatabases.length} test database${testDatabases.length !== 1 ? 's' : ''}?`
         });
-        cleanupSpinner.stop(`Failed to clean ${dbName}: ${error}`);
+
+        if (!shouldContinue) {
+          console.log(prism.gray('Teardown cancelled'));
+          return;
+        }
+      }
+
+      const cleanupSpinner = spinner();
+
+      for (const dbName of testDatabases) {
+        cleanupSpinner.start(`Cleaning ${dbName}...`);
+
+        try {
+          if (options.keepData) {
+            await truncateDatabase(config.database, dbName, options.preserveLogs || false);
+            result.databases.push({ name: dbName, status: 'preserved', reason: 'Data truncated, structure preserved' });
+            cleanupSpinner.stop(`Truncated ${dbName}`);
+          } else {
+            await dropTestDatabase(config.database, dbName);
+            result.databases.push({ name: dbName, status: 'dropped' });
+            cleanupSpinner.stop(`Dropped ${dbName}`);
+          }
+        } catch (error) {
+          result.databases.push({
+            name: dbName,
+            status: 'failed',
+            reason: error instanceof Error ? error.message : String(error),
+          });
+          cleanupSpinner.stop(`Failed to clean ${dbName}: ${error}`);
+        }
       }
     }
 

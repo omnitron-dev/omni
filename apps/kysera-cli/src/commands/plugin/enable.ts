@@ -7,6 +7,11 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { createRequire } from 'node:module';
 
+// Export for testing - wrapped in object to allow reassignment in tests
+export const testHelpers = {
+  createRequire: createRequire,
+};
+
 export interface EnablePluginOptions {
   all?: boolean;
   force?: boolean;
@@ -329,7 +334,7 @@ async function validatePlugin(
 
   try {
     // Check if plugin is installed
-    const require = createRequire(import.meta.url);
+    const require = testHelpers.createRequire(import.meta.url);
 
     let pluginPath: string;
     let packageJson: any;
@@ -397,7 +402,7 @@ async function validatePlugin(
 
 async function checkDependencies(dependencies: string[]): Promise<string[]> {
   const missing: string[] = [];
-  const require = createRequire(import.meta.url);
+  const require = testHelpers.createRequire(import.meta.url);
 
   for (const dep of dependencies) {
     try {

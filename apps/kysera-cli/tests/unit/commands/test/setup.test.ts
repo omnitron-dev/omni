@@ -199,7 +199,13 @@ describe('test setup command', () => {
     });
 
     it('should run migrations when --migrate is used', async () => {
-      (readdir as Mock).mockResolvedValue(['001_create_users.ts']);
+      // Mock migration directory to be empty so it doesn't try to load files
+      (readdir as Mock).mockImplementation(async (dir: string) => {
+        if (dir.includes('migrations')) {
+          return [];
+        }
+        return [];
+      });
 
       await command.parseAsync(['node', 'test', '--migrate']);
       expect(consoleSpy.log).toHaveBeenCalled();

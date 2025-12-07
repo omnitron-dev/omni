@@ -135,20 +135,48 @@ describe('debug sql command', () => {
 
   describe('success scenarios', () => {
     it('should analyze recent queries successfully', async () => {
-      mockDb.execute.mockResolvedValue([{ table_name: 'query_logs' }]);
+      // First call checks for table existence, second call gets the actual query logs
+      mockDb.execute
+        .mockResolvedValueOnce([{ table_name: 'query_logs' }])
+        .mockResolvedValueOnce([
+          {
+            query_text: 'SELECT * FROM users',
+            duration_ms: 50,
+            error: null,
+            executed_at: new Date(),
+          },
+        ]);
 
       await expect(command.parseAsync(['node', 'test'])).resolves.not.toThrow();
     });
 
     it('should filter queries by pattern', async () => {
-      mockDb.execute.mockResolvedValue([{ table_name: 'query_logs' }]);
+      mockDb.execute
+        .mockResolvedValueOnce([{ table_name: 'query_logs' }])
+        .mockResolvedValueOnce([
+          {
+            query_text: 'SELECT * FROM users',
+            duration_ms: 50,
+            error: null,
+            executed_at: new Date(),
+          },
+        ]);
 
       await command.parseAsync(['node', 'test', '--filter', 'SELECT']);
       expect(mockDb.where).toHaveBeenCalled();
     });
 
     it('should apply limit to query results', async () => {
-      mockDb.execute.mockResolvedValue([{ table_name: 'query_logs' }]);
+      mockDb.execute
+        .mockResolvedValueOnce([{ table_name: 'query_logs' }])
+        .mockResolvedValueOnce([
+          {
+            query_text: 'SELECT * FROM users',
+            duration_ms: 50,
+            error: null,
+            executed_at: new Date(),
+          },
+        ]);
 
       await command.parseAsync(['node', 'test', '--limit', '100']);
       expect(mockDb.limit).toHaveBeenCalled();
@@ -184,16 +212,9 @@ describe('debug sql command', () => {
     });
 
     it('should close database connection after execution', async () => {
-      mockDb.execute.mockResolvedValue([{ table_name: 'query_logs' }]);
-
-      await command.parseAsync(['node', 'test']);
-      expect(mockDb.destroy).toHaveBeenCalled();
-    });
-
-    it('should highlight SQL keywords', async () => {
-      mockDb.execute.mockImplementation(() => {
-        return Promise.resolve([
-          { table_name: 'query_logs' },
+      mockDb.execute
+        .mockResolvedValueOnce([{ table_name: 'query_logs' }])
+        .mockResolvedValueOnce([
           {
             query_text: 'SELECT * FROM users',
             duration_ms: 50,
@@ -201,16 +222,31 @@ describe('debug sql command', () => {
             executed_at: new Date(),
           },
         ]);
-      });
+
+      await command.parseAsync(['node', 'test']);
+      expect(mockDb.destroy).toHaveBeenCalled();
+    });
+
+    it('should highlight SQL keywords', async () => {
+      mockDb.execute
+        .mockResolvedValueOnce([{ table_name: 'query_logs' }])
+        .mockResolvedValueOnce([
+          {
+            query_text: 'SELECT * FROM users',
+            duration_ms: 50,
+            error: null,
+            executed_at: new Date(),
+          },
+        ]);
 
       await command.parseAsync(['node', 'test']);
       expect(consoleSpy.log).toHaveBeenCalled();
     });
 
     it('should detect slow queries', async () => {
-      mockDb.execute.mockImplementation(() => {
-        return Promise.resolve([
-          { table_name: 'query_logs' },
+      mockDb.execute
+        .mockResolvedValueOnce([{ table_name: 'query_logs' }])
+        .mockResolvedValueOnce([
           {
             query_text: 'SELECT * FROM large_table',
             duration_ms: 5000,
@@ -218,16 +254,15 @@ describe('debug sql command', () => {
             executed_at: new Date(),
           },
         ]);
-      });
 
       await command.parseAsync(['node', 'test']);
       expect(consoleSpy.log).toHaveBeenCalled();
     });
 
     it('should show error queries', async () => {
-      mockDb.execute.mockImplementation(() => {
-        return Promise.resolve([
-          { table_name: 'query_logs' },
+      mockDb.execute
+        .mockResolvedValueOnce([{ table_name: 'query_logs' }])
+        .mockResolvedValueOnce([
           {
             query_text: 'SELECT * FROM nonexistent',
             duration_ms: null,
@@ -235,7 +270,6 @@ describe('debug sql command', () => {
             executed_at: new Date(),
           },
         ]);
-      });
 
       await command.parseAsync(['node', 'test']);
       expect(consoleSpy.log).toHaveBeenCalled();

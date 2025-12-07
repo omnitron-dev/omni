@@ -179,10 +179,13 @@ describe('audit logs command', () => {
     });
 
     it('should apply limit', async () => {
-      mockDb.execute.mockResolvedValue([]);
+      // Mock that table exists
+      mockDb.execute
+        .mockResolvedValueOnce([{ table_name: 'audit_logs' }])  // First call: check table exists
+        .mockResolvedValueOnce([]);  // Second call: query results
 
       await command.parseAsync(['node', 'test', '--limit', '100']);
-      expect(mockDb.limit).toHaveBeenCalled();
+      expect(mockDb.limit).toHaveBeenCalledWith(100);
     });
 
     it('should output JSON when --json is used', async () => {

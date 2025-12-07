@@ -593,10 +593,8 @@ process.on('beforeExit', async () => {
  */
 export async function testDatabaseConnection(db: Kysely<Database>): Promise<boolean> {
   try {
-    await db
-      .selectFrom((eb) => eb.selectFrom(eb.val(1).as('test')).as('t'))
-      .select('test')
-      .execute();
+    // Simple SELECT 1 query that works across all databases
+    await sql`SELECT 1 as test`.execute(db);
 
     if (db.destroy) {
       await db.destroy();
@@ -643,9 +641,11 @@ export async function introspectDatabase(
  * Run a raw SQL query
  * Exported function for tests
  */
-export async function runQuery(db: Kysely<Database>, query: string, _params?: unknown[]): Promise<unknown> {
+export async function runQuery(db: Kysely<Database>, query: string, params?: unknown[]): Promise<unknown> {
   // Use raw SQL execution for flexibility with any query type
   // Note: This bypasses type safety intentionally for raw query execution
-  const result = await sql.raw(query).execute(db);
+  // If parameters are provided, spread them to the raw query
+  const rawQuery = params && params.length > 0 ? sql.raw(query, ...params) : sql.raw(query);
+  const result = await rawQuery.execute(db);
   return result.rows;
 }

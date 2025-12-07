@@ -212,6 +212,7 @@ describe('repository inspect command', () => {
 
   describe('interactive mode', () => {
     it('should show file selection when no file specified', async () => {
+      const mockFile = 'src/UserRepository.ts';
       (readdir as Mock).mockImplementation(async (dir, options) => {
         if (options?.withFileTypes) {
           return [{ name: 'UserRepository.ts', isDirectory: () => false, isFile: () => true }];
@@ -219,6 +220,7 @@ describe('repository inspect command', () => {
         return [];
       });
       (readFile as Mock).mockResolvedValue('export class UserRepository {}');
+      (select as Mock).mockResolvedValue(mockFile);
 
       await command.parseAsync(['node', 'test']);
       expect(select).toHaveBeenCalled();

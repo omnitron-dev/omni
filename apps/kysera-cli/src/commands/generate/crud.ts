@@ -126,6 +126,16 @@ async function generateCrud(tableName: string, options: CrudOptions): Promise<vo
       generatedFiles.push(file.path);
     }
 
+    // Generate index file
+    const indexPath = join(outputDir, 'index.ts');
+    const indexContent = `export * from './models/${toKebabCase(tableName)}.js'
+export * from './repositories/${toKebabCase(tableName)}.repository.js'
+export * from './schemas/${toKebabCase(tableName)}.schema.js'
+`;
+    writeFileSync(indexPath, indexContent, 'utf-8');
+    logger.info(`  ${prism.green('OK')} Generated index file: ${prism.cyan(indexPath)}`);
+    generatedFiles.push(indexPath);
+
     if (options.format !== false && generatedFiles.length > 0) {
       try {
         const formatSpinner = spinner();
@@ -257,6 +267,15 @@ export class ${repositoryName} {
       .select(this.db.fn.countAll().as('count'))
       .executeTakeFirst()
     return Number(result?.count ?? 0)
+  }
+
+  async exists(id: ${getPrimaryKeyType(table)}): Promise<boolean> {
+    const result = await this.db
+      .selectFrom('${tableName}')
+      .select('${primaryKey}')
+      .where('${primaryKey}', '=', id)
+      .executeTakeFirst()
+    return result !== undefined
   }
 }
 

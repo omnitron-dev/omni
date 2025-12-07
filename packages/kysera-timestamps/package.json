@@ -35,19 +35,19 @@
   "author": "Kysera Team",
   "license": "MIT",
   "peerDependencies": {
-    "kysely": "^0.28.7",
+    "kysely": "^0.28.8",
     "@kysera/repository": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^24.6.2",
-    "kysely": "^0.28.7",
+    "@types/node": "^24.10.1",
+    "kysely": "^0.28.8",
     "@kysera/repository": "workspace:*",
     "typescript": "^5.9.3",
-    "vitest": "^3.2.4",
-    "better-sqlite3": "^12.4.1",
+    "vitest": "^4.0.15",
+    "better-sqlite3": "^12.5.0",
     "@types/better-sqlite3": "^7.6.13",
-    "tsup": "^8.5.0",
-    "zod": "^4.1.11"
+    "tsup": "^8.5.1",
+    "zod": "^4.1.13"
   },
   "sideEffects": false,
   "engines": {

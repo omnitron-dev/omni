@@ -25,21 +25,21 @@
     "lint": "eslint ."
   },
   "peerDependencies": {
-    "kysely": ">=0.28.7"
+    "kysely": ">=0.28.8"
   },
   "dependencies": {
     "@kysera/repository": "workspace:*"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^24.6.2",
-    "@vitest/coverage-v8": "^3.2.4",
-    "better-sqlite3": "^12.4.1",
-    "kysely": "^0.28.7",
-    "tsup": "^8.5.0",
+    "@types/node": "^24.10.1",
+    "@vitest/coverage-v8": "^4.0.15",
+    "better-sqlite3": "^12.5.0",
+    "kysely": "^0.28.8",
+    "tsup": "^8.5.1",
     "typescript": "^5.9.3",
-    "vitest": "^3.2.4",
-    "zod": "^4.1.11"
+    "vitest": "^4.0.15",
+    "zod": "^4.1.13"
   },
   "keywords": [
     "kysely",

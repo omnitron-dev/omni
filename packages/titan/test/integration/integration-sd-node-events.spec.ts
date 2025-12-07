@@ -1,9 +1,9 @@
 import { Redis } from 'ioredis';
 import { delay } from '@omnitron-dev/common';
 
-import { Netron } from '@omnitron-dev/netron/dist/netron.js';
-import { DiscoveryEvent } from '@omnitron-dev/netron/dist/service-discovery/types.js';
-import { cleanupRedis, getTestRedisUrl, createTestRedisClient } from '@omnitron-dev/netron/test/helpers/test-utils.js';
+import { Netron } from '../../src/netron/index.js';
+import { DiscoveryEvent } from '../../src/modules/discovery/types.js';
+import { cleanupRedis, getTestRedisUrl, createTestRedisClient } from '../netron/helpers/test-utils.js';
 
 const skipTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
 

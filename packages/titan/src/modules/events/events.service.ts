@@ -36,6 +36,9 @@ export class EventsService {
   private logger: any = null;
   private bubblingEnabled = false;
 
+  /** Maximum number of event statistics entries to prevent memory leaks */
+  private static readonly MAX_EVENT_STATS_SIZE = 10000;
+
   constructor(
     @Inject(EVENT_EMITTER_TOKEN) private readonly emitter: EnhancedEventEmitter,
     @Inject(EVENT_METADATA_SERVICE_TOKEN) private readonly metadataService: EventMetadataService
@@ -838,32 +841,6 @@ export class EventsService {
   }
 
   /**
-   * Handle with retry logic
-   */
-  private async handleWithRetry(
-    handler: (...args: any[]) => any,
-    retryConfig: { attempts: number; delay: number; backoff?: number }
-  ): Promise<any> {
-    let lastError: any;
-    let delay = retryConfig.delay;
-
-    for (let attempt = 1; attempt <= retryConfig.attempts; attempt++) {
-      try {
-        return await handler();
-      } catch (error) {
-        lastError = error;
-
-        if (attempt < retryConfig.attempts) {
-          await new Promise((resolve) => setTimeout(resolve, delay));
-          delay *= retryConfig.backoff || 2;
-        }
-      }
-    }
-
-    throw lastError;
-  }
-
-  /**
    * Add subscription to tracking
    */
   private addSubscription(event: string, subscription: IEventSubscription, priority: number = 0): void {
@@ -896,6 +873,15 @@ export class EventsService {
    * Update event statistics
    */
   private updateStats(event: string, success: boolean, duration: number, error?: Error): void {
+    // Prevent unbounded growth of eventStats map
+    if (!this.eventStats.has(event) && this.eventStats.size >= EventsService.MAX_EVENT_STATS_SIZE) {
+      // Remove oldest entry (first in iteration order)
+      const firstKey = this.eventStats.keys().next().value;
+      if (firstKey) {
+        this.eventStats.delete(firstKey);
+      }
+    }
+
     const stats = this.eventStats.get(event) || this.createEmptyStats(event);
 
     stats.emitCount++;

@@ -25,7 +25,12 @@ import type {
 @Injectable()
 export class SchedulerExecutor {
   private runningJobs: Map<string, AbortController> = new Map();
-  private jobQueue: Array<{ job: IScheduledJob; context: IJobExecutionContext }> = [];
+  private jobQueue: Array<{
+    job: IScheduledJob;
+    context: IJobExecutionContext;
+    resolve: (result: IJobExecutionResult) => void;
+    reject: (error: Error) => void;
+  }> = [];
   private isProcessing = false;
   private eventEmitter = new EventEmitter();
   private concurrentJobs = 0;
@@ -149,7 +154,7 @@ export class SchedulerExecutor {
             })
           );
         }
-      });
+      }, { once: true });
 
       // Execute the job
       const executeAsync = async () => {
@@ -258,21 +263,44 @@ export class SchedulerExecutor {
    * Queue a job for later execution
    */
   private async queueJob(job: IScheduledJob, context: IJobExecutionContext): Promise<IJobExecutionResult> {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
+      // Add job to queue with resolve/reject callbacks
       this.jobQueue.push({
         job,
         context: { ...context, metadata: { ...context.metadata, queued: true } },
+        resolve,
+        reject,
       });
 
-      // Store resolver for later
-      const executionId = context.executionId;
-      const checkQueue = setInterval(() => {
-        const queuedJob = this.jobQueue.find((q) => q.context.executionId === executionId);
-        if (!queuedJob) {
-          clearInterval(checkQueue);
-          // Job has been processed
+      // Setup timeout for queued job
+      const queueTimeout = this.config?.queueTimeout || 60000; // Default 60s timeout
+      const timeoutId = setTimeout(() => {
+        // Find and remove the job from queue if still present
+        const index = this.jobQueue.findIndex((q) => q.context.executionId === context.executionId);
+        if (index !== -1) {
+          this.jobQueue.splice(index, 1);
+          reject(
+            Errors.timeout(`Queued job: ${job.name} (${job.id})`, queueTimeout)
+          );
         }
-      }, 100);
+      }, queueTimeout);
+
+      // Clear timeout if job is processed before timeout
+      const originalResolve = resolve;
+      const originalReject = reject;
+
+      // Find the queued job and update its resolve/reject to clear timeout
+      const queuedJob = this.jobQueue[this.jobQueue.length - 1];
+      if (queuedJob) {
+        queuedJob.resolve = (result: IJobExecutionResult) => {
+          clearTimeout(timeoutId);
+          originalResolve(result);
+        };
+        queuedJob.reject = (error: Error) => {
+          clearTimeout(timeoutId);
+          originalReject(error);
+        };
+      }
     });
   }
 
@@ -293,10 +321,19 @@ export class SchedulerExecutor {
 
     const nextJob = this.jobQueue.shift();
     if (nextJob) {
-      this.executeJob(nextJob.job, nextJob.context).finally(() => {
-        this.isProcessing = false;
-        this.processQueue();
-      });
+      this.executeJob(nextJob.job, nextJob.context)
+        .then((result) => {
+          // Resolve the queued job's promise with the execution result
+          nextJob.resolve(result);
+        })
+        .catch((error) => {
+          // Reject the queued job's promise with the execution error
+          nextJob.reject(error);
+        })
+        .finally(() => {
+          this.isProcessing = false;
+          this.processQueue();
+        });
     } else {
       this.isProcessing = false;
     }
@@ -353,6 +390,17 @@ export class SchedulerExecutor {
    * Clear job queue
    */
   clearQueue(): void {
+    // Reject all pending queued jobs
+    const cancelledError = new TitanError({
+      code: ErrorCode.INTERNAL_ERROR,
+      message: 'Job queue cleared',
+      details: { reason: 'Queue was cleared manually' },
+    });
+
+    for (const queuedJob of this.jobQueue) {
+      queuedJob.reject(cancelledError);
+    }
+
     this.jobQueue = [];
   }
 

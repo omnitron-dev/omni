@@ -69,6 +69,8 @@ const config: JestConfigWithTsJest = {
     '^@netron/(.*)$': '<rootDir>/src/netron/$1',
     '^@nexus$': '<rootDir>/src/nexus/index.ts',
     '^@nexus/(.*)$': '<rootDir>/src/nexus/$1',
+    '^@omnitron-dev/titan$': '<rootDir>/src/index.ts',
+    '^@omnitron-dev/titan/(.*)$': '<rootDir>/src/$1/index.ts',
     '^@omnitron-dev/testing$': '<rootDir>/../testing/src/index.ts',
     '^@omnitron-dev/testing/(.*)$': '<rootDir>/../testing/src/$1',
     '^@omnitron-dev/eventemitter$': '<rootDir>/../eventemitter/src/index.ts',

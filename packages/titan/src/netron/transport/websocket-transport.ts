@@ -175,8 +175,14 @@ export class WebSocketConnection extends BaseConnection {
 
       this.setState(ConnectionState.DISCONNECTING);
 
+      let forceCloseTimeout: NodeJS.Timeout | undefined;
+
       const closeHandler = () => {
         this.socket.removeListener('close', closeHandler);
+        if (forceCloseTimeout) {
+          clearTimeout(forceCloseTimeout);
+          forceCloseTimeout = undefined;
+        }
         resolve();
       };
 
@@ -184,7 +190,7 @@ export class WebSocketConnection extends BaseConnection {
       this.socket.close(code, reason);
 
       // Force close after timeout
-      setTimeout(() => {
+      forceCloseTimeout = setTimeout(() => {
         if (this.socket.readyState !== WebSocket.CLOSED) {
           this.socket.terminate();
         }

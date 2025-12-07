@@ -3,7 +3,7 @@
  * Provides comprehensive RPC, streaming, and event capabilities
  */
 
-import { Service, Public } from '@omnitron-dev/titan/netron';
+import { Service, Method } from '../../../src/netron/index.js';
 import { Readable } from 'stream';
 
 export interface User {
@@ -30,7 +30,7 @@ export class TestService {
   /**
    * Simple RPC method - returns hello message
    */
-  @Public()
+  @Method()
   async hello(name: string): Promise<string> {
     await this.delay(50);
     return `Hello, ${name}!`;
@@ -39,7 +39,7 @@ export class TestService {
   /**
    * Get all users
    */
-  @Public()
+  @Method()
   async getUsers(): Promise<User[]> {
     await this.delay(100);
     return this.users;
@@ -48,7 +48,7 @@ export class TestService {
   /**
    * Get user by ID
    */
-  @Public()
+  @Method()
   async getUser(id: string): Promise<User | null> {
     await this.delay(50);
     return this.users.find((u) => u.id === id) || null;
@@ -57,7 +57,7 @@ export class TestService {
   /**
    * Create user
    */
-  @Public()
+  @Method()
   async createUser(user: Omit<User, 'id'>): Promise<User> {
     await this.delay(100);
     const newUser = {
@@ -71,7 +71,7 @@ export class TestService {
   /**
    * Update user
    */
-  @Public()
+  @Method()
   async updateUser(id: string, updates: Partial<User>): Promise<User | null> {
     await this.delay(100);
     const index = this.users.findIndex((u) => u.id === id);
@@ -84,7 +84,7 @@ export class TestService {
   /**
    * Delete user
    */
-  @Public()
+  @Method()
   async deleteUser(id: string): Promise<boolean> {
     await this.delay(50);
     const index = this.users.findIndex((u) => u.id === id);
@@ -97,7 +97,7 @@ export class TestService {
   /**
    * Method that throws an error
    */
-  @Public()
+  @Method()
   async throwError(message: string): Promise<never> {
     await this.delay(50);
     throw new Error(message);
@@ -106,7 +106,7 @@ export class TestService {
   /**
    * Method with timeout
    */
-  @Public()
+  @Method()
   async slowMethod(delayMs: number): Promise<string> {
     await this.delay(delayMs);
     return `Completed after ${delayMs}ms`;
@@ -115,7 +115,7 @@ export class TestService {
   /**
    * Stream numbers - returns stream of numbers
    */
-  @Public()
+  @Method()
   async getNumbersStream(count: number): Promise<Readable> {
     const stream = new Readable({
       objectMode: true,
@@ -138,7 +138,7 @@ export class TestService {
   /**
    * Process stream - receives stream and returns count
    */
-  @Public()
+  @Method()
   async processNumbersStream(stream: Readable): Promise<{ count: number; sum: number }> {
     let count = 0;
     let sum = 0;
@@ -154,7 +154,7 @@ export class TestService {
   /**
    * Batch operation - for testing batch requests
    */
-  @Public()
+  @Method()
   async batchOperation(items: string[]): Promise<{ processed: string[]; count: number }> {
     await this.delay(100);
     return {

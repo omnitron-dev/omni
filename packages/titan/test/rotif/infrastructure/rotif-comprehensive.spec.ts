@@ -3,13 +3,7 @@
  * Tests critical functionality, error scenarios, and edge cases
  */
 
-// Support both Bun and Jest test runners
-let describe: any, it: any, expect: any, beforeEach: any, afterEach: any;
-try {
-  ({ describe, it, expect, beforeEach, afterEach } = require('bun:test'));
-} catch {
-  ({ describe, it, expect, beforeEach, afterEach } = require('@jest/globals'));
-}
+import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 
 import { Redis } from 'ioredis';
 import type { NotificationManager } from '../../../src/rotif/rotif.js';

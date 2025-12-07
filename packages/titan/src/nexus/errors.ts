@@ -81,7 +81,7 @@ export class CircularDependencyError extends NexusError {
 
   private static formatMessage(chain: InjectionToken<any>[]): string {
     const chainNames = chain.map((t) => getTokenName(t));
-    const circular = chainNames[chainNames.length - 1];
+    const circular = chainNames[chainNames.length - 1] ?? 'unknown';
     const cycleStart = chainNames.indexOf(circular);
     const cyclePath = chainNames.slice(cycleStart).concat(circular);
 

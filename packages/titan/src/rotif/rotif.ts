@@ -113,6 +113,9 @@ export class NotificationManager {
     this.initializationDefer = defer();
 
     this.loadLuaScripts().then(() => {
+      // Guard against race condition: check if instance was destroyed before starting async operations
+      if (!this.active) return;
+
       if (!this.config.disableDelayed) {
         setImmediate(() => {
           this.startDelayScheduler();

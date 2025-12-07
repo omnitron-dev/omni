@@ -174,6 +174,7 @@ export class SelfHealingManager extends EventEmitter {
   private anomalyDetector?: AnomalyDetector;
   private playbookExecutor: PlaybookExecutor;
   private incidentResponder: IncidentResponder;
+  private monitoringInterval?: NodeJS.Timeout;
 
   constructor(private config: SelfHealingConfig) {
     super();
@@ -196,7 +197,7 @@ export class SelfHealingManager extends EventEmitter {
 
     const interval = this.config.monitoring.interval || 60000;
 
-    setInterval(() => {
+    this.monitoringInterval = setInterval(() => {
       this.checkHealth();
       this.detectAnomalies();
       this.checkIncidents();
@@ -629,6 +630,17 @@ export class SelfHealingManager extends EventEmitter {
    */
   getRemediationHistory(): Remediation[] {
     return Array.from(this.remediations.values());
+  }
+
+  /**
+   * Destroy and cleanup resources
+   */
+  destroy(): void {
+    if (this.monitoringInterval) {
+      clearInterval(this.monitoringInterval);
+      this.monitoringInterval = undefined;
+    }
+    this.removeAllListeners();
   }
 }
 

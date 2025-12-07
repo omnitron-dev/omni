@@ -120,7 +120,7 @@ export class LifecycleManager {
   private hooks = new Map<LifecycleEvent, Set<LifecycleHook>>();
   private observers = new Set<LifecycleObserver>();
   private eventHistory: LifecycleEventData[] = [];
-  private maxHistorySize = LIFECYCLE_CONSTANTS.MAX_HISTORY_SIZE;
+  private maxHistorySize: number = LIFECYCLE_CONSTANTS.MAX_HISTORY_SIZE;
   private enabled = true;
 
   /**

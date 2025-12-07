@@ -7,7 +7,12 @@
 
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { createTestProcessManager, TestProcessManager } from '../../../src/modules/pm/index.js';
+
+// ESM compatibility: Define __dirname for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Use path.resolve to get fixtures directory
 const fixturesDir = path.resolve(__dirname, 'fixtures');

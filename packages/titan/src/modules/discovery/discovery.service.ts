@@ -11,6 +11,7 @@
 
 import { Redis } from 'ioredis';
 import { EventEmitter } from 'events';
+import os from 'node:os';
 import { Injectable, Inject, Optional } from '../../decorators/index.js';
 import { Errors } from '../../errors/index.js';
 import type { ILogger } from '../logger/logger.types.js';
@@ -76,6 +77,7 @@ export class DiscoveryService implements IDiscoveryService {
   private heartbeatTimer?: NodeJS.Timeout;
   private options: Required<DiscoveryOptions>;
   private subscriber?: Redis;
+  private messageHandler?: (channel: string, message: string) => void;
   private eventEmitter = new EventEmitter();
   private stopped = false;
   private registered = false;
@@ -496,8 +498,8 @@ export class DiscoveryService implements IDiscoveryService {
     // Subscribe to discovery channel
     await this.subscriber.subscribe(this.options.pubSubChannel);
 
-    // Handle incoming messages
-    this.subscriber.on('message', (channel: string, message: string) => {
+    // Store message handler reference for proper cleanup
+    this.messageHandler = (channel: string, message: string) => {
       if (channel === this.options.pubSubChannel) {
         try {
           const event = JSON.parse(message) as DiscoveryEvent;
@@ -511,7 +513,10 @@ export class DiscoveryService implements IDiscoveryService {
           this.logger.error({ error, message }, 'Failed to parse discovery event');
         }
       }
-    });
+    };
+
+    // Attach message handler
+    this.subscriber.on('message', this.messageHandler);
 
     this.logger.debug('PubSub setup completed');
   }
@@ -521,6 +526,12 @@ export class DiscoveryService implements IDiscoveryService {
    */
   private async unsubscribeFromEvents(): Promise<void> {
     if (this.subscriber) {
+      // Remove message handler before disconnecting
+      if (this.messageHandler) {
+        this.subscriber.off('message', this.messageHandler);
+        this.messageHandler = undefined;
+      }
+
       await this.subscriber.unsubscribe(this.options.pubSubChannel);
       this.subscriber.disconnect();
       this.subscriber = undefined;
@@ -769,7 +780,6 @@ export class DiscoveryService implements IDiscoveryService {
 
     // Strategy 2: Detect from network interfaces
     try {
-      const os = require('os');
       const interfaces = os.networkInterfaces();
 
       // Collect all addresses

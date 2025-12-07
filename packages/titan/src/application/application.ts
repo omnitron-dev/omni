@@ -1871,18 +1871,14 @@ export class Application implements IApplication {
     } catch (error: any) {
       // Check if it's an async resolution error
       if (error?.message?.includes('registered as async') || error?.name === 'AsyncResolutionError') {
-        const tokenName = typeof token === 'symbol'
-          ? token.description || 'Symbol'
-          : (token as any).name || String(token);
+        const tokenName = token.name || token.id.description || 'Unknown';
         throw Errors.badRequest(
           `Cannot resolve '${tokenName}' synchronously because it has async dependencies. ` +
           `Use 'await app.resolveAsync(${tokenName})' instead.`
         );
       }
       // Provide a better error message
-      const tokenStr = typeof token === 'symbol'
-        ? token.description || 'Symbol'
-        : (token as any).name || String(token);
+      const tokenStr = token.name || token.id.description || 'Unknown';
       throw Errors.notFound('Module', tokenStr);
     }
   }
@@ -2134,9 +2130,7 @@ export class Application implements IApplication {
       }
 
       if (visiting.has(token)) {
-        const tokenName = typeof token === 'symbol'
-          ? token.description || 'Symbol'
-          : (token as any).name || String(token);
+        const tokenName = token.name || token.id.description || 'Unknown';
         throw Errors.conflict(`Circular dependency detected in module: ${tokenName}`);
       }
 

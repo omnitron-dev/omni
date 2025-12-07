@@ -64,7 +64,7 @@ export function isRedisInMockMode(): boolean {
  * Check if Docker is available for running containers
  * This is used to skip tests that require Docker when it's not available
  */
-export function isDockerAvailable(): boolean {
+export async function isDockerAvailable(): Promise<boolean> {
   // If in mock mode or CI, Docker tests should be skipped
   if (process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true') {
     return false;
@@ -73,7 +73,7 @@ export function isDockerAvailable(): boolean {
   try {
     // Try to get the DockerTestManager instance
     // This will throw if Docker is not available
-    const { DockerTestManager } = require('../../../utils/docker-test-manager.js');
+    const { DockerTestManager } = await import('../../../utils/docker-test-manager.js');
     DockerTestManager.getInstance();
     return true;
   } catch (error) {

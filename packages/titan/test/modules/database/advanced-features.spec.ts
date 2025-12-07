@@ -546,7 +546,7 @@ describe('Advanced Database Features', () => {
     beforeAll(async () => {
       // Skip if PostgreSQL driver not available
       try {
-        require('pg');
+        await import('pg');
       } catch {
         return;
       }
@@ -640,7 +640,7 @@ describe('Advanced Database Features', () => {
     beforeAll(async () => {
       // Skip if MySQL driver not available
       try {
-        require('mysql2');
+        await import('mysql2');
       } catch {
         return;
       }

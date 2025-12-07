@@ -50,9 +50,9 @@ describeOrSkip('Docker Detection - Cross-Platform', () => {
       console.log(`Running on platform: ${platform}`);
     });
 
-    it('should find Docker on current platform', function() {
+    it('should find Docker on current platform', () => {
       if (!dockerAvailable) {
-        this.skip();
+        console.log('⏭️ Skipping test - Docker not available');
         return;
       }
 
@@ -81,9 +81,9 @@ describeOrSkip('Docker Detection - Cross-Platform', () => {
       expect(expectedPaths.length).toBeGreaterThan(0);
     });
 
-    it('should work on macOS', async function() {
+    it('should work on macOS', async () => {
       if (!dockerAvailable) {
-        this.skip();
+        console.log('⏭️ Skipping test - Docker not available');
         return;
       }
 
@@ -122,9 +122,9 @@ describeOrSkip('Docker Detection - Cross-Platform', () => {
       expect(expectedPaths.length).toBeGreaterThan(0);
     });
 
-    it('should work on Linux', function() {
+    it('should work on Linux', () => {
       if (!dockerAvailable) {
-        this.skip();
+        console.log('⏭️ Skipping test - Docker not available');
         return;
       }
 
@@ -163,9 +163,9 @@ describeOrSkip('Docker Detection - Cross-Platform', () => {
       expect(expectedPaths.length).toBeGreaterThan(0);
     });
 
-    it('should work on Windows', function() {
+    it('should work on Windows', () => {
       if (!dockerAvailable) {
-        this.skip();
+        console.log('⏭️ Skipping test - Docker not available');
         return;
       }
 
@@ -221,9 +221,9 @@ describeOrSkip('Docker Detection - Cross-Platform', () => {
       expect(strategies.length).toBe(4);
     });
 
-    it('should validate Docker executable works', function() {
+    it('should validate Docker executable works', () => {
       if (!dockerAvailable) {
-        this.skip();
+        console.log('⏭️ Skipping test - Docker not available');
         return;
       }
 
@@ -265,9 +265,9 @@ describeOrSkip('Docker Detection - Cross-Platform', () => {
   });
 
   describe('Real-World Integration', () => {
-    it('should have access to DockerTestManager instance', function() {
+    it('should have access to DockerTestManager instance', () => {
       if (!dockerAvailable) {
-        this.skip();
+        console.log('⏭️ Skipping test - Docker not available');
         return;
       }
 

@@ -4,7 +4,9 @@
 import { describe, it, expect, jest } from '@jest/globals';
 
 // Jest is globally available, no need to import
-import { createApp, defineModule, createToken, LOGGER_SERVICE_TOKEN, CONFIG_SERVICE_TOKEN } from '../src';
+import { createApp, defineModule, createToken } from '../src';
+import { CONFIG_SERVICE_TOKEN } from '../src/modules/config/config.tokens.js';
+import { LOGGER_SERVICE_TOKEN } from '../src/modules/logger/index.js';
 
 describe('Fluent API', () => {
   describe('Lifecycle hooks chaining', () => {

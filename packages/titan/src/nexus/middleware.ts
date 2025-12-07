@@ -129,7 +129,7 @@ export class MiddlewarePipeline {
       }
 
       try {
-        return await middleware.execute(context, () => dispatch(i + 1));
+        return await middleware.execute(context, () => dispatch(i + 1)) as T;
       } catch (error: any) {
         if (middleware.onError) {
           middleware.onError(error, context);
@@ -325,8 +325,8 @@ export const RetryMiddleware = createMiddleware({
   priority: 80,
 
   execute: (context, next) => {
-    const maxRetries = context['maxRetries'] || 3;
-    const retryDelay = context['retryDelay'] || 1000;
+    const maxRetries = (context['maxRetries'] as number) || 3;
+    const retryDelay = (context['retryDelay'] as number) || 1000;
 
     // For sync execution, we can't retry with delays
     // Just try once and return
@@ -374,8 +374,9 @@ export const ValidationMiddleware = createMiddleware({
 
   execute: (context, next) => {
     // Pre-validation
-    if (context['validate']) {
-      const validation = context['validate'](context);
+    const validateFn = context['validate'] as ((ctx: MiddlewareContext) => boolean) | undefined;
+    if (validateFn) {
+      const validation = validateFn(context);
       if (validation === false) {
         throw ValidationError.fromFieldErrors([{ field: 'input', message: 'Validation failed' }]);
       }
@@ -387,8 +388,9 @@ export const ValidationMiddleware = createMiddleware({
     if (result instanceof Promise) {
       return result.then((value) => {
         // Post-validation
-        if (context['validateResult']) {
-          const validation = context['validateResult'](value);
+        const validateResultFn = context['validateResult'] as ((val: unknown) => boolean) | undefined;
+        if (validateResultFn) {
+          const validation = validateResultFn(value);
           if (validation === false) {
             throw ValidationError.fromFieldErrors([{ field: 'result', message: 'Result validation failed' }]);
           }
@@ -398,8 +400,9 @@ export const ValidationMiddleware = createMiddleware({
     }
 
     // Post-validation for sync result
-    if (context['validateResult']) {
-      const validation = context['validateResult'](result);
+    const validateResultFn = context['validateResult'] as ((val: unknown) => boolean) | undefined;
+    if (validateResultFn) {
+      const validation = validateResultFn(result);
       if (validation === false) {
         throw ValidationError.fromFieldErrors([{ field: 'result', message: 'Result validation failed' }]);
       }
@@ -418,7 +421,7 @@ export const TransactionMiddleware = createMiddleware({
 
   execute: (context, next) => {
     // Check if transaction support is available
-    const tx = context['transaction'];
+    const tx = context['transaction'] as { begin?: () => void | Promise<void>; commit?: () => void | Promise<void>; rollback?: () => void | Promise<void> } | undefined;
     if (!tx) {
       return next();
     }
@@ -432,16 +435,16 @@ export const TransactionMiddleware = createMiddleware({
           if (result instanceof Promise) {
             return result.then(
               async (value) => {
-                await tx.commit();
+                await tx.commit?.();
                 return value;
               },
               async (error) => {
-                await tx.rollback();
+                await tx.rollback?.();
                 throw error;
               }
             );
           }
-          tx.commit();
+          tx.commit?.();
           return result;
         });
       }
@@ -572,7 +575,7 @@ export class RateLimitMiddleware implements Middleware {
   ) {}
 
   execute: MiddlewareFunction = async (context, next) => {
-    const key = context['rateLimitKey'] || 'global';
+    const key = (context['rateLimitKey'] as string) || 'global';
     const now = Date.now();
 
     // Get request timestamps for this key
@@ -590,7 +593,7 @@ export class RateLimitMiddleware implements Middleware {
 
     // Add current request
     timestamps.push(now);
-    this.requests.set(key, timestamps);
+    this.requests.set(key as string, timestamps);
 
     return next();
   };

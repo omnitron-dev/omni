@@ -78,6 +78,7 @@ export class DistributedTransactionCoordinator extends EventEmitter {
   private transactions = new Map<string, ITransactionContext>();
   private transactionLog: ITransactionLog[] = [];
   private recoveryQueue: Set<string> = new Set();
+  private recoveryInterval?: NodeJS.Timeout;
 
   constructor(
     private readonly logger: ILogger,
@@ -316,7 +317,7 @@ export class DistributedTransactionCoordinator extends EventEmitter {
    * Start recovery process for failed transactions
    */
   private startRecoveryProcess(): void {
-    setInterval(async () => {
+    this.recoveryInterval = setInterval(async () => {
       if (this.recoveryQueue.size === 0) return;
 
       const items = Array.from(this.recoveryQueue);
@@ -339,6 +340,17 @@ export class DistributedTransactionCoordinator extends EventEmitter {
     // Recovery logic would go here
     // This could involve reading from persistent log,
     // querying participant state, and completing the transaction
+  }
+
+  /**
+   * Stop recovery process and cleanup resources
+   */
+  dispose(): void {
+    if (this.recoveryInterval) {
+      clearInterval(this.recoveryInterval);
+      this.recoveryInterval = undefined;
+    }
+    this.removeAllListeners();
   }
 
   /**

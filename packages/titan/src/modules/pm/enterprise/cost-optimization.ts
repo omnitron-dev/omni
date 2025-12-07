@@ -115,6 +115,7 @@ export class CostOptimizer extends EventEmitter {
   private projectedCost = 0;
   private savings = 0;
   private resourceUsage = new Map<string, ResourceUsage>();
+  private monitoringInterval?: NodeJS.Timeout;
   private instanceTypes: InstanceType[] = [
     { id: 't3.micro', name: 'T3 Micro', cpu: 2, memory: 1024, cost: 0.01, type: 'on-demand' },
     { id: 't3.small', name: 'T3 Small', cpu: 2, memory: 2048, cost: 0.02, type: 'on-demand' },
@@ -139,7 +140,7 @@ export class CostOptimizer extends EventEmitter {
 
     const interval = this.parseInterval(this.config.monitoring.interval || '1h');
 
-    setInterval(() => {
+    this.monitoringInterval = setInterval(() => {
       this.collectMetrics();
       this.analyzeUsage();
       this.checkBudget();
@@ -664,6 +665,25 @@ export class CostOptimizer extends EventEmitter {
 
   private checkBudget(): void {
     // Implementation handled in checkBudgetThresholds
+  }
+
+  /**
+   * Stop cost monitoring and cleanup resources
+   */
+  stopMonitoring(): void {
+    if (this.monitoringInterval) {
+      clearInterval(this.monitoringInterval);
+      this.monitoringInterval = undefined;
+    }
+  }
+
+  /**
+   * Dispose of resources
+   */
+  dispose(): void {
+    this.stopMonitoring();
+    this.resourceUsage.clear();
+    this.removeAllListeners();
   }
 }
 

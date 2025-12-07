@@ -3,9 +3,9 @@
  * Provides HTTP and WebSocket transports for browser testing
  */
 
-import { Netron } from '@omnitron-dev/titan/netron';
-import { HttpNativeServer } from '@omnitron-dev/titan/netron/transport/http';
-// import { WebSocketServer } from '@omnitron-dev/titan/netron/transport/websocket';
+import { Netron } from '../../src/netron/index.js';
+import { HttpNativeServer } from '../../src/netron/transport/http/index.js';
+// import { WebSocketServer } from '../../src/netron/transport/websocket-transport.js';
 import { TestService } from './services/test.service.js';
 import http from 'http';
 

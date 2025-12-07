@@ -428,6 +428,12 @@ export interface ISchedulerConfig {
   queueSize?: number;
 
   /**
+   * Queue timeout in milliseconds
+   * Maximum time a job can wait in queue before timing out
+   */
+  queueTimeout?: number;
+
+  /**
    * Enable debug logging
    */
   debug?: boolean;

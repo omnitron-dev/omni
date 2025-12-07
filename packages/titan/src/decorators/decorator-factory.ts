@@ -624,7 +624,7 @@ export const Memoize = createMethodInterceptor('Memoize', (() => {
   // Use WeakMap to store cache per instance, preventing memory leaks
   const cacheMap = new WeakMap<object, Map<string, any>>();
 
-  return function (originalMethod, args, _context) {
+  return function (this: any, originalMethod, args, _context) {
     // `this` is the instance due to interceptor.call(this, ...)
     const instance = this;
 

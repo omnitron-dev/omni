@@ -1214,6 +1214,7 @@ export class CDCConnector extends EventEmitter {
   private position?: string;
   private snapshotComplete = false;
   private changes: ChangeEvent[] = [];
+  private heartbeatInterval?: NodeJS.Timeout;
 
   constructor(private config: CDCConfig) {
     super();
@@ -1247,6 +1248,10 @@ export class CDCConnector extends EventEmitter {
    */
   async stop(): Promise<void> {
     this.running = false;
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = undefined;
+    }
     this.emit('cdc:stopped');
   }
 
@@ -1353,7 +1358,7 @@ export class CDCConnector extends EventEmitter {
    * Start heartbeat
    */
   private startHeartbeat(): void {
-    setInterval(() => {
+    this.heartbeatInterval = setInterval(() => {
       if (this.running) {
         this.emit('heartbeat', {
           position: this.position,

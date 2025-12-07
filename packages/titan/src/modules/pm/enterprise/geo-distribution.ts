@@ -137,6 +137,7 @@ export class GlobalLoadBalancer extends EventEmitter {
   private services = new Map<string, Map<string, ServiceProxy<any>>>();
   private latencyMap = new Map<string, Map<string, number>>();
   private healthStatus = new Map<string, boolean>();
+  private healthCheckInterval?: NodeJS.Timeout;
 
   constructor(
     private config: {
@@ -166,7 +167,7 @@ export class GlobalLoadBalancer extends EventEmitter {
   private startHealthChecking(): void {
     if (!this.config.healthCheck) return;
 
-    setInterval(() => {
+    this.healthCheckInterval = setInterval(() => {
       this.checkAllRegions();
     }, this.config.healthCheck.interval);
   }
@@ -407,6 +408,28 @@ export class GlobalLoadBalancer extends EventEmitter {
       capacity: region.capacity,
       location: region.location,
     };
+  }
+
+  /**
+   * Stop health checking and clean up resources
+   */
+  stop(): void {
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+      this.healthCheckInterval = undefined;
+    }
+  }
+
+  /**
+   * Dispose and clean up resources
+   */
+  dispose(): void {
+    this.stop();
+    this.regions.clear();
+    this.services.clear();
+    this.latencyMap.clear();
+    this.healthStatus.clear();
+    this.removeAllListeners();
   }
 }
 

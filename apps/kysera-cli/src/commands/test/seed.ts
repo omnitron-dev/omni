@@ -156,6 +156,9 @@ async function seedTestDatabase(options: TestSeedOptions): Promise<void> {
 
     // Seed each table
     const count = parseInt(options.count as any) || 100;
+    if (isNaN(count) || count <= 0) {
+      throw new CLIError('Invalid count value - must be a positive number');
+    }
 
     for (const schema of sortedSchemas) {
       const tableStartTime = Date.now();
@@ -583,9 +586,13 @@ async function runCustomSeeder(db: any, seederPath: string, options: TestSeedOpt
     const seeder = await import(resolvedPath);
 
     if (seeder.seed) {
+      const seederCount = parseInt(options.count as any) || 100;
+      if (isNaN(seederCount) || seederCount <= 0) {
+        throw new CLIError('Invalid count value - must be a positive number');
+      }
       await seeder.seed(db, {
         faker,
-        count: parseInt(options.count as any) || 100,
+        count: seederCount,
         locale: options.locale,
         seed: options.seed,
       });

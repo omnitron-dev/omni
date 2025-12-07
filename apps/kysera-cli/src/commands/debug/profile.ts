@@ -141,6 +141,14 @@ async function profileQuery(options: ProfileOptions): Promise<void> {
 async function runProfile(db: any, query: string, options: ProfileOptions, dialect: string): Promise<ProfileResult> {
   const iterations = parseInt(options.iterations || '100', 10);
   const warmupRuns = parseInt(options.warmup || '10', 10);
+
+  if (isNaN(iterations) || iterations <= 0) {
+    throw new CLIError('Invalid iterations value - must be a positive number');
+  }
+  if (isNaN(warmupRuns) || warmupRuns < 0) {
+    throw new CLIError('Invalid warmup value - must be a non-negative number');
+  }
+
   const timings: number[] = [];
 
   // Warmup runs

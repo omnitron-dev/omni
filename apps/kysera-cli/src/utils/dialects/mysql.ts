@@ -1,5 +1,6 @@
-import { Kysely } from 'kysely';
-import { DatabaseError } from '../errors.js';
+import { Kysely, sql } from 'kysely';
+import { CLIDatabaseError } from '../errors.js';
+import { logger } from '../logger.js';
 
 /**
  * MySQL specific utilities
@@ -21,12 +22,12 @@ export async function getMysqlInfo(db: Kysely<any>): Promise<MysqlInfo> {
   try {
     const result = await db
       .selectNoFrom([
-        db.raw<string>('VERSION()').as('version'),
-        db.raw<string>('DATABASE()').as('currentDatabase'),
-        db.raw<string>('CURRENT_USER()').as('currentUser'),
-        db.raw<string>('@@character_set_database').as('characterSet'),
-        db.raw<string>('@@collation_database').as('collation'),
-        db.raw<string>('@@time_zone').as('timezone'),
+        sql<string>`VERSION()`.as('version'),
+        sql<string>`DATABASE()`.as('currentDatabase'),
+        sql<string>`CURRENT_USER()`.as('currentUser'),
+        sql<string>`@@character_set_database`.as('characterSet'),
+        sql<string>`@@collation_database`.as('collation'),
+        sql<string>`@@time_zone`.as('timezone'),
       ])
       .executeTakeFirst();
 
@@ -36,7 +37,7 @@ export async function getMysqlInfo(db: Kysely<any>): Promise<MysqlInfo> {
 
     return result as MysqlInfo;
   } catch (error: any) {
-    throw new DatabaseError(`Failed to get MySQL info: ${error.message}`);
+    throw new CLIDatabaseError(`Failed to get MySQL info: ${error.message}`);
   }
 }
 
@@ -47,7 +48,7 @@ export async function getTableSize(db: Kysely<any>, tableName: string, schema?: 
   try {
     const result = await db
       .selectFrom('information_schema.tables')
-      .select(db.raw<number>('(data_length + index_length)').as('sizeBytes'))
+      .select(sql<number>`(data_length + index_length)`.as('sizeBytes'))
       .where('table_name', '=', tableName)
       .$if(!!schema, (qb) => qb.where('table_schema', '=', schema!))
       .executeTakeFirst();
@@ -58,7 +59,8 @@ export async function getTableSize(db: Kysely<any>, tableName: string, schema?: 
 
     const sizeInMB = (result.sizeBytes / 1024 / 1024).toFixed(2);
     return `${sizeInMB} MB`;
-  } catch {
+  } catch (error) {
+    logger.debug(`Failed to get table size for ${tableName}:`, error);
     return 'Unknown';
   }
 }
@@ -75,7 +77,7 @@ export async function getIndexSize(
   try {
     const result = await db
       .selectFrom('information_schema.statistics')
-      .select(db.raw<number>('SUM(stat_value)').as('sizePages'))
+      .select(sql<number>`SUM(stat_value)`.as('sizePages'))
       .where('index_name', '=', indexName)
       .where('table_name', '=', tableName)
       .$if(!!schema, (qb) => qb.where('table_schema', '=', schema!))
@@ -88,7 +90,8 @@ export async function getIndexSize(
     // Assuming default page size of 16KB
     const sizeInKB = (result.sizePages * 16).toFixed(2);
     return `${sizeInKB} KB`;
-  } catch {
+  } catch (error) {
+    logger.debug(`Failed to get index size for ${indexName}:`, error);
     return 'Unknown';
   }
 }
@@ -100,12 +103,13 @@ export async function getActiveConnections(db: Kysely<any>): Promise<number> {
   try {
     const result = await db
       .selectFrom('information_schema.processlist')
-      .select(db.raw<number>('COUNT(*)').as('count'))
+      .select(sql<number>`COUNT(*)`.as('count'))
       .where('command', '!=', 'Sleep')
       .executeTakeFirst();
 
     return result?.count || 0;
-  } catch {
+  } catch (error) {
+    logger.debug('Failed to get active connections:', error);
     return 0;
   }
 }
@@ -132,7 +136,8 @@ export async function getSlowQueries(
       duration: (r.duration || 0) * 1000, // Convert to milliseconds
       state: r.state || '',
     }));
-  } catch {
+  } catch (error) {
+    logger.debug('Failed to get slow queries:', error);
     return [];
   }
 }
@@ -142,9 +147,10 @@ export async function getSlowQueries(
  */
 export async function killConnection(db: Kysely<any>, processId: number): Promise<boolean> {
   try {
-    await db.schema.raw(`KILL ${processId}`).execute();
+    await sql.raw(`KILL ${processId}`).execute(db);
     return true;
-  } catch {
+  } catch (error) {
+    logger.debug(`Failed to kill connection ${processId}:`, error);
     return false;
   }
 }
@@ -154,9 +160,9 @@ export async function killConnection(db: Kysely<any>, processId: number): Promis
  */
 export async function optimizeTable(db: Kysely<any>, tableName: string): Promise<void> {
   try {
-    await db.schema.raw(`OPTIMIZE TABLE \`${tableName}\``).execute();
+    await sql.raw(`OPTIMIZE TABLE \`${tableName}\``).execute(db);
   } catch (error: any) {
-    throw new DatabaseError(`Failed to optimize table ${tableName}: ${error.message}`);
+    throw new CLIDatabaseError(`Failed to optimize table ${tableName}: ${error.message}`);
   }
 }
 
@@ -165,9 +171,9 @@ export async function optimizeTable(db: Kysely<any>, tableName: string): Promise
  */
 export async function analyzeTable(db: Kysely<any>, tableName: string): Promise<void> {
   try {
-    await db.schema.raw(`ANALYZE TABLE \`${tableName}\``).execute();
+    await sql.raw(`ANALYZE TABLE \`${tableName}\``).execute(db);
   } catch (error: any) {
-    throw new DatabaseError(`Failed to analyze table ${tableName}: ${error.message}`);
+    throw new CLIDatabaseError(`Failed to analyze table ${tableName}: ${error.message}`);
   }
 }
 
@@ -176,11 +182,12 @@ export async function analyzeTable(db: Kysely<any>, tableName: string): Promise<
  */
 export async function checkTable(db: Kysely<any>, tableName: string): Promise<boolean> {
   try {
-    const result = await db.schema.raw<any>(`CHECK TABLE \`${tableName}\``).execute();
+    const result = await sql.raw<any>(`CHECK TABLE \`${tableName}\``).execute(db);
 
     // Check if any row has Msg_text = 'OK'
-    return result.some((row: any) => row.Msg_text === 'OK');
-  } catch {
+    return result.rows.some((row: any) => row.Msg_text === 'OK');
+  } catch (error) {
+    logger.debug(`Failed to check table ${tableName}:`, error);
     return false;
   }
 }
@@ -190,9 +197,9 @@ export async function checkTable(db: Kysely<any>, tableName: string): Promise<bo
  */
 export async function repairTable(db: Kysely<any>, tableName: string): Promise<void> {
   try {
-    await db.schema.raw(`REPAIR TABLE \`${tableName}\``).execute();
+    await sql.raw(`REPAIR TABLE \`${tableName}\``).execute(db);
   } catch (error: any) {
-    throw new DatabaseError(`Failed to repair table ${tableName}: ${error.message}`);
+    throw new CLIDatabaseError(`Failed to repair table ${tableName}: ${error.message}`);
   }
 }
 
@@ -208,7 +215,8 @@ export async function databaseExists(db: Kysely<any>, databaseName: string): Pro
       .executeTakeFirst();
 
     return !!result;
-  } catch {
+  } catch (error) {
+    logger.debug(`Failed to check if database exists: ${databaseName}`, error);
     return false;
   }
 }
@@ -223,9 +231,9 @@ export async function createDatabase(
   collation: string = 'utf8mb4_unicode_ci'
 ): Promise<void> {
   try {
-    await db.schema.raw(`CREATE DATABASE \`${databaseName}\` CHARACTER SET ${charset} COLLATE ${collation}`).execute();
+    await sql.raw(`CREATE DATABASE \`${databaseName}\` CHARACTER SET ${charset} COLLATE ${collation}`).execute(db);
   } catch (error: any) {
-    throw new DatabaseError(`Failed to create database ${databaseName}: ${error.message}`);
+    throw new CLIDatabaseError(`Failed to create database ${databaseName}: ${error.message}`);
   }
 }
 
@@ -234,9 +242,9 @@ export async function createDatabase(
  */
 export async function dropDatabase(db: Kysely<any>, databaseName: string): Promise<void> {
   try {
-    await db.schema.raw(`DROP DATABASE IF EXISTS \`${databaseName}\``).execute();
+    await sql.raw(`DROP DATABASE IF EXISTS \`${databaseName}\``).execute(db);
   } catch (error: any) {
-    throw new DatabaseError(`Failed to drop database ${databaseName}: ${error.message}`);
+    throw new CLIDatabaseError(`Failed to drop database ${databaseName}: ${error.message}`);
   }
 }
 
@@ -288,6 +296,6 @@ export async function getTableStatistics(
       autoIncrement: result.autoIncrement,
     };
   } catch (error: any) {
-    throw new DatabaseError(`Failed to get table statistics: ${error.message}`);
+    throw new CLIDatabaseError(`Failed to get table statistics: ${error.message}`);
   }
 }

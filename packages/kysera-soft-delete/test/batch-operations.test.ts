@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestDatabase, seedTestData } from './setup/database.js';
-import { softDeletePlugin } from '../src/index.js';
+import { softDeletePlugin, type SoftDeleteRepository } from '../src/index.js';
 import { createORM, createRepositoryFactory } from '../../kysera-repository/dist/index.js';
 import type { Kysely } from 'kysely';
 import type { TestDatabase } from './setup/database.js';
@@ -18,7 +18,7 @@ interface TestUser {
 describe('Soft Delete Plugin - Batch Operations', () => {
   let db: Kysely<TestDatabase>;
   let cleanup: () => void;
-  let userRepo: any;
+  let userRepo: SoftDeleteRepository<TestUser, TestDatabase>;
 
   beforeEach(async () => {
     const setup = createTestDatabase();
@@ -47,7 +47,7 @@ describe('Soft Delete Plugin - Batch Operations', () => {
           }),
         },
       });
-    });
+    }) as SoftDeleteRepository<TestUser, TestDatabase>;
   });
 
   afterEach(() => {
@@ -70,7 +70,7 @@ describe('Soft Delete Plugin - Batch Operations', () => {
       // Verify records are filtered from normal queries
       const remainingUsers = await userRepo.findAll();
       expect(remainingUsers).toHaveLength(1); // Only Charlie
-      expect(remainingUsers[0].name).toBe('Charlie');
+      expect(remainingUsers[0]?.name).toBe('Charlie');
 
       // Verify records still exist with deleted_at set
       const allUsersWithDeleted = await userRepo.findAllWithDeleted();
@@ -93,7 +93,7 @@ describe('Soft Delete Plugin - Batch Operations', () => {
 
     it('should throw error if any record not found', async () => {
       const allUsers = await userRepo.findAll();
-      const validId = allUsers[0].id;
+      const validId = allUsers[0]!.id;
       const invalidId = 99999;
 
       await expect(userRepo.softDeleteMany([validId, invalidId])).rejects.toThrow(
@@ -120,8 +120,8 @@ describe('Soft Delete Plugin - Batch Operations', () => {
       const deletedUsers = await userRepo.softDeleteMany([aliceId]);
 
       expect(deletedUsers).toHaveLength(1);
-      expect(deletedUsers[0].name).toBe('Alice');
-      expect(deletedUsers[0].deleted_at).not.toBeNull();
+      expect(deletedUsers[0]!.name).toBe('Alice');
+      expect(deletedUsers[0]!.deleted_at).not.toBeNull();
     });
 
     it('should handle all records in table', async () => {
@@ -152,7 +152,7 @@ describe('Soft Delete Plugin - Batch Operations', () => {
         expect(user.deleted_at).not.toBeNull();
         expect(typeof user.deleted_at).toBe('string');
         // Just verify it's a valid timestamp string
-        expect(user.deleted_at.length).toBeGreaterThan(0);
+        expect(user.deleted_at!.length).toBeGreaterThan(0);
       }
     });
   });
@@ -245,7 +245,7 @@ describe('Soft Delete Plugin - Batch Operations', () => {
       // Verify they're gone from normal queries
       const afterDelete = await userRepo.findAll();
       expect(afterDelete).toHaveLength(1);
-      expect(afterDelete[0].name).toBe('Charlie');
+      expect(afterDelete[0]!.name).toBe('Charlie');
 
       // Verify they're also gone from findAllWithDeleted
       const allWithDeleted = await userRepo.findAllWithDeleted();
@@ -313,7 +313,7 @@ describe('Soft Delete Plugin - Batch Operations', () => {
     it('should not throw error for non-existent IDs', async () => {
       // Hard delete with mix of valid and invalid IDs
       const allUsers = await userRepo.findAll();
-      const validId = allUsers[0].id;
+      const validId = allUsers[0]!.id;
       const invalidId = 99999;
 
       // Should not throw, just delete what exists
@@ -342,7 +342,7 @@ describe('Soft Delete Plugin - Batch Operations', () => {
       const deletedUsers = await userRepo.softDeleteMany(uniqueIds);
 
       expect(deletedUsers).toHaveLength(1);
-      expect(deletedUsers[0].name).toBe('Alice');
+      expect(deletedUsers[0]!.name).toBe('Alice');
     });
 
     it('should work with different table configurations', async () => {
@@ -370,7 +370,7 @@ describe('Soft Delete Plugin - Batch Operations', () => {
             }),
           },
         });
-      });
+      }) as SoftDeleteRepository<TestUser, TestDatabase>;
 
       const allUsers = await customRepo.findAll();
       const userIds = allUsers.map((u: TestUser) => u.id).slice(0, 2);
@@ -434,7 +434,7 @@ describe('Soft Delete Plugin - Batch Operations', () => {
     it('should mix single and batch operations', async () => {
       const allUsers = await userRepo.findAll();
       const alice = allUsers.find((u: TestUser) => u.name === 'Alice')!;
-      const bobAndCharlie = allUsers.filter((u: TestUser) => u.name !== 'Alice').map((u) => u.id);
+      const bobAndCharlie = allUsers.filter((u: TestUser) => u.name !== 'Alice').map((u: TestUser) => u.id);
 
       // Single soft delete
       await userRepo.softDelete(alice.id);

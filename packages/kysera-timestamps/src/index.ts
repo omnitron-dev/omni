@@ -1,5 +1,6 @@
-import type { Plugin } from '@kysera/repository';
+import type { Plugin, Repository } from '@kysera/repository';
 import type { Kysely, SelectQueryBuilder } from 'kysely';
+import { z } from 'zod';
 
 /**
  * Database schema with timestamp columns
@@ -74,6 +75,26 @@ export interface TimestampsOptions {
    */
   primaryKeyColumn?: string;
 }
+
+/**
+ * Zod schema for TimestampsOptions
+ * Used for validation and configuration in the kysera-cli
+ */
+export const TimestampsOptionsSchema = z.object({
+  createdAtColumn: z.string().optional(),
+  updatedAtColumn: z.string().optional(),
+  setUpdatedAtOnInsert: z.boolean().optional(),
+  tables: z.array(z.string()).optional(),
+  excludeTables: z.array(z.string()).optional(),
+  getTimestamp: z.function().optional(),
+  dateFormat: z.enum(['iso', 'unix', 'date']).optional(),
+  primaryKeyColumn: z.string().optional(),
+});
+
+/**
+ * Repository extended with timestamp methods
+ */
+export type TimestampsRepository<Entity, DB> = Repository<Entity, DB> & TimestampMethods<Entity>;
 
 /**
  * Get the current timestamp based on options
@@ -420,8 +441,3 @@ export const timestampsPlugin = (options: TimestampsOptions = {}): Plugin => {
     },
   };
 };
-
-/**
- * Default export
- */
-export default timestampsPlugin;

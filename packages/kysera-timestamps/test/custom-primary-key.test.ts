@@ -3,7 +3,7 @@ import { Kysely } from 'kysely';
 import Database from 'better-sqlite3';
 import { SqliteDialect } from 'kysely';
 import { createORM, createRepositoryFactory } from '../../kysera-repository/dist/index.js';
-import { timestampsPlugin } from '../src';
+import { timestampsPlugin, type TimestampsRepository } from '../src';
 
 // Test database schema with custom primary key
 interface TestDatabase {
@@ -79,6 +79,7 @@ describe('Custom Primary Key Support', () => {
     const userRepo = orm.createRepository((executor) => {
       const factory = createRepositoryFactory(executor as any);
       return factory.create({
+        // @ts-ignore - Dynamic table 'users' not in TestDatabase type
         tableName: 'users',
         mapRow: (row: any) => row,
         schemas: {
@@ -86,7 +87,7 @@ describe('Custom Primary Key Support', () => {
           update: { parse: (v: any) => v } as any,
         },
       });
-    });
+    }) as TimestampsRepository<any, any>;
 
     const user = await userRepo.create({
       email: 'user@example.com',
@@ -108,8 +109,8 @@ describe('Custom Primary Key Support', () => {
       .executeTakeFirst();
 
     expect(result).toBeDefined();
-    expect(result?.updated_at).toBeDefined();
-    expect(result?.updated_at).not.toBe(originalCreatedAt);
+    expect(result?.['updated_at']).toBeDefined();
+    expect(result?.['updated_at']).not.toBe(originalCreatedAt);
   });
 
   it('should use custom primary key column when configured', async () => {
@@ -128,7 +129,7 @@ describe('Custom Primary Key Support', () => {
           update: { parse: (v: any) => v } as any,
         },
       });
-    });
+    }) as TimestampsRepository<any, TestDatabase>;
 
     const account = await accountRepo.create({
       name: 'Premium Account',
@@ -204,7 +205,7 @@ describe('Custom Primary Key Support', () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     // Create repository with plugin and touch using UUID
-    const extendedRepo = plugin.extendRepository!(productRepo);
+    const extendedRepo = plugin.extendRepository!(productRepo) as TimestampsRepository<any, TestDatabase>;
     await extendedRepo.touch(uuid as any);
 
     // Fetch the updated product
@@ -239,6 +240,7 @@ describe('Custom Primary Key Support', () => {
     const userRepo = orm.createRepository((executor) => {
       const factory = createRepositoryFactory(executor as any);
       return factory.create({
+        // @ts-ignore - Dynamic table 'users' not in TestDatabase type
         tableName: 'users',
         mapRow: (row: any) => row,
         schemas: {
@@ -246,7 +248,7 @@ describe('Custom Primary Key Support', () => {
           update: { parse: (v: any) => v } as any,
         },
       });
-    });
+    }) as TimestampsRepository<any, any>;
 
     const user = await userRepo.create({
       email: 'user@example.com',
@@ -268,26 +270,20 @@ describe('Custom Primary Key Support', () => {
       .executeTakeFirst();
 
     expect(result).toBeDefined();
-    expect(result?.updated_at).toBeDefined();
-    expect(result?.updated_at).not.toBe(originalCreatedAt);
+    expect(result?.['updated_at']).toBeDefined();
+    expect(result?.['updated_at']).not.toBe(originalCreatedAt);
   });
 
   it('should work with different primary key columns in different tables', async () => {
-    // Create two plugins with different primary keys
+    // Create plugin with primary key for accounts
     const accountPlugin = timestampsPlugin({
       primaryKeyColumn: 'account_id',
       tables: ['accounts'],
     });
 
-    const productPlugin = timestampsPlugin({
-      primaryKeyColumn: 'uuid',
-      tables: ['products'],
-    });
-
     // Note: In a real scenario, you'd typically use one plugin with a single primary key column
     // This test demonstrates that the configuration is per-plugin instance
     const orm1 = await createORM<TestDatabase>(db, [accountPlugin]);
-    const orm2 = await createORM<TestDatabase>(db, [productPlugin]);
 
     const accountRepo = orm1.createRepository((executor) => {
       const factory = createRepositoryFactory<TestDatabase>(executor);
@@ -299,7 +295,7 @@ describe('Custom Primary Key Support', () => {
           update: { parse: (v: any) => v } as any,
         },
       });
-    });
+    }) as TimestampsRepository<any, TestDatabase>;
 
     // Create account
     const account = await accountRepo.create({

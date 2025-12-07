@@ -5,7 +5,7 @@ import type { Command } from 'commander';
 export interface ErrorContext {
   command?: string;
   operation?: string;
-  details?: Record<string, any>;
+  details?: Record<string, unknown>;
   suggestion?: string;
 }
 
@@ -128,7 +128,7 @@ const ERROR_MESSAGES: Record<string, { message: string; suggestion?: string }> =
   },
   OPERATION_CANCELLED: {
     message: 'Operation cancelled by user',
-    suggestion: null,
+    suggestion: undefined,
   },
   NETWORK_ERROR: {
     message: 'Network request failed',
@@ -170,7 +170,6 @@ export class ErrorHandler {
   handle(error: unknown, exitCode = 1): void {
     if (this.quiet && exitCode === 0) {
       process.exit(exitCode);
-      return;
     }
 
     const errorInfo = this.extractErrorInfo(error);
@@ -190,7 +189,7 @@ export class ErrorHandler {
     code?: string;
     message: string;
     suggestion?: string;
-    details?: any;
+    details?: Record<string, unknown>;
     stack?: string;
   } {
     if (error instanceof CLIError) {
@@ -244,7 +243,12 @@ export class ErrorHandler {
   /**
    * Display formatted error
    */
-  private displayError(errorInfo: { code?: string; message: string; suggestion?: string; details?: any }): void {
+  private displayError(errorInfo: {
+    code?: string;
+    message: string;
+    suggestion?: string;
+    details?: Record<string, unknown>;
+  }): void {
     console.error('');
 
     // Error header
@@ -262,7 +266,7 @@ export class ErrorHandler {
       if (detailKeys.length > 0) {
         console.error('');
         detailKeys.forEach((key) => {
-          console.error(prism.gray(`  ${key}: ${errorInfo.details[key]}`));
+          console.error(prism.gray(`  ${key}: ${errorInfo.details?.[key]}`));
         });
       }
     }
@@ -285,7 +289,10 @@ export class ErrorHandler {
   /**
    * Display debug information
    */
-  private displayDebugInfo(error: unknown, errorInfo: any): void {
+  private displayDebugInfo(
+    error: unknown,
+    errorInfo: { code?: string; message: string; suggestion?: string; details?: Record<string, unknown>; stack?: string }
+  ): void {
     console.error(prism.gray('─'.repeat(60)));
     console.error(prism.gray('Debug Information:'));
 
@@ -328,7 +335,7 @@ export class ErrorHandler {
   /**
    * Create a wrapped command handler with error handling
    */
-  wrapCommand<T extends (...args: any[]) => Promise<any>>(
+  wrapCommand<T extends (...args: unknown[]) => Promise<unknown>>(
     handler: T,
     options: { command?: string; operation?: string } = {}
   ): T {
@@ -341,6 +348,7 @@ export class ErrorHandler {
         return await handler(...args);
       } catch (error) {
         this.handle(error);
+        return undefined;
       }
     }) as T;
   }
@@ -382,7 +390,7 @@ export class ErrorHandler {
 export function createError(
   code: keyof typeof ERROR_MESSAGES,
   customMessage?: string,
-  details?: Record<string, any>
+  details?: Record<string, unknown>
 ): CLIError {
   const errorInfo = ERROR_MESSAGES[code];
   return new CLIError(customMessage || errorInfo.message, code, {

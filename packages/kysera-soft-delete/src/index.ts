@@ -1,7 +1,8 @@
-import type { Plugin, AnyQueryBuilder } from '@kysera/repository';
+import type { Plugin, AnyQueryBuilder, Repository } from '@kysera/repository';
 import type { SelectQueryBuilder, Kysely } from 'kysely';
 import { sql } from 'kysely';
 import { NotFoundError } from '@kysera/core';
+import { z } from 'zod';
 
 /**
  * Configuration options for the soft delete plugin.
@@ -49,6 +50,37 @@ export interface SoftDeleteOptions {
    */
   primaryKeyColumn?: string;
 }
+
+/**
+ * Zod schema for SoftDeleteOptions
+ * Used for validation and configuration in the kysera-cli
+ */
+export const SoftDeleteOptionsSchema = z.object({
+  deletedAtColumn: z.string().optional(),
+  includeDeleted: z.boolean().optional(),
+  tables: z.array(z.string()).optional(),
+  primaryKeyColumn: z.string().optional(),
+});
+
+/**
+ * Methods added to repositories by the soft delete plugin
+ */
+export interface SoftDeleteMethods<T> {
+  softDelete(id: number | string): Promise<T>;
+  restore(id: number | string): Promise<T>;
+  hardDelete(id: number | string): Promise<void>;
+  findWithDeleted(id: number | string): Promise<T | null>;
+  findAllWithDeleted(): Promise<T[]>;
+  findDeleted(): Promise<T[]>;
+  softDeleteMany(ids: (number | string)[]): Promise<T[]>;
+  restoreMany(ids: (number | string)[]): Promise<T[]>;
+  hardDeleteMany(ids: (number | string)[]): Promise<void>;
+}
+
+/**
+ * Repository extended with soft delete methods
+ */
+export type SoftDeleteRepository<Entity, DB> = Repository<Entity, DB> & SoftDeleteMethods<Entity>;
 
 interface BaseRepository {
   tableName: string;

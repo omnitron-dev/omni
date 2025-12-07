@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { prism, spinner, confirm } from '@xec-sh/kit';
-import { CLIError } from '../../utils/errors.js';
+import { CLIError, ValidationError } from '../../utils/errors.js';
 import { getDatabaseConnection } from '../../utils/database.js';
 import { loadConfig } from '../../config/loader.js';
 
@@ -61,11 +61,17 @@ async function restoreFromAudit(auditLogId: string, options: RestoreOptions): Pr
   restoreSpinner.start(`Fetching audit log #${auditLogId}...`);
 
   try {
+    // Validate and parse audit log ID
+    const id = parseInt(auditLogId, 10);
+    if (isNaN(id)) {
+      throw new ValidationError('Invalid audit log ID - must be a number');
+    }
+
     // Fetch the audit log entry
     const auditLog = await db
       .selectFrom('audit_logs')
       .selectAll()
-      .where('id', '=', parseInt(auditLogId, 10))
+      .where('id', '=', id)
       .executeTakeFirst();
 
     if (!auditLog) {

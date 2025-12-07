@@ -18,6 +18,7 @@ import {
 import { resolve, relative, dirname, basename, extname, join } from 'node:path';
 import { glob } from 'glob';
 import { FileSystemError } from './errors.js';
+import { logger } from './logger.js';
 
 /**
  * Read file content
@@ -56,7 +57,8 @@ export async function isDirectory(path: string): Promise<boolean> {
   try {
     const stats = await stat(path);
     return stats.isDirectory();
-  } catch {
+  } catch (error) {
+    logger.debug(`Failed to check if path is directory: ${path}`, error);
     return false;
   }
 }
@@ -68,7 +70,8 @@ export async function isFile(path: string): Promise<boolean> {
   try {
     const stats = await stat(path);
     return stats.isFile();
-  } catch {
+  } catch (error) {
+    logger.debug(`Failed to check if path is file: ${path}`, error);
     return false;
   }
 }

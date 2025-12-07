@@ -151,6 +151,9 @@ async function performAnalysis(
   // Benchmark if requested
   if (options.benchmark && parseInt(options.benchmark) > 1) {
     const iterations = parseInt(options.benchmark);
+    if (isNaN(iterations) || iterations <= 0) {
+      throw new CLIError('Invalid benchmark iterations - must be a positive number');
+    }
     const times: number[] = [];
 
     for (let i = 0; i < iterations; i++) {
@@ -572,9 +575,10 @@ function displayAnalysisResults(analysis: QueryAnalysis, options: AnalyzeOptions
   }
 
   // Benchmark info
-  if (options.benchmark && parseInt(options.benchmark) > 1) {
+  const benchmarkIterations = parseInt(options.benchmark || '0');
+  if (!isNaN(benchmarkIterations) && benchmarkIterations > 1) {
     console.log('');
-    console.log(prism.gray(`Benchmarked with ${options.benchmark} iterations`));
+    console.log(prism.gray(`Benchmarked with ${benchmarkIterations} iterations`));
   }
 }
 

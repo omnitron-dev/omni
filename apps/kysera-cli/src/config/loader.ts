@@ -68,9 +68,10 @@ async function loadConfigFile(filePath: string): Promise<Partial<KyseraConfig>> 
   if (filePath.endsWith('.json')) {
     try {
       const content = await fs.readFile(filePath, 'utf-8');
-      return JSON.parse(content);
-    } catch (error: any) {
-      throw new Error(`Failed to load JSON configuration from ${filePath}: ${error.message}`);
+      return JSON.parse(content) as Partial<KyseraConfig>;
+    } catch (error) {
+      const err = error as Error;
+      throw new Error(`Failed to load JSON configuration from ${filePath}: ${err.message}`);
     }
   }
 
@@ -91,13 +92,15 @@ async function loadConfigFile(filePath: string): Promise<Partial<KyseraConfig>> 
     }
 
     // Handle default export
-    if (result.config.default) {
-      return result.config.default;
+    const config = result.config as { default?: Partial<KyseraConfig> } & Partial<KyseraConfig>;
+    if (config.default) {
+      return config.default;
     }
 
-    return result.config;
-  } catch (error: any) {
-    throw new Error(`Failed to load configuration from ${filePath}: ${error.message}`);
+    return config;
+  } catch (error) {
+    const err = error as Error;
+    throw new Error(`Failed to load configuration from ${filePath}: ${err.message}`);
   }
 }
 
@@ -129,13 +132,13 @@ export function validateConfig(config: unknown): { valid: boolean; errors?: stri
 /**
  * Get configuration value by path
  */
-export function getConfigValue(config: KyseraConfig, path: string): any {
+export function getConfigValue(config: KyseraConfig, path: string): unknown {
   const keys = path.split('.');
-  let value: any = config;
+  let value: unknown = config;
 
   for (const key of keys) {
     if (value && typeof value === 'object' && key in value) {
-      value = value[key];
+      value = (value as Record<string, unknown>)[key];
     } else {
       return undefined;
     }
@@ -147,18 +150,18 @@ export function getConfigValue(config: KyseraConfig, path: string): any {
 /**
  * Set configuration value by path
  */
-export function setConfigValue(config: KyseraConfig, path: string, value: any): void {
+export function setConfigValue(config: KyseraConfig, path: string, value: unknown): void {
   const keys = path.split('.');
   const lastKey = keys.pop();
 
   if (!lastKey) return;
 
-  let obj: any = config;
+  let obj: Record<string, unknown> = config as unknown as Record<string, unknown>;
   for (const key of keys) {
     if (!(key in obj) || typeof obj[key] !== 'object') {
       obj[key] = {};
     }
-    obj = obj[key];
+    obj = obj[key] as Record<string, unknown>;
   }
 
   obj[lastKey] = value;

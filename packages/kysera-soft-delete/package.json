@@ -29,7 +29,8 @@
   },
   "dependencies": {
     "@kysera/core": "workspace:*",
-    "@kysera/repository": "workspace:*"
+    "@kysera/repository": "workspace:*",
+    "zod": "^4.1.13"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
@@ -39,8 +40,7 @@
     "kysely": "^0.28.8",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.15",
-    "zod": "^4.1.13"
+    "vitest": "^4.0.15"
   },
   "keywords": [
     "kysely",
@@ -48,7 +48,7 @@
     "soft-delete",
     "plugin"
   ],
-  "author": "",
+  "author": "Kysera Team",
   "license": "MIT",
   "repository": {
     "type": "git",

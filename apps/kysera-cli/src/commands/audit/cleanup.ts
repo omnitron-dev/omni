@@ -181,6 +181,9 @@ async function cleanupAuditLogs(options: CleanupOptions): Promise<void> {
     deleteSpinner.start('Deleting audit logs...');
 
     const batchSize = parseInt(options.batchSize || '1000', 10);
+    if (isNaN(batchSize) || batchSize <= 0) {
+      throw new CLIError('Invalid batch size - must be a positive number');
+    }
     let deletedCount = 0;
     let batchCount = 0;
 
@@ -254,6 +257,9 @@ function parseDuration(duration: string): Date {
   }
 
   const value = parseInt(match[1], 10);
+  if (isNaN(value) || value <= 0) {
+    throw new CLIError('Invalid retention period value - must be a positive number');
+  }
   const unit = match[2];
   const now = new Date();
 

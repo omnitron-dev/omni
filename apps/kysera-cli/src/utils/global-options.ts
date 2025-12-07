@@ -310,7 +310,8 @@ export async function confirmWithDryRun(message: string, defaultValue = false): 
   }
 
   const { confirm } = await import('@xec-sh/kit');
-  return confirm(message, { defaultValue });
+  const result = await confirm({ message, initialValue: defaultValue });
+  return result === true;
 }
 
 /**

@@ -7,3 +7,4 @@ export * from './shutdown.js';
 export * from './retry.js';
 export * from './types.js';
 export * from './testing.js';
+export * from './logger.js';

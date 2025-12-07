@@ -132,6 +132,9 @@ async function analyzeErrors(options: ErrorsOptions): Promise<void> {
     }
 
     const limit = parseInt(options.limit || '100', 10);
+    if (isNaN(limit) || limit <= 0) {
+      throw new CLIError('Invalid limit value - must be a positive number');
+    }
     query = query.limit(limit * 2); // Get more for pattern analysis
 
     // Execute query

@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { prism, spinner } from '@xec-sh/kit';
-import { CLIError } from '../../utils/errors.js';
+import { CLIError, ValidationError } from '../../utils/errors.js';
 import { getDatabaseConnection } from '../../utils/database.js';
 import { loadConfig } from '../../config/loader.js';
 
@@ -60,10 +60,21 @@ async function compareAuditLogs(id1: string, id2: string, options: CompareOption
   compareSpinner.start('Fetching audit logs...');
 
   try {
+    // Validate and parse audit log IDs
+    const parsedId1 = parseInt(id1, 10);
+    const parsedId2 = parseInt(id2, 10);
+
+    if (isNaN(parsedId1)) {
+      throw new ValidationError('Invalid first audit log ID - must be a number');
+    }
+    if (isNaN(parsedId2)) {
+      throw new ValidationError('Invalid second audit log ID - must be a number');
+    }
+
     // Fetch both audit logs
     const [log1, log2] = await Promise.all([
-      db.selectFrom('audit_logs').selectAll().where('id', '=', parseInt(id1, 10)).executeTakeFirst(),
-      db.selectFrom('audit_logs').selectAll().where('id', '=', parseInt(id2, 10)).executeTakeFirst(),
+      db.selectFrom('audit_logs').selectAll().where('id', '=', parsedId1).executeTakeFirst(),
+      db.selectFrom('audit_logs').selectAll().where('id', '=', parsedId2).executeTakeFirst(),
     ]);
 
     if (!log1) {

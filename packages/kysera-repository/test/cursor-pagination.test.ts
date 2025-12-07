@@ -529,9 +529,9 @@ describe('Keyset-based Cursor Pagination', () => {
       await Promise.all(createPromises);
 
       // Jump to page 10 (offset 90 in old implementation)
-      let cursor = null;
+      let cursor: { value: string | number | Date | null; id: number } | null = null;
       for (let i = 0; i < 9; i++) {
-        const page = await userRepo.paginateCursor({
+        const page: Awaited<ReturnType<typeof userRepo.paginateCursor>> = await userRepo.paginateCursor({
           limit: 10,
           cursor,
         });
@@ -569,9 +569,9 @@ describe('Keyset-based Cursor Pagination', () => {
       });
 
       // Create initial users
-      const user1 = await userRepo.create({ email: 'user1@example.com', name: 'User 1' });
-      const user2 = await userRepo.create({ email: 'user2@example.com', name: 'User 2' });
-      const user3 = await userRepo.create({ email: 'user3@example.com', name: 'User 3' });
+      await userRepo.create({ email: 'user1@example.com', name: 'User 1' });
+      await userRepo.create({ email: 'user2@example.com', name: 'User 2' });
+      await userRepo.create({ email: 'user3@example.com', name: 'User 3' });
 
       // Get first page
       const page1 = await userRepo.paginateCursor({
@@ -583,7 +583,7 @@ describe('Keyset-based Cursor Pagination', () => {
       expect(page1.items[1].name).toBe('User 2');
 
       // Insert new item (will have higher ID than cursor)
-      const user4 = await userRepo.create({ email: 'user4@example.com', name: 'User 4' });
+      await userRepo.create({ email: 'user4@example.com', name: 'User 4' });
 
       // Get second page with cursor
       const page2 = await userRepo.paginateCursor({

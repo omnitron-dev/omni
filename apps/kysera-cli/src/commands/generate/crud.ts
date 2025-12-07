@@ -7,7 +7,7 @@ import { CLIError } from '../../utils/errors.js';
 import { getDatabaseConnection } from '../../utils/database.js';
 import { loadConfig } from '../../config/loader.js';
 import { DatabaseIntrospector, TableInfo } from './introspector.js';
-import { execSync } from 'node:child_process';
+import { execa } from 'execa';
 
 export interface CrudOptions {
   table: string;
@@ -171,7 +171,7 @@ async function generateCrud(tableName: string, options: CrudOptions): Promise<vo
         const formatSpinner = spinner();
         formatSpinner.start('Formatting generated files...');
 
-        execSync(`npx prettier --write ${generatedFiles.join(' ')}`, {
+        await execa('npx', ['prettier', '--write', ...generatedFiles], {
           stdio: 'ignore',
         });
 

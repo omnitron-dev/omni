@@ -3,6 +3,7 @@ import { prism, spinner } from '@xec-sh/kit';
 import { CLIError } from '../../utils/errors.js';
 import { getDatabaseConnection } from '../../utils/database.js';
 import { loadConfig } from '../../config/loader.js';
+import { logger } from '../../utils/logger.js';
 
 export interface HistoryOptions {
   limit?: string;
@@ -81,6 +82,9 @@ async function showEntityHistory(tableName: string, entityId: string, options: H
 
     // Get history for the entity
     const limit = parseInt(options.limit || '20', 10);
+    if (isNaN(limit) || limit <= 0) {
+      throw new CLIError('Invalid limit value - must be a positive number');
+    }
     let query = db
       .selectFrom('audit_logs')
       .selectAll()
@@ -258,7 +262,8 @@ function parseJson(value: any): any {
   if (typeof value === 'string') {
     try {
       return JSON.parse(value);
-    } catch {
+    } catch (error) {
+      logger.debug('Failed to parse JSON value:', error);
       return value;
     }
   }

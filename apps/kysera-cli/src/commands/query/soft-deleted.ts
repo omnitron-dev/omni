@@ -180,6 +180,9 @@ async function listSoftDeleted(
 
     // Apply limit
     const limit = parseInt(options.limit || '100', 10);
+    if (isNaN(limit) || limit <= 0) {
+      throw new CLIError('Invalid limit value - must be a positive number');
+    }
     query = query.limit(limit);
 
     // Execute query

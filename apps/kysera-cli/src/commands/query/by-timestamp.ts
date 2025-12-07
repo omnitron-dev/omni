@@ -170,6 +170,9 @@ async function queryByTimestamp(tableName: string, options: TimestampQueryOption
 
     // Add limit
     const limit = parseInt(options.limit || '100', 10);
+    if (isNaN(limit) || limit <= 0) {
+      throw new CLIError('Invalid limit value - must be a positive number');
+    }
     if (!options.count) {
       query = query.limit(limit);
     }
@@ -291,6 +294,9 @@ function getTimeRange(options: TimestampQueryOptions): { start: Date; end: Date 
 
   if (options.lastDays) {
     const days = parseInt(options.lastDays, 10);
+    if (isNaN(days) || days <= 0) {
+      throw new CLIError('Invalid lastDays value - must be a positive number');
+    }
     const start = new Date(now);
     start.setDate(start.getDate() - days);
     start.setHours(0, 0, 0, 0);
@@ -357,7 +363,7 @@ function displayTimestampQueryResults(result: TimestampQueryResult, options: Tim
 
     // Show limit info
     const limit = parseInt(options.limit || '100', 10);
-    if (result.rowCount >= limit) {
+    if (!isNaN(limit) && limit > 0 && result.rowCount >= limit) {
       console.log('');
       console.log(prism.gray(`Showing first ${limit} records. Use --limit to show more.`));
     }

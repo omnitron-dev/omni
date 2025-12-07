@@ -1,5 +1,6 @@
-import { Kysely } from 'kysely';
-import { DatabaseError } from '../errors.js';
+import { Kysely, sql } from 'kysely';
+import { CLIDatabaseError } from '../errors.js';
+import { logger } from '../logger.js';
 
 /**
  * PostgreSQL specific utilities
@@ -21,12 +22,12 @@ export async function getPostgresInfo(db: Kysely<any>): Promise<PostgresInfo> {
   try {
     const result = await db
       .selectNoFrom([
-        db.raw<string>('version()').as('version'),
-        db.raw<string>('current_database()').as('currentDatabase'),
-        db.raw<string>('current_user').as('currentUser'),
-        db.raw<string>("current_setting('server_encoding')").as('serverEncoding'),
-        db.raw<string>("current_setting('client_encoding')").as('clientEncoding'),
-        db.raw<string>("current_setting('timezone')").as('timezone'),
+        sql<string>`version()`.as('version'),
+        sql<string>`current_database()`.as('currentDatabase'),
+        sql<string>`current_user`.as('currentUser'),
+        sql<string>`current_setting('server_encoding')`.as('serverEncoding'),
+        sql<string>`current_setting('client_encoding')`.as('clientEncoding'),
+        sql<string>`current_setting('timezone')`.as('timezone'),
       ])
       .executeTakeFirst();
 
@@ -36,7 +37,7 @@ export async function getPostgresInfo(db: Kysely<any>): Promise<PostgresInfo> {
 
     return result as PostgresInfo;
   } catch (error: any) {
-    throw new DatabaseError(`Failed to get PostgreSQL info: ${error.message}`);
+    throw new CLIDatabaseError(`Failed to get PostgreSQL info: ${error.message}`);
   }
 }
 
@@ -52,7 +53,8 @@ export async function checkExtension(db: Kysely<any>, extensionName: string): Pr
       .executeTakeFirst();
 
     return !!result;
-  } catch {
+  } catch (error) {
+    logger.debug(`Failed to check extension ${extensionName}:`, error);
     return false;
   }
 }
@@ -62,9 +64,9 @@ export async function checkExtension(db: Kysely<any>, extensionName: string): Pr
  */
 export async function createExtension(db: Kysely<any>, extensionName: string): Promise<void> {
   try {
-    await db.schema.raw(`CREATE EXTENSION IF NOT EXISTS "${extensionName}"`).execute();
+    await sql.raw(`CREATE EXTENSION IF NOT EXISTS "${extensionName}"`).execute(db);
   } catch (error: any) {
-    throw new DatabaseError(`Failed to create extension ${extensionName}: ${error.message}`);
+    throw new CLIDatabaseError(`Failed to create extension ${extensionName}: ${error.message}`);
   }
 }
 
@@ -74,11 +76,12 @@ export async function createExtension(db: Kysely<any>, extensionName: string): P
 export async function getTableSize(db: Kysely<any>, tableName: string): Promise<string> {
   try {
     const result = await db
-      .selectNoFrom(db.raw<string>(`pg_size_pretty(pg_total_relation_size('${tableName}'))`).as('size'))
+      .selectNoFrom(sql<string>`pg_size_pretty(pg_total_relation_size(${tableName}))`.as('size'))
       .executeTakeFirst();
 
     return result?.size || 'Unknown';
-  } catch {
+  } catch (error) {
+    logger.debug(`Failed to get table size for ${tableName}:`, error);
     return 'Unknown';
   }
 }
@@ -89,11 +92,12 @@ export async function getTableSize(db: Kysely<any>, tableName: string): Promise<
 export async function getIndexSize(db: Kysely<any>, indexName: string): Promise<string> {
   try {
     const result = await db
-      .selectNoFrom(db.raw<string>(`pg_size_pretty(pg_relation_size('${indexName}'))`).as('size'))
+      .selectNoFrom(sql<string>`pg_size_pretty(pg_relation_size(${indexName}))`.as('size'))
       .executeTakeFirst();
 
     return result?.size || 'Unknown';
-  } catch {
+  } catch (error) {
+    logger.debug(`Failed to get index size for ${indexName}:`, error);
     return 'Unknown';
   }
 }
@@ -105,12 +109,13 @@ export async function getActiveConnections(db: Kysely<any>): Promise<number> {
   try {
     const result = await db
       .selectFrom('pg_stat_activity')
-      .select(db.raw<number>('COUNT(*)').as('count'))
+      .select(sql<number>`COUNT(*)`.as('count'))
       .where('state', '=', 'active')
       .executeTakeFirst();
 
     return result?.count || 0;
-  } catch {
+  } catch (error) {
+    logger.debug('Failed to get active connections:', error);
     return 0;
   }
 }
@@ -125,15 +130,16 @@ export async function getSlowQueries(
   try {
     const result = await db
       .selectFrom('pg_stat_activity')
-      .select(['query', db.raw<number>('EXTRACT(EPOCH FROM (now() - query_start)) * 1000').as('duration'), 'state'])
+      .select(['query', sql<number>`EXTRACT(EPOCH FROM (now() - query_start)) * 1000`.as('duration'), 'state'])
       .where('state', '!=', 'idle')
-      .where(db.raw('now() - query_start'), '>', db.raw(`interval '${thresholdMs} milliseconds'`))
+      .where(sql`now() - query_start`, '>', sql`interval '${sql.lit(`${thresholdMs} milliseconds`)}'`)
       .orderBy('duration', 'desc')
       .limit(10)
       .execute();
 
     return result as any;
-  } catch {
+  } catch (error) {
+    logger.debug('Failed to get slow queries:', error);
     return [];
   }
 }
@@ -144,11 +150,12 @@ export async function getSlowQueries(
 export async function killConnection(db: Kysely<any>, pid: number): Promise<boolean> {
   try {
     const result = await db
-      .selectNoFrom(db.raw<boolean>(`pg_terminate_backend(${pid})`).as('terminated'))
+      .selectNoFrom(sql<boolean>`pg_terminate_backend(${pid})`.as('terminated'))
       .executeTakeFirst();
 
     return result?.terminated || false;
-  } catch {
+  } catch (error) {
+    logger.debug(`Failed to kill connection ${pid}:`, error);
     return false;
   }
 }
@@ -158,9 +165,9 @@ export async function killConnection(db: Kysely<any>, pid: number): Promise<bool
  */
 export async function vacuumTable(db: Kysely<any>, tableName: string): Promise<void> {
   try {
-    await db.schema.raw(`VACUUM ANALYZE "${tableName}"`).execute();
+    await sql.raw(`VACUUM ANALYZE "${tableName}"`).execute(db);
   } catch (error: any) {
-    throw new DatabaseError(`Failed to vacuum table ${tableName}: ${error.message}`);
+    throw new CLIDatabaseError(`Failed to vacuum table ${tableName}: ${error.message}`);
   }
 }
 
@@ -169,9 +176,9 @@ export async function vacuumTable(db: Kysely<any>, tableName: string): Promise<v
  */
 export async function analyzeTable(db: Kysely<any>, tableName: string): Promise<void> {
   try {
-    await db.schema.raw(`ANALYZE "${tableName}"`).execute();
+    await sql.raw(`ANALYZE "${tableName}"`).execute(db);
   } catch (error: any) {
-    throw new DatabaseError(`Failed to analyze table ${tableName}: ${error.message}`);
+    throw new CLIDatabaseError(`Failed to analyze table ${tableName}: ${error.message}`);
   }
 }
 
@@ -187,7 +194,8 @@ export async function databaseExists(db: Kysely<any>, databaseName: string): Pro
       .executeTakeFirst();
 
     return !!result;
-  } catch {
+  } catch (error) {
+    logger.debug(`Failed to check if database exists: ${databaseName}`, error);
     return false;
   }
 }
@@ -197,9 +205,9 @@ export async function databaseExists(db: Kysely<any>, databaseName: string): Pro
  */
 export async function createDatabase(db: Kysely<any>, databaseName: string): Promise<void> {
   try {
-    await db.schema.raw(`CREATE DATABASE "${databaseName}"`).execute();
+    await sql.raw(`CREATE DATABASE "${databaseName}"`).execute(db);
   } catch (error: any) {
-    throw new DatabaseError(`Failed to create database ${databaseName}: ${error.message}`);
+    throw new CLIDatabaseError(`Failed to create database ${databaseName}: ${error.message}`);
   }
 }
 
@@ -209,7 +217,7 @@ export async function createDatabase(db: Kysely<any>, databaseName: string): Pro
 export async function dropDatabase(db: Kysely<any>, databaseName: string): Promise<void> {
   try {
     // Terminate connections to the database
-    await db.schema
+    await sql
       .raw(
         `
         SELECT pg_terminate_backend(pg_stat_activity.pid)
@@ -218,11 +226,11 @@ export async function dropDatabase(db: Kysely<any>, databaseName: string): Promi
           AND pid <> pg_backend_pid()
       `
       )
-      .execute();
+      .execute(db);
 
     // Drop the database
-    await db.schema.raw(`DROP DATABASE IF EXISTS "${databaseName}"`).execute();
+    await sql.raw(`DROP DATABASE IF EXISTS "${databaseName}"`).execute(db);
   } catch (error: any) {
-    throw new DatabaseError(`Failed to drop database ${databaseName}: ${error.message}`);
+    throw new CLIDatabaseError(`Failed to drop database ${databaseName}: ${error.message}`);
   }
 }

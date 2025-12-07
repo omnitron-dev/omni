@@ -218,7 +218,8 @@ async function discoverInstalledPlugins(config: any): Promise<Plugin[]> {
               status: await getPluginStatus(pluginName, config),
               kysera: packageJson.kysera,
             });
-          } catch {
+          } catch (error) {
+            logger.debug(`Failed to read package.json for plugin ${pluginName}:`, error);
             // Plugin without package.json
             plugins.push({
               name: pluginName,
@@ -229,8 +230,8 @@ async function discoverInstalledPlugins(config: any): Promise<Plugin[]> {
           }
         }
       }
-    } catch {
-      // No plugins directory
+    } catch (error) {
+      logger.debug('No plugins directory found:', error);
     }
   } catch (error) {
     logger.debug(`Failed to discover installed plugins: ${error}`);

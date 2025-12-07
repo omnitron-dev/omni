@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { AuditOptionsSchema } from '@kysera/audit';
+import { SoftDeleteOptionsSchema } from '@kysera/soft-delete';
+import { TimestampsOptionsSchema } from '@kysera/timestamps';
 
 // Database connection schema
 const DatabaseConnectionObjectSchema = z.object({
@@ -66,32 +69,32 @@ const MigrationConfigSchema = z.object({
 });
 
 // Plugin configuration schemas
-const AuditPluginSchema = z.object({
+// These schemas are imported from the respective plugin packages to avoid duplication
+// and ensure consistency between the CLI config and the plugin interfaces.
+
+/**
+ * Audit plugin schema - imported from @kysera/audit
+ * Extends the base AuditOptionsSchema with CLI-specific 'enabled' flag
+ */
+const AuditPluginSchema = AuditOptionsSchema.extend({
   enabled: z.boolean().default(false),
-  tables: z.array(z.string()).optional(),
-  excludeTables: z.array(z.string()).optional(),
-  captureOldValues: z.boolean().default(true),
-  captureNewValues: z.boolean().default(true),
-  auditTable: z.string().default('audit_logs'),
-  getUserId: z.function().optional(),
-  metadata: z.function().optional(),
 });
 
-const SoftDeletePluginSchema = z.object({
+/**
+ * Soft delete plugin schema - imported from @kysera/soft-delete
+ * Extends the base SoftDeleteOptionsSchema with CLI-specific 'enabled' flag
+ */
+const SoftDeletePluginSchema = SoftDeleteOptionsSchema.extend({
   enabled: z.boolean().default(false),
-  tables: z.array(z.string()).optional(),
-  deletedAtColumn: z.string().default('deleted_at'),
-  includeDeleted: z.boolean().default(false),
 });
 
-const TimestampsPluginSchema = z.object({
+/**
+ * Timestamps plugin schema - imported from @kysera/timestamps
+ * Extends the base TimestampsOptionsSchema with CLI-specific 'enabled' flag and defaults
+ */
+const TimestampsPluginSchema = TimestampsOptionsSchema.extend({
   enabled: z.boolean().default(false),
-  tables: z.array(z.string()).default(['*']),
-  excludeTables: z.array(z.string()).optional(),
-  createdAtColumn: z.string().default('created_at'),
-  updatedAtColumn: z.string().default('updated_at'),
-  dateFormat: z.enum(['iso', 'unix', 'date']).default('iso'),
-  setUpdatedAtOnInsert: z.boolean().default(false),
+  tables: z.array(z.string()).default(['*']).optional(),
 });
 
 const PluginsConfigSchema = z.object({

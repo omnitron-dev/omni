@@ -1,6 +1,6 @@
 {
   "name": "@kysera/cli",
-  "version": "0.4.1",
+  "version": "0.5.1",
   "description": "Comprehensive command-line interface for Kysera ORM",
   "type": "module",
   "bin": {
@@ -45,7 +45,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kysera/kysera.git",
+    "url": "git+https://github.com/kysera-dev/kysera.git",
     "directory": "apps/cli"
   },
   "bugs": {
@@ -87,13 +87,13 @@
   "devDependencies": {
     "@types/fs-extra": "^11.0.4",
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^24.6.2",
-    "tsup": "^8.5.0",
+    "@types/node": "^24.10.1",
+    "tsup": "^8.5.1",
     "typescript": "^5.9.3",
-    "vitest": "^3.2.4",
-    "@vitest/coverage-v8": "^3.2.4",
-    "eslint": "^9.36.0",
-    "prettier": "^3.6.2"
+    "vitest": "^4.0.15",
+    "@vitest/coverage-v8": "^4.0.15",
+    "eslint": "^9.39.1",
+    "prettier": "^3.7.4"
   },
   "sideEffects": false
 }

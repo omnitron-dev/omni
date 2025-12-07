@@ -1,13 +1,20 @@
-import { Kysely, PostgresDialect, MysqlDialect, SqliteDialect } from 'kysely';
+import { Kysely, PostgresDialect, MysqlDialect, SqliteDialect, sql } from 'kysely';
+import type { Pool as PgPool } from 'pg';
 import { Pool } from 'pg';
+import type { Pool as MysqlPool } from 'mysql2';
 import { createPool } from 'mysql2';
 import Database from 'better-sqlite3';
 import type { DatabaseConfig } from '../config/schema.js';
-import { DatabaseError } from './errors.js';
+import { CLIDatabaseError } from './errors.js';
 import { logger } from './logger.js';
 import { checkDatabaseHealth } from '@kysera/core';
 
 export type DatabaseDialect = 'postgres' | 'mysql' | 'sqlite';
+
+// Generic database type - can be extended with specific table schemas
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export interface Database { [key: string]: any }
 
 export interface ConnectionOptions {
   config: DatabaseConfig;
@@ -15,12 +22,43 @@ export interface ConnectionOptions {
   debug?: boolean;
 }
 
+export interface PostgresConnectionConfig {
+  connectionString?: string;
+  host?: string;
+  port?: number;
+  database?: string;
+  user?: string;
+  password?: string;
+  ssl?: boolean | Record<string, unknown>;
+}
+
+export interface MysqlConnectionConfig {
+  host?: string;
+  port?: number;
+  database?: string;
+  user?: string;
+  password?: string;
+}
+
+export interface PoolConfig {
+  min?: number;
+  max?: number;
+  idleTimeoutMillis?: number;
+  acquireTimeoutMillis?: number;
+}
+
+export interface HealthCheckResult {
+  status: 'healthy' | 'degraded' | 'unhealthy';
+  latency?: number;
+  details?: Record<string, unknown>;
+}
+
 export interface DatabaseConnection {
-  db: Kysely<any>;
+  db: Kysely<Database>;
   dialect: DatabaseDialect;
   close: () => Promise<void>;
   test: () => Promise<boolean>;
-  getHealth: () => Promise<any>;
+  getHealth: () => Promise<HealthCheckResult>;
 }
 
 /**
@@ -28,15 +66,15 @@ export interface DatabaseConnection {
  * This function is overloaded to support both test format and full format
  */
 export async function createDatabaseConnection(
-  configOrOptions: DatabaseConfig | ConnectionOptions | any
-): Promise<DatabaseConnection | Kysely<any>> {
+  configOrOptions: DatabaseConfig | ConnectionOptions
+): Promise<DatabaseConnection | Kysely<Database>> {
   // Support test format where config is passed directly
   if ('dialect' in configOrOptions && !('config' in configOrOptions)) {
     // This is the format expected by tests - return Kysely instance directly
-    const config = configOrOptions;
+    const config = configOrOptions as DatabaseConfig;
     const connection = config.connectionString || config.connection;
 
-    let db: Kysely<any>;
+    let db: Kysely<Database>;
 
     switch (config.dialect) {
       case 'postgres':
@@ -52,7 +90,7 @@ export async function createDatabaseConnection(
               password: config.password,
             };
         const pgPool = new Pool({ ...pgConfig, ...config.pool });
-        db = new Kysely<any>({
+        db = new Kysely<Database>({
           dialect: new PostgresDialect({ pool: pgPool }),
         });
         break;
@@ -70,14 +108,14 @@ export async function createDatabaseConnection(
               password: config.password,
             };
         const mysqlPool = createPool({ ...mysqlConfig, ...config.pool });
-        db = new Kysely<any>({
+        db = new Kysely<Database>({
           dialect: new MysqlDialect({ pool: mysqlPool }),
         });
         break;
 
       case 'sqlite':
         const database = new Database(config.database || ':memory:');
-        db = new Kysely<any>({
+        db = new Kysely<Database>({
           dialect: new SqliteDialect({ database }),
         });
         break;
@@ -99,7 +137,7 @@ export async function createDatabaseConnection(
   }
 
   if (!config.connection && !config.database) {
-    throw new DatabaseError('No database connection configured', [
+    throw new CLIDatabaseError('No database connection configured', [
       'Set DATABASE_URL environment variable',
       'Or add database.connection to your kysera.config.ts',
       'Or for SQLite, add database.database field',
@@ -109,7 +147,7 @@ export async function createDatabaseConnection(
   const dialect = config.dialect || detectDialect(config.connection || config.database || '');
   logger.debug(`Creating ${dialect} connection...`);
 
-  let db: Kysely<any>;
+  let db: Kysely<Database>;
   let closeFunction: () => Promise<void>;
 
   try {
@@ -133,18 +171,19 @@ export async function createDatabaseConnection(
         break;
 
       default:
-        throw new DatabaseError(`Unsupported database dialect: ${dialect}`);
+        throw new CLIDatabaseError(`Unsupported database dialect: ${dialect}`);
     }
-  } catch (error: any) {
+  } catch (error) {
+    const err = error as Error & { code?: string };
     // Ensure connection errors are properly reported
     if (
-      error.message?.includes('ECONNREFUSED') ||
-      error.message?.includes('ENOTFOUND') ||
-      error.message?.includes('connect') ||
-      error.message?.includes('getaddrinfo') ||
-      error.code === 'ECONNREFUSED'
+      err.message?.includes('ECONNREFUSED') ||
+      err.message?.includes('ENOTFOUND') ||
+      err.message?.includes('connect') ||
+      err.message?.includes('getaddrinfo') ||
+      err.code === 'ECONNREFUSED'
     ) {
-      throw new DatabaseError(`Failed to establish database connection: ${error.message}`, [
+      throw new CLIDatabaseError(`Failed to establish database connection: ${err.message}`, [
         'Check database connection settings',
         'Ensure the database server is running',
         'Verify host, port, and credentials',
@@ -185,7 +224,7 @@ export async function createDatabaseConnection(
 async function createPostgresConnection(
   config: DatabaseConfig,
   readonly: boolean
-): Promise<{ db: Kysely<any>; close: () => Promise<void> }> {
+): Promise<{ db: Kysely<Database>; close: () => Promise<void> }> {
   const connectionConfig = parsePostgresConnection(config.connection);
 
   const pool = new Pool({
@@ -196,7 +235,7 @@ async function createPostgresConnection(
   });
 
   const dialect = new PostgresDialect({ pool });
-  const db = new Kysely<any>({ dialect });
+  const db = new Kysely<Database>({ dialect });
 
   const close = async () => {
     await pool.end();
@@ -211,7 +250,7 @@ async function createPostgresConnection(
 async function createMysqlConnection(
   config: DatabaseConfig,
   readonly: boolean
-): Promise<{ db: Kysely<any>; close: () => Promise<void> }> {
+): Promise<{ db: Kysely<Database>; close: () => Promise<void> }> {
   const connectionConfig = parseMysqlConnection(config.connection);
 
   const pool = createPool({
@@ -223,7 +262,7 @@ async function createMysqlConnection(
   });
 
   const dialect = new MysqlDialect({ pool });
-  const db = new Kysely<any>({ dialect });
+  const db = new Kysely<Database>({ dialect });
 
   const close = async () => {
     await new Promise<void>((resolve, reject) => {
@@ -243,7 +282,7 @@ async function createMysqlConnection(
 async function createSqliteConnection(
   config: DatabaseConfig,
   readonly: boolean
-): Promise<{ db: Kysely<any>; close: () => Promise<void> }> {
+): Promise<{ db: Kysely<Database>; close: () => Promise<void> }> {
   const connectionString =
     typeof config.connection === 'string' ? config.connection.replace('sqlite://', '') : ':memory:';
 
@@ -256,7 +295,7 @@ async function createSqliteConnection(
   database.pragma('foreign_keys = ON');
 
   const dialect = new SqliteDialect({ database });
-  const db = new Kysely<any>({ dialect });
+  const db = new Kysely<Database>({ dialect });
 
   const close = async () => {
     database.close();
@@ -268,7 +307,9 @@ async function createSqliteConnection(
 /**
  * Parse PostgreSQL connection
  */
-function parsePostgresConnection(connection: string | Record<string, any>): any {
+function parsePostgresConnection(
+  connection: string | Record<string, unknown> | undefined
+): PostgresConnectionConfig {
   if (typeof connection === 'string') {
     // Connection string
     return {
@@ -276,21 +317,27 @@ function parsePostgresConnection(connection: string | Record<string, any>): any 
     };
   }
 
+  if (!connection) {
+    return {};
+  }
+
   // Connection object
   return {
-    host: connection.host || 'localhost',
-    port: connection.port || 5432,
-    database: connection.database,
-    user: connection.user,
-    password: connection.password,
-    ssl: connection.ssl,
+    host: (connection.host as string) || 'localhost',
+    port: (connection.port as number) || 5432,
+    database: connection.database as string,
+    user: connection.user as string,
+    password: connection.password as string,
+    ssl: connection.ssl as boolean | Record<string, unknown>,
   };
 }
 
 /**
  * Parse MySQL connection
  */
-function parseMysqlConnection(connection: string | Record<string, any>): any {
+function parseMysqlConnection(
+  connection: string | Record<string, unknown> | undefined
+): MysqlConnectionConfig {
   if (typeof connection === 'string') {
     // Parse connection string
     const url = new URL(connection);
@@ -303,20 +350,24 @@ function parseMysqlConnection(connection: string | Record<string, any>): any {
     };
   }
 
+  if (!connection) {
+    return {};
+  }
+
   // Connection object
   return {
-    host: connection.host || 'localhost',
-    port: connection.port || 3306,
-    database: connection.database,
-    user: connection.user,
-    password: connection.password,
+    host: (connection.host as string) || 'localhost',
+    port: (connection.port as number) || 3306,
+    database: connection.database as string,
+    user: connection.user as string,
+    password: connection.password as string,
   };
 }
 
 /**
  * Detect dialect from connection string
  */
-function detectDialect(connection: string | Record<string, any>): DatabaseDialect {
+function detectDialect(connection: string | Record<string, unknown>): DatabaseDialect {
   if (typeof connection === 'string') {
     if (connection.startsWith('postgres://') || connection.startsWith('postgresql://')) {
       return 'postgres';
@@ -329,7 +380,7 @@ function detectDialect(connection: string | Record<string, any>): DatabaseDialec
     }
   }
 
-  throw new DatabaseError('Could not detect database dialect from connection string', [
+  throw new CLIDatabaseError('Could not detect database dialect from connection string', [
     'Specify dialect explicitly in configuration',
     'Use a connection string with protocol (postgres://, mysql://, sqlite://)',
   ]);
@@ -338,7 +389,7 @@ function detectDialect(connection: string | Record<string, any>): DatabaseDialec
 /**
  * Test database connection
  */
-async function testConnection(db: Kysely<any>): Promise<boolean> {
+async function testConnection(db: Kysely<Database>): Promise<boolean> {
   try {
     // Simple query to test connection
     const result = await db
@@ -352,8 +403,9 @@ async function testConnection(db: Kysely<any>): Promise<boolean> {
       });
 
     return true;
-  } catch (error: any) {
-    logger.debug('Connection test failed:', error.message);
+  } catch (error) {
+    const err = error as Error;
+    logger.debug('Connection test failed:', err.message);
     return false;
   }
 }
@@ -364,7 +416,7 @@ async function testConnection(db: Kysely<any>): Promise<boolean> {
 /**
  * Get a database connection from config
  */
-export async function getDatabaseConnection(config: DatabaseConfig): Promise<Kysely<any> | null> {
+export async function getDatabaseConnection(config: DatabaseConfig): Promise<Kysely<Database> | null> {
   try {
     const connection = await createDatabaseConnection({ config });
     // Check if we got a DatabaseConnection object or a Kysely instance directly
@@ -372,7 +424,7 @@ export async function getDatabaseConnection(config: DatabaseConfig): Promise<Kys
       return connection.db;
     } else if (connection && typeof connection.destroy === 'function') {
       // We got a Kysely instance directly
-      return connection as Kysely<any>;
+      return connection as Kysely<Database>;
     } else {
       logger.error('Unexpected connection result:', connection);
       return null;
@@ -383,7 +435,7 @@ export async function getDatabaseConnection(config: DatabaseConfig): Promise<Kys
   }
 }
 
-export async function getDatabaseVersion(db: Kysely<any>): Promise<string> {
+export async function getDatabaseVersion(db: Kysely<Database>): Promise<string> {
   try {
     // PostgreSQL
     const pgResult = await db
@@ -416,7 +468,8 @@ export async function getDatabaseVersion(db: Kysely<any>): Promise<string> {
     }
 
     return 'Unknown';
-  } catch {
+  } catch (error) {
+    logger.debug('Failed to get database version:', error);
     return 'Unknown';
   }
 }
@@ -428,7 +481,7 @@ export async function getDatabaseVersion(db: Kysely<any>): Promise<string> {
  * Database names are sanitized to only allow alphanumeric characters, underscores, and hyphens.
  * For PostgreSQL, we use current_database() instead of interpolating the database name.
  */
-export async function getDatabaseSize(db: Kysely<any>, databaseName: string): Promise<string> {
+export async function getDatabaseSize(db: Kysely<Database>, databaseName: string): Promise<string> {
   try {
     // SECURITY: Validate database name to prevent SQL injection
     // Database names should only contain alphanumeric characters, underscores, and hyphens
@@ -460,7 +513,8 @@ export async function getDatabaseSize(db: Kysely<any>, databaseName: string): Pr
     }
 
     return 'Unknown';
-  } catch {
+  } catch (error) {
+    logger.debug('Failed to get database size:', error);
     return 'Unknown';
   }
 }
@@ -468,7 +522,7 @@ export async function getDatabaseSize(db: Kysely<any>, databaseName: string): Pr
 /**
  * List database tables
  */
-export async function listTables(db: Kysely<any>): Promise<string[]> {
+export async function listTables(db: Kysely<Database>): Promise<string[]> {
   try {
     // PostgreSQL/MySQL
     const result = await db
@@ -482,7 +536,8 @@ export async function listTables(db: Kysely<any>): Promise<string[]> {
       });
 
     return result.map((r) => r.table_name);
-  } catch {
+  } catch (error) {
+    logger.debug('Failed to list database tables:', error);
     return [];
   }
 }
@@ -536,10 +591,10 @@ process.on('beforeExit', async () => {
  * Test database connection
  * Exported function for tests
  */
-export async function testDatabaseConnection(db: Kysely<any>): Promise<boolean> {
+export async function testDatabaseConnection(db: Kysely<Database>): Promise<boolean> {
   try {
     await db
-      .selectFrom((eb: any) => eb.selectFrom(eb.val(1).as('test')).as('t'))
+      .selectFrom((eb) => eb.selectFrom(eb.val(1).as('test')).as('t'))
       .select('test')
       .execute();
 
@@ -555,25 +610,30 @@ export async function testDatabaseConnection(db: Kysely<any>): Promise<boolean> 
   }
 }
 
+interface TableMetadata {
+  name: string;
+  schema?: string;
+}
+
 /**
  * Introspect database
  * Exported function for tests
  */
 export async function introspectDatabase(
-  db: Kysely<any>,
+  db: Kysely<Database>,
   options?: { schema?: string; excludePattern?: string }
-): Promise<{ tables: Array<{ name: string; schema?: string }> }> {
+): Promise<{ tables: Array<TableMetadata> }> {
   const tables = await db.introspection.getTables();
 
   let filteredTables = tables;
 
   if (options?.schema) {
-    filteredTables = filteredTables.filter((t: any) => t.schema === options.schema);
+    filteredTables = filteredTables.filter((t) => t.schema === options.schema);
   }
 
   if (options?.excludePattern) {
     const pattern = new RegExp(options.excludePattern);
-    filteredTables = filteredTables.filter((t: any) => !pattern.test(t.name));
+    filteredTables = filteredTables.filter((t) => !pattern.test(t.name));
   }
 
   return { tables: filteredTables };
@@ -583,29 +643,9 @@ export async function introspectDatabase(
  * Run a raw SQL query
  * Exported function for tests
  */
-export async function runQuery(db: Kysely<any>, query: string, params?: any[]): Promise<any> {
-  // Detect query type
-  const normalizedQuery = query.trim().toUpperCase();
-
-  if (normalizedQuery.startsWith('SELECT')) {
-    return db.selectFrom('users').selectAll().execute();
-  } else if (normalizedQuery.startsWith('INSERT')) {
-    return db
-      .insertInto('users')
-      .values({ name: params?.[0] || 'Test' })
-      .execute();
-  } else if (normalizedQuery.startsWith('UPDATE')) {
-    return db
-      .updateTable('users')
-      .set({ name: params?.[0] || 'Updated' })
-      .where('id', '=', params?.[1] || 1)
-      .execute();
-  } else if (normalizedQuery.startsWith('DELETE')) {
-    return db
-      .deleteFrom('users')
-      .where('id', '=', params?.[0] || 1)
-      .execute();
-  } else {
-    throw new Error('Unsupported query type');
-  }
+export async function runQuery(db: Kysely<Database>, query: string, _params?: unknown[]): Promise<unknown> {
+  // Use raw SQL execution for flexibility with any query type
+  // Note: This bypasses type safety intentionally for raw query execution
+  const result = await sql.raw(query).execute(db);
+  return result.rows;
 }

@@ -84,14 +84,9 @@ export function lazyCommand(config: LazyCommand): Command {
       LoadMetrics.recordLoad(config.name, loadTime);
       verbose(`Command loaded in ${loadTime}ms`);
 
-      // Replace the placeholder with the actual command
-      const parent = this.parent;
-      if (parent) {
-        const index = parent.commands.findIndex((cmd) => cmd.name() === config.name);
-        if (index >= 0) {
-          parent.commands[index] = actualCommand;
-        }
-      }
+      // Note: We cannot replace the placeholder command in the parent's command list
+      // because it's a readonly array. Instead, the actualCommand will be used directly
+      // when we re-parse below.
 
       // Re-parse with the actual command
       const commandArgs = [config.name, ...process.argv.slice(3)];
@@ -246,8 +241,9 @@ export class CommandOptimizer {
       const data = await readFile(this.USAGE_FILE, 'utf-8');
       const stats = JSON.parse(data);
       this.usageStats = new Map(Object.entries(stats));
-    } catch {
-      // No stats file or error reading it
+    } catch (error) {
+      const { logger } = await import('./logger.js');
+      logger.debug('Failed to load command usage stats:', error);
     }
   }
 
@@ -259,8 +255,9 @@ export class CommandOptimizer {
       const { writeFile } = await import('node:fs/promises');
       const stats = Object.fromEntries(this.usageStats);
       await writeFile(this.USAGE_FILE, JSON.stringify(stats, null, 2));
-    } catch {
-      // Ignore save errors
+    } catch (error) {
+      const { logger } = await import('./logger.js');
+      logger.debug('Failed to save command usage stats:', error);
     }
   }
 

@@ -286,6 +286,9 @@ function parsePeriod(period: string): number {
   }
 
   const value = parseInt(match[1], 10);
+  if (isNaN(value) || value <= 0) {
+    throw new CLIError('Invalid time window value - must be a positive number');
+  }
   const unit = match[2];
 
   const multipliers: Record<string, number> = {

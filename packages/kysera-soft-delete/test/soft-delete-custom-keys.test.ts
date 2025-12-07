@@ -59,13 +59,6 @@ interface OrderItem {
   deleted_at: string | null;
 }
 
-interface Order {
-  id: number;
-  customer_id: number;
-  total: number;
-  deleted_at: string | null;
-}
-
 function createCustomKeyDatabase(): {
   db: Kysely<CustomKeyDatabase>;
   sqlite: SQLiteDatabase;

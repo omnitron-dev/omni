@@ -83,13 +83,12 @@ function createValidationPlugin(options: { maxLength?: number } = {}): Plugin {
     version: '1.0.0',
     interceptQuery<QB extends AnyQueryBuilder>(
       qb: QB,
-      context: { operation: string; table: string; metadata: Record<string, unknown> }
+      _context: { operation: string; table: string; metadata: Record<string, unknown> }
     ): QB {
       // Validation logic would go here
       return qb;
     },
     extendRepository<T extends object>(repo: T): T {
-      const baseRepo = repo as any;
       return {
         ...repo,
         validateData: (data: Record<string, unknown>) => {

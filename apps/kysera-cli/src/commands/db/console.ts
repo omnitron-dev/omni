@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { prism, table as displayTable } from '@xec-sh/kit';
+import { prism, table as displayTable, confirm } from '@xec-sh/kit';
 import { CLIError } from '../../utils/errors.js';
 import { getDatabaseConnection } from '../../utils/database.js';
 import { loadConfig } from '../../config/loader.js';
@@ -58,7 +58,7 @@ async function databaseConsole(options: ConsoleOptions): Promise<void> {
   try {
     // If query provided, execute and exit
     if (options.query) {
-      await executeQuery(db, options.query, config.database.dialect);
+      await executeQuery(db, options.query);
       return;
     }
 
@@ -92,7 +92,7 @@ async function databaseConsole(options: ConsoleOptions): Promise<void> {
           multilineQuery = '';
 
           try {
-            await executeQuery(db, query, config.database.dialect);
+            await executeQuery(db, query);
           } catch (error) {
             console.error(prism.red(`Error: ${error instanceof Error ? error.message : String(error)}`));
           }
@@ -168,7 +168,7 @@ async function databaseConsole(options: ConsoleOptions): Promise<void> {
         if (trimmedLine.endsWith(';')) {
           // Single line query
           try {
-            await executeQuery(db, trimmedLine, config.database.dialect);
+            await executeQuery(db, trimmedLine);
           } catch (error) {
             console.error(prism.red(`Error: ${error instanceof Error ? error.message : String(error)}`));
           }
@@ -198,12 +198,43 @@ async function databaseConsole(options: ConsoleOptions): Promise<void> {
   }
 }
 
-async function executeQuery(db: any, query: string, dialect: string): Promise<void> {
+function isDestructiveQuery(query: string): boolean {
+  const queryLower = query.toLowerCase().trim();
+  return (
+    queryLower.startsWith('drop') ||
+    queryLower.startsWith('truncate') ||
+    queryLower.startsWith('delete') ||
+    queryLower.includes('drop table') ||
+    queryLower.includes('drop database') ||
+    queryLower.includes('drop schema') ||
+    queryLower.includes('alter table') && queryLower.includes('drop')
+  );
+}
+
+async function executeQuery(db: any, query: string): Promise<void> {
   const startTime = Date.now();
 
   try {
     // Remove trailing semicolon for Kysely
     const cleanQuery = query.trim().replace(/;$/, '');
+
+    // Check for destructive operations and warn user
+    if (isDestructiveQuery(cleanQuery)) {
+      console.log('');
+      console.log(prism.yellow('⚠️  WARNING: This is a destructive operation!'));
+      console.log(prism.yellow(`Query: ${cleanQuery}`));
+      console.log('');
+
+      const confirmed = await confirm({
+        message: 'Are you sure you want to execute this query?',
+        initialValue: false,
+      });
+
+      if (!confirmed) {
+        console.log(prism.gray('Query cancelled'));
+        return;
+      }
+    }
 
     // Determine query type
     const queryLower = cleanQuery.toLowerCase();

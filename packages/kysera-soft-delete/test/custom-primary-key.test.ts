@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Kysely, SqliteDialect, type Generated } from 'kysely';
 import sqliteConstructor from 'better-sqlite3';
 import type { Database as SQLiteDatabase } from 'better-sqlite3';
-import { softDeletePlugin } from '../src/index.js';
+import { softDeletePlugin, type SoftDeleteRepository } from '../src/index.js';
 import { createORM, createRepositoryFactory } from '../../kysera-repository/dist/index.js';
 import { z } from 'zod';
 
@@ -27,14 +27,6 @@ interface Product {
   product_id: number;
   name: string;
   price: number;
-  deleted_at: string | null;
-}
-
-// Type for order records
-interface Order {
-  order_uuid: string;
-  customer_id: number;
-  total: number;
   deleted_at: string | null;
 }
 
@@ -82,9 +74,9 @@ describe('Soft Delete Plugin - Custom Primary Key', () => {
     await db
       .insertInto('orders')
       .values([
-        { order_uuid: 'uuid-001', customer_id: 1, total: 100.0 },
-        { order_uuid: 'uuid-002', customer_id: 2, total: 200.0 },
-        { order_uuid: 'uuid-003', customer_id: 1, total: 150.0 },
+        { order_uuid: 'uuid-001' as const, customer_id: 1, total: 100.0 },
+        { order_uuid: 'uuid-002' as const, customer_id: 2, total: 200.0 },
+        { order_uuid: 'uuid-003' as const, customer_id: 1, total: 150.0 },
       ])
       .execute();
 
@@ -124,7 +116,7 @@ describe('Soft Delete Plugin - Custom Primary Key', () => {
               .optional(),
           },
         });
-      });
+      }) as SoftDeleteRepository<Product, CustomPKDatabase>;
 
       // Get first product
       const products = await db.selectFrom('products').selectAll().execute();
@@ -169,7 +161,7 @@ describe('Soft Delete Plugin - Custom Primary Key', () => {
               .optional(),
           },
         });
-      });
+      }) as SoftDeleteRepository<Product, CustomPKDatabase>;
 
       const products = await db.selectFrom('products').selectAll().execute();
       const firstProduct = products[0];
@@ -214,7 +206,7 @@ describe('Soft Delete Plugin - Custom Primary Key', () => {
               .optional(),
           },
         });
-      });
+      }) as SoftDeleteRepository<Product, CustomPKDatabase>;
 
       const products = await db.selectFrom('products').selectAll().execute();
       const firstProduct = products[0];
@@ -258,7 +250,7 @@ describe('Soft Delete Plugin - Custom Primary Key', () => {
               .optional(),
           },
         });
-      });
+      }) as SoftDeleteRepository<Product, CustomPKDatabase>;
 
       const products = await db.selectFrom('products').selectAll().execute();
       const firstProduct = products[0];
@@ -280,33 +272,6 @@ describe('Soft Delete Plugin - Custom Primary Key', () => {
 
   describe('String (UUID) Custom Primary Key', () => {
     it('should soft delete using string primary key (order_uuid)', async () => {
-      const plugin = softDeletePlugin({
-        primaryKeyColumn: 'order_uuid',
-      });
-      const orm = await createORM(db, [plugin]);
-
-      const orderRepo = orm.createRepository((executor) => {
-        const factory = createRepositoryFactory(executor);
-        return factory.create<'orders', Order>({
-          tableName: 'orders',
-          mapRow: (row) => row as Order,
-          schemas: {
-            create: z.object({
-              order_uuid: z.string(),
-              customer_id: z.number(),
-              total: z.number(),
-            }),
-            update: z
-              .object({
-                customer_id: z.number().optional(),
-                total: z.number().optional(),
-                deleted_at: z.string().nullable().optional(),
-              })
-              .optional(),
-          },
-        });
-      });
-
       // Note: The repository methods expect number, but we're testing with string UUIDs
       // This is a type system limitation - in practice you'd need to handle this
       // For now, we'll test directly with the executor to verify the plugin works
@@ -332,33 +297,6 @@ describe('Soft Delete Plugin - Custom Primary Key', () => {
     });
 
     it('should hard delete using string primary key (order_uuid)', async () => {
-      const plugin = softDeletePlugin({
-        primaryKeyColumn: 'order_uuid',
-      });
-      const orm = await createORM(db, [plugin]);
-
-      const orderRepo = orm.createRepository((executor) => {
-        const factory = createRepositoryFactory(executor);
-        return factory.create<'orders', Order>({
-          tableName: 'orders',
-          mapRow: (row) => row as Order,
-          schemas: {
-            create: z.object({
-              order_uuid: z.string(),
-              customer_id: z.number(),
-              total: z.number(),
-            }),
-            update: z
-              .object({
-                customer_id: z.number().optional(),
-                total: z.number().optional(),
-                deleted_at: z.string().nullable().optional(),
-              })
-              .optional(),
-          },
-        });
-      });
-
       const orders = await db.selectFrom('orders').selectAll().execute();
       const firstOrder = orders[0];
       if (!firstOrder) throw new Error('No orders found');
@@ -403,7 +341,7 @@ describe('Soft Delete Plugin - Custom Primary Key', () => {
               .optional(),
           },
         });
-      });
+      }) as SoftDeleteRepository<Product, CustomPKDatabase>;
 
       const products = await db.selectFrom('products').selectAll().execute();
       const productIds = products.slice(0, 2).map((p) => p.product_id);
@@ -448,7 +386,7 @@ describe('Soft Delete Plugin - Custom Primary Key', () => {
               .optional(),
           },
         });
-      });
+      }) as SoftDeleteRepository<Product, CustomPKDatabase>;
 
       const products = await db.selectFrom('products').selectAll().execute();
       const productIds = products.slice(0, 2).map((p) => p.product_id);
@@ -494,7 +432,7 @@ describe('Soft Delete Plugin - Custom Primary Key', () => {
               .optional(),
           },
         });
-      });
+      }) as SoftDeleteRepository<Product, CustomPKDatabase>;
 
       const products = await db.selectFrom('products').selectAll().execute();
       const productIds = products.slice(0, 2).map((p) => p.product_id);
@@ -523,20 +461,19 @@ describe('Soft Delete Plugin - Custom Primary Key', () => {
         .addColumn('deleted_at', 'text')
         .execute();
 
-      await db.insertInto('items').values([{ name: 'Item 1' }, { name: 'Item 2' }]).execute();
+      await (db as any).insertInto('items').values([{ name: 'Item 1' }, { name: 'Item 2' }]).execute();
 
       // Plugin without primaryKeyColumn should use 'id'
       const plugin = softDeletePlugin();
       const orm = await createORM(db, [plugin]);
 
-      const itemRepo = orm.createRepository((executor) => {
+      type ItemType = { id: number; name: string; deleted_at: string | null };
+      const itemRepo = orm.createRepository((executor: any) => {
         const factory = createRepositoryFactory(executor);
-        return factory.create<
-          'items',
-          { id: number; name: string; deleted_at: string | null }
-        >({
+        return factory.create({
+          // @ts-ignore - Dynamic table 'items' not in CustomPKDatabase type
           tableName: 'items',
-          mapRow: (row) => row as { id: number; name: string; deleted_at: string | null },
+          mapRow: (row: any) => row as ItemType,
           schemas: {
             create: z.object({
               name: z.string(),
@@ -549,16 +486,16 @@ describe('Soft Delete Plugin - Custom Primary Key', () => {
               .optional(),
           },
         });
-      });
+      }) as SoftDeleteRepository<ItemType, any>;
 
-      const items = await db.selectFrom('items').selectAll().execute();
-      const firstItem = items[0];
+      const items = await (db as any).selectFrom('items').selectAll().execute();
+      const firstItem = items[0] as ItemType | undefined;
       if (!firstItem) throw new Error('No items found');
 
       // Should work with default 'id' column
       await itemRepo.softDelete(firstItem.id);
 
-      const deletedItem = await db
+      const deletedItem = await (db as any)
         .selectFrom('items')
         .selectAll()
         .where('id', '=', firstItem.id)
@@ -594,7 +531,7 @@ describe('Soft Delete Plugin - Custom Primary Key', () => {
               .optional(),
           },
         });
-      });
+      }) as SoftDeleteRepository<Product, CustomPKDatabase>;
 
       // Try to soft delete non-existent product
       await expect(productRepo.softDelete(99999)).rejects.toThrow('Record not found');
@@ -625,7 +562,7 @@ describe('Soft Delete Plugin - Custom Primary Key', () => {
               .optional(),
           },
         });
-      });
+      }) as SoftDeleteRepository<Product, CustomPKDatabase>;
 
       // Try to soft delete with some non-existent IDs
       await expect(productRepo.softDeleteMany([1, 99999])).rejects.toThrow('not found');

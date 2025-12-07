@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createTestDatabase, seedTestData, initializeTestSchema } from './setup/database.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { createTestDatabase, seedTestData } from './setup/database.js';
 import { softDeletePlugin } from '../src/index.js';
 import { createORM, createRepositoryFactory } from '../../kysera-repository/dist/index.js';
-import type { Kysely, Generated } from 'kysely';
+import type { Kysely } from 'kysely';
 import type { TestDatabase } from './setup/database.js';
 import { z } from 'zod';
 
@@ -30,27 +30,6 @@ interface SoftDeleteRepository {
   findWithDeleted?: (id: number) => Promise<TestUser | null>;
 }
 
-// Extended database schema for custom primary key tests
-interface ExtendedTestDatabase extends TestDatabase {
-  products: {
-    product_uuid: Generated<string>;
-    name: string;
-    price: number;
-    deleted_at: string | null;
-  };
-  orders: {
-    order_id: Generated<number>;
-    customer_id: Generated<number>;
-    amount: number;
-    deleted_at: string | null;
-  };
-  items: {
-    item_key: string;
-    category_key: string;
-    name: string;
-    deleted_at: string | null;
-  };
-}
 
 describe('Soft Delete Plugin - Edge Cases and Security', () => {
   let db: Kysely<TestDatabase>;
@@ -171,9 +150,6 @@ describe('Soft Delete Plugin - Edge Cases and Security', () => {
 
   describe('Transaction Rollback Behavior', () => {
     it('should rollback soft delete on transaction failure', async () => {
-      const plugin = softDeletePlugin();
-      const orm = await createORM(db, [plugin]);
-
       const alice = await db.selectFrom('users').selectAll().where('name', '=', 'Alice').executeTakeFirst();
       if (!alice) throw new Error('Alice not found');
 

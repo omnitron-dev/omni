@@ -2,10 +2,11 @@ import { Command } from 'commander';
 import { prism, spinner, table } from '@xec-sh/kit';
 import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
-import { getDatabaseConnection } from '../../utils/database.js';
+import { getDatabaseConnection, type Database } from '../../utils/database.js';
 import { loadConfig } from '../../config/loader.js';
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
+import type { Kysely } from 'kysely';
 
 export interface SqlDebugOptions {
   watch?: boolean;
@@ -21,10 +22,40 @@ interface QueryLog {
   id: number;
   timestamp: Date;
   query: string;
-  params?: any[];
+  params?: readonly unknown[];
   duration?: number;
   error?: string;
   rowCount?: number;
+}
+
+interface QueryPattern {
+  count: number;
+  totalDuration: number;
+  maxDuration: number;
+}
+
+interface QueryStats {
+  total: number;
+  successRate: number;
+  avgDuration: number;
+  p95Duration: number;
+  queriesPerMinute: number;
+}
+
+interface CompiledQuery {
+  sql: string;
+  parameters: readonly unknown[];
+}
+
+interface QueryResult {
+  rows?: readonly unknown[];
+}
+
+interface QueryLogRecord {
+  query_text: string;
+  duration_ms: number | null;
+  error: string | null;
+  executed_at: Date | string;
 }
 
 export function sqlCommand(): Command {
@@ -90,7 +121,8 @@ async function debugSql(options: SqlDebugOptions): Promise<void> {
       const originalExecuteQuery = db.executeQuery.bind(db);
 
       // Override executeQuery to log queries
-      (db as any).executeQuery = async function (compiledQuery: any) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (db as any).executeQuery = async function (compiledQuery: CompiledQuery): Promise<QueryResult> {
         const startTime = Date.now();
         const queryId = ++queryCounter;
 
@@ -251,7 +283,7 @@ function highlightSql(sql: string, highlightKeyword?: string): string {
   return highlighted;
 }
 
-async function analyzeRecentQueries(db: any, options: SqlDebugOptions): Promise<void> {
+async function analyzeRecentQueries(db: Kysely<Database>, options: SqlDebugOptions): Promise<void> {
   const analyzeSpinner = spinner();
   analyzeSpinner.start('Analyzing query logs...');
 
@@ -276,6 +308,9 @@ async function analyzeRecentQueries(db: any, options: SqlDebugOptions): Promise<
 
     // Get recent queries
     const limit = parseInt(options.limit || '50', 10);
+    if (isNaN(limit) || limit <= 0) {
+      throw new CLIError('Invalid limit value - must be a positive number');
+    }
     let query = db.selectFrom('query_logs').selectAll().orderBy('executed_at', 'desc').limit(limit);
 
     // Apply filter if specified
@@ -316,32 +351,30 @@ async function analyzeRecentQueries(db: any, options: SqlDebugOptions): Promise<
     console.log(table(patternData));
 
     // Show slow queries
-    const slowQueries = queries.filter((q: any) => q.duration_ms > 1000).slice(0, 5);
+    const slowQueries = (queries as QueryLogRecord[]).filter((q) => (q.duration_ms ?? 0) > 1000).slice(0, 5);
 
     if (slowQueries.length > 0) {
       console.log('');
       console.log(prism.cyan('Slow Queries (>1s):'));
 
       for (const query of slowQueries) {
-        const q = query as any;
         console.log('');
-        console.log(prism.red(`  ⚠ ${q.duration_ms}ms`));
-        console.log(`  ${highlightSql(q.query_text, options.highlight)}`);
+        console.log(prism.red(`  ⚠ ${query.duration_ms}ms`));
+        console.log(`  ${highlightSql(query.query_text, options.highlight)}`);
       }
     }
 
     // Show error queries
-    const errorQueries = queries.filter((q: any) => q.error !== null).slice(0, 5);
+    const errorQueries = (queries as QueryLogRecord[]).filter((q) => q.error !== null).slice(0, 5);
 
     if (errorQueries.length > 0) {
       console.log('');
       console.log(prism.cyan('Failed Queries:'));
 
       for (const query of errorQueries) {
-        const q = query as any;
         console.log('');
-        console.log(prism.red(`  ✗ Error: ${q.error}`));
-        console.log(`  ${highlightSql(q.query_text, options.highlight)}`);
+        console.log(prism.red(`  ✗ Error: ${query.error}`));
+        console.log(`  ${highlightSql(query.query_text, options.highlight)}`);
       }
     }
 
@@ -361,12 +394,13 @@ async function analyzeRecentQueries(db: any, options: SqlDebugOptions): Promise<
   }
 }
 
-function analyzeQueryPatterns(queries: any[]): Map<string, any> {
-  const patterns = new Map<string, any>();
+function analyzeQueryPatterns(queries: unknown[]): Map<string, QueryPattern> {
+  const patterns = new Map<string, QueryPattern>();
 
   for (const query of queries) {
+    const q = query as QueryLogRecord;
     // Normalize query to find pattern
-    const pattern = normalizeQuery(query.query_text);
+    const pattern = normalizeQuery(q.query_text);
 
     if (!patterns.has(pattern)) {
       patterns.set(pattern, {
@@ -378,8 +412,8 @@ function analyzeQueryPatterns(queries: any[]): Map<string, any> {
 
     const data = patterns.get(pattern)!;
     data.count++;
-    data.totalDuration += query.duration_ms || 0;
-    data.maxDuration = Math.max(data.maxDuration, query.duration_ms || 0);
+    data.totalDuration += q.duration_ms || 0;
+    data.maxDuration = Math.max(data.maxDuration, q.duration_ms || 0);
   }
 
   return patterns;
@@ -395,14 +429,15 @@ function normalizeQuery(query: string): string {
     .substring(0, 100); // Take first 100 chars as pattern
 }
 
-function calculateQueryStats(queries: any[]): any {
-  const durations = queries
-    .filter((q: any) => q.duration_ms !== null)
-    .map((q: any) => q.duration_ms)
+function calculateQueryStats(queries: unknown[]): QueryStats {
+  const queryRecords = queries as QueryLogRecord[];
+  const durations = queryRecords
+    .filter((q) => q.duration_ms !== null)
+    .map((q) => q.duration_ms as number)
     .sort((a, b) => a - b);
 
   const total = queries.length;
-  const successful = queries.filter((q: any) => q.error === null).length;
+  const successful = queryRecords.filter((q) => q.error === null).length;
 
   const avgDuration = durations.length > 0 ? durations.reduce((a, b) => a + b, 0) / durations.length : 0;
 
@@ -410,8 +445,8 @@ function calculateQueryStats(queries: any[]): any {
 
   // Calculate queries per minute
   if (queries.length > 0) {
-    const firstQuery = new Date(queries[queries.length - 1].executed_at);
-    const lastQuery = new Date(queries[0].executed_at);
+    const firstQuery = new Date(queryRecords[queries.length - 1].executed_at);
+    const lastQuery = new Date(queryRecords[0].executed_at);
     const timeSpanMinutes = (lastQuery.getTime() - firstQuery.getTime()) / (1000 * 60);
     const queriesPerMinute = timeSpanMinutes > 0 ? total / timeSpanMinutes : 0;
 

@@ -1,5 +1,4 @@
 import { prism } from '@xec-sh/kit';
-import { logger } from './logger.js';
 
 export class CLIError extends Error {
   constructor(
@@ -21,12 +20,15 @@ export class ConfigurationError extends CLIError {
   }
 }
 
-export class DatabaseError extends CLIError {
+export class CLIDatabaseError extends CLIError {
   constructor(message: string, suggestions: string[] = []) {
     super(message, 'DATABASE_ERROR', undefined, suggestions);
-    this.name = 'DatabaseError';
+    this.name = 'CLIDatabaseError';
   }
 }
+
+// Alias for backward compatibility
+export const DatabaseError = CLIDatabaseError;
 
 export class ValidationError extends CLIError {
   constructor(

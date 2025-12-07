@@ -35,10 +35,11 @@
   "author": "Kysera Team",
   "license": "MIT",
   "dependencies": {
-    "@kysera/core": "workspace:*"
+    "@kysera/core": "workspace:*",
+    "zod": "^4.1.13"
   },
   "peerDependencies": {
-    "kysely": "^0.28.8",
+    "kysely": ">=0.28.8",
     "@kysera/repository": "workspace:*"
   },
   "devDependencies": {
@@ -49,8 +50,7 @@
     "vitest": "^4.0.15",
     "better-sqlite3": "^12.5.0",
     "@types/better-sqlite3": "^7.6.13",
-    "tsup": "^8.5.1",
-    "zod": "^4.1.13"
+    "tsup": "^8.5.1"
   },
   "sideEffects": false,
   "engines": {

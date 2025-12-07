@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
 import { writeFileSync } from 'node:fs';
-import { execSync } from 'node:child_process';
+import { execa } from 'execa';
 
 // Simple template rendering helper
 function renderTemplate(templateName: string, data: any, outputPath: string): void {
@@ -312,9 +312,9 @@ async function initProject(projectName: string | undefined, options: InitOptions
       }
 
       try {
-        execSync('git init', { cwd: projectPath, stdio: 'ignore' });
-        execSync('git add .', { cwd: projectPath, stdio: 'ignore' });
-        execSync('git commit -m "Initial commit"', { cwd: projectPath, stdio: 'ignore' });
+        await execa('git', ['init'], { cwd: projectPath, stdio: 'ignore' });
+        await execa('git', ['add', '.'], { cwd: projectPath, stdio: 'ignore' });
+        await execa('git', ['commit', '-m', 'Initial commit'], { cwd: projectPath, stdio: 'ignore' });
         if (gitSpinner) {
           gitSpinner.succeed('Git repository initialized');
         } else {
@@ -340,9 +340,8 @@ async function initProject(projectName: string | undefined, options: InitOptions
         console.log('Installing dependencies...');
       }
 
-      const installCmd = getInstallCommand(packageManager);
       try {
-        execSync(installCmd, { cwd: projectPath, stdio: 'ignore' });
+        await execa(packageManager, ['install'], { cwd: projectPath, stdio: 'ignore' });
         if (installSpinner) {
           installSpinner.succeed('Dependencies installed');
         } else {
@@ -355,6 +354,7 @@ async function initProject(projectName: string | undefined, options: InitOptions
           console.log('⚠ Failed to install dependencies');
         }
         logger.debug(`Install error: ${error}`);
+        const installCmd = getInstallCommand(packageManager);
         console.log(prism.yellow(`\nRun ${prism.cyan(installCmd)} to install dependencies manually`));
       }
     }

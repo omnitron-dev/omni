@@ -4,6 +4,8 @@ import { CLIError } from '../../utils/errors.js';
 import { getDatabaseConnection } from '../../utils/database.js';
 import { loadConfig } from '../../config/loader.js';
 import { MigrationRunner } from '../migrate/runner.js';
+import { execa } from 'execa';
+import { logger } from '../../utils/logger.js';
 
 export interface ResetOptions {
   force?: boolean;
@@ -146,8 +148,7 @@ async function resetDatabase(options: ResetOptions): Promise<void> {
       resetSpinner.start('Running seeds...');
 
       try {
-        const { execSync } = await import('child_process');
-        execSync('npx kysera db seed', { stdio: options.verbose ? 'inherit' : 'ignore' });
+        await execa('npx', ['kysera', 'db', 'seed'], { stdio: options.verbose ? 'inherit' : 'ignore' });
         resetSpinner.succeed('Seeds ran successfully');
       } catch (error) {
         resetSpinner.warn('Failed to run seeds');

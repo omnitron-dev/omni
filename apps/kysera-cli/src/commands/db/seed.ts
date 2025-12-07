@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { CLIError } from '../../utils/errors.js';
 import { getDatabaseConnection } from '../../utils/database.js';
 import { loadConfig } from '../../config/loader.js';
+import { logger } from '../../utils/logger.js';
 import { sql } from 'kysely';
 
 export interface SeedOptions {

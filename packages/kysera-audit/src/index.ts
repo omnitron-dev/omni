@@ -2,6 +2,7 @@ import type { Kysely } from 'kysely';
 import { sql } from 'kysely';
 import type { Plugin } from '@kysera/repository';
 import { NotFoundError, BadRequestError } from '@kysera/core';
+import { z } from 'zod';
 
 // ============================================================================
 // Types
@@ -75,6 +76,23 @@ export interface AuditOptions {
    */
   metadata?: () => Record<string, unknown>;
 }
+
+/**
+ * Zod schema for AuditOptions
+ * Used for validation and configuration in the kysera-cli
+ */
+export const AuditOptionsSchema = z.object({
+  auditTable: z.string().optional(),
+  primaryKeyColumn: z.string().optional(),
+  captureOldValues: z.boolean().optional(),
+  captureNewValues: z.boolean().optional(),
+  skipSystemOperations: z.boolean().optional(),
+  tables: z.array(z.string()).optional(),
+  excludeTables: z.array(z.string()).optional(),
+  getUserId: z.function().optional(),
+  getTimestamp: z.function().optional(),
+  metadata: z.function().optional(),
+});
 
 /**
  * Audit log entry structure (raw from database)

@@ -8,7 +8,7 @@ import {
   createMigration,
   type Migration,
 } from '../src/index.js';
-import { safeDbDestroy, safeSqliteClose } from '../../kysera-core/test/helpers/cleanup.js';
+import { safeDbDestroy, safeSqliteClose } from './helpers/cleanup.js';
 
 describe('Migration System', () => {
   let db: Kysely<any>;

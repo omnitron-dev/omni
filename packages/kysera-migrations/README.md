@@ -11,7 +11,7 @@
 | Property | Value |
 |----------|-------|
 | **Package** | `@kysera/migrations` |
-| **Version** | `0.3.0` |
+| **Version** | `0.4.1` |
 | **Bundle Size** | 3.7 KB (minified) |
 | **Dependencies** | None (peer: kysely) |
 | **Test Coverage** | 24 tests, comprehensive |

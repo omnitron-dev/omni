@@ -3,6 +3,7 @@ import { prism, spinner, table as displayTable } from '@xec-sh/kit';
 import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
 import { withDatabase } from '../../utils/with-database.js';
+import type { DatabaseInstance } from '../../types/index.js';
 
 export interface ExplainOptions {
   query?: string;
@@ -104,7 +105,7 @@ async function explainQuery(options: ExplainOptions): Promise<void> {
   });
 }
 
-async function explainPostgres(db: any, query: string, options: ExplainOptions): Promise<ExplainResult> {
+async function explainPostgres(db: DatabaseInstance, query: string, options: ExplainOptions): Promise<ExplainResult> {
   const explainParts: string[] = ['EXPLAIN'];
   const explainOptions: string[] = [];
 
@@ -140,7 +141,7 @@ async function explainPostgres(db: any, query: string, options: ExplainOptions):
   return { query, plan: result.rows };
 }
 
-async function explainMysql(db: any, query: string, options: ExplainOptions): Promise<ExplainResult> {
+async function explainMysql(db: DatabaseInstance, query: string, options: ExplainOptions): Promise<ExplainResult> {
   let explainQuery = 'EXPLAIN ';
   if (options.analyze) explainQuery += 'ANALYZE ';
   if (options.format === 'json') explainQuery += 'FORMAT=JSON ';
@@ -156,7 +157,7 @@ async function explainMysql(db: any, query: string, options: ExplainOptions): Pr
   return { query, plan: result.rows };
 }
 
-async function explainSqlite(db: any, query: string, options: ExplainOptions): Promise<ExplainResult> {
+async function explainSqlite(db: DatabaseInstance, query: string, options: ExplainOptions): Promise<ExplainResult> {
   const explainQuery = `EXPLAIN QUERY PLAN ${query}`;
   const result = await db.executeQuery(db.raw(explainQuery));
   return { query, plan: result.rows };

@@ -4,6 +4,7 @@ import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
 import { withDatabase } from '../../utils/with-database.js';
 import type {
+  DatabaseInstance,
   QueryPlan,
   PostgresExplainTextRow,
   MySQLPlan,
@@ -107,7 +108,7 @@ async function profileQuery(options: ProfileOptions): Promise<void> {
   });
 }
 
-async function runProfile(db: any, query: string, options: ProfileOptions, dialect: string): Promise<ProfileResult> {
+async function runProfile(db: DatabaseInstance, query: string, options: ProfileOptions, dialect: string): Promise<ProfileResult> {
   const iterations = parseInt(options.iterations || '100', 10);
   const warmupRuns = parseInt(options.warmup || '10', 10);
 
@@ -190,7 +191,7 @@ async function runProfile(db: any, query: string, options: ProfileOptions, diale
   };
 }
 
-async function getQueryPlan(db: any, query: string, dialect: string): Promise<QueryPlan[] | PostgresExplainTextRow[] | MySQLPlan[] | SQLitePlan[] | null> {
+async function getQueryPlan(db: DatabaseInstance, query: string, dialect: string): Promise<QueryPlan[] | PostgresExplainTextRow[] | MySQLPlan[] | SQLitePlan[] | null> {
   try {
     if (dialect === 'postgres') {
       const result = await db.executeQuery(db.raw(`EXPLAIN ANALYZE ${query}`));

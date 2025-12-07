@@ -1,5 +1,6 @@
 import type { Kysely } from 'kysely';
 import type { AnyQueryBuilder } from './types.js';
+import { PluginErrorCodes, type ErrorCode } from '@kysera/core';
 
 export interface QueryBuilderContext {
   operation: 'select' | 'insert' | 'update' | 'delete';
@@ -13,18 +14,30 @@ export interface QueryContext extends QueryBuilderContext {
 }
 
 /**
+ * Plugin validation error codes using unified ErrorCodes system
+ */
+export const PluginValidationErrorCodes = {
+  MISSING_DEPENDENCY: PluginErrorCodes.PLUGIN_DEPENDENCY_MISSING,
+  CIRCULAR_DEPENDENCY: PluginErrorCodes.PLUGIN_CONFLICT,
+  CONFLICT: PluginErrorCodes.PLUGIN_CONFLICT,
+  DUPLICATE_NAME: PluginErrorCodes.PLUGIN_DUPLICATE,
+} as const;
+
+export type PluginValidationErrorCode = keyof typeof PluginValidationErrorCodes;
+
+/**
  * Plugin interface with query builder interception and dependency management
  */
 export interface Plugin {
   name: string;
   version: string;
-  
+
   /** Names of plugins this plugin depends on (must be loaded first) */
   dependencies?: string[];
-  
+
   /** Higher priority = runs first (default: 0) */
   priority?: number;
-  
+
   /** Names of plugins that cannot be used together with this plugin */
   conflictsWith?: string[];
 
@@ -44,15 +57,31 @@ export interface Plugin {
 
 /**
  * Error thrown when plugin validation fails
+ *
+ * Uses unified ErrorCodes from @kysera/core for consistency
  */
 export class PluginValidationError extends Error {
+  /** Unified error code from @kysera/core */
+  public readonly unifiedCode: ErrorCode;
+
   constructor(
     message: string,
-    public readonly code: 'MISSING_DEPENDENCY' | 'CIRCULAR_DEPENDENCY' | 'CONFLICT' | 'DUPLICATE_NAME',
+    public readonly code: PluginValidationErrorCode,
     public readonly details: Record<string, unknown> = {}
   ) {
     super(message);
     this.name = 'PluginValidationError';
+    this.unifiedCode = PluginValidationErrorCodes[code];
+  }
+
+  toJSON(): Record<string, unknown> {
+    return {
+      name: this.name,
+      message: this.message,
+      code: this.code,
+      unifiedCode: this.unifiedCode,
+      details: this.details,
+    };
   }
 }
 

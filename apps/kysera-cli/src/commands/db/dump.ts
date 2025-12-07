@@ -4,6 +4,7 @@ import { CLIError } from '../../utils/errors.js';
 import { withDatabase } from '../../utils/with-database.js';
 import { DatabaseIntrospector } from '../generate/introspector.js';
 import { safePath, isPathSafe } from '../../utils/fs.js';
+import { formatBytes } from '../../utils/formatting.js';
 import { writeFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 
@@ -390,11 +391,4 @@ function mapDataTypeToSql(dataType: string, dialect: string): string {
 
   // Return original if no mapping found
   return dataType.toUpperCase();
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  return (bytes / Math.pow(1024, i)).toFixed(2) + ' ' + sizes[i];
 }

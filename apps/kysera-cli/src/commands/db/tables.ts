@@ -4,6 +4,9 @@ import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
 import { withDatabase } from '../../utils/with-database.js';
 import { DatabaseIntrospector } from '../generate/introspector.js';
+import { validateIdentifier } from '../../utils/sql-sanitizer.js';
+import { formatBytes, formatNumber } from '../../utils/formatting.js';
+import { getTableStatistics, getDatabaseStatistics } from '../../utils/table-stats.js';
 
 export interface TablesOptions {
   json?: boolean;
@@ -54,7 +57,7 @@ async function listTables(options: TablesOptions): Promise<void> {
       const tablesData = [];
       for (const tableName of tables) {
         const info = await introspector.getTableInfo(tableName);
-        const stats = await getTableStats(db, tableName, config.database!.dialect);
+        const stats = await getTableStatistics(db, tableName, config.database!.dialect);
         tablesData.push({
           name: tableName,
           columns: info.columns.length,
@@ -71,7 +74,7 @@ async function listTables(options: TablesOptions): Promise<void> {
       // Verbose output - show detailed info for each table
       for (const tableName of tables) {
         const info = await introspector.getTableInfo(tableName);
-        const stats = await getTableStats(db, tableName, config.database!.dialect);
+        const stats = await getTableStatistics(db, tableName, config.database!.dialect);
 
         console.log('');
         console.log(prism.bold(`Table: ${tableName}`));
@@ -126,7 +129,7 @@ async function listTables(options: TablesOptions): Promise<void> {
       console.log('');
       console.log(prism.gray('-'.repeat(50)));
       console.log(prism.bold('Database Summary'));
-      const totalStats = await getDatabaseStats(db, tables, config.database!.dialect);
+      const totalStats = await getDatabaseStatistics(db, tables, config.database!.dialect);
       console.log(`  Total Tables: ${tables.length}`);
       console.log(`  Total Rows: ${formatNumber(totalStats.totalRows)}`);
       console.log(`  Total Size: ${formatBytes(totalStats.totalSize)}`);
@@ -139,7 +142,7 @@ async function listTables(options: TablesOptions): Promise<void> {
       for (const tableName of tables) {
         try {
           const info = await introspector.getTableInfo(tableName);
-          const stats = await getTableStats(db, tableName, config.database!.dialect);
+          const stats = await getTableStatistics(db, tableName, config.database!.dialect);
 
           tableData.push({
             Table: tableName,
@@ -168,93 +171,11 @@ async function listTables(options: TablesOptions): Promise<void> {
       console.log(table(tableData as any));
 
       // Summary
-      const totalStats = await getDatabaseStats(db, tables, config.database!.dialect);
+      const totalStats = await getDatabaseStatistics(db, tables, config.database!.dialect);
       console.log('');
       console.log(
         prism.gray(`Total: ${tables.length} tables, ${formatBytes(totalStats.totalSize + totalStats.totalIndexSize)}`)
       );
     }
   });
-}
-
-async function getTableStats(
-  db: any,
-  tableName: string,
-  dialect: string
-): Promise<{ rows: number; size: number; indexSize: number }> {
-  try {
-    // Get row count
-    const countResult = await db.selectFrom(tableName).select(db.fn.countAll().as('count')).executeTakeFirst();
-    const rows = Number(countResult?.count || 0);
-
-    // Get table size (dialect-specific)
-    let size = 0;
-    let indexSize = 0;
-
-    if (dialect === 'postgres') {
-      const sizeResult = await db
-        .selectNoFrom((eb: any) => [
-          eb.raw(`pg_relation_size('${tableName}')`).as('table_size'),
-          eb.raw(`pg_indexes_size('${tableName}')`).as('index_size'),
-        ])
-        .executeTakeFirst();
-
-      size = Number(sizeResult?.table_size || 0);
-      indexSize = Number(sizeResult?.index_size || 0);
-    } else if (dialect === 'mysql') {
-      const sizeResult = await db
-        .selectFrom('information_schema.TABLES')
-        .select(['DATA_LENGTH', 'INDEX_LENGTH'])
-        .where('TABLE_NAME', '=', tableName)
-        .where('TABLE_SCHEMA', '=', db.raw('DATABASE()'))
-        .executeTakeFirst();
-
-      size = Number(sizeResult?.DATA_LENGTH || 0);
-      indexSize = Number(sizeResult?.INDEX_LENGTH || 0);
-    } else {
-      // SQLite - estimate based on row count
-      // SQLite doesn't provide easy access to table sizes
-      size = rows * 100; // Rough estimate: 100 bytes per row
-      indexSize = rows * 20; // Rough estimate: 20 bytes per row for indexes
-    }
-
-    return { rows, size, indexSize };
-  } catch (error) {
-    logger.debug(`Failed to get stats for ${tableName}: ${error}`);
-    return { rows: 0, size: 0, indexSize: 0 };
-  }
-}
-
-async function getDatabaseStats(
-  db: any,
-  tables: string[],
-  dialect: string
-): Promise<{ totalRows: number; totalSize: number; totalIndexSize: number }> {
-  let totalRows = 0;
-  let totalSize = 0;
-  let totalIndexSize = 0;
-
-  for (const tableName of tables) {
-    const stats = await getTableStats(db, tableName, dialect);
-    totalRows += stats.rows;
-    totalSize += stats.size;
-    totalIndexSize += stats.indexSize;
-  }
-
-  return { totalRows, totalSize, totalIndexSize };
-}
-
-function formatNumber(num: number): string {
-  if (num === 0) return '0';
-  if (num < 1000) return num.toString();
-  if (num < 1000000) return (num / 1000).toFixed(1) + 'K';
-  if (num < 1000000000) return (num / 1000000).toFixed(1) + 'M';
-  return (num / 1000000000).toFixed(1) + 'B';
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  return (bytes / Math.pow(1024, i)).toFixed(2) + ' ' + sizes[i];
 }

@@ -1,9 +1,63 @@
 import { prism } from '@xec-sh/kit';
+import {
+  ErrorCodes,
+  DatabaseErrorCodes,
+  ValidationErrorCodes,
+  ConfigErrorCodes,
+  FileSystemErrorCodes,
+  NetworkErrorCodes,
+  MigrationErrorCodes,
+  PluginErrorCodes,
+  type ErrorCode as UnifiedErrorCode,
+} from '@kysera/core';
+
+/**
+ * CLI Error Codes mapping to unified @kysera/core ErrorCodes
+ *
+ * This provides a consistent error code system across the entire Kysera ecosystem.
+ */
+export const CLIErrorCodes = {
+  // CLI-specific codes
+  CLI_ERROR: 'CLI_ERROR',
+  ASSERTION_ERROR: 'ASSERTION_ERROR',
+
+  // Database codes (mapped from @kysera/core)
+  DATABASE_ERROR: DatabaseErrorCodes.DB_QUERY_FAILED,
+  DB_CONNECTION_ERROR: DatabaseErrorCodes.DB_CONNECTION_FAILED,
+
+  // Config codes (mapped from @kysera/core)
+  CONFIG_ERROR: ConfigErrorCodes.CONFIG_VALIDATION_FAILED,
+  CONFIG_NOT_FOUND: ConfigErrorCodes.CONFIG_NOT_FOUND,
+  CONFIG_INVALID: ConfigErrorCodes.CONFIG_INVALID_VALUE,
+
+  // Validation codes (mapped from @kysera/core)
+  VALIDATION_ERROR: ValidationErrorCodes.VALIDATION_INVALID_INPUT,
+
+  // File system codes (mapped from @kysera/core)
+  FS_ERROR: FileSystemErrorCodes.FS_READ_FAILED,
+  FILE_NOT_FOUND: FileSystemErrorCodes.FS_FILE_NOT_FOUND,
+  DIR_NOT_FOUND: FileSystemErrorCodes.FS_DIRECTORY_NOT_FOUND,
+  PERMISSION_DENIED: FileSystemErrorCodes.FS_PERMISSION_DENIED,
+
+  // Network codes (mapped from @kysera/core)
+  NETWORK_ERROR: NetworkErrorCodes.NETWORK_CONNECTION_REFUSED,
+  TIMEOUT_ERROR: NetworkErrorCodes.NETWORK_TIMEOUT,
+
+  // Migration codes (mapped from @kysera/core)
+  MIGRATION_FAILED: MigrationErrorCodes.MIGRATION_UP_FAILED,
+  MIGRATION_NOT_FOUND: MigrationErrorCodes.MIGRATION_NOT_FOUND,
+
+  // Plugin codes (mapped from @kysera/core)
+  PLUGIN_ERROR: PluginErrorCodes.PLUGIN_VALIDATION_FAILED,
+  PLUGIN_NOT_FOUND: PluginErrorCodes.PLUGIN_NOT_FOUND,
+} as const;
+
+export type CLIErrorCode = (typeof CLIErrorCodes)[keyof typeof CLIErrorCodes] | string;
 
 export class CLIError extends Error {
   constructor(
     message: string,
-    public readonly code: string = 'CLI_ERROR',
+    public readonly code: CLIErrorCode = CLIErrorCodes.CLI_ERROR,
     public readonly details?: any,
     public readonly suggestions: string[] = []
   ) {
@@ -11,18 +65,28 @@ export class CLIError extends Error {
     this.name = 'CLIError';
     Error.captureStackTrace(this, this.constructor);
   }
+
+  toJSON(): Record<string, unknown> {
+    return {
+      name: this.name,
+      message: this.message,
+      code: this.code,
+      details: this.details,
+      suggestions: this.suggestions,
+    };
+  }
 }
 
 export class ConfigurationError extends CLIError {
   constructor(message: string, suggestions: string[] = []) {
-    super(message, 'CONFIG_ERROR', undefined, suggestions);
+    super(message, CLIErrorCodes.CONFIG_ERROR, undefined, suggestions);
     this.name = 'ConfigurationError';
   }
 }
 
 export class CLIDatabaseError extends CLIError {
   constructor(message: string, suggestions: string[] = []) {
-    super(message, 'DATABASE_ERROR', undefined, suggestions);
+    super(message, CLIErrorCodes.DATABASE_ERROR, undefined, suggestions);
     this.name = 'CLIDatabaseError';
   }
 }
@@ -31,11 +95,8 @@ export class CLIDatabaseError extends CLIError {
 export const DatabaseError = CLIDatabaseError;
 
 export class ValidationError extends CLIError {
-  constructor(
-    message: string,
-    public readonly errors: string[] = []
-  ) {
-    super(message, 'VALIDATION_ERROR', { errors });
+  constructor(message: string, public readonly errors: string[] = []) {
+    super(message, CLIErrorCodes.VALIDATION_ERROR, { errors });
     this.name = 'ValidationError';
   }
 }
@@ -43,7 +104,7 @@ export class ValidationError extends CLIError {
 export class FileSystemError extends CLIError {
   constructor(
     message: string,
-    code: string = 'FS_ERROR',
+    code: CLIErrorCode = CLIErrorCodes.FS_ERROR,
     suggestions: string[] = [],
     public readonly path?: string
   ) {
@@ -53,25 +114,26 @@ export class FileSystemError extends CLIError {
 }
 
 export class NetworkError extends CLIError {
-  constructor(
-    message: string,
-    public readonly url?: string
-  ) {
-    super(message, 'NETWORK_ERROR', url ? { url } : undefined);
+  constructor(message: string, public readonly url?: string) {
+    super(message, CLIErrorCodes.NETWORK_ERROR, url ? { url } : undefined);
     this.name = 'NetworkError';
   }
 }
 
-export interface ErrorCode {
+export interface ErrorCodeInfo {
   code: string;
   message: string;
   suggestions?: string[];
 }
 
-export const ERROR_CODES: Record<string, ErrorCode> = {
-  // Database errors
+/**
+ * Legacy error codes mapping to unified codes
+ * Maintained for backward compatibility
+ */
+export const ERROR_CODES: Record<string, ErrorCodeInfo> = {
+  // Database errors - mapped to unified codes
   E001: {
-    code: 'E001',
+    code: ErrorCodes.DB_CONNECTION_FAILED,
     message: 'Database connection failed',
     suggestions: [
       'Check your database connection string',
@@ -81,7 +143,7 @@ export const ERROR_CODES: Record<string, ErrorCode> = {
     ],
   },
   E002: {
-    code: 'E002',
+    code: ErrorCodes.MIGRATION_UP_FAILED,
     message: 'Migration failed',
     suggestions: [
       'Review the migration file for errors',
@@ -91,7 +153,7 @@ export const ERROR_CODES: Record<string, ErrorCode> = {
     ],
   },
   E003: {
-    code: 'E003',
+    code: ErrorCodes.CONFIG_VALIDATION_FAILED,
     message: 'Configuration error',
     suggestions: [
       'Check your kysera.config.ts file',
@@ -100,7 +162,7 @@ export const ERROR_CODES: Record<string, ErrorCode> = {
     ],
   },
   E004: {
-    code: 'E004',
+    code: ErrorCodes.PLUGIN_VALIDATION_FAILED,
     message: 'Plugin error',
     suggestions: [
       'Check plugin configuration',
@@ -109,7 +171,7 @@ export const ERROR_CODES: Record<string, ErrorCode> = {
     ],
   },
   E005: {
-    code: 'E005',
+    code: ErrorCodes.FS_WRITE_FAILED,
     message: 'Generation error',
     suggestions: [
       'Verify template files exist',
@@ -118,6 +180,14 @@ export const ERROR_CODES: Record<string, ErrorCode> = {
     ],
   },
 };
+
+/**
+ * Get unified error code from legacy code
+ */
+export function getUnifiedErrorCode(legacyCode: string): string {
+  const errorInfo = ERROR_CODES[legacyCode];
+  return errorInfo?.code || legacyCode;
+}
 
 export function handleError(error: unknown): void {
   if (error instanceof CLIError) {
@@ -288,4 +358,15 @@ export function formatError(error: unknown): string {
   }
 
   return lines.join('\n');
+}
+
+/**
+ * Check if an error matches expected patterns
+ * @param error - The error to check
+ * @param patterns - Array of string patterns to match against (case-insensitive)
+ * @returns true if the error message contains any of the patterns
+ */
+export function isExpectedError(error: unknown, patterns: string[]): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return patterns.some((pattern) => message.toLowerCase().includes(pattern.toLowerCase()));
 }

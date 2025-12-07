@@ -6,7 +6,10 @@ import {
   ForeignKeyError,
   NotFoundError,
   BadRequestError,
+  NotNullError,
+  CheckConstraintError,
 } from '../src/errors.js';
+import { ErrorCodes } from '../src/error-codes.js';
 
 describe('Extended Error Handling', () => {
   describe('PostgreSQL Error Parsing', () => {
@@ -22,7 +25,7 @@ describe('Extended Error Handling', () => {
       const parsed = parseDatabaseError(pgError, 'postgres');
 
       expect(parsed).toBeInstanceOf(UniqueConstraintError);
-      expect(parsed.code).toBe('UNIQUE_VIOLATION');
+      expect(parsed.code).toBe(ErrorCodes.VALIDATION_UNIQUE_VIOLATION);
       const uniqueError = parsed as UniqueConstraintError;
       expect(uniqueError.constraint).toBe('users_email_key');
       expect(uniqueError.table).toBe('users');
@@ -41,7 +44,7 @@ describe('Extended Error Handling', () => {
       const parsed = parseDatabaseError(pgError, 'postgres');
 
       expect(parsed).toBeInstanceOf(ForeignKeyError);
-      expect(parsed.code).toBe('FOREIGN_KEY_VIOLATION');
+      expect(parsed.code).toBe(ErrorCodes.VALIDATION_FOREIGN_KEY_VIOLATION);
       const fkError = parsed as ForeignKeyError;
       expect(fkError.constraint).toBe('posts_user_id_fkey');
       expect(fkError.table).toBe('posts');
@@ -57,9 +60,9 @@ describe('Extended Error Handling', () => {
 
       const parsed = parseDatabaseError(pgError, 'postgres');
 
-      expect(parsed).toBeInstanceOf(DatabaseError);
-      expect(parsed.code).toBe('23502');
-      expect(parsed.message).toContain('Not null constraint violation');
+      expect(parsed).toBeInstanceOf(NotNullError);
+      expect(parsed.code).toBe(ErrorCodes.VALIDATION_NOT_NULL_VIOLATION);
+      expect(parsed.message).toContain('NOT NULL constraint violation');
       expect(parsed.detail).toBe('name');
     });
 
@@ -67,14 +70,15 @@ describe('Extended Error Handling', () => {
       const pgError = {
         code: '23514',
         constraint: 'age_check',
+        table: 'users',
         message: 'new row for relation "users" violates check constraint "age_check"',
       };
 
       const parsed = parseDatabaseError(pgError, 'postgres');
 
-      expect(parsed).toBeInstanceOf(DatabaseError);
-      expect(parsed.code).toBe('23514');
-      expect(parsed.message).toContain('Check constraint violation: age_check');
+      expect(parsed).toBeInstanceOf(CheckConstraintError);
+      expect(parsed.code).toBe(ErrorCodes.VALIDATION_CHECK_VIOLATION);
+      expect(parsed.message).toContain('CHECK constraint violation: age_check');
     });
 
     it('should handle unknown PostgreSQL error codes', () => {
@@ -143,7 +147,7 @@ describe('Extended Error Handling', () => {
       const parsed = parseDatabaseError(mysqlError, 'mysql');
 
       expect(parsed).toBeInstanceOf(ForeignKeyError);
-      expect(parsed.code).toBe('FOREIGN_KEY_VIOLATION');
+      expect(parsed.code).toBe(ErrorCodes.VALIDATION_FOREIGN_KEY_VIOLATION);
     });
 
     it('should parse MySQL foreign key error (NO_REFERENCED_ROW_2)', () => {
@@ -165,10 +169,10 @@ describe('Extended Error Handling', () => {
 
       const parsed = parseDatabaseError(mysqlError, 'mysql');
 
-      expect(parsed).toBeInstanceOf(DatabaseError);
-      expect(parsed.code).toBe('ER_BAD_NULL_ERROR');
-      expect(parsed.message).toContain('Not null constraint violation');
-      expect(parsed.detail).toBe('name');
+      expect(parsed).toBeInstanceOf(NotNullError);
+      expect(parsed.code).toBe(ErrorCodes.VALIDATION_NOT_NULL_VIOLATION);
+      expect(parsed.message).toContain('NOT NULL constraint violation');
+      expect((parsed as NotNullError).column).toBe('name');
     });
 
     it('should handle unknown MySQL error codes', () => {
@@ -199,13 +203,13 @@ describe('Extended Error Handling', () => {
     it('should handle MySQL errors without sqlMessage', () => {
       const mysqlError = {
         code: 'ER_BAD_NULL_ERROR',
-        // No sqlMessage field
+        // No sqlMessage field - column will be 'unknown'
       };
 
       const parsed = parseDatabaseError(mysqlError, 'mysql');
 
-      expect(parsed).toBeInstanceOf(DatabaseError);
-      expect(parsed.detail).toBeUndefined();
+      expect(parsed).toBeInstanceOf(NotNullError);
+      expect((parsed as NotNullError).column).toBe('unknown');
     });
   });
 
@@ -218,7 +222,7 @@ describe('Extended Error Handling', () => {
       const parsed = parseDatabaseError(sqliteError, 'sqlite');
 
       expect(parsed).toBeInstanceOf(DatabaseError);
-      expect(parsed.code).toBe('UNKNOWN');
+      expect(parsed.code).toBe(ErrorCodes.DB_UNKNOWN);
       expect(parsed.message).toBe('Some other database error');
     });
 
@@ -242,7 +246,7 @@ describe('Extended Error Handling', () => {
       const error = new NotFoundError('User', { id: 1, email: 'test@example.com' });
 
       expect(error.message).toBe('User not found');
-      expect(error.code).toBe('NOT_FOUND');
+      expect(error.code).toBe(ErrorCodes.RESOURCE_NOT_FOUND);
       expect(error.detail).toBe('{"id":1,"email":"test@example.com"}');
     });
 
@@ -250,7 +254,7 @@ describe('Extended Error Handling', () => {
       const error = new NotFoundError('Post');
 
       expect(error.message).toBe('Post not found');
-      expect(error.code).toBe('NOT_FOUND');
+      expect(error.code).toBe(ErrorCodes.RESOURCE_NOT_FOUND);
       expect(error.detail).toBeUndefined();
     });
 
@@ -258,7 +262,7 @@ describe('Extended Error Handling', () => {
       const error = new BadRequestError('Invalid email format');
 
       expect(error.message).toBe('Invalid email format');
-      expect(error.code).toBe('BAD_REQUEST');
+      expect(error.code).toBe(ErrorCodes.RESOURCE_BAD_REQUEST);
       expect(error.name).toBe('BadRequestError');
     });
 
@@ -281,7 +285,7 @@ describe('Extended Error Handling', () => {
       expect(json).toEqual({
         name: 'UniqueConstraintError',
         message: 'UNIQUE constraint violation on users',
-        code: 'UNIQUE_VIOLATION',
+        code: ErrorCodes.VALIDATION_UNIQUE_VIOLATION,
         detail: undefined,
         constraint: 'unique_key',
         table: 'users',
@@ -295,7 +299,7 @@ describe('Extended Error Handling', () => {
       const parsed = parseDatabaseError('string error');
 
       expect(parsed).toBeInstanceOf(DatabaseError);
-      expect(parsed.code).toBe('UNKNOWN');
+      expect(parsed.code).toBe(ErrorCodes.DB_UNKNOWN);
       expect(parsed.message).toBe('Unknown database error');
     });
 
@@ -303,7 +307,7 @@ describe('Extended Error Handling', () => {
       const parsed = parseDatabaseError(null);
 
       expect(parsed).toBeInstanceOf(DatabaseError);
-      expect(parsed.code).toBe('UNKNOWN');
+      expect(parsed.code).toBe(ErrorCodes.DB_UNKNOWN);
       expect(parsed.message).toBe('Unknown database error');
     });
 
@@ -311,7 +315,7 @@ describe('Extended Error Handling', () => {
       const parsed = parseDatabaseError(undefined);
 
       expect(parsed).toBeInstanceOf(DatabaseError);
-      expect(parsed.code).toBe('UNKNOWN');
+      expect(parsed.code).toBe(ErrorCodes.DB_UNKNOWN);
     });
 
     it('should handle errors without code field', () => {
@@ -322,7 +326,7 @@ describe('Extended Error Handling', () => {
       const parsed = parseDatabaseError(error, 'postgres');
 
       expect(parsed).toBeInstanceOf(DatabaseError);
-      expect(parsed.code).toBe('UNKNOWN');
+      expect(parsed.code).toBe(ErrorCodes.DB_UNKNOWN);
       expect(parsed.message).toBe('Unknown database error');
     });
 

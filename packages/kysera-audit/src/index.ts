@@ -131,9 +131,19 @@ export interface ParsedAuditLogEntry {
 }
 
 /**
+ * Pagination options for audit queries
+ */
+export interface AuditPaginationOptions {
+  /** Maximum number of records to return */
+  limit?: number;
+  /** Number of records to skip (for pagination) */
+  offset?: number;
+}
+
+/**
  * Filters for querying table audit logs
  */
-export interface AuditFilters {
+export interface AuditFilters extends AuditPaginationOptions {
   /** Filter by operation type ('INSERT', 'UPDATE', 'DELETE') */
   operation?: string;
   /** Filter by user ID (changed_by field) */
@@ -163,16 +173,18 @@ export interface AuditRepositoryExtensions<T = unknown> {
   /**
    * Get audit history for a specific entity
    * @param entityId - The entity ID to get history for (supports both numeric and string IDs)
+   * @param options - Optional pagination options (limit, offset)
    * @returns Array of parsed audit log entries, most recent first
    */
-  getAuditHistory(entityId: number | string): Promise<ParsedAuditLogEntry[]>;
+  getAuditHistory(entityId: number | string, options?: AuditPaginationOptions): Promise<ParsedAuditLogEntry[]>;
 
   /**
    * Alias for getAuditHistory (backwards compatibility)
    * @param entityId - The entity ID to get history for
+   * @param options - Optional pagination options (limit, offset)
    * @returns Array of parsed audit log entries, most recent first
    */
-  getAuditLogs(entityId: number | string): Promise<ParsedAuditLogEntry[]>;
+  getAuditLogs(entityId: number | string, options?: AuditPaginationOptions): Promise<ParsedAuditLogEntry[]>;
 
   /**
    * Get a specific audit log entry by its ID
@@ -182,8 +194,8 @@ export interface AuditRepositoryExtensions<T = unknown> {
   getAuditLog(auditId: number): Promise<AuditLogEntry | null>;
 
   /**
-   * Get audit logs for entire table with optional filters
-   * @param filters - Optional filters to apply
+   * Get audit logs for entire table with optional filters and pagination
+   * @param filters - Optional filters to apply (includes limit, offset for pagination)
    * @returns Array of parsed audit log entries, most recent first
    */
   getTableAuditLogs(filters?: AuditFilters): Promise<ParsedAuditLogEntry[]>;
@@ -191,9 +203,10 @@ export interface AuditRepositoryExtensions<T = unknown> {
   /**
    * Get all changes made by a specific user for this table
    * @param userId - The user ID to filter by
+   * @param options - Optional pagination options (limit, offset)
    * @returns Array of parsed audit log entries, most recent first
    */
-  getUserChanges(userId: string): Promise<ParsedAuditLogEntry[]>;
+  getUserChanges(userId: string, options?: AuditPaginationOptions): Promise<ParsedAuditLogEntry[]>;
 
   /**
    * Restore entity from audit log.
@@ -760,16 +773,28 @@ function addAuditQueryMethods(
   logger: KyseraLogger
 ): void {
   // Get audit history for a specific entity (returns parsed entries)
-  extendedRepo.getAuditHistory = async function (entityId: number | string): Promise<ParsedAuditLogEntry[]> {
+  extendedRepo.getAuditHistory = async function (
+    entityId: number | string,
+    options?: AuditPaginationOptions
+  ): Promise<ParsedAuditLogEntry[]> {
     // Kysely requires dynamic table access via `any` cast since auditTable is a runtime string
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const logs = await (executor as any)
+    let query = (executor as any)
       .selectFrom(auditTable)
       .selectAll()
       .where('table_name', '=', tableName)
       .where('entity_id', '=', String(entityId))
-      .orderBy('changed_at', 'desc')
-      .execute();
+      .orderBy('changed_at', 'desc');
+
+    // Apply pagination if provided
+    if (options?.limit !== undefined) {
+      query = query.limit(options.limit);
+    }
+    if (options?.offset !== undefined) {
+      query = query.offset(options.offset);
+    }
+
+    const logs = await query.execute();
 
     return logs.map((log: AuditLogEntry) => ({
       ...log,
@@ -846,13 +871,8 @@ function addAuditQueryMethods(
     }
   };
 
-  // Get audit logs for entire table with optional filters
-  extendedRepo.getTableAuditLogs = async function (filters?: {
-    operation?: string;
-    userId?: string;
-    startDate?: Date | string;
-    endDate?: Date | string;
-  }): Promise<ParsedAuditLogEntry[]> {
+  // Get audit logs for entire table with optional filters and pagination
+  extendedRepo.getTableAuditLogs = async function (filters?: AuditFilters): Promise<ParsedAuditLogEntry[]> {
     // Kysely requires dynamic table access via `any` cast since auditTable is a runtime string
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let query = (executor as any).selectFrom(auditTable).selectAll().where('table_name', '=', tableName);
@@ -885,7 +905,18 @@ function addAuditQueryMethods(
       query = query.where('changed_at', '<=', formattedEnd);
     }
 
-    const logs = await query.orderBy('changed_at', 'desc').execute();
+    // Apply ordering
+    query = query.orderBy('changed_at', 'desc');
+
+    // Apply pagination if provided
+    if (filters?.limit !== undefined) {
+      query = query.limit(filters.limit);
+    }
+    if (filters?.offset !== undefined) {
+      query = query.offset(filters.offset);
+    }
+
+    const logs = await query.execute();
 
     return logs.map((log: AuditLogEntry) => ({
       ...log,
@@ -896,16 +927,28 @@ function addAuditQueryMethods(
   };
 
   // Get all changes made by a specific user for this table
-  extendedRepo.getUserChanges = async function (userId: string): Promise<ParsedAuditLogEntry[]> {
+  extendedRepo.getUserChanges = async function (
+    userId: string,
+    options?: AuditPaginationOptions
+  ): Promise<ParsedAuditLogEntry[]> {
     // Kysely requires dynamic table access via `any` cast since auditTable is a runtime string
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const logs = await (executor as any)
+    let query = (executor as any)
       .selectFrom(auditTable)
       .selectAll()
       .where('table_name', '=', tableName)
       .where('changed_by', '=', userId)
-      .orderBy('changed_at', 'desc')
-      .execute();
+      .orderBy('changed_at', 'desc');
+
+    // Apply pagination if provided
+    if (options?.limit !== undefined) {
+      query = query.limit(options.limit);
+    }
+    if (options?.offset !== undefined) {
+      query = query.offset(options.offset);
+    }
+
+    const logs = await query.execute();
 
     return logs.map((log: AuditLogEntry) => ({
       ...log,

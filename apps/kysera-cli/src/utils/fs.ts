@@ -19,6 +19,7 @@ import { resolve, relative, dirname, basename, extname, join } from 'node:path';
 import { glob } from 'glob';
 import { FileSystemError } from './errors.js';
 import { logger } from './logger.js';
+import { formatBytes } from './formatting.js';
 
 /**
  * Normalize and validate a path to prevent traversal attacks
@@ -244,18 +245,7 @@ export async function getFileStats(path: string) {
  */
 export async function getFileSize(path: string): Promise<string> {
   const stats = await getFileStats(path);
-  const bytes = stats.size;
-
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let size = bytes;
-  let unitIndex = 0;
-
-  while (size >= 1024 && unitIndex < units.length - 1) {
-    size /= 1024;
-    unitIndex++;
-  }
-
-  return `${size.toFixed(2)} ${units[unitIndex]}`;
+  return formatBytes(stats.size);
 }
 
 /**

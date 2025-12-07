@@ -7,6 +7,7 @@ import {
   ForeignKeyError,
   NotFoundError,
 } from '../src/errors.js';
+import { ErrorCodes } from '../src/error-codes.js';
 import type { Kysely } from 'kysely';
 import type { TestDatabase } from './setup/database.js';
 
@@ -86,7 +87,7 @@ describe('Database Error Handling', () => {
       } catch (error) {
         const parsed = parseDatabaseError(error, 'sqlite');
         expect(parsed).toBeInstanceOf(DatabaseError);
-        expect(parsed.code).toBe('UNKNOWN');
+        expect(parsed.code).toBe(ErrorCodes.DB_UNKNOWN);
       }
     });
   });
@@ -103,7 +104,7 @@ describe('Database Error Handling', () => {
 
       const pgParsed = parseDatabaseError(pgError, 'postgres');
       expect(pgParsed).toBeInstanceOf(UniqueConstraintError);
-      expect(pgParsed.code).toBe('UNIQUE_VIOLATION');
+      expect(pgParsed.code).toBe(ErrorCodes.VALIDATION_UNIQUE_VIOLATION);
 
       // Simulate MySQL error
       const mysqlError = {
@@ -113,13 +114,13 @@ describe('Database Error Handling', () => {
 
       const mysqlParsed = parseDatabaseError(mysqlError, 'mysql');
       expect(mysqlParsed).toBeInstanceOf(UniqueConstraintError);
-      expect(mysqlParsed.code).toBe('ER_DUP_ENTRY');
+      expect(mysqlParsed.code).toBe(ErrorCodes.VALIDATION_UNIQUE_VIOLATION);
 
       // SQLite error (from actual database)
       const sqliteError = new Error('UNIQUE constraint failed: users.email');
       const sqliteParsed = parseDatabaseError(sqliteError, 'sqlite');
       expect(sqliteParsed).toBeInstanceOf(UniqueConstraintError);
-      expect(sqliteParsed.code).toBe('UNIQUE_VIOLATION');
+      expect(sqliteParsed.code).toBe(ErrorCodes.VALIDATION_UNIQUE_VIOLATION);
     });
   });
 
@@ -130,7 +131,7 @@ describe('Database Error Handling', () => {
       if (!result) {
         const error = new NotFoundError('User', { id: 9999 });
         expect(error.message).toBe('User not found');
-        expect(error.code).toBe('NOT_FOUND');
+        expect(error.code).toBe(ErrorCodes.RESOURCE_NOT_FOUND);
         expect(error.detail).toBe('{"id":9999}');
       }
     });
@@ -145,7 +146,7 @@ describe('Database Error Handling', () => {
 
       expect(parsed.name).toBe('UniqueConstraintError');
       expect(parsed.message).toContain('UNIQUE constraint');
-      expect(parsed.code).toBe('UNIQUE_VIOLATION');
+      expect(parsed.code).toBe(ErrorCodes.VALIDATION_UNIQUE_VIOLATION);
     });
   });
 });

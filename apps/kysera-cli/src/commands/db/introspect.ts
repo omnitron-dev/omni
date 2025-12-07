@@ -4,6 +4,7 @@ import { CLIError } from '../../utils/errors.js';
 import { withDatabase } from '../../utils/with-database.js';
 import { DatabaseIntrospector } from '../generate/introspector.js';
 import { logger } from '../../utils/logger.js';
+import type { DatabaseInstance, TableInfo, ColumnInfo } from '../../types/index.js';
 
 export interface IntrospectOptions {
   table?: string;
@@ -114,7 +115,7 @@ async function introspectDatabase(tableName: string | undefined, options: Intros
   });
 }
 
-function displayTableInfo(tableInfo: any, detailed: boolean): void {
+function displayTableInfo(tableInfo: TableInfo, detailed: boolean): void {
   console.log('');
   console.log(prism.bold(`Table: ${tableInfo.name}`));
   console.log(prism.gray('-'.repeat(50)));
@@ -122,7 +123,7 @@ function displayTableInfo(tableInfo: any, detailed: boolean): void {
   console.log('');
   console.log(prism.cyan('Columns:'));
 
-  const columnData = tableInfo.columns.map((col: any) => {
+  const columnData = tableInfo.columns.map((col: ColumnInfo) => {
     const row: any = {
       Name: col.name,
       Type: col.dataType,
@@ -188,7 +189,7 @@ function displayTableInfo(tableInfo: any, detailed: boolean): void {
   }
 }
 
-async function getTableRowCount(db: any, tableName: string): Promise<string> {
+async function getTableRowCount(db: DatabaseInstance, tableName: string): Promise<string> {
   try {
     const result = await db.selectFrom(tableName).select(db.fn.countAll().as('count')).executeTakeFirst();
     return result?.count?.toString() || '0';

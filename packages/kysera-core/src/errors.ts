@@ -1,11 +1,16 @@
 /**
  * Database error hierarchy with multi-database support
+ *
+ * Uses unified ErrorCodes from @kysera/core/error-codes for consistency
+ * across the entire Kysera ecosystem.
  */
+
+import { ErrorCodes, type ErrorCode } from './error-codes.js';
 
 export class DatabaseError extends Error {
   constructor(
     message: string,
-    public readonly code: string,
+    public readonly code: ErrorCode | string,
     public readonly detail?: string
   ) {
     super(message);
@@ -28,7 +33,7 @@ export class UniqueConstraintError extends DatabaseError {
     public readonly table: string,
     public readonly columns: string[]
   ) {
-    super(`UNIQUE constraint violation on ${table}`, 'UNIQUE_VIOLATION');
+    super(`UNIQUE constraint violation on ${table}`, ErrorCodes.VALIDATION_UNIQUE_VIOLATION);
     this.name = 'UniqueConstraintError';
   }
 
@@ -48,7 +53,7 @@ export class ForeignKeyError extends DatabaseError {
     public readonly table: string,
     public readonly referencedTable: string
   ) {
-    super(`FOREIGN KEY constraint violation`, 'FOREIGN_KEY_VIOLATION');
+    super(`FOREIGN KEY constraint violation`, ErrorCodes.VALIDATION_FOREIGN_KEY_VIOLATION);
     this.name = 'ForeignKeyError';
   }
 
@@ -66,15 +71,59 @@ export class NotFoundError extends DatabaseError {
   constructor(entity: string, filters?: Record<string, unknown>) {
     const message = `${entity} not found`;
     const detail = filters ? JSON.stringify(filters) : undefined;
-    super(message, 'NOT_FOUND', detail);
+    super(message, ErrorCodes.RESOURCE_NOT_FOUND, detail);
     this.name = 'NotFoundError';
   }
 }
 
 export class BadRequestError extends DatabaseError {
   constructor(message: string) {
-    super(message, 'BAD_REQUEST');
+    super(message, ErrorCodes.RESOURCE_BAD_REQUEST);
     this.name = 'BadRequestError';
+  }
+}
+
+/**
+ * Not Null constraint violation error
+ */
+export class NotNullError extends DatabaseError {
+  constructor(
+    public readonly column: string,
+    public readonly table?: string
+  ) {
+    const tableInfo = table ? ` on table ${table}` : '';
+    super(`NOT NULL constraint violation on column ${column}${tableInfo}`, ErrorCodes.VALIDATION_NOT_NULL_VIOLATION, column);
+    this.name = 'NotNullError';
+  }
+
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      column: this.column,
+      table: this.table,
+    };
+  }
+}
+
+/**
+ * Check constraint violation error
+ */
+export class CheckConstraintError extends DatabaseError {
+  constructor(
+    public readonly constraint: string,
+    public readonly table?: string
+  ) {
+    const tableInfo = table ? ` on table ${table}` : '';
+    super(`CHECK constraint violation: ${constraint}${tableInfo}`, ErrorCodes.VALIDATION_CHECK_VIOLATION);
+    this.name = 'CheckConstraintError';
+  }
+
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      constraint: this.constraint,
+      table: this.table,
+    };
   }
 }
 
@@ -83,10 +132,13 @@ export type DatabaseDialect = 'postgres' | 'mysql' | 'sqlite';
 /**
  * Multi-database error parser
  * Supports PostgreSQL, MySQL, and SQLite
+ *
+ * Uses unified ErrorCodes from @kysera/core/error-codes for consistent
+ * error code formatting across all database dialects.
  */
 export function parseDatabaseError(error: unknown, dialect: DatabaseDialect = 'postgres'): DatabaseError {
   if (!error || typeof error !== 'object') {
-    return new DatabaseError('Unknown database error', 'UNKNOWN');
+    return new DatabaseError('Unknown database error', ErrorCodes.DB_UNKNOWN);
   }
 
   const dbError = error as any;
@@ -111,13 +163,13 @@ export function parseDatabaseError(error: unknown, dialect: DatabaseDialect = 'p
         );
 
       case '23502': // not_null_violation
-        return new DatabaseError(`Not null constraint violation on column ${dbError.column}`, '23502', dbError.column);
+        return new NotNullError(dbError.column || 'unknown', dbError.table);
 
       case '23514': // check_violation
-        return new DatabaseError(`Check constraint violation: ${dbError.constraint}`, '23514');
+        return new CheckConstraintError(dbError.constraint || 'unknown', dbError.table);
 
       default:
-        return new DatabaseError(dbError.message || 'Database error', dbError.code);
+        return new DatabaseError(dbError.message || 'Database error', dbError.code || ErrorCodes.DB_UNKNOWN);
     }
   }
 
@@ -133,16 +185,13 @@ export function parseDatabaseError(error: unknown, dialect: DatabaseDialect = 'p
 
         // Extract column name from constraint (format: "table.column" or "column")
         const columnMatch = constraintName.match(/\.([^.]+)$/) || constraintName.match(/^([^.]+)$/);
-        const columns = columnMatch ? [columnMatch[1]] : [];
+        const mysqlColumns = columnMatch ? [columnMatch[1]] : [];
 
-        const error = new UniqueConstraintError(
+        return new UniqueConstraintError(
           constraintName,
           'unknown', // MySQL doesn't provide table name easily
-          columns
+          mysqlColumns
         );
-        // Override code for MySQL
-        (error as any).code = 'ER_DUP_ENTRY';
-        return error;
 
       case 'ER_NO_REFERENCED_ROW':
       case 'ER_NO_REFERENCED_ROW_2':
@@ -152,25 +201,17 @@ export function parseDatabaseError(error: unknown, dialect: DatabaseDialect = 'p
 
       case 'ER_BAD_NULL_ERROR':
         const nullMatch = dbError.sqlMessage?.match(/Column '(.+?)' cannot be null/);
-        const columnName = nullMatch?.[1];
-        return new DatabaseError(
-          columnName ? `Not null constraint violation on column ${columnName}` : 'Not null constraint violation',
-          'ER_BAD_NULL_ERROR',
-          columnName
-        );
+        const columnName = nullMatch?.[1] || 'unknown';
+        return new NotNullError(columnName);
 
       case 'ER_NO_DEFAULT_FOR_FIELD':
         // MySQL 8.0+ uses this error code instead of ER_BAD_NULL_ERROR
         const fieldMatch = dbError.sqlMessage?.match(/Field '(.+?)' doesn't have a default value/);
-        const fieldName = fieldMatch?.[1];
-        return new DatabaseError(
-          fieldName ? `Not null constraint violation on column ${fieldName}` : 'Not null constraint violation',
-          'ER_NO_DEFAULT_FOR_FIELD',
-          fieldName
-        );
+        const fieldName = fieldMatch?.[1] || 'unknown';
+        return new NotNullError(fieldName);
 
       default:
-        return new DatabaseError(dbError.sqlMessage || dbError.message || 'Database error', dbError.code);
+        return new DatabaseError(dbError.sqlMessage || dbError.message || 'Database error', dbError.code || ErrorCodes.DB_UNKNOWN);
     }
   }
 
@@ -189,11 +230,16 @@ export function parseDatabaseError(error: unknown, dialect: DatabaseDialect = 'p
 
     if (message.includes('NOT NULL constraint failed')) {
       const match = message.match(/NOT NULL constraint failed: (\w+)\.(\w+)/);
-      return new DatabaseError(`NOT NULL constraint violation`, 'SQLITE_CONSTRAINT', match?.[2]);
+      return new NotNullError(match?.[2] || 'unknown', match?.[1]);
     }
 
-    return new DatabaseError(message, 'UNKNOWN');
+    if (message.includes('CHECK constraint failed')) {
+      const match = message.match(/CHECK constraint failed: (\w+)/);
+      return new CheckConstraintError(match?.[1] || 'unknown');
+    }
+
+    return new DatabaseError(message, ErrorCodes.DB_UNKNOWN);
   }
 
-  return new DatabaseError('Unknown database error', 'UNKNOWN');
+  return new DatabaseError('Unknown database error', ErrorCodes.DB_UNKNOWN);
 }

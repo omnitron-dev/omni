@@ -4,7 +4,7 @@ import { join, basename } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { prism } from '@xec-sh/kit';
 import { logger } from '../../utils/logger.js';
-import { CLIError } from '../../utils/errors.js';
+import { CLIError, isExpectedError } from '../../utils/errors.js';
 
 export interface Migration {
   name: string;
@@ -119,11 +119,19 @@ export class MigrationRunner {
         batch: m.batch,
       }));
     } catch (error: any) {
-      // Table might not exist yet
-      if (error.message.includes('does not exist') || error.message.includes('no such table')) {
+      // Check if this is the expected "table doesn't exist" error (first migration run)
+      if (isExpectedError(error, ['does not exist', 'no such table'])) {
+        logger.debug(`Migration table "${this.tableName}" does not exist yet - will be created on first migration run`);
         return [];
       }
-      throw error;
+
+      // Unexpected error - wrap and re-throw
+      throw new CLIError(
+        `Failed to query migrations table: ${error.message}`,
+        'DATABASE_ERROR',
+        { tableName: this.tableName, originalError: error.message },
+        ['Ensure the database is accessible', 'Check database permissions', 'Verify database connection']
+      );
     }
   }
 

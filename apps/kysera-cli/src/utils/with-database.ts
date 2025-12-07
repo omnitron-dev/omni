@@ -3,6 +3,7 @@ import { loadConfig } from '../config/loader.js';
 import { getDatabaseConnection, type Database } from './database.js';
 import { CLIError } from './errors.js';
 import type { KyseraConfig } from '../config/schema.js';
+import type { DatabaseInstance } from '../types/index.js';
 
 /**
  * Options for the withDatabase helper
@@ -39,7 +40,7 @@ export interface WithDatabaseOptions {
  */
 export async function withDatabase<T>(
   options: WithDatabaseOptions,
-  handler: (db: Kysely<Database>, config: KyseraConfig) => Promise<T>
+  handler: (db: DatabaseInstance, config: KyseraConfig) => Promise<T>
 ): Promise<T> {
   const config = await loadConfig(options.config);
 
@@ -60,7 +61,8 @@ export async function withDatabase<T>(
   }
 
   try {
-    return await handler(db, config);
+    // Cast to DatabaseInstance - the db has these methods at runtime
+    return await handler(db as DatabaseInstance, config);
   } finally {
     await db.destroy();
   }
@@ -90,10 +92,10 @@ export async function withDatabase<T>(
  */
 export async function withDatabaseOptional<T>(
   options: WithDatabaseOptions,
-  handler: (db: Kysely<Database> | null, config: KyseraConfig | null) => Promise<T>
+  handler: (db: DatabaseInstance | null, config: KyseraConfig | null) => Promise<T>
 ): Promise<T> {
   let config: KyseraConfig | null = null;
-  let db: Kysely<Database> | null = null;
+  let db: DatabaseInstance | null = null;
 
   try {
     config = await loadConfig(options.config);
@@ -102,7 +104,7 @@ export async function withDatabaseOptional<T>(
   }
 
   if (config?.database) {
-    db = await getDatabaseConnection(config.database);
+    db = await getDatabaseConnection(config.database) as DatabaseInstance | null;
   }
 
   try {

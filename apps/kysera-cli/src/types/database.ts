@@ -1,4 +1,4 @@
-import type { Kysely } from 'kysely';
+import type { Kysely, RawBuilder, sql } from 'kysely';
 
 /**
  * Generic database schema type for dynamic table access.
@@ -9,10 +9,43 @@ export interface Database {
 }
 
 /**
- * Type alias for Kysely database instance with generic schema.
- * Use this type for database connections in commands and utilities.
+ * Compiled query interface for raw SQL execution.
  */
-export type DatabaseInstance = Kysely<Database>;
+export interface CompiledQuery {
+  sql: string;
+  parameters: readonly unknown[];
+}
+
+/**
+ * Query execution result.
+ */
+export interface QueryResult<T = unknown> {
+  rows: T[];
+  numAffectedRows?: bigint | number;
+  numChangedRows?: bigint;
+  insertId?: bigint | number;
+}
+
+/**
+ * Extended Kysely instance with helper methods for CLI usage.
+ * Includes executeQuery and raw methods for convenient raw SQL execution.
+ *
+ * Note: These methods are dynamically available on Kysely instances at runtime,
+ * but we declare them explicitly for type safety in the CLI.
+ */
+export type DatabaseInstance = Kysely<Database> & {
+  /**
+   * Execute a raw SQL query.
+   * @param query - Raw SQL string or CompiledQuery
+   */
+  executeQuery(query: CompiledQuery | RawBuilder<unknown>): Promise<QueryResult>;
+
+  /**
+   * Create a raw SQL builder.
+   * @param sql - SQL template string
+   */
+  raw<T = unknown>(sql: string): RawBuilder<T>;
+};
 
 /**
  * Base interface for query execution plans across all dialects.
@@ -239,4 +272,84 @@ export interface PostgresExplainTextRow {
  */
 export interface MySQLExplainJsonRow {
   EXPLAIN: string | MySQLJsonPlan;
+}
+
+/**
+ * Column information from database introspection.
+ */
+export interface ColumnInfo {
+  /** Column name */
+  name: string;
+  /** Database-specific data type */
+  dataType: string;
+  /** Whether the column accepts null values */
+  isNullable: boolean;
+  /** Whether this column is part of the primary key */
+  isPrimaryKey: boolean;
+  /** Whether this column is part of a foreign key */
+  isForeignKey: boolean;
+  /** Default value for the column */
+  defaultValue?: string | null;
+  /** Maximum length for string/varchar types */
+  maxLength?: number;
+  /** Referenced table (if foreign key) */
+  referencedTable?: string;
+  /** Referenced column (if foreign key) */
+  referencedColumn?: string;
+}
+
+/**
+ * Index information from database introspection.
+ */
+export interface IndexInfo {
+  /** Index name */
+  name: string;
+  /** Columns included in the index */
+  columns: string[];
+  /** Whether the index enforces uniqueness */
+  isUnique: boolean;
+  /** Whether this is the primary key index */
+  isPrimary: boolean;
+  /** Index cardinality (if available) */
+  cardinality?: number;
+  /** Index usage statistics (if available) */
+  usage?: number;
+}
+
+/**
+ * Foreign key information from database introspection.
+ */
+export interface ForeignKeyInfo {
+  /** Column name in current table */
+  column: string;
+  /** Referenced table name */
+  referencedTable: string;
+  /** Referenced column name */
+  referencedColumn: string;
+  /** Foreign key constraint name */
+  constraintName?: string;
+  /** On delete action */
+  onDelete?: string;
+  /** On update action */
+  onUpdate?: string;
+}
+
+/**
+ * Complete table information from database introspection.
+ */
+export interface TableInfo {
+  /** Table name */
+  name: string;
+  /** Table schema/database */
+  schema?: string;
+  /** List of columns */
+  columns: ColumnInfo[];
+  /** Primary key column names */
+  primaryKey?: string[];
+  /** List of indexes */
+  indexes: IndexInfo[];
+  /** List of foreign keys */
+  foreignKeys?: ForeignKeyInfo[];
+  /** Row count (if available) */
+  rowCount?: number;
 }

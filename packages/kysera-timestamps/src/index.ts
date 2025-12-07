@@ -169,6 +169,54 @@ function createTimestampQuery(
  * Automatically manages created_at and updated_at timestamps for database records.
  * Works by overriding repository methods to add timestamp values.
  *
+ * ## Features
+ *
+ * - Automatic `created_at` on insert
+ * - Automatic `updated_at` on every update
+ * - Configurable column names
+ * - Configurable timestamp format (ISO, Unix, Date)
+ * - Query helpers: findCreatedAfter, findUpdatedAfter, etc.
+ * - Bulk operations: createMany, updateMany, touchMany
+ *
+ * ## Transaction Behavior
+ *
+ * **IMPORTANT**: Timestamp operations respect ACID properties and work correctly with transactions:
+ *
+ * - ✅ **Commits with transaction**: Timestamps are set using the same executor as the
+ *   repository operation, so they commit together
+ * - ✅ **Rolls back with transaction**: If a transaction is rolled back, all timestamp
+ *   changes are also rolled back
+ * - ✅ **Consistent timestamps**: All operations within a transaction can use the same
+ *   timestamp by providing a custom `getTimestamp` function
+ *
+ * ### Correct Transaction Usage
+ *
+ * ```typescript
+ * // ✅ CORRECT: Timestamps are part of transaction
+ * await db.transaction().execute(async (trx) => {
+ *   const repos = createRepositories(trx)  // Use transaction executor
+ *   await repos.users.create({ email: 'test@example.com' })  // created_at auto-set
+ *   await repos.posts.createMany([...])  // All created_at set consistently
+ *   // If transaction rolls back, all changes including timestamps roll back
+ * })
+ * ```
+ *
+ * ### Consistent Timestamps Across Operations
+ *
+ * ```typescript
+ * // Use shared timestamp for all operations in a transaction
+ * const now = new Date()
+ * const timestampsWithFixedTime = timestampsPlugin({
+ *   getTimestamp: () => now
+ * })
+ *
+ * await db.transaction().execute(async (trx) => {
+ *   // All operations will have the exact same timestamp
+ *   await repos.users.create(...)  // created_at = now
+ *   await repos.posts.update(...)  // updated_at = now
+ * })
+ * ```
+ *
  * @example
  * ```typescript
  * import { timestampsPlugin } from '@kysera/timestamps'

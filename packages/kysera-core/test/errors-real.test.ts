@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
-import { parseDatabaseError, UniqueConstraintError, ForeignKeyError, DatabaseError } from '../src/errors.js';
+import { parseDatabaseError, UniqueConstraintError, ForeignKeyError, DatabaseError, NotNullError } from '../src/errors.js';
+import { ErrorCodes } from '../src/error-codes.js';
 import { createTestDatabase, initializeTestSchema, clearTestDatabase, testFactories } from './setup/test-database.js';
 import type { Kysely } from 'kysely';
 import type { TestDatabase } from './setup/test-database.js';
@@ -40,7 +41,7 @@ describe('Error Handling with Real SQLite Database', () => {
         const parsed = parseDatabaseError(error, 'sqlite');
 
         expect(parsed).toBeInstanceOf(UniqueConstraintError);
-        expect(parsed.code).toBe('UNIQUE_VIOLATION');
+        expect(parsed.code).toBe(ErrorCodes.VALIDATION_UNIQUE_VIOLATION);
 
         const uniqueError = parsed as UniqueConstraintError;
         expect(uniqueError.table).toBe('users');
@@ -82,7 +83,7 @@ describe('Error Handling with Real SQLite Database', () => {
         const parsed = parseDatabaseError(error, 'sqlite');
 
         expect(parsed).toBeInstanceOf(ForeignKeyError);
-        expect(parsed.code).toBe('FOREIGN_KEY_VIOLATION');
+        expect(parsed.code).toBe(ErrorCodes.VALIDATION_FOREIGN_KEY_VIOLATION);
       }
     });
 
@@ -123,9 +124,9 @@ describe('Error Handling with Real SQLite Database', () => {
       } catch (error) {
         const parsed = parseDatabaseError(error, 'sqlite');
 
-        expect(parsed).toBeInstanceOf(DatabaseError);
+        expect(parsed).toBeInstanceOf(NotNullError);
         expect(parsed.message).toContain('NOT NULL');
-        expect(parsed.detail).toBe('name');
+        expect((parsed as NotNullError).column).toBe('name');
       }
     });
   });

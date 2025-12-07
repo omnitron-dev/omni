@@ -5,10 +5,12 @@ import { CLIError } from '../../utils/errors.js';
 import { getDatabaseConnection } from '../../utils/database.js';
 import { loadConfig } from '../../config/loader.js';
 import type {
+  DatabaseInstance,
   PostgresPlan,
   PostgresExplainOutput,
   MySQLPlan,
   SQLitePlan,
+  IndexInfo,
 } from '../../types/index.js';
 
 export interface AnalyzerOptions {
@@ -42,14 +44,6 @@ interface TableStatistics {
   dataSize: number;
   indexSize: number;
   indexes: IndexInfo[];
-}
-
-interface IndexInfo {
-  name: string;
-  columns: string[];
-  unique: boolean;
-  cardinality?: number;
-  usage?: number;
 }
 
 export function analyzerCommand(): Command {
@@ -92,7 +86,7 @@ async function analyzeQuery(options: AnalyzerOptions): Promise<void> {
   }
 
   // Get database connection
-  const db = await getDatabaseConnection(config.database);
+  const db = await getDatabaseConnection(config.database) as DatabaseInstance | null;
 
   if (!db) {
     throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', [
@@ -137,7 +131,7 @@ async function analyzeQuery(options: AnalyzerOptions): Promise<void> {
 }
 
 async function performQueryAnalysis(
-  db: any,
+  db: DatabaseInstance,
   query: string,
   dialect: string,
   options: AnalyzerOptions
@@ -176,7 +170,7 @@ async function performQueryAnalysis(
 }
 
 async function analyzePostgresQuery(
-  db: any,
+  db: DatabaseInstance,
   query: string,
   analysis: QueryAnalysis,
   options: AnalyzerOptions
@@ -215,13 +209,15 @@ async function analyzePostgresQuery(
       }
     }
   } catch (error) {
-    logger.debug(`Failed to analyze PostgreSQL query: ${error}`);
-    analysis.warnings.push('Failed to generate execution plan');
+    // Log with context for debugging but continue with partial results
+    logger.debug(`Failed to analyze PostgreSQL query: ${error instanceof Error ? error.message : String(error)}`);
+    logger.debug(`Query that failed: ${query.substring(0, 100)}...`);
+    analysis.warnings.push('Failed to generate execution plan - query may have syntax errors or require permissions');
   }
 }
 
 async function analyzeMysqlQuery(
-  db: any,
+  db: DatabaseInstance,
   query: string,
   analysis: QueryAnalysis,
   options: AnalyzerOptions
@@ -258,13 +254,15 @@ async function analyzeMysqlQuery(
       }
     }
   } catch (error) {
-    logger.debug(`Failed to analyze MySQL query: ${error}`);
-    analysis.warnings.push('Failed to generate execution plan');
+    // Log with context for debugging but continue with partial results
+    logger.debug(`Failed to analyze MySQL query: ${error instanceof Error ? error.message : String(error)}`);
+    logger.debug(`Query that failed: ${query.substring(0, 100)}...`);
+    analysis.warnings.push('Failed to generate execution plan - query may have syntax errors or require permissions');
   }
 }
 
 async function analyzeSqliteQuery(
-  db: any,
+  db: DatabaseInstance,
   query: string,
   analysis: QueryAnalysis,
   options: AnalyzerOptions
@@ -293,8 +291,10 @@ async function analyzeSqliteQuery(
       }
     }
   } catch (error) {
-    logger.debug(`Failed to analyze SQLite query: ${error}`);
-    analysis.warnings.push('Failed to generate execution plan');
+    // Log with context for debugging but continue with partial results
+    logger.debug(`Failed to analyze SQLite query: ${error instanceof Error ? error.message : String(error)}`);
+    logger.debug(`Query that failed: ${query.substring(0, 100)}...`);
+    analysis.warnings.push('Failed to generate execution plan - query may have syntax errors or require permissions');
   }
 }
 
@@ -385,7 +385,7 @@ function extractTableNames(query: string): string[] {
   return tables;
 }
 
-async function getTableStatistics(db: any, tables: string[], dialect: string): Promise<TableStatistics[]> {
+async function getTableStatistics(db: DatabaseInstance, tables: string[], dialect: string): Promise<TableStatistics[]> {
   const stats: TableStatistics[] = [];
 
   for (const tableName of tables) {
@@ -423,7 +423,11 @@ async function getTableStatistics(db: any, tables: string[], dialect: string): P
 
       stats.push(tableStats);
     } catch (error) {
-      logger.debug(`Failed to get statistics for table ${tableName}: ${error}`);
+      // Log error with context but continue processing other tables
+      logger.debug(
+        `Failed to get statistics for table ${tableName}: ${error instanceof Error ? error.message : String(error)}`
+      );
+      logger.debug(`Skipping statistics for table: ${tableName}`);
     }
   }
 

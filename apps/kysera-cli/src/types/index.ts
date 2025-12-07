@@ -5,6 +5,8 @@
 export type {
   Database,
   DatabaseInstance,
+  CompiledQuery,
+  QueryResult,
   QueryPlan,
   PostgresPlan,
   PostgresExplainOutput,
@@ -22,4 +24,8 @@ export type {
   QueryResultRow,
   PostgresExplainTextRow,
   MySQLExplainJsonRow,
+  ColumnInfo,
+  IndexInfo,
+  ForeignKeyInfo,
+  TableInfo,
 } from './database.js';

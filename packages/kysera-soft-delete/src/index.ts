@@ -147,6 +147,47 @@ interface BaseRepository {
  *
  * This design is intentional for simplicity and explicitness.
  *
+ * ## Transaction Behavior
+ *
+ * **IMPORTANT**: Soft delete operations respect ACID properties and work correctly with transactions:
+ *
+ * - ✅ **Commits with transaction**: softDelete/restore operations use the same executor
+ *   as other repository operations, so they commit together
+ * - ✅ **Rolls back with transaction**: If a transaction is rolled back, soft delete
+ *   operations are also rolled back
+ * - ✅ **Atomic operations**: All soft delete operations (including bulk) are atomic
+ *
+ * ### Correct Transaction Usage
+ *
+ * ```typescript
+ * // ✅ CORRECT: Soft delete is part of transaction
+ * await db.transaction().execute(async (trx) => {
+ *   const repos = createRepositories(trx)  // Use transaction executor
+ *   await repos.users.softDelete(1)
+ *   await repos.posts.softDeleteMany([1, 2, 3])
+ *   // If transaction rolls back, both operations roll back
+ * })
+ * ```
+ *
+ * ### Cascade Soft Delete Pattern
+ *
+ * For related entities, you need to manually implement cascade soft delete:
+ *
+ * ```typescript
+ * // Cascade soft delete pattern
+ * await db.transaction().execute(async (trx) => {
+ *   const repos = createRepositories(trx)
+ *   const userId = 123
+ *
+ *   // First, soft delete child records
+ *   const userPosts = await repos.posts.findBy({ user_id: userId })
+ *   await repos.posts.softDeleteMany(userPosts.map(p => p.id))
+ *
+ *   // Then, soft delete parent
+ *   await repos.users.softDelete(userId)
+ * })
+ * ```
+ *
  * @param options - Configuration options for soft delete behavior
  * @returns Plugin instance that can be used with createORM
  */

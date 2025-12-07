@@ -3,6 +3,7 @@ import { prism, spinner, table } from '@xec-sh/kit';
 import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
 import { withDatabase } from '../../utils/with-database.js';
+import { formatBytes } from '../../utils/formatting.js';
 
 export interface AnalyzeOptions {
   query?: string;
@@ -658,11 +659,4 @@ function highlightSql(sql: string): string {
   });
 
   return highlighted;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  return (bytes / Math.pow(1024, i)).toFixed(2) + ' ' + sizes[i];
 }

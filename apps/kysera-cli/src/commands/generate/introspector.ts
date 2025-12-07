@@ -1,5 +1,6 @@
 import { Kysely } from 'kysely';
 import { logger } from '../../utils/logger.js';
+import { validateIdentifier } from '../../utils/sql-sanitizer.js';
 
 export interface TableColumn {
   name: string;
@@ -287,7 +288,9 @@ export class DatabaseIntrospector {
   private async getSqliteTableInfo(tableName: string): Promise<TableInfo> {
     // SQLite's PRAGMA commands aren't directly supported by Kysely
     // We'll use raw SQL for introspection
-    const columns = (await this.db.raw(`PRAGMA table_info(${tableName})`).execute()) as any;
+    // Validate table name to prevent SQL injection
+    const validTableName = validateIdentifier(tableName, 'table');
+    const columns = (await this.db.raw(`PRAGMA table_info(${validTableName})`).execute()) as any;
 
     const tableColumns: TableColumn[] = columns.rows.map((col: any) => ({
       name: col.name,
@@ -299,7 +302,7 @@ export class DatabaseIntrospector {
     }));
 
     // Get foreign keys
-    const foreignKeys = (await this.db.raw(`PRAGMA foreign_key_list(${tableName})`).execute()) as any;
+    const foreignKeys = (await this.db.raw(`PRAGMA foreign_key_list(${validTableName})`).execute()) as any;
 
     for (const fk of foreignKeys.rows || []) {
       const column = tableColumns.find((c) => c.name === fk.from);
@@ -311,11 +314,13 @@ export class DatabaseIntrospector {
     }
 
     // Get indexes
-    const indexList = (await this.db.raw(`PRAGMA index_list(${tableName})`).execute()) as any;
+    const indexList = (await this.db.raw(`PRAGMA index_list(${validTableName})`).execute()) as any;
     const tableIndexes: TableIndex[] = [];
 
     for (const idx of indexList.rows || []) {
-      const indexInfo = (await this.db.raw(`PRAGMA index_info(${idx.name})`).execute()) as any;
+      // Validate index name to prevent SQL injection
+      const validIndexName = validateIdentifier(idx.name, 'index');
+      const indexInfo = (await this.db.raw(`PRAGMA index_info(${validIndexName})`).execute()) as any;
       const columns = indexInfo.rows.map((info: any) => info.name);
 
       tableIndexes.push({

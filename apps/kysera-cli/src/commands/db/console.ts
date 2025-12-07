@@ -5,6 +5,7 @@ import { withDatabase } from '../../utils/with-database.js';
 import { DatabaseIntrospector } from '../generate/introspector.js';
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
+import type { DatabaseInstance } from '../../types/index.js';
 
 export interface ConsoleOptions {
   query?: string;
@@ -172,18 +173,70 @@ async function databaseConsole(options: ConsoleOptions): Promise<void> {
   });
 }
 
-function isDestructiveQuery(query: string): boolean {
-  const queryLower = query.toLowerCase().trim();
-  return (
-    queryLower.startsWith('drop') ||
-    queryLower.startsWith('truncate') ||
-    queryLower.startsWith('delete') ||
-    queryLower.includes('drop table') ||
-    queryLower.includes('drop database')
-  );
+interface DestructiveQueryResult {
+  destructive: boolean;
+  type?: 'destructive' | 'update' | 'insert' | 'multi-statement';
+  operation?: string;
 }
 
-async function executeQuery(db: any, query: string): Promise<void> {
+function isDestructiveQuery(query: string): boolean {
+  const result = analyzeDestructiveQuery(query);
+  return result.destructive;
+}
+
+function analyzeDestructiveQuery(query: string): DestructiveQueryResult {
+  // Remove leading/trailing whitespace and normalize
+  const trimmed = query.trim();
+
+  // Remove SQL comments (both -- and /* */ style)
+  const withoutComments = trimmed
+    .replace(/--[^\n]*/g, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .trim();
+
+  // Normalize whitespace
+  const normalized = withoutComments.toLowerCase().replace(/\s+/g, ' ');
+
+  // Highly destructive operations (DELETE, TRUNCATE, DROP, ALTER)
+  const destructivePatterns = [
+    { pattern: /^\s*delete\b/i, operation: 'DELETE' },
+    { pattern: /^\s*truncate\b/i, operation: 'TRUNCATE' },
+    { pattern: /^\s*drop\b/i, operation: 'DROP' },
+    { pattern: /^\s*alter\b/i, operation: 'ALTER' },
+  ];
+
+  // Check for destructive operations at the start
+  for (const { pattern, operation } of destructivePatterns) {
+    if (pattern.test(normalized)) {
+      return { destructive: true, type: 'destructive', operation };
+    }
+  }
+
+  // UPDATE operations (should also require confirmation)
+  if (/^\s*update\b/i.test(normalized)) {
+    return { destructive: true, type: 'update', operation: 'UPDATE' };
+  }
+
+  // INSERT operations (optionally require confirmation for bulk inserts)
+  if (/^\s*insert\b/i.test(normalized)) {
+    return { destructive: true, type: 'insert', operation: 'INSERT' };
+  }
+
+  // Multi-statement queries: check for destructive operations after semicolons
+  const statements = normalized.split(';').filter((s) => s.trim());
+  if (statements.length > 1) {
+    for (let i = 1; i < statements.length; i++) {
+      const statement = statements[i].trim();
+      if (/^\s*(delete|truncate|drop|alter|update)\b/i.test(statement)) {
+        return { destructive: true, type: 'multi-statement', operation: 'MULTI-STATEMENT' };
+      }
+    }
+  }
+
+  return { destructive: false };
+}
+
+async function executeQuery(db: DatabaseInstance, query: string): Promise<void> {
   const startTime = Date.now();
 
   const cleanQuery = query.trim().replace(/;$/, '');
@@ -302,7 +355,7 @@ async function showIndexes(introspector: DatabaseIntrospector, tableName: string
   }
 }
 
-async function showCount(db: any, tableName: string): Promise<void> {
+async function showCount(db: DatabaseInstance, tableName: string): Promise<void> {
   const result = await db.selectFrom(tableName).select(db.fn.countAll().as('count')).executeTakeFirst();
   const count = Number(result?.count || 0);
   console.log(`${tableName}: ${count} row${count !== 1 ? 's' : ''}`);

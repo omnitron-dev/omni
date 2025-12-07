@@ -547,6 +547,65 @@ async function getRandomForeignKey(db: any, tableName: string, columnName: strin
 async function runCustomSeeder(db: any, seederPath: string, options: TestSeedOptions): Promise<void> {
   try {
     const resolvedPath = path.resolve(seederPath);
+    const projectRoot = process.cwd();
+
+    // Define allowed directories for seeder files
+    const config = await loadConfig(options.config);
+    const allowedDirs = [
+      path.join(projectRoot, 'seeds'),
+      path.join(projectRoot, 'src/seeds'),
+      path.join(projectRoot, 'tests/seeds'),
+    ];
+
+    // Add config seeds directory if specified
+    if (config.testing?.seeds) {
+      const configSeedsDir = path.resolve(projectRoot, config.testing.seeds);
+      if (!allowedDirs.includes(configSeedsDir)) {
+        allowedDirs.push(configSeedsDir);
+      }
+    }
+
+    // Validate that resolved path is within one of the allowed directories
+    const isWithinAllowedDir = allowedDirs.some((allowedDir) => {
+      const normalizedAllowedDir = path.resolve(allowedDir);
+      return resolvedPath.startsWith(normalizedAllowedDir + path.sep) || resolvedPath === normalizedAllowedDir;
+    });
+
+    if (!isWithinAllowedDir) {
+      throw new CLIError(
+        `Seeder path must be within allowed directories: ${allowedDirs.join(', ')}`,
+        'INVALID_SEEDER_PATH',
+        undefined,
+        [
+          'Place seeder files in one of the allowed directories',
+          'Update testing.seeds in kysera.config.ts to specify a custom seeds directory',
+        ]
+      );
+    }
+
+    // Validate file extension
+    const ext = path.extname(resolvedPath);
+    const allowedExtensions = ['.ts', '.js', '.mjs'];
+    if (!allowedExtensions.includes(ext)) {
+      throw new CLIError(
+        `Invalid seeder file extension: ${ext}. Allowed extensions: ${allowedExtensions.join(', ')}`,
+        'INVALID_SEEDER_FILE',
+        undefined,
+        ['Use a .ts, .js, or .mjs file for your seeder']
+      );
+    }
+
+    // Check if file exists
+    const fileExists = await fs.stat(resolvedPath).catch(() => null);
+    if (!fileExists) {
+      throw new CLIError(
+        `Seeder file not found: ${resolvedPath}`,
+        'SEEDER_NOT_FOUND',
+        undefined,
+        ['Check the path to your seeder file', 'Ensure the file exists']
+      );
+    }
+
     const seeder = await import(resolvedPath);
 
     if (seeder.seed) {
@@ -564,6 +623,9 @@ async function runCustomSeeder(db: any, seederPath: string, options: TestSeedOpt
       throw new Error('Custom seeder must export a seed function');
     }
   } catch (error) {
+    if (error instanceof CLIError) {
+      throw error;
+    }
     throw new CLIError(`Failed to run custom seeder: ${error}`, 'SEEDER_ERROR');
   }
 }

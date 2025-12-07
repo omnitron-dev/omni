@@ -1,7 +1,7 @@
 {
   "name": "@kysera/migrations",
-  "version": "0.4.1",
-  "description": "Database migration management for Kysera ORM",
+  "version": "0.5.0",
+  "description": "Database migration management for Kysera ORM with dry-run support and flexible rollback capabilities",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -27,10 +27,14 @@
     "orm",
     "migrations",
     "database",
-    "typescript"
+    "typescript",
+    "kysera"
   ],
   "author": "Kysera Team",
   "license": "MIT",
+  "dependencies": {
+    "@kysera/core": "workspace:*"
+  },
   "peerDependencies": {
     "kysely": "^0.28.8"
   },

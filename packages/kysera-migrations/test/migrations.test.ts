@@ -6,7 +6,16 @@ import {
   MigrationRunner,
   createMigrationRunner,
   createMigration,
+  createMigrationWithMeta,
+  defineMigrations,
+  runMigrations,
+  rollbackMigrations,
+  getMigrationStatus,
+  MigrationError,
+  createLoggingPlugin,
+  createMetricsPlugin,
   type Migration,
+  type MigrationWithMeta,
 } from '../src/index.js';
 import { safeDbDestroy, safeSqliteClose } from './helpers/cleanup.js';
 
@@ -129,12 +138,17 @@ describe('Migration System', () => {
         const migrations = createTestMigrations();
         const runner = new MigrationRunner(db, migrations, { logger: () => {} });
 
-        await runner.up();
+        const result = await runner.up();
 
         // Verify migrations were executed
         const executed = await runner.getExecutedMigrations();
         expect(executed).toHaveLength(3);
         expect(executed).toEqual(['001_create_users', '002_create_posts', '003_add_users_created_at']);
+
+        // Verify result object
+        expect(result.executed).toHaveLength(3);
+        expect(result.dryRun).toBe(false);
+        expect(result.duration).toBeGreaterThan(0);
 
         // Verify tables were created
         const tables = await db
@@ -156,11 +170,12 @@ describe('Migration System', () => {
         await runner.up();
 
         // Run again - should skip all
-        await runner.up();
+        const result = await runner.up();
 
         // Should still have exactly 3 migrations
         const executed = await runner.getExecutedMigrations();
         expect(executed).toHaveLength(3);
+        expect(result.skipped.length).toBeGreaterThan(0);
       });
 
       it('should stop on migration failure', async () => {
@@ -174,7 +189,7 @@ describe('Migration System', () => {
 
         const runner = new MigrationRunner(db, migrations, { logger: () => {} });
 
-        await expect(runner.up()).rejects.toThrow('Migration failed');
+        await expect(runner.up()).rejects.toThrow(MigrationError);
 
         // Only first migration should be executed
         const executed = await runner.getExecutedMigrations();
@@ -189,7 +204,10 @@ describe('Migration System', () => {
           logger: () => {},
         });
 
-        await runner.up();
+        const result = await runner.up();
+
+        // Verify result indicates dry run
+        expect(result.dryRun).toBe(true);
 
         // No migrations should actually be executed
         const executed = await runner.getExecutedMigrations();
@@ -209,10 +227,20 @@ describe('Migration System', () => {
       it('should handle empty migration list', async () => {
         const runner = new MigrationRunner(db, [], { logger: () => {} });
 
-        await runner.up();
+        const result = await runner.up();
 
         const executed = await runner.getExecutedMigrations();
         expect(executed).toHaveLength(0);
+        expect(result.executed).toHaveLength(0);
+      });
+
+      it('should validate duplicate migration names', () => {
+        const migrations: Migration[] = [
+          createMigration('001_duplicate', async () => {}),
+          createMigration('001_duplicate', async () => {}),
+        ];
+
+        expect(() => new MigrationRunner(db, migrations)).toThrow('Duplicate migration name: 001_duplicate');
       });
     });
 
@@ -225,12 +253,12 @@ describe('Migration System', () => {
         await runner.up();
 
         // Rollback last one - note: 003 has no down(), so it won't be rolled back
-        await runner.down(1);
+        const result = await runner.down(1);
 
         const executed = await runner.getExecutedMigrations();
         // 003 cannot be rolled back (no down method), so all 3 remain
         expect(executed).toHaveLength(3);
-        expect(executed).toEqual(['001_create_users', '002_create_posts', '003_add_users_created_at']);
+        expect(result.skipped).toContain('003_add_users_created_at');
       });
 
       it('should rollback multiple migrations', async () => {
@@ -264,11 +292,12 @@ describe('Migration System', () => {
         await runner.up();
 
         // Try to rollback migration without down method (003)
-        await runner.down(1);
+        const result = await runner.down(1);
 
         // Should still have all 3 migrations (003 can't be rolled back)
         const executed = await runner.getExecutedMigrations();
         expect(executed).toHaveLength(3);
+        expect(result.skipped).toContain('003_add_users_created_at');
       });
 
       it('should work with dry run mode', async () => {
@@ -282,11 +311,12 @@ describe('Migration System', () => {
           dryRun: true,
           logger: () => {},
         });
-        await dryRunner.down(1);
+        const result = await dryRunner.down(1);
 
         // All migrations should still be executed
         const executed = await runner.getExecutedMigrations();
         expect(executed).toHaveLength(3);
+        expect(result.dryRun).toBe(true);
       });
 
       it('should handle empty executed migrations', async () => {
@@ -297,11 +327,12 @@ describe('Migration System', () => {
         await setupMigrations(db);
 
         // Try to rollback without any executed migrations
-        await runner.down(1);
+        const result = await runner.down(1);
 
         // Should not throw error
         const executed = await runner.getExecutedMigrations();
         expect(executed).toHaveLength(0);
+        expect(result.executed).toHaveLength(0);
       });
     });
 
@@ -314,6 +345,7 @@ describe('Migration System', () => {
         let status = await runner.status();
         expect(status.executed).toHaveLength(0);
         expect(status.pending).toHaveLength(3);
+        expect(status.total).toBe(3);
 
         // After running one migration manually
         await migrations[0]?.up(db);
@@ -322,6 +354,7 @@ describe('Migration System', () => {
         status = await runner.status();
         expect(status.executed).toHaveLength(1);
         expect(status.pending).toHaveLength(2);
+        expect(status.total).toBe(3);
         expect(status.executed).toEqual(['001_create_users']);
         expect(status.pending).toEqual(['002_create_posts', '003_add_users_created_at']);
 
@@ -331,6 +364,7 @@ describe('Migration System', () => {
         status = await runner.status();
         expect(status.executed).toHaveLength(3);
         expect(status.pending).toHaveLength(0);
+        expect(status.total).toBe(3);
       });
     });
 
@@ -358,11 +392,12 @@ describe('Migration System', () => {
           dryRun: true,
           logger: () => {},
         });
-        await dryRunner.reset();
+        const result = await dryRunner.reset();
 
         // Migrations should still be there
         const executed = await runner.getExecutedMigrations();
         expect(executed).toHaveLength(3);
+        expect(result.dryRun).toBe(true);
       });
     });
 
@@ -371,18 +406,19 @@ describe('Migration System', () => {
         const migrations = createTestMigrations();
         const runner = new MigrationRunner(db, migrations, { logger: () => {} });
 
-        await runner.upTo('002_create_posts');
+        const result = await runner.upTo('002_create_posts');
 
         const executed = await runner.getExecutedMigrations();
         expect(executed).toHaveLength(2);
         expect(executed).toEqual(['001_create_users', '002_create_posts']);
+        expect(result.executed).toHaveLength(2);
       });
 
-      it('should throw error for unknown migration', async () => {
+      it('should throw NotFoundError for unknown migration', async () => {
         const migrations = createTestMigrations();
         const runner = new MigrationRunner(db, migrations, { logger: () => {} });
 
-        await expect(runner.upTo('999_unknown')).rejects.toThrow('Migration 999_unknown not found');
+        await expect(runner.upTo('999_unknown')).rejects.toThrow('Migration not found');
       });
     });
   });
@@ -426,6 +462,141 @@ describe('Migration System', () => {
       expect(migration).toHaveProperty('name', 'test');
       expect(migration).toHaveProperty('up', up);
       expect(migration.down).toBeUndefined();
+    });
+  });
+
+  describe('createMigrationWithMeta', () => {
+    it('should create a migration with metadata', () => {
+      const migration = createMigrationWithMeta('001_test', {
+        up: async () => {},
+        down: async () => {},
+        description: 'Test migration',
+        breaking: true,
+        estimatedDuration: 5000,
+        tags: ['schema', 'test'],
+      });
+
+      expect(migration.name).toBe('001_test');
+      expect(migration.description).toBe('Test migration');
+      expect(migration.breaking).toBe(true);
+      expect(migration.estimatedDuration).toBe(5000);
+      expect(migration.tags).toEqual(['schema', 'test']);
+    });
+  });
+
+  describe('defineMigrations (Level 2 API)', () => {
+    it('should convert object definitions to migration array', () => {
+      const migrations = defineMigrations({
+        '001_users': {
+          description: 'Create users table',
+          up: async () => {},
+          down: async () => {},
+        },
+        '002_posts': {
+          description: 'Create posts table',
+          breaking: true,
+          up: async () => {},
+        },
+      });
+
+      expect(migrations).toHaveLength(2);
+      expect(migrations[0]?.name).toBe('001_users');
+      expect(migrations[0]?.description).toBe('Create users table');
+      expect(migrations[1]?.name).toBe('002_posts');
+      expect(migrations[1]?.breaking).toBe(true);
+    });
+
+    it('should work with runMigrations', async () => {
+      const migrations = defineMigrations({
+        '001_test': {
+          up: async (db) => {
+            await db.schema
+              .createTable('test_table')
+              .addColumn('id', 'integer', (col) => col.primaryKey())
+              .execute();
+          },
+        },
+      });
+
+      const result = await runMigrations(db, migrations, { logger: () => {} });
+
+      expect(result.executed).toHaveLength(1);
+      expect(result.executed[0]).toBe('001_test');
+    });
+  });
+
+  describe('runMigrations (Level 2 API)', () => {
+    it('should run all pending migrations', async () => {
+      const migrations = createTestMigrations();
+      const result = await runMigrations(db, migrations, { logger: () => {} });
+
+      expect(result.executed).toHaveLength(3);
+      expect(result.dryRun).toBe(false);
+    });
+
+    it('should support dry run', async () => {
+      const migrations = createTestMigrations();
+      const result = await runMigrations(db, migrations, { dryRun: true, logger: () => {} });
+
+      expect(result.dryRun).toBe(true);
+    });
+  });
+
+  describe('rollbackMigrations (Level 2 API)', () => {
+    it('should rollback migrations', async () => {
+      const migrations = createTestMigrations();
+      await runMigrations(db, migrations, { logger: () => {} });
+
+      const result = await rollbackMigrations(db, migrations, 2, { logger: () => {} });
+
+      // 003 has no down, 002 has down
+      expect(result.executed.length + result.skipped.length).toBe(2);
+    });
+  });
+
+  describe('getMigrationStatus (Level 2 API)', () => {
+    it('should get migration status', async () => {
+      const migrations = createTestMigrations();
+      await runMigrations(db, migrations, { logger: () => {} });
+
+      const status = await getMigrationStatus(db, migrations, { logger: () => {} });
+
+      expect(status.executed).toHaveLength(3);
+      expect(status.pending).toHaveLength(0);
+      expect(status.total).toBe(3);
+    });
+  });
+
+  describe('Plugin System (Level 3 API)', () => {
+    describe('createLoggingPlugin', () => {
+      it('should log migration events', () => {
+        const logs: string[] = [];
+        const plugin = createLoggingPlugin((msg) => logs.push(msg));
+
+        expect(plugin.name).toBe('@kysera/migrations/logging');
+
+        // Test beforeMigration
+        plugin.beforeMigration?.({ name: 'test', up: async () => {} }, 'up');
+        expect(logs).toContain('[MIGRATION] Starting up for test');
+      });
+    });
+
+    describe('createMetricsPlugin', () => {
+      it('should collect migration metrics', () => {
+        const plugin = createMetricsPlugin();
+
+        plugin.afterMigration?.({ name: 'test', up: async () => {} }, 'up', 100);
+        plugin.afterMigration?.({ name: 'test2', up: async () => {} }, 'up', 200);
+
+        const metrics = plugin.getMetrics();
+        expect(metrics.migrations).toHaveLength(2);
+        expect(metrics.migrations[0]).toEqual({
+          name: 'test',
+          operation: 'up',
+          duration: 100,
+          success: true,
+        });
+      });
     });
   });
 
@@ -517,6 +688,36 @@ describe('Migration System', () => {
         .execute();
 
       expect(tables).toHaveLength(0);
+    });
+
+    it('should show metadata in logs when verbose', async () => {
+      const logs: string[] = [];
+      const migrations: MigrationWithMeta[] = [
+        createMigrationWithMeta('001_test', {
+          description: 'Creates test table',
+          breaking: true,
+          tags: ['schema'],
+          estimatedDuration: 1000,
+          up: async (db) => {
+            await db.schema
+              .createTable('test')
+              .addColumn('id', 'integer', (col) => col.primaryKey())
+              .execute();
+          },
+        }),
+      ];
+
+      const runner = new MigrationRunner(db, migrations, {
+        logger: (msg) => logs.push(msg),
+        verbose: true,
+      });
+
+      await runner.up();
+
+      // Check that metadata was logged
+      expect(logs.some((l) => l.includes('Creates test table'))).toBe(true);
+      expect(logs.some((l) => l.includes('BREAKING CHANGE'))).toBe(true);
+      expect(logs.some((l) => l.includes('Tags: schema'))).toBe(true);
     });
   });
 });

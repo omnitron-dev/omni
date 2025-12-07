@@ -1,8 +1,7 @@
 import { Command } from 'commander';
 import { prism, spinner, table } from '@xec-sh/kit';
 import { CLIError } from '../../utils/errors.js';
-import { getDatabaseConnection } from '../../utils/database.js';
-import { loadConfig } from '../../config/loader.js';
+import { withDatabase } from '../../utils/with-database.js';
 
 export interface LogsOptions {
   table?: string;
@@ -48,30 +47,10 @@ export function logsCommand(): Command {
 }
 
 async function queryAuditLogs(options: LogsOptions): Promise<void> {
-  // Load configuration
-  const config = await loadConfig(options.config);
+  await withDatabase({ config: options.config, verbose: options.verbose }, async (db) => {
+    const querySpinner = spinner() as any;
+    querySpinner.start('Querying audit logs...');
 
-  if (!config?.database) {
-    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
-      'Create a kysera.config.ts file with database configuration',
-      'Or specify a config file with --config option',
-    ]);
-  }
-
-  // Get database connection
-  const db = await getDatabaseConnection(config.database);
-
-  if (!db) {
-    throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', [
-      'Check your database configuration',
-      'Ensure the database server is running',
-    ]);
-  }
-
-  const querySpinner = spinner() as any;
-  querySpinner.start('Querying audit logs...');
-
-  try {
     // Check if audit_logs table exists
     const tables = await db
       .selectFrom('information_schema.tables')
@@ -150,8 +129,8 @@ async function queryAuditLogs(options: LogsOptions): Promise<void> {
       // Detailed view
       for (const log of logs) {
         console.log('');
-        console.log(prism.bold(`📝 Audit Log #${log['id']}`));
-        console.log(prism.gray('─'.repeat(50)));
+        console.log(prism.bold(`Audit Log #${log['id']}`));
+        console.log(prism.gray('-'.repeat(50)));
         console.log(`  Timestamp: ${formatDate(log['created_at'])}`);
         console.log(`  Table: ${prism.cyan(log['table_name'])}`);
         console.log(`  Action: ${formatAction(log['action'])}`);
@@ -188,7 +167,7 @@ async function queryAuditLogs(options: LogsOptions): Promise<void> {
 
             for (const key of new Set([...Object.keys(oldValues), ...Object.keys(newValues)])) {
               if (oldValues[key] !== newValues[key]) {
-                console.log(`      ${key}: ${formatValue(oldValues[key])} → ${formatValue(newValues[key])}`);
+                console.log(`      ${key}: ${formatValue(oldValues[key])} -> ${formatValue(newValues[key])}`);
               }
             }
           } else if (log['action'] === 'DELETE') {
@@ -215,7 +194,7 @@ async function queryAuditLogs(options: LogsOptions): Promise<void> {
       }));
 
       console.log('');
-      console.log(table(tableData));
+      console.log(table(tableData as any));
     }
 
     // Show summary
@@ -227,10 +206,7 @@ async function queryAuditLogs(options: LogsOptions): Promise<void> {
         console.log(prism.gray(`Use --limit to show more results`));
       }
     }
-  } finally {
-    // Close database connection
-    await db.destroy();
-  }
+  });
 }
 
 function formatDate(date: any, compact: boolean = false): string {

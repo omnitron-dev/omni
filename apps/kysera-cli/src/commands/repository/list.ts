@@ -2,11 +2,9 @@ import { Command } from 'commander';
 import { prism, spinner, table } from '@xec-sh/kit';
 import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
-import { getDatabaseConnection } from '../../utils/database.js';
 import { loadConfig } from '../../config/loader.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 export interface ListRepositoriesOptions {
   directory?: string;
@@ -64,10 +62,14 @@ export function listRepositoriesCommand(): Command {
 }
 
 async function listRepositories(options: ListRepositoriesOptions): Promise<void> {
-  // Load configuration
-  const config = await loadConfig(options.config);
+  // Load configuration (optional for this command)
+  try {
+    await loadConfig(options.config);
+  } catch {
+    // Config is optional for this command
+  }
 
-  const listSpinner = spinner();
+  const listSpinner = spinner() as any;
   listSpinner.start('Scanning for repository files...');
 
   try {
@@ -92,7 +94,7 @@ async function listRepositories(options: ListRepositoriesOptions): Promise<void>
       console.log(prism.gray(`Searched in: ${scanDirectory}`));
       console.log(prism.gray(`Pattern: ${options.pattern || '**/*Repository.ts'}`));
       console.log('');
-      console.log(prism.yellow('💡 Tips:'));
+      console.log(prism.yellow('Tips:'));
       console.log('  - Make sure your repositories follow the naming convention (*Repository.ts)');
       console.log('  - Check that the search directory is correct');
       console.log('  - Use --pattern to specify a custom file pattern');
@@ -232,8 +234,8 @@ async function parseRepositoryFile(filePath: string, options: ListRepositoriesOp
 
 function displayRepositories(repositories: RepositoryInfo[], options: ListRepositoriesOptions): void {
   console.log('');
-  console.log(prism.bold(`🗃️  Repository Classes`));
-  console.log(prism.gray('─'.repeat(60)));
+  console.log(prism.bold(`Repository Classes`));
+  console.log(prism.gray('-'.repeat(60)));
 
   if (options.showMethods || options.showSchemas) {
     // Detailed view
@@ -248,16 +250,16 @@ function displayRepositories(repositories: RepositoryInfo[], options: ListReposi
       console.log(`  Stats:`);
       console.log(`    Lines: ${repo.stats?.linesOfCode}`);
       console.log(`    Methods: ${repo.stats?.methodCount}`);
-      if (repo.stats?.hasValidation) console.log(`    ✅ Has validation`);
-      if (repo.stats?.hasPagination) console.log(`    📄 Has pagination`);
-      if (repo.stats?.hasSoftDelete) console.log(`    🗑️ Has soft delete`);
+      if (repo.stats?.hasValidation) console.log(`    [OK] Has validation`);
+      if (repo.stats?.hasPagination) console.log(`    [OK] Has pagination`);
+      if (repo.stats?.hasSoftDelete) console.log(`    [OK] Has soft delete`);
 
       // Methods
       if (options.showMethods && repo.methods && repo.methods.length > 0) {
         console.log('');
         console.log('  Methods:');
         for (const method of repo.methods) {
-          console.log(`    • ${method}()`);
+          console.log(`    * ${method}()`);
         }
       }
 
@@ -268,7 +270,7 @@ function displayRepositories(repositories: RepositoryInfo[], options: ListReposi
         console.log('    Properties:');
         for (const prop of repo.schema.properties) {
           const isRequired = repo.schema.required.includes(prop);
-          console.log(`      • ${prop}${isRequired ? ' (required)' : ''}`);
+          console.log(`      * ${prop}${isRequired ? ' (required)' : ''}`);
         }
       }
     }
@@ -281,21 +283,21 @@ function displayRepositories(repositories: RepositoryInfo[], options: ListReposi
       Methods: String(repo.stats?.methodCount || 0),
       Features:
         [
-          repo.stats?.hasValidation ? '✅' : '',
-          repo.stats?.hasPagination ? '📄' : '',
-          repo.stats?.hasSoftDelete ? '🗑️' : '',
+          repo.stats?.hasValidation ? 'V' : '',
+          repo.stats?.hasPagination ? 'P' : '',
+          repo.stats?.hasSoftDelete ? 'S' : '',
         ]
           .filter(Boolean)
           .join(' ') || prism.gray('None'),
     }));
 
     console.log('');
-    console.log(table(tableData));
+    console.log(table(tableData as any));
   }
 
   // Summary
   console.log('');
-  console.log(prism.gray('─'.repeat(60)));
+  console.log(prism.gray('-'.repeat(60)));
   console.log(prism.cyan('Summary:'));
   console.log(`  Total Repositories: ${repositories.length}`);
 
@@ -310,6 +312,6 @@ function displayRepositories(repositories: RepositoryInfo[], options: ListReposi
   // Tips
   if (repositories.some((r) => !r.stats?.hasValidation)) {
     console.log('');
-    console.log(prism.yellow('💡 Tip: Consider adding Zod validation to repositories without it'));
+    console.log(prism.yellow('Tip: Consider adding Zod validation to repositories without it'));
   }
 }

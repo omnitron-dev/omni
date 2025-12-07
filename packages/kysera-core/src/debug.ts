@@ -8,13 +8,19 @@ import type {
   RootOperationNode,
 } from 'kysely';
 import { DefaultQueryCompiler } from 'kysely';
+import type { KyseraLogger } from './logger.js';
+import { consoleLogger } from './logger.js';
 
 export interface DebugOptions {
   logQuery?: boolean;
   logParams?: boolean;
   slowQueryThreshold?: number;
   onSlowQuery?: (sql: string, duration: number) => void;
-  logger?: (message: string) => void;
+  /**
+   * Logger for debug messages
+   * @default consoleLogger
+   */
+  logger?: KyseraLogger;
   /**
    * Maximum number of metrics to keep in memory
    * When limit is reached, oldest metrics are removed (circular buffer)
@@ -43,17 +49,16 @@ class DebugPlugin implements KyselyPlugin {
   private metrics: QueryMetrics[] = [];
   private queryData = new WeakMap<object, QueryData>();
   private maxMetrics: number;
+  private logger: KyseraLogger;
 
   constructor(private options: DebugOptions = {}) {
+    this.logger = options.logger ?? consoleLogger;
     this.options = {
       logQuery: true,
       logParams: false,
       slowQueryThreshold: 100,
       maxMetrics: 1000,
-      logger: (message: string): void => {
-        // Using console.warn which is allowed by ESLint rules
-        console.warn(message);
-      },
+      logger: this.logger,
       ...options,
     };
     this.maxMetrics = this.options.maxMetrics ?? 1000;
@@ -101,8 +106,8 @@ class DebugPlugin implements KyselyPlugin {
         const message = this.options.logParams
           ? `[SQL] ${data.sql}\n[Params] ${JSON.stringify(data.params)}`
           : `[SQL] ${data.sql}`;
-        this.options.logger?.(message);
-        this.options.logger?.(`[Duration] ${duration.toFixed(2)}ms`);
+        this.logger.debug(message);
+        this.logger.debug(`[Duration] ${duration.toFixed(2)}ms`);
       }
 
       // Check for slow query
@@ -110,7 +115,7 @@ class DebugPlugin implements KyselyPlugin {
         if (this.options.onSlowQuery) {
           this.options.onSlowQuery(data.sql, duration);
         } else {
-          this.options.logger?.(`[SLOW QUERY] ${duration.toFixed(2)}ms: ${data.sql}`);
+          this.logger.warn(`[SLOW QUERY] ${duration.toFixed(2)}ms: ${data.sql}`);
         }
       }
     }

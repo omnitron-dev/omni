@@ -2,8 +2,7 @@ import { Command } from 'commander';
 import { prism, spinner, table } from '@xec-sh/kit';
 import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
-import { getDatabaseConnection } from '../../utils/database.js';
-import { loadConfig } from '../../config/loader.js';
+import { withDatabase } from '../../utils/with-database.js';
 import { DatabaseIntrospector } from '../generate/introspector.js';
 
 export interface TablesOptions {
@@ -36,31 +35,11 @@ export function tablesCommand(): Command {
 }
 
 async function listTables(options: TablesOptions): Promise<void> {
-  // Load configuration
-  const config = await loadConfig(options.config);
+  await withDatabase({ config: options.config, verbose: options.verbose }, async (db, config) => {
+    const listSpinner = spinner() as any;
+    listSpinner.start('Fetching table information...');
 
-  if (!config?.database) {
-    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
-      'Create a kysera.config.ts file with database configuration',
-      'Or specify a config file with --config option',
-    ]);
-  }
-
-  // Get database connection
-  const db = await getDatabaseConnection(config.database);
-
-  if (!db) {
-    throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', [
-      'Check your database configuration',
-      'Ensure the database server is running',
-    ]);
-  }
-
-  const listSpinner = spinner();
-  listSpinner.start('Fetching table information...');
-
-  try {
-    const introspector = new DatabaseIntrospector(db, config.database.dialect as any);
+    const introspector = new DatabaseIntrospector(db, config.database!.dialect as any);
     const tables = await introspector.getTables();
 
     if (tables.length === 0) {
@@ -75,7 +54,7 @@ async function listTables(options: TablesOptions): Promise<void> {
       const tablesData = [];
       for (const tableName of tables) {
         const info = await introspector.getTableInfo(tableName);
-        const stats = await getTableStats(db, tableName, config.database.dialect);
+        const stats = await getTableStats(db, tableName, config.database!.dialect);
         tablesData.push({
           name: tableName,
           columns: info.columns.length,
@@ -92,11 +71,11 @@ async function listTables(options: TablesOptions): Promise<void> {
       // Verbose output - show detailed info for each table
       for (const tableName of tables) {
         const info = await introspector.getTableInfo(tableName);
-        const stats = await getTableStats(db, tableName, config.database.dialect);
+        const stats = await getTableStats(db, tableName, config.database!.dialect);
 
         console.log('');
-        console.log(prism.bold(`📋 Table: ${tableName}`));
-        console.log(prism.gray('─'.repeat(50)));
+        console.log(prism.bold(`Table: ${tableName}`));
+        console.log(prism.gray('-'.repeat(50)));
 
         // Statistics
         console.log('');
@@ -116,7 +95,7 @@ async function listTables(options: TablesOptions): Promise<void> {
           Default: col.defaultValue || '-',
           Key: col.isPrimaryKey ? 'PK' : col.isForeignKey ? 'FK' : '-',
         }));
-        console.log(table(columnData));
+        console.log(table(columnData as any));
 
         // Indexes
         if (info.indexes.length > 0) {
@@ -128,7 +107,7 @@ async function listTables(options: TablesOptions): Promise<void> {
             Unique: idx.isUnique ? 'Yes' : 'No',
             Primary: idx.isPrimary ? 'Yes' : 'No',
           }));
-          console.log(table(indexData));
+          console.log(table(indexData as any));
         }
 
         // Foreign Keys
@@ -139,15 +118,15 @@ async function listTables(options: TablesOptions): Promise<void> {
             Column: fk.column,
             References: `${fk.referencedTable}.${fk.referencedColumn}`,
           }));
-          console.log(table(fkData));
+          console.log(table(fkData as any));
         }
       }
 
       // Summary
       console.log('');
-      console.log(prism.gray('─'.repeat(50)));
+      console.log(prism.gray('-'.repeat(50)));
       console.log(prism.bold('Database Summary'));
-      const totalStats = await getDatabaseStats(db, tables, config.database.dialect);
+      const totalStats = await getDatabaseStats(db, tables, config.database!.dialect);
       console.log(`  Total Tables: ${tables.length}`);
       console.log(`  Total Rows: ${formatNumber(totalStats.totalRows)}`);
       console.log(`  Total Size: ${formatBytes(totalStats.totalSize)}`);
@@ -160,7 +139,7 @@ async function listTables(options: TablesOptions): Promise<void> {
       for (const tableName of tables) {
         try {
           const info = await introspector.getTableInfo(tableName);
-          const stats = await getTableStats(db, tableName, config.database.dialect);
+          const stats = await getTableStats(db, tableName, config.database!.dialect);
 
           tableData.push({
             Table: tableName,
@@ -184,21 +163,18 @@ async function listTables(options: TablesOptions): Promise<void> {
       }
 
       console.log('');
-      console.log(prism.bold('📋 Database Tables'));
+      console.log(prism.bold('Database Tables'));
       console.log('');
-      console.log(table(tableData));
+      console.log(table(tableData as any));
 
       // Summary
-      const totalStats = await getDatabaseStats(db, tables, config.database.dialect);
+      const totalStats = await getDatabaseStats(db, tables, config.database!.dialect);
       console.log('');
       console.log(
         prism.gray(`Total: ${tables.length} tables, ${formatBytes(totalStats.totalSize + totalStats.totalIndexSize)}`)
       );
     }
-  } finally {
-    // Close database connection
-    await db.destroy();
-  }
+  });
 }
 
 async function getTableStats(
@@ -217,7 +193,7 @@ async function getTableStats(
 
     if (dialect === 'postgres') {
       const sizeResult = await db
-        .selectNoFrom((eb) => [
+        .selectNoFrom((eb: any) => [
           eb.raw(`pg_relation_size('${tableName}')`).as('table_size'),
           eb.raw(`pg_indexes_size('${tableName}')`).as('index_size'),
         ])

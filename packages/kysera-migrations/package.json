@@ -33,7 +33,8 @@
   "author": "Kysera Team",
   "license": "MIT",
   "dependencies": {
-    "@kysera/core": "workspace:*"
+    "@kysera/core": "workspace:*",
+    "zod": "^4.1.13"
   },
   "peerDependencies": {
     "kysely": ">=0.28.8"

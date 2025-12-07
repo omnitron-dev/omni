@@ -24,6 +24,50 @@ class RollbackError extends Error {
 export type CleanupStrategy = 'truncate' | 'transaction' | 'delete';
 
 /**
+ * Strict regex pattern for valid SQL identifiers
+ * - Must start with a letter or underscore
+ * - Can contain letters, digits, and underscores
+ * - No special characters or SQL injection patterns
+ */
+const VALID_IDENTIFIER_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
+/**
+ * Validate an SQL identifier to prevent injection
+ */
+function validateIdentifier(name: string): string {
+  if (!name || typeof name !== 'string') {
+    throw new Error('Invalid identifier: must be a non-empty string');
+  }
+
+  const trimmed = name.trim();
+  if (trimmed.length === 0 || trimmed.length > 128) {
+    throw new Error('Invalid identifier: length must be between 1 and 128 characters');
+  }
+
+  if (!VALID_IDENTIFIER_PATTERN.test(trimmed)) {
+    throw new Error(`Invalid identifier ${trimmed}: must start with a letter or underscore and contain only letters, digits, and underscores`);
+  }
+
+  return trimmed;
+}
+
+/**
+ * Escape an identifier for PostgreSQL
+ */
+function escapePostgresIdentifier(name: string): string {
+  const valid = validateIdentifier(name);
+  return `${valid}`;
+}
+
+/**
+ * Escape an identifier for MySQL
+ */
+function escapeMysqlIdentifier(name: string): string {
+  const valid = validateIdentifier(name);
+  return `\`${valid}\``;
+}
+
+/**
  * Test in a transaction that automatically rolls back
  *
  * This is the FASTEST testing approach - no cleanup needed!
@@ -54,11 +98,9 @@ export async function testInTransaction<DB, T>(
   try {
     await db.transaction().execute(async (trx) => {
       await fn(trx);
-      // Throw special error to trigger rollback
       throw new RollbackError();
     });
   } catch (error) {
-    // Ignore RollbackError (expected), rethrow everything else
     if (!(error instanceof RollbackError)) {
       throw error;
     }
@@ -70,23 +112,6 @@ export async function testInTransaction<DB, T>(
  *
  * Useful for testing complex business logic that uses nested transactions
  *
- * @example
- * ```typescript
- * it('handles nested transactions', async () => {
- *   await testWithSavepoints(db, async (trx) => {
- *     // Create user
- *     await trx.insertInto('users').values({...}).execute()
- *
- *     // This will be rolled back
- *     await trx.raw('SAVEPOINT inner').execute()
- *     await trx.insertInto('posts').values({...}).execute()
- *     await trx.raw('ROLLBACK TO SAVEPOINT inner').execute()
- *
- *     // User remains, post is rolled back
- *   })
- * })
- * ```
- *
  * @param db - Kysely database instance
  * @param fn - Test function that receives transaction
  */
@@ -96,13 +121,11 @@ export async function testWithSavepoints<DB, T>(
 ): Promise<void> {
   try {
     await db.transaction().execute(async (trx) => {
-      // Create initial savepoint
       await sql`SAVEPOINT test_sp`.execute(trx);
 
       try {
         await fn(trx);
       } finally {
-        // Always rollback to savepoint before rolling back transaction
         try {
           await sql`ROLLBACK TO SAVEPOINT test_sp`.execute(trx);
         } catch {
@@ -110,7 +133,6 @@ export async function testWithSavepoints<DB, T>(
         }
       }
 
-      // Trigger transaction rollback
       throw new RollbackError();
     });
   } catch (error) {
@@ -123,18 +145,8 @@ export async function testWithSavepoints<DB, T>(
 /**
  * Clean database using specified strategy
  *
- * @example
- * ```typescript
- * afterEach(async () => {
- *   await cleanDatabase(db, 'delete')
- * })
- * ```
- *
  * @param db - Kysely database instance
  * @param strategy - Cleanup strategy
- *   - 'transaction': No-op (used with testInTransaction)
- *   - 'delete': DELETE FROM each table (fast, preserves sequences)
- *   - 'truncate': TRUNCATE tables (thorough, resets sequences)
  * @param tables - Optional list of tables to clean (in deletion order)
  */
 export async function cleanDatabase<DB>(
@@ -143,7 +155,6 @@ export async function cleanDatabase<DB>(
   tables?: string[]
 ): Promise<void> {
   if (strategy === 'transaction') {
-    // No-op - testInTransaction handles cleanup
     return;
   }
 
@@ -152,38 +163,40 @@ export async function cleanDatabase<DB>(
   }
 
   if (strategy === 'delete') {
-    // Delete in reverse FK order (most dependent first)
     for (const table of tables) {
       await db.deleteFrom(table as any).execute();
     }
   } else if (strategy === 'truncate') {
-    // TRUNCATE is database-specific
     const dialect = (db as any).getExecutor().adapter.dialect;
 
     if (dialect.constructor.name.includes('Postgres')) {
-      // PostgreSQL: Disable FK checks temporarily
       await (db as any).raw('SET session_replication_role = replica').execute();
 
       for (const table of tables) {
-        await (db as any).raw(`TRUNCATE TABLE "${table}" CASCADE`).execute();
+        // Validate and escape table name to prevent SQL injection
+        const escapedTable = escapePostgresIdentifier(table);
+        await (db as any).raw(`TRUNCATE TABLE ${escapedTable} CASCADE`).execute();
       }
 
       await (db as any).raw('SET session_replication_role = DEFAULT').execute();
     } else if (dialect.constructor.name.includes('Mysql')) {
-      // MySQL: Disable FK checks
       await (db as any).raw('SET FOREIGN_KEY_CHECKS = 0').execute();
 
       for (const table of tables) {
-        await (db as any).raw(`TRUNCATE TABLE \`${table}\``).execute();
+        // Validate and escape table name to prevent SQL injection
+        const escapedTable = escapeMysqlIdentifier(table);
+        await (db as any).raw(`TRUNCATE TABLE ${escapedTable}`).execute();
       }
 
       await (db as any).raw('SET FOREIGN_KEY_CHECKS = 1').execute();
     } else {
       // SQLite: No TRUNCATE, use DELETE
       for (const table of tables) {
+        // Validate table name
+        const validTable = validateIdentifier(table);
         await db.deleteFrom(table as any).execute();
-        // Reset sequences
-        await (db as any).raw(`DELETE FROM sqlite_sequence WHERE name='${table}'`).execute();
+        // Reset sequences - use validated name
+        await (db as any).raw(`DELETE FROM sqlite_sequence WHERE name='${validTable}'`).execute();
       }
     }
   }
@@ -191,19 +204,6 @@ export async function cleanDatabase<DB>(
 
 /**
  * Generic test data factory
- *
- * @example
- * ```typescript
- * const createTestUser = createFactory<User>({
- *   id: 1,
- *   email: () => `test${Date.now()}@example.com`,
- *   name: 'Test User',
- *   created_at: () => new Date()
- * })
- *
- * const user1 = createTestUser() // Uses defaults
- * const user2 = createTestUser({ name: 'Custom Name' }) // Override
- * ```
  *
  * @param defaults - Default values (can be values or functions)
  * @returns Factory function that creates test data
@@ -214,12 +214,10 @@ export function createFactory<T extends Record<string, any>>(defaults: {
   return (overrides = {}) => {
     const result = {} as T;
 
-    // Apply defaults
     for (const [key, value] of Object.entries(defaults)) {
       result[key as keyof T] = typeof value === 'function' ? (value as () => any)() : value;
     }
 
-    // Apply overrides
     for (const [key, value] of Object.entries(overrides)) {
       result[key as keyof T] = value as T[keyof T];
     }
@@ -230,14 +228,6 @@ export function createFactory<T extends Record<string, any>>(defaults: {
 
 /**
  * Wait for a condition to be true (useful for async operations)
- *
- * @example
- * ```typescript
- * await waitFor(async () => {
- *   const user = await db.selectFrom('users').selectAll().executeTakeFirst()
- *   return user !== undefined
- * }, { timeout: 5000 })
- * ```
  *
  * @param condition - Function that returns true when condition is met
  * @param options - Configuration options
@@ -268,16 +258,6 @@ export async function waitFor(
 /**
  * Seed database with test data
  *
- * @example
- * ```typescript
- * await seedDatabase(db, async (trx) => {
- *   await trx.insertInto('users').values([
- *     { email: 'user1@example.com', name: 'User 1' },
- *     { email: 'user2@example.com', name: 'User 2' }
- *   ]).execute()
- * })
- * ```
- *
  * @param db - Kysely database instance
  * @param fn - Seeding function
  */
@@ -293,13 +273,6 @@ export type IsolationLevel = 'read uncommitted' | 'read committed' | 'repeatable
 /**
  * Test with specific transaction isolation level
  *
- * @example
- * ```typescript
- * await testWithIsolation(db, 'serializable', async (trx) => {
- *   // Test concurrent access scenarios
- * })
- * ```
- *
  * @param db - Kysely database instance
  * @param isolationLevel - Transaction isolation level
  * @param fn - Test function
@@ -311,7 +284,6 @@ export async function testWithIsolation<DB, T>(
 ): Promise<void> {
   try {
     await db.transaction().execute(async (trx) => {
-      // Set isolation level
       await (trx as any).raw(`SET TRANSACTION ISOLATION LEVEL ${isolationLevel.toUpperCase()}`).execute();
 
       await fn(trx);
@@ -328,16 +300,6 @@ export async function testWithIsolation<DB, T>(
 /**
  * Snapshot database state for later comparison
  *
- * @example
- * ```typescript
- * const snapshot = await snapshotTable(db, 'users')
- *
- * // Make changes...
- *
- * const current = await snapshotTable(db, 'users')
- * expect(current).toEqual(snapshot) // Or check differences
- * ```
- *
  * @param db - Kysely database instance
  * @param table - Table name
  * @returns Array of all rows in the table
@@ -351,12 +313,6 @@ export async function snapshotTable<DB>(db: Kysely<DB>, table: string): Promise<
 
 /**
  * Count rows in a table
- *
- * @example
- * ```typescript
- * const count = await countRows(db, 'users')
- * expect(count).toBe(5)
- * ```
  *
  * @param db - Kysely database instance
  * @param table - Table name

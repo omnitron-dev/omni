@@ -1,8 +1,7 @@
 import { Command } from 'commander';
 import { prism, spinner } from '@xec-sh/kit';
 import { CLIError } from '../../utils/errors.js';
-import { getDatabaseConnection } from '../../utils/database.js';
-import { loadConfig } from '../../config/loader.js';
+import { withDatabase } from '../../utils/with-database.js';
 import { DatabaseIntrospector } from '../generate/introspector.js';
 import { writeFileSync } from 'fs';
 import { resolve } from 'path';
@@ -48,31 +47,11 @@ async function dumpDatabase(options: DumpOptions): Promise<void> {
     throw new CLIError('Cannot use both --data-only and --schema-only', 'INVALID_OPTIONS');
   }
 
-  // Load configuration
-  const config = await loadConfig(options.config);
+  await withDatabase({ config: options.config }, async (db, config) => {
+    const dumpSpinner = spinner() as any;
+    dumpSpinner.start('Creating database dump...');
 
-  if (!config?.database) {
-    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
-      'Create a kysera.config.ts file with database configuration',
-      'Or specify a config file with --config option',
-    ]);
-  }
-
-  // Get database connection
-  const db = await getDatabaseConnection(config.database);
-
-  if (!db) {
-    throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', [
-      'Check your database configuration',
-      'Ensure the database server is running',
-    ]);
-  }
-
-  const dumpSpinner = spinner() as any;
-  dumpSpinner.start('Creating database dump...');
-
-  try {
-    const introspector = new DatabaseIntrospector(db, config.database.dialect as any);
+    const introspector = new DatabaseIntrospector(db, config.database!.dialect as any);
 
     // Get tables to dump
     let tables: string[];
@@ -107,7 +86,7 @@ async function dumpDatabase(options: DumpOptions): Promise<void> {
       dumpContent = await generateJsonDump(db, introspector, tables, options);
     } else {
       // SQL format
-      dumpContent = await generateSqlDump(db, introspector, tables, options, config.database.dialect);
+      dumpContent = await generateSqlDump(db, introspector, tables, options, config.database!.dialect);
     }
 
     // Write to file
@@ -123,10 +102,7 @@ async function dumpDatabase(options: DumpOptions): Promise<void> {
     console.log(`  Schema: ${options.dataOnly ? 'No' : 'Yes'}`);
     console.log(`  Data: ${options.schemaOnly ? 'No' : 'Yes'}`);
     console.log(`  File Size: ${formatBytes(dumpContent.length)}`);
-  } finally {
-    // Close database connection
-    await db.destroy();
-  }
+  });
 }
 
 async function generateJsonDump(

@@ -2,9 +2,8 @@ import { Command } from 'commander';
 import { prism, spinner } from '@xec-sh/kit';
 import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
-import { getDatabaseConnection } from '../../utils/database.js';
-import { loadConfig } from '../../config/loader.js';
-import { performHealthCheck, HealthCheckResult } from '@kysera/core';
+import { withDatabase } from '../../utils/with-database.js';
+import { performHealthCheck, type HealthCheckResult } from '@kysera/core';
 
 export interface CheckOptions {
   json?: boolean;
@@ -44,28 +43,8 @@ export function checkCommand(): Command {
 }
 
 async function checkHealth(options: CheckOptions): Promise<void> {
-  // Load configuration
-  const config = await loadConfig(options.config);
-
-  if (!config?.database) {
-    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
-      'Create a kysera.config.ts file with database configuration',
-      'Or specify a config file with --config option',
-    ]);
-  }
-
-  // Get database connection
-  const db = await getDatabaseConnection(config.database);
-
-  if (!db) {
-    throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', [
-      'Check your database configuration',
-      'Ensure the database server is running',
-    ]);
-  }
-
-  try {
-    const checkSpinner = spinner();
+  await withDatabase({ config: options.config, verbose: options.verbose }, async (db) => {
+    const checkSpinner = spinner() as any;
     if (!options.json) {
       checkSpinner.start('Performing health check...');
     }
@@ -82,27 +61,28 @@ async function checkHealth(options: CheckOptions): Promise<void> {
     }
 
     // Add latency to result
-    const fullResult = {
+    const fullResult: HealthCheckResult = {
       ...result,
       metrics: {
         ...result.metrics,
         checkLatency: latency,
       },
-      timestamp: new Date().toISOString(),
+      timestamp: result.timestamp || new Date(),
     };
 
     if (options.json) {
-      // Output as JSON
-      console.log(JSON.stringify(fullResult, null, 2));
+      // Output as JSON - convert Date to ISO string for JSON output
+      const jsonOutput = {
+        ...fullResult,
+        timestamp: fullResult.timestamp.toISOString(),
+      };
+      console.log(JSON.stringify(jsonOutput, null, 2));
       return;
     }
 
     // Display health check results
     displayHealthResults(fullResult, options.verbose || false);
-  } finally {
-    // Close database connection
-    await db.destroy();
-  }
+  });
 }
 
 async function watchHealth(options: CheckOptions): Promise<void> {
@@ -149,23 +129,23 @@ async function watchHealth(options: CheckOptions): Promise<void> {
   }
 }
 
-function displayHealthResults(result: HealthCheckResult & { timestamp: string }, verbose: boolean): void {
+function displayHealthResults(result: HealthCheckResult, verbose: boolean): void {
   console.log('');
-  console.log(prism.bold('🏥 Database Health Check'));
+  console.log(prism.bold('Database Health Check'));
   console.log('');
 
   // Overall status
-  const statusIcon = result.status === 'healthy' ? '✅' : result.status === 'degraded' ? '⚠️' : '❌';
+  const statusIcon = result.status === 'healthy' ? '[OK]' : result.status === 'degraded' ? '[WARN]' : '[ERR]';
   const statusColor =
     result.status === 'healthy' ? prism.green : result.status === 'degraded' ? prism.yellow : prism.red;
-  console.log(`Status: ${statusIcon} ${statusColor(result.status.charAt(0).toUpperCase() + result.status.slice(1))}`);
+  console.log(`Status: ${statusColor(statusIcon + ' ' + result.status.charAt(0).toUpperCase() + result.status.slice(1))}`);
   console.log('');
 
   // Connection info
   console.log('Connection:');
   const connChecks = result.checks.filter((c) => c.name.includes('connection') || c.name.includes('Connection'));
   for (const check of connChecks) {
-    const icon = check.status === 'healthy' ? prism.green('✓') : prism.red('✗');
+    const icon = check.status === 'healthy' ? prism.green('[OK]') : prism.red('[ERR]');
     console.log(`  ${icon} ${check.name}`);
     if (check.message && (verbose || check.status !== 'healthy')) {
       console.log(`     ${prism.gray(check.message)}`);
@@ -173,11 +153,11 @@ function displayHealthResults(result: HealthCheckResult & { timestamp: string },
   }
 
   if (result.metrics?.checkLatency !== undefined) {
-    console.log(`  ${prism.green('✓')} Latency: ${result.metrics.checkLatency}ms`);
+    console.log(`  ${prism.green('[OK]')} Latency: ${result.metrics.checkLatency}ms`);
   }
 
   if (result.metrics?.databaseVersion) {
-    console.log(`  ${prism.green('✓')} Version: ${result.metrics.databaseVersion}`);
+    console.log(`  ${prism.green('[OK]')} Version: ${result.metrics.databaseVersion}`);
   }
   console.log('');
 
@@ -210,10 +190,10 @@ function displayHealthResults(result: HealthCheckResult & { timestamp: string },
       for (const check of otherChecks) {
         const icon =
           check.status === 'healthy'
-            ? prism.green('✓')
+            ? prism.green('[OK]')
             : check.status === 'degraded'
-              ? prism.yellow('⚠')
-              : prism.red('✗');
+              ? prism.yellow('[WARN]')
+              : prism.red('[ERR]');
         console.log(`  ${icon} ${check.name}`);
         if (check.message) {
           console.log(`     ${prism.gray(check.message)}`);
@@ -232,10 +212,10 @@ function displayHealthResults(result: HealthCheckResult & { timestamp: string },
   if (result.errors && result.errors.length > 0) {
     console.log(prism.red('Errors:'));
     for (const error of result.errors) {
-      console.log(`  • ${error}`);
+      console.log(`  * ${error}`);
     }
     console.log('');
   }
 
-  console.log(prism.gray(`Last check: ${result.timestamp}`));
+  console.log(prism.gray(`Last check: ${result.timestamp.toISOString()}`));
 }

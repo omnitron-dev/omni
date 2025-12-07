@@ -1,6 +1,14 @@
 import { Kysely, sql } from 'kysely';
 import { CLIDatabaseError } from '../errors.js';
 import { logger } from '../logger.js';
+import {
+  validateIdentifier,
+  escapeIdentifier,
+  safeOptimizeTable,
+  safeCheckTable,
+  safeRepairTable,
+  escapeTypedIdentifier,
+} from '../sql-sanitizer.js';
 
 /**
  * MySQL specific utilities
@@ -87,7 +95,6 @@ export async function getIndexSize(
       return 'Unknown';
     }
 
-    // Assuming default page size of 16KB
     const sizeInKB = (result.sizePages * 16).toFixed(2);
     return `${sizeInKB} KB`;
   } catch (error) {
@@ -126,14 +133,14 @@ export async function getSlowQueries(
       .selectFrom('information_schema.processlist')
       .select(['info as query', 'time as duration', 'state'])
       .where('command', '!=', 'Sleep')
-      .where('time', '>', thresholdMs / 1000) // Convert to seconds
+      .where('time', '>', thresholdMs / 1000)
       .orderBy('time', 'desc')
       .limit(10)
       .execute();
 
     return result.map((r) => ({
       query: r.query || '',
-      duration: (r.duration || 0) * 1000, // Convert to milliseconds
+      duration: (r.duration || 0) * 1000,
       state: r.state || '',
     }));
   } catch (error) {
@@ -147,6 +154,10 @@ export async function getSlowQueries(
  */
 export async function killConnection(db: Kysely<any>, processId: number): Promise<boolean> {
   try {
+    // Process ID is a number, so it's safe to interpolate
+    if (!Number.isInteger(processId) || processId < 0) {
+      throw new Error('Invalid process ID');
+    }
     await sql.raw(`KILL ${processId}`).execute(db);
     return true;
   } catch (error) {
@@ -160,7 +171,8 @@ export async function killConnection(db: Kysely<any>, processId: number): Promis
  */
 export async function optimizeTable(db: Kysely<any>, tableName: string): Promise<void> {
   try {
-    await sql.raw(`OPTIMIZE TABLE \`${tableName}\``).execute(db);
+    // Use safe SQL builder
+    await sql.raw(safeOptimizeTable(tableName)).execute(db);
   } catch (error: any) {
     throw new CLIDatabaseError(`Failed to optimize table ${tableName}: ${error.message}`);
   }
@@ -171,7 +183,9 @@ export async function optimizeTable(db: Kysely<any>, tableName: string): Promise
  */
 export async function analyzeTable(db: Kysely<any>, tableName: string): Promise<void> {
   try {
-    await sql.raw(`ANALYZE TABLE \`${tableName}\``).execute(db);
+    // Validate and escape table name
+    const escapedTable = escapeTypedIdentifier(tableName, 'table', 'mysql');
+    await sql.raw(`ANALYZE TABLE ${escapedTable}`).execute(db);
   } catch (error: any) {
     throw new CLIDatabaseError(`Failed to analyze table ${tableName}: ${error.message}`);
   }
@@ -182,9 +196,9 @@ export async function analyzeTable(db: Kysely<any>, tableName: string): Promise<
  */
 export async function checkTable(db: Kysely<any>, tableName: string): Promise<boolean> {
   try {
-    const result = await sql.raw<any>(`CHECK TABLE \`${tableName}\``).execute(db);
+    // Use safe SQL builder
+    const result = await sql.raw<any>(safeCheckTable(tableName)).execute(db);
 
-    // Check if any row has Msg_text = 'OK'
     return result.rows.some((row: any) => row.Msg_text === 'OK');
   } catch (error) {
     logger.debug(`Failed to check table ${tableName}:`, error);
@@ -197,7 +211,8 @@ export async function checkTable(db: Kysely<any>, tableName: string): Promise<bo
  */
 export async function repairTable(db: Kysely<any>, tableName: string): Promise<void> {
   try {
-    await sql.raw(`REPAIR TABLE \`${tableName}\``).execute(db);
+    // Use safe SQL builder
+    await sql.raw(safeRepairTable(tableName)).execute(db);
   } catch (error: any) {
     throw new CLIDatabaseError(`Failed to repair table ${tableName}: ${error.message}`);
   }
@@ -231,7 +246,14 @@ export async function createDatabase(
   collation: string = 'utf8mb4_unicode_ci'
 ): Promise<void> {
   try {
-    await sql.raw(`CREATE DATABASE \`${databaseName}\` CHARACTER SET ${charset} COLLATE ${collation}`).execute(db);
+    // Validate database name and charset/collation
+    validateIdentifier(databaseName, 'database');
+    // Charset and collation should also be validated
+    if (!/^[a-zA-Z0-9_]+$/.test(charset) || !/^[a-zA-Z0-9_]+$/.test(collation)) {
+      throw new Error('Invalid charset or collation');
+    }
+    const escapedDb = escapeTypedIdentifier(databaseName, 'database', 'mysql');
+    await sql.raw(`CREATE DATABASE ${escapedDb} CHARACTER SET ${charset} COLLATE ${collation}`).execute(db);
   } catch (error: any) {
     throw new CLIDatabaseError(`Failed to create database ${databaseName}: ${error.message}`);
   }
@@ -242,7 +264,9 @@ export async function createDatabase(
  */
 export async function dropDatabase(db: Kysely<any>, databaseName: string): Promise<void> {
   try {
-    await sql.raw(`DROP DATABASE IF EXISTS \`${databaseName}\``).execute(db);
+    // Validate and escape database name
+    const escapedDb = escapeTypedIdentifier(databaseName, 'database', 'mysql');
+    await sql.raw(`DROP DATABASE IF EXISTS ${escapedDb}`).execute(db);
   } catch (error: any) {
     throw new CLIDatabaseError(`Failed to drop database ${databaseName}: ${error.message}`);
   }

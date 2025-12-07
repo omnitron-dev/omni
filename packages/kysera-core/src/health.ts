@@ -1,5 +1,7 @@
 import type { Kysely } from 'kysely';
 import type { QueryMetrics } from './debug.js';
+import type { KyseraLogger } from './logger.js';
+import { consoleLogger } from './logger.js';
 
 export interface HealthCheckResult {
   status: 'healthy' | 'degraded' | 'unhealthy';
@@ -493,25 +495,48 @@ export async function getMetrics<DB>(
 }
 
 /**
+ * Options for HealthMonitor
+ */
+export interface HealthMonitorOptions {
+  /** Connection pool for metrics */
+  pool?: MetricsPool;
+  /** Interval between health checks in milliseconds */
+  intervalMs?: number;
+  /** Logger for health check messages */
+  logger?: KyseraLogger;
+}
+
+/**
  * Monitor database health continuously
  */
 export class HealthMonitor {
   private intervalId: NodeJS.Timeout | undefined;
   private lastCheck?: HealthCheckResult;
+  private pool: MetricsPool | undefined;
+  private intervalMs: number;
+  private logger: KyseraLogger;
 
   constructor(
     private db: Kysely<any>,
-    private pool?: MetricsPool,
-    private intervalMs: number = 30000
-  ) {}
+    options: HealthMonitorOptions = {}
+  ) {
+    this.pool = options.pool;
+    this.intervalMs = options.intervalMs ?? 30000;
+    this.logger = options.logger ?? consoleLogger;
+  }
 
   start(onCheck?: (result: HealthCheckResult) => void): void {
     if (this.intervalId) {
       return;
     }
 
+    this.logger.debug(`Starting health monitor with ${this.intervalMs}ms interval`);
+
     const check = async () => {
       this.lastCheck = await checkDatabaseHealth(this.db, this.pool);
+      if (this.lastCheck.status !== 'healthy') {
+        this.logger.warn(`Health check status: ${this.lastCheck.status}`);
+      }
       onCheck?.(this.lastCheck);
     };
 
@@ -524,6 +549,7 @@ export class HealthMonitor {
 
   stop(): void {
     if (this.intervalId !== undefined) {
+      this.logger.debug('Stopping health monitor');
       clearInterval(this.intervalId);
       this.intervalId = undefined;
     }
@@ -543,9 +569,10 @@ export async function gracefulShutdown<DB>(
   options: {
     timeoutMs?: number;
     onShutdown?: () => void | Promise<void>;
+    logger?: KyseraLogger;
   } = {}
 ): Promise<void> {
-  const { timeoutMs = 30000, onShutdown } = options;
+  const { timeoutMs = 30000, onShutdown, logger = consoleLogger } = options;
 
   const shutdownPromise = async () => {
     try {
@@ -554,7 +581,7 @@ export async function gracefulShutdown<DB>(
       }
       await db.destroy();
     } catch (error) {
-      console.error('Error during database shutdown:', error);
+      logger.error('Error during database shutdown:', error);
       throw error;
     }
   };
@@ -577,23 +604,24 @@ export function registerShutdownHandlers<DB>(
     signals?: string[];
     timeoutMs?: number;
     onShutdown?: () => void | Promise<void>;
+    logger?: KyseraLogger;
   } = {}
 ): void {
-  const { signals = ['SIGTERM', 'SIGINT'], ...shutdownOptions } = options;
+  const { signals = ['SIGTERM', 'SIGINT'], logger = consoleLogger, ...shutdownOptions } = options;
   let isShuttingDown = false;
 
   const handleShutdown = async (signal: string) => {
     if (isShuttingDown) return;
     isShuttingDown = true;
 
-    console.log(`Received ${signal}, starting graceful shutdown...`);
+    logger.info(`Received ${signal}, starting graceful shutdown...`);
 
     try {
-      await gracefulShutdown(db, shutdownOptions);
-      console.log('Database connections closed successfully');
+      await gracefulShutdown(db, { ...shutdownOptions, logger });
+      logger.info('Database connections closed successfully');
       process.exit(0);
     } catch (error) {
-      console.error('Error during shutdown:', error);
+      logger.error('Error during shutdown:', error);
       process.exit(1);
     }
   };

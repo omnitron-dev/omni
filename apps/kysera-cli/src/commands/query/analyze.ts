@@ -2,8 +2,7 @@ import { Command } from 'commander';
 import { prism, spinner, table } from '@xec-sh/kit';
 import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
-import { getDatabaseConnection } from '../../utils/database.js';
-import { loadConfig } from '../../config/loader.js';
+import { withDatabase } from '../../utils/with-database.js';
 
 export interface AnalyzeOptions {
   query?: string;
@@ -85,38 +84,18 @@ async function analyzeQueryPerformance(options: AnalyzeOptions): Promise<void> {
       );
     }
   } else {
-    throw new CLIError('No query specified', 'MISSING_QUERY', [
+    throw new CLIError('No query specified', 'MISSING_QUERY', undefined, [
       'Use --query to specify a SQL query',
       'Or use --file to read from a file',
     ]);
   }
 
-  // Load configuration
-  const config = await loadConfig(options.config);
+  await withDatabase({ config: options.config }, async (db, config) => {
+    const analyzeSpinner = spinner() as any;
+    analyzeSpinner.start('Analyzing query...');
 
-  if (!config?.database) {
-    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
-      'Create a kysera.config.ts file with database configuration',
-      'Or specify a config file with --config option',
-    ]);
-  }
-
-  // Get database connection
-  const db = await getDatabaseConnection(config.database);
-
-  if (!db) {
-    throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', [
-      'Check your database configuration',
-      'Ensure the database server is running',
-    ]);
-  }
-
-  const analyzeSpinner = spinner();
-  analyzeSpinner.start('Analyzing query...');
-
-  try {
     // Analyze the query
-    const analysis = await performAnalysis(db, queryToAnalyze, config.database.dialect, options);
+    const analysis = await performAnalysis(db, queryToAnalyze, config.database!.dialect, options);
 
     analyzeSpinner.succeed('Analysis complete');
 
@@ -126,10 +105,7 @@ async function analyzeQueryPerformance(options: AnalyzeOptions): Promise<void> {
     } else {
       displayAnalysisResults(analysis, options);
     }
-  } finally {
-    // Close database connection
-    await db.destroy();
-  }
+  });
 }
 
 async function performAnalysis(
@@ -317,12 +293,12 @@ function extractPostgresIndexes(plan: any, analysis: QueryAnalysis): void {
 
     // Check for sequential scans
     if (plan['Node Type'] === 'Seq Scan') {
-      const table = plan['Relation Name'] || 'unknown';
-      analysis.warnings.push(`Sequential scan on table ${table}`);
+      const tableName = plan['Relation Name'] || 'unknown';
+      analysis.warnings.push(`Sequential scan on table ${tableName}`);
 
       // Try to identify missing indexes from filter conditions
       if (plan['Filter']) {
-        analysis.missingIndexes.push(`${table} (consider index on filtered columns)`);
+        analysis.missingIndexes.push(`${tableName} (consider index on filtered columns)`);
       }
     }
   }
@@ -358,15 +334,15 @@ function checkPostgresWarnings(plan: any, analysis: QueryAnalysis): void {
 async function getTableStatistics(db: any, tables: string[], dialect: string): Promise<TableStatistics[]> {
   const stats: TableStatistics[] = [];
 
-  for (const table of tables) {
+  for (const tableName of tables) {
     try {
       const stat: TableStatistics = {
-        table,
+        table: tableName,
         rowCount: 0,
       };
 
       // Get row count
-      const countResult = await db.selectFrom(table).select(db.fn.countAll().as('count')).executeTakeFirst();
+      const countResult = await db.selectFrom(tableName).select(db.fn.countAll().as('count')).executeTakeFirst();
       stat.rowCount = Number(countResult?.count || 0);
 
       // Get additional statistics based on dialect
@@ -374,8 +350,8 @@ async function getTableStatistics(db: any, tables: string[], dialect: string): P
         const statsResult = await db.executeQuery(
           db.raw(`
           SELECT
-            pg_relation_size('${table}') as data_length,
-            pg_indexes_size('${table}') as index_length
+            pg_relation_size('${tableName}') as data_length,
+            pg_indexes_size('${tableName}') as index_length
         `)
         );
 
@@ -391,7 +367,7 @@ async function getTableStatistics(db: any, tables: string[], dialect: string): P
             INDEX_LENGTH,
             AVG_ROW_LENGTH
           FROM information_schema.TABLES
-          WHERE TABLE_NAME = '${table}'
+          WHERE TABLE_NAME = '${tableName}'
         `)
         );
 
@@ -404,7 +380,7 @@ async function getTableStatistics(db: any, tables: string[], dialect: string): P
 
       stats.push(stat);
     } catch (error) {
-      logger.debug(`Failed to get statistics for table ${table}: ${error}`);
+      logger.debug(`Failed to get statistics for table ${tableName}: ${error}`);
     }
   }
 
@@ -467,8 +443,8 @@ function generateSuggestions(analysis: QueryAnalysis): void {
 
 function displayAnalysisResults(analysis: QueryAnalysis, options: AnalyzeOptions): void {
   console.log('');
-  console.log(prism.bold('🔍 Query Analysis'));
-  console.log(prism.gray('─'.repeat(60)));
+  console.log(prism.bold('Query Analysis'));
+  console.log(prism.gray('-'.repeat(60)));
 
   // Query info
   console.log('');
@@ -512,17 +488,17 @@ function displayAnalysisResults(analysis: QueryAnalysis, options: AnalyzeOptions
 
     if (analysis.indexesUsed.length > 0) {
       for (const index of analysis.indexesUsed) {
-        console.log(`  ✅ ${index}`);
+        console.log(`  [OK] ${index}`);
       }
     } else {
-      console.log(prism.yellow('  ⚠ No indexes used'));
+      console.log(prism.yellow('  [WARN] No indexes used'));
     }
 
     if (analysis.missingIndexes.length > 0) {
       console.log('');
       console.log(prism.cyan('Missing Indexes:'));
       for (const missing of analysis.missingIndexes) {
-        console.log(`  ❌ ${missing}`);
+        console.log(`  [ERR] ${missing}`);
       }
     }
   }
@@ -539,7 +515,7 @@ function displayAnalysisResults(analysis: QueryAnalysis, options: AnalyzeOptions
       'Index Size': formatBytes(stat.indexLength || 0),
     }));
 
-    console.log(table(statsData));
+    console.log(table(statsData as any));
   }
 
   // Warnings
@@ -547,7 +523,7 @@ function displayAnalysisResults(analysis: QueryAnalysis, options: AnalyzeOptions
     console.log('');
     console.log(prism.cyan('Warnings:'));
     for (const warning of analysis.warnings) {
-      console.log(`  ${prism.yellow('⚠')} ${warning}`);
+      console.log(`  ${prism.yellow('[WARN]')} ${warning}`);
     }
   }
 
@@ -562,16 +538,16 @@ function displayAnalysisResults(analysis: QueryAnalysis, options: AnalyzeOptions
 
   // Overall assessment
   console.log('');
-  console.log(prism.gray('─'.repeat(60)));
+  console.log(prism.gray('-'.repeat(60)));
   console.log(prism.gray('Overall Assessment:'));
 
   const issues = analysis.warnings.length + analysis.missingIndexes.length;
   if (issues === 0 && (analysis.executionTime || 0) < 100) {
-    console.log(prism.green('  ✅ Query appears well-optimized'));
+    console.log(prism.green('  [OK] Query appears well-optimized'));
   } else if (issues <= 2) {
-    console.log(prism.yellow('  ⚠ Minor optimization opportunities detected'));
+    console.log(prism.yellow('  [WARN] Minor optimization opportunities detected'));
   } else {
-    console.log(prism.red('  ❌ Significant optimization needed'));
+    console.log(prism.red('  [ERR] Significant optimization needed'));
   }
 
   // Benchmark info
@@ -604,9 +580,9 @@ function extractTables(query: string): string[] {
   const fromMatch = query.match(/FROM\s+([^\s,()]+)/gi);
   if (fromMatch) {
     for (const match of fromMatch) {
-      const table = match.replace(/FROM\s+/i, '').trim();
-      if (table && !table.startsWith('(')) {
-        tables.push(table);
+      const tableName = match.replace(/FROM\s+/i, '').trim();
+      if (tableName && !tableName.startsWith('(')) {
+        tables.push(tableName);
       }
     }
   }
@@ -615,9 +591,9 @@ function extractTables(query: string): string[] {
   const joinMatch = query.match(/JOIN\s+([^\s]+)/gi);
   if (joinMatch) {
     for (const match of joinMatch) {
-      const table = match.replace(/JOIN\s+/i, '').trim();
-      if (table && !tables.includes(table)) {
-        tables.push(table);
+      const tableName = match.replace(/JOIN\s+/i, '').trim();
+      if (tableName && !tables.includes(tableName)) {
+        tables.push(tableName);
       }
     }
   }

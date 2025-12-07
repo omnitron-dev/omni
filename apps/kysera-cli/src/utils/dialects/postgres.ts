@@ -1,6 +1,12 @@
 import { Kysely, sql } from 'kysely';
 import { CLIDatabaseError } from '../errors.js';
 import { logger } from '../logger.js';
+import {
+  validateIdentifier,
+  escapeTypedIdentifier,
+  safeVacuumAnalyze,
+  safeCreateExtension,
+} from '../sql-sanitizer.js';
 
 /**
  * PostgreSQL specific utilities
@@ -64,7 +70,8 @@ export async function checkExtension(db: Kysely<any>, extensionName: string): Pr
  */
 export async function createExtension(db: Kysely<any>, extensionName: string): Promise<void> {
   try {
-    await sql.raw(`CREATE EXTENSION IF NOT EXISTS "${extensionName}"`).execute(db);
+    // Use safe extension creation
+    await sql.raw(safeCreateExtension(extensionName)).execute(db);
   } catch (error: any) {
     throw new CLIDatabaseError(`Failed to create extension ${extensionName}: ${error.message}`);
   }
@@ -75,8 +82,10 @@ export async function createExtension(db: Kysely<any>, extensionName: string): P
  */
 export async function getTableSize(db: Kysely<any>, tableName: string): Promise<string> {
   try {
+    // Validate table name before using in query
+    const validName = validateIdentifier(tableName, 'table');
     const result = await db
-      .selectNoFrom(sql<string>`pg_size_pretty(pg_total_relation_size(${tableName}))`.as('size'))
+      .selectNoFrom(sql<string>`pg_size_pretty(pg_total_relation_size(${validName}))`.as('size'))
       .executeTakeFirst();
 
     return result?.size || 'Unknown';
@@ -91,8 +100,10 @@ export async function getTableSize(db: Kysely<any>, tableName: string): Promise<
  */
 export async function getIndexSize(db: Kysely<any>, indexName: string): Promise<string> {
   try {
+    // Validate index name before using in query
+    const validName = validateIdentifier(indexName, 'index');
     const result = await db
-      .selectNoFrom(sql<string>`pg_size_pretty(pg_relation_size(${indexName}))`.as('size'))
+      .selectNoFrom(sql<string>`pg_size_pretty(pg_relation_size(${validName}))`.as('size'))
       .executeTakeFirst();
 
     return result?.size || 'Unknown';
@@ -149,6 +160,10 @@ export async function getSlowQueries(
  */
 export async function killConnection(db: Kysely<any>, pid: number): Promise<boolean> {
   try {
+    // PID is a number, safe to use directly
+    if (!Number.isInteger(pid) || pid < 0) {
+      throw new Error('Invalid PID');
+    }
     const result = await db
       .selectNoFrom(sql<boolean>`pg_terminate_backend(${pid})`.as('terminated'))
       .executeTakeFirst();
@@ -165,7 +180,8 @@ export async function killConnection(db: Kysely<any>, pid: number): Promise<bool
  */
 export async function vacuumTable(db: Kysely<any>, tableName: string): Promise<void> {
   try {
-    await sql.raw(`VACUUM ANALYZE "${tableName}"`).execute(db);
+    // Use safe VACUUM ANALYZE statement
+    await sql.raw(safeVacuumAnalyze(tableName)).execute(db);
   } catch (error: any) {
     throw new CLIDatabaseError(`Failed to vacuum table ${tableName}: ${error.message}`);
   }
@@ -176,7 +192,9 @@ export async function vacuumTable(db: Kysely<any>, tableName: string): Promise<v
  */
 export async function analyzeTable(db: Kysely<any>, tableName: string): Promise<void> {
   try {
-    await sql.raw(`ANALYZE "${tableName}"`).execute(db);
+    // Validate and escape table name
+    const escapedTable = escapeTypedIdentifier(tableName, 'table', 'postgres');
+    await sql.raw(`ANALYZE ${escapedTable}`).execute(db);
   } catch (error: any) {
     throw new CLIDatabaseError(`Failed to analyze table ${tableName}: ${error.message}`);
   }
@@ -205,7 +223,9 @@ export async function databaseExists(db: Kysely<any>, databaseName: string): Pro
  */
 export async function createDatabase(db: Kysely<any>, databaseName: string): Promise<void> {
   try {
-    await sql.raw(`CREATE DATABASE "${databaseName}"`).execute(db);
+    // Validate and escape database name
+    const escapedDb = escapeTypedIdentifier(databaseName, 'database', 'postgres');
+    await sql.raw(`CREATE DATABASE ${escapedDb}`).execute(db);
   } catch (error: any) {
     throw new CLIDatabaseError(`Failed to create database ${databaseName}: ${error.message}`);
   }
@@ -216,20 +236,19 @@ export async function createDatabase(db: Kysely<any>, databaseName: string): Pro
  */
 export async function dropDatabase(db: Kysely<any>, databaseName: string): Promise<void> {
   try {
-    // Terminate connections to the database
-    await sql
-      .raw(
-        `
-        SELECT pg_terminate_backend(pg_stat_activity.pid)
-        FROM pg_stat_activity
-        WHERE pg_stat_activity.datname = '${databaseName}'
-          AND pid <> pg_backend_pid()
-      `
-      )
-      .execute(db);
+    // Validate database name
+    const validDbName = validateIdentifier(databaseName, 'database');
 
-    // Drop the database
-    await sql.raw(`DROP DATABASE IF EXISTS "${databaseName}"`).execute(db);
+    // Terminate connections - use parameterized sql template tag for safety
+    await sql`
+      SELECT pg_terminate_backend(pid)
+      FROM pg_stat_activity
+      WHERE datname = ${validDbName} AND pid <> pg_backend_pid()
+    `.execute(db);
+
+    // Drop the database using escaped identifier
+    const escapedDb = escapeTypedIdentifier(databaseName, 'database', 'postgres');
+    await sql.raw(`DROP DATABASE IF EXISTS ${escapedDb}`).execute(db);
   } catch (error: any) {
     throw new CLIDatabaseError(`Failed to drop database ${databaseName}: ${error.message}`);
   }

@@ -2,6 +2,14 @@ import { Kysely, sql } from 'kysely';
 import { CLIDatabaseError } from '../errors.js';
 import { stat } from 'fs-extra';
 import { logger } from '../logger.js';
+import {
+  validateIdentifier,
+  safePragmaTableInfo,
+  safePragmaIndexInfo,
+  safePragmaForeignKeyList,
+  safeAnalyze,
+  safeVacuumInto,
+} from '../sql-sanitizer.js';
 
 /**
  * SQLite specific utilities
@@ -21,22 +29,18 @@ export interface SqliteInfo {
  */
 export async function getSqliteInfo(db: Kysely<any>, dbPath?: string): Promise<SqliteInfo> {
   try {
-    // Get version
     const versionResult = await db.selectNoFrom(sql<string>`sqlite_version()`.as('version')).executeTakeFirst();
 
-    // Get pragma info
     const pageSizeResult = await sql.raw<any>('PRAGMA page_size').execute(db);
     const pageCountResult = await sql.raw<any>('PRAGMA page_count').execute(db);
     const freePagesResult = await sql.raw<any>('PRAGMA freelist_count').execute(db);
 
-    // Get compiled options
     const compiledOptionsResult = await sql.raw<any>('PRAGMA compile_options').execute(db);
 
     const pageSize = pageSizeResult.rows[0]?.page_size || 4096;
     const pageCount = pageCountResult.rows[0]?.page_count || 0;
     const freePages = freePagesResult.rows[0]?.freelist_count || 0;
 
-    // Calculate database size
     const sizeBytes = pageSize * pageCount;
     const databaseSize = formatSize(sizeBytes);
 
@@ -70,7 +74,8 @@ export async function getTableInfo(
   }>
 > {
   try {
-    const result = await sql.raw<any>(`PRAGMA table_info('${tableName}')`).execute(db);
+    // Use safe PRAGMA statement
+    const result = await sql.raw<any>(safePragmaTableInfo(tableName)).execute(db);
 
     return result.rows as any;
   } catch (error: any) {
@@ -92,7 +97,8 @@ export async function getIndexInfo(
   }>
 > {
   try {
-    const result = await sql.raw<any>(`PRAGMA index_info('${indexName}')`).execute(db);
+    // Use safe PRAGMA statement
+    const result = await sql.raw<any>(safePragmaIndexInfo(indexName)).execute(db);
 
     return result.rows as any;
   } catch (error: any) {
@@ -119,7 +125,8 @@ export async function getForeignKeys(
   }>
 > {
   try {
-    const result = await sql.raw<any>(`PRAGMA foreign_key_list('${tableName}')`).execute(db);
+    // Use safe PRAGMA statement
+    const result = await sql.raw<any>(safePragmaForeignKeyList(tableName)).execute(db);
 
     return result.rows as any;
   } catch (error: any) {
@@ -178,11 +185,8 @@ export async function vacuum(db: Kysely<any>): Promise<void> {
  */
 export async function analyze(db: Kysely<any>, tableName?: string): Promise<void> {
   try {
-    if (tableName) {
-      await sql.raw(`ANALYZE '${tableName}'`).execute(db);
-    } else {
-      await sql.raw('ANALYZE').execute(db);
-    }
+    // Use safe ANALYZE statement
+    await sql.raw(safeAnalyze(tableName, 'sqlite')).execute(db);
   } catch (error: any) {
     throw new CLIDatabaseError(`Failed to analyze database: ${error.message}`);
   }
@@ -193,7 +197,6 @@ export async function analyze(db: Kysely<any>, tableName?: string): Promise<void
  */
 export async function optimize(db: Kysely<any>): Promise<void> {
   try {
-    // Run various optimizations
     await sql.raw('PRAGMA optimize').execute(db);
     await vacuum(db);
     await analyze(db);
@@ -229,16 +232,16 @@ export async function getTableStatistics(
   primaryKey: string | null;
 }> {
   try {
-    // Get row count
+    // Validate table name
+    validateIdentifier(tableName, 'table');
+
     const rowCountResult = await db
       .selectFrom(tableName as any)
       .select(sql<number>`COUNT(*)`.as('count'))
       .executeTakeFirst();
 
-    // Get table info
     const tableInfo = await getTableInfo(db, tableName);
 
-    // Get indexes
     const indexesResult = await db
       .selectFrom('sqlite_master')
       .select('name')
@@ -246,7 +249,6 @@ export async function getTableStatistics(
       .where('tbl_name', '=', tableName)
       .execute();
 
-    // Get triggers
     const triggersResult = await db
       .selectFrom('sqlite_master')
       .select('name')
@@ -254,7 +256,6 @@ export async function getTableStatistics(
       .where('tbl_name', '=', tableName)
       .execute();
 
-    // Find primary key
     const primaryKeyColumn = tableInfo.find((col) => col.pk === 1);
 
     return {
@@ -285,7 +286,8 @@ export async function enableWalMode(db: Kysely<any>): Promise<void> {
  */
 export async function createBackup(db: Kysely<any>, backupPath: string): Promise<void> {
   try {
-    await sql.raw(`VACUUM INTO '${backupPath}'`).execute(db);
+    // Use safe VACUUM INTO statement
+    await sql.raw(safeVacuumInto(backupPath)).execute(db);
   } catch (error: any) {
     throw new CLIDatabaseError(`Failed to create backup: ${error.message}`);
   }

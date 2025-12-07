@@ -1,8 +1,7 @@
 import { Command } from 'commander';
 import { prism, spinner } from '@xec-sh/kit';
 import { CLIError } from '../../utils/errors.js';
-import { getDatabaseConnection } from '../../utils/database.js';
-import { loadConfig } from '../../config/loader.js';
+import { withDatabase } from '../../utils/with-database.js';
 import { logger } from '../../utils/logger.js';
 
 export interface HistoryOptions {
@@ -41,30 +40,10 @@ export function historyCommand(): Command {
 }
 
 async function showEntityHistory(tableName: string, entityId: string, options: HistoryOptions): Promise<void> {
-  // Load configuration
-  const config = await loadConfig(options.config);
+  await withDatabase({ config: options.config }, async (db) => {
+    const historySpinner = spinner() as any;
+    historySpinner.start(`Fetching history for ${tableName} #${entityId}...`);
 
-  if (!config?.database) {
-    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', [
-      'Create a kysera.config.ts file with database configuration',
-      'Or specify a config file with --config option',
-    ]);
-  }
-
-  // Get database connection
-  const db = await getDatabaseConnection(config.database);
-
-  if (!db) {
-    throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', [
-      'Check your database configuration',
-      'Ensure the database server is running',
-    ]);
-  }
-
-  const historySpinner = spinner() as any;
-  historySpinner.start(`Fetching history for ${tableName} #${entityId}...`);
-
-  try {
     // Check if audit_logs table exists
     const tables = await db
       .selectFrom('information_schema.tables')
@@ -108,7 +87,7 @@ async function showEntityHistory(tableName: string, entityId: string, options: H
     } else {
       // Timeline view
       console.log('');
-      console.log(prism.bold(`📜 Entity History: ${tableName} #${entityId}`));
+      console.log(prism.bold(`Entity History: ${tableName} #${entityId}`));
       console.log('');
 
       // Get current state if entity still exists
@@ -116,7 +95,7 @@ async function showEntityHistory(tableName: string, entityId: string, options: H
         const currentEntity = await db.selectFrom(tableName).selectAll().where('id', '=', entityId).executeTakeFirst();
 
         if (currentEntity) {
-          console.log(prism.green('● Current State'));
+          console.log(prism.green('Current State'));
           if (options.showValues) {
             console.log(prism.gray('  ' + JSON.stringify(currentEntity, null, 2).split('\n').join('\n  ')));
           }
@@ -124,15 +103,14 @@ async function showEntityHistory(tableName: string, entityId: string, options: H
         }
       } catch (error) {
         // Entity might not exist anymore
-        // Could not fetch current state, entity might not exist anymore
       }
 
       // Show history timeline
       for (let i = 0; i < history.length; i++) {
         const log = history[i] as any;
         const isLast = i === history.length - 1;
-        const connector = isLast ? '└─' : '├─';
-        const line = isLast ? '  ' : '│ ';
+        const connector = isLast ? '+-' : '|-';
+        const line = isLast ? '  ' : '| ';
 
         // Format timestamp
         const timestamp = new Date(log.created_at).toLocaleString();
@@ -178,7 +156,7 @@ async function showEntityHistory(tableName: string, entityId: string, options: H
 
             for (const key of new Set([...Object.keys(oldValues), ...Object.keys(newValues)])) {
               if (oldValues[key] !== newValues[key]) {
-                console.log(`${line}     ${key}: ${formatValue(oldValues[key])} → ${formatValue(newValues[key])}`);
+                console.log(`${line}     ${key}: ${formatValue(oldValues[key])} -> ${formatValue(newValues[key])}`);
               }
             }
           } else if (log.action === 'DELETE') {
@@ -205,13 +183,13 @@ async function showEntityHistory(tableName: string, entityId: string, options: H
 
         // Add spacing between entries
         if (!isLast) {
-          console.log('│');
+          console.log('|');
         }
       }
 
       // Show summary
       console.log('');
-      console.log(prism.gray('─'.repeat(50)));
+      console.log(prism.gray('-'.repeat(50)));
 
       // Calculate time span
       const firstEntry = history[history.length - 1] as any;
@@ -252,10 +230,7 @@ async function showEntityHistory(tableName: string, entityId: string, options: H
         console.log(prism.gray(`Showing ${history.length} of possibly more entries. Use --limit to show more.`));
       }
     }
-  } finally {
-    // Close database connection
-    await db.destroy();
-  }
+  });
 }
 
 function parseJson(value: any): any {

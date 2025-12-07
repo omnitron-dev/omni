@@ -5,6 +5,7 @@ import { CLIError } from '../../utils/errors.js';
 import { MigrationRunner } from './runner.js';
 import { getDatabaseConnection } from '../../utils/database.js';
 import { loadConfig } from '../../config/loader.js';
+import { SeedRunner } from '../db/seed-runner.js';
 
 export interface ResetOptions {
   force?: boolean;
@@ -64,11 +65,7 @@ export function freshCommand(): Command {
 }
 
 async function resetMigrations(options: ResetOptions): Promise<void> {
-  // Confirm dangerous operation
-  // If --run is specified, we can skip confirmation in test environments
-  // since the user is explicitly asking to re-run migrations after reset
   if (!options.force && !options.run) {
-    // In test environment or when stdin is not available, require --force
     if (process.env.NODE_ENV === 'test' || !process.stdin.isTTY) {
       throw new CLIError('Reset requires confirmation', 'RESET_REQUIRES_CONFIRMATION', undefined, [
         'Use --force flag to skip confirmation',
@@ -76,7 +73,7 @@ async function resetMigrations(options: ResetOptions): Promise<void> {
     }
 
     console.log('');
-    console.log(prism.red('⚠️  WARNING: This will rollback ALL migrations!'));
+    console.log(prism.red('Warning: This will rollback ALL migrations!'));
     console.log(prism.yellow('All data in migrated tables may be lost.'));
     console.log('');
 
@@ -90,11 +87,9 @@ async function resetMigrations(options: ResetOptions): Promise<void> {
       return;
     }
   } else if (!options.force && options.run) {
-    // In test environment, --run implies confirmation
     if (!(process.env.NODE_ENV === 'test' || !process.stdin.isTTY)) {
-      // In interactive mode, still ask for confirmation
       console.log('');
-      console.log(prism.red('⚠️  WARNING: This will rollback ALL migrations and re-run them!'));
+      console.log(prism.red('Warning: This will rollback ALL migrations and re-run them!'));
       console.log(prism.yellow('All data in migrated tables may be lost.'));
       console.log('');
 
@@ -110,7 +105,6 @@ async function resetMigrations(options: ResetOptions): Promise<void> {
     }
   }
 
-  // Load configuration
   const config = await loadConfig(options.config);
 
   if (!config?.database) {
@@ -120,7 +114,6 @@ async function resetMigrations(options: ResetOptions): Promise<void> {
     ]);
   }
 
-  // Get database connection
   const db = await getDatabaseConnection(config.database);
 
   if (!db) {
@@ -133,10 +126,8 @@ async function resetMigrations(options: ResetOptions): Promise<void> {
   const migrationsDir = config.migrations?.directory || './migrations';
   const tableName = config.migrations?.tableName || 'kysera_migrations';
 
-  // Create migration runner
   const runner = new MigrationRunner(db, migrationsDir, tableName);
 
-  // Acquire lock to prevent concurrent migrations
   let releaseLock: (() => Promise<void>) | null = null;
 
   try {
@@ -149,64 +140,86 @@ async function resetMigrations(options: ResetOptions): Promise<void> {
           'Or check for stuck locks in the database',
         ]);
       }
-      // Lock mechanism might not be set up yet, continue without it
       logger.debug('Could not acquire migration lock, continuing without lock');
     }
 
     logger.info('Resetting all migrations...');
 
-    // Reset all migrations
     const { rolledBack, duration } = await runner.reset({
       force: options.force,
       seed: options.seed,
     });
 
-    // Show summary
     if (rolledBack.length > 0) {
       logger.info('');
       logger.info(
         prism.green(
-          `✅ Reset complete: ${rolledBack.length} migration${rolledBack.length > 1 ? 's' : ''} rolled back (${duration}ms)`
+          `Reset complete: ${rolledBack.length} migration${rolledBack.length > 1 ? 's' : ''} rolled back (${duration}ms)`
         )
       );
     } else {
       logger.info('No migrations to reset');
     }
 
-    // Re-run migrations if requested
     if (options.run) {
       logger.info('');
       logger.info('Running migrations');
       const { executed } = await runner.up({ verbose: options.verbose });
       if (executed.length > 0) {
         logger.info(
-          prism.green(`✅ ${executed.length} migration${executed.length > 1 ? 's' : ''} completed successfully`)
+          prism.green(`${executed.length} migration${executed.length > 1 ? 's' : ''} completed successfully`)
         );
       }
     }
 
-    // Run seeds if requested
     if (options.seed) {
       logger.info('');
       logger.info('Running seeds...');
-      // TODO: Implement seed runner
-      logger.warn('Seed functionality not yet implemented');
+
+      try {
+        const seedsDir = config.testing?.seeds || './seeds';
+        const seedRunner = new SeedRunner(db, seedsDir);
+
+        const seedResult = await seedRunner.run({
+          verbose: options.verbose,
+          transaction: false,
+        });
+
+        if (seedResult.executed.length > 0) {
+          logger.info('');
+          logger.info(
+            prism.green(
+              `${seedResult.executed.length} seed${seedResult.executed.length > 1 ? 's' : ''} completed successfully (${seedResult.duration}ms)`
+            )
+          );
+        } else if (seedResult.failed.length > 0) {
+          logger.warn(
+            `${seedResult.failed.length} seed${seedResult.failed.length > 1 ? 's' : ''} failed`
+          );
+          for (const failed of seedResult.failed) {
+            logger.error(`  - ${failed.name}: ${failed.error}`);
+          }
+        } else {
+          logger.info('No seeds found to run');
+        }
+      } catch (seedError: any) {
+        logger.error(`Failed to run seeds: ${seedError.message}`);
+        if (options.verbose) {
+          logger.error(seedError.stack);
+        }
+        logger.warn('Migration reset completed, but seeding failed');
+      }
     }
   } finally {
-    // Release lock
     if (releaseLock) {
       await releaseLock();
     }
-
-    // Close database connection
     await db.destroy();
   }
 }
 
 async function freshMigrations(options: ResetOptions): Promise<void> {
-  // Confirm dangerous operation
   if (!options.force) {
-    // In test environment or when stdin is not available, require --force
     if (process.env.NODE_ENV === 'test' || !process.stdin.isTTY) {
       throw new CLIError('Fresh requires confirmation', 'FRESH_REQUIRES_CONFIRMATION', undefined, [
         'Use --force flag to skip confirmation',
@@ -214,7 +227,7 @@ async function freshMigrations(options: ResetOptions): Promise<void> {
     }
 
     console.log('');
-    console.log(prism.red('⚠️  WARNING: This will DROP ALL TABLES and re-run migrations!'));
+    console.log(prism.red('WARNING: This will DROP ALL TABLES and re-run migrations!'));
     console.log(prism.red('ALL DATA WILL BE LOST!'));
     console.log('');
 
@@ -228,7 +241,6 @@ async function freshMigrations(options: ResetOptions): Promise<void> {
       return;
     }
 
-    // Double confirmation for extra safety
     const doubleConfirm = await confirm({
       message: prism.red('This action cannot be undone. Are you REALLY sure?'),
       initialValue: false,
@@ -240,7 +252,6 @@ async function freshMigrations(options: ResetOptions): Promise<void> {
     }
   }
 
-  // Load configuration
   const config = await loadConfig(options.config);
 
   if (!config?.database) {
@@ -250,7 +261,6 @@ async function freshMigrations(options: ResetOptions): Promise<void> {
     ]);
   }
 
-  // Get database connection
   const db = await getDatabaseConnection(config.database);
 
   if (!db) {
@@ -263,7 +273,6 @@ async function freshMigrations(options: ResetOptions): Promise<void> {
   try {
     logger.info('Dropping all tables...');
 
-    // Get all tables (this is database-specific)
     let tables: string[] = [];
 
     if (config.database.dialect === 'postgres') {
@@ -291,7 +300,6 @@ async function freshMigrations(options: ResetOptions): Promise<void> {
       tables = result.map((r: any) => r.name);
     }
 
-    // Drop all tables
     for (const table of tables) {
       if (options.verbose) {
         logger.debug(`Dropping table: ${table}`);
@@ -301,7 +309,6 @@ async function freshMigrations(options: ResetOptions): Promise<void> {
 
     logger.info(`Dropped ${tables.length} table${tables.length !== 1 ? 's' : ''}`);
 
-    // Now run all migrations
     const migrationsDir = config.migrations?.directory || './migrations';
     const tableName = config.migrations?.tableName || 'kysera_migrations';
 
@@ -317,19 +324,49 @@ async function freshMigrations(options: ResetOptions): Promise<void> {
     logger.info('');
     logger.info(
       prism.green(
-        `✅ Fresh complete: ${executed.length} migration${executed.length > 1 ? 's' : ''} executed (${duration}ms)`
+        `Fresh complete: ${executed.length} migration${executed.length > 1 ? 's' : ''} executed (${duration}ms)`
       )
     );
 
-    // Run seeds if requested
     if (options.seed) {
       logger.info('');
       logger.info('Running seeds...');
-      // TODO: Implement seed runner
-      logger.warn('Seed functionality not yet implemented');
+
+      try {
+        const seedsDir = config.testing?.seeds || './seeds';
+        const seedRunner = new SeedRunner(db, seedsDir);
+
+        const seedResult = await seedRunner.run({
+          verbose: options.verbose,
+          transaction: false,
+        });
+
+        if (seedResult.executed.length > 0) {
+          logger.info('');
+          logger.info(
+            prism.green(
+              `${seedResult.executed.length} seed${seedResult.executed.length > 1 ? 's' : ''} completed successfully (${seedResult.duration}ms)`
+            )
+          );
+        } else if (seedResult.failed.length > 0) {
+          logger.warn(
+            `${seedResult.failed.length} seed${seedResult.failed.length > 1 ? 's' : ''} failed`
+          );
+          for (const failed of seedResult.failed) {
+            logger.error(`  - ${failed.name}: ${failed.error}`);
+          }
+        } else {
+          logger.info('No seeds found to run');
+        }
+      } catch (seedError: any) {
+        logger.error(`Failed to run seeds: ${seedError.message}`);
+        if (options.verbose) {
+          logger.error(seedError.stack);
+        }
+        logger.warn('Fresh migration completed, but seeding failed');
+      }
     }
   } finally {
-    // Close database connection
     await db.destroy();
   }
 }

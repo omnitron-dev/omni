@@ -1,7 +1,7 @@
 import type { Kysely } from 'kysely';
 import { sql } from 'kysely';
 import type { Plugin } from '@kysera/repository';
-import { NotFoundError, BadRequestError } from '@kysera/core';
+import { NotFoundError, BadRequestError, type KyseraLogger, consoleLogger } from '@kysera/core';
 import { z } from 'zod';
 
 // ============================================================================
@@ -75,6 +75,12 @@ export interface AuditOptions {
    * @returns Metadata object or null
    */
   metadata?: () => Record<string, unknown>;
+
+  /**
+   * Logger for audit operations
+   * @default consoleLogger
+   */
+  logger?: KyseraLogger;
 }
 
 /**
@@ -287,14 +293,19 @@ function getAuditTimestamp(options: AuditOptions): string {
  * Safely parse JSON with error handling
  * @param value - The JSON string to parse
  * @param defaultValue - Default value to return on parse failure
+ * @param logger - Logger for error messages
  * @returns Parsed JSON value or default value
  */
-function safeParseJSON<T>(value: string | null | undefined, defaultValue: T | null = null): T | null {
+function safeParseJSON<T>(
+  value: string | null | undefined,
+  defaultValue: T | null = null,
+  logger: KyseraLogger = consoleLogger
+): T | null {
   if (!value) return defaultValue;
   try {
     return JSON.parse(value) as T;
   } catch (error) {
-    console.warn('Failed to parse JSON in audit log:', value?.substring(0, 100), error);
+    logger.warn('Failed to parse JSON in audit log:', value?.substring(0, 100), error);
     return defaultValue;
   }
 }
@@ -745,7 +756,8 @@ function addAuditQueryMethods(
   executor: Kysely<any>,
   auditTable: string,
   tableName: string,
-  primaryKeyColumn: string
+  primaryKeyColumn: string,
+  logger: KyseraLogger
 ): void {
   // Get audit history for a specific entity (returns parsed entries)
   extendedRepo.getAuditHistory = async function (entityId: number | string): Promise<ParsedAuditLogEntry[]> {
@@ -761,9 +773,9 @@ function addAuditQueryMethods(
 
     return logs.map((log: AuditLogEntry) => ({
       ...log,
-      old_values: safeParseJSON<Record<string, unknown>>(log.old_values),
-      new_values: safeParseJSON<Record<string, unknown>>(log.new_values),
-      metadata: safeParseJSON<Record<string, unknown>>(log.metadata),
+      old_values: safeParseJSON<Record<string, unknown>>(log.old_values, null, logger),
+      new_values: safeParseJSON<Record<string, unknown>>(log.new_values, null, logger),
+      metadata: safeParseJSON<Record<string, unknown>>(log.metadata, null, logger),
     })) as ParsedAuditLogEntry[];
   };
 
@@ -798,7 +810,7 @@ function addAuditQueryMethods(
         );
       }
 
-      const parsedValues = safeParseJSON<Record<string, unknown>>(log.old_values);
+      const parsedValues = safeParseJSON<Record<string, unknown>>(log.old_values, null, logger);
       if (!parsedValues) {
         throw new BadRequestError(`Failed to parse old_values from audit log ${String(auditId)}`);
       }
@@ -814,7 +826,7 @@ function addAuditQueryMethods(
         );
       }
 
-      const parsedValues = safeParseJSON<Record<string, unknown>>(log.old_values);
+      const parsedValues = safeParseJSON<Record<string, unknown>>(log.old_values, null, logger);
       if (!parsedValues) {
         throw new BadRequestError(`Failed to parse old_values from audit log ${String(auditId)}`);
       }
@@ -877,9 +889,9 @@ function addAuditQueryMethods(
 
     return logs.map((log: AuditLogEntry) => ({
       ...log,
-      old_values: safeParseJSON<Record<string, unknown>>(log.old_values),
-      new_values: safeParseJSON<Record<string, unknown>>(log.new_values),
-      metadata: safeParseJSON<Record<string, unknown>>(log.metadata),
+      old_values: safeParseJSON<Record<string, unknown>>(log.old_values, null, logger),
+      new_values: safeParseJSON<Record<string, unknown>>(log.new_values, null, logger),
+      metadata: safeParseJSON<Record<string, unknown>>(log.metadata, null, logger),
     })) as ParsedAuditLogEntry[];
   };
 
@@ -897,9 +909,9 @@ function addAuditQueryMethods(
 
     return logs.map((log: AuditLogEntry) => ({
       ...log,
-      old_values: safeParseJSON<Record<string, unknown>>(log.old_values),
-      new_values: safeParseJSON<Record<string, unknown>>(log.new_values),
-      metadata: safeParseJSON<Record<string, unknown>>(log.metadata),
+      old_values: safeParseJSON<Record<string, unknown>>(log.old_values, null, logger),
+      new_values: safeParseJSON<Record<string, unknown>>(log.new_values, null, logger),
+      metadata: safeParseJSON<Record<string, unknown>>(log.metadata, null, logger),
     })) as ParsedAuditLogEntry[];
   };
 }
@@ -1038,6 +1050,7 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
     captureOldValues = true,
     captureNewValues = true,
     skipSystemOperations = false,
+    logger = consoleLogger,
   } = options;
 
   return {
@@ -1145,7 +1158,7 @@ export function auditPlugin(options: AuditOptions = {}): Plugin {
       );
 
       // Add audit query methods
-      addAuditQueryMethods(mutableRepo, mutableRepo, executor, auditTable, tableName, primaryKeyColumn);
+      addAuditQueryMethods(mutableRepo, mutableRepo, executor, auditTable, tableName, primaryKeyColumn, logger);
 
       return baseRepo;
     },

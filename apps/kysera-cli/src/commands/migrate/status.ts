@@ -1,10 +1,8 @@
 import { Command } from 'commander';
 import { prism, table } from '@xec-sh/kit';
-import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
 import { MigrationRunner } from './runner.js';
-import { getDatabaseConnection } from '../../utils/database.js';
-import { loadConfig } from '../../config/loader.js';
+import { withDatabase } from '../../utils/with-database.js';
 
 export interface StatusOptions {
   json?: boolean;
@@ -36,27 +34,7 @@ export function statusCommand(): Command {
 }
 
 async function showMigrationStatus(options: StatusOptions): Promise<void> {
-  // Load configuration
-  const config = await loadConfig(options.config);
-
-  if (!config?.database) {
-    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', undefined, [
-      'Create a kysera.config.ts file with database configuration',
-      'Or specify a config file with --config option',
-    ]);
-  }
-
-  // Get database connection
-  const db = await getDatabaseConnection(config.database);
-
-  if (!db) {
-    throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', undefined, [
-      'Check your database configuration',
-      'Ensure the database server is running',
-    ]);
-  }
-
-  try {
+  await withDatabase({ config: options.config, verbose: options.verbose }, async (db, config) => {
     const migrationsDir = config.migrations?.directory || './migrations';
     const tableName = config.migrations?.tableName || 'kysera_migrations';
 
@@ -65,8 +43,8 @@ async function showMigrationStatus(options: StatusOptions): Promise<void> {
 
     // Get migration status
     const status = await runner.getMigrationStatus();
-    const executed = status.filter((m) => m.status === 'executed');
-    const pending = status.filter((m) => m.status === 'pending');
+    const executed = status.filter((m: any) => m.status === 'executed');
+    const pending = status.filter((m: any) => m.status === 'pending');
 
     if (options.json) {
       // Output as JSON
@@ -74,15 +52,15 @@ async function showMigrationStatus(options: StatusOptions): Promise<void> {
         total: status.length,
         executed: executed.length,
         pending: pending.length,
-        migrations: status.map((m) => ({
+        migrations: status.map((m: any) => ({
           name: m.name,
           timestamp: m.timestamp,
           status: m.status,
           executedAt: m.executedAt?.toISOString() || null,
         })),
         database: {
-          dialect: config.database.dialect,
-          connection: options.verbose ? config.database.connection : undefined,
+          dialect: config.database!.dialect,
+          connection: options.verbose ? config.database!.connection : undefined,
         },
       };
       console.log(JSON.stringify(output, null, 2));
@@ -100,25 +78,20 @@ async function showMigrationStatus(options: StatusOptions): Promise<void> {
 
       if (options.verbose) {
         // Show as table
-        const tableData = executed.map((m) => ({
+        const tableData = executed.map((m: any) => ({
           Name: m.name,
           Timestamp: m.timestamp,
           'Executed At': m.executedAt ? formatDate(m.executedAt) : 'Unknown',
         }));
 
-        console.log(
-          table(tableData, {
-            header: {
-              alignment: 'left',
-              content: prism.bold('Executed Migrations'),
-            },
-          })
-        );
+        console.log('');
+        console.log(prism.bold('Executed Migrations'));
+        console.log(table(tableData as any));
       } else {
         // Simple list
         for (const migration of executed) {
           const executedAt = migration.executedAt ? ` (${formatDate(migration.executedAt)})` : '';
-          console.log(`  ${prism.green('✓')} ${migration.name} ${prism.green('(executed)')}${prism.gray(executedAt)}`);
+          console.log(`  ${prism.green('[OK]')} ${migration.name} ${prism.green('(executed)')}${prism.gray(executedAt)}`);
         }
       }
       console.log('');
@@ -133,19 +106,14 @@ async function showMigrationStatus(options: StatusOptions): Promise<void> {
 
       if (options.verbose) {
         // Show as table
-        const tableData = pending.map((m) => ({
+        const tableData = pending.map((m: any) => ({
           Name: m.name,
           Timestamp: m.timestamp,
         }));
 
-        console.log(
-          table(tableData, {
-            header: {
-              alignment: 'left',
-              content: prism.bold('Pending Migrations'),
-            },
-          })
-        );
+        console.log('');
+        console.log(prism.bold('Pending Migrations'));
+        console.log(table(tableData as any));
       } else {
         // Simple list
         for (const migration of pending) {
@@ -161,15 +129,12 @@ async function showMigrationStatus(options: StatusOptions): Promise<void> {
     // Show database info
     if (options.verbose) {
       console.log(prism.gray('Database Information:'));
-      console.log(`  Dialect: ${config.database.dialect}`);
+      console.log(`  Dialect: ${config.database!.dialect}`);
       console.log(`  Migrations Directory: ${migrationsDir}`);
       console.log(`  Migrations Table: ${tableName}`);
       console.log('');
     }
-  } finally {
-    // Close database connection
-    await db.destroy();
-  }
+  });
 }
 
 function formatDate(date: Date): string {

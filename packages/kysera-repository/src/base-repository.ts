@@ -1,22 +1,25 @@
 import type { Selectable, Transaction } from 'kysely';
 import type { z } from 'zod';
 import type { Executor } from './helpers.js';
+import type { PrimaryKeyColumn, PrimaryKeyTypeHint, PrimaryKeyInput, PrimaryKeyConfig } from './types.js';
+import { normalizePrimaryKeyConfig, getPrimaryKeyColumns } from './types.js';
 import { NotFoundError } from '@kysera/core';
 
 /**
  * Core repository interface
  * Designed to work with any entity type and database schema
+ * Supports custom primary keys (single, composite, UUID)
  */
-export interface BaseRepository<DB, Entity> {
-  findById(id: number): Promise<Entity | null>;
+export interface BaseRepository<DB, Entity, PK = number> {
+  findById(id: PK): Promise<Entity | null>;
   findAll(): Promise<Entity[]>;
   create(input: unknown): Promise<Entity>;
-  update(id: number, input: unknown): Promise<Entity>;
-  delete(id: number): Promise<boolean>;
-  findByIds(ids: number[]): Promise<Entity[]>;
+  update(id: PK, input: unknown): Promise<Entity>;
+  delete(id: PK): Promise<boolean>;
+  findByIds(ids: PK[]): Promise<Entity[]>;
   bulkCreate(inputs: unknown[]): Promise<Entity[]>;
-  bulkUpdate(updates: { id: number; data: unknown }[]): Promise<Entity[]>;
-  bulkDelete(ids: number[]): Promise<number>;
+  bulkUpdate(updates: { id: PK; data: unknown }[]): Promise<Entity[]>;
+  bulkDelete(ids: PK[]): Promise<number>;
   find(options?: { where?: Record<string, unknown> }): Promise<Entity[]>;
   findOne(options?: { where?: Record<string, unknown> }): Promise<Entity | null>;
   count(options?: { where?: Record<string, unknown> }): Promise<number>;
@@ -32,13 +35,13 @@ export interface BaseRepository<DB, Entity> {
     limit: number;
     cursor?: {
       value: Entity[K];
-      id: number;
+      id: PK;
     } | null;
     orderBy?: K;
     orderDirection?: 'asc' | 'desc';
   }): Promise<{
     items: Entity[];
-    nextCursor: { value: Entity[K]; id: number } | null;
+    nextCursor: { value: Entity[K]; id: PK } | null;
     hasMore: boolean;
   }>;
 }
@@ -48,6 +51,10 @@ export interface BaseRepository<DB, Entity> {
  */
 export interface RepositoryConfig<Table, Entity> {
   tableName: string;
+  /** Primary key column name(s). Default: 'id' */
+  primaryKey?: PrimaryKeyColumn;
+  /** Primary key type hint. Default: 'number' */
+  primaryKeyType?: PrimaryKeyTypeHint;
   mapRow: (row: Selectable<Table>) => Entity;
   schemas: {
     entity?: z.ZodType<Entity>;
@@ -64,15 +71,15 @@ export interface RepositoryConfig<Table, Entity> {
  */
 export interface TableOperations<Table> {
   selectAll(): Promise<Selectable<Table>[]>;
-  selectById(id: number): Promise<Selectable<Table> | undefined>;
-  selectByIds(ids: number[]): Promise<Selectable<Table>[]>;
+  selectById(id: PrimaryKeyInput): Promise<Selectable<Table> | undefined>;
+  selectByIds(ids: PrimaryKeyInput[]): Promise<Selectable<Table>[]>;
   selectWhere(conditions: Record<string, unknown>): Promise<Selectable<Table>[]>;
   selectOneWhere(conditions: Record<string, unknown>): Promise<Selectable<Table> | undefined>;
   insert(data: unknown): Promise<Selectable<Table>>;
   insertMany(data: unknown[]): Promise<Selectable<Table>[]>;
-  updateById(id: number, data: unknown): Promise<Selectable<Table> | undefined>;
-  deleteById(id: number): Promise<boolean>;
-  deleteByIds(ids: number[]): Promise<number>;
+  updateById(id: PrimaryKeyInput, data: unknown): Promise<Selectable<Table> | undefined>;
+  deleteById(id: PrimaryKeyInput): Promise<boolean>;
+  deleteByIds(ids: PrimaryKeyInput[]): Promise<number>;
   count(conditions?: Record<string, unknown>): Promise<number>;
   paginate(options: {
     limit: number;
@@ -84,7 +91,7 @@ export interface TableOperations<Table> {
     limit: number;
     cursor?: {
       value: unknown;
-      id: number;
+      id: PrimaryKeyInput;
     } | null;
     orderBy: string;
     orderDirection: 'asc' | 'desc';
@@ -92,21 +99,48 @@ export interface TableOperations<Table> {
 }
 
 /**
+ * Extract primary key value from an entity based on config
+ */
+function extractPrimaryKey<Entity, PK>(
+  entity: Entity,
+  pkConfig: PrimaryKeyConfig
+): PK {
+  const columns = getPrimaryKeyColumns(pkConfig.columns);
+  
+  if (columns.length === 1) {
+    const column = columns[0]!;
+    return (entity as any)[column] as PK;
+  }
+
+  // For composite keys, return an object
+  const result: Record<string, unknown> = {};
+  for (const column of columns) {
+    result[column] = (entity as any)[column];
+  }
+  return result as PK;
+}
+
+/**
  * Create a base repository implementation
  * This function creates a repository with full CRUD operations
  */
-export function createBaseRepository<DB, Table, Entity>(
+export function createBaseRepository<DB, Table, Entity, PK = number>(
   operations: TableOperations<Table>,
   config: RepositoryConfig<Table, Entity>,
   db: Executor<DB>
-): BaseRepository<DB, Entity> {
+): BaseRepository<DB, Entity, PK> {
   const {
     mapRow,
     schemas,
+    primaryKey,
+    primaryKeyType,
     validateDbResults = (typeof process !== 'undefined' && process.env && process.env['NODE_ENV'] === 'development') ||
       false,
     validationStrategy = 'strict',
   } = config;
+
+  const pkConfig = normalizePrimaryKeyConfig(primaryKey, primaryKeyType);
+  const defaultOrderColumn = getPrimaryKeyColumns(pkConfig.columns)[0] ?? 'id';
 
   // Helper to validate and map rows
   const processRow = (row: Selectable<Table>): Entity => {
@@ -138,9 +172,14 @@ export function createBaseRepository<DB, Table, Entity>(
     return schemas.create;
   };
 
+  // Convert PK type to PrimaryKeyInput for table operations
+  const toPrimaryKeyInput = (pk: PK): PrimaryKeyInput => {
+    return pk as unknown as PrimaryKeyInput;
+  };
+
   return {
-    async findById(id: number): Promise<Entity | null> {
-      const row = await operations.selectById(id);
+    async findById(id: PK): Promise<Entity | null> {
+      const row = await operations.selectById(toPrimaryKeyInput(id));
       return row ? processRow(row) : null;
     },
 
@@ -155,10 +194,10 @@ export function createBaseRepository<DB, Table, Entity>(
       return processRow(row);
     },
 
-    async update(id: number, input: unknown): Promise<Entity> {
+    async update(id: PK, input: unknown): Promise<Entity> {
       const updateSchema = getUpdateSchema();
       const validatedInput = validateInput(input, updateSchema);
-      const row = await operations.updateById(id, validatedInput);
+      const row = await operations.updateById(toPrimaryKeyInput(id), validatedInput);
 
       if (!row) {
         throw new NotFoundError('Record', { id });
@@ -167,13 +206,13 @@ export function createBaseRepository<DB, Table, Entity>(
       return processRow(row);
     },
 
-    async delete(id: number): Promise<boolean> {
-      return operations.deleteById(id);
+    async delete(id: PK): Promise<boolean> {
+      return operations.deleteById(toPrimaryKeyInput(id));
     },
 
-    async findByIds(ids: number[]): Promise<Entity[]> {
+    async findByIds(ids: PK[]): Promise<Entity[]> {
       if (ids.length === 0) return [];
-      const rows = await operations.selectByIds(ids);
+      const rows = await operations.selectByIds(ids.map(toPrimaryKeyInput));
       return processRows(rows);
     },
 
@@ -184,7 +223,7 @@ export function createBaseRepository<DB, Table, Entity>(
       return processRows(rows);
     },
 
-    async bulkUpdate(updates: { id: number; data: unknown }[]): Promise<Entity[]> {
+    async bulkUpdate(updates: { id: PK; data: unknown }[]): Promise<Entity[]> {
       if (updates.length === 0) return [];
 
       const updateSchema = getUpdateSchema();
@@ -194,7 +233,7 @@ export function createBaseRepository<DB, Table, Entity>(
       // in a transaction at the application level
       const promises = updates.map(async ({ id, data }) => {
         const validatedInput = validateInput(data, updateSchema);
-        const row = await operations.updateById(id, validatedInput);
+        const row = await operations.updateById(toPrimaryKeyInput(id), validatedInput);
 
         if (!row) {
           throw new NotFoundError('Record', { id });
@@ -206,9 +245,9 @@ export function createBaseRepository<DB, Table, Entity>(
       return Promise.all(promises);
     },
 
-    async bulkDelete(ids: number[]): Promise<number> {
+    async bulkDelete(ids: PK[]): Promise<number> {
       if (ids.length === 0) return 0;
-      return operations.deleteByIds(ids);
+      return operations.deleteByIds(ids.map(toPrimaryKeyInput));
     },
 
     async find(options?: { where?: Record<string, unknown> }): Promise<Entity[]> {
@@ -245,7 +284,7 @@ export function createBaseRepository<DB, Table, Entity>(
       orderBy?: string;
       orderDirection?: 'asc' | 'desc';
     }): Promise<{ items: Entity[]; total: number; limit: number; offset: number }> {
-      const { limit, offset = 0, orderBy = 'id', orderDirection = 'asc' } = options;
+      const { limit, offset = 0, orderBy = defaultOrderColumn, orderDirection = 'asc' } = options;
 
       const total = await operations.count();
       const rows = await operations.paginate({
@@ -269,16 +308,16 @@ export function createBaseRepository<DB, Table, Entity>(
       limit: number;
       cursor?: {
         value: Entity[K];
-        id: number;
+        id: PK;
       } | null;
       orderBy?: K;
       orderDirection?: 'asc' | 'desc';
     }): Promise<{
       items: Entity[];
-      nextCursor: { value: Entity[K]; id: number } | null;
+      nextCursor: { value: Entity[K]; id: PK } | null;
       hasMore: boolean;
     }> {
-      const { limit, cursor, orderBy = 'id' as K, orderDirection = 'asc' } = options;
+      const { limit, cursor, orderBy = defaultOrderColumn as K, orderDirection = 'asc' } = options;
 
       // Fetch limit + 1 to determine if there are more results
       const rows = await operations.paginateCursor({
@@ -286,7 +325,7 @@ export function createBaseRepository<DB, Table, Entity>(
         cursor: cursor
           ? {
               value: cursor.value,
-              id: cursor.id,
+              id: toPrimaryKeyInput(cursor.id),
             }
           : null,
         orderBy: String(orderBy),
@@ -297,13 +336,13 @@ export function createBaseRepository<DB, Table, Entity>(
       const items = processRows(hasMore ? rows.slice(0, limit) : rows);
 
       // Generate nextCursor from the last item
-      let nextCursor: { value: Entity[K]; id: number } | null = null;
+      let nextCursor: { value: Entity[K]; id: PK } | null = null;
       if (hasMore && items.length > 0) {
         const lastItem = items[items.length - 1];
         if (lastItem) {
           nextCursor = {
             value: lastItem[orderBy],
-            id: lastItem['id' as keyof Entity] as number,
+            id: extractPrimaryKey<Entity, PK>(lastItem, pkConfig),
           };
         }
       }

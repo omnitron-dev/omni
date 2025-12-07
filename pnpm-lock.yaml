@@ -900,6 +900,9 @@ importers:
       '@kysera/core':
         specifier: workspace:*
         version: link:../kysera-core
+      zod:
+        specifier: ^4.1.13
+        version: 4.1.13
     devDependencies:
       '@types/better-sqlite3':
         specifier: ^7.6.13

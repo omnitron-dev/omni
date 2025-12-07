@@ -1,4 +1,6 @@
 import type { z } from 'zod';
+import type { KyseraLogger } from '@kysera/core';
+import { consoleLogger } from '@kysera/core';
 
 /**
  * Validation utilities for repositories
@@ -19,6 +21,12 @@ export interface ValidationOptions {
    * Custom validation mode
    */
   mode?: 'development' | 'production' | 'always' | 'never';
+
+  /**
+   * Logger for validation errors
+   * @default consoleLogger
+   */
+  logger?: KyseraLogger;
 }
 
 /**
@@ -98,13 +106,15 @@ export function safeParse<T>(
   options?: {
     throwOnError?: boolean;
     logErrors?: boolean;
+    logger?: KyseraLogger;
   }
 ): T | null {
+  const logger = options?.logger ?? consoleLogger;
   try {
     return schema.parse(data);
   } catch (error) {
     if (options?.logErrors) {
-      console.error('Validation error:', error);
+      logger.error('Validation error:', error);
     }
     if (options?.throwOnError) {
       throw error;

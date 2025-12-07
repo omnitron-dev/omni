@@ -1,6 +1,8 @@
 import type { Selectable, InsertQueryBuilder, SelectQueryBuilder, DeleteQueryBuilder } from 'kysely';
 import type { TableOperations } from './base-repository.js';
 import type { Executor } from './helpers.js';
+import type { PrimaryKeyConfig, PrimaryKeyInput, CompositeKeyValue } from './types.js';
+import { getPrimaryKeyColumns, normalizePrimaryKeyInput, isCompositeKey } from './types.js';
 import { DatabaseError } from '@kysera/core';
 
 /**
@@ -75,52 +77,117 @@ interface DeleteResult {
 }
 
 /**
- * Helper to build a where clause for 'id' field
- * Uses type assertion because Kysely can't properly infer dynamic column names
+ * Helper to build a where clause for primary key lookup
+ * Supports both single and composite primary keys
  */
-function buildWhereId<DB, TableName extends keyof DB>(
+function buildWherePrimaryKey<DB, TableName extends keyof DB>(
   query: DynamicSelectQuery<DB, TableName>,
-  id: number
+  pkConfig: PrimaryKeyConfig,
+  keyValue: PrimaryKeyInput
 ): DynamicSelectQuery<DB, TableName> {
-  // Type assertion needed: Kysely's type system can't infer that 'id' exists at compile time
-  // Runtime safety: All tables in our schema have an 'id' column
-  return query.where('id' as never, '=', id as never) as DynamicSelectQuery<DB, TableName>;
+  const keyRecord = normalizePrimaryKeyInput(pkConfig.columns, keyValue);
+  let result = query;
+
+  for (const [column, value] of Object.entries(keyRecord)) {
+    result = result.where(column as never, '=', value as never) as DynamicSelectQuery<DB, TableName>;
+  }
+
+  return result;
 }
 
 /**
  * Helper to build a where clause for 'id in (...)' operations
+ * For composite keys, this builds multiple OR conditions
  */
-function buildWhereIdIn<DB, TableName extends keyof DB>(
+function buildWherePrimaryKeyIn<DB, TableName extends keyof DB>(
   query: DynamicSelectQuery<DB, TableName>,
-  ids: number[]
+  pkConfig: PrimaryKeyConfig,
+  keyValues: PrimaryKeyInput[]
 ): DynamicSelectQuery<DB, TableName> {
-  // Type assertion needed: Kysely's type system can't infer that 'id' exists at compile time
-  // Runtime safety: All tables in our schema have an 'id' column
-  return query.where('id' as never, 'in', ids as never) as DynamicSelectQuery<DB, TableName>;
+  if (keyValues.length === 0) {
+    // Return a query that matches nothing
+    return query.where('1' as never, '=', '0' as never) as DynamicSelectQuery<DB, TableName>;
+  }
+
+  const columns = getPrimaryKeyColumns(pkConfig.columns);
+
+  if (columns.length === 1) {
+    // Simple case: single column primary key
+    const column = columns[0]!;
+    const values = keyValues.map((kv) => {
+      if (typeof kv === 'object') {
+        return (kv as CompositeKeyValue)[column];
+      }
+      return kv;
+    });
+    return query.where(column as never, 'in', values as never) as DynamicSelectQuery<DB, TableName>;
+  }
+
+  // Composite key: build OR conditions for each key tuple
+  return query.where((eb: any) => {
+    const conditions = keyValues.map((keyValue) => {
+      const keyRecord = normalizePrimaryKeyInput(pkConfig.columns, keyValue);
+      const andConditions = Object.entries(keyRecord).map(([col, val]) => eb(col, '=', val));
+      return eb.and(andConditions);
+    });
+    return eb.or(conditions);
+  }) as DynamicSelectQuery<DB, TableName>;
 }
 
 /**
- * Helper to build a where clause for delete with 'id'
+ * Helper to build a where clause for delete with primary key
  */
-function buildDeleteWhereId<DB, TableName extends keyof DB>(
+function buildDeleteWherePrimaryKey<DB, TableName extends keyof DB>(
   query: DynamicDeleteQuery<DB, TableName>,
-  id: number
+  pkConfig: PrimaryKeyConfig,
+  keyValue: PrimaryKeyInput
 ): DynamicDeleteQuery<DB, TableName> {
-  // Type assertion needed: Kysely's type system can't infer that 'id' exists at compile time
-  // Runtime safety: All tables in our schema have an 'id' column
-  return query.where('id' as never, '=', id as never) as DynamicDeleteQuery<DB, TableName>;
+  const keyRecord = normalizePrimaryKeyInput(pkConfig.columns, keyValue);
+  let result = query;
+
+  for (const [column, value] of Object.entries(keyRecord)) {
+    result = result.where(column as never, '=', value as never) as DynamicDeleteQuery<DB, TableName>;
+  }
+
+  return result;
 }
 
 /**
- * Helper to build a where clause for delete with 'id in (...)'
+ * Helper to build a where clause for delete with primary key in (...)
  */
-function buildDeleteWhereIdIn<DB, TableName extends keyof DB>(
+function buildDeleteWherePrimaryKeyIn<DB, TableName extends keyof DB>(
   query: DynamicDeleteQuery<DB, TableName>,
-  ids: number[]
+  pkConfig: PrimaryKeyConfig,
+  keyValues: PrimaryKeyInput[]
 ): DynamicDeleteQuery<DB, TableName> {
-  // Type assertion needed: Kysely's type system can't infer that 'id' exists at compile time
-  // Runtime safety: All tables in our schema have an 'id' column
-  return query.where('id' as never, 'in', ids as never) as DynamicDeleteQuery<DB, TableName>;
+  if (keyValues.length === 0) {
+    // Return a query that matches nothing
+    return query.where('1' as never, '=', '0' as never) as DynamicDeleteQuery<DB, TableName>;
+  }
+
+  const columns = getPrimaryKeyColumns(pkConfig.columns);
+
+  if (columns.length === 1) {
+    // Simple case: single column primary key
+    const column = columns[0]!;
+    const values = keyValues.map((kv) => {
+      if (typeof kv === 'object') {
+        return (kv as CompositeKeyValue)[column];
+      }
+      return kv;
+    });
+    return query.where(column as never, 'in', values as never) as DynamicDeleteQuery<DB, TableName>;
+  }
+
+  // Composite key: build OR conditions for each key tuple
+  return query.where((eb: any) => {
+    const conditions = keyValues.map((keyValue) => {
+      const keyRecord = normalizePrimaryKeyInput(pkConfig.columns, keyValue);
+      const andConditions = Object.entries(keyRecord).map(([col, val]) => eb(col, '=', val));
+      return eb.and(andConditions);
+    });
+    return eb.or(conditions);
+  }) as DynamicDeleteQuery<DB, TableName>;
 }
 
 /**
@@ -158,6 +225,27 @@ function buildOrderByAndPaginate<DB, TableName extends keyof DB>(
 }
 
 /**
+ * Extract primary key value from a row
+ */
+function extractPrimaryKeyFromRow<T>(
+  row: T,
+  pkConfig: PrimaryKeyConfig
+): PrimaryKeyInput {
+  const columns = getPrimaryKeyColumns(pkConfig.columns);
+  
+  if (columns.length === 1) {
+    const column = columns[0]!;
+    return (row as any)[column];
+  }
+
+  const result: CompositeKeyValue = {};
+  for (const column of columns) {
+    result[column] = (row as any)[column];
+  }
+  return result;
+}
+
+/**
  * Create table operations for a specific table
  * This handles all the Kysely-specific type complexity
  *
@@ -178,10 +266,14 @@ function buildOrderByAndPaginate<DB, TableName extends keyof DB>(
  */
 export function createTableOperations<DB, TableName extends keyof DB & string>(
   db: Executor<DB>,
-  tableName: TableName
+  tableName: TableName,
+  pkConfig: PrimaryKeyConfig = { columns: 'id', type: 'number' }
 ): TableOperations<DB[TableName]> {
   type Table = DB[TableName];
   type SelectTable = Selectable<Table>;
+
+  // Get the first primary key column for default ordering
+  const defaultOrderColumn = getPrimaryKeyColumns(pkConfig.columns)[0] ?? 'id';
 
   return {
     async selectAll(): Promise<SelectTable[]> {
@@ -190,17 +282,19 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
       return castResults<SelectTable[]>(result);
     },
 
-    async selectById(id: number): Promise<SelectTable | undefined> {
+    async selectById(id: PrimaryKeyInput): Promise<SelectTable | undefined> {
       const baseQuery = db.selectFrom(tableName).selectAll() as DynamicSelectQuery<DB, TableName>;
-      const query = buildWhereId(baseQuery, id);
+      const query = buildWherePrimaryKey(baseQuery, pkConfig, id);
       const result = await query.executeTakeFirst();
 
       return castResults<SelectTable | undefined>(result);
     },
 
-    async selectByIds(ids: number[]): Promise<SelectTable[]> {
+    async selectByIds(ids: PrimaryKeyInput[]): Promise<SelectTable[]> {
+      if (ids.length === 0) return [];
+      
       const baseQuery = db.selectFrom(tableName).selectAll() as DynamicSelectQuery<DB, TableName>;
-      const query = buildWhereIdIn(baseQuery, ids);
+      const query = buildWherePrimaryKeyIn(baseQuery, pkConfig, ids);
       const result = await query.execute();
 
       return castResults<SelectTable[]>(result);
@@ -234,13 +328,20 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
 
         // Type assertion needed: MySQL returns insertId which isn't in Kysely's type definitions
         const insertResult = result as unknown as InsertResult;
-        if (!insertResult.insertId) {
-          throw new DatabaseError('Failed to create record', 'INSERT_FAILED', tableName);
+        
+        // For auto-increment PKs, use insertId; otherwise, get PK from input data
+        let lookupKey: PrimaryKeyInput;
+        
+        if (pkConfig.type === 'number' && !isCompositeKey(pkConfig.columns) && insertResult.insertId) {
+          lookupKey = Number(insertResult.insertId);
+        } else {
+          // For non-auto-increment keys, the key should be in the input data
+          lookupKey = extractPrimaryKeyFromRow(data, pkConfig);
         }
 
         // Fetch the inserted record
         const selectQuery = db.selectFrom(tableName).selectAll() as DynamicSelectQuery<DB, TableName>;
-        const queryWithWhere = buildWhereId(selectQuery, Number(insertResult.insertId));
+        const queryWithWhere = buildWherePrimaryKey(selectQuery, pkConfig, lookupKey);
         const record = await queryWithWhere.executeTakeFirst();
 
         if (!record) {
@@ -280,13 +381,18 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
 
           // Type assertion needed: MySQL returns insertId which isn't in Kysely's type definitions
           const insertResult = result as unknown as InsertResult;
-          if (!insertResult.insertId) {
-            throw new DatabaseError('Failed to create record', 'INSERT_FAILED', tableName);
+          
+          let lookupKey: PrimaryKeyInput;
+          
+          if (pkConfig.type === 'number' && !isCompositeKey(pkConfig.columns) && insertResult.insertId) {
+            lookupKey = Number(insertResult.insertId);
+          } else {
+            lookupKey = extractPrimaryKeyFromRow(item, pkConfig);
           }
 
           // Fetch the inserted record
           const selectQuery = db.selectFrom(tableName).selectAll() as DynamicSelectQuery<DB, TableName>;
-          const queryWithWhere = buildWhereId(selectQuery, Number(insertResult.insertId));
+          const queryWithWhere = buildWherePrimaryKey(selectQuery, pkConfig, lookupKey);
           const record = await queryWithWhere.executeTakeFirst();
 
           if (record) {
@@ -307,35 +413,41 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
       }
     },
 
-    async updateById(id: number, data: unknown): Promise<SelectTable | undefined> {
+    async updateById(id: PrimaryKeyInput, data: unknown): Promise<SelectTable | undefined> {
       const usesMySQL = isMySQL(db);
+      const keyRecord = normalizePrimaryKeyInput(pkConfig.columns, id);
 
       // Type assertion needed: .set() accepts dynamic data that can't be fully typed at compile time
       // Runtime safety: Data is validated by Zod schemas in repository layer
       const baseQuery = db.updateTable(tableName);
       let query: any = (baseQuery as any).set(data);
 
+      // Add where conditions for primary key
+      for (const [column, value] of Object.entries(keyRecord)) {
+        query = query.where(column, '=', value);
+      }
+
       if (usesMySQL) {
         // MySQL doesn't support RETURNING for UPDATE
-        await query.where('id', '=', id).execute();
+        await query.execute();
 
         // Fetch the updated record
         const selectQuery = db.selectFrom(tableName).selectAll() as DynamicSelectQuery<DB, TableName>;
-        const queryWithWhere = buildWhereId(selectQuery, id);
+        const queryWithWhere = buildWherePrimaryKey(selectQuery, pkConfig, id);
         const record = await queryWithWhere.executeTakeFirst();
 
         return castResults<SelectTable | undefined>(record);
       } else {
         // PostgreSQL and SQLite support RETURNING
-        const result = await query.where('id', '=', id).returningAll().executeTakeFirst();
+        const result = await query.returningAll().executeTakeFirst();
 
         return castResults<SelectTable | undefined>(result);
       }
     },
 
-    async deleteById(id: number): Promise<boolean> {
+    async deleteById(id: PrimaryKeyInput): Promise<boolean> {
       const baseQuery = db.deleteFrom(tableName) as DynamicDeleteQuery<DB, TableName>;
-      const query = buildDeleteWhereId(baseQuery, id);
+      const query = buildDeleteWherePrimaryKey(baseQuery, pkConfig, id);
       const result = await query.execute();
 
       // Type assertion needed: Delete result structure varies by database
@@ -345,9 +457,11 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
         : false;
     },
 
-    async deleteByIds(ids: number[]): Promise<number> {
+    async deleteByIds(ids: PrimaryKeyInput[]): Promise<number> {
+      if (ids.length === 0) return 0;
+      
       const baseQuery = db.deleteFrom(tableName) as DynamicDeleteQuery<DB, TableName>;
-      const query = buildDeleteWhereIdIn(baseQuery, ids);
+      const query = buildDeleteWherePrimaryKeyIn(baseQuery, pkConfig, ids);
       const result = await query.execute();
 
       // Type assertion needed: Delete result structure varies by database
@@ -394,7 +508,7 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
       limit: number;
       cursor?: {
         value: unknown;
-        id: number;
+        id: PrimaryKeyInput;
       } | null;
       orderBy: string;
       orderDirection: 'asc' | 'desc';
@@ -406,33 +520,44 @@ export function createTableOperations<DB, TableName extends keyof DB & string>(
       // Apply keyset pagination using WHERE clause
       if (cursor) {
         const { value, id } = cursor;
+        const keyRecord = normalizePrimaryKeyInput(pkConfig.columns, id);
+        
+        // For composite keys, we need to handle tie-breaking differently
+        const pkColumns = getPrimaryKeyColumns(pkConfig.columns);
+        const firstPkColumn = pkColumns[0] ?? 'id';
 
         // Type assertion needed: ExpressionBuilder requires dynamic column references
         // Runtime safety: orderBy is validated at repository layer
         if (orderDirection === 'asc') {
-          // For ascending: (orderBy > value) OR (orderBy = value AND id > cursor.id)
+          // For ascending: (orderBy > value) OR (orderBy = value AND pk > cursor.pk)
           query = query.where((eb: any) =>
             eb.or([
               eb(orderBy, '>', value),
-              eb.and([eb(orderBy, '=', value), eb('id', '>', id)]),
+              eb.and([
+                eb(orderBy, '=', value),
+                eb(firstPkColumn, '>', keyRecord[firstPkColumn]),
+              ]),
             ])
           ) as DynamicSelectQuery<DB, TableName>;
         } else {
-          // For descending: (orderBy < value) OR (orderBy = value AND id > cursor.id)
+          // For descending: (orderBy < value) OR (orderBy = value AND pk > cursor.pk)
           query = query.where((eb: any) =>
             eb.or([
               eb(orderBy, '<', value),
-              eb.and([eb(orderBy, '=', value), eb('id', '>', id)]),
+              eb.and([
+                eb(orderBy, '=', value),
+                eb(firstPkColumn, '>', keyRecord[firstPkColumn]),
+              ]),
             ])
           ) as DynamicSelectQuery<DB, TableName>;
         }
       }
 
-      // Apply ordering (primary by orderBy, secondary by id for tie-breaking)
+      // Apply ordering (primary by orderBy, secondary by first pk column for tie-breaking)
       // Type assertion needed: orderBy is a dynamic column name
       query = query
         .orderBy(orderBy as never, orderDirection)
-        .orderBy('id' as never, 'asc')
+        .orderBy(defaultOrderColumn as never, 'asc')
         .limit(limit) as DynamicSelectQuery<DB, TableName>;
 
       const result = await query.execute();

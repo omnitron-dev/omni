@@ -366,8 +366,16 @@ describe.each(getDatabaseTypes())('Multi-Database Tests (%s)', (dbType) => {
       const { withDebug } = await import('../src/debug.js');
       const logs: string[] = [];
 
+      // Create a KyseraLogger-compatible object
+      const testLogger = {
+        debug: (msg: string) => logs.push(msg),
+        info: (msg: string) => logs.push(msg),
+        warn: (msg: string) => logs.push(msg),
+        error: (msg: string) => logs.push(msg),
+      };
+
       const debugDb = withDebug(db, {
-        logger: (sql) => logs.push(sql),
+        logger: testLogger,
         logQuery: true,
       });
 

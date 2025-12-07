@@ -3,8 +3,7 @@ import { prism, confirm } from '@xec-sh/kit';
 import { logger } from '../../utils/logger.js';
 import { CLIError } from '../../utils/errors.js';
 import { MigrationRunner } from './runner.js';
-import { getDatabaseConnection } from '../../utils/database.js';
-import { loadConfig } from '../../config/loader.js';
+import { withDatabase } from '../../utils/with-database.js';
 
 export interface DownOptions {
   to?: string;
@@ -53,7 +52,7 @@ async function rollbackMigrations(options: DownOptions): Promise<void> {
       logger.debug('Auto-confirming rollback all in test/non-TTY environment');
     } else {
       const confirmed = await confirm({
-        message: '⚠️  WARNING: This will rollback ALL migrations! Are you sure?',
+        message: '[WARN] WARNING: This will rollback ALL migrations! Are you sure?',
         initialValue: false,
       });
 
@@ -64,100 +63,79 @@ async function rollbackMigrations(options: DownOptions): Promise<void> {
     }
   }
 
-  // Load configuration
-  const config = await loadConfig(options.config);
+  await withDatabase({ config: options.config, verbose: options.verbose }, async (db, config) => {
+    const migrationsDir = config.migrations?.directory || './migrations';
+    const tableName = config.migrations?.tableName || 'kysera_migrations';
 
-  if (!config?.database) {
-    throw new CLIError('Database configuration not found', 'CONFIG_ERROR', undefined, [
-      'Create a kysera.config.ts file with database configuration',
-      'Or specify a config file with --config option',
-    ]);
-  }
+    // Create migration runner
+    const runner = new MigrationRunner(db, migrationsDir, tableName);
 
-  // Get database connection
-  const db = await getDatabaseConnection(config.database);
+    // Acquire lock to prevent concurrent migrations
+    let releaseLock: (() => Promise<void>) | null = null;
 
-  if (!db) {
-    throw new CLIError('Failed to connect to database', 'DATABASE_ERROR', undefined, [
-      'Check your database configuration',
-      'Ensure the database server is running',
-    ]);
-  }
-
-  const migrationsDir = config.migrations?.directory || './migrations';
-  const tableName = config.migrations?.tableName || 'kysera_migrations';
-
-  // Create migration runner
-  const runner = new MigrationRunner(db, migrationsDir, tableName);
-
-  // Acquire lock to prevent concurrent migrations
-  let releaseLock: (() => Promise<void>) | null = null;
-
-  try {
-    if (!options.dryRun) {
-      try {
-        releaseLock = await runner.acquireLock();
-      } catch (error: any) {
-        if (error.code === 'MIGRATION_LOCKED') {
-          throw new CLIError('Migrations are already running in another process', 'MIGRATION_LOCKED', undefined, [
-            'Wait for the other process to complete',
-            'Or check for stuck locks in the database',
-          ]);
+    try {
+      if (!options.dryRun) {
+        try {
+          releaseLock = await runner.acquireLock();
+        } catch (error: any) {
+          if (error.code === 'MIGRATION_LOCKED') {
+            throw new CLIError('Migrations are already running in another process', 'MIGRATION_LOCKED', undefined, [
+              'Wait for the other process to complete',
+              'Or check for stuck locks in the database',
+            ]);
+          }
+          // Lock mechanism might not be set up yet, continue without it
+          logger.debug('Could not acquire migration lock, continuing without lock');
         }
-        // Lock mechanism might not be set up yet, continue without it
-        logger.debug('Could not acquire migration lock, continuing without lock');
       }
-    }
 
-    // Get migration status before rolling back
-    const statusBefore = await runner.getMigrationStatus();
-    const executedCount = statusBefore.filter((m) => m.status === 'executed').length;
+      // Get migration status before rolling back
+      const statusBefore = await runner.getMigrationStatus();
+      const executedCount = statusBefore.filter((m: any) => m.status === 'executed').length;
 
-    if (executedCount === 0) {
-      logger.info('No migrations to rollback');
-      return;
-    }
+      if (executedCount === 0) {
+        logger.info('No migrations to rollback');
+        return;
+      }
 
-    // Show what will be rolled back in dry-run mode
-    if (options.dryRun) {
-      logger.info(prism.yellow('DRY RUN MODE - No changes will be made'));
-      logger.info('');
-    }
-
-    // Rollback migrations
-    const startTime = Date.now();
-    const { rolledBack, duration } = await runner.down({
-      to: options.to,
-      steps: options.steps || options.count, // Use count as alias for steps
-      all: options.all,
-      dryRun: options.dryRun,
-      verbose: options.verbose,
-    });
-
-    // Show summary
-    if (rolledBack.length > 0) {
-      logger.info('');
+      // Show what will be rolled back in dry-run mode
       if (options.dryRun) {
-        logger.info(
-          prism.yellow(
-            `Would have rolled back ${rolledBack.length} migration${rolledBack.length > 1 ? 's' : ''} (${duration}ms)`
-          )
-        );
-      } else {
-        logger.info(
-          prism.green(
-            `✅ ${rolledBack.length} migration${rolledBack.length > 1 ? 's' : ''} rolled back successfully (${duration}ms)`
-          )
-        );
+        logger.info(prism.yellow('DRY RUN MODE - No changes will be made'));
+        logger.info('');
+      }
+
+      // Rollback migrations
+      const startTime = Date.now();
+      const { rolledBack, duration } = await runner.down({
+        to: options.to,
+        steps: options.steps || options.count, // Use count as alias for steps
+        all: options.all,
+        dryRun: options.dryRun,
+        verbose: options.verbose,
+      });
+
+      // Show summary
+      if (rolledBack.length > 0) {
+        logger.info('');
+        if (options.dryRun) {
+          logger.info(
+            prism.yellow(
+              `Would have rolled back ${rolledBack.length} migration${rolledBack.length > 1 ? 's' : ''} (${duration}ms)`
+            )
+          );
+        } else {
+          logger.info(
+            prism.green(
+              `[OK] ${rolledBack.length} migration${rolledBack.length > 1 ? 's' : ''} rolled back successfully (${duration}ms)`
+            )
+          );
+        }
+      }
+    } finally {
+      // Release lock
+      if (releaseLock) {
+        await releaseLock();
       }
     }
-  } finally {
-    // Release lock
-    if (releaseLock) {
-      await releaseLock();
-    }
-
-    // Close database connection
-    await db.destroy();
-  }
+  });
 }

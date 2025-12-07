@@ -11,7 +11,7 @@
 | Property | Value |
 |----------|-------|
 | **Package** | `@kysera/migrations` |
-| **Version** | `0.5.0` |
+| **Version** | `0.5.1` |
 | **Bundle Size** | ~4.5 KB (minified) |
 | **Dependencies** | `@kysera/core` (peer: kysely) |
 | **Test Coverage** | 35 tests, comprehensive |
@@ -231,6 +231,39 @@ interface MigrationRunnerOptions {
 }
 ```
 
+#### `MigrationDefinition`
+
+```typescript
+interface MigrationDefinition {
+  up: (db: Kysely<any>) => Promise<void>
+  down?: (db: Kysely<any>) => Promise<void>
+  description?: string
+  breaking?: boolean
+  estimatedDuration?: number
+  tags?: string[]
+}
+```
+
+#### `MigrationDefinitions`
+
+```typescript
+type MigrationDefinitions = Record<string, MigrationDefinition>
+```
+
+#### `MigrationRunnerWithPluginsOptions`
+
+```typescript
+interface MigrationRunnerWithPluginsOptions extends MigrationRunnerOptions {
+  plugins?: MigrationPlugin[]
+}
+```
+
+#### `MigrationErrorCode`
+
+```typescript
+type MigrationErrorCode = 'MIGRATION_UP_FAILED' | 'MIGRATION_DOWN_FAILED' | 'MIGRATION_VALIDATION_FAILED'
+```
+
 ### Factory Functions
 
 #### `createMigration(name, up, down?)`
@@ -270,6 +303,20 @@ const runner = createMigrationRunner(db, migrations, {
   logger: console.log,
   useTransactions: true,
 })
+```
+
+#### `createMigrationRunnerWithPlugins(db, migrations, options?)`
+
+Create a MigrationRunner with plugin support (async factory):
+
+```typescript
+const runner = await createMigrationRunnerWithPlugins(db, migrations, {
+  plugins: [createLoggingPlugin(), createMetricsPlugin()],
+  useTransactions: true,
+})
+
+// Runner is ready with plugins initialized via onInit
+await runner.up()
 ```
 
 ### One-Liner Functions (v0.5.0+)
@@ -404,13 +451,18 @@ await setupMigrations(db)
 
 ### Plugin Interface
 
+Consistent with `@kysera/repository` Plugin interface:
+
 ```typescript
 interface MigrationPlugin {
   name: string
   version: string
+  // Called once when runner is initialized (consistent with repository Plugin.onInit)
+  onInit?(runner: MigrationRunner): Promise<void> | void
   beforeMigration?(migration: Migration, operation: 'up' | 'down'): Promise<void> | void
   afterMigration?(migration: Migration, operation: 'up' | 'down', duration: number): Promise<void> | void
-  onMigrationError?(migration: Migration, operation: 'up' | 'down', error: Error): Promise<void> | void
+  // Unknown error type for consistency with repository Plugin.onError
+  onMigrationError?(migration: Migration, operation: 'up' | 'down', error: unknown): Promise<void> | void
 }
 ```
 
@@ -446,6 +498,11 @@ const notificationPlugin: MigrationPlugin = {
   name: 'notification-plugin',
   version: '1.0.0',
 
+  // Called when runner is created via createMigrationRunnerWithPlugins()
+  async onInit(runner) {
+    console.log('Notification plugin initialized')
+  },
+
   async beforeMigration(migration, operation) {
     await slack.send(`Starting ${operation} for ${migration.name}`)
   },
@@ -455,7 +512,9 @@ const notificationPlugin: MigrationPlugin = {
   },
 
   async onMigrationError(migration, operation, error) {
-    await pagerduty.alert(`Migration failed: ${error.message}`)
+    // Error is unknown type - handle appropriately
+    const message = error instanceof Error ? error.message : String(error)
+    await pagerduty.alert(`Migration failed: ${message}`)
   },
 }
 ```
@@ -463,6 +522,8 @@ const notificationPlugin: MigrationPlugin = {
 ## Error Handling
 
 ### MigrationError
+
+Extends `DatabaseError` from `@kysera/core` for consistency:
 
 ```typescript
 import { MigrationError } from '@kysera/migrations'
@@ -473,7 +534,32 @@ try {
   if (error instanceof MigrationError) {
     console.log('Migration:', error.migrationName)
     console.log('Operation:', error.operation) // 'up' or 'down'
+    console.log('Code:', error.code) // 'MIGRATION_UP_FAILED' or 'MIGRATION_DOWN_FAILED'
     console.log('Cause:', error.cause?.message)
+
+    // Serialize for logging
+    console.log(error.toJSON())
+    // { name, message, code, detail, migrationName, operation, cause }
+  }
+}
+```
+
+### BadRequestError
+
+For validation errors (e.g., duplicate migration names):
+
+```typescript
+import { BadRequestError } from '@kysera/migrations'
+
+try {
+  createMigrationRunner(db, [
+    createMigration('001_users', ...),
+    createMigration('001_users', ...), // Duplicate!
+  ])
+} catch (error) {
+  if (error instanceof BadRequestError) {
+    console.log(error.message) // "Duplicate migration name: 001_users"
+    console.log(error.code)    // "BAD_REQUEST"
   }
 }
 ```
@@ -673,6 +759,18 @@ createMigration(
 ```
 
 ## Changelog
+
+### v0.5.1
+
+- **Breaking** `MigrationError` now extends `DatabaseError` from `@kysera/core` with `code` property
+- **Breaking** `onMigrationError` hook now receives `error: unknown` (consistent with repository Plugin)
+- **Breaking** `createMigrationRunnerWithPlugins()` is now async (returns `Promise<MigrationRunnerWithPlugins>`)
+- **Added** `onInit` hook to `MigrationPlugin` interface (consistent with repository Plugin)
+- **Added** `MigrationErrorCode` type export
+- **Added** `MigrationDefinition` and `MigrationDefinitions` type exports
+- **Added** `MigrationRunnerWithPluginsOptions` interface export
+- **Added** `DatabaseError` and `BadRequestError` re-exports from `@kysera/core`
+- **Changed** Validation errors now throw `BadRequestError` instead of generic `Error`
 
 ### v0.5.0
 

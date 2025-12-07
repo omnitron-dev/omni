@@ -1,6 +1,6 @@
 import type { Kysely } from 'kysely';
 import { sql } from 'kysely';
-import { NotFoundError } from '@kysera/core';
+import { DatabaseError, NotFoundError, BadRequestError } from '@kysera/core';
 
 // ============================================================================
 // Types and Interfaces
@@ -97,10 +97,14 @@ export interface MigrationResult {
 // Error Classes (extending @kysera/core)
 // ============================================================================
 
+/** Error codes for migration operations */
+export type MigrationErrorCode = 'MIGRATION_UP_FAILED' | 'MIGRATION_DOWN_FAILED' | 'MIGRATION_VALIDATION_FAILED';
+
 /**
- * Migration-specific error for migration failures
+ * Migration-specific error extending DatabaseError from @kysera/core
+ * Provides structured error information with code, migration context, and cause tracking
  */
-export class MigrationError extends Error {
+export class MigrationError extends DatabaseError {
   public readonly migrationName: string;
   public readonly operation: 'up' | 'down';
 
@@ -110,17 +114,20 @@ export class MigrationError extends Error {
     operation: 'up' | 'down',
     cause?: Error
   ) {
-    super(message, { cause });
+    const code: MigrationErrorCode = operation === 'up' ? 'MIGRATION_UP_FAILED' : 'MIGRATION_DOWN_FAILED';
+    super(message, code, migrationName);
     this.name = 'MigrationError';
     this.migrationName = migrationName;
     this.operation = operation;
+    if (cause) {
+      this.cause = cause;
+    }
   }
 
-  toJSON(): Record<string, unknown> {
+  override toJSON(): Record<string, unknown> {
     const causeError = this.cause instanceof Error ? this.cause : undefined;
     return {
-      name: this.name,
-      message: this.message,
+      ...super.toJSON(),
       migrationName: this.migrationName,
       operation: this.operation,
       cause: causeError?.message,
@@ -168,12 +175,13 @@ function formatError(error: unknown): string {
 
 /**
  * Validate migrations for duplicate names
+ * @throws {BadRequestError} When duplicate migration names are found
  */
 function validateMigrations(migrations: Migration[]): void {
   const names = new Set<string>();
   for (const migration of migrations) {
     if (names.has(migration.name)) {
-      throw new Error(`Duplicate migration name: ${migration.name}`);
+      throw new BadRequestError(`Duplicate migration name: ${migration.name}`);
     }
     names.add(migration.name);
   }
@@ -787,19 +795,22 @@ export async function getMigrationStatus(
 // ============================================================================
 
 /**
- * Migration plugin interface for integration with @kysera/repository plugin system
+ * Migration plugin interface - consistent with @kysera/repository Plugin
+ * Provides lifecycle hooks for migration execution
  */
 export interface MigrationPlugin {
   /** Plugin name */
   name: string;
   /** Plugin version */
   version: string;
+  /** Called once when the runner is initialized (consistent with repository Plugin.onInit) */
+  onInit?(runner: MigrationRunner): Promise<void> | void;
   /** Called before migration execution */
   beforeMigration?(migration: Migration, operation: 'up' | 'down'): Promise<void> | void;
   /** Called after successful migration execution */
   afterMigration?(migration: Migration, operation: 'up' | 'down', duration: number): Promise<void> | void;
-  /** Called on migration error */
-  onMigrationError?(migration: Migration, operation: 'up' | 'down', error: Error): Promise<void> | void;
+  /** Called on migration error (unknown type for consistency with repository Plugin.onError) */
+  onMigrationError?(migration: Migration, operation: 'up' | 'down', error: unknown): Promise<void> | void;
 }
 
 /**
@@ -812,13 +823,28 @@ export interface MigrationRunnerWithPluginsOptions extends MigrationRunnerOption
 
 /**
  * Create a migration runner with plugin support
+ * Async factory to properly initialize plugins (consistent with @kysera/repository createORM)
  */
-export function createMigrationRunnerWithPlugins(
+export async function createMigrationRunnerWithPlugins(
   db: Kysely<any>,
   migrations: Migration[],
   options?: MigrationRunnerWithPluginsOptions
-): MigrationRunnerWithPlugins {
-  return new MigrationRunnerWithPlugins(db, migrations, options);
+): Promise<MigrationRunnerWithPlugins> {
+  const runner = new MigrationRunnerWithPlugins(db, migrations, options);
+
+  // Initialize plugins (consistent with repository Plugin.onInit pattern)
+  if (options?.plugins) {
+    for (const plugin of options.plugins) {
+      if (plugin.onInit) {
+        const result = plugin.onInit(runner);
+        if (result instanceof Promise) {
+          await result;
+        }
+      }
+    }
+  }
+
+  return runner;
 }
 
 /**
@@ -871,7 +897,7 @@ export class MigrationRunnerWithPlugins extends MigrationRunner {
   protected async runErrorHooks(
     migration: Migration,
     operation: 'up' | 'down',
-    error: Error
+    error: unknown
   ): Promise<void> {
     for (const plugin of this.plugins) {
       if (plugin.onMigrationError) {
@@ -900,7 +926,7 @@ export function createLoggingPlugin(
 ): MigrationPlugin {
   return {
     name: '@kysera/migrations/logging',
-    version: '0.5.0',
+    version: '0.5.1',
     beforeMigration(migration, operation) {
       logger(`[MIGRATION] Starting ${operation} for ${migration.name}`);
     },
@@ -908,7 +934,8 @@ export function createLoggingPlugin(
       logger(`[MIGRATION] Completed ${operation} for ${migration.name} in ${duration}ms`);
     },
     onMigrationError(migration, operation, error) {
-      logger(`[MIGRATION] Error during ${operation} for ${migration.name}: ${error.message}`);
+      const message = error instanceof Error ? error.message : String(error);
+      logger(`[MIGRATION] Error during ${operation} for ${migration.name}: ${message}`);
     },
   };
 }
@@ -923,7 +950,7 @@ export function createMetricsPlugin(): MigrationPlugin & {
 
   return {
     name: '@kysera/migrations/metrics',
-    version: '0.5.0',
+    version: '0.5.1',
     afterMigration(migration, operation, duration) {
       metrics.push({ name: migration.name, operation, duration, success: true });
     },
@@ -940,4 +967,4 @@ export function createMetricsPlugin(): MigrationPlugin & {
 // Re-exports from @kysera/core for convenience
 // ============================================================================
 
-export { NotFoundError } from '@kysera/core';
+export { DatabaseError, NotFoundError, BadRequestError } from '@kysera/core';

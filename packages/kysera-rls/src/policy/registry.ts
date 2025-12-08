@@ -17,6 +17,7 @@ import type {
   CompiledFilterPolicy,
 } from './types.js';
 import { RLSSchemaError } from '../errors.js';
+import { silentLogger, type KyseraLogger } from '@kysera/core';
 
 /**
  * Internal compiled policy with operations as Set for efficient lookup
@@ -48,8 +49,10 @@ interface TablePolicyConfig {
 export class PolicyRegistry<DB = unknown> {
   private tables = new Map<string, TablePolicyConfig>();
   private compiled = false;
+  private logger: KyseraLogger;
 
-  constructor(schema?: RLSSchema<DB>) {
+  constructor(schema?: RLSSchema<DB>, options?: { logger?: KyseraLogger }) {
+    this.logger = options?.logger ?? silentLogger;
     if (schema) {
       this.loadSchema(schema);
     }
@@ -170,7 +173,7 @@ export class PolicyRegistry<DB = unknown> {
     // Otherwise, treat as table-based registration
     const table = schemaOrTable as keyof DB & string;
     if (!policies) {
-      throw new Error('Policies are required when registering by table name');
+      throw new RLSSchemaError('Policies are required when registering by table name', { table });
     }
 
     const config: TableRLSConfig = {
@@ -289,9 +292,9 @@ export class PolicyRegistry<DB = unknown> {
   }
 
   /**
-   * Get operations that skip RLS for a table
+   * Get roles that skip RLS for a table
    */
-  getSkipFor(table: string): Operation[] {
+  getSkipFor(table: string): string[] {
     const config = this.tables.get(table);
     return config?.skipFor ?? [];
   }
@@ -343,7 +346,7 @@ export class PolicyRegistry<DB = unknown> {
 
       if (!hasPolicy && !config.defaultDeny) {
         // Warning: table has no policies and defaultDeny is false
-        console.warn(
+        this.logger.warn?.(
           `[RLS] Table "${table}" has no policies and defaultDeny is false. ` +
             `All operations will be allowed.`
         );
@@ -369,11 +372,12 @@ export class PolicyRegistry<DB = unknown> {
         const skippedOpsWithPolicies = config.skipFor.filter(op => {
           // 'all' means skip all operations
           if (op === 'all') return opsWithPolicies.size > 0;
-          return opsWithPolicies.has(op);
+          // Check if this is an operation name (for backwards compatibility)
+          return opsWithPolicies.has(op as Operation);
         });
 
         if (skippedOpsWithPolicies.length > 0) {
-          console.warn(
+          this.logger.warn?.(
             `[RLS] Table "${table}" has skipFor operations that also have policies: ${skippedOpsWithPolicies.join(', ')}. ` +
               `The policies will be ignored for these operations.`
           );

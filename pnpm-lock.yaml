@@ -849,6 +849,9 @@ importers:
       '@types/node':
         specifier: ^24.10.1
         version: 24.10.1
+      '@vitest/coverage-v8':
+        specifier: ^4.0.15
+        version: 4.0.15(vitest@4.0.15(@types/node@24.10.1)(happy-dom@20.0.2)(jiti@2.6.1)(jsdom@27.0.0(postcss@8.5.6))(terser@5.44.0)(tsx@4.21.0)(yaml@2.8.1))
       better-sqlite3:
         specifier: ^12.5.0
         version: 12.5.0
@@ -916,6 +919,9 @@ importers:
       '@types/node':
         specifier: ^24.10.1
         version: 24.10.1
+      '@vitest/coverage-v8':
+        specifier: ^4.0.15
+        version: 4.0.15(vitest@4.0.15(@types/node@24.10.1)(happy-dom@20.0.2)(jiti@2.6.1)(jsdom@27.0.0(postcss@8.5.6))(terser@5.44.0)(tsx@4.21.0)(yaml@2.8.1))
       better-sqlite3:
         specifier: ^12.5.0
         version: 12.5.0
@@ -990,8 +996,8 @@ importers:
         specifier: workspace:*
         version: link:../kysera-repository
       zod:
-        specifier: ^3.25.67
-        version: 3.25.76
+        specifier: ^4.1.13
+        version: 4.1.13
     devDependencies:
       '@types/better-sqlite3':
         specifier: ^7.6.13
@@ -1079,6 +1085,9 @@ importers:
       '@types/node':
         specifier: ^24.10.1
         version: 24.10.1
+      '@vitest/coverage-v8':
+        specifier: ^4.0.15
+        version: 4.0.15(vitest@4.0.15(@types/node@24.10.1)(happy-dom@20.0.2)(jiti@2.6.1)(jsdom@27.0.0(postcss@8.5.6))(terser@5.44.0)(tsx@4.21.0)(yaml@2.8.1))
       better-sqlite3:
         specifier: ^12.5.0
         version: 12.5.0

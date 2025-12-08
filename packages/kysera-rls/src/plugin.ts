@@ -17,7 +17,7 @@ import { PolicyRegistry } from './policy/registry.js';
 import { SelectTransformer } from './transformer/select.js';
 import { MutationGuard } from './transformer/mutation.js';
 import { rlsContext } from './context/manager.js';
-import { RLSContextError, RLSPolicyViolation } from './errors.js';
+import { RLSContextError, RLSPolicyViolation, RLSError, RLSErrorCodes } from './errors.js';
 import { silentLogger, type KyseraLogger } from '@kysera/core';
 
 /**
@@ -273,7 +273,7 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
          */
         async create(data: unknown): Promise<unknown> {
           if (!originalCreate) {
-            throw new Error('Repository does not support create operation');
+            throw new RLSError('Repository does not support create operation', RLSErrorCodes.RLS_POLICY_INVALID);
           }
 
           const ctx = rlsContext.getContextOrNull();
@@ -310,7 +310,7 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
          */
         async update(id: unknown, data: unknown): Promise<unknown> {
           if (!originalUpdate || !originalFindById) {
-            throw new Error('Repository does not support update operation');
+            throw new RLSError('Repository does not support update operation', RLSErrorCodes.RLS_POLICY_INVALID);
           }
 
           const ctx = rlsContext.getContextOrNull();
@@ -358,7 +358,7 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
          */
         async delete(id: unknown): Promise<unknown> {
           if (!originalDelete || !originalFindById) {
-            throw new Error('Repository does not support delete operation');
+            throw new RLSError('Repository does not support delete operation', RLSErrorCodes.RLS_POLICY_INVALID);
           }
 
           const ctx = rlsContext.getContextOrNull();
@@ -447,7 +447,12 @@ export function rlsPlugin<DB>(options: RLSPluginOptions<DB>): Plugin {
               default:
                 return false;
             }
-          } catch {
+          } catch (error) {
+            logger.debug?.('[RLS] Access check failed', {
+              table,
+              operation,
+              error: error instanceof Error ? error.message : String(error)
+            });
             return false;
           }
         },

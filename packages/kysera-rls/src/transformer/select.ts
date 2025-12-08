@@ -8,6 +8,7 @@ import type { PolicyRegistry } from '../policy/registry.js';
 import type { PolicyEvaluationContext } from '../policy/types.js';
 import type { RLSContext } from '../context/types.js';
 import { rlsContext } from '../context/manager.js';
+import { RLSError, RLSErrorCodes } from '../errors.js';
 
 /**
  * SELECT query transformer
@@ -93,10 +94,11 @@ export class SelectTransformer<DB = unknown> {
     // Note: If async filters are needed, this method signature would need to change
     // For now, we assume synchronous filter evaluation
     if (result instanceof Promise) {
-      throw new Error(
+      throw new RLSError(
         `Async filter policies are not supported in SELECT transformers. ` +
         `Filter '${filter.name}' on table '${table}' returned a Promise. ` +
-        `Use synchronous conditions for filter policies.`
+        `Use synchronous conditions for filter policies.`,
+        RLSErrorCodes.RLS_POLICY_INVALID
       );
     }
 

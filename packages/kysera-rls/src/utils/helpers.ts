@@ -64,7 +64,9 @@ export async function safeEvaluate<T>(
       return await result;
     }
     return result;
-  } catch {
+  } catch (error) {
+    // Expected failure during policy evaluation - return default value
+    // Logger not available in this utility function, error is handled gracefully
     return defaultValue;
   }
 }

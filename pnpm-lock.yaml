@@ -86,6 +86,9 @@ importers:
       '@kysera/repository':
         specifier: workspace:*
         version: link:../../packages/kysera-repository
+      '@kysera/rls':
+        specifier: workspace:*
+        version: link:../../packages/kysera-rls
       '@kysera/soft-delete':
         specifier: workspace:*
         version: link:../../packages/kysera-soft-delete

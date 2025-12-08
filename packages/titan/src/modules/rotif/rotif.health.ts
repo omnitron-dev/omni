@@ -5,6 +5,7 @@
  */
 
 import type { NotificationManager } from '../../rotif/rotif.js';
+import type { ILogger } from '../logger/logger.types.js';
 
 /**
  * Health status for Rotif
@@ -41,7 +42,16 @@ export interface RotifHealthStatus {
  * ```
  */
 export class RotifHealthIndicator {
+  private logger?: ILogger;
+
   constructor(private readonly manager: NotificationManager) {}
+
+  /**
+   * Set logger for health indicator
+   */
+  setLogger(logger: ILogger): void {
+    this.logger = logger;
+  }
 
   /**
    * Perform a health check on the Rotif system.

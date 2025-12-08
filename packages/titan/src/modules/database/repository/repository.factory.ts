@@ -30,8 +30,7 @@ import type {
   RepositoryTransactionScope,
 } from './repository.types.js';
 import type { RepositoryConstructor } from '../database.internal-types.js';
-import type { Logger } from '../database.internal-types.js';
-import { createDefaultLogger } from '../utils/logger.factory.js';
+import { createNullLogger, type ILogger } from '../../logger/logger.types.js';
 
 /**
  * Repository Factory Service
@@ -44,15 +43,16 @@ export class RepositoryFactory implements IRepositoryFactory {
   private metadata: Map<RepositoryConstructor, RepositoryMetadata> = new Map();
   private plugins: Map<string, KyseraPlugin> = new Map();
   private config: RepositoryFactoryConfig;
-  private logger: Logger;
+  private logger: ILogger;
 
   constructor(
     private manager: DatabaseManager,
     config?: RepositoryFactoryConfig,
-    private pluginManager?: PluginManager
+    private pluginManager?: PluginManager,
+    logger?: ILogger
   ) {
     this.config = config || {};
-    this.logger = createDefaultLogger('RepositoryFactory');
+    this.logger = logger ? logger.child({ module: 'RepositoryFactory' }) : createNullLogger();
 
     // Only initialize built-in plugins if no plugin manager is provided
     if (!this.pluginManager) {

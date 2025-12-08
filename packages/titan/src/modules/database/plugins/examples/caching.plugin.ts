@@ -6,6 +6,7 @@
 
 import { createHash } from 'crypto';
 import type { ITitanPlugin } from '../plugin.types.js';
+import type { ILogger } from '../../../logger/logger.types.js';
 
 export interface CacheOptions {
   /**
@@ -42,6 +43,11 @@ export interface CacheOptions {
    * Enable cache statistics
    */
   enableStats?: boolean;
+
+  /**
+   * Logger instance
+   */
+  logger?: ILogger;
 }
 
 /**
@@ -150,6 +156,7 @@ export function cachingPlugin(options: CacheOptions = {}): ITitanPlugin {
   const prefix = options.prefix || 'db:cache:';
   const cache = options.cache || new MemoryCache();
   const operations = options.operations || ['find', 'findOne', 'findById', 'count'];
+  const logger = options.logger;
 
   // Statistics
   const stats: CacheStats = {
@@ -313,7 +320,7 @@ export function cachingPlugin(options: CacheOptions = {}): ITitanPlugin {
       if (result === 'commit') {
         // Clear cache after successful transaction
         cache.clear(`${prefix}*`).catch((err) => {
-          console.error('Failed to clear cache after transaction:', err);
+          logger?.error({ err }, 'Failed to clear cache after transaction');
         });
       }
     },

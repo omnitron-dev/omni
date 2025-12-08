@@ -1,5 +1,6 @@
 import { Redis, Cluster } from 'ioredis';
 import { Errors } from '../../errors/index.js';
+import type { ILogger } from '../logger/logger.types.js';
 
 import {
   RedisClient,
@@ -19,45 +20,16 @@ import {
   createRetryStrategy,
 } from './redis.utils.js';
 
-interface Logger {
-  log(message: string): void;
-  error(message: string, error?: any): void;
-  warn(message: string): void;
-  debug(message: string): void;
-}
-
-class SimpleLogger implements Logger {
-  constructor(private readonly context: string) {}
-
-  log(message: string): void {
-    console.log(`[${this.context}] ${message}`);
-  }
-
-  error(message: string, error?: any): void {
-    console.error(`[${this.context}] ${message}`, error);
-  }
-
-  warn(message: string): void {
-    console.warn(`[${this.context}] ${message}`);
-  }
-
-  debug(message: string): void {
-    console.debug(`[${this.context}] ${message}`);
-  }
-}
-
 export class RedisManager {
-  private readonly logger: Logger = new SimpleLogger('RedisManager');
+  private readonly logger: ILogger;
   private readonly clients = new Map<string, RedisClient>();
   private readonly scripts = new Map<string, Map<string, string>>();
   private readonly options: RedisModuleOptions;
   private readonly connectionPromises = new Map<string, Promise<void>>();
 
-  constructor(options: RedisModuleOptions, logger?: Logger) {
+  constructor(options: RedisModuleOptions, logger: ILogger) {
     this.options = options;
-    if (logger) {
-      this.logger = logger;
-    }
+    this.logger = logger.child({ module: 'RedisManager' });
   }
 
   async init(): Promise<void> {
@@ -151,7 +123,7 @@ export class RedisManager {
         }
 
         if (this.options.readyLog !== false) {
-          this.logger.log(`Redis client "${namespace}" connected successfully`);
+          this.logger.info(`Redis client "${namespace}" connected successfully`);
         }
       } else {
         this.logger.debug(`Redis client "${namespace}" initialized with lazy connect`);
@@ -165,7 +137,7 @@ export class RedisManager {
         this.options.onClientCreated(client);
       }
     } catch (error) {
-      this.logger.error(`Failed to connect Redis client "${namespace}":`, error);
+      this.logger.error({ error }, `Failed to connect Redis client "${namespace}"`);
       throw error;
     }
   }
@@ -173,7 +145,7 @@ export class RedisManager {
   private setupEventListeners(client: RedisClient, namespace: string): void {
     client.on('error', (error) => {
       if (this.options.errorLog !== false) {
-        this.logger.error(`Redis client "${namespace}" error:`, error);
+        this.logger.error({ error }, `Redis client "${namespace}" error`);
       }
 
       if (this.options.onError) {
@@ -232,7 +204,7 @@ export class RedisManager {
 
           this.logger.debug(`Loaded script "${script.name}" for client "${namespace}"`);
         } catch (error) {
-          this.logger.error(`Failed to load script "${script.name}" for client "${namespace}":`, error);
+          this.logger.error({ error }, `Failed to load script "${script.name}" for client "${namespace}"`);
           throw error;
         }
       }
@@ -291,9 +263,9 @@ export class RedisManager {
         this.options.onClientDestroyed(namespace);
       }
 
-      this.logger.log(`Redis client "${namespace}" destroyed`);
+      this.logger.info(`Redis client "${namespace}" destroyed`);
     } catch (error) {
-      this.logger.error(`Error destroying Redis client "${namespace}":`, error);
+      this.logger.error({ error }, `Error destroying Redis client "${namespace}"`);
       throw error;
     }
   }
@@ -380,9 +352,9 @@ export class RedisManager {
         if (isClientAlive(client)) {
           await client.quit();
         }
-        this.logger.log(`Redis client "${namespace}" closed`);
+        this.logger.info(`Redis client "${namespace}" closed`);
       } catch (error) {
-        this.logger.error(`Error closing Redis client "${namespace}":`, error);
+        this.logger.error({ error }, `Error closing Redis client "${namespace}"`);
       }
     });
 

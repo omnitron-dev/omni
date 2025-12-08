@@ -1,5 +1,6 @@
 import { Injectable } from '../../decorators/index.js';
 import { Redis } from 'ioredis';
+import type { ILogger } from '../logger/logger.types.js';
 import { NotificationPayload } from './notifications.service.js';
 import { ChannelType } from './channel-manager.js';
 
@@ -53,7 +54,10 @@ export class PreferenceManager {
   private readonly FREQUENCY_KEY_PREFIX = 'notifications:frequency:';
   private defaultPreferences: UserPreferences;
 
-  constructor(private redis: Redis) {
+  constructor(
+    private redis: Redis,
+    private logger?: ILogger,
+  ) {
     this.defaultPreferences = this.getDefaultPreferences();
   }
 
@@ -68,7 +72,7 @@ export class PreferenceManager {
       try {
         return JSON.parse(stored);
       } catch (error) {
-        console.warn(`Failed to parse user preferences for ${userId}:`, error);
+        this.logger?.warn({ err: error, userId }, 'Failed to parse user preferences');
         // Fall back to defaults if parsing fails
       }
     }

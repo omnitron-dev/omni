@@ -20,6 +20,7 @@ import {
 } from './types.js';
 import { Packet, encodePacket, decodePacket, TYPE_PING } from '../packet/index.js';
 import { NetronErrors, Errors } from '../../errors/index.js';
+import type { ILogger } from '../../modules/logger/logger.types.js';
 
 /**
  * Base connection class with common functionality
@@ -38,6 +39,7 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
   protected connectionStartTime?: number;
   protected reconnectAttempts = 0;
   protected reconnectTimer?: NodeJS.Timeout;
+  protected logger?: ILogger;
   private pendingPings = new Map<
     number,
     { resolve: (rtt: number) => void; reject: (error: Error) => void; startTime: number }
@@ -45,6 +47,13 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
 
   constructor(protected options: TransportOptions = {}) {
     super();
+  }
+
+  /**
+   * Set logger instance for connection operations
+   */
+  setLogger(logger: ILogger): void {
+    this.logger = logger;
   }
 
   get state(): ConnectionState {
@@ -124,8 +133,7 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
       pongPacket.setImpulse(0); // Response
       pongPacket.data = packet.data; // Echo timestamp
       this.sendPacket(pongPacket).catch((err) => {
-        // TODO: Replace with logger when available in BaseConnection
-        console.error('Failed to send pong:', err);
+        this.logger?.error({ err, connectionId: this.id }, 'Failed to send pong');
       });
     } else {
       // This is a pong response - resolve pending ping
@@ -272,9 +280,17 @@ export abstract class BaseServer extends EventEmitter implements ITransportServe
     uptime: 0,
   };
   protected serverStartTime?: number;
+  protected logger?: ILogger;
 
   constructor(protected options: TransportOptions = {}) {
     super();
+  }
+
+  /**
+   * Set logger instance for server operations
+   */
+  setLogger(logger: ILogger): void {
+    this.logger = logger;
   }
 
   abstract get address(): string | undefined;
@@ -316,8 +332,7 @@ export abstract class BaseServer extends EventEmitter implements ITransportServe
   async broadcast(data: Buffer | ArrayBuffer): Promise<void> {
     const promises = Array.from(this.connections.values()).map((conn) =>
       conn.send(data).catch((error) => {
-        // TODO: Replace with logger when available in BaseServer
-        console.error(`Failed to broadcast to connection ${conn.id}:`, error);
+        this.logger?.error({ err: error, connectionId: conn.id }, 'Failed to broadcast to connection');
       })
     );
     await Promise.all(promises);
@@ -329,8 +344,7 @@ export abstract class BaseServer extends EventEmitter implements ITransportServe
   async broadcastPacket(packet: Packet): Promise<void> {
     const promises = Array.from(this.connections.values()).map((conn) =>
       conn.sendPacket(packet).catch((error) => {
-        // TODO: Replace with logger when available in BaseServer
-        console.error(`Failed to broadcast packet to connection ${conn.id}:`, error);
+        this.logger?.error({ err: error, connectionId: conn.id }, 'Failed to broadcast packet to connection');
       })
     );
     await Promise.all(promises);

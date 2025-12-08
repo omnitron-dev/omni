@@ -16,7 +16,7 @@ import {
 
 import { CONFIG_SERVICE_TOKEN } from '../config/config.tokens.js';
 
-import type { ILoggerModuleOptions, ITransport, ILogProcessor } from './logger.types.js';
+import type { ILoggerModuleOptions, ITransport, ILogProcessor, ILogger } from './logger.types.js';
 
 // Re-export types for convenience
 export type {
@@ -167,9 +167,14 @@ export class LoggerModule {
  */
 export class ConsoleTransport implements ITransport {
   name = 'console';
+  private logger?: ILogger;
+
+  constructor(logger?: ILogger) {
+    this.logger = logger;
+  }
 
   write(log: any): void {
-    console.log(JSON.stringify(log));
+    this.logger?.info({ log }, 'Console transport log');
   }
 }
 

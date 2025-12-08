@@ -14,6 +14,7 @@ import { createToken } from './token.js';
 import { Container } from './container.js';
 import { IModule, Provider, DynamicModule, InjectionToken } from './types.js';
 import { Errors, HttpErrors } from '../errors/index.js';
+import { ILogger } from '../modules/logger/logger.types.js';
 
 /**
  * Remote module configuration.
@@ -86,6 +87,14 @@ export class ModuleFederationContainer {
   private sharedScopes = new Map<string, Map<InjectionToken<any>, Provider<any>>>();
   private loadedModules = new Map<string, Promise<IModule>>();
   private modules = new Map<string, IModule>();
+  private logger?: ILogger;
+
+  /**
+   * Set logger for the container
+   */
+  setLogger(logger: ILogger): void {
+    this.logger = logger;
+  }
 
   /**
    * Register a remote module
@@ -207,7 +216,10 @@ export class ModuleFederationContainer {
         lastError = error;
         if (attempt === retryConfig.maxAttempts - 1) {
           if (fallback) {
-            console.warn(`Failed to load remote module ${config.name}, using fallback`);
+            this.logger?.warn(
+              { err: error instanceof Error ? error : new Error(String(error)), moduleName: config.name, attempt: attempt + 1 },
+              'Failed to load remote module, using fallback'
+            );
             // Store the fallback module
             this.modules.set(config.name, fallback);
             return fallback;
@@ -303,7 +315,10 @@ export class ModuleFederationContainer {
     // Validate exports
     for (const exportToken of config.exports) {
       if (!remoteModule.providers?.some((p: any) => p.provide === exportToken)) {
-        console.warn(`Export ${String(exportToken)} not found in remote module ${config.name}`);
+        this.logger?.warn(
+          { exportToken: String(exportToken), moduleName: config.name },
+          'Export not found in remote module'
+        );
       }
     }
 
@@ -365,7 +380,10 @@ export class ModuleFederationContainer {
         if (sharedDep) {
           // Check version compatibility
           if (!this.isVersionCompatible(sharedDep.version, requiredVersion as string)) {
-            console.warn(`Version conflict for ${tokenKey}: required ${requiredVersion}, but got ${sharedDep.version}`);
+            this.logger?.warn(
+              { tokenKey, requiredVersion, actualVersion: sharedDep.version },
+              'Version conflict for shared dependency'
+            );
           }
         }
       }
@@ -643,9 +661,15 @@ export function generateWebpackConfig(
 export class FederationHost {
   private remotes = new Map<string, string>();
   private container: Container;
+  private logger?: ILogger;
 
-  constructor(container: Container) {
+  constructor(container: Container, logger?: ILogger) {
     this.container = container;
+    this.logger = logger;
+  }
+
+  setLogger(logger: ILogger): void {
+    this.logger = logger;
   }
 
   /**
@@ -663,7 +687,10 @@ export class FederationHost {
       try {
         await this.loadRemoteContainer(name, url);
       } catch (error) {
-        console.error(`Failed to load remote ${name} from ${url}:`, error);
+        this.logger?.error(
+          { err: error instanceof Error ? error : new Error(String(error)), remoteName: name, remoteUrl: url },
+          'Failed to load remote'
+        );
       }
     });
 

@@ -11,6 +11,7 @@ import type { Pool } from 'pg';
 import type * as mysql from 'mysql2';
 import type BetterSqlite3 from 'better-sqlite3';
 import type { Constructor, DynamicModule, InjectionToken, IModule } from './../../nexus/types.js';
+import type { ILogger } from '../logger/logger.types.js';
 type Database = BetterSqlite3.Database;
 
 /**
@@ -344,6 +345,12 @@ export interface DatabaseModuleOptions {
    * Statement timeout in milliseconds (database-specific)
    */
   statementTimeout?: number;
+
+  /**
+   * Logger instance for database operations.
+   * If not provided, uses console fallback when DI logger is not available.
+   */
+  logger?: import('./database.internal-types.js').Logger;
 }
 
 /**
@@ -711,6 +718,7 @@ export interface IMigration {
  * Database manager interface
  */
 export interface IDatabaseManager {
+  logger?: ILogger;
   getConnection(name?: string): Promise<Kysely<unknown>>;
   getPool(name?: string): Pool | mysql.Pool | Database | undefined;
   close(name?: string): Promise<void>;

@@ -28,19 +28,19 @@ import type {
 } from './migration.types.js';
 import { MigrationLock } from './migration.lock.js';
 import { MigrationProvider } from './migration.provider.js';
-import type { Logger } from '../database.internal-types.js';
-import { createDefaultLogger } from '../utils/logger.factory.js';
+import { createNullLogger, type ILogger } from '../../logger/logger.types.js';
 
 @Injectable()
 export class MigrationService extends EventEmitter {
   private config: MigrationConfig;
   private provider: IMigrationProvider;
   private lock: IMigrationLock;
-  private logger: Logger;
+  private logger: ILogger;
 
   constructor(
     @Inject(DATABASE_MANAGER) private manager: IDatabaseManager,
-    config?: MigrationConfig
+    config?: MigrationConfig,
+    logger?: ILogger
   ) {
     super();
 
@@ -58,17 +58,16 @@ export class MigrationService extends EventEmitter {
       ...config,
     };
 
+    this.logger = logger ? logger.child({ module: 'MigrationService' }) : createNullLogger();
+
     // Initialize provider
-    this.provider = new MigrationProvider(this.config);
+    this.provider = new MigrationProvider(this.config, this.logger);
 
     // Initialize lock
     this.lock = new MigrationLock(this.manager, {
       tableName: this.config.lockTableName!,
       timeout: this.config.lockTimeout!,
-    });
-
-    // Initialize logger with proper Logger interface
-    this.logger = createDefaultLogger('MigrationService');
+    }, this.logger);
   }
 
   /**
@@ -257,7 +256,7 @@ export class MigrationService extends EventEmitter {
           await this.lock.release();
           this.emit('lock.released' as MigrationEventType);
         } catch (releaseError) {
-          this.logger.error('Error releasing lock:', releaseError);
+          this.logger.error({ error: releaseError }, 'Error releasing lock');
         }
       }
     }
@@ -358,7 +357,7 @@ export class MigrationService extends EventEmitter {
           await this.lock.release();
           this.emit('lock.released' as MigrationEventType);
         } catch (releaseError) {
-          this.logger.error('Error releasing lock:', releaseError);
+          this.logger.error({ error: releaseError }, 'Error releasing lock');
         }
       }
     }

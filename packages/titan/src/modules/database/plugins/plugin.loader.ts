@@ -10,8 +10,7 @@ import { pathToFileURL } from 'url';
 import { Injectable } from '../../../decorators/index.js';
 import { Errors } from '../../../errors/index.js';
 import type { IPluginLoader, ITitanPlugin, PluginFactory } from './plugin.types.js';
-import type { Logger } from '../database.internal-types.js';
-import { createDefaultLogger } from '../utils/logger.factory.js';
+import { createNullLogger, type ILogger } from '../../logger/logger.types.js';
 
 /**
  * Plugin Loader
@@ -22,10 +21,10 @@ import { createDefaultLogger } from '../utils/logger.factory.js';
 export class PluginLoader implements IPluginLoader {
   private readonly loadedPlugins: Map<string, ITitanPlugin> = new Map();
   private readonly pluginFactories: Map<string, PluginFactory> = new Map();
-  private logger: Logger;
+  private logger: ILogger;
 
-  constructor() {
-    this.logger = createDefaultLogger('PluginLoader');
+  constructor(logger?: ILogger) {
+    this.logger = logger ? logger.child({ module: 'PluginLoader' }) : createNullLogger();
   }
 
   /**
@@ -207,7 +206,7 @@ export class PluginLoader implements IPluginLoader {
             const plugin = await this.loadFromFile(fullPath);
             plugins.push(plugin);
           } catch (error) {
-            this.logger.warn(`Failed to load plugin from "${fullPath}":`, error);
+            this.logger.warn({ error, fullPath }, `Failed to load plugin from "${fullPath}"`);
           }
         }
       } else if (entry.isDirectory()) {
@@ -368,7 +367,7 @@ export class PluginLoader implements IPluginLoader {
         const plugin = await this.loadPlugin(config.plugin);
         registerFn(config.name || plugin.name, plugin, config.options);
       } catch (error) {
-        this.logger.error(`Failed to load plugin "${config.name}":`, error);
+        this.logger.error({ error, name: config.name }, `Failed to load plugin "${config.name}"`);
       }
     }
   }

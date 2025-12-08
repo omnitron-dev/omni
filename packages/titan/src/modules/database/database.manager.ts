@@ -19,7 +19,8 @@ import type {
   DatabaseEvent,
   DatabaseEventType,
 } from './database.types.js';
-import type { Logger, ParsedConnectionConfig } from './database.internal-types.js';
+import type { ParsedConnectionConfig } from './database.internal-types.js';
+import type { ILogger } from '../logger/logger.types.js';
 import {
   DATABASE_DEFAULT_CONNECTION,
   DEFAULT_POOL_CONFIG,
@@ -28,7 +29,6 @@ import {
   DIALECT_SETTINGS,
   DATABASE_EVENTS,
 } from './database.constants.js';
-import { createDefaultLogger } from './utils/logger.factory.js';
 import { EventEmitter } from 'events';
 
 interface ConnectionInfo {
@@ -58,7 +58,7 @@ interface RetryConfig {
 export class DatabaseManager implements IDatabaseManager {
   private connections: Map<string, ConnectionInfo> = new Map();
   private eventEmitter: EventEmitter = new EventEmitter();
-  private logger: Logger;
+  public logger: ILogger;
   private options: DatabaseModuleOptions;
   private shutdownInProgress = false;
   private initialized = false;
@@ -69,10 +69,9 @@ export class DatabaseManager implements IDatabaseManager {
     timeoutMs: 30000,
   };
 
-  constructor(options: DatabaseModuleOptions = {}, logger?: Logger) {
-    this.options = options;
-    // Create a console logger if none provided (proper fallback)
-    this.logger = logger || createDefaultLogger('DatabaseManager');
+  constructor(options: DatabaseModuleOptions, logger: ILogger) {
+    this.options = options || {};
+    this.logger = logger.child({ module: 'DatabaseManager' });
   }
 
   /**
@@ -384,7 +383,7 @@ export class DatabaseManager implements IDatabaseManager {
       case 'sqlite': {
         const database = new BetterSqlite3(connectionConfig.database || ':memory:', {
           // Enable verbose mode for debugging if requested
-          verbose: config.debug ? console.log : undefined,
+          verbose: config.debug ? (msg: unknown) => this.logger.debug({ msg }, 'SQLite verbose') : undefined,
           // Set busy timeout to handle concurrent access (especially for shared in-memory databases)
           // This prevents "database is locked" errors by waiting up to 5 seconds
           timeout: 5000,

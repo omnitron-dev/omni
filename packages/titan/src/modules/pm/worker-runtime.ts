@@ -9,6 +9,7 @@ import 'reflect-metadata';
 import { parentPort, workerData } from 'worker_threads';
 import { Netron } from '../../netron/index.js';
 import { Errors } from '../../errors/index.js';
+import type { ILogger } from '../logger/logger.types.js';
 
 // Worker configuration from parent
 interface WorkerConfig {
@@ -26,6 +27,9 @@ interface WorkerConfig {
 }
 
 const config = workerData as WorkerConfig;
+
+// Optional logger for worker runtime
+let logger: ILogger | undefined;
 
 /**
  * Initialize the worker process
@@ -174,7 +178,7 @@ async function initialize() {
           try {
             await (processInstance as any)[propertyName]();
           } catch (error: any) {
-            console.error(`Error during shutdown: ${error.message}`);
+            logger?.error({ err: error, method: propertyName }, 'Error during shutdown');
           }
         }
       }
@@ -252,9 +256,12 @@ async function initialize() {
     });
 
     // Log successful initialization
-    console.log(`Process ${config.processId} (${serviceName}@${serviceVersion}) initialized at ${transportUrl}`);
+    logger?.info(
+      { processId: config.processId, serviceName, serviceVersion, transportUrl },
+      'Process initialized'
+    );
   } catch (error: any) {
-    console.error('Worker initialization failed:', error);
+    logger?.error({ err: error, processId: config.processId }, 'Worker initialization failed');
 
     // Notify parent of failure
     parentPort?.postMessage({
@@ -273,6 +280,6 @@ async function initialize() {
 
 // Start initialization
 initialize().catch((error) => {
-  console.error('Failed to initialize worker:', error);
+  logger?.error({ err: error }, 'Failed to initialize worker');
   process.exit(1);
 });

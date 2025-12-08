@@ -1,43 +1,55 @@
 /**
  * Priceverse 2.0 - Prices Service
- * Provides price retrieval, history queries, and real-time streaming
+ * Uses Titan database module features: repositories, error handling, resilience
  */
 
 import { Injectable, Inject } from '@omnitron-dev/titan/decorators';
-import { RedisService } from '@omnitron-dev/titan/module/redis';
-import { DATABASE_CONNECTION } from '@omnitron-dev/titan/module/database';
+import {
+  withRetry,
+  parseDatabaseError,
+  ErrorCodes,
+} from '@omnitron-dev/titan/module/database';
 import { LOGGER_SERVICE_TOKEN, type ILoggerModule } from '@omnitron-dev/titan/module/logger';
-import type { Kysely } from 'kysely';
-import type { Database } from '../../../database/schema.js';
-import type { PairSymbol, PriceResponse, PriceChangeResponse, TimePeriod } from '../../../shared/types.js';
+import {
+  PriceHistoryRepository,
+  type PriceHistoryEntity,
+} from '../../../database/index.js';
+import { PRICE_HISTORY_REPOSITORY, EXTENDED_REDIS_SERVICE } from '../../../shared/tokens.js';
+import type {
+  PairSymbol,
+  PriceResponse,
+  PriceChangeResponse,
+  TimePeriod,
+} from '../../../shared/types.js';
 import { PriceVerseError, PriceVerseErrorCode } from '../../../contracts/errors.js';
-
-interface IRedisService {
-  get(key: string): Promise<string | null>;
-  setex(key: string, ttl: number, value: string): Promise<void>;
-  subscribe(channel: string): Promise<void>;
-  on(event: string, callback: (channel: string, message: string) => void): void;
-  unsubscribe(channel: string): Promise<void>;
-  duplicate(): IRedisService;
-}
+import type { ExtendedRedisService } from '../../../lib/extended-redis.service.js';
 
 const CACHE_TTL = 60; // 60 seconds
 const STALE_THRESHOLD = 120_000; // 2 minutes
+const RETRY_OPTIONS = {
+  maxAttempts: 3,
+  delayMs: 500,
+  backoff: true,
+};
 
 @Injectable()
 export class PricesService {
+  private readonly priceHistoryRepo: PriceHistoryRepository;
+
   constructor(
-    @Inject(RedisService) private readonly redis: IRedisService,
-    @Inject(DATABASE_CONNECTION) private readonly db: Kysely<Database>,
-    @Inject(LOGGER_SERVICE_TOKEN) private readonly loggerModule: ILoggerModule
-  ) {}
+    @Inject(EXTENDED_REDIS_SERVICE) private readonly redis: ExtendedRedisService,
+    @Inject(LOGGER_SERVICE_TOKEN) private readonly loggerModule: ILoggerModule,
+    @Inject(PRICE_HISTORY_REPOSITORY) priceHistoryRepo: PriceHistoryRepository
+  ) {
+    this.priceHistoryRepo = priceHistoryRepo;
+  }
 
   private get logger() {
     return this.loggerModule.logger;
   }
 
   /**
-   * Get single price from cache, fallback to database
+   * Get single price from cache, fallback to database with retry
    */
   async getPrice(pair: PairSymbol): Promise<PriceResponse> {
     this.logger.debug(`[PricesService] Getting price for ${pair}`);
@@ -48,10 +60,14 @@ export class PricesService {
       return cached;
     }
 
-    // Fallback to database
-    const dbPrice = await this.getPriceFromDb(pair);
+    // Fallback to database with retry for resilience
+    const dbPrice = await this.getPriceFromDbWithRetry(pair);
     if (!dbPrice) {
-      throw new PriceVerseError(PriceVerseErrorCode.PRICE_UNAVAILABLE, `Price unavailable for pair ${pair}`, { pair });
+      throw new PriceVerseError(
+        PriceVerseErrorCode.PRICE_UNAVAILABLE,
+        `Price unavailable for pair ${pair}`,
+        { pair, errorCode: ErrorCodes.RESOURCE_NOT_FOUND }
+      );
     }
 
     // Cache the result
@@ -61,19 +77,36 @@ export class PricesService {
   }
 
   /**
-   * Get multiple prices in parallel
+   * Get multiple prices in parallel with proper error handling
    */
   async getMultiplePrices(pairs: PairSymbol[]): Promise<PriceResponse[]> {
     this.logger.debug(`[PricesService] Getting multiple prices for ${pairs.length} pairs`);
 
-    const pricePromises = pairs.map((pair) => this.getPrice(pair));
-    return Promise.all(pricePromises);
+    const results = await Promise.allSettled(
+      pairs.map((pair) => this.getPrice(pair))
+    );
+
+    // Return successful results, log failures
+    return results
+      .filter((result): result is PromiseFulfilledResult<PriceResponse> => {
+        if (result.status === 'rejected') {
+          this.logger.warn('[PricesService] Failed to get price:', result.reason);
+          return false;
+        }
+        return true;
+      })
+      .map((result) => result.value);
   }
 
   /**
-   * Calculate price change percentage over a period
+   * Calculate price change percentage over a period using repository
    */
-  async getPriceChange(pair: PairSymbol, period: TimePeriod, from?: string, to?: string): Promise<PriceChangeResponse> {
+  async getPriceChange(
+    pair: PairSymbol,
+    period: TimePeriod,
+    from?: string,
+    to?: string
+  ): Promise<PriceChangeResponse> {
     this.logger.debug(`[PricesService] Getting price change for ${pair} (${period})`);
 
     // Calculate time range
@@ -82,45 +115,49 @@ export class PricesService {
 
     // Validate time range
     if (startDate >= endDate) {
-      throw new PriceVerseError(PriceVerseErrorCode.INVALID_TIME_RANGE, 'Start date must be before end date', {
-        startDate: startDate.toISOString(),
-        endDate: endDate.toISOString(),
-      });
+      throw new PriceVerseError(
+        PriceVerseErrorCode.INVALID_TIME_RANGE,
+        'Start date must be before end date',
+        {
+          startDate: startDate.toISOString(),
+          endDate: endDate.toISOString(),
+          errorCode: ErrorCodes.VALIDATION_INVALID_INPUT,
+        }
+      );
     }
 
-    // Get start price (closest to start date)
-    const startPriceRow = await this.db
-      .selectFrom('price_history')
-      .select(['price', 'timestamp'])
-      .where('pair', '=', pair)
-      .where('timestamp', '>=', startDate)
-      .orderBy('timestamp', 'asc')
-      .limit(1)
-      .executeTakeFirst();
+    // Use repository methods with retry
+    const startPriceRow = await withRetry(
+      () => this.priceHistoryRepo.getFirstPriceAfter(pair, startDate),
+      RETRY_OPTIONS
+    );
 
     if (!startPriceRow) {
       throw new PriceVerseError(
         PriceVerseErrorCode.PRICE_UNAVAILABLE,
         `No price data available for ${pair} at start date`,
-        { pair, startDate: startDate.toISOString() }
+        {
+          pair,
+          startDate: startDate.toISOString(),
+          errorCode: ErrorCodes.RESOURCE_NOT_FOUND,
+        }
       );
     }
 
-    // Get end price (closest to end date)
-    const endPriceRow = await this.db
-      .selectFrom('price_history')
-      .select(['price', 'timestamp'])
-      .where('pair', '=', pair)
-      .where('timestamp', '<=', endDate)
-      .orderBy('timestamp', 'desc')
-      .limit(1)
-      .executeTakeFirst();
+    const endPriceRow = await withRetry(
+      () => this.priceHistoryRepo.getLastPriceBefore(pair, endDate),
+      RETRY_OPTIONS
+    );
 
     if (!endPriceRow) {
       throw new PriceVerseError(
         PriceVerseErrorCode.PRICE_UNAVAILABLE,
         `No price data available for ${pair} at end date`,
-        { pair, endDate: endDate.toISOString() }
+        {
+          pair,
+          endDate: endDate.toISOString(),
+          errorCode: ErrorCodes.RESOURCE_NOT_FOUND,
+        }
       );
     }
 
@@ -139,6 +176,28 @@ export class PricesService {
   }
 
   /**
+   * Get price history for a pair
+   */
+  async getPriceHistory(
+    pair: PairSymbol,
+    from: Date,
+    to: Date,
+    limit?: number
+  ): Promise<PriceHistoryEntity[]> {
+    return withRetry(
+      () =>
+        this.priceHistoryRepo.findByPairInRange({
+          pair,
+          from,
+          to,
+          limit,
+          orderBy: 'desc',
+        }),
+      RETRY_OPTIONS
+    );
+  }
+
+  /**
    * Stream real-time price updates via Redis pub/sub
    */
   async *streamPrices(pairs: PairSymbol[]): AsyncGenerator<PriceResponse> {
@@ -153,8 +212,10 @@ export class PricesService {
     let resolveNext: ((value: PriceResponse) => void) | null = null;
 
     // Subscribe to all channels
-    const messageHandler = (channel: string, message: string) => {
+    const messageHandler = (...args: unknown[]) => {
       try {
+        const channel = args[0] as string;
+        const message = args[1] as string;
         const data = JSON.parse(message);
         const pair = channel.replace('price:', '');
 
@@ -237,17 +298,14 @@ export class PricesService {
   }
 
   /**
-   * Get latest price from database
+   * Get latest price from database using repository with retry
    */
-  private async getPriceFromDb(pair: PairSymbol): Promise<PriceResponse | null> {
+  private async getPriceFromDbWithRetry(pair: PairSymbol): Promise<PriceResponse | null> {
     try {
-      const row = await this.db
-        .selectFrom('price_history')
-        .select(['pair', 'price', 'timestamp'])
-        .where('pair', '=', pair)
-        .orderBy('timestamp', 'desc')
-        .limit(1)
-        .executeTakeFirst();
+      const row = await withRetry(
+        () => this.priceHistoryRepo.getLatestPrice(pair),
+        RETRY_OPTIONS
+      );
 
       if (!row) {
         return null;
@@ -259,11 +317,21 @@ export class PricesService {
         timestamp: new Date(row.timestamp).getTime(),
       };
     } catch (error) {
-      this.logger.error(`[PricesService] Database read error for ${pair}:`, error);
+      // Parse database error for better error handling
+      const parsed = parseDatabaseError(error);
+      this.logger.error(`[PricesService] Database error for ${pair}:`, {
+        error: parsed.message,
+        code: parsed.code,
+      });
+
       throw new PriceVerseError(
         PriceVerseErrorCode.DATABASE_ERROR,
         `Failed to retrieve price from database for ${pair}`,
-        { pair, error: String(error) }
+        {
+          pair,
+          originalError: parsed.message,
+          errorCode: parsed.code,
+        }
       );
     }
   }
@@ -307,7 +375,7 @@ export class PricesService {
         throw new PriceVerseError(
           PriceVerseErrorCode.INVALID_PARAMS,
           'Custom period requires explicit "from" parameter',
-          { period }
+          { period, errorCode: ErrorCodes.VALIDATION_REQUIRED_FIELD }
         );
     }
 

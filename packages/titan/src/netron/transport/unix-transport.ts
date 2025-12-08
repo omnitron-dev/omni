@@ -10,6 +10,7 @@ import path from 'node:path';
 import { TcpConnection, TcpServer, TcpTransport, TcpOptions } from './tcp-transport.js';
 import { TransportCapabilities, ITransportConnection, ITransportServer } from './types.js';
 import { NetronErrors, Errors } from '../../errors/index.js';
+import type { ILogger } from '../../modules/logger/logger.types.js';
 
 /**
  * Unix socket specific options
@@ -81,6 +82,14 @@ export class UnixSocketTransport extends TcpTransport {
     multiplexing: false,
     server: true,
   };
+  protected logger?: ILogger;
+
+  /**
+   * Set logger instance for transport operations
+   */
+  setLogger(logger: ILogger): void {
+    this.logger = logger;
+  }
 
   /**
    * Connect to a Unix socket
@@ -191,7 +200,7 @@ export class UnixSocketTransport extends TcpTransport {
         // Set socket permissions if specified
         if (options.mode !== undefined) {
           fs.chmod(absolutePath, options.mode).catch((error) => {
-            console.error('Failed to set socket permissions:', error);
+            this.logger?.error({ err: error, path: absolutePath, mode: options.mode }, 'Failed to set socket permissions');
           });
         }
         resolve();

@@ -36,13 +36,14 @@ import {
   DATABASE_DEFAULT_CONNECTION,
 } from './database.constants.js';
 import type { DatabaseModuleOptions, DatabaseModuleAsyncOptions, DatabaseOptionsFactory } from './database.types.js';
-import { createDefaultLogger } from './utils/logger.factory.js';
+import type { ILogger, ILoggerModule } from '../logger/logger.types.js';
+import { LOGGER_SERVICE_TOKEN } from '../logger/logger.tokens.js';
 
 @Module()
 export class TitanDatabaseModule {
   name = 'TitanDatabaseModule';
-  private static logger = createDefaultLogger('TitanDatabaseModule');
   private static managerInstance: DatabaseManager | null = null;
+  private static logger: ILogger | null = null;
 
   /**
    * Reset module (for testing)
@@ -54,9 +55,19 @@ export class TitanDatabaseModule {
         // Close all connections
         await TitanDatabaseModule.managerInstance.closeAll();
       } catch (error) {
-        TitanDatabaseModule.logger.error('Error during resetForTesting:', error);
+        TitanDatabaseModule.logger?.error({ error }, 'Error during resetForTesting');
       }
       TitanDatabaseModule.managerInstance = null;
+    }
+    TitanDatabaseModule.logger = null;
+  }
+
+  /**
+   * Set module logger (internal use)
+   */
+  private static setLogger(loggerModule: ILoggerModule): void {
+    if (!TitanDatabaseModule.logger) {
+      TitanDatabaseModule.logger = loggerModule.create('TitanDatabaseModule');
     }
   }
 
@@ -78,15 +89,17 @@ export class TitanDatabaseModule {
       [
         DATABASE_MANAGER,
         {
-          useFactory: async (moduleOptions: DatabaseModuleOptions) => {
+          useFactory: async (moduleOptions: DatabaseModuleOptions, loggerModule: ILoggerModule) => {
+            TitanDatabaseModule.setLogger(loggerModule);
+            const logger = loggerModule.create('Database');
             // Use a static instance to ensure singleton behavior even if factory is called multiple times
             if (!TitanDatabaseModule.managerInstance) {
-              TitanDatabaseModule.managerInstance = new DatabaseManager(moduleOptions);
+              TitanDatabaseModule.managerInstance = new DatabaseManager(moduleOptions, logger);
               await TitanDatabaseModule.managerInstance.init();
             }
             return TitanDatabaseModule.managerInstance;
           },
-          inject: [DATABASE_MODULE_OPTIONS],
+          inject: [DATABASE_MODULE_OPTIONS, LOGGER_SERVICE_TOKEN],
         },
       ],
 
@@ -156,7 +169,7 @@ export class TitanDatabaseModule {
                     pluginManager.registerPlugin(config.name || config.plugin.name || 'custom', config.plugin, config);
                   }
                 } catch (error) {
-                  TitanDatabaseModule.logger.error('Failed to register custom plugin:', error);
+                  TitanDatabaseModule.logger?.error({ error }, 'Failed to register custom plugin');
                 }
               }
             }
@@ -220,14 +233,14 @@ export class TitanDatabaseModule {
                 await runner.init();
                 const result = await runner.migrate();
                 if (!result.success) {
-                  TitanDatabaseModule.logger.error('Auto-migration failed:', result.errors);
+                  TitanDatabaseModule.logger?.error({ errors: result.errors }, 'Auto-migration failed');
                   // Don't throw error during initialization - just log it
                   // Applications can check migration status via health endpoint
                 } else {
-                  TitanDatabaseModule.logger.info('Auto-migration completed successfully');
+                  TitanDatabaseModule.logger?.info('Auto-migration completed successfully');
                 }
               } catch (error) {
-                TitanDatabaseModule.logger.error('Auto-migration error:', error);
+                TitanDatabaseModule.logger?.error({ error }, 'Auto-migration error');
                 // Don't throw - let the application start but log the issue
               }
             }
@@ -334,13 +347,15 @@ export class TitanDatabaseModule {
     providers.push([
       DATABASE_MANAGER,
       {
-        useFactory: async (moduleOptions: DatabaseModuleOptions) => {
-          const manager = new DatabaseManager(moduleOptions);
+        useFactory: async (moduleOptions: DatabaseModuleOptions, loggerModule: ILoggerModule) => {
+          TitanDatabaseModule.setLogger(loggerModule);
+          const logger = loggerModule.create('Database');
+          const manager = new DatabaseManager(moduleOptions, logger);
           await manager.init();
 
           return manager;
         },
-        inject: [DATABASE_MODULE_OPTIONS],
+        inject: [DATABASE_MODULE_OPTIONS, LOGGER_SERVICE_TOKEN],
       },
     ]);
 
@@ -417,7 +432,7 @@ export class TitanDatabaseModule {
                   pluginManager.registerPlugin(config.name || config.plugin.name || 'custom', config.plugin, config);
                 }
               } catch (error) {
-                TitanDatabaseModule.logger.error('Failed to register custom plugin:', error);
+                TitanDatabaseModule.logger?.error({ error }, 'Failed to register custom plugin');
               }
             }
           }
@@ -476,14 +491,14 @@ export class TitanDatabaseModule {
               await runner.init();
               const result = await runner.migrate();
               if (!result.success) {
-                TitanDatabaseModule.logger.error('Auto-migration failed:', result.errors);
+                TitanDatabaseModule.logger?.error({ errors: result.errors }, 'Auto-migration failed');
                 // Don't throw error during initialization - just log it
                 // Applications can check migration status via health endpoint
               } else {
-                TitanDatabaseModule.logger.info('Auto-migration completed successfully');
+                TitanDatabaseModule.logger?.info('Auto-migration completed successfully');
               }
             } catch (error) {
-              TitanDatabaseModule.logger.error('Auto-migration error:', error);
+              TitanDatabaseModule.logger?.error({ error }, 'Auto-migration error');
               // Don't throw - let the application start but log the issue
             }
           }

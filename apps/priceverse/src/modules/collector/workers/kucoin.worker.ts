@@ -38,8 +38,25 @@ export class KucoinWorker extends BaseExchangeWorker {
 
   get wsUrl(): string {
     // KuCoin requires token-based connection
-    // In production, fetch token from /api/v1/bullet-public first
-    return `wss://ws-api-spot.kucoin.com/?token=${this.connectToken || 'demo'}`;
+    if (!this.connectToken) {
+      // Return empty to prevent connection without token
+      return '';
+    }
+    return `wss://ws-api-spot.kucoin.com/?token=${this.connectToken}`;
+  }
+
+  /**
+   * Override start to fetch token first
+   */
+  async start(): Promise<void> {
+    // Fetch connect token before starting
+    const token = await this.fetchConnectToken();
+    if (!token) {
+      this.logger.error('[KuCoin] Failed to fetch connect token, worker disabled');
+      return;
+    }
+    this.logger.info('[KuCoin] Connect token acquired');
+    await super.start();
   }
 
   get symbolMap(): Map<string, string> {

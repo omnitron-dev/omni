@@ -7,8 +7,7 @@
 import { sql } from 'kysely';
 import type { IDatabaseManager, DatabaseDialect } from '../database.types.js';
 import type { IMigrationLock } from './migration.types.js';
-import type { Logger } from '../database.internal-types.js';
-import { createDefaultLogger } from '../utils/logger.factory.js';
+import { createNullLogger, type ILogger } from '../../logger/logger.types.js';
 import { Errors } from '../../../errors/index.js';
 
 export interface MigrationLockOptions {
@@ -23,16 +22,17 @@ export class MigrationLock implements IMigrationLock {
   private instanceId: string;
   private isHoldingLock: boolean = false;
   private dialect: DatabaseDialect | undefined;
-  private logger: Logger;
+  private logger: ILogger;
   private readonly maxRetries: number;
   private readonly retryDelayMs: number;
 
   constructor(
     private manager: IDatabaseManager,
-    private options: MigrationLockOptions
+    private options: MigrationLockOptions,
+    logger?: ILogger
   ) {
     this.instanceId = options.instanceId || this.generateInstanceId();
-    this.logger = createDefaultLogger('MigrationLock');
+    this.logger = logger ? logger.child({ module: 'MigrationLock' }) : createNullLogger();
     this.maxRetries = options.maxRetries || 3;
     this.retryDelayMs = options.retryDelayMs || 1000;
   }
@@ -257,7 +257,7 @@ export class MigrationLock implements IMigrationLock {
 
       this.isHoldingLock = false;
     } catch (error) {
-      this.logger.error('Error releasing migration lock:', error);
+      this.logger.error({ error }, 'Error releasing migration lock');
       throw error;
     }
   }

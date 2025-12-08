@@ -8,9 +8,9 @@ import { defer, Deferred, delay as delayMs } from '@omnitron-dev/common';
 
 import { Errors } from '../errors/factories.js';
 import { StatsTracker } from './stats.js';
-import { defaultLogger } from './utils/logger.js';
+import { createNullLogger } from '../modules/logger/logger.types.js';
 import { Middleware, MiddlewareManager } from './middleware.js';
-import { RotifConfig, RotifLogger, RotifMessage, Subscription, PublishOptions, SubscribeOptions } from './types.js';
+import { RotifConfig, ILogger, RotifMessage, Subscription, PublishOptions, SubscribeOptions } from './types.js';
 import {
   getLoopKey,
   parseFields,
@@ -48,7 +48,7 @@ export class NotificationManager {
   /** Configuration options */
   public config: RotifConfig;
   /** Logger instance */
-  private logger: RotifLogger;
+  private logger: ILogger;
   /** Middleware manager */
   private middleware = new MiddlewareManager();
   /** Active subscriptions */
@@ -79,7 +79,7 @@ export class NotificationManager {
    */
   constructor(config: RotifConfig) {
     this.config = config;
-    this.logger = config.logger || defaultLogger;
+    this.logger = config.logger || createNullLogger();
     this.redis = new Redis(config.redis as RedisOptions);
     this.dlqKey = config.dlqKey || 'rotif:dlq';
 
@@ -98,7 +98,7 @@ export class NotificationManager {
     };
 
     this.redis.on('error', (err) => {
-      this.logger.error('Redis connection error', err);
+      this.logger.error({ err }, 'Redis connection error');
     });
 
     this.redis.on('reconnecting', (time: number) => {
@@ -165,7 +165,7 @@ export class NotificationManager {
       }
       this.logger.info('Lua scripts loaded or reused');
     } catch (error) {
-      this.logger.debug('Could not load Lua scripts:', error);
+      this.logger.debug({ err: error }, 'Could not load Lua scripts');
       // Continue without Lua scripts - they're optional optimizations
     }
   }
@@ -293,7 +293,7 @@ export class NotificationManager {
           results.push(result as string);
         }
       } catch (err) {
-        this.logger.error(`Error publishing to ${streamKey}`, err);
+        this.logger.error({ err, streamKey }, 'Error publishing to stream');
         await this.middleware.runOnError(
           { channel, payload, attempt: +attempt, id: '', timestamp: +timestamp, ack: async () => {} },
           err as Error
@@ -305,7 +305,7 @@ export class NotificationManager {
       return 'DUPLICATE';
     }
 
-    this.logger.debug(`Published message to ${results.length} active streams`, { channel });
+    this.logger.debug({ channel }, `Published message to ${results.length} active streams`);
 
     await this.middleware.runAfterPublish(channel, payload, results as string[], options);
 
@@ -429,7 +429,7 @@ export class NotificationManager {
         }
       } catch (err) {
         if (this.active) {
-          this.logger.error('DelayScheduler error', err);
+          this.logger.error({ err }, 'DelayScheduler error');
         }
       }
     };
@@ -557,7 +557,7 @@ export class NotificationManager {
                 await handler(msg);
                 await msg.ack();
               } catch (err) {
-                this.logger.error(`[DLQ] Handler failed on ${id}:`, err);
+                this.logger.error({ err, messageId: id }, '[DLQ] Handler failed');
               }
             }
           }
@@ -571,14 +571,14 @@ export class NotificationManager {
               await this.redis.xgroup('CREATE', streamKey, group, '0', 'MKSTREAM');
             } catch (createErr: any) {
               if (!createErr?.message?.includes('BUSYGROUP')) {
-                this.logger.error('[DLQ] Failed to create consumer group:', createErr);
+                this.logger.error({ err: createErr }, '[DLQ] Failed to create consumer group');
               }
             }
             await delayMs(100); // Short delay before retry
             continue;
           }
 
-          this.logger.error('[DLQ] Processing error', err);
+          this.logger.error({ err }, '[DLQ] Processing error');
           await delayMs(500);
         }
       }
@@ -613,7 +613,7 @@ export class NotificationManager {
       this.subClient = new Redis(this.config.redis as RedisOptions);
 
       this.subClient.subscribe('rotif:subscriptions:updates').catch((err) => {
-        this.logger.error('Pub/Sub subscription failed:', err);
+        this.logger.error({ err }, 'Pub/Sub subscription failed');
       });
 
       this.subClient.on('message', (_, message) => {
@@ -626,7 +626,7 @@ export class NotificationManager {
       });
 
       this.subClient.on('error', (err) => {
-        this.logger.error('Pub/Sub subscriber error:', err);
+        this.logger.error({ err }, 'Pub/Sub subscriber error');
       });
 
       this.subClient.on('end', () => {
@@ -670,7 +670,7 @@ export class NotificationManager {
       try {
         payload = payloadStr ? JSON.parse(payloadStr) : null;
       } catch (parseError) {
-        this.logger.error(`Failed to parse payload for message ${id}: ${payloadStr}`, parseError);
+        this.logger.error({ err: parseError, messageId: id, payloadStr }, 'Failed to parse payload');
         // Move unparseable message to DLQ instead of silently acknowledging
         const errorMessage = parseError instanceof Error ? parseError.message : 'Failed to parse message payload';
         await this.runLuaScript(
@@ -763,7 +763,7 @@ export class NotificationManager {
           );
           // Record failure when message moved to DLQ
           sub.statsTracker?.recordFailure();
-          this.logger.error(`Message ${id} moved to DLQ - max retries exceeded`);
+          this.logger.error({ messageId: id }, 'Message moved to DLQ - max retries exceeded');
           // Decrement in-flight counter
           sub.inflightCount = Math.max(0, sub.inflightCount - 1);
           continue;
@@ -824,7 +824,7 @@ export class NotificationManager {
             );
             // Record failure when message moved to DLQ
             sub.statsTracker?.recordFailure();
-            this.logger.error(`Message ${id} moved to DLQ after error: ${errorMessage}`);
+            this.logger.error({ messageId: id, error: errorMessage }, 'Message moved to DLQ after error');
             // Decrement in-flight counter
             sub.inflightCount = Math.max(0, sub.inflightCount - 1);
             continue;
@@ -874,7 +874,7 @@ export class NotificationManager {
             );
             this.logger.debug(`Retry scheduled successfully: ${result}`);
           } catch (luaErr) {
-            this.logger.error(`Failed to schedule retry: ${luaErr}`);
+            this.logger.error({ err: luaErr }, 'Failed to schedule retry');
             throw luaErr;
           }
         } finally {
@@ -986,7 +986,7 @@ export class NotificationManager {
             continue;
           }
 
-          this.logger.error(`Error reading stream ${stream} group ${group}`, err);
+          this.logger.error({ err, stream, group }, 'Error reading stream');
           await delayMs(500);
         }
       }
@@ -1008,7 +1008,7 @@ export class NotificationManager {
       const patterns = await this.redis.zrangebyscore('rotif:patterns', 1, '+inf');
       this.activePatterns = new Set(patterns);
     } catch (err) {
-      this.logger.error('Error syncing patterns', err);
+      this.logger.error({ err }, 'Error syncing patterns');
     }
   }
 

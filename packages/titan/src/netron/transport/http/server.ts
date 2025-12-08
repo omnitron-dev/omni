@@ -213,6 +213,9 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       cors: this.options.cors || undefined,
     });
 
+    // Store logging option for use in request handlers
+    // Note: Logging is done inline in handleInvocationRequest for better timing accuracy
+
     // Register services from peer
     this.registerPeerServices();
   }
@@ -663,6 +666,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
    * Handle service invocation request with middleware pipeline
    */
   private async handleInvocationRequest(request: Request): Promise<Response> {
+    const requestStartTime = performance.now();
     let message: HttpRequestMessage;
 
     try {
@@ -701,6 +705,14 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       );
     }
 
+    // Log incoming request if logging enabled
+    if (this.options.logging && this.netronPeer?.logger) {
+      this.netronPeer.logger.info(
+        { service: message.service, method: message.method, requestId: message.id },
+        'Netron request'
+      );
+    }
+
     // OPTIMIZATION: Fast-path for simple requests
     // Skip middleware pipeline if:
     // 1. No Authorization header (no auth required)
@@ -712,7 +724,16 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     const hasCustomMiddleware = this.globalPipeline.getMetrics().executions > 0;
 
     if (!hasAuth && !needsCors && !hasCustomMiddleware) {
-      return this.handleSimpleInvocation(request, message);
+      const response = await this.handleSimpleInvocation(request, message);
+      // Log response if logging enabled
+      if (this.options.logging && this.netronPeer?.logger) {
+        const duration = Math.round(performance.now() - requestStartTime);
+        this.netronPeer.logger.info(
+          { service: message.service, method: message.method, duration, status: response.status },
+          'Netron response'
+        );
+      }
+      return response;
     }
 
     // Create middleware context - optimized: use for...in loop instead of Object.entries
@@ -789,6 +810,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         }
 
         context.output = result;
+        context.result = result; // For middleware compatibility
         context.metadata.set('serverTime', Math.round(performance.now() - methodStart));
       };
 
@@ -828,6 +850,15 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         Object.assign(headers, method.contract.http.responseHeaders);
       }
 
+      // Log success response if logging enabled
+      if (this.options.logging && this.netronPeer?.logger) {
+        const duration = Math.round(performance.now() - requestStartTime);
+        this.netronPeer.logger.info(
+          { service: message.service, method: message.method, duration, status: method.contract?.http?.status || 200 },
+          'Netron response'
+        );
+      }
+
       return new Response(JSON.stringify(response), {
         status: method.contract?.http?.status || 200,
         headers,
@@ -857,6 +888,15 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         ...httpError.headers,
         'X-Netron-Version': '2.0',
       };
+
+      // Log error response if logging enabled
+      if (this.options.logging && this.netronPeer?.logger) {
+        const duration = Math.round(performance.now() - requestStartTime);
+        this.netronPeer.logger.error(
+          { service: message.service, method: message.method, duration, status: httpError.status, error: titanError.message },
+          'Netron error'
+        );
+      }
 
       return new Response(JSON.stringify(errorResponse), {
         status: httpError.status,

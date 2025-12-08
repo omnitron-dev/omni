@@ -57,3 +57,8 @@ export type {
   ILogProcessor,
   ILoggerModule,
 } from './logger.types.js';
+
+// ============================================================================
+// Utilities
+// ============================================================================
+export { createNullLogger, isLogger } from './logger.types.js';

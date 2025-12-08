@@ -12,6 +12,7 @@
 import { createMiddleware } from './middleware.js';
 import { IContainer, InjectionToken, ResolutionContext } from './types.js';
 import { Errors, ValidationError } from '../errors/index.js';
+import { createNullLogger, type ILogger } from '../modules/logger/logger.types.js';
 
 /**
  * Plugin hook function type.
@@ -129,9 +130,11 @@ export class PluginManager {
   private plugins = new Map<string, Plugin>();
   private hooks = new Map<keyof PluginHooks, Array<(...args: any[]) => any>>();
   private container: IContainer;
+  private logger: ILogger;
 
-  constructor(container: IContainer) {
+  constructor(container: IContainer, logger?: ILogger) {
     this.container = container;
+    this.logger = logger?.child({ module: 'PluginManager' }) ?? createNullLogger();
   }
 
   /**
@@ -330,8 +333,7 @@ export class PluginManager {
       try {
         this.uninstall(pluginName);
       } catch (error) {
-        // TODO: Replace with injectable logger
-        console.error(`Failed to uninstall plugin ${pluginName}:`, error);
+        this.logger.error({ error, plugin: pluginName }, `Failed to uninstall plugin ${pluginName}`);
       }
     }
 
@@ -460,8 +462,9 @@ export function ValidationPlugin(options: { validators?: Record<string, (value: 
 /**
  * Built-in metrics plugin factory
  */
-export function MetricsPlugin(options: { enabled?: boolean } = {}): Plugin {
+export function MetricsPlugin(options: { enabled?: boolean; logger?: ILogger } = {}): Plugin {
   const metrics = new Map<string, number>();
+  const logger = options.logger?.child({ plugin: 'metrics' }) ?? createNullLogger();
 
   const plugin = createPlugin({
     name: 'metrics',
@@ -470,8 +473,7 @@ export function MetricsPlugin(options: { enabled?: boolean } = {}): Plugin {
 
     install(container: IContainer) {
       if (options.enabled !== false) {
-        // TODO: Replace with injectable logger
-        console.log('[Nexus] Metrics plugin installed');
+        logger.debug('Metrics plugin installed');
       }
     },
 
@@ -499,8 +501,9 @@ export function MetricsPlugin(options: { enabled?: boolean } = {}): Plugin {
 /**
  * Built-in logging plugin factory
  */
-export function LoggingPlugin(options: { level?: 'debug' | 'info' | 'warn' | 'error' } = {}): Plugin {
+export function LoggingPlugin(options: { level?: 'debug' | 'info' | 'warn' | 'error'; logger?: ILogger } = {}): Plugin {
   const level = options.level || 'info';
+  const logger = options.logger?.child({ plugin: 'logging' }) ?? createNullLogger();
 
   return createPlugin({
     name: 'logging',
@@ -513,8 +516,7 @@ export function LoggingPlugin(options: { level?: 'debug' | 'info' | 'warn' | 'er
 
     install(container: IContainer) {
       if (level === 'debug' || level === 'info') {
-        // TODO: Replace with injectable logger
-        console.log('[Nexus] Logging plugin installed');
+        logger.debug('Logging plugin installed');
       }
     },
 
@@ -523,8 +525,7 @@ export function LoggingPlugin(options: { level?: 'debug' | 'info' | 'warn' | 'er
         if (level === 'debug') {
           const name =
             typeof token === 'string' ? token : typeof token === 'symbol' ? token.toString() : token?.name || 'unknown';
-          // TODO: Replace with injectable logger
-          console.log(`[Nexus] Resolving: ${name}`);
+          logger.debug(`Resolving: ${name}`);
         }
       },
 
@@ -532,8 +533,7 @@ export function LoggingPlugin(options: { level?: 'debug' | 'info' | 'warn' | 'er
         if (level === 'debug' || level === 'info') {
           const name =
             typeof token === 'string' ? token : typeof token === 'symbol' ? token.toString() : token?.name || 'unknown';
-          // TODO: Replace with injectable logger
-          console.log(`[Nexus] Resolved: ${name}`, instance?.constructor?.name || typeof instance);
+          logger.debug({ instance: instance?.constructor?.name || typeof instance }, `Resolved: ${name}`);
         }
       },
 
@@ -545,8 +545,7 @@ export function LoggingPlugin(options: { level?: 'debug' | 'info' | 'warn' | 'er
               ? token.toString()
               : token?.name || 'unknown'
           : 'unknown';
-        // TODO: Replace with injectable logger
-        console.error(`[Nexus] Error resolving ${name}:`, error);
+        logger.error({ error }, `Error resolving ${name}`);
       },
     },
   });
@@ -555,9 +554,10 @@ export function LoggingPlugin(options: { level?: 'debug' | 'info' | 'warn' | 'er
 /**
  * Performance monitoring plugin factory
  */
-export function PerformancePlugin(options: { threshold?: number } = {}): Plugin {
+export function PerformancePlugin(options: { threshold?: number; logger?: ILogger } = {}): Plugin {
   const threshold = options.threshold || 100;
   const timings = new Map<any, number>();
+  const logger = options.logger?.child({ plugin: 'performance' }) ?? createNullLogger();
 
   return createPlugin({
     name: 'performance',
@@ -565,8 +565,7 @@ export function PerformancePlugin(options: { threshold?: number } = {}): Plugin 
     description: 'Monitors resolution performance',
 
     install(container: IContainer) {
-      // TODO: Replace with injectable logger
-      console.log('[Nexus] Performance plugin installed');
+      logger.debug('Performance plugin installed');
     },
 
     hooks: {
@@ -584,8 +583,7 @@ export function PerformancePlugin(options: { threshold?: number } = {}): Plugin 
             typeof token === 'string' ? token : typeof token === 'symbol' ? token.toString() : token?.name || 'unknown';
 
           if (duration > threshold) {
-            // TODO: Replace with injectable logger
-            console.warn(`[Nexus] Slow resolution: ${name} took ${duration.toFixed(2)}ms`);
+            logger.warn({ duration: duration.toFixed(2), threshold }, `Slow resolution: ${name} took ${duration.toFixed(2)}ms`);
           }
           timings.delete(token);
         }
@@ -597,10 +595,11 @@ export function PerformancePlugin(options: { threshold?: number } = {}): Plugin 
 /**
  * Caching plugin factory
  */
-export function CachingPlugin(options: { ttl?: number; maxSize?: number } = {}): Plugin {
+export function CachingPlugin(options: { ttl?: number; maxSize?: number; logger?: ILogger } = {}): Plugin {
   const ttl = options.ttl || 60000;
   const maxSize = options.maxSize || 1000;
   const cache = new Map<any, { value: any; timestamp: number }>();
+  const logger = options.logger?.child({ plugin: 'caching' }) ?? createNullLogger();
   let interval: any;
 
   const plugin = createPlugin({
@@ -614,8 +613,7 @@ export function CachingPlugin(options: { ttl?: number; maxSize?: number } = {}):
     },
 
     install(container: IContainer) {
-      // TODO: Replace with injectable logger
-      console.log('[Nexus] Caching plugin installed');
+      logger.debug('Caching plugin installed');
 
       // Periodic cleanup
       interval = setInterval(() => {
@@ -693,15 +691,16 @@ export function CachingPlugin(options: { ttl?: number; maxSize?: number } = {}):
 /**
  * Strict validation plugin factory
  */
-export function StrictValidationPlugin(options: { strict?: boolean } = {}): Plugin {
+export function StrictValidationPlugin(options: { strict?: boolean; logger?: ILogger } = {}): Plugin {
+  const logger = options.logger?.child({ plugin: 'strict-validation' }) ?? createNullLogger();
+
   return createPlugin({
     name: 'strict-validation',
     version: '1.0.0',
     description: 'Provider validation with strict mode',
 
     install(container: IContainer) {
-      // TODO: Replace with injectable logger
-      console.log('[Nexus] Strict validation plugin installed');
+      logger.debug('Strict validation plugin installed');
     },
 
     hooks: {

@@ -10,6 +10,7 @@
 
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { TitanError, ErrorCode } from '../../../../errors/index.js';
+import type { ILogger } from '../../../../modules/logger/logger.types.js';
 
 /**
  * Retry options
@@ -95,8 +96,8 @@ export class RetryManager extends EventEmitter {
       defaultOptions?: Partial<RetryOptions>;
       /** Enable circuit breaker */
       circuitBreaker?: CircuitBreakerOptions;
-      /** Enable debug logging */
-      debug?: boolean;
+      /** Logger instance for debug output */
+      logger?: ILogger;
     } = {}
   ) {
     super();
@@ -152,9 +153,7 @@ export class RetryManager extends EventEmitter {
     // attempts = number of retries, so we try initial + retries
     for (let attempt = 0; attempt <= retryOptions.attempts; attempt++) {
       try {
-        if (this.options.debug) {
-          console.log(`[Retry] Attempt ${attempt + 1}/${retryOptions.attempts + 1}`);
-        }
+        this.options.logger?.debug({ attempt: attempt + 1, maxAttempts: retryOptions.attempts + 1 }, 'Retry attempt');
 
         // Execute with timeout if specified
         const result = await this.executeWithTimeout(fn, retryOptions.attemptTimeout);
@@ -179,9 +178,7 @@ export class RetryManager extends EventEmitter {
         const shouldRetry = await retryOptions.shouldRetry(error, attempt);
 
         if (!shouldRetry) {
-          if (this.options.debug) {
-            console.log(`[Retry] Error not retryable:`, error.message);
-          }
+          this.options.logger?.debug({ err: error }, 'Error not retryable');
           this.stats.failedRetries++;
           this.updateCircuitBreakerOnFailure();
           throw error;
@@ -193,11 +190,7 @@ export class RetryManager extends EventEmitter {
 
           if (this.retryAfterDelay !== undefined) {
             actualDelay = this.retryAfterDelay;
-
-            if (this.options.debug) {
-              console.log(`[Retry] Using Retry-After delay: ${actualDelay}ms`);
-            }
-
+            this.options.logger?.debug({ delayMs: actualDelay }, 'Using Retry-After delay');
             // Clear the retry-after delay after using it
             this.retryAfterDelay = undefined;
           } else {
@@ -205,10 +198,7 @@ export class RetryManager extends EventEmitter {
           }
 
           this.stats.retryDelays.push(actualDelay);
-
-          if (this.options.debug) {
-            console.log(`[Retry] Attempt ${attempt + 1} failed, retrying in ${actualDelay}ms:`, error.message);
-          }
+          this.options.logger?.debug({ attempt: attempt + 1, delayMs: actualDelay, err: error }, 'Attempt failed, retrying');
 
           // Call retry callback
           retryOptions.onRetry(attempt + 1, error);
@@ -237,10 +227,7 @@ export class RetryManager extends EventEmitter {
           // Max retries exceeded
           this.stats.failedRetries++;
           this.updateCircuitBreakerOnFailure();
-
-          if (this.options.debug) {
-            console.log(`[Retry] Max attempts exceeded`);
-          }
+          this.options.logger?.debug({ attempts: retryOptions.attempts + 1 }, 'Max retry attempts exceeded');
 
           this.emit('retry-exhausted', {
             attempts: retryOptions.attempts + 1,
@@ -365,10 +352,7 @@ export class RetryManager extends EventEmitter {
       if (!Number.isNaN(retryAfterNumber)) {
         // It's a number (seconds)
         this.retryAfterDelay = retryAfterNumber * 1000;
-
-        if (this.options.debug) {
-          console.log(`[Retry] Retry-After header: ${retryAfterNumber}s`);
-        }
+        this.options.logger?.debug({ retryAfterSeconds: retryAfterNumber }, 'Retry-After header (seconds)');
       } else {
         // It's an HTTP date
         try {
@@ -377,15 +361,10 @@ export class RetryManager extends EventEmitter {
 
           if (delayMs > 0) {
             this.retryAfterDelay = delayMs;
-
-            if (this.options.debug) {
-              console.log(`[Retry] Retry-After date: ${retryAfter} (delay: ${delayMs}ms)`);
-            }
+            this.options.logger?.debug({ retryAfter, delayMs }, 'Retry-After header (date)');
           }
         } catch (err) {
-          if (this.options.debug) {
-            console.warn(`[Retry] Failed to parse Retry-After header: ${retryAfter}`);
-          }
+          this.options.logger?.warn({ retryAfter, err }, 'Failed to parse Retry-After header');
         }
       }
     }
@@ -461,10 +440,7 @@ export class RetryManager extends EventEmitter {
       this.circuitBreaker.state = 'half-open';
       this.circuitBreaker.successes = 0;
       this.emit('circuit-breaker-half-open');
-
-      if (this.options.debug) {
-        console.log('[CircuitBreaker] Transitioned to HALF-OPEN');
-      }
+      this.options.logger?.debug({}, 'CircuitBreaker transitioned to HALF-OPEN');
     }
 
     // Clean up old failures outside the window
@@ -488,10 +464,7 @@ export class RetryManager extends EventEmitter {
         this.circuitBreaker.failures = 0;
         this.circuitBreaker.successes = 0;
         this.emit('circuit-breaker-closed');
-
-        if (this.options.debug) {
-          console.log('[CircuitBreaker] Transitioned to CLOSED');
-        }
+        this.options.logger?.debug({}, 'CircuitBreaker transitioned to CLOSED');
       }
     }
   }
@@ -511,10 +484,7 @@ export class RetryManager extends EventEmitter {
       this.circuitBreaker.state = 'open';
       this.circuitBreaker.nextAttemptTime = now + this.circuitBreaker.options.cooldownTime;
       this.emit('circuit-breaker-open', { nextAttemptTime: this.circuitBreaker.nextAttemptTime });
-
-      if (this.options.debug) {
-        console.log('[CircuitBreaker] Transitioned back to OPEN from HALF-OPEN');
-      }
+      this.options.logger?.debug({}, 'CircuitBreaker transitioned back to OPEN from HALF-OPEN');
       return; // Early return to avoid duplicate processing
     }
 
@@ -526,10 +496,7 @@ export class RetryManager extends EventEmitter {
       this.circuitBreaker.state = 'open';
       this.circuitBreaker.nextAttemptTime = now + this.circuitBreaker.options.cooldownTime;
       this.emit('circuit-breaker-open', { nextAttemptTime: this.circuitBreaker.nextAttemptTime });
-
-      if (this.options.debug) {
-        console.log('[CircuitBreaker] Transitioned to OPEN');
-      }
+      this.options.logger?.debug({}, 'CircuitBreaker transitioned to OPEN');
     }
   }
 
@@ -589,10 +556,7 @@ export class RetryManager extends EventEmitter {
     this.circuitBreaker.state = 'open';
     this.circuitBreaker.nextAttemptTime = Date.now() + this.circuitBreaker.options.cooldownTime;
     this.emit('circuit-breaker-tripped');
-
-    if (this.options.debug) {
-      console.log('[CircuitBreaker] Manually tripped to OPEN');
-    }
+    this.options.logger?.debug({}, 'CircuitBreaker manually tripped to OPEN');
   }
 
   /**
@@ -607,9 +571,6 @@ export class RetryManager extends EventEmitter {
     this.circuitBreaker.lastFailureTime = 0;
     this.circuitBreaker.nextAttemptTime = 0;
     this.emit('circuit-breaker-reset');
-
-    if (this.options.debug) {
-      console.log('[CircuitBreaker] Manually reset to CLOSED');
-    }
+    this.options.logger?.debug({}, 'CircuitBreaker manually reset to CLOSED');
   }
 }

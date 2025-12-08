@@ -24,12 +24,11 @@ import type {
   MigrationHealthStatus,
   DatabaseMetrics,
 } from './database.types.js';
-import type { Logger } from './database.internal-types.js';
-import { createDefaultLogger } from './utils/logger.factory.js';
+import { createNullLogger, type ILogger } from '../logger/logger.types.js';
 
 @Injectable()
 export class DatabaseHealthIndicator {
-  private logger: Logger;
+  private logger: ILogger;
   private queryPerformanceMetrics: Map<
     string,
     {
@@ -43,10 +42,10 @@ export class DatabaseHealthIndicator {
   constructor(
     @Inject(DATABASE_MANAGER) private manager: DatabaseManager,
     @Inject(DATABASE_MIGRATION_SERVICE) private migrationService?: MigrationService,
-    @Inject(DATABASE_TRANSACTION_MANAGER) private transactionManager?: TransactionManager
+    @Inject(DATABASE_TRANSACTION_MANAGER) private transactionManager?: TransactionManager,
+    logger?: ILogger
   ) {
-    // Initialize logger with proper Logger interface
-    this.logger = createDefaultLogger('DatabaseHealthIndicator');
+    this.logger = logger ? logger.child({ module: 'DatabaseHealthIndicator' }) : createNullLogger();
     this.initializeMetricsCollection();
   }
 

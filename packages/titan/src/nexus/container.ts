@@ -73,6 +73,8 @@ import {
   generateResolutionId,
 } from './container/index.js';
 
+import type { ILogger } from '../modules/logger/logger.types.js';
+
 /**
  * The main dependency injection container for Nexus DI.
  * Manages registration, resolution, and lifecycle of dependencies.
@@ -118,6 +120,9 @@ export class Container implements IContainer {
   private asyncResolutionService: AsyncResolutionService;
   private moduleLoaderService: ModuleLoaderService;
   private lifecycleService: LifecycleService;
+
+  // Optional logger (can be set after construction when DI is ready)
+  private logger?: ILogger;
 
   constructor(parentOrOptions?: IContainer | { environment?: string }, context: Partial<ResolutionContext> = {}) {
     // Initialize internal services
@@ -1098,7 +1103,7 @@ export class Container implements IContainer {
             }
           } catch (error) {
             // Skip failed resolutions for multi-injection
-            console.warn('Failed to resolve one instance of ' + String(token) + ':', error);
+            this.logger?.warn({ err: error, token: String(token) }, 'Failed to resolve one instance in multi-injection');
           }
         }
       } else if (registration.options?.multi) {
@@ -1368,7 +1373,7 @@ export class Container implements IContainer {
       const result = module.onModuleInit();
       if (result instanceof Promise) {
         result.catch((error) => {
-          console.error('Failed to initialize module ' + module.name + ':', error);
+          this.logger?.error({ err: error, module: module.name }, 'Failed to initialize module');
         });
       }
     }
@@ -1513,6 +1518,19 @@ export class Container implements IContainer {
   }
 
   /**
+   * Set logger instance for container operations.
+   * Can be called after construction once the logger is available through DI.
+   * Also propagates logger to internal services that support it.
+   */
+  setLogger(logger: ILogger): this {
+    this.logger = logger;
+    // Propagate to lifecycle components
+    this.lifecycleManager.setLogger(logger);
+    this.lifecycleService.setLogger(logger);
+    return this;
+  }
+
+  /**
    * Add middleware
    */
   addMiddleware(middleware: Middleware): this {
@@ -1615,7 +1633,7 @@ export class Container implements IContainer {
       // Add to plugin manager for all hooks
       this.pluginManager.addHook(event as any, handler as any);
     } else {
-      console.warn('Unknown hook event: ' + event);
+      this.logger?.warn({ event }, 'Unknown hook event');
     }
 
     return this;

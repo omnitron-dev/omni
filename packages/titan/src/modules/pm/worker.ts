@@ -11,6 +11,7 @@ import { parentPort, workerData } from 'worker_threads';
 import { Netron, LocalPeer } from '../../netron/index.js';
 import { Errors } from '../../errors/index.js';
 import 'reflect-metadata';
+import type { ILogger } from '../logger/logger.types.js';
 
 // Worker configuration from parent
 interface WorkerConfig {
@@ -31,6 +32,9 @@ interface WorkerConfig {
 }
 
 const config = workerData as WorkerConfig;
+
+// Optional logger for worker
+let logger: ILogger | undefined;
 
 /**
  * Initialize the worker process
@@ -219,7 +223,7 @@ async function initialize() {
       await serviceInterface.__shutdown();
     });
   } catch (error: any) {
-    console.error('Failed to initialize worker:', error);
+    logger?.error({ err: error, processId: config.processId }, 'Failed to initialize worker');
     parentPort?.postMessage({
       type: 'error',
       error: error.message,
@@ -231,6 +235,6 @@ async function initialize() {
 
 // Initialize the worker
 initialize().catch((error) => {
-  console.error('Worker initialization failed:', error);
+  logger?.error({ err: error }, 'Worker initialization failed');
   process.exit(1);
 });

@@ -19,6 +19,7 @@ import {
 import { TransportRegistry, getTransportForAddress } from './transport-registry.js';
 import { Packet, encodePacket } from '../packet/index.js';
 import { Errors } from '../../errors/index.js';
+import type { ILogger } from '../../modules/logger/logger.types.js';
 
 /**
  * Binary transport adapter
@@ -38,12 +39,20 @@ export class BinaryTransportAdapter extends EventEmitter {
   private _readyState: number = BinaryTransportAdapter.CONNECTING;
   private _url?: string;
   private _binaryType: 'nodebuffer' | 'arraybuffer' = 'nodebuffer';
+  private logger?: ILogger;
 
   constructor(connection: ITransportConnection, url?: string) {
     super();
     this.connection = connection;
     this._url = url;
     this.setupEventHandlers();
+  }
+
+  /**
+   * Set logger instance for adapter operations
+   */
+  setLogger(logger: ILogger): void {
+    this.logger = logger;
   }
 
   /**
@@ -166,7 +175,7 @@ export class BinaryTransportAdapter extends EventEmitter {
       .catch((err) => {
         if (typeof callback === 'function') callback(err);
         // Log error if no callback provided
-        else console.error('BinaryTransportAdapter send error:', err);
+        else this.logger?.error({ err }, 'BinaryTransportAdapter send error');
       });
   }
 

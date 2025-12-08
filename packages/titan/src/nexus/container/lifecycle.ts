@@ -9,11 +9,25 @@ import {
   Disposable,
   Initializable,
 } from '../types.js';
+import type { ILogger } from '../../modules/logger/logger.types.js';
 
 /**
  * LifecycleService handles instance lifecycle management
  */
 export class LifecycleService {
+  private logger?: ILogger;
+
+  constructor(logger?: ILogger) {
+    this.logger = logger;
+  }
+
+  /**
+   * Set logger instance (can be set after construction when DI is ready)
+   */
+  setLogger(logger: ILogger): void {
+    this.logger = logger;
+  }
+
   /**
    * Check if disposable
    */
@@ -54,7 +68,7 @@ export class LifecycleService {
             await result;
           }
         } catch (error: any) {
-          console.error('Failed to call onDestroy for ' + getTokenName(token) + ':', error);
+          this.logger?.error({ err: error, token: getTokenName(token) }, 'Failed to call onDestroy');
         }
       }
 
@@ -63,7 +77,7 @@ export class LifecycleService {
         try {
           await instance.dispose();
         } catch (error: any) {
-          console.error('Failed to dispose ' + getTokenName(token) + ':', error);
+          this.logger?.error({ err: error, token: getTokenName(token) }, 'Failed to dispose instance');
         }
       }
     }
@@ -81,7 +95,7 @@ export class LifecycleService {
               await result;
             }
           } catch (error: any) {
-            console.error('Failed to call onDestroy for scoped ' + getTokenName(token) + ':', error);
+            this.logger?.error({ err: error, token: getTokenName(token), scoped: true }, 'Failed to call onDestroy');
           }
         }
 
@@ -90,7 +104,7 @@ export class LifecycleService {
           try {
             await instance.dispose();
           } catch (error: any) {
-            console.error('Failed to dispose scoped ' + getTokenName(token) + ':', error);
+            this.logger?.error({ err: error, token: getTokenName(token), scoped: true }, 'Failed to dispose instance');
           }
         }
       }
@@ -107,7 +121,7 @@ export class LifecycleService {
         try {
           await module.onModuleDestroy();
         } catch (error: any) {
-          console.error('Failed to destroy module ' + module.name + ':', error);
+          this.logger?.error({ err: error, module: module.name }, 'Failed to destroy module');
         }
       }
     }
@@ -127,7 +141,7 @@ export class LifecycleService {
             initPromises.push(result);
           }
         } catch (error: any) {
-          console.error('Failed to initialize instance:', error);
+          this.logger?.error({ err: error }, 'Failed to initialize instance');
           throw error;
         }
       }

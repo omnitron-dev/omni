@@ -5,6 +5,15 @@
  */
 
 import { createMethodInterceptor } from './decorator-factory.js';
+import type { ILogger } from '../modules/logger/logger.types.js';
+
+/**
+ * Get logger from instance if available.
+ * Looks for common logger property names on the class instance.
+ */
+function getInstanceLogger(instance: any): ILogger | undefined {
+  return instance.logger || instance._logger || instance.log;
+}
 
 /**
  * Timeout decorator - adds timeout to method execution
@@ -68,10 +77,17 @@ export const Retryable = createMethodInterceptor<{
         // Apply exponential backoff
         currentDelay = Math.min(currentDelay * backoff, maxDelay);
 
-        // Log retry attempt
-        console.warn(
-          `Retry attempt ${attempt}/${attempts} for ${context.target.constructor.name}.${String(context.propertyKey)}`,
-          { error, delay: currentDelay }
+        // Log retry attempt if logger available
+        const logger = getInstanceLogger(context.target);
+        logger?.warn(
+          {
+            attempt,
+            maxAttempts: attempts,
+            method: `${context.target.constructor.name}.${String(context.propertyKey)}`,
+            err: error,
+            nextDelay: currentDelay,
+          },
+          `Retry attempt ${attempt}/${attempts}`
         );
       }
     }
@@ -82,6 +98,7 @@ export const Retryable = createMethodInterceptor<{
 
 /**
  * Log decorator - logs method entry and exit
+ * Uses instance logger if available (via logger, _logger, or log property)
  */
 export const Log = createMethodInterceptor<{
   level?: 'trace' | 'debug' | 'info' | 'warn' | 'error';
@@ -89,45 +106,52 @@ export const Log = createMethodInterceptor<{
   includeResult?: boolean;
   message?: string;
 }>('Log', async (originalMethod, args, context) => {
+  const logger = getInstanceLogger(context.target);
+
+  // Skip logging if no logger available
+  if (!logger) {
+    return originalMethod(...args);
+  }
+
   const level = context.options?.level || 'info';
   const methodName = `${context.target.constructor.name}.${String(context.propertyKey)}`;
 
-  const logData: any = {
+  const logData: Record<string, unknown> = {
     method: methodName,
-    timestamp: new Date().toISOString(),
   };
 
   if (context.options?.includeArgs) {
-    logData.args = args;
+    logData['args'] = args;
   }
 
   if (context.options?.message) {
-    logData.message = context.options.message;
+    logData['customMessage'] = context.options.message;
   }
 
   // Log method entry
-  console[level](`Entering ${methodName}`, logData);
+  logger[level](logData, `Entering ${methodName}`);
 
   try {
     const result = await originalMethod(...args);
 
     if (context.options?.includeResult) {
-      logData.result = result;
+      logData['result'] = result;
     }
 
     // Log method exit
-    console[level](`Exiting ${methodName}`, logData);
+    logger[level](logData, `Exiting ${methodName}`);
 
     return result;
   } catch (error) {
-    logData.error = error;
-    console.error(`Error in ${methodName}`, logData);
+    logData['err'] = error;
+    logger.error(logData, `Error in ${methodName}`);
     throw error;
   }
 });
 
 /**
  * Monitor decorator - tracks method performance
+ * Uses instance logger if available (via logger, _logger, or log property)
  */
 export const Monitor = createMethodInterceptor<{
   name?: string;
@@ -135,47 +159,48 @@ export const Monitor = createMethodInterceptor<{
   includeArgs?: boolean;
   includeResult?: boolean;
 }>('Monitor', async (originalMethod, args, context) => {
+  const logger = getInstanceLogger(context.target);
   const sampleRate = context.options?.sampleRate ?? 1.0;
 
-  // Skip monitoring based on sample rate
-  if (Math.random() > sampleRate) {
+  // Skip monitoring based on sample rate or if no logger
+  if (Math.random() > sampleRate || !logger) {
     return originalMethod(...args);
   }
 
   const metricName = context.options?.name || `${context.target.constructor.name}.${String(context.propertyKey)}`;
   const start = performance.now();
 
-  const metadata: any = {
+  const metadata: Record<string, unknown> = {
     method: metricName,
     timestamp: Date.now(),
   };
 
   if (context.options?.includeArgs) {
-    metadata.args = args;
+    metadata['args'] = args;
   }
 
   try {
     const result = await originalMethod(...args);
 
     const duration = performance.now() - start;
-    metadata.duration = duration;
-    metadata.success = true;
+    metadata['durationMs'] = duration;
+    metadata['success'] = true;
 
     if (context.options?.includeResult) {
-      metadata.result = result;
+      metadata['result'] = result;
     }
 
-    // Log metrics (in real implementation, would send to metrics system)
-    console.debug('Method metrics', metadata);
+    // Log metrics
+    logger.debug(metadata, 'Method metrics');
 
     return result;
   } catch (error) {
     const duration = performance.now() - start;
-    metadata.duration = duration;
-    metadata.success = false;
-    metadata.error = error;
+    metadata['durationMs'] = duration;
+    metadata['success'] = false;
+    metadata['err'] = error;
 
-    console.error('Method error metrics', metadata);
+    logger.error(metadata, 'Method error metrics');
 
     throw error;
   }

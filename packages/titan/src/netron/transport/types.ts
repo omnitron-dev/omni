@@ -81,6 +81,8 @@ export interface TransportOptions {
   discovery?: boolean;
   port?: number;
   cors?: any;
+  /** Enable request/response logging (HTTP only, default: false) */
+  logging?: boolean;
 }
 
 /**

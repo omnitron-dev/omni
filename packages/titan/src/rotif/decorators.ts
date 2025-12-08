@@ -6,7 +6,15 @@
  */
 
 import 'reflect-metadata';
-import type { SubscribeOptions, RotifMessage } from './types.js';
+import type { SubscribeOptions, RotifMessage, ILogger } from './types.js';
+
+/**
+ * Get logger from instance if available.
+ * Looks for common logger property names on the class instance.
+ */
+function getInstanceLogger(instance: any): ILogger | undefined {
+  return instance.logger || instance._logger || instance.log;
+}
 
 /**
  * Metadata key for storing subscription information

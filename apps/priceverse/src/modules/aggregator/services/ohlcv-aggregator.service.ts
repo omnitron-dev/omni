@@ -1,13 +1,23 @@
 /**
  * Priceverse 2.0 - OHLCV Aggregator Service
- * Creates candlestick data (5min, 1hour, 1day)
+ * Uses Titan database features: repositories, transactions, cursor pagination
  */
 
 import { Injectable, Inject } from '@omnitron-dev/titan/decorators';
-import { DATABASE_CONNECTION } from '@omnitron-dev/titan/module/database';
+import {
+  Transactional,
+  TransactionIsolationLevel,
+  withRetry,
+  parseDatabaseError,
+} from '@omnitron-dev/titan/module/database';
 import { LOGGER_SERVICE_TOKEN, type ILoggerModule } from '@omnitron-dev/titan/module/logger';
-import { sql, type Kysely } from 'kysely';
-import type { Database } from '../../../database/schema.js';
+import {
+  OhlcvRepository,
+  type OhlcvCandleEntity,
+  type CreateOhlcvCandleInput,
+  type CursorPaginatedCandles,
+} from '../../../database/index.js';
+import { OHLCV_REPOSITORY } from '../../../shared/tokens.js';
 import type { PairSymbol, ChartInterval } from '../../../shared/types.js';
 import { SUPPORTED_PAIRS } from '../../../shared/types.js';
 
@@ -23,14 +33,22 @@ interface OhlcvCandle {
   tradeCount: number;
 }
 
-type CandleTableName = 'price_history_5min' | 'price_history_1hour' | 'price_history_1day';
+const RETRY_OPTIONS = {
+  maxAttempts: 3,
+  delayMs: 500,
+  backoff: true,
+};
 
 @Injectable()
 export class OhlcvAggregatorService {
+  private readonly ohlcvRepo: OhlcvRepository;
+
   constructor(
-    @Inject(DATABASE_CONNECTION) private readonly db: Kysely<Database>,
     @Inject(LOGGER_SERVICE_TOKEN) private readonly loggerModule: ILoggerModule,
-  ) {}
+    @Inject(OHLCV_REPOSITORY) ohlcvRepo: OhlcvRepository
+  ) {
+    this.ohlcvRepo = ohlcvRepo;
+  }
 
   private get logger() {
     return this.loggerModule.logger;
@@ -38,169 +56,202 @@ export class OhlcvAggregatorService {
 
   /**
    * Aggregate 5-minute candles - called by scheduler every 5 minutes
+   * Uses transaction for atomic updates across all pairs
    */
+  @Transactional({ isolationLevel: TransactionIsolationLevel.READ_COMMITTED })
   async aggregate5Min(): Promise<void> {
     const now = new Date();
     const periodStart = this.floorToInterval(now, 5 * 60 * 1000);
     const periodEnd = new Date(periodStart.getTime() + 5 * 60 * 1000);
 
-    await this.aggregateCandles('price_history_5min', periodStart, periodEnd);
+    await this.aggregateCandles('5min', periodStart, periodEnd);
   }
 
   /**
    * Aggregate 1-hour candles - called by scheduler every hour
    */
+  @Transactional({ isolationLevel: TransactionIsolationLevel.READ_COMMITTED })
   async aggregate1Hour(): Promise<void> {
     const now = new Date();
     const periodStart = this.floorToInterval(now, 60 * 60 * 1000);
     const periodEnd = new Date(periodStart.getTime() + 60 * 60 * 1000);
 
-    await this.aggregateCandles('price_history_1hour', periodStart, periodEnd);
+    await this.aggregateCandles('1hour', periodStart, periodEnd);
   }
 
   /**
    * Aggregate daily candles - called by scheduler at midnight UTC
    */
+  @Transactional({ isolationLevel: TransactionIsolationLevel.READ_COMMITTED })
   async aggregate1Day(): Promise<void> {
     const now = new Date();
     const periodStart = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1),
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1)
     );
     const periodEnd = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
     );
 
-    await this.aggregateCandles('price_history_1day', periodStart, periodEnd);
+    await this.aggregateCandles('1day', periodStart, periodEnd);
   }
 
+  /**
+   * Aggregate candles for all supported pairs with error isolation
+   */
   private async aggregateCandles(
-    tableName: CandleTableName,
+    interval: ChartInterval,
     periodStart: Date,
-    periodEnd: Date,
+    periodEnd: Date
   ): Promise<void> {
-    for (const pair of SUPPORTED_PAIRS) {
-      try {
-        const candle = await this.calculateOhlcv(pair, periodStart, periodEnd);
-        if (candle) {
-          await this.saveCandle(tableName, candle);
-        }
-      } catch (error) {
-        this.logger.error(`[OHLCV] Aggregation error for ${pair}:`, error);
+    const results = await Promise.allSettled(
+      SUPPORTED_PAIRS.map((pair) =>
+        this.aggregateSingleCandle(interval, pair, periodStart, periodEnd)
+      )
+    );
+
+    // Log any failures
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        const pair = SUPPORTED_PAIRS[index];
+        this.logger.error(`[OHLCV] Aggregation failed for ${pair}:`, result.reason);
       }
+    });
+  }
+
+  /**
+   * Calculate and save a single candle with retry
+   */
+  private async aggregateSingleCandle(
+    interval: ChartInterval,
+    pair: PairSymbol,
+    periodStart: Date,
+    periodEnd: Date
+  ): Promise<void> {
+    try {
+      const candle = await this.calculateOhlcv(pair, periodStart, periodEnd);
+      if (candle) {
+        await withRetry(
+          () => this.saveCandle(interval, candle),
+          RETRY_OPTIONS
+        );
+      }
+    } catch (error) {
+      const parsed = parseDatabaseError(error);
+      this.logger.error(`[OHLCV] Error for ${pair}:`, {
+        error: parsed.message,
+        code: parsed.code,
+      });
+      throw error;
     }
   }
 
+  /**
+   * Calculate OHLCV using optimized repository methods
+   */
   private async calculateOhlcv(
     pair: PairSymbol,
     periodStart: Date,
-    periodEnd: Date,
+    periodEnd: Date
   ): Promise<OhlcvCandle | null> {
-    // Get aggregate stats
-    const result = await this.db
-      .selectFrom('price_history')
-      .select([
-        sql<string>`MIN(price)`.as('low'),
-        sql<string>`MAX(price)`.as('high'),
-        sql<number>`COUNT(*)`.as('trade_count'),
-        sql<string>`SUM(CAST(price AS DECIMAL) * CAST(volume AS DECIMAL))`.as(
-          'price_volume_sum',
-        ),
-        sql<string>`SUM(CAST(volume AS DECIMAL))`.as('volume_sum'),
-      ])
-      .where('pair', '=', pair)
-      .where('timestamp', '>=', periodStart)
-      .where('timestamp', '<', periodEnd)
-      .executeTakeFirst();
+    // Get aggregate stats in a single query
+    const stats = await this.ohlcvRepo.getAggregateStats(pair, periodStart, periodEnd);
 
-    if (!result || result.trade_count === 0) return null;
+    if (!stats || stats.tradeCount === 0) {
+      return null;
+    }
 
-    // Get first price (open)
-    const firstPrice = await this.db
-      .selectFrom('price_history')
-      .select('price')
-      .where('pair', '=', pair)
-      .where('timestamp', '>=', periodStart)
-      .where('timestamp', '<', periodEnd)
-      .orderBy('timestamp', 'asc')
-      .limit(1)
-      .executeTakeFirst();
+    // Get open/close prices
+    const prices = await this.ohlcvRepo.getOpenClosePrice(pair, periodStart, periodEnd);
 
-    // Get last price (close)
-    const lastPrice = await this.db
-      .selectFrom('price_history')
-      .select('price')
-      .where('pair', '=', pair)
-      .where('timestamp', '>=', periodStart)
-      .where('timestamp', '<', periodEnd)
-      .orderBy('timestamp', 'desc')
-      .limit(1)
-      .executeTakeFirst();
+    if (!prices) {
+      return null;
+    }
 
-    const volumeSum = parseFloat(result.volume_sum || '0');
-    const priceVolumeSum = parseFloat(result.price_volume_sum || '0');
-    const vwap =
-      volumeSum > 0 ? (priceVolumeSum / volumeSum).toFixed(8) : null;
+    const volumeSum = parseFloat(stats.volumeSum || '0');
+    const priceVolumeSum = parseFloat(stats.priceVolumeSum || '0');
+    const vwap = volumeSum > 0 ? (priceVolumeSum / volumeSum).toFixed(8) : null;
 
     return {
       pair,
       timestamp: periodStart,
-      open: firstPrice?.price ?? '0',
-      high: result.high,
-      low: result.low,
-      close: lastPrice?.price ?? '0',
+      open: prices.open,
+      high: stats.high,
+      low: stats.low,
+      close: prices.close,
       volume: volumeSum.toFixed(8),
       vwap,
-      tradeCount: Number(result.trade_count),
+      tradeCount: stats.tradeCount,
     };
   }
 
+  /**
+   * Save candle using repository upsert
+   */
   private async saveCandle(
-    tableName: CandleTableName,
-    candle: OhlcvCandle,
+    interval: ChartInterval,
+    candle: OhlcvCandle
   ): Promise<void> {
-    await this.db
-      .insertInto(tableName)
-      .values({
-        pair: candle.pair as PairSymbol,
-        timestamp: candle.timestamp,
-        open: candle.open,
-        high: candle.high,
-        low: candle.low,
-        close: candle.close,
-        volume: candle.volume,
-        vwap: candle.vwap,
-        trade_count: candle.tradeCount,
-      })
-      .onConflict((oc) =>
-        oc.columns(['pair', 'timestamp']).doUpdateSet({
-          open: candle.open,
-          high: candle.high,
-          low: candle.low,
-          close: candle.close,
-          volume: candle.volume,
-          vwap: candle.vwap,
-          trade_count: candle.tradeCount,
-        }),
-      )
-      .execute();
+    const input: CreateOhlcvCandleInput = {
+      pair: candle.pair as PairSymbol,
+      timestamp: candle.timestamp,
+      open: candle.open,
+      high: candle.high,
+      low: candle.low,
+      close: candle.close,
+      volume: candle.volume,
+      vwap: candle.vwap,
+      trade_count: candle.tradeCount,
+    };
+
+    await this.ohlcvRepo.upsertCandle(interval, input);
 
     this.logger.debug(
-      `[OHLCV] Saved ${tableName} candle for ${candle.pair} at ${candle.timestamp.toISOString()}`,
+      `[OHLCV] Saved ${interval} candle for ${candle.pair} at ${candle.timestamp.toISOString()}`
     );
   }
 
+  /**
+   * Floor timestamp to interval boundary
+   */
   private floorToInterval(date: Date, intervalMs: number): Date {
     return new Date(Math.floor(date.getTime() / intervalMs) * intervalMs);
   }
 
   /**
-   * Get OHLCV candles for a pair
+   * Get OHLCV candles with cursor-based pagination (efficient for large datasets)
+   */
+  async getCandlesWithCursor(
+    pair: PairSymbol,
+    interval: ChartInterval,
+    options: {
+      limit?: number;
+      cursor?: string;
+      from?: Date;
+      to?: Date;
+    } = {}
+  ): Promise<CursorPaginatedCandles> {
+    return withRetry(
+      () =>
+        this.ohlcvRepo.getCandlesWithCursor(interval, {
+          pair,
+          limit: options.limit ?? 100,
+          cursor: options.cursor,
+          from: options.from,
+          to: options.to,
+          orderBy: 'desc',
+        }),
+      RETRY_OPTIONS
+    );
+  }
+
+  /**
+   * Get OHLCV candles with offset pagination (backwards compatible)
    */
   async getCandles(
     pair: PairSymbol,
     interval: ChartInterval,
     limit: number,
-    offset: number,
+    offset: number
   ): Promise<{
     candles: Array<{
       timestamp: string;
@@ -213,37 +264,13 @@ export class OhlcvAggregatorService {
     }>;
     total: number;
   }> {
-    const tableName = this.getTableName(interval);
-
-    // Get total count
-    const countResult = await this.db
-      .selectFrom(tableName)
-      .select(sql<number>`COUNT(*)`.as('count'))
-      .where('pair', '=', pair)
-      .executeTakeFirst();
-
-    const total = Number(countResult?.count ?? 0);
-
-    // Get candles
-    const candles = await this.db
-      .selectFrom(tableName)
-      .select([
-        'timestamp',
-        'open',
-        'high',
-        'low',
-        'close',
-        'volume',
-        'vwap',
-      ])
-      .where('pair', '=', pair)
-      .orderBy('timestamp', 'desc')
-      .limit(limit)
-      .offset(offset)
-      .execute();
+    const result = await withRetry(
+      () => this.ohlcvRepo.getCandles(interval, pair, limit, offset),
+      RETRY_OPTIONS
+    );
 
     return {
-      candles: candles.map((c) => ({
+      candles: result.candles.map((c) => ({
         timestamp: c.timestamp.toISOString(),
         open: parseFloat(c.open),
         high: parseFloat(c.high),
@@ -252,20 +279,43 @@ export class OhlcvAggregatorService {
         volume: parseFloat(c.volume),
         vwap: c.vwap ? parseFloat(c.vwap) : null,
       })),
-      total,
+      total: result.total,
     };
   }
 
-  private getTableName(interval: ChartInterval): CandleTableName {
-    switch (interval) {
-      case '5min':
-        return 'price_history_5min';
-      case '1hour':
-        return 'price_history_1hour';
-      case '1day':
-        return 'price_history_1day';
-      default:
-        return 'price_history_1hour';
-    }
+  /**
+   * Get latest candle for a pair
+   */
+  async getLatestCandle(
+    pair: PairSymbol,
+    interval: ChartInterval
+  ): Promise<OhlcvCandleEntity | null> {
+    return withRetry(
+      () => this.ohlcvRepo.getLatestCandle(interval, pair),
+      RETRY_OPTIONS
+    );
+  }
+
+  /**
+   * Get candle count for metrics
+   */
+  async getCandleCount(
+    pair: PairSymbol,
+    interval: ChartInterval
+  ): Promise<number> {
+    return this.ohlcvRepo.getCandleCount(interval, pair);
+  }
+
+  /**
+   * Cleanup old candles (data retention)
+   */
+  async cleanupOldCandles(
+    interval: ChartInterval,
+    retentionDays: number
+  ): Promise<number> {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+
+    return this.ohlcvRepo.deleteOlderThan(interval, cutoffDate);
   }
 }

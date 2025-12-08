@@ -1,6 +1,9 @@
 /**
  * Priceverse 2.0 - Aggregator Module
  * Handles VWAP calculation and OHLCV aggregation
+ *
+ * Note: Depends on CollectorModule's CBR_RATE_SERVICE_TOKEN being exported
+ * and available via AppModule's module hierarchy.
  */
 
 import { Module } from '@omnitron-dev/titan/decorators';

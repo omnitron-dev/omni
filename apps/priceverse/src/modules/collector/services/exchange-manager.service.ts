@@ -4,7 +4,6 @@
  */
 
 import { Injectable, Inject, PostConstruct, PreDestroy } from '@omnitron-dev/titan/decorators';
-import { RedisService } from '@omnitron-dev/titan/module/redis';
 import { LOGGER_SERVICE_TOKEN, type ILoggerModule } from '@omnitron-dev/titan/module/logger';
 import type { ILogger, IRedisService } from '../workers/base-worker.js';
 import { BaseExchangeWorker } from '../workers/base-worker.js';
@@ -15,6 +14,8 @@ import { OkxWorker } from '../workers/okx.worker.js';
 import { BybitWorker } from '../workers/bybit.worker.js';
 import { KucoinWorker } from '../workers/kucoin.worker.js';
 import type { ExchangeWorkerStats, SupportedExchange } from '../../../shared/types.js';
+import { ExtendedRedisService } from '../../../lib/extended-redis.service.js';
+import { EXTENDED_REDIS_SERVICE } from '../../../shared/tokens.js';
 
 type WorkerConstructor = new (redis: IRedisService, logger: ILogger) => BaseExchangeWorker;
 
@@ -27,7 +28,7 @@ const WORKER_MAP: Record<string, WorkerConstructor> = {
   kucoin: KucoinWorker,
 };
 
-@Injectable()
+@Injectable({ scope: 'singleton' })
 export class ExchangeManagerService {
   private workers: Map<string, BaseExchangeWorker> = new Map();
   private running = false;
@@ -38,7 +39,7 @@ export class ExchangeManagerService {
   }
 
   constructor(
-    @Inject(RedisService) private readonly redis: IRedisService,
+    @Inject(EXTENDED_REDIS_SERVICE) private readonly redis: ExtendedRedisService,
     @Inject(LOGGER_SERVICE_TOKEN) private readonly loggerModule: ILoggerModule,
     @Inject('EnabledExchanges')
     private readonly enabledExchanges: string[] = [
@@ -57,6 +58,10 @@ export class ExchangeManagerService {
 
   @PostConstruct()
   async start(): Promise<void> {
+    if (this.running) {
+      this.logger.info('[ExchangeManager] Already running, skipping start');
+      return;
+    }
     this.running = true;
     this.logger.info(
       `[ExchangeManager] Starting ${this.enabledExchanges.length} exchange workers`,

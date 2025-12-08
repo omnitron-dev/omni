@@ -1,6 +1,7 @@
 import { Injectable } from '../../decorators/index.js';
 import { Errors } from '../../errors/index.js';
 import { Redis } from 'ioredis';
+import type { ILogger } from '../logger/logger.types.js';
 import { hash } from './utils.js';
 
 export interface TemplateOptions {
@@ -74,7 +75,8 @@ export class TemplateEngine {
 
   constructor(
     private redis?: Redis,
-    private options?: TemplateOptions
+    private options?: TemplateOptions,
+    private logger?: ILogger,
   ) {
     this.loadDefaultTemplates();
   }
@@ -194,7 +196,7 @@ export class TemplateEngine {
       try {
         return JSON.parse(cached);
       } catch (error) {
-        console.warn(`Failed to parse cached template render for ${templateId}:`, error);
+        this.logger?.warn({ err: error, templateId }, 'Failed to parse cached template render');
         // Invalid cache entry
       }
     }

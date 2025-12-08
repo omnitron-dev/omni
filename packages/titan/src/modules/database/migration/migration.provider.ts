@@ -8,17 +8,16 @@ import { readdirSync } from 'fs';
 import { join, resolve } from 'path';
 import type { IMigration, MigrationMetadata, IMigrationProvider, MigrationConfig } from './migration.types.js';
 import { getMigrationMetadata, isMigration } from '../database.decorators.js';
-import type { Logger } from '../database.internal-types.js';
-import { createDefaultLogger } from '../utils/logger.factory.js';
+import { createNullLogger, type ILogger } from '../../logger/logger.types.js';
 
 export class MigrationProvider implements IMigrationProvider {
   private migrations: Map<string, IMigration> = new Map();
   private metadata: Map<string, MigrationMetadata> = new Map();
   private loaded: boolean = false;
-  private logger: Logger;
+  private logger: ILogger;
 
-  constructor(private config: MigrationConfig) {
-    this.logger = createDefaultLogger('MigrationProvider');
+  constructor(private config: MigrationConfig, logger?: ILogger) {
+    this.logger = logger ? logger.child({ module: 'MigrationProvider' }) : createNullLogger();
   }
 
   /**
@@ -162,11 +161,11 @@ export class MigrationProvider implements IMigrationProvider {
           this.migrations.set(version, instance);
           this.metadata.set(version, metadata);
         } catch (error) {
-          this.logger.error(`Error loading migration from ${file}:`, error);
+          this.logger.error({ error, file }, `Error loading migration from ${file}`);
         }
       }
     } catch (error) {
-      this.logger.error(`Error loading migrations from filesystem:`, error);
+      this.logger.error({ error }, 'Error loading migrations from filesystem');
     }
   }
 
@@ -191,7 +190,7 @@ export class MigrationProvider implements IMigrationProvider {
         this.migrations.set(metadata.version, instance);
         this.metadata.set(metadata.version, metadata);
       } catch (error) {
-        this.logger.error(`Error loading registered migration ${target.name}:`, error);
+        this.logger.error({ error, target: target.name }, `Error loading registered migration ${target.name}`);
       }
     }
   }
@@ -206,7 +205,7 @@ export class MigrationProvider implements IMigrationProvider {
       const fileUrl = `file://${filePath}`;
       return await import(fileUrl);
     } catch (error) {
-      this.logger.error(`Error importing migration from ${filePath}:`, error);
+      this.logger.error({ error, filePath }, `Error importing migration from ${filePath}`);
       return null;
     }
   }

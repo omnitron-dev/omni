@@ -486,12 +486,19 @@ export class ProcessSpawner implements IProcessSpawner {
       // the class should be in its own file
       export default class ${ProcessClass.name} {
         constructor() {
-          console.warn('Legacy process spawning - please migrate to file-based approach');
+          // Note: Logger not available in legacy wrapper
         }
       }
     `;
 
     await fs.writeFile(modulePath, moduleContent, 'utf8');
+
+    // Log warning about legacy usage
+    this.logger.warn(
+      { processClass: ProcessClass.name, processId },
+      'Legacy process spawning - please migrate to file-based approach'
+    );
+
     return modulePath;
   }
 

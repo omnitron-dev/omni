@@ -12,6 +12,12 @@ import type { CbrRateService } from '../modules/collector/services/cbr-rate.serv
 import type { StreamAggregatorService } from '../modules/aggregator/services/stream-aggregator.service.js';
 import type { OhlcvAggregatorService } from '../modules/aggregator/services/ohlcv-aggregator.service.js';
 import type { ExchangeManagerService } from '../modules/collector/services/exchange-manager.service.js';
+import type { PriceHistoryRepository } from '../database/repositories/price-history.repository.js';
+import type { OhlcvRepository } from '../database/repositories/ohlcv.repository.js';
+import type { ExtendedRedisService } from '../lib/extended-redis.service.js';
+
+// Extended Redis Service token (wraps Titan RedisService with stream operations)
+export const EXTENDED_REDIS_SERVICE: Token<ExtendedRedisService> = createToken<ExtendedRedisService>('ExtendedRedisService');
 
 // Service tokens with explicit type annotations for declaration emission
 export const PRICES_SERVICE_TOKEN: Token<PricesService> = createToken<PricesService>('PricesService');
@@ -22,3 +28,7 @@ export const CBR_RATE_SERVICE_TOKEN: Token<CbrRateService> = createToken<CbrRate
 export const STREAM_AGGREGATOR_TOKEN: Token<StreamAggregatorService> = createToken<StreamAggregatorService>('StreamAggregatorService');
 export const OHLCV_AGGREGATOR_TOKEN: Token<OhlcvAggregatorService> = createToken<OhlcvAggregatorService>('OhlcvAggregatorService');
 export const EXCHANGE_MANAGER_TOKEN: Token<ExchangeManagerService> = createToken<ExchangeManagerService>('ExchangeManagerService');
+
+// Repository tokens
+export const PRICE_HISTORY_REPOSITORY: Token<PriceHistoryRepository> = createToken<PriceHistoryRepository>('PriceHistoryRepository');
+export const OHLCV_REPOSITORY: Token<OhlcvRepository> = createToken<OhlcvRepository>('OhlcvRepository');

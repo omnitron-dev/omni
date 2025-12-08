@@ -30,8 +30,7 @@ import type {
   PluginEvent,
   IPluginLoader,
 } from './plugin.types.js';
-import type { Logger } from '../database.internal-types.js';
-import { createDefaultLogger } from '../utils/logger.factory.js';
+import { createNullLogger, type ILogger } from '../../logger/logger.types.js';
 
 /**
  * Plugin Manager
@@ -44,15 +43,16 @@ export class PluginManager extends EventEmitter implements IPluginManager {
   private readonly options: PluginManagerOptions;
   private readonly loader?: IPluginLoader;
   private initialized = false;
-  private logger: Logger;
+  private logger: ILogger;
 
   constructor(
     @Inject(DATABASE_MODULE_OPTIONS) private moduleOptions: DatabaseModuleOptions,
-    @Inject(DATABASE_MANAGER) private dbManager: DatabaseManager
+    @Inject(DATABASE_MANAGER) private dbManager: DatabaseManager,
+    logger?: ILogger
   ) {
     super();
 
-    this.logger = createDefaultLogger('PluginManager');
+    this.logger = logger ? logger.child({ module: 'PluginManager' }) : createNullLogger();
 
     this.options = {
       validatePlugins: true,
@@ -191,11 +191,11 @@ export class PluginManager extends EventEmitter implements IPluginManager {
         const result = titanPlugin.onRegister();
         if (result instanceof Promise) {
           result.catch((error) => {
-            this.logger.error(`Plugin "${name}" onRegister hook failed:`, error);
+            this.logger.error({ error, name }, `Plugin "${name}" onRegister hook failed`);
           });
         }
       } catch (error) {
-        this.logger.error(`Plugin "${name}" onRegister hook failed:`, error);
+        this.logger.error({ error, name }, `Plugin "${name}" onRegister hook failed`);
       }
     }
 
@@ -453,7 +453,7 @@ export class PluginManager extends EventEmitter implements IPluginManager {
           entry.metrics.lastError = error as Error;
         }
 
-        this.logger.error(`Failed to apply plugin "${name}":`, error);
+        this.logger.error({ error, name }, `Failed to apply plugin "${name}"`);
         // Continue with other plugins
       }
     }
@@ -481,7 +481,7 @@ export class PluginManager extends EventEmitter implements IPluginManager {
         try {
           enhancedDb = entry.plugin.extendDatabase(enhancedDb);
         } catch (error) {
-          this.logger.error(`Failed to apply database plugin "${name}":`, error);
+          this.logger.error({ error, name }, `Failed to apply database plugin "${name}"`);
         }
       }
     }
@@ -509,7 +509,7 @@ export class PluginManager extends EventEmitter implements IPluginManager {
         try {
           enhancedTrx = entry.plugin.extendTransaction(enhancedTrx);
         } catch (error) {
-          this.logger.error(`Failed to apply transaction plugin "${name}":`, error);
+          this.logger.error({ error, name }, `Failed to apply transaction plugin "${name}"`);
         }
       }
     }
@@ -589,7 +589,7 @@ export class PluginManager extends EventEmitter implements IPluginManager {
         timestamp: new Date(),
       });
     } catch (error) {
-      this.logger.error(`Failed to destroy plugin "${name}":`, error);
+      this.logger.error({ error, name }, `Failed to destroy plugin "${name}"`);
     }
   }
 

@@ -4,12 +4,15 @@
  */
 
 import { PostConstruct, PreDestroy } from '@omnitron-dev/titan/decorators';
+import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import WebSocket from 'ws';
 import type { Trade } from '../../../shared/types.js';
 
-// Will be injected from Titan modules
+// Re-export ILogger for convenience
+export type { ILogger };
+
+// Redis service token for DI
 export const REDIS_SERVICE_TOKEN = Symbol('RedisService');
-export const LOGGER_TOKEN = Symbol('Logger');
 
 export interface ExchangeWorkerConfig {
   name: string;
@@ -24,14 +27,7 @@ export interface IRedisService {
     key: string,
     id: string,
     fields: Record<string, string>,
-  ): Promise<string>;
-}
-
-export interface ILogger {
-  info(message: string, ...args: unknown[]): void;
-  warn(message: string, ...args: unknown[]): void;
-  error(message: string, ...args: unknown[]): void;
-  debug(message: string, ...args: unknown[]): void;
+  ): Promise<string | null>;
 }
 
 // Note: @Injectable() cannot be applied to abstract classes

@@ -106,3 +106,47 @@ export interface ILoggerModule {
   // Flush logs
   flush(): Promise<void>;
 }
+
+/**
+ * Create a null logger that does nothing
+ * Useful for testing or when logging should be disabled
+ *
+ * @returns Logger instance that does nothing
+ */
+export function createNullLogger(): ILogger {
+  const noop = () => {};
+  const nullLogger: ILogger = {
+    trace: noop,
+    debug: noop,
+    info: noop,
+    warn: noop,
+    error: noop,
+    fatal: noop,
+    child: () => nullLogger,
+    time: () => noop,
+    isLevelEnabled: () => false,
+    _pino: null as any,
+  };
+  return nullLogger;
+}
+
+/**
+ * Type guard to check if a value is a Logger
+ *
+ * @param value - The value to check
+ * @returns True if the value is a Logger
+ */
+export function isLogger(value: unknown): value is ILogger {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const obj = value as Record<string, unknown>;
+  return (
+    'info' in obj &&
+    'error' in obj &&
+    'warn' in obj &&
+    'debug' in obj &&
+    typeof obj['info'] === 'function' &&
+    typeof obj['error'] === 'function'
+  );
+}

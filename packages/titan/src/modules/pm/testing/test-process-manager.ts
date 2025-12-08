@@ -9,6 +9,7 @@ import { Errors } from '../../../errors/index.js';
 import { ProcessManager } from '../process-manager.js';
 import { ProcessStatus } from '../types.js';
 import type { IProcessOptions, IProcessInfo, ServiceProxy, IProcessManagerConfig } from '../types.js';
+import { createNullLogger } from '../../logger/logger.types.js';
 
 /**
  * Test process manager configuration
@@ -46,19 +47,8 @@ export class TestProcessManager extends ProcessManager {
   private recoveryHandlers = new Map<string, () => void>();
 
   constructor(config: ITestProcessManagerConfig = {}) {
-    // Create a simple logger that wraps console
-    const logger = {
-      debug: (...args: any[]) => console.debug(...args),
-      info: (...args: any[]) => console.info(...args),
-      warn: (...args: any[]) => console.warn(...args),
-      error: (...args: any[]) => console.error(...args),
-      fatal: (...args: any[]) => console.error(...args),
-      trace: (...args: any[]) => console.debug(...args),
-      child: () => logger,
-      isLevelEnabled: () => true,
-      time: () => ({}),
-      _pino: {} as any,
-    } as any;
+    // Use null logger for tests - silent by default
+    const logger = createNullLogger();
 
     super(logger, {
       ...config,

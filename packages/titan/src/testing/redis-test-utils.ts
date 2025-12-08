@@ -10,6 +10,26 @@ import { RedisManager } from '../modules/redis/redis.manager.js';
 import { RedisService } from '../modules/redis/redis.service.js';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { Errors } from '../errors/factories.js';
+import type { ILogger } from '../modules/logger/logger.types.js';
+
+/**
+ * Create a null logger for testing
+ */
+function createTestNullLogger(): ILogger {
+  const noop = () => {};
+  return {
+    trace: noop,
+    debug: noop,
+    info: noop,
+    warn: noop,
+    error: noop,
+    fatal: noop,
+    child: () => createTestNullLogger(),
+    time: () => noop,
+    isLevelEnabled: () => false,
+    _pino: null as any,
+  };
+}
 
 /**
  * Redis test fixture configuration
@@ -122,7 +142,7 @@ export async function createRedisTestFixture(options: RedisTestFixtureOptions = 
             ]
           : []),
       ],
-    });
+    }, createTestNullLogger());
     await manager.onModuleInit();
   }
 

@@ -16,6 +16,7 @@ import type {
   HealthModuleOptions,
 } from './health.types.js';
 import { Errors } from '../../errors/index.js';
+import type { ILogger } from '../logger/logger.types.js';
 
 /**
  * Default options for the health service
@@ -65,6 +66,7 @@ export class HealthService implements IHealthService {
   private options: Required<Pick<HealthModuleOptions, 'timeout' | 'enableCaching' | 'cacheTtl'>>;
   private cache: CacheEntry | null = null;
   private startTime: number;
+  private logger?: ILogger;
 
   constructor(options: HealthModuleOptions = {}) {
     this.options = {
@@ -73,6 +75,13 @@ export class HealthService implements IHealthService {
       cacheTtl: options.cacheTtl ?? DEFAULT_OPTIONS.cacheTtl,
     };
     this.startTime = Date.now();
+  }
+
+  /**
+   * Set logger for the health service
+   */
+  setLogger(logger: ILogger): void {
+    this.logger = logger;
   }
 
   /**

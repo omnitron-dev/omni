@@ -17,6 +17,8 @@ import {
   REDIS_DEFAULT_NAMESPACE,
 } from './redis.constants.js';
 import { RedisModuleOptions, RedisClientOptions, RedisOptionsFactory, RedisModuleAsyncOptions } from './redis.types.js';
+import { LOGGER_SERVICE_TOKEN } from '../logger/logger.tokens.js';
+import type { ILoggerModule } from '../logger/logger.types.js';
 
 @Module()
 export class TitanRedisModule {
@@ -29,11 +31,13 @@ export class TitanRedisModule {
       [
         REDIS_MANAGER,
         {
-          useFactory: async () => {
-            const manager = new RedisManager(options);
+          useFactory: async (loggerModule: ILoggerModule) => {
+            const logger = loggerModule.create('Redis');
+            const manager = new RedisManager(options, logger);
             await manager.init();
             return manager;
           },
+          inject: [LOGGER_SERVICE_TOKEN],
         },
       ],
 
@@ -91,12 +95,13 @@ export class TitanRedisModule {
     providers.push([
       REDIS_MANAGER,
       {
-        useFactory: async (moduleOptions: RedisModuleOptions) => {
-          const manager = new RedisManager(moduleOptions);
+        useFactory: async (moduleOptions: RedisModuleOptions, loggerModule: ILoggerModule) => {
+          const logger = loggerModule.create('Redis');
+          const manager = new RedisManager(moduleOptions, logger);
           await manager.init();
           return manager;
         },
-        inject: [REDIS_MODULE_OPTIONS],
+        inject: [REDIS_MODULE_OPTIONS, LOGGER_SERVICE_TOKEN],
       },
     ]);
 

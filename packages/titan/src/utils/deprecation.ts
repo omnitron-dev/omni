@@ -11,6 +11,8 @@
  * @since 0.1.0
  */
 
+import type { ILogger } from '../modules/logger/logger.types.js';
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -45,8 +47,8 @@ export interface DeprecationOptions {
   devOnly?: boolean;
   /** Log stack trace */
   showStack?: boolean;
-  /** Custom logger function */
-  logger?: (message: string) => void;
+  /** Custom logger function (legacy) or ILogger instance */
+  logger?: ((message: string) => void) | ILogger;
 }
 
 // ============================================================================
@@ -134,13 +136,28 @@ export function deprecate(
     `[Titan] DEPRECATION: "${oldName}" is deprecated. ` +
     `Use "${newName}" instead. Will be removed in v${removeVersion}.`;
 
-  const logger = opts.logger ?? console.warn;
+  const logger = opts.logger;
+  const stack = opts.showStack ? new Error().stack?.split('\n').slice(2).join('\n') : undefined;
 
-  if (opts.showStack) {
-    const stack = new Error().stack?.split('\n').slice(2).join('\n');
-    logger(`${message}\n${stack}`);
-  } else {
-    logger(message);
+  if (logger && typeof logger === 'object' && 'warn' in logger) {
+    // ILogger instance
+    const logContext: Record<string, any> = {
+      deprecation: true,
+      old: oldName,
+      new: newName,
+      removeVersion,
+    };
+    if (stack) {
+      logContext['stack'] = stack;
+    }
+    logger.warn(logContext, message);
+  } else if (logger && typeof logger === 'function') {
+    // Legacy function logger
+    if (stack) {
+      logger(`${message}\n${stack}`);
+    } else {
+      logger(message);
+    }
   }
 }
 

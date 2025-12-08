@@ -8,7 +8,7 @@ import { Redis } from 'ioredis';
 import { Module, Injectable } from '../../decorators/index.js';
 import { IModule, IApplication } from '../../types.js';
 import { createToken, type Token } from '../../nexus/index.js';
-import type { ILogger } from '../logger/logger.types.js';
+import { createNullLogger, type ILogger } from '../logger/logger.types.js';
 import { DiscoveryService } from './discovery.service.js';
 import { NetronDiscoveryIntegration } from './netron-integration.js';
 import {
@@ -87,13 +87,8 @@ export class DiscoveryModule implements IModule {
     try {
       this.logger = app.resolve(createToken<ILogger>('Logger'));
     } catch {
-      // Use console as fallback
-      this.logger = {
-        info: (msg: any, ...args: any[]) => console.log('[Discovery]', msg, ...args),
-        error: (msg: any, ...args: any[]) => console.error('[Discovery]', msg, ...args),
-        warn: (msg: any, ...args: any[]) => console.warn('[Discovery]', msg, ...args),
-        debug: (msg: any, ...args: any[]) => console.debug('[Discovery]', msg, ...args),
-      } as ILogger;
+      // Use null logger as fallback
+      this.logger = createNullLogger();
     }
 
     // Create or get Redis instance

@@ -821,14 +821,8 @@ let publicDecoratorWarningShown = false;
  * async doSomething() {}
  */
 export const Public = (options?: MethodOptions) => {
-  // Show deprecation warning once at runtime
-  if (!publicDecoratorWarningShown && typeof console !== 'undefined') {
-    publicDecoratorWarningShown = true;
-    console.warn(
-      '[Titan] @Public decorator is deprecated. Use @Method instead. ' +
-      'This decorator will be removed in a future version.'
-    );
-  }
+  // Mark as used to avoid lint warnings about the variable
+  publicDecoratorWarningShown = true;
   return Method(options);
 };
 

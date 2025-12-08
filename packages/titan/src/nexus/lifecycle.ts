@@ -4,6 +4,7 @@
 
 import { InjectionToken, ResolutionContext } from './types.js';
 import { getTokenName } from './token.js';
+import type { ILogger } from '../modules/logger/logger.types.js';
 
 /**
  * Lifecycle constants for performance and memory management.
@@ -122,6 +123,18 @@ export class LifecycleManager {
   private eventHistory: LifecycleEventData[] = [];
   private maxHistorySize: number = LIFECYCLE_CONSTANTS.MAX_HISTORY_SIZE;
   private enabled = true;
+  private logger?: ILogger;
+
+  constructor(logger?: ILogger) {
+    this.logger = logger;
+  }
+
+  /**
+   * Set logger instance (can be set after construction when DI is ready)
+   */
+  setLogger(logger: ILogger): void {
+    this.logger = logger;
+  }
 
   /**
    * Register a lifecycle hook
@@ -178,8 +191,7 @@ export class LifecycleManager {
         try {
           await hook(eventData);
         } catch (error) {
-          // TODO: Replace with injectable logger
-          console.error(`Lifecycle hook error for ${event}:`, error);
+          this.logger?.error({ err: error, event }, 'Lifecycle hook error');
         }
       }
     }
@@ -190,8 +202,7 @@ export class LifecycleManager {
         try {
           await observer.onEvent(eventData);
         } catch (error) {
-          // TODO: Replace with injectable logger
-          console.error(`Lifecycle observer error for ${event}:`, error);
+          this.logger?.error({ err: error, event }, 'Lifecycle observer error');
         }
       }
     }
@@ -220,13 +231,11 @@ export class LifecycleManager {
           const result = hook(eventData);
           if (result instanceof Promise) {
             result.catch((error) => {
-              // TODO: Replace with injectable logger
-              console.error(`Async lifecycle hook error for ${event}:`, error);
+              this.logger?.error({ err: error, event }, 'Async lifecycle hook error');
             });
           }
         } catch (error) {
-          // TODO: Replace with injectable logger
-          console.error(`Lifecycle hook error for ${event}:`, error);
+          this.logger?.error({ err: error, event }, 'Lifecycle hook error');
         }
       }
     }
@@ -238,13 +247,11 @@ export class LifecycleManager {
           const result = observer.onEvent(eventData);
           if (result instanceof Promise) {
             result.catch((error) => {
-              // TODO: Replace with injectable logger
-              console.error(`Async lifecycle observer error for ${event}:`, error);
+              this.logger?.error({ err: error, event }, 'Async lifecycle observer error');
             });
           }
         } catch (error) {
-          // TODO: Replace with injectable logger
-          console.error(`Lifecycle observer error for ${event}:`, error);
+          this.logger?.error({ err: error, event }, 'Lifecycle observer error');
         }
       }
     }
@@ -340,8 +347,17 @@ export class LifecycleManager {
 export class PerformanceObserver implements LifecycleObserver {
   private metrics = new Map<string, { count: number; totalTime: number; avgTime: number }>();
   private activeTimers = new Map<string, number>();
+  private logger?: ILogger;
 
   events = [LifecycleEvent.BeforeResolve, LifecycleEvent.AfterResolve, LifecycleEvent.ResolveFailed];
+
+  constructor(logger?: ILogger) {
+    this.logger = logger;
+  }
+
+  setLogger(logger: ILogger): void {
+    this.logger = logger;
+  }
 
   onEvent(data: LifecycleEventData): void {
     const key = getTokenName(data.token);
@@ -356,8 +372,7 @@ export class PerformanceObserver implements LifecycleObserver {
         this.activeTimers.delete(key);
 
         if (duration > LIFECYCLE_CONSTANTS.SLOW_RESOLUTION_THRESHOLD_MS) {
-          // TODO: Replace with injectable logger
-          console.warn(`[Performance] Slow resolution: ${key} took ${duration}ms`);
+          this.logger?.warn({ token: key, durationMs: duration }, 'Slow resolution detected');
         }
       }
     }
@@ -388,8 +403,17 @@ export class MemoryObserver implements LifecycleObserver {
   private instanceCounts = new Map<string, number>();
   private lastGC = Date.now();
   private gcInterval = LIFECYCLE_CONSTANTS.GC_INTERVAL_MS;
+  private logger?: ILogger;
 
   events = [LifecycleEvent.InstanceCreated, LifecycleEvent.InstanceDisposed];
+
+  constructor(logger?: ILogger) {
+    this.logger = logger;
+  }
+
+  setLogger(logger: ILogger): void {
+    this.logger = logger;
+  }
 
   onEvent(data: LifecycleEventData): void {
     const key = getTokenName(data.token);
@@ -408,8 +432,7 @@ export class MemoryObserver implements LifecycleObserver {
     if (Date.now() - this.lastGC > this.gcInterval) {
       const totalInstances = Array.from(this.instanceCounts.values()).reduce((a, b) => a + b, 0);
       if (totalInstances > LIFECYCLE_CONSTANTS.HIGH_INSTANCE_COUNT) {
-        // TODO: Replace with injectable logger
-        console.warn(`[Memory] High instance count: ${totalInstances} instances in memory`);
+        this.logger?.warn({ instanceCount: totalInstances }, 'High instance count detected');
         if (global.gc) {
           global.gc();
           this.lastGC = Date.now();

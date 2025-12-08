@@ -14,6 +14,8 @@
  * - Memory: O(n) where n = maxSize
  */
 
+import type { ILogger } from '../modules/logger/logger.types.js';
+
 /**
  * Configuration options for LRUCache
  */
@@ -52,6 +54,11 @@ export interface LRUCacheOptions<K, V> {
    * @default true
    */
   updateOnGet?: boolean;
+
+  /**
+   * Optional logger for cache operations
+   */
+  logger?: ILogger;
 }
 
 /**
@@ -112,6 +119,7 @@ export class LRUCache<K, V> {
   private readonly onEvict?: (key: K, value: V, reason: 'size' | 'ttl' | 'manual') => void;
   private readonly updateOnGet: boolean;
   private cleanupTimer?: ReturnType<typeof setInterval>;
+  private logger?: ILogger;
 
   // Statistics
   private hits = 0;
@@ -124,6 +132,7 @@ export class LRUCache<K, V> {
     this.ttl = options.ttl ?? 0;
     this.onEvict = options.onEvict;
     this.updateOnGet = options.updateOnGet ?? true;
+    this.logger = options.logger;
 
     // Start TTL cleanup timer if TTL is configured
     if (this.ttl > 0) {
@@ -381,8 +390,12 @@ export class LRUCache<K, V> {
     if (this.onEvict) {
       try {
         this.onEvict(key, value, reason);
-      } catch {
-        // Ignore callback errors to prevent cache corruption
+      } catch (error) {
+        // Log callback errors but don't throw to prevent cache corruption
+        this.logger?.error(
+          { err: error as Error, key, reason },
+          'LRU cache eviction callback error'
+        );
       }
     }
   }

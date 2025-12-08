@@ -8,6 +8,7 @@
 import { getTokenName } from './token.js';
 import { InjectionToken } from './types.js';
 import { buildActionableMessage, formatSuggestions, DOC_LINKS } from '../errors/formatting.js';
+import { createNullLogger, type ILogger } from '../modules/logger/logger.types.js';
 
 /**
  * Base error class for all Nexus errors
@@ -455,6 +456,14 @@ export function getRootCause(error: Error): Error {
  */
 export class ErrorHandler {
   private static handlers = new Map<string, (error: NexusError) => void>();
+  private static logger: ILogger = createNullLogger();
+
+  /**
+   * Set logger for error handler
+   */
+  static setLogger(logger: ILogger): void {
+    this.logger = logger;
+  }
 
   /**
    * Register a custom error handler
@@ -475,10 +484,13 @@ export class ErrorHandler {
       }
     }
 
-    // Default handling
-    console.error('[Nexus Error]', error.message);
+    // Default handling - uses configured logger (null logger by default)
+    this.logger.error(
+      { err: error, code: isNexusError(error) ? error.code : 'UNKNOWN' },
+      'Nexus error occurred'
+    );
     if (process.env['NODE_ENV'] === 'development' && error.stack) {
-      console.error(error.stack);
+      this.logger.debug({ stack: error.stack }, 'Error stack trace');
     }
   }
 

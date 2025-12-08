@@ -31,23 +31,23 @@ import type {
   QueryContext,
   DatabaseEventType,
 } from './database.types.js';
-import type { Logger, DatabaseError } from './database.internal-types.js';
+import type { DatabaseError } from './database.internal-types.js';
 import { isDatabaseError } from './database.internal-types.js';
-import { createDefaultLogger } from './utils/logger.factory.js';
+import { createNullLogger, type ILogger } from '../logger/logger.types.js';
 import { isDeadlockError as isDeadlockErrorGuard, isError, isRecord } from './utils/type-guards.js';
 
 @Injectable()
 export class DatabaseService {
-  private logger: Logger;
+  private logger: ILogger;
   private circuitBreakers: Map<string, CircuitBreaker> = new Map();
   private debugConnections: Map<string, Kysely<unknown>> = new Map();
 
   constructor(
     @Inject(DATABASE_MANAGER) private manager: DatabaseManager,
-    private eventsService?: EventsService
+    private eventsService?: EventsService,
+    logger?: ILogger
   ) {
-    // Create a console logger for proper output
-    this.logger = createDefaultLogger('DatabaseService');
+    this.logger = logger ? logger.child({ module: 'DatabaseService' }) : createNullLogger();
   }
 
   // ============================================================================

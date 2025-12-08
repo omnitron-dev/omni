@@ -34,6 +34,15 @@ import 'reflect-metadata';
 
 import { Container } from '@nexus/container.js';
 import { Errors } from '../errors/index.js';
+import { createNullLogger, type ILogger } from '../modules/logger/logger.types.js';
+
+/**
+ * Helper function to get logger instance from a class instance
+ * Falls back to null logger if no logger found
+ */
+function getInstanceLogger(instance: any): ILogger {
+  return instance?.logger || instance?._logger || instance?.log || createNullLogger();
+}
 
 /**
  * Decorator target types
@@ -690,7 +699,8 @@ export const Deprecated = createDecorator<{ message?: string; version?: string }
         message ||
         `${context.target.constructor.name}.${String(context.propertyKey)} is deprecated` +
           (version ? ` since version ${version}` : '');
-      console.warn(warning);
+      const logger = getInstanceLogger(this);
+      logger.warn({ deprecated: true, version }, warning);
       return originalMethod.apply(this, args);
     };
 
@@ -728,10 +738,11 @@ export const ValidateSchema = createDecorator<{ schema: any }>()
     context.descriptor!.value = function (...args: any[]) {
       // Emit deprecation warning
       if (process.env['NODE_ENV'] !== 'production') {
-        console.warn(
+        const warning =
           `@ValidateSchema is deprecated and will be removed in v1.0.0. ` +
-          `Use @Validate from '@omnitron-dev/titan/decorators' with Zod schemas instead.`
-        );
+          `Use @Validate from '@omnitron-dev/titan/decorators' with Zod schemas instead.`;
+        const logger = getInstanceLogger(this);
+        logger.warn({ deprecated: true, decorator: 'ValidateSchema' }, warning);
       }
 
       // Simple validation example - would use a real validation library

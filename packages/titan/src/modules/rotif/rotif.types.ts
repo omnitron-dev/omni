@@ -6,7 +6,7 @@
 
 import type { RedisOptions } from 'ioredis';
 import type { Constructor, AbstractConstructor, ModuleMetadata, Token } from '../../nexus/index.js';
-import type { RotifConfig, RotifLogger, RotifMessage, Subscription, SubscribeOptions } from '../../rotif/types.js';
+import type { RotifConfig, ILogger, RotifMessage, Subscription, SubscribeOptions } from '../../rotif/types.js';
 import type { RetryStrategyConfig } from '../../rotif/retry-strategies.js';
 import type { DLQCleanupConfig } from '../../rotif/dlq-manager.js';
 
@@ -22,9 +22,9 @@ export interface RotifModuleOptions {
   redis: RedisOptions | string;
 
   /**
-   * Custom logger implementation
+   * Logger instance (from @omnitron-dev/titan/module/logger)
    */
-  logger?: RotifLogger;
+  logger?: ILogger;
 
   /**
    * Disable delayed message delivery

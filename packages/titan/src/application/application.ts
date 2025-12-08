@@ -1294,9 +1294,7 @@ export class Application implements IApplication {
           await Promise.resolve(handler(data));
         } catch (err) {
           if (this._logger) {
-            this._logger.error('Error in error handler:', err);
-          } else {
-            console.error('Error in error handler:', err);
+            this._logger.error({ err }, 'Error in error handler');
           }
         }
       }
@@ -1345,9 +1343,7 @@ export class Application implements IApplication {
           handler(data);
         } catch (err) {
           if (this._logger) {
-            this._logger.error('Error in error handler:', err);
-          } else {
-            console.error('Error in error handler:', err);
+            this._logger.error({ err }, 'Error in error handler');
           }
         }
       }
@@ -2018,7 +2014,7 @@ export class Application implements IApplication {
         this._logger = loggerService.logger;
         this._logger.info({ module: 'Application' }, 'Logger module initialized');
       } catch (error) {
-        console.error('[Application] Failed to resolve logger service:', error);
+        // Logger not available yet, silently continue
       }
     }
 
@@ -2069,9 +2065,8 @@ export class Application implements IApplication {
         });
 
         this._logger.debug({ module: 'Application' }, 'Netron service registered as singleton instance');
-      } else {
-        console.warn('[Application] Logger not available, skipping Netron registration');
       }
+      // If logger not available, skip Netron registration silently
     }
   }
 

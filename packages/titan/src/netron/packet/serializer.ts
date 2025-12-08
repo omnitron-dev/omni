@@ -4,6 +4,7 @@ import { Serializer, registerCommonTypesFor } from '@omnitron-dev/msgpack';
 import { Reference } from '../reference.js';
 import { Definition } from '../definition.js';
 import { TitanError } from '../../errors/core.js';
+import type { ILogger } from '../../modules/logger/logger.types.js';
 
 /**
  * Global serializer instance for the Netron application.
@@ -14,6 +15,18 @@ import { TitanError } from '../../errors/core.js';
  * @constant
  */
 export const serializer = new Serializer();
+
+/**
+ * Optional logger for serializer operations
+ */
+let serializerLogger: ILogger | undefined;
+
+/**
+ * Set logger for serializer
+ */
+export function setSerializerLogger(logger: ILogger): void {
+  serializerLogger = logger;
+}
 
 /**
  * Register TitanError BEFORE common types to ensure it takes precedence over generic Error.
@@ -307,7 +320,10 @@ export async function ensureStreamReferenceRegistered(): Promise<void> {
 
     streamReferenceRegistered = true;
   } catch (error) {
-    console.error('Failed to register StreamReference:', error);
+    serializerLogger?.error(
+      { err: error as Error },
+      'Failed to register StreamReference'
+    );
     throw error;
   }
 }
@@ -320,7 +336,12 @@ serializer.encode = function (value: any, buffer?: SmartBuffer): any {
   // Check if value is a StreamReference-like object
   if (value && value.constructor && value.constructor.name === 'StreamReference' && !streamReferenceRegistered) {
     // Try to register synchronously using a promise
-    Promise.resolve(ensureStreamReferenceRegistered()).catch(console.error);
+    Promise.resolve(ensureStreamReferenceRegistered()).catch((err) => {
+      serializerLogger?.error(
+        { err: err as Error },
+        'Failed to register StreamReference during encode'
+      );
+    });
   }
   return originalEncode(value, buffer);
 };

@@ -1,5 +1,6 @@
 import { Injectable } from '../../decorators/index.js';
 import { Redis } from 'ioredis';
+import type { ILogger } from '../logger/logger.types.js';
 
 export interface AnalyticsOptions {
   enabled?: boolean;
@@ -122,7 +123,8 @@ export class NotificationAnalytics {
 
   constructor(
     private redis: Redis,
-    private options?: AnalyticsOptions
+    private options?: AnalyticsOptions,
+    private logger?: ILogger,
   ) {}
 
   /**
@@ -603,12 +605,7 @@ export class NotificationAnalytics {
           callback(event);
         } catch (err) {
           // Log parse errors - malformed messages in Redis should be tracked
-          console.error(
-            `Failed to parse notification event from Redis channel ${channel}:`,
-            err,
-            'Message:',
-            message
-          );
+          this.logger?.error({ err, channel, message }, 'Failed to parse notification event from Redis channel');
         }
       }
     });

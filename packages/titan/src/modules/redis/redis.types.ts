@@ -1,5 +1,6 @@
 import type { Constructor, AbstractConstructor, ModuleMetadata, Token } from '../../nexus/index.js';
 import type { Redis, Cluster, ClusterNode, RedisOptions, ClusterOptions } from 'ioredis';
+import type { ILogger } from '../logger/logger.types.js';
 
 /**
  * Redis client connection status.
@@ -76,6 +77,8 @@ export interface RedisModuleOptions {
   closeClient?: boolean;
   readyLog?: boolean;
   errorLog?: boolean;
+  /** Logger instance for RedisManager. Required for proper logging integration */
+  logger?: ILogger;
   onError?: (error: Error, client: Redis | Cluster) => void;
   onClientCreated?: (client: Redis | Cluster) => void;
   onClientDestroyed?: (namespace: string) => void;

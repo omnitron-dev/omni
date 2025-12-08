@@ -19,7 +19,7 @@ import {
 import { Module, Global } from '../../decorators/index.js';
 import { NotificationManager } from '../../rotif/rotif.js';
 import { getSubscriptions, type SubscriptionMetadata } from '../../rotif/decorators.js';
-import type { RotifMessage, Subscription } from '../../rotif/types.js';
+import type { RotifMessage, Subscription, ILogger } from '../../rotif/types.js';
 
 import {
   ROTIF_MANAGER_TOKEN,
@@ -193,11 +193,13 @@ export class RotifModule {
    *
    * @param manager - The NotificationManager instance
    * @param instance - The class instance containing decorated handlers
+   * @param logger - Optional logger for warnings
    * @returns Array of created subscriptions
    */
   static async registerHandlers(
     manager: NotificationManager,
-    instance: any
+    instance: any,
+    logger?: ILogger
   ): Promise<Subscription[]> {
     const constructor = instance.constructor;
     const subscriptionMetadata: SubscriptionMetadata[] = getSubscriptions(constructor);
@@ -213,8 +215,9 @@ export class RotifModule {
       const handler = instance[methodName];
 
       if (typeof handler !== 'function') {
-        console.warn(
-          `Handler method "${methodName}" not found on class "${constructor.name}"`
+        logger?.warn(
+          { methodName, className: constructor.name },
+          'Handler method not found on class'
         );
         continue;
       }

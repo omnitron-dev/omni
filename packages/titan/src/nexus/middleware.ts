@@ -4,6 +4,7 @@
 
 import { InjectionToken, ResolutionContext, IContainer, MiddlewareContext } from './types.js';
 import { Errors, ValidationError, TitanError, ErrorCode } from '../errors/index.js';
+import { createNullLogger, type ILogger } from '../modules/logger/logger.types.js';
 
 /**
  * Middleware execution result
@@ -220,150 +221,168 @@ export function createMiddleware<T = unknown>(config: Middleware<T>): Middleware
 }
 
 /**
- * Built-in logging middleware
+ * Create logging middleware with optional logger
  */
-export const LoggingMiddleware = createMiddleware({
-  name: 'logging',
-  priority: 100,
+export function createLoggingMiddleware(logger?: ILogger): Middleware {
+  const log = logger?.child({ middleware: 'logging' }) ?? createNullLogger();
 
-  execute: (context, next) => {
-    const name =
-      typeof context.token === 'string'
-        ? context.token
-        : typeof context.token === 'symbol'
-          ? context.token.toString()
-          : context.token?.name || 'unknown';
+  return createMiddleware({
+    name: 'logging',
+    priority: 100,
 
-    // TODO: Replace with injectable logger
-    console.log(`[Middleware] Resolving: ${name}`);
-    const start = Date.now();
+    execute: (context, next) => {
+      const name =
+        typeof context.token === 'string'
+          ? context.token
+          : typeof context.token === 'symbol'
+            ? context.token.toString()
+            : context.token?.name || 'unknown';
 
-    try {
+      log.debug(`Resolving: ${name}`);
+      const start = Date.now();
+
+      try {
+        const result = next();
+
+        // Handle both sync and async results
+        if (result instanceof Promise) {
+          return result.then(
+            (value) => {
+              log.debug({ duration: Date.now() - start }, `Resolved: ${name} in ${Date.now() - start}ms`);
+              return value;
+            },
+            (error) => {
+              log.error({ error, duration: Date.now() - start }, `Failed: ${name} after ${Date.now() - start}ms`);
+              throw error;
+            }
+          );
+        }
+
+        log.debug({ duration: Date.now() - start }, `Resolved: ${name} in ${Date.now() - start}ms`);
+        return result;
+      } catch (error) {
+        log.error({ error, duration: Date.now() - start }, `Failed: ${name} after ${Date.now() - start}ms`);
+        throw error;
+      }
+    },
+  });
+}
+
+/**
+ * Built-in logging middleware (silent by default)
+ */
+export const LoggingMiddleware = createLoggingMiddleware();
+
+/**
+ * Create caching middleware with optional logger
+ */
+export function createCachingMiddleware(logger?: ILogger): Middleware {
+  const log = logger?.child({ middleware: 'caching' }) ?? createNullLogger();
+
+  return createMiddleware({
+    name: 'caching',
+    priority: 90,
+
+    execute: (context, next) => {
+      // Check if caching is enabled
+      const cache = (context.container as any).__middlewareCache;
+      if (!cache) {
+        return next();
+      }
+
+      const key =
+        typeof context.token === 'string'
+          ? context.token
+          : typeof context.token === 'symbol'
+            ? context.token.toString()
+            : context.token?.name || 'unknown';
+
+      // Check cache
+      if (cache.has(key)) {
+        const cached = cache.get(key);
+        log.debug(`Cache hit: ${key}`);
+        return cached;
+      }
+
+      // Execute and cache
       const result = next();
 
       // Handle both sync and async results
       if (result instanceof Promise) {
-        return result.then(
-          (value) => {
-            // TODO: Replace with injectable logger
-            console.log(`[Middleware] Resolved: ${name} in ${Date.now() - start}ms`);
-            return value;
-          },
-          (error) => {
-            // TODO: Replace with injectable logger
-            console.error(`[Middleware] Failed: ${name} after ${Date.now() - start}ms`, error);
-            throw error;
-          }
-        );
+        return result.then((value) => {
+          cache.set(key, value);
+          log.debug(`Cache miss: ${key}`);
+          return value;
+        });
       }
 
-      // TODO: Replace with injectable logger
-      console.log(`[Middleware] Resolved: ${name} in ${Date.now() - start}ms`);
+      cache.set(key, result);
+      log.debug(`Cache miss: ${key}`);
       return result;
-    } catch (error) {
-      // TODO: Replace with injectable logger
-      console.error(`[Middleware] Failed: ${name} after ${Date.now() - start}ms`, error);
-      throw error;
-    }
-  },
-});
+    },
+  });
+}
 
 /**
- * Built-in caching middleware
+ * Built-in caching middleware (silent by default)
  */
-export const CachingMiddleware = createMiddleware({
-  name: 'caching',
-  priority: 90,
-
-  execute: (context, next) => {
-    // Check if caching is enabled
-    const cache = (context.container as any).__middlewareCache;
-    if (!cache) {
-      return next();
-    }
-
-    const key =
-      typeof context.token === 'string'
-        ? context.token
-        : typeof context.token === 'symbol'
-          ? context.token.toString()
-          : context.token?.name || 'unknown';
-
-    // Check cache
-    if (cache.has(key)) {
-      const cached = cache.get(key);
-      // TODO: Replace with injectable logger
-      console.log(`[Cache] Hit: ${key}`);
-      return cached;
-    }
-
-    // Execute and cache
-    const result = next();
-
-    // Handle both sync and async results
-    if (result instanceof Promise) {
-      return result.then((value) => {
-        cache.set(key, value);
-        // TODO: Replace with injectable logger
-        console.log(`[Cache] Miss: ${key}`);
-        return value;
-      });
-    }
-
-    cache.set(key, result);
-    // TODO: Replace with injectable logger
-    console.log(`[Cache] Miss: ${key}`);
-    return result;
-  },
-});
+export const CachingMiddleware = createCachingMiddleware();
 
 /**
- * Built-in retry middleware
+ * Create retry middleware with optional logger
  */
-export const RetryMiddleware = createMiddleware({
-  name: 'retry',
-  priority: 80,
+export function createRetryMiddleware(logger?: ILogger): Middleware {
+  const log = logger?.child({ middleware: 'retry' }) ?? createNullLogger();
 
-  execute: (context, next) => {
-    const maxRetries = (context['maxRetries'] as number) || 3;
-    const retryDelay = (context['retryDelay'] as number) || 1000;
+  return createMiddleware({
+    name: 'retry',
+    priority: 80,
 
-    // For sync execution, we can't retry with delays
-    // Just try once and return
-    const firstAttempt = () => {
-      context.attempt = 1;
-      return next();
-    };
+    execute: (context, next) => {
+      const maxRetries = (context['maxRetries'] as number) || 3;
+      const retryDelay = (context['retryDelay'] as number) || 1000;
 
-    const result = firstAttempt();
+      // For sync execution, we can't retry with delays
+      // Just try once and return
+      const firstAttempt = () => {
+        context.attempt = 1;
+        return next();
+      };
 
-    // For async results, we can properly retry
-    if (result instanceof Promise) {
-      return (async () => {
-        let lastError: Error | undefined;
+      const result = firstAttempt();
 
-        for (let attempt = 1; attempt <= maxRetries; attempt++) {
-          try {
-            context.attempt = attempt;
-            return await next();
-          } catch (error: any) {
-            lastError = error;
+      // For async results, we can properly retry
+      if (result instanceof Promise) {
+        return (async () => {
+          let lastError: Error | undefined;
 
-            if (attempt < maxRetries) {
-              // TODO: Replace with injectable logger
-              console.log(`[Retry] Attempt ${attempt} failed, retrying in ${retryDelay}ms...`);
-              await new Promise((resolve) => setTimeout(resolve, retryDelay));
+          for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+              context.attempt = attempt;
+              return await next();
+            } catch (error: any) {
+              lastError = error;
+
+              if (attempt < maxRetries) {
+                log.debug({ attempt, retryDelay }, `Attempt ${attempt} failed, retrying in ${retryDelay}ms...`);
+                await new Promise((resolve) => setTimeout(resolve, retryDelay));
+              }
             }
           }
-        }
 
-        throw lastError || Errors.internal('All retry attempts failed');
-      })();
-    }
+          throw lastError || Errors.internal('All retry attempts failed');
+        })();
+      }
 
-    return result;
-  },
-});
+      return result;
+    },
+  });
+}
+
+/**
+ * Built-in retry middleware (silent by default)
+ */
+export const RetryMiddleware = createRetryMiddleware();
 
 /**
  * Built-in validation middleware
@@ -474,11 +493,13 @@ export class CircuitBreakerMiddleware implements Middleware {
   private failures = new Map<string, number>();
   private lastFailureTime = new Map<string, number>();
   private state = new Map<string, 'closed' | 'open' | 'half-open'>();
+  private logger: ILogger;
 
-  constructor(options: { threshold?: number; timeout?: number; resetTimeout?: number } = {}) {
+  constructor(options: { threshold?: number; timeout?: number; resetTimeout?: number; logger?: ILogger } = {}) {
     this.threshold = options.threshold || 5;
     this.timeout = options.timeout || 60000;
     this.resetTimeout = options.resetTimeout || 30000;
+    this.logger = options.logger?.child({ middleware: 'circuit-breaker' }) ?? createNullLogger();
   }
 
   private threshold: number;
@@ -549,8 +570,7 @@ export class CircuitBreakerMiddleware implements Middleware {
     // Open circuit if threshold exceeded
     if (failures >= this.threshold) {
       this.state.set(key, 'open');
-      // TODO: Replace with injectable logger
-      console.error(`[CircuitBreaker] Opening circuit for ${key} after ${failures} failures`);
+      this.logger.error({ key, failures, threshold: this.threshold }, `Opening circuit for ${key} after ${failures} failures`);
     }
   }
 

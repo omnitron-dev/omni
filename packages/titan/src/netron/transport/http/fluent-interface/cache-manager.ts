@@ -9,6 +9,7 @@
  */
 
 import { EventEmitter } from '@omnitron-dev/eventemitter';
+import type { ILogger } from '../../../../modules/logger/logger.types.js';
 
 /**
  * Cache options
@@ -84,8 +85,8 @@ export class HttpCacheManager extends EventEmitter {
       maxSizeBytes?: number;
       /** Default max age if not specified */
       defaultMaxAge?: number;
-      /** Enable debug logging */
-      debug?: boolean;
+      /** Logger instance for debug output */
+      logger?: ILogger;
     } = {}
   ) {
     super();
@@ -107,11 +108,7 @@ export class HttpCacheManager extends EventEmitter {
         this.stats.hits++;
         this.lastHitKeys.add(key);
         this.emit('cache-hit', { key, age });
-
-        if (this.options.debug) {
-          console.log(`[Cache] HIT: ${key} (age: ${age}ms)`);
-        }
-
+        this.options.logger?.debug({ key, ageMs: age }, 'Cache HIT');
         return entry.data;
       }
 
@@ -120,10 +117,7 @@ export class HttpCacheManager extends EventEmitter {
         this.stats.hits++;
         this.lastHitKeys.add(key);
         this.emit('cache-stale', { key, age });
-
-        if (this.options.debug) {
-          console.log(`[Cache] STALE: ${key} (age: ${age}ms), revalidating...`);
-        }
+        this.options.logger?.debug({ key, ageMs: age }, 'Cache STALE, revalidating');
 
         // Revalidate in background if not already doing so
         if (!entry.revalidating) {
@@ -135,9 +129,7 @@ export class HttpCacheManager extends EventEmitter {
 
       // Check if we have an active revalidation
       if (entry.revalidationPromise) {
-        if (this.options.debug) {
-          console.log(`[Cache] WAITING: ${key} (revalidation in progress)`);
-        }
+        this.options.logger?.debug({ key }, 'Cache WAITING for revalidation');
         return entry.revalidationPromise;
       }
     }
@@ -146,10 +138,7 @@ export class HttpCacheManager extends EventEmitter {
     this.stats.misses++;
     this.lastHitKeys.delete(key);
     this.emit('cache-miss', { key });
-
-    if (this.options.debug) {
-      console.log(`[Cache] MISS: ${key}, fetching...`);
-    }
+    this.options.logger?.debug({ key }, 'Cache MISS, fetching');
 
     try {
       const data = await fetcher();
@@ -161,11 +150,7 @@ export class HttpCacheManager extends EventEmitter {
       const staleEntry = entry || this.cache.get(key);
       if (options.cacheOnError && staleEntry) {
         this.emit('cache-error-fallback', { key, error });
-
-        if (this.options.debug) {
-          console.log(`[Cache] ERROR: ${key}, returning stale data`);
-        }
-
+        this.options.logger?.debug({ key, err: error }, 'Cache ERROR, returning stale data');
         return staleEntry.data;
       }
 
@@ -255,10 +240,7 @@ export class HttpCacheManager extends EventEmitter {
       this.delete(key);
     }
 
-    if (this.options.debug) {
-      console.log(`[Cache] INVALIDATED: ${keysToInvalidate.size} entries`);
-    }
-
+    this.options.logger?.debug({ entriesCount: keysToInvalidate.size }, 'Cache INVALIDATED');
     this.emit('cache-invalidate', { keys: Array.from(keysToInvalidate) });
   }
 
@@ -310,10 +292,7 @@ export class HttpCacheManager extends EventEmitter {
     this.lastHitKeys.clear();
 
     this.emit('cache-clear');
-
-    if (this.options.debug) {
-      console.log('[Cache] CLEARED');
-    }
+    this.options.logger?.debug({}, 'Cache CLEARED');
   }
 
   /**
@@ -420,10 +399,7 @@ export class HttpCacheManager extends EventEmitter {
         entry.revalidationPromise = undefined;
 
         this.emit('cache-revalidated', { key });
-
-        if (this.options.debug) {
-          console.log(`[Cache] REVALIDATED: ${key}`);
-        }
+        this.options.logger?.debug({ key }, 'Cache REVALIDATED');
 
         return data;
       })
@@ -434,10 +410,7 @@ export class HttpCacheManager extends EventEmitter {
         entry.error = error;
 
         this.emit('cache-revalidation-error', { key, error });
-
-        if (this.options.debug) {
-          console.warn(`[Cache] REVALIDATION FAILED: ${key}`, error);
-        }
+        this.options.logger?.warn({ key, err: error }, 'Cache REVALIDATION FAILED');
 
         // Return existing data
         return entry.data;
@@ -460,10 +433,7 @@ export class HttpCacheManager extends EventEmitter {
     const timer = setTimeout(() => {
       this.delete(key);
       this.emit('cache-expired', { key });
-
-      if (this.options.debug) {
-        console.log(`[Cache] EXPIRED: ${key}`);
-      }
+      this.options.logger?.debug({ key }, 'Cache EXPIRED');
     }, ttl);
 
     this.revalidationTimers.set(key, timer);
@@ -505,10 +475,7 @@ export class HttpCacheManager extends EventEmitter {
     if (oldestKey) {
       this.delete(oldestKey);
       this.emit('cache-evicted', { key: oldestKey });
-
-      if (this.options.debug) {
-        console.log(`[Cache] EVICTED: ${oldestKey}`);
-      }
+      this.options.logger?.debug({ key: oldestKey }, 'Cache EVICTED');
     }
   }
 }

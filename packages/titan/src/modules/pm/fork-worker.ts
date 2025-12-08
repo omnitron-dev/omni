@@ -34,6 +34,8 @@ const workerData = config;
 
 // Now import and run the worker runtime
 import('./worker-runtime.js').catch((error) => {
-  console.error('Failed to load worker runtime:', error);
+  // Note: Cannot use ILogger here as this is an early initialization script
+  // Error will be logged via stderr
+  process.stderr.write(`Failed to load worker runtime: ${error}\n`);
   process.exit(1);
 });

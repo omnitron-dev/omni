@@ -3,17 +3,10 @@ import { RedisOptions } from 'ioredis';
 import type { StatsTracker } from './stats.js';
 import type { RetryStrategyConfig } from './retry-strategies.js';
 import type { DLQCleanupConfig } from './dlq-manager.js';
+import type { ILogger } from '../modules/logger/logger.types.js';
 
-/**
- * Logger interface for Rotif. Provides methods for different log levels.
- * @interface RotifLogger
- */
-export interface RotifLogger {
-  debug: (msg: string, meta?: any) => void;
-  info: (msg: string, meta?: any) => void;
-  warn: (msg: string, meta?: any) => void;
-  error: (msg: string, meta?: any) => void;
-}
+// Re-export ILogger for convenience
+export type { ILogger };
 
 /**
  * Represents a message in the Rotif system.
@@ -42,8 +35,8 @@ export interface RotifMessage<T = unknown> {
 export interface RotifConfig {
   /** Redis connection options or connection string */
   redis: RedisOptions | string;
-  /** Custom logger implementation */
-  logger?: RotifLogger;
+  /** Logger instance (from @omnitron-dev/titan/module/logger) */
+  logger?: ILogger;
   /** Disable delayed message delivery */
   disableDelayed?: boolean;
   /** Interval in milliseconds to check for delayed messages */

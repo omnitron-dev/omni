@@ -14,6 +14,7 @@ import { createToken } from './token.js';
 import { Container } from './container.js';
 import { Plugin, PluginHooks } from './plugin.js';
 import { InjectionToken, ResolutionContext } from './types.js';
+import { ILogger } from '../modules/logger/logger.types.js';
 
 /**
  * Span attributes.
@@ -155,12 +156,14 @@ class SimpleSpan implements Span {
   public status?: SpanStatusValue;
   private recording = true;
   private context: SpanContext;
+  private logger?: ILogger;
 
   constructor(
     name: string,
     context: SpanContext,
     options?: SpanOptions,
-    private exporter?: TraceExporter
+    private exporter?: TraceExporter,
+    logger?: ILogger
   ) {
     this.name = name;
     this.context = context;
@@ -168,6 +171,7 @@ class SimpleSpan implements Span {
     this.traceId = context.traceId;
     this.parentId = options?.parent ? options.parent.spanId : undefined;
     this.startTime = options?.startTime || Date.now();
+    this.logger = logger;
 
     if (options?.attributes) {
       this.attributes = { ...options.attributes };
@@ -228,7 +232,9 @@ class SimpleSpan implements Span {
 
       // Export the span if exporter is available
       if (this.exporter) {
-        this.exporter.export([this]).catch(console.error);
+        this.exporter.export([this]).catch((err) => {
+          this.logger?.error({ err, spanId: this.spanId, traceId: this.traceId }, 'Failed to export span');
+        });
       }
     }
   }
@@ -262,9 +268,15 @@ export class SimpleTracer implements Tracer {
   private exporter?: TraceExporter;
   private spans: Span[] = [];
   private static currentTracer?: SimpleTracer;
+  private logger?: ILogger;
 
-  constructor(exporter?: TraceExporter) {
+  constructor(exporter?: TraceExporter, logger?: ILogger) {
     this.exporter = exporter;
+    this.logger = logger;
+  }
+
+  setLogger(logger: ILogger): void {
+    this.logger = logger;
   }
 
   startSpan(name: string, options?: SpanOptions): Span {
@@ -283,7 +295,7 @@ export class SimpleTracer implements Tracer {
       traceFlags: TraceFlags.SAMPLED,
     };
 
-    const span = new SimpleSpan(name, context, options, this.exporter);
+    const span = new SimpleSpan(name, context, options, this.exporter, this.logger);
     this.spans.push(span);
 
     return span;
@@ -371,14 +383,20 @@ export class JaegerExporter implements TraceExporter {
   private batchSize = 100;
   private flushInterval = 5000;
   private timer?: NodeJS.Timeout;
+  private logger?: ILogger;
 
-  constructor(config: { endpoint: string; serviceName: string; batchSize?: number; flushInterval?: number }) {
+  constructor(config: { endpoint: string; serviceName: string; batchSize?: number; flushInterval?: number; logger?: ILogger }) {
     this.endpoint = config.endpoint;
     this.serviceName = config.serviceName;
     this.batchSize = config.batchSize || this.batchSize;
     this.flushInterval = config.flushInterval || this.flushInterval;
+    this.logger = config.logger;
 
     this.startBatchTimer();
+  }
+
+  setLogger(logger: ILogger): void {
+    this.logger = logger;
   }
 
   async export(spans: Span[]): Promise<void> {
@@ -416,7 +434,10 @@ export class JaegerExporter implements TraceExporter {
         }),
       });
     } catch (error) {
-      console.error('Failed to export spans to Jaeger:', error);
+      this.logger?.error(
+        { err: error instanceof Error ? error : new Error(String(error)), endpoint: this.endpoint, spanCount: spans.length },
+        'Failed to export spans to Jaeger'
+      );
     }
   }
 
@@ -456,7 +477,9 @@ export class JaegerExporter implements TraceExporter {
 
   private startBatchTimer(): void {
     this.timer = setInterval(() => {
-      this.flush().catch(console.error);
+      this.flush().catch((err) => {
+        this.logger?.error({ err: err instanceof Error ? err : new Error(String(err)) }, 'Failed to flush Jaeger spans on timer');
+      });
     }, this.flushInterval);
   }
 
@@ -477,10 +500,16 @@ export class JaegerExporter implements TraceExporter {
 export class ZipkinExporter implements TraceExporter {
   private endpoint: string;
   private serviceName: string;
+  private logger?: ILogger;
 
-  constructor(config: { endpoint: string; serviceName: string }) {
+  constructor(config: { endpoint: string; serviceName: string; logger?: ILogger }) {
     this.endpoint = config.endpoint;
     this.serviceName = config.serviceName;
+    this.logger = config.logger;
+  }
+
+  setLogger(logger: ILogger): void {
+    this.logger = logger;
   }
 
   async export(spans: Span[]): Promise<void> {
@@ -498,7 +527,10 @@ export class ZipkinExporter implements TraceExporter {
         body: JSON.stringify(zipkinSpans),
       });
     } catch (error) {
-      console.error('Failed to export spans to Zipkin:', error);
+      this.logger?.error(
+        { err: error instanceof Error ? error : new Error(String(error)), endpoint: this.endpoint, spanCount: spans.length },
+        'Failed to export spans to Zipkin'
+      );
     }
   }
 
@@ -824,6 +856,7 @@ export function createTracerProvider(config: {
     default:
       exporter = {
         async export(spans: Span[]) {
+          // Console exporter - logs to stdout, no logger needed here
           console.log('Exported spans:', spans);
         },
         async shutdown() {},
@@ -841,8 +874,8 @@ export const PropagatorToken = createToken<Propagator>('Propagator');
 /**
  * Create a tracer instance
  */
-export function createTracer(exporter?: TraceExporter): SimpleTracer {
-  return new SimpleTracer(exporter);
+export function createTracer(exporter?: TraceExporter, logger?: ILogger): SimpleTracer {
+  return new SimpleTracer(exporter, logger);
 }
 
 /**

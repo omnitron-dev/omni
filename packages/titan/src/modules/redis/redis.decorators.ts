@@ -1,6 +1,7 @@
 import { getRedisClientToken, REDIS_MANAGER } from './redis.constants.js';
 import { LockOptions, CacheOptions, RateLimitOptions } from './redis.types.js';
 import { Errors } from '../../errors/index.js';
+import type { ILogger } from '../logger/logger.types.js';
 
 /**
  * Redis key prefixes for different operations
@@ -10,6 +11,14 @@ const REDIS_KEY_PREFIXES = {
   LOCK: 'lock:',
   RATE: 'rate:',
 } as const;
+
+/**
+ * Get logger from instance if available
+ */
+function getInstanceLogger(instance: any): ILogger | undefined {
+  // Try common logger property names
+  return instance.logger || instance._logger || instance.loggerModule?.logger;
+}
 
 // Simple parameter decorator for dependency injection
 function createInjectDecorator(token: string | symbol): ParameterDecorator {
@@ -50,16 +59,17 @@ export function RedisCache(options?: CacheOptions): MethodDecorator {
         }
 
         if (!client) {
-          console.warn(
-            `@RedisCache: No Redis client found for method ${String(propertyKey)}. Falling back to uncached execution.`
+          getInstanceLogger(this)?.warn(
+            { method: String(propertyKey) },
+            '@RedisCache: No Redis client found. Falling back to uncached execution.'
           );
           return originalMethod.apply(this, args);
         }
       } catch (error) {
         // If client not found, fall back to original method
-        console.error(
-          `@RedisCache: Error getting Redis client for method ${String(propertyKey)}:`,
-          error
+        getInstanceLogger(this)?.error(
+          { err: error, method: String(propertyKey) },
+          '@RedisCache: Error getting Redis client'
         );
         return originalMethod.apply(this, args);
       }
@@ -113,9 +123,9 @@ export function RedisCache(options?: CacheOptions): MethodDecorator {
 
         return result;
       } catch (error) {
-        console.error(
-          `@RedisCache: Error during cache operation for method ${String(propertyKey)}:`,
-          error
+        getInstanceLogger(this)?.error(
+          { err: error, method: String(propertyKey) },
+          '@RedisCache: Error during cache operation'
         );
         return originalMethod.apply(this, args);
       }
@@ -149,16 +159,17 @@ export function RedisLock(options?: LockOptions): MethodDecorator {
         }
 
         if (!client) {
-          console.warn(
-            `@RedisLock: No Redis client found for method ${String(propertyKey)}. Falling back to unlocked execution.`
+          getInstanceLogger(this)?.warn(
+            { method: String(propertyKey) },
+            '@RedisLock: No Redis client found. Falling back to unlocked execution.'
           );
           return originalMethod.apply(this, args);
         }
       } catch (error) {
         // If client not found, fall back to original method
-        console.error(
-          `@RedisLock: Error getting Redis client for method ${String(propertyKey)}:`,
-          error
+        getInstanceLogger(this)?.error(
+          { err: error, method: String(propertyKey) },
+          '@RedisLock: Error getting Redis client'
         );
         return originalMethod.apply(this, args);
       }
@@ -250,16 +261,17 @@ export function RedisRateLimit(options: RateLimitOptions): MethodDecorator {
         }
 
         if (!client) {
-          console.warn(
-            `@RedisRateLimit: No Redis client found for method ${String(propertyKey)}. Falling back to unthrottled execution.`
+          getInstanceLogger(this)?.warn(
+            { method: String(propertyKey) },
+            '@RedisRateLimit: No Redis client found. Falling back to unthrottled execution.'
           );
           return originalMethod.apply(this, args);
         }
       } catch (error) {
         // If client not found, fall back to original method
-        console.error(
-          `@RedisRateLimit: Error getting Redis client for method ${String(propertyKey)}:`,
-          error
+        getInstanceLogger(this)?.error(
+          { err: error, method: String(propertyKey) },
+          '@RedisRateLimit: Error getting Redis client'
         );
         return originalMethod.apply(this, args);
       }

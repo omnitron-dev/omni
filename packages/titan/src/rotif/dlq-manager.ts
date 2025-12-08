@@ -3,7 +3,7 @@
  */
 
 import type { Redis } from 'ioredis';
-import type { RotifLogger } from './types.js';
+import type { ILogger } from './types.js';
 import { parseFields } from './utils/common.js';
 
 /**
@@ -72,7 +72,7 @@ export class DLQManager {
 
   constructor(
     private redis: Redis,
-    private logger: RotifLogger,
+    private logger: ILogger,
     private config: DLQCleanupConfig = {},
     dlqKey: string = 'rotif:dlq'
   ) {
@@ -102,17 +102,17 @@ export class DLQManager {
 
     // Run initial cleanup
     this.cleanup().catch((err) => {
-      this.logger.error('DLQ cleanup error:', err);
+      this.logger.error({ err }, 'DLQ cleanup error');
     });
 
     // Schedule periodic cleanup
     this.cleanupTimer = setInterval(() => {
       this.cleanup().catch((err) => {
-        this.logger.error('DLQ cleanup error:', err);
+        this.logger.error({ err }, 'DLQ cleanup error');
       });
     }, this.config.cleanupInterval!);
 
-    this.logger.info(`DLQ auto-cleanup started (interval: ${this.config.cleanupInterval}ms)`);
+    this.logger.info({ interval: this.config.cleanupInterval }, 'DLQ auto-cleanup started');
   }
 
   /**
@@ -178,7 +178,7 @@ export class DLQManager {
           cleanedCount += toDelete.length;
           this.stats.messagesCleanedUp += toDelete.length;
 
-          this.logger.info(`Cleaned up ${toDelete.length} messages from DLQ`);
+          this.logger.info({ count: toDelete.length }, 'Cleaned up messages from DLQ');
         }
 
         // Check if we've processed enough
@@ -190,7 +190,7 @@ export class DLQManager {
       // Check size limit
       await this.enforceMaxSize();
     } catch (err) {
-      this.logger.error('DLQ cleanup failed:', err);
+      this.logger.error({ err }, 'DLQ cleanup failed');
       throw err;
     }
 
@@ -221,7 +221,7 @@ export class DLQManager {
     await pipeline.exec();
     this.stats.messagesArchived += messages.length;
 
-    this.logger.info(`Archived ${messages.length} messages from DLQ`);
+    this.logger.info({ count: messages.length }, 'Archived messages from DLQ');
   }
 
   /**
@@ -251,7 +251,7 @@ export class DLQManager {
         await this.redis.xdel(dlqKey, ...ids);
         this.stats.messagesCleanedUp += ids.length;
 
-        this.logger.info(`Trimmed ${ids.length} messages from DLQ to enforce max size`);
+        this.logger.info({ count: ids.length }, 'Trimmed messages from DLQ to enforce max size');
       }
     }
   }
@@ -306,7 +306,7 @@ export class DLQManager {
         messagesArchived: this.stats.messagesArchived,
       };
     } catch (err) {
-      this.logger.error('Failed to get DLQ stats:', err);
+      this.logger.error({ err }, 'Failed to get DLQ stats');
       throw err;
     }
   }
@@ -363,7 +363,7 @@ export class DLQManager {
       // Apply pagination
       return filtered.slice(offset, offset + limit);
     } catch (err) {
-      this.logger.error('Failed to get DLQ messages:', err);
+      this.logger.error({ err }, 'Failed to get DLQ messages');
       throw err;
     }
   }

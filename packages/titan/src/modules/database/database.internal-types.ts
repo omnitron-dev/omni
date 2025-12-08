@@ -8,17 +8,8 @@
 import type { Kysely, Transaction, SelectQueryBuilder, InsertQueryBuilder, UpdateQueryBuilder, DeleteQueryBuilder } from 'kysely';
 import type { RepositoryConfig } from './repository/repository.types.js';
 
-/**
- * Logger interface for consistent logging across the module
- */
-export interface Logger {
-  info(...args: unknown[]): void;
-  error(...args: unknown[]): void;
-  warn(...args: unknown[]): void;
-  debug(...args: unknown[]): void;
-  trace(...args: unknown[]): void;
-  fatal(...args: unknown[]): void;
-}
+// Re-export ILogger from centralized logger module for backward compatibility
+export type { ILogger as Logger } from '../logger/logger.types.js';
 
 /**
  * Repository constructor type

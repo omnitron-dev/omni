@@ -81,7 +81,14 @@ export const BUILT_IN_PLUGINS = {
   SOFT_DELETE: 'softDelete',
   TIMESTAMPS: 'timestamps',
   AUDIT: 'audit',
+  RLS: 'rls',
 } as const;
+
+/**
+ * RLS injection tokens
+ */
+export const DATABASE_RLS_PLUGIN = Symbol('DATABASE_RLS_PLUGIN');
+export const DATABASE_RLS_CONTEXT = Symbol('DATABASE_RLS_CONTEXT');
 
 /**
  * Migration table name
@@ -124,6 +131,12 @@ export const METADATA_KEYS = {
   TRANSACTIONAL: 'database:transactional',
   PAGINATED: 'database:paginated',
   CONNECTION: 'database:connection',
+  // RLS metadata keys
+  RLS_POLICY: 'database:rls:policy',
+  RLS_ALLOW: 'database:rls:allow',
+  RLS_DENY: 'database:rls:deny',
+  RLS_FILTER: 'database:rls:filter',
+  RLS_BYPASS: 'database:rls:bypass',
 } as const;
 
 /**

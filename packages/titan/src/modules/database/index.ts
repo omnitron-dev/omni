@@ -81,6 +81,8 @@ export {
   DATABASE_MIGRATION_LOCK,
   DATABASE_REPOSITORY_FACTORY,
   DATABASE_TESTING_SERVICE,
+  DATABASE_RLS_PLUGIN,
+  DATABASE_RLS_CONTEXT,
   getDatabaseConnectionToken,
   getRepositoryToken,
   DEFAULT_POOL_CONFIG,
@@ -112,6 +114,25 @@ export {
   isRepository,
   getMigrationMetadata,
   isMigration,
+  // RLS decorators
+  Policy,
+  Allow,
+  Deny,
+  Filter,
+  BypassRLS,
+  getRLSPolicyMetadata,
+  getRLSAllowRules,
+  getRLSDenyRules,
+  getRLSFilters,
+  getRLSBypassedMethods,
+  isRLSEnabled,
+} from './database.decorators.js';
+
+// RLS decorator types
+export type {
+  RLSPolicyConfig,
+  RLSRuleConfig,
+  RLSFilterConfig,
 } from './database.decorators.js';
 
 // Repository
@@ -426,3 +447,80 @@ export type {
   MigrationStatus as KyseraMigrationStatus,
   MigrationRunnerOptions,
 } from '@kysera/migrations';
+
+// @kysera/rls - Row-Level Security
+// ============================================================================
+// RLS provides dual-layer security API:
+//
+// 1. FUNCTION API (for declarative schema definition):
+//    Use rlsAllow/rlsDeny/rlsFilter/rlsValidate with defineRLSSchema()
+//    Example: defineRLSSchema({ users: { policies: [rlsAllow(...)] } })
+//
+// 2. DECORATOR API (for repository class decoration):
+//    Use @Policy, @Allow, @Deny, @Filter, @BypassRLS decorators
+//    Example: @Repository({ table: 'users' }) @Policy() class UserRepository
+//
+// Note: Function names are prefixed with 'rls' to avoid conflicts with
+// generic names (allow, deny, filter) that could clash with other modules.
+// See: kysera-rls-spec.md Section 10 for detailed Titan Integration docs
+// ============================================================================
+export {
+  // Schema definition
+  defineRLSSchema,
+  mergeRLSSchemas,
+  // Policy builders
+  allow as rlsAllow,
+  deny as rlsDeny,
+  filter as rlsFilter,
+  validate as rlsValidate,
+  // Plugin
+  rlsPlugin,
+  // Registry (for advanced use cases)
+  PolicyRegistry,
+  // Context management
+  rlsContext,
+  createRLSContext,
+  withRLSContext,
+  withRLSContextAsync,
+  // Utilities
+  createEvaluationContext,
+  normalizeOperations,
+  isAsyncFunction,
+  safeEvaluate,
+  deepMerge,
+  hashString,
+  // Errors
+  RLSError,
+  RLSContextError,
+  RLSPolicyViolation,
+  RLSSchemaError,
+  RLSContextValidationError,
+  RLSErrorCodes,
+} from '@kysera/rls';
+
+export type {
+  // Plugin options
+  RLSPluginOptions,
+  PolicyOptions,
+  // Core types
+  Operation as RLSOperation,
+  PolicyType,
+  PolicyDefinition,
+  PolicyCondition,
+  FilterCondition,
+  PolicyHints,
+  // Schema types
+  RLSSchema,
+  TableRLSConfig,
+  // Context types
+  RLSContext,
+  RLSAuthContext,
+  RLSRequestContext,
+  CreateRLSContextOptions,
+  // Evaluation types
+  PolicyEvaluationContext,
+  CompiledPolicy,
+  CompiledFilterPolicy,
+  // Error types
+  RLSErrorCode,
+} from '@kysera/rls';

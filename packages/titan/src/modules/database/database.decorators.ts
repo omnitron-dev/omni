@@ -412,3 +412,256 @@ export function getMigrationMetadata(target: Constructor): { version: string; de
 export function isMigration(target: Constructor): boolean {
   return Reflect.getMetadata('database:is-migration', target) === true;
 }
+
+// ============================================================================
+// RLS (Row-Level Security) Decorators
+// ============================================================================
+
+/**
+ * RLS policy configuration for a repository
+ */
+export interface RLSPolicyConfig {
+  /** Table name (defaults to repository table) */
+  table?: string;
+  /** Skip RLS for specific roles */
+  skipFor?: string[];
+  /** Default policy to apply */
+  defaultPolicy?: 'allow' | 'deny';
+}
+
+/**
+ * RLS allow/deny rule configuration
+ */
+export interface RLSRuleConfig {
+  /** Operations this rule applies to */
+  operations: Array<'select' | 'insert' | 'update' | 'delete'>;
+  /** Rule priority (higher = evaluated first) */
+  priority?: number;
+  /** Rule name for debugging */
+  name?: string;
+}
+
+/**
+ * RLS filter configuration
+ */
+export interface RLSFilterConfig {
+  /** Operations this filter applies to (default: ['select']) */
+  operations?: Array<'select' | 'insert' | 'update' | 'delete'>;
+  /** Filter name for debugging */
+  name?: string;
+}
+
+/**
+ * Policy decorator
+ * Configures RLS policy for a repository
+ *
+ * @example
+ * ```typescript
+ * @Repository({ table: 'posts' })
+ * @Policy({ skipFor: ['admin'] })
+ * class PostRepository extends BaseRepository<Post> {}
+ * ```
+ */
+export function Policy(config?: RLSPolicyConfig): ClassDecorator {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+  return <TFunction extends Function>(target: TFunction): TFunction => {
+    const existingConfig = Reflect.getMetadata(METADATA_KEYS.REPOSITORY, target) || {};
+
+    Reflect.defineMetadata(
+      METADATA_KEYS.REPOSITORY,
+      {
+        ...existingConfig,
+        rls: config || {},
+      },
+      target
+    );
+
+    // Store RLS policy metadata separately for discovery
+    Reflect.defineMetadata(METADATA_KEYS.RLS_POLICY, config || {}, target);
+
+    // Mark as RLS-enabled
+    Reflect.defineMetadata('database:rls-enabled', true, target);
+
+    return target;
+  };
+}
+
+/**
+ * Allow decorator
+ * Defines an allow rule for RLS policy
+ *
+ * @example
+ * ```typescript
+ * @Repository({ table: 'posts' })
+ * @Policy()
+ * class PostRepository extends BaseRepository<Post> {
+ *   @Allow({ operations: ['select', 'update', 'delete'] })
+ *   canAccessOwnPosts(ctx: PolicyContext, row: Post) {
+ *     return row.authorId === ctx.auth.userId;
+ *   }
+ * }
+ * ```
+ */
+export function Allow(config: RLSRuleConfig): MethodDecorator {
+  return (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
+    const rules = Reflect.getMetadata(METADATA_KEYS.RLS_ALLOW, target.constructor) || [];
+
+    rules.push({
+      name: config.name || String(propertyKey),
+      method: propertyKey,
+      operations: config.operations,
+      priority: config.priority ?? 0,
+    });
+
+    Reflect.defineMetadata(METADATA_KEYS.RLS_ALLOW, rules, target.constructor);
+
+    return descriptor;
+  };
+}
+
+/**
+ * Deny decorator
+ * Defines a deny rule for RLS policy (evaluated before allow rules)
+ *
+ * @example
+ * ```typescript
+ * @Repository({ table: 'posts' })
+ * @Policy()
+ * class PostRepository extends BaseRepository<Post> {
+ *   @Deny({ operations: ['delete'] })
+ *   cannotDeletePublished(ctx: PolicyContext, row: Post) {
+ *     return row.status === 'published';
+ *   }
+ * }
+ * ```
+ */
+export function Deny(config: RLSRuleConfig): MethodDecorator {
+  return (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
+    const rules = Reflect.getMetadata(METADATA_KEYS.RLS_DENY, target.constructor) || [];
+
+    rules.push({
+      name: config.name || String(propertyKey),
+      method: propertyKey,
+      operations: config.operations,
+      priority: config.priority ?? 0,
+    });
+
+    Reflect.defineMetadata(METADATA_KEYS.RLS_DENY, rules, target.constructor);
+
+    return descriptor;
+  };
+}
+
+/**
+ * Filter decorator
+ * Defines a filter that modifies SELECT queries to only return allowed rows
+ *
+ * @example
+ * ```typescript
+ * @Repository({ table: 'posts' })
+ * @Policy()
+ * class PostRepository extends BaseRepository<Post> {
+ *   @Filter()
+ *   filterByTenant(ctx: PolicyContext) {
+ *     return { tenantId: ctx.auth.tenantId };
+ *   }
+ * }
+ * ```
+ */
+export function Filter(config?: RLSFilterConfig): MethodDecorator {
+  return (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
+    const filters = Reflect.getMetadata(METADATA_KEYS.RLS_FILTER, target.constructor) || [];
+
+    filters.push({
+      name: config?.name || String(propertyKey),
+      method: propertyKey,
+      operations: config?.operations || ['select'],
+    });
+
+    Reflect.defineMetadata(METADATA_KEYS.RLS_FILTER, filters, target.constructor);
+
+    return descriptor;
+  };
+}
+
+/**
+ * BypassRLS decorator
+ * Marks a method to bypass RLS checks (requires system context or admin role)
+ *
+ * @example
+ * ```typescript
+ * @Repository({ table: 'posts' })
+ * @Policy()
+ * class PostRepository extends BaseRepository<Post> {
+ *   @BypassRLS()
+ *   async adminGetAll() {
+ *     return this.findAll();
+ *   }
+ * }
+ * ```
+ */
+export function BypassRLS(): MethodDecorator {
+  return (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
+    const bypassed = Reflect.getMetadata(METADATA_KEYS.RLS_BYPASS, target.constructor) || [];
+    bypassed.push(propertyKey);
+    Reflect.defineMetadata(METADATA_KEYS.RLS_BYPASS, bypassed, target.constructor);
+
+    return descriptor;
+  };
+}
+
+/**
+ * Helper function to get RLS policy metadata
+ */
+export function getRLSPolicyMetadata(target: Constructor): RLSPolicyConfig | undefined {
+  return Reflect.getMetadata(METADATA_KEYS.RLS_POLICY, target);
+}
+
+/**
+ * Helper function to get RLS allow rules
+ */
+export function getRLSAllowRules(target: Constructor): Array<{
+  name: string;
+  method: string | symbol;
+  operations: string[];
+  priority: number;
+}> {
+  return Reflect.getMetadata(METADATA_KEYS.RLS_ALLOW, target) || [];
+}
+
+/**
+ * Helper function to get RLS deny rules
+ */
+export function getRLSDenyRules(target: Constructor): Array<{
+  name: string;
+  method: string | symbol;
+  operations: string[];
+  priority: number;
+}> {
+  return Reflect.getMetadata(METADATA_KEYS.RLS_DENY, target) || [];
+}
+
+/**
+ * Helper function to get RLS filters
+ */
+export function getRLSFilters(target: Constructor): Array<{
+  name: string;
+  method: string | symbol;
+  operations: string[];
+}> {
+  return Reflect.getMetadata(METADATA_KEYS.RLS_FILTER, target) || [];
+}
+
+/**
+ * Helper function to get bypassed methods
+ */
+export function getRLSBypassedMethods(target: Constructor): Array<string | symbol> {
+  return Reflect.getMetadata(METADATA_KEYS.RLS_BYPASS, target) || [];
+}
+
+/**
+ * Helper function to check if repository has RLS enabled
+ */
+export function isRLSEnabled(target: Constructor): boolean {
+  return Reflect.getMetadata('database:rls-enabled', target) === true;
+}

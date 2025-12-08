@@ -137,6 +137,7 @@
     "@kysera/core": "workspace:*",
     "@kysera/migrations": "workspace:*",
     "@kysera/repository": "workspace:*",
+    "@kysera/rls": "workspace:*",
     "@kysera/soft-delete": "workspace:*",
     "@kysera/timestamps": "workspace:*",
     "@omnitron-dev/common": "workspace:*",

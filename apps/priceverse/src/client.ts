@@ -27,16 +27,30 @@ import {
   confirm,
 } from '@xec-sh/kit';
 
+import { HttpConnection } from '@omnitron-dev/titan/netron/transport/http';
+
 import type {
   PairSymbol,
   PriceResponse,
   PriceChangeResponse,
   HealthResponse,
+  HealthCheck,
   OhlcvCandle,
   ChartInterval,
   TimePeriod,
 } from './shared/types.js';
 import { SUPPORTED_PAIRS } from './shared/types.js';
+
+import type {
+  IPricesService,
+  IChartsService,
+  IHealthService,
+} from './contracts/services.js';
+import {
+  PRICES_SERVICE_ID,
+  CHARTS_SERVICE_ID,
+  HEALTH_SERVICE_ID,
+} from './contracts/services.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Configuration
@@ -46,71 +60,49 @@ const DEFAULT_SERVER_URL = process.env.PRICEVERSE_URL || 'http://localhost:3000'
 const REFRESH_INTERVAL = 5000; // 5 seconds for dashboard refresh
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Priceverse HTTP Client
+// Priceverse HTTP Client (using Netron HttpConnection)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-interface NetronRequest {
-  id: string;
-  version: '2.0';
-  timestamp: number;
-  service: string;
-  method: string;
-  input: unknown;
-}
-
-interface NetronResponse<T = unknown> {
-  id: string;
-  version: '2.0';
-  timestamp: number;
-  success: boolean;
-  data?: T;
-  error?: {
-    code: string;
-    message: string;
-    details?: unknown;
-  };
-}
-
 class PriceverseClient {
-  constructor(private baseUrl: string = DEFAULT_SERVER_URL) {
-    this.baseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-  }
+  private connection: HttpConnection;
+  private pricesService?: IPricesService;
+  private chartsService?: IChartsService;
+  private healthService?: IHealthService;
 
-  private generateId(): string {
-    return `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-  }
-
-  private async invoke<T>(service: string, method: string, input: unknown): Promise<T> {
-    const request: NetronRequest = {
-      id: this.generateId(),
-      version: '2.0',
-      timestamp: Date.now(),
-      service,
-      method,
-      input,
-    };
-
-    const response = await fetch(`${this.baseUrl}/netron/invoke`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        'X-Netron-Version': '2.0',
-      },
-      body: JSON.stringify(request),
+  constructor(baseUrl: string = DEFAULT_SERVER_URL) {
+    this.connection = new HttpConnection(baseUrl, {
+      timeout: 30000,
     });
+  }
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  /**
+   * Get or create the PricesService proxy
+   */
+  private async getPricesService(): Promise<IPricesService> {
+    if (!this.pricesService) {
+      this.pricesService = await this.connection.queryInterface(PRICES_SERVICE_ID) as IPricesService;
     }
+    return this.pricesService;
+  }
 
-    const result: NetronResponse<T> = await response.json();
-
-    if (!result.success) {
-      throw new Error(result.error?.message || 'Unknown error');
+  /**
+   * Get or create the ChartsService proxy
+   */
+  private async getChartsService(): Promise<IChartsService> {
+    if (!this.chartsService) {
+      this.chartsService = await this.connection.queryInterface(CHARTS_SERVICE_ID) as IChartsService;
     }
+    return this.chartsService;
+  }
 
-    return result.data as T;
+  /**
+   * Get or create the HealthService proxy
+   */
+  private async getHealthService(): Promise<IHealthService> {
+    if (!this.healthService) {
+      this.healthService = await this.connection.queryInterface(HEALTH_SERVICE_ID) as IHealthService;
+    }
+    return this.healthService;
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -118,11 +110,13 @@ class PriceverseClient {
   // ─────────────────────────────────────────────────────────────────────────────
 
   async getPrice(pair: PairSymbol): Promise<PriceResponse> {
-    return this.invoke<PriceResponse>('PricesService@2.0.0', 'getPrice', { pair });
+    const service = await this.getPricesService();
+    return service.getPrice({ pair });
   }
 
   async getMultiplePrices(pairs: PairSymbol[]): Promise<PriceResponse[]> {
-    return this.invoke<PriceResponse[]>('PricesService@2.0.0', 'getMultiplePrices', { pairs });
+    const service = await this.getPricesService();
+    return service.getMultiplePrices({ pairs });
   }
 
   async getPriceChange(
@@ -131,12 +125,8 @@ class PriceverseClient {
     from?: string,
     to?: string
   ): Promise<PriceChangeResponse> {
-    return this.invoke<PriceChangeResponse>('PricesService@2.0.0', 'getPriceChange', {
-      pair,
-      period,
-      from,
-      to,
-    });
+    const service = await this.getPricesService();
+    return service.getPriceChange({ pair, period, from, to });
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -149,7 +139,8 @@ class PriceverseClient {
     limit: number = 24,
     offset: number = 0
   ): Promise<{ candles: OhlcvCandle[]; pagination: { total: number; limit: number; offset: number } }> {
-    return this.invoke('ChartsService@2.0.0', 'getOHLCV', { pair, interval, limit, offset });
+    const service = await this.getChartsService();
+    return service.getOHLCV({ pair, interval, limit, offset });
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -157,11 +148,20 @@ class PriceverseClient {
   // ─────────────────────────────────────────────────────────────────────────────
 
   async checkHealth(): Promise<HealthResponse> {
-    return this.invoke<HealthResponse>('HealthService@1.0.0', 'check', {});
+    const service = await this.getHealthService();
+    return service.check();
   }
 
   async liveness(): Promise<{ status: 'up' }> {
-    return this.invoke<{ status: 'up' }>('HealthService@1.0.0', 'live', {});
+    const service = await this.getHealthService();
+    return service.live();
+  }
+
+  /**
+   * Close the connection and cleanup resources
+   */
+  async close(): Promise<void> {
+    await this.connection.close();
   }
 }
 
@@ -304,7 +304,7 @@ async function showHealth(client: PriceverseClient): Promise<void> {
     );
 
     // Service checks
-    const checksData = Object.entries(health.checks).map(([name, check]) => ({
+    const checksData = Object.entries(health.checks).map(([name, check]: [string, HealthCheck]) => ({
       service: name,
       status:
         check.status === 'up'
@@ -466,7 +466,7 @@ async function runDashboard(client: PriceverseClient): Promise<void> {
       );
       const changes = await Promise.all(changePromises);
       const changeMap = new Map(
-        changes.filter(Boolean).map((c) => [c!.pair, c!.changePercent])
+        changes.filter(Boolean).map((c: PriceChangeResponse | null) => [c!.pair, c!.changePercent])
       );
 
       // USD Section
@@ -533,7 +533,7 @@ async function runDashboard(client: PriceverseClient): Promise<void> {
             : prism.red('○');
 
       const checksStatus = Object.entries(health.checks)
-        .map(([name, check]) => {
+        .map(([name, check]: [string, HealthCheck]) => {
           const icon = check.status === 'up' ? prism.green('✓') : prism.red('✗');
           return `${icon} ${name}`;
         })

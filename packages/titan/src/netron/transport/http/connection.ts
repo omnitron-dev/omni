@@ -357,7 +357,17 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
     return new Proxy(
       {},
       {
-        get(target: any, prop: string) {
+        get(target: any, prop: string | symbol) {
+          // Ignore Symbol properties (like Symbol.toStringTag, Symbol.iterator, etc.)
+          if (typeof prop === 'symbol') {
+            return undefined;
+          }
+
+          // Ignore Promise-like properties to prevent await from calling them
+          if (prop === 'then' || prop === 'catch' || prop === 'finally') {
+            return undefined;
+          }
+
           // Special properties
           if (prop === '$def') {
             return definition;
@@ -368,7 +378,7 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
             const request = createRequestMessage(
               definition.meta.name,
               prop,
-              args[0] // Netron uses single argument
+              args[0] ?? {} // Netron uses single argument, default to empty object
             );
 
             const response = await self.sendRequestMessage(request);

@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Shared Exports
+ * Priceverse - Shared Exports
  */
 
 export * from './tokens.js';

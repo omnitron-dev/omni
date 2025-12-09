@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Prices RPC Service
+ * Priceverse - Prices RPC Service
  * Netron RPC interface for price operations
  */
 
@@ -19,7 +19,7 @@ import { PriceVerseError, PriceVerseErrorCode } from '../../contracts/errors.js'
 
 @Service('PricesService@2.0.0')
 export class PricesRpcService {
-  constructor(@Inject('PricesService') private readonly pricesService: PricesService) {}
+  constructor(@Inject('PricesService') private readonly pricesService: PricesService) { }
 
   /**
    * Get current price for a trading pair

@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - OHLCV Aggregator Service
+ * Priceverse - OHLCV Aggregator Service
  * Uses Titan database features: repositories, transactions, cursor pagination
  */
 

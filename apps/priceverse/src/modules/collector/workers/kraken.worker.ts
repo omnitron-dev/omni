@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Kraken Exchange Worker
+ * Priceverse - Kraken Exchange Worker
  */
 
 import { Injectable } from '@omnitron-dev/titan/decorators';

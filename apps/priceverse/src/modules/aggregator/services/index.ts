@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Aggregator Services Exports
+ * Priceverse - Aggregator Services Exports
  */
 
 export * from './stream-aggregator.service.js';

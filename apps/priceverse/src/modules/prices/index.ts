@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Prices Module Exports
+ * Priceverse - Prices Module Exports
  */
 
 export { PricesModule } from './prices.module.js';

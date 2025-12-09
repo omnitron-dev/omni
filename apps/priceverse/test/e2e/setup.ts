@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - E2E Test Setup
+ * Priceverse - E2E Test Setup
  * Provides utilities for starting/stopping the server and making requests
  */
 

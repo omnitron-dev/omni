@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Health Service
+ * Priceverse - Health Service
  * Provides health check functionality using Titan's DatabaseHealthIndicator
  */
 
@@ -43,7 +43,7 @@ export class HealthService {
     @Inject(RedisService) private readonly redis: RedisService,
     @Inject(EXCHANGE_MANAGER_TOKEN) private readonly exchangeManager: ExchangeManagerService,
     @Inject(DATABASE_HEALTH_INDICATOR) private readonly dbHealth: DatabaseHealthIndicator
-  ) {}
+  ) { }
 
   /**
    * Get comprehensive health status including database metrics
@@ -101,18 +101,18 @@ export class HealthService {
         connectionsCount: connectionNames.length,
         pool: firstConnection?.pool
           ? {
-              total: firstConnection.pool.total,
-              active: firstConnection.pool.active,
-              idle: firstConnection.pool.idle,
-              waiting: firstConnection.pool.waiting,
-            }
+            total: firstConnection.pool.total,
+            active: firstConnection.pool.active,
+            idle: firstConnection.pool.idle,
+            waiting: firstConnection.pool.waiting,
+          }
           : undefined,
         migrations: health.migrations
           ? {
-              upToDate: health.migrations.upToDate,
-              pendingCount: health.migrations.pendingCount,
-              currentVersion: health.migrations.currentVersion,
-            }
+            upToDate: health.migrations.upToDate,
+            pendingCount: health.migrations.pendingCount,
+            currentVersion: health.migrations.currentVersion,
+          }
           : undefined,
         metrics: health.metrics,
       };

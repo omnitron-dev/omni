@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - E2E Health Endpoint Tests
+ * Priceverse - E2E Health Endpoint Tests
  * Tests the HTTP health check endpoint
  *
  * NOTE: The /health endpoint is provided by Titan's HTTP transport layer,

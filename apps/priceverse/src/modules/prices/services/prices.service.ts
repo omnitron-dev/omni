@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Prices Service
+ * Priceverse - Prices Service
  * Uses Titan database module features: repositories, error handling, resilience
  */
 
@@ -10,11 +10,12 @@ import {
   ErrorCodes,
 } from '@omnitron-dev/titan/module/database';
 import { LOGGER_SERVICE_TOKEN, type ILoggerModule } from '@omnitron-dev/titan/module/logger';
+import { RedisService, type RedisClient } from '@omnitron-dev/titan/module/redis';
 import {
   PriceHistoryRepository,
   type PriceHistoryEntity,
 } from '../../../database/index.js';
-import { PRICE_HISTORY_REPOSITORY, EXTENDED_REDIS_SERVICE } from '../../../shared/tokens.js';
+import { PRICE_HISTORY_REPOSITORY } from '../../../shared/tokens.js';
 import type {
   PairSymbol,
   PriceResponse,
@@ -22,7 +23,6 @@ import type {
   TimePeriod,
 } from '../../../shared/types.js';
 import { PriceVerseError, PriceVerseErrorCode } from '../../../contracts/errors.js';
-import type { ExtendedRedisService } from '../../../lib/extended-redis.service.js';
 
 const CACHE_TTL = 60; // 60 seconds
 const STALE_THRESHOLD = 120_000; // 2 minutes
@@ -37,7 +37,7 @@ export class PricesService {
   private readonly priceHistoryRepo: PriceHistoryRepository;
 
   constructor(
-    @Inject(EXTENDED_REDIS_SERVICE) private readonly redis: ExtendedRedisService,
+    @Inject(RedisService) private readonly redis: RedisService,
     @Inject(LOGGER_SERVICE_TOKEN) private readonly loggerModule: ILoggerModule,
     @Inject(PRICE_HISTORY_REPOSITORY) priceHistoryRepo: PriceHistoryRepository
   ) {
@@ -204,7 +204,7 @@ export class PricesService {
     this.logger.info(`[PricesService] Starting price stream for ${pairs.length} pairs`);
 
     // Create a separate Redis client for subscriptions
-    const subscriber = this.redis.duplicate();
+    const subscriber: RedisClient = this.redis.createSubscriber();
     const channels = pairs.map((pair) => `price:${pair}`);
 
     // Queue for buffering messages
@@ -212,10 +212,8 @@ export class PricesService {
     let resolveNext: ((value: PriceResponse) => void) | null = null;
 
     // Subscribe to all channels
-    const messageHandler = (...args: unknown[]) => {
+    const messageHandler = (channel: string, message: string) => {
       try {
-        const channel = args[0] as string;
-        const message = args[1] as string;
         const data = JSON.parse(message);
         const pair = channel.replace('price:', '');
 
@@ -238,9 +236,8 @@ export class PricesService {
 
     subscriber.on('message', messageHandler);
 
-    for (const channel of channels) {
-      await subscriber.subscribe(channel);
-    }
+    // Subscribe using Titan's API
+    await this.redis.subscribeClient(subscriber, channels);
 
     try {
       while (true) {
@@ -259,9 +256,7 @@ export class PricesService {
       }
     } finally {
       // Cleanup on generator close
-      for (const channel of channels) {
-        await subscriber.unsubscribe(channel);
-      }
+      await this.redis.unsubscribeClient(subscriber, channels);
       this.logger.info('[PricesService] Price stream closed');
     }
   }

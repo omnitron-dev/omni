@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Health Module Exports
+ * Priceverse - Health Module Exports
  */
 
 export { HealthModule } from './health.module.js';

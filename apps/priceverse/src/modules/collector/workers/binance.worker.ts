@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Binance Exchange Worker
+ * Priceverse - Binance Exchange Worker
  */
 
 import { Injectable } from '@omnitron-dev/titan/decorators';

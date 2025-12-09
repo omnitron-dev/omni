@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Charts Service
+ * Priceverse - Charts Service
  * Uses cursor pagination for efficient large dataset handling
  */
 
@@ -41,7 +41,7 @@ export class ChartsService {
     @Inject(OHLCV_AGGREGATOR_TOKEN)
     private readonly ohlcvAggregator: OhlcvAggregatorService,
     @Inject(LOGGER_SERVICE_TOKEN) private readonly loggerModule: ILoggerModule
-  ) {}
+  ) { }
 
   private get logger() {
     return this.loggerModule.logger;

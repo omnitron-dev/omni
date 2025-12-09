@@ -1,18 +1,16 @@
 /**
- * Priceverse 2.0 - Base Exchange Worker
+ * Priceverse - Base Exchange Worker
  * Abstract base class for all exchange WebSocket workers
  */
 
 import { PostConstruct, PreDestroy } from '@omnitron-dev/titan/decorators';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
+import type { RedisService } from '@omnitron-dev/titan/module/redis';
 import WebSocket from 'ws';
 import type { Trade } from '../../../shared/types.js';
 
 // Re-export ILogger for convenience
 export type { ILogger };
-
-// Redis service token for DI
-export const REDIS_SERVICE_TOKEN = Symbol('RedisService');
 
 export interface ExchangeWorkerConfig {
   name: string;
@@ -22,13 +20,11 @@ export interface ExchangeWorkerConfig {
   maxReconnectAttempts: number;
 }
 
-export interface IRedisService {
-  xadd(
-    key: string,
-    id: string,
-    fields: Record<string, string>,
-  ): Promise<string | null>;
-}
+/**
+ * Redis service interface for exchange workers
+ * Uses Titan's RedisService which now includes Redis Streams support
+ */
+export type IRedisService = Pick<RedisService, 'xadd'>;
 
 // Note: @Injectable() cannot be applied to abstract classes
 // Concrete implementations should use @Injectable()
@@ -44,7 +40,7 @@ export abstract class BaseExchangeWorker {
     protected readonly redis: IRedisService,
     protected readonly logger: ILogger,
     protected readonly maxReconnectAttempts: number = 10,
-  ) {}
+  ) { }
 
   abstract get exchangeName(): string;
   abstract get wsUrl(): string;

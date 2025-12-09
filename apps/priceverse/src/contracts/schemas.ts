@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Validation Schemas (Zod)
+ * Priceverse - Validation Schemas (Zod)
  */
 
 import { z } from 'zod';

@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Application Entry Point
+ * Priceverse - Application Entry Point
  */
 
 import { Application } from '@omnitron-dev/titan';
@@ -14,7 +14,7 @@ import type { StreamAggregatorService } from './modules/aggregator/services/stre
 async function bootstrap() {
   const app = await Application.create(AppModule, {
     name: 'priceverse',
-    version: '2.0.0',
+    version: '1.0.0',
   });
 
   // Get logger early for consistent logging
@@ -57,7 +57,7 @@ async function bootstrap() {
     logger.error({ module: 'Main', error }, 'Failed to start stream aggregator');
   }
 
-  logger.info({ module: 'Main', host, port }, `Priceverse 2.0 listening on http://${host}:${port}`);
+  logger.info({ module: 'Main', host, port }, `Priceverse listening on http://${host}:${port}`);
   logger.info({ module: 'Main', services: app.netron?.getServiceNames() ?? [] }, 'Services registered');
 }
 

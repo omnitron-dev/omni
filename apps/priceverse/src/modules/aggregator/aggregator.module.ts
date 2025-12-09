@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Aggregator Module
+ * Priceverse - Aggregator Module
  * Handles VWAP calculation and OHLCV aggregation
  *
  * Note: Depends on CollectorModule's CBR_RATE_SERVICE_TOKEN being exported
@@ -18,4 +18,4 @@ import { STREAM_AGGREGATOR_TOKEN, OHLCV_AGGREGATOR_TOKEN } from '../../shared/to
   ],
   exports: [STREAM_AGGREGATOR_TOKEN, OHLCV_AGGREGATOR_TOKEN],
 })
-export class AggregatorModule {}
+export class AggregatorModule { }

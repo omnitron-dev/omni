@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Database Exports
+ * Priceverse - Database Exports
  */
 
 export * from './schema.js';

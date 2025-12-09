@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Metrics Service
+ * Priceverse - Metrics Service
  * Collects and tracks application metrics
  */
 
@@ -33,10 +33,10 @@ export class MetricsService {
   private redisOps = 0;
   private cacheHits = 0;
   private cacheMisses = 0;
-  
+
   // Exchange status
   private exchangeStatus: Record<string, boolean> = {};
-  
+
   // System metrics
   private systemMetrics = {
     memoryUsage: 0,

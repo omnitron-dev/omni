@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Health RPC Service
+ * Priceverse - Health RPC Service
  * Exposes health check endpoints via Netron RPC
  */
 
@@ -12,7 +12,7 @@ import { HEALTH_SERVICE_TOKEN } from '../../shared/tokens.js';
 export class HealthRpcService {
   constructor(
     @Inject(HEALTH_SERVICE_TOKEN) private readonly healthService: HealthService,
-  ) {}
+  ) { }
 
   /**
    * Comprehensive health check

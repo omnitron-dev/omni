@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Root Application Module
+ * Priceverse - Root Application Module
  * Integrates all Titan core modules and application modules
  * Full integration with @omnitron-dev/titan database module
  */
@@ -26,8 +26,7 @@ import { configSchema } from './config/config.schema.js';
 
 // Import repositories
 import { PriceHistoryRepository, OhlcvRepository } from './database/index.js';
-import { PRICE_HISTORY_REPOSITORY, OHLCV_REPOSITORY, EXTENDED_REDIS_SERVICE } from './shared/tokens.js';
-import { ExtendedRedisService } from './lib/extended-redis.service.js';
+import { PRICE_HISTORY_REPOSITORY, OHLCV_REPOSITORY } from './shared/tokens.js';
 
 @Module({
   imports: [
@@ -121,8 +120,6 @@ import { ExtendedRedisService } from './lib/extended-redis.service.js';
     MetricsModule,
   ],
   providers: [
-    // Extended Redis Service - global singleton for stream operations
-    { provide: EXTENDED_REDIS_SERVICE, useClass: ExtendedRedisService },
     // Register repositories as providers
     {
       provide: PRICE_HISTORY_REPOSITORY,
@@ -137,9 +134,8 @@ import { ExtendedRedisService } from './lib/extended-redis.service.js';
     // DatabaseHealthIndicator is provided by DatabaseModule when healthCheck: true
   ],
   exports: [
-    EXTENDED_REDIS_SERVICE,
     PRICE_HISTORY_REPOSITORY,
     OHLCV_REPOSITORY,
   ],
 })
-export class AppModule {}
+export class AppModule { }

@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - OHLCV Repository
+ * Priceverse - OHLCV Repository
  * Handles candlestick data for 5min, 1hour, 1day intervals
  */
 

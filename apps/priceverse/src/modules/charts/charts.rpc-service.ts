@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Charts RPC Service
+ * Priceverse - Charts RPC Service
  * Netron-exposed chart endpoints
  */
 
@@ -21,7 +21,7 @@ export class ChartsRpcService {
   constructor(
     @Inject(CHARTS_SERVICE_TOKEN) private readonly chartsService: ChartsService,
     @Inject(LOGGER_SERVICE_TOKEN) private readonly loggerModule: ILoggerModule
-  ) {}
+  ) { }
 
   private get logger() {
     return this.loggerModule.logger;

@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Collector Module Exports
+ * Priceverse - Collector Module Exports
  */
 
 export * from './collector.module.js';

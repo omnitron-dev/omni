@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - OKX Exchange Worker
+ * Priceverse - OKX Exchange Worker
  */
 
 import { Injectable } from '@omnitron-dev/titan/decorators';

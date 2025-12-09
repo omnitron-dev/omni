@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Price History Repository
+ * Priceverse - Price History Repository
  * Uses Titan's BaseRepository for type-safe CRUD operations
  */
 
@@ -179,7 +179,7 @@ export class PriceHistoryRepository extends BaseRepository<
 
     await this.db
       .insertInto('price_history')
-      .values(values as Insertable<PriceHistoryTable>[])
+      .values(values as unknown as Insertable<PriceHistoryTable>[])
       .execute();
   }
 

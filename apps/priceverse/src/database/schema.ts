@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Database Schema (Kysely)
+ * Priceverse - Database Schema (Kysely)
  */
 
 import type { Generated, ColumnType } from 'kysely';

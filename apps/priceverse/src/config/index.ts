@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Configuration Exports
+ * Priceverse - Configuration Exports
  */
 
 export * from './config.schema.js';

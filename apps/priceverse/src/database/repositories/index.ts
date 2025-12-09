@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Repository exports
+ * Priceverse - Repository exports
  */
 
 export {

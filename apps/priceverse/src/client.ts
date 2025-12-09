@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Priceverse 2.0 - Interactive CLI Client
+ * Priceverse - Interactive CLI Client
  *
  * Features:
  * - Real-time price monitoring dashboard
@@ -429,7 +429,7 @@ async function runDashboard(client: PriceverseClient): Promise<void> {
       prism.bold.cyan(
         `
 ╔═══════════════════════════════════════════════════════════════════════════════╗
-║                         PRICEVERSE 2.0 - LIVE DASHBOARD                       ║
+║                         Priceverse - LIVE DASHBOARD                       ║
 ╚═══════════════════════════════════════════════════════════════════════════════╝
 `.trim()
       )
@@ -569,7 +569,7 @@ async function interactiveMenu(client: PriceverseClient): Promise<void> {
   console.log();
   box(
     'Interactive CLI for Priceverse cryptocurrency price aggregator',
-    'PRICEVERSE 2.0 CLIENT',
+    'Priceverse CLIENT',
     { rounded: true, titleAlign: 'center' }
   );
   console.log();
@@ -658,7 +658,7 @@ async function interactiveMenu(client: PriceverseClient): Promise<void> {
 
 function showHelp(): void {
   console.log(`
-${prism.bold.cyan('PRICEVERSE 2.0 CLIENT')}
+${prism.bold.cyan('Priceverse CLIENT')}
 
 ${prism.bold('Usage:')}
   pnpm client [options] [pairs...]

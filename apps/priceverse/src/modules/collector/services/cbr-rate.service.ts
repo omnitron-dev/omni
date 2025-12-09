@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - CBR USD/RUB Rate Service
+ * Priceverse - CBR USD/RUB Rate Service
  * Fetches official USD/RUB exchange rate from Central Bank of Russia
  */
 
@@ -36,7 +36,7 @@ export class CbrRateService {
       setex(key: string, ttl: number, value: string): Promise<void>;
     },
     @Inject(LOGGER_SERVICE_TOKEN) private readonly loggerModule: ILoggerModule,
-  ) {}
+  ) { }
 
   private get logger(): ILogger {
     return this.loggerModule.logger;

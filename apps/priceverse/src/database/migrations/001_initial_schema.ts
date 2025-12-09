@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Initial Database Migration
+ * Priceverse - Initial Database Migration
  */
 
 import { Kysely, sql } from 'kysely';

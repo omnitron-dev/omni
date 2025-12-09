@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Charts Module Exports
+ * Priceverse - Charts Module Exports
  */
 
 export * from './charts.module.js';

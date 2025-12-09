@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Collector Services Exports
+ * Priceverse - Collector Services Exports
  */
 
 export * from './cbr-rate.service.js';

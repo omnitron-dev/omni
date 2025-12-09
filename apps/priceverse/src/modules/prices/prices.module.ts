@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Prices Module
+ * Priceverse - Prices Module
  * Provides price retrieval and streaming functionality
  */
 
@@ -15,4 +15,4 @@ import { PricesRpcService } from './prices.rpc-service.js';
   ],
   exports: ['PricesService', 'PricesRpcService'],
 })
-export class PricesModule {}
+export class PricesModule { }

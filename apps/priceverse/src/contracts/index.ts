@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Contracts Exports
+ * Priceverse - Contracts Exports
  */
 
 export * from './errors.js';

@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Metrics Module Exports
+ * Priceverse - Metrics Module Exports
  */
 
 export { MetricsModule } from './metrics.module.js';

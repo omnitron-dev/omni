@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Charts Module
+ * Priceverse - Charts Module
  * Handles OHLCV chart data and historical data
  */
 
@@ -12,4 +12,4 @@ import { CHARTS_SERVICE_TOKEN } from '../../shared/tokens.js';
   providers: [{ provide: CHARTS_SERVICE_TOKEN, useClass: ChartsService }, ChartsRpcService],
   exports: [CHARTS_SERVICE_TOKEN],
 })
-export class ChartsModule {}
+export class ChartsModule { }

@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Error Codes
+ * Priceverse - Error Codes
  */
 
 export enum PriceVerseErrorCode {

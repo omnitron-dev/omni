@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Aggregator Module Exports
+ * Priceverse - Aggregator Module Exports
  */
 
 export * from './aggregator.module.js';

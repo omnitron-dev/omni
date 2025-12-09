@@ -1,4 +1,4 @@
-# Priceverse 2.0 - E2E Tests
+# Priceverse - E2E Tests
 
 End-to-end tests for the Priceverse application that test the running server through HTTP and Netron RPC endpoints.
 

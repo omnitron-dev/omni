@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Shared Types
+ * Priceverse - Shared Types
  */
 
 // Supported trading pairs

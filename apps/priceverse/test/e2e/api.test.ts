@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - E2E Netron RPC API Tests
+ * Priceverse - E2E Netron RPC API Tests
  * Tests the Netron RPC endpoints via HTTP
  *
  * NOTE: These tests require the full Priceverse application to be running with

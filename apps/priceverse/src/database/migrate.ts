@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Database Migration Script
+ * Priceverse - Database Migration Script
  * Standalone script to run Kysely migrations
  */
 

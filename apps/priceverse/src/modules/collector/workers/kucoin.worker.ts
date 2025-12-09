@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - KuCoin Exchange Worker
+ * Priceverse - KuCoin Exchange Worker
  */
 
 import { Injectable } from '@omnitron-dev/titan/decorators';

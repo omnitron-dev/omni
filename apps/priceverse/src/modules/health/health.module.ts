@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Health Module
+ * Priceverse - Health Module
  * Provides health check and monitoring capabilities
  */
 
@@ -15,4 +15,4 @@ import { HEALTH_SERVICE_TOKEN } from '../../shared/tokens.js';
   ],
   exports: [HEALTH_SERVICE_TOKEN],
 })
-export class HealthModule {}
+export class HealthModule { }

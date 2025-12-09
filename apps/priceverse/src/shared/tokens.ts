@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Dependency Injection Tokens
+ * Priceverse - Dependency Injection Tokens
  * All tokens for services, modules, and configuration
  */
 
@@ -14,10 +14,6 @@ import type { OhlcvAggregatorService } from '../modules/aggregator/services/ohlc
 import type { ExchangeManagerService } from '../modules/collector/services/exchange-manager.service.js';
 import type { PriceHistoryRepository } from '../database/repositories/price-history.repository.js';
 import type { OhlcvRepository } from '../database/repositories/ohlcv.repository.js';
-import type { ExtendedRedisService } from '../lib/extended-redis.service.js';
-
-// Extended Redis Service token (wraps Titan RedisService with stream operations)
-export const EXTENDED_REDIS_SERVICE: Token<ExtendedRedisService> = createToken<ExtendedRedisService>('ExtendedRedisService');
 
 // Service tokens with explicit type annotations for declaration emission
 export const PRICES_SERVICE_TOKEN: Token<PricesService> = createToken<PricesService>('PricesService');

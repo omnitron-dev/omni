@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Metrics Module
+ * Priceverse - Metrics Module
  * Provides application metrics and monitoring
  */
 
@@ -13,4 +13,4 @@ import { METRICS_SERVICE_TOKEN } from '../../shared/tokens.js';
   ],
   exports: [METRICS_SERVICE_TOKEN],
 })
-export class MetricsModule {}
+export class MetricsModule { }

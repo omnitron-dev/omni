@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Exchange Workers Exports
+ * Priceverse - Exchange Workers Exports
  */
 
 export * from './base-worker.js';

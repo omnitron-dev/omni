@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Stream Aggregator Service
+ * Priceverse - Stream Aggregator Service
  * Real-time VWAP calculation using repositories and transactions
  */
 
@@ -8,15 +8,15 @@ import {
   withRetry,
 } from '@omnitron-dev/titan/module/database';
 import { LOGGER_SERVICE_TOKEN, type ILoggerModule } from '@omnitron-dev/titan/module/logger';
+import { RedisService } from '@omnitron-dev/titan/module/redis';
 import {
   PriceHistoryRepository,
   type CreatePriceHistoryInput,
 } from '../../../database/index.js';
-import { PRICE_HISTORY_REPOSITORY, EXTENDED_REDIS_SERVICE, CBR_RATE_SERVICE_TOKEN } from '../../../shared/tokens.js';
+import { PRICE_HISTORY_REPOSITORY, CBR_RATE_SERVICE_TOKEN } from '../../../shared/tokens.js';
 import type { TradeEntry, VwapResult, PairSymbol } from '../../../shared/types.js';
 import { USD_PAIRS } from '../../../shared/types.js';
 import type { CbrRateService } from '../../collector/services/cbr-rate.service.js';
-import type { ExtendedRedisService } from '../../../lib/extended-redis.service.js';
 
 const AGGREGATION_INTERVAL = 10_000; // 10 seconds
 const WINDOW_SIZE = 30_000; // 30 second window
@@ -37,7 +37,7 @@ export class StreamAggregatorService {
   private readonly priceHistoryRepo: PriceHistoryRepository;
 
   constructor(
-    @Inject(EXTENDED_REDIS_SERVICE) private readonly redis: ExtendedRedisService,
+    @Inject(RedisService) private readonly redis: RedisService,
     @Inject(LOGGER_SERVICE_TOKEN) private readonly loggerModule: ILoggerModule,
     @Inject(CBR_RATE_SERVICE_TOKEN) private readonly cbrRate: CbrRateService,
     @Inject(PRICE_HISTORY_REPOSITORY) priceHistoryRepo: PriceHistoryRepository
@@ -98,8 +98,7 @@ export class StreamAggregatorService {
             this.consumerName,
             100,
             1000,
-            streamKey,
-            '>'
+            [{ key: streamKey, id: '>' }]
           );
 
           if (messages && messages.length > 0) {

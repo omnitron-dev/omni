@@ -1,4 +1,4 @@
-# Priceverse 2.0 - Unit Tests
+# Priceverse - Unit Tests
 
 Comprehensive unit test suite for the Priceverse cryptocurrency price aggregation platform.
 

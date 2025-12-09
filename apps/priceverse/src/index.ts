@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Package Exports
+ * Priceverse - Package Exports
  */
 
 export * from './app.module.js';

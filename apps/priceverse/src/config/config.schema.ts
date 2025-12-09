@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - Configuration Schema
+ * Priceverse - Configuration Schema
  */
 
 import { z } from 'zod';

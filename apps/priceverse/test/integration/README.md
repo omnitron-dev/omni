@@ -1,6 +1,6 @@
-# Priceverse 2.0 - Integration Tests
+# Priceverse - Integration Tests
 
-This directory contains integration tests for the Priceverse 2.0 application modules.
+This directory contains integration tests for the Priceverse application modules.
 
 ## Test Files
 

@@ -1,5 +1,5 @@
 /**
- * Priceverse 2.0 - RPC Service Interfaces
+ * Priceverse - RPC Service Interfaces
  *
  * Shared interfaces for Netron RPC services.
  * Used by both server (implementation) and client (proxy).

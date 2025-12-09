@@ -1,10 +1,11 @@
 /**
- * Priceverse 2.0 - Exchange Manager Service
+ * Priceverse - Exchange Manager Service
  * Manages all exchange workers and their lifecycle
  */
 
 import { Injectable, Inject, PostConstruct, PreDestroy } from '@omnitron-dev/titan/decorators';
 import { LOGGER_SERVICE_TOKEN, type ILoggerModule } from '@omnitron-dev/titan/module/logger';
+import { RedisService } from '@omnitron-dev/titan/module/redis';
 import type { ILogger, IRedisService } from '../workers/base-worker.js';
 import { BaseExchangeWorker } from '../workers/base-worker.js';
 import { BinanceWorker } from '../workers/binance.worker.js';
@@ -14,8 +15,6 @@ import { OkxWorker } from '../workers/okx.worker.js';
 import { BybitWorker } from '../workers/bybit.worker.js';
 import { KucoinWorker } from '../workers/kucoin.worker.js';
 import type { ExchangeWorkerStats, SupportedExchange } from '../../../shared/types.js';
-import { ExtendedRedisService } from '../../../lib/extended-redis.service.js';
-import { EXTENDED_REDIS_SERVICE } from '../../../shared/tokens.js';
 
 type WorkerConstructor = new (redis: IRedisService, logger: ILogger) => BaseExchangeWorker;
 
@@ -39,7 +38,7 @@ export class ExchangeManagerService {
   }
 
   constructor(
-    @Inject(EXTENDED_REDIS_SERVICE) private readonly redis: ExtendedRedisService,
+    @Inject(RedisService) private readonly redis: RedisService,
     @Inject(LOGGER_SERVICE_TOKEN) private readonly loggerModule: ILoggerModule,
     @Inject('EnabledExchanges')
     private readonly enabledExchanges: string[] = [
@@ -50,7 +49,7 @@ export class ExchangeManagerService {
       'bybit',
       'kucoin',
     ],
-  ) {}
+  ) { }
 
   private get logger(): ILogger {
     return this.loggerModule.logger;

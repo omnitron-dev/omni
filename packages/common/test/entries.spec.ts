@@ -1,24 +1,7 @@
-// Conditional import for Node.js and Deno compatibility
-let inherits: any;
-if (typeof Deno !== 'undefined') {
-  inherits =
-    (globalThis as any).node?.util?.inherits ||
-    function (ctor: any, superCtor: any) {
-      if (ctor === undefined || ctor === null) {
-        throw new TypeError('The constructor to "inherits" must not be null or undefined');
-      }
-      if (superCtor === undefined || superCtor === null) {
-        throw new TypeError('The super constructor to "inherits" must not be null or undefined');
-      }
-      if (superCtor.prototype === undefined) {
-        throw new TypeError('The super constructor to "inherits" must have a prototype property');
-      }
-      ctor.super_ = superCtor;
-      Object.setPrototypeOf(ctor.prototype, superCtor.prototype);
-    };
-} else {
-  inherits = require('node:util').inherits;
-}
+import { inherits as nodeInherits } from 'node:util';
+
+// Use Node.js inherits directly (works in both Node.js ESM and Deno with Node compat)
+const inherits = nodeInherits;
 
 import { noop } from '../src/primitives.js';
 import { keys, values, entries } from '../src/entries.js';

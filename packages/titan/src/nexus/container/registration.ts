@@ -1,28 +1,26 @@
 /**
  * Registration logic for Nexus DI Container
+ *
+ * Handles provider validation, registration creation, and dependency extraction.
+ *
+ * @internal
+ * @since 0.1.0
  */
 
-import { isToken, isMultiToken, getTokenName, isOptionalToken, createToken } from '../token.js';
+import { isToken } from '../token.js';
 import { isConstructor } from '../provider-utils.js';
-import {
-  InvalidProviderError,
-  DuplicateRegistrationError,
-} from '../errors.js';
+import { InvalidProviderError } from '../errors.js';
 import {
   Scope,
-  Provider,
   ProviderDefinition,
   InjectionToken,
-  ResolutionContext,
   RegistrationOptions,
   ClassProvider,
   isConfigToken,
   ConfigToken,
-  ConditionalProviderWithWhen,
   Constructor,
 } from '../types.js';
 import type { Registration } from './types.js';
-import { DependencyNotFoundError } from '../errors.js';
 
 /**
  * RegistrationService handles all provider registration logic
@@ -57,8 +55,8 @@ export class RegistrationService {
     createFactoryFn: (token: InjectionToken<any>, provider: ProviderDefinition<any>) => (...args: any[]) => any
   ): Registration {
     // Handle class constructor as provider
-    if (typeof provider === 'function' && provider.prototype) {
-      provider = { useClass: provider as Constructor } as ClassProvider;
+    if (isConstructor(provider)) {
+      provider = { useClass: provider } as ClassProvider<any>;
     }
 
     // Validate provider

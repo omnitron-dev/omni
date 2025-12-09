@@ -1,5 +1,10 @@
 /**
  * Scope management for Nexus DI Container
+ *
+ * Handles singleton, transient, scoped, and request-scoped instance management.
+ *
+ * @internal
+ * @since 0.1.0
  */
 
 import { isMultiToken } from '../token.js';
@@ -7,7 +12,6 @@ import {
   Scope,
   InjectionToken,
   ResolutionContext,
-  IContainer,
 } from '../types.js';
 import type { Registration } from './types.js';
 import { LifecycleEvent, LifecycleManager } from '../lifecycle.js';

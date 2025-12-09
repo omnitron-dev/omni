@@ -1,20 +1,17 @@
 /**
  * Async resolution logic for Nexus DI Container
+ *
+ * Handles asynchronous dependency resolution with retry and timeout support.
+ *
+ * @internal
+ * @since 0.1.0
  */
 
-import { getTokenName } from '../token.js';
-import {
-  AsyncResolutionError,
-  CircularDependencyError,
-  DependencyNotFoundError,
-} from '../errors.js';
+import { CircularDependencyError } from '../errors.js';
 import { Errors, toTitanError } from '../../errors/factories.js';
 import {
-  Scope,
   InjectionToken,
   ResolutionContext,
-  ResolutionState,
-  FactoryProvider,
   ResolutionContextInternal,
 } from '../types.js';
 import type { Registration, ModuleProviderInfo } from './types.js';

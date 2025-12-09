@@ -1,14 +1,14 @@
 /**
  * Lifecycle management for Nexus DI Container
+ *
+ * Handles instance initialization, disposal, and module lifecycle hooks.
+ *
+ * @internal
+ * @since 0.1.0
  */
 
 import { getTokenName } from '../token.js';
-import {
-  InjectionToken,
-  IModule,
-  Disposable,
-  Initializable,
-} from '../types.js';
+import { InjectionToken, IModule, Disposable, Initializable } from '../types.js';
 import type { ILogger } from '../../modules/logger/logger.types.js';
 
 /**

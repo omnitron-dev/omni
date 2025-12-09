@@ -1,17 +1,19 @@
 /**
  * Factory creation logic for Nexus DI Container
+ *
+ * Creates factory functions from provider definitions for dependency instantiation.
+ *
+ * @internal
+ * @since 0.1.0
  */
 
-import {
-  DependencyNotFoundError,
-} from '../errors.js';
+import { DependencyNotFoundError } from '../errors.js';
 import { Errors } from '../../errors/index.js';
 import {
   InjectionToken,
   ProviderDefinition,
   ResolutionContext,
   ConditionalProviderWithWhen,
-  Constructor,
 } from '../types.js';
 
 /**

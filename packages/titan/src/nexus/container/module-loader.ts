@@ -1,15 +1,14 @@
 /**
  * Module loading logic for Nexus DI Container
+ *
+ * Handles module resolution, provider tracking, and token-to-module mapping.
+ *
+ * @internal
+ * @since 0.1.0
  */
 
-import {
-  IModule,
-  InjectionToken,
-  ResolutionContext,
-  ResolutionContextInternal,
-} from '../types.js';
-import type { Registration, ModuleProviderInfo, ResolvedModule } from './types.js';
-import { Errors } from '../../errors/factories.js';
+import { IModule, InjectionToken } from '../types.js';
+import type { ModuleProviderInfo, ResolvedModule } from './types.js';
 
 /**
  * ModuleLoaderService handles module loading and dependency management

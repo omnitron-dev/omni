@@ -1,31 +1,20 @@
 /**
  * Resolution logic for Nexus DI Container
+ *
+ * Handles dependency resolution, module access checking, and error message building.
+ *
+ * @internal
+ * @since 0.1.0
  */
 
-import { isMultiToken, getTokenName, isOptionalToken } from '../token.js';
-import {
-  ResolutionError,
-  AsyncResolutionError,
-  CircularDependencyError,
-  DependencyNotFoundError,
-  InvalidProviderError,
-  ContainerDisposedError,
-  DuplicateRegistrationError,
-  DisposalError,
-} from '../errors.js';
+import { getTokenName } from '../token.js';
 import { Errors } from '../../errors/factories.js';
 import {
-  Scope,
   InjectionToken,
   ResolutionContext,
-  IContainer,
-  Disposable,
-  Initializable,
   ResolutionContextInternal,
-  ResolutionState,
 } from '../types.js';
 import type { Registration, ModuleProviderInfo } from './types.js';
-import { LifecycleEvent, LifecycleManager } from '../lifecycle.js';
 
 /** Counter for generating unique resolution IDs */
 let resolutionIdCounter = 0;

@@ -128,11 +128,6 @@ export interface IConfigModuleOptions {
   strict?: boolean;
 
   /**
-   * Global configuration prefix
-   */
-  prefix?: string;
-
-  /**
    * Logger instance
    */
   logger?: any;

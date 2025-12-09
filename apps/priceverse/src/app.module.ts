@@ -33,7 +33,6 @@ import { PRICE_HISTORY_REPOSITORY, OHLCV_REPOSITORY } from './shared/tokens.js';
     // Titan Core Modules
     ConfigModule.forRoot({
       schema: configSchema,
-      prefix: 'PRICEVERSE_',
       sources: [
         { type: 'file', path: 'config/default.json', optional: true },
         { type: 'env', prefix: 'PRICEVERSE_', separator: '__' },

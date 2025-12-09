@@ -13,6 +13,10 @@ import {
 import type { Database, PriceHistoryTable } from '../schema.js';
 import type { PairSymbol, AggregationMethod } from '../../shared/types.js';
 
+// Pagination constants to prevent DOS attacks
+const DEFAULT_LIMIT = 1000;
+const MAX_LIMIT = 10_000;
+
 // Entity type (what we get from DB)
 export type PriceHistoryEntity = Selectable<PriceHistoryTable>;
 
@@ -92,10 +96,14 @@ export class PriceHistoryRepository extends BaseRepository<
 
   /**
    * Get prices for a pair within a time range
+   * Enforces pagination limits to prevent DOS attacks
    */
   async findByPairInRange(
     options: PriceHistoryQueryOptions
   ): Promise<PriceHistoryEntity[]> {
+    // Enforce pagination limits
+    const limit = Math.min(options.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
+
     let query = this.db
       .selectFrom('price_history')
       .selectAll()
@@ -111,9 +119,8 @@ export class PriceHistoryRepository extends BaseRepository<
 
     query = query.orderBy('timestamp', options.orderBy ?? 'desc');
 
-    if (options.limit) {
-      query = query.limit(options.limit);
-    }
+    // Always apply limit (enforced)
+    query = query.limit(limit);
 
     if (options.offset) {
       query = query.offset(options.offset);

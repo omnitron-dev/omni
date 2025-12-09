@@ -111,12 +111,12 @@ import { PRICE_HISTORY_REPOSITORY, OHLCV_REPOSITORY } from './shared/tokens.js';
     SchedulerModule.forRoot(),
 
     // Application Modules
+    MetricsModule,  // Metrics first - needed by other modules
     CollectorModule,
     AggregatorModule,
     PricesModule,
     ChartsModule,
     HealthModule,
-    MetricsModule,
   ],
   providers: [
     // Register repositories as providers

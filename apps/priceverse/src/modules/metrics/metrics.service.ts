@@ -44,6 +44,10 @@ export class MetricsService {
     cpuUsage: 0,
   };
 
+  // Previous CPU usage for delta calculation
+  private lastCpuUsage: NodeJS.CpuUsage | null = null;
+  private lastCpuTime = 0;
+
   /**
    * Get current metrics snapshot
    */
@@ -136,10 +140,25 @@ export class MetricsService {
     this.systemMetrics.memoryUsage = memUsage.heapUsed;
     this.systemMetrics.memoryTotal = memUsage.heapTotal;
 
-    // CPU metrics (basic approximation using process.cpuUsage())
-    const cpuUsage = process.cpuUsage();
-    const totalCpu = cpuUsage.user + cpuUsage.system;
-    // Convert microseconds to percentage (rough estimate)
-    this.systemMetrics.cpuUsage = totalCpu / 10000; // Normalized value
+    // CPU metrics - calculate actual utilization percentage
+    const currentTime = Date.now();
+    const currentCpuUsage = process.cpuUsage(this.lastCpuUsage ?? undefined);
+
+    if (this.lastCpuUsage !== null && this.lastCpuTime > 0) {
+      // Calculate elapsed time in microseconds
+      const elapsedMs = currentTime - this.lastCpuTime;
+      const elapsedMicros = elapsedMs * 1000;
+
+      // Total CPU time used (user + system) in microseconds
+      const totalCpuMicros = currentCpuUsage.user + currentCpuUsage.system;
+
+      // Calculate CPU percentage (capped at 100% per core)
+      // Note: Can exceed 100% on multi-core systems
+      this.systemMetrics.cpuUsage = (totalCpuMicros / elapsedMicros) * 100;
+    }
+
+    // Store for next calculation
+    this.lastCpuUsage = process.cpuUsage();
+    this.lastCpuTime = currentTime;
   }
 }

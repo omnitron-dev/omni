@@ -16,10 +16,11 @@ import {
   type GetPriceChangeParams,
 } from '../../contracts/schemas.js';
 import { PriceVerseError, PriceVerseErrorCode } from '../../contracts/errors.js';
+import { PRICES_SERVICE_TOKEN } from '../../shared/tokens.js';
 
 @Service('PricesService@2.0.0')
 export class PricesRpcService {
-  constructor(@Inject('PricesService') private readonly pricesService: PricesService) { }
+  constructor(@Inject(PRICES_SERVICE_TOKEN) private readonly pricesService: PricesService) { }
 
   /**
    * Get current price for a trading pair

@@ -15,7 +15,8 @@ import {
   PriceHistoryRepository,
   type PriceHistoryEntity,
 } from '../../../database/index.js';
-import { PRICE_HISTORY_REPOSITORY } from '../../../shared/tokens.js';
+import { PRICE_HISTORY_REPOSITORY, METRICS_SERVICE_TOKEN } from '../../../shared/tokens.js';
+import type { MetricsService } from '../../metrics/metrics.service.js';
 import type {
   PairSymbol,
   PriceResponse,
@@ -26,6 +27,8 @@ import { PriceVerseError, PriceVerseErrorCode } from '../../../contracts/errors.
 
 const CACHE_TTL = 60; // 60 seconds
 const STALE_THRESHOLD = 120_000; // 2 minutes
+const STREAM_IDLE_TIMEOUT = 60_000; // 60 seconds without messages
+const MAX_MESSAGE_QUEUE_SIZE = 1000; // Prevent unbounded memory growth
 const RETRY_OPTIONS = {
   maxAttempts: 3,
   delayMs: 500,
@@ -39,7 +42,8 @@ export class PricesService {
   constructor(
     @Inject(RedisService) private readonly redis: RedisService,
     @Inject(LOGGER_SERVICE_TOKEN) private readonly loggerModule: ILoggerModule,
-    @Inject(PRICE_HISTORY_REPOSITORY) priceHistoryRepo: PriceHistoryRepository
+    @Inject(PRICE_HISTORY_REPOSITORY) priceHistoryRepo: PriceHistoryRepository,
+    @Inject(METRICS_SERVICE_TOKEN) private readonly metrics: MetricsService
   ) {
     this.priceHistoryRepo = priceHistoryRepo;
   }
@@ -199,20 +203,74 @@ export class PricesService {
 
   /**
    * Stream real-time price updates via Redis pub/sub
+   *
+   * @param pairs - Trading pairs to subscribe to
+   * @param options - Stream options
+   * @param options.signal - AbortSignal for cancellation
+   * @param options.idleTimeout - Time in ms to wait before closing idle stream (default: 60s)
+   * @param options.maxQueueSize - Maximum buffered messages (default: 1000)
    */
-  async *streamPrices(pairs: PairSymbol[]): AsyncGenerator<PriceResponse> {
+  async *streamPrices(
+    pairs: PairSymbol[],
+    options?: {
+      signal?: AbortSignal;
+      idleTimeout?: number;
+      maxQueueSize?: number;
+    }
+  ): AsyncGenerator<PriceResponse> {
+    const idleTimeout = options?.idleTimeout ?? STREAM_IDLE_TIMEOUT;
+    const maxQueueSize = options?.maxQueueSize ?? MAX_MESSAGE_QUEUE_SIZE;
+    const abortSignal = options?.signal;
+
     this.logger.info(`[PricesService] Starting price stream for ${pairs.length} pairs`);
 
     // Create a separate Redis client for subscriptions
     const subscriber: RedisClient = this.redis.createSubscriber();
     const channels = pairs.map((pair) => `price:${pair}`);
 
-    // Queue for buffering messages
+    // Queue for buffering messages with size limit
     const messageQueue: PriceResponse[] = [];
-    let resolveNext: ((value: PriceResponse) => void) | null = null;
+    let resolveNext: ((value: PriceResponse | null) => void) | null = null;
+    let isClosing = false;
+    let idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+    // Reset idle timer on activity
+    const resetIdleTimer = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        this.logger.warn('[PricesService] Stream idle timeout, closing');
+        isClosing = true;
+        if (resolveNext) {
+          resolveNext(null);
+          resolveNext = null;
+        }
+      }, idleTimeout);
+    };
+
+    // Handle abort signal
+    const abortHandler = () => {
+      this.logger.info('[PricesService] Stream aborted by signal');
+      isClosing = true;
+      if (resolveNext) {
+        resolveNext(null);
+        resolveNext = null;
+      }
+    };
+
+    if (abortSignal) {
+      if (abortSignal.aborted) {
+        throw new PriceVerseError(
+          PriceVerseErrorCode.STREAM_ABORTED,
+          'Stream aborted before starting'
+        );
+      }
+      abortSignal.addEventListener('abort', abortHandler, { once: true });
+    }
 
     // Subscribe to all channels
     const messageHandler = (channel: string, message: string) => {
+      if (isClosing) return;
+
       try {
         const data = JSON.parse(message);
         const pair = channel.replace('price:', '');
@@ -223,10 +281,17 @@ export class PricesService {
           timestamp: data.timestamp,
         };
 
+        resetIdleTimer();
+
         if (resolveNext) {
           resolveNext(priceResponse);
           resolveNext = null;
         } else {
+          // Enforce queue size limit - drop oldest if full
+          if (messageQueue.length >= maxQueueSize) {
+            const dropped = messageQueue.shift();
+            this.logger.warn(`[PricesService] Queue full, dropped message for ${dropped?.pair}`);
+          }
           messageQueue.push(priceResponse);
         }
       } catch (error) {
@@ -238,24 +303,36 @@ export class PricesService {
 
     // Subscribe using Titan's API
     await this.redis.subscribeClient(subscriber, channels);
+    resetIdleTimer();
 
     try {
-      while (true) {
+      while (!isClosing) {
         if (messageQueue.length > 0) {
           const price = messageQueue.shift();
           if (price) {
             yield price;
           }
         } else {
-          // Wait for next message
-          const price = await new Promise<PriceResponse>((resolve) => {
+          // Wait for next message with timeout protection
+          const price = await new Promise<PriceResponse | null>((resolve) => {
             resolveNext = resolve;
           });
+
+          if (price === null) {
+            // Stream closed (abort or timeout)
+            break;
+          }
           yield price;
         }
       }
     } finally {
-      // Cleanup on generator close
+      // Cleanup
+      isClosing = true;
+      if (idleTimer) clearTimeout(idleTimer);
+      if (abortSignal) {
+        abortSignal.removeEventListener('abort', abortHandler);
+      }
+      subscriber.removeListener('message', messageHandler);
       await this.redis.unsubscribeClient(subscriber, channels);
       this.logger.info('[PricesService] Price stream closed');
     }
@@ -267,6 +344,7 @@ export class PricesService {
   private async getPriceFromCache(pair: PairSymbol): Promise<PriceResponse | null> {
     try {
       const cacheKey = `price:${pair}`;
+      this.metrics.recordRedisOp();
       const cached = await this.redis.get(cacheKey);
 
       if (cached) {
@@ -276,17 +354,22 @@ export class PricesService {
         // Check if price is stale
         if (age > STALE_THRESHOLD) {
           this.logger.warn(`[PricesService] Stale price in cache for ${pair} (age: ${age}ms)`);
+          this.metrics.recordCacheMiss();
           return null;
         }
 
+        this.metrics.recordCacheHit();
         return {
           pair,
           price: parseFloat(data.price),
           timestamp: data.timestamp,
         };
       }
+
+      this.metrics.recordCacheMiss();
     } catch (error) {
       this.logger.error(`[PricesService] Cache read error for ${pair}:`, error);
+      this.metrics.recordCacheMiss();
     }
 
     return null;
@@ -342,6 +425,7 @@ export class PricesService {
         timestamp: price.timestamp,
       });
 
+      this.metrics.recordRedisOp();
       await this.redis.setex(cacheKey, CACHE_TTL, cacheValue);
     } catch (error) {
       // Non-fatal: log but don't throw

@@ -14,14 +14,13 @@ import {
   type CreatePriceHistoryInput,
 } from '../../../database/index.js';
 import { PRICE_HISTORY_REPOSITORY, CBR_RATE_SERVICE_TOKEN } from '../../../shared/tokens.js';
-import type { TradeEntry, VwapResult, PairSymbol } from '../../../shared/types.js';
-import { USD_PAIRS } from '../../../shared/types.js';
+import type { TradeEntry, VwapResult, PairSymbol, SupportedExchange } from '../../../shared/types.js';
+import { USD_PAIRS, SUPPORTED_EXCHANGES } from '../../../shared/types.js';
 import type { CbrRateService } from '../../collector/services/cbr-rate.service.js';
 
 const AGGREGATION_INTERVAL = 10_000; // 10 seconds
 const WINDOW_SIZE = 30_000; // 30 second window
 const BUFFER_KEY_PREFIX = 'buffer:trades:';
-const EXCHANGES = ['binance', 'kraken', 'coinbase', 'okx', 'bybit', 'kucoin'];
 
 const RETRY_OPTIONS = {
   maxAttempts: 3,
@@ -29,12 +28,18 @@ const RETRY_OPTIONS = {
   backoff: true,
 };
 
+const MAX_CONSECUTIVE_ERRORS = 10;
+const ERROR_RESET_INTERVAL = 60_000; // Reset error count after 1 minute of success
+
 @Injectable({ scope: 'singleton' })
 export class StreamAggregatorService {
   private isRunning = false;
   private consumerName: string;
   private aggregationTimer: ReturnType<typeof setInterval> | null = null;
   private readonly priceHistoryRepo: PriceHistoryRepository;
+  private consumptionPromise: Promise<void> | null = null;
+  private consecutiveErrors = 0;
+  private lastErrorTime = 0;
 
   constructor(
     @Inject(RedisService) private readonly redis: RedisService,
@@ -68,12 +73,22 @@ export class StreamAggregatorService {
     this.isRunning = false;
     if (this.aggregationTimer) {
       clearInterval(this.aggregationTimer);
+      this.aggregationTimer = null;
+    }
+    // Wait for consumption loop to finish
+    if (this.consumptionPromise) {
+      try {
+        await this.consumptionPromise;
+      } catch {
+        // Ignore errors during shutdown
+      }
+      this.consumptionPromise = null;
     }
     this.logger.info('[StreamAggregator] Stopped');
   }
 
   private async createConsumerGroups(): Promise<void> {
-    for (const exchange of EXCHANGES) {
+    for (const exchange of SUPPORTED_EXCHANGES) {
       const streamKey = `stream:trades:${exchange}`;
       try {
         await this.redis.xgroup('CREATE', streamKey, 'aggregator-group', '0', 'MKSTREAM');
@@ -84,13 +99,20 @@ export class StreamAggregatorService {
   }
 
   private startConsumption(): void {
-    this.consumeStreams();
+    // Store promise for proper shutdown handling
+    this.consumptionPromise = this.consumeStreams().catch((error) => {
+      // This should only happen for truly fatal errors
+      this.logger.error('[StreamAggregator] Fatal consumption error:', error);
+      this.isRunning = false;
+    });
   }
 
   private async consumeStreams(): Promise<void> {
     while (this.isRunning) {
       try {
-        for (const exchange of EXCHANGES) {
+        for (const exchange of SUPPORTED_EXCHANGES) {
+          if (!this.isRunning) break; // Check between exchanges
+
           const streamKey = `stream:trades:${exchange}`;
 
           const messages = await this.redis.xreadgroup(
@@ -105,9 +127,28 @@ export class StreamAggregatorService {
             await this.processBatch(exchange, messages);
           }
         }
+
+        // Reset error count on successful iteration
+        if (this.consecutiveErrors > 0 && Date.now() - this.lastErrorTime > ERROR_RESET_INTERVAL) {
+          this.consecutiveErrors = 0;
+        }
       } catch (error) {
-        this.logger.error('[StreamAggregator] Stream consumption error:', error);
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        this.consecutiveErrors++;
+        this.lastErrorTime = Date.now();
+
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.error(`[StreamAggregator] Stream consumption error (${this.consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}): ${errorMessage}`);
+
+        // Circuit breaker: stop if too many consecutive errors
+        if (this.consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+          this.logger.error('[StreamAggregator] Circuit breaker triggered - too many consecutive errors');
+          this.isRunning = false;
+          throw new Error(`Stream consumption failed after ${MAX_CONSECUTIVE_ERRORS} consecutive errors`);
+        }
+
+        // Exponential backoff with cap
+        const backoffMs = Math.min(1000 * Math.pow(2, this.consecutiveErrors - 1), 30_000);
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
       }
     }
   }
@@ -300,14 +341,14 @@ export class StreamAggregatorService {
   async getStats(): Promise<{
     isRunning: boolean;
     consumerName: string;
-    exchanges: string[];
+    exchanges: readonly SupportedExchange[];
     windowSize: number;
     interval: number;
   }> {
     return {
       isRunning: this.isRunning,
       consumerName: this.consumerName,
-      exchanges: EXCHANGES,
+      exchanges: SUPPORTED_EXCHANGES,
       windowSize: WINDOW_SIZE,
       interval: AGGREGATION_INTERVAL,
     };

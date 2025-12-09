@@ -29,6 +29,10 @@ export enum PriceVerseErrorCode {
   REDIS_ERROR = 'SYSTEM_5002',
   INTERNAL_ERROR = 'SYSTEM_5003',
   SERVICE_UNAVAILABLE = 'SYSTEM_5004',
+
+  // Stream errors (6xxx)
+  STREAM_ABORTED = 'STREAM_6001',
+  STREAM_TIMEOUT = 'STREAM_6002',
 }
 
 /**

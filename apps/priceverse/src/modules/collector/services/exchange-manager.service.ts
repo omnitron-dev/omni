@@ -14,7 +14,7 @@ import { CoinbaseWorker } from '../workers/coinbase.worker.js';
 import { OkxWorker } from '../workers/okx.worker.js';
 import { BybitWorker } from '../workers/bybit.worker.js';
 import { KucoinWorker } from '../workers/kucoin.worker.js';
-import type { ExchangeWorkerStats, SupportedExchange } from '../../../shared/types.js';
+import { SUPPORTED_EXCHANGES, type ExchangeWorkerStats, type SupportedExchange } from '../../../shared/types.js';
 
 type WorkerConstructor = new (redis: IRedisService, logger: ILogger) => BaseExchangeWorker;
 
@@ -41,14 +41,7 @@ export class ExchangeManagerService {
     @Inject(RedisService) private readonly redis: RedisService,
     @Inject(LOGGER_SERVICE_TOKEN) private readonly loggerModule: ILoggerModule,
     @Inject('EnabledExchanges')
-    private readonly enabledExchanges: string[] = [
-      'binance',
-      'kraken',
-      'coinbase',
-      'okx',
-      'bybit',
-      'kucoin',
-    ],
+    private readonly enabledExchanges: readonly SupportedExchange[] = SUPPORTED_EXCHANGES,
   ) { }
 
   private get logger(): ILogger {

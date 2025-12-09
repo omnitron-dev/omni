@@ -592,6 +592,16 @@ export class Application implements IApplication {
         }
       }
 
+      // Initialize all tracked instances (calls @PostConstruct methods)
+      // This ensures services are fully initialized before the application is "started"
+      try {
+        await this._container.initialize();
+        this._logger?.debug('Container lifecycle initialization completed');
+      } catch (error) {
+        this._logger?.error({ error }, 'Failed to initialize container lifecycle hooks');
+        throw error;
+      }
+
       this.setState(ApplicationState.Started);
       this._isStarted = true;
       // Ensure startup time is at least 1ms for testing

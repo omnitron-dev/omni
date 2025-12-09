@@ -1,5 +1,8 @@
 /**
  * Priceverse - Application Entry Point
+ *
+ * Services with @PostConstruct decorators are automatically initialized
+ * by Titan's Application.start() - no manual initialization needed.
  */
 
 import { Application } from '@omnitron-dev/titan';
@@ -7,9 +10,6 @@ import { HttpTransport } from '@omnitron-dev/titan/netron/transport/http';
 import { CONFIG_SERVICE_TOKEN, type ConfigService } from '@omnitron-dev/titan/module/config';
 import { LOGGER_SERVICE_TOKEN, type ILoggerModule } from '@omnitron-dev/titan/module/logger';
 import { AppModule } from './app.module.js';
-import { EXCHANGE_MANAGER_TOKEN, STREAM_AGGREGATOR_TOKEN } from './shared/tokens.js';
-import type { ExchangeManagerService } from './modules/collector/services/exchange-manager.service.js';
-import type { StreamAggregatorService } from './modules/aggregator/services/stream-aggregator.service.js';
 
 async function bootstrap() {
   const app = await Application.create(AppModule, {
@@ -36,26 +36,8 @@ async function bootstrap() {
     });
   }
 
-  // Start application - Netron automatically starts HTTP server
+  // Start application - Netron starts HTTP server, @PostConstruct methods are called
   await app.start();
-
-  // Manually start services that need initialization
-  // (Titan's @PostConstruct doesn't auto-execute for services)
-  try {
-    const exchangeManager = await app.container.resolveAsync<ExchangeManagerService>(EXCHANGE_MANAGER_TOKEN);
-    await exchangeManager.start();
-    logger.info({ module: 'Main' }, 'Exchange manager started');
-  } catch (error) {
-    logger.error({ module: 'Main', error }, 'Failed to start exchange manager');
-  }
-
-  try {
-    const streamAggregator = await app.container.resolveAsync<StreamAggregatorService>(STREAM_AGGREGATOR_TOKEN);
-    await streamAggregator.start();
-    logger.info({ module: 'Main' }, 'Stream aggregator started');
-  } catch (error) {
-    logger.error({ module: 'Main', error }, 'Failed to start stream aggregator');
-  }
 
   logger.info({ module: 'Main', host, port }, `Priceverse listening on http://${host}:${port}`);
   logger.info({ module: 'Main', services: app.netron?.getServiceNames() ?? [] }, 'Services registered');

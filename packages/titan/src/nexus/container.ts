@@ -537,11 +537,17 @@ export class Container implements IContainer {
       }
 
       // Track instances for lifecycle management
-      if (instance && typeof instance.onInit === 'function') {
+      // Check for onInit method OR @PostConstruct decorator
+      if (instance && (typeof instance.onInit === 'function' || this.lifecycleService.hasPostConstruct(instance))) {
         this.initializableInstances.add(instance);
       }
 
-      if (instance && (typeof instance.onDestroy === 'function' || this.lifecycleService.isDisposable(instance))) {
+      // Track for disposal: onDestroy, dispose(), or @PreDestroy
+      if (instance && (
+        typeof instance.onDestroy === 'function' ||
+        this.lifecycleService.isDisposable(instance) ||
+        this.lifecycleService.hasPreDestroy(instance)
+      )) {
         this.disposableInstances.add(instance);
       }
 
@@ -841,8 +847,23 @@ export class Container implements IContainer {
       throw wrappedError;
     }
 
-    // Handle async class providers with onInit lifecycle
-    if (this.lifecycleService.isAsyncInitializable(instance)) {
+    // Handle async class providers with @PostConstruct or onInit lifecycle
+    // Priority: @PostConstruct decorator > onInit method
+    const postConstructMethod = this.lifecycleService.getPostConstructMethod(instance);
+    if (postConstructMethod) {
+      try {
+        const result = (instance as any)[postConstructMethod]();
+        if (result instanceof Promise) {
+          await result;
+        }
+      } catch (error: any) {
+        const wrappedError = new AsyncResolutionError(token);
+        (wrappedError as any).cause = error;
+        (wrappedError as any).message =
+          'Failed to call @PostConstruct \'' + postConstructMethod + '\' on \'' + getTokenName(token) + '\': ' + error.message;
+        throw wrappedError;
+      }
+    } else if (this.lifecycleService.isAsyncInitializable(instance)) {
       try {
         await instance.onInit();
       } catch (error: any) {
@@ -860,11 +881,17 @@ export class Container implements IContainer {
     }
 
     // Track instances for lifecycle management
-    if (instance && typeof (instance as any).onInit === 'function') {
+    // Check for onInit method OR @PostConstruct decorator
+    if (instance && (typeof (instance as any).onInit === 'function' || this.lifecycleService.hasPostConstruct(instance))) {
       this.initializableInstances.add(instance);
     }
 
-    if (instance && (typeof (instance as any).onDestroy === 'function' || this.lifecycleService.isDisposable(instance))) {
+    // Track for disposal: onDestroy, dispose(), or @PreDestroy
+    if (instance && (
+      typeof (instance as any).onDestroy === 'function' ||
+      this.lifecycleService.isDisposable(instance) ||
+      this.lifecycleService.hasPreDestroy(instance)
+    )) {
       this.disposableInstances.add(instance);
     }
 

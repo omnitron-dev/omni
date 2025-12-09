@@ -25,4 +25,4 @@ import { CBR_RATE_SERVICE_TOKEN, EXCHANGE_MANAGER_TOKEN } from '../../shared/tok
   ],
   exports: [CBR_RATE_SERVICE_TOKEN, EXCHANGE_MANAGER_TOKEN, 'EnabledExchanges'],
 })
-export class CollectorModule { }
+export class CollectorModule {}

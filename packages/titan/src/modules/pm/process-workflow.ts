@@ -425,7 +425,7 @@ export class ProcessWorkflow<T> {
    * Generate workflow ID
    */
   private generateId(): string {
-    return `workflow-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    return `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   }
 
   /**

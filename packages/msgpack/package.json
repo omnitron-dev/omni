@@ -38,12 +38,12 @@
     "@jest/globals": "^30.2.0",
     "@msgpack/msgpack": "^3.1.2",
     "@types/jest": "^30.0.0",
-    "@types/node": "^24.6.2",
-    "bson": "^6.10.4",
+    "@types/node": "^24.10.2",
+    "bson": "^7.0.0",
     "cbor": "^10.0.11",
     "jest": "^30.2.0",
     "msgpackr": "^1.11.5",
-    "ts-jest": "^29.4.4",
+    "ts-jest": "^29.4.6",
     "typescript": "^5.9.3"
   },
   "keywords": [

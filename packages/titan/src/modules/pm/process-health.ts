@@ -90,6 +90,7 @@ export class ProcessHealthChecker extends EventEmitter {
     this.checkers.clear();
     this.healthHistory.clear();
     this.failureCounts.clear();
+    this.removeAllListeners();
   }
 
   /**

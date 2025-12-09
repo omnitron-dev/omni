@@ -64,6 +64,9 @@ export interface ISagaStepResult {
  * Saga orchestrator
  */
 export class SagaOrchestrator extends EventEmitter {
+  private static readonly MAX_SAGAS = 1000;
+  private static readonly MAX_COMPENSATION_LOG_ENTRIES = 1000;
+
   private sagas = new Map<string, ISagaContext>();
   private stepDefinitions = new Map<string, Map<string, ISagaStep>>();
   private compensationLog = new Map<string, any[]>();
@@ -108,6 +111,9 @@ export class SagaOrchestrator extends EventEmitter {
     };
 
     this.sagas.set(sagaId, context);
+
+    // Cleanup old sagas if limit exceeded
+    this.cleanupOldSagas();
 
     try {
       context.state = 'running';
@@ -417,12 +423,16 @@ export class SagaOrchestrator extends EventEmitter {
       this.compensationLog.set(sagaId, []);
     }
 
-    this.compensationLog.get(sagaId)!.push({
+    const log = this.compensationLog.get(sagaId)!;
+    log.push({
       step: step.name,
       input,
       result,
       timestamp: Date.now(),
     });
+
+    // Cleanup old compensation log entries if limit exceeded
+    this.cleanupCompensationLog();
   }
 
   /**
@@ -440,7 +450,7 @@ export class SagaOrchestrator extends EventEmitter {
    * Generate saga ID
    */
   private generateSagaId(): string {
-    return `saga-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    return `saga-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   }
 
   /**
@@ -462,6 +472,67 @@ export class SagaOrchestrator extends EventEmitter {
    */
   getAllSagas(): ISagaContext[] {
     return Array.from(this.sagas.values());
+  }
+
+  /**
+   * Cleanup old sagas when limit is exceeded
+   * Removes oldest completed or failed sagas first
+   */
+  private cleanupOldSagas(): void {
+    if (this.sagas.size <= SagaOrchestrator.MAX_SAGAS) return;
+
+    // Get sagas sorted by end time (oldest first), filter for completed/failed
+    const completedSagas = Array.from(this.sagas.entries())
+      .filter(([, saga]) => saga.state === 'completed' || saga.state === 'failed')
+      .sort(([, a], [, b]) => (a.endTime || 0) - (b.endTime || 0));
+
+    // Calculate how many to remove
+    const toRemove = this.sagas.size - SagaOrchestrator.MAX_SAGAS;
+
+    // Remove oldest completed/failed sagas
+    for (let i = 0; i < Math.min(toRemove, completedSagas.length); i++) {
+      const [sagaId] = completedSagas[i]!;
+      this.sagas.delete(sagaId);
+      this.compensationLog.delete(sagaId);
+    }
+  }
+
+  /**
+   * Cleanup old compensation log entries when limit is exceeded
+   * Keeps the most recent entries for each saga
+   */
+  private cleanupCompensationLog(): void {
+    // Count total entries across all sagas
+    let totalEntries = 0;
+    for (const log of this.compensationLog.values()) {
+      totalEntries += log.length;
+    }
+
+    if (totalEntries <= SagaOrchestrator.MAX_COMPENSATION_LOG_ENTRIES) return;
+
+    // Remove oldest entries from each saga's log
+    const entriesToRemove = totalEntries - SagaOrchestrator.MAX_COMPENSATION_LOG_ENTRIES;
+    let removed = 0;
+
+    for (const [sagaId, log] of this.compensationLog.entries()) {
+      if (removed >= entriesToRemove) break;
+
+      const toRemoveFromThis = Math.min(log.length, entriesToRemove - removed);
+      if (toRemoveFromThis > 0) {
+        this.compensationLog.set(sagaId, log.slice(toRemoveFromThis));
+        removed += toRemoveFromThis;
+      }
+    }
+  }
+
+  /**
+   * Destroy the saga orchestrator and clean up event listeners
+   */
+  destroy(): void {
+    this.sagas.clear();
+    this.stepDefinitions.clear();
+    this.compensationLog.clear();
+    this.removeAllListeners();
   }
 }
 
@@ -599,7 +670,7 @@ export class DistributedTransactionManager {
    * Generate transaction ID
    */
   private generateTransactionId(): string {
-    return `tx-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    return `tx-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   }
 }
 

@@ -124,6 +124,8 @@ export interface ChaosMonkeyConfig {
  * Random failure injector with safety controls
  */
 export class ChaosMonkey extends EventEmitter {
+  private static readonly MAX_CHAOS_HISTORY = 1000;
+
   private active = false;
   private experiments: ChaosExperiment[] = [];
   private activeExperiments = new Map<string, NodeJS.Timeout>();
@@ -229,6 +231,11 @@ export class ChaosMonkey extends EventEmitter {
     try {
       await this.applyChaos(type, target);
       this.chaosHistory.push({ type, target, timestamp: Date.now() });
+
+      // Cleanup old history entries if limit exceeded
+      if (this.chaosHistory.length > ChaosMonkey.MAX_CHAOS_HISTORY) {
+        this.chaosHistory = this.chaosHistory.slice(-ChaosMonkey.MAX_CHAOS_HISTORY);
+      }
     } catch (error) {
       this.emit('chaos:error', error);
     } finally {
@@ -257,13 +264,10 @@ export class ChaosMonkey extends EventEmitter {
       return false;
     }
 
-    const targetId = typeof target === 'object' && target !== null && 'id' in target
-      ? (target as { id: string }).id
-      : String(target);
+    const targetId =
+      typeof target === 'object' && target !== null && 'id' in target ? (target as { id: string }).id : String(target);
 
-    return this.config.safetyLimits.excludeTargets.some(
-      excluded => targetId.includes(excluded)
-    );
+    return this.config.safetyLimits.excludeTargets.some((excluded) => targetId.includes(excluded));
   }
 
   /**
@@ -362,7 +366,7 @@ export class ChaosMonkey extends EventEmitter {
 
   private randomTarget(): unknown {
     // In real implementation, would select from available targets
-    return { id: `target-${Math.random().toString(36).substr(2, 9)}` };
+    return { id: `target-${Math.random().toString(36).slice(2, 11)}` };
   }
 
   /**
@@ -384,6 +388,13 @@ export class ChaosMonkey extends EventEmitter {
    */
   getConfig(): ChaosMonkeyConfig {
     return { ...this.config };
+  }
+
+  /**
+   * Clear chaos history
+   */
+  clearHistory(): void {
+    this.chaosHistory = [];
   }
 }
 
@@ -817,9 +828,7 @@ export class ChaosTestingFramework {
    */
   generateReport(period?: { start: number; end: number }): ChaosReport {
     const filteredResults = period
-      ? this.reportData.filter(
-          (r) => r.startTime >= period.start && r.endTime <= period.end
-        )
+      ? this.reportData.filter((r) => r.startTime >= period.start && r.endTime <= period.end)
       : this.reportData;
 
     const experimentStats = new Map<string, { runs: number; successes: number; totalDuration: number }>();

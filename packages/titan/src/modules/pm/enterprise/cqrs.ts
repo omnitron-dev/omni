@@ -229,6 +229,15 @@ export class CommandBus extends EventEmitter {
       new Promise<T>((_, reject) => setTimeout(() => reject(Errors.timeout('CQRS command', timeout)), timeout)),
     ]);
   }
+
+  /**
+   * Destroy the command bus and clean up event listeners
+   */
+  destroy(): void {
+    this.handlers.clear();
+    this.middleware = [];
+    this.removeAllListeners();
+  }
 }
 
 /**
@@ -317,6 +326,15 @@ export class QueryBus extends EventEmitter {
       promise,
       new Promise<T>((_, reject) => setTimeout(() => reject(Errors.timeout('CQRS query', timeout)), timeout)),
     ]);
+  }
+
+  /**
+   * Destroy the query bus and clean up event listeners
+   */
+  destroy(): void {
+    this.handlers.clear();
+    this.cache.clear();
+    this.removeAllListeners();
   }
 }
 
@@ -433,6 +451,15 @@ export class ProjectionManager extends EventEmitter {
   stop(): void {
     this.running = false;
     this.logger.info('Stopping projections');
+  }
+
+  /**
+   * Destroy the projection manager and clean up event listeners
+   */
+  destroy(): void {
+    this.stop();
+    this.projections.clear();
+    this.removeAllListeners();
   }
 
   /**

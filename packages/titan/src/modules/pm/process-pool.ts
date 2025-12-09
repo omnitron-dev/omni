@@ -386,6 +386,9 @@ export class ProcessPool<T> implements IProcessPool<T> {
     this.isDraining = false;
 
     this.emit('pool:destroyed', { class: this.processName });
+
+    // Clean up event emitter listeners
+    this.emitter.removeAllListeners();
   }
 
   /**

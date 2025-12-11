@@ -2,6 +2,7 @@
  * Plugin Manager Service
  *
  * Manages database plugin registration, initialization, and lifecycle
+ * Provides seamless integration between Titan decorators and Kysera plugins
  */
 
 import { EventEmitter } from 'events';
@@ -18,6 +19,7 @@ import { timestampsPlugin } from '@kysera/timestamps';
 import { DATABASE_MANAGER, DATABASE_MODULE_OPTIONS } from '../database.constants.js';
 import type { DatabaseManager } from '../database.manager.js';
 import type { DatabaseModuleOptions } from '../database.types.js';
+import type { RepositoryConstructor } from '../database.internal-types.js';
 
 import { BuiltInPlugin, PluginState, PluginEventType } from './plugin.types.js';
 import type {
@@ -32,10 +34,24 @@ import type {
 } from './plugin.types.js';
 import { createNullLogger, type ILogger } from '../../logger/logger.types.js';
 
+// Import decorator metadata helpers
+import {
+  hasSoftDelete,
+  getSoftDeleteConfig,
+  hasTimestamps,
+  getTimestampsConfig,
+  hasAudit,
+  getAuditConfig,
+  getDecoratorPlugins,
+  type SoftDeleteConfig,
+  type TimestampsConfig,
+  type AuditConfig,
+} from '../database.decorators.js';
+
 /**
  * Plugin Manager
  *
- * Centralized management for database plugins
+ * Centralized management for database plugins with decorator integration
  */
 @Injectable()
 export class PluginManager extends EventEmitter implements IPluginManager {
@@ -81,12 +97,12 @@ export class PluginManager extends EventEmitter implements IPluginManager {
   }
 
   /**
-   * Create soft delete plugin
+   * Create soft delete plugin with default options
    */
-  private createSoftDeletePlugin(): ITitanPlugin {
+  private createSoftDeletePlugin(options?: SoftDeleteConfig): ITitanPlugin {
     const kyseraPlugin = softDeletePlugin({
-      deletedAtColumn: 'deleted_at',
-      includeDeleted: false,
+      deletedAtColumn: options?.column || 'deleted_at',
+      includeDeleted: options?.includeDeleted || false,
     });
 
     return {
@@ -104,12 +120,12 @@ export class PluginManager extends EventEmitter implements IPluginManager {
   }
 
   /**
-   * Create timestamps plugin
+   * Create timestamps plugin with default options
    */
-  private createTimestampsPlugin(): ITitanPlugin {
+  private createTimestampsPlugin(options?: TimestampsConfig): ITitanPlugin {
     const kyseraPlugin = timestampsPlugin({
-      createdAtColumn: 'created_at',
-      updatedAtColumn: 'updated_at',
+      createdAtColumn: options?.createdAt || 'created_at',
+      updatedAtColumn: options?.updatedAt || 'updated_at',
     });
 
     return {
@@ -127,13 +143,13 @@ export class PluginManager extends EventEmitter implements IPluginManager {
   }
 
   /**
-   * Create audit plugin
+   * Create audit plugin with default options
    */
-  private createAuditPlugin(): ITitanPlugin {
+  private createAuditPlugin(options?: AuditConfig): ITitanPlugin {
     const kyseraPlugin = auditPlugin({
-      auditTable: 'audit_logs',
-      captureOldValues: true,
-      captureNewValues: true,
+      auditTable: options?.table || 'audit_logs',
+      captureOldValues: options?.captureOldValues !== false,
+      captureNewValues: options?.captureNewValues !== false,
     });
 
     return {
@@ -149,6 +165,141 @@ export class PluginManager extends EventEmitter implements IPluginManager {
       },
     } as ITitanPlugin;
   }
+
+  // ============================================================================
+  // DECORATOR-BASED PLUGIN INTEGRATION
+  // ============================================================================
+
+  /**
+   * Detect plugins required by a repository class based on decorators
+   * Returns list of plugin names that should be applied
+   */
+  detectDecoratorPlugins(repositoryClass: RepositoryConstructor): string[] {
+    return getDecoratorPlugins(repositoryClass);
+  }
+
+  /**
+   * Create a configured soft delete plugin based on decorator config
+   */
+  createConfiguredSoftDeletePlugin(config?: SoftDeleteConfig): KyseraPlugin {
+    return softDeletePlugin({
+      deletedAtColumn: config?.column || 'deleted_at',
+      includeDeleted: config?.includeDeleted || false,
+    });
+  }
+
+  /**
+   * Create a configured timestamps plugin based on decorator config
+   */
+  createConfiguredTimestampsPlugin(config?: TimestampsConfig): KyseraPlugin {
+    return timestampsPlugin({
+      createdAtColumn: config?.createdAt || 'created_at',
+      updatedAtColumn: config?.updatedAt || 'updated_at',
+    });
+  }
+
+  /**
+   * Create a configured audit plugin based on decorator config
+   */
+  createConfiguredAuditPlugin(config?: AuditConfig): KyseraPlugin {
+    return auditPlugin({
+      auditTable: config?.table || 'audit_logs',
+      captureOldValues: config?.captureOldValues !== false,
+      captureNewValues: config?.captureNewValues !== false,
+    });
+  }
+
+  /**
+   * Get all plugins configured via decorators for a repository class
+   * Returns array of configured Kysera plugins ready to apply
+   */
+  getDecoratorPluginsForRepository(repositoryClass: RepositoryConstructor): KyseraPlugin[] {
+    const plugins: KyseraPlugin[] = [];
+
+    // Check for soft delete decorator
+    if (hasSoftDelete(repositoryClass)) {
+      const config = getSoftDeleteConfig(repositoryClass);
+      plugins.push(this.createConfiguredSoftDeletePlugin(config));
+    }
+
+    // Check for timestamps decorator
+    if (hasTimestamps(repositoryClass)) {
+      const config = getTimestampsConfig(repositoryClass);
+      plugins.push(this.createConfiguredTimestampsPlugin(config));
+    }
+
+    // Check for audit decorator
+    if (hasAudit(repositoryClass)) {
+      const config = getAuditConfig(repositoryClass);
+      plugins.push(this.createConfiguredAuditPlugin(config));
+    }
+
+    return plugins;
+  }
+
+  /**
+   * Apply decorator-configured plugins to a repository instance
+   * This is the main entry point for zero-boilerplate plugin integration
+   */
+  applyDecoratorPlugins<T extends object>(repository: T, repositoryClass: RepositoryConstructor): T {
+    const plugins = this.getDecoratorPluginsForRepository(repositoryClass);
+    
+    if (plugins.length === 0) {
+      return repository;
+    }
+
+    let enhancedRepo = repository;
+
+    for (const plugin of plugins) {
+      if (plugin.extendRepository) {
+        enhancedRepo = this.applyPluginWithPrototypePreservation(enhancedRepo, plugin);
+      }
+    }
+
+    return enhancedRepo;
+  }
+
+  /**
+   * Apply plugin while preserving prototype chain
+   * Kysera plugins use object spread which loses prototype methods,
+   * so we merge new properties back onto the original object
+   */
+  private applyPluginWithPrototypePreservation<T extends object>(repository: T, plugin: KyseraPlugin): T {
+    if (!plugin.extendRepository) {
+      return repository;
+    }
+
+    const extended = plugin.extendRepository(repository);
+
+    // If the plugin returned a different object (e.g., via object spread),
+    // merge the new/modified properties back onto the original repository
+    // to preserve the prototype chain
+    if (extended !== repository && extended) {
+      // Copy all enumerable own properties from extended to repository
+      for (const key of Object.keys(extended)) {
+        const extendedValue = (extended as Record<string, unknown>)[key];
+        const originalValue = (repository as Record<string, unknown>)[key];
+
+        // Copy if it's a new property, a function, or the value changed
+        if (typeof extendedValue === 'function' || !(key in repository) || extendedValue !== originalValue) {
+          (repository as Record<string, unknown>)[key] = extendedValue;
+        }
+      }
+
+      // Also copy any symbol properties
+      for (const sym of Object.getOwnPropertySymbols(extended)) {
+        (repository as Record<symbol, unknown>)[sym] = (extended as Record<symbol, unknown>)[sym];
+      }
+
+      return repository;
+    }
+
+    return extended as T;
+  }
+
+  // ============================================================================
+  // CORE PLUGIN MANAGEMENT
+  // ============================================================================
 
   /**
    * Register a plugin
@@ -398,7 +549,7 @@ export class PluginManager extends EventEmitter implements IPluginManager {
   }
 
   /**
-   * Apply plugins to repository
+   * Apply plugins to repository by name
    */
   applyPlugins(repository: any, pluginNames: string[]): any {
     let enhancedRepo = repository;
@@ -419,24 +570,7 @@ export class PluginManager extends EventEmitter implements IPluginManager {
       try {
         // Apply plugin based on extension method
         if (entry.plugin.extendRepository) {
-          const extended = entry.plugin.extendRepository(enhancedRepo);
-
-          // Merge plugin extensions back onto original repository to preserve prototype methods
-          // @kysera plugins use object spreading which loses prototype chain
-          if (extended !== enhancedRepo) {
-            // Copy all new/modified properties from extended back to enhancedRepo
-            for (const key of Object.keys(extended)) {
-              if (typeof extended[key] === 'function' || !(key in enhancedRepo) || extended[key] !== enhancedRepo[key]) {
-                enhancedRepo[key] = extended[key];
-              }
-            }
-            // Also copy any symbol properties
-            for (const sym of Object.getOwnPropertySymbols(extended)) {
-              enhancedRepo[sym] = extended[sym];
-            }
-          } else {
-            enhancedRepo = extended;
-          }
+          enhancedRepo = this.applyPluginWithPrototypePreservation(enhancedRepo, entry.plugin);
         }
 
         // Update metrics

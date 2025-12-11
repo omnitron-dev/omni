@@ -13,19 +13,32 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { PluginManager } from '../../../src/modules/database/plugins/plugin.manager.js';
 
+/**
+ * Creates a mock logger with all required methods including child() that returns itself.
+ * This ensures compatibility with code that uses logger.child() to create scoped loggers.
+ */
+const createMockLogger = () => {
+  const logger = {
+    info: jest.fn(),
+    debug: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    trace: jest.fn(),
+    fatal: jest.fn(),
+    child: jest.fn(),
+  };
+  logger.child.mockReturnValue(logger);
+  return logger;
+};
+
 // TODO: PluginManager API has changed - tests need to be updated to match current API
 // Currently skipped to allow CI to pass until tests are updated
 describe.skip('PluginManager - Unit Tests', () => {
-  let pluginManager: PluginManager;
-  let mockLogger: any;
+  let pluginManager;
+  let mockLogger;
 
   beforeEach(() => {
-    mockLogger = {
-      info: jest.fn(),
-      debug: jest.fn(),
-      warn: jest.fn(),
-      error: jest.fn(),
-    };
+    mockLogger = createMockLogger();
 
     pluginManager = new PluginManager({}, mockLogger);
   });
@@ -163,7 +176,7 @@ describe.skip('PluginManager - Unit Tests', () => {
       const repo = {};
       const enhanced = pluginManager.applyPlugins(repo, ['test']);
 
-      expect((enhanced as any).testMethod()).toBe('test');
+      expect((enhanced).testMethod()).toBe('test');
     });
 
     it('should apply multiple plugins to repository', () => {
@@ -189,8 +202,8 @@ describe.skip('PluginManager - Unit Tests', () => {
       const repo = {};
       const enhanced = pluginManager.applyPlugins(repo, ['plugin1', 'plugin2']);
 
-      expect((enhanced as any).method1()).toBe('method1');
-      expect((enhanced as any).method2()).toBe('method2');
+      expect((enhanced).method1()).toBe('method1');
+      expect((enhanced).method2()).toBe('method2');
     });
 
     it('should skip disabled plugins', () => {
@@ -207,7 +220,7 @@ describe.skip('PluginManager - Unit Tests', () => {
       const repo = {};
       const enhanced = pluginManager.applyPlugins(repo, ['disabled']);
 
-      expect((enhanced as any).shouldNotExist).toBeUndefined();
+      expect((enhanced).shouldNotExist).toBeUndefined();
     });
 
     it('should warn when applying non-existent plugin', () => {
@@ -398,11 +411,11 @@ describe.skip('PluginManager - Unit Tests', () => {
     });
 
     it('should handle null plugin', () => {
-      expect(() => pluginManager.registerPlugin('null', null as any)).toThrow();
+      expect(() => pluginManager.registerPlugin('null', null)).toThrow();
     });
 
     it('should handle undefined plugin', () => {
-      expect(() => pluginManager.registerPlugin('undefined', undefined as any)).toThrow();
+      expect(() => pluginManager.registerPlugin('undefined', undefined)).toThrow();
     });
 
     it('should log plugin errors', () => {
@@ -481,9 +494,9 @@ describe.skip('PluginManager - Unit Tests', () => {
       const repo = { existingData: 'value', existingMethod: () => 'existing' };
       const enhanced = pluginManager.applyPlugins(repo, ['preserve']);
 
-      expect((enhanced as any).existingData).toBe('value');
-      expect((enhanced as any).existingMethod()).toBe('existing');
-      expect((enhanced as any).newMethod()).toBe('new');
+      expect((enhanced).existingData).toBe('value');
+      expect((enhanced).existingMethod()).toBe('existing');
+      expect((enhanced).newMethod()).toBe('new');
     });
   });
 

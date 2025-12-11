@@ -126,11 +126,18 @@ export const DATABASE_EVENTS = {
  * Metadata keys for decorators
  */
 export const METADATA_KEYS = {
+  // Core metadata
   REPOSITORY: 'database:repository',
   MIGRATION: 'database:migration',
   TRANSACTIONAL: 'database:transactional',
   PAGINATED: 'database:paginated',
   CONNECTION: 'database:connection',
+  
+  // Plugin decorator metadata keys
+  SOFT_DELETE: 'database:plugin:soft-delete',
+  TIMESTAMPS: 'database:plugin:timestamps',
+  AUDIT: 'database:plugin:audit',
+  
   // RLS metadata keys
   RLS_POLICY: 'database:rls:policy',
   RLS_ALLOW: 'database:rls:allow',

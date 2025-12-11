@@ -315,15 +315,82 @@ export function Query(sql: string): MethodDecorator {
   };
 }
 
+// ============================================================================
+// Plugin Decorator Configuration Types
+// ============================================================================
+
+/**
+ * SoftDelete decorator configuration
+ */
+export interface SoftDeleteConfig {
+  /** Column name for soft delete timestamp (default: 'deleted_at') */
+  column?: string;
+  /** Include soft-deleted records in queries by default (default: false) */
+  includeDeleted?: boolean;
+}
+
+/**
+ * Timestamps decorator configuration
+ */
+export interface TimestampsConfig {
+  /** Column name for creation timestamp (default: 'created_at') */
+  createdAt?: string;
+  /** Column name for update timestamp (default: 'updated_at') */
+  updatedAt?: string;
+}
+
+/**
+ * Audit decorator configuration
+ */
+export interface AuditConfig {
+  /** Audit log table name (default: 'audit_logs') */
+  table?: string;
+  /** Capture old values in audit log (default: true) */
+  captureOldValues?: boolean;
+  /** Capture new values in audit log (default: true) */
+  captureNewValues?: boolean;
+}
+
+// ============================================================================
+// Plugin Decorators - Zero-Boilerplate Integration
+// ============================================================================
+
 /**
  * SoftDelete decorator
- * Marks a repository to use soft delete
+ * Marks a repository to use soft delete functionality.
+ * When applied, the repository automatically gets:
+ * - softDelete(id): Set deleted_at timestamp instead of hard delete
+ * - restore(id): Clear deleted_at to restore record
+ * - findDeleted(): Find only soft-deleted records
+ * - findWithDeleted(): Include soft-deleted in results
+ *
+ * @example
+ * ```typescript
+ * @Repository({ table: 'users' })
+ * @SoftDelete()
+ * class UserRepository extends BaseRepository<User> {
+ *   // Automatically gets softDelete(), restore(), etc.
+ * }
+ *
+ * @Repository({ table: 'posts' })
+ * @SoftDelete({ column: 'removed_at', includeDeleted: false })
+ * class PostRepository extends BaseRepository<Post> {
+ *   // Uses custom column name
+ * }
+ * ```
  */
-export function SoftDelete(config?: { column?: string; includeDeleted?: boolean }): ClassDecorator {
+export function SoftDelete(config?: SoftDeleteConfig): ClassDecorator {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
   return <TFunction extends Function>(target: TFunction): TFunction => {
     const existingConfig = Reflect.getMetadata(METADATA_KEYS.REPOSITORY, target) || {};
 
+    // Store plugin-specific metadata for detection
+    Reflect.defineMetadata(METADATA_KEYS.SOFT_DELETE, config || {}, target);
+
+    // Mark as having soft delete enabled
+    Reflect.defineMetadata('database:has-soft-delete', true, target);
+
+    // Update repository config with soft delete settings
     Reflect.defineMetadata(
       METADATA_KEYS.REPOSITORY,
       {
@@ -339,13 +406,40 @@ export function SoftDelete(config?: { column?: string; includeDeleted?: boolean 
 
 /**
  * Timestamps decorator
- * Marks a repository to use automatic timestamps
+ * Marks a repository to use automatic timestamp management.
+ * When applied, the repository automatically:
+ * - Sets createdAt on insert operations
+ * - Updates updatedAt on update operations
+ * - Provides findCreatedAfter(date), findUpdatedAfter(date) methods
+ * - Provides touch(id) to update timestamp without changing data
+ *
+ * @example
+ * ```typescript
+ * @Repository({ table: 'users' })
+ * @Timestamps()
+ * class UserRepository extends BaseRepository<User> {
+ *   // createdAt/updatedAt auto-managed
+ * }
+ *
+ * @Repository({ table: 'posts' })
+ * @Timestamps({ createdAt: 'created', updatedAt: 'modified' })
+ * class PostRepository extends BaseRepository<Post> {
+ *   // Uses custom column names
+ * }
+ * ```
  */
-export function Timestamps(config?: { createdAt?: string; updatedAt?: string }): ClassDecorator {
+export function Timestamps(config?: TimestampsConfig): ClassDecorator {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
   return <TFunction extends Function>(target: TFunction): TFunction => {
     const existingConfig = Reflect.getMetadata(METADATA_KEYS.REPOSITORY, target) || {};
 
+    // Store plugin-specific metadata for detection
+    Reflect.defineMetadata(METADATA_KEYS.TIMESTAMPS, config || {}, target);
+
+    // Mark as having timestamps enabled
+    Reflect.defineMetadata('database:has-timestamps', true, target);
+
+    // Update repository config with timestamps settings
     Reflect.defineMetadata(
       METADATA_KEYS.REPOSITORY,
       {
@@ -361,17 +455,40 @@ export function Timestamps(config?: { createdAt?: string; updatedAt?: string }):
 
 /**
  * Audit decorator
- * Marks a repository to use audit logging
+ * Marks a repository to use audit logging functionality.
+ * When applied, all CRUD operations are automatically logged to an audit table.
+ * - Captures who made the change (from context)
+ * - Captures when the change was made
+ * - Optionally captures old and new values
+ * - Provides getAuditHistory(id) method
+ *
+ * @example
+ * ```typescript
+ * @Repository({ table: 'users' })
+ * @Audit()
+ * class UserRepository extends BaseRepository<User> {
+ *   // All changes logged to 'audit_logs'
+ * }
+ *
+ * @Repository({ table: 'financial_records' })
+ * @Audit({ table: 'financial_audit', captureOldValues: true, captureNewValues: true })
+ * class FinancialRepository extends BaseRepository<FinancialRecord> {
+ *   // Detailed audit with before/after snapshots
+ * }
+ * ```
  */
-export function Audit(config?: {
-  table?: string;
-  captureOldValues?: boolean;
-  captureNewValues?: boolean;
-}): ClassDecorator {
+export function Audit(config?: AuditConfig): ClassDecorator {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
   return <TFunction extends Function>(target: TFunction): TFunction => {
     const existingConfig = Reflect.getMetadata(METADATA_KEYS.REPOSITORY, target) || {};
 
+    // Store plugin-specific metadata for detection
+    Reflect.defineMetadata(METADATA_KEYS.AUDIT, config || {}, target);
+
+    // Mark as having audit enabled
+    Reflect.defineMetadata('database:has-audit', true, target);
+
+    // Update repository config with audit settings
     Reflect.defineMetadata(
       METADATA_KEYS.REPOSITORY,
       {
@@ -384,6 +501,10 @@ export function Audit(config?: {
     return target;
   };
 }
+
+// ============================================================================
+// Plugin Metadata Helpers
+// ============================================================================
 
 /**
  * Helper function to get repository metadata
@@ -411,6 +532,70 @@ export function getMigrationMetadata(target: Constructor): { version: string; de
  */
 export function isMigration(target: Constructor): boolean {
   return Reflect.getMetadata('database:is-migration', target) === true;
+}
+
+/**
+ * Check if repository has soft delete enabled via decorator
+ */
+export function hasSoftDelete(target: Constructor | RepositoryConstructor): boolean {
+  return Reflect.getMetadata('database:has-soft-delete', target) === true;
+}
+
+/**
+ * Get soft delete configuration from decorator
+ */
+export function getSoftDeleteConfig(target: Constructor | RepositoryConstructor): SoftDeleteConfig | undefined {
+  if (!hasSoftDelete(target)) return undefined;
+  return Reflect.getMetadata(METADATA_KEYS.SOFT_DELETE, target);
+}
+
+/**
+ * Check if repository has timestamps enabled via decorator
+ */
+export function hasTimestamps(target: Constructor | RepositoryConstructor): boolean {
+  return Reflect.getMetadata('database:has-timestamps', target) === true;
+}
+
+/**
+ * Get timestamps configuration from decorator
+ */
+export function getTimestampsConfig(target: Constructor | RepositoryConstructor): TimestampsConfig | undefined {
+  if (!hasTimestamps(target)) return undefined;
+  return Reflect.getMetadata(METADATA_KEYS.TIMESTAMPS, target);
+}
+
+/**
+ * Check if repository has audit enabled via decorator
+ */
+export function hasAudit(target: Constructor | RepositoryConstructor): boolean {
+  return Reflect.getMetadata('database:has-audit', target) === true;
+}
+
+/**
+ * Get audit configuration from decorator
+ */
+export function getAuditConfig(target: Constructor | RepositoryConstructor): AuditConfig | undefined {
+  if (!hasAudit(target)) return undefined;
+  return Reflect.getMetadata(METADATA_KEYS.AUDIT, target);
+}
+
+/**
+ * Get all enabled plugin names for a repository based on decorators
+ */
+export function getDecoratorPlugins(target: Constructor | RepositoryConstructor): string[] {
+  const plugins: string[] = [];
+  
+  if (hasSoftDelete(target)) {
+    plugins.push('soft-delete');
+  }
+  if (hasTimestamps(target)) {
+    plugins.push('timestamps');
+  }
+  if (hasAudit(target)) {
+    plugins.push('audit');
+  }
+  
+  return plugins;
 }
 
 // ============================================================================

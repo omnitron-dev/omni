@@ -26,11 +26,11 @@ import { Kysely, sql } from 'kysely';
 import { Pool } from 'pg';
 
 describeOrSkip('DatabaseHealthIndicator - Unit Tests', () => {
-  let healthIndicator: DatabaseHealthIndicator;
-  let mockManager: any;
-  let mockMigrationService: any;
-  let mockTransactionManager: any;
-  let mockDb: any;
+  let healthIndicator;
+  let mockManager;
+  let mockMigrationService;
+  let mockTransactionManager;
+  let mockDb;
 
   beforeEach(() => {
     // Kysely-compatible executor mock

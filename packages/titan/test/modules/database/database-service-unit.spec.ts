@@ -14,10 +14,10 @@ import { DatabaseService } from '../../../src/modules/database/database.service.
 import { Kysely, sql } from 'kysely';
 
 describe('DatabaseService - Unit Tests', () => {
-  let service: DatabaseService;
-  let mockManager: any;
-  let mockDb: any;
-  let mockEventsService: any;
+  let service;
+  let mockManager;
+  let mockDb;
+  let mockEventsService;
 
   beforeEach(() => {
     // Kysely-compatible executor mock
@@ -321,7 +321,7 @@ describe('DatabaseService - Unit Tests', () => {
       const result = await service.paginate(query);
 
       // kysera paginate returns an array when there are no results
-      expect(Array.isArray(result.data) || (result.data as any).rows).toBeDefined();
+      expect(Array.isArray(result.data) || (result.data).rows).toBeDefined();
     });
   });
 
@@ -368,7 +368,7 @@ describe('DatabaseService - Unit Tests', () => {
   describe.skip('Query Context', () => {
     // TODO: createQueryContext method not implemented yet
     it('should create query context', () => {
-      const context = (service as any).createQueryContext({
+      const context = (service).createQueryContext({
         connection: 'custom',
         timeout: 5000,
       });
@@ -379,7 +379,7 @@ describe('DatabaseService - Unit Tests', () => {
     });
 
     it('should create query context with defaults', () => {
-      const context = (service as any).createQueryContext();
+      const context = (service).createQueryContext();
 
       expect(context).toBeDefined();
       expect(context.connection).toBeUndefined();
@@ -389,7 +389,7 @@ describe('DatabaseService - Unit Tests', () => {
   describe('Error Parsing', () => {
     it('should parse unique constraint errors', async () => {
       const error = new Error('UNIQUE constraint failed: users.email');
-      (error as any).code = 'SQLITE_CONSTRAINT';
+      (error).code = 'SQLITE_CONSTRAINT';
 
       mockDb.execute.mockRejectedValue(error);
 
@@ -402,7 +402,7 @@ describe('DatabaseService - Unit Tests', () => {
 
     it('should parse foreign key errors', async () => {
       const error = new Error('FOREIGN KEY constraint failed');
-      (error as any).code = 'SQLITE_CONSTRAINT_FOREIGNKEY';
+      (error).code = 'SQLITE_CONSTRAINT_FOREIGNKEY';
 
       mockDb.execute.mockRejectedValue(error);
 
@@ -415,7 +415,7 @@ describe('DatabaseService - Unit Tests', () => {
 
     it('should parse not null errors', async () => {
       const error = new Error('NOT NULL constraint failed');
-      (error as any).code = 'SQLITE_CONSTRAINT_NOTNULL';
+      (error).code = 'SQLITE_CONSTRAINT_NOTNULL';
 
       mockDb.execute.mockRejectedValue(error);
 

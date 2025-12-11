@@ -2,6 +2,7 @@
  * Repository Factory Service
  *
  * Manages repository creation, registration, and plugin application
+ * Provides seamless integration with Kysera plugins through decorators
  */
 
 import { Injectable } from '../../../decorators/index.js';
@@ -35,7 +36,8 @@ import { createNullLogger, type ILogger } from '../../logger/logger.types.js';
 /**
  * Repository Factory Service
  *
- * Creates and manages repository instances with plugin support
+ * Creates and manages repository instances with plugin support.
+ * Automatically applies plugins based on decorator metadata.
  */
 @Injectable()
 export class RepositoryFactory implements IRepositoryFactory {
@@ -107,7 +109,7 @@ export class RepositoryFactory implements IRepositoryFactory {
       return this.applyPlugins(baseRepo, config.plugins) as Repository<Entity, CreateInput, UpdateInput>;
     }
 
-    // Check for specific plugin configurations
+    // Check for specific plugin configurations (from RepositoryConfig)
     const pluginsToApply: KyseraPlugin[] = [];
 
     if (config.softDelete) {
@@ -182,13 +184,13 @@ export class RepositoryFactory implements IRepositoryFactory {
 
   /**
    * Create and cache a repository instance
+   * Automatically applies plugins based on decorator metadata
    */
   private async createAndCacheRepository(target: RepositoryConstructor, metadata: RepositoryMetadata): Promise<void> {
     const connectionName = metadata.connection || this.config.connectionName || 'default';
     const db = await this.manager.getConnection(connectionName);
 
-    // Create an instance of the actual custom repository class
-    // The custom repository class constructor expects the database connection and config
+    // Create repository config from metadata
     const config: RepositoryConfig = {
       tableName: metadata.table,
       connectionName: metadata.connection,
@@ -215,15 +217,23 @@ export class RepositoryFactory implements IRepositoryFactory {
       repository = new BaseRepository(db, config) as Repository<unknown>;
     }
 
-    // Apply plugins if configured
+    // PRIORITY 1: Apply decorator-based plugins via PluginManager
+    // This enables zero-boilerplate plugin usage through decorators
+    if (this.pluginManager) {
+      repository = this.pluginManager.applyDecoratorPlugins(repository, target);
+    }
+
+    // PRIORITY 2: Apply explicitly configured plugins from metadata
     if (metadata.plugins && metadata.plugins.length > 0) {
       repository = this.applyPlugins(repository, metadata.plugins);
     }
 
-    // Check for specific plugin configurations
+    // PRIORITY 3: Apply plugins from softDelete/timestamps/audit config
+    // This is for backward compatibility with direct config
     const pluginsToApply: KyseraPlugin[] = [];
 
-    if (metadata.softDelete) {
+    // Only apply if not already handled by decorator
+    if (metadata.softDelete && !this.pluginManager) {
       const softDeleteConfig = typeof metadata.softDelete === 'object' ? metadata.softDelete : { column: 'deleted_at' };
 
       pluginsToApply.push(
@@ -234,7 +244,7 @@ export class RepositoryFactory implements IRepositoryFactory {
       );
     }
 
-    if (metadata.timestamps) {
+    if (metadata.timestamps && !this.pluginManager) {
       const timestampsConfig =
         typeof metadata.timestamps === 'object'
           ? metadata.timestamps
@@ -248,7 +258,7 @@ export class RepositoryFactory implements IRepositoryFactory {
       );
     }
 
-    if (metadata.audit) {
+    if (metadata.audit && !this.pluginManager) {
       const auditConfig = typeof metadata.audit === 'object' ? metadata.audit : { table: 'audit_logs' };
 
       pluginsToApply.push(
@@ -264,7 +274,7 @@ export class RepositoryFactory implements IRepositoryFactory {
       repository = this.applyPlugins(repository, pluginsToApply);
     }
 
-    // Apply globally enabled plugins from PluginManager
+    // PRIORITY 4: Apply globally enabled plugins from PluginManager
     if (this.pluginManager) {
       const pluginStatus = this.pluginManager.getPluginStatus();
       const globalPluginNames: string[] = [];
@@ -320,6 +330,7 @@ export class RepositoryFactory implements IRepositoryFactory {
 
   /**
    * Create repository with transaction
+   * Automatically applies plugins based on decorator metadata
    */
   createWithTransaction<T = unknown>(target: RepositoryConstructor, transaction: Transaction<unknown>): T {
     const metadata = this.metadata.get(target);
@@ -355,15 +366,20 @@ export class RepositoryFactory implements IRepositoryFactory {
       repository = new BaseRepository(transaction, config) as Repository<unknown>;
     }
 
-    // Apply plugins if configured
+    // Apply decorator-based plugins via PluginManager
+    if (this.pluginManager) {
+      repository = this.pluginManager.applyDecoratorPlugins(repository, target);
+    }
+
+    // Apply explicitly configured plugins
     if (metadata.plugins && metadata.plugins.length > 0) {
       repository = this.applyPlugins(repository, metadata.plugins);
     }
 
-    // Check for specific plugin configurations
+    // Apply plugins from config (backward compatibility)
     const pluginsToApply: KyseraPlugin[] = [];
 
-    if (metadata.softDelete) {
+    if (metadata.softDelete && !this.pluginManager) {
       const softDeleteConfig = typeof metadata.softDelete === 'object' ? metadata.softDelete : { column: 'deleted_at' };
 
       pluginsToApply.push(
@@ -374,7 +390,7 @@ export class RepositoryFactory implements IRepositoryFactory {
       );
     }
 
-    if (metadata.timestamps) {
+    if (metadata.timestamps && !this.pluginManager) {
       const timestampsConfig =
         typeof metadata.timestamps === 'object'
           ? metadata.timestamps
@@ -388,7 +404,7 @@ export class RepositoryFactory implements IRepositoryFactory {
       );
     }
 
-    if (metadata.audit) {
+    if (metadata.audit && !this.pluginManager) {
       const auditConfig = typeof metadata.audit === 'object' ? metadata.audit : { table: 'audit_logs' };
 
       pluginsToApply.push(
@@ -551,15 +567,20 @@ export class RepositoryFactory implements IRepositoryFactory {
             repository = new BaseRepository(trx, config) as Repository<unknown>;
           }
 
+          // Apply decorator-based plugins
+          if (this.pluginManager) {
+            repository = this.pluginManager.applyDecoratorPlugins(repository, target);
+          }
+
           // Apply plugins if needed
           if (metadata.plugins && metadata.plugins.length > 0) {
             repository = this.applyPlugins(repository, metadata.plugins);
           }
 
-          // Check for specific plugin configurations
+          // Apply config-based plugins (backward compatibility)
           const pluginsToApply: KyseraPlugin[] = [];
 
-          if (metadata.softDelete) {
+          if (metadata.softDelete && !this.pluginManager) {
             const softDeleteConfig = typeof metadata.softDelete === 'object' ? metadata.softDelete : { column: 'deleted_at' };
 
             pluginsToApply.push(
@@ -570,7 +591,7 @@ export class RepositoryFactory implements IRepositoryFactory {
             );
           }
 
-          if (metadata.timestamps) {
+          if (metadata.timestamps && !this.pluginManager) {
             const timestampsConfig =
               typeof metadata.timestamps === 'object'
                 ? metadata.timestamps
@@ -584,7 +605,7 @@ export class RepositoryFactory implements IRepositoryFactory {
             );
           }
 
-          if (metadata.audit) {
+          if (metadata.audit && !this.pluginManager) {
             const auditConfig = typeof metadata.audit === 'object' ? metadata.audit : { table: 'audit_logs' };
 
             pluginsToApply.push(
@@ -612,7 +633,7 @@ export class RepositoryFactory implements IRepositoryFactory {
   /**
    * Create repository with Kysera factory (for compatibility)
    */
-  async createWithKysera<DB, Entity>(
+  async createWithKysera<DB, _Entity = unknown>(
     connectionName?: string
   ): Promise<ReturnType<typeof createKyseraRepositoryFactory<DB>>['create']> {
     const connName = connectionName || this.config.connectionName || 'default';
@@ -699,9 +720,9 @@ export class RepositoryFactory implements IRepositoryFactory {
    * );
    * ```
    */
-  async createSimpleKyseraRepository<Entity>(
+  async createSimpleKyseraRepository<_Entity>(
     tableName: string,
-    mapRow: (row: Record<string, unknown>) => Entity,
+    mapRow: (row: Record<string, unknown>) => _Entity,
     connectionName?: string
   ): Promise<unknown> {
     const connName = connectionName || this.config.connectionName || 'default';

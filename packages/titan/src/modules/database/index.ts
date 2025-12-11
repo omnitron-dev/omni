@@ -107,9 +107,19 @@ export {
   Paginated,
   UseConnection,
   Query,
+  // Plugin decorators
   SoftDelete,
   Timestamps,
   Audit,
+  // Plugin decorator metadata helpers
+  hasSoftDelete,
+  getSoftDeleteConfig,
+  hasTimestamps,
+  getTimestampsConfig,
+  hasAudit,
+  getAuditConfig,
+  getDecoratorPlugins,
+  // Repository metadata helpers
   getRepositoryMetadata,
   isRepository,
   getMigrationMetadata,
@@ -126,6 +136,13 @@ export {
   getRLSFilters,
   getRLSBypassedMethods,
   isRLSEnabled,
+} from './database.decorators.js';
+
+// Plugin decorator config types
+export type {
+  SoftDeleteConfig,
+  TimestampsConfig,
+  AuditConfig,
 } from './database.decorators.js';
 
 // RLS decorator types

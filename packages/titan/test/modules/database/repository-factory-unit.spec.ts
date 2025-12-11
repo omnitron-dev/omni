@@ -27,31 +27,21 @@ if (skipIntegrationTests) {
 
 const describeOrSkip = skipIntegrationTests ? describe.skip : describe;
 
-// Test entity
-interface User {
-  id: number;
-  email: string;
-  name: string;
-  created_at?: Date;
-  updated_at?: Date;
-  deleted_at?: Date | null;
-}
-
-// Custom repository class
-class UserRepository extends BaseRepository<any, 'users', User, Partial<User>, Partial<User>> {
-  async findByEmail(email: string): Promise<User | null> {
+// Custom repository class - extends BaseRepository with any types for testing
+class UserRepository extends BaseRepository {
+  async findByEmail(email) {
     return this.findOne({ email });
   }
 
-  async findActive(): Promise<User[]> {
+  async findActive() {
     return this.findAll({ deleted_at: null });
   }
 }
 
 describeOrSkip('RepositoryFactory - Unit Tests', () => {
-  let factory: RepositoryFactory;
-  let mockManager: any;
-  let mockDb: any;
+  let factory;
+  let mockManager;
+  let mockDb;
 
   beforeEach(async () => {
     // Kysely-compatible executor mock
@@ -134,9 +124,9 @@ describeOrSkip('RepositoryFactory - Unit Tests', () => {
       const repo = await factory.create<User>({
         tableName: 'users',
         schemas: {
-          entity: {} as any,
-          create: {} as any,
-          update: {} as any,
+          entity: {},
+          create: {},
+          update: {},
         },
       });
 
@@ -153,7 +143,7 @@ describeOrSkip('RepositoryFactory - Unit Tests', () => {
 
       expect(repo).toBeDefined();
       // Soft delete plugin adds methods to repository
-      expect(typeof (repo as any).restore).toBe('function');
+      expect(typeof (repo).restore).toBe('function');
     });
 
     it('should apply soft delete plugin with custom column', async () => {
@@ -237,7 +227,7 @@ describeOrSkip('RepositoryFactory - Unit Tests', () => {
     it('should register repository class', async () => {
       await factory.register(UserRepository, {
         table: 'users',
-        schema: {} as any,
+        schema: {},
       });
 
       const repo = await factory.get<UserRepository>(UserRepository);
@@ -248,7 +238,7 @@ describeOrSkip('RepositoryFactory - Unit Tests', () => {
     it('should register repository with plugins', async () => {
       await factory.register(UserRepository, {
         table: 'users',
-        schema: {} as any,
+        schema: {},
         softDelete: true,
         timestamps: true,
       });
@@ -260,7 +250,7 @@ describeOrSkip('RepositoryFactory - Unit Tests', () => {
     it('should register repository with custom connection', async () => {
       await factory.register(UserRepository, {
         table: 'users',
-        schema: {} as any,
+        schema: {},
         connection: 'custom',
       });
 
@@ -276,7 +266,7 @@ describeOrSkip('RepositoryFactory - Unit Tests', () => {
     it('should create repository on-demand if metadata exists', async () => {
       await factory.register(UserRepository, {
         table: 'users',
-        schema: {} as any,
+        schema: {},
       });
 
       factory.clearCache();
@@ -290,7 +280,7 @@ describeOrSkip('RepositoryFactory - Unit Tests', () => {
     it('should store repository metadata', async () => {
       const metadata = {
         table: 'users',
-        schema: {} as any,
+        schema: {},
         softDelete: true,
       };
 
@@ -309,7 +299,7 @@ describeOrSkip('RepositoryFactory - Unit Tests', () => {
     it('should get all registered repositories', async () => {
       await factory.register(UserRepository, {
         table: 'users',
-        schema: {} as any,
+        schema: {},
       });
 
       const all = factory.getAll();
@@ -321,7 +311,7 @@ describeOrSkip('RepositoryFactory - Unit Tests', () => {
     it('should create transaction scope', async () => {
       await factory.register(UserRepository, {
         table: 'users',
-        schema: {} as any,
+        schema: {},
       });
 
       const result = await factory.createTransactionScope(async (scope) => {
@@ -337,7 +327,7 @@ describeOrSkip('RepositoryFactory - Unit Tests', () => {
     it('should provide repositories within transaction scope', async () => {
       await factory.register(UserRepository, {
         table: 'users',
-        schema: {} as any,
+        schema: {},
       });
 
       await factory.createTransactionScope(async (scope) => {
@@ -349,7 +339,7 @@ describeOrSkip('RepositoryFactory - Unit Tests', () => {
     it('should execute function within transaction scope', async () => {
       await factory.register(UserRepository, {
         table: 'users',
-        schema: {} as any,
+        schema: {},
       });
 
       await factory.createTransactionScope(async (scope) => {
@@ -361,7 +351,7 @@ describeOrSkip('RepositoryFactory - Unit Tests', () => {
     it('should rollback transaction on error', async () => {
       await factory.register(UserRepository, {
         table: 'users',
-        schema: {} as any,
+        schema: {},
       });
 
       await expect(
@@ -386,7 +376,7 @@ describeOrSkip('RepositoryFactory - Unit Tests', () => {
     it('should create repository with transaction', async () => {
       await factory.register(UserRepository, {
         table: 'users',
-        schema: {} as any,
+        schema: {},
       });
 
       const mockTrx = { ...mockDb };
@@ -399,7 +389,7 @@ describeOrSkip('RepositoryFactory - Unit Tests', () => {
     it('should create repository with transaction and plugins', async () => {
       await factory.register(UserRepository, {
         table: 'users',
-        schema: {} as any,
+        schema: {},
         softDelete: true,
         timestamps: true,
       });
@@ -447,7 +437,7 @@ describeOrSkip('RepositoryFactory - Unit Tests', () => {
         plugins: ['custom'],
       });
 
-      expect((repo as any).customMethod()).toBe('custom');
+      expect((repo).customMethod()).toBe('custom');
     });
   });
 
@@ -455,7 +445,7 @@ describeOrSkip('RepositoryFactory - Unit Tests', () => {
     it('should cache repository instances', async () => {
       await factory.register(UserRepository, {
         table: 'users',
-        schema: {} as any,
+        schema: {},
       });
 
       const repo1 = await factory.get<UserRepository>(UserRepository);
@@ -467,7 +457,7 @@ describeOrSkip('RepositoryFactory - Unit Tests', () => {
     it('should clear cache', async () => {
       await factory.register(UserRepository, {
         table: 'users',
-        schema: {} as any,
+        schema: {},
       });
 
       await factory.get<UserRepository>(UserRepository);
@@ -481,7 +471,7 @@ describeOrSkip('RepositoryFactory - Unit Tests', () => {
     it('should refresh specific repository', async () => {
       await factory.register(UserRepository, {
         table: 'users',
-        schema: {} as any,
+        schema: {},
       });
 
       const repo1 = await factory.get<UserRepository>(UserRepository);
@@ -630,9 +620,9 @@ describeOrSkip('RepositoryFactory - Unit Tests', () => {
               email: {},
               name: {},
             },
-          } as any,
-          create: {} as any,
-          update: {} as any,
+          },
+          create: {},
+          update: {},
         },
       });
 

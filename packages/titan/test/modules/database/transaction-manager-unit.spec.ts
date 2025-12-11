@@ -32,10 +32,10 @@ import { Kysely, sql } from 'kysely';
 import { EventEmitter } from 'events';
 
 describeOrSkip('TransactionManager - Unit Tests', () => {
-  let mockManager: any;
-  let mockDb: any;
-  let mockTransaction: any;
-  let transactionManager: TransactionManager;
+  let mockManager;
+  let mockDb;
+  let mockTransaction;
+  let transactionManager;
 
   beforeEach(() => {
     // Mock database connection with Kysely-compatible interface

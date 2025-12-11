@@ -1,18 +1,48 @@
 /**
  * Base Repository Implementation
  *
- * Provides common database operations for all repositories
+ * Provides common database operations for all repositories.
+ * Supports both raw Kysely instances and plugin-aware KyseraExecutors
+ * for seamless integration with @kysera/executor plugin system.
  */
 
 import { Kysely, Transaction, sql } from 'kysely';
 import { z } from 'zod';
 import { paginate, paginateCursor, parseDatabaseError } from '@kysera/core';
+import {
+  isKyseraExecutor,
+  getRawDb,
+  getPlugins,
+  type KyseraExecutor,
+  type KyseraTransaction,
+  type Plugin,
+} from '@kysera/executor';
 import { Errors } from '../../../errors/index.js';
 import type { IBaseRepository, RepositoryConfig, FindOptions } from './repository.types.js';
 import type { PaginatedResult, PaginationOptions } from '../database.types.js';
 
 /**
- * Base repository class implementing common database operations
+ * Database type that can be either raw Kysely or plugin-aware executor
+ */
+type ExecutorOrKysely<DB> = Kysely<DB> | KyseraExecutor<DB>;
+type TransactionOrKyseraTransaction<DB> = Transaction<DB> | KyseraTransaction<DB>;
+
+/**
+ * Base repository class implementing common database operations.
+ *
+ * Supports both raw Kysely instances and KyseraExecutors, enabling
+ * automatic plugin interception when using executors.
+ *
+ * @example
+ * ```typescript
+ * // With raw Kysely (no plugin interception)
+ * const repo = new BaseRepository(db, { tableName: 'users' });
+ *
+ * // With KyseraExecutor (automatic plugin interception)
+ * const executor = await createExecutor(db, [softDeletePlugin()]);
+ * const repo = new BaseRepository(executor, { tableName: 'users' });
+ * // All queries now have soft-delete filter applied automatically
+ * ```
  */
 export class BaseRepository<
   DB = Record<string, unknown>,
@@ -24,27 +54,61 @@ export class BaseRepository<
 {
   public readonly tableName: TableName;
   public readonly connectionName: string;
-  public readonly executor: Kysely<DB>; // For @kysera plugin compatibility
 
-  protected db: Kysely<DB>;
-  protected trx?: Transaction<DB>;
+  /**
+   * Executor for plugin-aware queries.
+   * If constructed with KyseraExecutor, plugins are applied automatically.
+   * For @kysera plugin compatibility.
+   */
+  public readonly executor: ExecutorOrKysely<DB>;
+
+  /**
+   * Plugins applied to this repository's executor (if any)
+   */
+  public readonly plugins: readonly Plugin[];
+
+  protected db: ExecutorOrKysely<DB>;
+  protected trx?: TransactionOrKyseraTransaction<DB>;
   protected config: RepositoryConfig<DB, TableName, Entity>;
 
-  constructor(db: Kysely<DB> | Transaction<DB>, config: RepositoryConfig<DB, TableName, Entity>) {
+  constructor(
+    db: ExecutorOrKysely<DB> | TransactionOrKyseraTransaction<DB>,
+    config: RepositoryConfig<DB, TableName, Entity>
+  ) {
     this.tableName = config.tableName;
     this.connectionName = config.connectionName || 'default';
     this.config = config;
 
     // Check if it's a transaction or regular connection
     if ('isTransaction' in db && db.isTransaction) {
-      this.trx = db as Transaction<DB>;
-      this.db = db as Kysely<DB>; // Transaction is also a Kysely instance
+      this.trx = db as TransactionOrKyseraTransaction<DB>;
+      this.db = db as ExecutorOrKysely<DB>;
     } else {
-      this.db = db as Kysely<DB>;
+      this.db = db as ExecutorOrKysely<DB>;
     }
 
     // Expose executor for @kysera plugin compatibility
     this.executor = this.db;
+
+    // Extract plugins if executor is a KyseraExecutor
+    this.plugins = isKyseraExecutor(this.db)
+      ? getPlugins(this.db as KyseraExecutor<DB>)
+      : [];
+  }
+
+  /**
+   * Check if this repository uses a plugin-aware executor
+   */
+  get hasExecutor(): boolean {
+    return isKyseraExecutor(this.db);
+  }
+
+  /**
+   * Get raw Kysely instance bypassing plugin interceptors.
+   * Use for internal queries that shouldn't trigger plugin logic.
+   */
+  protected getRawDb(): Kysely<DB> {
+    return getRawDb(this.db) as Kysely<DB>;
   }
 
   /**
@@ -467,9 +531,28 @@ export class BaseRepository<
   }
 
   /**
-   * Create a new instance with transaction
+   * Create a new instance with transaction.
+   * Supports both raw Kysely transactions and KyseraTransactions (plugin-aware).
+   *
+   * @example
+   * ```typescript
+   * // With raw transaction
+   * await db.transaction().execute(async (trx) => {
+   *   const txRepo = repo.withTransaction(trx);
+   *   await txRepo.create({ name: 'Alice' });
+   * });
+   *
+   * // With KyseraExecutor (plugins propagate to transaction)
+   * await executor.transaction().execute(async (trx) => {
+   *   const txRepo = repo.withTransaction(trx);
+   *   // Plugins still applied in transaction
+   *   await txRepo.create({ name: 'Bob' });
+   * });
+   * ```
    */
-  withTransaction(trx: Transaction<unknown>): IBaseRepository<Entity, CreateInput, UpdateInput> {
-    return new BaseRepository(trx as Transaction<DB>, this.config);
+  withTransaction(
+    trx: Transaction<unknown> | KyseraTransaction<unknown>
+  ): IBaseRepository<Entity, CreateInput, UpdateInput> {
+    return new BaseRepository(trx as TransactionOrKyseraTransaction<DB>, this.config);
   }
 }

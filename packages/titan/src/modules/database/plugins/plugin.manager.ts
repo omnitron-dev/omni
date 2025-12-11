@@ -1,13 +1,22 @@
 /**
  * Plugin Manager Service
  *
- * Manages database plugin registration, initialization, and lifecycle
- * Provides seamless integration between Titan decorators and Kysera plugins
+ * Manages database plugin registration, initialization, and lifecycle.
+ * Provides seamless integration between Titan decorators and Kysera plugins.
+ *
+ * Updated for @kysera/executor 0.7.0 - uses unified execution layer
+ * for plugin validation and ordering.
  */
 
 import { EventEmitter } from 'events';
 import { Injectable, Inject } from '../../../decorators/index.js';
 import type { Kysely, Transaction } from 'kysely';
+import {
+  validatePlugins as executorValidatePlugins,
+  resolvePluginOrder,
+  PluginValidationError,
+  type Plugin as ExecutorPlugin,
+} from '@kysera/executor';
 import type { Plugin as KyseraPlugin } from '@kysera/repository';
 import { Errors } from '../../../errors/index.js';
 
@@ -376,27 +385,58 @@ export class PluginManager extends EventEmitter implements IPluginManager {
   }
 
   /**
-   * Validate plugin
+   * Validate plugin.
+   * Uses @kysera/executor validation for consistency with unified execution layer.
    */
   private validatePlugin(plugin: ITitanPlugin): void {
     if (!plugin.name) {
       throw Errors.badRequest('Plugin must have a name');
     }
 
-    // Check for required methods (at least one extension method)
+    // Check for required methods (at least one extension method or interceptQuery)
     const hasExtension = plugin.extendRepository || plugin.extendDatabase || plugin.extendTransaction;
+    const hasInterceptor = 'interceptQuery' in plugin && typeof plugin.interceptQuery === 'function';
 
-    if (!hasExtension) {
-      throw Errors.badRequest(`Plugin "${plugin.name}" must implement at least one extension method`);
+    if (!hasExtension && !hasInterceptor) {
+      throw Errors.badRequest(
+        `Plugin "${plugin.name}" must implement at least one extension method or interceptQuery`
+      );
     }
 
-    // Validate dependencies
+    // Validate dependencies - use executor validation for comprehensive check
     if (plugin.dependencies) {
       for (const dep of plugin.dependencies) {
         if (!this.registry.has(dep)) {
           throw Errors.badRequest(`Plugin "${plugin.name}" depends on unregistered plugin "${dep}"`);
         }
       }
+    }
+
+    // Check for conflicts using executor's conflict detection
+    if (plugin.conflictsWith) {
+      for (const conflict of plugin.conflictsWith) {
+        if (this.registry.has(conflict)) {
+          throw Errors.badRequest(`Plugin "${plugin.name}" conflicts with registered plugin "${conflict}"`);
+        }
+      }
+    }
+  }
+
+  /**
+   * Validate all registered plugins together.
+   * Uses @kysera/executor's validatePlugins for comprehensive validation
+   * including circular dependency detection.
+   */
+  validateAllPlugins(): void {
+    const plugins = Array.from(this.registry.values()).map((entry) => entry.plugin as ExecutorPlugin);
+
+    try {
+      executorValidatePlugins(plugins);
+    } catch (error) {
+      if (error instanceof PluginValidationError) {
+        throw Errors.badRequest(`Plugin validation failed: ${error.message}`);
+      }
+      throw error;
     }
   }
 
@@ -510,42 +550,37 @@ export class PluginManager extends EventEmitter implements IPluginManager {
   }
 
   /**
-   * Get plugins sorted by priority and dependencies
+   * Get plugins sorted by priority and dependencies.
+   * Uses @kysera/executor's resolvePluginOrder for consistent ordering
+   * with the unified execution layer.
    */
   private getSortedPlugins(): Array<[string, PluginRegistryEntry]> {
     const entries = Array.from(this.registry.entries());
 
-    // Topological sort based on dependencies
-    const visited = new Set<string>();
-    const sorted: Array<[string, PluginRegistryEntry]> = [];
+    // Extract plugins for executor's ordering algorithm
+    const plugins = entries.map(([, entry]) => entry.plugin as ExecutorPlugin);
 
-    const visit = (name: string) => {
-      if (visited.has(name)) return;
-      visited.add(name);
+    try {
+      // Use executor's topological sort with priority handling
+      const sortedPlugins = resolvePluginOrder(plugins);
 
-      const entry = this.registry.get(name);
-      if (entry?.plugin.dependencies) {
-        for (const dep of entry.plugin.dependencies) {
-          visit(dep);
-        }
+      // Map back to registry entries while preserving order
+      return sortedPlugins
+        .map((plugin) => {
+          const entry = entries.find(([, e]) => e.plugin.name === plugin.name);
+          return entry || null;
+        })
+        .filter((entry): entry is [string, PluginRegistryEntry] => entry !== null);
+    } catch (error) {
+      // Fallback to original ordering if executor's sort fails
+      if (error instanceof PluginValidationError) {
+        this.logger.warn(
+          { error: error.message, type: error.type },
+          'Plugin ordering failed, using registration order'
+        );
       }
-
-      const entryPair = entries.find(([n]) => n === name);
-      if (entryPair) {
-        sorted.push(entryPair);
-      }
-    };
-
-    for (const [name] of entries) {
-      visit(name);
+      return entries;
     }
-
-    // Sort by priority within dependency order
-    return sorted.sort((a, b) => {
-      const priorityA = a[1].config?.priority ?? 999;
-      const priorityB = b[1].config?.priority ?? 999;
-      return priorityA - priorityB;
-    });
   }
 
   /**

@@ -1,8 +1,11 @@
 /**
  * Repository Factory Service
  *
- * Manages repository creation, registration, and plugin application
- * Provides seamless integration with Kysera plugins through decorators
+ * Manages repository creation, registration, and plugin application.
+ * Provides seamless integration with Kysera plugins through decorators.
+ *
+ * Updated for @kysera/executor 0.7.0 - uses unified execution layer
+ * for automatic plugin interception in both Repository and DAL patterns.
  */
 
 import { Injectable } from '../../../decorators/index.js';
@@ -10,8 +13,19 @@ import { Kysely, Transaction } from 'kysely';
 import {
   createRepositoryFactory as createKyseraRepositoryFactory,
   createRepositoriesFactory as createKyseraRepositoriesFactory,
+  createORM,
   type Plugin as KyseraPlugin,
 } from '@kysera/repository';
+import {
+  createExecutor,
+  isKyseraExecutor,
+  getPlugins,
+  wrapTransaction,
+  type Plugin,
+  type KyseraExecutor,
+  type KyseraTransaction,
+} from '@kysera/executor';
+import { createContext, withTransaction, type DbContext } from '@kysera/dal';
 import type { Executor } from '@kysera/core';
 import { softDeletePlugin } from '@kysera/soft-delete';
 import { auditPlugin } from '@kysera/audit';
@@ -761,6 +775,160 @@ export class RepositoryFactory implements IRepositoryFactory {
     const db = (await this.manager.getConnection(connName)) as Kysely<DB>;
 
     return createKyseraRepositoryFactory<DB>(db);
+  }
+
+  // ============================================================================
+  // EXECUTOR-BASED REPOSITORY CREATION (NEW in 0.7.0)
+  // ============================================================================
+
+  /**
+   * Create a repository with a plugin-aware executor.
+   * Uses @kysera/executor for unified plugin interception.
+   *
+   * @example
+   * ```typescript
+   * // Create repository with plugins via executor
+   * const userRepo = await factory.createWithExecutor(
+   *   { tableName: 'users' },
+   *   [softDeletePlugin(), timestampsPlugin()]
+   * );
+   *
+   * // All queries automatically have plugins applied
+   * const users = await userRepo.findAll();
+   * ```
+   */
+  async createWithExecutor<Entity = unknown, CreateInput = unknown, UpdateInput = unknown>(
+    config: RepositoryConfig<unknown, string, unknown>,
+    plugins: Plugin[] = [],
+    connectionName?: string
+  ): Promise<Repository<Entity, CreateInput, UpdateInput>> {
+    const connName = connectionName || this.config.connectionName || 'default';
+    const db = await this.manager.getConnection(connName);
+
+    // Create executor with plugins
+    const executor = await createExecutor(db, plugins);
+
+    this.logger.debug(
+      { table: config.tableName, plugins: plugins.map((p) => p.name) },
+      'Creating repository with executor'
+    );
+
+    // Create repository with executor - plugins are applied automatically via interception
+    const repo = new BaseRepository(executor, config);
+
+    // Apply repository extensions from plugins
+    let enhancedRepo: Repository<unknown> = repo as Repository<unknown>;
+    for (const plugin of plugins) {
+      if (plugin.extendRepository) {
+        enhancedRepo = this.applyPluginWithPrototypePreservation(enhancedRepo, plugin as KyseraPlugin);
+      }
+    }
+
+    return enhancedRepo as Repository<Entity, CreateInput, UpdateInput>;
+  }
+
+  /**
+   * Create ORM instance with plugins using @kysera/repository's createORM.
+   * Provides unified interface for both Repository and DAL patterns.
+   *
+   * @example
+   * ```typescript
+   * const orm = await factory.createORM([softDeletePlugin(), auditPlugin()]);
+   *
+   * // Create repositories with plugin support
+   * const userRepo = orm.createRepository(createUserRepository);
+   *
+   * // Access DAL context with plugins
+   * const ctx = orm.createContext();
+   *
+   * // Transaction with plugins propagated
+   * await orm.transaction(async (ctx) => {
+   *   const user = await getUser(ctx, userId);
+   * });
+   * ```
+   */
+  async createORM<DB>(
+    plugins: Plugin[] = [],
+    connectionName?: string
+  ): Promise<ReturnType<typeof createORM<DB>>> {
+    const connName = connectionName || this.config.connectionName || 'default';
+    const db = (await this.manager.getConnection(connName)) as Kysely<DB>;
+
+    this.logger.debug(
+      { connection: connName, plugins: plugins.map((p) => p.name) },
+      'Creating ORM with plugins'
+    );
+
+    return createORM(db, plugins);
+  }
+
+  /**
+   * Create a DAL context for functional data access.
+   * Uses plugin-aware executor if plugins are configured.
+   *
+   * @example
+   * ```typescript
+   * const ctx = await factory.createDalContext([softDeletePlugin()]);
+   *
+   * // Use with DAL queries
+   * const getUsers = createQuery((ctx) =>
+   *   ctx.db.selectFrom('users').selectAll().execute()
+   * );
+   * const users = await getUsers(ctx);
+   * ```
+   */
+  async createDalContext<DB>(
+    plugins: Plugin[] = [],
+    connectionName?: string
+  ): Promise<DbContext<DB>> {
+    const connName = connectionName || this.config.connectionName || 'default';
+    const db = await this.manager.getConnection(connName);
+
+    const executor = plugins.length > 0
+      ? await createExecutor(db as Kysely<DB>, plugins)
+      : db as Kysely<DB>;
+
+    return createContext(executor as Kysely<DB>);
+  }
+
+  /**
+   * Execute function within a transaction with plugin support.
+   * Plugins are automatically propagated to the transaction.
+   *
+   * @example
+   * ```typescript
+   * await factory.withTransaction(
+   *   [softDeletePlugin()],
+   *   async (ctx) => {
+   *     // All queries have plugins applied
+   *     const users = await ctx.db.selectFrom('users').selectAll().execute();
+   *   }
+   * );
+   * ```
+   */
+  async withTransaction<DB, T>(
+    plugins: Plugin[],
+    fn: (ctx: DbContext<DB>) => Promise<T>,
+    connectionName?: string
+  ): Promise<T> {
+    const connName = connectionName || this.config.connectionName || 'default';
+    const db = (await this.manager.getConnection(connName)) as Kysely<DB>;
+
+    const executor = await createExecutor(db, plugins);
+    return withTransaction(executor, fn);
+  }
+
+  /**
+   * Get a plugin-aware executor for a connection.
+   * Convenience method that delegates to DatabaseManager.
+   */
+  async getExecutor<DB>(
+    plugins?: Plugin[],
+    connectionName?: string
+  ): Promise<KyseraExecutor<DB>> {
+    const connName = connectionName || this.config.connectionName || 'default';
+    const executor = await this.manager.getExecutor(connName, plugins);
+    return executor as unknown as KyseraExecutor<DB>;
   }
 }
 

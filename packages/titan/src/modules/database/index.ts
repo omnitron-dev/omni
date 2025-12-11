@@ -317,57 +317,19 @@ export type {
   CursorOptions as KyseraCursorOptions,
 } from '@kysera/core';
 
-// @kysera/core - Retry & Circuit Breaker
+// @kysera/infra - Retry & Circuit Breaker (moved from @kysera/core in 0.7.0)
 export {
   withRetry,
   createRetryWrapper,
   isTransientError,
   CircuitBreaker,
-} from '@kysera/core';
+} from '@kysera/infra';
 
 export type {
   RetryOptions,
-} from '@kysera/core';
+} from '@kysera/infra';
 
-// @kysera/core - Debug & Profiling
-export {
-  withDebug,
-  formatSQL,
-  QueryProfiler,
-} from '@kysera/core';
-
-export type {
-  DebugOptions,
-  QueryMetrics,
-} from '@kysera/core';
-
-// @kysera/core - Health Monitoring
-export {
-  checkDatabaseHealth,
-  performHealthCheck,
-  getMetrics as getKyseraMetrics,
-  createMetricsPool,
-  HealthMonitor as KyseraHealthMonitor,
-} from '@kysera/core';
-
-export type {
-  HealthCheckResult as KyseraHealthCheckResult,
-  PoolMetrics,
-  MetricsPool,
-  DatabasePool,
-} from '@kysera/core';
-
-// @kysera/core - Graceful Shutdown
-export {
-  createGracefulShutdown,
-  shutdownDatabase,
-} from '@kysera/core';
-
-export type {
-  ShutdownOptions,
-} from '@kysera/core';
-
-// @kysera/core - Testing Utilities
+// @kysera/testing - Testing utilities (moved from @kysera/core in 0.7.0)
 export {
   testInTransaction,
   testWithSavepoints,
@@ -378,12 +340,21 @@ export {
   countRows,
   waitFor,
   createFactory,
-} from '@kysera/core';
+  createMany,
+  createSequenceFactory,
+} from '@kysera/testing';
 
 export type {
   CleanupStrategy,
   IsolationLevel as KyseraIsolationLevel,
-} from '@kysera/core';
+  FactoryFunction,
+  FactoryDefaults,
+  SeedFunction,
+} from '@kysera/testing';
+
+// Note: Debug & Profiling moved to @kysera/debug in 0.7.0
+// Note: Health Monitoring moved to @kysera/infra in 0.7.0
+// Import from those packages directly if needed
 
 // @kysera/core - Type Utilities
 export type {
@@ -429,8 +400,68 @@ export {
 export type {
   PluginOrm,
   QueryBuilderContext,
-  QueryContext as KyseraQueryContext,
 } from '@kysera/repository';
+
+// ============================================================================
+// @kysera/executor - Unified Execution Layer (NEW in 0.7.0)
+// ============================================================================
+// The executor provides a plugin-aware Kysely wrapper that enables plugins
+// to work seamlessly with both Repository and DAL patterns through a single
+// interception point. This is the foundation for unified plugin support.
+
+export {
+  createExecutor,
+  createExecutorSync,
+  isKyseraExecutor,
+  getPlugins as getExecutorPlugins,
+  getRawDb,
+  wrapTransaction,
+  applyPlugins,
+  validatePlugins as validateExecutorPlugins,
+  resolvePluginOrder,
+  PluginValidationError,
+} from '@kysera/executor';
+
+export type {
+  Plugin as ExecutorPlugin,
+  KyseraExecutor,
+  KyseraTransaction,
+  QueryBuilderContext as ExecutorQueryBuilderContext,
+  ExecutorConfig,
+  KyseraExecutorMarker,
+  PluginValidationDetails,
+  PluginValidationErrorType,
+} from '@kysera/executor';
+
+// ============================================================================
+// @kysera/dal - Functional Data Access Layer (NEW in 0.7.0)
+// ============================================================================
+// DAL provides functional approach to database queries with plugin support.
+// Works seamlessly with executors for automatic plugin interception.
+
+export {
+  createContext,
+  withTransaction as dalWithTransaction,
+  createQuery,
+  createTransactionalQuery,
+  compose,
+  chain,
+  parallel,
+  conditional,
+  mapResult,
+  withContext,
+  isInTransaction,
+} from '@kysera/dal';
+
+export type {
+  DbContext,
+  QueryFunction,
+  TransactionOptions as DalTransactionOptions,
+} from '@kysera/dal';
+
+// ExecutorService - Titan's high-level executor management
+export { ExecutorService } from './executor/index.js';
+export type { ExecutorPluginConfig, CreateExecutorOptions } from './executor/index.js';
 
 // @kysera/soft-delete
 export { softDeletePlugin } from '@kysera/soft-delete';

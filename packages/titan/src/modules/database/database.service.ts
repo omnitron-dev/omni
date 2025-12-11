@@ -10,16 +10,22 @@ import {
   paginate as kyseraPaginate,
   paginateCursor as kyseraPaginateCursor,
   parseDatabaseError,
-  withRetry,
-  isTransientError,
-  CircuitBreaker,
-  withDebug,
   type PaginationOptions as KyseraPaginateOptions,
   type PaginatedResult as KyseraPaginatedResult,
   type CursorOptions as KyseraCursorOptions,
-  type RetryOptions,
-  type DebugOptions,
 } from '@kysera/core';
+// Retry & Circuit Breaker moved to @kysera/infra in 0.7.0
+import {
+  withRetry,
+  isTransientError,
+  CircuitBreaker,
+  type RetryOptions,
+} from '@kysera/infra';
+// Debug moved to @kysera/debug in 0.7.0
+import {
+  withDebug,
+  type DebugOptions,
+} from '@kysera/debug';
 import { EventsService } from '../events/index.js';
 import { DatabaseManager } from './database.manager.js';
 import { Errors } from '../../errors/index.js';

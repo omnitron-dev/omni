@@ -13,7 +13,7 @@ import { DatabaseManager } from '../database.manager.js';
 import { MigrationRunner } from '../migration/migration.runner.js';
 import { TransactionManager } from '../transaction/transaction.manager.js';
 import { Errors } from '../../../errors/index.js';
-// @kysera/core testing utilities
+// @kysera/testing utilities (moved from @kysera/core in 0.7.0)
 import {
   testInTransaction,
   testWithSavepoints,
@@ -26,7 +26,7 @@ import {
   createFactory as kyseraCreateFactory,
   type CleanupStrategy,
   type IsolationLevel,
-} from '@kysera/core';
+} from '@kysera/testing';
 import {
   DATABASE_MANAGER,
   DATABASE_MIGRATION_SERVICE,

@@ -1,7 +1,9 @@
 /**
  * Database Manager
  *
- * Central service for managing database connections and lifecycle
+ * Central service for managing database connections and lifecycle.
+ * Supports plugin-aware executors via @kysera/executor for unified
+ * plugin interception across Repository and DAL patterns.
  */
 
 import { Kysely, PostgresDialect, MysqlDialect, SqliteDialect, sql } from 'kysely';
@@ -9,6 +11,14 @@ import { Pool } from 'pg';
 import * as mysql from 'mysql2';
 import BetterSqlite3 from 'better-sqlite3';
 type Database = BetterSqlite3.Database;
+import {
+  createExecutor,
+  isKyseraExecutor,
+  getPlugins,
+  getRawDb,
+  type Plugin,
+  type KyseraExecutor,
+} from '@kysera/executor';
 import { Injectable } from '../../decorators/index.js';
 import { Errors, TitanError, ErrorCode } from '../../errors/index.js';
 import type {
@@ -35,6 +45,10 @@ interface ConnectionInfo {
   name: string;
   config: DatabaseConnection;
   instance: Kysely<unknown>;
+  /** Plugin-aware executor (if plugins are configured) */
+  executor?: KyseraExecutor<unknown>;
+  /** Plugins applied to this connection */
+  plugins?: readonly Plugin[];
   pool?: Pool | mysql.Pool | Database;
   connected: boolean;
   connecting: boolean;
@@ -557,6 +571,126 @@ export class DatabaseManager implements IDatabaseManager {
     }
 
     return info.instance;
+  }
+
+  /**
+   * Get a plugin-aware executor for a connection
+   *
+   * Returns the cached executor if plugins were configured during connection setup,
+   * or creates a new executor with the provided plugins.
+   *
+   * @example
+   * ```typescript
+   * // Get executor with connection's default plugins
+   * const executor = await manager.getExecutor();
+   *
+   * // Create executor with specific plugins
+   * const executor = await manager.getExecutor('default', [softDeletePlugin()]);
+   *
+   * // All queries have plugins applied automatically
+   * const users = await executor.selectFrom('users').selectAll().execute();
+   * ```
+   */
+  async getExecutor(
+    name: string = DATABASE_DEFAULT_CONNECTION,
+    plugins?: Plugin[]
+  ): Promise<KyseraExecutor<unknown>> {
+    const info = this.connections.get(name);
+
+    if (!info) {
+      throw Errors.notFound('Database connection', name);
+    }
+
+    if (!info.connected && !info.connecting) {
+      await this.reconnect(name);
+    }
+
+    if (!info.connected) {
+      throw Errors.unavailable(name, info.lastError?.message || 'Unknown error');
+    }
+
+    // If specific plugins provided, create new executor
+    if (plugins && plugins.length > 0) {
+      this.logger.debug(
+        { connection: name, plugins: plugins.map((p) => p.name) },
+        'Creating executor with custom plugins'
+      );
+      return createExecutor(info.instance, plugins);
+    }
+
+    // Return cached executor if available
+    if (info.executor) {
+      return info.executor;
+    }
+
+    // Create executor without plugins (still provides executor interface)
+    return createExecutor(info.instance, []);
+  }
+
+  /**
+   * Create and cache an executor with plugins for a connection
+   *
+   * Use this to configure default plugins for a connection that will be
+   * used by all subsequent getExecutor() calls.
+   *
+   * @example
+   * ```typescript
+   * // Configure default plugins for the connection
+   * await manager.setConnectionPlugins('default', [
+   *   softDeletePlugin(),
+   *   timestampsPlugin(),
+   * ]);
+   *
+   * // Now all getExecutor() calls return executor with these plugins
+   * const executor = await manager.getExecutor();
+   * ```
+   */
+  async setConnectionPlugins(
+    name: string = DATABASE_DEFAULT_CONNECTION,
+    plugins: Plugin[]
+  ): Promise<KyseraExecutor<unknown>> {
+    const info = this.connections.get(name);
+
+    if (!info) {
+      throw Errors.notFound('Database connection', name);
+    }
+
+    if (!info.connected) {
+      throw Errors.unavailable(name, 'Connection not established');
+    }
+
+    this.logger.info(
+      { connection: name, plugins: plugins.map((p) => p.name) },
+      'Setting connection plugins'
+    );
+
+    const executor = await createExecutor(info.instance, plugins);
+    info.executor = executor;
+    info.plugins = getPlugins(executor);
+
+    return executor;
+  }
+
+  /**
+   * Get plugins configured for a connection
+   */
+  getConnectionPlugins(name: string = DATABASE_DEFAULT_CONNECTION): readonly Plugin[] {
+    const info = this.connections.get(name);
+    return info?.plugins || [];
+  }
+
+  /**
+   * Check if a database instance is a KyseraExecutor
+   */
+  isExecutor(value: Kysely<unknown>): value is KyseraExecutor<unknown> {
+    return isKyseraExecutor(value);
+  }
+
+  /**
+   * Get raw Kysely instance bypassing plugin interceptors
+   */
+  getRawDb(executor: Kysely<unknown>): Kysely<unknown> {
+    return getRawDb(executor);
   }
 
   /**

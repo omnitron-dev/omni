@@ -13,6 +13,7 @@ import {
   isKyseraExecutor,
   getRawDb,
   getPlugins,
+  wrapTransaction,
   type KyseraExecutor,
   type KyseraTransaction,
   type Plugin,
@@ -534,6 +535,9 @@ export class BaseRepository<
    * Create a new instance with transaction.
    * Supports both raw Kysely transactions and KyseraTransactions (plugin-aware).
    *
+   * **IMPORTANT**: If the original repository has plugins, they are automatically
+   * wrapped around the transaction to preserve plugin behavior.
+   *
    * @example
    * ```typescript
    * // With raw transaction
@@ -553,6 +557,22 @@ export class BaseRepository<
   withTransaction(
     trx: Transaction<unknown> | KyseraTransaction<unknown>
   ): IBaseRepository<Entity, CreateInput, UpdateInput> {
+    // If the original repository has plugins, wrap the transaction to preserve them
+    // This ensures soft-delete, timestamps, audit, and other plugins work in transactions
+    if (this.plugins.length > 0) {
+      // Check if transaction is already wrapped (KyseraTransaction)
+      const isAlreadyWrapped = '__kysera' in trx;
+
+      if (!isAlreadyWrapped) {
+        // Wrap raw transaction with plugins
+        const wrappedTrx = wrapTransaction(
+          trx as Transaction<DB>,
+          this.plugins
+        );
+        return new BaseRepository(wrappedTrx as TransactionOrKyseraTransaction<DB>, this.config);
+      }
+    }
+
     return new BaseRepository(trx as TransactionOrKyseraTransaction<DB>, this.config);
   }
 }

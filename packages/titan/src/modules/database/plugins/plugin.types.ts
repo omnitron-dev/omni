@@ -343,6 +343,7 @@ export enum BuiltInPlugin {
   SOFT_DELETE = 'soft-delete',
   TIMESTAMPS = 'timestamps',
   AUDIT = 'audit',
+  RLS = 'rls',
   VALIDATION = 'validation',
   CACHING = 'caching',
   OPTIMISTIC_LOCKING = 'optimistic-locking',

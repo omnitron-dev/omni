@@ -13,7 +13,8 @@ import {
 } from '@omnitron-dev/titan/module/database';
 import type { HealthResponse, HealthCheck } from '../../shared/types.js';
 import type { ExchangeManagerService } from '../collector/services/exchange-manager.service.js';
-import { EXCHANGE_MANAGER_TOKEN } from '../../shared/tokens.js';
+import type { StreamAggregatorService } from '../aggregator/services/stream-aggregator.service.js';
+import { EXCHANGE_MANAGER_TOKEN, STREAM_AGGREGATOR_TOKEN } from '../../shared/tokens.js';
 
 // Extended health response with database metrics
 export interface ExtendedHealthResponse extends HealthResponse {
@@ -42,7 +43,9 @@ export class HealthService {
   constructor(
     @Inject(RedisService) private readonly redis: RedisService,
     @Inject(EXCHANGE_MANAGER_TOKEN) private readonly exchangeManager: ExchangeManagerService,
-    @Inject(DATABASE_HEALTH_INDICATOR) private readonly dbHealth: DatabaseHealthIndicator
+    @Inject(DATABASE_HEALTH_INDICATOR) private readonly dbHealth: DatabaseHealthIndicator,
+    // StreamAggregator is injected to ensure it gets instantiated and @PostConstruct runs
+    @Inject(STREAM_AGGREGATOR_TOKEN) private readonly streamAggregator: StreamAggregatorService
   ) { }
 
   /**

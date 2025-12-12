@@ -26,7 +26,22 @@ import {
   withDebug,
   type DebugOptions,
 } from '@kysera/debug';
+// DAL pattern support from @kysera/dal
+import {
+  createContext,
+  withTransaction as dalWithTransaction,
+  type DbContext,
+} from '@kysera/dal';
+// Executor layer for unified plugin support
+import {
+  createExecutor,
+  isKyseraExecutor,
+  type KyseraExecutor,
+  type Plugin,
+} from '@kysera/executor';
 import { EventsService } from '../events/index.js';
+import { ExecutorService, type ExecutorPluginConfig } from './executor/executor.service.js';
+import type { RepositoryConstructor } from './database.internal-types.js';
 import { DatabaseManager } from './database.manager.js';
 import { Errors } from '../../errors/index.js';
 import { DATABASE_MANAGER, DATABASE_DEFAULT_CONNECTION, DATABASE_EVENTS } from './database.constants.js';
@@ -47,6 +62,7 @@ export class DatabaseService {
   private logger: ILogger;
   private circuitBreakers: Map<string, CircuitBreaker> = new Map();
   private debugConnections: Map<string, Kysely<unknown>> = new Map();
+  private executorService: ExecutorService;
 
   constructor(
     @Inject(DATABASE_MANAGER) private manager: DatabaseManager,
@@ -54,6 +70,7 @@ export class DatabaseService {
     logger?: ILogger
   ) {
     this.logger = logger ? logger.child({ module: 'DatabaseService' }) : createNullLogger();
+    this.executorService = new ExecutorService(logger);
   }
 
   // ============================================================================
@@ -510,6 +527,100 @@ export class DatabaseService {
     return this.manager.getMetrics(connection);
   }
 
+  // ============================================================================
+  // SAVEPOINT SUPPORT
+  // ============================================================================
+
+  /**
+   * Create a savepoint within the current transaction.
+   * Savepoints allow partial rollback within a transaction.
+   *
+   * @example
+   * ```typescript
+   * await db.transaction(async (trx) => {
+   *   await db.savepoint('before_update', trx);
+   *
+   *   try {
+   *     await riskyOperation(trx);
+   *   } catch {
+   *     await db.rollbackToSavepoint('before_update', trx);
+   *   }
+   *
+   *   await db.releaseSavepoint('before_update', trx);
+   * });
+   * ```
+   */
+  async savepoint(name: string, trx: Transaction<unknown>): Promise<void> {
+    if (!name || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
+      throw Errors.badRequest('Invalid savepoint name. Must be alphanumeric with underscores.');
+    }
+
+    await sql.raw(`SAVEPOINT ${name}`).execute(trx);
+    this.logger.debug({ savepoint: name }, 'Savepoint created');
+  }
+
+  /**
+   * Release (remove) a savepoint.
+   * After release, the savepoint can no longer be rolled back to.
+   */
+  async releaseSavepoint(name: string, trx: Transaction<unknown>): Promise<void> {
+    if (!name || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
+      throw Errors.badRequest('Invalid savepoint name');
+    }
+
+    await sql.raw(`RELEASE SAVEPOINT ${name}`).execute(trx);
+    this.logger.debug({ savepoint: name }, 'Savepoint released');
+  }
+
+  /**
+   * Rollback to a savepoint.
+   * This undoes all changes made after the savepoint was created.
+   */
+  async rollbackToSavepoint(name: string, trx: Transaction<unknown>): Promise<void> {
+    if (!name || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
+      throw Errors.badRequest('Invalid savepoint name');
+    }
+
+    await sql.raw(`ROLLBACK TO SAVEPOINT ${name}`).execute(trx);
+    this.logger.debug({ savepoint: name }, 'Rolled back to savepoint');
+  }
+
+  /**
+   * Execute a function within a savepoint.
+   * Automatically creates, releases, or rolls back the savepoint.
+   *
+   * @example
+   * ```typescript
+   * await db.transaction(async (trx) => {
+   *   // First operation
+   *   await createUser(trx);
+   *
+   *   // Nested operation with savepoint
+   *   const result = await db.withSavepoint('create_profile', trx, async () => {
+   *     return await createProfile(trx); // Will rollback if this fails
+   *   });
+   *
+   *   // Transaction continues even if profile creation failed
+   * });
+   * ```
+   */
+  async withSavepoint<T>(
+    name: string,
+    trx: Transaction<unknown>,
+    fn: () => Promise<T>
+  ): Promise<T> {
+    await this.savepoint(name, trx);
+
+    try {
+      const result = await fn();
+      await this.releaseSavepoint(name, trx);
+      return result;
+    } catch (error) {
+      await this.rollbackToSavepoint(name, trx);
+      throw error;
+    }
+  }
+
   /**
    * Set transaction isolation level
    */
@@ -604,5 +715,176 @@ export class DatabaseService {
         ...data,
       });
     }
+  }
+
+  // ============================================================================
+  // DAL (Data Access Layer) PATTERN SUPPORT
+  // ============================================================================
+
+  /**
+   * Create a DAL context for functional database access.
+   * The context provides plugin-aware database access for DAL queries.
+   *
+   * @example
+   * ```typescript
+   * // Create context with plugins
+   * const ctx = await db.createDALContext({
+   *   plugins: { softDelete: true, timestamps: true }
+   * });
+   *
+   * // Use with DAL query functions
+   * const getUsers = createQuery((ctx) =>
+   *   ctx.db.selectFrom('users').selectAll().execute()
+   * );
+   * const users = await getUsers(ctx); // Soft-delete filter applied
+   * ```
+   */
+  async createDALContext<DB = unknown>(options?: {
+    connection?: string;
+    plugins?: ExecutorPluginConfig;
+  }): Promise<DbContext<DB>> {
+    const connectionName = options?.connection || DATABASE_DEFAULT_CONNECTION;
+    const db = await this.getConnection(connectionName);
+
+    if (options?.plugins) {
+      const executor = await this.executorService.createExecutor(db, {
+        plugins: options.plugins,
+      });
+      return this.executorService.createContext(executor) as DbContext<DB>;
+    }
+
+    return createContext(db) as DbContext<DB>;
+  }
+
+  /**
+   * Execute DAL queries within a transaction with plugin support.
+   * Plugins are automatically propagated to the transaction context.
+   *
+   * @example
+   * ```typescript
+   * // Execute multiple DAL operations atomically
+   * await db.withDALTransaction(async (ctx) => {
+   *   const user = await createUser(ctx, { name: 'Alice' });
+   *   const profile = await createProfile(ctx, { userId: user.id });
+   *   return { user, profile };
+   * }, {
+   *   plugins: { softDelete: true, audit: true }
+   * });
+   * ```
+   */
+  async withDALTransaction<T>(
+    fn: (ctx: DbContext<unknown>) => Promise<T>,
+    options?: {
+      connection?: string;
+      plugins?: ExecutorPluginConfig;
+    }
+  ): Promise<T> {
+    const connectionName = options?.connection || DATABASE_DEFAULT_CONNECTION;
+    const db = await this.getConnection(connectionName);
+
+    let executor: Kysely<unknown> | KyseraExecutor<unknown> = db;
+    if (options?.plugins) {
+      executor = await this.executorService.createExecutor(db, {
+        plugins: options.plugins,
+      });
+    }
+
+    // Emit transaction started event
+    await this.emitEvent(DATABASE_EVENTS.TRANSACTION_STARTED as DatabaseEventType, {
+      connection: connectionName,
+    });
+
+    const startTime = Date.now();
+
+    try {
+      const result = await dalWithTransaction(executor, fn);
+      const duration = Date.now() - startTime;
+
+      // Emit transaction committed event
+      await this.emitEvent(DATABASE_EVENTS.TRANSACTION_COMMITTED as DatabaseEventType, {
+        connection: connectionName,
+        data: { duration },
+      });
+
+      return result;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+
+      // Emit transaction rolled back event
+      await this.emitEvent(DATABASE_EVENTS.TRANSACTION_ROLLED_BACK as DatabaseEventType, {
+        connection: connectionName,
+        error,
+        data: { duration },
+      });
+
+      throw error;
+    }
+  }
+
+  /**
+   * Get a plugin-aware executor for DAL queries.
+   * Extracts plugins from repository decorators automatically.
+   *
+   * @example
+   * ```typescript
+   * // Get executor with plugins from repository class
+   * const executor = await db.getExecutorForRepository(UserRepository);
+   *
+   * // Use with DAL queries
+   * const ctx = createContext(executor);
+   * const users = await getUsers(ctx);
+   * ```
+   */
+  async getExecutorForRepository<DB = unknown>(
+    repositoryClass: RepositoryConstructor,
+    additionalPlugins?: Plugin[]
+  ): Promise<KyseraExecutor<DB>> {
+    const db = await this.getConnection();
+    const executor = await this.executorService.createExecutorForRepository(
+      db,
+      repositoryClass,
+      additionalPlugins
+    );
+    return executor as unknown as KyseraExecutor<DB>;
+  }
+
+  /**
+   * Create a plugin-aware executor with specified plugins.
+   *
+   * @example
+   * ```typescript
+   * const executor = await db.createExecutor({
+   *   plugins: { softDelete: true, timestamps: true }
+   * });
+   *
+   * // All queries have plugins applied
+   * const users = await executor.selectFrom('users').selectAll().execute();
+   * ```
+   */
+  async createExecutor<DB = unknown>(options?: {
+    connection?: string;
+    plugins?: ExecutorPluginConfig;
+  }): Promise<KyseraExecutor<DB>> {
+    const connectionName = options?.connection || DATABASE_DEFAULT_CONNECTION;
+    const db = await this.getConnection(connectionName);
+
+    const executor = await this.executorService.createExecutor(db, {
+      plugins: options?.plugins,
+    });
+    return executor as unknown as KyseraExecutor<DB>;
+  }
+
+  /**
+   * Check if a database instance is a plugin-aware executor
+   */
+  isExecutor(value: Kysely<unknown> | KyseraExecutor<unknown>): value is KyseraExecutor<unknown> {
+    return isKyseraExecutor(value);
+  }
+
+  /**
+   * Get the internal ExecutorService for advanced use cases
+   */
+  getExecutorService(): ExecutorService {
+    return this.executorService;
   }
 }

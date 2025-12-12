@@ -326,6 +326,49 @@ class ComplexService {
 }
 ```
 
+### Direct Savepoint API
+
+For fine-grained control, use the savepoint methods on DatabaseService:
+
+```typescript
+import { DatabaseService } from '@omnitron-dev/titan/module/database';
+
+@Injectable()
+class OrderService {
+  constructor(private dbService: DatabaseService) {}
+
+  async processOrder(orderId: number): Promise<void> {
+    await this.dbService.transaction(async (trx) => {
+      // Create order
+      await this.dbService.savepoint('order_created', trx);
+      const order = await createOrder(trx, orderId);
+
+      try {
+        // Process payment - may fail
+        await this.dbService.savepoint('payment_start', trx);
+        await processPayment(trx, order);
+        await this.dbService.releaseSavepoint('payment_start', trx);
+      } catch (error) {
+        // Roll back payment, keep order
+        await this.dbService.rollbackToSavepoint('payment_start', trx);
+        await markPaymentFailed(trx, orderId);
+      }
+
+      // Continue with other operations
+      await finalizeOrder(trx, orderId);
+    });
+  }
+
+  // Or use the convenient withSavepoint helper
+  async safeOperation(trx: Transaction): Promise<void> {
+    await this.dbService.withSavepoint('safe_op', trx, async () => {
+      await riskyOperation(trx);
+      // Automatically releases on success, rolls back on error
+    });
+  }
+}
+```
+
 ## Plugins
 
 ### Built-in Plugins
@@ -372,6 +415,109 @@ TitanDatabaseModule.forRoot({
   },
 });
 ```
+
+#### Row-Level Security (RLS) Plugin
+
+The RLS plugin provides declarative row-level security using `@kysera/rls`:
+
+```typescript
+import { Repository, BaseRepository, Policy, Allow, Deny, Filter, BypassRLS } from '@omnitron-dev/titan/module/database';
+import { rlsContext } from '@kysera/rls';
+
+interface Post {
+  id: number;
+  title: string;
+  author_id: number;
+  tenant_id: number;
+  status: 'draft' | 'published';
+}
+
+@Repository<Post>({ table: 'posts' })
+@Policy({ skipFor: ['admin'] }) // Admins bypass RLS
+class PostRepository extends BaseRepository<any, 'posts', Post> {
+  // Filter: Automatically add WHERE clause for reads
+  @Filter()
+  filterByTenant(ctx: { auth: { tenantId: number } }) {
+    return { tenant_id: ctx.auth.tenantId };
+  }
+
+  // Allow: User can modify their own posts
+  @Allow({ operations: ['update', 'delete'] })
+  canModifyOwnPost(ctx: { auth: { userId: number } }, row: Post) {
+    return row.author_id === ctx.auth.userId;
+  }
+
+  // Deny: Cannot delete published posts (evaluated before Allow rules)
+  @Deny({ operations: ['delete'] })
+  cannotDeletePublished(ctx: any, row: Post) {
+    return row.status === 'published';
+  }
+
+  // Bypass RLS for admin operations
+  @BypassRLS()
+  async adminGetAll() {
+    return this.findAll();
+  }
+}
+```
+
+Using RLS context:
+
+```typescript
+import { rlsContext } from '@kysera/rls';
+
+@Injectable()
+class PostService {
+  constructor(
+    @InjectRepository(PostRepository) private postRepo: PostRepository
+  ) {}
+
+  async getUserPosts(userId: number, tenantId: number): Promise<Post[]> {
+    // Run query within RLS context
+    return rlsContext.runAsync(
+      {
+        auth: {
+          userId,
+          tenantId,
+          roles: ['user'],
+          isSystem: false,
+        },
+        timestamp: new Date(),
+      },
+      async () => {
+        // Queries automatically filtered by tenant_id
+        // Mutations checked against Allow/Deny rules
+        return this.postRepo.findAll();
+      }
+    );
+  }
+
+  async adminOperation(): Promise<Post[]> {
+    // System context bypasses RLS
+    return rlsContext.runAsync(
+      {
+        auth: {
+          userId: 0,
+          tenantId: 0,
+          roles: ['admin'],
+          isSystem: true,
+        },
+        timestamp: new Date(),
+      },
+      async () => {
+        return this.postRepo.findAll(); // No filtering applied
+      }
+    );
+  }
+}
+```
+
+RLS decorators:
+- `@Policy(config?)` - Enable RLS for repository, configure bypass roles
+- `@Filter()` - Add automatic WHERE clause filter for reads
+- `@Allow({ operations })` - Define allow rules for CRUD operations
+- `@Deny({ operations })` - Define deny rules (evaluated before allow)
+- `@BypassRLS()` - Mark method to bypass RLS checks
 
 ### Custom Plugins
 
@@ -544,6 +690,56 @@ class HealthController {
     //   issues: ['High latency on connection "replica": 150ms'],
     //   recommendations: ['Investigate network issues...'],
     // }
+  }
+}
+```
+
+### Connection Pool Monitoring
+
+Monitor pool health and detect connection issues early:
+
+```typescript
+import { InjectDatabaseManager, DatabaseManager } from '@omnitron-dev/titan/module/database';
+
+@Injectable()
+class PoolMonitor {
+  constructor(
+    @InjectDatabaseManager() private dbManager: DatabaseManager
+  ) {}
+
+  async getPoolHealth(): Promise<any> {
+    // Get pool metrics for all connections
+    const allMetrics = this.dbManager.getPoolMetrics();
+
+    // Or for specific connection
+    const metrics = this.dbManager.getPoolMetrics('default');
+    // Returns PoolMetrics:
+    // {
+    //   totalConnections: 10,
+    //   idleConnections: 8,
+    //   activeConnections: 2,
+    //   waitingClients: 0,
+    //   acquireCount: 1520,
+    //   releaseCount: 1518,
+    //   errorCount: 3,
+    //   lastAcquireAt: Date,
+    //   averageAcquireTimeMs: 2.5,
+    //   poolSize: { min: 2, max: 10 }
+    // }
+
+    const utilization = metrics.activeConnections / metrics.poolSize.max;
+    const isHealthy = utilization < 0.8 && metrics.waitingClients === 0;
+
+    return {
+      utilization: `${(utilization * 100).toFixed(1)}%`,
+      isHealthy,
+      metrics
+    };
+  }
+
+  async resetMetrics(): void {
+    // Reset counters (keeps pool state)
+    this.dbManager.resetPoolMetrics();
   }
 }
 ```
@@ -756,6 +952,11 @@ class ValidatedUserRepository extends BaseRepository<any, 'users', User> {}
 - `@SoftDelete()` - Enable soft delete for entity
 - `@Timestamps()` - Auto-manage timestamps
 - `@Audit()` - Enable audit logging
+- `@Policy(config?)` - Enable Row-Level Security
+- `@Allow({ operations })` - Define RLS allow rules
+- `@Deny({ operations })` - Define RLS deny rules
+- `@Filter()` - Define RLS filter for reads
+- `@BypassRLS()` - Mark method to bypass RLS
 
 ### Classes
 

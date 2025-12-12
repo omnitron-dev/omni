@@ -24,6 +24,8 @@ import { Errors } from '../../../errors/index.js';
 import { softDeletePlugin } from '@kysera/soft-delete';
 import { auditPlugin } from '@kysera/audit';
 import { timestampsPlugin } from '@kysera/timestamps';
+import { rlsPlugin, defineRLSSchema, allow, deny, filter, validate } from '@kysera/rls';
+import type { RLSSchema, RLSPluginOptions } from '@kysera/rls';
 
 import { DATABASE_MANAGER, DATABASE_MODULE_OPTIONS } from '../database.constants.js';
 import type { DatabaseManager } from '../database.manager.js';
@@ -52,9 +54,16 @@ import {
   hasAudit,
   getAuditConfig,
   getDecoratorPlugins,
+  isRLSEnabled,
+  getRLSPolicyMetadata,
+  getRLSAllowRules,
+  getRLSDenyRules,
+  getRLSFilters,
+  getRLSBypassedMethods,
   type SoftDeleteConfig,
   type TimestampsConfig,
   type AuditConfig,
+  type RLSPolicyConfig,
 } from '../database.decorators.js';
 
 /**
@@ -103,6 +112,9 @@ export class PluginManager extends EventEmitter implements IPluginManager {
 
     // Register audit plugin
     this.registerPlugin(BuiltInPlugin.AUDIT, this.createAuditPlugin(), { enabled: false });
+
+    // Register RLS plugin (Row-Level Security)
+    this.registerPlugin(BuiltInPlugin.RLS, this.createRLSPlugin(), { enabled: false });
   }
 
   /**
@@ -175,6 +187,32 @@ export class PluginManager extends EventEmitter implements IPluginManager {
     } as ITitanPlugin;
   }
 
+  /**
+   * Create RLS plugin with default options
+   * Uses an empty schema by default - actual policies are built from decorators
+   */
+  private createRLSPlugin(options?: Partial<RLSPluginOptions>): ITitanPlugin {
+    const emptySchema = defineRLSSchema({});
+    const kyseraPlugin = rlsPlugin({
+      schema: emptySchema,
+      requireContext: false, // Don't require context by default
+      ...options,
+    });
+
+    return {
+      ...kyseraPlugin,
+      name: BuiltInPlugin.RLS,
+      version: '1.0.0',
+      metadata: {
+        description: 'Row-Level Security with declarative policy support',
+        category: 'security',
+        compatibility: {
+          dialects: ['postgres', 'mysql', 'sqlite'],
+        },
+      },
+    } as ITitanPlugin;
+  }
+
   // ============================================================================
   // DECORATOR-BASED PLUGIN INTEGRATION
   // ============================================================================
@@ -219,6 +257,190 @@ export class PluginManager extends EventEmitter implements IPluginManager {
   }
 
   /**
+   * Create a configured RLS plugin based on decorator config and repository instance
+   *
+   * Builds RLS schema from @Policy, @Allow, @Deny, @Filter decorators
+   *
+   * @example
+   * ```typescript
+   * @Repository({ table: 'posts' })
+   * @Policy({ skipFor: ['admin'] })
+   * class PostRepository extends BaseRepository<Post> {
+   *   @Filter()
+   *   filterByTenant(ctx: PolicyContext) {
+   *     return { tenant_id: ctx.auth.tenantId };
+   *   }
+   *
+   *   @Allow({ operations: ['update', 'delete'] })
+   *   canModifyOwnPost(ctx: PolicyContext, row: Post) {
+   *     return row.author_id === ctx.auth.userId;
+   *   }
+   * }
+   * ```
+   */
+  createConfiguredRLSPlugin(
+    tableName: string,
+    repositoryClass: RepositoryConstructor,
+    repositoryInstance?: object
+  ): KyseraPlugin | null {
+    // Cast to Constructor for decorator metadata functions
+    const cls = repositoryClass as unknown as new (...args: unknown[]) => object;
+
+    if (!isRLSEnabled(cls)) {
+      return null;
+    }
+
+    const policyConfig = getRLSPolicyMetadata(cls);
+    const schema = this.buildRLSSchemaFromDecorators(
+      tableName,
+      repositoryClass,
+      repositoryInstance,
+      policyConfig
+    );
+
+    if (Object.keys(schema).length === 0) {
+      return null;
+    }
+
+    return rlsPlugin({
+      schema,
+      skipTables: [],
+      bypassRoles: policyConfig?.skipFor || [],
+      requireContext: false,
+      auditDecisions: false,
+    });
+  }
+
+  /**
+   * Map decorator operation types to Kysera RLS operation types.
+   * Decorators use Kysely's operation names (select, insert, update, delete)
+   * while Kysera RLS uses semantic names (read, create, update, delete).
+   */
+  private mapOperationToRLS(decoratorOp: string): 'read' | 'create' | 'update' | 'delete' {
+    switch (decoratorOp) {
+      case 'select':
+        return 'read';
+      case 'insert':
+        return 'create';
+      case 'update':
+        return 'update';
+      case 'delete':
+        return 'delete';
+      default:
+        // If already in RLS format, return as-is
+        return decoratorOp as 'read' | 'create' | 'update' | 'delete';
+    }
+  }
+
+  /**
+   * Build RLS schema from decorator metadata
+   *
+   * Converts @Allow, @Deny, @Filter decorators into @kysera/rls schema format.
+   * Handles operation type mapping (select→read, insert→create) and proper
+   * method binding for policy evaluation.
+   */
+  private buildRLSSchemaFromDecorators(
+    tableName: string,
+    repositoryClass: RepositoryConstructor,
+    repositoryInstance?: object,
+    _policyConfig?: RLSPolicyConfig
+  ): RLSSchema<unknown> {
+    // Cast to Constructor for decorator metadata functions
+    const cls = repositoryClass as unknown as new (...args: unknown[]) => object;
+
+    const allowRules = getRLSAllowRules(cls);
+    const denyRules = getRLSDenyRules(cls);
+    const filters = getRLSFilters(cls);
+
+    // If no rules defined, return empty schema
+    if (allowRules.length === 0 && denyRules.length === 0 && filters.length === 0) {
+      return {};
+    }
+
+    const policies: Array<ReturnType<typeof allow> | ReturnType<typeof deny> | ReturnType<typeof filter>> = [];
+
+    // Add deny rules (evaluated first due to higher priority in RLS)
+    for (const rule of denyRules) {
+      const method = repositoryInstance
+        ? (repositoryInstance as Record<string, unknown>)[rule.method as string]
+        : null;
+
+      if (typeof method === 'function') {
+        for (const op of rule.operations) {
+          const rlsOp = this.mapOperationToRLS(op);
+          // PolicyCondition takes single ctx param; row available via ctx.row
+          policies.push(
+            deny(rlsOp, (ctx: { auth: unknown; row?: unknown }) => {
+              return (method as (ctx: unknown, row: unknown) => boolean).call(repositoryInstance, ctx, ctx.row);
+            })
+          );
+        }
+      } else if (!repositoryInstance) {
+        // Deferred binding: create policy that captures method name for later resolution
+        this.logger.debug(
+          { method: rule.method, operations: rule.operations },
+          'RLS deny rule registered with deferred method binding'
+        );
+      }
+    }
+
+    // Add allow rules
+    for (const rule of allowRules) {
+      const method = repositoryInstance
+        ? (repositoryInstance as Record<string, unknown>)[rule.method as string]
+        : null;
+
+      if (typeof method === 'function') {
+        for (const op of rule.operations) {
+          const rlsOp = this.mapOperationToRLS(op);
+          // PolicyCondition takes single ctx param; row available via ctx.row
+          policies.push(
+            allow(rlsOp, (ctx: { auth: unknown; row?: unknown }) => {
+              return (method as (ctx: unknown, row: unknown) => boolean).call(repositoryInstance, ctx, ctx.row);
+            })
+          );
+        }
+      } else if (!repositoryInstance) {
+        // Deferred binding: log for debugging
+        this.logger.debug(
+          { method: rule.method, operations: rule.operations },
+          'RLS allow rule registered with deferred method binding'
+        );
+      }
+    }
+
+    // Add filter rules (for SELECT/read queries)
+    for (const filterRule of filters) {
+      const method = repositoryInstance
+        ? (repositoryInstance as Record<string, unknown>)[filterRule.method as string]
+        : null;
+
+      if (typeof method === 'function') {
+        policies.push(
+          filter('read', (ctx) => {
+            return (method as (ctx: unknown) => Record<string, unknown>).call(repositoryInstance, ctx);
+          })
+        );
+      } else if (!repositoryInstance) {
+        this.logger.debug(
+          { method: filterRule.method },
+          'RLS filter rule registered with deferred method binding'
+        );
+      }
+    }
+
+    if (policies.length === 0) {
+      return {};
+    }
+
+    return defineRLSSchema({
+      [tableName]: {
+        policies,
+      },
+    });
+  }
+
+  /**
    * Get all plugins configured via decorators for a repository class
    * Returns array of configured Kysera plugins ready to apply
    */
@@ -241,6 +463,42 @@ export class PluginManager extends EventEmitter implements IPluginManager {
     if (hasAudit(repositoryClass)) {
       const config = getAuditConfig(repositoryClass);
       plugins.push(this.createConfiguredAuditPlugin(config));
+    }
+
+    // Note: RLS plugin is handled separately via createConfiguredRLSPlugin
+    // because it requires the repository instance for method binding
+
+    return plugins;
+  }
+
+  /**
+   * Get all plugins configured via decorators for a repository class,
+   * including RLS plugin with repository instance binding
+   *
+   * @param repositoryClass - The repository class with decorators
+   * @param repositoryInstance - The repository instance for RLS method binding
+   * @param tableName - The table name for RLS schema
+   */
+  getDecoratorPluginsForRepositoryWithRLS(
+    repositoryClass: RepositoryConstructor,
+    repositoryInstance: object,
+    tableName: string
+  ): KyseraPlugin[] {
+    const plugins = this.getDecoratorPluginsForRepository(repositoryClass);
+
+    // Add RLS plugin if enabled
+    // Cast to Constructor for decorator metadata functions
+    const cls = repositoryClass as unknown as new (...args: unknown[]) => object;
+    if (isRLSEnabled(cls)) {
+      const rlsPluginInstance = this.createConfiguredRLSPlugin(
+        tableName,
+        repositoryClass,
+        repositoryInstance
+      );
+      if (rlsPluginInstance) {
+        // RLS should be applied first (highest priority for security)
+        plugins.unshift(rlsPluginInstance);
+      }
     }
 
     return plugins;

@@ -41,6 +41,36 @@ import {
 } from './database.constants.js';
 import { EventEmitter } from 'events';
 
+/**
+ * Pool metrics for monitoring connection pool health and performance
+ */
+export interface PoolMetrics {
+  /** Total number of connections in the pool */
+  totalConnections: number;
+  /** Number of idle connections */
+  idleConnections: number;
+  /** Number of active/in-use connections */
+  activeConnections: number;
+  /** Number of clients waiting for a connection */
+  waitingClients: number;
+  /** Total number of connection acquires */
+  acquireCount: number;
+  /** Total number of connection releases */
+  releaseCount: number;
+  /** Number of pool errors */
+  errorCount: number;
+  /** Last pool error */
+  lastError?: Error;
+  /** Timestamp of last acquire */
+  lastAcquireAt?: Date;
+  /** Average acquire time in milliseconds */
+  averageAcquireTimeMs: number;
+  /** Total acquire time (for average calculation) */
+  totalAcquireTimeMs: number;
+  /** Pool size configuration */
+  poolSize: { min: number; max: number };
+}
+
 interface ConnectionInfo {
   name: string;
   config: DatabaseConnection;
@@ -59,6 +89,8 @@ interface ConnectionInfo {
     errorCount: number;
     totalQueryTime: number;
   };
+  /** Pool-specific metrics for monitoring */
+  poolMetrics: PoolMetrics;
 }
 
 interface RetryConfig {
@@ -212,6 +244,7 @@ export class DatabaseManager implements IDatabaseManager {
   private async createConnection(name: string, config: DatabaseConnection): Promise<ConnectionInfo> {
     this.logger.debug({ name, dialect: config.dialect }, 'Creating database connection');
 
+    const poolConfig = config.pool || {};
     const info: ConnectionInfo = {
       name,
       config,
@@ -224,6 +257,21 @@ export class DatabaseManager implements IDatabaseManager {
         queryCount: 0,
         errorCount: 0,
         totalQueryTime: 0,
+      },
+      poolMetrics: {
+        totalConnections: 0,
+        idleConnections: 0,
+        activeConnections: 0,
+        waitingClients: 0,
+        acquireCount: 0,
+        releaseCount: 0,
+        errorCount: 0,
+        averageAcquireTimeMs: 0,
+        totalAcquireTimeMs: 0,
+        poolSize: {
+          min: poolConfig.min ?? DEFAULT_POOL_CONFIG.min,
+          max: poolConfig.max ?? DEFAULT_POOL_CONFIG.max,
+        },
       },
     };
 
@@ -303,10 +351,17 @@ export class DatabaseManager implements IDatabaseManager {
           ...config.pool,
         });
 
-        // Add comprehensive error handlers
+        // Add comprehensive error handlers with metrics collection
         pool.on('error', (err, client) => {
           // Log the error but don't throw - this handles connection termination errors
           this.logger.error({ error: err, client: client ? 'present' : 'none' }, 'PostgreSQL pool error');
+
+          // Update pool metrics
+          const connInfo = this.connections.get(config.name || DATABASE_DEFAULT_CONNECTION);
+          if (connInfo) {
+            connInfo.poolMetrics.errorCount++;
+            connInfo.poolMetrics.lastError = err;
+          }
 
           // Emit error event for monitoring
           this.emitEvent({
@@ -317,16 +372,43 @@ export class DatabaseManager implements IDatabaseManager {
           });
         });
 
-        pool.on('connect', (client) => {
+        pool.on('connect', (_client) => {
           this.logger.debug('PostgreSQL pool client connected');
+          const connInfo = this.connections.get(config.name || DATABASE_DEFAULT_CONNECTION);
+          if (connInfo) {
+            connInfo.poolMetrics.totalConnections++;
+            connInfo.poolMetrics.idleConnections++;
+          }
         });
 
-        pool.on('acquire', (client) => {
+        pool.on('acquire', (_client) => {
           this.logger.debug('PostgreSQL pool client acquired');
+          const connInfo = this.connections.get(config.name || DATABASE_DEFAULT_CONNECTION);
+          if (connInfo) {
+            connInfo.poolMetrics.acquireCount++;
+            connInfo.poolMetrics.activeConnections++;
+            connInfo.poolMetrics.idleConnections = Math.max(0, connInfo.poolMetrics.idleConnections - 1);
+            connInfo.poolMetrics.lastAcquireAt = new Date();
+          }
         });
 
-        pool.on('remove', (client) => {
+        pool.on('release', (_client) => {
+          this.logger.debug('PostgreSQL pool client released');
+          const connInfo = this.connections.get(config.name || DATABASE_DEFAULT_CONNECTION);
+          if (connInfo) {
+            connInfo.poolMetrics.releaseCount++;
+            connInfo.poolMetrics.activeConnections = Math.max(0, connInfo.poolMetrics.activeConnections - 1);
+            connInfo.poolMetrics.idleConnections++;
+          }
+        });
+
+        pool.on('remove', (_client) => {
           this.logger.debug('PostgreSQL pool client removed');
+          const connInfo = this.connections.get(config.name || DATABASE_DEFAULT_CONNECTION);
+          if (connInfo) {
+            connInfo.poolMetrics.totalConnections = Math.max(0, connInfo.poolMetrics.totalConnections - 1);
+            connInfo.poolMetrics.idleConnections = Math.max(0, connInfo.poolMetrics.idleConnections - 1);
+          }
         });
 
         const dialect = new PostgresDialect({ pool });
@@ -360,9 +442,16 @@ export class DatabaseManager implements IDatabaseManager {
           ...mysqlPoolConfig,
         } as mysql.PoolOptions);
 
-        // Add error handlers for MySQL pool
+        // Add error handlers for MySQL pool with metrics collection
         pool.on('error', (err) => {
           this.logger.error({ error: err }, 'MySQL pool error');
+
+          // Update pool metrics
+          const connInfo = this.connections.get(config.name || DATABASE_DEFAULT_CONNECTION);
+          if (connInfo) {
+            connInfo.poolMetrics.errorCount++;
+            connInfo.poolMetrics.lastError = err;
+          }
 
           // Emit error event for monitoring
           this.emitEvent({
@@ -373,16 +462,34 @@ export class DatabaseManager implements IDatabaseManager {
           });
         });
 
-        pool.on('connection', (connection) => {
+        pool.on('connection', (_connection) => {
           this.logger.debug('MySQL pool connection established');
+          const connInfo = this.connections.get(config.name || DATABASE_DEFAULT_CONNECTION);
+          if (connInfo) {
+            connInfo.poolMetrics.totalConnections++;
+            connInfo.poolMetrics.idleConnections++;
+          }
         });
 
-        pool.on('acquire', (connection) => {
+        pool.on('acquire', (_connection) => {
           this.logger.debug('MySQL pool connection acquired');
+          const connInfo = this.connections.get(config.name || DATABASE_DEFAULT_CONNECTION);
+          if (connInfo) {
+            connInfo.poolMetrics.acquireCount++;
+            connInfo.poolMetrics.activeConnections++;
+            connInfo.poolMetrics.idleConnections = Math.max(0, connInfo.poolMetrics.idleConnections - 1);
+            connInfo.poolMetrics.lastAcquireAt = new Date();
+          }
         });
 
-        pool.on('release', (connection) => {
+        pool.on('release', (_connection) => {
           this.logger.debug('MySQL pool connection released');
+          const connInfo = this.connections.get(config.name || DATABASE_DEFAULT_CONNECTION);
+          if (connInfo) {
+            connInfo.poolMetrics.releaseCount++;
+            connInfo.poolMetrics.activeConnections = Math.max(0, connInfo.poolMetrics.activeConnections - 1);
+            connInfo.poolMetrics.idleConnections++;
+          }
         });
 
         const dialect = new MysqlDialect({ pool });
@@ -817,6 +924,95 @@ export class DatabaseManager implements IDatabaseManager {
       metrics[connName] = info.metrics;
     }
     return metrics;
+  }
+
+  /**
+   * Get detailed pool metrics for a connection or all connections.
+   * Includes real-time pool statistics from the underlying driver.
+   *
+   * @example
+   * ```typescript
+   * // Get pool metrics for default connection
+   * const metrics = manager.getPoolMetrics();
+   *
+   * // Get pool metrics for specific connection
+   * const metrics = manager.getPoolMetrics('replica');
+   *
+   * // Monitor pool health
+   * const { activeConnections, waitingClients, poolSize } = metrics;
+   * const utilization = activeConnections / poolSize.max;
+   * ```
+   */
+  getPoolMetrics(name?: string): PoolMetrics | Map<string, PoolMetrics> {
+    if (name) {
+      const info = this.connections.get(name);
+      if (!info) {
+        throw Errors.notFound('Connection', name);
+      }
+      return this.collectPoolMetrics(info);
+    }
+
+    const metrics = new Map<string, PoolMetrics>();
+    for (const [connName, info] of this.connections) {
+      metrics.set(connName, this.collectPoolMetrics(info));
+    }
+    return metrics;
+  }
+
+  /**
+   * Collect pool metrics from a connection, merging driver-specific stats
+   */
+  private collectPoolMetrics(info: ConnectionInfo): PoolMetrics {
+    const baseMetrics = { ...info.poolMetrics };
+
+    // Add real-time stats from pool if available
+    if (info.pool) {
+      if (info.config.dialect === 'postgres' && info.pool instanceof Pool) {
+        // PostgreSQL pg Pool provides real-time statistics
+        const pgPool = info.pool;
+        baseMetrics.totalConnections = pgPool.totalCount;
+        baseMetrics.idleConnections = pgPool.idleCount;
+        baseMetrics.waitingClients = pgPool.waitingCount;
+        baseMetrics.activeConnections = pgPool.totalCount - pgPool.idleCount;
+      } else if (info.config.dialect === 'mysql' && 'pool' in info.pool) {
+        // MySQL2 pool - limited real-time stats available
+        // Keep tracked metrics as MySQL2 doesn't expose pool counts directly
+      }
+      // SQLite doesn't have a connection pool
+    }
+
+    // Calculate average acquire time
+    if (baseMetrics.acquireCount > 0 && baseMetrics.totalAcquireTimeMs > 0) {
+      baseMetrics.averageAcquireTimeMs = baseMetrics.totalAcquireTimeMs / baseMetrics.acquireCount;
+    }
+
+    return baseMetrics;
+  }
+
+  /**
+   * Reset pool metrics counters for a connection
+   */
+  resetPoolMetrics(name?: string): void {
+    const resetMetrics = (info: ConnectionInfo) => {
+      info.poolMetrics.acquireCount = 0;
+      info.poolMetrics.releaseCount = 0;
+      info.poolMetrics.errorCount = 0;
+      info.poolMetrics.totalAcquireTimeMs = 0;
+      info.poolMetrics.averageAcquireTimeMs = 0;
+      info.poolMetrics.lastError = undefined;
+      info.poolMetrics.lastAcquireAt = undefined;
+    };
+
+    if (name) {
+      const info = this.connections.get(name);
+      if (info) {
+        resetMetrics(info);
+      }
+    } else {
+      for (const info of this.connections.values()) {
+        resetMetrics(info);
+      }
+    }
   }
 
   /**

@@ -45,6 +45,7 @@ export class HealthService {
     @Inject(EXCHANGE_MANAGER_TOKEN) private readonly exchangeManager: ExchangeManagerService,
     @Inject(DATABASE_HEALTH_INDICATOR) private readonly dbHealth: DatabaseHealthIndicator,
     // StreamAggregator is injected to ensure it gets instantiated and @PostConstruct runs
+    // @ts-expect-error - Intentionally unused, needed for dependency injection and lifecycle
     @Inject(STREAM_AGGREGATOR_TOKEN) private readonly streamAggregator: StreamAggregatorService
   ) { }
 

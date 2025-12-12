@@ -129,4 +129,7 @@ switch (command) {
   case 'status':
     showStatus();
     break;
+  default:
+    console.error('Unknown command. Use --down, --status, or no flag for migration up.');
+    process.exit(1);
 }

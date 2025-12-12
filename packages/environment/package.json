@@ -36,7 +36,7 @@
   "dependencies": {
     "@iarna/toml": "^2.2.5",
     "@omnitron-dev/common": "workspace:*",
-    "@xec-sh/core": "workspace:*",
+    "@xec-sh/core": "^0.8.3",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
     "fast-json-patch": "^3.1.1",

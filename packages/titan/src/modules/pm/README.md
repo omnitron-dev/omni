@@ -1879,6 +1879,381 @@ describe('Process Restart Tests', () => {
 });
 ```
 
+## Internal Architecture
+
+### ProcessRegistry
+
+The `ProcessRegistry` maintains a local registry of all spawned processes with service name indexing:
+
+```typescript
+import { ProcessRegistry } from '@omnitron-dev/titan/pm';
+
+const registry = new ProcessRegistry();
+
+// Register a process
+registry.register(processInfo);
+
+// Find by ID
+const process = registry.get(processId);
+
+// Find by service name
+const service = registry.findByServiceName('calculator');
+const allCalculators = registry.findAllByServiceName('calculator');
+
+// List all processes
+const allProcesses = registry.getAll();
+
+// Unregister
+registry.unregister(processId);
+```
+
+### NetronClient
+
+The `NetronClient` handles client-side Netron communication with spawned processes:
+
+```typescript
+import { NetronClient, ConnectionState } from '@omnitron-dev/titan/pm';
+
+const client = new NetronClient(logger);
+
+// Connection states
+ConnectionState.DISCONNECTED   // Initial state
+ConnectionState.CONNECTING     // Establishing connection
+ConnectionState.CONNECTED      // Ready for RPC calls
+ConnectionState.RECONNECTING   // Attempting reconnection
+ConnectionState.DISCONNECTING  // Graceful disconnect
+ConnectionState.FAILED         // Connection failed
+
+// Connect to a process
+await client.connect(transportUrl, serviceName, version);
+
+// Make RPC calls
+const result = await client.call('methodName', arg1, arg2);
+
+// Check connection status
+if (client.isConnected()) {
+  // Safe to make calls
+}
+
+// Disconnect
+await client.disconnect();
+```
+
+**Features:**
+- Automatic exponential backoff retry on connection failures
+- Connection timeout handling
+- Auto-reconnect support
+- Connection state tracking via `state` property
+
+### ProcessSpawnerFactory
+
+Creates appropriate spawner instances based on configuration:
+
+```typescript
+import { ProcessSpawnerFactory } from '@omnitron-dev/titan/pm';
+
+const spawner = ProcessSpawnerFactory.create(logger, config);
+
+// Spawner capabilities:
+// - Dynamically loads process modules from file paths
+// - Supports both Worker threads and child processes
+// - Manages transport configuration (TCP, Unix, IPC, WS)
+// - Handles Netron service setup
+// - Port allocation for network transports
+```
+
+### WorkerHandle
+
+The `WorkerHandle` interface represents a spawned worker:
+
+```typescript
+interface IWorkerHandle {
+  id: string;                    // Unique process ID
+  transportUrl: string;          // Netron transport URL
+  serviceName: string;           // Service name for discovery
+  serviceVersion: string;        // Service version
+  status: ProcessStatus;         // Current status
+  worker: Worker | ChildProcess; // Underlying worker/process
+  netronClient: NetronClient | null;
+  proxy?: any;                   // Service proxy
+
+  terminate(): Promise<void>;    // Graceful termination
+}
+```
+
+## Type Reference
+
+### ProcessStatus
+
+```typescript
+enum ProcessStatus {
+  PENDING = 'pending',     // Created but not started
+  STARTING = 'starting',   // Initialization in progress
+  RUNNING = 'running',     // Ready and processing requests
+  STOPPING = 'stopping',   // Graceful shutdown in progress
+  STOPPED = 'stopped',     // Clean shutdown complete
+  FAILED = 'failed',       // Failed to start
+  CRASHED = 'crashed'      // Unexpected termination
+}
+```
+
+### PoolStrategy
+
+All available load balancing strategies:
+
+```typescript
+enum PoolStrategy {
+  ROUND_ROBIN = 'round-robin',           // Sequential distribution
+  LEAST_LOADED = 'least-loaded',         // Route to lowest CPU/memory
+  LEAST_CONNECTIONS = 'least-connections', // Fewest active connections
+  WEIGHTED_ROUND_ROBIN = 'weighted-round-robin',
+  LEAST_RESPONSE_TIME = 'least-response-time',
+  IP_HASH = 'ip-hash',                   // Sticky sessions
+  RANDOM = 'random',                     // Random selection
+  WEIGHTED = 'weighted',                 // Probability-based
+  ADAPTIVE = 'adaptive',                 // ML-based multi-factor
+  CONSISTENT_HASH = 'consistent-hash',   // Stable distribution
+  LATENCY = 'latency'                    // P99 latency-based
+}
+```
+
+### IPoolMetrics
+
+Complete metrics interface for process pools:
+
+```typescript
+interface IPoolMetrics extends IProcessMetrics {
+  // Queue metrics
+  queueSize: number;              // Current queue depth
+
+  // Worker counts
+  totalWorkers: number;           // Total workers in pool
+  activeWorkers: number;          // Currently processing
+  idleWorkers?: number;           // Available for work
+  healthyWorkers?: number;        // Passing health checks
+  unhealthyWorkers?: number;      // Failing health checks
+
+  // Request metrics
+  totalRequests: number;          // Lifetime requests
+  successfulRequests?: number;    // Successful completions
+  failedRequests?: number;        // Failed requests
+  totalErrors?: number;           // Total errors
+
+  // Performance metrics
+  avgResponseTime: number;        // Average response time (ms)
+  errorRate?: number;             // Error percentage (0-1)
+  throughput?: number;            // Requests per second
+  saturation?: number;            // Pool utilization (0-1)
+}
+```
+
+### ILatencyMetrics
+
+Percentile-based latency tracking:
+
+```typescript
+interface ILatencyMetrics {
+  p50: number;   // 50th percentile (median)
+  p75: number;   // 75th percentile
+  p90: number;   // 90th percentile
+  p95: number;   // 95th percentile
+  p99: number;   // 99th percentile
+  mean: number;  // Average latency
+}
+```
+
+### IProcessMetrics
+
+Base metrics for individual processes:
+
+```typescript
+interface IProcessMetrics {
+  cpu: number;                     // CPU percentage (0-100)
+  memory: number;                  // Memory usage in bytes
+  requests?: number;               // Total requests processed
+  errors?: number;                 // Total errors
+  latency?: ILatencyMetrics;       // Response time percentiles
+  custom?: Record<string, any>;    // Custom metrics
+}
+```
+
+### IHealthStatus
+
+Health check result:
+
+```typescript
+interface IHealthStatus {
+  status: 'healthy' | 'degraded' | 'unhealthy';
+  checks: IHealthCheck[];
+  timestamp: number;
+}
+
+interface IHealthCheck {
+  name: string;
+  status: 'pass' | 'warn' | 'fail';
+  message?: string;
+  details?: any;
+}
+```
+
+### Worker Message Types
+
+Discriminated union for worker communication:
+
+```typescript
+type WorkerMessage =
+  | { type: 'call'; id: string; method: string; args: any[] }
+  | { type: 'result'; id: string; result: any }
+  | { type: 'error'; id: string; error: { message: string; stack?: string } }
+  | { type: 'stream-chunk'; id: string; chunk: any; done: boolean }
+  | { type: 'ready'; processId: string; serviceName: string; version: string }
+  | { type: 'health'; status: IHealthStatus }
+  | { type: 'metrics'; metrics: IProcessMetrics };
+```
+
+## Event System
+
+The `ProcessManager` extends `EventEmitter` and emits typed events:
+
+```typescript
+// Event types
+interface IProcessEvents {
+  'process:spawn': (info: IProcessInfo) => void;
+  'process:ready': (info: IProcessInfo) => void;
+  'process:crash': (info: IProcessInfo, error: Error) => void;
+  'process:restart': (info: IProcessInfo, attempt: number) => void;
+  'process:stop': (info: IProcessInfo) => void;
+  'pool:scale': (pool: string, oldSize: number, newSize: number) => void;
+  'health:change': (processId: string, health: IHealthStatus) => void;
+}
+
+// Usage
+pm.on('process:spawn', (info) => {
+  console.log(`Process ${info.name} spawned with ID ${info.id}`);
+});
+
+pm.on('process:crash', (info, error) => {
+  console.error(`Process ${info.id} crashed:`, error.message);
+});
+
+pm.on('pool:scale', (poolName, oldSize, newSize) => {
+  console.log(`Pool ${poolName} scaled from ${oldSize} to ${newSize}`);
+});
+
+pm.on('health:change', (processId, health) => {
+  if (health.status === 'unhealthy') {
+    alertOps(`Process ${processId} is unhealthy`);
+  }
+});
+```
+
+## Performance Characteristics
+
+### Latency
+
+| Operation | Worker Thread | Child Process |
+|-----------|---------------|---------------|
+| Spawn     | 10-30ms       | 30-100ms      |
+| RPC Call (local) | <1ms    | 1-5ms         |
+| RPC Call (TCP)   | 5-20ms  | 5-20ms        |
+| Shutdown  | 5-50ms        | 10-100ms      |
+
+### Memory Overhead
+
+| Isolation | Base Memory | Per Worker |
+|-----------|-------------|------------|
+| `none`    | ~0          | ~0         |
+| `worker`  | ~5MB        | ~20-30MB   |
+| `child`   | ~10MB       | ~50-100MB  |
+
+### Throughput
+
+Pool throughput scales linearly with worker count until CPU saturation:
+
+```
+Throughput ≈ Workers × (1000ms / avgLatency) × utilizationFactor
+```
+
+**Recommendations:**
+- Use `worker` isolation for CPU-bound tasks (lower overhead)
+- Use `child` isolation for memory-intensive tasks (full isolation)
+- Use `ipc` transport for local communication (fastest)
+- Use `tcp` transport for network distribution
+
+## Thread Safety & Concurrency
+
+### Process State
+
+All process state is maintained in thread-safe Maps with atomic operations:
+- `processes: Map<processId, IProcessInfo>`
+- `workers: Map<processId, IWorkerHandle>`
+- `serviceProxies: Map<processId, ServiceProxy>`
+
+### Pool Operations
+
+- Worker selection uses atomic round-robin indexing
+- Queue operations are thread-safe
+- Scaling operations are serialized via internal locks
+
+### Event Emission
+
+The EventEmitter handles concurrent listeners safely. Events are emitted synchronously but listeners can be async.
+
+### Health & Metrics
+
+Collection runs concurrently without locks, using eventual consistency. Metrics snapshots are point-in-time.
+
+## Known Limitations
+
+### Local Registry Only
+
+The `ProcessRegistry` is local to each `ProcessManager` instance. For distributed service discovery, processes should:
+- Use the Titan Discovery module
+- Implement custom discovery
+- Use external discovery services (Consul, etcd, etc.)
+
+### No Built-in Persistence
+
+Process metadata is not persisted. On PM restart:
+- All process info is lost
+- Pools must be recreated
+- Workflows must be restarted
+
+For persistent orchestration, consider:
+- Storing workflow state externally
+- Using event sourcing patterns
+- Implementing checkpoint/restore
+
+### Stream Detection
+
+Streaming methods are detected heuristically by method name:
+- Methods starting with `stream` (e.g., `streamData`)
+- Methods containing `Stream` (e.g., `getDataStream`)
+
+For other streaming methods, explicitly return `AsyncIterable<T>`.
+
+### Network Serialization
+
+Netron handles serialization automatically, but:
+- Circular references will fail
+- Functions cannot be passed
+- Large payloads may timeout
+- Binary data should use Buffer/Uint8Array
+
+### Pool Scaling
+
+When scaling down:
+- In-flight requests may fail
+- Graceful drain with timeout
+- Consider `pool.drain()` before scale-down
+
+### Process Hot Reload
+
+Hot reload is not supported. To update process code:
+1. Spawn new process with updated code
+2. Gracefully drain old process
+3. Kill old process
+
 ## Summary
 
 The Titan Process Manager is intentionally minimal:

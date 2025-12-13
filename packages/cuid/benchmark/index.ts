@@ -1,8 +1,7 @@
 import Benchmark from 'benchmark';
 import { init as cuid2Init } from '@paralleldrive/cuid2';
-import cuid1 from 'cuid';
 import { nanoid } from 'nanoid';
-import short from 'short-uuid';
+import { generate as shortUuidGenerate, createTranslator } from 'short-uuid';
 import { v4 as uuidv4 } from 'uuid';
 
 // Our implementations
@@ -11,7 +10,7 @@ import { cuid as ourCuid16, isCuid as ourIsCuid, createOptimizedCuid } from '../
 // Initialize generators
 const cuid2 = cuid2Init();
 const ourCuid24 = createOptimizedCuid({ length: 24 });
-const shortUuid = short();
+const shortUuidTranslator = createTranslator();
 
 // Console colors
 const colors = {
@@ -80,14 +79,14 @@ suite1
   .add('@paralleldrive/cuid2', () => {
     cuid2();
   })
-  .add('cuid v3 (legacy)', () => {
-    cuid1();
-  })
   .add('nanoid', () => {
     nanoid();
   })
-  .add('short-uuid', () => {
-    shortUuid.new();
+  .add('short-uuid (generate)', () => {
+    shortUuidGenerate();
+  })
+  .add('short-uuid (translator)', () => {
+    shortUuidTranslator.generate();
   })
   .add('uuid v4', () => {
     uuidv4();
@@ -178,16 +177,16 @@ function runSuite3() {
   const results3 = new Map<string, number>();
 
   suite3
-    .add('Our CUID - 10k batch', () => {
+    .add('Our CUID (16) - 10k batch', () => {
       const ids = new Array(10000);
       for (let i = 0; i < 10000; i++) {
         ids[i] = ourCuid16();
       }
     })
-    .add('Our CUID - 10k batch', () => {
+    .add('Our CUID (24) - 10k batch', () => {
       const ids = new Array(10000);
       for (let i = 0; i < 10000; i++) {
-        ids[i] = ourCuid16();
+        ids[i] = ourCuid24();
       }
     })
     .add('@paralleldrive/cuid2 - 10k batch', () => {
@@ -200,6 +199,18 @@ function runSuite3() {
       const ids = new Array(10000);
       for (let i = 0; i < 10000; i++) {
         ids[i] = nanoid();
+      }
+    })
+    .add('short-uuid - 10k batch', () => {
+      const ids = new Array(10000);
+      for (let i = 0; i < 10000; i++) {
+        ids[i] = shortUuidGenerate();
+      }
+    })
+    .add('uuid v4 - 10k batch', () => {
+      const ids = new Array(10000);
+      for (let i = 0; i < 10000; i++) {
+        ids[i] = uuidv4();
       }
     })
     .on('cycle', (event: any) => {
@@ -264,10 +275,10 @@ function runCollisionTest() {
   };
 
   testCollisions('Our CUID (16)', ourCuid16);
-  testCollisions('Our CUID (16)', ourCuid16);
+  testCollisions('Our CUID (24)', ourCuid24);
   testCollisions('@paralleldrive/cuid2', cuid2);
-  testCollisions('cuid v3', cuid1);
   testCollisions('nanoid', nanoid);
+  testCollisions('short-uuid', shortUuidGenerate);
   testCollisions('uuid v4', uuidv4);
 
   console.log(`\n${colors.bright}${colors.cyan}===========================================`);

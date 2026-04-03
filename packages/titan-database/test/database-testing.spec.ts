@@ -954,6 +954,7 @@ describeOrSkip('DatabaseTestingModule', () => {
             autoMigrate: false,
             autoClean: true,
           }),
+          TitanDatabaseModule.forFeature([UserRepository, PostRepository, CommentRepository]),
         ],
         providers: [BlogService],
       })

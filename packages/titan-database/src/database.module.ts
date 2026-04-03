@@ -78,6 +78,8 @@ export class TitanDatabaseModule {
     return this.createModule(optionsProviders, options);
   }
 
+  private static _featureCounter = 0;
+
   static forFeature(repositories: RepositoryConstructor[] = []): DynamicModule {
     const providers: Array<[ServiceIdentifier<unknown>, ProviderDefinition<unknown>, RegistrationOptions]> = [];
 
@@ -103,8 +105,17 @@ export class TitanDatabaseModule {
       ]);
     }
 
+    // Use a unique module class per forFeature call to avoid name collision
+    // with forRoot. The container deduplicates modules by name, so forFeature
+    // must have a distinct name from forRoot's TitanDatabaseModule.
+    const featureId = ++TitanDatabaseModule._featureCounter;
+    @Module()
+    class TitanDatabaseFeatureModule {
+      name = `TitanDatabaseModule$Feature${featureId}`;
+    }
+
     return {
-      module: TitanDatabaseModule,
+      module: TitanDatabaseFeatureModule,
       providers,
       exports: providers.map((p) => p[0]),
     };

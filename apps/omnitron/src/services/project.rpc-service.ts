@@ -53,6 +53,11 @@ export class ProjectRpcService {
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
+  async updateProject(data: { name: string; path?: string }): Promise<IProjectInfo> {
+    return this.projectService.updateProject(data.name, data.path ? { path: data.path } : {});
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
   async removeProject(data: { name: string }): Promise<{ success: boolean }> {
     this.projectService.removeProject(data.name);
     return { success: true };

@@ -202,7 +202,7 @@ export async function upCommand(options?: UpCommandOptions): Promise<void> {
   }
 
   let config;
-  if (configPath) {
+  if (configPath && fs.existsSync(configPath)) {
     config = await loadEcosystemConfigFile(configPath);
   } else {
     try {

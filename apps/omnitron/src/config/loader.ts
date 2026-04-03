@@ -52,6 +52,9 @@ export async function loadEcosystemConfig(cwd: string = process.cwd()): Promise<
  * Load config from a specific file path (e.g., `omnitron dev -c ./omnitron.config.ts`)
  */
 export async function loadEcosystemConfigFile(filePath: string): Promise<IEcosystemConfig> {
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`Config file not found: ${filePath}`);
+  }
   const url = pathToFileURL(filePath).href;
   const mod = await import(`${url}?t=${Date.now()}`);
   const config = mod.default ?? mod;

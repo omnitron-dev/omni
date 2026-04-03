@@ -213,6 +213,7 @@ export interface IProjectRpcService {
 
   // --- Projects (Admin) ---
   addProject(data: { name: string; path: string }): Promise<IProjectInfo>;
+  updateProject(data: { name: string; path?: string }): Promise<IProjectInfo>;
   removeProject(data: { name: string }): Promise<{ success: boolean }>;
 
   // --- Apps (Viewer) ---

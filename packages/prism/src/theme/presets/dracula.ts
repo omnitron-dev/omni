@@ -4,7 +4,7 @@
  * A dark theme inspired by the popular Dracula color scheme.
  * Features purple primary with distinct accent colors.
  *
- * @module @omnitron/prism/theme/presets/dracula
+ * @module @omnitron-dev/prism/theme/presets/dracula
  */
 
 import type { ThemePresetDefinition, ColorScale } from '../../types/theme.js';

@@ -4,7 +4,7 @@
  * Utilities and helpers for form validation and handling.
  * Designed to work seamlessly with React Hook Form and Zod.
  *
- * @module @omnitron/prism/forms
+ * @module @omnitron-dev/prism/forms
  */
 
 export {

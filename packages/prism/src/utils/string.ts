@@ -3,7 +3,7 @@
  *
  * Common string manipulation utilities.
  *
- * @module @omnitron/prism/utils/string
+ * @module @omnitron-dev/prism/utils/string
  */
 
 // =============================================================================

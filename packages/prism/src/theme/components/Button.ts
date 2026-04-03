@@ -3,7 +3,7 @@
  *
  * MUI Button customization with custom variants: soft, dashed, shapes.
  *
- * @module @omnitron/prism/theme/components/Button
+ * @module @omnitron-dev/prism/theme/components/Button
  */
 
 import type { Components, Theme, ButtonProps, ComponentsVariants } from '@mui/material';

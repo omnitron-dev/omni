@@ -4,7 +4,7 @@
  * Refined styling for Checkbox, Radio, Switch, and FormLabel with custom icons.
  * Based on Minimals template patterns with MUI v7 best practices.
  *
- * @module @omnitron/prism/theme/components/FormControls
+ * @module @omnitron-dev/prism/theme/components/FormControls
  */
 
 import * as React from 'react';

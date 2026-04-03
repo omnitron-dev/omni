@@ -5,7 +5,7 @@
  *
  * @example
  * ```tsx
- * import { useThemeStore, useAuthStore, useUIStore } from '@omnitron/prism/state';
+ * import { useThemeStore, useAuthStore, useUIStore } from '@omnitron-dev/prism/state';
  *
  * function App() {
  *   const { mode, toggleMode } = useThemeStore();
@@ -16,7 +16,7 @@
  * }
  * ```
  *
- * @module @omnitron/prism/state
+ * @module @omnitron-dev/prism/state
  */
 
 // Store factory

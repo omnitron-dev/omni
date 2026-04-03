@@ -6,7 +6,7 @@
  * React Hook Form integrated time picker using MUI X DatePickers.
  * Provides a professional time selection experience with dayjs integration.
  *
- * @module @omnitron/prism/components/field
+ * @module @omnitron-dev/prism/components/field
  */
 
 import type { ReactNode } from 'react';

@@ -46,7 +46,7 @@ import {
   CloseIcon,
   RefreshIcon,
 } from 'src/assets/icons';
-import { Breadcrumbs } from '@omnitron/prism';
+import { Breadcrumbs } from '@omnitron-dev/prism';
 import { daemon, alerts } from 'src/netron/client';
 import { formatUptime, formatMemory } from 'src/utils/formatters';
 import { STATUS_COLORS } from 'src/utils/constants';

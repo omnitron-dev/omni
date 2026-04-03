@@ -1,7 +1,7 @@
 /**
  * Tooltip Component Exports
  *
- * @module @omnitron/prism/components/tooltip
+ * @module @omnitron-dev/prism/components/tooltip
  */
 
 export { Tooltip, type TooltipProps } from './tooltip.js';

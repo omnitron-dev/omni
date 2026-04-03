@@ -12,7 +12,7 @@
  * - Slider range validation
  * - Rich text editor validation
  *
- * @module @omnitron/prism/forms
+ * @module @omnitron-dev/prism/forms
  */
 
 import * as z from 'zod';
@@ -95,7 +95,7 @@ const DEFAULT_ERRORS = {
  * @example
  * ```tsx
  * import { z } from 'zod';
- * import { schemaUtils } from '@omnitron/prism/forms';
+ * import { schemaUtils } from '@omnitron-dev/prism/forms';
  *
  * // Define form schema
  * const UserSchema = z.object({

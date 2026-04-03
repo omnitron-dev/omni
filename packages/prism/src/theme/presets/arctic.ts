@@ -3,7 +3,7 @@
  *
  * A cool, crisp blue theme inspired by northern landscapes.
  *
- * @module @omnitron/prism/theme/presets/arctic
+ * @module @omnitron-dev/prism/theme/presets/arctic
  */
 
 import type { ThemePresetDefinition, PresetPalette } from '../../types/theme.js';

@@ -4,7 +4,7 @@
  * Comprehensive settings management with persistence.
  * Combines theme preferences with layout and navigation settings.
  *
- * @module @omnitron/prism/state/stores/settings
+ * @module @omnitron-dev/prism/state/stores/settings
  */
 
 import { createPersistedStore, createSelectors } from '../create-store.js';

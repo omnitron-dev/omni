@@ -6,7 +6,7 @@
  * Provides i18n-aware schema validation with customizable error messages.
  * Integrates with any i18n library (i18next, react-intl, etc.).
  *
- * @module @omnitron/prism/forms
+ * @module @omnitron-dev/prism/forms
  */
 
 import { createContext, useContext, useMemo, type ReactNode } from 'react';

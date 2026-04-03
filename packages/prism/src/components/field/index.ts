@@ -6,7 +6,7 @@
  *
  * @example
  * ```tsx
- * import { Field } from '@omnitron/prism';
+ * import { Field } from '@omnitron-dev/prism';
  *
  * function ProfileForm() {
  *   const methods = useForm<ProfileData>();
@@ -28,7 +28,7 @@
  * }
  * ```
  *
- * @module @omnitron/prism/components/field
+ * @module @omnitron-dev/prism/components/field
  */
 
 // Base fields

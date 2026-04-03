@@ -6,7 +6,7 @@
  * Re-exports and extends @omnitron-dev/netron-react provider and hooks.
  * All Prism consumers use these — zero boilerplate, full type safety.
  *
- * @module @omnitron/prism/netron
+ * @module @omnitron-dev/prism/netron
  */
 
 // Re-export everything from netron-react core

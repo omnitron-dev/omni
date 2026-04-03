@@ -6,7 +6,7 @@
  * Like useEffect, but skips the first render.
  * Useful for running effects only on updates, not on mount.
  *
- * @module @omnitron/prism/hooks
+ * @module @omnitron-dev/prism/hooks
  */
 
 import { useEffect, useRef, type DependencyList, type EffectCallback } from 'react';

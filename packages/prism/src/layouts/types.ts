@@ -3,7 +3,7 @@
  *
  * Combines the best patterns from minimal and aurora layout systems.
  *
- * @module @omnitron/prism/layouts/types
+ * @module @omnitron-dev/prism/layouts/types
  */
 
 import type { ReactNode } from 'react';
@@ -91,7 +91,7 @@ export const HEADER_HEIGHTS = {
  * Layout navigation item definition.
  *
  * This is the data structure used for layout configuration.
- * For the NavItem component, see @omnitron/prism/components/nav-section.
+ * For the NavItem component, see @omnitron-dev/prism/components/nav-section.
  */
 export interface LayoutNavItem {
   /** Unique item ID */
@@ -140,7 +140,7 @@ export interface LayoutNavItem {
  * Layout navigation section (group of items with optional subheader).
  *
  * This is the data structure used for layout configuration.
- * For the NavSection component, see @omnitron/prism/components/nav-section.
+ * For the NavSection component, see @omnitron-dev/prism/components/nav-section.
  */
 export interface LayoutNavSection {
   /** Section ID */

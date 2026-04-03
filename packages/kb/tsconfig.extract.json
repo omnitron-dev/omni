@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/extractors/**/*.ts",
+    "src/cli/extract.ts",
+    "src/core/types.ts",
+    "src/specs/**/*.ts",
+    "src/embeddings/chunker.ts"
+  ],
+  "exclude": [
+    "**/*spec.ts",
+    "**/*test.ts",
+    "dist",
+    "node_modules"
+  ]
+}

@@ -7,7 +7,7 @@
  * - Vision Mode: Color blindness simulation for testing
  * - More accessibility features coming soon
  *
- * @module @omnitron/prism/accessibility
+ * @module @omnitron-dev/prism/accessibility
  */
 
 export {

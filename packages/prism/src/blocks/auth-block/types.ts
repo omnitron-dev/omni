@@ -3,7 +3,7 @@
  *
  * Type definitions for authentication-related block components.
  *
- * @module @omnitron/prism/blocks/auth-block
+ * @module @omnitron-dev/prism/blocks/auth-block
  */
 
 import type { ReactNode } from 'react';

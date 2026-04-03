@@ -4,7 +4,7 @@
  * A clean, minimalist theme with subtle grays and muted accents.
  * Focuses on content over chrome with maximum readability.
  *
- * @module @omnitron/prism/theme/presets/minimal
+ * @module @omnitron-dev/prism/theme/presets/minimal
  */
 
 import type { ThemePresetDefinition, ColorScale } from '../../types/theme.js';

@@ -1,7 +1,7 @@
 /**
  * Auth Layout Exports
  *
- * @module @omnitron/prism/layouts/auth
+ * @module @omnitron-dev/prism/layouts/auth
  */
 
 export { AuthCenteredLayout, AuthCenteredContent } from './centered.js';

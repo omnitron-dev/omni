@@ -3,7 +3,7 @@
  *
  * Initialize a new Prism project with configuration.
  *
- * @module @omnitron/prism/cli/commands/init
+ * @module @omnitron-dev/prism/cli/commands/init
  */
 
 import { Command } from 'commander';

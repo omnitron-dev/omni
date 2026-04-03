@@ -5,7 +5,7 @@
  * Uses HSL-based color math for perceptually correct results.
  * Combines Aurora's sophisticated color system with Prism's extensibility.
  *
- * @module @omnitron/prism/theme/utils/color
+ * @module @omnitron-dev/prism/theme/utils/color
  */
 
 import type {

@@ -6,7 +6,7 @@
  * Gets bounding client rect and scroll dimensions of a DOM element.
  * SSR-safe with automatic updates on resize/scroll.
  *
- * @module @omnitron/prism/hooks
+ * @module @omnitron-dev/prism/hooks
  */
 
 import { useState, useCallback, useEffect, useRef, type RefObject } from 'react';

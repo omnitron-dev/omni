@@ -29,8 +29,8 @@ export default defineConfig({
     alias: {
       src: path.resolve(process.cwd(), 'src'),
       // Prism subpath aliases BEFORE the root alias (Vite uses prefix matching)
-      '@omnitron/prism/netron': path.resolve(__dirname, '../../../packages/prism/src/netron/index.ts'),
-      '@omnitron/prism': path.resolve(__dirname, '../../../packages/prism/src/index.ts'),
+      '@omnitron-dev/prism/netron': path.resolve(__dirname, '../../../packages/prism/src/netron/index.ts'),
+      '@omnitron-dev/prism': path.resolve(__dirname, '../../../packages/prism/src/index.ts'),
       // Netron browser — resolve from dist (compiled, no Node.js deps)
       '@omnitron-dev/netron-browser': path.resolve(__dirname, '../../../packages/netron-browser/dist/index.js'),
       // Omnitron DTO

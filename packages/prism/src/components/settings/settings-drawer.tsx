@@ -6,7 +6,7 @@
  * UI component for managing application settings.
  * Displays configurable sections for theme, layout, and preferences.
  *
- * @module @omnitron/prism/components/settings
+ * @module @omnitron-dev/prism/components/settings
  */
 
 import { type ReactNode } from 'react';

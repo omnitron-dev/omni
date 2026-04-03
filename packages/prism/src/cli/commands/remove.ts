@@ -3,7 +3,7 @@
  *
  * Remove components or blocks from your project.
  *
- * @module @omnitron/prism/cli/commands/remove
+ * @module @omnitron-dev/prism/cli/commands/remove
  */
 
 import { Command } from 'commander';

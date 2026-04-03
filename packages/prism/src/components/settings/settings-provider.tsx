@@ -6,7 +6,7 @@
  * Provides settings context and drawer state management.
  * Wraps the application to enable settings drawer access anywhere.
  *
- * @module @omnitron/prism/components/settings
+ * @module @omnitron-dev/prism/components/settings
  */
 
 import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from 'react';

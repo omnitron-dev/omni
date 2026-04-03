@@ -6,7 +6,7 @@
  * React Hook Form integrated number field with proper numeric handling
  * and full accessibility support.
  *
- * @module @omnitron/prism/components/field
+ * @module @omnitron-dev/prism/components/field
  */
 
 import type { ReactNode, ComponentProps } from 'react';

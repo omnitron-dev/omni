@@ -1,7 +1,7 @@
 /**
  * Theme Utilities
  *
- * @module @omnitron/prism/theme/utils
+ * @module @omnitron-dev/prism/theme/utils
  */
 
 export * from './color.js';

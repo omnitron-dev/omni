@@ -4,7 +4,7 @@
  * SSR-safe localStorage utilities with JSON serialization support.
  * Inspired by minimal-shared/utils/local-storage pattern.
  *
- * @module @omnitron/prism/utils/storage
+ * @module @omnitron-dev/prism/utils/storage
  */
 
 // =============================================================================

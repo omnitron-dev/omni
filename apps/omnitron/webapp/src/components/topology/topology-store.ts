@@ -399,19 +399,19 @@ export const useTopologyStore = create<TopologyState>((set, get) => ({
         : allApps;
       const daemonStatus = status.status === 'fulfilled' ? status.value : null;
       const infraValue = infraState.status === 'fulfilled' ? infraState.value : null;
-      const infra = infraValue && typeof infraValue === 'object' && 'services' in infraValue
+      const infraMap = infraValue && typeof infraValue === 'object' && 'services' in infraValue
         ? ((infraValue as { services: Record<string, ContainerState> }).services ?? {})
         : {};
       const fleetNodes = fleetResult.status === 'fulfilled'
         ? (Array.isArray(fleetResult.value) ? fleetResult.value : [])
         : [];
 
-      const { nodes, edges } = buildFlowGraph(apps, infra, fleetNodes);
+      const { nodes, edges } = buildFlowGraph(apps, infraMap, fleetNodes);
 
       set({
         apps,
         daemonStatus,
-        infraServices: infra,
+        infraServices: infraMap,
         fleetNodes,
         nodes,
         edges,

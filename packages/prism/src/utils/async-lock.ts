@@ -5,7 +5,7 @@
  * Ensures only one operation runs at a time, with subsequent calls
  * waiting for and sharing the result of the in-flight operation.
  *
- * @module @omnitron/prism/utils
+ * @module @omnitron-dev/prism/utils
  */
 
 // =============================================================================
@@ -51,7 +51,7 @@ export type AsyncLockState = 'idle' | 'locked' | 'releasing';
  *
  * @example
  * ```tsx
- * import { AsyncLock } from '@omnitron/prism/utils';
+ * import { AsyncLock } from '@omnitron-dev/prism/utils';
  *
  * const tokenRefreshLock = new AsyncLock({ timeout: 10000 });
  *
@@ -250,7 +250,7 @@ export class AsyncLockTimeoutError extends Error {
  *
  * @example
  * ```tsx
- * import { createAsyncLock } from '@omnitron/prism/utils';
+ * import { createAsyncLock } from '@omnitron-dev/prism/utils';
  *
  * // Create a singleton lock for token refresh
  * const tokenLock = createAsyncLock({ timeout: 10000 });
@@ -289,7 +289,7 @@ export function createTokenRefreshLock(): AsyncLock {
  *
  * @example
  * ```tsx
- * import { withLock } from '@omnitron/prism/utils';
+ * import { withLock } from '@omnitron-dev/prism/utils';
  *
  * const result = await withLock('init-cache', async () => {
  *   const data = await fetchData();
@@ -312,7 +312,7 @@ export async function withLock<T>(key: string, operation: () => Promise<T>, opti
  *
  * @example
  * ```tsx
- * import { locked } from '@omnitron/prism/utils';
+ * import { locked } from '@omnitron-dev/prism/utils';
  *
  * class AuthService {
  *   @locked('refresh')

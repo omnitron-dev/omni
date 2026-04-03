@@ -4,7 +4,7 @@
  * Utilities for palette manipulation and CSS channel generation.
  * All color math uses HSL for perceptually correct results.
  *
- * @module @omnitron/prism/theme/palette
+ * @module @omnitron-dev/prism/theme/palette
  */
 
 import type { ThemePalette, PaletteColor, ColorScale, ColorScaleWithChannels } from '../types/theme.js';

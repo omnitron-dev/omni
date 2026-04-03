@@ -5,7 +5,7 @@
  *
  * Custom legend display for charts.
  *
- * @module @omnitron/prism/components/chart
+ * @module @omnitron-dev/prism/components/chart
  */
 
 import type { ChartLegendsProps } from '../types.js';

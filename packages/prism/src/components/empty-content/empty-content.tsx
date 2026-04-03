@@ -7,7 +7,7 @@
  * Supports icon-based illustrations, multiple action buttons,
  * filled backgrounds, and compact mode.
  *
- * @module @omnitron/prism/components/empty-content
+ * @module @omnitron-dev/prism/components/empty-content
  */
 
 import type { ReactNode } from 'react';

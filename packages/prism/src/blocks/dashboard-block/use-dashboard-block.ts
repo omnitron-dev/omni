@@ -3,7 +3,7 @@
  *
  * Hook for managing dashboard block state and behavior.
  *
- * @module @omnitron/prism/blocks/dashboard-block/use-dashboard-block
+ * @module @omnitron-dev/prism/blocks/dashboard-block/use-dashboard-block
  */
 
 'use client';

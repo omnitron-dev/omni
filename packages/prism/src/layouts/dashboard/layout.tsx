@@ -4,7 +4,7 @@
  * Main dashboard layout component that orchestrates navigation, header, and content.
  * Implements WCAG 2.1 accessibility guidelines with proper landmarks and keyboard navigation.
  *
- * @module @omnitron/prism/layouts/dashboard/layout
+ * @module @omnitron-dev/prism/layouts/dashboard/layout
  */
 
 import type { ReactNode } from 'react';

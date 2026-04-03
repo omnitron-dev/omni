@@ -289,7 +289,7 @@ src/state/
 ## Usage Example
 
 ```typescript
-import { useAuthStore, useThemeStore } from '@omnitron/prism/state';
+import { useAuthStore, useThemeStore } from '@omnitron-dev/prism/state';
 import { useQuery, useService } from '@omnitron-dev/netron-react';
 
 function Dashboard() {

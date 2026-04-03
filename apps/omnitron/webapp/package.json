@@ -13,7 +13,7 @@
     "@emotion/styled": "^11.14.0",
     "@fontsource/inter": "^5.2.8",
     "@mui/material": "^7.3.9",
-    "@omnitron/prism": "workspace:*",
+    "@omnitron-dev/prism": "workspace:*",
     "@xyflow/react": "^12.10.1",
     "apexcharts": "^5.10.4",
     "dayjs": "^1.11.20",

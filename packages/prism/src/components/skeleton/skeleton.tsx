@@ -5,7 +5,7 @@
  *
  * Loading placeholder with multiple variants.
  *
- * @module @omnitron/prism/components/skeleton
+ * @module @omnitron-dev/prism/components/skeleton
  */
 
 import type { ReactNode, ComponentProps } from 'react';

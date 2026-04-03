@@ -42,7 +42,7 @@ import { alpha } from '@mui/material/styles';
 
 import { EyeIcon, DeleteIcon } from 'src/assets/icons';
 
-import { Tabs, TabPanel } from '@omnitron/prism';
+import { Tabs, TabPanel } from '@omnitron-dev/prism';
 import { useAuthStore } from 'src/auth/store';
 import { auth, getSessionId, nodes as nodesRpc } from 'src/netron/client';
 import { formatDateShort, timeAgo } from 'src/utils/formatters';

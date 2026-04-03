@@ -1,7 +1,7 @@
 /**
  * Accordion Component Exports
  *
- * @module @omnitron/prism/components/accordion
+ * @module @omnitron-dev/prism/components/accordion
  */
 
 export {

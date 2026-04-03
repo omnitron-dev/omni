@@ -4,7 +4,7 @@
  * Comprehensive layout components for building application structures.
  * Combines the best patterns from minimal and aurora layout systems.
  *
- * @module @omnitron/prism/layouts
+ * @module @omnitron-dev/prism/layouts
  */
 
 // =============================================================================

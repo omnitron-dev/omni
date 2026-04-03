@@ -12,7 +12,7 @@
  * - Full TypeScript inference
  * - Tree-shakeable component overrides
  *
- * @module @omnitron/prism/theme/create-theme
+ * @module @omnitron-dev/prism/theme/create-theme
  */
 
 import { createTheme as muiCreateTheme, responsiveFontSizes } from '@mui/material/styles';

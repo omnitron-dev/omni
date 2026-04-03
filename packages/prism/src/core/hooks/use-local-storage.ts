@@ -5,7 +5,7 @@
  *
  * A hook for persisting state to localStorage.
  *
- * @module @omnitron/prism/core/hooks/use-local-storage
+ * @module @omnitron-dev/prism/core/hooks/use-local-storage
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';

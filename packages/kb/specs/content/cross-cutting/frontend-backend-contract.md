@@ -81,7 +81,7 @@ const response = await authRpc('signIn', username, password);
 
 ### Pattern 2: Declarative (React hooks via Prism)
 ```typescript
-import { useBackendService } from '@omnitron/prism/netron';
+import { useBackendService } from '@omnitron-dev/prism/netron';
 
 function UserProfile() {
   const { data, loading, error } = useBackendService('Auth', 'getProfile');
@@ -95,7 +95,7 @@ Frontend connects to multiple backends through a single client:
 
 ```typescript
 // apps/portal/src/netron/client.ts
-import { createMultiBackendClient } from '@omnitron/prism/netron';
+import { createMultiBackendClient } from '@omnitron-dev/prism/netron';
 
 export const client = createMultiBackendClient<{
   main: IAuthService & IUsersService;

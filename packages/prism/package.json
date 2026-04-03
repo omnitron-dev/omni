@@ -1,5 +1,5 @@
 {
-  "name": "@omnitron/prism",
+  "name": "@omnitron-dev/prism",
   "version": "0.1.0",
   "description": "Design System Constructor - High-level UI building blocks for complex frontends",
   "type": "module",

@@ -5,7 +5,7 @@
  *
  * Manages async operations with loading, error, and data states.
  *
- * @module @omnitron/prism/hooks
+ * @module @omnitron-dev/prism/hooks
  */
 
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';

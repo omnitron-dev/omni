@@ -4,7 +4,7 @@
  * A dropdown menu for user account actions with avatar button trigger.
  * Combines minimal design with portal-style functionality.
  *
- * @module @omnitron/prism/layouts/core/user-menu
+ * @module @omnitron-dev/prism/layouts/core/user-menu
  */
 
 'use client';

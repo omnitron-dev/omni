@@ -5,7 +5,7 @@
  *
  * Enhanced avatar with fallback initials and group support.
  *
- * @module @omnitron/prism/components/avatar
+ * @module @omnitron-dev/prism/components/avatar
  */
 
 import type { ReactNode, CSSProperties } from 'react';

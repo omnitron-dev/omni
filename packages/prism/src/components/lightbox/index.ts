@@ -1,7 +1,7 @@
 /**
  * Lightbox Component Exports
  *
- * @module @omnitron/prism/components/lightbox
+ * @module @omnitron-dev/prism/components/lightbox
  */
 
 export { Lightbox } from './lightbox.js';

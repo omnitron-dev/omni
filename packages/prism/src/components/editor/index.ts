@@ -3,7 +3,7 @@
  *
  * @example
  * ```tsx
- * import { Editor } from '@omnitron/prism/components/editor';
+ * import { Editor } from '@omnitron-dev/prism/components/editor';
  *
  * // Full CMS editor
  * <Editor toolbar="full" value={html} onChange={setHtml} />
@@ -24,7 +24,7 @@
  * <Editor toolbar={{ items: ['bold', 'italic', 'link', 'image'], bubbleMenu: true }} />
  * ```
  *
- * @module @omnitron/prism/components/editor
+ * @module @omnitron-dev/prism/components/editor
  */
 
 export { Editor } from './editor.js';

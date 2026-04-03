@@ -4,7 +4,7 @@
  * Foundation colors used across all presets.
  * 11-shade scales (50-950) for maximum flexibility.
  *
- * @module @omnitron/prism/theme/colors/base
+ * @module @omnitron-dev/prism/theme/colors/base
  */
 
 import type { ColorScale } from '../../types/theme.js';

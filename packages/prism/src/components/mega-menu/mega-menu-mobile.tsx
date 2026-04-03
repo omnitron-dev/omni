@@ -5,7 +5,7 @@
  *
  * Accordion-style navigation for mobile layouts.
  *
- * @module @omnitron/prism/components/mega-menu
+ * @module @omnitron-dev/prism/components/mega-menu
  */
 
 import { useState, useCallback, useMemo } from 'react';

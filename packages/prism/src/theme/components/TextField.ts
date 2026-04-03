@@ -4,7 +4,7 @@
  * Refined styling for text inputs based on Minimals patterns.
  * Uses MUI v7 class constants for type-safe selectors.
  *
- * @module @omnitron/prism/theme/components/TextField
+ * @module @omnitron-dev/prism/theme/components/TextField
  */
 
 import type { Theme, Components, CSSObject } from '@mui/material/styles';

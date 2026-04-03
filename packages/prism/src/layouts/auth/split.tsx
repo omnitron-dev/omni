@@ -3,7 +3,7 @@
  *
  * Split-screen authentication layout with illustration and form.
  *
- * @module @omnitron/prism/layouts/auth/split
+ * @module @omnitron-dev/prism/layouts/auth/split
  */
 
 import type { ReactNode } from 'react';

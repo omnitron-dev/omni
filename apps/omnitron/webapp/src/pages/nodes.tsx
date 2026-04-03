@@ -29,7 +29,7 @@ import InputLabel from '@mui/material/InputLabel';
 import Divider from '@mui/material/Divider';
 import { keyframes, useTheme, type Theme } from '@mui/material/styles';
 
-import { Breadcrumbs, useSnackbar } from '@omnitron/prism';
+import { Breadcrumbs, useSnackbar } from '@omnitron-dev/prism';
 import { nodes as nodesRpc } from 'src/netron/client';
 import {
   PlusIcon,

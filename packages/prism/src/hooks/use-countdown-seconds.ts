@@ -6,7 +6,7 @@
  * Simple countdown timer in seconds. Ideal for OTP resend timers,
  * session timeouts, and other time-limited operations.
  *
- * @module @omnitron/prism/hooks
+ * @module @omnitron-dev/prism/hooks
  */
 
 import type { Dispatch, SetStateAction } from 'react';

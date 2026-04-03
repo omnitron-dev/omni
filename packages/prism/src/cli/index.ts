@@ -4,7 +4,7 @@
  * Command-line interface for the Prism design system.
  * Provides shadcn/ui-style component installation and management.
  *
- * @module @omnitron/prism/cli
+ * @module @omnitron-dev/prism/cli
  */
 
 import { Command } from 'commander';

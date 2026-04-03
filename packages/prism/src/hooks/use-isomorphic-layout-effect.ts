@@ -6,7 +6,7 @@
  * SSR-safe version of useLayoutEffect.
  * Uses useLayoutEffect on client, useEffect on server.
  *
- * @module @omnitron/prism/hooks
+ * @module @omnitron-dev/prism/hooks
  */
 
 import { useEffect, useLayoutEffect } from 'react';

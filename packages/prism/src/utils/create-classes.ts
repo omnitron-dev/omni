@@ -4,7 +4,7 @@
  * Creates prefixed CSS class names for consistent component styling.
  * Uses a configurable prefix to avoid collisions with other libraries.
  *
- * @module @omnitron/prism/utils/create-classes
+ * @module @omnitron-dev/prism/utils/create-classes
  */
 
 // =============================================================================

@@ -6,7 +6,7 @@
  *
  * Single-Backend Setup:
  * ```tsx
- * import { createNetronClient, NetronProvider, useNetronService } from '@omnitron/prism/netron';
+ * import { createNetronClient, NetronProvider, useNetronService } from '@omnitron-dev/prism/netron';
  *
  * const client = createNetronClient({ transport: 'http', url: '/api/main' });
  *
@@ -17,7 +17,7 @@
  *
  * Multi-Backend Setup:
  * ```tsx
- * import { createMultiBackendClient, MultiBackendProvider, useBackendService } from '@omnitron/prism/netron';
+ * import { createMultiBackendClient, MultiBackendProvider, useBackendService } from '@omnitron-dev/prism/netron';
  *
  * const client = createMultiBackendClient({
  *   baseUrl: '',
@@ -37,7 +37,7 @@
  * const { data } = auth.validateSession.useQuery([sessionId]);
  * ```
  *
- * @module @omnitron/prism/netron
+ * @module @omnitron-dev/prism/netron
  */
 
 // Types

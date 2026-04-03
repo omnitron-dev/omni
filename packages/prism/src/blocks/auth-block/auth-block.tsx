@@ -6,7 +6,7 @@
  * Reusable authentication forms: login, register, forgot password, etc.
  * Integrates with React Hook Form and Zod for validation.
  *
- * @module @omnitron/prism/blocks/auth-block
+ * @module @omnitron-dev/prism/blocks/auth-block
  */
 
 import type { ReactNode } from 'react';

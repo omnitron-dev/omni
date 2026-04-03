@@ -4,7 +4,7 @@
  * Component and block registry system for the Prism design framework.
  * Enables shadcn/ui-style copy-paste installation with dependency resolution.
  *
- * @module @omnitron/prism/registry
+ * @module @omnitron-dev/prism/registry
  */
 
 // =============================================================================

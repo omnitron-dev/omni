@@ -4,14 +4,14 @@
  * Comprehensive React hooks for common patterns.
  * Combines core hooks with additional utility hooks.
  *
- * @module @omnitron/prism/hooks
+ * @module @omnitron-dev/prism/hooks
  */
 
 // =============================================================================
 // RE-EXPORTS FROM CORE (for convenience)
 // =============================================================================
 
-// These are re-exported so users can import from @omnitron/prism/hooks
+// These are re-exported so users can import from @omnitron-dev/prism/hooks
 export {
   // State Management
   useBoolean,
@@ -55,9 +55,9 @@ export type {
   UseTimeoutReturn,
 } from '../core/index.js';
 
-// Note: useTabs is exported from @omnitron/prism/components/tabs
+// Note: useTabs is exported from @omnitron-dev/prism/components/tabs
 // The core/hooks/use-tabs.ts version is for MUI Tabs integration
-// and can be imported directly: import { useTabs } from '@omnitron/prism/core/hooks/use-tabs'
+// and can be imported directly: import { useTabs } from '@omnitron-dev/prism/core/hooks/use-tabs'
 
 // =============================================================================
 // ASYNC OPERATIONS (unique to hooks module)

@@ -5,7 +5,7 @@
  * Combines the best of shadcn/ui's copy-paste model with MUI's robust
  * component infrastructure.
  *
- * @module @omnitron/prism
+ * @module @omnitron-dev/prism
  */
 
 // =============================================================================
@@ -44,7 +44,7 @@ export * from './registry/index.js';
 
 export * from './layouts/index.js';
 
-// Note: Blocks are exported separately via @omnitron/prism/blocks
+// Note: Blocks are exported separately via @omnitron-dev/prism/blocks
 // to avoid naming conflicts with legacy types
 
 // =============================================================================

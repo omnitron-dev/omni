@@ -5,7 +5,7 @@
  *
  * Lazy-loaded ApexCharts wrapper with theme integration and SSR support.
  *
- * @module @omnitron/prism/components/chart
+ * @module @omnitron-dev/prism/components/chart
  */
 
 import type { ChartProps } from './types.js';
@@ -54,7 +54,7 @@ const LazyApexChart = lazy(() =>
  *
  * @example
  * ```tsx
- * import { Chart, useChart } from '@omnitron/prism/components';
+ * import { Chart, useChart } from '@omnitron-dev/prism/components';
  *
  * function MyChart() {
  *   const chartOptions = useChart({

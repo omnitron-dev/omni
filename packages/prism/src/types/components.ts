@@ -1,7 +1,7 @@
 /**
  * Component Type Definitions
  *
- * @module @omnitron/prism/types/components
+ * @module @omnitron-dev/prism/types/components
  */
 
 import type { VariantProps } from 'class-variance-authority';

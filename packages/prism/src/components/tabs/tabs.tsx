@@ -5,7 +5,7 @@
  *
  * Tabbed interface with panel support.
  *
- * @module @omnitron/prism/components/tabs
+ * @module @omnitron-dev/prism/components/tabs
  */
 
 import type { ReactNode, ReactElement, SyntheticEvent, ComponentProps } from 'react';

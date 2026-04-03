@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { LoadingScreen } from '@omnitron/prism';
+import { LoadingScreen } from '@omnitron-dev/prism';
 import { useAuthStore } from './store';
 
 // ---------------------------------------------------------------------------

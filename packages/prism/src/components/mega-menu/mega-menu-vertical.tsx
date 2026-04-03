@@ -5,7 +5,7 @@
  *
  * Rich dropdown navigation for sidebar layouts.
  *
- * @module @omnitron/prism/components/mega-menu
+ * @module @omnitron-dev/prism/components/mega-menu
  */
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';

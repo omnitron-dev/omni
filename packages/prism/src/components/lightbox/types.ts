@@ -4,7 +4,7 @@
  * Type definitions for the Lightbox component - a modal image viewer
  * with zoom, pan, and navigation capabilities.
  *
- * @module @omnitron/prism/components/lightbox
+ * @module @omnitron-dev/prism/components/lightbox
  */
 
 import type { Theme, SxProps } from '@mui/material/styles';

@@ -3,7 +3,7 @@
  *
  * Pre-built UI blocks combining multiple components for common patterns.
  *
- * @module @omnitron/prism/blocks
+ * @module @omnitron-dev/prism/blocks
  */
 
 // Dashboard Block

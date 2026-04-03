@@ -25,7 +25,7 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogContentText from '@mui/material/DialogContentText';
 import DialogActions from '@mui/material/DialogActions';
 import { alpha } from '@mui/material/styles';
-import { Breadcrumbs, EmptyContent } from '@omnitron/prism';
+import { Breadcrumbs, EmptyContent } from '@omnitron-dev/prism';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { PlayIcon, StopIcon, SyncIcon, RefreshIcon, PlusIcon, DeleteIcon } from '../../assets/icons';
 import CreateStackDialog from './create-stack-dialog';

@@ -3,7 +3,7 @@
  *
  * Core providers, hooks, and utilities for the Prism design system.
  *
- * @module @omnitron/prism/core
+ * @module @omnitron-dev/prism/core
  */
 
 // Provider
@@ -71,7 +71,7 @@ export { useInterval } from './hooks/use-interval.js';
 export { useTimeout } from './hooks/use-timeout.js';
 export type { UseTimeoutReturn } from './hooks/use-timeout.js';
 
-// Note: useTabs is exported from @omnitron/prism/hooks (not core)
+// Note: useTabs is exported from @omnitron-dev/prism/hooks (not core)
 // to avoid duplicate exports in the main index
 
 // Accessibility

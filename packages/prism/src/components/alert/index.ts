@@ -1,7 +1,7 @@
 /**
  * Alert Component Exports
  *
- * @module @omnitron/prism/components/alert
+ * @module @omnitron-dev/prism/components/alert
  */
 
 export {

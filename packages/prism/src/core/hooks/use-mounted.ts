@@ -5,7 +5,7 @@
  *
  * Tracks component mount state for async operations.
  *
- * @module @omnitron/prism/core/hooks
+ * @module @omnitron-dev/prism/core/hooks
  */
 
 import { useEffect, useRef, useCallback } from 'react';

@@ -3,7 +3,7 @@
  *
  * Type definitions for navigation section components.
  *
- * @module @omnitron/prism/components/nav-section
+ * @module @omnitron-dev/prism/components/nav-section
  */
 
 import type { ButtonBaseProps } from '@mui/material/ButtonBase';

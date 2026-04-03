@@ -1,4 +1,4 @@
-# @omnitron/prism
+# @omnitron-dev/prism
 
 > Design system constructor — high-level UI building blocks for complex frontends
 
@@ -7,7 +7,7 @@ Part of the [Omni](../../README.md) monorepo — Fullstack Type-Safe RPC Framewo
 ## Installation
 
 ```bash
-pnpm add @omnitron/prism
+pnpm add @omnitron-dev/prism
 ```
 
 ## Overview
@@ -26,7 +26,7 @@ Prism is a design system built on MUI v7, providing pre-composed, theme-aware co
 ## Usage
 
 ```tsx
-import { PrismProvider, DashboardLayout } from '@omnitron/prism';
+import { PrismProvider, DashboardLayout } from '@omnitron-dev/prism';
 
 function App() {
   return (

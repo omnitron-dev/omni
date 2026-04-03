@@ -6,7 +6,7 @@
  * State hook that works like React.Component's setState,
  * allowing partial state updates.
  *
- * @module @omnitron/prism/core/hooks/use-set-state
+ * @module @omnitron-dev/prism/core/hooks/use-set-state
  */
 
 import { useCallback, useState } from 'react';

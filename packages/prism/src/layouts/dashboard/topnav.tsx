@@ -5,7 +5,7 @@
  * Used in 'topnav' and 'combo' navigation modes.
  * Implements WCAG 2.1 accessibility with proper ARIA attributes.
  *
- * @module @omnitron/prism/layouts/dashboard/topnav
+ * @module @omnitron-dev/prism/layouts/dashboard/topnav
  */
 
 import type { ReactNode } from 'react';

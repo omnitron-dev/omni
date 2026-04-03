@@ -5,7 +5,7 @@
  *
  * Renders a navigation item with its children, handling collapse and active states.
  *
- * @module @omnitron/prism/components/nav-section
+ * @module @omnitron-dev/prism/components/nav-section
  */
 
 import { useState, useCallback, useEffect, useMemo } from 'react';

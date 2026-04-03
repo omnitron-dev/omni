@@ -5,7 +5,7 @@
  * Supports multiple variants: default, mini, and stacked.
  * Implements WCAG 2.1 accessibility with proper ARIA attributes.
  *
- * @module @omnitron/prism/layouts/dashboard/sidenav
+ * @module @omnitron-dev/prism/layouts/dashboard/sidenav
  */
 
 import { type ReactNode } from 'react';

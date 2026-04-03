@@ -5,7 +5,7 @@
  *
  * Enhanced card component with variants and sections.
  *
- * @module @omnitron/prism/components/card
+ * @module @omnitron-dev/prism/components/card
  */
 
 import type { ReactNode } from 'react';

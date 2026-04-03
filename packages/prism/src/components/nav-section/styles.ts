@@ -3,7 +3,7 @@
  *
  * CSS custom properties and class names for nav sections.
  *
- * @module @omnitron/prism/components/nav-section
+ * @module @omnitron-dev/prism/components/nav-section
  */
 
 import type { Theme, CSSObject } from '@mui/material/styles';

@@ -14,7 +14,7 @@
  * - Tritanopia: Blue-blind (rare, affects <0.01% of population)
  * - Achromatopsia: Complete color blindness (grayscale)
  *
- * @module @omnitron/prism/accessibility
+ * @module @omnitron-dev/prism/accessibility
  */
 
 import {
@@ -209,7 +209,7 @@ export interface VisionModeProviderProps extends PropsWithChildren {
  * @example
  * ```tsx
  * // In your app root
- * import { VisionModeProvider } from '@omnitron/prism/accessibility';
+ * import { VisionModeProvider } from '@omnitron-dev/prism/accessibility';
  *
  * function App() {
  *   return (
@@ -220,7 +220,7 @@ export interface VisionModeProviderProps extends PropsWithChildren {
  * }
  *
  * // In a component
- * import { useVisionMode, VISION_MODE_OPTIONS } from '@omnitron/prism/accessibility';
+ * import { useVisionMode, VISION_MODE_OPTIONS } from '@omnitron-dev/prism/accessibility';
  *
  * function AccessibilityPanel() {
  *   const { mode, setMode } = useVisionMode();
@@ -401,7 +401,7 @@ export function useVisionMode(): VisionModeContextValue {
  * @example
  * ```tsx
  * // In your theme configuration
- * import { getVisionModeStyles } from '@omnitron/prism/accessibility';
+ * import { getVisionModeStyles } from '@omnitron-dev/prism/accessibility';
  *
  * const theme = createTheme({
  *   components: {

@@ -23,7 +23,7 @@ import Badge from '@mui/material/Badge';
 import { alpha } from '@mui/material/styles';
 
 import { AlertIcon, PlusIcon, RefreshIcon, CheckIcon, EditIcon, DeleteIcon } from 'src/assets/icons';
-import { Breadcrumbs } from '@omnitron/prism';
+import { Breadcrumbs } from '@omnitron-dev/prism';
 import { alerts } from 'src/netron/client';
 import { timeAgo } from 'src/utils/formatters';
 import { useStackContext } from 'src/hooks/use-stack-context';

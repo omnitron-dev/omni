@@ -10,7 +10,7 @@
  *
  * Ported from minimal-shared for Prism design system.
  *
- * @module @omnitron/prism/hooks/use-scroll-offset-top
+ * @module @omnitron-dev/prism/hooks/use-scroll-offset-top
  */
 
 import type { RefObject } from 'react';

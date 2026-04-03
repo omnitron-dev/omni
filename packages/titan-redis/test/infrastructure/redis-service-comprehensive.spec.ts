@@ -38,6 +38,7 @@ describeOrSkip('Redis Service - Infrastructure Tests', () => {
         config: {
           host: 'localhost',
           port: dockerFixture.port,
+          lazyConnect: false,
         },
       },
       createMockLogger()

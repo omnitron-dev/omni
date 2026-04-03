@@ -33,8 +33,8 @@ Zustand-based internal state for connection status, auth context, and cache.
 
 ## Used Via Prism
 ```typescript
-// In portal code, use through @omnitron/prism/netron
-import { MultiBackendProvider, useBackendService } from '@omnitron/prism/netron';
+// In portal code, use through @omnitron-dev/prism/netron
+import { MultiBackendProvider, useBackendService } from '@omnitron-dev/prism/netron';
 
 function UserList() {
   const { data, loading } = useBackendService('Auth', 'listUsers', { page: 1 });

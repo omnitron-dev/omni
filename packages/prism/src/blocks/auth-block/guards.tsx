@@ -6,7 +6,7 @@
  * Authentication and authorization guards for route protection.
  * Works with any router (React Router, Next.js, TanStack Router).
  *
- * @module @omnitron/prism/blocks/auth-block
+ * @module @omnitron-dev/prism/blocks/auth-block
  */
 
 import { type ReactNode, useEffect, useState } from 'react';
@@ -86,7 +86,7 @@ export interface AuthGuardProps {
  *
  * @example
  * ```tsx
- * import { AuthGuard } from '@omnitron/prism/blocks';
+ * import { AuthGuard } from '@omnitron-dev/prism/blocks';
  * import { useAuth } from '../hooks/use-auth';
  *
  * function ProtectedPage() {
@@ -158,7 +158,7 @@ export interface GuestGuardProps {
  *
  * @example
  * ```tsx
- * import { GuestGuard } from '@omnitron/prism/blocks';
+ * import { GuestGuard } from '@omnitron-dev/prism/blocks';
  * import { useAuth } from '../hooks/use-auth';
  *
  * function LoginPage() {
@@ -242,7 +242,7 @@ export type AccessDeniedReason = 'not_authenticated' | 'missing_role' | 'missing
  *
  * @example
  * ```tsx
- * import { RoleBasedGuard } from '@omnitron/prism/blocks';
+ * import { RoleBasedGuard } from '@omnitron-dev/prism/blocks';
  * import { useAuth } from '../hooks/use-auth';
  *
  * // Require admin role

@@ -6,7 +6,7 @@
  * Manages visibility of a "Back to Top" button based on scroll position.
  * Supports both percentage-based and pixel-based visibility thresholds.
  *
- * @module @omnitron/prism/hooks
+ * @module @omnitron-dev/prism/hooks
  */
 
 import type { Dispatch, SetStateAction } from 'react';

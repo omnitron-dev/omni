@@ -5,7 +5,7 @@
  * Follows MUI v7 best practices: chipClasses selectors, slot-based styleOverrides,
  * variants inside styleOverrides.root.
  *
- * @module @omnitron/prism/theme/components/Chip
+ * @module @omnitron-dev/prism/theme/components/Chip
  */
 
 import type { Components, Theme, ChipProps, ComponentsVariants } from '@mui/material';

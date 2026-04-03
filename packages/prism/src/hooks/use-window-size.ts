@@ -5,7 +5,7 @@
  *
  * Tracks window dimensions with responsive breakpoint utilities.
  *
- * @module @omnitron/prism/hooks
+ * @module @omnitron-dev/prism/hooks
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -161,7 +161,7 @@ export type UseResponsiveQueryReturn = boolean;
 /**
  * useResponsiveQuery - Hook for CSS media query matching.
  *
- * Note: For the simpler MUI-style useMediaQuery, see @omnitron/prism/core.
+ * Note: For the simpler MUI-style useMediaQuery, see @omnitron-dev/prism/core.
  * This hook provides a standalone implementation without MUI dependency.
  *
  * @example

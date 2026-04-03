@@ -4,7 +4,7 @@
  * Root provider for the Prism design system.
  * Uses useSettingsStore (Zustand) as the single source of truth for settings.
  *
- * @module @omnitron/prism/core/provider
+ * @module @omnitron-dev/prism/core/provider
  */
 
 import type { ReactNode } from 'react';
@@ -64,7 +64,7 @@ const noOpDrawerWarning = () => {
   if (process.env.NODE_ENV !== 'production') {
     console.warn(
       '[PrismProvider] Settings drawer is now managed by SettingsProvider. ' +
-        'Use useSettingsDrawer() from @omnitron/prism/components/settings instead.'
+        'Use useSettingsDrawer() from @omnitron-dev/prism/components/settings instead.'
     );
   }
 };
@@ -77,7 +77,7 @@ const noOpDrawerWarning = () => {
  *
  * @example
  * ```tsx
- * import { PrismProvider } from '@omnitron/prism';
+ * import { PrismProvider } from '@omnitron-dev/prism';
  *
  * function App() {
  *   return (

@@ -3,7 +3,7 @@
  *
  * Type definitions for the dashboard block component.
  *
- * @module @omnitron/prism/blocks/dashboard-block/types
+ * @module @omnitron-dev/prism/blocks/dashboard-block/types
  */
 
 import type { ReactNode } from 'react';

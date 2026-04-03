@@ -6,7 +6,7 @@
  * Traps focus within a container element for accessibility.
  * Essential for modals, dialogs, and dropdown menus.
  *
- * @module @omnitron/prism/hooks
+ * @module @omnitron-dev/prism/hooks
  */
 
 import { useCallback, useEffect, useRef } from 'react';

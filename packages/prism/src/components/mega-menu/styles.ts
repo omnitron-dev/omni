@@ -3,7 +3,7 @@
  *
  * CSS custom properties and class names for mega menus.
  *
- * @module @omnitron/prism/components/mega-menu
+ * @module @omnitron-dev/prism/components/mega-menu
  */
 
 import type { Theme, CSSObject } from '@mui/material/styles';

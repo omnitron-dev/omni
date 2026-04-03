@@ -5,7 +5,7 @@
  *
  * Foundational components for building navigation sections.
  *
- * @module @omnitron/prism/components/nav-section
+ * @module @omnitron-dev/prism/components/nav-section
  */
 
 import { forwardRef } from 'react';

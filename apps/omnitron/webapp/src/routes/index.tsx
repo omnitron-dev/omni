@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { LoadingScreen } from '@omnitron/prism';
+import { LoadingScreen } from '@omnitron-dev/prism';
 import { AuthGuard, GuestGuard } from 'src/auth/guard';
 import { ProjectGuard } from 'src/auth/project-guard';
 import { ConsoleLayout } from 'src/layouts/console-layout';

@@ -6,7 +6,7 @@
  * Differentiates between single and double click events.
  * Single click is delayed to ensure it's not a double click.
  *
- * @module @omnitron/prism/hooks
+ * @module @omnitron-dev/prism/hooks
  */
 
 import type { MouseEvent, SyntheticEvent } from 'react';

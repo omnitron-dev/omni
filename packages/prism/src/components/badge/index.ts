@@ -1,7 +1,7 @@
 /**
  * Badge Component Exports
  *
- * @module @omnitron/prism/components/badge
+ * @module @omnitron-dev/prism/components/badge
  */
 
 export {

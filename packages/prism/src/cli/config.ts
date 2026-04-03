@@ -3,7 +3,7 @@
  *
  * Handles loading, validating, and saving Prism configuration.
  *
- * @module @omnitron/prism/cli/config
+ * @module @omnitron-dev/prism/cli/config
  */
 
 import * as fs from 'node:fs';

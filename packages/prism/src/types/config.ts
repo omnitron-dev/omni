@@ -1,7 +1,7 @@
 /**
  * Configuration Type Definitions
  *
- * @module @omnitron/prism/types/config
+ * @module @omnitron-dev/prism/types/config
  */
 
 import type { ThemeConfig, ThemePreset } from './theme.js';
@@ -103,7 +103,7 @@ export const defaultPrismConfig: PrismConfig = {
     types: 'src/types/prism',
   },
   registries: {
-    default: '@omnitron/prism-registry',
+    default: '@omnitron-dev/prism-registry',
     registries: {},
   },
   theme: {

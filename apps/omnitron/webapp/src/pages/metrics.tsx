@@ -14,7 +14,7 @@ import { alpha } from '@mui/material/styles';
 import Chart from 'react-apexcharts';
 
 import { MetricsIcon, AppsIcon, LogsIcon, RefreshIcon } from 'src/assets/icons';
-import { Breadcrumbs } from '@omnitron/prism';
+import { Breadcrumbs } from '@omnitron-dev/prism';
 import { daemon, metrics } from 'src/netron/client';
 import { useStackContext } from 'src/hooks/use-stack-context';
 

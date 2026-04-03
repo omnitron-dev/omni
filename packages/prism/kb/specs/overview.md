@@ -21,16 +21,16 @@ Prism is a high-level design system built on MUI v7. It provides:
 ## Key Rules
 
 1. **ALL reusable features MUST be in Prism**, not in portal app
-2. **Netron RPC** goes through `@omnitron/prism/netron`, never raw fetch
+2. **Netron RPC** goes through `@omnitron-dev/prism/netron`, never raw fetch
 3. **Icons**: HugeIcons Duotone Rounded as primary set, at `src/assets/svg-icons/`
 4. **Never use `@mui/icons-material`** — use custom SVG icons
 5. **State**: Zustand v5 for app state, react-hook-form for form state
 
 ## Import Pattern
 ```typescript
-import { PrismProvider } from '@omnitron/prism';
-import { DashboardLayout } from '@omnitron/prism/layouts';
-import { DataGridBlock } from '@omnitron/prism/blocks/data-grid';
-import { OtpInput } from '@omnitron/prism/components';
-import { MultiBackendProvider } from '@omnitron/prism/netron';
+import { PrismProvider } from '@omnitron-dev/prism';
+import { DashboardLayout } from '@omnitron-dev/prism/layouts';
+import { DataGridBlock } from '@omnitron-dev/prism/blocks/data-grid';
+import { OtpInput } from '@omnitron-dev/prism/components';
+import { MultiBackendProvider } from '@omnitron-dev/prism/netron';
 ```

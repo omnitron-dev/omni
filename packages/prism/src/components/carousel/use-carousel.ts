@@ -6,7 +6,7 @@
  * State management hook for the Carousel component.
  * Handles navigation, autoplay, and responsive behavior.
  *
- * @module @omnitron/prism/components/carousel
+ * @module @omnitron-dev/prism/components/carousel
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';

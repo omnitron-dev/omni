@@ -3,7 +3,7 @@
  *
  * Locale-aware number formatting utilities.
  *
- * @module @omnitron/prism/utils/format-number
+ * @module @omnitron-dev/prism/utils/format-number
  */
 
 // =============================================================================

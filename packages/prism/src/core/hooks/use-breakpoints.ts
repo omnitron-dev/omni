@@ -5,7 +5,7 @@
  *
  * A hook for responsive breakpoint detection.
  *
- * @module @omnitron/prism/core/hooks/use-breakpoints
+ * @module @omnitron-dev/prism/core/hooks/use-breakpoints
  */
 
 import { useMemo } from 'react';

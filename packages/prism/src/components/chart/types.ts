@@ -4,7 +4,7 @@
  * Type definitions for the Chart component using ApexCharts.
  * Types are defined locally to avoid requiring react-apexcharts installation.
  *
- * @module @omnitron/prism/components/chart
+ * @module @omnitron-dev/prism/components/chart
  */
 
 import type { Theme, SxProps } from '@mui/material/styles';

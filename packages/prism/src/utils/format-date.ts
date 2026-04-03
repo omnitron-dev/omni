@@ -4,7 +4,7 @@
  * Locale-aware date formatting utilities using Intl.DateTimeFormat.
  * For more complex formatting, consider using dayjs or date-fns.
  *
- * @module @omnitron/prism/utils/format-date
+ * @module @omnitron-dev/prism/utils/format-date
  */
 
 // =============================================================================

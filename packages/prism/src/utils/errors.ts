@@ -4,7 +4,7 @@
  * Comprehensive error handling with i18n support, error classification,
  * and retry logic for robust frontend applications.
  *
- * @module @omnitron/prism/utils
+ * @module @omnitron-dev/prism/utils
  */
 
 // =============================================================================

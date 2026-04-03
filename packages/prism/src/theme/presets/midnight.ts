@@ -4,7 +4,7 @@
  * A deep blue-black theme for late night coding sessions.
  * Features indigo primary with soft blue accents.
  *
- * @module @omnitron/prism/theme/presets/midnight
+ * @module @omnitron-dev/prism/theme/presets/midnight
  */
 
 import type { ThemePresetDefinition, ColorScale } from '../../types/theme.js';

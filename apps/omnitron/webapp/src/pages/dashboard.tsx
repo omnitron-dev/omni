@@ -26,7 +26,7 @@ import { alpha, useTheme } from '@mui/material/styles';
 
 import { AppsIcon, StacksIcon, MetricsIcon, ContainersIcon } from 'src/assets/icons';
 
-import { StatCard } from '@omnitron/prism';
+import { StatCard } from '@omnitron-dev/prism';
 import { daemon, metrics } from 'src/netron/client';
 import { formatMemory, formatUptime } from 'src/utils/formatters';
 import { STATUS_COLORS, LEVEL_COLORS } from 'src/utils/constants';

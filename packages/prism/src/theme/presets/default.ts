@@ -3,7 +3,7 @@
  *
  * A neutral, modern theme suitable for most applications.
  *
- * @module @omnitron/prism/theme/presets/default
+ * @module @omnitron-dev/prism/theme/presets/default
  */
 
 import type { ThemePresetDefinition, PresetPalette } from '../../types/theme.js';

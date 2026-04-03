@@ -3,7 +3,7 @@
  *
  * Diagnose project configuration and environment.
  *
- * @module @omnitron/prism/cli/commands/doctor
+ * @module @omnitron-dev/prism/cli/commands/doctor
  */
 
 import { Command } from 'commander';

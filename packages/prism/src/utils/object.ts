@@ -3,7 +3,7 @@
  *
  * Type-safe object manipulation helpers.
  *
- * @module @omnitron/prism/utils
+ * @module @omnitron-dev/prism/utils
  */
 
 /**

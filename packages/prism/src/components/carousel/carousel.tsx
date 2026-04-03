@@ -6,7 +6,7 @@
  * Responsive slider with autoplay, navigation arrows, dots,
  * and touch/drag support.
  *
- * @module @omnitron/prism/components/carousel
+ * @module @omnitron-dev/prism/components/carousel
  */
 
 import type { CarouselProps } from './types.js';
@@ -35,7 +35,7 @@ import { carouselClasses } from './classes.js';
  *
  * @example
  * ```tsx
- * import { Carousel } from '@omnitron/prism/components';
+ * import { Carousel } from '@omnitron-dev/prism/components';
  *
  * function Gallery() {
  *   return (

@@ -3,7 +3,7 @@
  *
  * Provider and drawer for application settings management.
  *
- * @module @omnitron/prism/components/settings
+ * @module @omnitron-dev/prism/components/settings
  */
 
 export {

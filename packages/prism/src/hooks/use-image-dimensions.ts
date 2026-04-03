@@ -5,7 +5,7 @@
  *
  * Detects the natural dimensions of an image from a URL.
  *
- * @module @omnitron/prism/hooks/use-image-dimensions
+ * @module @omnitron-dev/prism/hooks/use-image-dimensions
  */
 
 import { useCallback, useEffect, useState } from 'react';

@@ -63,10 +63,21 @@
   "devDependencies": {
     "@types/node": "^25.3.5",
     "@types/pg": "^8.16.0",
-    "esbuild": "^0.27.4",
+    "esbuild": "^0.28.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.0"
+  },
+  "files": [
+    "dist",
+    "webapp/dist",
+    "data"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/omnitron-dev/omni",
+    "directory": "apps/omnitron"
   },
   "engines": {
     "node": ">=22.0.0"

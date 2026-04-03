@@ -4,9 +4,9 @@
  * Netron React Hooks — Prism re-exports
  *
  * All data-fetching hooks from @omnitron-dev/netron-react.
- * Prism consumers import from `@omnitron/prism/netron`.
+ * Prism consumers import from `@omnitron-dev/prism/netron`.
  *
- * @module @omnitron/prism/netron
+ * @module @omnitron-dev/prism/netron
  */
 
 export {

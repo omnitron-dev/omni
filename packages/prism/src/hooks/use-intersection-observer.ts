@@ -5,7 +5,7 @@
  *
  * Observe element visibility using the Intersection Observer API.
  *
- * @module @omnitron/prism/hooks/use-intersection-observer
+ * @module @omnitron-dev/prism/hooks/use-intersection-observer
  */
 
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';

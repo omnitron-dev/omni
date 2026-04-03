@@ -301,15 +301,15 @@ function ServerOverview({ data }: { data: ServerNodeData }) {
 // ---------------------------------------------------------------------------
 
 function LogsTab({ appName }: { appName?: string }) {
-  const [logs, setLogs] = useState<LogEntryRow[]>([]);
+  const [logEntries, setLogEntries] = useState<LogEntryRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchLogs = useCallback(async () => {
     try {
       const result = await logs.streamLogs({ app: appName, tail: 30 });
-      setLogs(result);
+      setLogEntries(result);
     } catch {
-      setLogs([]);
+      setLogEntries([]);
     } finally {
       setLoading(false);
     }
@@ -329,7 +329,7 @@ function LogsTab({ appName }: { appName?: string }) {
     );
   }
 
-  if (logs.length === 0) {
+  if (logEntries.length === 0) {
     return <Typography variant="body2" color="text.secondary">No recent logs.</Typography>;
   }
 
@@ -346,7 +346,7 @@ function LogsTab({ appName }: { appName?: string }) {
         p: 1,
       }}
     >
-      {logs.map((log) => (
+      {logEntries.map((log) => (
         <Stack
           key={log.id}
           direction="row"

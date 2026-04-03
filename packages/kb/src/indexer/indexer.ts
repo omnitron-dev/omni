@@ -50,8 +50,10 @@ export class Indexer {
 
     // Store repo map as a special pattern entry
     if (allOverviews.length > 0) {
-      const repoMap = this.repoMapGen.generate(allOverviews, allDeps);
-      const repoMapText = this.repoMapGen.renderToText(
+      const { RepoMapGenerator } = await import('../extractors/repo-map/repo-map.generator.js');
+      const repoMapGen = new RepoMapGenerator();
+      const repoMap = repoMapGen.generate(allOverviews, allDeps);
+      const repoMapText = repoMapGen.renderToText(
         repoMap.packages,
         repoMap.dependencyGraph,
       );

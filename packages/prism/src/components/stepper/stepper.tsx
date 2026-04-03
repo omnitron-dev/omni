@@ -5,7 +5,7 @@
  *
  * Multi-step wizard/stepper with custom styling.
  *
- * @module @omnitron/prism/components/stepper
+ * @module @omnitron-dev/prism/components/stepper
  */
 
 import { useState, useCallback, type ReactNode } from 'react';

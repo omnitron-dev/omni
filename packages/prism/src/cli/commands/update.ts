@@ -3,7 +3,7 @@
  *
  * Update installed components and blocks to latest versions.
  *
- * @module @omnitron/prism/cli/commands/update
+ * @module @omnitron-dev/prism/cli/commands/update
  */
 
 import { Command } from 'commander';

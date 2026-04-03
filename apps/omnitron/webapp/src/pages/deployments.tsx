@@ -21,7 +21,7 @@ import TextField from '@mui/material/TextField';
 import MenuItem from '@mui/material/MenuItem';
 
 import { DeployIcon, PlusIcon, RefreshIcon } from 'src/assets/icons';
-import { Breadcrumbs } from '@omnitron/prism';
+import { Breadcrumbs } from '@omnitron-dev/prism';
 import { deploy } from 'src/netron/client';
 import { formatDate } from 'src/utils/formatters';
 

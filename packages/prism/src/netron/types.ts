@@ -2,9 +2,9 @@
  * Netron Integration Types
  *
  * Re-exports from @omnitron-dev/netron-react and @omnitron-dev/netron-browser.
- * Prism consumers import everything from `@omnitron/prism/netron`.
+ * Prism consumers import everything from `@omnitron-dev/prism/netron`.
  *
- * @module @omnitron/prism/netron
+ * @module @omnitron-dev/prism/netron
  */
 
 export type {

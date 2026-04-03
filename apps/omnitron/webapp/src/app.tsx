@@ -8,9 +8,9 @@ import {
   NavigationProgress,
   ScrollToTop,
   ErrorBoundary,
-} from '@omnitron/prism';
+} from '@omnitron-dev/prism';
 
-import { MultiBackendProvider } from '@omnitron/prism/netron';
+import { MultiBackendProvider } from '@omnitron-dev/prism/netron';
 import { daemonClient } from 'src/netron/client';
 import { Router } from 'src/routes';
 import { CommandPalette } from 'src/components/command-palette';

@@ -5,7 +5,7 @@
  *
  * Copy text to clipboard with success/error state tracking.
  *
- * @module @omnitron/prism/core/hooks/use-copy-to-clipboard
+ * @module @omnitron-dev/prism/core/hooks/use-copy-to-clipboard
  */
 
 import { useCallback, useState, useRef, useEffect, useMemo } from 'react';

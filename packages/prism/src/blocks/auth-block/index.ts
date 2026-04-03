@@ -4,7 +4,7 @@
  * Authentication-related form components: login, register, forgot password, etc.
  * Also includes route guards for authentication and authorization.
  *
- * @module @omnitron/prism/blocks/auth-block
+ * @module @omnitron-dev/prism/blocks/auth-block
  */
 
 export {

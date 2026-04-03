@@ -8,7 +8,7 @@
  *
  * Framework-agnostic: accepts `pathname` as a prop (pass from your router).
  *
- * @module @omnitron/prism/components/navigation-progress
+ * @module @omnitron-dev/prism/components/navigation-progress
  */
 
 import NProgress from 'nprogress';
@@ -160,7 +160,7 @@ function useProgressBar(pathname: string, delay: number) {
  * @example
  * ```tsx
  * import { useLocation } from 'react-router-dom';
- * import { NavigationProgress } from '@omnitron/prism';
+ * import { NavigationProgress } from '@omnitron-dev/prism';
  *
  * function App() {
  *   const { pathname } = useLocation();

@@ -3,7 +3,7 @@
  *
  * Helpers for RTL layout support and CSS transformation control.
  *
- * @module @omnitron/prism/utils
+ * @module @omnitron-dev/prism/utils
  */
 
 /**
@@ -23,7 +23,7 @@
  *
  * @example
  * ```tsx
- * import { noRtlFlip } from '@omnitron/prism/utils';
+ * import { noRtlFlip } from '@omnitron-dev/prism/utils';
  *
  * // In sx prop or styled components
  * const styles = {

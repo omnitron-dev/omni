@@ -2,7 +2,7 @@ import { Suspense } from 'react';
 import { Outlet } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import LinearProgress from '@mui/material/LinearProgress';
-import { AuthCenteredLayout } from '@omnitron/prism';
+import { AuthCenteredLayout } from '@omnitron-dev/prism';
 
 export function AuthLayout() {
   return (

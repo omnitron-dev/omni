@@ -5,7 +5,7 @@
  *
  * Throttles a value or callback, limiting how often it can update.
  *
- * @module @omnitron/prism/hooks/use-throttle
+ * @module @omnitron-dev/prism/hooks/use-throttle
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';

@@ -24,11 +24,11 @@ Browser-side counterpart to Titan's Netron server. Enables frontend apps to call
 - **AuthenticationClient** — Handles JWT session storage + auto-refresh
 - **ServiceRouter** — Maps service names to backend endpoints
 
-## Usage in Frontend (via @omnitron/prism)
+## Usage in Frontend (via @omnitron-dev/prism)
 
 ```typescript
-// Don't use netron-browser directly — use through @omnitron/prism/netron
-import { createMultiBackendClient } from '@omnitron/prism/netron';
+// Don't use netron-browser directly — use through @omnitron-dev/prism/netron
+import { createMultiBackendClient } from '@omnitron-dev/prism/netron';
 
 const client = createMultiBackendClient<OmnitronSchema>({
   backends: {
@@ -45,4 +45,4 @@ const user = await client.call('Auth', 'signIn', username, password);
 Request/response middleware for logging, auth header injection, error transformation.
 
 ## Critical Rule
-ALL frontend RPC MUST go through `@omnitron/prism/netron`. Never use raw `fetch()` for backend calls.
+ALL frontend RPC MUST go through `@omnitron-dev/prism/netron`. Never use raw `fetch()` for backend calls.

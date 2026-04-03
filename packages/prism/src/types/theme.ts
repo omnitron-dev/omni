@@ -5,7 +5,7 @@
  * - Aurora: 11-shade color scales, elevation levels, channel generation, vibrant colors
  * - Prism: Density system, preset definitions, CSS variables integration
  *
- * @module @omnitron/prism/types/theme
+ * @module @omnitron-dev/prism/types/theme
  */
 
 import type { Theme as MuiTheme, ThemeOptions as MuiThemeOptions } from '@mui/material/styles';

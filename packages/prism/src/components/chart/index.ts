@@ -3,7 +3,7 @@
  *
  * Theme-aware ApexCharts wrapper with lazy loading and SSR support.
  *
- * @module @omnitron/prism/components/chart
+ * @module @omnitron-dev/prism/components/chart
  */
 
 // Main component

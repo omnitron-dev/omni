@@ -3,7 +3,7 @@
  *
  * Utilities for working with React refs.
  *
- * @module @omnitron/prism/utils/refs
+ * @module @omnitron-dev/prism/utils/refs
  */
 
 import type { MutableRefObject, RefCallback, Ref } from 'react';

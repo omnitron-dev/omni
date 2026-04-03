@@ -2,7 +2,7 @@
 /**
  * Prism CLI Entry Point
  *
- * @module @omnitron/prism/cli
+ * @module @omnitron-dev/prism/cli
  */
 
 import('../dist/cli/index.js').then(({ cli }) => {

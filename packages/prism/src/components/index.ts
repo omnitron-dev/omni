@@ -1,7 +1,7 @@
 /**
  * Prism Component Exports
  *
- * @module @omnitron/prism/components
+ * @module @omnitron-dev/prism/components
  */
 
 // Admin Filters & Tables

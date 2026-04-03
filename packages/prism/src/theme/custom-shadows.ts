@@ -4,7 +4,7 @@
  * Color-coded shadow system for consistent depth effects.
  * Based on Minimals template patterns.
  *
- * @module @omnitron/prism/theme/custom-shadows
+ * @module @omnitron-dev/prism/theme/custom-shadows
  */
 
 import { varAlpha } from './utils/color.js';

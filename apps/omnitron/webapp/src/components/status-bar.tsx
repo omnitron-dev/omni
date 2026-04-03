@@ -115,7 +115,7 @@ export function StatusBar() {
 
     const fetchStatus = async () => {
       try {
-        const [status, nodesList, alerts] = await Promise.allSettled([
+        const [status, nodesList, alertsResult] = await Promise.allSettled([
           daemon.status(),
           nodesRpc.listNodes(),
           alerts.getSummary(),
@@ -125,7 +125,7 @@ export function StatusBar() {
 
         const st = status.status === 'fulfilled' ? (status.value as any) : null;
         const nd = nodesList.status === 'fulfilled' ? (nodesList.value as any[]) : [];
-        const al = alerts.status === 'fulfilled' ? (alerts.value as any) : null;
+        const al = alertsResult.status === 'fulfilled' ? (alerts.value as any) : null;
 
         const appList = st?.apps ?? [];
         const online = Array.isArray(appList) ? appList.filter((a: any) => a.status === 'online').length : 0;

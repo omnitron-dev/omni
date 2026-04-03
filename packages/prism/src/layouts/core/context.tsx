@@ -3,7 +3,7 @@
  *
  * Provides layout configuration and state management across the layout system.
  *
- * @module @omnitron/prism/layouts/core/context
+ * @module @omnitron-dev/prism/layouts/core/context
  */
 
 import { createContext, useContext, useCallback, useMemo, useState, type ReactNode } from 'react';

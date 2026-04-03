@@ -6,7 +6,7 @@
  * Manages hover-based popover state with proper enter/leave handling.
  * Different from click-based popovers - opens on mouse enter, closes on leave.
  *
- * @module @omnitron/prism/hooks
+ * @module @omnitron-dev/prism/hooks
  */
 
 import { useState, useCallback, useRef, type RefObject, type Dispatch, type SetStateAction } from 'react';

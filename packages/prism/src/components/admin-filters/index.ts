@@ -4,7 +4,7 @@
  * Unified filter toolbar, data table, status chip, and amount cell
  * for all admin sections of the platform.
  *
- * @module @omnitron/prism/components/admin-filters
+ * @module @omnitron-dev/prism/components/admin-filters
  */
 
 export {

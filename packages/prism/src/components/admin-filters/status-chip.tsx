@@ -5,7 +5,7 @@
  *
  * Universal status badge with automatic color mapping.
  *
- * @module @omnitron/prism/components/admin-filters
+ * @module @omnitron-dev/prism/components/admin-filters
  */
 
 import type { ReactNode } from 'react';

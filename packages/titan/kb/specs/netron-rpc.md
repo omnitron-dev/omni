@@ -212,7 +212,7 @@ const result = await authService.signIn('user', 'pass');
 Frontend apps use `createMultiBackendClient` to route RPC calls to different backends:
 
 ```typescript
-import { createMultiBackendClient } from '@omnitron/prism/netron';
+import { createMultiBackendClient } from '@omnitron-dev/prism/netron';
 
 // Type-safe mapping of backend names to service schemas
 const client = createMultiBackendClient<{

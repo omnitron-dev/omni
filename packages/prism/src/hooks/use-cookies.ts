@@ -6,7 +6,7 @@
  * Manages state with cookies. Supports both primitive values
  * and objects with partial updates.
  *
- * @module @omnitron/prism/hooks
+ * @module @omnitron-dev/prism/hooks
  */
 
 import { useMemo, useState, useEffect, useCallback } from 'react';

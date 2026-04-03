@@ -25,7 +25,7 @@ import Collapse from '@mui/material/Collapse';
 import LinearProgress from '@mui/material/LinearProgress';
 
 import { PipelineIcon, PlayIcon, RefreshIcon, PlusIcon, CloseIcon } from 'src/assets/icons';
-import { Breadcrumbs } from '@omnitron/prism';
+import { Breadcrumbs } from '@omnitron-dev/prism';
 import { pipelines } from 'src/netron/client';
 import { formatDate } from 'src/utils/formatters';
 
@@ -186,7 +186,7 @@ function RunDetail({ run }: { run: PipelineRun }) {
 // ---------------------------------------------------------------------------
 
 export default function PipelinesPage() {
-  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [pipelineList, setPipelineList] = useState<Pipeline[]>([]);
   const [runs, setRuns] = useState<PipelineRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -201,7 +201,7 @@ export default function PipelinesPage() {
       ]);
 
       if (pipelineResult.status === 'fulfilled')
-        setPipelines(Array.isArray(pipelineResult.value) ? pipelineResult.value : []);
+        setPipelineList(Array.isArray(pipelineResult.value) ? pipelineResult.value : []);
       if (runsResult.status === 'fulfilled')
         setRuns(Array.isArray(runsResult.value) ? runsResult.value : []);
       setError(null);
@@ -292,7 +292,7 @@ export default function PipelinesPage() {
                     ))}
                   </TableRow>
                 ))
-              ) : pipelines.length === 0 ? (
+              ) : pipelineList.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} sx={{ textAlign: 'center', py: 6 }}>
                     <Typography variant="body2" color="text.secondary">
@@ -301,7 +301,7 @@ export default function PipelinesPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                pipelines.map((p) => (
+                pipelineList.map((p) => (
                   <TableRow key={p.id} hover>
                     <TableCell>
                       <Typography variant="body2" fontWeight={600}>{p.name}</Typography>
@@ -372,7 +372,7 @@ export default function PipelinesPage() {
                 </TableRow>
               ) : (
                 runs.map((run) => {
-                  const pipeline = pipelines.find((p) => p.id === run.pipelineId);
+                  const pipeline = pipelineList.find((p) => p.id === run.pipelineId);
                   return (
                     <TableRow key={run.id}>
                       <TableCell colSpan={5} sx={{ p: 0 }}>

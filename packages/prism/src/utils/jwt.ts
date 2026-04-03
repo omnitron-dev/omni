@@ -5,7 +5,7 @@
  * These utilities do NOT verify signatures - they only decode and check expiration.
  * For signature verification, use server-side libraries.
  *
- * @module @omnitron/prism/utils
+ * @module @omnitron-dev/prism/utils
  */
 
 // =============================================================================

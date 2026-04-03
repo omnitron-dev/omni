@@ -5,7 +5,7 @@
  *
  * A hook for manual query execution with loading, error, and caching support.
  *
- * @module @omnitron/prism/hooks/use-lazy-query
+ * @module @omnitron-dev/prism/hooks/use-lazy-query
  */
 
 import { useState, useCallback, useRef } from 'react';

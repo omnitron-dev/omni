@@ -6,7 +6,7 @@
  * Optimized table for admin data displays with built-in sorting,
  * skeleton loading, empty states, and pagination.
  *
- * @module @omnitron/prism/components/admin-filters
+ * @module @omnitron-dev/prism/components/admin-filters
  */
 
 import type { ReactNode } from 'react';

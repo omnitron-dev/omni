@@ -4,7 +4,7 @@
  * MUI v7 best practices: typed class selectors, ComponentsVariants,
  * density-aware sizing via shared getDensityMultiplier.
  *
- * @module @omnitron/prism/theme/components/Tabs
+ * @module @omnitron-dev/prism/theme/components/Tabs
  */
 
 import type { Theme, Components, ComponentsVariants } from '@mui/material/styles';

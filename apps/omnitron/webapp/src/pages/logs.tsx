@@ -27,7 +27,7 @@ import InputAdornment from '@mui/material/InputAdornment';
 import { alpha, keyframes } from '@mui/material/styles';
 
 import { SearchIcon, RefreshIcon, PlayIcon, StopIcon, CloseIcon, TerminalIcon } from 'src/assets/icons';
-import { Breadcrumbs } from '@omnitron/prism';
+import { Breadcrumbs } from '@omnitron-dev/prism';
 import { logs, daemon, fleet } from 'src/netron/client';
 import { LEVEL_COLORS } from 'src/utils/constants';
 import { useStackContext } from 'src/hooks/use-stack-context';
@@ -317,7 +317,7 @@ export default function LogsPage() {
   const [customTo, setCustomTo] = useState('');
 
   // ---- Data ----
-  const [logs, setLogs] = useState<LogEntryRow[]>([]);
+  const [logRows, setLogRows] = useState<LogEntryRow[]>([]);
   const [stats, setStats] = useState<LogStats | null>(null);
   const [appNames, setAppNames] = useState<string[]>([]);
   const [total, setTotal] = useState(0);
@@ -442,7 +442,7 @@ export default function LogsPage() {
     try {
       setLoading(true);
       const result = await logs.queryLogs(buildFilter(0) as any);
-      setLogs(result.entries);
+      setLogRows(result.entries);
       setTotal(result.total);
       setHasMore(result.hasMore);
       setError(null);
@@ -463,8 +463,8 @@ export default function LogsPage() {
   const loadMore = async () => {
     setLoadingMore(true);
     try {
-      const result = await logs.queryLogs(buildFilter(logs.length) as any);
-      setLogs((prev) => [...prev, ...result.entries]);
+      const result = await logs.queryLogs(buildFilter(logRows.length) as any);
+      setLogRows((prev) => [...prev, ...result.entries]);
       setHasMore(result.hasMore);
     } catch (err: any) {
       setError(err?.message ?? 'Failed to load more');
@@ -498,7 +498,7 @@ export default function LogsPage() {
         const entries: LogEntryRow[] = await logs.streamLogs(streamFilter as any);
         // Newest first
         const reversed = [...entries].reverse();
-        setLogs(reversed);
+        setLogRows(reversed);
         setTotal(entries.length);
         setHasMore(false);
         setError(null);
@@ -533,7 +533,7 @@ export default function LogsPage() {
         if (entries.length === 0) return;
 
         // Deduplicate by id
-        const existingIds = new Set(logs.map((l) => l.id));
+        const existingIds = new Set(logRows.map((l) => l.id));
         const fresh = entries.filter((e) => !existingIds.has(e.id));
         if (fresh.length === 0) return;
 
@@ -546,7 +546,7 @@ export default function LogsPage() {
 
         lastTimestampRef.current = new Date(fresh[fresh.length - 1]!.timestamp).toISOString();
 
-        setLogs((prev) => {
+        setLogRows((prev) => {
           // Newest first — prepend fresh entries (reversed so newest is at index 0)
           const merged = [...fresh.reverse(), ...prev];
           // Keep first 2000 entries to avoid memory bloat
@@ -566,7 +566,7 @@ export default function LogsPage() {
     return () => {
       if (streamRef.current) clearInterval(streamRef.current);
     };
-  }, [streaming, paused, streamFilter, logs]);
+  }, [streaming, paused, streamFilter, logRows]);
 
   // Auto-scroll to top when new entries arrive (newest first)
   useEffect(() => {
@@ -576,7 +576,7 @@ export default function LogsPage() {
         el.scrollTop = 0;
       });
     }
-  }, [logs]);
+  }, [logRows]);
 
   // ---- Scroll tracking ----
   const handleScroll = useCallback(() => {
@@ -628,7 +628,7 @@ export default function LogsPage() {
     // Build level breakdown from stats or current log set
     const levelMap = new Map<string, number>();
     if (isLive) {
-      for (const log of logs) {
+      for (const log of logRows) {
         levelMap.set(log.level, (levelMap.get(log.level) ?? 0) + 1);
       }
     } else {
@@ -641,7 +641,7 @@ export default function LogsPage() {
       level: l,
       count: levelMap.get(l)!,
     }));
-  }, [stats, logs, isLive]);
+  }, [stats, logRows, isLive]);
 
   // ---- Refresh stats on filter change (non-live) ----
   useEffect(() => {
@@ -946,8 +946,8 @@ export default function LogsPage() {
             {loading
               ? 'Loading...'
               : isLive
-                ? `${logs.length.toLocaleString()} entries`
-                : `Showing ${logs.length.toLocaleString()} of ${total.toLocaleString()}`}
+                ? `${logRows.length.toLocaleString()} entries`
+                : `Showing ${logRows.length.toLocaleString()} of ${total.toLocaleString()}`}
           </Typography>
 
           {filteredStats && filteredStats.length > 0 && (
@@ -1082,7 +1082,7 @@ export default function LogsPage() {
                 />
               ))}
             </Stack>
-          ) : logs.length === 0 ? (
+          ) : logRows.length === 0 ? (
             <Stack alignItems="center" justifyContent="center" sx={{ height: '100%', py: 8 }}>
               <TerminalIcon sx={{ fontSize: 40, color: alpha('#fff', 0.08), mb: 1.5 }} />
               <Typography
@@ -1124,13 +1124,13 @@ export default function LogsPage() {
                       '&:hover': { bgcolor: alpha('#58a6ff', 0.08) },
                     }}
                   >
-                    {loadingMore ? 'Loading...' : `Load older entries (${(total - logs.length).toLocaleString()} remaining)`}
+                    {loadingMore ? 'Loading...' : `Load older entries (${(total - logRows.length).toLocaleString()} remaining)`}
                   </Button>
                 </Stack>
               )}
 
               {/* Log rows — newest at bottom for live, newest at top for paginated */}
-              {(isLive ? logs : logs).map((log) => (
+              {logRows.map((log) => (
                 <LogRow key={log.id} log={log} isNew={newIdsRef.current.has(log.id)} />
               ))}
             </>

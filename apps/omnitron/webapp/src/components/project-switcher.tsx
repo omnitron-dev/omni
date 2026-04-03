@@ -21,7 +21,7 @@ import Button, { buttonClasses } from '@mui/material/Button';
 import Tooltip from '@mui/material/Tooltip';
 import type { SxProps, Theme } from '@mui/material/styles';
 
-import { CustomPopover, usePopover, Label } from '@omnitron/prism';
+import { CustomPopover, usePopover, Label } from '@omnitron-dev/prism';
 import { PlusIcon, ChipIcon, FolderIcon } from '../assets/icons';
 import { useProjectStore, useActiveProject } from '../stores/project.store';
 

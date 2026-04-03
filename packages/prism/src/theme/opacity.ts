@@ -4,7 +4,7 @@
  * Standardized opacity values for consistent UI effects across components.
  * Based on Minimals template patterns.
  *
- * @module @omnitron/prism/theme/opacity
+ * @module @omnitron-dev/prism/theme/opacity
  */
 
 /**

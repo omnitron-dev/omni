@@ -22,7 +22,7 @@ import Grid from '@mui/material/Grid';
 import { alpha } from '@mui/material/styles';
 
 import { TraceIcon, RefreshIcon, SearchIcon } from 'src/assets/icons';
-import { Breadcrumbs } from '@omnitron/prism';
+import { Breadcrumbs } from '@omnitron-dev/prism';
 import { traces } from 'src/netron/client';
 import { formatDate } from 'src/utils/formatters';
 import { useStackContext } from 'src/hooks/use-stack-context';
@@ -156,7 +156,7 @@ function SpanWaterfall({ spans }: { spans: TraceSpan[] }) {
 
 export default function TracesPage() {
   const { displayName, namespacePrefix } = useStackContext();
-  const [traces, setTraces] = useState<Trace[]>([]);
+  const [traceList, setTraceList] = useState<Trace[]>([]);
   const [serviceMap, setServiceMap] = useState<ServiceMapEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -180,7 +180,7 @@ export default function TracesPage() {
       ]);
 
       if (tracesResult.status === 'fulfilled')
-        setTraces(Array.isArray(tracesResult.value) ? tracesResult.value : []);
+        setTraceList(Array.isArray(tracesResult.value) ? tracesResult.value : []);
       if (mapResult.status === 'fulfilled')
         setServiceMap(Array.isArray(mapResult.value) ? mapResult.value : []);
       setError(null);
@@ -275,7 +275,7 @@ export default function TracesPage() {
                         ))}
                       </TableRow>
                     ))
-                  ) : traces.length === 0 ? (
+                  ) : traceList.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={5} sx={{ textAlign: 'center', py: 6 }}>
                         <Typography variant="body2" color="text.secondary">
@@ -284,7 +284,7 @@ export default function TracesPage() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    traces.map((trace) => {
+                    traceList.map((trace) => {
                       const hasErrors = trace.spans.some((s) => s.status === 'error');
                       return (
                         <TableRow key={trace.traceId}>

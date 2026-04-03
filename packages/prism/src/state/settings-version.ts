@@ -4,7 +4,7 @@
  * Utilities for managing versioned settings with safe migrations.
  * Enables breaking changes to settings structure while preserving user data.
  *
- * @module @omnitron/prism/state
+ * @module @omnitron-dev/prism/state
  */
 
 import { createJSONStorage, type PersistOptions, type StateStorage } from 'zustand/middleware';

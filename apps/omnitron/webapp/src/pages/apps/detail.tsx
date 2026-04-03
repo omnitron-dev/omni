@@ -27,7 +27,7 @@ import Collapse from '@mui/material/Collapse';
 import { alpha, useTheme, keyframes } from '@mui/material/styles';
 import Chart from 'react-apexcharts';
 import { RestartIcon, StopIcon, PlayIcon, RefreshIcon, CircleIcon, SearchIcon } from 'src/assets/icons';
-import { Breadcrumbs } from '@omnitron/prism';
+import { Breadcrumbs } from '@omnitron-dev/prism';
 
 import { daemon, logs, metrics } from 'src/netron/client';
 import { formatUptime, formatMemory, formatTimestamp } from 'src/utils/formatters';
@@ -390,7 +390,7 @@ function LogsTab({ appName }: { appName: string }) {
   // DB stores short app names ("main"), not namespaced ("omni/dev/main")
   const dbAppName = appName.includes('/') ? appName.split('/').pop()! : appName;
 
-  const [logs, setLogs] = useState<LogEntryRow[]>([]);
+  const [logRows, setLogRows] = useState<LogEntryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [paused, setPaused] = useState(false);
   const [selectedLevels, setSelectedLevels] = useState<string[]>([]);
@@ -432,7 +432,7 @@ function LogsTab({ appName }: { appName: string }) {
         const entries: LogEntryRow[] = await logs.streamLogs(streamFilter as any);
         if (cancelled) return;
         const reversed = [...entries].reverse();
-        setLogs(reversed);
+        setLogRows(reversed);
         newIdsRef.current.clear();
         if (entries.length > 0) {
           lastTimestampRef.current = new Date(entries[entries.length - 1]!.timestamp).toISOString();
@@ -460,7 +460,7 @@ function LogsTab({ appName }: { appName: string }) {
         const entries: LogEntryRow[] = await logs.streamLogs(filter);
         if (entries.length === 0) return;
 
-        const existingIds = new Set(logs.map((l) => l.id));
+        const existingIds = new Set(logRows.map((l) => l.id));
         const fresh = entries.filter((e) => !existingIds.has(e.id));
         if (fresh.length === 0) return;
 
@@ -469,7 +469,7 @@ function LogsTab({ appName }: { appName: string }) {
 
         lastTimestampRef.current = new Date(fresh[fresh.length - 1]!.timestamp).toISOString();
 
-        setLogs((prev) => {
+        setLogRows((prev) => {
           const merged = [...fresh.reverse(), ...prev];
           return merged.length > 2000 ? merged.slice(0, 2000) : merged;
         });
@@ -479,14 +479,14 @@ function LogsTab({ appName }: { appName: string }) {
     }, STREAM_INTERVAL);
 
     return () => { if (streamRef.current) clearInterval(streamRef.current); };
-  }, [paused, streamFilter, logs]);
+  }, [paused, streamFilter, logRows]);
 
   // Level counts from current logs
   const levelCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    for (const log of logs) counts[log.level] = (counts[log.level] ?? 0) + 1;
+    for (const log of logRows) counts[log.level] = (counts[log.level] ?? 0) + 1;
     return counts;
-  }, [logs]);
+  }, [logRows]);
 
   return (
     <Stack spacing={1.5}>
@@ -555,12 +555,12 @@ function LogsTab({ appName }: { appName: string }) {
             <Stack spacing={0.5} sx={{ p: 1.5 }}>
               {[...Array(12)].map((_, i) => <Skeleton key={i} height={20} sx={{ bgcolor: 'rgba(255,255,255,0.05)' }} />)}
             </Stack>
-          ) : logs.length === 0 ? (
+          ) : logRows.length === 0 ? (
             <Typography variant="body2" sx={{ fontFamily: MONO, fontSize: 12, color: '#8b949e', textAlign: 'center', py: 6 }}>
               No log entries found.
             </Typography>
           ) : (
-            logs.map((log) => (
+            logRows.map((log) => (
               <LogRow key={log.id} log={log} isNew={newIdsRef.current.has(log.id)} />
             ))
           )}
@@ -570,7 +570,7 @@ function LogsTab({ appName }: { appName: string }) {
       {/* Footer */}
       <Stack direction="row" justifyContent="space-between" alignItems="center">
         <Typography variant="caption" color="text.disabled" sx={{ fontFamily: MONO, fontSize: 11 }}>
-          {logs.length} entries {!paused && '· streaming'}
+          {logRows.length} entries {!paused && '· streaming'}
         </Typography>
         {selectedLevels.length > 0 && (
           <Button size="small" onClick={() => setSelectedLevels([])} sx={{ textTransform: 'none', fontSize: 11 }}>

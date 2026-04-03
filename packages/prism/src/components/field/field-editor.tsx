@@ -6,7 +6,7 @@
  * Rich text editor with React Hook Form integration.
  * Provides both a basic textarea fallback and a headless API for custom editors (TipTap, etc.)
  *
- * @module @omnitron/prism/components/field
+ * @module @omnitron-dev/prism/components/field
  */
 
 import type { ReactNode, ComponentProps, ReactElement } from 'react';

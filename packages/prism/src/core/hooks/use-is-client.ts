@@ -6,7 +6,7 @@
  * Detects client-side rendering vs server-side rendering.
  * Returns false during SSR, true after hydration.
  *
- * @module @omnitron/prism/core/hooks
+ * @module @omnitron-dev/prism/core/hooks
  */
 
 import { useState, useEffect } from 'react';

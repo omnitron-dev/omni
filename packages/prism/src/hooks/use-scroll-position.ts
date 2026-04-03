@@ -5,7 +5,7 @@
  *
  * Tracks scroll position with performance optimization.
  *
- * @module @omnitron/prism/hooks
+ * @module @omnitron-dev/prism/hooks
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';

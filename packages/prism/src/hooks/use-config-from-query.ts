@@ -8,7 +8,7 @@
  *
  * Query parameter format: ?preset=luxury&mode=dark&primary=%23FF5630
  *
- * @module @omnitron/prism/hooks
+ * @module @omnitron-dev/prism/hooks
  */
 
 import { useEffect, useCallback, useMemo } from 'react';
@@ -133,7 +133,7 @@ function isValidHexColor(value: string | null): boolean {
  *
  * @example
  * ```tsx
- * import { useConfigFromQuery } from '@omnitron/prism/hooks';
+ * import { useConfigFromQuery } from '@omnitron-dev/prism/hooks';
  *
  * function ThemeSettings() {
  *   const {

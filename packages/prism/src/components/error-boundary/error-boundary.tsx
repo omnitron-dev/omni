@@ -6,7 +6,7 @@
  * React error boundary for graceful error handling.
  * Includes stack trace parsing for improved debugging.
  *
- * @module @omnitron/prism/components/error-boundary
+ * @module @omnitron-dev/prism/components/error-boundary
  */
 
 import { Component, useState, type ReactNode, type ErrorInfo } from 'react';

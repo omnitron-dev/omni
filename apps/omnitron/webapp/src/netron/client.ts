@@ -12,7 +12,7 @@ import {
   AuthenticationClient,
   SessionTokenStorage,
   type BackendSchema,
-} from '@omnitron/prism/netron';
+} from '@omnitron-dev/prism/netron';
 
 import type {
   IDaemonService,

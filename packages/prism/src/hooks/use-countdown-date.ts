@@ -8,7 +8,7 @@
  *
  * Ported from minimal-shared for Prism design system.
  *
- * @module @omnitron/prism/hooks/use-countdown-date
+ * @module @omnitron-dev/prism/hooks/use-countdown-date
  */
 
 import { useState, useEffect, useCallback } from 'react';

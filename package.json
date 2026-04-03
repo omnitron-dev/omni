@@ -64,7 +64,7 @@
     "onlyBuiltDependencies": [
       "better-sqlite3",
       "cpu-features",
-      "msw",
+      "esbuild",
       "ssh2"
     ]
   },

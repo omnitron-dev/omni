@@ -4,7 +4,7 @@
  * State management hook for the Lightbox component.
  * Handles open/close, navigation, and zoom state.
  *
- * @module @omnitron/prism/components/lightbox
+ * @module @omnitron-dev/prism/components/lightbox
  */
 
 'use client';

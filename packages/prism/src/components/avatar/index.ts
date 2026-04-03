@@ -1,7 +1,7 @@
 /**
  * Avatar Component Exports
  *
- * @module @omnitron/prism/components/avatar
+ * @module @omnitron-dev/prism/components/avatar
  */
 
 export {

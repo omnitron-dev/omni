@@ -10,7 +10,7 @@
  * - Version management and compatibility checking
  * - Caching with configurable TTL
  *
- * @module @omnitron/prism/registry/manager
+ * @module @omnitron-dev/prism/registry/manager
  */
 
 import type { RegistrySchema, ComponentDefinition, RegistryConfig, RemoteRegistryConfig } from '../types/registry.js';

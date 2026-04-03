@@ -31,7 +31,7 @@ import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogContentText from '@mui/material/DialogContentText';
 import DialogActions from '@mui/material/DialogActions';
-import { Breadcrumbs, PageContent } from '@omnitron/prism';
+import { Breadcrumbs, PageContent } from '@omnitron-dev/prism';
 import { PlayIcon, StopIcon, RefreshIcon, SyncIcon, DeployIcon, DeleteIcon } from '../../assets/icons';
 import {
   useProjectStore,

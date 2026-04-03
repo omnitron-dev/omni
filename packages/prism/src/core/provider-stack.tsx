@@ -5,7 +5,7 @@
  *
  * Composable provider pattern for building flexible provider hierarchies.
  *
- * @module @omnitron/prism/core/provider-stack
+ * @module @omnitron-dev/prism/core/provider-stack
  */
 
 import type { ReactNode, ComponentType, FC } from 'react';

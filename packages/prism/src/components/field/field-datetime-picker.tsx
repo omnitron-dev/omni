@@ -6,7 +6,7 @@
  * React Hook Form integrated date-time picker using MUI X DatePickers.
  * Combines date and time selection in a single component.
  *
- * @module @omnitron/prism/components/field
+ * @module @omnitron-dev/prism/components/field
  */
 
 import type { ReactNode } from 'react';

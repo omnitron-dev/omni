@@ -10,7 +10,7 @@
  * - Supports MUI's `applyStyles` for dark mode variants
  * - Works seamlessly with MUI's CSS variable system
  *
- * @module @omnitron/prism/theme/palette/builder
+ * @module @omnitron-dev/prism/theme/palette/builder
  */
 
 import type { PaletteOptions } from '@mui/material/styles';

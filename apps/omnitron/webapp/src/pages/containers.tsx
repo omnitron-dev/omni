@@ -31,7 +31,7 @@ import {
   CloseIcon,
   LogsIcon,
 } from 'src/assets/icons';
-import { Breadcrumbs } from '@omnitron/prism';
+import { Breadcrumbs } from '@omnitron-dev/prism';
 import { infra } from 'src/netron/client';
 import { useStackContext } from 'src/hooks/use-stack-context';
 

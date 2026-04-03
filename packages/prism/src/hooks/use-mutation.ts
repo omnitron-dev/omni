@@ -6,7 +6,7 @@
  * A hook for handling async mutations with loading, error, and success states.
  * Similar to TanStack Query's useMutation but framework-agnostic.
  *
- * @module @omnitron/prism/hooks/use-mutation
+ * @module @omnitron-dev/prism/hooks/use-mutation
  */
 
 import { useState, useCallback, useRef } from 'react';

@@ -5,7 +5,7 @@
  *
  * Declarative timeout hook with automatic cleanup.
  *
- * @module @omnitron/prism/core/hooks
+ * @module @omnitron-dev/prism/core/hooks
  */
 
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';

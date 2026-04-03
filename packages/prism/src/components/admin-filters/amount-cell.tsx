@@ -6,7 +6,7 @@
  * Formatted amount display for financial tables with monospace font,
  * optional sign coloring, and currency display.
  *
- * @module @omnitron/prism/components/admin-filters
+ * @module @omnitron-dev/prism/components/admin-filters
  */
 
 import type { ReactNode } from 'react';

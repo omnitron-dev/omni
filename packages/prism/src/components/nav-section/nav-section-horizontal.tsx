@@ -5,7 +5,7 @@
  *
  * Horizontal navigation for header/top bar layouts.
  *
- * @module @omnitron/prism/components/nav-section
+ * @module @omnitron-dev/prism/components/nav-section
  */
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';

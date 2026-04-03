@@ -5,8 +5,8 @@ import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import Stack from '@mui/material/Stack';
-import { DashboardLayout, LoadingScreen, useLayoutConfig, usePrismContext, useSettingsStore } from '@omnitron/prism';
-import type { ThemeMode, LayoutNavData } from '@omnitron/prism';
+import { DashboardLayout, LoadingScreen, useLayoutConfig, usePrismContext, useSettingsStore } from '@omnitron-dev/prism';
+import type { ThemeMode, LayoutNavData } from '@omnitron-dev/prism';
 import { StatusBar } from 'src/components/status-bar';
 import { OmnitronLogo } from 'src/components/omnitron-logo';
 

@@ -3,7 +3,7 @@
  *
  * WCAG 2.1 compliant accessibility components and utilities.
  *
- * @module @omnitron/prism/core/accessibility
+ * @module @omnitron-dev/prism/core/accessibility
  */
 
 export { SkipLink } from './skip-link.js';

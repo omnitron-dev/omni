@@ -6,7 +6,7 @@
  * Full-screen or contained loading states with customizable indicators.
  * Use for app-level loading (initial boot, auth checks).
  *
- * @module @omnitron/prism/components/loading-screen
+ * @module @omnitron-dev/prism/components/loading-screen
  */
 
 import type { ReactNode } from 'react';

@@ -1,7 +1,7 @@
 /**
  * Table Component Exports
  *
- * @module @omnitron/prism/components/table
+ * @module @omnitron-dev/prism/components/table
  */
 
 export {

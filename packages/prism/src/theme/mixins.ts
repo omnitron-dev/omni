@@ -4,7 +4,7 @@
  * Reusable style utilities for component overrides.
  * Based on Minimals template patterns.
  *
- * @module @omnitron/prism/theme/mixins
+ * @module @omnitron-dev/prism/theme/mixins
  */
 
 import type { Theme, CSSObject } from '@mui/material/styles';

@@ -6,7 +6,7 @@
  * React Hook Form integrated multiple checkbox group.
  * Manages array values for multi-select scenarios.
  *
- * @module @omnitron/prism/components/field
+ * @module @omnitron-dev/prism/components/field
  */
 
 import { useId, type ReactNode } from 'react';

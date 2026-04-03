@@ -5,7 +5,7 @@
  *
  * React Hook Form integrated autocomplete with search.
  *
- * @module @omnitron/prism/components/field
+ * @module @omnitron-dev/prism/components/field
  */
 
 import type { ReactNode, SyntheticEvent } from 'react';

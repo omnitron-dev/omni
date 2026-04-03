@@ -3,7 +3,7 @@
  *
  * Safe URL handling, navigation helpers, and link utilities.
  *
- * @module @omnitron/prism/utils/url
+ * @module @omnitron-dev/prism/utils/url
  */
 
 /**

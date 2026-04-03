@@ -1,7 +1,7 @@
 /**
  * Prism CLI Constants
  *
- * @module @omnitron/prism/cli/constants
+ * @module @omnitron-dev/prism/cli/constants
  */
 
 import { createRequire } from 'node:module';

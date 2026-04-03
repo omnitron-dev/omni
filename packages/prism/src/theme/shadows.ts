@@ -3,7 +3,7 @@
  *
  * Shadow configuration for Prism themes.
  *
- * @module @omnitron/prism/theme/shadows
+ * @module @omnitron-dev/prism/theme/shadows
  */
 
 import type { Shadows } from '@mui/material/styles';

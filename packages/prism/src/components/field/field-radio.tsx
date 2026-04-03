@@ -5,7 +5,7 @@
  *
  * React Hook Form integrated radio group with full accessibility support.
  *
- * @module @omnitron/prism/components/field
+ * @module @omnitron-dev/prism/components/field
  */
 
 import type { ReactNode } from 'react';

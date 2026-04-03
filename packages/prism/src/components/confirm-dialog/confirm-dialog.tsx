@@ -6,7 +6,7 @@
  * Reusable confirmation dialog with customizable actions.
  * Implements WCAG 2.1 accessibility with proper ARIA attributes.
  *
- * @module @omnitron/prism/components/confirm-dialog
+ * @module @omnitron-dev/prism/components/confirm-dialog
  */
 
 import { useId, type ReactNode } from 'react';

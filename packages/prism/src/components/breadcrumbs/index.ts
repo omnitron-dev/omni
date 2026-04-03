@@ -1,7 +1,7 @@
 /**
  * Breadcrumbs Component Exports
  *
- * @module @omnitron/prism/components/breadcrumbs
+ * @module @omnitron-dev/prism/components/breadcrumbs
  */
 
 export {

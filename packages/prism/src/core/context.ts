@@ -3,7 +3,7 @@
  *
  * Global context for Prism configuration and state.
  *
- * @module @omnitron/prism/core/context
+ * @module @omnitron-dev/prism/core/context
  */
 
 import { createContext, useContext } from 'react';
@@ -13,7 +13,7 @@ import type { NavLayout, NavColor } from '../state/stores/settings.js';
 
 /**
  * Settings state managed by Prism.
- * @deprecated Use useSettingsStore from '@omnitron/prism/state' for full settings access.
+ * @deprecated Use useSettingsStore from '@omnitron-dev/prism/state' for full settings access.
  * This interface is maintained for backwards compatibility with PrismContext.
  */
 export interface PrismSettingsState {

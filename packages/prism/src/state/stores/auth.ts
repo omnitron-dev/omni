@@ -8,7 +8,7 @@
  * and are NOT persisted across browser sessions. Only the auth status
  * is persisted to allow checking login state on page load.
  *
- * @module @omnitron/prism/state/stores
+ * @module @omnitron-dev/prism/state/stores
  */
 
 import { createPersistedStore, createUIStore, createSelectors } from '../create-store.js';

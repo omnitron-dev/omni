@@ -3,7 +3,7 @@
  *
  * Utilities for generating and managing CSS variables.
  *
- * @module @omnitron/prism/theme/css-variables
+ * @module @omnitron-dev/prism/theme/css-variables
  */
 
 import type { PrismTheme, CssVariablesConfig } from '../types/theme.js';

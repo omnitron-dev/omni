@@ -4,7 +4,7 @@
  * Theme system with presets, CSS variables, and MUI integration.
  * Uses MUI's native colorSchemes for automatic light/dark mode.
  *
- * @module @omnitron/prism/theme
+ * @module @omnitron-dev/prism/theme
  */
 
 // =============================================================================

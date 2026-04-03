@@ -3,7 +3,7 @@
  *
  * Framework-agnostic HTTP client with interceptors, retry logic, and TypeScript support.
  *
- * @module @omnitron/prism/http
+ * @module @omnitron-dev/prism/http
  */
 
 export { createHttpClient, http } from './client.js';

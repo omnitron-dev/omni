@@ -6,7 +6,7 @@
  * - DevTools integration
  * - Optional persistence
  *
- * @module @omnitron/prism/state
+ * @module @omnitron-dev/prism/state
  */
 
 import { create, type StateCreator, type StoreApi, type UseBoundStore } from 'zustand';

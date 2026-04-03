@@ -5,7 +5,7 @@
  *
  * Skeleton placeholder shown while chart is loading.
  *
- * @module @omnitron/prism/components/chart
+ * @module @omnitron-dev/prism/components/chart
  */
 
 import type { ChartLoadingProps, ChartType } from '../types.js';

@@ -3,7 +3,7 @@
  *
  * Slot-based header component with sticky positioning and scroll effects.
  *
- * @module @omnitron/prism/layouts/core/header-section
+ * @module @omnitron-dev/prism/layouts/core/header-section
  */
 
 import type { ReactNode } from 'react';

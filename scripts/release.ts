@@ -81,6 +81,9 @@ const PUBLISHABLE_PACKAGES: readonly string[] = [
   'packages/eventemitter',
   'packages/msgpack',
 
+  // Knowledge base
+  'packages/kb',
+  
   // Titan core (depends on common, eventemitter, msgpack)
   'packages/titan',
 
@@ -263,7 +266,7 @@ async function generateChangelog(version: string): Promise<string> {
     const match = line.match(/^[a-f0-9]+ (.+)$/)
     if (!match) continue
 
-    const message = match[1]
+    const message = match[1]!;
 
     if (message.startsWith('feat:') || message.startsWith('feat(')) {
       features.push(message)
@@ -372,11 +375,11 @@ async function promptVersion(currentVersion: string): Promise<string> {
     const prereleaseId = await select({
       message: 'Select prerelease type:',
       options: [
-        { label: 'Alpha', value: 'alpha' },
-        { label: 'Beta', value: 'beta' },
-        { label: 'RC', value: 'rc' }
+        { label: 'Alpha', value: 'alpha' as semver.ReleaseType },
+        { label: 'Beta', value: 'beta' as semver.ReleaseType },
+        { label: 'RC', value: 'rc' as semver.ReleaseType }
       ]
-    })
+    }) as semver.ReleaseType;
     newVersion = semver.inc(currentVersion, 'prerelease', prereleaseId) || currentVersion
   } else {
     newVersion = semver.inc(currentVersion, versionType as semver.ReleaseType) || currentVersion
@@ -442,7 +445,7 @@ async function createGitRelease(version: string, options: ReleaseOptions): Promi
   // Push
   const shouldPush = await confirm({
     message: 'Push to remote?',
-    initial: true
+    initialValue: true
   })
 
   if (shouldPush) {

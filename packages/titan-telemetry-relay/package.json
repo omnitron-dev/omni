@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/titan-telemetry-relay",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Store-and-forward telemetry pipeline for distributed Titan applications",
   "author": "LuxQuant",
   "license": "MIT",

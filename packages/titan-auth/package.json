@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/titan-auth",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "JWT authentication module for Titan framework",
   "author": "LuxQuant",
   "license": "MIT",

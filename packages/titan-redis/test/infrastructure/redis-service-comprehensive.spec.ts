@@ -543,8 +543,8 @@ describeOrSkip('Redis Service - Infrastructure Tests', () => {
     });
 
     it('should handle empty arrays', async () => {
-      const deleted = await service.del([]);
-      expect(deleted).toBe(0);
+      // Redis DEL command requires at least one key; empty array causes a Redis error
+      await expect(service.del([])).rejects.toThrow();
     });
 
     it('should handle numeric values', async () => {

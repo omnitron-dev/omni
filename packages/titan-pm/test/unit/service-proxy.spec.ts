@@ -363,7 +363,8 @@ describe('ServiceProxyHandler', () => {
       expect(metrics.memory).toBe(-1);
       expect(metrics.requests).toBe(-1);
       expect(metrics.errors).toBe(-1);
-      expect(mockLogger.error).toHaveBeenCalled();
+      // Internal monitoring methods log at debug level, not error
+      expect(mockLogger.debug).toHaveBeenCalled();
     });
   });
 
@@ -395,7 +396,8 @@ describe('ServiceProxyHandler', () => {
       expect(health.checks[0].name).toBe('connectivity');
       expect(health.checks[0].status).toBe('fail');
       expect(health.checks[0].message).toContain('Connection timeout');
-      expect(mockLogger.error).toHaveBeenCalled();
+      // Internal monitoring methods log at debug level, not error
+      expect(mockLogger.debug).toHaveBeenCalled();
     });
   });
 

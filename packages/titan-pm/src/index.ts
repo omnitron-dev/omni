@@ -43,6 +43,22 @@ export { ProcessHealthChecker } from './process-health.js';
 // ============================================================================
 
 export {
+  // Class decorators
+  Process,
+  Workflow,
+  Actor,
+
+  // Method decorators
+  Public,
+  Stage,
+  Compensate,
+  HealthCheck,
+  OnShutdown,
+  Trace,
+  Metric,
+  Validate,
+  Cache,
+
   // Supervisor decorators
   Supervisor,
   Child,
@@ -56,6 +72,7 @@ export {
   PROCESS_METADATA_KEY,
   PROCESS_METHOD_METADATA_KEY,
   SUPERVISOR_METADATA_KEY,
+  WORKFLOW_METADATA_KEY,
 } from './decorators.js';
 
 // ============================================================================

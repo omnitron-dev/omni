@@ -35,7 +35,8 @@ import {
   DatabaseManager,
 } from '../src/index.js';
 import { DatabaseTestingModule, DatabaseTestingService } from '@omnitron-dev/testing/titan';
-import { DatabaseTestManager, DockerContainer } from '@omnitron-dev/testing/titan';
+import { DatabaseTestManager } from '@omnitron-dev/testing/docker';
+import type { DockerContainer } from '@omnitron-dev/testing/docker';
 
 // Helper function to convert booleans for SQLite compatibility
 // Note: This does NOT convert arrays - arrays are handled separately per dialect

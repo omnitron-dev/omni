@@ -1,7 +1,8 @@
 /**
- * Migration Hooks Tests
+ * Migration Plugin / Hooks Tests
  *
- * Tests for the migration hooks functionality
+ * Tests for the @kysera/migrations MigrationPlugin lifecycle hooks
+ * exposed via MigrationRunnerWithPlugins.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -9,81 +10,60 @@ import { Application } from '@omnitron-dev/titan/application';
 import { Module } from '@omnitron-dev/titan/decorators';
 import {
   TitanDatabaseModule,
-  MigrationService,
+  MigrationRunnerWithPlugins,
   DATABASE_MANAGER,
-  DATABASE_MIGRATION_SERVICE,
-  Migration,
+  setupMigrations,
+  createMigration,
 } from '../src/index.js';
-import type {
-  MigrationInfo,
-  MigrationResultItem,
-  IMigration,
-  IDatabaseManager,
-} from '../src/index.js';
+import type { IDatabaseManager } from '../src/index.js';
+import type { MigrationPlugin } from '@kysera/migrations';
+import type { Migration as KyseraMigration } from '@kysera/migrations';
 import { Kysely } from 'kysely';
 
-// Test migration class
-@Migration({
-  version: '001',
-  description: 'Create test table',
-})
-class CreateTestTableMigration implements IMigration {
-  async up(db: Kysely<any>): Promise<void> {
+// ---------------------------------------------------------------------------
+// Test migration
+// ---------------------------------------------------------------------------
+
+const testMigration: KyseraMigration = createMigration(
+  '001_create_hook_test_table',
+  async (db: Kysely<any>) => {
     await db.schema
       .createTable('hook_test_table')
+      .ifNotExists()
       .addColumn('id', 'integer', (col) => col.primaryKey().autoIncrement())
       .addColumn('name', 'varchar(100)', (col) => col.notNull())
       .execute();
-  }
+  },
+  async (db: Kysely<any>) => {
+    await db.schema.dropTable('hook_test_table').ifExists().execute();
+  },
+);
 
-  async down(db: Kysely<any>): Promise<void> {
-    await db.schema.dropTable('hook_test_table').execute();
-  }
-}
+// ---------------------------------------------------------------------------
+// Module
+// ---------------------------------------------------------------------------
 
-// Test module
 @Module({
   imports: [TitanDatabaseModule.forFeature([])],
 })
 class TestModule {}
 
-describe('Migration Hooks', () => {
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe('Migration Hooks (MigrationPlugin)', () => {
   let app: Application;
-  let migrationService: MigrationService;
   let dbManager: IDatabaseManager;
+  let db: Kysely<any>;
 
   beforeEach(async () => {
-    // Clear global migration registry
-    Reflect.deleteMetadata('database:migrations', global);
-
-    // Register test migration
-    Reflect.defineMetadata(
-      'database:migrations',
-      [
-        {
-          target: CreateTestTableMigration,
-          metadata: {
-            version: '001',
-            name: 'CreateTestTableMigration',
-            description: 'Create test table',
-          },
-        },
-      ],
-      global
-    );
-
-    // Create application with SQLite in-memory
     app = await Application.create({
       imports: [
         TitanDatabaseModule.forRoot({
           connection: {
             dialect: 'sqlite',
             connection: ':memory:',
-          },
-          migrations: {
-            tableName: 'test_migrations',
-            lockTableName: 'test_migrations_lock',
-            validateChecksums: false,
           },
           autoMigrate: false,
           isGlobal: true,
@@ -94,247 +74,226 @@ describe('Migration Hooks', () => {
 
     await app.start();
 
-    // Get services
-    migrationService = await app.resolveAsync(DATABASE_MIGRATION_SERVICE);
     dbManager = await app.resolveAsync(DATABASE_MANAGER);
+    db = await dbManager.getConnection();
 
-    // Initialize migration tables
-    await migrationService.init();
+    await setupMigrations(db);
   });
 
   afterEach(async () => {
     if (app) {
       await app.stop();
     }
-    // Reset static singleton for next test
     await TitanDatabaseModule.resetForTesting();
   });
 
-  describe('onBeforeMigrationRun', () => {
-    it('should call onBeforeMigrationRun before running migrations', async () => {
-      const hookSpy = vi.fn();
+  describe('beforeMigration', () => {
+    it('should call beforeMigration before running each migration', async () => {
+      const beforeSpy = vi.fn();
+      const plugin: MigrationPlugin = {
+        name: 'test-before',
+        version: '1.0.0',
+        beforeMigration: beforeSpy,
+      };
 
-      // Create a new service with hooks
-      const serviceWithHooks = new MigrationService(dbManager, {
-        tableName: 'test_migrations',
-        lockTableName: 'test_migrations_lock',
-        hooks: {
-          onBeforeMigrationRun: hookSpy,
-        },
+      const runner = new MigrationRunnerWithPlugins(db, [testMigration], {
+        plugins: [plugin],
       });
-      await serviceWithHooks.init();
 
-      // Run migrations
-      await serviceWithHooks.up();
+      await runner.up();
 
-      expect(hookSpy).toHaveBeenCalledTimes(1);
+      expect(beforeSpy).toHaveBeenCalledTimes(1);
+      expect(beforeSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ name: '001_create_hook_test_table' }),
+        'up',
+      );
     });
   });
 
-  describe('onAfterMigrationRun', () => {
-    it('should call onAfterMigrationRun after migrations complete', async () => {
-      const hookSpy = vi.fn<(results: MigrationResultItem[]) => Promise<void>>();
+  describe('afterMigration', () => {
+    it('should call afterMigration after each migration completes', async () => {
+      const afterSpy = vi.fn();
+      const plugin: MigrationPlugin = {
+        name: 'test-after',
+        version: '1.0.0',
+        afterMigration: afterSpy,
+      };
 
-      const serviceWithHooks = new MigrationService(dbManager, {
-        tableName: 'test_migrations_after',
-        lockTableName: 'test_migrations_lock_after',
-        hooks: {
-          onAfterMigrationRun: hookSpy,
-        },
+      const runner = new MigrationRunnerWithPlugins(db, [testMigration], {
+        plugins: [plugin],
       });
-      await serviceWithHooks.init();
 
-      await serviceWithHooks.up();
+      await runner.up();
 
-      expect(hookSpy).toHaveBeenCalledTimes(1);
-      expect(Array.isArray(hookSpy.mock.calls[0][0])).toBe(true);
+      expect(afterSpy).toHaveBeenCalledTimes(1);
+      const [migration, operation, duration] = afterSpy.mock.calls[0];
+      expect(migration.name).toBe('001_create_hook_test_table');
+      expect(operation).toBe('up');
+      expect(typeof duration).toBe('number');
+      expect(duration).toBeGreaterThanOrEqual(0);
     });
 
-    it('should receive empty array when no migrations to run', async () => {
-      const hookSpy = vi.fn<(results: MigrationResultItem[]) => Promise<void>>();
+    it('should not call afterMigration when no migrations to run', async () => {
+      const afterSpy = vi.fn();
+      const plugin: MigrationPlugin = {
+        name: 'test-after-empty',
+        version: '1.0.0',
+        afterMigration: afterSpy,
+      };
 
-      // Clear migrations so none are pending
-      Reflect.deleteMetadata('database:migrations', global);
-      Reflect.defineMetadata('database:migrations', [], global);
-
-      const serviceWithHooks = new MigrationService(dbManager, {
-        tableName: 'test_migrations_empty',
-        lockTableName: 'test_migrations_lock_empty',
-        hooks: {
-          onAfterMigrationRun: hookSpy,
-        },
+      // First run to apply all
+      const runner1 = new MigrationRunnerWithPlugins(db, [testMigration], {
+        plugins: [plugin],
       });
-      await serviceWithHooks.init();
+      await runner1.up();
+      afterSpy.mockClear();
 
-      await serviceWithHooks.up();
-
-      expect(hookSpy).toHaveBeenCalledWith([]);
-    });
-  });
-
-  describe('onBeforeMigration', () => {
-    it('should be called with migration info and operation', async () => {
-      const hookSpy = vi.fn<(info: MigrationInfo, op: 'up' | 'down') => Promise<void>>();
-
-      const serviceWithHooks = new MigrationService(dbManager, {
-        tableName: 'test_migrations_before',
-        lockTableName: 'test_migrations_lock_before',
-        hooks: {
-          onBeforeMigration: hookSpy,
-        },
+      // Second run - no pending migrations
+      const runner2 = new MigrationRunnerWithPlugins(db, [testMigration], {
+        plugins: [plugin],
       });
-      await serviceWithHooks.init();
+      await runner2.up();
 
-      await serviceWithHooks.up();
-
-      // Verify hook was called with correct parameters
-      if (hookSpy.mock.calls.length > 0) {
-        const [migrationInfo, operation] = hookSpy.mock.calls[0];
-        expect(migrationInfo).toHaveProperty('version');
-        expect(migrationInfo).toHaveProperty('name');
-        expect(['up', 'down']).toContain(operation);
-      }
-    });
-  });
-
-  describe('onAfterMigration', () => {
-    it('should be called with migration info, operation, and duration', async () => {
-      const hookSpy = vi.fn<(info: MigrationInfo, op: 'up' | 'down', duration: number) => Promise<void>>();
-
-      const serviceWithHooks = new MigrationService(dbManager, {
-        tableName: 'test_migrations_after_single',
-        lockTableName: 'test_migrations_lock_after_single',
-        hooks: {
-          onAfterMigration: hookSpy,
-        },
-      });
-      await serviceWithHooks.init();
-
-      await serviceWithHooks.up();
-
-      // If migrations existed, verify hook was called with correct parameters
-      if (hookSpy.mock.calls.length > 0) {
-        const [migrationInfo, operation, duration] = hookSpy.mock.calls[0];
-        expect(migrationInfo).toHaveProperty('version');
-        expect(migrationInfo).toHaveProperty('name');
-        expect(['up', 'down']).toContain(operation);
-        expect(typeof duration).toBe('number');
-        expect(duration).toBeGreaterThanOrEqual(0);
-      }
+      expect(afterSpy).not.toHaveBeenCalled();
     });
   });
 
   describe('onMigrationError', () => {
-    it('should be called when a migration fails', async () => {
-      const hookSpy = vi.fn<(info: MigrationInfo, op: 'up' | 'down', error: Error) => Promise<void>>();
+    it('should call onMigrationError when a migration fails', async () => {
+      const errorSpy = vi.fn();
+      const plugin: MigrationPlugin = {
+        name: 'test-error',
+        version: '1.0.0',
+        onMigrationError: errorSpy,
+      };
 
-      const serviceWithHooks = new MigrationService(dbManager, {
-        tableName: 'test_migrations_error',
-        lockTableName: 'test_migrations_lock_error',
-        hooks: {
-          onMigrationError: hookSpy,
+      const failingMigration = createMigration(
+        '002_failing',
+        async () => {
+          throw new Error('Intentional test failure');
         },
-      });
-      await serviceWithHooks.init();
+      );
 
-      // This test would need a failing migration to trigger the error hook
-      // For now, we just verify the hook is set up correctly
-      expect(hookSpy).toBeDefined();
+      const runner = new MigrationRunnerWithPlugins(
+        db,
+        [testMigration, failingMigration],
+        { plugins: [plugin] },
+      );
+
+      // up() throws when stopOnError is true (default) and a migration fails
+      try {
+        await runner.up();
+      } catch {
+        // Expected MigrationError
+      }
+
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      const [migration, operation, error] = errorSpy.mock.calls[0];
+      expect(migration.name).toBe('002_failing');
+      expect(operation).toBe('up');
+      expect(error).toBeDefined();
     });
   });
 
-  describe('Multiple hooks', () => {
-    it('should call all hooks in correct order', async () => {
+  describe('Multiple hooks order', () => {
+    it('should call hooks in correct order: before -> after', async () => {
       const calls: string[] = [];
 
-      const serviceWithHooks = new MigrationService(dbManager, {
-        tableName: 'test_migrations_multi',
-        lockTableName: 'test_migrations_lock_multi',
-        hooks: {
-          onBeforeMigrationRun: async () => {
-            calls.push('onBeforeMigrationRun');
-          },
-          onBeforeMigration: async () => {
-            calls.push('onBeforeMigration');
-          },
-          onAfterMigration: async () => {
-            calls.push('onAfterMigration');
-          },
-          onAfterMigrationRun: async () => {
-            calls.push('onAfterMigrationRun');
-          },
+      const plugin: MigrationPlugin = {
+        name: 'test-order',
+        version: '1.0.0',
+        beforeMigration: () => {
+          calls.push('before');
         },
+        afterMigration: () => {
+          calls.push('after');
+        },
+      };
+
+      const runner = new MigrationRunnerWithPlugins(db, [testMigration], {
+        plugins: [plugin],
       });
-      await serviceWithHooks.init();
 
-      await serviceWithHooks.up();
+      await runner.up();
 
-      // Verify onBeforeMigrationRun is first
-      expect(calls[0]).toBe('onBeforeMigrationRun');
-
-      // Verify onAfterMigrationRun is last
-      expect(calls[calls.length - 1]).toBe('onAfterMigrationRun');
-
-      // If migrations ran, verify the order includes before/after migration
-      if (calls.length > 2) {
-        const beforeMigrationIndex = calls.indexOf('onBeforeMigration');
-        const afterMigrationIndex = calls.indexOf('onAfterMigration');
-        expect(beforeMigrationIndex).toBeLessThan(afterMigrationIndex);
-      }
+      expect(calls).toEqual(['before', 'after']);
     });
   });
 
-  describe('Hook exceptions', () => {
-    it('should propagate errors from hooks', async () => {
-      const error = new Error('Hook error');
+  describe('onInit', () => {
+    it('should call onInit when runner is created via factory', async () => {
+      const { createMigrationRunnerWithPlugins } = await import('../src/index.js');
+      const initSpy = vi.fn();
+      const plugin: MigrationPlugin = {
+        name: 'test-init',
+        version: '1.0.0',
+        onInit: initSpy,
+      };
 
-      const serviceWithHooks = new MigrationService(dbManager, {
-        tableName: 'test_migrations_exception',
-        lockTableName: 'test_migrations_lock_exception',
-        hooks: {
-          onBeforeMigrationRun: async () => {
-            throw error;
-          },
-        },
+      // onInit is called by the factory function, not the constructor
+      const _runner = await createMigrationRunnerWithPlugins(db, [testMigration], {
+        plugins: [plugin],
       });
-      await serviceWithHooks.init();
 
-      // Hook errors are captured in the result object, not thrown
-      const result = await serviceWithHooks.up();
-      expect(result.success).toBe(false);
-      expect(result.errors).toContain('Hook error');
+      expect(initSpy).toHaveBeenCalled();
     });
   });
 
-  describe('Backward compatibility', () => {
-    it('should work without hooks defined', async () => {
-      const serviceWithoutHooks = new MigrationService(dbManager, {
-        tableName: 'test_migrations_compat',
-        lockTableName: 'test_migrations_lock_compat',
-        // No hooks
-      });
-      await serviceWithoutHooks.init();
+  describe('Plugin-free backward compatibility', () => {
+    it('should work without any plugins', async () => {
+      const runner = new MigrationRunnerWithPlugins(db, [testMigration]);
 
-      // Should not throw
-      await expect(serviceWithoutHooks.up()).resolves.toBeDefined();
+      const result = await runner.up();
+      expect(result.executed).toHaveLength(1);
+      expect(result.failed).toHaveLength(0);
     });
 
-    it('should work with partial hooks defined', async () => {
-      const hookSpy = vi.fn();
+    it('should work with partial plugin (only some hooks defined)', async () => {
+      const beforeSpy = vi.fn();
+      const plugin: MigrationPlugin = {
+        name: 'test-partial',
+        version: '1.0.0',
+        beforeMigration: beforeSpy,
+        // No afterMigration, onMigrationError, or onInit
+      };
 
-      const serviceWithPartialHooks = new MigrationService(dbManager, {
-        tableName: 'test_migrations_partial',
-        lockTableName: 'test_migrations_lock_partial',
-        hooks: {
-          onBeforeMigrationRun: hookSpy,
-          // Other hooks not defined
-        },
+      const runner = new MigrationRunnerWithPlugins(db, [testMigration], {
+        plugins: [plugin],
       });
-      await serviceWithPartialHooks.init();
 
-      await serviceWithPartialHooks.up();
+      const result = await runner.up();
+      expect(result.executed).toHaveLength(1);
+      expect(beforeSpy).toHaveBeenCalled();
+    });
+  });
 
-      expect(hookSpy).toHaveBeenCalled();
+  describe('Down operation hooks', () => {
+    it('should call hooks with down operation during rollback', async () => {
+      const calls: Array<{ name: string; op: string }> = [];
+      const plugin: MigrationPlugin = {
+        name: 'test-down-hooks',
+        version: '1.0.0',
+        beforeMigration: (m, op) => {
+          calls.push({ name: m.name, op });
+        },
+        afterMigration: (m, op) => {
+          calls.push({ name: m.name, op: `after-${op}` });
+        },
+      };
+
+      const runner = new MigrationRunnerWithPlugins(db, [testMigration], {
+        plugins: [plugin],
+      });
+
+      // Run up first
+      await runner.up();
+      calls.length = 0; // reset
+
+      // Now rollback
+      await runner.down(1);
+
+      const downCalls = calls.filter((c) => c.op === 'down' || c.op === 'after-down');
+      expect(downCalls.length).toBeGreaterThanOrEqual(1);
     });
   });
 });

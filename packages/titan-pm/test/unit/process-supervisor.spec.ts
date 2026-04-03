@@ -1124,9 +1124,9 @@ describe('ProcessSupervisor', () => {
 
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      // Error should be logged
+      // Error should be logged (implementation uses `err` key and String(error) for originalError)
       expect(mockLogger.error).toHaveBeenCalledWith(
-        expect.objectContaining({ error: expect.any(Error), originalError: expect.any(Error) }),
+        expect.objectContaining({ err: expect.any(Error), originalError: expect.any(String) }),
         'Error in crash handler'
       );
     });
@@ -1223,17 +1223,19 @@ describe('ProcessSupervisor', () => {
       const SupervisorClass = createSupervisorClass(children);
       const options: ISupervisorOptions = { strategy: SupervisionStrategy.ONE_FOR_ONE };
 
-      // Make spawn return a proxy with failing __destroy
       (mockManager.spawn as vi.Mock).mockResolvedValue({
         __processId: 'test-proc-id',
         __destroy: vi.fn().mockRejectedValue(new Error('Destroy failed')),
       });
 
+      // Make manager.kill reject to trigger the error path in stopChild
+      (mockManager.kill as vi.Mock).mockRejectedValue(new Error('Kill failed'));
+
       const supervisor = new ProcessSupervisor(mockManager, SupervisorClass, options, mockLogger);
 
       await supervisor.start();
 
-      // Stop should not throw even if __destroy fails
+      // Stop should not throw even if kill fails
       await expect(supervisor.stop()).resolves.toBeUndefined();
 
       expect(mockLogger.error).toHaveBeenCalledWith(

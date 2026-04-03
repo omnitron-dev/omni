@@ -61,10 +61,8 @@ export class ProcessHealthChecker extends EventEmitter {
 
     this.checkers.set(processId, checker);
 
-    // Delay initial health check to allow process to finish initialization
-    setTimeout(() => {
-      this.performHealthCheck(processId, proxy, timeout, retries);
-    }, interval);
+    // Perform initial health check immediately
+    this.performHealthCheck(processId, proxy, timeout, retries);
   }
 
   /**

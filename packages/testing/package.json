@@ -58,6 +58,11 @@
       "types": "./dist/performance/index.d.ts",
       "import": "./dist/performance/index.js",
       "require": "./dist/performance/index.cjs"
+    },
+    "./env": {
+      "types": "./dist/env.d.ts",
+      "import": "./dist/env.js",
+      "require": "./dist/env.cjs"
     }
   },
   "files": [

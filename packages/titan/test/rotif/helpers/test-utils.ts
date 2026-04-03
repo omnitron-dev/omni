@@ -52,7 +52,8 @@ export function getTestRedisUrl(db?: number): string {
     }
   }
 
-  const baseUrl = process.env['REDIS_URL'] || globalRedis?.url || 'redis://localhost:6379';
+  const defaultPort = process.env.TEST_REDIS_PORT ?? '16379';
+  const baseUrl = process.env['REDIS_URL'] || process.env['TEST_REDIS_URL'] || globalRedis?.url || `redis://localhost:${defaultPort}`;
   return db !== undefined ? `${baseUrl}/${db}` : baseUrl;
 }
 

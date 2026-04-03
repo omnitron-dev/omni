@@ -453,7 +453,8 @@ export class RedisTestManager {
 
   // Utility method to create a Redis client with test configuration
   static async createTestClient(url?: string): Promise<Redis> {
-    const client = new Redis(url || 'redis://localhost:6379', {
+    const defaultUrl = process.env.TEST_REDIS_URL || `redis://localhost:${process.env.TEST_REDIS_PORT ?? '16379'}`;
+    const client = new Redis(url || defaultUrl, {
       connectTimeout: 5000,
       retryStrategy: () => null,
       lazyConnect: false,

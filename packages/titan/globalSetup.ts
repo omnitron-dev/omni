@@ -240,15 +240,28 @@ export async function setup(): Promise<void> {
     return;
   }
 
-  // Strategy 2: Try existing Redis on localhost:6379 (e.g. from docker-compose)
+  // Strategy 2: Try existing Redis from docker-compose.test.yml (non-default port)
+  const externalPort = Number(process.env.TEST_REDIS_PORT ?? 16379);
   try {
-    const ready = await waitForRedis(6379, 3);
+    const ready = await waitForRedis(externalPort, 3);
     if (ready) {
-      console.log('[Global Setup] Using existing Redis at localhost:6379');
-      writeRedisInfo({ url: 'redis://localhost:6379', port: 6379, isDocker: false, isExternal: true });
+      console.log(`[Global Setup] Using existing Redis at localhost:${externalPort}`);
+      writeRedisInfo({ url: `redis://localhost:${externalPort}`, port: externalPort, isDocker: false, isExternal: true });
       return;
     }
   } catch {}
+
+  // Strategy 2b: Try default port 6379 as fallback (local redis-server or legacy docker)
+  if (externalPort !== 6379) {
+    try {
+      const ready = await waitForRedis(6379, 3);
+      if (ready) {
+        console.log('[Global Setup] Using existing Redis at localhost:6379');
+        writeRedisInfo({ url: 'redis://localhost:6379', port: 6379, isDocker: false, isExternal: true });
+        return;
+      }
+    } catch {}
+  }
 
   // Strategy 3: Native redis-server
   const redisServerPath = findRedisServerPath();

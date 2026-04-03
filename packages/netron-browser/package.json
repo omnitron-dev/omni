@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/netron-browser",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Browser-optimized Netron RPC client for seamless backend communication",
   "type": "module",
   "main": "./dist/index.js",

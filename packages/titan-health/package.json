@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/titan-health",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Health check module for Titan framework with extensible indicators",
   "author": "LuxQuant",
   "license": "MIT",
@@ -13,7 +13,9 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "rm -rf dist node_modules/.tmp && tsc -p ./tsconfig.json",
     "test": "vitest run",
@@ -26,8 +28,12 @@
     "kysely": "0.28.12"
   },
   "peerDependenciesMeta": {
-    "ioredis": { "optional": true },
-    "kysely": { "optional": true }
+    "ioredis": {
+      "optional": true
+    },
+    "kysely": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/node": "25.0.3",

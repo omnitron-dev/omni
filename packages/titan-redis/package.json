@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/titan-redis",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Redis module for Titan framework with connection management, clustering, and health checks",
   "author": "LuxQuant",
   "license": "MIT",
@@ -13,7 +13,10 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist", "lua"],
+  "files": [
+    "dist",
+    "lua"
+  ],
   "scripts": {
     "build": "rm -rf dist node_modules/.tmp && tsc -p ./tsconfig.json",
     "test": "vitest run",

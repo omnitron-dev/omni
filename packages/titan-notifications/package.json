@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/titan-notifications",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Notifications module for Titan framework with multi-channel delivery, Rotif messaging, and DLQ",
   "author": "LuxQuant",
   "license": "MIT",

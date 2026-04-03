@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/titan-events",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Event bus module for Titan framework with decorators, validation, and scheduling",
   "author": "LuxQuant",
   "license": "MIT",

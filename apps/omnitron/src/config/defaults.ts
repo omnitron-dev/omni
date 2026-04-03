@@ -4,10 +4,21 @@
 
 import os from 'node:os';
 import path from 'node:path';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import type { IEcosystemConfig, IDaemonConfig } from './types.js';
 
 export const OMNITRON_HOME = path.join(os.homedir(), '.omnitron');
-export const CLI_VERSION = '0.1.0';
+
+/** Read version from package.json at build/runtime */
+export const CLI_VERSION: string = (() => {
+  try {
+    const pkgPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../package.json');
+    return JSON.parse(readFileSync(pkgPath, 'utf-8')).version;
+  } catch {
+    return '0.0.0';
+  }
+})();
 export const DAEMON_SERVICE_ID = 'OmnitronDaemon';
 
 /** Default Unix socket path for local daemon RPC */

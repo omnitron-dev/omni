@@ -397,9 +397,9 @@ describeOrSkip('Repository Integration', () => {
           id SERIAL PRIMARY KEY,
           email VARCHAR(255) NOT NULL UNIQUE,
           name VARCHAR(255) NOT NULL,
-          createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          deletedAt TIMESTAMP
+          "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          "deletedAt" TIMESTAMP
         )
       `.execute(db);
     }, 60000);

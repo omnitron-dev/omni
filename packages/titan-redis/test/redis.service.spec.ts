@@ -48,13 +48,13 @@ describeOrSkip('RedisService', () => {
       },
       clients: [
         {
-          name: 'cache',
+          namespace: 'cache',
           ...redisConfig,
           db: 1,
           keyPrefix: 'cache:',
         },
         {
-          name: 'pubsub',
+          namespace: 'pubsub',
           ...redisConfig,
           db: 2,
         },
@@ -337,7 +337,7 @@ describeOrSkip('RedisService', () => {
       expect(cacheClient).toBeDefined();
 
       await cacheClient?.set('test', 'value');
-      const value = await cacheClient?.get('cache:test');
+      const value = await cacheClient?.get('test');
       expect(value).toBe('value');
     });
 

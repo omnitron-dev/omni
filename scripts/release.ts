@@ -201,7 +201,7 @@ async function updatePackageVersion(packagePath: string, version: string): Promi
 
   // Update workspace dependencies to use the new version
   const isOwnPackage = (name: string) =>
-    name.startsWith('@omnitron-dev/') || name.startsWith('@kysera/')
+    name.startsWith('@omnitron-dev/')
 
   const depFields = ['dependencies', 'devDependencies', 'peerDependencies']
   for (const field of depFields) {

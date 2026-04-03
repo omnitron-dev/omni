@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/eventemitter",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Universal event emitter with synchronous and asynchronous emission patterns",
   "author": "LuxQuant",
   "license": "MIT",

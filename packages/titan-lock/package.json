@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/titan-lock",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Distributed lock module for Titan framework with Redis-backed locking",
   "author": "LuxQuant",
   "license": "MIT",
@@ -13,7 +13,9 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "rm -rf dist node_modules/.tmp && tsc -p ./tsconfig.json",
     "test": "vitest run",

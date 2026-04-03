@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/titan-cache",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Multi-tier caching module for Titan framework (LRU, LFU, TTL)",
   "author": "LuxQuant",
   "license": "MIT",

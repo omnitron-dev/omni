@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/titan-health",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Health check module for Titan framework with extensible indicators",
   "author": "LuxQuant",
   "license": "MIT",

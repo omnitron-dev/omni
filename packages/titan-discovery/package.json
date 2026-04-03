@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/titan-discovery",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Service discovery module for Titan framework with Redis-backed registration",
   "author": "LuxQuant",
   "license": "MIT",

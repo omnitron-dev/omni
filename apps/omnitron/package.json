@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/omnitron",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Production-grade Titan application supervisor",
   "type": "module",
   "bin": {
@@ -38,7 +38,7 @@
     "lint:fix": "eslint src/**/*.ts --fix"
   },
   "dependencies": {
-    "@kysera/migrations": "^0.8.7",
+    "@kysera/migrations": "^0.1.2",
     "@omnitron-dev/common": "workspace:*",
     "@omnitron-dev/eventemitter": "workspace:*",
     "@omnitron-dev/titan": "workspace:*",

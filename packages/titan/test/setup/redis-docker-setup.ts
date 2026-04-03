@@ -68,12 +68,13 @@ export async function startGlobalRedis(): Promise<{ url: string; port: number; i
       isDocker: true,
     };
   } catch (error) {
-    console.warn(`[Redis Setup] Failed to start Docker Redis, falling back to localhost:6379`, error);
+    const fallbackPort = Number(process.env.TEST_REDIS_PORT ?? 16379);
+    console.warn(`[Redis Setup] Failed to start Docker Redis, falling back to localhost:${fallbackPort}`, error);
 
-    // Fall back to localhost
+    // Fall back to docker-compose.test.yml or localhost
     return {
-      url: 'redis://localhost:6379',
-      port: 6379,
+      url: `redis://localhost:${fallbackPort}`,
+      port: fallbackPort,
       isDocker: false,
     };
   }

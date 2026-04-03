@@ -71,7 +71,8 @@ export class RedisFallback {
     url: string;
     cleanup: () => Promise<void>;
   } | null> {
-    const url = process.env.REDIS_URL || 'redis://localhost:6379';
+    const defaultPort = process.env.TEST_REDIS_PORT ?? '16379';
+    const url = process.env.REDIS_URL || process.env.TEST_REDIS_URL || `redis://localhost:${defaultPort}`;
 
     try {
       const client = new Redis(url, {

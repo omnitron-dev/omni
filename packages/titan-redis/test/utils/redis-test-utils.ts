@@ -134,9 +134,9 @@ export function getTestRedisConfig(db = 15): RedisTestConfig {
     };
   }
 
-  // Fallback to localhost:6379 if global config is not available
-  const host = 'localhost';
-  const port = 6379;
+  // Fallback to docker-compose.test.yml port if global config is not available
+  const host = process.env.TEST_REDIS_HOST ?? 'localhost';
+  const port = Number(process.env.TEST_REDIS_PORT ?? 16379);
   const url = `redis://${host}:${port}/${db}`;
 
   return { url, host, port, db, isMock: false };

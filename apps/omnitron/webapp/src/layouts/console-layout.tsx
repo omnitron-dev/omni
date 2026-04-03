@@ -16,6 +16,7 @@ import {
   LogsIcon,
   MetricsIcon,
   NodesIcon,
+  ProjectIcon,
   ContainersIcon,
   DeployIcon,
   AlertIcon,
@@ -74,6 +75,7 @@ function useNavData(): LayoutNavData {
           id: 'infrastructure',
           subheader: 'Infrastructure',
           items: [
+            { id: 'projects', title: 'Projects', path: '/projects', icon: <ProjectIcon /> },
             { id: 'nodes', title: 'Nodes', path: '/nodes', icon: <NodesIcon /> },
           ],
         },

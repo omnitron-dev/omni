@@ -51,6 +51,7 @@ interface ProjectState {
   saveCurrentRoute: (path: string) => void;
   selectStack: (name: string | null) => void;
   addProject: (name: string, path: string) => Promise<void>;
+  updateProject: (name: string, data: { path?: string }) => Promise<void>;
   removeProject: (name: string) => Promise<void>;
   startStack: (project: string, stack: string) => Promise<void>;
   stopStack: (project: string, stack: string) => Promise<void>;
@@ -236,6 +237,22 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     try {
       set({ loading: true, error: null });
       await projectRpc.addProject({ name, path });
+      await get().fetchProjects();
+    } catch (err) {
+      set({ error: (err as Error).message, loading: false });
+      throw err;
+    }
+  },
+
+  updateProject: async (name: string, data: { path?: string }) => {
+    try {
+      set({ loading: true, error: null });
+      const updated = await projectRpc.updateProject({ name, ...data });
+      // Registry may rename the project (basename of new path)
+      if (updated.name !== name && get().activeProject === name) {
+        set({ activeProject: updated.name, activeStack: null });
+        persistWorkspace(updated.name, null);
+      }
       await get().fetchProjects();
     } catch (err) {
       set({ error: (err as Error).message, loading: false });

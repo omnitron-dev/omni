@@ -61,6 +61,39 @@ export class ProjectRegistry {
     this.persist();
   }
 
+  updatePath(name: string, newPath: string): ISeedProject {
+    const project = this.registry.projects.find((p) => p.name === name);
+    if (!project) throw new Error(`Project '${name}' not found`);
+
+    const absPath = path.resolve(newPath);
+    const configPath = path.join(absPath, 'omnitron.config.ts');
+    if (!fs.existsSync(configPath)) {
+      throw new Error(`No omnitron.config.ts found at ${absPath}`);
+    }
+
+    // Derive new registry name from directory basename
+    const newName = path.basename(absPath);
+    if (newName !== name && this.registry.projects.some((p) => p.name === newName)) {
+      throw new Error(`Project '${newName}' already registered`);
+    }
+
+    // Rename workspace directory if it exists
+    if (newName !== name) {
+      const oldDir = this.getWorkspaceDir(name);
+      const newDir = this.getWorkspaceDir(newName);
+      if (fs.existsSync(oldDir)) {
+        fs.renameSync(oldDir, newDir);
+      } else {
+        fs.mkdirSync(newDir, { recursive: true });
+      }
+    }
+
+    project.name = newName;
+    project.path = absPath;
+    this.persist();
+    return project;
+  }
+
   get(name: string): ISeedProject | null {
     return this.registry.projects.find((p) => p.name === name) ?? null;
   }

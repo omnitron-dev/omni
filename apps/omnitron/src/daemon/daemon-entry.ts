@@ -6,6 +6,7 @@
  * Daemon can start with default config if no projects registered.
  */
 
+import fs from 'node:fs';
 import { loadEcosystemConfig, loadEcosystemConfigFile } from '../config/loader.js';
 import { defineEcosystem } from '../config/define-ecosystem.js';
 import { DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
@@ -13,33 +14,29 @@ import { ProjectRegistry } from '../project/registry.js';
 import { OmnitronDaemon } from './daemon.js';
 import { readSavedDaemonConfig } from '../commands/up.js';
 
+/** Load config from a registry config path, falling back to CWD or defaults */
+async function loadConfigSafe(configPath: string | null, cwd: string) {
+  if (configPath && fs.existsSync(configPath)) {
+    return loadEcosystemConfigFile(configPath);
+  }
+  try {
+    return await loadEcosystemConfig(cwd);
+  } catch {
+    return defineEcosystem({ apps: [] });
+  }
+}
+
 async function main() {
   const cwd = process.env['OMNITRON_CWD'] ?? process.cwd();
   process.chdir(cwd);
 
   const registry = new ProjectRegistry();
-  let config;
 
-  // Try auto-detect from CWD
+  // Try auto-detect from CWD, then first registered project, then defaults
   const detected = registry.autoDetect(cwd);
-  if (detected) {
-    const configPath = registry.getConfigPath(detected.name);
-    config = configPath ? await loadEcosystemConfigFile(configPath) : await loadEcosystemConfig(cwd);
-  } else {
-    // Try first registered project
-    const projects = registry.list();
-    if (projects.length > 0) {
-      const configPath = registry.getConfigPath(projects[0]!.name);
-      config = configPath ? await loadEcosystemConfigFile(configPath) : await loadEcosystemConfig(cwd);
-    } else {
-      // No projects — start daemon with default config
-      try {
-        config = await loadEcosystemConfig(cwd);
-      } catch {
-        config = defineEcosystem({ apps: [] });
-      }
-    }
-  }
+  const projectName = detected?.name ?? registry.list()[0]?.name;
+  const configPath = projectName ? registry.getConfigPath(projectName) : null;
+  const config = await loadConfigSafe(configPath, cwd);
 
   // Read saved daemon config for role/master settings
   const savedConfig = readSavedDaemonConfig();

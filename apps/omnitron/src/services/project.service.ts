@@ -137,6 +137,30 @@ export class ProjectService extends EventEmitter {
     return this.toProjectInfo(project);
   }
 
+  updateProject(name: string, data: { path?: string }): IProjectInfo {
+    const project = this.registry.get(name);
+    if (!project) throw new Error(`Project '${name}' not found`);
+
+    if (data.path) {
+      // Invalidate cached config so next access reloads from new path
+      this.configRegistry.delete(name);
+      const updated = this.registry.updatePath(name, data.path);
+
+      // Registry may have renamed the project (basename of new path)
+      if (updated.name !== name) {
+        this.configRegistry.delete(updated.name);
+        this.logger.info({ oldName: name, newName: updated.name, path: data.path }, 'Project renamed and path updated');
+        this.emit('project:renamed', name, updated.name);
+      } else {
+        this.logger.info({ project: name, path: data.path }, 'Project path updated');
+      }
+      this.emit('project:updated', updated.name, data);
+      return this.toProjectInfo(updated);
+    }
+
+    return this.toProjectInfo(project);
+  }
+
   removeProject(name: string): void {
     // Stop all running stacks for this project first
     const runningStacks = this.getRunningStacks(name);

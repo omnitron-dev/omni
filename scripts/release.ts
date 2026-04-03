@@ -406,20 +406,24 @@ async function publishPackages(packages: Package[], options: ReleaseOptions): Pr
   console.log(prism.cyan(`\n📦 Publishing ${publishable.length} packages...`))
 
   for (const pkg of publishable) {
-    console.log(prism.gray(`  Publishing ${pkg.name}...`))
+    console.log(prism.gray(`  Publishing ${pkg.name}@${pkg.version}...`))
 
     if (!options.dryRun) {
       try {
-        exec('pnpm publish --access public --no-git-checks', {
+        // Use --tag latest to force the tag even when the new version is
+        // lower than a previously published one (e.g. resetting from 0.4.5
+        // back to 0.1.x). Without this flag npm refuses to implicitly move
+        // the "latest" dist-tag to a lower semver.
+        exec('pnpm publish --access public --no-git-checks --tag latest', {
           cwd: pkg.path
         })
-        console.log(prism.green(`  ✅ ${pkg.name} published`))
+        console.log(prism.green(`  ✅ ${pkg.name}@${pkg.version} published`))
       } catch (error) {
         console.error(prism.red(`  ❌ Failed to publish ${pkg.name}`))
         throw error
       }
     } else {
-      console.log(prism.yellow(`  [DRY RUN] Would publish ${pkg.name}`))
+      console.log(prism.yellow(`  [DRY RUN] Would publish ${pkg.name}@${pkg.version}`))
     }
   }
 }

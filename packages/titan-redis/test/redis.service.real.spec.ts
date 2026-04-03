@@ -1,74 +1,21 @@
 import { describe, it, expect, beforeEach, afterEach, beforeAll } from 'vitest';
 import { RedisService } from '../src/redis.service.js';
 import { RedisManager } from '../src/redis.manager.js';
-import { ConfigService } from '@omnitron-dev/titan/module/config';
-import { RedisTestManager, RedisTestContainer } from '@omnitron-dev/testing/titan';
-import { setupRedisTests, describeWithRedis } from '@omnitron-dev/testing/titan';
-import { isRedisInMockMode } from './utils/redis-test-utils.js';
-import { createMockLogger } from '@omnitron-dev/testing/titan';
+import { isRedisInMockMode, createDockerRedisFixture, type DockerRedisTestFixture } from './utils/redis-test-utils.js';
+import { createMockLogger, isDockerAvailable } from '@omnitron-dev/testing/titan';
 
-// Skip all tests in this file if running in mock mode - requires real Redis
-const describeOrSkip = isRedisInMockMode() ? describe.skip : describeWithRedis;
-
-// Setup Redis test infrastructure (only if not in mock mode)
-if (!isRedisInMockMode()) {
-  setupRedisTests();
-}
+// Skip all tests in this file if running in mock mode or Docker not available
+const skipTests = isRedisInMockMode() || !isDockerAvailable();
+const describeOrSkip = skipTests ? describe.skip : describe;
 
 describeOrSkip('RedisService with Real Redis', () => {
-  beforeAll(() => {
-    if (isRedisInMockMode()) {
-      console.log('⏭️  Skipping redis.service.real.spec.ts - requires real Redis (USE_MOCK_REDIS=true)');
-    }
-  });
   let service: RedisService;
   let manager: RedisManager;
-  let _configService: ConfigService;
-  let testContainer: RedisTestContainer;
-  let testManager: RedisTestManager;
-
-  beforeAll(async () => {
-    testManager = RedisTestManager.getInstance({ verbose: process.env.REDIS_VERBOSE === 'true' });
-  });
+  let dockerFixture: DockerRedisTestFixture;
 
   beforeEach(async () => {
-    // Create a dedicated Redis container for each test
-    testContainer = await testManager.createContainer();
-
-    // Create config service with test container URL
-    configService = new ConfigService({
-      sources: [
-        {
-          type: 'object',
-          data: {
-            redis: {
-              default: {
-                type: 'standalone',
-                options: {
-                  host: testContainer.host,
-                  port: testContainer.port,
-                  db: 0,
-                  retryStrategy: (times: number) => {
-                    if (times > 3) return null;
-                    return Math.min(times * 100, 2000);
-                  },
-                  enableOfflineQueue: false,
-                },
-              },
-              cache: {
-                type: 'standalone',
-                options: {
-                  host: testContainer.host,
-                  port: testContainer.port,
-                  db: 1,
-                  keyPrefix: 'cache:',
-                },
-              },
-            },
-          },
-        },
-      ],
-    });
+    // Create a dedicated Docker Redis container for each test
+    dockerFixture = await createDockerRedisFixture();
 
     // Create manager and service with real Redis
     const mockLogger = createMockLogger();
@@ -77,8 +24,8 @@ describeOrSkip('RedisService with Real Redis', () => {
         clients: [
           {
             namespace: 'default',
-            host: testContainer.host,
-            port: testContainer.port,
+            host: 'localhost',
+            port: dockerFixture.port,
             db: 0,
             retryStrategy: (times: number) => {
               if (times > 3) return null;
@@ -88,8 +35,8 @@ describeOrSkip('RedisService with Real Redis', () => {
           },
           {
             namespace: 'cache',
-            host: testContainer.host,
-            port: testContainer.port,
+            host: 'localhost',
+            port: dockerFixture.port,
             db: 1,
             keyPrefix: 'cache:',
           },
@@ -109,8 +56,12 @@ describeOrSkip('RedisService with Real Redis', () => {
 
   afterEach(async () => {
     // Disconnect and cleanup
-    await manager.destroy();
-    await testContainer.cleanup();
+    if (manager) {
+      await manager.destroy();
+    }
+    if (dockerFixture) {
+      await dockerFixture.cleanup();
+    }
   });
 
   describe('String Operations', () => {
@@ -292,8 +243,8 @@ describeOrSkip('RedisService with Real Redis', () => {
           clients: [
             {
               namespace: 'default',
-              host: testContainer.host,
-              port: testContainer.port,
+              host: 'localhost',
+              port: dockerFixture.port,
               db: 15,
             },
           ],

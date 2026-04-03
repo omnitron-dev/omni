@@ -375,7 +375,7 @@ describe('Custom Decorators', () => {
     });
 
     it('should mark methods as deprecated', () => {
-      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation();
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
       class OldAPI {
         @Deprecated({ message: 'Use newMethod instead', version: '2.0.0' })
@@ -387,9 +387,19 @@ describe('Custom Decorators', () => {
       const api = new OldAPI();
       api.oldMethod();
 
-      expect(consoleSpy).toHaveBeenCalledWith('Use newMethod instead');
+      // The fallback logger writes structured JSON to stderr
+      const calls = stderrSpy.mock.calls.map((c: any[]) => String(c[0]));
+      const found = calls.some((line: string) => {
+        try {
+          const parsed = JSON.parse(line);
+          return typeof parsed.msg === 'string' && parsed.msg.includes('Use newMethod instead');
+        } catch {
+          return line.includes('Use newMethod instead');
+        }
+      });
+      expect(found, 'Expected stderr to contain deprecation warning').toBe(true);
 
-      consoleSpy.mockRestore();
+      stderrSpy.mockRestore();
     });
   });
 

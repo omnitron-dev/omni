@@ -423,7 +423,7 @@ export class TaskCoordinator implements OnInit {
       NotificationServiceToken,
       {
         useFactory: (loggerModule: any, configModule: any) => new NotificationService(loggerModule, configModule),
-        inject: [LOGGER_SERVICE_TOKEN, CONFIG_SERVICE_TOKEN],
+        inject: [LOGGER_SERVICE_TOKEN, { token: CONFIG_SERVICE_TOKEN, optional: true }],
         scope: 'singleton',
       },
     ],

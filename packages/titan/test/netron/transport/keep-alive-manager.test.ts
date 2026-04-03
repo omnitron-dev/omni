@@ -329,9 +329,7 @@ describe('KeepAliveManager', () => {
       manager.register(connection, socket);
 
       // Should not throw when ping fails
-      await expect(async () => {
-        await vi.advanceTimersByTimeAsync(30000);
-      }).resolves.not.toThrow();
+      await expect(vi.advanceTimersByTimeAsync(30000)).resolves.not.toThrow();
     });
 
     it('should handle terminate errors gracefully', () => {

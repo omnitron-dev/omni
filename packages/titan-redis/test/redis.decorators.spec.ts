@@ -582,7 +582,8 @@ describeOrSkip('Redis Decorators', () => {
         constructor(@InjectRedis() redis: Redis, @InjectRedis('cache') cacheRedis: Redis) {}
       }
 
-      const metadata = Reflect.getMetadata('inject:tokens', TestService, 'constructor');
+      // Constructor parameter decorators write to 'nexus:constructor-params' on the class
+      const metadata = Reflect.getMetadata('nexus:constructor-params', TestService);
       expect(metadata).toBeDefined();
       expect(metadata[0]).toBe('REDIS_CLIENT:default');
       expect(metadata[1]).toBe('REDIS_CLIENT:cache');
@@ -593,7 +594,8 @@ describeOrSkip('Redis Decorators', () => {
         constructor(@InjectRedisManager() manager: RedisManager) {}
       }
 
-      const metadata = Reflect.getMetadata('inject:tokens', TestService, 'constructor');
+      // Constructor parameter decorators write to 'nexus:constructor-params' on the class
+      const metadata = Reflect.getMetadata('nexus:constructor-params', TestService);
       expect(metadata).toBeDefined();
       expect(metadata[0]).toBe(REDIS_MANAGER);
     });

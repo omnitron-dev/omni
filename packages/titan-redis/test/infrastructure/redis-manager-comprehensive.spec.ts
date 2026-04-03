@@ -6,43 +6,44 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { RedisManager } from '../../src/redis.manager.js';
 import type { RedisModuleOptions } from '../../src/redis.types.js';
-import { RedisTestManager } from '@omnitron-dev/testing/titan';
 import { delay } from '@omnitron-dev/common';
-import { isRedisInMockMode } from '../utils/redis-test-utils.js';
-import { createMockLogger } from '@omnitron-dev/testing/titan';
+import { isRedisInMockMode, createDockerRedisFixture, type DockerRedisTestFixture } from '../utils/redis-test-utils.js';
+import { createMockLogger, isDockerAvailable } from '@omnitron-dev/testing/titan';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 
-// Check if running in mock mode or CI
+// Check if running in mock mode or CI or Docker not available
 const skipTests =
   isRedisInMockMode() ||
+  !isDockerAvailable() ||
   process.env.CI === 'true' ||
   process.env.SKIP_DOCKER_TESTS === 'true' ||
   process.env.SKIP_INTEGRATION_TESTS === 'true';
 
 if (skipTests) {
-  console.log('⏭️  Skipping redis-manager-comprehensive.spec.ts - requires Docker Compose and Redis');
+  console.log('Skipping redis-manager-comprehensive.spec.ts - requires Docker and Redis');
 }
 
 // Skip all tests if in mock mode - requires real Redis
 const describeOrSkip = skipTests ? describe.skip : describe;
 
 describeOrSkip('Redis Manager - Infrastructure Tests', () => {
-  let testContainer: Awaited<ReturnType<typeof RedisTestManager.prototype.createContainer>>;
+  let dockerFixture: DockerRedisTestFixture;
+  let testContainer: { host: string; port: number };
   let manager: RedisManager;
   let mockLogger: ILogger;
 
   beforeEach(async () => {
     mockLogger = createMockLogger();
-    const redisManager = RedisTestManager.getInstance();
-    testContainer = await redisManager.createContainer();
+    dockerFixture = await createDockerRedisFixture();
+    testContainer = { host: 'localhost', port: dockerFixture.port };
   });
 
   afterEach(async () => {
     if (manager) {
       await manager.destroy();
     }
-    if (testContainer) {
-      await testContainer.cleanup();
+    if (dockerFixture) {
+      await dockerFixture.cleanup();
     }
   });
 

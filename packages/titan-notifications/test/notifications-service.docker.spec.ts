@@ -20,20 +20,20 @@ import type {
   IChannelRouter,
   NotificationRecipient,
   NotificationPayload,
-} from '../../../src/modules/notifications/notifications.types.js';
+} from '../src/notifications.types.js';
 import type {
   MessagingTransport,
   NotificationHandler,
   IncomingNotification,
   TransportMiddleware,
-} from '../../../src/modules/notifications/transport/transport.interface.js';
+} from '../src/transport/transport.interface.js';
 import {
   createNotificationsTestFixture,
   createMockTransport,
   shouldSkipDockerTests,
   type NotificationsTestFixture,
 } from './notifications-test-setup.js';
-import { NotificationsService } from '../../../src/modules/notifications/notifications.service.js';
+import { NotificationsService } from '../src/notifications.service.js';
 
 const SKIP_DOCKER = shouldSkipDockerTests();
 const describeOrSkip = SKIP_DOCKER ? describe.skip : describe;

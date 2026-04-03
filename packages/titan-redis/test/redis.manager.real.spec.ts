@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, beforeAll } from 'vitest';
 import { RedisManager } from '../src/redis.manager.js';
 import { RedisModuleOptions } from '../src/redis.types.js';
 import { createDockerRedisFixture, DockerRedisTestFixture, isRedisInMockMode } from './utils/redis-test-utils.js';
+import { createMockLogger } from '@omnitron-dev/testing/titan';
 
 // Skip all tests in this file if running in mock mode - requires real Redis
 const describeOrSkip = isRedisInMockMode() ? describe.skip : describe;
@@ -39,7 +40,7 @@ describeOrSkip('RedisManager with Real Redis', () => {
         ],
       };
 
-      manager = new RedisManager(options, undefined);
+      manager = new RedisManager(options, createMockLogger());
       await manager.init();
 
       const client = manager.getClient();
@@ -75,7 +76,7 @@ describeOrSkip('RedisManager with Real Redis', () => {
         ],
       };
 
-      manager = new RedisManager(options, undefined);
+      manager = new RedisManager(options, createMockLogger());
       await manager.init();
 
       // Check all clients are created
@@ -109,7 +110,7 @@ describeOrSkip('RedisManager with Real Redis', () => {
         ],
       };
 
-      manager = new RedisManager(options, undefined);
+      manager = new RedisManager(options, createMockLogger());
       await manager.init();
 
       // Create new client dynamically
@@ -146,7 +147,7 @@ describeOrSkip('RedisManager with Real Redis', () => {
         ],
       };
 
-      manager = new RedisManager(options, undefined);
+      manager = new RedisManager(options, createMockLogger());
       await manager.init();
 
       // Destroy specific client
@@ -181,7 +182,7 @@ describeOrSkip('RedisManager with Real Redis', () => {
         ],
       };
 
-      manager = new RedisManager(options, undefined);
+      manager = new RedisManager(options, createMockLogger());
       await manager.init();
 
       const health = await manager.healthCheck();
@@ -212,7 +213,7 @@ describeOrSkip('RedisManager with Real Redis', () => {
         ],
       };
 
-      manager = new RedisManager(options, undefined);
+      manager = new RedisManager(options, createMockLogger());
 
       // Don't wait for init to complete - broken client won't connect
       manager.init().catch(() => {}); // Ignore error
@@ -257,7 +258,7 @@ describeOrSkip('RedisManager with Real Redis', () => {
         ],
       };
 
-      manager = new RedisManager(options, undefined);
+      manager = new RedisManager(options, createMockLogger());
       await manager.init();
 
       // Execute increment script
@@ -298,7 +299,7 @@ describeOrSkip('RedisManager with Real Redis', () => {
         ],
       };
 
-      manager = new RedisManager(options, undefined);
+      manager = new RedisManager(options, createMockLogger());
 
       // Should throw error during init due to invalid script
       await expect(manager.init()).rejects.toThrow();
@@ -318,7 +319,7 @@ describeOrSkip('RedisManager with Real Redis', () => {
         ],
       };
 
-      manager = new RedisManager(options, undefined);
+      manager = new RedisManager(options, createMockLogger());
 
       // Before init, client should not exist
       expect(() => manager.getClient()).toThrow();
@@ -350,7 +351,7 @@ describeOrSkip('RedisManager with Real Redis', () => {
         ],
       };
 
-      manager = new RedisManager(options, undefined);
+      manager = new RedisManager(options, createMockLogger());
 
       // Test NestJS-style lifecycle hooks
       await manager.onModuleInit();
@@ -379,7 +380,7 @@ describeOrSkip('RedisManager with Real Redis', () => {
         ],
       };
 
-      manager = new RedisManager(options, undefined);
+      manager = new RedisManager(options, createMockLogger());
 
       // Init should not throw but client won't be healthy
       await manager.init().catch(() => {}); // Catch init error
@@ -400,7 +401,7 @@ describeOrSkip('RedisManager with Real Redis', () => {
         ],
       };
 
-      manager = new RedisManager(options, undefined);
+      manager = new RedisManager(options, createMockLogger());
       await manager.init();
 
       expect(() => manager.getClient('non-existent')).toThrow('Redis client with namespace "non-existent" not found');
@@ -424,7 +425,7 @@ describeOrSkip('RedisManager with Real Redis', () => {
         ],
       };
 
-      manager = new RedisManager(options, undefined);
+      manager = new RedisManager(options, createMockLogger());
       await manager.init();
 
       // Should only have one client with the namespace (last one wins)
@@ -467,7 +468,7 @@ describeOrSkip('RedisManager with Real Redis', () => {
         ],
       };
 
-      manager = new RedisManager(options, undefined);
+      manager = new RedisManager(options, createMockLogger());
       await manager.init();
 
       const client = manager.getClient();

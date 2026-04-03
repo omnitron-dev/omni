@@ -7,9 +7,9 @@
 
 import { vi } from 'vitest';
 import Redis from 'ioredis';
-import { NotificationManager } from '../../../src/rotif/rotif.js';
-import { RotifTransport } from '../../../src/modules/notifications/transport/rotif.transport.js';
-import type { IncomingNotification } from '../../../src/modules/notifications/transport/transport.interface.js';
+import { NotificationManager } from '../src/rotif/rotif.js';
+import { RotifTransport } from '../src/transport/rotif.transport.js';
+import type { IncomingNotification } from '../src/transport/transport.interface.js';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 

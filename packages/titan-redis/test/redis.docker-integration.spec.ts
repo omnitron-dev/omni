@@ -7,6 +7,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { RedisTestManager } from '@omnitron-dev/testing/docker';
+import { isDockerAvailable } from '@omnitron-dev/testing/titan';
 import {
   createDockerRedisFixture,
   createDockerRedisClusterFixture,
@@ -19,8 +20,8 @@ import {
   isRedisInMockMode,
 } from './utils/redis-test-utils.js';
 
-// Skip all tests in this file if running in mock mode or CI (check env vars FIRST to avoid slow Docker check)
-const skipTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true' || isRedisInMockMode();
+// Skip all tests in this file if running in mock mode or CI or Docker not available
+const skipTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true' || isRedisInMockMode() || !isDockerAvailable();
 if (skipTests) {
   console.log('⏭️ Skipping redis.docker-integration.spec.ts - requires Docker');
 }

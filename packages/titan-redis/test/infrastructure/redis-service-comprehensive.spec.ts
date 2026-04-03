@@ -6,39 +6,42 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { RedisManager } from '../../src/redis.manager.js';
 import { RedisService } from '../../src/redis.service.js';
-import { RedisTestManager } from '@omnitron-dev/testing/titan';
 import { delay } from '@omnitron-dev/common';
-import { isRedisInMockMode } from '../utils/redis-test-utils.js';
+import { isRedisInMockMode, createDockerRedisFixture, type DockerRedisTestFixture } from '../utils/redis-test-utils.js';
+import { createMockLogger, isDockerAvailable } from '@omnitron-dev/testing/titan';
 
-// Check if running in mock mode or CI
+// Check if running in mock mode or CI or Docker not available
 const skipTests =
   isRedisInMockMode() ||
+  !isDockerAvailable() ||
   process.env.CI === 'true' ||
   process.env.SKIP_DOCKER_TESTS === 'true' ||
   process.env.SKIP_INTEGRATION_TESTS === 'true';
 
 if (skipTests) {
-  console.log('⏭️  Skipping redis-service-comprehensive.spec.ts - requires Docker Compose and Redis');
+  console.log('Skipping redis-service-comprehensive.spec.ts - requires Docker and Redis');
 }
 
 // Skip all tests if in mock mode - requires real Redis
 const describeOrSkip = skipTests ? describe.skip : describe;
 
 describeOrSkip('Redis Service - Infrastructure Tests', () => {
-  let testContainer: Awaited<ReturnType<typeof RedisTestManager.prototype.createContainer>>;
+  let dockerFixture: DockerRedisTestFixture;
   let manager: RedisManager;
   let service: RedisService;
 
   beforeEach(async () => {
-    const redisManager = RedisTestManager.getInstance();
-    testContainer = await redisManager.createContainer();
+    dockerFixture = await createDockerRedisFixture();
 
-    manager = new RedisManager({
-      config: {
-        host: testContainer.host,
-        port: testContainer.port,
+    manager = new RedisManager(
+      {
+        config: {
+          host: 'localhost',
+          port: dockerFixture.port,
+        },
       },
-    });
+      createMockLogger()
+    );
     await manager.init();
 
     service = new RedisService(manager);
@@ -48,8 +51,8 @@ describeOrSkip('Redis Service - Infrastructure Tests', () => {
     if (manager) {
       await manager.destroy();
     }
-    if (testContainer) {
-      await testContainer.cleanup();
+    if (dockerFixture) {
+      await dockerFixture.cleanup();
     }
   });
 

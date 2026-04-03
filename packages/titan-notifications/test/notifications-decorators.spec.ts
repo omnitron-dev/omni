@@ -8,8 +8,8 @@ import {
   getNotificationHandlers,
   hasNotificationHandlers,
   type NotificationHandlerMetadata,
-} from '../../../src/modules/notifications/notifications.decorators.js';
-import type { IncomingNotification } from '../../../src/modules/notifications/transport/transport.interface.js';
+} from '../src/notifications.decorators.js';
+import type { IncomingNotification } from '../src/transport/transport.interface.js';
 
 describe('Notifications Decorators', () => {
   describe('@OnNotification', () => {

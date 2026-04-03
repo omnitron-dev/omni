@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { RedisManager } from '../../src/redis.manager.js';
 import { RedisService } from '../../src/redis.service.js';
 import { RedisModuleOptions } from '../../src/redis.types.js';
-import { createLogger } from '@omnitron-dev/testing/titan';
+import { createMockLogger } from '@omnitron-dev/testing/titan';
 import {
   RedisTestManager,
   type DockerContainer,
@@ -62,26 +62,10 @@ export function isRedisInMockMode(): boolean {
 }
 
 /**
- * Check if Docker is available for running containers
- * This is used to skip tests that require Docker when it's not available
+ * Check if Docker is available for running containers (synchronous).
+ * Re-exports from @omnitron-dev/testing/titan for convenience.
  */
-export async function isDockerAvailable(): Promise<boolean> {
-  // If in mock mode or CI, Docker tests should be skipped
-  if (process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true') {
-    return false;
-  }
-
-  try {
-    // Try to get the DockerTestManager instance
-    // This will throw if Docker is not available
-    const { DockerTestManager } = await import('../../../../src/testing/docker-test-manager.js');
-    DockerTestManager.getInstance();
-    return true;
-  } catch (_error) {
-    // Docker is not available
-    return false;
-  }
-}
+export { isDockerAvailable } from '@omnitron-dev/testing/titan';
 
 /**
  * Get centralized Redis test configuration
@@ -205,7 +189,7 @@ export class RedisTestHelper {
       ...options,
     };
 
-    return new RedisManager(defaultOptions, createLogger() as any);
+    return new RedisManager(defaultOptions, createMockLogger() as any);
   }
 
   /**

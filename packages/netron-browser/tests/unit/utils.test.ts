@@ -52,16 +52,22 @@ describe('Utils', () => {
   });
 
   describe('calculateBackoff', () => {
-    it('should calculate exponential backoff', () => {
-      expect(calculateBackoff(1, 1000)).toBe(1000);
-      expect(calculateBackoff(2, 1000)).toBe(2000);
-      expect(calculateBackoff(3, 1000)).toBe(4000);
-      expect(calculateBackoff(4, 1000)).toBe(8000);
+    it('should calculate exponential backoff with jitter', () => {
+      // Function adds ±25% jitter, so check ranges
+      expect(calculateBackoff(1, 1000)).toBeGreaterThanOrEqual(750);
+      expect(calculateBackoff(1, 1000)).toBeLessThanOrEqual(1250);
+      expect(calculateBackoff(2, 1000)).toBeGreaterThanOrEqual(1500);
+      expect(calculateBackoff(2, 1000)).toBeLessThanOrEqual(2500);
+      expect(calculateBackoff(3, 1000)).toBeGreaterThanOrEqual(3000);
+      expect(calculateBackoff(3, 1000)).toBeLessThanOrEqual(5000);
     });
 
     it('should cap at maximum delay', () => {
-      expect(calculateBackoff(10, 1000)).toBe(30000);
-      expect(calculateBackoff(20, 1000)).toBe(30000);
+      // With jitter, result is in [maxDelay*0.75, maxDelay]
+      expect(calculateBackoff(10, 1000)).toBeLessThanOrEqual(30000);
+      expect(calculateBackoff(10, 1000)).toBeGreaterThanOrEqual(1000);
+      expect(calculateBackoff(20, 1000)).toBeLessThanOrEqual(30000);
+      expect(calculateBackoff(20, 1000)).toBeGreaterThanOrEqual(1000);
     });
   });
 

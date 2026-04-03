@@ -6,10 +6,10 @@
 
 import { vi } from 'vitest';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
-import { NetronDiscoveryIntegration } from '../../../src/modules/discovery/netron-integration.js';
-import { NETRON_EVENT_SERVICE_EXPOSE, NETRON_EVENT_SERVICE_UNEXPOSE } from '../../../src/netron/constants.js';
-import type { IDiscoveryService } from '../../../src/modules/discovery/types.js';
-import type { ServiceExposeEvent, ServiceUnexposeEvent } from '../../../src/netron/types.js';
+import { NetronDiscoveryIntegration } from '../src/netron-integration.js';
+import { NETRON_EVENT_SERVICE_EXPOSE, NETRON_EVENT_SERVICE_UNEXPOSE } from '@omnitron-dev/titan/netron/constants';
+import type { IDiscoveryService } from '../src/types.js';
+import type { ServiceExposeEvent, ServiceUnexposeEvent } from '@omnitron-dev/titan/netron/types';
 
 // Mock types
 interface MockNetron extends EventEmitter {

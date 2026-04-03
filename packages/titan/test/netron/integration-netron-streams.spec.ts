@@ -108,6 +108,7 @@ describeOrSkip('Netron Streams Integration Tests', () => {
     peerB = await netronA.connect(`ws://localhost:${testPort}`);
     await serverReady;
 
+    const writableStream = new NetronWritableStream({ peer: peerB });
     writableStream.write('chunk-1');
     writableStream.write('chunk-2');
     writableStream.write('chunk-3');
@@ -209,6 +210,7 @@ describeOrSkip('Netron Streams Integration Tests', () => {
     peerB = await netronA.connect(`ws://localhost:${testPort}`);
     await serverReady;
 
+    const writableStream = new NetronWritableStream({ peer: peerB });
     for (let i = 0; i < chunkCount; i++) {
       writableStream.write(`chunk-${i}`);
     }
@@ -243,6 +245,7 @@ describeOrSkip('Netron Streams Integration Tests', () => {
     peerB = await netronA.connect(`ws://localhost:${testPort}`);
     await serverReady;
 
+    const writableStream = new NetronWritableStream({ peer: peerB });
     writableStream.write('chunk-1');
     await delay(sendIntervals[0]!);
     writableStream.write('chunk-2');
@@ -291,6 +294,7 @@ describeOrSkip('Netron Streams Integration Tests', () => {
     peerB = await netronA.connect(`ws://localhost:${testPort}`);
     await serverReady;
 
+    const writableStream = new NetronWritableStream({ peer: peerB });
     writableStream.write('live-chunk-1');
     writableStream.write('live-chunk-2');
 

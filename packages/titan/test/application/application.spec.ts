@@ -863,7 +863,7 @@ describe('Titan Application', () => {
 
     it('should handle errors in error handlers', () => {
       app = createApp();
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation();
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
       app.onError(() => {
         throw new Error('Handler error');
@@ -871,9 +871,19 @@ describe('Titan Application', () => {
 
       app.emit('error', new Error('Original error'));
 
-      expect(consoleSpy).toHaveBeenCalledWith('Error in error handler:', expect.any(Error));
+      // The fallback logger writes structured JSON to stderr with msg "Error in error handler"
+      const calls = stderrSpy.mock.calls.map((c: any[]) => String(c[0]));
+      const found = calls.some((line: string) => {
+        try {
+          const parsed = JSON.parse(line);
+          return typeof parsed.msg === 'string' && parsed.msg.includes('Error in error handler');
+        } catch {
+          return line.includes('Error in error handler');
+        }
+      });
+      expect(found, 'Expected stderr to contain "Error in error handler" JSON log').toBe(true);
 
-      consoleSpy.mockRestore();
+      stderrSpy.mockRestore();
     });
 
     it('should handle module registration errors', async () => {

@@ -7,9 +7,9 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi, beforeAll } from 'vitest';
 import { Redis } from 'ioredis';
-import { Container } from '@nexus';
-import { DiscoveryService } from '../../../src/modules/discovery/discovery.service.js';
-import { createDiscoveryModule } from '../../../src/modules/discovery/discovery.module.js';
+import { Container } from '@omnitron-dev/titan/nexus';
+import { DiscoveryService } from '../src/discovery.service.js';
+import { createDiscoveryModule } from '../src/discovery.module.js';
 import {
   REDIS_TOKEN,
   LOGGER_TOKEN,
@@ -17,7 +17,7 @@ import {
   DISCOVERY_SERVICE_TOKEN,
   type ServiceInfo,
   type DiscoveryOptions,
-} from '../../../src/modules/discovery/types.js';
+} from '../src/types.js';
 import { createTestRedisClient, cleanupRedis, createMockLogger, waitFor } from './test-utils.js';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';

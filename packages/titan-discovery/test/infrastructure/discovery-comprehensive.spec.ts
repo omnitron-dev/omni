@@ -5,12 +5,12 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Redis } from 'ioredis';
-import { DiscoveryService } from '../../../../src/modules/discovery/discovery.service.js';
-import type { ILogger } from '../../../../src/modules/logger/logger.types.js';
-import type { ServiceInfo, DiscoveryOptions } from '../../../../src/modules/discovery/types.js';
-import { RedisTestManager } from '../../../utils/redis-test-manager.js';
+import { DiscoveryService } from '../../src/discovery.service.js';
+import type { ILogger } from '@omnitron-dev/titan/module/logger';
+import type { ServiceInfo, DiscoveryOptions } from '../../src/types.js';
+import { RedisTestManager } from '@omnitron-dev/testing/docker';
 import { delay } from '@omnitron-dev/common';
-import { isRedisInMockMode } from '../../../utils/redis-test-utils.js';
+import { isRedisInMockMode } from '../test-utils.js';
 
 const createMockLogger = (): ILogger => ({
   log: () => {},

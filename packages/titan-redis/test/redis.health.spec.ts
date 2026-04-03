@@ -4,8 +4,7 @@ import { RedisManager } from '../src/redis.manager.js';
 import { TitanError } from '@omnitron-dev/titan/errors';
 import Redis from 'ioredis';
 import { createDockerRedisFixture, type DockerRedisTestFixture, isRedisInMockMode } from './utils/redis-test-utils.js';
-import { createLogger } from '@omnitron-dev/testing/titan';
-import { isDockerAvailable } from '@omnitron-dev/testing/titan';
+import { createMockLogger, isDockerAvailable } from '@omnitron-dev/testing/titan';
 
 // Skip tests if in CI/mock mode (check env vars first to avoid slow Docker check)
 const skipTests = isRedisInMockMode() || !isDockerAvailable();
@@ -74,7 +73,7 @@ describeOrSkip('RedisHealthIndicator', () => {
           },
         ],
       },
-      createLogger() as any
+      createMockLogger() as any
     );
 
     await manager.init();
@@ -126,7 +125,7 @@ describeOrSkip('RedisHealthIndicator', () => {
               },
             ],
           },
-          createLogger() as any
+          createMockLogger() as any
         );
 
         const badHealthIndicator = new RedisHealthIndicator(badManager);
@@ -200,7 +199,7 @@ describeOrSkip('RedisHealthIndicator', () => {
               },
             ],
           },
-          createLogger() as any
+          createMockLogger() as any
         );
 
         // Note: init() will throw for the bad client, so we catch it

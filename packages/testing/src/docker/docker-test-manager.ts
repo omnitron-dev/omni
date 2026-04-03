@@ -64,10 +64,11 @@ export class DockerTestManager extends EventEmitter {
     this.dockerPath = options.dockerPath || this.findDockerPath();
 
     // Worker-aware port allocation to prevent conflicts in parallel test execution
-    // Each vitest worker gets its own 10k port range
+    // Each vitest worker gets its own port range within valid TCP port space (10000-65000)
     const workerId = parseInt(process.env['VITEST_POOL_ID'] || process.env['VITEST_WORKER_ID'] || '1', 10);
-    const basePortOffset = (workerId - 1) * 10000;
-    this.basePort = options.basePort || 10000 + basePortOffset;
+    const maxBasePort = 55000; // Leave room for 10k range below 65535
+    const basePortOffset = ((workerId - 1) * 10000) % (maxBasePort - 10000);
+    this.basePort = options.basePort || Math.min(10000 + basePortOffset, maxBasePort);
 
     this.maxRetries = options.maxRetries || 30;
     this.startupTimeout = options.startupTimeout || 60000;
@@ -280,8 +281,10 @@ export class DockerTestManager extends EventEmitter {
    * @private
    */
   private async findAvailablePort(): Promise<number> {
+    const portRangeSize = Math.min(10000, 65535 - this.basePort);
     for (let i = 0; i < this.maxRetries; i++) {
-      const port = this.basePort + Math.floor(Math.random() * 10000);
+      const port = this.basePort + Math.floor(Math.random() * portRangeSize);
+      if (port >= 65536) continue; // Safety guard
       if (!this.usedPorts.has(port) && (await this.isPortAvailable(port))) {
         this.usedPorts.add(port);
         return port;

@@ -114,7 +114,7 @@
     "dev": "tsc -p ./tsconfig.json --watch"
   },
   "dependencies": {
-    "@kysera/rls": "^0.1.1",
+    "@kysera/rls": "^0.8.7",
     "@omnitron-dev/common": "workspace:*",
     "@omnitron-dev/eventemitter": "workspace:*",
     "@omnitron-dev/msgpack": "workspace:*",
@@ -147,7 +147,8 @@
     "@vitest/runner": "^4.0.18",
     "http-server": "^14.1.1",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.0"
+    "vitest": "^4.1.0",
+    "ioredis": "^5.8.2"
   },
   "engines": {
     "node": ">=22.0.0",

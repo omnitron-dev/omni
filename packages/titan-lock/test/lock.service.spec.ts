@@ -12,10 +12,10 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
-import { DistributedLockService } from '../../../src/modules/lock/lock.service.js';
-import type { IRedisClient } from '../../../src/modules/redis/index.js';
-import type { ILoggerModule } from '../../../src/modules/logger/index.js';
-import type { ILockModuleOptions } from '../../../src/modules/lock/lock.types.js';
+import { DistributedLockService } from '../src/lock.service.js';
+import type { IRedisClient } from '@omnitron-dev/titan/module/redis';
+import type { ILoggerModule } from '@omnitron-dev/titan/module/logger';
+import type { ILockModuleOptions } from '../src/lock.types.js';
 
 /**
  * Mock Redis client

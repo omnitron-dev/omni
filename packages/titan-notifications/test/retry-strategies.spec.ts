@@ -2,8 +2,8 @@
  * Tests for Retry Strategies
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { createRetryDelayFn, RetryStrategies } from '../../../src/utils/retry.js';
-import type { IncomingNotification } from '../../../src/modules/notifications/transport/transport.interface.js';
+import { createRetryDelayFn, RetryStrategies } from '@omnitron-dev/titan/utils';
+import type { IncomingNotification } from '../src/transport/transport.interface.js';
 
 describe('Retry Strategies', () => {
   let mockNotification: IncomingNotification;

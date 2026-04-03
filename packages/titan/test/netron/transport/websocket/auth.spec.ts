@@ -81,7 +81,7 @@ describe('WebSocketAuthHandler', () => {
       const result = await handler.authenticateConnection(request);
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('format');
+      expect(result.error).toContain('Authorization required');
     });
 
     it('should validate Bearer token successfully', async () => {

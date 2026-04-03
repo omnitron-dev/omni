@@ -2,7 +2,7 @@
  * Tests for NotificationsHealthIndicator
  */
 import { describe, it, expect } from 'vitest';
-import { NotificationsHealthIndicator } from '../../../src/modules/notifications/notifications.health.js';
+import { NotificationsHealthIndicator } from '../src/notifications.health.js';
 import type {
   MessagingTransport,
   TransportHealth,
@@ -14,7 +14,7 @@ import type {
   NotificationSubscription,
   TransportMiddleware,
   SubscriptionStats,
-} from '../../../src/modules/notifications/transport/transport.interface.js';
+} from '../src/transport/transport.interface.js';
 
 describe('NotificationsHealthIndicator', () => {
   describe('check()', () => {

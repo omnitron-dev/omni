@@ -3,9 +3,9 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import 'reflect-metadata';
-import { Container } from '../../../src/nexus/index.js';
-import { NotificationsModule } from '../../../src/modules/notifications/notifications.module.js';
-import { NotificationsService } from '../../../src/modules/notifications/notifications.service.js';
+import { Container } from '@omnitron-dev/titan/nexus';
+import { NotificationsModule } from '../src/notifications.module.js';
+import { NotificationsService } from '../src/notifications.service.js';
 import {
   NOTIFICATIONS_SERVICE,
   NOTIFICATIONS_TRANSPORT,
@@ -14,8 +14,8 @@ import {
   NOTIFICATIONS_RATE_LIMITER,
   NOTIFICATIONS_PREFERENCE_STORE,
   NOTIFICATIONS_CHANNEL_ROUTER,
-} from '../../../src/modules/notifications/notifications.tokens.js';
-import { OnNotification } from '../../../src/modules/notifications/notifications.decorators.js';
+} from '../src/notifications.tokens.js';
+import { OnNotification } from '../src/notifications.decorators.js';
 import type {
   MessagingTransport,
   IncomingNotification,
@@ -24,7 +24,7 @@ import type {
   TransportPublishResult,
   TransportHealth,
   NotificationMessage,
-} from '../../../src/modules/notifications/transport/transport.interface.js';
+} from '../src/transport/transport.interface.js';
 import type {
   NotificationsModuleOptions,
   NotificationsOptionsFactory,
@@ -33,7 +33,7 @@ import type {
   IChannelRouter,
   NotificationRecipient,
   NotificationPayload,
-} from '../../../src/modules/notifications/notifications.types.js';
+} from '../src/notifications.types.js';
 
 /**
  * Mock Transport Implementation for Unit Tests

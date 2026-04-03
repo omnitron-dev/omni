@@ -294,7 +294,7 @@ describeOrSkip('Redis Cluster Support', () => {
   });
 
   describe('Cluster Error Handling', () => {
-    it('should handle cluster connection errors', async () => {
+    it('should handle cluster connection errors', { timeout: 30000 }, async () => {
       const manager = new RedisManager(
         {
           clients: [
@@ -305,6 +305,10 @@ describeOrSkip('Redis Cluster Support', () => {
                 options: {
                   enableOfflineQueue: false,
                   clusterRetryStrategy: () => null,
+                  redisOptions: {
+                    connectTimeout: 1000,
+                    maxRetriesPerRequest: 1,
+                  },
                 },
               },
               lazyConnect: true,

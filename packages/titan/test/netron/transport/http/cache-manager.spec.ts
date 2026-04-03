@@ -423,8 +423,22 @@ describe('HttpCacheManager', () => {
   });
 
   describe('Debug Mode', () => {
+    /** Helper: check that process.stderr.write was called with a JSON line whose `msg` contains `substring`. */
+    function expectStderrMsg(spy: vi.SpyInstance, substring: string): void {
+      const calls = spy.mock.calls.map((c: any[]) => String(c[0]));
+      const found = calls.some((line: string) => {
+        try {
+          const parsed = JSON.parse(line);
+          return typeof parsed.msg === 'string' && parsed.msg.includes(substring);
+        } catch {
+          return line.includes(substring);
+        }
+      });
+      expect(found, `Expected stderr to contain a JSON log with msg including "${substring}"`).toBe(true);
+    }
+
     it('should log debug messages when debug is enabled', async () => {
-      const consoleSpy = vi.spyOn(console, 'log').mockImplementation();
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
       const cache = new HttpCacheManager({
         defaultMaxAge: 5000,
         debug: true,
@@ -434,18 +448,18 @@ describe('HttpCacheManager', () => {
 
       // Cache miss - should log
       await cache.get('debug-key', fetcher, { maxAge: 1000 });
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('[Cache] MISS: debug-key'));
+      expectStderrMsg(stderrSpy, '[Cache] MISS: debug-key');
 
       // Cache hit - should log
       await cache.get('debug-key', fetcher, { maxAge: 1000 });
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('[Cache] HIT: debug-key'));
+      expectStderrMsg(stderrSpy, '[Cache] HIT: debug-key');
 
-      consoleSpy.mockRestore();
+      stderrSpy.mockRestore();
       cache.clear();
     });
 
     it('should log stale cache hits in debug mode', async () => {
-      const consoleSpy = vi.spyOn(console, 'log').mockImplementation();
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
       const cache = new HttpCacheManager({
         defaultMaxAge: 5000,
         debug: true,
@@ -461,14 +475,14 @@ describe('HttpCacheManager', () => {
 
       // Access stale cache
       await cache.get('stale-key', fetcher, { maxAge: 50, staleWhileRevalidate: 100 });
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('[Cache] STALE: stale-key'));
+      expectStderrMsg(stderrSpy, '[Cache] STALE: stale-key');
 
-      consoleSpy.mockRestore();
+      stderrSpy.mockRestore();
       cache.clear();
     });
 
     it('should log during background revalidation', async () => {
-      const consoleSpy = vi.spyOn(console, 'log').mockImplementation();
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
       const cache = new HttpCacheManager({
         defaultMaxAge: 5000,
         debug: true,
@@ -478,20 +492,20 @@ describe('HttpCacheManager', () => {
 
       // Initial fetch
       await cache.get('revalidate-key', fetcher, { maxAge: 50, staleWhileRevalidate: 100 });
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('[Cache] MISS'));
+      expectStderrMsg(stderrSpy, '[Cache] MISS');
 
       // Wait for cache to become stale
       await new Promise((resolve) => setTimeout(resolve, 60));
 
-      consoleSpy.mockClear();
+      stderrSpy.mockClear();
 
       // Access stale cache - triggers background revalidation
       await cache.get('revalidate-key', fetcher, { maxAge: 50, staleWhileRevalidate: 100 });
 
       // Should log STALE
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('[Cache] STALE'));
+      expectStderrMsg(stderrSpy, '[Cache] STALE');
 
-      consoleSpy.mockRestore();
+      stderrSpy.mockRestore();
       cache.clear();
     });
   });
@@ -646,8 +660,22 @@ describe('HttpCacheManager', () => {
   });
 
   describe('Debug Mode - Advanced', () => {
+    /** Helper: check that process.stderr.write was called with a JSON line whose `msg` contains `substring`. */
+    function expectStderrMsg(spy: vi.SpyInstance, substring: string): void {
+      const calls = spy.mock.calls.map((c: any[]) => String(c[0]));
+      const found = calls.some((line: string) => {
+        try {
+          const parsed = JSON.parse(line);
+          return typeof parsed.msg === 'string' && parsed.msg.includes(substring);
+        } catch {
+          return line.includes(substring);
+        }
+      });
+      expect(found, `Expected stderr to contain a JSON log with msg including "${substring}"`).toBe(true);
+    }
+
     it('should log invalidation count in debug mode', async () => {
-      const consoleSpy = vi.spyOn(console, 'log').mockImplementation();
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
       const cacheManager = new HttpCacheManager({ debug: true });
       const fetcher = vi.fn().mockResolvedValue('data');
 
@@ -657,13 +685,13 @@ describe('HttpCacheManager', () => {
 
       cacheManager.invalidate(['test']);
 
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('[Cache] INVALIDATED: 2 entries'));
+      expectStderrMsg(stderrSpy, '[Cache] INVALIDATED: 2 entries');
 
-      consoleSpy.mockRestore();
+      stderrSpy.mockRestore();
     });
 
     it('should log eviction in debug mode', async () => {
-      const consoleSpy = vi.spyOn(console, 'log').mockImplementation();
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
       const cacheManager = new HttpCacheManager({ debug: true, maxEntries: 2 });
       const fetcher = vi.fn().mockResolvedValue('data');
 
@@ -671,9 +699,9 @@ describe('HttpCacheManager', () => {
       await cacheManager.get('key2', fetcher, { maxAge: 1000 });
       await cacheManager.get('key3', fetcher, { maxAge: 1000 }); // Should evict key1
 
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('[Cache] EVICTED:'));
+      expectStderrMsg(stderrSpy, '[Cache] EVICTED:');
 
-      consoleSpy.mockRestore();
+      stderrSpy.mockRestore();
     });
   });
 

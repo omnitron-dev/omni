@@ -223,16 +223,26 @@ describe('Titan Simple API', () => {
 
   describe('service()', () => {
     it('should create service without global app (standalone)', () => {
-      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
       const svc = service({
         getValue: () => 'standalone-value',
       });
 
       expect(svc.getValue()).toBe('standalone-value');
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('No Titan application found'));
+      // The fallback logger writes structured JSON to stderr with the warning message
+      const calls = stderrSpy.mock.calls.map((c: any[]) => String(c[0]));
+      const found = calls.some((line: string) => {
+        try {
+          const parsed = JSON.parse(line);
+          return typeof parsed.msg === 'string' && parsed.msg.includes('No Titan application found');
+        } catch {
+          return line.includes('No Titan application found');
+        }
+      });
+      expect(found, 'Expected stderr to contain "No Titan application found" JSON log').toBe(true);
 
-      consoleSpy.mockRestore();
+      stderrSpy.mockRestore();
     });
 
     it('should create service with name option', () => {

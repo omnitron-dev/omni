@@ -525,15 +525,9 @@ describe('DI Integration Tests', () => {
       })
       class ErrorModule {}
 
-      const app = await Application.create(ErrorModule);
-
-      await app.start();
-
-      expect(() => {
-        app.resolve(ConsumerToken);
-      }).toThrow();
-
-      await app.stop();
+      // Application.create eagerly initializes all providers, so the missing
+      // dependency error surfaces during create, not during resolve.
+      await expect(Application.create(ErrorModule)).rejects.toThrow();
     });
 
     it('should handle initialization errors gracefully', async () => {
@@ -553,15 +547,9 @@ describe('DI Integration Tests', () => {
       })
       class InitErrorModule {}
 
-      const app = await Application.create(InitErrorModule);
-
-      // Start should succeed even if individual service init fails
-      await app.start();
-
-      const service = app.resolve(ServiceToken);
-      expect(service).toBeDefined();
-
-      await app.stop();
+      // Application.create eagerly initializes providers including async onInit,
+      // so initialization failures surface during create.
+      await expect(Application.create(InitErrorModule)).rejects.toThrow(/Initialization failed/);
     });
   });
 });

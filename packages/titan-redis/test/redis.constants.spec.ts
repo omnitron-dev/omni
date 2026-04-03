@@ -12,11 +12,11 @@ describe('Redis Constants', () => {
   describe('Module Tokens', () => {
     it('should have correct constant values', () => {
       expect(typeof REDIS_MODULE_OPTIONS).toBe('symbol');
-      expect(REDIS_MODULE_OPTIONS.toString()).toBe('Symbol(REDIS_MODULE_OPTIONS)');
+      expect(REDIS_MODULE_OPTIONS.toString()).toBe('Symbol(titan:REDIS_MODULE_OPTIONS)');
       expect(typeof REDIS_MANAGER).toBe('symbol');
-      expect(REDIS_MANAGER.toString()).toBe('Symbol(REDIS_MANAGER)');
+      expect(REDIS_MANAGER.toString()).toBe('Symbol(titan:REDIS_MANAGER)');
       expect(typeof REDIS_CLIENT).toBe('symbol');
-      expect(REDIS_CLIENT.toString()).toBe('Symbol(REDIS_CLIENT)');
+      expect(REDIS_CLIENT.toString()).toBe('Symbol(titan:REDIS_CLIENT)');
       expect(REDIS_DEFAULT_NAMESPACE).toBe('default');
     });
 

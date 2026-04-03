@@ -82,7 +82,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@kysera/testing": "^0.1.1",
+    "@kysera/testing": "^0.8.7",
     "@types/node": "^25.0.3",
     "kysely": "0.28.12",
     "uuid": "^13.0.0"

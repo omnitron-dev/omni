@@ -4,14 +4,57 @@
 
 import { vi } from 'vitest';
 import { Redis } from 'ioredis';
-import { Container } from '@nexus';
-import { DiscoveryService } from '../../../src/modules/discovery/discovery.service.js';
-import { REDIS_TOKEN, DISCOVERY_OPTIONS_TOKEN } from '../../../src/modules/discovery/types.js';
-import { LOGGER_TOKEN } from '../../../src/modules/logger/index.js';
-import { DiscoveryModule } from '../../../src/modules/discovery/discovery.module.js';
-import type { ILogger } from '../../../src/modules/logger/logger.types.js';
-import type { NodeInfo, ServiceInfo, DiscoveryOptions } from '../../../src/modules/discovery/types.js';
-import { getTestRedisConfig } from '../../utils/redis-test-utils.js';
+import { Container } from '@omnitron-dev/titan/nexus';
+import { DiscoveryService } from '../src/discovery.service.js';
+import { REDIS_TOKEN, DISCOVERY_OPTIONS_TOKEN } from '../src/types.js';
+import { LOGGER_TOKEN } from '@omnitron-dev/titan/module/logger';
+import { DiscoveryModule } from '../src/discovery.module.js';
+import type { ILogger } from '@omnitron-dev/titan/module/logger';
+import type { NodeInfo, ServiceInfo, DiscoveryOptions } from '../src/types.js';
+/**
+ * Check if we're in mock mode (no real Redis available)
+ */
+export function isRedisInMockMode(): boolean {
+  if (process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true') {
+    return true;
+  }
+  try {
+    const { existsSync, readFileSync } = require('node:fs');
+    const { join } = require('node:path');
+    const infoPath = join(process.cwd(), '.redis-test-info.json');
+    if (existsSync(infoPath)) {
+      const info = JSON.parse(readFileSync(infoPath, 'utf-8'));
+      if (info.isMock === true) return true;
+    }
+  } catch {
+    // Continue
+  }
+  return false;
+}
+
+/**
+ * Get centralized Redis test configuration
+ */
+function getTestRedisConfig(db = 15) {
+  try {
+    const { existsSync, readFileSync } = require('node:fs');
+    const { join } = require('node:path');
+    const infoPath = join(process.cwd(), '.redis-test-info.json');
+    if (existsSync(infoPath)) {
+      const info = JSON.parse(readFileSync(infoPath, 'utf-8'));
+      if (info.port) {
+        return { url: `redis://localhost:${info.port}/${db}`, host: 'localhost', port: info.port, db };
+      }
+    }
+  } catch {
+    // Continue
+  }
+  const globalRedis = (globalThis as any).globalRedis;
+  if (globalRedis?.host && globalRedis?.port) {
+    return { url: `redis://${globalRedis.host}:${globalRedis.port}/${db}`, host: globalRedis.host, port: globalRedis.port, db };
+  }
+  return { url: `redis://localhost:6379/${db}`, host: 'localhost', port: 6379, db };
+}
 
 /**
  * Create a mock logger for testing

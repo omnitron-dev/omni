@@ -9,15 +9,15 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { Redis } from 'ioredis';
 import { RedisTestManager, type DockerContainer } from '@omnitron-dev/testing/docker';
-import { NotificationManager } from '../../../src/rotif/rotif.js';
-import { RotifTransport } from '../../../src/modules/notifications/transport/rotif.transport.js';
+import { NotificationManager } from '../src/rotif/rotif.js';
+import { RotifTransport } from '../src/transport/rotif.transport.js';
 import type {
   NotificationMessage,
   IncomingNotification,
   TransportPublishResult,
   TransportMiddleware,
-} from '../../../src/modules/notifications/transport/transport.interface.js';
-import { createNullLogger } from '../../../src/modules/logger/logger.types.js';
+} from '../src/transport/transport.interface.js';
+import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 
 // Skip all tests in this file if running in mock mode or CI
 const SKIP_DOCKER = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';

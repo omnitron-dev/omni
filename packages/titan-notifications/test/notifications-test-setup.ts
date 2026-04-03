@@ -4,12 +4,12 @@
  * Provides helper functions for running Notifications tests with Docker Redis
  */
 
-import { DockerTestManager, type DockerContainer } from '../../utils/docker-test-manager.js';
-import { NotificationManager } from '../../../src/rotif/rotif.js';
-import { RotifTransport } from '../../../src/modules/notifications/transport/rotif.transport.js';
-import { NotificationsService } from '../../../src/modules/notifications/notifications.service.js';
-import { NotificationsHealthIndicator } from '../../../src/modules/notifications/notifications.health.js';
-import type { MessagingTransport } from '../../../src/modules/notifications/transport/transport.interface.js';
+import { DockerTestManager, type DockerContainer } from '@omnitron-dev/testing/docker';
+import { NotificationManager } from '../src/rotif/rotif.js';
+import { RotifTransport } from '../src/transport/rotif.transport.js';
+import { NotificationsService } from '../src/notifications.service.js';
+import { NotificationsHealthIndicator } from '../src/notifications.health.js';
+import type { MessagingTransport } from '../src/transport/transport.interface.js';
 import Redis from 'ioredis';
 
 // Check if Docker tests should be skipped

@@ -7,8 +7,8 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { WithDistributedLock, Lock } from '../../../src/modules/lock/lock.decorators.js';
-import type { IDistributedLockService } from '../../../src/modules/lock/lock.types.js';
+import { WithDistributedLock, Lock } from '../src/lock.decorators.js';
+import type { IDistributedLockService } from '../src/lock.types.js';
 
 type Mock = ReturnType<typeof vi.fn>;
 

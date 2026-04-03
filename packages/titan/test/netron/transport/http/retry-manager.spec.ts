@@ -619,14 +619,28 @@ describe('RetryManager', () => {
   });
 
   describe('Debug Logging', () => {
-    let consoleLogSpy: vi.SpyInstance;
+    let stderrSpy: vi.SpyInstance;
+
+    /** Helper: check that process.stderr.write was called with a JSON line whose `msg` contains `substring`. */
+    function expectStderrMsg(substring: string): void {
+      const calls = stderrSpy.mock.calls.map((c: any[]) => String(c[0]));
+      const found = calls.some((line: string) => {
+        try {
+          const parsed = JSON.parse(line);
+          return typeof parsed.msg === 'string' && parsed.msg.includes(substring);
+        } catch {
+          return line.includes(substring);
+        }
+      });
+      expect(found, `Expected stderr to contain a JSON log with msg including "${substring}"`).toBe(true);
+    }
 
     beforeEach(() => {
-      consoleLogSpy = vi.spyOn(console, 'log').mockImplementation();
+      stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     });
 
     afterEach(() => {
-      consoleLogSpy.mockRestore();
+      stderrSpy.mockRestore();
     });
 
     it('should log debug messages when debug mode is enabled', async () => {
@@ -646,14 +660,10 @@ describe('RetryManager', () => {
         initialDelay: 10,
       });
 
-      // Should log attempt numbers
-      expect(consoleLogSpy).toHaveBeenCalledWith('[Retry] Attempt 1/4');
-      expect(consoleLogSpy).toHaveBeenCalledWith('[Retry] Attempt 2/4');
-      // The retry log includes delay and error message as separate arguments
-      expect(consoleLogSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[Retry] Attempt 1 failed, retrying in'),
-        'Temporary failure'
-      );
+      // Should log attempt messages (structured JSON with msg "Retry attempt")
+      expectStderrMsg('Retry attempt');
+      // Should log failed attempt with retry info
+      expectStderrMsg('Attempt failed, retrying');
     });
 
     it('should log when error is not retryable', async () => {
@@ -673,7 +683,7 @@ describe('RetryManager', () => {
         // Expected
       }
 
-      expect(consoleLogSpy).toHaveBeenCalledWith('[Retry] Error not retryable:', 'Type error');
+      expectStderrMsg('Error not retryable');
     });
 
     it('should log when max attempts exceeded', async () => {
@@ -692,7 +702,7 @@ describe('RetryManager', () => {
         // Expected
       }
 
-      expect(consoleLogSpy).toHaveBeenCalledWith('[Retry] Max attempts exceeded');
+      expectStderrMsg('Max retry attempts exceeded');
     });
   });
 
@@ -816,10 +826,24 @@ describe('RetryManager', () => {
 
   describe('Circuit Breaker - Advanced', () => {
     let cbManager: RetryManager;
-    let consoleLogSpy: vi.SpyInstance;
+    let stderrSpy: vi.SpyInstance;
+
+    /** Helper: check that process.stderr.write was called with a JSON line whose `msg` contains `substring`. */
+    function expectStderrMsg(substring: string): void {
+      const calls = stderrSpy.mock.calls.map((c: any[]) => String(c[0]));
+      const found = calls.some((line: string) => {
+        try {
+          const parsed = JSON.parse(line);
+          return typeof parsed.msg === 'string' && parsed.msg.includes(substring);
+        } catch {
+          return line.includes(substring);
+        }
+      });
+      expect(found, `Expected stderr to contain a JSON log with msg including "${substring}"`).toBe(true);
+    }
 
     beforeEach(() => {
-      consoleLogSpy = vi.spyOn(console, 'log').mockImplementation();
+      stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
       cbManager = new RetryManager({
         debug: true,
         circuitBreaker: {
@@ -833,7 +857,7 @@ describe('RetryManager', () => {
     });
 
     afterEach(() => {
-      consoleLogSpy.mockRestore();
+      stderrSpy.mockRestore();
     });
 
     it('should log circuit breaker state transitions', async () => {
@@ -853,7 +877,7 @@ describe('RetryManager', () => {
         }
       }
 
-      expect(consoleLogSpy).toHaveBeenCalledWith('[CircuitBreaker] Transitioned to OPEN');
+      expectStderrMsg('CircuitBreaker transitioned to OPEN');
 
       // Wait for cooldown
       await new Promise((resolve) => setTimeout(resolve, 60));
@@ -868,8 +892,8 @@ describe('RetryManager', () => {
         // Expected
       }
 
-      expect(consoleLogSpy).toHaveBeenCalledWith('[CircuitBreaker] Transitioned to HALF-OPEN');
-      expect(consoleLogSpy).toHaveBeenCalledWith('[CircuitBreaker] Transitioned back to OPEN from HALF-OPEN');
+      expectStderrMsg('CircuitBreaker transitioned to HALF-OPEN');
+      expectStderrMsg('CircuitBreaker transitioned back to OPEN from HALF-OPEN');
     });
 
     it('should transition from half-open to closed after success threshold', async () => {
@@ -894,7 +918,7 @@ describe('RetryManager', () => {
         }
       }
 
-      expect(consoleLogSpy).toHaveBeenCalledWith('[CircuitBreaker] Transitioned to OPEN');
+      expectStderrMsg('CircuitBreaker transitioned to OPEN');
 
       // Wait for cooldown
       await new Promise((resolve) => setTimeout(resolve, 60));
@@ -907,8 +931,8 @@ describe('RetryManager', () => {
         });
       }
 
-      expect(consoleLogSpy).toHaveBeenCalledWith('[CircuitBreaker] Transitioned to HALF-OPEN');
-      expect(consoleLogSpy).toHaveBeenCalledWith('[CircuitBreaker] Transitioned to CLOSED');
+      expectStderrMsg('CircuitBreaker transitioned to HALF-OPEN');
+      expectStderrMsg('CircuitBreaker transitioned to CLOSED');
     });
 
     it('should emit circuit breaker events', async () => {

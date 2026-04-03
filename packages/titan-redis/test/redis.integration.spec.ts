@@ -53,7 +53,7 @@ describeIntegration('Redis Module Integration Tests (Docker Redis)', () => {
     testNamespace = `test-${Date.now()}-${Math.random().toString(36).substring(7)}`;
 
     // Create test application with Redis module
-    app = new TestApplication();
+    app = new TestApplication({ registerCoreModules: true } as any);
 
     // Register the Redis module with eager connection for tests
     const redisModule = TitanRedisModule.forRoot({

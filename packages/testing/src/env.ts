@@ -6,17 +6,17 @@
  * Override via environment variables.
  */
 
-export const TEST_REDIS_HOST = process.env.TEST_REDIS_HOST ?? 'localhost';
-export const TEST_REDIS_PORT = Number(process.env.TEST_REDIS_PORT ?? 16379);
-export const TEST_REDIS_URL = process.env.TEST_REDIS_URL ?? `redis://${TEST_REDIS_HOST}:${TEST_REDIS_PORT}`;
+export const TEST_REDIS_HOST = process.env['TEST_REDIS_HOST'] ?? 'localhost';
+export const TEST_REDIS_PORT = Number(process.env['TEST_REDIS_PORT'] ?? 16379);
+export const TEST_REDIS_URL = process.env['TEST_REDIS_URL'] ?? `redis://${TEST_REDIS_HOST}:${TEST_REDIS_PORT}`;
 
-export const TEST_POSTGRES_HOST = process.env.TEST_POSTGRES_HOST ?? 'localhost';
-export const TEST_POSTGRES_PORT = Number(process.env.TEST_POSTGRES_PORT ?? 15432);
-export const TEST_POSTGRES_USER = process.env.TEST_POSTGRES_USER ?? 'test';
-export const TEST_POSTGRES_PASSWORD = process.env.TEST_POSTGRES_PASSWORD ?? 'test';
-export const TEST_POSTGRES_DB = process.env.TEST_POSTGRES_DB ?? 'test';
+export const TEST_POSTGRES_HOST = process.env['TEST_POSTGRES_HOST'] ?? 'localhost';
+export const TEST_POSTGRES_PORT = Number(process.env['TEST_POSTGRES_PORT'] ?? 15432);
+export const TEST_POSTGRES_USER = process.env['TEST_POSTGRES_USER'] ?? 'test';
+export const TEST_POSTGRES_PASSWORD = process.env['TEST_POSTGRES_PASSWORD'] ?? 'test';
+export const TEST_POSTGRES_DB = process.env['TEST_POSTGRES_DB'] ?? 'test';
 export const TEST_POSTGRES_URL =
-  process.env.TEST_POSTGRES_URL ??
+  process.env['TEST_POSTGRES_URL'] ??
   `postgresql://${TEST_POSTGRES_USER}:${TEST_POSTGRES_PASSWORD}@${TEST_POSTGRES_HOST}:${TEST_POSTGRES_PORT}/${TEST_POSTGRES_DB}`;
 
 /** Build a Redis URL for a specific DB index */

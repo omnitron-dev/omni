@@ -17,12 +17,11 @@ import { ProcessManager } from '../src/process-manager.js';
 import { PoolStrategy } from '../src/types.js';
 import { CalculatorService, CounterService } from './fixtures/test-services.js';
 import { LoggerService } from '@omnitron-dev/titan/module/logger';
-import { isRedisInMockMode } from '@omnitron-dev/testing/titan';
 import { isDockerAvailable } from '@omnitron-dev/testing/titan';
 import { AdvancedMockProcessSpawner } from '@omnitron-dev/testing/titan';
 import { ProcessSpawnerFactory } from '../src/process-spawner.js';
 
-const skipTests = isRedisInMockMode() || !isDockerAvailable();
+const skipTests = !isDockerAvailable();
 if (skipTests) {
   console.log('⏭️  Skipping real-transports.spec.ts - requires real infrastructure');
 }

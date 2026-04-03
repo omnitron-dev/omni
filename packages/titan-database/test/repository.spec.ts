@@ -20,9 +20,8 @@ import {
 import type { BaseRepository } from '@kysera/repository';
 import { Kysely, sql } from 'kysely';
 import { z } from 'zod';
-import { DatabaseTestManager } from '@omnitron-dev/testing/titan';
-import { isDockerAvailable } from '@omnitron-dev/testing/titan';
-import { createLogger } from '@omnitron-dev/testing/titan';
+import { DatabaseTestManager } from '@omnitron-dev/testing/docker';
+import { isDockerAvailable, createMockLogger } from '@omnitron-dev/testing/titan';
 
 // Skip Docker tests if env var is set or Docker is not available
 const skipIntegrationTests =
@@ -207,10 +206,10 @@ describeOrSkip('Repository Integration', () => {
     let dbManager: DatabaseManager;
     let userRepo: UserRepository;
     let db: Kysely<any>;
-    let mockLogger: ReturnType<typeof createLogger>;
+    let mockLogger: ReturnType<typeof createMockLogger>;
 
     beforeEach(async () => {
-      mockLogger = createLogger();
+      mockLogger = createMockLogger();
 
       // Create database manager directly
       const options = {

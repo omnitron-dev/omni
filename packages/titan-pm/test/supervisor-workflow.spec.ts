@@ -18,7 +18,12 @@ import {
 import { ProcessManager } from '../src/process-manager.js';
 import { ProcessSupervisor } from '../src/process-supervisor.js';
 import { ProcessWorkflow } from '../src/process-workflow.js';
+import { ProcessSpawnerFactory } from '../src/process-spawner.js';
 import { SupervisionStrategy, RestartDecision } from '../src/types.js';
+import { AdvancedMockProcessSpawner } from '@omnitron-dev/testing/titan';
+
+// Pre-register mock spawner so useMockSpawner: true works
+ProcessSpawnerFactory.setMockSpawner(AdvancedMockProcessSpawner);
 
 // Mock logger
 const mockLogger = {

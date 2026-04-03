@@ -40,11 +40,11 @@ describeOrSkip('RedisService', () => {
       config: {
         ...redisConfig,
         db: 0,
+        lazyConnect: false,
         retryStrategy: (times: number) => {
           if (times > 3) return null;
           return Math.min(times * 100, 2000);
         },
-        enableOfflineQueue: false,
       },
       clients: [
         {

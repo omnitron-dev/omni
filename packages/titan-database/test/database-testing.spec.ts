@@ -29,7 +29,8 @@ import {
   TitanDatabaseModule,
 } from '../src/index.js';
 import { DatabaseTestingModule, DatabaseTestingService, DATABASE_TESTING_SERVICE } from '@omnitron-dev/testing/titan';
-import { DatabaseTestManager, DockerContainer } from '@omnitron-dev/testing/titan';
+import { DatabaseTestManager } from '@omnitron-dev/testing/docker';
+import type { DockerContainer } from '@omnitron-dev/testing/docker';
 
 // Test entities
 interface User {

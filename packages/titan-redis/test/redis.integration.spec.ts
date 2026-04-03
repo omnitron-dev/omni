@@ -955,7 +955,7 @@ describeIntegration('Redis Module Integration Tests (Docker Redis)', () => {
 
   describe('Module Configuration', () => {
     it('should support async configuration', async () => {
-      const asyncApp = new TestApplication();
+      const asyncApp = new TestApplication({ registerCoreModules: true } as any);
 
       // Register async module
       const asyncModule = TitanRedisModule.forRootAsync({
@@ -1003,7 +1003,7 @@ describeIntegration('Redis Module Integration Tests (Docker Redis)', () => {
     });
 
     it('should support feature modules', async () => {
-      const featureApp = new TestApplication();
+      const featureApp = new TestApplication({ registerCoreModules: true } as any);
 
       // Register root module
       const rootModule = TitanRedisModule.forRoot({

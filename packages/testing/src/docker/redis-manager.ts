@@ -85,7 +85,7 @@ export class RedisTestManager {
     // Configure Redis settings
     command.push('--maxmemory', maxMemory);
     command.push('--maxmemory-policy', 'allkeys-lru');
-    command.push('--save', ''); // Disable RDB snapshots for tests
+    command.push("--save ''"); // Disable RDB snapshots for tests
     command.push('--appendonly', 'no'); // Disable AOF for tests
 
     if (requirePass && password) {

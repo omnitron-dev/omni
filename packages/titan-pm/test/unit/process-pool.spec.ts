@@ -670,9 +670,8 @@ describe('ProcessPool', () => {
 
       await pool.destroy();
 
-      mockProxies.forEach((proxy) => {
-        expect(proxy.__destroy).toHaveBeenCalled();
-      });
+      // Pool delegates to manager.kill() which internally calls proxy.__destroy()
+      expect(mockManager.kill).toHaveBeenCalledTimes(2);
     });
   });
 

@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/titan-ratelimit",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Rate limiting module for Titan framework with Redis-backed storage",
   "author": "LuxQuant",
   "license": "MIT",

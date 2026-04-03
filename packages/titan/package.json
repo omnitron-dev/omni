@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/titan",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Enterprise backend framework — core DI, Netron RPC, decorators, and validation",
   "keywords": [
     "backend",

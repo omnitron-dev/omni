@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/titan-scheduler",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Cron, interval, and timeout job scheduling with persistence and metrics for Titan",
   "author": "LuxQuant",
   "license": "MIT",

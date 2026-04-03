@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/titan-pm",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Process manager module for Titan framework with supervisors, pools, and worker management",
   "author": "LuxQuant",
   "license": "MIT",

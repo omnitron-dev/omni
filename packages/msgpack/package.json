@@ -1,0 +1,72 @@
+{
+  "name": "@omnitron-dev/msgpack",
+  "version": "0.1.0",
+  "description": "Extandable MessagePack serializer",
+  "author": "LuxQuant",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./smart-buffer": {
+      "types": "./dist/smart-buffer.d.ts",
+      "import": "./dist/smart-buffer.js",
+      "default": "./dist/smart-buffer.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "rm -rf dist node_modules/.tmp && tsc -p ./tsconfig.json",
+    "test": "vitest run",
+    "test:bun": "bun test",
+    "test:all": "npm run test && npm run test:bun"
+  },
+  "dependencies": {
+    "@omnitron-dev/common": "workspace:*",
+    "buffer": "^6.0.3",
+    "long": "^5.3.2"
+  },
+  "devDependencies": {
+    "@msgpack/msgpack": "^3.1.2",
+    "@types/node": "^25.0.2",
+    "bson": "^7.0.0",
+    "cbor": "^10.0.11",
+    "msgpackr": "^1.11.5",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
+  },
+  "keywords": [
+    "messagepack",
+    "msgpack",
+    "serialization",
+    "binary",
+    "protocol",
+    "typescript",
+    "encoding",
+    "decoding",
+    "buffer",
+    "stream",
+    "browser",
+    "node",
+    "performance",
+    "data-format",
+    "binary-protocol",
+    "cross-platform"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/omnitron-dev/omni.git",
+    "directory": "packages/messagepack"
+  },
+  "bugs": {
+    "url": "https://github.com/omnitron-dev/omni/issues"
+  },
+  "homepage": "https://github.com/omnitron-dev/omni/tree/main/packages/messagepack#readme"
+}

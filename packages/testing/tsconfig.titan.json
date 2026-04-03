@@ -1,0 +1,23 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "declarationDir": "./dist",
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.titan.tsbuildinfo",
+    "types": [
+      "node",
+      "vitest/globals",
+      "bun"
+    ]
+  },
+  "include": [
+    "src/titan/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.ts",
+    "**/*.spec.ts"
+  ]
+}

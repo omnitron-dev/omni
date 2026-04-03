@@ -1,0 +1,256 @@
+/**
+ * HttpConnection Service Proxy and Query Interface tests
+ */
+
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import { HttpConnection } from '../../../../src/netron/transport/http/connection.js';
+import { ConnectionState } from '../../../../src/netron/transport/types.js';
+
+// Mock fetch globally
+const mockFetch = jest.fn() as jest.MockedFunction<typeof fetch>;
+global.fetch = mockFetch;
+
+describe('HttpConnection - Query Interface and Service Proxy', () => {
+  let connection: HttpConnection;
+  const baseUrl = 'http://localhost:3000';
+
+  // Helper to create mock Response
+  const createMockResponse = (data: any, ok = true, status = 200) => ({
+    ok,
+    status,
+    statusText: ok ? 'OK' : 'Error',
+    json: jest.fn().mockResolvedValue(data),
+    headers: {
+      get: jest.fn((name: string) => {
+        if (name === 'Content-Type') return 'application/json';
+        return null;
+      })
+    }
+  } as any);
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockFetch.mockClear();
+  });
+
+  afterEach(async () => {
+    if (connection && connection.state !== ConnectionState.DISCONNECTED) {
+      await connection.close();
+    }
+    await new Promise(resolve => setTimeout(resolve, 100));
+  });
+
+  it('should create service proxy for discovered service', async () => {
+    mockFetch.mockImplementation((url: any) => {
+      const urlStr = typeof url === 'string' ? url : url.toString();
+
+      if (urlStr.includes('/netron/discovery')) {
+        return Promise.resolve(createMockResponse({
+          version: '2.0',
+          services: {
+            Calculator: {
+              version: '1.0.0',
+              methods: ['add'],
+              metadata: {}
+            }
+          },
+          contracts: {}
+        }));
+      }
+
+      if (urlStr.includes('/netron/invoke')) {
+        return Promise.resolve(createMockResponse({
+          id: '1',
+          version: '2.0',
+          timestamp: Date.now(),
+          success: true,
+          data: { result: 5 }
+        }));
+      }
+
+      return Promise.resolve(createMockResponse({ success: true }));
+    });
+
+    connection = new HttpConnection(baseUrl);
+    await new Promise(resolve => setTimeout(resolve, 150));
+
+    const calculator = await connection.queryInterface('Calculator');
+
+    expect(calculator).toBeDefined();
+    expect(calculator.$def).toBeDefined();
+    expect(calculator.$def.meta.name).toBe('Calculator');
+  });
+
+  it('should invoke methods through service proxy', async () => {
+    mockFetch.mockImplementation((url: any) => {
+      const urlStr = typeof url === 'string' ? url : url.toString();
+
+      if (urlStr.includes('/netron/discovery')) {
+        return Promise.resolve(createMockResponse({
+          version: '2.0',
+          services: {
+            Calculator: {
+              version: '1.0.0',
+              methods: ['add'],
+              metadata: {}
+            }
+          },
+          contracts: {}
+        }));
+      }
+
+      if (urlStr.includes('/netron/invoke')) {
+        return Promise.resolve(createMockResponse({
+          id: '1',
+          version: '2.0',
+          timestamp: Date.now(),
+          success: true,
+          data: { result: 7 }
+        }));
+      }
+
+      return Promise.resolve(createMockResponse({ success: true }));
+    });
+
+    connection = new HttpConnection(baseUrl);
+    await new Promise(resolve => setTimeout(resolve, 150));
+
+    const calculator = await connection.queryInterface('Calculator');
+    const result = await calculator.add({ a: 3, b: 4 });
+
+    expect(result).toEqual({ result: 7 });
+  });
+
+  it('should handle service method errors', async () => {
+    mockFetch.mockImplementation((url: any) => {
+      const urlStr = typeof url === 'string' ? url : url.toString();
+
+      if (urlStr.includes('/netron/discovery')) {
+        return Promise.resolve(createMockResponse({
+          version: '2.0',
+          services: {
+            Calculator: {
+              version: '1.0.0',
+              methods: ['divide'],
+              metadata: {}
+            }
+          },
+          contracts: {}
+        }));
+      }
+
+      if (urlStr.includes('/netron/invoke')) {
+        return Promise.resolve(createMockResponse({
+          id: '1',
+          version: '2.0',
+          timestamp: Date.now(),
+          success: false,
+          error: {
+            code: 400,
+            message: 'Division by zero'
+          }
+        }));
+      }
+
+      return Promise.resolve(createMockResponse({ success: true }));
+    });
+
+    connection = new HttpConnection(baseUrl);
+    await new Promise(resolve => setTimeout(resolve, 150));
+
+    const calculator = await connection.queryInterface('Calculator');
+
+    await expect(calculator.divide({ a: 10, b: 0 }))
+      .rejects.toThrow('Division by zero');
+  });
+
+  it('should create minimal definition for unknown services', async () => {
+    mockFetch.mockImplementation((url: any) => {
+      const urlStr = typeof url === 'string' ? url : url.toString();
+
+      if (urlStr.includes('/netron/discovery')) {
+        return Promise.resolve(createMockResponse({
+          version: '2.0',
+          services: {},
+          contracts: {}
+        }));
+      }
+
+      return Promise.resolve(createMockResponse({ success: true }));
+    });
+
+    connection = new HttpConnection(baseUrl);
+    await new Promise(resolve => setTimeout(resolve, 150));
+
+    const unknownService = await connection.queryInterface('UnknownService');
+
+    expect(unknownService).toBeDefined();
+    expect(unknownService.$def).toBeDefined();
+    expect(unknownService.$def.meta.name).toBe('UnknownService');
+  });
+
+  it('should handle empty service name in queryInterface', async () => {
+    mockFetch.mockImplementation((url: any) => {
+      const urlStr = typeof url === 'string' ? url : url.toString();
+
+      if (urlStr.includes('/netron/discovery')) {
+        return Promise.resolve(createMockResponse({
+          version: '2.0',
+          services: {},
+          contracts: {}
+        }));
+      }
+
+      return Promise.resolve(createMockResponse({ success: true }));
+    });
+
+    connection = new HttpConnection(baseUrl);
+    await new Promise(resolve => setTimeout(resolve, 150));
+
+    const service = await connection.queryInterface('');
+
+    expect(service).toBeDefined();
+    expect(service.$def.meta.name).toBe('');
+  });
+
+  it('should handle concurrent method calls', async () => {
+    mockFetch.mockImplementation((url: any) => {
+      const urlStr = typeof url === 'string' ? url : url.toString();
+
+      if (urlStr.includes('/netron/discovery')) {
+        return Promise.resolve(createMockResponse({
+          version: '2.0',
+          services: {},
+          contracts: {}
+        }));
+      }
+
+      if (urlStr.includes('/netron/invoke')) {
+        return Promise.resolve(createMockResponse({
+          id: '1',
+          version: '2.0',
+          timestamp: Date.now(),
+          success: true,
+          data: { result: Math.random() }
+        }));
+      }
+
+      return Promise.resolve(createMockResponse({ success: true }));
+    });
+
+    connection = new HttpConnection(baseUrl);
+    await new Promise(resolve => setTimeout(resolve, 150));
+
+    const service = await connection.queryInterface('TestService');
+
+    const [result1, result2, result3] = await Promise.all([
+      service.method1({}),
+      service.method2({}),
+      service.method3({})
+    ]);
+
+    expect(result1).toBeDefined();
+    expect(result2).toBeDefined();
+    expect(result3).toBeDefined();
+  });
+});

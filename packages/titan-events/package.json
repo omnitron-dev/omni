@@ -1,0 +1,36 @@
+{
+  "name": "@omnitron-dev/titan-events",
+  "version": "0.1.0",
+  "description": "Event bus module for Titan framework with decorators, validation, and scheduling",
+  "author": "LuxQuant",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "rm -rf dist node_modules/.tmp && tsc -p ./tsconfig.json",
+    "test": "vitest run",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@omnitron-dev/eventemitter": "workspace:*",
+    "zod": "^4.3.6"
+  },
+  "peerDependencies": {
+    "@omnitron-dev/titan": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "25.0.3",
+    "reflect-metadata": "^0.2.2",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
+  }
+}

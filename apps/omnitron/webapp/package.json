@@ -1,0 +1,34 @@
+{
+  "name": "@omnitron/console",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
+    "@fontsource/inter": "^5.2.8",
+    "@mui/material": "^7.3.9",
+    "@omnitron/prism": "workspace:*",
+    "@xyflow/react": "^12.10.1",
+    "apexcharts": "^5.10.4",
+    "dayjs": "^1.11.20",
+    "react": "^19.2.4",
+    "react-apexcharts": "^2.1.0",
+    "react-dom": "^19.2.4",
+    "react-router-dom": "^7.13.1",
+    "sonner": "^2.0.7",
+    "zustand": "^5.0.12"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react-swc": "^4.3.0",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.0"
+  }
+}

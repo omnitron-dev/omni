@@ -1,0 +1,807 @@
+/**
+ * Comprehensive RemotePeer Tests
+ * Tests for remote peer communication and service management
+ */
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { Netron } from '../../src/netron/netron.js';
+import { RemotePeer } from '../../src/netron/remote-peer.js';
+import { Definition } from '../../src/netron/definition.js';
+import { Service, Public } from '../../src/decorators/index.js';
+import { createLogger } from '../utils/test-logger.js';
+import {
+  TYPE_GET,
+  TYPE_SET,
+  TYPE_CALL,
+  TYPE_TASK,
+  TYPE_STREAM,
+  TYPE_STREAM_ERROR,
+  TYPE_STREAM_CLOSE,
+  createPacket,
+  decodePacket,
+} from '../../src/netron/packet/index.js';
+
+const skipIntegrationTests = process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true';
+
+if (skipIntegrationTests) {
+  console.log('⏭️  Skipping remote-peer.spec.ts - integration test with async RPC behavior');
+}
+
+const describeOrSkip = skipIntegrationTests ? describe.skip : describe;
+
+describeOrSkip('RemotePeer - Comprehensive Tests', () => {
+  let logger: any;
+  let netron: Netron;
+  let mockSocket: any;
+  let remotePeer: RemotePeer;
+
+  beforeEach(() => {
+    logger = createLogger();
+    netron = new Netron(logger, { id: 'test-netron' });
+
+    // Create mock socket that mimics WebSocket/TransportAdapter
+    mockSocket = {
+      on: vi.fn(),
+      once: vi.fn(),
+      send: vi.fn((data: any, options: any, callback?: any) => {
+        if (callback) callback();
+      }),
+      close: vi.fn().mockResolvedValue(undefined),
+      readyState: 'OPEN',
+    };
+
+    remotePeer = new RemotePeer(mockSocket, netron, 'remote-peer-123');
+  });
+
+  afterEach(async () => {
+    if (remotePeer && mockSocket.readyState === 'OPEN') {
+      await remotePeer.close();
+    }
+    if (netron) {
+      await netron.stop();
+    }
+  });
+
+  describe('Initialization', () => {
+    it('should create RemotePeer with ID', () => {
+      expect(remotePeer).toBeDefined();
+      expect(remotePeer.id).toBe('remote-peer-123');
+    });
+
+    it('should initialize with socket', async () => {
+      await remotePeer.init(false);
+
+      expect(mockSocket.on).toHaveBeenCalledWith('message', expect.any(Function));
+    });
+
+    it('should set request timeout', () => {
+      const peerWithTimeout = new RemotePeer(mockSocket, netron, 'timeout-peer', 10000);
+      expect(peerWithTimeout['requestTimeout']).toBe(10000);
+    });
+
+    it('should initialize as connector', async () => {
+      await remotePeer.init(true);
+
+      expect(mockSocket.on).toHaveBeenCalledWith('message', expect.any(Function));
+    });
+
+    it('should handle initialization options', async () => {
+      const options = {
+        taskTimeout: 5000,
+        allowServiceEvents: true,
+      };
+
+      await remotePeer.init(false, options);
+      expect(mockSocket.on).toHaveBeenCalled();
+    });
+  });
+
+  describe('Service Exposure', () => {
+    it('should expose service', async () => {
+      @Service({ name: 'TestService', version: '1.0.0' })
+      class TestService {
+        @Public()
+        async getValue() {
+          return 'test-value';
+        }
+      }
+
+      const service = new TestService();
+
+      // Mock successful runTask response
+      remotePeer.runTask = vi.fn().mockResolvedValue({
+        id: '550e8400-e29b-41d4-a716-446655440000',
+        meta: { name: 'TestService', version: '1.0.0' },
+      });
+
+      const definition = await remotePeer.exposeService(service);
+
+      expect(definition).toBeDefined();
+      expect(remotePeer.runTask).toHaveBeenCalledWith('expose_service', expect.any(Object));
+    });
+
+    it('should throw when exposing service without metadata', async () => {
+      class InvalidService {
+        getValue() {
+          return 'value';
+        }
+      }
+
+      await expect(remotePeer.exposeService(new InvalidService())).rejects.toThrow(/invalid service/i);
+    });
+
+    it('should prevent duplicate service exposure', async () => {
+      @Service({ name: 'DuplicateService', version: '1.0.0' })
+      class DuplicateService {
+        @Public()
+        async test() {}
+      }
+
+      remotePeer.runTask = vi.fn().mockResolvedValue({
+        id: '550e8400-e29b-41d4-a716-446655440000',
+        meta: { name: 'DuplicateService', version: '1.0.0' },
+      });
+
+      const service = new DuplicateService();
+      remotePeer.services.set('DuplicateService', {} as any);
+
+      await expect(remotePeer.exposeService(service)).rejects.toThrow(/already exposed/i);
+    });
+  });
+
+  describe('Service Unexposure', () => {
+    it('should unexpose service', async () => {
+      remotePeer.runTask = vi.fn().mockResolvedValue('550e8400-e29b-41d4-a716-446655440000');
+
+      await remotePeer.unexposeService('TestService');
+
+      expect(remotePeer.runTask).toHaveBeenCalledWith('unexpose_service', 'TestService');
+    });
+
+    it('should cleanup associated interfaces on unexpose', async () => {
+      const mockInterfaceInstance = {
+        $def: { id: '550e8400-e29b-41d4-a716-446655440000', parentId: 'parent-123' },
+      };
+
+      const mockInterface = {
+        instance: mockInterfaceInstance,
+        refCount: 1,
+      };
+
+      remotePeer.interfaces.set('550e8400-e29b-41d4-a716-446655440000', mockInterface as any);
+      remotePeer.runTask = vi.fn().mockResolvedValue('parent-123');
+
+      await remotePeer.unexposeService('TestService');
+
+      expect(remotePeer.runTask).toHaveBeenCalled();
+    });
+  });
+
+  describe('Event Subscription', () => {
+    it('should subscribe to event', async () => {
+      const handler = vi.fn();
+      remotePeer.runTask = vi.fn().mockResolvedValue(undefined);
+
+      await remotePeer.subscribe('test-event', handler);
+
+      expect(remotePeer.eventSubscribers.has('test-event')).toBe(true);
+      expect(remotePeer.eventSubscribers.get('test-event')).toContain(handler);
+      expect(remotePeer.runTask).toHaveBeenCalledWith('subscribe', 'test-event');
+    });
+
+    it('should not re-subscribe if already subscribed', async () => {
+      const handler = vi.fn();
+      remotePeer.runTask = vi.fn().mockResolvedValue(undefined);
+
+      await remotePeer.subscribe('test-event', handler);
+
+      // Clear the mock call count
+      const callCount = remotePeer.runTask.mock.calls.length;
+
+      await remotePeer.subscribe('test-event', handler);
+
+      // Should not have additional calls
+      expect(remotePeer.runTask.mock.calls.length).toBe(callCount);
+    });
+
+    it('should unsubscribe from event', async () => {
+      const handler = vi.fn();
+      remotePeer.runTask = vi.fn().mockResolvedValue(undefined);
+
+      await remotePeer.subscribe('test-event', handler);
+      await remotePeer.unsubscribe('test-event', handler);
+
+      expect(remotePeer.eventSubscribers.has('test-event')).toBe(false);
+      expect(remotePeer.runTask).toHaveBeenCalledWith('unsubscribe', 'test-event');
+    });
+  });
+
+  describe('RPC Operations', () => {
+    it('should get property value', async () => {
+      const definition = {
+        id: '550e8400-e29b-41d4-a716-446655440000',
+        meta: {
+          name: 'TestService',
+          version: '1.0.0',
+          properties: { testProperty: { type: 'string' } },
+          methods: {},
+        },
+      } as Definition;
+
+      remotePeer.definitions.set('550e8400-e29b-41d4-a716-446655440000', definition);
+
+      // Capture the packet ID when send is called and trigger response
+      let capturedPacketId: number | undefined;
+      mockSocket.send = vi.fn((data: any, options: any, callback?: any) => {
+        const packet = decodePacket(data);
+        capturedPacketId = packet.id;
+
+        // Simulate async response
+        setTimeout(() => {
+          const responseHandler = remotePeer['responseHandlers'].get(capturedPacketId!);
+          if (responseHandler) {
+            responseHandler.successHandler({ data: 'property-value' } as any);
+          }
+        }, 10);
+
+        if (callback) callback();
+      });
+
+      const result = await remotePeer.get('550e8400-e29b-41d4-a716-446655440000', 'testProperty');
+
+      expect(mockSocket.send).toHaveBeenCalled();
+      expect(result).toEqual({ data: 'property-value' });
+    });
+
+    it('should set property value', async () => {
+      const definition = {
+        id: '550e8400-e29b-41d4-a716-446655440000',
+        meta: {
+          name: 'TestService',
+          version: '1.0.0',
+          properties: { testProperty: { type: 'string' } },
+          methods: {},
+        },
+      } as Definition;
+
+      remotePeer.definitions.set('550e8400-e29b-41d4-a716-446655440000', definition);
+
+      // Capture the packet ID when send is called and trigger response
+      mockSocket.send = vi.fn((data: any, options: any, callback?: any) => {
+        const packet = decodePacket(data);
+        const packetId = packet.id;
+
+        // Simulate async response
+        setTimeout(() => {
+          const responseHandler = remotePeer['responseHandlers'].get(packetId);
+          if (responseHandler) {
+            responseHandler.successHandler(undefined);
+          }
+        }, 10);
+
+        if (callback) callback();
+      });
+
+      await remotePeer.set('550e8400-e29b-41d4-a716-446655440000', 'testProperty', 'new-value');
+
+      expect(mockSocket.send).toHaveBeenCalled();
+    });
+
+    it('should call remote method', async () => {
+      const definition = {
+        id: '550e8400-e29b-41d4-a716-446655440000',
+        meta: {
+          name: 'TestService',
+          version: '1.0.0',
+          properties: {},
+          methods: { testMethod: { parameters: [] } },
+        },
+      } as Definition;
+
+      remotePeer.definitions.set('550e8400-e29b-41d4-a716-446655440000', definition);
+
+      // Capture the packet ID when send is called and trigger response
+      mockSocket.send = vi.fn((data: any, options: any, callback?: any) => {
+        const packet = decodePacket(data);
+        const packetId = packet.id;
+
+        // Simulate async response
+        setTimeout(() => {
+          const responseHandler = remotePeer['responseHandlers'].get(packetId);
+          if (responseHandler) {
+            responseHandler.successHandler({ data: 'method-result' } as any);
+          }
+        }, 10);
+
+        if (callback) callback();
+      });
+
+      const result = await remotePeer.call('550e8400-e29b-41d4-a716-446655440000', 'testMethod', ['arg1', 'arg2']);
+
+      expect(mockSocket.send).toHaveBeenCalled();
+      expect(result).toEqual({ data: 'method-result' });
+    });
+
+    it('should throw error for unknown definition in get', () => {
+      expect(() => remotePeer.get('unknown-def', 'prop')).toThrow();
+    });
+
+    it('should throw error for unknown definition in set', () => {
+      expect(() => remotePeer.set('unknown-def', 'prop', 'value')).toThrow();
+    });
+
+    it('should throw error for unknown definition in call', () => {
+      expect(() => remotePeer.call('unknown-def', 'method', [])).toThrow();
+    });
+  });
+
+  describe('Task Execution', () => {
+    it('should run task', async () => {
+      // Capture the packet ID when send is called and trigger response
+      mockSocket.send = vi.fn((data: any, options: any, callback?: any) => {
+        const packet = decodePacket(data);
+        const packetId = packet.id;
+
+        // Simulate async response
+        setTimeout(() => {
+          const responseHandler = remotePeer['responseHandlers'].get(packetId);
+          if (responseHandler) {
+            responseHandler.successHandler('task-result');
+          }
+        }, 10);
+
+        if (callback) callback();
+      });
+
+      const result = await remotePeer.runTask('test_task', 'arg1', 'arg2');
+
+      expect(mockSocket.send).toHaveBeenCalled();
+      expect(result).toBe('task-result');
+    });
+
+    it('should handle task errors', async () => {
+      // Capture the packet ID when send is called and trigger error response
+      mockSocket.send = vi.fn((data: any, options: any, callback?: any) => {
+        const packet = decodePacket(data);
+        const packetId = packet.id;
+
+        // Simulate async error response
+        setTimeout(() => {
+          const responseHandler = remotePeer['responseHandlers'].get(packetId);
+          if (responseHandler?.errorHandler) {
+            responseHandler.errorHandler(new Error('Task failed'));
+          }
+        }, 10);
+
+        if (callback) callback();
+      });
+
+      await expect(remotePeer.runTask('failing_task')).rejects.toThrow('Task failed');
+    });
+  });
+
+  describe('Packet Handling', () => {
+    it('should handle GET packet', async () => {
+      const packet = createPacket(1, 1, TYPE_GET, ['550e8400-e29b-41d4-a716-446655440000', 'property']);
+
+      const mockStub = {
+        get: vi.fn().mockResolvedValue('property-value'),
+      };
+
+      netron.peer.getStubByDefinitionId = vi.fn().mockReturnValue(mockStub);
+      remotePeer['sendResponse'] = vi.fn();
+
+      await remotePeer.handlePacket(packet);
+
+      expect(mockStub.get).toHaveBeenCalledWith('property');
+      expect(remotePeer['sendResponse']).toHaveBeenCalledWith(packet, 'property-value');
+    });
+
+    it('should handle SET packet', async () => {
+      const packet = createPacket(2, 1, TYPE_SET, ['550e8400-e29b-41d4-a716-446655440000', 'property', 'new-value']);
+
+      const mockStub = {
+        set: vi.fn().mockResolvedValue(undefined),
+      };
+
+      netron.peer.getStubByDefinitionId = vi.fn().mockReturnValue(mockStub);
+      remotePeer['sendResponse'] = vi.fn();
+
+      await remotePeer.handlePacket(packet);
+
+      expect(mockStub.set).toHaveBeenCalledWith('property', 'new-value');
+      expect(remotePeer['sendResponse']).toHaveBeenCalledWith(packet, undefined);
+    });
+
+    it('should handle CALL packet', async () => {
+      const packet = createPacket(3, 1, TYPE_CALL, ['550e8400-e29b-41d4-a716-446655440000', 'method', 'arg1', 'arg2']);
+
+      const mockStub = {
+        call: vi.fn().mockResolvedValue('call-result'),
+      };
+
+      netron.peer.getStubByDefinitionId = vi.fn().mockReturnValue(mockStub);
+      remotePeer['sendResponse'] = vi.fn();
+
+      await remotePeer.handlePacket(packet);
+
+      expect(mockStub.call).toHaveBeenCalledWith('method', ['arg1', 'arg2'], remotePeer);
+      expect(remotePeer['sendResponse']).toHaveBeenCalledWith(packet, 'call-result');
+    });
+
+    it('should handle TASK packet', async () => {
+      const packet = createPacket(4, 1, TYPE_TASK, ['test_task', 'arg1']);
+
+      netron.runTask = vi.fn().mockResolvedValue('task-result');
+      remotePeer['sendResponse'] = vi.fn();
+
+      await remotePeer.handlePacket(packet);
+
+      expect(netron.runTask).toHaveBeenCalledWith(remotePeer, 'test_task', 'arg1');
+      expect(remotePeer['sendResponse']).toHaveBeenCalledWith(packet, 'task-result');
+    });
+
+    it('should handle STREAM packet', async () => {
+      const packet = createPacket(5, 1, TYPE_STREAM, 'chunk-data');
+      packet.streamId = 123;
+      packet.streamIndex = 0;
+
+      await remotePeer.handlePacket(packet);
+
+      expect(remotePeer.readableStreams.has(123)).toBe(true);
+    });
+
+    it('should handle STREAM_ERROR packet', async () => {
+      const streamId = 456;
+      const packet = createPacket(6, 1, TYPE_STREAM_ERROR, {
+        streamId,
+        message: 'Stream error',
+      });
+
+      const mockStream = {
+        destroy: vi.fn(),
+      };
+
+      remotePeer.readableStreams.set(streamId, mockStream as any);
+
+      await remotePeer.handlePacket(packet);
+
+      expect(mockStream.destroy).toHaveBeenCalled();
+    });
+
+    it('should handle STREAM_CLOSE packet', async () => {
+      const streamId = 789;
+      const packet = createPacket(7, 1, TYPE_STREAM_CLOSE, {
+        streamId,
+        reason: 'Stream closed',
+      });
+
+      const mockStream = {
+        forceClose: vi.fn(),
+      };
+
+      remotePeer.readableStreams.set(streamId, mockStream as any);
+
+      await remotePeer.handlePacket(packet);
+
+      expect(mockStream.forceClose).toHaveBeenCalledWith('Stream closed');
+    });
+
+    it('should handle packet errors gracefully', async () => {
+      const packet = createPacket(8, 1, TYPE_GET, ['550e8400-e29b-41d4-a716-446655440000', 'property']);
+
+      netron.peer.getStubByDefinitionId = vi.fn().mockImplementation(() => {
+        throw new Error('Stub not found');
+      });
+
+      remotePeer['sendErrorResponse'] = vi.fn();
+
+      await remotePeer.handlePacket(packet);
+
+      expect(remotePeer['sendErrorResponse']).toHaveBeenCalledWith(packet, expect.any(Error));
+    });
+  });
+
+  describe('Stream Management', () => {
+    it('should send stream chunk', async () => {
+      mockSocket.send = vi.fn();
+
+      await remotePeer.sendStreamChunk(123, 'chunk-data', 0, false, false);
+
+      expect(mockSocket.send).toHaveBeenCalled();
+    });
+
+    it('should track writable streams', () => {
+      const mockWritableStream = {
+        write: vi.fn(),
+      };
+
+      remotePeer.writableStreams.set(123, mockWritableStream as any);
+
+      expect(remotePeer.writableStreams.has(123)).toBe(true);
+      expect(remotePeer.writableStreams.get(123)).toBe(mockWritableStream);
+    });
+
+    it('should track readable streams', () => {
+      const mockReadableStream = {
+        read: vi.fn(),
+      };
+
+      remotePeer.readableStreams.set(456, mockReadableStream as any);
+
+      expect(remotePeer.readableStreams.has(456)).toBe(true);
+      expect(remotePeer.readableStreams.get(456)).toBe(mockReadableStream);
+    });
+  });
+
+  describe('Connection Management', () => {
+    it('should disconnect', async () => {
+      await remotePeer.disconnect();
+
+      expect(mockSocket.close).toHaveBeenCalled();
+    });
+
+    it('should handle close', async () => {
+      await remotePeer.close();
+
+      expect(mockSocket.close).toHaveBeenCalled();
+    });
+
+    it('should cleanup resources on disconnect', async () => {
+      remotePeer.writableStreams.set(1, {} as any);
+      remotePeer.readableStreams.set(2, {} as any);
+      remotePeer.eventSubscribers.set('test', []);
+
+      await remotePeer.disconnect();
+
+      expect(remotePeer.writableStreams.size).toBe(0);
+      expect(remotePeer.readableStreams.size).toBe(0);
+      expect(remotePeer.eventSubscribers.size).toBe(0);
+    });
+
+    it('should emit manual-disconnect event', async () => {
+      const disconnectHandler = vi.fn();
+      remotePeer.once('manual-disconnect', disconnectHandler);
+
+      await remotePeer.disconnect();
+
+      expect(disconnectHandler).toHaveBeenCalled();
+    });
+
+    it('should handle socket not open state', async () => {
+      mockSocket.readyState = 'CLOSED';
+
+      await expect(remotePeer.disconnect()).resolves.not.toThrow();
+    });
+  });
+
+  describe('Definition Management', () => {
+    it('should reference service definition', () => {
+      const parentDef = {
+        id: 'parent-123',
+        meta: { name: 'ParentService' },
+      } as Definition;
+
+      const childDef = {
+        id: 'child-456',
+        meta: { name: 'ChildService' },
+      } as Definition;
+
+      const result = remotePeer.refService(childDef, parentDef);
+
+      expect(result.parentId).toBe('parent-123');
+      expect(remotePeer.definitions.has('child-456')).toBe(true);
+    });
+
+    it('should return existing definition on re-reference', () => {
+      const parentDef = { id: 'parent-123' } as Definition;
+      const childDef = { id: 'child-456' } as Definition;
+
+      remotePeer.definitions.set('child-456', childDef);
+
+      const result = remotePeer.refService(childDef, parentDef);
+
+      expect(result).toBe(childDef);
+    });
+
+    it('should unreference service definition', () => {
+      const definition = {
+        id: 'def-789',
+        meta: { name: 'TestService', version: '1.0.0' },
+      } as Definition;
+
+      remotePeer.definitions.set('def-789', definition);
+      remotePeer.unrefService('def-789');
+
+      expect(remotePeer.definitions.has('def-789')).toBe(false);
+    });
+
+    it('should get service names', () => {
+      remotePeer.services.set('Service1', {} as any);
+      remotePeer.services.set('Service2', {} as any);
+
+      const names = remotePeer.getServiceNames();
+
+      expect(names).toContain('Service1');
+      expect(names).toContain('Service2');
+      expect(names.length).toBe(2);
+    });
+  });
+
+  describe('Cache Invalidation', () => {
+    it('should invalidate all definitions', () => {
+      remotePeer.services.set('Service1', {} as any);
+      remotePeer.definitions.set('def-1', {} as any);
+
+      const count = remotePeer.invalidateDefinitionCache();
+
+      expect(count).toBeGreaterThan(0);
+      expect(remotePeer.services.size).toBe(0);
+      expect(remotePeer.definitions.size).toBe(0);
+    });
+
+    it('should invalidate definitions by pattern', () => {
+      remotePeer.services.set('TestService@1.0.0', { id: 'def-1' } as any);
+      remotePeer.services.set('OtherService@1.0.0', { id: 'def-2' } as any);
+      remotePeer.definitions.set('def-1', {} as any);
+      remotePeer.definitions.set('def-2', {} as any);
+
+      remotePeer.invalidateDefinitionCache('Test*');
+
+      expect(remotePeer.services.has('TestService@1.0.0')).toBe(false);
+      expect(remotePeer.services.has('OtherService@1.0.0')).toBe(true);
+    });
+  });
+
+  describe('Authentication', () => {
+    it('should set authentication context', () => {
+      const authContext = {
+        userId: 'user-123',
+        roles: ['admin'],
+        permissions: ['read', 'write'],
+      };
+
+      remotePeer.setAuthContext(authContext);
+
+      expect(remotePeer.getAuthContext()).toEqual(authContext);
+      expect(remotePeer.isAuthenticated()).toBe(true);
+    });
+
+    it('should clear authentication context', () => {
+      const authContext = {
+        userId: 'user-123',
+        roles: ['admin'],
+        permissions: ['read'],
+      };
+
+      remotePeer.setAuthContext(authContext);
+      remotePeer.clearAuthContext();
+
+      expect(remotePeer.getAuthContext()).toBeUndefined();
+      expect(remotePeer.isAuthenticated()).toBe(false);
+    });
+
+    it('should check authentication status', () => {
+      expect(remotePeer.isAuthenticated()).toBe(false);
+
+      remotePeer.setAuthContext({
+        userId: 'user-123',
+        roles: [],
+        permissions: [],
+      });
+
+      expect(remotePeer.isAuthenticated()).toBe(true);
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('should handle packet decode errors', async () => {
+      await remotePeer.init(false);
+
+      const messageHandler = mockSocket.on.mock.calls.find((call: any) => call[0] === 'message')?.[1];
+
+      if (messageHandler) {
+        // Send truly invalid binary data that will fail MessagePack decoding
+        // Use a buffer that starts with an invalid MessagePack marker
+        const invalidData = new Uint8Array([0xff, 0xff, 0xff, 0xff]);
+        await messageHandler(invalidData, true);
+      }
+
+      // Should log error but not throw
+      expect(remotePeer.logger.error).toHaveBeenCalled();
+    });
+
+    it('should handle non-binary messages', async () => {
+      await remotePeer.init(false);
+
+      const messageHandler = mockSocket.on.mock.calls.find((call: any) => call[0] === 'message')?.[1];
+
+      if (messageHandler) {
+        await messageHandler('text message', false);
+      }
+
+      expect(logger.child().warn).toHaveBeenCalled();
+    });
+
+    it('should handle send errors', async () => {
+      mockSocket.send = vi.fn((data: any, options: any, callback: any) => {
+        callback(new Error('Send failed'));
+      });
+
+      const packet = createPacket(1, 1, TYPE_GET, ['550e8400-e29b-41d4-a716-446655440000', 'prop']);
+
+      await expect(remotePeer.sendPacket(packet)).rejects.toThrow('Send failed');
+    });
+
+    it('should handle socket closed during send', async () => {
+      mockSocket.readyState = 'CLOSED';
+
+      const packet = createPacket(1, 1, TYPE_GET, ['550e8400-e29b-41d4-a716-446655440000', 'prop']);
+
+      await expect(remotePeer.sendPacket(packet)).rejects.toThrow(/closed/i);
+    });
+  });
+
+  describe('Request Timeout', () => {
+    it('should timeout requests', async () => {
+      const shortTimeoutPeer = new RemotePeer(mockSocket, netron, 'timeout-peer', 100);
+
+      const definition = { id: '550e8400-e29b-41d4-a716-446655440000', meta: { name: 'Test' } } as Definition;
+      shortTimeoutPeer.definitions.set('550e8400-e29b-41d4-a716-446655440000', definition);
+
+      // Don't send response - let it timeout
+      mockSocket.send = vi.fn();
+
+      await expect(shortTimeoutPeer.get('550e8400-e29b-41d4-a716-446655440000', 'prop')).rejects.toThrow();
+    });
+  });
+
+  describe('Query Interface', () => {
+    it('should query interface remotely', async () => {
+      remotePeer.runTask = vi.fn().mockResolvedValue({
+        id: '550e8400-e29b-41d4-a716-446655440000',
+        meta: {
+          name: 'TestService',
+          version: '1.0.0',
+          properties: {},
+          methods: { testMethod: {} },
+        },
+      });
+
+      const interfaceInstance = await remotePeer.queryInterface('TestService@1.0.0');
+
+      expect(interfaceInstance).toBeDefined();
+      expect(remotePeer.runTask).toHaveBeenCalled();
+    });
+
+    it('should throw when service not found', async () => {
+      remotePeer.runTask = vi.fn().mockResolvedValue(null);
+
+      await expect(remotePeer.queryInterface('NonExistent@1.0.0')).rejects.toThrow(/not found/i);
+    });
+  });
+
+  describe('Logger Integration', () => {
+    it('should use child logger with peer context', () => {
+      expect(remotePeer.logger).toBeDefined();
+      expect(netron.logger.child).toHaveBeenCalledWith(
+        expect.objectContaining({
+          peerId: 'remote-peer-123',
+          remotePeer: true,
+        })
+      );
+    });
+
+    it('should log packet handling', async () => {
+      const packet = createPacket(1, 1, TYPE_GET, ['550e8400-e29b-41d4-a716-446655440000', 'prop']);
+
+      netron.peer.getStubByDefinitionId = vi.fn().mockImplementation(() => {
+        throw new Error('Test error');
+      });
+
+      await remotePeer.handlePacket(packet);
+
+      expect(logger.child().debug).toHaveBeenCalled();
+      expect(logger.child().error).toHaveBeenCalled();
+    });
+  });
+});

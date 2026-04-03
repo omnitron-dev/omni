@@ -1,0 +1,37 @@
+{
+  "name": "@omnitron-dev/titan-ratelimit",
+  "version": "0.1.0",
+  "description": "Rate limiting module for Titan framework with Redis-backed storage",
+  "author": "LuxQuant",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "rm -rf dist node_modules/.tmp && tsc -p ./tsconfig.json",
+    "test": "vitest run",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "reflect-metadata": "^0.2.2"
+  },
+  "peerDependencies": {
+    "@omnitron-dev/titan": "workspace:*",
+    "@omnitron-dev/titan-redis": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "25.5.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
+  }
+}

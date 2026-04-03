@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Netron Browser Client E2E Test</title>
+</head>
+<body>
+  <h1>Netron Browser Client E2E Test</h1>
+  <div id="app">
+    <button id="connect">Connect</button>
+    <button id="disconnect">Disconnect</button>
+    <button id="invoke">Invoke Method</button>
+    <pre id="output"></pre>
+  </div>
+
+  <script type="module">
+    // This will be used for E2E testing with Playwright
+    // Import the built client library
+    import { createClient } from '/dist/index.js';
+
+    const output = document.getElementById('output');
+    let client;
+
+    document.getElementById('connect').addEventListener('click', async () => {
+      try {
+        client = createClient({
+          url: 'http://localhost:3000',
+          transport: 'http',
+        });
+        await client.connect();
+        output.textContent = 'Connected!';
+      } catch (error) {
+        output.textContent = `Error: ${error.message}`;
+      }
+    });
+
+    document.getElementById('disconnect').addEventListener('click', async () => {
+      try {
+        if (client) {
+          await client.disconnect();
+          output.textContent = 'Disconnected!';
+        }
+      } catch (error) {
+        output.textContent = `Error: ${error.message}`;
+      }
+    });
+
+    document.getElementById('invoke').addEventListener('click', async () => {
+      try {
+        if (client) {
+          const result = await client.invoke('test', 'echo', ['Hello, Netron!']);
+          output.textContent = `Result: ${JSON.stringify(result, null, 2)}`;
+        } else {
+          output.textContent = 'Not connected!';
+        }
+      } catch (error) {
+        output.textContent = `Error: ${error.message}`;
+      }
+    });
+  </script>
+</body>
+</html>

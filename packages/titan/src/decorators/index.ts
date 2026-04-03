@@ -1,0 +1,183 @@
+/**
+ * Titan Decorators - Unified decorator system for dependency injection and metadata
+ *
+ * @packageDocumentation
+ *
+ * ## API Stability Markers
+ *
+ * - `@stable` - Part of the public API, follows semantic versioning
+ * - `@experimental` - API may change in minor versions
+ * - `@internal` - Not intended for public use
+ * - `@deprecated` - Will be removed in a future version
+ *
+ * @since 0.1.0
+ */
+
+// ============================================================================
+// Decorator Types
+// ============================================================================
+
+/**
+ * Type definitions for @Public and related decorators.
+ *
+ * @stable
+ * @since 0.4.6
+ */
+export type { MethodOptions, AuthConfig, CacheConfig, PrefetchConfig, AuditConfig, AuditEvent } from './types.js';
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+/**
+ * Decorator metadata constants for standardized metadata key usage.
+ *
+ * @stable
+ * @since 0.1.0
+ */
+export { DECORATOR_METADATA, type DecoratorMetadataKey } from './constants.js';
+
+// ============================================================================
+// Decorator Creation Utilities
+// ============================================================================
+
+/**
+ * Decorator creation and utility exports.
+ *
+ * @stable
+ * @since 0.1.0
+ */
+export {
+  // Decorator creation utilities
+  createDecorator,
+  createMethodInterceptor,
+  createPropertyInterceptor,
+  createParameterizedDecorator,
+  combineDecorators,
+
+  // Metadata utilities
+  getCustomMetadata,
+  getAllCustomMetadata,
+  hasDecorator,
+  getDecoratorOptions,
+
+  // Types
+  DecoratorTarget,
+  type DecoratorContext,
+  type DecoratorTransform,
+  type MetadataTransform,
+  type OptionsValidator,
+  type DecoratorHook,
+  type CustomDecoratorConfig,
+
+  // Built-in interceptors
+  Memoize,
+  Retry,
+  Deprecated,
+} from './decorator-factory.js';
+
+// ============================================================================
+// Core DI Decorators
+// ============================================================================
+
+/**
+ * Core dependency injection decorators.
+ *
+ * @stable
+ * @since 0.1.0
+ */
+export {
+  // Core DI
+  Module, // Currently wraps Nexus Module system with decorator syntax for compatibility
+  Injectable,
+  Singleton,
+  Transient,
+  Scoped,
+  Request,
+  Service,
+  Global,
+  // Service/Public decorators
+  Public,
+  // Composable method decorators (use alongside @Public())
+  Auth,
+  RateLimit,
+  Cache,
+  // Metadata keys
+  METADATA_KEYS,
+  SERVICE_ANNOTATION,
+  PUBLIC_ANNOTATION,
+  // Types
+  type Scope,
+  type InjectableOptions,
+  type ModuleDecoratorOptions,
+} from './core.js';
+
+// ============================================================================
+// Injection Decorators
+// ============================================================================
+
+/**
+ * Parameter and property injection decorators.
+ *
+ * @stable
+ * @since 0.1.0
+ */
+export * from './injection.js';
+
+// ============================================================================
+// Lifecycle Decorators
+// ============================================================================
+
+/**
+ * Lifecycle hook decorators for initialization and cleanup.
+ *
+ * @stable
+ * @since 0.1.0
+ */
+export * from './lifecycle.js';
+
+// ============================================================================
+// Utility Decorators
+// ============================================================================
+
+/**
+ * Utility decorators for common patterns.
+ *
+ * @stable
+ * @since 0.1.0
+ */
+export * from './utility.js';
+
+// ============================================================================
+// Validation Decorators
+// ============================================================================
+
+/**
+ * Validation decorators for type-safe input/output validation using Zod.
+ *
+ * @stable
+ * @since 0.1.0
+ *
+ * @remarks
+ * These decorators provide type-safe validation using Zod schemas.
+ */
+export {
+  Contract,
+  Validate,
+  NoValidation,
+  WithValidationOptions,
+  ValidationBatch,
+  ValidateInput,
+  ValidateOutput,
+  ValidateStream,
+  ValidationSchemas,
+  ValidationPresets,
+  type ValidationBatchOptions,
+  type ContractType,
+  type MethodContract,
+  type ValidationOptions,
+  type ValidationOptionsType,
+  contract,
+  contractBuilder,
+  Contracts,
+} from './validation.js';

@@ -1,0 +1,160 @@
+/**
+ * HTTP Transport implementation for Netron
+ * Provides transparent HTTP transport while maintaining the Netron service paradigm
+ */
+
+import type {
+  ITransport,
+  ITransportConnection,
+  ITransportServer,
+  TransportCapabilities,
+  TransportOptions,
+  TransportAddress,
+} from '../types.js';
+import { HttpServer } from './server.js';
+import { HttpConnection } from './connection.js';
+import { Errors } from '../../../errors/index.js';
+import { detectRuntime } from '../../utils.js';
+
+/**
+ * HTTP Transport implementation
+ * Enables services to be exposed via HTTP REST endpoints while maintaining
+ * the same queryInterface/exposeService API as WebSocket transport
+ */
+export class HttpTransport implements ITransport {
+  /**
+   * Transport name identifier
+   */
+  readonly name = 'http';
+
+  /**
+   * Transport capabilities
+   */
+  readonly capabilities: TransportCapabilities = {
+    streaming: true, // Via Server-Sent Events (SSE) or chunked encoding
+    bidirectional: false, // HTTP is request-response
+    binary: false, // HTTP is a text protocol (headers + status line), even though it can carry binary payloads
+    reconnection: false, // HTTP is stateless
+    multiplexing: true, // Multiple requests over same connection (HTTP/1.1 keep-alive, HTTP/2)
+    server: true, // HTTP server capability is now enabled and fully implemented
+  };
+
+  /**
+   * Connect to a remote HTTP endpoint
+   * Creates an HTTP client that speaks Netron protocol over HTTP
+   */
+  async connect(address: string, options?: TransportOptions): Promise<ITransportConnection> {
+    if (!this.isValidAddress(address)) {
+      throw Errors.badRequest(`Invalid HTTP address: ${address}`, { address });
+    }
+
+    // Feature flag for using new direct HTTP connection without packet protocol
+    const _useDirectHttp = (options as any)?.useDirectHttp || process.env['NETRON_HTTP_DIRECT'] === 'true' || false;
+
+    // Always use direct HTTP connection (v1.0) as packet-based is removed
+    const connection = new HttpConnection(address, options);
+
+    return connection;
+  }
+
+  /**
+   * Create an HTTP server
+   * Creates an HTTP server that understands Netron services
+   *
+   * The server provides:
+   * - Native HTTP/REST endpoints for Netron services
+   * - OpenAPI documentation generation
+   * - Health checks and metrics
+   * - CORS support
+   * - Middleware pipeline integration
+   * - Authentication support
+   */
+  async createServer(options?: TransportOptions): Promise<ITransportServer> {
+    const server = new HttpServer(options);
+    // Don't call listen() here - Netron will call it
+    // This matches the behavior of WebSocketTransport
+    return server;
+  }
+
+  /**
+   * Check if an address is valid for HTTP transport
+   */
+  isValidAddress(address: string): boolean {
+    try {
+      const url = new URL(address);
+      return url.protocol === 'http:' || url.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Parse an HTTP address into components
+   */
+  parseAddress(address: string): TransportAddress {
+    if (!this.isValidAddress(address)) {
+      throw Errors.badRequest(`Invalid HTTP address: ${address}`, { address });
+    }
+
+    const url = new URL(address);
+
+    // Determine default port based on protocol
+    const defaultPort = url.protocol === 'https:' ? 443 : 80;
+    const port = url.port ? parseInt(url.port, 10) : defaultPort;
+
+    // Extract search params as a plain object
+    const params: Record<string, string> = {};
+    url.searchParams.forEach((value, key) => {
+      params[key] = value;
+    });
+
+    return {
+      protocol: url.protocol.slice(0, -1), // Remove trailing colon
+      host: url.hostname,
+      port,
+      path: url.pathname,
+      params: Object.keys(params).length > 0 ? params : undefined,
+    };
+  }
+
+  /**
+   * Format an address from components
+   */
+  formatAddress(address: TransportAddress): string {
+    const protocol = address.protocol || 'http';
+    const host = address.host || 'localhost';
+    const port = address.port;
+    const path = address.path || '/';
+
+    // Build base URL
+    let url = `${protocol}://${host}`;
+
+    // Add port if it's not the default for the protocol
+    const defaultPort = protocol === 'https' ? 443 : 80;
+    if (port && port !== defaultPort) {
+      url += `:${port}`;
+    }
+
+    // Add path
+    url += path;
+
+    // Add query parameters
+    if (address.params && Object.keys(address.params).length > 0) {
+      const params = new URLSearchParams(address.params);
+      url += `?${params.toString()}`;
+    }
+
+    return url;
+  }
+
+  /**
+   * Get transport-specific metrics
+   */
+  getMetrics(): any {
+    return {
+      transport: 'http',
+      runtime: detectRuntime(),
+      capabilities: this.capabilities,
+    };
+  }
+}

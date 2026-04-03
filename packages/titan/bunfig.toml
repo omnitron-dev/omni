@@ -1,0 +1,16 @@
+[test]
+# Test configuration for Bun
+preload = ["./test/test-utils.ts"]
+coverage = false
+# TypeScript configuration
+smol = false
+
+[install]
+# Package installation settings
+auto = "auto"
+frozenLockfile = false
+globalBinDir = "~/.bun/bin"
+
+[run]
+# Runtime configuration
+silent = false

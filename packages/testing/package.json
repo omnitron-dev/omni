@@ -1,0 +1,146 @@
+{
+  "name": "@omnitron-dev/testing",
+  "version": "0.1.0",
+  "description": "Cross-runtime testing utilities",
+  "author": "LuxQuant",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./async": {
+      "types": "./dist/async/index.d.ts",
+      "import": "./dist/async/index.js",
+      "require": "./dist/async/index.cjs"
+    },
+    "./docker": {
+      "types": "./dist/docker/index.d.ts",
+      "import": "./dist/docker/index.js",
+      "require": "./dist/docker/index.cjs"
+    },
+    "./runtime/vitest": {
+      "types": "./runtime/vitest.d.ts",
+      "import": "./runtime/vitest.js",
+      "require": "./runtime/vitest.js"
+    },
+    "./runtime/bun": {
+      "types": "./runtime/bun.d.ts",
+      "import": "./runtime/bun.js",
+      "require": "./runtime/bun.js"
+    },
+    "./runtime/deno": {
+      "types": "./dist/runtime/deno-adapter.d.ts",
+      "import": "./dist/runtime/deno-adapter.js",
+      "require": "./dist/runtime/deno-adapter.cjs"
+    },
+    "./runtime/node": {
+      "types": "./dist/runtime/node-adapter.d.ts",
+      "import": "./dist/runtime/node-adapter.js",
+      "require": "./dist/runtime/node-adapter.cjs"
+    },
+    "./titan": {
+      "types": "./dist/titan/index.d.ts",
+      "import": "./dist/titan/index.js",
+      "require": "./dist/titan/index.cjs"
+    },
+    "./helpers": {
+      "types": "./dist/helpers/index.d.ts",
+      "import": "./dist/helpers/index.js",
+      "require": "./dist/helpers/index.cjs"
+    },
+    "./performance": {
+      "types": "./dist/performance/index.d.ts",
+      "import": "./dist/performance/index.js",
+      "require": "./dist/performance/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "runtime"
+  ],
+  "scripts": {
+    "build": "rm -rf dist node_modules/.tmp && tsc -p tsconfig.json",
+    "build:titan": "rm -rf dist/titan && NODE_OPTIONS='--max-old-space-size=8192' tsc -p tsconfig.titan.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "lint": "eslint src --max-warnings=0",
+    "lint:fix": "eslint src --fix",
+    "test": "vitest run",
+    "test:bun": "bun test src/**/*.test.ts",
+    "test:deno": "deno test --allow-all src/**/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@kysera/testing": "^0.8.7",
+    "@types/node": "^25.0.3",
+    "kysely": "0.28.12",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.5",
+    "ioredis": "^5.8.2",
+    "pino": "^10.1.0",
+    "typescript": "~5.9.3",
+    "vitest": "^4.1.0",
+    "zod": "^4.2.1"
+  },
+  "peerDependencies": {
+    "@omnitron-dev/eventemitter": "workspace:*",
+    "@omnitron-dev/titan": "workspace:*",
+    "@omnitron-dev/titan-database": "workspace:*",
+    "@omnitron-dev/titan-pm": "workspace:*",
+    "@omnitron-dev/titan-redis": "workspace:*",
+    "bun": "*",
+    "vitest": "^4.1.0"
+  },
+  "peerDependenciesMeta": {
+    "@omnitron-dev/eventemitter": {
+      "optional": true
+    },
+    "@omnitron-dev/titan": {
+      "optional": true
+    },
+    "@omnitron-dev/titan-database": {
+      "optional": true
+    },
+    "@omnitron-dev/titan-pm": {
+      "optional": true
+    },
+    "@omnitron-dev/titan-redis": {
+      "optional": true
+    },
+    "bun": {
+      "optional": true
+    },
+    "vitest": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "bun": ">=1.2.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/devgrid/devgrid.git",
+    "directory": "packages/testing"
+  },
+  "keywords": [
+    "testing",
+    "cross-runtime",
+    "bun",
+    "deno",
+    "node",
+    "vitest",
+    "test-utilities"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

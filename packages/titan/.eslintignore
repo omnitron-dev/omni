@@ -1,0 +1,12 @@
+# Generated files
+test/utils/docker-test-manager.d.ts
+test/utils/docker-test-manager.js
+test/utils/docker-test-manager.js.map
+test/utils/docker-test-manager.d.ts.map
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Benchmark files (not in tsconfig project)
+benchmark/

@@ -1,0 +1,54 @@
+{
+  "name": "@omnitron-dev/common",
+  "version": "0.1.0",
+  "description": "Some useful primitives",
+  "author": "LuxQuant",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "rm -rf dist node_modules/.tmp && tsc -p ./tsconfig.json",
+    "test": "vitest run",
+    "test:node": "vitest run",
+    "test:bun": "/Users/taaliman/.bun/bin/bun test test/runtime/bun-all.test.ts",
+    "test:deno": "/Users/taaliman/.deno/bin/deno test --no-check --allow-read --allow-write --allow-env --unstable-sloppy-imports test/runtime/deno-all.test.ts",
+    "test:legacy": "vitest run && bun test test/primitives.spec.ts test/list-buffer.spec.ts test/entries.spec.ts test/omit.spec.ts test/predicates.spec.ts test/promise.spec.ts test/timed-map-bun-compat.spec.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "25.0.1",
+    "vitest": "^4.1.0",
+    "typescript": "5.9.3"
+  },
+  "keywords": [
+    "utils",
+    "common",
+    "helpers",
+    "typescript",
+    "utilities",
+    "predicates",
+    "type-checking",
+    "validation",
+    "primitives",
+    "functions",
+    "browser",
+    "node",
+    "cross-platform",
+    "type-guards",
+    "utility-functions",
+    "timed-map"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/omnitron-dev/omni.git",
+    "directory": "packages/common"
+  },
+  "bugs": {
+    "url": "https://github.com/omnitron-dev/omni/issues"
+  },
+  "homepage": "https://github.com/omnitron-dev/omni/tree/main/packages/common#readme"
+}

@@ -1,0 +1,527 @@
+/**
+ * Transport Adapter for Netron
+ *
+ * Provides a high-level interface for managing multiple transport types
+ * through a unified API.
+ */
+
+import { WebSocket } from 'ws';
+import { EventEmitter } from '@omnitron-dev/eventemitter';
+import {
+  ITransportConnection,
+  ITransportServer,
+  ITransportRegistry,
+  TransportOptions,
+  ConnectionState,
+  TransportCapabilities,
+  TransportAddress,
+} from './types.js';
+import { TransportRegistry, getTransportForAddress } from './transport-registry.js';
+import { Packet, encodePacket } from '../packet/index.js';
+import { Errors } from '../../errors/index.js';
+import type { ILogger } from '../../modules/logger/logger.types.js';
+import { fallbackLog } from '../../utils/fallback-log.js';
+import { generateConnectionId } from '../../utils/id.js';
+
+/**
+ * Binary transport adapter
+ *
+ * Wraps a transport connection to provide a standard socket-like interface
+ * compatible with RemotePeer implementation. Works uniformly with all binary
+ * transports (WebSocket, TCP, Unix sockets).
+ */
+export class BinaryTransportAdapter extends EventEmitter {
+  // Socket readyState constants (compatible with WebSocket standard)
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSING = 2;
+  static readonly CLOSED = 3;
+
+  private connection: ITransportConnection;
+  private _readyState: number = BinaryTransportAdapter.CONNECTING;
+  private _url?: string;
+  private _binaryType: 'nodebuffer' | 'arraybuffer' = 'nodebuffer';
+  private logger?: ILogger;
+
+  constructor(connection: ITransportConnection, url?: string) {
+    super();
+    this.connection = connection;
+    this._url = url;
+    this.setupEventHandlers();
+  }
+
+  /**
+   * Set logger instance for adapter operations
+   */
+  setLogger(logger: ILogger): void {
+    this.logger = logger;
+  }
+
+  /**
+   * Standard socket readyState property
+   */
+  get readyState(): number {
+    switch (this.connection.state) {
+      case ConnectionState.CONNECTING:
+        return BinaryTransportAdapter.CONNECTING;
+      case ConnectionState.CONNECTED:
+        return BinaryTransportAdapter.OPEN;
+      case ConnectionState.DISCONNECTING:
+        return BinaryTransportAdapter.CLOSING;
+      case ConnectionState.DISCONNECTED:
+      case ConnectionState.ERROR:
+        return BinaryTransportAdapter.CLOSED;
+      default:
+        return BinaryTransportAdapter.CLOSED;
+    }
+  }
+
+  /**
+   * Standard socket properties
+   */
+  get url(): string | undefined {
+    return this._url;
+  }
+
+  get binaryType(): string {
+    return this._binaryType;
+  }
+
+  set binaryType(type: string) {
+    if (type !== 'nodebuffer' && type !== 'arraybuffer') {
+      throw Errors.badRequest('Invalid binary type', { type, allowed: ['nodebuffer', 'arraybuffer'] });
+    }
+    this._binaryType = type as 'nodebuffer' | 'arraybuffer';
+  }
+
+  /**
+   * Remote address (standard socket interface)
+   */
+  get _socket(): any {
+    return {
+      remoteAddress: this.connection.remoteAddress?.split(':')[0],
+      remotePort: this.connection.remoteAddress?.split(':')[1],
+      localAddress: this.connection.localAddress?.split(':')[0],
+      localPort: this.connection.localAddress?.split(':')[1],
+    };
+  }
+
+  /**
+   * Setup event handlers to map transport events to standard socket events
+   */
+  private setupEventHandlers(): void {
+    // Map connect event to open
+    this.connection.on('connect', () => {
+      this._readyState = BinaryTransportAdapter.OPEN;
+      this.emit('open');
+    });
+
+    // Map packet/data events to message
+    this.connection.on('packet', (packet: Packet) => {
+      const encoded = encodePacket(packet);
+      const data =
+        this._binaryType === 'arraybuffer'
+          ? encoded.buffer.slice(encoded.byteOffset, encoded.byteOffset + encoded.byteLength)
+          : Buffer.from(encoded);
+      // Packets are always binary
+      this.emit('message', data, true);
+    });
+
+    this.connection.on('data', (data: Buffer | ArrayBuffer) => {
+      const buffer =
+        this._binaryType === 'arraybuffer' && Buffer.isBuffer(data)
+          ? data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)
+          : data;
+      // Raw data is treated as non-binary (text) for handshake messages
+      this.emit('message', buffer, false);
+    });
+
+    // Map error event
+    this.connection.on('error', (error: Error) => {
+      this.emit('error', error);
+    });
+
+    // Map disconnect event to close
+    this.connection.on('disconnect', (reason?: string) => {
+      this._readyState = BinaryTransportAdapter.CLOSED;
+      this.emit('close', 1000, Buffer.from(reason || ''));
+    });
+  }
+
+  /**
+   * Standard socket send method.
+   * Supports both 2-arg (data, callback) and 3-arg (data, options, callback) signatures
+   * for compatibility with RemotePeer.sendPacket() which calls send(data, {binary:true}, callback).
+   */
+  send(
+    data: any,
+    optionsOrCallback?: Record<string, unknown> | ((err?: Error) => void),
+    maybeCallback?: (err?: Error) => void
+  ): void {
+    // Normalize arguments: support both send(data, cb) and send(data, opts, cb)
+    let callback: ((err?: Error) => void) | undefined;
+    if (typeof maybeCallback === 'function') {
+      callback = maybeCallback;
+    } else if (typeof optionsOrCallback === 'function') {
+      callback = optionsOrCallback;
+    }
+    // Convert data to Buffer
+    let buffer: Buffer;
+    if (Buffer.isBuffer(data)) {
+      buffer = data;
+    } else if (data instanceof ArrayBuffer) {
+      buffer = Buffer.from(data);
+    } else if (data instanceof Uint8Array) {
+      buffer = Buffer.from(data);
+    } else if (typeof data === 'string') {
+      buffer = Buffer.from(data);
+    } else {
+      const error = Errors.badRequest('Invalid data type', { type: typeof data });
+      if (callback) callback(error);
+      else throw error;
+      return;
+    }
+
+    this.connection
+      .send(buffer)
+      .then(() => {
+        if (typeof callback === 'function') callback();
+      })
+      .catch((err) => {
+        if (typeof callback === 'function') callback(err);
+        // Log error if no callback provided
+        else {
+          if (this.logger) {
+            this.logger.error({ err }, 'BinaryTransportAdapter send error');
+          } else {
+            fallbackLog('error', 'BinaryTransportAdapter send error', { err });
+          }
+        }
+      });
+  }
+
+  /**
+   * Standard socket close method
+   */
+  close(code?: number, reason?: string): void {
+    this._readyState = BinaryTransportAdapter.CLOSING;
+    this.connection.close(code, reason).catch((error) => this.emit('error', error));
+  }
+
+  /**
+   * Standard socket ping method (WebSocket compatible signature)
+   * Uses unified TYPE_PING packet protocol from BaseConnection
+   */
+  ping(data?: any, mask?: boolean, callback?: (err?: Error) => void): void {
+    this.connection
+      .ping()
+      .then(() => callback?.())
+      .catch((err) => callback?.(err));
+  }
+
+  /**
+   * Standard socket pong method
+   */
+  pong(data?: any, mask?: boolean, callback?: (err?: Error) => void): void {
+    // Most transports don't support explicit pong
+    callback?.();
+  }
+
+  /**
+   * Standard socket terminate method
+   */
+  terminate(): void {
+    this._readyState = BinaryTransportAdapter.CLOSED;
+    this.connection.close(1006, 'Terminated').catch(() => {
+      /* Ignore errors on terminate */
+    });
+  }
+}
+
+/**
+ * Transport-based connection factory
+ *
+ * Creates connections using the transport abstraction layer
+ * with a standard socket interface. Works uniformly with all binary
+ * transports (WebSocket, TCP, Unix sockets).
+ */
+export class TransportConnectionFactory {
+  /**
+   * Create a connection to a remote endpoint
+   *
+   * @param address - Address to connect to (can be any transport URL)
+   * @param options - Connection options
+   * @returns Binary transport adapter with standard socket interface
+   */
+  static async connect(address: string, options: TransportOptions = {}): Promise<BinaryTransportAdapter> {
+    // Get appropriate transport for address
+    const transport = getTransportForAddress(address);
+    if (!transport) {
+      throw Errors.notFound('Transport', address);
+    }
+
+    // Create connection using transport
+    const connection = await transport.connect(address, options);
+
+    // Wrap in binary transport adapter
+    return new BinaryTransportAdapter(connection, address);
+  }
+
+  /**
+   * Create a binary transport adapter from an existing transport connection
+   */
+  static fromConnection(connection: ITransportConnection, url?: string): BinaryTransportAdapter {
+    return new BinaryTransportAdapter(connection, url);
+  }
+
+  /**
+   * Check if we can use native WebSocket (for backward compatibility)
+   */
+  static isNativeWebSocket(socket: any): socket is WebSocket {
+    return (
+      socket instanceof WebSocket ||
+      (typeof socket === 'object' &&
+        socket !== null &&
+        'readyState' in socket &&
+        'send' in socket &&
+        'close' in socket &&
+        !('connection' in socket))
+    ); // Exclude our adapter
+  }
+
+  /**
+   * Get binary transport adapter from either native WebSocket or transport connection
+   */
+  static getAdapter(socket: WebSocket | ITransportConnection): BinaryTransportAdapter {
+    if (this.isNativeWebSocket(socket)) {
+      // Create adapter for native WebSocket (backward compatibility)
+      return this.fromNativeWebSocket(socket);
+    }
+    return this.fromConnection(socket as ITransportConnection);
+  }
+
+  /**
+   * Create adapter from native WebSocket (for backward compatibility)
+   */
+  private static fromNativeWebSocket(ws: WebSocket): BinaryTransportAdapter {
+    // Create a minimal transport connection wrapper
+    const connection = new NativeWebSocketWrapper(ws);
+    return new BinaryTransportAdapter(connection, ws.url);
+  }
+}
+
+/**
+ * Wrapper for native WebSocket to implement ITransportConnection
+ * (for backward compatibility with code using native WebSocket)
+ */
+class NativeWebSocketWrapper extends EventEmitter implements ITransportConnection {
+  readonly id: string = generateConnectionId();
+  private ws: WebSocket;
+
+  constructor(ws: WebSocket) {
+    super();
+    this.ws = ws;
+    this.setupHandlers();
+  }
+
+  get state(): ConnectionState {
+    switch (this.ws.readyState) {
+      case WebSocket.CONNECTING:
+        return ConnectionState.CONNECTING;
+      case WebSocket.OPEN:
+        return ConnectionState.CONNECTED;
+      case WebSocket.CLOSING:
+        return ConnectionState.DISCONNECTING;
+      case WebSocket.CLOSED:
+      default:
+        return ConnectionState.DISCONNECTED;
+    }
+  }
+
+  get remoteAddress(): string | undefined {
+    // @ts-expect-error - Accessing internal _socket property
+    return this.ws._socket?.remoteAddress;
+  }
+
+  get localAddress(): string | undefined {
+    // @ts-expect-error - Accessing internal _socket property
+    return this.ws._socket?.localAddress;
+  }
+
+  private setupHandlers(): void {
+    this.ws.on('open', () => this.emit('connect'));
+    this.ws.on('message', (data) => {
+      const buffer = Buffer.isBuffer(data)
+        ? data
+        : data instanceof ArrayBuffer
+          ? Buffer.from(data)
+          : Buffer.concat(data as Buffer[]);
+      this.emit('data', buffer);
+    });
+    this.ws.on('error', (err) => this.emit('error', err));
+    this.ws.on('close', (code, reason) => this.emit('disconnect', reason?.toString()));
+  }
+
+  async send(data: Buffer | ArrayBuffer | Uint8Array): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.ws.send(data, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+  }
+
+  async sendPacket(packet: Packet): Promise<void> {
+    const encoded = encodePacket(packet);
+    return this.send(encoded);
+  }
+
+  async close(code?: number, reason?: string): Promise<void> {
+    this.ws.close(code, reason);
+  }
+
+  async ping(): Promise<number> {
+    return new Promise((resolve, reject) => {
+      const startTime = Date.now();
+
+      const timeout = setTimeout(() => {
+        this.ws.removeListener('pong', pongHandler);
+        reject(Errors.timeout('Ping', 5000));
+      }, 5000);
+
+      const pongHandler = () => {
+        clearTimeout(timeout);
+        this.ws.removeListener('pong', pongHandler);
+        const rtt = Date.now() - startTime;
+        resolve(rtt);
+      };
+
+      this.ws.once('pong', pongHandler);
+      this.ws.ping((err: Error | undefined) => {
+        if (err) {
+          clearTimeout(timeout);
+          this.ws.removeListener('pong', pongHandler);
+          reject(err);
+        }
+      });
+    });
+  }
+}
+
+/**
+ * Main transport adapter for managing multiple transport types
+ */
+export class TransportAdapter {
+  private registry: ITransportRegistry;
+
+  constructor(registry?: ITransportRegistry) {
+    this.registry = registry || TransportRegistry.createWithDefaults();
+  }
+
+  /**
+   * Connect to an address using appropriate transport
+   */
+  async connect(address: string, options?: TransportOptions): Promise<ITransportConnection> {
+    // First try to detect the protocol from the address format
+    const match = address.match(/^([a-z]+):\/\//i);
+    if (!match || !match[1]) {
+      throw Errors.badRequest('Invalid address format', { address });
+    }
+
+    const protocol = match[1].toLowerCase();
+
+    // Then check if we have a transport for this protocol
+    const transport = this.registry.getByProtocol(protocol);
+    if (!transport) {
+      throw Errors.notFound('Transport', protocol);
+    }
+
+    return transport.connect(address, options);
+  }
+
+  /**
+   * Create a server for the specified transport type
+   */
+  async createServer(transportName: string, options?: TransportOptions): Promise<ITransportServer> {
+    const transport = this.registry.get(transportName);
+    if (!transport) {
+      throw Errors.notFound('Transport', transportName);
+    }
+
+    if (!transport.createServer) {
+      throw Errors.notImplemented('Transport ' + transportName + ' server mode');
+    }
+
+    return transport.createServer(options);
+  }
+
+  /**
+   * Get list of available transport names
+   */
+  getAvailableTransports(): string[] {
+    return this.registry.list();
+  }
+
+  /**
+   * Check if address is valid for any registered transport
+   */
+  isValidAddress(address: string): boolean {
+    const protocol = this.detectProtocol(address);
+    if (!protocol) {
+      return false;
+    }
+
+    const transport = this.registry.getByProtocol(protocol);
+    return transport ? transport.isValidAddress(address) : false;
+  }
+
+  /**
+   * Parse address using appropriate transport
+   */
+  parseAddress(address: string): TransportAddress {
+    const protocol = this.detectProtocol(address);
+    if (!protocol) {
+      throw Errors.badRequest('Invalid address format', { address });
+    }
+
+    const transport = this.registry.getByProtocol(protocol);
+    if (!transport) {
+      throw Errors.notFound('Transport', protocol);
+    }
+
+    return transport.parseAddress(address);
+  }
+
+  /**
+   * Detect protocol from address
+   */
+  detectProtocol(address: string): string | null {
+    if (!address || typeof address !== 'string') {
+      return null;
+    }
+
+    // Check for malformed URLs (protocol without host/path)
+    if (address.match(/^[a-z]+:\/?\/?$/i)) {
+      return null;
+    }
+
+    const match = address.match(/^([a-z]+):\/\//i);
+    if (!match || !match[1]) {
+      return null;
+    }
+
+    const protocol = match[1].toLowerCase();
+
+    // Check if this protocol is actually supported
+    const transport = this.registry.getByProtocol(protocol);
+    return transport ? protocol : null;
+  }
+
+  /**
+   * Get transport capabilities
+   */
+  getTransportCapabilities(transportName: string): TransportCapabilities | null {
+    const transport = this.registry.get(transportName);
+    return transport ? transport.capabilities : null;
+  }
+}

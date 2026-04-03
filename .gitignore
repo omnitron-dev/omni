@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+*.tsbuildinfo
+
+# Test & coverage
+coverage/
+
+# Turbo
+.turbo/
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Editor & OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.code-workspace
+
+# Logs
+*.log
+logs/
+
+# Debug
+npm-debug.log*
+pnpm-debug.log*
+
+# Local config
+.envrc
+.npmrc
+.mcp.json
+
+# KB generated artifacts
+kb/generated/
+
+# Misc
+*.tgz
+*.map.gz

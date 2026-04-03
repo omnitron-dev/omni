@@ -1,0 +1,32 @@
+{
+  "name": "@omnitron-dev/titan-metrics",
+  "version": "0.1.0",
+  "description": "Titan-native metrics module — counters, gauges, histograms, time-series storage",
+  "author": "LuxQuant",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "rm -rf dist node_modules/.tmp && tsc -p ./tsconfig.json",
+    "test": "vitest run",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "peerDependencies": {
+    "@omnitron-dev/titan": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "25.0.3",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
+  }
+}

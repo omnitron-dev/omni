@@ -1,0 +1,362 @@
+import { getRedisClientToken, REDIS_MANAGER } from './redis.constants.js';
+import { LockOptions, CacheOptions, RateLimitOptions } from './redis.types.js';
+import type { IRedisClient } from './redis.interfaces.js';
+import { Errors } from '@omnitron-dev/titan/errors';
+import type { ILogger } from '@omnitron-dev/titan/module/logger';
+import { generateLockValue } from '@omnitron-dev/titan/utils';
+
+/** Nexus DI metadata key — must match what the container reads */
+const NEXUS_CONSTRUCTOR_PARAMS = 'nexus:constructor-params';
+
+/**
+ * Interface for objects that can provide Redis clients.
+ * Supports both RedisManager/RedisService patterns and direct client access.
+ */
+interface IRedisClientProvider {
+  getClient?: (namespace: string) => IRedisClient;
+  client?: IRedisClient;
+}
+
+/**
+ * Interface for classes that may have Redis client properties.
+ * Used to provide type safety in Redis decorators.
+ */
+interface IRedisAware {
+  redisManager?: IRedisClientProvider;
+  redisService?: IRedisClientProvider;
+  redis?: IRedisClient;
+  logger?: ILogger;
+  _logger?: ILogger;
+  loggerModule?: { logger?: ILogger };
+}
+
+/**
+ * Redis key prefixes for different operations
+ */
+const REDIS_KEY_PREFIXES = {
+  CACHE: 'cache:',
+  LOCK: 'lock:',
+  RATE: 'rate:',
+} as const;
+
+/**
+ * Get logger from instance if available
+ */
+function getInstanceLogger(instance: IRedisAware): ILogger | undefined {
+  // Try common logger property names
+  return instance.logger || instance._logger || instance.loggerModule?.logger;
+}
+
+// Parameter decorator for Redis DI — writes to the same metadata key
+// that the Nexus container reads ('nexus:constructor-params').
+function createInjectDecorator(token: string | symbol): ParameterDecorator {
+  return (target: any, propertyKey: string | symbol | undefined, parameterIndex: number) => {
+    if (propertyKey === undefined) {
+      // Constructor parameter — use the Nexus metadata key
+      const existingTokens = Reflect.getMetadata(NEXUS_CONSTRUCTOR_PARAMS, target) || [];
+      existingTokens[parameterIndex] = token;
+      Reflect.defineMetadata(NEXUS_CONSTRUCTOR_PARAMS, existingTokens, target);
+    } else {
+      // Method parameter — keep legacy format
+      const key = propertyKey || 'constructor';
+      const existingTokens = Reflect.getMetadata('inject:tokens', target, key) || [];
+      existingTokens[parameterIndex] = token;
+      Reflect.defineMetadata('inject:tokens', existingTokens, target, key);
+    }
+  };
+}
+
+export const InjectRedis = (namespace?: string): ParameterDecorator =>
+  createInjectDecorator(getRedisClientToken(namespace));
+
+export const InjectRedisManager = (): ParameterDecorator => createInjectDecorator(REDIS_MANAGER);
+
+export function RedisCache(options?: CacheOptions): MethodDecorator {
+  return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
+    const originalMethod = descriptor.value;
+
+    descriptor.value = async function cacheMethod(this: IRedisAware, ...args: any[]) {
+      // Try to find redis client - support multiple naming conventions
+      const { redisManager, redisService, redis } = this;
+
+      // Get client from manager or service
+      let client: any;
+      const namespace = options?.namespace || 'default';
+
+      try {
+        if (redisManager) {
+          client = redisManager.getClient?.(namespace) || redisManager.client || redisManager;
+        } else if (redisService) {
+          client = redisService.getClient?.(namespace) || redisService.client || redisService;
+        } else if (redis) {
+          client = redis;
+        }
+
+        if (!client) {
+          getInstanceLogger(this)?.warn(
+            { method: String(propertyKey) },
+            '@RedisCache: No Redis client found. Falling back to uncached execution.'
+          );
+          return originalMethod.apply(this, args);
+        }
+      } catch (error) {
+        // If client not found, fall back to original method
+        getInstanceLogger(this)?.error(
+          { err: error, method: String(propertyKey) },
+          '@RedisCache: Error getting Redis client'
+        );
+        return originalMethod.apply(this, args);
+      }
+
+      // Support both 'key' and 'keyFn' for backward compatibility
+      const keyFn = options?.keyFn || options?.key;
+      let key: string;
+
+      if (typeof keyFn === 'function') {
+        key = keyFn(...args);
+      } else if (keyFn) {
+        // If static key provided, append args to it
+        const argsKey = args.map((a) => (typeof a === 'object' ? JSON.stringify(a) : a)).join(':');
+        key = argsKey ? keyFn + ':' + argsKey : keyFn;
+      } else {
+        // Default key format
+        key = String(propertyKey) + ':' + args.map((a) => (typeof a === 'object' ? JSON.stringify(a) : a)).join(':');
+      }
+
+      const fullKey = REDIS_KEY_PREFIXES.CACHE + key;
+
+      if (options?.condition && !options.condition(...args)) {
+        return originalMethod.apply(this, args);
+      }
+
+      const ttl = options?.ttl || 3600;
+
+      try {
+        if (!options?.refresh) {
+          const cached = await client.get(fullKey);
+          if (cached) {
+            try {
+              return JSON.parse(cached);
+            } catch {
+              return cached; // Return as-is if not JSON
+            }
+          }
+        }
+
+        const result = await originalMethod.apply(this, args);
+
+        if (result !== undefined && result !== null) {
+          // Always stringify for consistent storage and retrieval
+          const value = JSON.stringify(result);
+          if (ttl > 0) {
+            await client.setex(fullKey, ttl, value);
+          } else {
+            await client.set(fullKey, value);
+          }
+        }
+
+        return result;
+      } catch (error) {
+        getInstanceLogger(this)?.error(
+          { err: error, method: String(propertyKey) },
+          '@RedisCache: Error during cache operation'
+        );
+        return originalMethod.apply(this, args);
+      }
+    };
+
+    return descriptor;
+  };
+}
+
+export function RedisLock(options?: LockOptions): MethodDecorator {
+  return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
+    const originalMethod = descriptor.value;
+
+    descriptor.value = async function lockMethod(this: IRedisAware, ...args: any[]) {
+      // Try to find redis client - support multiple naming conventions
+      const { redisManager, redisService, redis } = this;
+
+      // Get client from manager or service
+      let client: any;
+      const namespace = options?.namespace || 'default';
+
+      try {
+        if (redisManager) {
+          client = redisManager.getClient?.(namespace) || redisManager.client || redisManager;
+        } else if (redisService) {
+          client = redisService.getClient?.(namespace) || redisService.client || redisService;
+        } else if (redis) {
+          client = redis;
+        }
+
+        if (!client) {
+          getInstanceLogger(this)?.warn(
+            { method: String(propertyKey) },
+            '@RedisLock: No Redis client found. Falling back to unlocked execution.'
+          );
+          return originalMethod.apply(this, args);
+        }
+      } catch (error) {
+        // If client not found, fall back to original method
+        getInstanceLogger(this)?.error(
+          { err: error, method: String(propertyKey) },
+          '@RedisLock: Error getting Redis client'
+        );
+        return originalMethod.apply(this, args);
+      }
+
+      // Generate key based on options
+      const keyFn = options?.keyFn || options?.key;
+      let key: string;
+
+      if (typeof keyFn === 'function') {
+        key = keyFn(...args);
+      } else if (keyFn) {
+        // If a static key is provided, append the first argument as ID
+        key = args.length > 0 ? keyFn + ':' + args[0] : keyFn;
+      } else {
+        // Default key includes class name, method name, and args
+        key = target.constructor.name + ':' + String(propertyKey) + ':' + JSON.stringify(args);
+      }
+
+      // TTL is expected to be in seconds (for backward compatibility with tests)
+      const ttl = options?.ttl || 10; // Default 10 seconds
+      const retries = options?.retries ?? 10; // Use ?? to allow 0
+      const retryDelay = options?.retryDelay || 100;
+      const fullKey = REDIS_KEY_PREFIXES.LOCK + key;
+
+      // Use cryptographically secure lock value to prevent collision attacks
+      const lockValue = generateLockValue();
+      const ttlSeconds = ttl; // TTL is already in seconds
+
+      // Try to acquire lock (retries + 1 attempts total, including initial attempt)
+      const maxAttempts = retries + 1;
+      for (let i = 0; i < maxAttempts; i++) {
+        // Use SET NX EX for atomic lock acquisition
+        const acquired = await client.set(fullKey, lockValue, 'NX', 'EX', ttlSeconds);
+
+        if (acquired === 'OK') {
+          try {
+            const result = await originalMethod.apply(this, args);
+
+            // Release lock if we still own it
+            const currentValue = await client.get(fullKey);
+            if (currentValue === lockValue) {
+              await client.del(fullKey);
+            }
+
+            return result;
+          } catch (error) {
+            // Release lock on error if we still own it
+            const currentValue = await client.get(fullKey);
+            if (currentValue === lockValue) {
+              await client.del(fullKey);
+            }
+            throw error;
+          }
+        }
+
+        // Wait before retrying (don't wait after last attempt)
+        if (i < maxAttempts - 1) {
+          await new Promise((resolve) => setTimeout(resolve, retryDelay));
+        }
+      }
+
+      throw Errors.timeout('Lock acquisition for key: ' + fullKey, retries * retryDelay);
+    };
+
+    return descriptor;
+  };
+}
+
+export function RedisRateLimit(options: RateLimitOptions): MethodDecorator {
+  return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
+    const originalMethod = descriptor.value;
+
+    descriptor.value = async function rateLimitMethod(this: IRedisAware, ...args: any[]) {
+      // Try to find redis client - support multiple naming conventions
+      const { redisManager, redisService, redis } = this;
+
+      // Get client from manager or service
+      let client: any;
+      const namespace = options?.namespace || 'default';
+
+      try {
+        if (redisManager) {
+          client = redisManager.getClient?.(namespace) || redisManager.client || redisManager;
+        } else if (redisService) {
+          client = redisService.getClient?.(namespace) || redisService.client || redisService;
+        } else if (redis) {
+          client = redis;
+        }
+
+        if (!client) {
+          getInstanceLogger(this)?.warn(
+            { method: String(propertyKey) },
+            '@RedisRateLimit: No Redis client found. Falling back to unthrottled execution.'
+          );
+          return originalMethod.apply(this, args);
+        }
+      } catch (error) {
+        // If client not found, fall back to original method
+        getInstanceLogger(this)?.error(
+          { err: error, method: String(propertyKey) },
+          '@RedisRateLimit: Error getting Redis client'
+        );
+        return originalMethod.apply(this, args);
+      }
+
+      // Support custom key function or static key/keyPrefix
+      let key: string;
+      if ((options as any).keyFn && typeof (options as any).keyFn === 'function') {
+        key = REDIS_KEY_PREFIXES.RATE + (options as any).keyFn(...args);
+      } else {
+        // Support both 'key' and 'keyPrefix' for backward compatibility
+        const keyPrefix = (options as any).key || options.keyPrefix || REDIS_KEY_PREFIXES.RATE + String(propertyKey);
+        key = keyPrefix + ':' + (args[0] || 'default');
+      }
+
+      const now = Date.now();
+      // Support both 'window' (seconds) and 'duration' (milliseconds) for backward compatibility
+      const duration = (options as any).window ? (options as any).window * 1000 : options.duration;
+      const windowStart = now - duration;
+
+      // Use sorted sets for sliding window rate limiting
+      const pipeline = client.pipeline();
+      pipeline.zremrangebyscore(key, '-inf', windowStart);
+      pipeline.zadd(key, now, now + ':' + Math.random());
+      pipeline.zcard(key);
+      pipeline.expire(key, Math.ceil(duration / 1000));
+
+      const results = await pipeline.exec();
+
+      if (!results) {
+        return originalMethod.apply(this, args);
+      }
+
+      const count = results[2]?.[1] as number;
+      // Support both 'limit' and 'points' for backward compatibility
+      const limit = (options as any).limit || options.points;
+
+      if (count > limit) {
+        if (options.blockDuration) {
+          const blockKey = key + ':blocked';
+          await client.setex(blockKey, Math.ceil(options.blockDuration / 1000), '1');
+        }
+
+        throw Errors.tooManyRequests();
+      }
+
+      // Check if blocked
+      const blocked = await client.get(key + ':blocked');
+      if (blocked) {
+        throw Errors.tooManyRequests();
+      }
+
+      return originalMethod.apply(this, args);
+    };
+
+    return descriptor;
+  };
+}

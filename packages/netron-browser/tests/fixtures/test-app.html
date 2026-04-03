@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Netron Browser E2E Test Application</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu,
+          Cantarell, sans-serif;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+        background: #f5f5f5;
+      }
+
+      h1 {
+        color: #333;
+        border-bottom: 2px solid #007bff;
+        padding-bottom: 10px;
+      }
+
+      .container {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        margin-bottom: 20px;
+      }
+
+      .controls {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 20px;
+      }
+
+      button {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background-color 0.2s;
+      }
+
+      button:hover {
+        opacity: 0.9;
+      }
+
+      .primary {
+        background-color: #007bff;
+        color: white;
+      }
+
+      .secondary {
+        background-color: #6c757d;
+        color: white;
+      }
+
+      .success {
+        background-color: #28a745;
+        color: white;
+      }
+
+      .danger {
+        background-color: #dc3545;
+        color: white;
+      }
+
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .status {
+        padding: 10px;
+        border-radius: 4px;
+        margin-bottom: 20px;
+        font-weight: bold;
+      }
+
+      .status.disconnected {
+        background-color: #f8d7da;
+        color: #721c24;
+      }
+
+      .status.connecting {
+        background-color: #fff3cd;
+        color: #856404;
+      }
+
+      .status.connected {
+        background-color: #d4edda;
+        color: #155724;
+      }
+
+      .output {
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        padding: 15px;
+        font-family: 'Courier New', monospace;
+        font-size: 12px;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        max-height: 400px;
+        overflow-y: auto;
+      }
+
+      .test-group {
+        margin-bottom: 20px;
+      }
+
+      .test-group h3 {
+        color: #495057;
+        margin-bottom: 10px;
+      }
+
+      .input-group {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 10px;
+        align-items: center;
+      }
+
+      input,
+      select {
+        padding: 8px;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        font-size: 14px;
+      }
+
+      label {
+        font-weight: bold;
+        color: #495057;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Netron Browser E2E Test Application</h1>
+
+    <div class="container">
+      <div id="status" class="status disconnected">Status: Disconnected</div>
+
+      <div class="controls">
+        <div class="input-group">
+          <label>Transport:</label>
+          <select id="transport">
+            <option value="http">HTTP</option>
+            <option value="websocket">WebSocket</option>
+          </select>
+        </div>
+
+        <div class="input-group">
+          <label>Server URL:</label>
+          <input
+            type="text"
+            id="serverUrl"
+            value="http://localhost:3000"
+            style="width: 250px"
+          />
+        </div>
+      </div>
+
+      <div class="controls">
+        <button id="connect" class="primary">Connect</button>
+        <button id="disconnect" class="secondary" disabled>Disconnect</button>
+      </div>
+    </div>
+
+    <div class="container">
+      <div class="test-group">
+        <h3>Calculator Service</h3>
+        <div class="controls">
+          <button id="calc-add" class="success" data-test="calc-add">Add 5 + 3</button>
+          <button id="calc-subtract" class="success" data-test="calc-subtract">
+            Subtract 10 - 4
+          </button>
+          <button id="calc-multiply" class="success" data-test="calc-multiply">
+            Multiply 6 * 7
+          </button>
+          <button id="calc-divide" class="success" data-test="calc-divide">Divide 20 / 4</button>
+          <button id="calc-error" class="danger" data-test="calc-error">
+            Divide by Zero (Error)
+          </button>
+        </div>
+      </div>
+
+      <div class="test-group">
+        <h3>User Service</h3>
+        <div class="controls">
+          <button id="user-list" class="success" data-test="user-list">List Users</button>
+          <button id="user-get" class="success" data-test="user-get">Get User #1</button>
+          <button id="user-create" class="success" data-test="user-create">Create User</button>
+          <button id="user-update" class="success" data-test="user-update">Update User #1</button>
+          <button id="user-delete" class="danger" data-test="user-delete">Delete User #3</button>
+          <button id="user-error" class="danger" data-test="user-error">
+            Get Non-existent User
+          </button>
+        </div>
+      </div>
+
+      <div class="test-group">
+        <h3>Echo Service</h3>
+        <div class="controls">
+          <button id="echo-string" class="success" data-test="echo-string">Echo String</button>
+          <button id="echo-number" class="success" data-test="echo-number">Echo Number</button>
+          <button id="echo-object" class="success" data-test="echo-object">Echo Object</button>
+          <button id="echo-array" class="success" data-test="echo-array">Echo Array</button>
+          <button id="echo-error" class="danger" data-test="echo-error">Throw Error</button>
+        </div>
+      </div>
+
+      <div class="test-group">
+        <h3>Performance</h3>
+        <div class="controls">
+          <button id="perf-sequential" class="primary" data-test="perf-sequential">
+            10 Sequential Calls
+          </button>
+          <button id="perf-parallel" class="primary" data-test="perf-parallel">
+            10 Parallel Calls
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="container">
+      <h3>Output</h3>
+      <div id="output" class="output">Waiting for actions...</div>
+    </div>
+
+    <script src="/dist/test-client.global.js"></script>
+  </body>
+</html>

@@ -1,0 +1,195 @@
+{
+  "name": "@omnitron/prism",
+  "version": "0.1.0",
+  "description": "Design System Constructor - High-level UI building blocks for complex frontends",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./theme": {
+      "types": "./dist/theme/index.d.ts",
+      "import": "./dist/theme/index.js"
+    },
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.js"
+    },
+    "./layouts": {
+      "types": "./dist/layouts/index.d.ts",
+      "import": "./dist/layouts/index.js"
+    },
+    "./blocks": {
+      "types": "./dist/blocks/index.d.ts",
+      "import": "./dist/blocks/index.js"
+    },
+    "./blocks/*": {
+      "types": "./dist/blocks/*/index.d.ts",
+      "import": "./dist/blocks/*/index.js"
+    },
+    "./components": {
+      "types": "./dist/components/index.d.ts",
+      "import": "./dist/components/index.js"
+    },
+    "./components/*": {
+      "types": "./dist/components/*/index.d.ts",
+      "import": "./dist/components/*/index.js"
+    },
+    "./utils": {
+      "types": "./dist/utils/index.d.ts",
+      "import": "./dist/utils/index.js"
+    },
+    "./state": {
+      "types": "./dist/state/index.d.ts",
+      "import": "./dist/state/index.js"
+    },
+    "./hooks": {
+      "types": "./dist/hooks/index.d.ts",
+      "import": "./dist/hooks/index.js"
+    },
+    "./forms": {
+      "types": "./dist/forms/index.d.ts",
+      "import": "./dist/forms/index.js"
+    },
+    "./accessibility": {
+      "types": "./dist/accessibility/index.d.ts",
+      "import": "./dist/accessibility/index.js"
+    },
+    "./netron": {
+      "types": "./dist/netron/index.d.ts",
+      "import": "./dist/netron/index.js"
+    },
+    "./http": {
+      "types": "./dist/http/index.d.ts",
+      "import": "./dist/http/index.js"
+    },
+    "./cli": {
+      "types": "./dist/cli/index.d.ts",
+      "import": "./dist/cli/index.js"
+    }
+  },
+  "bin": {
+    "prism": "./bin/prism.js"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "registry",
+    "templates"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:debug": "playwright test --debug",
+    "test:a11y": "playwright test --project=accessibility",
+    "test:serve": "vite --config tests/app/vite.config.ts",
+    "prepublishOnly": "pnpm build"
+  },
+  "dependencies": {
+    "@emotion/cache": "^11.14.0",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@hookform/resolvers": "5.2.2",
+    "@mui/icons-material": "^7.3.9",
+    "@mui/material": "^7.3.9",
+    "@mui/system": "^7.3.9",
+    "@mui/x-data-grid": "^8.27.5",
+    "@mui/x-date-pickers": "^8.27.2",
+    "@omnitron-dev/netron-browser": "workspace:*",
+    "@omnitron-dev/netron-react": "workspace:*",
+    "@tiptap/core": "^3.20.2",
+    "@tiptap/extension-code-block-lowlight": "^3.20.2",
+    "@tiptap/extension-image": "^3.20.2",
+    "@tiptap/extension-link": "^3.20.2",
+    "@tiptap/extension-placeholder": "^3.20.2",
+    "@tiptap/extension-task-item": "^3.20.2",
+    "@tiptap/extension-task-list": "^3.20.2",
+    "@tiptap/extension-text-align": "^3.20.2",
+    "@tiptap/extension-underline": "^3.20.2",
+    "@tiptap/pm": "^3.20.2",
+    "@tiptap/react": "^3.20.2",
+    "@tiptap/starter-kit": "^3.20.2",
+    "@types/turndown": "^5.0.6",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "dayjs": "^1.11.20",
+    "framer-motion": "^12.37.0",
+    "immer": "^11.1.4",
+    "lowlight": "^3.3.0",
+    "nprogress": "^0.2.0",
+    "react-dropzone": "^15.0.0",
+    "react-hook-form": "^7.71.2",
+    "react-markdown": "^10.1.0",
+    "rehype-highlight": "^7.0.2",
+    "rehype-raw": "^7.0.0",
+    "remark-gfm": "^4.0.1",
+    "stylis": "^4.3.6",
+    "stylis-plugin-rtl": "^2.1.1",
+    "turndown": "^7.2.2",
+    "zod": "^4.3.6",
+    "zustand": "^5.0.12"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.11.1",
+    "@mui/lab": "^7.0.1-beta.23",
+    "@playwright/test": "^1.58.2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^25.3.5",
+    "@types/nprogress": "^0.2.3",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react-swc": "^4.2.3",
+    "@vitest/coverage-v8": "^4.1.0",
+    "apexcharts": "^5.10.3",
+    "commander": "^14.0.3",
+    "happy-dom": "^20.8.3",
+    "react-apexcharts": "^2.1.0",
+    "react-router-dom": "^7.13.1",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.0",
+    "vitest": "^4.1.0"
+  },
+  "peerDependencies": {
+    "apexcharts": ">=5.0.0",
+    "react": "^19.0.0",
+    "react-apexcharts": ">=1.8.0",
+    "react-dom": "^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "apexcharts": {
+      "optional": true
+    },
+    "react-apexcharts": {
+      "optional": true
+    }
+  },
+  "keywords": [
+    "design-system",
+    "mui",
+    "react",
+    "typescript",
+    "ui-components",
+    "blocks",
+    "dashboard",
+    "admin",
+    "prism"
+  ],
+  "author": "Omnitron",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/omnitron-dev/prism"
+  }
+}

@@ -1,0 +1,596 @@
+/**
+ * Retry Manager for HTTP requests
+ *
+ * Provides intelligent retry logic with:
+ * - Exponential, linear, and constant backoff strategies
+ * - Customizable retry conditions
+ * - Jitter to prevent thundering herd
+ * - Circuit breaker integration
+ */
+
+import { EventEmitter } from '@omnitron-dev/eventemitter';
+import { TitanError, ErrorCode } from '../../../../errors/index.js';
+import type { ILogger } from '../../../../modules/logger/logger.types.js';
+import { addJitter as baseAddJitter } from '../../../../utils/retry.js';
+import { fallbackLog } from '../../../../utils/fallback-log.js';
+
+/**
+ * Retry options
+ */
+export interface RetryOptions {
+  /** Maximum retry attempts */
+  attempts: number;
+  /** Backoff strategy */
+  backoff?: 'exponential' | 'linear' | 'constant';
+  /** Initial delay in milliseconds */
+  initialDelay?: number;
+  /** Maximum delay between retries in milliseconds */
+  maxDelay?: number;
+  /** Jitter factor (0-1) to randomize delays */
+  jitter?: number;
+  /** Custom retry condition */
+  shouldRetry?: (error: any, attempt: number) => boolean | Promise<boolean>;
+  /** Callback on retry */
+  onRetry?: (attempt: number, error: any) => void;
+  /** Timeout for each attempt in milliseconds */
+  attemptTimeout?: number;
+  /** Factor for exponential backoff */
+  factor?: number;
+}
+
+/**
+ * Retry statistics
+ */
+export interface RetryStats {
+  /** Total retry attempts */
+  totalAttempts: number;
+  /** Successful retries */
+  successfulRetries: number;
+  /** Failed retries */
+  failedRetries: number;
+  /** Average retry delay */
+  avgRetryDelay: number;
+  /** Current circuit breaker state */
+  circuitState?: 'closed' | 'open' | 'half-open';
+}
+
+/**
+ * Circuit breaker configuration
+ */
+export interface CircuitBreakerOptions {
+  /** Failure threshold to open circuit */
+  threshold: number;
+  /** Time window for counting failures in milliseconds */
+  windowTime: number;
+  /** Cool down period before half-open state in milliseconds */
+  cooldownTime: number;
+  /** Success threshold to close circuit from half-open */
+  successThreshold?: number;
+}
+
+/**
+ * Retry Manager implementation
+ */
+export class RetryManager extends EventEmitter {
+  private stats = {
+    totalAttempts: 0,
+    successfulRetries: 0,
+    failedRetries: 0,
+    retryDelays: [] as number[],
+  };
+
+  // Circuit breaker state
+  private circuitBreaker?: {
+    state: 'closed' | 'open' | 'half-open';
+    failures: number;
+    successes: number;
+    lastFailureTime: number;
+    nextAttemptTime: number;
+    options: CircuitBreakerOptions;
+  };
+
+  // Store Retry-After header delay
+  private retryAfterDelay?: number;
+
+  constructor(
+    private options: {
+      /** Default retry options */
+      defaultOptions?: Partial<RetryOptions>;
+      /** Enable circuit breaker */
+      circuitBreaker?: CircuitBreakerOptions;
+      /** Logger instance for debug output */
+      logger?: ILogger;
+      /** Enable debug mode (uses structured JSON fallback when no logger) */
+      debug?: boolean;
+    } = {}
+  ) {
+    super();
+
+    // Initialize circuit breaker if configured
+    if (options.circuitBreaker) {
+      this.circuitBreaker = {
+        state: 'closed',
+        failures: 0,
+        successes: 0,
+        lastFailureTime: 0,
+        nextAttemptTime: 0,
+        options: options.circuitBreaker,
+      };
+    }
+  }
+
+  /**
+   * Execute function with retry logic
+   */
+  async execute<T>(fn: () => Promise<T>, options: RetryOptions): Promise<T> {
+    // Merge with default options
+    const retryOptions: Required<RetryOptions> = {
+      attempts: options.attempts,
+      backoff: options.backoff || this.options.defaultOptions?.backoff || 'exponential',
+      initialDelay: options.initialDelay || this.options.defaultOptions?.initialDelay || 1000,
+      maxDelay: options.maxDelay || this.options.defaultOptions?.maxDelay || 30000,
+      jitter: options.jitter ?? this.options.defaultOptions?.jitter ?? 0.1,
+      shouldRetry:
+        options.shouldRetry || this.options.defaultOptions?.shouldRetry || this.defaultShouldRetry.bind(this),
+      onRetry: options.onRetry || this.options.defaultOptions?.onRetry || (() => {}),
+      attemptTimeout: options.attemptTimeout || this.options.defaultOptions?.attemptTimeout || 0,
+      factor: options.factor || this.options.defaultOptions?.factor || 2,
+    };
+
+    // Check circuit breaker
+    if (this.circuitBreaker) {
+      this.checkCircuitBreaker();
+      if (this.circuitBreaker.state === 'open') {
+        throw new TitanError({
+          code: ErrorCode.SERVICE_UNAVAILABLE,
+          message: 'Circuit breaker is open',
+          details: {
+            nextAttemptTime: this.circuitBreaker.nextAttemptTime,
+          },
+        });
+      }
+    }
+
+    let lastError: any;
+    let delay = retryOptions.initialDelay;
+
+    // attempts = number of retries, so we try initial + retries
+    for (let attempt = 0; attempt <= retryOptions.attempts; attempt++) {
+      try {
+        if (this.options.debug || this.options.logger) {
+          const data = { attempt: attempt + 1, maxAttempts: retryOptions.attempts + 1 };
+          this.options.logger ? this.options.logger.debug(data, 'Retry attempt') : fallbackLog('debug', 'Retry attempt', data);
+        }
+
+        // Execute with timeout if specified
+        const result = await this.executeWithTimeout(fn, retryOptions.attemptTimeout);
+
+        // Record success
+        if (attempt > 0) {
+          this.stats.successfulRetries++;
+          this.emit('retry-success', { attempt, delay });
+        }
+
+        // Update circuit breaker on success
+        if (this.circuitBreaker) {
+          this.onCircuitBreakerSuccess();
+        }
+
+        return result;
+      } catch (error: any) {
+        lastError = error;
+        this.stats.totalAttempts++;
+
+        // Check if we should retry
+        const shouldRetry = await retryOptions.shouldRetry(error, attempt);
+
+        if (!shouldRetry) {
+          if (this.options.debug || this.options.logger) {
+            const data = { err: error };
+            this.options.logger ? this.options.logger.debug(data, 'Error not retryable') : fallbackLog('debug', 'Error not retryable', { error: error.message });
+          }
+          this.stats.failedRetries++;
+          this.updateCircuitBreakerOnFailure();
+          throw error;
+        }
+
+        if (attempt < retryOptions.attempts) {
+          // Use Retry-After delay if set, otherwise calculate with jitter
+          let actualDelay: number;
+
+          if (this.retryAfterDelay !== undefined) {
+            actualDelay = this.retryAfterDelay;
+            this.options.logger?.debug({ delayMs: actualDelay }, 'Using Retry-After delay');
+            // Clear the retry-after delay after using it
+            this.retryAfterDelay = undefined;
+          } else {
+            actualDelay = this.addJitter(delay, retryOptions.jitter);
+          }
+
+          this.stats.retryDelays.push(actualDelay);
+          if (this.options.debug || this.options.logger) {
+            const data = { attempt: attempt + 1, delayMs: actualDelay, error: error.message };
+            this.options.logger ? this.options.logger.debug({ ...data, err: error }, 'Attempt failed, retrying') : fallbackLog('debug', 'Attempt failed, retrying', data);
+          }
+
+          // Call retry callback
+          retryOptions.onRetry(attempt + 1, error);
+
+          // Emit retry event
+          this.emit('retry', {
+            attempt: attempt + 1,
+            error: error.message,
+            delay: actualDelay,
+          });
+
+          // Wait before retry
+          await this.delay(actualDelay);
+
+          // Calculate next delay based on backoff strategy (only if not using Retry-After)
+          if (this.retryAfterDelay === undefined) {
+            delay = this.calculateNextDelay(
+              delay,
+              retryOptions.backoff,
+              retryOptions.factor,
+              retryOptions.maxDelay,
+              retryOptions.initialDelay
+            );
+          }
+        } else {
+          // Max retries exceeded
+          this.stats.failedRetries++;
+          this.updateCircuitBreakerOnFailure();
+          if (this.options.debug || this.options.logger) {
+            const data = { attempts: retryOptions.attempts + 1 };
+            this.options.logger ? this.options.logger.debug(data, 'Max retry attempts exceeded') : fallbackLog('debug', 'Max retry attempts exceeded', data);
+          }
+
+          this.emit('retry-exhausted', {
+            attempts: retryOptions.attempts + 1,
+            error: error.message,
+          });
+        }
+      }
+    }
+
+    throw lastError;
+  }
+
+  /**
+   * Execute with timeout
+   */
+  private async executeWithTimeout<T>(fn: () => Promise<T>, timeout: number): Promise<T> {
+    if (!timeout || timeout <= 0) {
+      return fn();
+    }
+
+    return Promise.race([
+      fn(),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          reject(
+            new TitanError({
+              code: ErrorCode.REQUEST_TIMEOUT,
+              message: `Request timeout after ${timeout}ms`,
+            })
+          );
+        }, timeout);
+      }),
+    ]);
+  }
+
+  /**
+   * Default retry condition
+   */
+  private defaultShouldRetry(error: any, attempt: number): boolean {
+    // Don't retry on programming errors
+    if (error instanceof TypeError || error instanceof ReferenceError) {
+      return false;
+    }
+
+    // Network errors are retryable
+    if (
+      error.code === 'ECONNREFUSED' ||
+      error.code === 'ECONNRESET' ||
+      error.code === 'ETIMEDOUT' ||
+      error.code === 'ENOTFOUND' ||
+      error.code === 'ENETUNREACH'
+    ) {
+      return true;
+    }
+
+    // HTTP status-based retry logic
+    if (error.status) {
+      // 5xx errors are retryable
+      if (error.status >= 500) {
+        return true;
+      }
+
+      // 429 (Rate Limit) is retryable - check for Retry-After header
+      if (error.status === 429) {
+        this.extractRetryAfter(error);
+        return true;
+      }
+
+      // 408 (Request Timeout) is retryable
+      if (error.status === 408) {
+        return true;
+      }
+
+      // 4xx errors (except above) are not retryable
+      if (error.status >= 400 && error.status < 500) {
+        return false;
+      }
+    }
+
+    // TitanError-based retry logic
+    if (error instanceof TitanError) {
+      switch (error.code) {
+        case ErrorCode.SERVICE_UNAVAILABLE:
+        case ErrorCode.REQUEST_TIMEOUT:
+        case ErrorCode.TOO_MANY_REQUESTS:
+          // Check for Retry-After in error details
+          if (error.code === ErrorCode.TOO_MANY_REQUESTS) {
+            this.extractRetryAfter(error);
+          }
+          return true;
+        case ErrorCode.INVALID_ARGUMENT:
+        case ErrorCode.NOT_FOUND:
+        case ErrorCode.UNAUTHORIZED:
+        case ErrorCode.FORBIDDEN:
+        case ErrorCode.CONFLICT:
+          return false;
+        case ErrorCode.INTERNAL_ERROR:
+          return true;
+        default:
+          return attempt < 2; // Retry once for unknown errors
+      }
+    }
+
+    // Default: retry for unknown errors
+    return true;
+  }
+
+  /**
+   * Extract Retry-After header from error
+   */
+  private extractRetryAfter(error: any): void {
+    // Clear previous value
+    this.retryAfterDelay = undefined;
+
+    // Check for Retry-After in headers
+    const retryAfter = error.headers?.['retry-after'] || error.headers?.['Retry-After'];
+
+    if (retryAfter) {
+      // Parse Retry-After (can be seconds or HTTP date)
+      const retryAfterNumber = Number(retryAfter);
+
+      if (!Number.isNaN(retryAfterNumber)) {
+        // It's a number (seconds)
+        this.retryAfterDelay = retryAfterNumber * 1000;
+        this.options.logger?.debug({ retryAfterSeconds: retryAfterNumber }, 'Retry-After header (seconds)');
+      } else {
+        // It's an HTTP date
+        try {
+          const retryAfterDate = new Date(retryAfter);
+          const delayMs = retryAfterDate.getTime() - Date.now();
+
+          if (delayMs > 0) {
+            this.retryAfterDelay = delayMs;
+            this.options.logger?.debug({ retryAfter, delayMs }, 'Retry-After header (date)');
+          }
+        } catch (err) {
+          this.options.logger?.warn({ retryAfter, err }, 'Failed to parse Retry-After header');
+        }
+      }
+    }
+
+    // Also check TitanError details for retryAfter
+    if (error instanceof TitanError && error.details?.retryAfter) {
+      const errorRetryAfter = error.details.retryAfter;
+
+      if (typeof errorRetryAfter === 'number') {
+        this.retryAfterDelay = errorRetryAfter;
+      }
+    }
+  }
+
+  /**
+   * Calculate next delay based on backoff strategy
+   */
+  private calculateNextDelay(
+    currentDelay: number,
+    backoff: 'exponential' | 'linear' | 'constant',
+    factor: number,
+    maxDelay: number,
+    initialDelay: number
+  ): number {
+    let nextDelay: number;
+
+    switch (backoff) {
+      case 'exponential':
+        nextDelay = currentDelay * factor;
+        break;
+      case 'linear':
+        nextDelay = currentDelay + initialDelay;
+        break;
+      case 'constant':
+        nextDelay = currentDelay;
+        break;
+      default:
+        nextDelay = currentDelay * 2;
+    }
+
+    return Math.min(nextDelay, maxDelay);
+  }
+
+  /**
+   * Add jitter to delay
+   * Uses unified addJitter from utils/retry.js
+   */
+  private addJitter(delay: number, jitterFactor: number): number {
+    return baseAddJitter(delay, jitterFactor);
+  }
+
+  /**
+   * Delay execution
+   */
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Check circuit breaker state
+   */
+  private checkCircuitBreaker(): void {
+    if (!this.circuitBreaker) return;
+
+    const now = Date.now();
+
+    // Check if we should transition from open to half-open
+    if (this.circuitBreaker.state === 'open' && now >= this.circuitBreaker.nextAttemptTime) {
+      this.circuitBreaker.state = 'half-open';
+      this.circuitBreaker.successes = 0;
+      this.emit('circuit-breaker-half-open');
+      if (this.options.debug || this.options.logger) {
+        this.options.logger ? this.options.logger.debug({}, 'CircuitBreaker transitioned to HALF-OPEN') : fallbackLog('debug', 'CircuitBreaker transitioned to HALF-OPEN');
+      }
+    }
+
+    // Clean up old failures outside the window
+    if (now - this.circuitBreaker.lastFailureTime > this.circuitBreaker.options.windowTime) {
+      this.circuitBreaker.failures = 0;
+    }
+  }
+
+  /**
+   * Update circuit breaker on success
+   */
+  private onCircuitBreakerSuccess(): void {
+    if (!this.circuitBreaker) return;
+
+    if (this.circuitBreaker.state === 'half-open') {
+      this.circuitBreaker.successes++;
+
+      const threshold = this.circuitBreaker.options.successThreshold || 3;
+      if (this.circuitBreaker.successes >= threshold) {
+        this.circuitBreaker.state = 'closed';
+        this.circuitBreaker.failures = 0;
+        this.circuitBreaker.successes = 0;
+        this.emit('circuit-breaker-closed');
+        if (this.options.debug || this.options.logger) {
+          this.options.logger ? this.options.logger.debug({}, 'CircuitBreaker transitioned to CLOSED') : fallbackLog('debug', 'CircuitBreaker transitioned to CLOSED');
+        }
+      }
+    }
+  }
+
+  /**
+   * Update circuit breaker on failure
+   */
+  private updateCircuitBreakerOnFailure(): void {
+    if (!this.circuitBreaker) return;
+
+    const now = Date.now();
+    this.circuitBreaker.failures++;
+    this.circuitBreaker.lastFailureTime = now;
+
+    // If in half-open state, go back to open (check this first)
+    if (this.circuitBreaker.state === 'half-open') {
+      this.circuitBreaker.state = 'open';
+      this.circuitBreaker.nextAttemptTime = now + this.circuitBreaker.options.cooldownTime;
+      this.emit('circuit-breaker-open', { nextAttemptTime: this.circuitBreaker.nextAttemptTime });
+      if (this.options.debug || this.options.logger) {
+        this.options.logger ? this.options.logger.debug({}, 'CircuitBreaker transitioned back to OPEN from HALF-OPEN') : fallbackLog('debug', 'CircuitBreaker transitioned back to OPEN from HALF-OPEN');
+      }
+      return; // Early return to avoid duplicate processing
+    }
+
+    // Check if we should open the circuit from closed state
+    if (
+      this.circuitBreaker.state === 'closed' &&
+      this.circuitBreaker.failures >= this.circuitBreaker.options.threshold
+    ) {
+      this.circuitBreaker.state = 'open';
+      this.circuitBreaker.nextAttemptTime = now + this.circuitBreaker.options.cooldownTime;
+      this.emit('circuit-breaker-open', { nextAttemptTime: this.circuitBreaker.nextAttemptTime });
+      if (this.options.debug || this.options.logger) {
+        this.options.logger ? this.options.logger.debug({}, 'CircuitBreaker transitioned to OPEN') : fallbackLog('debug', 'CircuitBreaker transitioned to OPEN');
+      }
+    }
+  }
+
+  /**
+   * Get retry statistics
+   */
+  getStats(): RetryStats {
+    const avgRetryDelay =
+      this.stats.retryDelays.length > 0
+        ? this.stats.retryDelays.reduce((a, b) => a + b, 0) / this.stats.retryDelays.length
+        : 0;
+
+    return {
+      totalAttempts: this.stats.totalAttempts,
+      successfulRetries: this.stats.successfulRetries,
+      failedRetries: this.stats.failedRetries,
+      avgRetryDelay,
+      circuitState: this.circuitBreaker?.state,
+    };
+  }
+
+  /**
+   * Reset statistics
+   */
+  resetStats(): void {
+    this.stats = {
+      totalAttempts: 0,
+      successfulRetries: 0,
+      failedRetries: 0,
+      retryDelays: [],
+    };
+
+    if (this.circuitBreaker) {
+      this.circuitBreaker.state = 'closed';
+      this.circuitBreaker.failures = 0;
+      this.circuitBreaker.successes = 0;
+      this.circuitBreaker.lastFailureTime = 0;
+      this.circuitBreaker.nextAttemptTime = 0;
+    }
+
+    this.emit('stats-reset');
+  }
+
+  /**
+   * Get circuit breaker state
+   */
+  getCircuitBreakerState(): 'closed' | 'open' | 'half-open' | undefined {
+    return this.circuitBreaker?.state;
+  }
+
+  /**
+   * Manually trip the circuit breaker
+   */
+  tripCircuitBreaker(): void {
+    if (!this.circuitBreaker) return;
+
+    this.circuitBreaker.state = 'open';
+    this.circuitBreaker.nextAttemptTime = Date.now() + this.circuitBreaker.options.cooldownTime;
+    this.emit('circuit-breaker-tripped');
+    this.options.logger?.debug({}, 'CircuitBreaker manually tripped to OPEN');
+  }
+
+  /**
+   * Manually reset the circuit breaker
+   */
+  resetCircuitBreaker(): void {
+    if (!this.circuitBreaker) return;
+
+    this.circuitBreaker.state = 'closed';
+    this.circuitBreaker.failures = 0;
+    this.circuitBreaker.successes = 0;
+    this.circuitBreaker.lastFailureTime = 0;
+    this.circuitBreaker.nextAttemptTime = 0;
+    this.emit('circuit-breaker-reset');
+    this.options.logger?.debug({}, 'CircuitBreaker manually reset to CLOSED');
+  }
+}

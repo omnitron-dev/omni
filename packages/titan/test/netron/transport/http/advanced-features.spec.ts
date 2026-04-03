@@ -1,0 +1,415 @@
+/**
+ * Advanced Features Tests for Fluent API (Phase 3)
+ * Tests background refetch, deduplication, cancellation, and optimistic updates
+ */
+
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { HttpRemotePeer } from '../../../../src/netron/transport/http/peer.js';
+import {
+  QueryBuilder,
+  HttpCacheManager,
+  RetryManager,
+} from '../../../../src/netron/transport/http/fluent-interface/index.js';
+import { HttpTransportClient } from '../../../../src/netron/transport/http/client.js';
+import type { INetron } from '../../../../src/netron/types.js';
+
+interface IUserService {
+  getUser(id: string): Promise<{ id: string; name: string; version: number }>;
+  getUsers(): Promise<Array<{ id: string; name: string }>>;
+  updateUser(id: string, data: { name: string }): Promise<{ id: string; name: string; version: number }>;
+}
+
+describe('Advanced Features Tests - Phase 3', () => {
+  let peer: HttpRemotePeer;
+  let mockNetron: INetron;
+  let cacheManager: HttpCacheManager;
+  let retryManager: RetryManager;
+  let mockTransport: HttpTransportClient;
+
+  beforeEach(() => {
+    // Create mock Netron
+    mockNetron = {
+      logger: {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        child: vi.fn().mockReturnThis(),
+      },
+    } as any;
+
+    // Create mock connection
+    const mockConnection = {
+      on: vi.fn(),
+      off: vi.fn(),
+      send: vi.fn(),
+      close: vi.fn(),
+    };
+
+    cacheManager = new HttpCacheManager({ maxEntries: 100 });
+    retryManager = new RetryManager();
+
+    // Create peer
+    peer = new HttpRemotePeer(mockConnection as any, mockNetron, 'http://localhost:3000');
+
+    // Configure peer with managers
+    peer.setCacheManager(cacheManager);
+    peer.setRetryManager(retryManager);
+
+    // Mock queryInterfaceRemote
+    vi.spyOn(peer as any, 'queryInterfaceRemote').mockResolvedValue({
+      id: 'user-service-def',
+      meta: {
+        name: 'UserService@1.0.0',
+        version: '1.0.0',
+        methods: {
+          getUser: { name: 'getUser' },
+          getUsers: { name: 'getUsers' },
+          updateUser: { name: 'updateUser' },
+        },
+      },
+    });
+
+    // Create and mock transport
+    mockTransport = new HttpTransportClient('http://localhost:3000');
+    vi.spyOn(peer as any, 'getOrCreateHttpClient').mockReturnValue(mockTransport);
+
+    // Default mock for transport.invoke
+    vi.spyOn(mockTransport, 'invoke').mockResolvedValue({
+      id: '123',
+      name: 'Default',
+      version: 1,
+    });
+  });
+
+  afterEach(() => {
+    // Cleanup background refetch intervals
+    QueryBuilder.stopAllBackgroundRefetch();
+  });
+
+  describe('Background Refetch', () => {
+    it('should setup background refetch interval', async () => {
+      let callCount = 0;
+      vi.spyOn(mockTransport, 'invoke').mockImplementation(async () => {
+        callCount++;
+        return { id: '123', name: `User${callCount}`, version: callCount };
+      });
+
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
+
+      // Initial call with background refetch enabled
+      const proxy = service.cache(10000).background(100) as any;
+      const user1 = await proxy.getUser('123');
+
+      expect(user1.name).toBe('User1');
+      expect(callCount).toBe(1);
+      expect(QueryBuilder.getActiveBackgroundRefetchCount()).toBe(1);
+
+      // Wait for background refetch to trigger
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      expect(callCount).toBeGreaterThan(1);
+    });
+
+    it('should update cache silently during background refetch', async () => {
+      let version = 1;
+      vi.spyOn(mockTransport, 'invoke').mockImplementation(async () => ({
+        id: '123',
+        name: 'John',
+        version: version++,
+      }));
+
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
+
+      // Initial call
+      const proxy = service.cache(10000).background(100) as any;
+      const user1 = await proxy.getUser('123');
+      expect(user1.version).toBe(1);
+
+      // Wait for background refetch
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      // Get from cache - should have updated version
+      const proxy2 = service.cache(10000) as any;
+      const user2 = await proxy2.getUser('123');
+      expect(user2.version).toBeGreaterThan(1);
+    });
+
+    it('should not throw errors during background refetch failures', async () => {
+      let callCount = 0;
+      vi.spyOn(mockTransport, 'invoke').mockImplementation(async () => {
+        callCount++;
+        if (callCount > 1) {
+          throw new Error('Background refetch error');
+        }
+        return { id: '123', name: 'John', version: 1 };
+      });
+
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
+
+      const proxy = service.cache(10000).background(100) as any;
+      const user = await proxy.getUser('123');
+      expect(user).toBeDefined();
+
+      // Wait for background refetch (which will fail silently)
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      // Should not crash
+      expect(callCount).toBeGreaterThan(1);
+    });
+
+    it('should stop all background refetch intervals', async () => {
+      vi.spyOn(mockTransport, 'invoke').mockResolvedValue({
+        id: '123',
+        name: 'John',
+        version: 1,
+      });
+
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
+
+      // Create multiple background refetch with different cache keys using fluent API
+      const proxy1 = service.cache({ maxAge: 10000 }).background(100) as any;
+      const proxy2 = service.cache({ maxAge: 20000 }).background(200) as any;
+
+      await proxy1.getUser('123');
+      await proxy2.getUsers();
+
+      expect(QueryBuilder.getActiveBackgroundRefetchCount()).toBe(2);
+
+      // Stop all
+      QueryBuilder.stopAllBackgroundRefetch();
+
+      expect(QueryBuilder.getActiveBackgroundRefetchCount()).toBe(0);
+    });
+  });
+
+  describe('Enhanced Deduplication', () => {
+    it('should deduplicate concurrent identical requests', async () => {
+      let callCount = 0;
+      vi.spyOn(mockTransport, 'invoke').mockImplementation(async () => {
+        callCount++;
+        // Simulate slow request
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        return { id: '123', name: 'John', version: 1 };
+      });
+
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
+
+      // Fire 5 concurrent requests
+      const promises = Array.from({ length: 5 }, () => {
+        const proxy = service.cache(10000) as any;
+        return proxy.getUser('123');
+      });
+
+      const results = await Promise.all(promises);
+
+      // Should only make 1 actual call due to deduplication
+      expect(callCount).toBe(1);
+      expect(results).toHaveLength(5);
+      expect(results.every((r) => r.id === '123')).toBe(true);
+    });
+
+    it('should deduplicate using custom dedupe key', async () => {
+      let callCount = 0;
+      vi.spyOn(mockTransport, 'invoke').mockImplementation(async () => {
+        callCount++;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        return { id: '123', name: 'John', version: 1 };
+      });
+
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
+
+      // Use custom dedupe key
+      const promises = Array.from({ length: 5 }, (_, i) => {
+        const proxy = service.dedupe('custom-user-key') as any;
+        return proxy.getUser(`user-${i}`); // Different IDs but same dedupe key
+      });
+
+      const results = await Promise.all(promises);
+
+      // Should deduplicate despite different inputs
+      expect(callCount).toBe(1);
+      expect(results).toHaveLength(5);
+    });
+
+    it('should not deduplicate different requests', async () => {
+      let callCount = 0;
+      vi.spyOn(mockTransport, 'invoke').mockImplementation(async (service, method, args) => {
+        callCount++;
+        const id = args[0];
+        return { id, name: `User${id}`, version: 1 };
+      });
+
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
+
+      // Fire concurrent requests with different IDs
+      const promises = [
+        (service.cache(10000) as any).getUser('1'),
+        (service.cache(10000) as any).getUser('2'),
+        (service.cache(10000) as any).getUser('3'),
+      ];
+
+      const results = await Promise.all(promises);
+
+      // Should make 3 separate calls
+      expect(callCount).toBe(3);
+      expect(results[0].id).toBe('1');
+      expect(results[1].id).toBe('2');
+      expect(results[2].id).toBe('3');
+    });
+  });
+
+  describe('Optimistic Updates', () => {
+    it('should apply optimistic update to cache immediately', async () => {
+      vi.spyOn(mockTransport, 'invoke').mockImplementation(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        return { id: '123', name: 'Updated Name', version: 2 };
+      });
+
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
+
+      const userId = '123';
+      const updateData = { name: 'Updated Name' };
+      // Cache key matches the actual arguments passed to the method
+      const cacheKey = `UserService@1.0.0.updateUser:["123",{"name":"Updated Name"}]`;
+
+      // Set initial cached value
+      cacheManager.set(cacheKey, { id: '123', name: 'John', version: 1 }, { maxAge: 10000 });
+
+      // Update with optimistic update using fluent API
+      const proxy = service.cache({ maxAge: 10000 }).optimistic((current: any) => ({
+        ...(current || {}),
+        id: '123',
+        name: 'Optimistic Name',
+        version: (current?.version || 0) + 1,
+      })) as any;
+
+      const updatePromise = proxy.updateUser(userId, updateData);
+
+      // Wait a bit for optimistic update to be applied
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      // Cache should immediately have optimistic value
+      const cachedValue = cacheManager.getRaw(cacheKey);
+      if (cachedValue) {
+        expect((cachedValue as any).name).toBe('Optimistic Name');
+      }
+
+      // Wait for actual update
+      await updatePromise;
+    });
+
+    it('should rollback optimistic update on error', async () => {
+      vi.spyOn(mockTransport, 'invoke').mockRejectedValue(new Error('Update failed'));
+
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
+
+      const userId = '123';
+      const updateData = { name: 'Updated' };
+      // Cache key matches the actual arguments passed to the method
+      const cacheKey = `UserService@1.0.0.updateUser:["123",{"name":"Updated"}]`;
+
+      // Set initial cached value
+      cacheManager.set(cacheKey, { id: '123', name: 'John', version: 1 }, { maxAge: 10000 });
+
+      // Try update with optimistic update using fluent API
+      const proxy = service.cache({ maxAge: 10000 }).optimistic((current: any) => ({
+        ...(current || {}),
+        id: '123',
+        name: 'Optimistic Name',
+        version: (current?.version || 0) + 1,
+      })) as any;
+
+      await expect(proxy.updateUser(userId, updateData)).rejects.toThrow();
+
+      // Cache should be invalidated (rolled back)
+      const cachedValue = cacheManager.getRaw(cacheKey);
+      expect(cachedValue).toBeUndefined();
+    });
+
+    it('should work with fallback on error', async () => {
+      vi.spyOn(mockTransport, 'invoke').mockRejectedValue(new Error('Update failed'));
+
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
+
+      const fallbackValue = { id: '123', name: 'Fallback', version: 0 };
+      const userId = '123';
+      const updateData = { name: 'Updated' };
+
+      const proxy = service
+        .cache({ maxAge: 10000 })
+        .optimistic((current: any) => ({
+          ...(current || {}),
+          id: '123',
+          name: 'Optimistic',
+          version: 1,
+        }))
+        .fallback(fallbackValue) as any;
+
+      const result = await proxy.updateUser(userId, updateData);
+
+      // Should use fallback instead of throwing
+      expect(result).toEqual(fallbackValue);
+    });
+  });
+
+  describe('Combined Advanced Features', () => {
+    it('should work with cache + optimistic + background refetch', async () => {
+      let version = 1;
+      vi.spyOn(mockTransport, 'invoke').mockImplementation(async () => ({
+        id: '123',
+        name: 'John',
+        version: version++,
+      }));
+
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
+
+      // Use cache + background refetch together
+      const proxy = service.cache(10000).background(100) as any;
+
+      // First call - will fetch and cache (version 1)
+      const user1 = await proxy.getUser('123');
+      expect(user1.version).toBe(1);
+
+      // Wait for background refetch
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      // Version should have incremented from background refetch
+      const proxy2 = service.cache(10000) as any;
+      const user2 = await proxy2.getUser('123');
+      expect(user2.version).toBeGreaterThan(1);
+    });
+
+    it('should deduplicate + retry together', async () => {
+      let callCount = 0;
+      let failCount = 0;
+
+      vi.spyOn(mockTransport, 'invoke').mockImplementation(async () => {
+        callCount++;
+        failCount++;
+
+        if (failCount <= 2) {
+          throw new Error('Temporary failure');
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        return { id: '123', name: 'John', version: 1 };
+      });
+
+      const service = await peer.queryFluentInterface<IUserService>('UserService@1.0.0');
+
+      // Multiple concurrent requests with retry
+      const promises = Array.from({ length: 3 }, () => {
+        const proxy = service.retry(5).cache(10000) as any;
+        return proxy.getUser('123');
+      });
+
+      const results = await Promise.all(promises);
+
+      // Should deduplicate + retry
+      expect(results).toHaveLength(3);
+      expect(callCount).toBeGreaterThanOrEqual(3); // At least 3 attempts (initial + 2 failures)
+      expect(callCount).toBeLessThan(15); // But not 15 (3 concurrent * 5 retries)
+    });
+  });
+});

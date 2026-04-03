@@ -1,0 +1,80 @@
+{
+  "name": "omnitron-dev",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "turbo build && turbo build:titan",
+    "dev": "turbo dev",
+    "test": "turbo test",
+    "lint": "eslint \"{apps,packages}/**/*.{js,jsx,ts,tsx}\"",
+    "lint:fix": "eslint --fix \"{apps,packages}/**/*.{js,jsx,ts,tsx}\"",
+    "lint:print": "eslint --print-config eslint.config.mjs > eslint-show-config.json",
+    "fm:check": "prettier --check \"{apps,packages}/**/*.{js,jsx,ts,tsx}\"",
+    "fm:fix": "prettier --write \"{apps,packages}/**/*.{js,jsx,ts,tsx}\"",
+    "fix:all": "pnpm lint:fix && pnpm fm:fix",
+    "cleanup": "find . -name \"node_modules\" -type d -prune -exec rm -rf '{}' +",
+    "changeset": "changeset",
+    "ai-prompt": "ts-node scripts/gen-aiprompt.ts",
+    "publish": "ts-node scripts/publish.ts",
+    "transform-hugeicons": "tsx scripts/transform-hugeicons.ts",
+    "link:global": "cd apps/omnitron && pnpm link --global",
+    "unlink:global": "pnpm uninstall --global @omnitron-dev/omnitron",
+    "kb:extract": "turbo kb:extract",
+    "kb:index": "cd apps/omnitron && tsx src/commands/kb.ts index"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@omnitron-dev/omnitron": "workspace:*",
+    "@types/add": "^2.0.3",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "25.0.3",
+    "@types/pg": "^8.16.0",
+    "@typescript-eslint/eslint-plugin": "8.57.0",
+    "@typescript-eslint/parser": "8.57.0",
+    "@xec-sh/kit": "^0.9.0",
+    "add": "^2.0.6",
+    "eslint": "10.0.3",
+    "eslint-import-resolver-typescript": "^4.4.4",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-perfectionist": "^5.6.0",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-unused-imports": "^4.4.1",
+    "globals": "^17.4.0",
+    "prettier": "^3.7.4",
+    "ts-loader": "^9.5.4",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "tsx": "^4.21.0",
+    "turbo": "^2.8.17",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.57.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "web-worker": "1.5.0",
+      "@typescript-eslint/eslint-plugin": "8.57.0",
+      "@typescript-eslint/parser": "8.57.0",
+      "@typescript-eslint/utils": "8.57.0",
+      "@typescript-eslint/typescript-estree": "8.57.0",
+      "@typescript-eslint/type-utils": "8.57.0",
+      "@typescript-eslint/scope-manager": "8.57.0",
+      "@typescript-eslint/visitor-keys": "8.57.0"
+    },
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "cpu-features",
+      "msw",
+      "ssh2"
+    ]
+  },
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=10"
+  },
+  "dependencies": {
+    "framer-motion": "^12.38.0",
+    "systeminformation": "^5.31.4"
+  }
+}

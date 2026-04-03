@@ -1,0 +1,92 @@
+{
+  "name": "@omnitron-dev/kb",
+  "version": "0.1.0",
+  "description": "Knowledge base framework — code intelligence, semantic search, and documentation for Titan ecosystem",
+  "keywords": [
+    "knowledge-base",
+    "code-intelligence",
+    "mcp",
+    "semantic-search",
+    "documentation"
+  ],
+  "author": "LuxQuant",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "kb-extract": "./dist/cli/extract.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./titan": {
+      "types": "./dist/titan/index.d.ts",
+      "default": "./dist/titan/index.js"
+    },
+    "./extractors": {
+      "types": "./dist/extractors/index.d.ts",
+      "default": "./dist/extractors/index.js"
+    },
+    "./embeddings": {
+      "types": "./dist/embeddings/index.d.ts",
+      "default": "./dist/embeddings/index.js"
+    },
+    "./specs": {
+      "types": "./dist/specs/index.d.ts",
+      "default": "./dist/specs/index.js"
+    },
+    "./discovery": {
+      "types": "./dist/discovery/index.d.ts",
+      "default": "./dist/discovery/index.js"
+    },
+    "./surreal": {
+      "types": "./dist/surreal/index.d.ts",
+      "default": "./dist/surreal/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "specs/content"
+  ],
+  "scripts": {
+    "build": "rm -rf dist node_modules/.tmp && NODE_OPTIONS='--max-old-space-size=16384' tsc -p ./tsconfig.json",
+    "test": "vitest run",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "dev": "tsc -p ./tsconfig.json --watch"
+  },
+  "dependencies": {
+    "@omnitron-dev/common": "workspace:*",
+    "@surrealdb/node": "^3.0.3",
+    "gray-matter": "^4.0.3"
+  },
+  "peerDependencies": {
+    "@omnitron-dev/titan": "workspace:*",
+    "surrealdb": "^2.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@omnitron-dev/titan": {
+      "optional": true
+    },
+    "surrealdb": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "25.0.3",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "bun": ">=1.2.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/omnitron-dev/omni.git",
+    "directory": "packages/kb"
+  }
+}

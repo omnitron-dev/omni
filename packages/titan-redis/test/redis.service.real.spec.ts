@@ -1,0 +1,449 @@
+import { describe, it, expect, beforeEach, afterEach, beforeAll } from 'vitest';
+import { RedisService } from '../src/redis.service.js';
+import { RedisManager } from '../src/redis.manager.js';
+import { ConfigService } from '@omnitron-dev/titan/module/config';
+import { RedisTestManager, RedisTestContainer } from '@omnitron-dev/testing/titan';
+import { setupRedisTests, describeWithRedis } from '@omnitron-dev/testing/titan';
+import { isRedisInMockMode } from './utils/redis-test-utils.js';
+import { createMockLogger } from '@omnitron-dev/testing/titan';
+
+// Skip all tests in this file if running in mock mode - requires real Redis
+const describeOrSkip = isRedisInMockMode() ? describe.skip : describeWithRedis;
+
+// Setup Redis test infrastructure (only if not in mock mode)
+if (!isRedisInMockMode()) {
+  setupRedisTests();
+}
+
+describeOrSkip('RedisService with Real Redis', () => {
+  beforeAll(() => {
+    if (isRedisInMockMode()) {
+      console.log('⏭️  Skipping redis.service.real.spec.ts - requires real Redis (USE_MOCK_REDIS=true)');
+    }
+  });
+  let service: RedisService;
+  let manager: RedisManager;
+  let _configService: ConfigService;
+  let testContainer: RedisTestContainer;
+  let testManager: RedisTestManager;
+
+  beforeAll(async () => {
+    testManager = RedisTestManager.getInstance({ verbose: process.env.REDIS_VERBOSE === 'true' });
+  });
+
+  beforeEach(async () => {
+    // Create a dedicated Redis container for each test
+    testContainer = await testManager.createContainer();
+
+    // Create config service with test container URL
+    configService = new ConfigService({
+      sources: [
+        {
+          type: 'object',
+          data: {
+            redis: {
+              default: {
+                type: 'standalone',
+                options: {
+                  host: testContainer.host,
+                  port: testContainer.port,
+                  db: 0,
+                  retryStrategy: (times: number) => {
+                    if (times > 3) return null;
+                    return Math.min(times * 100, 2000);
+                  },
+                  enableOfflineQueue: false,
+                },
+              },
+              cache: {
+                type: 'standalone',
+                options: {
+                  host: testContainer.host,
+                  port: testContainer.port,
+                  db: 1,
+                  keyPrefix: 'cache:',
+                },
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    // Create manager and service with real Redis
+    const mockLogger = createMockLogger();
+    manager = new RedisManager(
+      {
+        clients: [
+          {
+            namespace: 'default',
+            host: testContainer.host,
+            port: testContainer.port,
+            db: 0,
+            retryStrategy: (times: number) => {
+              if (times > 3) return null;
+              return Math.min(times * 100, 2000);
+            },
+            enableOfflineQueue: false,
+          },
+          {
+            namespace: 'cache',
+            host: testContainer.host,
+            port: testContainer.port,
+            db: 1,
+            keyPrefix: 'cache:',
+          },
+        ],
+      },
+      mockLogger
+    );
+    await manager.init();
+    service = new RedisService(manager);
+
+    // Clear all data before each test
+    const client = service.getClient();
+    if (client) {
+      await client.flushall();
+    }
+  }, 30000);
+
+  afterEach(async () => {
+    // Disconnect and cleanup
+    await manager.destroy();
+    await testContainer.cleanup();
+  });
+
+  describe('String Operations', () => {
+    it('should perform all string operations', async () => {
+      // Set and get
+      await service.set('key1', 'value1');
+      expect(await service.get('key1')).toBe('value1');
+
+      // Setex (with expiry)
+      await service.setex('expiring', 2, 'temp');
+      expect(await service.get('expiring')).toBe('temp');
+      const ttl = await service.ttl('expiring');
+      expect(ttl).toBeGreaterThan(0);
+      expect(ttl).toBeLessThanOrEqual(2);
+
+      // Setnx (set if not exists)
+      expect(await service.setnx('new', 'value')).toBe(1);
+      expect(await service.setnx('new', 'other')).toBe(0);
+
+      // Increment operations
+      await service.set('counter', '5');
+      expect(await service.incr('counter')).toBe(6);
+      expect(await service.incrby('counter', 4)).toBe(10);
+      expect(await service.decr('counter')).toBe(9);
+      expect(await service.decrby('counter', 3)).toBe(6);
+
+      // Delete and exists
+      expect(await service.exists('counter')).toBe(1);
+      expect(await service.del('counter')).toBe(1);
+      expect(await service.exists('counter')).toBe(0);
+
+      // Expire
+      await service.set('temp', 'value');
+      expect(await service.expire('temp', 1)).toBe(1);
+      const tempTtl = await service.ttl('temp');
+      expect(tempTtl).toBe(1);
+    });
+
+    it('should work with different namespaces', async () => {
+      await service.set('key', 'default-value');
+      await service.set('key', 'cache-value', undefined, 'cache');
+
+      expect(await service.get('key')).toBe('default-value');
+      expect(await service.get('key', 'cache')).toBe('cache-value');
+    });
+  });
+
+  describe('Hash Operations', () => {
+    it('should perform all hash operations', async () => {
+      const hash = 'user:1';
+
+      // Set and get fields
+      await service.hset(hash, 'name', 'John');
+      await service.hset(hash, 'age', '30');
+      await service.hset(hash, 'city', 'NYC');
+
+      expect(await service.hget(hash, 'name')).toBe('John');
+      expect(await service.hget(hash, 'age')).toBe('30');
+
+      // Get all fields
+      const all = await service.hgetall(hash);
+      expect(all).toEqual({
+        name: 'John',
+        age: '30',
+        city: 'NYC',
+      });
+
+      // Delete field
+      expect(await service.hdel(hash, 'city')).toBe(1);
+      expect(await service.hget(hash, 'city')).toBeNull();
+    });
+  });
+
+  describe('Set Operations', () => {
+    it('should perform all set operations', async () => {
+      const set = 'tags';
+
+      // Add members
+      expect(await service.sadd(set, ['tag1', 'tag2', 'tag3'])).toBe(3);
+      expect(await service.sadd(set, 'tag2')).toBe(0); // Already exists
+
+      // Check membership
+      expect(await service.sismember(set, 'tag1')).toBe(1);
+      expect(await service.sismember(set, 'tag4')).toBe(0);
+
+      // Get members
+      const members = await service.smembers(set);
+      expect(members.sort()).toEqual(['tag1', 'tag2', 'tag3']);
+
+      // Remove member
+      expect(await service.srem(set, 'tag2')).toBe(1);
+      expect(await service.sismember(set, 'tag2')).toBe(0);
+    });
+  });
+
+  describe('List Operations', () => {
+    it('should perform all list operations', async () => {
+      const list = 'queue';
+
+      // Push elements
+      expect(await service.lpush(list, 'first')).toBe(1);
+      expect(await service.rpush(list, 'last')).toBe(2);
+      expect(await service.lpush(list, 'new-first')).toBe(3);
+
+      // Get length
+      expect(await service.llen(list)).toBe(3);
+
+      // Get range
+      const range = await service.lrange(list, 0, -1);
+      expect(range).toEqual(['new-first', 'first', 'last']);
+
+      // Pop elements
+      expect(await service.lpop(list)).toBe('new-first');
+      expect(await service.rpop(list)).toBe('last');
+      expect(await service.llen(list)).toBe(1);
+    });
+  });
+
+  describe('Sorted Set Operations', () => {
+    it('should perform all sorted set operations', async () => {
+      const zset = 'scores';
+
+      // Add members with scores
+      expect(await service.zadd(zset, 10, 'alice', 20, 'bob', 15, 'charlie')).toBe(3);
+
+      // Get cardinality
+      expect(await service.zcard(zset)).toBe(3);
+
+      // Get score
+      expect(await service.zscore(zset, 'bob')).toBe('20');
+      expect(await service.zscore(zset, 'unknown')).toBeNull();
+
+      // Range operations
+      expect(await service.zrange(zset, 0, -1)).toEqual(['alice', 'charlie', 'bob']);
+      expect(await service.zrevrange(zset, 0, 1)).toEqual(['bob', 'charlie']);
+
+      // Remove member
+      expect(await service.zrem(zset, 'charlie')).toBe(1);
+      expect(await service.zcard(zset)).toBe(2);
+    });
+  });
+
+  describe('Lua Script Operations', () => {
+    it('should execute Lua scripts', async () => {
+      const script = `
+        local key = KEYS[1]
+        local value = ARGV[1]
+        redis.call('set', key, value)
+        return redis.call('get', key)
+      `;
+
+      const result = await service.eval(script, 1, 'script-key', 'script-value');
+      expect(result).toBe('script-value');
+
+      // Verify the key was set
+      expect(await service.get('script-key')).toBe('script-value');
+    });
+
+    it('should load and execute scripts with SHA', async () => {
+      const script = 'return redis.call("incr", KEYS[1])';
+
+      // Load script
+      const sha = await service.loadScript('test-script', script);
+      expect(sha).toHaveLength(40);
+
+      // Set initial value
+      await service.set('counter', '10');
+
+      // Execute using SHA
+      const result = await service.evalsha(sha, 1, 'counter');
+      expect(result).toBe(11);
+    });
+
+    it('should run named scripts', async () => {
+      // This requires scripts to be loaded via manager
+      const mockLogger = createMockLogger();
+      const managerWithScripts = new RedisManager(
+        {
+          clients: [
+            {
+              namespace: 'default',
+              host: testContainer.host,
+              port: testContainer.port,
+              db: 15,
+            },
+          ],
+          scripts: [
+            {
+              name: 'multiply',
+              content: 'return ARGV[1] * ARGV[2]',
+            },
+          ],
+        },
+        mockLogger
+      );
+
+      await managerWithScripts.init();
+      const serviceWithScripts = new RedisService(managerWithScripts);
+
+      const result = await serviceWithScripts.runScript('multiply', [], [6, 7]);
+      expect(result).toBe(42);
+
+      await managerWithScripts.destroy();
+    });
+  });
+
+  describe('Pub/Sub Operations', () => {
+    it('should publish messages', async () => {
+      const result = await service.publish('channel', 'message');
+      expect(result).toBe(0); // No subscribers
+    });
+
+    it('should create subscriber', async () => {
+      const subscriber = await service.createSubscriber();
+      expect(subscriber).toBeDefined();
+
+      // Check status is valid
+      expect(['wait', 'ready', 'connecting', 'connect']).toContain(subscriber.status);
+
+      await subscriber.quit();
+    });
+
+    it('should handle pub/sub messaging', async () => {
+      const subscriber = await service.createSubscriber();
+      const messages: string[] = [];
+
+      const messagePromise = new Promise<void>((resolve) => {
+        subscriber.on('message', async (channel, message) => {
+          messages.push(message);
+          if (messages.length === 3) {
+            expect(messages).toEqual(['msg1', 'msg2', 'msg3']);
+            await subscriber.quit();
+            resolve();
+          }
+        });
+      });
+
+      await subscriber.subscribe('test-channel');
+
+      // Publish messages
+      setTimeout(async () => {
+        await service.publish('test-channel', 'msg1');
+        await service.publish('test-channel', 'msg2');
+        await service.publish('test-channel', 'msg3');
+      }, 50);
+
+      await messagePromise;
+    }, 5000);
+  });
+
+  describe('Pipeline Operations', () => {
+    it('should execute pipeline operations', async () => {
+      const pipeline = await service.pipeline();
+
+      pipeline.set('p1', 'v1').set('p2', 'v2').set('p3', 'v3').get('p1').get('p2').get('p3');
+
+      const results = await pipeline.exec();
+      expect(results).toHaveLength(6);
+
+      // Check set results
+      expect(results![0][1]).toBe('OK');
+      expect(results![1][1]).toBe('OK');
+      expect(results![2][1]).toBe('OK');
+
+      // Check get results
+      expect(results![3][1]).toBe('v1');
+      expect(results![4][1]).toBe('v2');
+      expect(results![5][1]).toBe('v3');
+    });
+
+    it('should handle pipeline errors', async () => {
+      const pipeline = await service.pipeline();
+
+      pipeline
+        .set('valid', 'value')
+        .incr('valid') // This will fail - not a number
+        .set('another', 'value');
+
+      const results = await pipeline.exec();
+      expect(results![0][0]).toBeNull(); // No error for set
+      expect(results![1][0]).toBeInstanceOf(Error); // Error for incr
+      expect(results![2][0]).toBeNull(); // No error for set
+    });
+  });
+
+  describe('Multi/Transaction Operations', () => {
+    it('should execute transactions', async () => {
+      const multi = await service.multi();
+
+      multi.set('tx1', 'val1').set('tx2', 'val2').incr('tx-counter').get('tx1');
+
+      const results = await multi.exec();
+      expect(results).toHaveLength(4);
+      expect(results![0][1]).toBe('OK');
+      expect(results![1][1]).toBe('OK');
+      expect(results![2][1]).toBe(1);
+      expect(results![3][1]).toBe('val1');
+    });
+  });
+
+  describe('Database Operations', () => {
+    it('should flush database', async () => {
+      await service.set('key1', 'value1');
+      await service.set('key2', 'value2');
+
+      await service.flushdb();
+
+      expect(await service.get('key1')).toBeNull();
+      expect(await service.get('key2')).toBeNull();
+    });
+
+    it('should flush all databases', async () => {
+      await service.set('key', 'value');
+      await service.set('key', 'cache-value', undefined, 'cache');
+
+      await service.flushall();
+
+      expect(await service.get('key')).toBeNull();
+      expect(await service.get('key', 'cache')).toBeNull();
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('should handle invalid namespace', async () => {
+      await expect(service.get('key', 'non-existent')).rejects.toThrow(
+        'Redis client with namespace "non-existent" not found'
+      );
+    });
+
+    it('should handle operation errors', async () => {
+      // Try to increment a non-numeric value
+      await service.set('text', 'not-a-number');
+      await expect(service.incr('text')).rejects.toThrow();
+    });
+  });
+});

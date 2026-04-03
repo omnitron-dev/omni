@@ -1,0 +1,65 @@
+{
+  "name": "@omnitron-dev/cuid",
+  "version": "0.1.0",
+  "description": "CUID implementation",
+  "author": "LuxQuant",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "rm -rf dist node_modules/.tmp && tsc -p ./tsconfig.json",
+    "test": "vitest run",
+    "test:node": "vitest run",
+    "test:bun": "bun test test/primitives.spec.ts test/list-buffer.spec.ts test/entries.spec.ts test/omit.spec.ts test/predicates.spec.ts test/promise.spec.ts test/timed-map-bun-compat.spec.ts",
+    "test:all": "npm run test:node && npm run test:bun",
+    "benchmark": "tsx benchmark/index.ts",
+    "bench": "tsx benchmark/index.ts"
+  },
+  "devDependencies": {
+    "@paralleldrive/cuid2": "^3.1.0",
+    "@types/benchmark": "^2.1.5",
+    "@types/bun": "latest",
+    "@types/node": "25.0.1",
+    "benchmark": "^2.1.4",
+    "nanoid": "^5.1.6",
+    "short-uuid": "^6.0.3",
+    "vitest": "^4.1.0",
+    "tsx": "^4.21.0",
+    "typescript": "5.9.3",
+    "uuid": "^13.0.0"
+  },
+  "keywords": [
+    "utils",
+    "common",
+    "helpers",
+    "typescript",
+    "utilities",
+    "predicates",
+    "type-checking",
+    "validation",
+    "primitives",
+    "functions",
+    "browser",
+    "node",
+    "cross-platform",
+    "type-guards",
+    "utility-functions",
+    "timed-map"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/omnitron-dev/omni.git",
+    "directory": "packages/common"
+  },
+  "bugs": {
+    "url": "https://github.com/omnitron-dev/omni/issues"
+  },
+  "homepage": "https://github.com/omnitron-dev/omni/tree/main/packages/common#readme",
+  "dependencies": {
+    "@noble/hashes": "1.8.0"
+  }
+}

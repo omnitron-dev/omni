@@ -1,0 +1,41 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "lib": ["deno.window"],
+    "strict": true
+  },
+  "lint": {
+    "files": {
+      "include": ["src/", "test/"],
+      "exclude": ["dist/"]
+    },
+    "rules": {
+      "tags": ["recommended"],
+      "exclude": ["no-explicit-any"]
+    }
+  },
+  "fmt": {
+    "files": {
+      "include": ["src/", "test/"],
+      "exclude": ["dist/"]
+    },
+    "options": {
+      "useTabs": false,
+      "lineWidth": 120,
+      "indentWidth": 2,
+      "semiColons": true,
+      "singleQuote": true,
+      "proseWrap": "preserve"
+    }
+  },
+  "test": {
+    "include": ["test/runtime/deno-all.test.ts"],
+    "exclude": ["test/runtime/bun.test.ts", "test/runtime/node.test.ts", "test/runtime/bun-all.test.ts"]
+  },
+  "tasks": {
+    "test": "deno test --allow-read --allow-write --allow-env --unstable-sloppy-imports",
+    "fmt": "deno fmt",
+    "lint": "deno lint",
+    "check": "deno check src/**/*.ts test/**/*.ts"
+  }
+}

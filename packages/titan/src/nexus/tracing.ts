@@ -1,0 +1,906 @@
+/**
+ * Distributed Tracing support for Nexus DI
+ *
+ * Provides OpenTelemetry integration and distributed tracing capabilities.
+ * Allows tracking of dependency resolution and service calls across the system.
+ *
+ * @experimental
+ * @since 0.1.0
+ * @module tracing
+ * @packageDocumentation
+ */
+
+import { createToken } from './token.js';
+import { InjectionToken, MiddlewareContext } from './types.js';
+import { Middleware } from './middleware.js';
+import type { ILogger } from '../types/logger.js';
+import { generateTraceId, generateSpanId } from '../utils/id.js';
+import { fallbackLog } from '../utils/fallback-log.js';
+
+/**
+ * Span attributes.
+ *
+ * @experimental
+ * @since 0.1.0
+ */
+export interface SpanAttributes {
+  [key: string]: string | number | boolean | undefined;
+}
+
+/**
+ * Span context
+ */
+export interface SpanContext {
+  traceId: string;
+  spanId: string;
+  traceFlags: number;
+  traceState?: string;
+}
+
+/**
+ * Span status codes
+ */
+export enum SpanStatus {
+  UNSET = 0,
+  OK = 1,
+  ERROR = 2,
+}
+
+/**
+ * Span status interface
+ */
+export interface SpanStatusValue {
+  code: SpanStatus;
+  message?: string;
+}
+
+/**
+ * Span kinds
+ */
+export enum SpanKind {
+  INTERNAL = 0,
+  SERVER = 1,
+  CLIENT = 2,
+  PRODUCER = 3,
+  CONSUMER = 4,
+}
+
+/**
+ * Trace flags
+ */
+export enum TraceFlags {
+  NONE = 0x00,
+  SAMPLED = 0x01,
+}
+
+/**
+ * Span interface
+ */
+export interface Span {
+  readonly name: string;
+  readonly spanId: string;
+  readonly traceId: string;
+  readonly parentId?: string;
+  readonly startTime: number;
+  readonly endTime?: number;
+  readonly duration?: number;
+  readonly attributes: SpanAttributes;
+  readonly events: Array<{ name: string; timestamp: number; attributes?: SpanAttributes }>;
+  readonly status?: SpanStatusValue;
+  spanContext(): SpanContext;
+  setAttribute(key: string, value: string | number | boolean): void;
+  setAttributes(attributes: SpanAttributes): void;
+  addEvent(name: string, attributes?: SpanAttributes): void;
+  setStatus(status: SpanStatusValue): void;
+  end(endTime?: number): void;
+  isRecording(): boolean;
+  getContext(): SpanContext;
+}
+
+/**
+ * Tracer interface
+ */
+export interface Tracer {
+  startSpan(name: string, options?: SpanOptions): Span;
+  startActiveSpan<T>(name: string, fn: (span: Span) => T): T;
+  startActiveSpanAsync<T>(name: string, fn: (span: Span) => Promise<T>): Promise<T>;
+}
+
+/**
+ * Span options
+ */
+export interface SpanOptions {
+  kind?: SpanKind;
+  attributes?: SpanAttributes;
+  links?: SpanLink[];
+  startTime?: number;
+  root?: boolean;
+  parent?: Span;
+}
+
+/**
+ * Span link
+ */
+export interface SpanLink {
+  context: SpanContext;
+  attributes?: SpanAttributes;
+}
+
+/**
+ * Trace exporter interface
+ */
+export interface TraceExporter {
+  export(spans: Span[]): Promise<void>;
+  shutdown(): Promise<void>;
+}
+
+/**
+ * Propagator interface for context propagation
+ */
+export interface Propagator {
+  inject(context: SpanContext, carrier: any): void;
+  extract(carrier: any): SpanContext | null;
+}
+
+/**
+ * Simple span implementation
+ */
+class SimpleSpan implements Span {
+  public readonly name: string;
+  public readonly spanId: string;
+  public readonly traceId: string;
+  public readonly parentId?: string;
+  public readonly startTime: number;
+  public endTime?: number;
+  public attributes: SpanAttributes = {};
+  public events: Array<{ name: string; timestamp: number; attributes?: SpanAttributes }> = [];
+  public status?: SpanStatusValue;
+  private recording = true;
+  private context: SpanContext;
+  private logger?: ILogger;
+
+  constructor(
+    name: string,
+    context: SpanContext,
+    options?: SpanOptions,
+    private exporter?: TraceExporter,
+    logger?: ILogger
+  ) {
+    this.name = name;
+    this.context = context;
+    this.spanId = context.spanId;
+    this.traceId = context.traceId;
+    this.parentId = options?.parent ? options.parent.spanId : undefined;
+    this.startTime = options?.startTime || Date.now();
+    this.logger = logger;
+
+    if (options?.attributes) {
+      this.attributes = { ...options.attributes };
+    }
+
+    if (options?.kind !== undefined) {
+      this.setAttribute('span.kind', SpanKind[options.kind]);
+    }
+  }
+
+  get duration(): number | undefined {
+    if (this.endTime) {
+      return this.endTime - this.startTime;
+    }
+    return undefined;
+  }
+
+  spanContext(): SpanContext {
+    return this.context;
+  }
+
+  getContext(): SpanContext {
+    return this.context;
+  }
+
+  setAttribute(key: string, value: string | number | boolean): void {
+    if (this.recording) {
+      this.attributes[key] = value;
+    }
+  }
+
+  setAttributes(attributes: SpanAttributes): void {
+    if (this.recording) {
+      Object.assign(this.attributes, attributes);
+    }
+  }
+
+  addEvent(name: string, attributes?: SpanAttributes): void {
+    if (this.recording) {
+      this.events.push({
+        name,
+        timestamp: Date.now(),
+        attributes,
+      });
+    }
+  }
+
+  setStatus(status: SpanStatusValue): void {
+    if (this.recording) {
+      this.status = status;
+    }
+  }
+
+  end(endTime?: number): void {
+    if (this.recording) {
+      this.endTime = endTime || Date.now();
+      this.recording = false;
+
+      // Export the span if exporter is available
+      if (this.exporter) {
+        this.exporter.export([this]).catch((err) => {
+          this.logger?.error({ err, spanId: this.spanId, traceId: this.traceId }, 'Failed to export span');
+        });
+      }
+    }
+  }
+
+  isRecording(): boolean {
+    return this.recording;
+  }
+
+  toJSON(): any {
+    return {
+      name: this.name,
+      spanId: this.spanId,
+      traceId: this.traceId,
+      parentId: this.parentId,
+      startTime: this.startTime,
+      endTime: this.endTime,
+      duration: this.duration,
+      context: this.context,
+      attributes: this.attributes,
+      events: this.events,
+      status: this.status,
+    };
+  }
+}
+
+/**
+ * Simple tracer implementation
+ */
+export class SimpleTracer implements Tracer {
+  private activeSpan?: Span;
+  private exporter?: TraceExporter;
+  private spans: Span[] = [];
+  private static currentTracer?: SimpleTracer;
+  private logger?: ILogger;
+
+  constructor(exporter?: TraceExporter, logger?: ILogger) {
+    this.exporter = exporter;
+    this.logger = logger;
+  }
+
+  setLogger(logger: ILogger): void {
+    this.logger = logger;
+  }
+
+  startSpan(name: string, options?: SpanOptions): Span {
+    let traceId: string;
+    const parentSpan: Span | undefined = options?.parent || this.activeSpan;
+
+    if (parentSpan) {
+      traceId = parentSpan.traceId;
+    } else {
+      traceId = generateTraceId();
+    }
+
+    const context: SpanContext = {
+      traceId,
+      spanId: generateSpanId(),
+      traceFlags: TraceFlags.SAMPLED,
+    };
+
+    const span = new SimpleSpan(name, context, options, this.exporter, this.logger);
+    this.spans.push(span);
+
+    return span;
+  }
+
+  startActiveSpan<T>(name: string, fn: (span: Span) => T): T {
+    const span = this.startSpan(name);
+    const previousSpan = this.activeSpan;
+    this.activeSpan = span;
+
+    try {
+      const result = fn(span);
+      span.setStatus({ code: SpanStatus.OK });
+      return result;
+    } catch (error) {
+      span.setStatus({ code: SpanStatus.ERROR, message: String(error) });
+      throw error;
+    } finally {
+      span.end();
+      this.activeSpan = previousSpan;
+    }
+  }
+
+  async startActiveSpanAsync<T>(name: string, fn: (span: Span) => Promise<T>): Promise<T> {
+    const span = this.startSpan(name);
+    const previousSpan = this.activeSpan;
+    this.activeSpan = span;
+
+    try {
+      const result = await fn(span);
+      span.setStatus({ code: SpanStatus.OK });
+      return result;
+    } catch (error) {
+      span.setStatus({ code: SpanStatus.ERROR, message: String(error) });
+      throw error;
+    } finally {
+      span.end();
+      this.activeSpan = previousSpan;
+    }
+  }
+
+  getActiveSpan(): Span | undefined {
+    return this.activeSpan;
+  }
+
+  getSpans(): Span[] {
+    return [...this.spans];
+  }
+
+  clearSpans(): void {
+    this.spans = [];
+  }
+
+  withSpan<T>(span: Span): T {
+    this.activeSpan = span;
+    // Return a context object that includes the active span
+    return { activeSpan: span } as any;
+  }
+
+  setCurrentTracer(tracer: SimpleTracer): void {
+    SimpleTracer.currentTracer = tracer;
+  }
+
+  static getCurrentTracer(): SimpleTracer | undefined {
+    return SimpleTracer.currentTracer;
+  }
+}
+
+/**
+ * Jaeger exporter
+ */
+export class JaegerExporter implements TraceExporter {
+  private endpoint: string;
+  private serviceName: string;
+  private batch: Span[] = [];
+  private batchSize = 100;
+  private flushInterval = 5000;
+  private timer?: NodeJS.Timeout;
+  private logger?: ILogger;
+
+  constructor(config: {
+    endpoint: string;
+    serviceName: string;
+    batchSize?: number;
+    flushInterval?: number;
+    logger?: ILogger;
+  }) {
+    this.endpoint = config.endpoint;
+    this.serviceName = config.serviceName;
+    this.batchSize = config.batchSize || this.batchSize;
+    this.flushInterval = config.flushInterval || this.flushInterval;
+    this.logger = config.logger;
+
+    this.startBatchTimer();
+  }
+
+  setLogger(logger: ILogger): void {
+    this.logger = logger;
+  }
+
+  async export(spans: Span[]): Promise<void> {
+    this.batch.push(...spans);
+
+    if (this.batch.length >= this.batchSize) {
+      await this.flush();
+    }
+  }
+
+  async flush(): Promise<void> {
+    if (this.batch.length === 0) {
+      return;
+    }
+
+    const spans = this.batch;
+    this.batch = [];
+
+    try {
+      const jaegerSpans = spans.map((span) => this.convertToJaegerSpan(span));
+
+      await fetch(this.endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          batch: {
+            process: {
+              serviceName: this.serviceName,
+              tags: [],
+            },
+            spans: jaegerSpans,
+          },
+        }),
+      });
+    } catch (error) {
+      this.logger?.error(
+        {
+          err: error instanceof Error ? error : new Error(String(error)),
+          endpoint: this.endpoint,
+          spanCount: spans.length,
+        },
+        'Failed to export spans to Jaeger'
+      );
+    }
+  }
+
+  async shutdown(): Promise<void> {
+    if (this.timer) {
+      clearInterval(this.timer);
+    }
+    await this.flush();
+  }
+
+  private convertToJaegerSpan(span: Span): any {
+    const spanData = (span as any).toJSON();
+    return {
+      traceID: spanData.traceId,
+      spanID: spanData.spanId,
+      operationName: spanData.name || 'unknown',
+      startTime: spanData.startTime * 1000, // Convert to microseconds
+      duration: spanData.duration ? spanData.duration * 1000 : 0, // Convert to microseconds
+      tags: Object.entries(spanData.attributes).map(([key, value]) => ({
+        key,
+        type: typeof value === 'string' ? 'string' : typeof value === 'boolean' ? 'bool' : 'float64',
+        value: String(value),
+      })),
+      logs: spanData.events.map((event: any) => ({
+        timestamp: event.timestamp * 1000, // Convert to microseconds
+        fields: [
+          { key: 'event', value: event.name },
+          ...Object.entries(event.attributes || {}).map(([k, v]) => ({
+            key: k,
+            value: String(v),
+          })),
+        ],
+      })),
+      parentSpanID: spanData.parentId || undefined,
+    };
+  }
+
+  private startBatchTimer(): void {
+    this.timer = setInterval(() => {
+      this.flush().catch((err) => {
+        this.logger?.error(
+          { err: err instanceof Error ? err : new Error(String(err)) },
+          'Failed to flush Jaeger spans on timer'
+        );
+      });
+    }, this.flushInterval);
+  }
+
+  /**
+   * Stop the batch timer and clean up resources
+   */
+  stop(): void {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = undefined;
+    }
+  }
+}
+
+/**
+ * Zipkin exporter
+ */
+export class ZipkinExporter implements TraceExporter {
+  private endpoint: string;
+  private serviceName: string;
+  private logger?: ILogger;
+
+  constructor(config: { endpoint: string; serviceName: string; logger?: ILogger }) {
+    this.endpoint = config.endpoint;
+    this.serviceName = config.serviceName;
+    this.logger = config.logger;
+  }
+
+  setLogger(logger: ILogger): void {
+    this.logger = logger;
+  }
+
+  async export(spans: Span[]): Promise<void> {
+    const zipkinSpans = spans.map((span) => this.convertToZipkinSpan(span));
+
+    try {
+      // Check if endpoint already includes the path
+      const url = this.endpoint.endsWith('/api/v2/spans') ? this.endpoint : this.endpoint + '/api/v2/spans';
+
+      await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(zipkinSpans),
+      });
+    } catch (error) {
+      this.logger?.error(
+        {
+          err: error instanceof Error ? error : new Error(String(error)),
+          endpoint: this.endpoint,
+          spanCount: spans.length,
+        },
+        'Failed to export spans to Zipkin'
+      );
+    }
+  }
+
+  async shutdown(): Promise<void> {
+    // No cleanup needed
+  }
+
+  private convertToZipkinSpan(span: Span): any {
+    const spanData = (span as any).toJSON();
+    return {
+      traceId: spanData.traceId,
+      id: spanData.spanId,
+      name: spanData.name || 'unknown',
+      timestamp: spanData.startTime * 1000, // Convert to microseconds
+      duration: spanData.duration ? spanData.duration * 1000 : 0, // Convert to microseconds
+      localEndpoint: {
+        serviceName: this.serviceName,
+      },
+      tags: spanData.attributes,
+      annotations: spanData.events.map((event: any) => ({
+        timestamp: event.timestamp * 1000, // Convert to microseconds
+        value: event.name,
+      })),
+      parentId: spanData.parentId || undefined,
+    };
+  }
+}
+
+/**
+ * W3C TraceContext propagator
+ */
+export class W3CTraceContextPropagator implements Propagator {
+  inject(context: SpanContext, carrier: any): void {
+    const traceparent =
+      '00-' + context.traceId + '-' + context.spanId + '-' + context.traceFlags.toString(16).padStart(2, '0');
+    carrier['traceparent'] = traceparent;
+
+    if (context.traceState) {
+      carrier['tracestate'] = context.traceState;
+    }
+  }
+
+  extract(carrier: any): SpanContext | null {
+    const traceparent = carrier['traceparent'];
+    if (!traceparent) {
+      return null;
+    }
+
+    const parts = traceparent.split('-');
+    if (parts.length !== 4) {
+      return null;
+    }
+
+    return {
+      traceId: parts[1],
+      spanId: parts[2],
+      traceFlags: parseInt(parts[3], 16),
+      traceState: carrier['tracestate'],
+    };
+  }
+}
+
+/**
+ * Configuration for tracing middleware
+ *
+ * @experimental
+ * @since 0.1.0
+ */
+export interface TracingMiddlewareConfig {
+  /** Custom tracer instance */
+  tracer?: Tracer;
+  /** Trace exporter */
+  exporter?: TraceExporter;
+  /** Context propagator */
+  propagator?: Propagator;
+  /** Logger instance */
+  logger?: ILogger;
+}
+
+/**
+ * Helper function to get token name as string
+ */
+function getTokenName<T>(token: InjectionToken<T>): string {
+  if (typeof token === 'string') return token;
+  if (typeof token === 'symbol') return token.toString();
+  if (typeof token === 'function') return token.name || 'AnonymousFunction';
+  if (token && typeof token === 'object' && 'name' in token) return (token as any).name;
+  return 'UnknownToken';
+}
+
+/**
+ * Create tracing middleware for Nexus DI container.
+ *
+ * This middleware wraps dependency resolution with distributed tracing spans,
+ * allowing you to track resolution timing and errors across your application.
+ *
+ * @example
+ * ```typescript
+ * import { createTracingMiddleware, SimpleTracer, JaegerExporter } from '@omnitron-dev/titan/nexus';
+ *
+ * const exporter = new JaegerExporter({
+ *   endpoint: 'http://localhost:14268',
+ *   serviceName: 'my-app'
+ * });
+ *
+ * const tracer = new SimpleTracer(exporter);
+ * container.addMiddleware(createTracingMiddleware({ tracer }));
+ * container.register(TracerToken, { useValue: tracer });
+ * ```
+ *
+ * @experimental
+ * @since 0.1.0
+ */
+export function createTracingMiddleware(config?: TracingMiddlewareConfig): Middleware {
+  const tracer = config?.tracer || new SimpleTracer(config?.exporter, config?.logger);
+  const activeSpans = new WeakMap<MiddlewareContext, Span>();
+
+  return {
+    name: 'tracing',
+    priority: 100, // High priority - tracing should wrap everything
+
+    execute: (context, next) => {
+      const tokenName = getTokenName(context.token);
+
+      // Check for parent span in context (can be in resolveContext or directly)
+      let parentSpan: Span | undefined;
+      const resolveContext = (context as any).resolveContext;
+      if (resolveContext?.traceContext?.activeSpan) {
+        parentSpan = resolveContext.traceContext.activeSpan;
+      } else if ((context as any).traceContext?.activeSpan) {
+        parentSpan = (context as any).traceContext.activeSpan;
+      }
+
+      const span = tracer.startSpan('resolve:' + tokenName, {
+        kind: SpanKind.INTERNAL,
+        parent: parentSpan,
+        attributes: {
+          'token.name': tokenName,
+          'resolution.attempt': context.attempt || 1,
+        },
+      });
+
+      activeSpans.set(context, span);
+      (context as any).__tracingSpan = span;
+
+      try {
+        const result = next();
+
+        // Handle async results
+        if (result && typeof (result as any).then === 'function') {
+          return (result as Promise<unknown>).then(
+            (value) => {
+              span.setStatus({ code: SpanStatus.OK });
+              span.end();
+              activeSpans.delete(context);
+              delete (context as any).__tracingSpan;
+              return value;
+            },
+            (error) => {
+              span.setStatus({ code: SpanStatus.ERROR, message: error?.message || 'Unknown error' });
+              span.addEvent('error', {
+                'error.type': error?.constructor?.name || 'Error',
+                'error.message': error?.message || '',
+              });
+              span.end();
+              activeSpans.delete(context);
+              delete (context as any).__tracingSpan;
+              throw error;
+            }
+          );
+        }
+
+        // Sync result
+        span.setStatus({ code: SpanStatus.OK });
+        span.end();
+        activeSpans.delete(context);
+        delete (context as any).__tracingSpan;
+        return result;
+      } catch (error: any) {
+        span.setStatus({ code: SpanStatus.ERROR, message: error?.message || 'Unknown error' });
+        span.addEvent('error', {
+          'error.type': error?.constructor?.name || 'Error',
+          'error.message': error?.message || '',
+        });
+        span.end();
+        activeSpans.delete(context);
+        delete (context as any).__tracingSpan;
+        throw error;
+      }
+    },
+
+    onError: (error, context) => {
+      const span = activeSpans.get(context) || (context as any).__tracingSpan;
+      if (span && span.isRecording()) {
+        span.setStatus({ code: SpanStatus.ERROR, message: error?.message || 'Unknown error' });
+        span.end();
+        activeSpans.delete(context);
+        delete (context as any).__tracingSpan;
+      }
+    },
+  };
+}
+
+/**
+ * Create a traced version of a function.
+ *
+ * @experimental
+ * @since 0.1.0
+ */
+export function traceFunction<T extends (...args: any[]) => any>(tracer: Tracer, fn: T, name?: string): T {
+  const spanName = name || fn.name || 'anonymous';
+
+  return function traced(this: any, ...args: any[]) {
+    return tracer.startActiveSpan(spanName, (span) => {
+      span.setAttribute('function.name', spanName);
+      span.setAttribute('function.args.count', args.length);
+
+      try {
+        const result = fn.apply(this, args);
+
+        if (result && typeof result.then === 'function') {
+          return result.then(
+            (value: any) => {
+              span.setStatus({ code: SpanStatus.OK });
+              return value;
+            },
+            (error: any) => {
+              span.setStatus({ code: SpanStatus.ERROR, message: String(error) });
+              throw error;
+            }
+          );
+        }
+
+        return result;
+      } catch (error) {
+        span.setStatus({ code: SpanStatus.ERROR, message: String(error) });
+        throw error;
+      }
+    });
+  } as T;
+}
+
+/**
+ * Decorator for tracing methods
+ */
+export function Trace(name?: string) {
+  return function traceDecorator(target: any, propertyKey: string, descriptor: PropertyDescriptor) {
+    const originalMethod = descriptor.value;
+    const spanName = name || target.constructor.name + '.' + propertyKey;
+
+    descriptor.value = function tracedMethod(this: any, ...args: any[]) {
+      // Get tracer from container if available
+      const tracer = (this as any).__tracer || SimpleTracer.getCurrentTracer() || new SimpleTracer();
+
+      return tracer.startActiveSpan(spanName, (span: Span) => {
+        span.setAttribute('class.name', target.constructor.name);
+        span.setAttribute('method.name', propertyKey);
+        span.setAttribute('args.count', args.length);
+
+        try {
+          const result = originalMethod.apply(this, args);
+
+          if (result && typeof result.then === 'function') {
+            return result.then(
+              (value: any) => {
+                span.setStatus({ code: SpanStatus.OK });
+                return value;
+              },
+              (error: any) => {
+                span.setStatus({ code: SpanStatus.ERROR, message: String(error) });
+                throw error;
+              }
+            );
+          }
+
+          return result;
+        } catch (error) {
+          span.setStatus({ code: SpanStatus.ERROR, message: String(error) });
+          throw error;
+        }
+      });
+    };
+
+    return descriptor;
+  };
+}
+
+/**
+ * Create OpenTelemetry-compatible tracer provider
+ */
+export function createTracerProvider(config: {
+  serviceName: string;
+  exporter: 'jaeger' | 'zipkin' | 'console';
+  endpoint?: string;
+}): Tracer {
+  let exporter: TraceExporter;
+
+  switch (config.exporter) {
+    case 'jaeger':
+      exporter = new JaegerExporter({
+        endpoint: config.endpoint || 'http://localhost:14268',
+        serviceName: config.serviceName,
+      });
+      break;
+
+    case 'zipkin':
+      exporter = new ZipkinExporter({
+        endpoint: config.endpoint || 'http://localhost:9411',
+        serviceName: config.serviceName,
+      });
+      break;
+
+    case 'console':
+    default:
+      exporter = {
+        async export(spans: Span[]) {
+          fallbackLog('info', 'Exported spans', { spans: spans as unknown as Record<string, unknown> });
+        },
+        async shutdown() {},
+      };
+  }
+
+  return new SimpleTracer(exporter);
+}
+
+// Export tokens
+export const TracerToken = createToken<Tracer>('Tracer');
+export const TraceExporterToken = createToken<TraceExporter>('TraceExporter');
+export const PropagatorToken = createToken<Propagator>('Propagator');
+
+/**
+ * Create a tracer instance
+ */
+export function createTracer(exporter?: TraceExporter, logger?: ILogger): SimpleTracer {
+  return new SimpleTracer(exporter, logger);
+}
+
+/**
+ * Execute a function within a span context
+ */
+export async function withSpan<T>(tracer: Tracer, name: string, fn: (span: Span) => Promise<T> | T): Promise<T> {
+  const span = tracer.startSpan(name);
+
+  try {
+    const result = await fn(span);
+    span.setStatus({ code: SpanStatus.OK });
+    return result;
+  } catch (error) {
+    span.setStatus({
+      code: SpanStatus.ERROR,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  } finally {
+    span.end();
+  }
+}
+
+/**
+ * Decorator for tracing methods (lowercase version)
+ */
+export function trace(name?: string) {
+  return Trace(name);
+}

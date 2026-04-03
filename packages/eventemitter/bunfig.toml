@@ -1,0 +1,12 @@
+[test]
+# Test configuration for Bun
+preload = ["./test/runtime/bun-setup.ts"]
+coverage = false
+
+[install]
+# Peer dependencies to install
+peer = true
+
+[install.scopes]
+# Package scopes configuration
+"@omnitron-dev" = { token = "" }

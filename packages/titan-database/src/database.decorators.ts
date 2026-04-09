@@ -237,8 +237,8 @@ export function SoftDelete(config?: SoftDeleteConfig): ClassDecorator {
   return <TFunction extends Function>(target: TFunction): TFunction => {
     const existingConfig = Reflect.getMetadata(METADATA_KEYS.REPOSITORY, target) || {};
 
-    // Store plugin-specific metadata for detection
-    Reflect.defineMetadata(METADATA_KEYS.SOFT_DELETE, config || {}, target);
+    // Store plugin-specific metadata for detection (ensure column default)
+    Reflect.defineMetadata(METADATA_KEYS.SOFT_DELETE, { column: 'deletedAt', ...config }, target);
 
     // Mark as having soft delete enabled
     Reflect.defineMetadata('database:has-soft-delete', true, target);
@@ -286,8 +286,8 @@ export function Timestamps(config?: TimestampsConfig): ClassDecorator {
   return <TFunction extends Function>(target: TFunction): TFunction => {
     const existingConfig = Reflect.getMetadata(METADATA_KEYS.REPOSITORY, target) || {};
 
-    // Store plugin-specific metadata for detection
-    Reflect.defineMetadata(METADATA_KEYS.TIMESTAMPS, config || {}, target);
+    // Store plugin-specific metadata for detection (ensure column defaults)
+    Reflect.defineMetadata(METADATA_KEYS.TIMESTAMPS, { createdAt: 'createdAt', updatedAt: 'updatedAt', ...config }, target);
 
     // Mark as having timestamps enabled
     Reflect.defineMetadata('database:has-timestamps', true, target);
@@ -335,8 +335,8 @@ export function Audit(config?: AuditConfig): ClassDecorator {
   return <TFunction extends Function>(target: TFunction): TFunction => {
     const existingConfig = Reflect.getMetadata(METADATA_KEYS.REPOSITORY, target) || {};
 
-    // Store plugin-specific metadata for detection
-    Reflect.defineMetadata(METADATA_KEYS.AUDIT, config || {}, target);
+    // Store plugin-specific metadata for detection (ensure defaults)
+    Reflect.defineMetadata(METADATA_KEYS.AUDIT, { table: 'audit_logs', ...config }, target);
 
     // Mark as having audit enabled
     Reflect.defineMetadata('database:has-audit', true, target);

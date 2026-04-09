@@ -53,7 +53,6 @@ interface TestDB {
 
 class SoftDeleteUserRepository extends TransactionAwareRepository<TestDB, 'users'> {
   protected override readonly hasSoftDelete = true;
-  protected override readonly softDeleteColumn = 'deletedAt';
 
   constructor(db: Kysely<TestDB>) {
     super(db, 'users');
@@ -628,7 +627,6 @@ describe('Transaction context functions', () => {
 
   it('repository CRUD works inside a transaction', async () => {
     const id = nextId();
-    const now = new Date().toISOString();
 
     await runInTransaction(db, async () => {
       const item = await repo.create({ id, title: 'Transactional', value: 100 } as any);

@@ -51,19 +51,19 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@kysera/audit": "^0.8.7",
-    "@kysera/core": "^0.8.7",
-    "@kysera/dal": "^0.8.7",
-    "@kysera/dialects": "^0.8.7",
-    "@kysera/executor": "^0.8.7",
-    "@kysera/infra": "^0.8.7",
-    "@kysera/migrations": "^0.8.7",
-    "@kysera/repository": "^0.8.7",
-    "@kysera/rls": "^0.8.7",
-    "@kysera/soft-delete": "^0.8.7",
-    "@kysera/timestamps": "^0.8.7",
+    "@kysera/audit": "^0.8.8",
+    "@kysera/core": "^0.8.8",
+    "@kysera/dal": "^0.8.8",
+    "@kysera/dialects": "^0.8.8",
+    "@kysera/executor": "^0.8.8",
+    "@kysera/infra": "^0.8.8",
+    "@kysera/migrations": "^0.8.8",
+    "@kysera/repository": "^0.8.8",
+    "@kysera/rls": "^0.8.8",
+    "@kysera/soft-delete": "^0.8.8",
+    "@kysera/timestamps": "^0.8.8",
     "@omnitron-dev/eventemitter": "workspace:*",
-    "kysely": "0.28.12",
+    "kysely": "^0.28.15",
     "zod": "^4.3.6"
   },
   "peerDependencies": {
@@ -84,9 +84,9 @@
     }
   },
   "devDependencies": {
-    "@types/node": "25.5.0",
+    "@types/node": "^25.5.2",
     "reflect-metadata": "^0.2.2",
-    "typescript": "^5.9.3",
-    "vitest": "^4.1.0"
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.3"
   }
 }

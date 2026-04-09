@@ -11,12 +11,15 @@ import type { Kysely, Transaction, Selectable, Insertable, Updateable } from 'ky
 import { getExecutor, isInTransactionContext, getCurrentTransaction } from '../transaction/transaction.context.js';
 import { applyWhereClause, type WhereClause } from '@kysera/repository';
 import { upsert as kyseraUpsert, upsertMany as kyseraUpsertMany, type UpsertOptions } from '@kysera/repository';
-import { parseDatabaseError, type DatabaseError as KyseraDatabaseError } from '@kysera/core';
-
-/**
- * Executor type — either Kysely instance or Transaction
- */
-export type Executor<DB> = Kysely<DB> | Transaction<DB>;
+import {
+  parseDatabaseError,
+  SoftDeleteError,
+  formatTimestampForDb,
+  detectDialect,
+  type DatabaseError as KyseraDatabaseError,
+  type Executor,
+  type Dialect,
+} from '@kysera/core';
 
 export interface FindManyOptions {
   limit?: number;
@@ -268,7 +271,10 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
 
   async softDelete(id: string): Promise<boolean> {
     if (!this.hasSoftDelete) {
-      throw new Error(`softDelete() called on table "${this.tableName}" which does not support soft delete`);
+      throw new SoftDeleteError(
+        `softDelete() called on table "${this.tableName}" which does not support soft delete`,
+        `Table "${this.tableName}" has hasSoftDelete=false`
+      );
     }
 
     type QR = {
@@ -277,8 +283,9 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
       executeTakeFirst(): Promise<{ numUpdatedRows: bigint } | undefined>;
     };
 
+    const dialect = detectDialect(this.db) as Dialect;
     const result = await (this.dynamicExecutor.updateTable(this.tableName) as QR)
-      .set({ [this.softDeleteColumn]: new Date().toISOString() })
+      .set({ [this.softDeleteColumn]: formatTimestampForDb(new Date(), dialect) })
       .where('id', '=', id)
       .executeTakeFirst();
 
@@ -287,7 +294,10 @@ export abstract class TransactionAwareRepository<DB, Table extends string> {
 
   async restore(id: string): Promise<Selectable<DB[Table & keyof DB]> | null> {
     if (!this.hasSoftDelete) {
-      throw new Error(`restore() called on table "${this.tableName}" which does not support soft delete`);
+      throw new SoftDeleteError(
+        `restore() called on table "${this.tableName}" which does not support soft delete`,
+        `Table "${this.tableName}" has hasSoftDelete=false`
+      );
     }
 
     type QR = {

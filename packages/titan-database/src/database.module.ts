@@ -23,7 +23,7 @@ import { Module } from '@omnitron-dev/titan/decorators';
 import { DatabaseManager } from './database.manager.js';
 import { DatabaseHealthIndicator } from './database.health.js';
 // Migrations delegated to @kysera/migrations — use kysera CLI or createMigrationRunner()
-import { getRepositoryMetadata } from './database.decorators.js';
+import { getRepositoryMetadata, getDecoratorPlugins, getSoftDeleteConfig, getTimestampsConfig, getAuditConfig } from './database.decorators.js';
 import type { RepositoryConstructor } from './database.internal-types.js';
 import {
   DATABASE_HEALTH_INDICATOR,
@@ -34,6 +34,8 @@ import {
   DATABASE_DEFAULT_CONNECTION,
 } from './database.constants.js';
 import type { DatabaseModuleOptions, DatabaseModuleAsyncOptions, DatabaseOptionsFactory } from './database.types.js';
+import type { Kysely } from 'kysely';
+import type { Plugin as KyseraPlugin } from '@kysera/executor';
 import { LOGGER_SERVICE_TOKEN, type ILoggerModule } from '@omnitron-dev/titan/module/logger';
 
 const DATABASE_MODULE_LOGGER = Symbol.for('DATABASE_MODULE_LOGGER');
@@ -88,7 +90,52 @@ export class TitanDatabaseModule {
       if (!metadata) continue;
 
       const factoryFn = async (manager: DatabaseManager) => {
-        const db = await manager.getConnection(metadata.connection);
+        // Build per-repository plugins from decorator metadata
+        const decoratorPluginNames = getDecoratorPlugins(repository);
+        let db: Kysely<unknown>;
+
+        if (decoratorPluginNames.length > 0) {
+          // Create executor with decorator-specified plugins merged with global plugins
+          const plugins: KyseraPlugin[] = [];
+
+          const softDeleteConfig = getSoftDeleteConfig(repository);
+          if (softDeleteConfig) {
+            const { softDeletePlugin } = await import('@kysera/soft-delete');
+            plugins.push(softDeletePlugin({
+              deletedAtColumn: softDeleteConfig.column,
+              includeDeleted: softDeleteConfig.includeDeleted,
+              tables: softDeleteConfig.tables,
+            }));
+          }
+
+          const timestampsConfig = getTimestampsConfig(repository);
+          if (timestampsConfig) {
+            const { timestampsPlugin } = await import('@kysera/timestamps');
+            plugins.push(timestampsPlugin({
+              createdAtColumn: timestampsConfig.createdAt,
+              updatedAtColumn: timestampsConfig.updatedAt,
+            }));
+          }
+
+          const auditConfig = getAuditConfig(repository);
+          if (auditConfig) {
+            const { auditPlugin } = await import('@kysera/audit');
+            plugins.push(auditPlugin({
+              auditTable: auditConfig.table,
+              captureOldValues: auditConfig.captureOldValues,
+              captureNewValues: auditConfig.captureNewValues,
+            }));
+          }
+
+          // Get executor with decorator plugins + global plugins
+          const globalPlugins = manager.getConnectionPlugins(metadata.connection);
+          const allPlugins = [...globalPlugins, ...plugins];
+          db = await manager.getExecutor(metadata.connection, allPlugins) as Kysely<unknown>;
+        } else {
+          // Use connection with global plugins (getConnection returns executor if available)
+          db = await manager.getConnection(metadata.connection);
+        }
+
         return new (repository as any)(db, metadata.table);
       };
 

@@ -58,26 +58,6 @@ function sqliteCompatible<T extends Record<string, any>>(data: T): T {
   return result as T;
 }
 
-// Helper to convert array to SQLite-compatible format
-function sqliteArray<T>(arr: T[] | undefined): string | undefined {
-  if (arr === undefined) return undefined;
-  return JSON.stringify(arr);
-}
-
-// Parse JSON string back to array
-function parseJsonArray<T>(value: any): T[] | undefined {
-  if (!value) return undefined;
-  if (Array.isArray(value)) return value;
-  if (typeof value === 'string') {
-    try {
-      return JSON.parse(value);
-    } catch {
-      return undefined;
-    }
-  }
-  return undefined;
-}
-
 // Test entities
 interface User {
   id: number;
@@ -101,6 +81,7 @@ interface Post {
   view_count: number;
   tags?: string[];
   published_at?: Date;
+  deletedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -1552,15 +1533,11 @@ describe('Comprehensive Repository Tests', () => {
     });
   });
 
-  // MySQL tests are skipped for now - they require additional dialect-specific handling
-  // for timestamps (MySQL doesn't accept ISO 8601 format) and RETURNING clause
-  describe.skip('MySQL Tests', () => {
+  describeDocker('MySQL Tests', () => {
     let container: DockerContainer;
     let app: Application;
     let testService: DatabaseTestingService;
     let userRepo: UserRepository;
-    let _postRepo: PostRepository;
-
     beforeAll(async () => {
       // Reset static singleton and dialect detection for MySQL tests
       await TitanDatabaseModule.resetForTesting();
@@ -1609,7 +1586,6 @@ describe('Comprehensive Repository Tests', () => {
 
         testService = await app.resolveAsync(DatabaseTestingService);
         userRepo = await app.resolveAsync(UserRepository);
-        postRepo = await app.resolveAsync(PostRepository);
 
         await testService.initialize();
         const db = await testService.getTestConnection();
@@ -1748,8 +1724,8 @@ async function createPostgresSchema(db: Kysely<any>) {
       age INTEGER NOT NULL,
       is_active BOOLEAN DEFAULT TRUE,
       metadata JSONB,
-      createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `.execute(db);
 
@@ -1764,9 +1740,9 @@ async function createPostgresSchema(db: Kysely<any>) {
       view_count INTEGER DEFAULT 0,
       tags TEXT[],
       published_at TIMESTAMP,
-      deletedAt TIMESTAMP,
-      createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      "deletedAt" TIMESTAMP,
+      "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `.execute(db);
 
@@ -1779,7 +1755,7 @@ async function createPostgresSchema(db: Kysely<any>) {
       content TEXT NOT NULL,
       likes INTEGER DEFAULT 0,
       is_approved BOOLEAN DEFAULT FALSE,
-      createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `.execute(db);
 }

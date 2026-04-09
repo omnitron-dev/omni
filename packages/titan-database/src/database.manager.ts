@@ -14,6 +14,7 @@ type Database = BetterSqlite3.Database;
 import { sqliteDateSerializerPlugin } from './plugins/sqlite-date-serializer.plugin.js';
 import {
   createExecutor,
+  destroyExecutor,
   isKyseraExecutor,
   getPlugins,
   getRawDb,
@@ -79,8 +80,8 @@ export interface PoolMetrics {
   errorCount: number;
   /** Last pool error */
   lastError?: Error;
-  /** Timestamp of last acquire */
-  lastAcquireAt?: Date;
+  /** Timestamp of last acquire (epoch ms) */
+  lastAcquireAt?: number;
   /** Average acquire time in milliseconds */
   averageAcquireTimeMs: number;
   /** Total acquire time (for average calculation) */
@@ -101,7 +102,6 @@ interface ConnectionInfo {
   connected: boolean;
   connecting: boolean;
   lastError?: Error;
-  retryCount: number;
   metrics: {
     queryCount: number;
     errorCount: number;
@@ -126,7 +126,6 @@ export class DatabaseManager implements IDatabaseManager {
   private eventEmitter: EventEmitter = new EventEmitter();
   public logger: ILogger;
   private options: DatabaseModuleOptions;
-  private shutdownInProgress = false;
   private initialized = false;
   private readonly defaultRetryConfig: RetryConfig = {
     maxRetries: 5,
@@ -142,9 +141,10 @@ export class DatabaseManager implements IDatabaseManager {
   private healthCheckTimer?: ReturnType<typeof setInterval>;
 
   /**
-   * Health check interval in milliseconds (default: 30 seconds).
+   * Health check interval in milliseconds.
+   * Configurable via options.healthCheck.interval, default 30s.
    */
-  private readonly healthCheckIntervalMs: number = 30000;
+  private readonly healthCheckIntervalMs: number;
 
   /**
    * Track consecutive health check failures for circuit breaker pattern.
@@ -159,6 +159,8 @@ export class DatabaseManager implements IDatabaseManager {
   constructor(options: DatabaseModuleOptions, logger: ILogger) {
     this.options = options || {};
     this.logger = logger.child({ module: 'DatabaseManager' });
+    // Allow health check interval override via kysera core options
+    this.healthCheckIntervalMs = (this.options.kysera?.core?.healthCheck?.interval) ?? 30000;
   }
 
   /**
@@ -182,6 +184,9 @@ export class DatabaseManager implements IDatabaseManager {
 
     // Note: Shutdown is managed by Application lifecycle via DatabaseModule.onStop()
     // Do NOT register process signal handlers here - it causes double shutdown
+
+    // Auto-apply Kysera plugins to all connections if configured
+    await this.applyGlobalPlugins();
 
     this.initialized = true;
 
@@ -226,8 +231,10 @@ export class DatabaseManager implements IDatabaseManager {
 
     this.logger.info({ intervalMs: this.healthCheckIntervalMs }, 'Starting proactive health checks');
 
-    this.healthCheckTimer = setInterval(async () => {
-      await this.runHealthChecks();
+    this.healthCheckTimer = setInterval(() => {
+      this.runHealthChecks().catch((err) =>
+        this.logger.error({ error: err }, 'Unhandled error in periodic health check')
+      );
     }, this.healthCheckIntervalMs);
 
     // Ensure timer doesn't prevent process exit
@@ -251,18 +258,15 @@ export class DatabaseManager implements IDatabaseManager {
    * Run health checks on all connections in parallel.
    */
   private async runHealthChecks(): Promise<void> {
-    const healthCheckPromises: Promise<void>[] = [];
-
+    const promises: Promise<void>[] = [];
     for (const [name, info] of this.connections) {
-      if (!info.connected) {
-        continue;
+      if (info.connected) {
+        promises.push(this.runSingleHealthCheck(name, info));
       }
-
-      healthCheckPromises.push(this.runSingleHealthCheck(name, info));
     }
-
-    // Run all health checks in parallel for better performance
-    await Promise.all(healthCheckPromises);
+    if (promises.length > 0) {
+      await Promise.all(promises);
+    }
   }
 
   /**
@@ -482,7 +486,6 @@ export class DatabaseManager implements IDatabaseManager {
       pool: undefined,
       connected: false,
       connecting: true,
-      retryCount: 0,
       metrics: {
         queryCount: 0,
         errorCount: 0,
@@ -511,10 +514,7 @@ export class DatabaseManager implements IDatabaseManager {
       info.instance = instance;
       info.pool = pool;
 
-      // Test connection with health check
-      await this.testConnection(instance, config.dialect);
-
-      // Validate connection health before marking as connected
+      // Test connection health (single check — testConnection is redundant)
       const isHealthy = await this.validateConnectionHealth(instance, config.dialect);
       if (!isHealthy) {
         throw Errors.unavailable('Database', 'Connection health check failed');
@@ -631,7 +631,7 @@ export class DatabaseManager implements IDatabaseManager {
             connInfo.poolMetrics.acquireCount++;
             connInfo.poolMetrics.activeConnections++;
             connInfo.poolMetrics.idleConnections = Math.max(0, connInfo.poolMetrics.idleConnections - 1);
-            connInfo.poolMetrics.lastAcquireAt = new Date();
+            connInfo.poolMetrics.lastAcquireAt = Date.now();
           }
         });
 
@@ -723,7 +723,7 @@ export class DatabaseManager implements IDatabaseManager {
             connInfo.poolMetrics.acquireCount++;
             connInfo.poolMetrics.activeConnections++;
             connInfo.poolMetrics.idleConnections = Math.max(0, connInfo.poolMetrics.idleConnections - 1);
-            connInfo.poolMetrics.lastAcquireAt = new Date();
+            connInfo.poolMetrics.lastAcquireAt = Date.now();
           }
         });
 
@@ -860,45 +860,29 @@ export class DatabaseManager implements IDatabaseManager {
   }
 
   /**
-   * Test database connection
-   */
-  private async testConnection(db: Kysely<unknown>, dialect: DatabaseDialect): Promise<void> {
-    const timeout = this.options.queryTimeout || DEFAULT_TIMEOUTS.query;
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(Errors.timeout('database connection test', timeout)), timeout)
-    );
-
-    // Use SELECT 1 for all databases - it's simpler and doesn't depend on schema
-    const testQuery = sql`SELECT 1`.execute(db);
-
-    await Promise.race([testQuery, timeoutPromise]);
-  }
-
-  /**
-   * Validate connection health
+   * Validate connection health with timeout.
+   * Returns false on failure instead of throwing.
    */
   private async validateConnectionHealth(db: Kysely<unknown>, dialect: DatabaseDialect): Promise<boolean> {
+    const timeout = dialect === 'sqlite' ? 10000 : 5000;
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), timeout);
+
     try {
-      // Use a longer timeout for SQLite in-memory databases as they may need initialization
-      const timeout = dialect === 'sqlite' ? 10000 : 5000;
-      const timeoutPromise = new Promise<boolean>((_, reject) =>
-        setTimeout(() => reject(new Error('Health check timeout')), timeout)
-      );
-
-      const healthCheckPromise = (async () => {
-        // For SQLite, use a simpler query that doesn't depend on schema
-        // For other databases, use SELECT 1
-        const testQuery =
-          dialect === 'sqlite' ? sql`SELECT 1 AS health_check`.execute(db) : sql`SELECT 1 AS health_check`.execute(db);
-
-        await testQuery;
-        return true;
-      })();
-
-      return await Promise.race([healthCheckPromise, timeoutPromise]);
+      await Promise.race([
+        sql`SELECT 1 AS health_check`.execute(db),
+        new Promise<never>((_, reject) => {
+          ac.signal.addEventListener('abort', () =>
+            reject(new Error('Health check timeout'))
+          );
+        }),
+      ]);
+      return true;
     } catch (error) {
       this.logger.error({ error }, 'Connection health check failed');
       return false;
+    } finally {
+      clearTimeout(timer);
     }
   }
 
@@ -926,6 +910,12 @@ export class DatabaseManager implements IDatabaseManager {
 
     if (!info.connected) {
       throw Errors.unavailable(name, info.lastError?.message || 'Unknown error');
+    }
+
+    // Return executor (with plugins) if available, otherwise raw instance
+    // This ensures all consumers get plugin-aware queries by default
+    if (info.executor) {
+      return info.executor as Kysely<unknown>;
     }
 
     return info.instance;
@@ -1064,9 +1054,6 @@ export class DatabaseManager implements IDatabaseManager {
 
     this.logger.info({ name }, 'Attempting to reconnect to database');
 
-    // Increment retry count
-    info.retryCount++;
-
     // Use retry logic for reconnection
     await this.createConnectionWithRetry(name, info.config);
   }
@@ -1087,16 +1074,8 @@ export class DatabaseManager implements IDatabaseManager {
 
     try {
       // Destroy executor first to call plugin cleanup hooks
-      // Note: Using dynamic import to avoid Jest ESM resolution issues
-      // See: packages/titan/src/modules/database/index.ts L595-597
       if (info.executor && isKyseraExecutor(info.executor)) {
-        try {
-          const { destroyExecutor } = await import('@kysera/executor');
-          await destroyExecutor(info.executor);
-        } catch {
-          // If dynamic import fails (e.g., in some test environments), skip cleanup
-          this.logger.debug({ name }, 'Skipping executor cleanup - dynamic import unavailable');
-        }
+        await destroyExecutor(info.executor);
       }
 
       // Destroy Kysely instance
@@ -1224,30 +1203,41 @@ export class DatabaseManager implements IDatabaseManager {
    * Collect pool metrics from a connection, merging driver-specific stats
    */
   private collectPoolMetrics(info: ConnectionInfo): PoolMetrics {
-    const baseMetrics = { ...info.poolMetrics };
+    const m = info.poolMetrics;
 
-    // Add real-time stats from pool if available
-    if (info.pool) {
-      if (info.config.dialect === 'postgres' && info.pool instanceof Pool) {
-        // PostgreSQL pg Pool provides real-time statistics
-        const pgPool = info.pool;
-        baseMetrics.totalConnections = pgPool.totalCount;
-        baseMetrics.idleConnections = pgPool.idleCount;
-        baseMetrics.waitingClients = pgPool.waitingCount;
-        baseMetrics.activeConnections = pgPool.totalCount - pgPool.idleCount;
-      } else if (info.config.dialect === 'mysql' && 'pool' in info.pool) {
-        // MySQL2 pool - limited real-time stats available
-        // Keep tracked metrics as MySQL2 doesn't expose pool counts directly
-      }
-      // SQLite doesn't have a connection pool
+    // Overlay real-time stats from pg Pool if available
+    let totalConnections = m.totalConnections;
+    let idleConnections = m.idleConnections;
+    let activeConnections = m.activeConnections;
+    let waitingClients = m.waitingClients;
+
+    if (info.pool && info.config.dialect === 'postgres' && info.pool instanceof Pool) {
+      const pgPool = info.pool;
+      totalConnections = pgPool.totalCount;
+      idleConnections = pgPool.idleCount;
+      waitingClients = pgPool.waitingCount;
+      activeConnections = pgPool.totalCount - pgPool.idleCount;
     }
 
-    // Calculate average acquire time
-    if (baseMetrics.acquireCount > 0 && baseMetrics.totalAcquireTimeMs > 0) {
-      baseMetrics.averageAcquireTimeMs = baseMetrics.totalAcquireTimeMs / baseMetrics.acquireCount;
-    }
+    const averageAcquireTimeMs =
+      m.acquireCount > 0 && m.totalAcquireTimeMs > 0
+        ? m.totalAcquireTimeMs / m.acquireCount
+        : m.averageAcquireTimeMs;
 
-    return baseMetrics;
+    return {
+      totalConnections,
+      idleConnections,
+      activeConnections,
+      waitingClients,
+      acquireCount: m.acquireCount,
+      releaseCount: m.releaseCount,
+      errorCount: m.errorCount,
+      lastError: m.lastError,
+      lastAcquireAt: m.lastAcquireAt,
+      averageAcquireTimeMs,
+      totalAcquireTimeMs: m.totalAcquireTimeMs,
+      poolSize: m.poolSize,
+    };
   }
 
   /**
@@ -1277,26 +1267,6 @@ export class DatabaseManager implements IDatabaseManager {
   }
 
   /**
-   * Register shutdown handlers
-   */
-  private registerShutdownHandlers(): void {
-    const shutdownHandler = async () => {
-      if (this.shutdownInProgress) return;
-      this.shutdownInProgress = true;
-
-      this.logger.info('Database manager shutdown initiated');
-
-      const timeout = this.options.shutdownTimeout || DEFAULT_TIMEOUTS.shutdown;
-      const timeoutPromise = new Promise((resolve) => setTimeout(resolve, timeout));
-
-      await Promise.race([this.closeAll(), timeoutPromise]);
-    };
-
-    process.on('SIGINT', shutdownHandler);
-    process.on('SIGTERM', shutdownHandler);
-  }
-
-  /**
    * Emit database event
    */
   private emitEvent(event: DatabaseEvent): void {
@@ -1317,9 +1287,6 @@ export class DatabaseManager implements IDatabaseManager {
     this.eventEmitter.off(event, listener);
   }
 
-  /**
-   * Module destroy hook
-   */
   /**
    * Get connection configuration
    */
@@ -1424,7 +1391,10 @@ export class DatabaseManager implements IDatabaseManager {
       throw Errors.badRequest(`Invalid schema name: ${schema}`);
     }
 
-    await sql`SET search_path TO ${sql.ref(schema)}, public`.execute(info.instance);
+    // Schema name already validated by regex above — safe for interpolation.
+    // Using sql.raw() because SET search_path is a session command, not a DML query,
+    // and sql.ref() produces column references, not schema identifiers.
+    await sql.raw(`SET search_path TO "${schema}", public`).execute(info.instance);
     this.connectionSchemas.set(name, schema);
 
     this.logger.debug({ connection: name, schema }, 'Schema set for connection');
@@ -1463,6 +1433,124 @@ export class DatabaseManager implements IDatabaseManager {
     } finally {
       // Restore previous schema or default to public
       await this.setSchema(previousSchema ?? 'public', name);
+    }
+  }
+
+  // ============================================================================
+  // PLUGIN AUTO-CONFIGURATION
+  // ============================================================================
+
+  /**
+   * Resolve plugin specifications from options into actual Plugin instances.
+   * Handles string names (built-in lookups), Plugin objects, and KyseraPluginConfig.
+   */
+  private async resolvePlugins(
+    pluginSpecs: Array<string | Plugin | { plugin: string | Plugin; options?: Record<string, unknown> }>
+  ): Promise<Plugin[]> {
+    const resolved: Plugin[] = [];
+
+    for (const spec of pluginSpecs) {
+      if (typeof spec === 'string') {
+        // Built-in plugin name — lazily import from @kysera/*
+        const plugin = await this.resolveBuiltInPlugin(spec);
+        if (plugin) resolved.push(plugin);
+      } else if ('interceptQuery' in spec || 'name' in spec) {
+        // Already a Plugin instance
+        resolved.push(spec as Plugin);
+      } else if ('plugin' in spec) {
+        // KyseraPluginConfig: { plugin, options }
+        if (typeof spec.plugin === 'string') {
+          const plugin = await this.resolveBuiltInPlugin(spec.plugin, spec.options);
+          if (plugin) resolved.push(plugin);
+        } else {
+          resolved.push(spec.plugin);
+        }
+      }
+    }
+
+    return resolved;
+  }
+
+  /**
+   * Resolve a built-in plugin by name.
+   */
+  private async resolveBuiltInPlugin(name: string, options?: Record<string, unknown>): Promise<Plugin | null> {
+    switch (name) {
+      case 'soft-delete':
+      case 'softDelete': {
+        const { softDeletePlugin } = await import('@kysera/soft-delete');
+        return softDeletePlugin(options as Parameters<typeof softDeletePlugin>[0]);
+      }
+      case 'timestamps': {
+        const { timestampsPlugin } = await import('@kysera/timestamps');
+        return timestampsPlugin(options as Parameters<typeof timestampsPlugin>[0]);
+      }
+      case 'audit': {
+        const { auditPlugin } = await import('@kysera/audit');
+        return auditPlugin(options as Parameters<typeof auditPlugin>[0]);
+      }
+      default:
+        this.logger.warn({ plugin: name }, 'Unknown built-in plugin name, skipping');
+        return null;
+    }
+  }
+
+  /**
+   * Apply global plugins from options.kysera.plugins to all connections.
+   * Called once during init() after all connections are established.
+   */
+  private async applyGlobalPlugins(): Promise<void> {
+    const pluginSpecs = this.options.kysera?.plugins;
+    if (!pluginSpecs || pluginSpecs.length === 0) {
+      // Also handle legacy builtIn config
+      const builtIn = this.options.plugins?.builtIn;
+      if (!builtIn) return;
+
+      const legacyPlugins: Plugin[] = [];
+      if (builtIn.softDelete) {
+        const opts = typeof builtIn.softDelete === 'object' ? builtIn.softDelete : undefined;
+        const plugin = await this.resolveBuiltInPlugin('soft-delete', opts as Record<string, unknown>);
+        if (plugin) legacyPlugins.push(plugin);
+      }
+      if (builtIn.timestamps) {
+        const opts = typeof builtIn.timestamps === 'object' ? builtIn.timestamps : undefined;
+        const plugin = await this.resolveBuiltInPlugin('timestamps', opts as Record<string, unknown>);
+        if (plugin) legacyPlugins.push(plugin);
+      }
+      if (builtIn.audit) {
+        const opts = typeof builtIn.audit === 'object' ? builtIn.audit : undefined;
+        const plugin = await this.resolveBuiltInPlugin('audit', opts as Record<string, unknown>);
+        if (plugin) legacyPlugins.push(plugin);
+      }
+
+      if (legacyPlugins.length === 0) return;
+
+      this.logger.info(
+        { plugins: legacyPlugins.map((p) => p.name) },
+        'Applying legacy builtIn plugins to all connections'
+      );
+
+      for (const [name, info] of this.connections) {
+        if (info.connected) {
+          await this.setConnectionPlugins(name, legacyPlugins);
+        }
+      }
+      return;
+    }
+
+    // Resolve plugin specifications
+    const plugins = await this.resolvePlugins(pluginSpecs);
+    if (plugins.length === 0) return;
+
+    this.logger.info(
+      { plugins: plugins.map((p) => p.name) },
+      'Applying global Kysera plugins to all connections'
+    );
+
+    for (const [name, info] of this.connections) {
+      if (info.connected) {
+        await this.setConnectionPlugins(name, plugins);
+      }
     }
   }
 

@@ -29,13 +29,14 @@ export { DatabaseHealthIndicator } from './database.health.js';
 
 export { TransactionAwareRepository } from './repository/transaction-aware.repository.js';
 export type {
-  Executor as RepositoryExecutor,
   FindManyOptions,
   ListOptions,
   OffsetPaginatedResult,
   CursorOptions,
   CursorResult,
 } from './repository/transaction-aware.repository.js';
+// Executor type re-exported from @kysera/core for backward compatibility
+export type { Executor as RepositoryExecutor } from '@kysera/core';
 
 // @kysera/repository re-exports
 export {

@@ -25,7 +25,7 @@ export function getDatabaseConnectionToken(name: string = DATABASE_DEFAULT_CONNE
 /**
  * Get injection token for a repository
  */
-export function getRepositoryToken(target: any): string {
+export function getRepositoryToken(target: string | { name: string }): string {
   const name = typeof target === 'string' ? target : target.name;
   return `REPOSITORY:${name}`;
 }

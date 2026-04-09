@@ -14,6 +14,7 @@
 // ============================================================================
 
 export {
+  // Error hierarchy
   parseDatabaseError,
   DatabaseError as KyseraDatabaseError,
   UniqueConstraintError,
@@ -22,7 +23,21 @@ export {
   BadRequestError as KyseraBadRequestError,
   NotNullError,
   CheckConstraintError,
+  // Plugin-specific errors
+  SoftDeleteError,
+  RecordNotDeletedError,
+  AuditError,
+  AuditRestoreError,
+  AuditMissingValuesError,
+  TimestampsError,
+  // Error codes
   ErrorCodes,
+  // Utilities
+  detectDialect,
+  formatTimestampForDb,
+  executeCount,
+  executeGroupedCount,
+  shouldApplyToTable,
 } from '@kysera/core';
 
 // ============================================================================
@@ -36,6 +51,7 @@ export type {
   PaginatedResult as KyseraPaginatedResult,
   CursorOptions as KyseraCursorOptions,
   Executor,
+  Dialect,
 } from '@kysera/core';
 
 // ============================================================================

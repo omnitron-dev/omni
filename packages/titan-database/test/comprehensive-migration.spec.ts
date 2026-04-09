@@ -29,7 +29,6 @@ import {
   TitanDatabaseModule,
   MigrationRunner,
   DATABASE_MANAGER,
-  DATABASE_CONNECTION,
   setupMigrations,
   createMigration,
   defineMigrations,

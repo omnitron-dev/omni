@@ -8,8 +8,7 @@
     "outDir": "./dist",
     "noEmit": false,
     "declaration": true,
-    "declarationMap": true,
-    "downlevelIteration": true
+    "declarationMap": true
   },
   "include": ["src/**/*.ts"],
   "exclude": ["**/*spec.ts", "dist", "node_modules"]

@@ -50,7 +50,6 @@ type User = Selectable<UsersTable>;
 
 class UserRepository extends TransactionAwareRepository<TestDB, 'users'> {
   protected override readonly hasSoftDelete = true;
-  protected override readonly softDeleteColumn = 'deletedAt';
 
   constructor(db: Kysely<TestDB>) {
     super(db, 'users');

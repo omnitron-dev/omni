@@ -21,27 +21,28 @@ export interface TransactionContextData {
   depth: number;
   startedAt: Date;
   name?: string;
-  plugins?: Plugin[];
-  wrappedExecutor?: unknown;
 }
 
 /**
  * AsyncLocalStorage for transaction context.
  * Uses globalThis to survive dual-package hazard.
  */
+/** Global store typed as Record<symbol, unknown> to avoid `any` on globalThis. */
+const globalStore = globalThis as unknown as Record<symbol, unknown>;
+
 const TXN_STORAGE_KEY = Symbol.for('titan:database:transaction-storage');
-const transactionStorage: AsyncLocalStorage<TransactionContextData> = ((globalThis as any)[TXN_STORAGE_KEY] ??=
-  new AsyncLocalStorage<TransactionContextData>());
+const transactionStorage: AsyncLocalStorage<TransactionContextData> =
+  (globalStore[TXN_STORAGE_KEY] as AsyncLocalStorage<TransactionContextData> | undefined) ??=
+    new AsyncLocalStorage<TransactionContextData>();
 
 // ============================================================================
 // Table Plugin Registry (used by apps for RLS plugin registration)
 // ============================================================================
 
 const PLUGIN_REGISTRY_KEY = Symbol.for('titan:database:plugin-registry');
-const globalPluginRegistry: Map<string, Plugin[]> = ((globalThis as any)[PLUGIN_REGISTRY_KEY] ??= new Map<
-  string,
-  Plugin[]
->());
+const globalPluginRegistry: Map<string, Plugin[]> =
+  (globalStore[PLUGIN_REGISTRY_KEY] as Map<string, Plugin[]> | undefined) ??=
+    new Map<string, Plugin[]>();
 
 /**
  * Register plugins for a specific table.
@@ -89,10 +90,11 @@ export function getCurrentTransaction<DB = unknown>(): Transaction<DB> | undefin
 /**
  * Get the current executor: transaction if in transaction context, else db.
  *
- * If a tableName is provided and plugins are registered for that table,
- * the executor will be wrapped with those plugins (lazy, cached).
+ * When `db` is a KyseraExecutor (plugin-aware), its transactions
+ * automatically inherit plugin interception. The returned value
+ * is always safe to use for plugin-aware queries.
  */
-export function getExecutor<DB>(db: Kysely<DB> | Transaction<DB>, tableName?: string): Kysely<DB> | Transaction<DB> {
+export function getExecutor<DB>(db: Kysely<DB> | Transaction<DB>): Kysely<DB> | Transaction<DB> {
   const ctx = transactionStorage.getStore();
 
   if (ctx) {

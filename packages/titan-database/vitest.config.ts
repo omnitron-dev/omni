@@ -27,6 +27,8 @@ export default defineConfig({
     testTimeout: 120_000,
     hookTimeout: 120_000,
     clearMocks: true,
+    // Run test files sequentially to avoid Docker container port/resource contention
+    fileParallelism: false,
     alias: [
       { find: /^@omnitron-dev\/titan\/nexus$/, replacement: resolve(__dirname, '../titan/src/nexus/index.ts') },
       { find: /^@omnitron-dev\/titan\/nexus\/(.*)$/, replacement: resolve(__dirname, '../titan/src/nexus/$1') },

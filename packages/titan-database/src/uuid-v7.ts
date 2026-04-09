@@ -15,7 +15,7 @@ export const UUID_V7_DEFAULT = sql`uuid_v7()`;
 /**
  * Create the `uuid_v7()` PL/pgSQL function in PostgreSQL (idempotent).
  */
-export async function createUuidV7Function(db: Kysely<any>): Promise<void> {
+export async function createUuidV7Function(db: Kysely<unknown>): Promise<void> {
   await sql`
     CREATE OR REPLACE FUNCTION uuid_v7() RETURNS uuid AS $$
     DECLARE
@@ -35,6 +35,6 @@ export async function createUuidV7Function(db: Kysely<any>): Promise<void> {
 /**
  * Drop the `uuid_v7()` PL/pgSQL function.
  */
-export async function dropUuidV7Function(db: Kysely<any>): Promise<void> {
+export async function dropUuidV7Function(db: Kysely<unknown>): Promise<void> {
   await sql`DROP FUNCTION IF EXISTS uuid_v7()`.execute(db);
 }

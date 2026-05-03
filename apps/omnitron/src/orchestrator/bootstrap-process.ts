@@ -21,6 +21,16 @@ import { HttpTransport } from '@omnitron-dev/titan/netron/transport/http';
 import { WebSocketTransport } from '@omnitron-dev/titan/netron/transport/websocket';
 import { loadBootstrapConfig } from './bootstrap-loader.js';
 import type { IAppDefinition, IProcessEntry } from '../config/types.js';
+import { pathToFileURL } from 'node:url';
+
+/**
+ * Convert an absolute filesystem path to a file:// URL string suitable as
+ * the anchor argument for `createRequire(...)`. Trailing slash on `p` is
+ * preserved so directory-anchored resolution behaves like `cd <p> && require`.
+ */
+function pathToFileUrl(p: string): string {
+  return pathToFileURL(p).href;
+}
 
 // Inline PM decorator metadata — avoids importing the full PM module which
 // deadlocks when loaded from source (.ts) alongside the dist-loaded worker-runtime.
@@ -418,58 +428,84 @@ class BootstrapProcess {
    * transitively (rare for a Titan @Module bundle), we skip silently.
    */
   private async assertContainerIdentity(moduleResolveDir: string): Promise<void> {
-    const { realpathSync } = await import('node:fs');
+    const { realpathSync, existsSync, readFileSync } = await import('node:fs');
+    const path = await import('node:path');
     const { createRequire } = await import('node:module');
 
-    // Daemon-side titan path — resolved at omnitron's pnpm peer-dep level.
-    let daemonTitanPath: string;
-    try {
-      const titan = await import('@omnitron-dev/titan/nexus');
-      // The Container class file URL → physical path. Container is exported
-      // from packages/titan/dist/nexus/index.js which re-exports from
-      // ./container.js — both share the same titan dist directory.
-      daemonTitanPath = realpathSync(new URL(import.meta.url).pathname);
-      // Walk up from bootstrap-process.js to find titan's installed location.
-      void titan; // ensure module is loaded
-      // Resolve titan/package.json from this file's perspective.
-      const daemonRequire = createRequire(import.meta.url);
-      daemonTitanPath = realpathSync(daemonRequire.resolve('@omnitron-dev/titan/package.json'));
-    } catch {
-      // Daemon must have titan to even reach this code path; if not, abort guard.
+    /**
+     * Resolve the **package root directory** of `pkgName` from `fromUrl`.
+     *
+     * `require.resolve('foo/package.json')` does NOT work universally because
+     * `package.json` may be hidden behind a strict `"exports"` field
+     * (titan does this) and triggers ERR_PACKAGE_PATH_NOT_EXPORTED. Instead
+     * we resolve the package's MAIN entry — which IS guaranteed to be in
+     * "exports" — and walk up to the nearest directory containing a
+     * `package.json` whose `name` matches.
+     */
+    const resolvePackageRoot = (fromUrl: string, pkgName: string): string | null => {
+      try {
+        const req = createRequire(fromUrl);
+        // Resolve any subpath that's guaranteed to exist — the bare specifier
+        // returns the package's main entry per Node's exports algorithm.
+        const entry = req.resolve(pkgName);
+        let dir = path.dirname(realpathSync(entry));
+        const root = path.parse(dir).root;
+        while (dir !== root) {
+          const pkgPath = path.join(dir, 'package.json');
+          if (existsSync(pkgPath)) {
+            try {
+              const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+              if (pkg.name === pkgName) return realpathSync(dir);
+            } catch {
+              // Malformed package.json — keep walking up.
+            }
+          }
+          const parent = path.dirname(dir);
+          if (parent === dir) break;
+          dir = parent;
+        }
+      } catch {
+        // package not resolvable → caller decides what to do
+      }
+      return null;
+    };
+
+    // Daemon-side titan root — anchored to bootstrap-process's own URL so
+    // we always probe omnitron's *own* dependency tree.
+    const daemonTitanRoot = resolvePackageRoot(import.meta.url, '@omnitron-dev/titan');
+    if (!daemonTitanRoot) {
+      // Daemon's own titan is unreachable — guard cannot meaningfully
+      // compare identities. This should not happen in practice.
       return;
     }
 
-    // App-side titan path — resolved relative to the app's module bundle.
-    // We use a require constructor anchored to the module's directory to
-    // simulate Node's resolution as if from inside the app's dist.
-    let appTitanPath: string | null = null;
-    try {
-      const moduleRequire = createRequire(`${moduleResolveDir}/`);
-      appTitanPath = realpathSync(moduleRequire.resolve('@omnitron-dev/titan/package.json'));
-    } catch {
-      // App may not declare titan as a direct dependency (uses titan-scheduler/etc).
-      // Try resolving via a known transitive: titan-scheduler → titan.
-      try {
-        const moduleRequire = createRequire(`${moduleResolveDir}/`);
-        const schedPkg = moduleRequire.resolve('@omnitron-dev/titan-scheduler/package.json');
-        const schedDir = realpathSync(schedPkg).replace(/[/\\]package\.json$/, '');
-        const schedRequire = createRequire(`${schedDir}/`);
-        appTitanPath = realpathSync(schedRequire.resolve('@omnitron-dev/titan/package.json'));
-      } catch {
-        // App truly does not depend on titan — nothing to compare.
+    // App-side titan root — anchored to the app module's directory so Node's
+    // resolution algorithm walks the **app's** node_modules tree.
+    const moduleAnchor = pathToFileUrl(`${moduleResolveDir}/`);
+    let appTitanRoot = resolvePackageRoot(moduleAnchor, '@omnitron-dev/titan');
+    if (!appTitanRoot) {
+      // App may declare titan only transitively (via titan-scheduler,
+      // titan-events, …). Hop through the transitive package that's most
+      // likely present.
+      const transitive = resolvePackageRoot(moduleAnchor, '@omnitron-dev/titan-scheduler')
+        ?? resolvePackageRoot(moduleAnchor, '@omnitron-dev/titan-events');
+      if (!transitive) {
+        // App genuinely has no titan in its closure — nothing to compare.
         return;
       }
+      appTitanRoot = resolvePackageRoot(pathToFileUrl(`${transitive}/`), '@omnitron-dev/titan');
+      if (!appTitanRoot) return;
     }
 
-    if (!appTitanPath || appTitanPath === daemonTitanPath) {
-      return; // identities match (or could not be determined safely)
+    if (appTitanRoot === daemonTitanRoot) {
+      return; // identities match — happy path
     }
 
     // Mismatch — produce a high-signal error.
     const msg =
       `Titan package identity mismatch detected between omnitron daemon and app '${this.definition?.name ?? '<unknown>'}'.\n\n` +
-      `  Daemon resolves @omnitron-dev/titan from:\n    ${daemonTitanPath}\n\n` +
-      `  App   resolves @omnitron-dev/titan from:\n    ${appTitanPath}\n\n` +
+      `  Daemon resolves @omnitron-dev/titan from:\n    ${daemonTitanRoot}\n\n` +
+      `  App   resolves @omnitron-dev/titan from:\n    ${appTitanRoot}\n\n` +
       `These are different physical installations, so the 'Container' class identity differs.\n` +
       `Provider injections like @Inject(Container) (used internally by titan-scheduler, titan-events,\n` +
       `etc.) will fail with the cryptic message "Dependency 'Container' not found".\n\n` +

@@ -11,6 +11,7 @@ import { log, prism } from '@xec-sh/kit';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import { OMNITRON_HOME } from '../config/defaults.js';
 import type { LogEntryDto } from '../config/types.js';
+import { emitJson, emitError, isJsonMode } from './output.js';
 
 const LOG_DIR = path.join(OMNITRON_HOME, 'logs');
 
@@ -38,7 +39,14 @@ export async function logsCommand(appName?: string, options: LogsOptions = {}): 
   const lines = options.lines ?? 50;
   const filter = buildFilter(options);
 
-  // --file flag or daemon offline → read from disk
+  // --file flag or daemon offline → read from disk.
+  // In JSON mode, --follow is unsupported (no streaming JSON contract);
+  // fail fast with a structured error.
+  if (options.follow && isJsonMode()) {
+    emitError('logs --follow is not supported in --json mode (use file-tail or jq instead)');
+    return;
+  }
+
   if (options.file) {
     readLogsFromFile(appName, lines, filter);
     return;
@@ -48,7 +56,7 @@ export async function logsCommand(appName?: string, options: LogsOptions = {}): 
 
   if (!(await client.isReachable())) {
     await client.disconnect();
-    log.info('Daemon is not running — reading from log files');
+    if (!isJsonMode()) log.info('Daemon is not running — reading from log files');
     readLogsFromFile(appName, lines, filter);
     return;
   }
@@ -97,6 +105,11 @@ export async function logsCommand(appName?: string, options: LogsOptions = {}): 
       const entries = await client.getLogs(query);
       const filtered = entries.filter(filter);
 
+      if (emitJson({ app: appName, count: filtered.length, entries: filtered })) {
+        await client.disconnect();
+        return;
+      }
+
       if (filtered.length === 0) {
         log.info('No logs available');
       } else {
@@ -106,7 +119,7 @@ export async function logsCommand(appName?: string, options: LogsOptions = {}): 
       }
     }
   } catch (err) {
-    log.error((err as Error).message);
+    emitError((err as Error).message, appName ? { app: appName } : undefined);
   }
 
   await client.disconnect();
@@ -187,6 +200,8 @@ function readLogsFromFile(appName?: string, lines = 50, filter: (e: LogEntryDto)
   // Sort by timestamp, apply filter, take last N
   entries.sort((a, b) => a.timestamp - b.timestamp);
   const result = entries.filter(filter).slice(-lines);
+
+  if (emitJson({ source: 'file', app: appName, count: result.length, entries: result })) return;
 
   if (result.length === 0) {
     log.info('No log entries found');

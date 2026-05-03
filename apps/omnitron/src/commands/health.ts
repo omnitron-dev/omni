@@ -6,18 +6,25 @@
 
 import { box, log, prism } from '@xec-sh/kit';
 import { createDaemonClient } from '../daemon/daemon-client.js';
+import { emitJson, emitError, isJsonMode } from './output.js';
 
 export async function healthCommand(appName?: string): Promise<void> {
   const client = createDaemonClient();
 
   if (!(await client.isReachable())) {
-    log.warn('Daemon is not running');
+    if (isJsonMode()) emitError('Daemon is not running');
+    else log.warn('Daemon is not running');
     await client.disconnect();
     return;
   }
 
   try {
     const health = await client.getHealth(appName ? { name: appName } : {});
+
+    if (emitJson({ overall: health.overall, apps: health.apps })) {
+      await client.disconnect();
+      return;
+    }
 
     const overallColor =
       health.overall === 'healthy' ? prism.green : health.overall === 'degraded' ? prism.yellow : prism.red;
@@ -51,7 +58,7 @@ export async function healthCommand(appName?: string): Promise<void> {
 
     box(lines.join('\n'), 'Health Report');
   } catch (err) {
-    log.error((err as Error).message);
+    emitError((err as Error).message, appName ? { app: appName } : undefined);
   }
 
   await client.disconnect();

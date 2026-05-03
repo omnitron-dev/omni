@@ -318,6 +318,13 @@ export interface IDockerServiceConfig {
   /** Docker network to join. */
   network?: string | IDockerNetworkConfig;
 
+  /**
+   * Extra `/etc/hosts` entries inside the container, in `host:ip` format.
+   * Use `host.docker.internal:host-gateway` for cross-platform host access
+   * (works on macOS, Windows and Linux ≥ 20.10).
+   */
+  extraHosts?: string[];
+
   /** Extra Docker labels. */
   labels?: Record<string, string>;
 

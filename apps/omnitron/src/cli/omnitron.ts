@@ -503,6 +503,15 @@ program
 // Infrastructure Management
 // ============================================================================
 
+// Top-level `tor` command — quick access to onion addresses.
+program
+  .command('tor')
+  .description('Show Tor hidden service onion addresses')
+  .action(async () => {
+    const { torCommand } = await import('../commands/tor.js');
+    await torCommand();
+  });
+
 const infra = program.command('infra').description('Manage infrastructure containers (PostgreSQL, Redis, MinIO, etc.)');
 
 infra

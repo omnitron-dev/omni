@@ -156,6 +156,7 @@ export function resolveServiceRequirement(
     restart: docker.restart ?? 'unless-stopped',
     shmSize: docker.shmSize,
     resources: docker.resources,
+    ...(docker.extraHosts && docker.extraHosts.length > 0 ? { extraHosts: docker.extraHosts } : {}),
   };
 }
 

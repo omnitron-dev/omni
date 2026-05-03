@@ -13,6 +13,7 @@ import { postgresPreset } from './postgres.js';
 import { redisPreset } from './redis.js';
 import { minioPreset } from './minio.js';
 import { gatewayOpenrestyPreset } from './gateway-openresty.js';
+import { torPreset } from './tor.js';
 
 /**
  * Create a PresetRegistry populated with all built-in presets.
@@ -24,6 +25,7 @@ export function createDefaultRegistry(): PresetRegistry {
   registry.register(redisPreset);
   registry.register(minioPreset);
   registry.register(gatewayOpenrestyPreset);
+  registry.register(torPreset);
 
   return registry;
 }
